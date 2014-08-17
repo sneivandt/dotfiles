@@ -1,18 +1,12 @@
 execute pathogen#infect()
-filetype indent plugin on
-set nocompatible
-set fileformats=unix,dos,mac
-set viminfo=
-set noswapfile
-set nobackup
 let mapleader=','
+filetype indent plugin on
 au BufWritePre * :%s/\s\+$//e
 au VimResized * :wincmd =
 
-
 """"""""""""""""""""""""""""""""""""""""
 " Basic options
-""""""""""""""""""""""""""""""""""""""""
+
 set autoindent
 set cindent
 set cmdheight=1
@@ -20,14 +14,19 @@ set copyindent
 set cursorline
 set encoding=utf-8
 set expandtab
+set fileformats=unix,dos,mac
 set formatoptions+=r
 set hlsearch
 set ignorecase
 set incsearch
 set laststatus=2
+set lazyredraw
+set nobackup
+set nocompatible
 set noerrorbells
 set nonumber
-set pastetoggle=<F2>
+set noswapfile
+set pastetoggle=<f2>
 set preserveindent
 set ruler
 set scrolloff=5
@@ -41,14 +40,14 @@ set splitbelow
 set splitright
 set tabstop=2
 set ttyfast
+set viminfo=
 set wildmenu
 set wrap
 set wrapscan
 
-
 """"""""""""""""""""""""""""""""""""""""
 " Color scheme
-""""""""""""""""""""""""""""""""""""""""
+
 syntax on
 set t_Co=256
 try
@@ -57,95 +56,87 @@ catch
    colorscheme default
 endtry
 
-
 """"""""""""""""""""""""""""""""""""""""
 " GVIM
-""""""""""""""""""""""""""""""""""""""""
+
 set guitablabel=%N\ %t\ %M
 set guioptions-=m
 set guioptions-=T
 set guioptions-=r
 set guioptions-=L
 
-
 """"""""""""""""""""""""""""""""""""""""
 " Wildignore
-""""""""""""""""""""""""""""""""""""""""
-set wildignore+=*/tmp/*,*.so,*.swp,*.zip,*.min.*
-set wildignore+=*/node_modules/*,*/bower_components/*,*/.git/*,*/.hg/*,*/.svn/*
 
+set wildignore+=*.so,*.swp,*.zip,*.min.*
+set wildignore+=*/tmp/*,*/node_modules/*,*/bower_components/*,*/.git/*,*/.hg/*,*/.svn/*
 
 """"""""""""""""""""""""""""""""""""""""
 " Airline
-""""""""""""""""""""""""""""""""""""""""
+
 let g:airline_left_sep=''
 let g:airline_left_alt_sep=''
 let g:airline_right_sep=''
 let g:airline_right_alt_sep=''
-let g:tmuxline_separators = {
-  \ 'left'      : '',
-  \ 'left_alt'  : '',
-  \ 'right'     : '',
-  \ 'right_alt' : '',
-  \ 'space'     : ' '}
 
-
-""""""""""""""""""""""""""""""""""""""""
-" Tabline
-""""""""""""""""""""""""""""""""""""""""
 let g:airline#extensions#tabline#enabled=1
+let g:airline#extensions#tabline#show_buffers=0
+let g:airline#extensions#tabline#tab_min_count=2
 let g:airline#extensions#tabline#tab_nr_type=1
 let g:airline#extensions#tabline#left_sep=''
 let g:airline#extensions#tabline#left_alt_sep=''
 let g:airline#extensions#tabline#right_sep=''
 let g:airline#extensions#tabline#right_alt_sep=''
-map <C-r>n :tabnew<CR>
-map <C-r><C-r> :tabnext<CR>
-map <C-r>1 1gt
-map <C-r>2 2gt
-map <C-r>3 3gt
-map <C-r>4 4gt
-map <C-r>5 5gt
-map <C-r>6 6gt
-map <C-r>7 7gt
-map <C-r>8 8gt
-map <C-r>9 9gt
+let g:airline#extensions#tabline#fnamemod=':t'
 
+let g:tmuxline_separators = {'left': '', 'left_alt': '', 'right': '', 'right_alt': '', 'space': ' '}
 
 """"""""""""""""""""""""""""""""""""""""
 " Ctrl-P
-""""""""""""""""""""""""""""""""""""""""
+
 let g:ctrlp_map='<c-p>'
 let g:ctrlp_cmd='CtrlP'
 let g:ctrlp_working_path_mode='ra'
 
-
 """"""""""""""""""""""""""""""""""""""""
 " Nerdtree
-""""""""""""""""""""""""""""""""""""""""
-map <silent> <C-E> :NERDTreeToggle<CR>:wincmd =<CR>
 
+let NERDTreeMinimalUI=1
+map <silent><c-e> :NERDTreeToggle<cr>:wincmd =<cr>
 
 """"""""""""""""""""""""""""""""""""""""
 " Tabular
-""""""""""""""""""""""""""""""""""""""""
-map <silent> <Leader>a= :Tabularize /^[^=]*\zs=<CR>
 
+map <silent><leader>a= :Tabularize /^[^=]*\zs=<cr>
+map <silent><leader>a: :Tabularize /^[^:]*:\s*\zs\s/l0<cr>
 
 """"""""""""""""""""""""""""""""""""""""
 " Mappings
-""""""""""""""""""""""""""""""""""""""""
+
 map <tab> %
 map j gj
 map k gk
-cmap W w !sudo tee % >/dev/null<CR>
-nmap <Leader>w :w!<cr>
-nmap <Leader>q :q!<cr>
-nmap <Leader>g :vimgrep //j **<Bar> cw<Left><Left><Left><Left><Left><Left><Left><Left><Left>
-nmap <Leader>r :%s/\<<C-r><C-w>\>/
-nmap <Leader><Space> :noh<CR>
 nnoremap / /\v
 nnoremap ? ?\v
 nnoremap n nzzzv
 nnoremap N Nzzzv
-nnoremap * *<C-O>
+nnoremap * *<C-o>
+
+map <c-r>n :tabnew<cr>
+map <c-r><c-r> :tabnext<cr>
+map <c-r>1 1gt
+map <c-r>2 2gt
+map <c-r>3 3gt
+map <c-r>4 4gt
+map <c-r>5 5gt
+map <c-r>6 6gt
+map <c-r>7 7gt
+map <c-r>8 8gt
+map <c-r>9 9gt
+
+cmap W w !sudo tee % >/dev/null<cr>
+nmap <leader>w :w!<cr>
+nmap <leader>q :q!<cr>
+nmap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
+nmap <leader>r :%s/\<<c-r><c-w>\>/
+nmap <silent><leader><space> :noh<cr>

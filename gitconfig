@@ -1,6 +1,6 @@
 [user]
    email = sneivandt@users.noreply.github.com
-   name = stuartneivandt
+   name = sneivandt
 [diff]
    tool = vimdiff
 [difftool]

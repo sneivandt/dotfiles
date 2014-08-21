@@ -1,6 +1,6 @@
 execute pathogen#infect()
-let mapleader=','
 filetype indent plugin on
+let mapleader=','
 au BufWritePre * :%s/\s\+$//e
 au VimResized * :wincmd =
 
@@ -8,6 +8,7 @@ au VimResized * :wincmd =
 " Basic options
 
 set autoindent
+set backspace=2
 set cindent
 set cmdheight=1
 set copyindent
@@ -51,9 +52,9 @@ set wrapscan
 syntax on
 set t_Co=256
 try
-   colorscheme jellybeans
+  colorscheme jellybeans
 catch
-   colorscheme default
+  colorscheme default
 endtry
 
 """"""""""""""""""""""""""""""""""""""""
@@ -68,8 +69,16 @@ set guioptions-=L
 """"""""""""""""""""""""""""""""""""""""
 " Wildignore
 
-set wildignore+=*.so,*.swp,*.zip,*.min.*
+set wildignore+=*.so,*.swp,*.zip,*.min.*,*.o*
 set wildignore+=*/tmp/*,*/node_modules/*,*/bower_components/*,*/.git/*,*/.hg/*,*/.svn/*
+
+""""""""""""""""""""""""""""""""""""""""
+" Languages
+
+au Filetype c    setlocal shiftwidth=4 tabstop=4 softtabstop=4
+au Filetype cpp  setlocal shiftwidth=4 tabstop=4 softtabstop=4
+au Filetype java setlocal shiftwidth=4 tabstop=4 softtabstop=4
+
 
 """"""""""""""""""""""""""""""""""""""""
 " Airline
@@ -89,7 +98,7 @@ let g:airline#extensions#tabline#right_sep=''
 let g:airline#extensions#tabline#right_alt_sep=''
 let g:airline#extensions#tabline#fnamemod=':t'
 
-let g:tmuxline_separators = {'left': '', 'left_alt': '', 'right': '', 'right_alt': '', 'space': ' '}
+let g:tmuxline_separators = { 'left': '', 'left_alt': '', 'right': '', 'right_alt': '', 'space': ' ' }
 
 """"""""""""""""""""""""""""""""""""""""
 " Ctrl-P
@@ -122,6 +131,8 @@ nnoremap n nzzzv
 nnoremap N Nzzzv
 nnoremap * *<C-o>
 
+map <f3> :setlocal spell! spelllang=en_us<CR>
+
 map <c-r>n :tabnew<cr>
 map <c-r><c-r> :tabnext<cr>
 map <c-r>1 1gt
@@ -139,4 +150,4 @@ nmap <leader>w :w!<cr>
 nmap <leader>q :q!<cr>
 nmap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
 nmap <leader>r :%s/\<<c-r><c-w>\>/
-nmap <silent><leader><space> :noh<cr>
+nmap <leader><space> :noh<cr>

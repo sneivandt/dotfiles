@@ -1,7 +1,7 @@
 [user]
-   email = sneivandt@users.noreply.github.com
-   name = sneivandt
+  email = sneivandt@users.noreply.github.com
+  name = sneivandt
 [diff]
-   tool = vimdiff
+  tool = vimdiff
 [difftool]
-   prompt = false
+  prompt = false

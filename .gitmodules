@@ -28,3 +28,9 @@
 [submodule "vim/autoload/pathogen"]
 	path = vim/autoload/pathogen
 	url = https://github.com/tpope/vim-pathogen.git
+[submodule "vim/colors/jellybeans"]
+	path = vim/colors/jellybeans
+	url = https://github.com/nanotech/jellybeans.vim
+[submodule "vim/bundle/dispatch"]
+	path = vim/bundle/dispatch
+	url = https://github.com/tpope/vim-dispatch.git

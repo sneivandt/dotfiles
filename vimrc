@@ -111,6 +111,7 @@ let g:ctrlp_working_path_mode='ra'
 " Nerdtree
 
 let NERDTreeMinimalUI=1
+let NERDTreeRespectWildIgnore=1
 map <silent><c-e> :NERDTreeToggle<cr>:wincmd =<cr>
 
 """"""""""""""""""""""""""""""""""""""""

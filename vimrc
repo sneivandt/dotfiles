@@ -40,6 +40,7 @@ set softtabstop=2
 set splitbelow
 set splitright
 set tabstop=2
+set textwidth=80
 set ttyfast
 set viminfo=
 set wildmenu

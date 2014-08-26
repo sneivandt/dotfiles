@@ -1,1 +1,1 @@
-/home/stuart/.dotfiles/vim/autoload/pathogen/autoload/pathogen.vim
+/home/stuart/.dotfiles/vim/autoload/vim-pathogen/autoload/pathogen.vim

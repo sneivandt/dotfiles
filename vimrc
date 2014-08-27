@@ -80,7 +80,6 @@ au Filetype c    setlocal shiftwidth=4 tabstop=4 softtabstop=4
 au Filetype cpp  setlocal shiftwidth=4 tabstop=4 softtabstop=4
 au Filetype java setlocal shiftwidth=4 tabstop=4 softtabstop=4
 
-
 """"""""""""""""""""""""""""""""""""""""
 " Airline
 

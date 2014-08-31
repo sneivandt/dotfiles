@@ -1,9 +1,9 @@
 #Dotfiles
 
-Command line configuration files. This may override files in $HOME.
+Configuration files.
 
 ##Installation
 
-    git clone https://github.com/stuartneivandt/.dotfiles.git
+    git clone https://github.com/sneivandt/.dotfiles.git
     cd .dotfiles
     ./setup.sh

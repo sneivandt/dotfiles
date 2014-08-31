@@ -59,13 +59,11 @@ catch
 endtry
 
 """"""""""""""""""""""""""""""""""""""""
-" GVIM
+" Languages
 
-set guitablabel=%N\ %t\ %M
-set guioptions-=m
-set guioptions-=T
-set guioptions-=r
-set guioptions-=L
+au Filetype c    setlocal shiftwidth=4 tabstop=4 softtabstop=4
+au Filetype cpp  setlocal shiftwidth=4 tabstop=4 softtabstop=4
+au Filetype java setlocal shiftwidth=4 tabstop=4 softtabstop=4
 
 """"""""""""""""""""""""""""""""""""""""
 " Wildignore
@@ -74,11 +72,13 @@ set wildignore+=*.so,*.swp,*.zip,*.min.*,*.o*
 set wildignore+=*/tmp/*,*/node_modules/*,*/bower_components/*,*/.git/*,*/.hg/*,*/.svn/*
 
 """"""""""""""""""""""""""""""""""""""""
-" Languages
+" GVIM
 
-au Filetype c    setlocal shiftwidth=4 tabstop=4 softtabstop=4
-au Filetype cpp  setlocal shiftwidth=4 tabstop=4 softtabstop=4
-au Filetype java setlocal shiftwidth=4 tabstop=4 softtabstop=4
+set guitablabel=%N\ %t\ %M
+set guioptions-=m
+set guioptions-=T
+set guioptions-=r
+set guioptions-=L
 
 """"""""""""""""""""""""""""""""""""""""
 " Airline
@@ -115,6 +115,16 @@ let NERDTreeRespectWildIgnore=1
 map <silent><c-e> :NERDTreeToggle<cr>:wincmd =<cr>
 
 """"""""""""""""""""""""""""""""""""""""
+" Dispatch
+
+cnoreabbrev <expr> make ((getcmdtype() == ':' && getcmdpos() <= 5) ? 'Make': 'make')
+
+""""""""""""""""""""""""""""""""""""""""
+" Auto-Pairs
+
+let g:AutoPairsCenterLine=0
+
+""""""""""""""""""""""""""""""""""""""""
 " Tabular
 
 map <silent><leader>a= :Tabularize /^[^=]*\zs=<cr>
@@ -132,8 +142,7 @@ nnoremap n nzzzv
 nnoremap N Nzzzv
 nnoremap * *<C-o>
 
-map <f3> :setlocal spell! spelllang=en_us<CR>
-
+map <f3> :set spell! spelllang=en_us<CR>
 map <c-r>n :tabnew<cr>
 map <c-r><c-r> :tabnext<cr>
 map <c-r>1 1gt
@@ -146,9 +155,7 @@ map <c-r>7 7gt
 map <c-r>8 8gt
 map <c-r>9 9gt
 
-cmap W w !sudo tee % >/dev/null<cr>
-nmap <leader>w :w!<cr>
-nmap <leader>q :q!<cr>
+nmap <leader><space> :noh<cr>
+nmap <leader>q :q<cr>
 nmap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
 nmap <leader>r :%s/\<<c-r><c-w>\>/
-nmap <leader><space> :noh<cr>

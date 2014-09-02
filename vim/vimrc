@@ -1,6 +1,6 @@
 execute pathogen#infect()
 filetype indent plugin on
-let mapleader=','
+let mapleader=","
 au BufWritePre * :%s/\s\+$//e
 au VimResized * :wincmd =
 
@@ -16,12 +16,15 @@ set cursorline
 set encoding=utf-8
 set expandtab
 set fileformats=unix,dos,mac
-set formatoptions+=r
+set formatoptions=tcqr
 set hlsearch
 set ignorecase
 set incsearch
 set laststatus=2
 set lazyredraw
+set list
+set listchars=tab:▸\ ,trail:·
+set mouse=a
 set nobackup
 set nocompatible
 set noerrorbells
@@ -54,6 +57,7 @@ syntax on
 set t_Co=256
 try
   colorscheme jellybeans
+  highlight SpecialKey ctermbg=233
 catch
   colorscheme default
 endtry
@@ -61,9 +65,9 @@ endtry
 """"""""""""""""""""""""""""""""""""""""
 " Languages
 
-au Filetype c    setlocal shiftwidth=4 tabstop=4 softtabstop=4
-au Filetype cpp  setlocal shiftwidth=4 tabstop=4 softtabstop=4
-au Filetype java setlocal shiftwidth=4 tabstop=4 softtabstop=4
+au Filetype c    setlocal sw=4 ts=4 st=4
+au Filetype cpp  setlocal sw=4 ts=4 st=4
+au Filetype java setlocal sw=4 ts=4 st=4
 
 """"""""""""""""""""""""""""""""""""""""
 " Wildignore
@@ -83,29 +87,29 @@ set guioptions-=L
 """"""""""""""""""""""""""""""""""""""""
 " Airline
 
-let g:airline_left_sep=''
-let g:airline_left_alt_sep=''
-let g:airline_right_sep=''
-let g:airline_right_alt_sep=''
+let g:airline_left_sep=""
+let g:airline_left_alt_sep=""
+let g:airline_right_sep=""
+let g:airline_right_alt_sep=""
 
 let g:airline#extensions#tabline#enabled=1
 let g:airline#extensions#tabline#show_buffers=0
 let g:airline#extensions#tabline#tab_min_count=2
 let g:airline#extensions#tabline#tab_nr_type=1
-let g:airline#extensions#tabline#left_sep=''
-let g:airline#extensions#tabline#left_alt_sep=''
-let g:airline#extensions#tabline#right_sep=''
-let g:airline#extensions#tabline#right_alt_sep=''
-let g:airline#extensions#tabline#fnamemod=':t'
+let g:airline#extensions#tabline#left_sep=""
+let g:airline#extensions#tabline#left_alt_sep=""
+let g:airline#extensions#tabline#right_sep=""
+let g:airline#extensions#tabline#right_alt_sep=""
+let g:airline#extensions#tabline#fnamemod=":t"
 
-let g:tmuxline_separators = { 'left': '', 'left_alt': '', 'right': '', 'right_alt': '', 'space': ' ' }
+let g:tmuxline_separators = { "left": "", "left_alt": "", "right": "", "right_alt": "", "space": " " }
 
 """"""""""""""""""""""""""""""""""""""""
 " Ctrl-P
 
-let g:ctrlp_map='<c-p>'
-let g:ctrlp_cmd='CtrlP'
-let g:ctrlp_working_path_mode='ra'
+let g:ctrlp_map="<c-p>"
+let g:ctrlp_cmd="CtrlP"
+let g:ctrlp_working_path_mode="ra"
 
 """"""""""""""""""""""""""""""""""""""""
 " Nerdtree
@@ -142,7 +146,7 @@ nnoremap n nzzzv
 nnoremap N Nzzzv
 nnoremap * *<C-o>
 
-map <f3> :set spell! spelllang=en_us<CR>
+map <f3> :set spell! spelllang=en_us<cr>
 map <c-r>n :tabnew<cr>
 map <c-r><c-r> :tabnext<cr>
 map <c-r>1 1gt

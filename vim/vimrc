@@ -1,12 +1,12 @@
 """"""""""""""""""""""""""""""""""""""""
-" 0. Preamble
+" Preamble
 
 execute pathogen#infect()
 filetype indent plugin on
 let mapleader=","
 
 """"""""""""""""""""""""""""""""""""""""
-" 1. Basic Options
+" Basic Options
 
 set autoindent
 set backspace=2
@@ -52,39 +52,37 @@ set wrap
 set wrapscan
 
 """"""""""""""""""""""""""""""""""""""""
-" 2. Color Scheme
+" Color Scheme
 
 syntax on
 set t_Co=256
-try
-  colorscheme jellybeans
-  highlight SpecialKey ctermbg=233
-catch
-  colorscheme default
-endtry
+colorscheme jellybeans
+highlight SpecialKey ctermbg=233
 
 """"""""""""""""""""""""""""""""""""""""
-" 3. Auto Commands
+" Auto Commands
 
 au BufWritePre * :%s/\s\+$//e
 au VimResized * :wincmd =
 
 """"""""""""""""""""""""""""""""""""""""
-" 4. Languages
+" Languages
 
 au Filetype c    setlocal sw=4 ts=4 sts=4
 au Filetype cpp  setlocal sw=4 ts=4 sts=4
 au Filetype java setlocal sw=4 ts=4 sts=4
 
 """"""""""""""""""""""""""""""""""""""""
-" 5. Windignore
+" Windignore
 
 set wildignore+=*.so,*.swp,*.zip,*.min.*,*.o*
 set wildignore+=*/tmp/*,*/node_modules/*,*/bower_components/*,*/.git/*,*/.hg/*,*/.svn/*
 
 """"""""""""""""""""""""""""""""""""""""
-" 6. GVIM
+" GVIM
 
+autocmd GUIEnter * set visualbell t_vb=
+set noerrorbells visualbell t_vb=
 set guitablabel=%N\ %t\ %M
 set guioptions-=m
 set guioptions-=T
@@ -92,7 +90,7 @@ set guioptions-=r
 set guioptions-=L
 
 """"""""""""""""""""""""""""""""""""""""
-" 7. Airline
+" Airline
 
 let g:airline_left_sep=""
 let g:airline_left_alt_sep=""
@@ -112,37 +110,37 @@ let g:airline#extensions#tabline#fnamemod=":t"
 let g:tmuxline_separators = { "left": "", "left_alt": "", "right": "", "right_alt": "", "space": " " }
 
 """"""""""""""""""""""""""""""""""""""""
-" 8. Ctrl-P
+" Ctrl-P
 
 let g:ctrlp_map="<c-p>"
 let g:ctrlp_cmd="CtrlP"
 let g:ctrlp_working_path_mode="ra"
 
 """"""""""""""""""""""""""""""""""""""""
-" 9. Nerdtree
+" Nerdtree
 
 let NERDTreeMinimalUI=1
 let NERDTreeRespectWildIgnore=1
 map <silent><c-e> :NERDTreeToggle<cr>:wincmd =<cr>
 
 """"""""""""""""""""""""""""""""""""""""
-" 10. Dispatch
+" Dispatch
 
 cnoreabbrev <expr> make ((getcmdtype() == ':' && getcmdpos() <= 5) ? 'Make': 'make')
 
 """"""""""""""""""""""""""""""""""""""""
-" 11. Auto-Pairs
+" Auto-Pairs
 
 let g:AutoPairsCenterLine=0
 
 """"""""""""""""""""""""""""""""""""""""
-" 12. Tabular
+" Tabular
 
 map <silent><leader>a= :Tabularize /^[^=]*\zs=<cr>
 map <silent><leader>a: :Tabularize /^[^:]*:\s*\zs\s/l0<cr>
 
 """"""""""""""""""""""""""""""""""""""""
-" 13. Mappings
+" Mappings
 
 map <tab> %
 map j gj
@@ -169,4 +167,4 @@ map <c-r>9 9gt
 nmap <leader><space> :noh<cr>
 nmap <leader>q :q<cr>
 nmap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
-nmap <leader>r :%s/\<<c-r><c-w>\>/
+nmap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>

@@ -13,7 +13,6 @@ set backspace=2
 set cindent
 set cmdheight=1
 set copyindent
-set cursorline
 set encoding=utf-8
 set expandtab
 set fileformats=unix,dos,mac
@@ -127,11 +126,6 @@ map <silent><c-e> :NERDTreeToggle<cr>:wincmd =<cr>
 " Dispatch
 
 cnoreabbrev <expr> make ((getcmdtype() == ':' && getcmdpos() <= 5) ? 'Make': 'make')
-
-""""""""""""""""""""""""""""""""""""""""
-" Auto-Pairs
-
-let g:AutoPairsCenterLine=0
 
 """"""""""""""""""""""""""""""""""""""""
 " Tabular

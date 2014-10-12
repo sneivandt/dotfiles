@@ -2,7 +2,6 @@
 " Preamble
 
 execute pathogen#infect()
-filetype indent plugin on
 let mapleader=","
 
 """"""""""""""""""""""""""""""""""""""""
@@ -61,32 +60,41 @@ highlight SpecialKey ctermbg=233
 """"""""""""""""""""""""""""""""""""""""
 " Auto Commands
 
-au BufWritePre * :%s/\s\+$//e
+au BufWritePre * :call <SID>StripTrailingWhitespaces()
 au VimResized * :wincmd =
+au FileType qf :wincmd J
+au WinEnter * if winnr('$') == 1 && getbufvar(winbufnr(winnr()), "&buftype") == "quickfix"|q|endif
+
+function! <SID>StripTrailingWhitespaces()
+  let _s=@/
+  let l = line(".")
+  let c = col(".")
+  %s/\s\+$//e
+  let @/=_s
+  call cursor(l, c)
+endfunction
 
 """"""""""""""""""""""""""""""""""""""""
-" Languages
+" Filetypes
 
+filetype indent plugin on
 au Filetype c    setlocal sw=4 ts=4 sts=4
 au Filetype cpp  setlocal sw=4 ts=4 sts=4
 au Filetype java setlocal sw=4 ts=4 sts=4
 
 """"""""""""""""""""""""""""""""""""""""
-" Windignore
+" Wildignore
 
 set wildignore+=*.so,*.swp,*.zip,*.min.*,*.o*
-set wildignore+=*/tmp/*,*/node_modules/*,*/bower_components/*,*/.git/*,*/.hg/*,*/.svn/*
+set wildignore+=*/tmp/*,*/.git/*,*/.hg/*,*/.svn/*,*/node_modules/*,*/bower_components/*
 
 """"""""""""""""""""""""""""""""""""""""
 " GVIM
 
-autocmd GUIEnter * set visualbell t_vb=
+au GUIEnter * set visualbell t_vb=
 set noerrorbells visualbell t_vb=
 set guitablabel=%N\ %t\ %M
-set guioptions-=m
-set guioptions-=T
-set guioptions-=r
-set guioptions-=L
+set guioptions-=mTrL
 
 """"""""""""""""""""""""""""""""""""""""
 " Airline
@@ -106,13 +114,16 @@ let g:airline#extensions#tabline#right_sep=""
 let g:airline#extensions#tabline#right_alt_sep=""
 let g:airline#extensions#tabline#fnamemod=":t"
 
-let g:tmuxline_separators = { "left": "", "left_alt": "", "right": "", "right_alt": "", "space": " " }
+let g:airline#extensions#whitespace#enabled=0
+
+let g:tmuxline_separators={"left": "", "left_alt": "", "right": "", "right_alt": "", "space": " "}
 
 """"""""""""""""""""""""""""""""""""""""
 " Ctrl-P
 
 let g:ctrlp_map="<c-p>"
 let g:ctrlp_cmd="CtrlP"
+let g:ctrlp_switch_buffer="e"
 let g:ctrlp_working_path_mode="ra"
 
 """"""""""""""""""""""""""""""""""""""""

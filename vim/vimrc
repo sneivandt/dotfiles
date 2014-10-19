@@ -2,7 +2,6 @@
 " Preamble
 
 execute pathogen#infect()
-let mapleader=","
 
 """"""""""""""""""""""""""""""""""""""""
 " Basic Options
@@ -60,12 +59,11 @@ highlight SpecialKey ctermbg=233
 """"""""""""""""""""""""""""""""""""""""
 " Auto Commands
 
-au BufWritePre * :call <SID>StripTrailingWhitespaces()
 au VimResized * :wincmd =
 au FileType qf :wincmd J
 au WinEnter * if winnr('$') == 1 && getbufvar(winbufnr(winnr()), "&buftype") == "quickfix"|q|endif
 
-function! <SID>StripTrailingWhitespaces()
+function! StripTrailingWhitespaces()
   let _s=@/
   let l = line(".")
   let c = col(".")
@@ -73,6 +71,7 @@ function! <SID>StripTrailingWhitespaces()
   let @/=_s
   call cursor(l, c)
 endfunction
+au BufWritePre * :call StripTrailingWhitespaces()
 
 """"""""""""""""""""""""""""""""""""""""
 " Filetypes
@@ -95,6 +94,38 @@ au GUIEnter * set visualbell t_vb=
 set noerrorbells visualbell t_vb=
 set guitablabel=%N\ %t\ %M
 set guioptions-=mTrL
+
+""""""""""""""""""""""""""""""""""""""""
+" Mappings
+
+let mapleader=","
+
+map <tab> %
+map j gj
+map k gk
+nnoremap / /\v
+nnoremap ? ?\v
+nnoremap n nzzzv
+nnoremap N Nzzzv
+nnoremap * *<C-o>
+
+map <f3> :set spell! spelllang=en_us<cr>
+map <c-r>n :tabnew<cr>
+map <c-r><c-r> :tabnext<cr>
+map <c-r>1 1gt
+map <c-r>2 2gt
+map <c-r>3 3gt
+map <c-r>4 4gt
+map <c-r>5 5gt
+map <c-r>6 6gt
+map <c-r>7 7gt
+map <c-r>8 8gt
+map <c-r>9 9gt
+
+nmap <leader><space> :noh<cr>
+nmap <leader>q :q<cr>
+nmap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
+nmap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>
 
 """"""""""""""""""""""""""""""""""""""""
 " Airline
@@ -133,6 +164,17 @@ let NERDTreeMinimalUI=1
 let NERDTreeRespectWildIgnore=1
 map <silent><c-e> :NERDTreeToggle<cr>:wincmd =<cr>
 
+function! CloseIfOnlyNerdTreeLeft()
+  if exists("t:NERDTreeBufName")
+    if bufwinnr(t:NERDTreeBufName) != -1
+      if winnr("$") == 1
+        q
+      endif
+    endif
+  endif
+endfunction
+au WinEnter * call CloseIfOnlyNerdTreeLeft()
+
 """"""""""""""""""""""""""""""""""""""""
 " Dispatch
 
@@ -143,33 +185,3 @@ cnoreabbrev <expr> make ((getcmdtype() == ':' && getcmdpos() <= 5) ? 'Make': 'ma
 
 map <silent><leader>a= :Tabularize /^[^=]*\zs=<cr>
 map <silent><leader>a: :Tabularize /^[^:]*:\s*\zs\s/l0<cr>
-
-""""""""""""""""""""""""""""""""""""""""
-" Mappings
-
-map <tab> %
-map j gj
-map k gk
-nnoremap / /\v
-nnoremap ? ?\v
-nnoremap n nzzzv
-nnoremap N Nzzzv
-nnoremap * *<C-o>
-
-map <f3> :set spell! spelllang=en_us<cr>
-map <c-r>n :tabnew<cr>
-map <c-r><c-r> :tabnext<cr>
-map <c-r>1 1gt
-map <c-r>2 2gt
-map <c-r>3 3gt
-map <c-r>4 4gt
-map <c-r>5 5gt
-map <c-r>6 6gt
-map <c-r>7 7gt
-map <c-r>8 8gt
-map <c-r>9 9gt
-
-nmap <leader><space> :noh<cr>
-nmap <leader>q :q<cr>
-nmap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
-nmap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>

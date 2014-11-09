@@ -93,7 +93,7 @@ set wildignore+=*/tmp/*,*/.git/*,*/.hg/*,*/.svn/*,*/node_modules/*,*/bower_compo
 au GUIEnter * set visualbell t_vb=
 set noerrorbells visualbell t_vb=
 set guitablabel=%N\ %t\ %M
-set guioptions-=mTrL
+set guioptions=aegi
 
 """"""""""""""""""""""""""""""""""""""""
 " Mappings
@@ -122,6 +122,7 @@ map <c-r>7 7gt
 map <c-r>8 8gt
 map <c-r>9 9gt
 
+nmap <leader>v :e ~/.vim/vimrc<cr>
 nmap <leader><space> :noh<cr>
 nmap <leader>q :q<cr>
 nmap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>

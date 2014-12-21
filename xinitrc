@@ -1,7 +1,12 @@
 #!/bin/sh
 
+# Disable screen blanking
+xset s off
+xset -dpms
+xset s noblank
+
 # Load X resources
 [[ -f ~/.Xresources ]] && xrdb ~/.Xresources
 
-# Launch i3wm
-[[ -f /usr/bin/i3 ]] && exec i3
+# Launch i3
+[[ -x $(which i3 2>/dev/null) ]] && exec i3

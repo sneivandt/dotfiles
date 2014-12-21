@@ -4,19 +4,17 @@
 # Dont check mail
 unset MAILCHECK
 
-if [ "$TERM" == "xterm" ]
+# Color xterm
+if [[ "$TERM" == "xterm" ]]
 then
   export TERM=xterm-256color
 fi
-
-# Add ~/bin to $PATH
-export PATH="$HOME/bin:$PATH"
 
 # Yay Vim!
 export EDITOR=vim
 
 # Prompt
-PS1="\[\e[0;37m\]\u@\h\[\e[0m\]:\[\e[0;33m\]\w\[\e[0m\]\n\$ "
+PS1="\u@\h:\[\e[0;33m\]\w\n\[\e[0m\]\$ "
 
 # Aliases
 alias sudo="sudo "

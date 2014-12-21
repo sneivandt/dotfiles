@@ -3,7 +3,7 @@ URxvt*background:  black
 URxvt*foreground:  white
 URxvt*font:        xft:DejaVu Sans Mono:pixelsize=13
 URxvt*transparent: true
-URxvt*shading:     10
+URxvt*shading:     8
 URxvt*color0:      #2E3436
 URxvt*color1:      #a40000
 URxvt*color2:      #4E9A06

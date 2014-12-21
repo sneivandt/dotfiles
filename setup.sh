@@ -1,36 +1,55 @@
 #!/bin/bash
 
-# Absolute path
-REPO_PATH=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P )
+# Absolute path to this script
+ABS_PATH=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+
+# Update repo
+echo -e "\033[1;34m--\033[0m\033[1m Updating git ...\033[0m"
+git -C $ABS_PATH pull | sed "s/^/ /"
 
 # Update submodules
-git --git-dir $REPO_PATH/.git submodule init
-git --git-dir $REPO_PATH/.git submodule update
+echo -e "\033[1;34m--\033[0m\033[1m Updating git submodules ...\033[0m"
+git -C $ABS_PATH submodule init | sed "s/^/ /"
+git -C $ABS_PATH submodule update | sed "s/^/ /"
 
-# Symlinks
+# Create symlinks
+echo -e "\033[1;34m--\033[0m\033[1m Creating symlinks ...\033[0m"
+echo "This may overrite files in your home directory"
+echo -e -n "\033[1;34m--\033[0m\033[1m Proceed with setup? [y/N] \033[0m"
+read -p "" &&  [[ ! $REPLY =~ ^[yY]$ ]] && exit
+
+echo " Git"
+ln -sf $ABS_PATH/gitconfig ~/.gitconfig
+
+echo " Vim"
 rm -rf ~/.vim
-ln -sf $REPO_PATH/vim ~/.vim
-ln -sf $REPO_PATH/tmux.conf ~/.tmux.conf
-ln -sf $REPO_PATH/gitconfig ~/.gitconfig
+ln -sf $ABS_PATH/vim ~/.vim
 
-# Symlink .bash_profile and .bashrc for non root users only
-if [[ $HOME =~ /home/* ]]
+echo " Tmux"
+ln -sf $ABS_PATH/tmux.conf ~/.tmux.conf
+
+if [[ $EUID -ne 0 ]]
 then
-  ln -sf $REPO_PATH/bash_profile ~/.bash_profile
-  ln -sf $REPO_PATH/bashrc ~/.bashrc
+  echo " Bash"
+  ln -sf $ABS_PATH/bash_profile ~/.bash_profile
+  ln -sf $ABS_PATH/bashrc ~/.bashrc
+
+  if [[ -n $DISPLAY ]]
+  then
+    echo " X"
+    ln -sf $ABS_PATH/xinitrc ~/.xinitrc
+    ln -sf $ABS_PATH/Xresources ~/.Xresources
+
+    echo " GTK+"
+    ln -sf $ABS_PATH/gtkrc-2.0 ~/.gtkrc-2.0
+
+    if [[ -x $(which i3 2>/dev/null) ]]
+    then
+      echo " i3"
+      rm -rf ~/.i3
+      ln -sf $ABS_PATH/i3 ~/.i3
+    fi
+  fi
 fi
 
-# X symlinks
-if [[ -n $DISPLAY ]]
-then
-  ln -sf $REPO_PATH/xinitrc ~/.xinitrc
-  ln -sf $REPO_PATH/Xresources ~/.Xresources
-  ln -sf $REPO_PATH/gtkrc-2.0 ~/.gtkrc-2.0
-fi
-
-# i3 symlings
-if [[ -f /usr/bin/i3 ]]
-then
-  rm -rf ~/.i3
-  ln -sf $REPO_PATH/i3 ~/.i3
-fi
+unset ABS_PATH

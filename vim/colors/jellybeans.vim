@@ -1,1 +1,1 @@
-jellybeans/colors/jellybeans.vim
+/home/stuart/.dotfiles/vim/colors/jellybeans/colors/jellybeans.vim

@@ -1,0 +1,1 @@
+/home/stuart/.dotfiles/vim/autoload/vim-pathogen/autoload/pathogen.vim

@@ -4,12 +4,6 @@
 # Dont check mail
 unset MAILCHECK
 
-# Color xterm
-if [[ "$TERM" == "xterm" ]]
-then
-  export TERM=xterm-256color
-fi
-
 # Yay Vim!
 export EDITOR=vim
 

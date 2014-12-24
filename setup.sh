@@ -4,18 +4,18 @@
 ABS_PATH=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 
 # Update repo
-echo -e "\033[1;34m--\033[0m\033[1m Updating git ...\033[0m"
+echo -e "\033[1;34m::\033[0m\033[1m Updating git ...\033[0m"
 git -C $ABS_PATH pull | sed "s/^/ /"
 
 # Update submodules
-echo -e "\033[1;34m--\033[0m\033[1m Updating git submodules ...\033[0m"
+echo -e "\033[1;34m::\033[0m\033[1m Updating git submodules ...\033[0m"
 git -C $ABS_PATH submodule init | sed "s/^/ /"
 git -C $ABS_PATH submodule update | sed "s/^/ /"
 
 # Create symlinks
-echo -e "\033[1;34m--\033[0m\033[1m Creating symlinks ...\033[0m"
+echo -e "\033[1;34m::\033[0m\033[1m Creating symlinks ...\033[0m"
 echo " This may overrite files in your home directory"
-echo -e -n "\033[1;34m--\033[0m\033[1m Proceed with setup? [y/N] \033[0m"
+echo -e -n "\033[1;34m::\033[0m\033[1m Proceed with setup? [y/N] \033[0m"
 read -p "" &&  [[ ! $REPLY =~ ^[yY]$ ]] && exit
 
 echo " Git"

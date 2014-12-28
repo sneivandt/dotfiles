@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Absolute path to this script
 ABS_PATH=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
@@ -27,31 +27,24 @@ ln -sf $ABS_PATH/vim ~/.vim
 ln -sf $ABS_PATH/vim/autoload/vim-pathogen/autoload/pathogen.vim ~/.dotfiles/vim/autoload/pathogen.vim
 ln -sf $ABS_PATH/vim/colors/jellybeans/colors/jellybeans.vim ~/.dotfiles/vim/colors/jellybeans.vim
 
-echo " Tmux"
-ln -sf $ABS_PATH/tmux.conf ~/.tmux.conf
+echo " Terminfo"
+rm -rf ~/.terminfo
+ln -sf $ABS_PATH/terminfo ~/.terminfo
 
-if [[ $EUID -ne 0 ]]
-then
-  echo " Bash"
-  ln -sf $ABS_PATH/bash_profile ~/.bash_profile
-  ln -sf $ABS_PATH/bashrc ~/.bashrc
+# Exit if running as root
+[[ $EUID -eq 0 ]] && exit
 
-  if [[ -n $DISPLAY ]]
-  then
-    echo " X"
-    ln -sf $ABS_PATH/xinitrc ~/.xinitrc
-    ln -sf $ABS_PATH/Xresources ~/.Xresources
+echo " Bash"
+ln -sf $ABS_PATH/bash_profile ~/.bash_profile
+ln -sf $ABS_PATH/bashrc ~/.bashrc
 
-    echo " GTK+"
-    ln -sf $ABS_PATH/gtkrc-2.0 ~/.gtkrc-2.0
+echo " X"
+ln -sf $ABS_PATH/xinitrc ~/.xinitrc
+ln -sf $ABS_PATH/Xresources ~/.Xresources
 
-    if [[ -x $(which i3 2>/dev/null) ]]
-    then
-      echo " i3"
-      rm -rf ~/.i3
-      ln -sf $ABS_PATH/i3 ~/.i3
-    fi
-  fi
-fi
+echo " GTK+"
+ln -sf $ABS_PATH/gtkrc-2.0 ~/.gtkrc-2.0
 
-unset ABS_PATH
+echo " i3"
+rm -rf ~/.i3
+ln -sf $ABS_PATH/i3 ~/.i3

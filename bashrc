@@ -4,9 +4,6 @@
 # Dont check mail
 unset MAILCHECK
 
-# Yay Vim!
-export EDITOR=vim
-
 # Prompt
 PS1="\u@\h:\[\e[0;33m\]\w\n\[\e[0m\]\$ "
 
@@ -17,6 +14,5 @@ alias la="ls -a --color"
 alias ll="ls -lh --color"
 alias sl="ls"
 alias ..="cd .."
-alias ...="cd ../.."
 alias cl="clear"
 alias vi="vim"

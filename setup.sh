@@ -21,15 +21,18 @@ read -p "" &&  [[ ! $REPLY =~ ^[yY]$ ]] && exit
 echo " Git"
 ln -sf $ABS_PATH/gitconfig ~/.gitconfig
 
+echo " Terminfo"
+rm -rf ~/.terminfo
+ln -sf $ABS_PATH/terminfo ~/.terminfo
+
 echo " Vim"
 rm -rf ~/.vim
 ln -sf $ABS_PATH/vim ~/.vim
 ln -sf $ABS_PATH/vim/autoload/vim-pathogen/autoload/pathogen.vim ~/.dotfiles/vim/autoload/pathogen.vim
 ln -sf $ABS_PATH/vim/colors/jellybeans/colors/jellybeans.vim ~/.dotfiles/vim/colors/jellybeans.vim
 
-echo " Terminfo"
-rm -rf ~/.terminfo
-ln -sf $ABS_PATH/terminfo ~/.terminfo
+echo " Tmux"
+ln -sf $ABS_PATH/tmux.conf ~/.tmux.conf
 
 # Exit if running as root
 [[ $EUID -eq 0 ]] && exit

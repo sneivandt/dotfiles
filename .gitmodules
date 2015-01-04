@@ -31,6 +31,9 @@
 [submodule "vim/bundle/tcomment_vim"]
 	path = vim/bundle/tcomment_vim
 	url = https://github.com/tomtom/tcomment_vim.git
-[submodule "vim/bundle/syntax"]
-	path = vim/bundle/syntax
+[submodule "vim/syntax/vim-cpp"]
+	path = vim/syntax/vim-cpp
 	url = https://github.com/octol/vim-cpp-enhanced-highlight.git
+[submodule "vim/syntax/python-syntax"]
+	path = vim/syntax/python-syntax
+	url = https://github.com/hdima/python-syntax

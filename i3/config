@@ -24,8 +24,8 @@ bindsym $mod+o exec thunar
 bindsym $mod+i exec banshee
 
 # Volume
-bindsym $mod+m exec amixer set Master 2%+ unmute
-bindsym $mod+n exec amixer set Master 2%- unmute
+bindsym $mod+m exec amixer set Master 2+ unmute
+bindsym $mod+n exec amixer set Master 2- unmute
 
 # Kill focused window
 bindsym $mod+q kill
@@ -124,7 +124,7 @@ bindsym $mod+Shift+e exec "i3-nagbar -t warning -m 'Do you really want to exit i
 
 # i3bar
 bar {
-  status_command i3status --config "~/.i3/i3status.config"
+  status_command ~/.i3/conky
 }
 
 # Wallpaper

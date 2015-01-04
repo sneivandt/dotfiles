@@ -74,18 +74,19 @@ endfunction
 au BufWritePre * :call StripTrailingWhitespaces()
 
 """"""""""""""""""""""""""""""""""""""""
+" Wildignore
+
+set wildignore+=*.so,*.swp,*.zip,*.min.*,*.o*
+set wildignore+=*/tmp/*,*/.git/*,*/.hg/*,*/.svn/*
+set wildignore+=*/__pycache__/*,*/node_modules/*,*/bower_components/*
+
+""""""""""""""""""""""""""""""""""""""""
 " Filetypes
 
 filetype indent plugin on
 au Filetype c    setlocal sw=4 ts=4 sts=4
 au Filetype cpp  setlocal sw=4 ts=4 sts=4
 au Filetype java setlocal sw=4 ts=4 sts=4
-
-""""""""""""""""""""""""""""""""""""""""
-" Wildignore
-
-set wildignore+=*.so,*.swp,*.zip,*.min.*,*.o*
-set wildignore+=*/tmp/*,*/.git/*,*/.hg/*,*/.svn/*,*/node_modules/*,*/bower_components/*
 
 """"""""""""""""""""""""""""""""""""""""
 " GVIM
@@ -125,6 +126,7 @@ map <c-r>9 9gt
 nmap <leader>v :e ~/.vim/vimrc<cr>
 nmap <leader><space> :noh<cr>
 nmap <leader>q :q<cr>
+nmap <leader>e :!%:p<cr>
 nmap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
 nmap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>
 
@@ -186,3 +188,11 @@ cnoreabbrev <expr> make ((getcmdtype() == ':' && getcmdpos() <= 5) ? 'Make': 'ma
 
 map <silent><leader>a= :Tabularize /^[^=]*\zs=<cr>
 map <silent><leader>a: :Tabularize /^[^:]*:\s*\zs\s/l0<cr>
+
+""""""""""""""""""""""""""""""""""""""""
+" Syntax
+
+let g:python_highlight_builtin_funcs=1
+let g:python_highlight_builtin_objs=1
+let g:python_highlight_exceptions=1
+let g:python_highlight_file_headers_as_comments=1

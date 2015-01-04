@@ -1,0 +1,46 @@
+# Options
+background no
+out_to_console yes
+out_to_x no
+update_interval 1
+total_run_times 0
+override_utf8_locale yes
+
+# Output
+TEXT
+,[
+
+{
+  "full_text": " cpu ${exec top -bn1 | grep load | awk '{printf "%.0f%", $(NF-2)*100}'} ",
+  "color": "\#80b2ff"
+},
+{
+  "full_text": " mem ${exec free -m | awk 'NR==2{printf "%.0f%", $3*100/$2 }'} ",
+  "color": "\#ffffff"
+},
+{
+  "full_text": " / ${exec df -lh | awk '{if ($6 == "/") { print $5 }}'} ",
+  "color": "\#80b2ff"
+},
+{
+  "full_text": " ♪ ${exec ~/.i3/now-playing}${exec amixer get Master | grep -o "\[.*%\]" | sed "s/\[//g" | sed "s/\]//g"} ",
+  "color": "\#ffffff"
+},
+{
+  "full_text": " ${exec ip addr | grep 'state UP' -A2 | tail -n1 | awk {'print $2}' | cut -f1 -d'/'} ",
+  "color": "\#80b2ff"
+},
+{
+  "full_text": " ${exec whoami} ",
+  "color": "\#ffffff"
+},
+{
+  "full_text": " ${exec uname -r} ",
+  "color": "\#80b2ff"
+},
+{
+  "full_text": " ${time %a %d %b %H:%M:%S} ",
+  "color": "\#ffffff"
+}
+
+]

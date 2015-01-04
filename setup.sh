@@ -3,10 +3,6 @@
 # Absolute path to this script
 ABS_PATH=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 
-# Update repo
-echo -e "\033[1;34m::\033[0m\033[1m Updating git ...\033[0m"
-git -C $ABS_PATH pull | sed "s/^/ /"
-
 # Update submodules
 echo -e "\033[1;34m::\033[0m\033[1m Updating git submodules ...\033[0m"
 git -C $ABS_PATH submodule init | sed "s/^/ /"
@@ -19,35 +15,36 @@ echo -e -n "\033[1;34m::\033[0m\033[1m Proceed with setup? [y/N] \033[0m"
 read -p "" &&  [[ ! $REPLY =~ ^[yY]$ ]] && exit
 
 echo " Git"
-ln -sf $ABS_PATH/gitconfig ~/.gitconfig
-
-echo " Terminfo"
-rm -rf ~/.terminfo
-ln -sf $ABS_PATH/terminfo ~/.terminfo
+ln -snf $ABS_PATH/gitconfig ~/.gitconfig
 
 echo " Vim"
-rm -rf ~/.vim
-ln -sf $ABS_PATH/vim ~/.vim
-ln -sf $ABS_PATH/vim/autoload/vim-pathogen/autoload/pathogen.vim ~/.dotfiles/vim/autoload/pathogen.vim
-ln -sf $ABS_PATH/vim/colors/jellybeans/colors/jellybeans.vim ~/.dotfiles/vim/colors/jellybeans.vim
+ln -snf $ABS_PATH/vim ~/.vim
+ln -snf $ABS_PATH/vim/autoload/vim-pathogen/autoload/pathogen.vim ~/.dotfiles/vim/autoload/pathogen.vim
+ln -snf $ABS_PATH/vim/colors/jellybeans/colors/jellybeans.vim ~/.dotfiles/vim/colors/jellybeans.vim
+ln -snf $ABS_PATH/vim/syntax/vim-cpp/after/syntax/cpp.vim ~/.dotfiles/vim/syntax/cpp.vim
+ln -snf $ABS_PATH/vim/syntax/vim-cpp/after/syntax/c.vim ~/.dotfiles/vim/syntax/c.vim
+ln -snf $ABS_PATH/vim/syntax/python-syntax/syntax/python.vim ~/.dotfiles/vim/syntax/python.vim
 
 echo " Tmux"
-ln -sf $ABS_PATH/tmux.conf ~/.tmux.conf
+ln -snf $ABS_PATH/tmux.conf ~/.tmux.conf
 
-# Exit if running as root
-[[ $EUID -eq 0 ]] && exit
+echo " Terminfo"
+ln -snf $ABS_PATH/terminfo ~/.terminfo
 
-echo " Bash"
-ln -sf $ABS_PATH/bash_profile ~/.bash_profile
-ln -sf $ABS_PATH/bashrc ~/.bashrc
+# Non root users only
+if [[ $EUID -ne 0 ]]
+then
+  echo " Bash"
+  ln -snf $ABS_PATH/bash_profile ~/.bash_profile
+  ln -snf $ABS_PATH/bashrc ~/.bashrc
 
-echo " X"
-ln -sf $ABS_PATH/xinitrc ~/.xinitrc
-ln -sf $ABS_PATH/Xresources ~/.Xresources
+  echo " X"
+  ln -snf $ABS_PATH/xinitrc ~/.xinitrc
+  ln -snf $ABS_PATH/Xresources ~/.Xresources
 
-echo " GTK+"
-ln -sf $ABS_PATH/gtkrc-2.0 ~/.gtkrc-2.0
+  echo " GTK+"
+  ln -snf $ABS_PATH/gtkrc-2.0 ~/.gtkrc-2.0
 
-echo " i3"
-rm -rf ~/.i3
-ln -sf $ABS_PATH/i3 ~/.i3
+  echo " i3"
+  ln -snf $ABS_PATH/i3 ~/.i3
+fi

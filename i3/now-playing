@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+if [[ "$(pidof banshee)" ]] && [[ $(banshee --query-current-state | sed "s/current-state\:\ //g") == "playing" ]]
+then
+  ARTIST=$(banshee --query-artist | sed "s/artist\:\ //g" | awk -v len=28 '{ if (length($0) > len) print substr($0, 1, len-4) " ..."; else print; }')
+  TITLE=$(banshee --query-title | sed "s/title\:\ //g" | awk -v len=28 '{ if (length($0) > len) print substr($0, 1, len-4) " ..."; else print; }')
+  echo $ARTIST" · "$TITLE" "
+  unset $ARTIST $TITLE
+fi

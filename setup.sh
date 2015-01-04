@@ -19,11 +19,6 @@ ln -snf $ABS_PATH/gitconfig ~/.gitconfig
 
 echo " Vim"
 ln -snf $ABS_PATH/vim ~/.vim
-ln -snf $ABS_PATH/vim/autoload/vim-pathogen/autoload/pathogen.vim ~/.dotfiles/vim/autoload/pathogen.vim
-ln -snf $ABS_PATH/vim/colors/jellybeans/colors/jellybeans.vim ~/.dotfiles/vim/colors/jellybeans.vim
-ln -snf $ABS_PATH/vim/syntax/vim-cpp/after/syntax/cpp.vim ~/.dotfiles/vim/syntax/cpp.vim
-ln -snf $ABS_PATH/vim/syntax/vim-cpp/after/syntax/c.vim ~/.dotfiles/vim/syntax/c.vim
-ln -snf $ABS_PATH/vim/syntax/python-syntax/syntax/python.vim ~/.dotfiles/vim/syntax/python.vim
 
 echo " Tmux"
 ln -snf $ABS_PATH/tmux.conf ~/.tmux.conf

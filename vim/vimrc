@@ -54,7 +54,6 @@ set wrapscan
 syntax on
 set t_Co=256
 colorscheme jellybeans
-highlight SpecialKey ctermbg=233
 
 """"""""""""""""""""""""""""""""""""""""
 " Auto Commands
@@ -188,6 +187,11 @@ cnoreabbrev <expr> make ((getcmdtype() == ':' && getcmdpos() <= 5) ? 'Make': 'ma
 
 map <silent><leader>a= :Tabularize /^[^=]*\zs=<cr>
 map <silent><leader>a: :Tabularize /^[^:]*:\s*\zs\s/l0<cr>
+
+""""""""""""""""""""""""""""""""""""""""
+" Jellybeans
+
+highlight SpecialKey ctermbg=233
 
 """"""""""""""""""""""""""""""""""""""""
 " Syntax

@@ -56,11 +56,7 @@ set t_Co=256
 colorscheme jellybeans
 
 """"""""""""""""""""""""""""""""""""""""
-" Auto Commands
-
-au VimResized * :wincmd =
-au FileType qf :wincmd J
-au WinEnter * if winnr('$') == 1 && getbufvar(winbufnr(winnr()), "&buftype") == "quickfix"|q|endif
+" Whitespace
 
 function! StripTrailingWhitespaces()
   let _s=@/
@@ -86,6 +82,17 @@ filetype indent plugin on
 au Filetype c    setlocal sw=4 ts=4 sts=4
 au Filetype cpp  setlocal sw=4 ts=4 sts=4
 au Filetype java setlocal sw=4 ts=4 sts=4
+
+""""""""""""""""""""""""""""""""""""""""
+" Vim Splits
+
+au VimResized * :wincmd =
+au FileType qf :wincmd J
+
+""""""""""""""""""""""""""""""""""""""""
+" Quickfix
+
+au WinEnter * if winnr('$') == 1 && getbufvar(winbufnr(winnr()), "&buftype") == "quickfix"|q|endif
 
 """"""""""""""""""""""""""""""""""""""""
 " GVIM
@@ -194,9 +201,22 @@ map <silent><leader>a: :Tabularize /^[^:]*:\s*\zs\s/l0<cr>
 highlight SpecialKey ctermbg=233
 
 """"""""""""""""""""""""""""""""""""""""
-" Syntax
+" Python-Syntax
 
 let g:python_highlight_builtin_funcs=1
 let g:python_highlight_builtin_objs=1
 let g:python_highlight_exceptions=1
 let g:python_highlight_file_headers_as_comments=1
+
+""""""""""""""""""""""""""""""""""""""""
+" PHP-Syntax
+
+function! PhpSyntaxOverride()
+  hi! def link phpDocTags  phpDefine
+  hi! def link phpDocParam phpType
+endfunction
+
+augroup phpSyntaxOverride
+  autocmd!
+  autocmd FileType php call PhpSyntaxOverride()
+augroup END

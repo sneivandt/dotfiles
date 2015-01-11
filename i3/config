@@ -14,15 +14,6 @@ bindsym $mod+Return exec urxvt
 # Start dmenu
 bindsym $mod+comma exec i3-dmenu-desktop --dmenu="dmenu -i -p Arch"
 
-# Chrome
-bindsym $mod+p exec google-chrome-beta
-
-# Thunar
-bindsym $mod+o exec thunar
-
-# Banshee
-bindsym $mod+i exec banshee
-
 # Volume
 bindsym $mod+m exec amixer set Master 2+ unmute
 bindsym $mod+n exec amixer set Master 2- unmute
@@ -36,21 +27,11 @@ bindsym $mod+j focus down
 bindsym $mod+k focus up
 bindsym $mod+l focus right
 
-bindsym $mod+Left focus left
-bindsym $mod+Down focus down
-bindsym $mod+Up focus up
-bindsym $mod+Right focus right
-
 # Move focused window
 bindsym $mod+Shift+h move left
 bindsym $mod+Shift+j move down
 bindsym $mod+Shift+k move up
 bindsym $mod+Shift+l move right
-
-bindsym $mod+Shift+Left move left
-bindsym $mod+Shift+Down move down
-bindsym $mod+Shift+Up move up
-bindsym $mod+Shift+Right move right
 
 # Split in horizontal orientation
 bindsym $mod+c split v
@@ -121,6 +102,18 @@ bindsym $mod+Shift+r restart
 
 # Exit i3
 bindsym $mod+Shift+e exec "i3-nagbar -t warning -m 'Do you really want to exit i3?' -b 'Shutdown' 'systemctl poweroff' -b 'Restart' 'systemctl reboot' -b 'Logout' 'i3-msg exit' "
+
+# Chrome
+bindsym $mod+p exec google-chrome-beta
+
+# Thunar
+bindsym $mod+o exec thunar
+
+# Banshee
+bindsym $mod+Up    exec banshee
+bindsym $mod+Down  exec "~/.i3/scripts/media toggle"
+bindsym $mod+Left  exec "~/.i3/scripts/media previous"
+bindsym $mod+Right exec "~/.i3/scripts/media next"
 
 # i3bar
 bar {

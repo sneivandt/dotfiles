@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+if [[ $(pidof banshee) ]] # Banshee
+then
+  case $1 in
+
+    # Toggle Playback
+    toggle)
+      exec banshee --toggle-playing
+      ;;
+
+    # Play the next track
+    next)
+      exec banshee --next
+      ;;
+
+    # Play the previous track
+    previous)
+      exec banshee --previous
+      ;;
+
+    # Echo the currently playing track
+    now-playing)
+      if [[ $(banshee --query-current-state | sed "s/current-state\:\ //g") == "playing" ]]
+      then
+        ARTIST=$(banshee --query-artist | sed "s/artist\:\ //g" | awk -v len=28 '{ if (length($0) > len) print substr($0, 1, len-4) " ..."; else print; }')
+        TITLE=$(banshee --query-title | sed "s/title\:\ //g" | awk -v len=28 '{ if (length($0) > len) print substr($0, 1, len-4) " ..."; else print; }')
+        echo $ARTIST" · "$TITLE" "
+      fi
+      ;;
+
+  esac
+fi

@@ -1,10 +1,23 @@
-# Options
-background no
+# Print to stdout
 out_to_console yes
+
+# No output to X
 out_to_x no
-update_interval 2
+
+# Run in the foreground
+background no
+
+# Update every second
+update_interval 1
+
+# Run forever
 total_run_times 0
+
+# Force UTF-8
 override_utf8_locale yes
+
+# Double buffer
+double_buffer yes
 
 # Output
 TEXT

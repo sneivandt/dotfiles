@@ -7,10 +7,9 @@ Run [setup.sh](setup.sh) to create symlinks to the configuration files in your h
     ./.dotfiles/setup.sh
 
 ##Software
-* Bash
-* Git
+* bash
+* git
 * i3
-* Tmux
+* tmux
 * urxvt
-* Vim
-* X Windows
+* vim

@@ -59,7 +59,7 @@ floating_modifier $mod
 for_window [class="Xboard"] floating enable
 
 # Workspace names
-set $w1 1: main
+set $w1 1
 set $w2 2
 set $w3 3
 set $w4 4
@@ -117,7 +117,7 @@ bindsym $mod+Right exec "~/.i3/scripts/media next"
 
 # i3bar
 bar {
-  status_command ~/.i3/scripts/conky
+  status_command ~/.i3/i3bar-conky
 }
 
 # Wallpaper

@@ -3,15 +3,48 @@
 
 " Preamble {{{
 
-" Load Pathogen from ~/vim/bundle
-runtime bundle/vim-pathogen/autoload/pathogen.vim
-execute pathogen#infect()
-
-" Filetype indentation
-filetype indent plugin on
+" Nocompatible
+set nocompatible
 
 " Leader key
 let mapleader=','
+
+" }}}
+
+" Vundle {{{
+
+filetype off
+try
+set rtp+=~/.vim/bundle/vundle.vim
+call vundle#begin()
+
+" Vundle
+Plugin 'gmarik/vundle.vim'
+
+" Plugins
+Plugin 'bling/vim-airline'
+Plugin 'christoomey/vim-tmux-navigator'
+Plugin 'junegunn/vim-easy-align'
+Plugin 'kien/ctrlp.vim'
+Plugin 'scrooloose/nerdtree'
+Plugin 'tpope/vim-commentary'
+Plugin 'tpope/vim-dispatch'
+Plugin 'tpope/vim-fugitive'
+Plugin 'tpope/vim-surround'
+
+" Color scheme
+Plugin 'nanotech/jellybeans.vim'
+
+" Syntax
+Plugin 'hdima/python-syntax'
+Plugin 'jelera/vim-javascript-syntax'
+Plugin 'octol/vim-cpp-enhanced-highlight'
+Plugin 'stanangeloff/php.vim'
+
+call vundle#end()
+catch
+endtry
+filetype plugin indent on
 
 " }}}
 
@@ -37,7 +70,6 @@ set list
 set listchars=tab:▸\ ,trail:·
 set mouse=a
 set nobackup
-set nocompatible
 set noerrorbells
 set nonumber
 set noswapfile
@@ -63,38 +95,44 @@ set wrapscan
 
 " }}}
 
-" Color Scheme {{{
+" Color scheme {{{
 
 syntax on
 set t_Co=256
-colorscheme jellybeans
 
-" Match the background color for special keys
-highlight SpecialKey ctermbg=233
+try
+  colorscheme jellybeans
+
+  " Match the background color for special keys
+  highlight SpecialKey ctermbg=233
+catch
+  colorscheme default
+endtry
 
 " }}}
 
 " Wildignore {{{
 
+set wildignore+=*.bmp
+set wildignore+=*.ddl
+set wildignore+=*.exe
+set wildignore+=*.gif
+set wildignore+=*.jpeg
+set wildignore+=*.jpg
+set wildignore+=*.min.*
+set wildignore+=*.o
+set wildignore+=*.png
 set wildignore+=*.so
 set wildignore+=*.swp
 set wildignore+=*.zip
-set wildignore+=*.min.*
-set wildignore+=*.o*
-set wildignore+=*.exe*
-set wildignore+=*.ddl*
-set wildignore+=*/tmp/*
+
 set wildignore+=*/.git/*
 set wildignore+=*/.hg/*
 set wildignore+=*/.svn/*
 set wildignore+=*/__pycache__/*
-set wildignore+=*/node_modules/*
 set wildignore+=*/bower_components/*
-set wildignore+=*.jpg*
-set wildignore+=*.bmp*
-set wildignore+=*.gif*
-set wildignore+=*.png*
-set wildignore+=*.jpeg*
+set wildignore+=*/node_modules/*
+set wildignore+=*/tmp/*
 
 " }}}
 
@@ -134,66 +172,19 @@ nnoremap <return> za
 " Focus the current fold
 noremap <leader>z zMzvzz
 
-function! FoldStyle() " {{{
-  highlight Folded ctermbg=236 ctermfg=248
-  set foldlevel=0
-  set foldmethod=marker
-  set foldmarker={{{,}}}
-  set foldtext=FoldText()
-  function! FoldText() " {{{
-    let line = getline(v:foldstart)
-    let nucolwidth = &fdc + &number * &numberwidth
-    let windowwidth = winwidth(0) - nucolwidth - 1
-    let foldedlinecount = v:foldend - v:foldstart
-    let onetab = strpart('          ', 0, &tabstop)
-    let line = substitute(line, '\t', onetab, 'g')
-    let line = strpart(line, 0, windowwidth - 2 - len(foldedlinecount))
-    let fillcharcount = windowwidth - len(line) - len(foldedlinecount)
-    return line . repeat(' ', fillcharcount) . foldedlinecount . ' '
-  endfunction " }}}
+set foldmethod=marker
+set foldtext=FoldText()
+function! FoldText() " {{{
+  let line = getline(v:foldstart)
+  let nucolwidth = &fdc + &number * &numberwidth
+  let windowwidth = winwidth(0) - nucolwidth - 1
+  let foldedlinecount = v:foldend - v:foldstart
+  let onetab = strpart('          ', 0, &tabstop)
+  let line = substitute(line, '\t', onetab, 'g')
+  let line = strpart(line, 0, windowwidth - 2 - len(foldedlinecount))
+  let fillcharcount = windowwidth - len(line) - len(foldedlinecount)
+  return line . repeat(' ', fillcharcount) . foldedlinecount . ' '
 endfunction " }}}
-autocmd BufRead * call FoldStyle()
-
-" Alternate fold styles {{{
-
-" JavaDoc folding
-function! JavaDocFoldStyle() " {{{
-  set foldlevel=0
-  highlight Folded ctermbg=233 ctermfg=245
-  set foldmethod=marker
-  set foldmarker=/**,*/
-  set foldtext=JavaDocFoldText()
-  function! JavaDocFoldText() " {{{
-    let line = getline(v:foldstart) . ' ... */'
-    let nucolwidth = &fdc + &number * &numberwidth
-    let windowwidth = winwidth(0) - nucolwidth - 1
-    let onetab = strpart('          ', 0, &tabstop)
-    let line = substitute(line, '\t', onetab, 'g')
-    let line = strpart(line, 0, windowwidth - 2)
-    let fillcharcount = windowwidth - len(line)
-    return line . repeat(' ', fillcharcount) . ' '
-  endfunction " }}}
-endfunction " }}}
-
-" Python docstring folding
-function! PythonDocstringFoldStyle() " {{{
-  highlight Folded ctermbg=233 ctermfg=245
-  set foldlevel=0
-  set foldmethod=syntax
-  set foldtext=PythonDocstringFoldText()
-  function! PythonDocstringFoldText() " {{{
-    let line = getline(v:foldstart) . ' ... """'
-    let nucolwidth = &fdc + &number * &numberwidth
-    let windowwidth = winwidth(0) - nucolwidth - 1
-    let onetab = strpart('          ', 0, &tabstop)
-    let line = substitute(line, '\t', onetab, 'g')
-    let line = strpart(line, 0, windowwidth - 2)
-    let fillcharcount = windowwidth - len(line)
-    return line . repeat(' ', fillcharcount) . ' '
-  endfunction " }}}
-endfunction " }}}
-
-" }}}
 
 " }}}
 
@@ -225,14 +216,14 @@ noremap <del>    <nop>
 nnoremap n nzzzv
 nnoremap N Nzzzv
 
-" Open man page for word under cursor
-noremap <backspace> :!man <cword><cr>
+" Toggle spell check
+noremap K :set spell! spelllang=en_us<cr>
 
 " Clear all highlights
 noremap <space> :noh<cr>
 
-" Toggle spell check
-noremap K :set spell! spelllang=en_us<cr>
+" Open man page for word under cursor
+noremap <backspace> :!man <cword><cr>
 
 " Tabs
 noremap <c-r>n :tabnew<cr>
@@ -253,16 +244,41 @@ noremap <leader>v :e ~/.vim/vimrc<cr>
 " Execute the current file
 noremap <leader>e :!%:p<cr>
 
-" Search for a string in the current directory
-noremap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
+" Toggle line wrap
+noremap <leader>w :set wrap!<cr>
 
 " Search and replace the word under the cursor
 noremap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>
 
-" Toggle line wrap
-noremap <leader>w :set wrap!<cr>
+" Search for a string in the current directory
+noremap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
 
 " }}}
+
+" Filetype {{{
+
+" C++ {{{
+
+" Indentation
+autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
+
+" }}}
+
+" Java {{{
+
+" Indentation
+autocmd Filetype java setlocal sw=4 ts=4 sts=4
+
+" }}}
+
+" Python {{{
+
+" Indentation
+autocmd Filetype python setlocal sw=4 ts=4 sts=4
+
+" }}}
+
+"}}}
 
 " Plugins {{{
 
@@ -298,6 +314,23 @@ let g:ctrlp_working_path_mode='ra'
 
 " }}}
 
+" Dispatch {{{
+
+" Map the default make command to the command provided by dispatch
+cnoreabbrev <expr> make ((getcmdtype() == ':' && getcmdpos() <= 5) ? 'Make': 'make')
+
+" }}}
+
+" Easy align {{{
+
+" Start interactive EasyAlign in visual mode
+vmap <Enter> <Plug>(EasyAlign)
+
+" Start interactive EasyAlign for a motion/text object
+nmap ga <Plug>(EasyAlign)
+
+" }}}
+
 " Nerdtree {{{
 
 let NERDTreeMinimalUI=1
@@ -318,88 +351,12 @@ autocmd WinEnter * call CloseIfOnlyNerdTreeLeft()
 
 " }}}
 
-" Dispatch {{{
-
-" Map the default make command to the command provided by dispatch
-cnoreabbrev <expr> make ((getcmdtype() == ':' && getcmdpos() <= 5) ? 'Make': 'make')
-
-" }}}
-
-" Tabular {{{
-
-" Vertically align a character in a paragraph
-noremap <silent><leader>a= :Tabularize /^[^=]*\zs=<cr>
-noremap <silent><leader>a: :Tabularize /^[^:]*:\s*\zs\s/l0<cr>
-
-" }}}
-
-" Syntax {{{
-
-" PHP {{{
-
-function! PHPSyntaxPlugin() " {{{
-  hi! def link phpDocTags  phpDefine
-  hi! def link phpDocParam phpType
-endfunction " }}}
-autocmd FileType php call PHPSyntaxPlugin()
-
-" }}}
-
-" Python {{{
+" Python syntax {{{
 
 let g:python_highlight_builtin_funcs=1
 let g:python_highlight_builtin_objs=1
 let g:python_highlight_exceptions=1
 let g:python_highlight_file_headers_as_comments=1
-
-" }}}
-
-" }}}
-
-" }}}
-
-" Filetype {{{
-
-" C++ {{{
-
-" Indentation
-autocmd Filetype c   setlocal sw=4 ts=4 sts=4
-autocmd Filetype cpp setlocal sw=4 ts=4 sts=4
-
-" }}}
-
-" Java {{{
-
-" Indentation
-autocmd Filetype java setlocal sw=4 ts=4 sts=4
-
-" Fold style
-autocmd BufRead *.java call JavaDocFoldStyle()
-
-" }}}
-
-" PHP {{{
-
-" Fold style
-autocmd BufRead *.php call JavaDocFoldStyle()
-
-" }}}
-
-" Python {{{
-
-" Indentation
-autocmd Filetype python setlocal sw=4 ts=4 sts=4
-
-" Syntax
-function! PythonSyntax() " {{{
-  syn region pythonDocstring start=+^\s*[uU]\?[rR]\?"""+ end=+"""+ keepend excludenl contains=pythonEscape,@Spell,pythonDoctest,pythonDocTest2,pythonSpaceError fold
-  syn region pythonDocstring start=+^\s*[uU]\?[rR]\?'''+ end=+'''+ keepend excludenl contains=pythonEscape,@Spell,pythonDoctest,pythonDocTest2,pythonSpaceError fold
-  hi! def link pythonDocstring pythonComment
-endfunction " }}}
-autocmd FileType python call PythonSyntax()
-
-" Fold style
-autocmd BufRead *.py call PythonDocstringFoldStyle()
 
 " }}}
 

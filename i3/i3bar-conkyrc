@@ -36,7 +36,7 @@ TEXT
   "color": "\#80b2ff"
 },
 {
-  "full_text": " ♪ ${exec ~/.i3/scripts/media now-playing}${exec amixer get Master | grep -o "\[.*%\]" | sed "s/\[//g" | sed "s/\]//g"} ",
+  "full_text": " ♪ ${exec amixer get Master | grep -o "\[.*%\]" | sed "s/\[//g" | sed "s/\]//g"} ",
   "color": "\#ffffff"
 },
 {

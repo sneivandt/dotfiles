@@ -222,9 +222,6 @@ noremap K :set spell! spelllang=en_us<cr>
 " Clear all highlights
 noremap <space> :noh<cr>
 
-" Open man page for word under cursor
-noremap <backspace> :!man <cword><cr>
-
 " Tabs
 noremap <c-r>n :tabnew<cr>
 noremap <c-r><c-r> :tabnext<cr>

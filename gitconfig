@@ -5,6 +5,8 @@
   tool = vimdiff
 [difftool]
   prompt = false
+[push]
+  default = simple
 [color]
   diff = auto
   status = auto
@@ -12,3 +14,16 @@
   interactive = auto
   ui = true
   pager = true
+[alias]
+  ad = add
+  br = branch
+  ci = commit
+  cl = clone
+  co = checkout
+  dc = difftool --cached
+  dt = difftool
+  ls = log --pretty=format:\"%h %ad | %s%d [%an]\" --graph --date=short
+  me = merge
+  pl = pull
+  ps = push
+  st = status

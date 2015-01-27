@@ -1,6 +1,7 @@
 function ssh_connection() {
-  if [[ -n $SSH_CONNECTION ]]; then
-    echo "%{$fg[red]%}(ssh %m) "
+  if [[ -n $SSH_CONNECTION ]]
+  then
+    echo "%{$fg[blue]%}%m "
   fi
 }
 

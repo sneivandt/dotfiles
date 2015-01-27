@@ -17,10 +17,21 @@ vim +PluginInstall +qall
 
 # Create symlinks
 echo -e "\033[1;34m::\033[0m\033[1m Creating symlinks ...\033[0m"
-echo " This may overrite files in your home directory"
+echo "This may overrite files in your home directory"
 echo -e -n "\033[1;34m::\033[0m\033[1m Proceed with setup? [y/N] \033[0m" && read -p "" && [[ ! $REPLY =~ ^[yY]$ ]] && exit
-for file in $(ls $p -I setup.sh -I README.md)
-do
-  echo " "$file
-  ln -snf $p/$file ~/.$file
-done
+mkdir -p ~/.ssh
+ln -snfv $p/aliases ~/.aliases
+ln -snfv $p/bash_profile ~/.bash_profile
+ln -snfv $p/bashrc ~/.bashrc
+ln -snfv $p/gitconfig ~/.gitconfig
+ln -snfv $p/gtkrc-2.0 ~/.gtkrc-2.0
+ln -snfv $p/i3 ~/.i3
+ln -snfv $p/profile ~/.profile
+ln -snfv $p/ssh/config ~/.ssh/config
+ln -snfv $p/tmux.conf ~/.tmux.conf
+ln -snfv $p/vim ~/.vim
+ln -snfv $p/xinitrc ~/.xinitrc
+ln -snfv $p/Xresources ~/.Xresources
+ln -snfv $p/zprofile ~/.zprofile
+ln -snfv $p/zsh ~/.zsh
+ln -snfv $p/zshrc ~/.zshrc

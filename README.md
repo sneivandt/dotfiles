@@ -10,6 +10,7 @@ Run [setup.sh](setup.sh) to update dependencies and create symlinks to the confi
 * bash
 * git
 * i3wm
+* ssh
 * tmux
 * vim
 * xterm

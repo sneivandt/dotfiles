@@ -286,6 +286,8 @@ let g:airline_left_alt_sep=''
 let g:airline_right_sep=''
 let g:airline_right_alt_sep=''
 
+let g:airline#extensions#default#layout=[[ 'a', 'b', 'c' ], [ 'x', 'z', 'warning' ]]
+
 let g:airline#extensions#tabline#enabled=1
 let g:airline#extensions#tabline#show_buffers=0
 let g:airline#extensions#tabline#tab_min_count=2

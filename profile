@@ -1,6 +1,11 @@
 # Add ~/bin to $PATH
 export PATH="$PATH:$HOME/bin"
 
+# Locale
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
+export LANGUAGE=en_US.UTF-8
+
 # Yay Vim!
 export EDITOR=vim
 

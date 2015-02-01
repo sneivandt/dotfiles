@@ -1,0 +1,6 @@
+*.bak
+*.sw[op]
+*.tmp
+.netrwhist
+.svn
+tmp/

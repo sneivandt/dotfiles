@@ -1,29 +1,36 @@
 [user]
   email = sneivandt@users.noreply.github.com
   name = sneivandt
+[core]
+  editor = vim
+  excludefiles = ~/.gitignore
+  pager = less
+[color]
+  ui = true
+[apply]
+  whitespace = fix
+[push]
+  default = simple
 [diff]
   tool = vimdiff
 [difftool]
   prompt = false
-[push]
-  default = simple
-[color]
-  diff = auto
-  status = auto
-  branch = auto
-  interactive = auto
-  ui = true
-  pager = true
 [alias]
+  alias = config --get-regexp alias
   ad = add
   br = branch
+  ca = commit --amend --reuse-message=HEAD
   ci = commit
   cl = clone
   co = checkout
   dc = difftool --cached
   dt = difftool
-  ls = log --pretty=format:\"%h %ad | %s%d [%an]\" --graph --date=short
+  fe = fetch
+  lo = log --graph --decorate --abbrev-commit --pretty=oneline
   me = merge
   pl = pull
   ps = push
-  st = status
+  rb = rebase
+  rs = reset
+  st = status -s
+  ta = tag

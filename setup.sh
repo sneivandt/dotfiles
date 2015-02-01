@@ -24,6 +24,7 @@ ln -snfv $p/aliases ~/.aliases
 ln -snfv $p/bash_profile ~/.bash_profile
 ln -snfv $p/bashrc ~/.bashrc
 ln -snfv $p/gitconfig ~/.gitconfig
+ln -snfv $p/gitignore ~/.gitignore
 ln -snfv $p/gtkrc-2.0 ~/.gtkrc-2.0
 ln -snfv $p/i3 ~/.i3
 ln -snfv $p/profile ~/.profile

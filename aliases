@@ -14,14 +14,8 @@ alias ls="ls -h --color=auto"
 alias la="ls -a"
 alias ll="ls -l"
 
-# clear
-alias cl="clear"
-
 # grep
 alias grep="grep -i --color=auto"
 
 # vim
 alias vi="vim"
-
-# git
-alias g="git"

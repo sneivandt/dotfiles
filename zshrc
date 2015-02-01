@@ -1,17 +1,32 @@
-# Path to oh-my-zsh
-export ZSH=~/.zsh/oh-my-zsh
+# Completion
+autoload -U compinit
+compinit
+setopt completealiases
 
-# Custom oh-my-zsh
-export ZSH_CUSTOM=~/.zsh
+# Colors
+autoload -U colors
+colors
 
-# Theme
-ZSH_THEME="custom"
+# History
+setopt histignorealldups
+setopt incappendhistory
+HISTFILE=~/.zhistory
+HISTSIZE=4096
+SAVEHIST=4096
 
-# No auto updating
-DISABLE_AUTO_UPDATE=true
+# Various options
+setopt autocd
+setopt autopushd
+setopt cdablevars
+setopt pushdminus
+setopt pushdsilent
+setopt pushdtohome
 
-# oh-my-zsh
-source $ZSH/oh-my-zsh.sh
+# Prompt
+source ~/.zsh/prompt
+
+# Key bindings
+source ~/.zsh/key-bindings
 
 # Aliases
 source ~/.aliases

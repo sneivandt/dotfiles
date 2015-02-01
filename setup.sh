@@ -3,13 +3,13 @@
 # Do not run for root users
 [[ $EUID -eq 0 ]] && echo 'Error: Not runnable as root' 1>&2 && exit
 
-# Absolute path to setup.sh
+# Absolute path
 p=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 
 # Update git submodules
 echo -e "\033[1;34m::\033[0m\033[1m Updating git submodules ...\033[0m"
-git -C $p submodule init | sed "s/^/ /"
-git -C $p submodule update | sed "s/^/ /"
+cd $p && git submodule init | sed "s/^/ /"
+cd $p && git submodule update | sed "s/^/ /"
 
 # Vim plugins
 echo -e "\033[1;34m::\033[0m\033[1m Installing vim plugins ...\033[0m"

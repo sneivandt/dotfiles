@@ -1,0 +1,26 @@
+git_prompt_info() {
+  current_branch=$(git rev-parse --abbrev-ref HEAD 2> /dev/null)
+  if [[ -n $current_branch ]]
+  then
+    current_status=$(git status -s 2> /dev/null)
+    echo -n "%{$reset_color%} %{$current_branch%}"
+    if [[ -n $current_status ]]
+    then
+      echo -n " %{$fg[red]%}✗"
+    else
+      echo -n " %{$fg[green]%}✔"
+    fi
+    echo -n "%{$reset_color%}"
+  fi
+}
+
+ssh_connection() {
+  if [[ -n $SSH_CONNECTION ]]
+  then
+    echo "%{$fg[cyan]%}%m "
+  fi
+}
+
+setopt PROMPT_SUBST
+export PS1='$(ssh_connection)%{$fg[yellow]%}%~$(git_prompt_info)
+%{$reset_color%}%(!.#.$) '

@@ -1,8 +1,3 @@
-# Completion
-autoload -U compinit
-compinit
-setopt completealiases
-
 # Colors
 autoload -U colors
 colors
@@ -17,13 +12,15 @@ SAVEHIST=4096
 # Various options
 setopt autocd
 setopt autopushd
-setopt cdablevars
 setopt pushdminus
 setopt pushdsilent
 setopt pushdtohome
 
 # Prompt
 source ~/.zsh/prompt
+
+# Completion
+source ~/.zsh/completion
 
 # Key bindings
 source ~/.zsh/key-bindings

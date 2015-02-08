@@ -1,14 +1,60 @@
-# Search history
+# Vi mode
+bindkey -v
+
+if (( ${+terminfo[smkx]} )) && (( ${+terminfo[rmkx]} )); then
+  function zle-line-init() {
+    echoti smkx
+  }
+  function zle-line-finish() {
+    echoti rmkx
+  }
+  zle -N zle-line-init
+  zle -N zle-line-finish
+fi
+
+if [[ "${terminfo[kpp]}" != "" ]]; then
+  bindkey "${terminfo[kpp]}" up-line-or-history
+fi
+if [[ "${terminfo[knp]}" != "" ]]; then
+  bindkey "${terminfo[knp]}" down-line-or-history
+fi
+if [[ "${terminfo[kcuu1]}" != "" ]]; then
+  bindkey "${terminfo[kcuu1]}" up-line-or-search
+fi
+if [[ "${terminfo[kcud1]}" != "" ]]; then
+  bindkey "${terminfo[kcud1]}" down-line-or-search
+fi
+if [[ "${terminfo[khome]}" != "" ]]; then
+  bindkey "${terminfo[khome]}" beginning-of-line
+fi
+if [[ "${terminfo[kend]}" != "" ]]; then
+  bindkey "${terminfo[kend]}" end-of-line
+fi
+
+# Space Magic space history expansion
+bindkey ' ' magic-space
+
+# Ctrl+r Search history
 bindkey '^r' history-incremental-search-backward
 
-# Prefix sudo
-bindkey -s "^T" "^[Isudo ^[A"
+# Ctrl+Right Forward one word
+bindkey '^[[1;5C' forward-word
 
-bindkey '\e[1~' beginning-of-line # Linux console
-bindkey '\e[H'  beginning-of-line # xterm
-bindkey '\eOH'  beginning-of-line # gnome-terminal
-bindkey '\e[2~' overwrite-mode    # Linux console, xterm, gnome-terminal
-bindkey '\e[3~' delete-char       # Linux console, xterm, gnome-terminal
-bindkey '\e[4~' end-of-line       # Linux console
-bindkey '\e[F'  end-of-line       # xterm
-bindkey '\eOF'  end-of-line       # gnome-terminal
+# Ctrl+Left Backward one word
+bindkey '^[[1;5D' backward-word
+
+# Ctrl+s Insert "sudo " at the start of line
+sudo-command-line() {
+  [[ -z $BUFFER ]] && zle up-history
+  [[ $BUFFER != sudo\ * ]] && BUFFER="sudo $BUFFER"
+  zle end-of-line
+}
+zle -N sudo-command-line
+bindkey "^t" sudo-command-line
+
+# Ctrl+p Vim CtrlP
+vim-ctrlp() {
+    </dev/tty vim -c CtrlP
+}
+zle -N vim-ctrlp
+bindkey "^p" vim-ctrlp

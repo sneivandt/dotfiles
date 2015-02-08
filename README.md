@@ -1,10 +1,11 @@
 #Dotfiles
 
 ##Setup
-Run [setup.sh](setup.sh) to update dependencies and create symlinks to the configuration files in your home directory. Note that configuration will not performed for root users.
+Run make to update dependencies and create symlinks to the configuration files in your home directory.
 
     git clone https://github.com/sneivandt/dotfiles.git ~/.dotfiles
-    ~/.dotfiles/setup.sh
+    cd ~/.dotfiles
+    make
 
 ##Software
 * bash

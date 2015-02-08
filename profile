@@ -10,7 +10,7 @@ export LANGUAGE=en_US.UTF-8
 export EDITOR=vim
 
 # Less
-export LESS=-imR
+export LESS=-imRj8
 
 # Dont check mail
 unset MAILCHECK

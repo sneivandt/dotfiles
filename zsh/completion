@@ -1,0 +1,24 @@
+autoload -U compinit
+compinit
+
+setopt always_to_end
+setopt auto_menu
+setopt complete_in_word
+setopt completealiases
+unsetopt flowcontrol
+unsetopt menu_complete
+
+zstyle ':completion:*' group-name ''
+zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+zstyle ':completion:*' menu select=2
+zstyle ':completion:*' users $users
+zstyle ':completion:*' verbose yes
+zstyle ':completion:*:*:kill:*' menu yes select
+zstyle ':completion:*:*:kill:*:processes' list-colors "=(#b) #([0-9]#)*=29=31"
+zstyle ':completion:*:*:killall:*' menu yes select
+zstyle ':completion:*::::' completer _expand _complete _ignored _approximate
+zstyle ':completion:*:kill:*' force-list always
+zstyle ':completion:*:killall:*' force-list always
+zstyle ':completion:*:manuals' separate-sections true
+zstyle ':completion:*:processes' command 'ps -au$USER'

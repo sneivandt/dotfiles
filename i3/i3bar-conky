@@ -1,5 +1,3 @@
-#!/usr/bin/env bash
-
 echo "{\"version\":1}"
 echo "[[]"
-conky -c ~/.i3/i3bar-conkyrc
+conky -b -c ~/.i3/i3bar-conkyrc

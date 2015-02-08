@@ -2,14 +2,21 @@ git_prompt_info() {
   current_branch=$(git rev-parse --abbrev-ref HEAD 2> /dev/null)
   if [[ -n $current_branch ]]
   then
-    current_status=$(git status -s 2> /dev/null)
-    echo -n "%{$reset_color%} %{$current_branch%}"
-    if [[ -n $current_status ]]
-    then
-      echo -n " %{$fg[red]%}✗"
-    else
-      echo -n " %{$fg[green]%}✔"
-    fi
+    echo -n "%{$reset_color%} %{$current_branch%} "
+    flags=(
+      "git status -s"
+      "git status | grep 'Changes not staged for commit'"
+    )
+    for flag in "${flags[@]}"
+    do
+      if [[ -z $(eval $flag 2> /dev/null) ]]
+      then
+        echo -n "%{$fg[green]%}"
+      else
+        echo -n "%{$fg[red]%}"
+      fi
+      echo -n "● "
+    done
     echo -n "%{$reset_color%}"
   fi
 }

@@ -12,7 +12,7 @@ new_float pixel 5
 bindsym $mod+Return exec xterm
 
 # Start dmenu
-bindsym $mod+comma exec i3-dmenu-desktop --dmenu="dmenu -i -p Arch"
+bindsym $mod+comma exec i3-dmenu-desktop --dmenu="dmenu -i"
 
 # Volume
 bindsym $mod+m exec amixer set Master 2+ unmute

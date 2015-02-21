@@ -17,7 +17,7 @@ total_run_times 0
 override_utf8_locale yes
 
 # Double buffer
-double_buffer yes
+double_buffer no
 
 # Output
 TEXT

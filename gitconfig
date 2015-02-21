@@ -3,8 +3,8 @@
   name = sneivandt
 [core]
   editor = vim
-  excludefiles = ~/.gitignore
   pager = less
+  excludefiles = ~/.gitignore
 [color]
   ui = true
 [apply]
@@ -16,7 +16,6 @@
 [difftool]
   prompt = false
 [alias]
-  alias = config --get-regexp alias
   ad = add
   br = branch
   ca = commit --amend --reuse-message=HEAD

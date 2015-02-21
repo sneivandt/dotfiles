@@ -6,7 +6,7 @@ font pango:DejaVu Sans Mono 8
 
 # Window borders
 new_window pixel 0
-new_float pixel 5
+new_float pixel 3
 
 # Start a terminal
 bindsym $mod+Return exec xterm

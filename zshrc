@@ -25,5 +25,8 @@ source ~/.zsh/completion
 # Key bindings
 source ~/.zsh/key-bindings
 
+# Functions
+source ~/.functions
+
 # Aliases
 source ~/.aliases

@@ -3,27 +3,3 @@ HOST ec2
   User ubuntu
   IdentitiesOnly yes
   IdentityFile ~/.ssh/id_rsa_ec2
-
-HOST dev01
-  HostName ldev01.one-eye-secureserver.com
-  User stuart
-
-HOST web01
-  HostName slweb01.one-eye-secureserver.com
-  User stuart
-
-HOST web02
-  HostName slweb02.one-eye-secureserver.com
-  User stuart
-
-HOST web03
-  HostName slweb03.one-eye-secureserver.com
-  User stuart
-
-HOST web04
-  HostName slweb04.one-eye-secureserver.com
-  User stuart
-
-HOST web05
-  HostName slweb05.one-eye-secureserver.com
-  User stuart

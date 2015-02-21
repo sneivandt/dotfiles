@@ -14,5 +14,6 @@ Run make to update dependencies and create symlinks to the configuration files i
 * ssh
 * tmux
 * vim
+* wget
 * xterm
 * zsh

@@ -30,6 +30,9 @@ fi
 if [[ "${terminfo[kend]}" != "" ]]; then
   bindkey "${terminfo[kend]}" end-of-line
 fi
+if [[ "${terminfo[kdch1]}" != "" ]]; then
+  bindkey "${terminfo[kdch1]}" delete-char
+fi
 
 # Space Magic space history expansion
 bindkey ' ' magic-space

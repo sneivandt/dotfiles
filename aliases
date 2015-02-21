@@ -14,11 +14,18 @@ alias ls="ls -h --color=auto"
 alias la="ls -a"
 alias ll="ls -l"
 
-# grep
+# grep colored
 alias grep="grep -i --color=auto"
 
-# vim
+# Yay vim!
 alias vi="vim"
 
-# tmux
+# Force tmux 256 color
 alias tmux="tmux -2"
+
+# Git aliases as a single word
+for al in `git config --get-regexp alias | cut -d' ' -f1 | cut -d'.' -f2`; do
+  if ! function_exists $al; then
+    alias git$al="git $al"
+  fi
+done

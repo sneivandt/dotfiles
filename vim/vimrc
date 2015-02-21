@@ -1,6 +1,3 @@
-" .vimrc
-" Author: Stuart Neivandt
-
 " Preamble {{{
 
 " Nocompatible
@@ -9,42 +6,37 @@ set nocompatible
 " Leader key
 let mapleader=','
 
+" Filetype indent
+filetype plugin indent on
+
 " }}}
 
-" Vundle {{{
+" Vim-Plug {{{
 
-filetype off
-try
-set rtp+=~/.vim/bundle/vundle.vim
-call vundle#begin()
-
-" Vundle
-Plugin 'gmarik/vundle.vim'
+source ~/.vim/vim-plug/plug.vim
+call plug#begin('~/.vim/plugged')
 
 " Plugins
-Plugin 'bling/vim-airline'
-Plugin 'christoomey/vim-tmux-navigator'
-Plugin 'junegunn/vim-easy-align'
-Plugin 'kien/ctrlp.vim'
-Plugin 'scrooloose/nerdtree'
-Plugin 'tpope/vim-commentary'
-Plugin 'tpope/vim-dispatch'
-Plugin 'tpope/vim-fugitive'
-Plugin 'tpope/vim-surround'
+Plug 'bling/vim-airline'
+Plug 'christoomey/vim-tmux-navigator'
+Plug 'junegunn/vim-easy-align'
+Plug 'kien/ctrlp.vim'
+Plug 'scrooloose/nerdtree', { 'on': 'NERDTreeToggle' }
+Plug 'tpope/vim-commentary'
+Plug 'tpope/vim-dispatch'
+Plug 'tpope/vim-fugitive'
+Plug 'tpope/vim-surround'
 
 " Color scheme
-Plugin 'nanotech/jellybeans.vim'
+Plug 'nanotech/jellybeans.vim'
 
 " Syntax
-Plugin 'hdima/python-syntax'
-Plugin 'jelera/vim-javascript-syntax'
-Plugin 'octol/vim-cpp-enhanced-highlight'
-Plugin 'stanangeloff/php.vim'
+Plug 'hdima/python-syntax', { 'for': 'python' }
+Plug 'jelera/vim-javascript-syntax', { 'for': 'javascript' }
+Plug 'octol/vim-cpp-enhanced-highlight', { 'for': ['c', 'cpp'] }
+Plug 'stanangeloff/php.vim', { 'for': 'php' }
 
-call vundle#end()
-catch
-endtry
-filetype plugin indent on
+call plug#end()
 
 " }}}
 
@@ -359,5 +351,3 @@ let g:python_highlight_file_headers_as_comments=1
 " }}}
 
 " }}}
-
-" vim: expandtab ts=2 sw=2 sts=2

@@ -11,6 +11,8 @@
   whitespace = fix
 [push]
   default = simple
+[credential]
+  helper = cache
 [diff]
   tool = vimdiff
 [difftool]
@@ -33,3 +35,5 @@
   rs = reset
   st = status -s
   ta = tag
+[include]
+  path = ~/.gitconfig.local

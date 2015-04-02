@@ -2,23 +2,24 @@ DOTFILES := $(shell pwd)
 PREFIX   := "\033[1;34m::\033[0m\033[1m "
 SUFFIX   := " ...\033[0m"
 LINKS    := \
-	aliases      \
-	bash_profile \
-	bashrc       \
-	functions    \
-	gitconfig    \
-	gitignore    \
-	gtkrc-2.0    \
-	i3           \
-	profile      \
-	ssh/config   \
-	tmux.conf    \
-	vim          \
-	wgetrc       \
-	xinitrc      \
-	Xresources   \
-	zsh          \
-	zshenv       \
+	aliases       \
+	bash_profile  \
+	bashrc        \
+	functions     \
+	gitattributes \
+	gitconfig     \
+	gitignore     \
+	gtkrc-2.0     \
+	i3            \
+	profile       \
+	ssh/config    \
+	tmux.conf     \
+	vim           \
+	wgetrc        \
+	xinitrc       \
+	Xresources    \
+	zsh           \
+	zshenv        \
 	zshrc
 
 all: install

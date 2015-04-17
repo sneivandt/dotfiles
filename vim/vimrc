@@ -34,6 +34,7 @@ Plug 'nanotech/jellybeans.vim'
 Plug 'hdima/python-syntax', { 'for': 'python' }
 Plug 'jelera/vim-javascript-syntax', { 'for': 'javascript' }
 Plug 'octol/vim-cpp-enhanced-highlight', { 'for': ['c', 'cpp'] }
+Plug 'raichoo/haskell-vim', { 'for': 'haskell' }
 Plug 'stanangeloff/php.vim', { 'for': 'php' }
 
 call plug#end()

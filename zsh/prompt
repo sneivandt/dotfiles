@@ -29,5 +29,5 @@ ssh_connection() {
 }
 
 setopt PROMPT_SUBST
-export PS1='$(ssh_connection)%{$fg[yellow]%}%~$(git_prompt_info)
-%{$reset_color%}%(!.#.$) '
+precmd() { print -rP '$(ssh_connection)%{$fg[yellow]%}%~$(git_prompt_info)' }
+PROMPT='%{$reset_color%}%(!.#.$) '

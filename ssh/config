@@ -1,5 +1,3 @@
-HOST ec2
-  HostName 54.186.240.216
-  User ubuntu
-  IdentitiesOnly yes
-  IdentityFile ~/.ssh/id_rsa_ec2
+host *
+  ServerAliveInterval 60
+  HashKnownHosts yes

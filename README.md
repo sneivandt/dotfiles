@@ -2,7 +2,11 @@
 
 Configuration files for Linux software.
 
-## Setup
+## Configure
+
+Links listed in .linkignore will be ignored by all make targets.
+
+## Install
 
 Update dependencies and create symlinks in your home directory.
 

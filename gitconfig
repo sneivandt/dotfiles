@@ -35,5 +35,3 @@
   rs = reset
   st = status -s
   ta = tag
-[include]
-  path = ~/.gitconfig.local

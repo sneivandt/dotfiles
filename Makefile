@@ -19,8 +19,8 @@ LINKS := \
 	zshenv        \
 	zshrc
 
-PREFIX   := "\033[1;34m::\033[0m\033[1m "
-SUFFIX   := " ...\033[0m"
+PREFIX := "\033[1;34m::\033[0m\033[1m "
+SUFFIX := " ...\033[0m"
 
 all: install
 
@@ -36,7 +36,7 @@ install:
 	@echo -e $(PREFIX)"Creating symlinks"$(SUFFIX)
 	@mkdir -pv ~/.ssh
 	@for link in $(LINKS); do \
-		if [[ ! -e ~/.$$link && -z `cat .linkignore 2>/dev/null | tr -d " " | grep -Fx $$link` ]]; then \
+		if [[ ! -e ~/.$$link && -z `cat .linkignore 2>/dev/null | grep -Fx $$link` ]]; then \
 			ln -snvf $(shell pwd)/$$link ~/.$$link; \
 		fi \
 	done
@@ -45,7 +45,7 @@ install:
 uninstall:
 	@echo -e $(PREFIX)"Removing symlinks"$(SUFFIX)
 	@for link in $(LINKS); do \
-		if [[ -z `cat .linkignore 2>/dev/null | tr -d " " | grep -Fx $$link` ]]; then \
+		if [[ -z `cat .linkignore 2>/dev/null | grep -Fx $$link` ]]; then \
 			rm -vf ~/.$$link; \
 		fi \
 	done

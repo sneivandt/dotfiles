@@ -2,4 +2,4 @@
 [[ -f ~/.bashrc ]] && . ~/.bashrc
 
 # Load profile
-[[ -f ~/.profile ]] && . ~/.profile
+[[ -f ~/.shell/profile ]] && . ~/.shell/profile

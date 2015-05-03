@@ -2,4 +2,4 @@
 [[ -f ~/.zshrc ]] && . ~/.zshrc
 
 # Load profile
-[[ -f ~/.profile ]] && . ~/.profile
+[[ -f ~/.shell/profile ]] && . ~/.shell/profile

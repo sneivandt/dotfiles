@@ -1,14 +1,12 @@
 LINKS := \
-	aliases       \
 	bash_profile  \
 	bashrc        \
-	functions     \
 	gitattributes \
 	gitconfig     \
 	gitignore     \
 	gtkrc-2.0     \
 	i3            \
-	profile       \
+	shell         \
 	ssh/config    \
 	tmux.conf     \
 	vim           \

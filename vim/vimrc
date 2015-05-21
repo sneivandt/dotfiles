@@ -159,7 +159,7 @@ autocmd BufWritePre * call StripTrailingWhitespaces()
 " Folding {{{
 
 " Toggle fold
-nnoremap <return> za
+nnoremap <leader><return> za
 
 " Focus the current fold
 noremap <leader>z zMzvzz

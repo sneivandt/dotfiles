@@ -25,18 +25,14 @@ TEXT
 
 {
   "full_text": " cpu ${exec top -bn1 | grep load | awk '{printf "%.0f%", $(NF-2)*100}'} ",
-  "color": "\#80b2ff"
-},
-{
-  "full_text": " mem ${exec free -m | awk 'NR==2{printf "%.0f%", $3*100/$2 }'} ",
   "color": "\#ffffff"
 },
 {
-  "full_text": " / ${exec df -lh | awk '{if ($6 == "/") { print $5 }}'} ",
+  "full_text": " mem ${exec free -m | awk 'NR==2{printf "%.0f%", $3*100/$2 }'} ",
   "color": "\#80b2ff"
 },
 {
-  "full_text": " ♪ ${exec amixer get Master | grep -o "\[.*%\]" | sed "s/\[//g" | sed "s/\]//g"} ",
+  "full_text": " / ${exec df -lh | awk '{if ($6 == "/") { print $5 }}'} ",
   "color": "\#ffffff"
 },
 {
@@ -44,11 +40,19 @@ TEXT
   "color": "\#80b2ff"
 },
 {
+  "full_text": " ${exec uname -r} ",
+  "color": "\#ffffff"
+},
+{
+  "full_text": " ${exec uname -m} ",
+  "color": "\#80b2ff"
+},
+{
   "full_text": " ${exec whoami} ",
   "color": "\#ffffff"
 },
 {
-  "full_text": " ${exec uname -r} ",
+  "full_text": " ♪ ${exec amixer get Master | grep -o "\[.*%\]" | sed "s/\[//g" | sed "s/\]//g"} ",
   "color": "\#80b2ff"
 },
 {

@@ -21,10 +21,11 @@
   ad = add
   br = branch
   ca = commit --amend --reuse-message=HEAD
-  ci = commit
+  co = commit
   cl = clone
   co = checkout
   dc = difftool --cached
+  di = diff
   dt = difftool
   fe = fetch
   lo = log --graph --decorate --abbrev-commit --pretty=oneline
@@ -32,6 +33,9 @@
   pl = pull
   ps = push
   rb = rebase
+  ri = rebase --interactive
   rs = reset
-  st = status -s
+  st = status --short
   ta = tag
+[include]
+  path = ~/.gitconfig.local

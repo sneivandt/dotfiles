@@ -1,6 +1,7 @@
 LINKS := \
 	bash_profile  \
 	bashrc        \
+	curlrc        \
 	gitattributes \
 	gitconfig     \
 	gitignore     \

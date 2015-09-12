@@ -5,6 +5,7 @@
   editor = vim
   pager = less
   excludefiles = ~/.gitignore
+  autocrlf = input
 [color]
   ui = true
 [apply]
@@ -23,7 +24,7 @@
   ca = commit --amend --reuse-message=HEAD
   co = commit
   cl = clone
-  co = checkout
+  ch = checkout
   dc = difftool --cached
   di = diff
   dt = difftool

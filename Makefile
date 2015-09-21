@@ -1,21 +1,22 @@
 LINKS := \
-	bash_profile  \
-	bashrc        \
-	curlrc        \
-	gitattributes \
-	gitconfig     \
-	gitignore     \
-	gtkrc-2.0     \
-	i3            \
-	shell         \
-	ssh/config    \
-	tmux.conf     \
-	vim           \
-	wgetrc        \
-	xinitrc       \
-	Xresources    \
-	zsh           \
-	zshenv        \
+	atom/config.cson \
+	bash_profile     \
+	bashrc           \
+	curlrc           \
+	gitattributes    \
+	gitconfig        \
+	gitignore        \
+	gtkrc-2.0        \
+	i3               \
+	shell            \
+	ssh/config       \
+	tmux.conf        \
+	vim              \
+	wgetrc           \
+	xinitrc          \
+	Xresources       \
+	zsh              \
+	zshenv           \
 	zshrc
 
 PREFIX := "\033[1;34m::\033[0m\033[1m "
@@ -34,6 +35,7 @@ install:
 	@vim +PlugUpdate +qall
 	@echo -e $(PREFIX)"Creating symlinks"$(SUFFIX)
 	@mkdir -pv ~/.ssh
+	@mkdir -pv ~/.atom
 	@for link in $(LINKS); do \
 		if [[ ! -e ~/.$$link && -z `cat .linkignore 2>/dev/null | grep -Fx $$link` ]]; then \
 			ln -snvf $(shell pwd)/$$link ~/.$$link; \

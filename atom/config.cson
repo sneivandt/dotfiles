@@ -1,0 +1,26 @@
+"*":
+  welcome:
+    showOnStartup: false
+  "release-notes":
+    viewedVersion: "44f1961"
+  editor:
+    fontFamily: "monospace"
+    fontSize: 12
+    softWrap: true
+    showIndentGuide: true
+    invisibles: {}
+  core:
+    disabledPackages: [
+      "wrap-guide"
+    ]
+    audioBeep: false
+    autoHideMenuBar: true
+  whitespace:
+    ignoreWhitespaceOnCurrentLine: false
+  linter:
+    lintOnChange: false
+  minimap:
+    scrollAnimation: true
+    scrollAnimationDuration: 100
+  "exception-reporting":
+    userId: "aaeea7cf-e3f8-f2ba-66a3-eed1e00a41ff"

@@ -21,13 +21,13 @@ git_prompt_info() {
   fi
 }
 
-ssh_connection() {
-  if [[ -n $SSH_CONNECTION ]]
+host_name() {
+  if [[ -n $SSH_CONNECTION || -e /.dockerinit ]]
   then
     echo "%{$fg[cyan]%}%m "
   fi
 }
 
 setopt PROMPT_SUBST
-precmd() { print -rP '$(ssh_connection)%{$fg[yellow]%}%~$(git_prompt_info)' }
+precmd() { print -rP '$(host_name)%{$fg[yellow]%}%~$(git_prompt_info)' }
 PROMPT='%{$reset_color%}%(!.#.$) '

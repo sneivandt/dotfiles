@@ -11,6 +11,3 @@ Update dependencies and create symlinks in your home directory.
 ### Configure
 
 Links listed in .linkignore will be ignored by all make targets.
-
-    tmux.conf
-    ssh/config

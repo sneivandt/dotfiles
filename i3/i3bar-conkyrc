@@ -24,11 +24,23 @@ TEXT
 ,[
 
 {
-  "full_text": " cpu ${exec top -bn1 | grep load | awk '{printf "%.0f%", $(NF-2)*100}'} ",
+  "full_text": " ${exec uptime -p } ",
+  "color": "\#80b2ff"
+},
+{
+  "full_text": " ${exec grep -m 1 'model name' /proc/cpuinfo | cut -d: -f2 | cut -c2- } ",
   "color": "\#ffffff"
 },
 {
-  "full_text": " mem ${exec free -m | awk 'NR==2{printf "%.0f%", $3*100/$2 }'} ",
+  "full_text": " ${exec uname -m} ",
+  "color": "\#80b2ff"
+},
+{
+  "full_text": " ${exec grep -m 1 'cpu cores' /proc/cpuinfo | cut -d: -f2 | cut -c2- } cores ${exec top -bn1 | grep load | awk '{printf "%3.0f%", $(NF-2)*100}'} ",
+  "color": "\#ffffff"
+},
+{
+  "full_text": " mem ${exec free -m | awk 'NR==2{printf "%2.0f%", $3*100/$2 }'} ",
   "color": "\#80b2ff"
 },
 {
@@ -44,7 +56,7 @@ TEXT
   "color": "\#ffffff"
 },
 {
-  "full_text": " ${exec uname -m} ",
+  "full_text": " ${exec cat /etc/*-release | grep -i 'pretty_name' | cut -d'"' -f2} ",
   "color": "\#80b2ff"
 },
 {

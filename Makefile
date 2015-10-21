@@ -40,20 +40,22 @@ install:
 	@echo -e $(PREFIX)"Installing git submodules"$(SUFFIX)
 	@git submodule update --init
 	@echo -e $(PREFIX)"Creating symlinks"$(SUFFIX)
-	@mkdir -pv ~/.atom ~/.config/gtk-3.0 ~/.ssh
 	@for link in $(LINKS); do \
 		if [[ (-z `cat .linkignore 2>/dev/null | grep -Fx $$link`) && (`readlink -f $(shell pwd)/$$link` != `readlink -f ~/.$$link`) ]]; then \
+			if [[ $$link == *"/"* ]]; then \
+				mkdir -pv ~/.`echo $$link | rev | cut -d/ -f2- | rev`; \
+			fi; \
 			ln -snvf $(shell pwd)/$$link ~/.$$link; \
 		fi \
 	done
-	@chmod -c 600 ~/.ssh/config
+	@chmod -c 600 ~/.ssh/config 2>/dev/null
 	@echo -e $(PREFIX)"Installing vim plugins"$(SUFFIX)
 	@vim +PlugUpdate +qall
 
 uninstall:
 	@$(call root_check)
 	@for link in $(LINKS); do \
-		if [[ -z `cat .linkignore 2>/dev/null | grep -Fx $$link` ]]; then \
+		if [[ (-z `cat .linkignore 2>/dev/null | grep -Fx $$link`) && (`readlink -f $(shell pwd)/$$link` == `readlink -f ~/.$$link`) ]]; then \
 			rm -vf ~/.$$link; \
 		fi \
 	done

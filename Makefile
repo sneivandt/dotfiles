@@ -1,26 +1,6 @@
 SHELL := /bin/bash
 
-LINKS := \
-	atom/config.cson            \
-	bash_profile                \
-	bashrc                      \
-	config/gtk-3.0/settings.ini \
-	curlrc                      \
-	gitattributes               \
-	gitconfig                   \
-	gitignore                   \
-	gtkrc-2.0                   \
-	i3                          \
-	shell                       \
-	ssh/config                  \
-	tmux.conf                   \
-	vim                         \
-	wgetrc                      \
-	xinitrc                     \
-	Xresources                  \
-	zsh                         \
-	zshenv                      \
-	zshrc
+LINKS := `cat links`
 
 PREFIX := "\033[1;34m::\033[0m\033[1m "
 SUFFIX := " ...\033[0m"

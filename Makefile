@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-LINKS := `cat links`
+FILES := `cat list`
 
 PREFIX := "\033[1;34m::\033[0m\033[1m "
 SUFFIX := " ...\033[0m"
@@ -12,7 +12,7 @@ endef
 all: install
 
 help:
-	@echo "install:   Install git submodules, vim plugins and create symlinks"
+	@echo "install:   Install git submodules, install vim plugins and create symlinks"
 	@echo "uninstall: Remove symlinks"
 
 install:
@@ -20,12 +20,12 @@ install:
 	@echo -e $(PREFIX)"Installing git submodules"$(SUFFIX)
 	@git submodule update --init
 	@echo -e $(PREFIX)"Creating symlinks"$(SUFFIX)
-	@for link in $(LINKS); do \
-		if [[ (-z `cat .linkignore 2>/dev/null | grep -Fx $$link`) && (`readlink -f $(shell pwd)/$$link` != `readlink -f ~/.$$link`) ]]; then \
+	@for link in $(FILES); do \
+		if [[ (-z `cat .listignore 2>/dev/null | grep -Fx $$link`) && (`readlink -f $(shell pwd)/files/$$link` != `readlink -f ~/.$$link`) ]]; then \
 			if [[ $$link == *"/"* ]]; then \
 				mkdir -pv ~/.`echo $$link | rev | cut -d/ -f2- | rev`; \
 			fi; \
-			ln -snvf $(shell pwd)/$$link ~/.$$link; \
+			ln -snvf $(shell pwd)/files/$$link ~/.$$link; \
 		fi \
 	done
 	@chmod -c 600 ~/.ssh/config 2>/dev/null
@@ -34,8 +34,8 @@ install:
 
 uninstall:
 	@$(call root_check)
-	@for link in $(LINKS); do \
-		if [[ (-z `cat .linkignore 2>/dev/null | grep -Fx $$link`) && (`readlink -f $(shell pwd)/$$link` == `readlink -f ~/.$$link`) ]]; then \
+	@for link in $(FILES); do \
+		if [[ (-z `cat .listignore 2>/dev/null | grep -Fx $$link`) && (`readlink -f $(shell pwd)/files/$$link` == `readlink -f ~/.$$link`) ]]; then \
 			rm -vf ~/.$$link; \
 		fi \
 	done

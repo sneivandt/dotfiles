@@ -292,7 +292,7 @@ let g:airline#extensions#tabline#fnamemod=':t'
 
 let g:airline#extensions#whitespace#enabled=0
 
-let g:tmuxline_separators={'left': '', 'left_alt': '', 'right': '', 'right_alt': '', 'space': ' '}
+let g:tmuxline_separators={ 'left': '', 'left_alt': '', 'right': '', 'right_alt': '', 'space': ' ' }
 
 " }}}
 

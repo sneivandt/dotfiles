@@ -29,6 +29,7 @@
   di = diff
   dt = difftool
   fe = fetch
+  lf = log -u
   lo = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
   me = merge
   pl = pull

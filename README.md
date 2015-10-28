@@ -2,28 +2,34 @@
 
 This is a project to store configuration files for various Linux applications. The provided installation script will create symlinks in a users $HOME directory.
 
-The files which will be effected can be seen in [links](links).
+The files which will be effected can be seen in [list](list).
 
-Be warned that existing dotfiles may be overridden by installing this configuration.
+**WARNING**: Existing dotfiles may be overridden by installing this configuration.
 
-### Configure
+## Configure
 
-If you want to ignore a subset of the symlinks, list them in a .linkignore file.
+Files listed in .listignore will be ignored by all build scripts.
 
-### Install
+## Install
 
-Update dependencies and create symlinks in $HOME. This includes updating the vim plugins managed by [vim-plug](https://github.com/junegunn/vim-plug).
+To update dependencies and create symlinks in $HOME run the following command. Note that this will also update the vim plugins managed by [vim-plug](https://github.com/junegunn/vim-plug).
 
     make
 
-### Uninstall
+## Uninstall
 
 Remove all the symlinks created in $HOME. Note that the uninstall process will leave behind directories in you home directory that contained symlinks to ensure that other files, not managed by this project, are not also removed.
 
     make uninstall
 
-### Running as root
+## Root user
 
-This instalation will potentially override many files in the users $HOME. The installation will not proceed if run as root to protect the root configuration. If you would like to ignore this warning you can run the following command as root to do the installation.
+This instalation will potentially override many files in the users $HOME. The installation will not proceed if run as root to protect the root configuration. If you would like to force the install to run as root you must run the following.
 
     make allow_root=yes
+
+## Docker image
+
+Build a Debian image with configuration from this project using the included [Dockerfile](Dockerfile).
+
+    docker build -t dotfiles .

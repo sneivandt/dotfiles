@@ -15,7 +15,7 @@ RUN echo -e "en_US.UTF-8 UTF-8" >> /etc/locale.gen && /usr/sbin/locale-gen
 
 # Install dotfiles
 RUN git clone https://github.com/sneivandt/dotfiles.git /root/.dotfiles
-RUN echo -e "atom/config.cson\nconfig/gtk-3.0/settings.ini\ni3\ngtk-2.0\nxinit\nXresources" >> /root/.dotfiles/.linkignore
+RUN echo -e "atom/config.cson\nconfig/gtk-3.0/settings.ini\ni3\ngtk-2.0\nxinit\nXresources" >> /root/.dotfiles/.listignore
 RUN cd /root/.dotfiles && make install allow_root=yes
 
 # Use zsh

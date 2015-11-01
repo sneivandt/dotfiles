@@ -15,20 +15,20 @@ usage()
 # Print a formatted message.
 message()
 {
-  echo -e "\033[1;34m::\033[0m\033[1m" $1 "...\033[0m"
+  echo -e "\033[1;34m::\033[0m\033[1m "$1"...\033[0m"
 }
 
 # Print an aborting warning.
 aborting()
 {
-  echo -e "\033[0m\033[1mABORTING:\033[0m "$1
+  echo -e "\033[1;31maborting:\033[0m "$1
 }
 
 # Install and update git submodules.
 install_git_submodules()
 {
   message "Installing git submodules"
-  git submodule update --init
+  git -C $DIR submodule update --init
 }
 
 # Create symlinks listed in "files-list". Any symlinks listed in ".filesignore" will
@@ -36,12 +36,12 @@ install_git_submodules()
 install_symlinks()
 {
   message "Creating symlinks"
-  for link in `cat files-list`; do
-    if [[ (-z `cat .filesignore 2>/dev/null | grep -Fx $link`) && (`readlink -f $(pwd)/files/$link` != `readlink -f ~/.$link`) ]]; then
+  for link in `cat $DIR/files-list`; do
+    if [[ (-z `cat $DIR/.filesignore 2>/dev/null | grep -Fx $link`) && (`readlink -f $DIR/files/$link` != `readlink -f ~/.$link`) ]]; then
       if [[ $link == *"/"* ]]; then
         mkdir -pv ~/.`echo $link | rev | cut -d/ -f2- | rev`
       fi
-      ln -snvf `pwd`/files/$link ~/.$link
+      ln -snvf $DIR/files/$link ~/.$link
     fi
   done
   chmod -c 600 ~/.ssh/config 2>/dev/null
@@ -63,8 +63,8 @@ install_atom_packages()
   if [[ -n `which apm` ]]; then
     message "Installing atom packages"
     local PACKAGES
-    PACKAGES=`apm list -b | cut -d@ -f1`
-    for package in `cat files/atom/packages-list`; do
+    PACKAGES=$(apm list -b | cut -d@ -f1)
+    for package in `cat $DIR/files/atom/packages-list`; do
       if [[ -z `echo $PACKAGES | grep -sw $package` ]]; then
         apm install $package
       fi
@@ -77,22 +77,11 @@ install_atom_packages()
 uninstall_symlinks()
 {
   message "Removing symlinks"
-  for link in `cat files-list`; do
-    if [[ (-z `cat .filesignore 2>/dev/null | grep -Fx $link`) && (`readlink -f $(pwd)/files/$link` == `readlink -f ~/.$link`)
-      ]]; then
+  for link in `cat $DIR/files-list`; do
+    if [[ (-z `cat $DIR/.filesignore 2>/dev/null | grep -Fx $link`) && (`readlink -f $DIR/files/$link` == `readlink -f ~/.$link`) ]]; then
       rm -vf ~/.$link
     fi
   done
-}
-
-# Exit with an error code 1 if this script isbeing run from a different
-# directory.
-check_directory()
-{
-  if [[ `dirname "${BASH_SOURCE[0]}"` != "." ]]; then
-    aborting  "Run this script from the dotfiles directory."
-    exit 1
-  fi
 }
 
 # Exit with an error code 1 if this script is being run by root and the command
@@ -114,33 +103,35 @@ install()
   install_atom_packages
 }
 
-# Perform a full uninstall
+# Perform a full uninstall.
 uninstall()
 {
   uninstall_symlinks
 }
 
-# Perform checks.
-check()
-{
-  check_directory
-  check_root
-}
+# Get absolute path to the dofiles project folder.
+DIR=$(cd `dirname "${BASH_SOURCE[0]}"` && pwd)
 
 # Get command line options.
-OPTS="$(getopt -o r -l allow-root -n "`basename $0`" -- "$@")"
+OPTS=$(getopt -o r -l allow-root -n "`basename $0`" -- "$@")
 
-# Perform checks before triggering any operations.
-check
+# Perform root check before triggering any actions.
+check_root
 
-# Trigger operations based on command line arguments.
-case $1 in
-  install)
-    install
-  ;;
-  uninstall)
-    uninstall
-  ;;
-  help | *)
-    usage
-esac
+# Trigger actions based on command line arguments.
+for i in $@; do
+  case $i in
+    install)
+      install && exit
+      ;;
+    uninstall)
+      uninstall && exit
+      ;;
+    help)
+      usage && exit
+      ;;
+  esac
+done
+
+# Print usage instructions if no action was triggered.
+usage

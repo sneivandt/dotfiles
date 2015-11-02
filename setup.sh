@@ -110,10 +110,10 @@ uninstall()
 }
 
 # Get absolute path to the dofiles project folder.
-DIR=$(cd `dirname "${BASH_SOURCE[0]}"` && pwd)
+DIR=$(cd $(dirname "$(readlink -f "$0")") && pwd)
 
 # Get command line options.
-OPTS=$(getopt -o r -l allow-root -n "`basename $0`" -- "$@")
+OPTS=$(getopt -o r -l allow-root -n "$(basename $0)" -- "$@")
 
 # Perform root check before triggering any actions.
 check_root

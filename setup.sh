@@ -24,6 +24,12 @@ aborting()
   echo -e "\033[1;31maborting:\033[0m "$1
 }
 
+# Print invalid command message.
+invalid()
+{
+  echo "$(basename $0): '$1' is not a valid command. See '$(basename $0) help'."
+}
+
 # Install and update git submodules.
 install_git_submodules()
 {
@@ -109,6 +115,19 @@ uninstall()
   uninstall_symlinks
 }
 
+# Trigger an action based on an a command line argument.
+alias()
+{
+  case $1 in
+    help)
+      usage
+      ;;
+    *)
+      eval $1
+      ;;
+  esac
+}
+
 # Get absolute path to the dofiles project folder.
 DIR=$(cd $(dirname "$(readlink -f "$0")") && pwd)
 
@@ -121,17 +140,18 @@ check_root
 # Trigger actions based on command line arguments.
 for i in $@; do
   case $i in
-    install)
-      install && exit
+    -*)
       ;;
-    uninstall)
-      uninstall && exit
+    install | uninstall | help)
+      alias $i
+      exit
       ;;
-    help)
-      usage && exit
+    *)
+      invalid $i
+      exit 1
       ;;
   esac
 done
 
-# Print usage instructions if no action was triggered.
+# Print usage instructions if no arguments were provided.
 usage

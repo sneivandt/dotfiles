@@ -18,7 +18,9 @@ alias ll="ls -l"
 alias grep="grep -i --color=auto"
 
 # Yay vim!
-alias vi="vim"
+if [[ -n $(which vim 2>/dev/null) ]]; then
+  alias vi="vim"
+fi
 
 # Force tmux 256 color
 alias tmux="tmux -2"

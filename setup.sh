@@ -34,7 +34,9 @@ invalid()
 install_git_submodules()
 {
   message "Installing git submodules"
-  git -C $DIR submodule update --init
+  if [[ ! `git -C $DIR submodule update --init 2>/dev/null` ]]; then
+    cd $DIR && git submodule update --init
+  fi
 }
 
 # Create symlinks listed in "files-list". Any symlinks listed in ".filesignore" will
@@ -56,7 +58,7 @@ install_symlinks()
 # Install vim plugins managed by vim-plug.
 install_vim_plugins()
 {
-  if [[ -n `which vim` ]]; then
+  if [[ (-n $(which vim 2>/dev/null)) && (`readlink -f $DIR/files/vim` == `readlink -f ~/.vim`) ]]; then
     message "Installing vim plugins"
     vim +PlugUpdate +qall
   fi
@@ -66,7 +68,7 @@ install_vim_plugins()
 # not already installed.
 install_atom_packages()
 {
-  if [[ -n `which apm` ]]; then
+  if [[ -n $(which apm 2>/dev/null) ]]; then
     message "Installing atom packages"
     local PACKAGES
     PACKAGES=$(apm list -b | cut -d@ -f1)

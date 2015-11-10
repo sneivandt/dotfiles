@@ -1,53 +1,137 @@
 #!/bin/bash
 
-# Print usage instructions.
-usage()
+<<GLOBALS
+
+  Values which exist in the global scope of this script.
+
+GLOBALS
+
+# Get absolute path to the dofiles project folder.
+DIR=$(cd $(dirname "$(readlink -f "$0")") && pwd)
+
+# Read command line options.
+OPTS=$(getopt -o r -l allow-root -n "$(basename $0)" -- "$@")
+
+<<HELPERS
+
+  Helper functions.
+
+HELPERS
+
+# helper_alias
+#
+# Trigger an action based on a command line argument.
+#
+# $1 - The command line argument to map to an action.
+helper_alias()
+{
+  case $1 in
+    help)
+      action_usage
+      ;;
+    *)
+      eval "action_"$1
+      ;;
+  esac
+}
+
+<<MESSAGES
+
+  Functions which write to stdout.
+
+MESSAGES
+
+# message_usage
+#
+# Print usage instructions
+message_usage()
 {
   echo "Usage: $(basename $0) <command> [-r | --allow-root]"
   echo
-  echo "These are the avaliable commands:"
+  echo "These are the available commands:"
   echo
   echo "    help       Print this usage message"
   echo "    install    Update git submodules, create symlinks, update vim plugins and install atom packages"
   echo "    uninstall  Remove symlinks"
 }
 
-# Print a formatted message.
-message()
+# message_worker
+#
+# Print a worker starting message.
+#
+# $1 - The work is being performed.
+message_worker()
 {
   echo -e "\033[1;34m::\033[0m\033[1m "$1"...\033[0m"
 }
 
-# Print an aborting warning.
-aborting()
+# message_exit
+#
+# Print an exit message.
+#
+# $1 - The reason for exiting.
+message_exit()
 {
   echo -e "\033[1;31maborting:\033[0m "$1
 }
 
-# Print invalid command message.
-invalid()
+# message_invalid
+#
+# Print an invalid command message.
+#
+# $1 - The invalid command.
+message_invalid()
 {
   echo "$(basename $0): '$1' is not a valid command. See '$(basename $0) help'."
 }
 
-# Install and update git submodules.
-install_git_submodules()
+<<EXIT_CHECKS
+
+  Functions that will stop this script from executing and exit with a non zero
+  exit status under some condition.
+
+EXIT_CHECKS
+
+# exit_check_root
+#
+# Exit with an error if this script is being run by root and the command line
+# flags "-r" or "--allow-root" are not set.
+exit_check_root()
 {
-  message "Installing git submodules"
-  if [[ ! `git -C $DIR submodule update --init 2>/dev/null` ]]; then
+  if [[ $EUID -eq 0 && ($OPTS != *--allow-root* && $OPTS != *-r*) ]];then
+    message_exit "Do not run this script as root. To skip this check pass the command line flag '--allow-root'."
+    exit 1
+  fi
+}
+
+<<WORKERS
+
+  Functions that perform the core logic of this script.
+
+WORKERS
+
+# worker_install_git_submodules
+#
+# Install and update git submodules.
+worker_install_git_submodules()
+{
+  message_worker "Installing git submodules"
+  if [[ ! $(git -C $DIR submodule update --init 2>/dev/null) ]]; then
     cd $DIR && git submodule update --init
   fi
 }
 
-# Create symlinks listed in "files-list". Any symlinks listed in ".filesignore" will
-# not be affected and if the symlink already exists it will be skipped.
-install_symlinks()
+# worker_install_symlinks
+#
+# Create symlinks listed in "files-list" excluding any symlinks listed in
+# ".filesignore".
+worker_install_symlinks()
 {
-  message "Creating symlinks"
-  for link in `cat $DIR/files-list`; do
-    if [[ (-z `cat $DIR/.filesignore 2>/dev/null | grep -Fx $link`) && (`readlink -f $DIR/files/$link` != `readlink -f ~/.$link`) ]]; then
+  message_worker "Creating symlinks"
+  for link in $(cat $DIR/files-list); do
+    if [[ (-z $(cat $DIR/.filesignore 2>/dev/null | grep -Fx $link)) && ($(readlink -f $DIR/files/$link) != $(readlink -f ~/.$link)) ]]; then
       if [[ $link == *"/"* ]]; then
-        mkdir -pv ~/.`echo $link | rev | cut -d/ -f2- | rev`
+        mkdir -pv ~/.$(echo $link | rev | cut -d/ -f2- | rev)
       fi
       ln -snvf $DIR/files/$link ~/.$link
     fi
@@ -55,105 +139,100 @@ install_symlinks()
   chmod -c 600 ~/.ssh/config 2>/dev/null
 }
 
-# Install vim plugins managed by vim-plug.
-install_vim_plugins()
+# worker_install_vim_plugins
+#
+# Install vim plugins managed by vim-plug as long as the "vim" symlink exists.
+worker_install_vim_plugins()
 {
-  if [[ (-n $(which vim 2>/dev/null)) && (`readlink -f $DIR/files/vim` == `readlink -f ~/.vim`) ]]; then
-    message "Installing vim plugins"
+  if [[ (-n $(which vim 2>/dev/null)) && ($(readlink -f $DIR/files/vim) == $(readlink -f ~/.vim)) ]]; then
+    message_worker "Installing vim plugins"
     vim +PlugUpdate +qall
   fi
 }
 
+# worker_install_atom_packages
+#
 # Install atom packages listed in "files/atom/packages-list" if the package is
 # not already installed.
-install_atom_packages()
+worker_install_atom_packages()
 {
   if [[ -n $(which apm 2>/dev/null) ]]; then
-    message "Installing atom packages"
+    message_worker "Installing atom packages"
     local PACKAGES
     PACKAGES=$(apm list -b | cut -d@ -f1)
-    for package in `cat $DIR/files/atom/packages-list`; do
-      if [[ -z `echo $PACKAGES | grep -sw $package` ]]; then
+    for package in $(cat $DIR/files/atom/packages-list); do
+      if [[ -z $(echo $PACKAGES | grep -sw $package) ]]; then
         apm install $package
       fi
     done
   fi
 }
 
-# Remove symlinks listed in "files-list". Any symlinks listed in ".filesignore"
-# will not be affected.
-uninstall_symlinks()
+# worker_uninstall_symlinks
+#
+# Remove all symlinks that are not listed in ".filesignore".
+worker_uninstall_symlinks()
 {
-  message "Removing symlinks"
-  for link in `cat $DIR/files-list`; do
-    if [[ (-z `cat $DIR/.filesignore 2>/dev/null | grep -Fx $link`) && (`readlink -f $DIR/files/$link` == `readlink -f ~/.$link`) ]]; then
+  message_worker "Removing symlinks"
+  for link in $(cat $DIR/files-list); do
+    if [[ (-z $(cat $DIR/.filesignore 2>/dev/null | grep -Fx $link)) && ($(readlink -f $DIR/files/$link) == $(readlink -f ~/.$link)) ]]; then
       rm -vf ~/.$link
     fi
   done
 }
 
-# Exit with an error code 1 if this script is being run by root and the command
-# line flags "-r" or "--allow-root" are not set.
-check_root()
-{
-  if [[ $EUID -eq 0 && ($OPTS != *--allow-root* && $OPTS != *-r*) ]];then
-    aborting "Do not run this script as root. To skip this check pass the command line flag '--allow-root'."
-    exit 1
-  fi
-}
+<<ACTIONS
 
+  Functions which are triggered based on command line input. Each action will
+  trigger work to be performed by calling a series of worker functions.
+
+ACTIONS
+
+# action_install
+#
 # Perform a full install.
-install()
+action_install()
 {
-  install_git_submodules
-  install_symlinks
-  install_vim_plugins
-  install_atom_packages
+  worker_install_git_submodules
+  worker_install_symlinks
+  worker_install_vim_plugins
+  worker_install_atom_packages
 }
 
+# action_uninstall
+#
 # Perform a full uninstall.
-uninstall()
+action_uninstall()
 {
-  uninstall_symlinks
+  worker_uninstall_symlinks
 }
 
-# Trigger an action based on an a command line argument.
-alias()
+# action_usage
+#
+# Print usage instructions.
+action_usage()
 {
-  case $1 in
-    help)
-      usage
-      ;;
-    *)
-      eval $1
-      ;;
-  esac
+  message_usage
 }
 
-# Get absolute path to the dofiles project folder.
-DIR=$(cd $(dirname "$(readlink -f "$0")") && pwd)
+<<MAIN
 
-# Get command line options.
-OPTS=$(getopt -o r -l allow-root -n "$(basename $0)" -- "$@")
+  The entry point to this script. If the user is allowed to trigger actions,
+  they will be triggered based on the command line arguments.
 
-# Perform root check before triggering any actions.
-check_root
+MAIN
 
-# Trigger actions based on command line arguments.
+exit_check_root
 for i in $@; do
   case $i in
     -*)
       ;;
     install | uninstall | help)
-      alias $i
-      exit
+      helper_alias $i && exit
       ;;
     *)
-      invalid $i
-      exit 1
+      message_invalid $i && exit 1
       ;;
   esac
 done
-
-# Print usage instructions if no arguments were provided.
-usage
+action_usage

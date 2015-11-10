@@ -32,4 +32,4 @@ This installation will potentially override many files in the users $HOME. The i
 
 Build a Debian image with configuration from this project using the included [Dockerfile](Dockerfile).
 
-    docker build -t dotfiles .
+    docker build .

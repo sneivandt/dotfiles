@@ -15,5 +15,8 @@ export LESS=-imRj8
 # Dont check mail
 unset MAILCHECK
 
+# Disable software flow control
+stty -ixon
+
 # Start X Windows
 [[ -z $DISPLAY && $XDG_VTNR -eq 1 && -x $(which i3 2>/dev/null) ]] && exec startx

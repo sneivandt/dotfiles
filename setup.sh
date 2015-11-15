@@ -70,7 +70,7 @@ helper_symlink_exists()
 #     bool - True of the file is ignored.
 helper_file_ignored()
 {
-  if [[ -n $(cat $DIR/.filesignore 2>/dev/null | grep -Fx $1) ]]
+  if [[ -n $(cat $DIR/.filesignore 2>/dev/null | grep -xi $1) ]]
   then
     echo 0
   else
@@ -200,7 +200,7 @@ worker_install_symlinks()
   message_worker "Creating symlinks"
   for link in $(cat $DIR/files-list)
   do
-    if [[ $(helper_file_ignored "$link" == "1") && $(helper_symlink_exists "$link") == "1" ]]
+    if [[ $(helper_file_ignored "$link") == "1" && $(helper_symlink_exists "$link") == "1" ]]
     then
       if [[ $link == *"/"* ]]
       then
@@ -230,7 +230,7 @@ worker_install_vim_plugins()
 # not already installed.
 worker_install_atom_packages()
 {
-  if [[ $(helper_program_installed "apm") == "0" ]]
+  if [[ $(helper_file_ignored "atom/config.cson") == "1" && $(helper_program_installed "apm") == "0" ]]
   then
     message_worker "Installing atom packages"
     local PACKAGES

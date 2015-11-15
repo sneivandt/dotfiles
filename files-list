@@ -3,6 +3,7 @@ bash_profile
 bashrc
 config/gtk-3.0/settings.ini
 curlrc
+eclipse/eclipse-formatter.xml
 gitattributes
 gitconfig
 gitignore

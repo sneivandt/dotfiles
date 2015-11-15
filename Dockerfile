@@ -15,7 +15,7 @@ RUN echo -e "en_US.UTF-8 UTF-8" >> /etc/locale.gen && /usr/sbin/locale-gen
 
 # Install dotfiles
 RUN git clone https://github.com/sneivandt/dotfiles.git /root/.dotfiles
-RUN echo -e "atom/config.cson\nconfig/gtk-3.0/settings.ini\ni3\ngtk-2.0\nxinitrc\nXresources" >> /root/.dotfiles/.filesignore
+RUN echo -e "atom/config.cson\nconfig/gtk-3.0/settings.ini\neclipse/eclipse-formatter.xml\ni3\ngtk-2.0\nxinitrc\nXresources" >> /root/.dotfiles/.filesignore
 RUN /root/.dotfiles/setup.sh install --allow-root
 
 # Use zsh

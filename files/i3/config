@@ -114,7 +114,7 @@ client.urgent           #2f343a #900000    #ffffff #900000
 
 # i3bar
 bar {
-  mode hide
+  mode dock
   hidden_state hide
   status_command ~/.i3/i3bar-conky
 }

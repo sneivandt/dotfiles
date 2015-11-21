@@ -2,34 +2,45 @@
 
 This is a project to store configuration files for various Linux applications. The provided installation script will create symlinks in $HOME.
 
-The files which will be effected can be seen in [files-list](files-list).
+The symlinks which will be created are listed in [files-list](files-list).
 
-**WARNING**: Existing dotfiles may be overridden by installing this configuration.
-
-## Configure
-
-Files listed in .listignore will be ignored.
+**WARNING**: Existing dotfiles may be overridden without warning by installing this configuration.
 
 ## Install
 
-To update dependencies and create symlinks in $HOME run the following command. Note that this will also update the vim plugins managed by [vim-plug](https://github.com/junegunn/vim-plug) and install atom packages.
+The installation performs the following actions:
+
+  * Install git submodules
+  * Create symlinks in $HOME
+  * Install vim plugins
+  * Install atom packages
+
+Install command:
 
     ./setup.sh install
 
 ## Uninstall
 
-Remove all the symlinks created in $HOME. Note that the uninstall process will leave behind directories in $HOME that contained symlinks to ensure that other files, not managed by this project, are not also removed.
+The uninstall will remove all the symlinks created in $HOME.
+
+Uninstall command:
 
     ./setup.sh uninstall
 
+## Configure
+
+Symlinks listed in .filesignore will be ignored. Entries must match exactly the entries in [files-list](files-list) with each entry listed on its own line. Regular expressions are not supported.
+
 ## Root user
 
-This installation will potentially override many files in the users $HOME. The installation will not proceed if run as root to protect the root configuration. If you would like to force the install to run as root you must run the following.
+This installation will potentially override many in $HOME. The installation will not proceed if run as root to protect root configuration. If you would like to force the install to run as root you must provide the command line flag "--allow-root".
+
+Root install command:
 
     ./setup.sh install --allow-root
 
 ## Docker image
 
-Build a Debian image with configuration from this project using the included [Dockerfile](Dockerfile).
+Build a Docker image with configuration from this project using the included [Dockerfile](Dockerfile).
 
     docker build .

@@ -1,5 +1,6 @@
 autoclose-html
 file-icons
+highlight-selected
 language-batchfile
 language-docker
 language-mongodb

@@ -28,15 +28,7 @@ TEXT
   "color": "\#80b2ff"
 },
 {
-  "full_text": " ${exec grep -m 1 'model name' /proc/cpuinfo | cut -d: -f2 | cut -c2- } ",
-  "color": "\#ffffff"
-},
-{
-  "full_text": " ${exec uname -m} ",
-  "color": "\#80b2ff"
-},
-{
-  "full_text": " ${exec grep -m 1 'cpu cores' /proc/cpuinfo | cut -d: -f2 | cut -c2- } cores ${exec top -bn1 | grep load | awk '{printf "%3.0f%", $(NF-2)*100}'} ",
+  "full_text": " cpu ${exec grep -m 1 'cpu cores' /proc/cpuinfo | cut -d: -f2 | cut -c2- } cores ${exec top -bn1 | grep load | awk '{printf "%3.0f%", $(NF-2)*100}'} ",
   "color": "\#ffffff"
 },
 {
@@ -48,23 +40,23 @@ TEXT
   "color": "\#ffffff"
 },
 {
-  "full_text": " ${exec ip addr | grep 'state UP' -A2 | tail -n1 | awk {'print $2}' | cut -f1 -d'/'} ",
+  "full_text": " ip ${exec ip addr | grep 'state UP' -A2 | tail -n1 | awk {'print $2}' | cut -f1 -d'/'} ",
   "color": "\#80b2ff"
-},
-{
-  "full_text": " ${exec uname -r} ",
-  "color": "\#ffffff"
-},
-{
-  "full_text": " ${exec cat /etc/*-release | grep -i 'pretty_name' | cut -d'"' -f2} ",
-  "color": "\#80b2ff"
-},
-{
-  "full_text": " ${exec whoami} ",
-  "color": "\#ffffff"
 },
 {
   "full_text": " ♪ ${exec amixer get Master | grep -o "\[.*%\]" | sed "s/\[//g" | sed "s/\]//g"} ",
+  "color": "\#ffffff"
+},
+{
+  "full_text": " ${exec whoami} ",
+  "color": "\#80b2ff"
+},
+{
+  "full_text": " ${exec cat /etc/*-release | grep -i 'pretty_name' | cut -d'"' -f2} ",
+  "color": "\#ffffff"
+},
+{
+  "full_text": " ${exec uname -r} ",
   "color": "\#80b2ff"
 },
 {

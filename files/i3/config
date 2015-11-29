@@ -67,6 +67,9 @@ set $w8 8
 set $w9 9
 set $w0 10
 
+# Custom workspace for rdesktop
+for_window [class="^rdesktop"] move workspace "rdesktop", focus
+
 # Switch to workspace
 bindsym $mod+1 workspace $w1
 bindsym $mod+2 workspace $w2

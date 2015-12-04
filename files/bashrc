@@ -6,3 +6,6 @@ source ~/.shell/functions
 
 # Aliases
 source ~/.shell/aliases
+
+# Path
+source ~/.shell/path

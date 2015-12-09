@@ -2,21 +2,65 @@
 set $mod Mod4
 
 # Font for window titles
-font pango:DejaVu Sans Mono 7
+font pango:Monoepace 6
 
 # Window borders
-new_window pixel 0
+new_window pixel 3
 new_float pixel 3
 
+# i3 gaps
+gaps inner 10
+gaps outer 5
+
+# Disable gaps if there is only one container in a workspace
+smart_borders on
+
+# Disable borders if there is only one container in a workspace
+smart_gaps on
+
+# Drag floating windows
+floating_modifier $mod
+
+# Workspace names
+set $w1 1 Main
+set $w2 2
+set $w3 3
+set $w4 4
+set $w5 5
+set $w6 6
+set $w7 7
+set $w8 8
+set $w9 9
+set $w0 10
+
+# Colors                border  background text    indicator
+client.focused          #4c7899 #4c7899    #ffffff #2e9ef4
+client.focused_inactive #282828 #282828    #888888 #292d2e
+client.unfocused        #282828 #282828    #888888 #292d2e
+client.urgent           #2f343a #900000    #ffffff #900000
+
+# i3bar
+bar {
+  mode dock
+  status_command ~/.i3/i3bar-conky
+}
+
+# Wallpaper
+exec --no-startup-id feh --randomize --bg-fill ~/pictures/wallpaper/*
+
 # Start a terminal
-bindsym $mod+Return exec xterm
+bindsym $mod+Return exec --no-startup-id xterm
 
 # Start dmenu
-bindsym $mod+p exec i3-dmenu-desktop --dmenu="dmenu -i"
+bindsym $mod+p exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -b -fn 'pango:Monospace:pixelsize=12'"
 
 # Volume
-bindsym $mod+Up exec amixer set Master 2+ unmute
-bindsym $mod+Down exec amixer set Master 2- unmute
+bindsym $mod+Up exec --no-startup-id amixer set Master 2+ unmute
+bindsym $mod+Down exec --no-startup-id amixer set Master 2- unmute
+
+# Screenshot
+bindsym $mod+N exec --no-startup-id scrot -u '%Y%m%d_%H%M%S.png' -e 'mv $f ~/pictures/scrot/'
+bindsym $mod+M exec --no-startup-id scrot '%Y%m%d_%H%M%S.png' -e 'mv $f ~/pictures/scrot/'
 
 # Kill focused window
 bindsym $mod+q kill
@@ -49,26 +93,8 @@ bindsym $mod+space floating toggle
 # Change focus between tiling/floating windows
 bindsym $mod+shift+space focus mode_toggle
 
-# Drag floating windows
-floating_modifier $mod
-
 # Fullscreen
 bindsym $mod+f fullscreen
-
-# Workspace names
-set $w1 1
-set $w2 2
-set $w3 3
-set $w4 4
-set $w5 5
-set $w6 6
-set $w7 7
-set $w8 8
-set $w9 9
-set $w0 10
-
-# Custom workspace for rdesktop
-for_window [class="^rdesktop"] move workspace "rdesktop", focus
 
 # Switch to workspace
 bindsym $mod+1 workspace $w1
@@ -101,26 +127,10 @@ bindsym $mod+Shift+0 move container to workspace $w0
 bindsym $mod+Shift+r restart
 
 # Exit i3
-bindsym $mod+Shift+q exec "i3-nagbar -t warning -m 'Do you really want to exit i3?' -b 'Shutdown' 'systemctl poweroff' -b 'Restart' 'systemctl reboot' -b 'Logout' 'i3-msg exit' "
+bindsym $mod+Shift+q exec --no-startup-id "i3-nagbar -t warning -m 'Do you really want to exit i3?' -b 'Shutdown' 'systemctl poweroff' -b 'Restart' 'systemctl reboot' -b 'Logout' 'i3-msg exit' "
 
 # Chrome
-bindsym $mod+o exec google-chrome-beta
+bindsym $mod+o exec --no-startup-id google-chrome-beta
 
 # Thunar
-bindsym $mod+i exec thunar
-
-# Colors                border  background text    indicator
-client.focused          #4c7899 #4c7899    #ffffff #2e9ef4
-client.focused_inactive #4c7899 #285577    #ffffff #2e9ef4
-client.unfocused        #222222 #222222    #888888 #292d2e
-client.urgent           #2f343a #900000    #ffffff #900000
-
-# i3bar
-bar {
-  mode dock
-  hidden_state hide
-  status_command ~/.i3/i3bar-conky
-}
-
-# Wallpaper
-exec --no-startup-id feh --randomize --bg-fill ~/pictures/wallpaper/*
+bindsym $mod+i exec --no-startup-id thunar

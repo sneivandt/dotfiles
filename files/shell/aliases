@@ -18,7 +18,9 @@ alias ll="ls -l"
 alias grep="grep -i --color=auto"
 
 # Yay vim!
-if [[ -n $(which vim 2>/dev/null) ]]; then
+if [[ -n $(which nvim 2>/dev/null) ]]; then
+  alias vi="nvim"
+elif [[ -n $(which vim 2>/dev/null) ]]; then
   alias vi="vim"
 fi
 

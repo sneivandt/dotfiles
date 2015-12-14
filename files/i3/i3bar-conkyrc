@@ -25,7 +25,7 @@ TEXT
 
 {
   "full_text": " ${exec uptime -p } ",
-  "color": "\#80b2ff"
+  "color": "\#888888"
 },
 {
   "full_text": " cpu ${exec grep -m 1 'cpu cores' /proc/cpuinfo | cut -d: -f2 | cut -c2- } cores ${exec top -bn1 | grep load | awk '{printf "%3.0f%", $(NF-2)*100}'} ",
@@ -33,7 +33,7 @@ TEXT
 },
 {
   "full_text": " mem ${exec free -m | awk 'NR==2{printf "%2.0f%", $3*100/$2 }'} ",
-  "color": "\#80b2ff"
+  "color": "\#888888"
 },
 {
   "full_text": " / ${exec df -lh | awk '{if ($6 == "/") { print $5 }}'} ",
@@ -41,7 +41,7 @@ TEXT
 },
 {
   "full_text": " ip ${exec ip addr | grep 'state UP' -A2 | tail -n1 | awk {'print $2}' | cut -f1 -d'/'} ",
-  "color": "\#80b2ff"
+  "color": "\#888888"
 },
 {
   "full_text": " ♪ ${exec amixer get Master | grep -o "\[.*%\]" | sed "s/\[//g" | sed "s/\]//g"} ",
@@ -49,7 +49,7 @@ TEXT
 },
 {
   "full_text": " ${exec whoami} ",
-  "color": "\#80b2ff"
+  "color": "\#888888"
 },
 {
   "full_text": " ${exec cat /etc/*-release | grep -i 'pretty_name' | cut -d'"' -f2} ",
@@ -57,7 +57,7 @@ TEXT
 },
 {
   "full_text": " ${exec uname -r} ",
-  "color": "\#80b2ff"
+  "color": "\#888888"
 },
 {
   "full_text": " ${time %a %d %b %H:%M} ",

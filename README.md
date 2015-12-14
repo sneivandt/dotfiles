@@ -1,29 +1,35 @@
 # Dotfiles
 
-This is a project to store configuration files for various Linux applications. The provided installation script will create symlinks in $HOME.
+Configuration for a Linux development environment.
 
-The symlinks which will be created are listed in [files-list](files-list).
+### Programs
 
-**WARNING**: Existing dotfiles may be overridden without warning by installing this configuration.
+Program|Dotfiles
+-------|--------
+atom|[.atom/config.cson](files/atom/config.cson)
+bash|[.bash_profile](files/bash_profile) [.bashrc](files/bashrc)
+curl|[.curlrc](files/curlrc)
+git|[.gitattributes](files/gitattributes) [.gitconfig](files/gitconfig) [.gitignore](files/gitignore)
+gtk2|[.gtkrc-2.0](files/gtkrc-2.0)
+gtk3|[.config/gtk-3.0/settings.ini](files/config/gtk-3.0/settings.ini)
+i3|[.i3/config](files/i3/config)
+nvim|[.config/nvim/init.vim](files/vim/vimrc)
+ssh|[.ssh/config](files/ssh/config)
+tmux|[.tmux.conf](files/tmux.conf)
+vim|[.vim/vimrc](files/vim/vimrc)
+wget|[.wgetrc](files/wgetrc)
+x|[.xinitrc](files/xinitrc) [.Xresources](files/Xresources)
+zsh|[.zshenv](files/zshenv) [.zshrc](files/zshrc)
 
 ## Install
 
-The installation performs the following actions:
-
-  * Install git submodules
-  * Create symlinks in $HOME
-  * Install vim plugins
-  * Install atom packages
-
-Install command:
+The install will install git submodules, create symlinks in $HOME, install vim plugins and install atom packages.
 
     ./setup.sh install
 
 ## Uninstall
 
 The uninstall will remove all the symlinks created in $HOME.
-
-Uninstall command:
 
     ./setup.sh uninstall
 
@@ -34,8 +40,6 @@ Symlinks listed in .filesignore will be ignored. Entries must match exactly the 
 ## Root user
 
 This installation will potentially override many in $HOME. The installation will not proceed if run as root to protect root configuration. If you would like to force the install to run as root you must provide the command line flag "--allow-root".
-
-Root install command:
 
     ./setup.sh install --allow-root
 

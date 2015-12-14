@@ -2,15 +2,15 @@
 set $mod Mod4
 
 # Font for window titles
-font pango:Monoepace 6
+font pango:Monospace Bold 6
 
 # Window borders
 new_window pixel 3
 new_float pixel 3
 
 # i3 gaps
-gaps inner 10
-gaps outer 5
+gaps inner 8
+gaps outer 4
 
 # Disable gaps if there is only one container in a workspace
 smart_borders on
@@ -43,24 +43,18 @@ client.urgent           #2f343a #900000    #ffffff #900000
 bar {
   mode dock
   status_command ~/.i3/i3bar-conky
+  colors {
+    background         #000000
+    statusline         #ffffff
+    focused_workspace  #000000 #000000 #ffffff
+    active_workspace   #000000 #000000 #ffffff
+    inactive_workspace #000000 #000000 #888888
+    urgent_workspace   #000000 #000000 #FF0099
+  }
 }
 
 # Wallpaper
 exec --no-startup-id feh --randomize --bg-fill ~/pictures/wallpaper/*
-
-# Start a terminal
-bindsym $mod+Return exec --no-startup-id xterm
-
-# Start dmenu
-bindsym $mod+p exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -b -fn 'pango:Monospace:pixelsize=12'"
-
-# Volume
-bindsym $mod+Up exec --no-startup-id amixer set Master 2+ unmute
-bindsym $mod+Down exec --no-startup-id amixer set Master 2- unmute
-
-# Screenshot
-bindsym $mod+N exec --no-startup-id scrot -u '%Y%m%d_%H%M%S.png' -e 'mv $f ~/pictures/scrot/'
-bindsym $mod+M exec --no-startup-id scrot '%Y%m%d_%H%M%S.png' -e 'mv $f ~/pictures/scrot/'
 
 # Kill focused window
 bindsym $mod+q kill
@@ -129,8 +123,26 @@ bindsym $mod+Shift+r restart
 # Exit i3
 bindsym $mod+Shift+q exec --no-startup-id "i3-nagbar -t warning -m 'Do you really want to exit i3?' -b 'Shutdown' 'systemctl poweroff' -b 'Restart' 'systemctl reboot' -b 'Logout' 'i3-msg exit' "
 
-# Chrome
-bindsym $mod+o exec --no-startup-id google-chrome-beta
+# Volume up
+bindsym $mod+Up     exec --no-startup-id amixer set Master 2+ unmute
 
-# Thunar
-bindsym $mod+i exec --no-startup-id thunar
+# Volume down
+bindsym $mod+Down   exec --no-startup-id amixer set Master 2- unmute
+
+# Screenshot container
+bindsym $mod+N      exec --no-startup-id scrot -u '%Y%m%d_%H%M%S.png' -e 'mv $f ~/pictures/scrot/'
+
+# Screenshot workspace
+bindsym $mod+M      exec --no-startup-id scrot '%Y%m%d_%H%M%S.png' -e 'mv $f ~/pictures/scrot/'
+
+# Start xterm
+bindsym $mod+Return exec --no-startup-id xterm
+
+# Start dmenu
+bindsym $mod+p      exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -b -nb '#000000' -fn 'pango:Monospace:pixelsize=12'"
+
+# Start Chrome
+bindsym $mod+o      exec --no-startup-id google-chrome-beta
+
+# Start Thunar
+bindsym $mod+i      exec --no-startup-id thunar

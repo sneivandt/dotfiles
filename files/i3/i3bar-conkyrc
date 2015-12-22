@@ -24,27 +24,23 @@ TEXT
 ,[
 
 {
-  "full_text": " ${exec uptime -p } ",
-  "color": "\#888888"
-},
-{
-  "full_text": " cpu ${exec grep -m 1 'cpu cores' /proc/cpuinfo | cut -d: -f2 | cut -c2- } cores ${exec top -bn1 | grep load | awk '{printf "%3.0f%", $(NF-2)*100}'} ",
+  "full_text": " ${exec uptime -p | cut -c 4-} ",
   "color": "\#ffffff"
 },
 {
-  "full_text": " mem ${exec free -m | awk 'NR==2{printf "%2.0f%", $3*100/$2 }'} ",
+  "full_text": " ● ${exec top -bn1 | grep load | awk '{printf "%3.0f%", $(NF-2)*100}'} ",
   "color": "\#888888"
 },
 {
-  "full_text": " / ${exec df -lh | awk '{if ($6 == "/") { print $5 }}'} ",
+  "full_text": " ○ ${exec free -m | awk 'NR==2{printf "%2.0f%", $3*100/$2 }'} ",
   "color": "\#ffffff"
 },
 {
-  "full_text": " ip ${exec ip addr | grep 'state UP' -A2 | tail -n1 | awk {'print $2}' | cut -f1 -d'/'} ",
+  "full_text": " ☊ ${exec amixer get Master | grep -o "\[.*%\]" | sed "s/\[//g" | sed "s/\]//g"} ",
   "color": "\#888888"
 },
 {
-  "full_text": " ♪ ${exec amixer get Master | grep -o "\[.*%\]" | sed "s/\[//g" | sed "s/\]//g"} ",
+  "full_text": " ${exec ip addr | grep 'state UP' -A2 | tail -n1 | awk {'print $2}' | cut -f1 -d'/'} ",
   "color": "\#ffffff"
 },
 {

@@ -1,28 +1,12 @@
 # Mod key
 set $mod Mod4
 
-# Font for window titles
-font pango:Monospace Bold 6
-
-# Window borders
-new_window pixel 3
-new_float pixel 3
-
-# i3 gaps
-gaps inner 8
-gaps outer 4
-
-# Disable gaps if there is only one container in a workspace
-smart_borders on
-
-# Disable borders if there is only one container in a workspace
-smart_gaps on
-
-# Drag floating windows
-floating_modifier $mod
+# Font
+set $font DejaVu Sans Bold
+set $font_size 8
 
 # Workspace names
-set $w1 1 Main
+set $w1 1
 set $w2 2
 set $w3 3
 set $w4 4
@@ -33,28 +17,25 @@ set $w8 8
 set $w9 9
 set $w0 10
 
-# Colors                border  background text    indicator
-client.focused          #4c7899 #4c7899    #ffffff #2e9ef4
-client.focused_inactive #282828 #282828    #888888 #292d2e
-client.unfocused        #282828 #282828    #888888 #292d2e
-client.urgent           #2f343a #900000    #ffffff #900000
+# i3 Font
+font pango:$font $font_size
 
-# i3bar
-bar {
-  mode dock
-  status_command ~/.i3/i3bar-conky
-  colors {
-    background         #000000
-    statusline         #ffffff
-    focused_workspace  #000000 #000000 #ffffff
-    active_workspace   #000000 #000000 #ffffff
-    inactive_workspace #000000 #000000 #888888
-    urgent_workspace   #000000 #000000 #FF0099
-  }
-}
+# Window borders
+new_window pixel 5
+new_float pixel 5
 
-# Wallpaper
-exec --no-startup-id feh --randomize --bg-fill ~/pictures/wallpaper/*
+# i3 gaps
+gaps inner 10
+gaps outer 5
+
+# Disable gaps if there is only one container in a workspace
+smart_borders on
+
+# Disable borders if there is only one container in a workspace
+smart_gaps on
+
+# Drag floating windows
+floating_modifier $mod
 
 # Kill focused window
 bindsym $mod+q kill
@@ -117,8 +98,32 @@ bindsym $mod+Shift+8 move container to workspace $w8
 bindsym $mod+Shift+9 move container to workspace $w9
 bindsym $mod+Shift+0 move container to workspace $w0
 
+# Wallpaper
+exec --no-startup-id feh --randomize --bg-fill ~/pictures/wallpaper/*
+
 # Restart i3 inplace
 bindsym $mod+Shift+r restart
+
+# Colors                border  background text    indicator
+client.focused          #005faf #005faf    #ffffff #2e9ef4
+client.focused_inactive #282828 #282828    #888888 #292d2e
+client.unfocused        #282828 #282828    #888888 #292d2e
+client.urgent           #2f343a #900000    #ffffff #900000
+
+# i3bar
+bar {
+  mode dock
+  status_command ~/.i3/i3bar-conky
+  font pango:$font $font_sizepx
+  colors {
+    background         #000000
+    statusline         #ffffff
+    focused_workspace  #000000 #000000 #ffffff
+    active_workspace   #000000 #000000 #ffffff
+    inactive_workspace #000000 #000000 #888888
+    urgent_workspace   #000000 #000000 #FF0099
+  }
+}
 
 # Exit i3
 bindsym $mod+Shift+q exec --no-startup-id "i3-nagbar -t warning -m 'Do you really want to exit i3?' -b 'Shutdown' 'systemctl poweroff' -b 'Restart' 'systemctl reboot' -b 'Logout' 'i3-msg exit' "
@@ -139,7 +144,7 @@ bindsym $mod+M      exec --no-startup-id scrot '%Y%m%d_%H%M%S.png' -e 'mv $f ~/p
 bindsym $mod+Return exec --no-startup-id xterm
 
 # Start dmenu
-bindsym $mod+p      exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -b -nb '#000000' -fn 'pango:Monospace:pixelsize=12'"
+bindsym $mod+p      exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -b -nb '#000000' -fn '$font-$font_size'"
 
 # Start Chrome
 bindsym $mod+o      exec --no-startup-id google-chrome-beta

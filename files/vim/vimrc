@@ -17,7 +17,7 @@ source ~/.vim/vim-plug/plug.vim
 call plug#begin('~/.vim/plugged')
 
 " Plugins
-Plug 'bling/vim-airline'
+Plug 'bling/vim-airline', { 'tag': 'v0.7' }
 Plug 'christoomey/vim-tmux-navigator'
 Plug 'junegunn/vim-easy-align'
 Plug 'kien/ctrlp.vim'
@@ -242,6 +242,12 @@ noremap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>
 " Search for a string in the current directory
 noremap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
 
+" <C-h> fix
+nmap <BS> <C-W>h
+if has('nvim')
+  nmap <bs> :<c-u>TmuxNavigateLeft<cr>
+endif
+
 " }}}
 
 " Filetype {{{
@@ -293,6 +299,15 @@ let g:airline#extensions#tabline#fnamemod=':t'
 let g:airline#extensions#whitespace#enabled=0
 
 let g:tmuxline_separators={ 'left': '', 'left_alt': '', 'right': '', 'right_alt': '', 'space': ' ' }
+
+if ! has('gui_running')
+  set ttimeoutlen=10
+  augroup FastEscape
+    autocmd!
+    au InsertEnter * set timeoutlen=0
+    au InsertLeave * set timeoutlen=1000
+  augroup END
+endif
 
 " }}}
 

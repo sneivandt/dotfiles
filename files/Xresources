@@ -35,5 +35,4 @@ xterm*color13:             #AD7FA8
 xterm*color14:             #fcaf3e
 xterm*color15:             #EEEEEC
 xterm*ttyModes:            erase ^?
-xterm*VT100*translations:  #override <Key>BackSpace: string(0x7f)
 xterm*backarrowKeyIsErase: true

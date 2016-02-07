@@ -3,7 +3,6 @@ file-icons
 highlight-selected
 language-batchfile
 language-docker
-language-mongodb
 language-tmux
 language-viml
 linter

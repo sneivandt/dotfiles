@@ -43,8 +43,12 @@ This installation will potentially override many in $HOME. The installation will
 
     ./setup.sh install --allow-root
 
-## Docker image
+## Vagrant
 
-Build a Docker image with configuration from this project using the included [Dockerfile](Dockerfile).
+Build a vagrant image using Docker provider.
 
-    docker build .
+    vagrant up
+
+SSH into the container.
+
+    vagrant ssh

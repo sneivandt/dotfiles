@@ -28,7 +28,7 @@ Plug 'tpope/vim-fugitive'
 Plug 'tpope/vim-surround'
 
 " Color scheme
-Plug 'nanotech/jellybeans.vim'
+Plug 'nanotech/jellybeans.vim', { 'tag': 'v1.5' }
 
 " Syntax
 Plug 'hdima/python-syntax', { 'for': 'python' }

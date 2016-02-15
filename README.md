@@ -39,7 +39,7 @@ Symlinks listed in .filesignore will be ignored. Entries must match exactly the 
 
 ## Root user
 
-This installation will potentially override many in $HOME. The installation will not proceed if run as root to protect root configuration. If you would like to force the install to run as root you must provide the command line flag "--allow-root".
+This installation will potentially override many files in $HOME. The installation will not run as root to protect root configuration. If you would like to force the install to run as root you must provide the command line flag "--allow-root".
 
     ./setup.sh install --allow-root
 

@@ -6,7 +6,7 @@ Vagrant.configure("2") do |config|
       d.name = "dotfiles"
       d.build_dir = "."
       d.has_ssh = true
-      d.build_args = ["--tag=vagrant/dotfiles"]
+      d.build_args = ["--tag=sneivandt/dotfiles"]
     end
     v.ssh.username = "root"
     v.ssh.password = "root"

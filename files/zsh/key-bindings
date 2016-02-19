@@ -1,3 +1,5 @@
+# vi: set ft=zsh :
+
 # Vi mode
 bindkey -v
 

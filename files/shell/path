@@ -1,2 +1,4 @@
+# vi: set ft=sh :
+
 # Add $HOME/bin to $PATH
 [[ -d $HOME/bin && ! $PATH =~ .*$HOME/bin.* ]] && export PATH=$HOME/bin:$PATH

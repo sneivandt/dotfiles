@@ -22,6 +22,7 @@ Plug 'christoomey/vim-tmux-navigator'
 Plug 'junegunn/vim-easy-align'
 Plug 'kien/ctrlp.vim'
 Plug 'scrooloose/nerdtree', { 'on': 'NERDTreeToggle' }
+Plug 'sirver/ultisnips'
 Plug 'tpope/vim-commentary'
 Plug 'tpope/vim-dispatch'
 Plug 'tpope/vim-fugitive'
@@ -340,7 +341,9 @@ nmap ga <Plug>(EasyAlign)
 " Nerdtree {{{
 
 let NERDTreeMinimalUI=1
+let NERDTreeShowHidden=1
 let NERDTreeRespectWildIgnore=1
+let NERDTreeWinPos="right"
 noremap <silent><c-e> :NERDTreeToggle<cr>:wincmd =<cr>
 
 " Auto close vim if Nerd tree is the only remaining buffer
@@ -363,6 +366,16 @@ let g:python_highlight_builtin_funcs=1
 let g:python_highlight_builtin_objs=1
 let g:python_highlight_exceptions=1
 let g:python_highlight_file_headers_as_comments=1
+
+" }}}
+
+" UltiSnips {{{
+
+" Disable python warning
+let g:UltiSnipsNoPythonWarning=1
+
+" Edid snips in horizontal split
+let g:UltiSnipsEditSplit="horizontal"
 
 " }}}
 

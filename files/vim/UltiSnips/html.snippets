@@ -1,0 +1,195 @@
+# Doctype
+
+snippet doc "HTML 5" b
+<!DOCTYPE html>
+$0
+endsnippet
+
+snippet doc "HTML 4.01 Strict" b
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+$0
+endsnippet
+
+snippet doc "HTML 4.01 Traditional" b
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+$0
+endsnippet
+
+snippet doc "HTML 4.01 Frameset" b
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd">
+$0
+endsnippet
+
+snippet doc "XHTML 1.0 Strict" b
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+$0
+endsnippet
+
+snippet doc"XHTML 1.0 Traditional" b
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+$0
+endsnippet
+
+snippet doc "XHTML 1.0 Frameset" b
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Frameset//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-frameset.dtd">
+$0
+endsnippet
+
+snippet doc "XHTML 1.1" b
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+$0
+endsnippet
+
+# Document
+
+snippet html "html" b
+<html lang="en">
+	${VISUAL}$1
+</html>$0
+endsnippet
+
+snippet head "head" b
+<head>
+	${VISUAL}$1
+</head>$0
+endsnippet
+
+snippet body "body" b
+<body>
+	${VISUAL}$1
+</body>$0
+endsnippet
+
+# Head
+
+snippet link "link" b
+<link rel="${1:stylesheet}" href="$2" type="text/css">$0
+endsnippet
+
+snippet src "script src" b
+<script src="$1" type="text/javascript"></script>$0
+endsnippet
+
+snippet script "script" b
+<script type="text/javascript" charset="utf-8">
+	${VISUAL}$1
+</script>$0
+endsnippet
+
+snippet style "style" b
+<style type="text/css" media="screen">
+	${VISUAL}$1
+</style>$0
+endsnippet
+
+snippet title "title" b
+<title>${VISUAL}${1:title}</title>$0
+endsnippet
+
+snippet a "link" w
+<a href="${1:#}">${VISUAL}$2</a>$0
+endsnippet
+
+# Body
+
+snippet div "div" w
+<div${1: ${2:id="${3:id}"} ${4:class="${5:class}}"}>
+	${VISUAL}$6
+</div>$0
+endsnippet
+
+snippet span "span" w
+<span${1: ${2:id="${3:id}"} ${4:class="${5:class}}"}>${VISUAL}$6</span>$0
+endsnippet
+
+snippet p "p" w
+<p${1: id="${2:id}"}${3: class="${4:class}"}>${VISUAL}$5</p>$0
+endsnippet
+
+snippet h "h[1-6]" w
+<h${1:1}${2: id="${3:id}"}${4: class="${5:class}"}>${VISUAL}$6</h$1>$0
+endsnippet
+
+snippet img "img" w
+<img src="$1"${2: id="${3:id}"}${4: class="${5:class}"} />$0
+endsnippet
+
+# Form
+
+snippet form "form" w
+<form${1: action="${2:action}"} method="${3:get}"${4: id="${5:id}"}${6: class="${7:class}"}>
+	${VISUAL}$9
+</form>$0
+endsnippet
+
+snippet input "input" w
+<input type="${1:type}" name="${2:name}" value="${3:value}" id="${4:id}">$0
+endsnippet
+
+snippet button "button" w
+<button type="${1:button}" onclick="$2"${3: id="${4:id}"}${5: class="${6:class}"}>$0
+endsnippet
+
+snippet select "select" w
+<select name="${1:name}" id="${2:$1}"${3:${4: multiple}${5: size="${6:1}"}}>
+	<option${7: value="${8:option}"}>${9:$8}</option>$10
+</select>$0
+endsnippet
+
+snippet option "option" w
+<option: value="${1:option}"}>$1</option>$0
+endsnippet
+
+snippet textarea "textarea" w
+<textarea name="${1:name}"${2: id="${3:id}"}${4: class="${5:class}"}>${VISUAL}$6</textarea>$0
+endsnippet
+
+# List
+
+snippet ul "li" w
+<ul>
+	${VISUAL}$1
+</ul>$0
+endsnippet
+
+snippet ol "ol" w
+<ol>
+	${VISUAL}$1
+</ol>$0
+endsnippet
+
+snippet li "li" w
+<li>${VISUAL}$1</li>$0
+endsnippet
+
+# Table
+
+snippet table "table" w
+<table${1: id="${2:id}"}${3: class="${4:class}"}>
+	${VISUAL}$5
+</table>$0
+endsnippet
+
+snippet td "td" w
+<td>${VISUAL}$1</td>$0
+endsnippet
+
+snippet th "th" w
+<th>${VISUAL}$1</th>$0
+endsnippet
+
+snippet tr "tr" w
+<tr>${VISUAL}$1</tr>$0
+endsnippet
+
+# Custom
+
+snippet tag "custom element" b
+<${1:name}>
+	${VISUAL}$2
+</${1/([\w:._-]+).*/$1/}>$0
+endsnippet
+
+snippet itag "inline custom element"
+<${1:name}>${VISUAL}$2</${1/([\w:._-]+).*/$1/}>$0
+endsnippet

@@ -13,7 +13,7 @@ DIR=$(cd $(dirname "$(readlink -f "$0")") && pwd)
 
 # Read command line options. While reading this input the 'getopt' call will
 # report invalid options that were given.
-OPTS=$(getopt -o r -l allow-root -n "$(basename $0)" -- "$@")
+OPTS=$(getopt -o rg -l allow-root,gui -n "$(basename $0)" -- "$@")
 
 #
 # Helpers
@@ -40,6 +40,22 @@ helper_alias()
   esac
 }
 
+# helper_flag_set
+#
+# Check if a command line flag is set.
+#
+# Args:
+#     $1 - The flag to check.
+helper_flag_set()
+{
+  if [[ " "$OPTS" " == *\ $1\ * ]]
+  then
+    echo 0
+  else
+    echo 1
+  fi
+}
+
 # helper_symlink_exists
 #
 # Check if a given symlink exists in $HOME.
@@ -61,7 +77,7 @@ helper_symlink_exists()
 
 # helper_file_ignored
 #
-# Check if a file is ignored. Ignored files will be listed in '.filesignore'.
+# Check if a file is ignored. Files listed in ".symlinks" with the "g" option will be ignored unless the flags "-g" or "--gui" are set. Ignored files will also be listed in '.symlinksignore'.
 #
 # Args:
 #     $1 - The file to check.
@@ -70,7 +86,10 @@ helper_symlink_exists()
 #     bool - True of the file is ignored.
 helper_file_ignored()
 {
-  if [[ -n $(cat $DIR/.filesignore 2>/dev/null | grep -xi $1) ]]
+  if [[ -n $(cat $DIR/.symlinksignore 2>/dev/null | grep -xi $1) ]]
+  then
+    echo 0
+  elif [[ $(helper_flag_set "--gui") == "1" && $(helper_flag_set "-g") == "1" && $(cat $DIR/.symlinks | grep -w $1 | cut -d " " -s -f 2) == *g* ]]
   then
     echo 0
   else
@@ -108,7 +127,7 @@ helper_program_installed()
 # Print usage instructions.
 message_usage()
 {
-  echo "Usage: $(basename $0) <command> [-r | --allow-root]"
+  echo "Usage: $(basename $0) <command> [-r | --allow-root] [-g | --gui]"
   echo
   echo "These are the available commands:"
   echo
@@ -163,7 +182,7 @@ message_invalid()
 # flags "-r" or "--allow-root" are not set.
 exit_check_root()
 {
-  if [[ $EUID -eq 0 && ($OPTS != *--allow-root* && $OPTS != *-r*) ]]
+  if [[ $EUID -eq 0 && ($(helper_flag_set "--allow-root") == "1" && $(helper_flag_set "-r") == "1") ]]
   then
     message_exit "Do not run this script as root. To skip this check pass the command line flag '--allow-root'."
     exit 1
@@ -198,7 +217,7 @@ worker_install_git_submodules()
 worker_install_symlinks()
 {
   message_worker "Creating symlinks"
-  for link in $(cat $DIR/files-list)
+  for link in $(cat $DIR/.symlinks | cut -d " " -f 1)
   do
     if [[ $(helper_file_ignored "$link") == "1" && $(helper_symlink_exists "$link") == "1" ]]
     then
@@ -251,7 +270,7 @@ worker_install_atom_packages()
 worker_uninstall_symlinks()
 {
   message_worker "Removing symlinks"
-  for link in $(cat $DIR/files-list)
+  for link in $(cat $DIR/.symlinks | cut -d " " -f 1)
   do
     if [[ $(helper_file_ignored "$link") == "1" && $(helper_symlink_exists "$link") == "0" ]]
     then

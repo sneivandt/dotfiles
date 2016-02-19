@@ -1,3 +1,5 @@
+# vi: set ft=sh :
+
 # Colored man pages
 man() {
   env \

@@ -1,4 +1,4 @@
 .vagrant
-.filesignore
+.symlinksignore
 files/vim/.netrwhist
 files/vim/plugged/

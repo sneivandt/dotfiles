@@ -1,3 +1,5 @@
+# vi: set ft=sh :
+
 # Load global profile
 [[ -f /etc/profile ]] && . /etc/profile
 

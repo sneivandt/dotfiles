@@ -1,23 +1,23 @@
-atom/config.cson
+atom/config.cson g
 bash_profile
 bashrc
-config/gtk-3.0/settings.ini
+config/gtk-3.0/settings.ini g
 config/nvim
 curlrc
-eclipse/eclipse-formatter.xml
+eclipse/eclipse-formatter.xml g
 gitattributes
 gitconfig
 gitignore
-gtkrc-2.0
-i3
+gtkrc-2.0 g
+i3 g
 shell
 ssh/config
 tmux.conf
 tmux-new.conf
 vim
 wgetrc
-xinitrc
-Xresources
+xinitrc g
+Xresources g
 zsh
 zshenv
 zshrc

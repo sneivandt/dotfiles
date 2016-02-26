@@ -23,7 +23,7 @@ alias grep="grep -i --color=auto"
 alias curl="noglob curl"
 
 # Yay vim!
-if [[ -x $(which nvim) ]]; then
+if [[ -x $(which nvim 2>/dev/null) ]]; then
   alias vi="nvim"
 elif [[ -x $(which vim) ]]; then
   alias vi="vim"

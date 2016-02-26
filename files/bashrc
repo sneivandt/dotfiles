@@ -1,10 +1,7 @@
 # vi: set ft=sh :
 
 # Prompt
-PS1="\u@\h \[\e[0;33m\]\w\n\[\e[0m\]\$ "
-
-# Functions
-source ~/.shell/functions
+PS1="\[\e[0;33m\]\w\n\[\e[0m\]\$ "
 
 # Aliases
 source ~/.shell/aliases

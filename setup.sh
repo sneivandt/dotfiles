@@ -132,7 +132,7 @@ message_usage()
   echo "These are the available commands:"
   echo
   echo "    help       Print this usage message"
-  echo "    install    Update git submodules, create symlinks, update vim plugins and install atom packages"
+  echo "    install    Update git submodules, create symlinks and install editor plugins"
   echo "    uninstall  Remove symlinks"
 }
 

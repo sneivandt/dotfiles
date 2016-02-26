@@ -10,8 +10,6 @@
   ui = true
 [apply]
   whitespace = fix
-[push]
-  default = simple
 [credential]
   helper = cache
 [diff]

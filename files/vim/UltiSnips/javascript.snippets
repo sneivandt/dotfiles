@@ -16,6 +16,12 @@ function ${1:function_name}(${2}) {
 }$0
 endsnippet
 
+snippet iife "immediately invoked function expression"
+(function($2) {
+	${VISUAL}$3
+})($1);$0
+endsnippet
+
 snippet if "if" b
 if(${1:cond}) {
 	${VISUAL}$2

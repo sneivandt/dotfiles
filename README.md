@@ -21,7 +21,7 @@ zsh     | [.zshenv](files/zshenv) [.zshrc](files/zshrc)
 
 ## Install
 
-Install will install git submodules, create symlinks in $HOME, install vim plugins and install atom packages.
+stall will install git submodules, create symlinks in $HOME and install editor plugins.
 
     ./setup.sh install
 
@@ -40,7 +40,7 @@ r     | allow-root | Allow root user
 
 ## Configure
 
-If you want to ignore some files, create a file .symlinksignore and list those files there. This file should have the same structure as [.symlinks](.symlinks) but without the "g" flags for graphical programs.
+If you want to ignore some files, create a file .symlinksignore and list the files there. This file should have the same structure as [.symlinks](.symlinks) but without the "g" flags for graphical programs.
 
 ## Vagrant
 

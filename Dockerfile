@@ -19,7 +19,7 @@ RUN echo -e "en_US.UTF-8 UTF-8" >> /etc/locale.gen && /usr/sbin/locale-gen
 
 # Install dotfiles
 RUN git clone https://github.com/sneivandt/dotfiles.git /root/.dotfiles
-RUN /root/.dotfiles/setup.sh install --allow-root
+RUN /root/.dotfiles/dot.sh install --allow-root
 
 # Use zsh
 RUN chsh -s /usr/bin/zsh

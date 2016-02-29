@@ -7,7 +7,7 @@ Program | Dotfiles
 atom    | [.atom/config.cson](files/atom/config.cson)
 bash    | [.bash_profile](files/bash_profile) [.bashrc](files/bashrc)
 curl    | [.curlrc](files/curlrc)
-git     | [.gitattributes](files/gitattributes) [.gitconfig](files/gitconfig) [.gitignore](files/gitignore)
+git     | [.gitattributes](files/gitattributes) [.gitconfig](files/gitconfig) [.gitignore](files/gitignore) [.config/git/config](files/config/git/config)
 gtk2    | [.gtkrc-2.0](files/gtkrc-2.0)
 gtk3    | [.config/gtk-3.0/settings.ini](files/config/gtk-3.0/settings.ini)
 i3      | [.i3/config](files/i3/config)
@@ -23,13 +23,13 @@ zsh     | [.zshenv](files/zshenv) [.zshrc](files/zshrc)
 
 stall will install git submodules, create symlinks in $HOME and install editor plugins.
 
-    ./setup.sh install
+    ./dot.sh install
 
 ## Uninstall
 
 Uninstall will remove all the symlinks created in $HOME.
 
-    ./setup.sh uninstall
+    ./dot.sh uninstall
 
 ## Flags
 

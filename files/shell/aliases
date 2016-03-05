@@ -19,13 +19,10 @@ alias ll="ls -l"
 # grep colored
 alias grep="grep -i --color=auto"
 
-# curl
-alias curl="noglob curl"
-
 # Yay vim!
 if [[ -x $(which nvim 2>/dev/null) ]]; then
   alias vi="nvim"
-elif [[ -x $(which vim) ]]; then
+elif [[ -x $(which vim 2>/dev/null) ]]; then
   alias vi="vim"
 fi
 

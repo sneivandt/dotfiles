@@ -17,19 +17,20 @@ source ~/.vim/vim-plug/plug.vim
 call plug#begin('~/.vim/plugged')
 
 " Plugins
-Plug 'bling/vim-airline', { 'tag': 'v0.7' }
 Plug 'christoomey/vim-tmux-navigator'
+Plug 'ctrlpvim/ctrlp.vim'
 Plug 'junegunn/vim-easy-align'
-Plug 'kien/ctrlp.vim'
 Plug 'scrooloose/nerdtree', { 'on': 'NERDTreeToggle' }
 Plug 'sirver/ultisnips'
 Plug 'tpope/vim-commentary'
 Plug 'tpope/vim-dispatch'
 Plug 'tpope/vim-fugitive'
 Plug 'tpope/vim-surround'
+Plug 'vim-airline/vim-airline'
+Plug 'vim-airline/vim-airline-themes'
 
 " Color scheme
-Plug 'nanotech/jellybeans.vim', { 'tag': 'v1.5' }
+Plug 'nanotech/jellybeans.vim'
 
 " Syntax
 Plug 'hdima/python-syntax', { 'for': 'python' }
@@ -49,6 +50,7 @@ call plug#end()
 set autoindent
 set backspace=2
 set cindent
+set clipboard=unnamed
 set cmdheight=1
 set copyindent
 set encoding=utf-8
@@ -196,14 +198,18 @@ noremap L $
 noremap <tab> %
 
 " Disable keys
-noremap <up>     <nop>
-noremap <down>   <nop>
-noremap <left>   <nop>
-noremap <right>  <nop>
-noremap <home>   <nop>
-noremap <end>    <nop>
-noremap <insert> <nop>
-noremap <del>    <nop>
+inoremap <up>     <nop>
+inoremap <down>   <nop>
+inoremap <left>   <nop>
+inoremap <right>  <nop>
+nnoremap <up>     <nop>
+nnoremap <down>   <nop>
+nnoremap <left>   <nop>
+nnoremap <right>  <nop>
+nnoremap <home>   <nop>
+nnoremap <end>    <nop>
+nnoremap <insert> <nop>
+nnoremap <del>    <nop>
 
 " Center search results while navigating
 nnoremap n nzzzv
@@ -242,6 +248,9 @@ noremap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>
 
 " Search for a string in the current directory
 noremap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
+
+" Make
+noremap <f5> :Make<cr>
 
 " <C-h> fix
 nmap <BS> <C-W>h

@@ -13,8 +13,8 @@ gtkrc-2.0 g
 i3 g
 shell
 ssh/config
+tmux
 tmux.conf
-tmux-new.conf
 vim
 wgetrc
 xinitrc g

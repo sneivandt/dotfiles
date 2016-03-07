@@ -40,19 +40,19 @@ endsnippet
 
 snippet html "html" b
 <html lang="en">
-	${VISUAL}$1
+	${1:${VISUAL}}
 </html>$0
 endsnippet
 
 snippet head "head" b
 <head>
-	${VISUAL}$1
+	${1:${VISUAL}}
 </head>$0
 endsnippet
 
 snippet body "body" b
 <body>
-	${VISUAL}$1
+	${1:${VISUAL}}
 </body>$0
 endsnippet
 
@@ -66,40 +66,40 @@ endsnippet
 
 snippet script "script" b
 <script type="text/javascript" charset="utf-8">
-	${VISUAL}$1
+	${1:${VISUAL}}
 </script>$0
 endsnippet
 
 snippet style "style" b
 <style type="text/css" media="screen">
-	${VISUAL}$1
+	${1:${VISUAL}}
 </style>$0
 endsnippet
 
 snippet title "title" b
-<title>${VISUAL}${1:title}</title>$0
+<title>${1:${VISUAL}}</title>$0
 endsnippet
 
 snippet a "link" w
-<a href="${1:#}">${VISUAL}$2</a>$0
+<a href="${1:#}">${2:${VISUAL}}</a>$0
 endsnippet
 
 snippet div "div" w
 <div${1: ${2:id="${3:id}"} ${4:class="${5:class}}"}>
-	${VISUAL}$6
+	${6:${VISUAL}}
 </div>$0
 endsnippet
 
 snippet span "span" w
-<span${1: ${2:id="${3:id}"} ${4:class="${5:class}}"}>${VISUAL}$6</span>$0
+<span${1: ${2:id="${3:id}"} ${4:class="${5:class}}"}>${6:${VISUAL}}</span>$0
 endsnippet
 
 snippet p "p" w
-<p${1: id="${2:id}"}${3: class="${4:class}"}>${VISUAL}$5</p>$0
+<p${1: id="${2:id}"}${3: class="${4:class}"}>${5:${VISUAL}}</p>$0
 endsnippet
 
 snippet h "h[1-6]" w
-<h${1:1}${2: id="${3:id}"}${4: class="${5:class}"}>${VISUAL}$6</h$1>$0
+<h${1:1}${2: id="${3:id}"}${4: class="${5:class}"}>${6:${VISUAL}}</h$1>$0
 endsnippet
 
 snippet img "img" w
@@ -108,7 +108,7 @@ endsnippet
 
 snippet form "form" w
 <form${1: action="${2:action}"} method="${3:get}"${4: id="${5:id}"}${6: class="${7:class}"}>
-	${VISUAL}$9
+	${9:${VISUAL}}
 </form>$0
 endsnippet
 
@@ -136,44 +136,44 @@ endsnippet
 
 snippet ul "li" w
 <ul>
-	${VISUAL}$1
+	${1:${VISUAL}}
 </ul>$0
 endsnippet
 
 snippet ol "ol" w
 <ol>
-	${VISUAL}$1
+	${1:${VISUAL}}
 </ol>$0
 endsnippet
 
 snippet li "li" w
-<li>${VISUAL}$1</li>$0
+<li>${1:${VISUAL}}</li>$0
 endsnippet
 
 snippet table "table" w
 <table${1: id="${2:id}"}${3: class="${4:class}"}>
-	${VISUAL}$5
+	${1:${VISUAL}}
 </table>$0
 endsnippet
 
 snippet td "td" w
-<td>${VISUAL}$1</td>$0
+<td>${1:${VISUAL}}</td>$0
 endsnippet
 
 snippet th "th" w
-<th>${VISUAL}$1</th>$0
+<th>${1:${VISUAL}}</th>$0
 endsnippet
 
 snippet tr "tr" w
-<tr>${VISUAL}$1</tr>$0
+<tr>${1:${VISUAL}}</tr>$0
 endsnippet
 
 snippet tag "custom element" b
 <${1:name}>
-	${VISUAL}$2
+	${2:${VISUAL}}
 </${1/([\w:._-]+).*/$1/}>$0
 endsnippet
 
 snippet itag "inline custom element"
-<${1:name}>${VISUAL}$2</${1/([\w:._-]+).*/$1/}>$0
+<${1:name}>${2:${VISUAL}}</${1/([\w:._-]+).*/$1/}>$0
 endsnippet

@@ -249,9 +249,6 @@ noremap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>
 " Search for a string in the current directory
 noremap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
 
-" Make
-noremap <f5> :Make<cr>
-
 " <C-h> fix
 nmap <BS> <C-W>h
 if has('nvim')
@@ -332,8 +329,7 @@ let g:ctrlp_working_path_mode='ra'
 
 " Dispatch {{{
 
-" Map the default make command to the command provided by dispatch
-cnoreabbrev <expr> make ((getcmdtype() == ':' && getcmdpos() <= 5) ? 'Make': 'make')
+nnoremap <f5> :Dispatch<CR>
 
 " }}}
 
@@ -387,5 +383,15 @@ let g:UltiSnipsNoPythonWarning=1
 let g:UltiSnipsEditSplit="horizontal"
 
 " }}}
+
+" }}}
+
+" Neovim {{{
+
+if has("nvim")
+  tnoremap <esc> <C-\><C-n><C-w><C-p>
+  autocmd BufWinEnter,WinEnter term://* startinsert
+  autocmd BufLeave term://* stopinsert
+endif
 
 " }}}

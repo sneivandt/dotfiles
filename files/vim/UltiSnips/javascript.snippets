@@ -4,74 +4,74 @@ endsnippet
 
 snippet class "class" b
 function ${1:name}($2) {
-	${VISUAL}$3
+	${3:${VISUAL}}
 }$0
 endsnippet
 
 snippet proto "prototype" b
 ${1:class}.prototype.${2:method} = function($3) {
-	${VISUAL}$4
+	${4:${VISUAL}}
 };$0
 endsnippet
 
 snippet fun "function" b
-function ${1:function_name}(${2}) {
-	${VISUAL}$3
+function ${1:function_name}($2) {
+	${3:${VISUAL}}
 }$0
 endsnippet
 
 snippet iife "immediately invoked function expression"
 (function($2) {
-	${VISUAL}$3
+	${3:${VISUAL}}
 })($1);$0
 endsnippet
 
 snippet if "if" b
 if(${1:cond}) {
-	${VISUAL}$2
+	${2:${VISUAL}}
 }$0
 endsnippet
 
-snippet eif "else if" b
+snippet elif "else if" b
 else if(${1:cond}) {
-	${VISUAL}$2
+	${2:${VISUAL}}
 }$0
 endsnippet
 
 snippet else "else" b
 else {
-	${VISUAL}$1
+	${1:${VISUAL}}
 }$0
 endsnippet
 
 snippet for "for" b
 for($1) {
-	${VISUAL}$2
+	${2:${VISUAL}}
 }$0
 endsnippet
 
 snippet .for "forEach" i
 .forEach(function(${1:i}) {
-	${VISUAL}$2
+	$2
 });$0
 endsnippet
 
 snippet while "while" b
 while(${1:cond}) {
-	${VISUAL}$2
+	${2:${VISUAL}}
 }$0
 endsnippet
 
 snippet do "do while" b
 do {
-	${VISUAL}$1
+	${1:${VISUAL}}
 }
 while(${2:cond});$0
 endsnippet
 
 snippet try "try catch" b
 try {
-	${VISUAL}$1
+	${1:${VISUAL}}
 }
 catch(${2:e}) {
 	$3
@@ -80,16 +80,16 @@ endsnippet
 
 snippet desc "describe" b
 describe('${1:feature}', function($2) {
-	${VISUAL}$3
+	${3:${VISUAL}}
 });
 endsnippet
 
 snippet it "it" b
 it('should ${1:have behaviour}', function($2) {
-	${VISUAL}$3
+	${3:${VISUAL}}
 });$0
 endsnippet
 
 snippet con "console.log" b
-console.log(${VISUAL}$1);$0
+console.log(${1:${VISUAL}});$0
 endsnippet

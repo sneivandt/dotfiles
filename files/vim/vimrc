@@ -1,4 +1,4 @@
-" Preamble {{{
+" Preamble ---------------------------------------------------------------- {{{
 
 " Nocompatible
 set nocompatible
@@ -10,8 +10,7 @@ let mapleader=','
 filetype plugin indent on
 
 " }}}
-
-" Vim-Plug {{{
+" Plugins ----------------------------------------------------------------- {{{
 
 source ~/.vim/vim-plug/plug.vim
 call plug#begin('~/.vim/plugged')
@@ -42,10 +41,7 @@ Plug 'stanangeloff/php.vim', { 'for': 'php' }
 call plug#end()
 
 " }}}
-
-" General {{{
-
-" Basic options {{{
+" Basic options------------------------------------------------------------ {{{
 
 set autoindent
 set backspace=2
@@ -67,9 +63,9 @@ set listchars=tab:▸\ ,trail:·
 set mouse=a
 set nobackup
 set noerrorbells
-set nonumber
 set noswapfile
-set pastetoggle=<f10>
+set nonumber
+set pastetoggle=<f9>
 set preserveindent
 set ruler
 set scrolloff=5
@@ -89,8 +85,6 @@ set wildmenu
 set wrap
 set wrapscan
 
-" }}}
-
 " Color scheme {{{
 
 syntax on
@@ -106,7 +100,6 @@ catch
 endtry
 
 " }}}
-
 " Wildignore {{{
 
 set wildignore+=*.bmp
@@ -130,7 +123,6 @@ set wildignore+=*/bower_components/*
 set wildignore+=*/node_modules/*
 
 " }}}
-
 " Buffers {{{
 
 " Keep splits equally sized
@@ -143,7 +135,6 @@ autocmd FileType qf :wincmd J
 autocmd WinEnter * if winnr('$') == 1 && getbufvar(winbufnr(winnr()), '&buftype') == 'quickfix'|q|endif
 
 " }}}
-
 " Whitespace {{{
 
 " Strip trailing whitespace from every line on save
@@ -159,10 +150,70 @@ autocmd BufWritePre * call StripTrailingWhitespaces()
 
 " }}}
 
-" Folding {{{
+" }}}
+" Mappings ---------------------------------------------------------------- {{{
+
+noremap ; :
+noremap j gj
+noremap k gk
+noremap * *<c-o>
+noremap / /\v
+noremap ? ?\v
+noremap H 0
+noremap L $
+
+" Tabs
+noremap <c-r>n :tabnew<cr>
+noremap <c-r><c-r> :tabnext<cr>
+noremap <c-r>1 1gt
+noremap <c-r>2 2gt
+noremap <c-r>3 3gt
+noremap <c-r>4 4gt
+noremap <c-r>5 5gt
+noremap <c-r>6 6gt
+noremap <c-r>7 7gt
+noremap <c-r>8 8gt
+noremap <c-r>9 9gt
+
+" Center search results while navigating
+nnoremap n nzzzv
+nnoremap N Nzzzv
+
+" Toggle spell check
+noremap K :set spell! spelllang=en_us<cr>
+
+" Clear all highlights
+noremap <space> :noh<cr>
+
+" Open .vimrc
+noremap <leader>v :e ~/.vim/vimrc<cr>
+
+" Execute the current file
+noremap <leader>e :!%:p<cr>
+
+" Toggle line wrap
+noremap <leader>w :set wrap!<cr>
+
+" Search and replace the word under the cursor
+noremap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>
+
+" Search for a string in the current directory
+noremap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
+
+" Jump to matching element
+nmap <tab> %
+
+" <C-h> fix
+nmap <BS> <C-W>h
+if has('nvim')
+  nmap <bs> :<c-u>TmuxNavigateLeft<cr>
+endif
+
+" }}}
+" Folding ----------------------------------------------------------------- {{{
 
 " Toggle fold
-nnoremap <leader><return> za
+nnoremap f za
 
 " Focus the current fold
 noremap <leader>z zMzvzz
@@ -182,107 +233,34 @@ function! FoldText() " {{{
 endfunction " }}}
 
 " }}}
+" Filetype specitic ------------------------------------------------------- {{{
 
-" }}}
-
-" Mappings {{{
-
-noremap ; :
-noremap j gj
-noremap k gk
-noremap * *<c-o>
-noremap / /\v
-noremap ? ?\v
-noremap H 0
-noremap L $
-noremap <tab> %
-
-" Disable keys
-inoremap <up>     <nop>
-inoremap <down>   <nop>
-inoremap <left>   <nop>
-inoremap <right>  <nop>
-nnoremap <up>     <nop>
-nnoremap <down>   <nop>
-nnoremap <left>   <nop>
-nnoremap <right>  <nop>
-nnoremap <home>   <nop>
-nnoremap <end>    <nop>
-nnoremap <insert> <nop>
-nnoremap <del>    <nop>
-
-" Center search results while navigating
-nnoremap n nzzzv
-nnoremap N Nzzzv
-
-" Toggle spell check
-noremap K :set spell! spelllang=en_us<cr>
-
-" Clear all highlights
-noremap <space> :noh<cr>
-
-" Tabs
-noremap <c-r>n :tabnew<cr>
-noremap <c-r><c-r> :tabnext<cr>
-noremap <c-r>1 1gt
-noremap <c-r>2 2gt
-noremap <c-r>3 3gt
-noremap <c-r>4 4gt
-noremap <c-r>5 5gt
-noremap <c-r>6 6gt
-noremap <c-r>7 7gt
-noremap <c-r>8 8gt
-noremap <c-r>9 9gt
-
-" Open .vimrc
-noremap <leader>v :e ~/.vim/vimrc<cr>
-
-" Execute the current file
-noremap <leader>e :!%:p<cr>
-
-" Toggle line wrap
-noremap <leader>w :set wrap!<cr>
-
-" Search and replace the word under the cursor
-noremap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>
-
-" Search for a string in the current directory
-noremap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
-
-" <C-h> fix
-nmap <BS> <C-W>h
-if has('nvim')
-  nmap <bs> :<c-u>TmuxNavigateLeft<cr>
-endif
-
-" }}}
-
-" Filetype {{{
-
-" C++ {{{
+" C {{{
 
 " Indentation
 autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
 
 " }}}
-
 " Java {{{
 
 " Indentation
 autocmd Filetype java setlocal sw=4 ts=4 sts=4
 
 " }}}
-
 " Python {{{
 
 " Indentation
 autocmd Filetype python setlocal sw=4 ts=4 sts=4
 
 " }}}
+" Snippet {{{
+
+autocmd Filetype snippets set foldlevel=0
+
+" }}}
 
 "}}}
-
-" Plugins {{{
+" Plugin settings --------------------------------------------------------- {{{
 
 " Airline {{{
 
@@ -317,22 +295,19 @@ if ! has('gui_running')
 endif
 
 " }}}
-
 " Ctrl-P {{{
 
 let g:ctrlp_map='<c-p>'
 let g:ctrlp_cmd='CtrlP'
 let g:ctrlp_switch_buffer='e'
-let g:ctrlp_working_path_mode='ra'
+let g:ctrlp_working_path_mode='a'
 
 " }}}
-
 " Dispatch {{{
 
 nnoremap <f5> :Dispatch<CR>
 
 " }}}
-
 " Easy align {{{
 
 " Start interactive EasyAlign in visual mode
@@ -342,7 +317,6 @@ vmap <Enter> <Plug>(EasyAlign)
 nmap ga <Plug>(EasyAlign)
 
 " }}}
-
 " Nerdtree {{{
 
 let NERDTreeMinimalUI=1
@@ -364,7 +338,6 @@ endfunction " }}}
 autocmd WinEnter * call CloseIfOnlyNerdTreeLeft()
 
 " }}}
-
 " Python syntax {{{
 
 let g:python_highlight_builtin_funcs=1
@@ -373,25 +346,21 @@ let g:python_highlight_exceptions=1
 let g:python_highlight_file_headers_as_comments=1
 
 " }}}
-
 " UltiSnips {{{
 
 " Disable python warning
 let g:UltiSnipsNoPythonWarning=1
 
 " Edid snips in horizontal split
-let g:UltiSnipsEditSplit="horizontal"
+let g:UltiSnipsEditSplit="context"
 
 " }}}
 
 " }}}
-
-" Neovim {{{
+" Neovim ------------------------------------------------------------------ {{{
 
 if has("nvim")
-  tnoremap <esc> <C-\><C-n><C-w><C-p>
-  autocmd BufWinEnter,WinEnter term://* startinsert
-  autocmd BufLeave term://* stopinsert
+  source ~/.config/nvim/nvimrc
 endif
 
 " }}}

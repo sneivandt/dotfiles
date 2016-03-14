@@ -1,10 +1,8 @@
 #!/bin/bash
 
-#
-# Globals
+# Globals ----------------------------------------------------------------- {{{
 #
 # Constant values which exist in the global scope of this script.
-#
 
 # Get absolute path to the dotfiles project directory. This value will be
 # correct even if this script is executed from a symlink or while your working
@@ -15,12 +13,11 @@ DIR=$(cd $(dirname "$(readlink -f "$0")") && pwd)
 # report invalid options that were given.
 OPTS=$(getopt -o rg -l allow-root,gui -n "$(basename $0)" -- "$@")
 
-#
-# Helpers
+# }}}
+# Helpers ----------------------------------------------------------------- {{{
 #
 # Helper functions. Helper functions which return a boolean value will echo a
 # zero or one to stdout which the calling function can process.
-#
 
 # helper_alias
 #
@@ -116,11 +113,10 @@ helper_program_installed()
   fi
 }
 
-#
-# Messages
+# }}}
+# Messages ---------------------------------------------------------------- {{{
 #
 # Functions which write to stdout.
-#
 
 # message_usage
 #
@@ -169,12 +165,11 @@ message_invalid()
   echo "$(basename $0): '$1' is not a valid command. See '$(basename $0) help'."
 }
 
-#
-# Exit Checks
+# }}}
+# Exit Checks ------------------------------------------------------------- {{{
 #
 # Functions that will stop this script from executing and exit with a non zero
 # exit status under some condition.
-#
 
 # exit_check_root
 #
@@ -189,12 +184,11 @@ exit_check_root()
   fi
 }
 
-#
-# Workers
+# }}}
+# Workers ----------------------------------------------------------------- {{{
 #
 # Functions that perform the core logic of this script. Workers are called by
 # action functions in series.
-#
 
 # worker_install_git_submodules
 #
@@ -279,14 +273,13 @@ worker_uninstall_symlinks()
   done
 }
 
-#
-# Actions
+# }}}
+# Actions ----------------------------------------------------------------- {{{
 #
 # Functions which are triggered based on command line input. Each action will
 # trigger work to be performed by calling a series of worker functions. Some
 # functions may return immediately if some preconditions are not satisfied for
 # the work to be done.
-#
 
 # action_install
 #
@@ -315,12 +308,11 @@ action_usage()
   message_usage
 }
 
-#
-# Main
+# }}}
+# Main -------------------------------------------------------------------- {{{
 #
 # The entry point to this script. If the user is allowed to trigger actions,
 # they will be triggered based on the command line arguments.
-#
 
 # Abort if the root user is running this without permission.
 exit_check_root
@@ -355,3 +347,5 @@ done
 # usage instructions and exit with error.
 action_usage
 exit 1
+
+# }}}

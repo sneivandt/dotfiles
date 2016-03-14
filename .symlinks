@@ -5,7 +5,6 @@ config/git
 config/gtk-3.0/settings.ini g
 config/nvim
 curlrc
-eclipse/eclipse-formatter.xml g
 gitattributes
 gitconfig
 gitignore

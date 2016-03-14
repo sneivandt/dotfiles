@@ -30,5 +30,8 @@ source ~/.zsh/key-bindings
 # Aliases
 source ~/.shell/aliases
 
+# Functions
+source ~/.shell/functions
+
 # Path
 source ~/.shell/path

@@ -6,5 +6,8 @@ PS1="\e[0;36m\]\h \e[0;33m\]\w\n\e[0m\]\$ "
 # Aliases
 source ~/.shell/aliases
 
+# Functions
+source ~/.shell/functions
+
 # Path
 source ~/.shell/path

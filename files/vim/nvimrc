@@ -1,0 +1,7 @@
+" System clipboard
+set clipboard=unnamedplus
+
+" Enter/Exit terminal
+tnoremap <esc> <C-\><C-n><C-w><C-p>
+autocmd BufWinEnter,WinEnter term://* startinsert
+autocmd BufLeave term://* stopinsert

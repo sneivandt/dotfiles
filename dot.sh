@@ -190,20 +190,6 @@ exit_check_root()
 # Functions that perform the core logic of this script. Workers are called by
 # action functions in series.
 
-# worker_install_git_submodules
-#
-# Install and update git submodules. If the "-C <path>" argument is not
-# supported by the installed version of git, change to the git path and call
-# git from that directory.
-worker_install_git_submodules()
-{
-  message_worker "Installing git submodules"
-  if [[ ! $(git -C $DIR submodule update --init 2>/dev/null) ]]
-  then
-    cd $DIR && git submodule update --init
-  fi
-}
-
 # worker_install_symlinks
 #
 # Create symlinks excluding any symlinks that are ignored. Symlinks that are in
@@ -233,6 +219,7 @@ worker_install_vim_plugins()
   if [[ $(helper_program_installed "vim") == "0" && $(helper_symlink_exists "vim") == "0" ]]
   then
     message_worker "Installing vim plugins"
+    curl -fLo $DIR/files/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
     vim +PlugUpdate +qall
   fi
 }
@@ -286,7 +273,6 @@ worker_uninstall_symlinks()
 # Perform a full install.
 action_install()
 {
-  worker_install_git_submodules
   worker_install_symlinks
   worker_install_vim_plugins
   worker_install_atom_packages

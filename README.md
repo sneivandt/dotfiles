@@ -21,7 +21,7 @@ zsh     | [.zshenv](files/zshenv) [.zshrc](files/zshrc)
 
 ## Install
 
-stall will install git submodules, create symlinks in $HOME and install editor plugins.
+stall will create symlinks in $HOME and install editor plugins.
 
     ./dot.sh install
 

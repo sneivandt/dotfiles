@@ -12,7 +12,7 @@ filetype plugin indent on
 " }}}
 " Plugins ----------------------------------------------------------------- {{{
 
-source ~/.vim/vim-plug/plug.vim
+source ~/.vim/autoload/plug.vim
 call plug#begin('~/.vim/plugged')
 
 " Plugins
@@ -95,6 +95,7 @@ try
 
   " Match the background color for special keys
   highlight SpecialKey ctermbg=233
+  highlight Search ctermfg=yellow
 catch
   colorscheme default
 endtry

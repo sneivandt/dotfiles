@@ -18,8 +18,8 @@ RUN sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/ss
 RUN echo -e "en_US.UTF-8 UTF-8" >> /etc/locale.gen && /usr/sbin/locale-gen
 
 # Install dotfiles
-RUN git clone https://github.com/sneivandt/dotfiles.git /root/.dotfiles
-RUN /root/.dotfiles/dot.sh install --allow-root
+COPY . /root/.dotfiles
+RUN /root/.dotfiles/dot.sh install --root
 
 # Use zsh
 RUN chsh -s /usr/bin/zsh

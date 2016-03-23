@@ -56,10 +56,3 @@ sudo-command-line() {
 }
 zle -N sudo-command-line
 bindkey "^t" sudo-command-line
-
-# Ctrl+p Vim CtrlP
-vim-ctrlp() {
-    </dev/tty vim -c CtrlP
-}
-zle -N vim-ctrlp
-bindkey "^p" vim-ctrlp

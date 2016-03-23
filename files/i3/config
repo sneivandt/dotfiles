@@ -6,7 +6,7 @@ new_float pixel 4
 
 # Font
 font pango:$font $font_size
-set $font DejaVu Sans Bold
+set $font DejaVu Sans Mono Bold
 set $font_size 8
 
 # Colors                border  background text    indicator
@@ -38,7 +38,7 @@ exec --no-startup-id feh --randomize --bg-fill ~/pictures/wallpaper/*
 
 # Gaps
 gaps inner 8
-gaps outer 4
+gaps outer 0
 
 # Disable gaps if there is only one container in a workspace
 smart_borders on
@@ -150,7 +150,7 @@ bindsym $mod+N      exec --no-startup-id scrot -u '%Y%m%d_%H%M%S.png' -e 'mv $f 
 bindsym $mod+M      exec --no-startup-id scrot '%Y%m%d_%H%M%S.png' -e 'mv $f ~/pictures/scrot/'
 
 # Start xterm
-bindsym $mod+Return exec --no-startup-id xterm
+bindsym $mod+Return exec --no-startup-id urxvt
 
 # Start dmenu
 bindsym $mod+p      exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -b -nb '#000000' -fn '$font-$font_size'"

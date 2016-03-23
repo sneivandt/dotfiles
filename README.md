@@ -33,10 +33,10 @@ Uninstall will remove all the symlinks created in $HOME.
 
 ## Flags
 
-Short | Long       | Behavior
-------|------------|----------
-g     | gui        | Include graphical programs
-r     | allow-root | Allow root user
+Short  | Long  | Behavior
+-------|-------|---------
+g      | gui   | Include graphical programs
+r      | root  | Allow root
 
 ## Configure
 

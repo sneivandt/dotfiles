@@ -1,3 +1,25 @@
+*scrollBar:           false
+*toolBar:             false
+*foreground:          #d0d0d0
+*background:          #121212
+*cursorColor:         #d0d0d0
+*color0:              #2E3436
+*color1:              #a40000
+*color2:              #4E9A06
+*color3:              #C4A000
+*color4:              #3465A4
+*color5:              #75507B
+*color6:              #ce5c00
+*color7:              #babdb9
+*color8:              #555753
+*color9:              #EF2929
+*color10:             #8AE234
+*color11:             #FCE94F
+*color12:             #729FCF
+*color13:             #AD7FA8
+*color14:             #fcaf3e
+*color15:             #EEEEEC
+
 xterm*termName:            xterm-256color
 xterm*locale:              true
 xterm*metaSendsEscape:     true
@@ -10,29 +32,13 @@ xterm*saveLines:           512
 xterm*borderWidth:         0
 xterm*scrollKey:           true
 xterm*scrollTtyOutput:     false
-xterm*scrollBar:           false
 xterm*rightScrollBar:      true
 xterm*jumpScroll:          true
 xterm*multiScroll:         true
-xterm*toolBar:             false
-xterm*background:          #121212
-xterm*foreground:          #d0d0d0
-xterm*cursorColor:         #d0d0d0
-xterm*color0:              #2E3436
-xterm*color1:              #a40000
-xterm*color2:              #4E9A06
-xterm*color3:              #C4A000
-xterm*color4:              #3465A4
-xterm*color5:              #75507B
-xterm*color6:              #ce5c00
-xterm*color7:              #babdb9
-xterm*color8:              #555753
-xterm*color9:              #EF2929
-xterm*color10:             #8AE234
-xterm*color11:             #FCE94F
-xterm*color12:             #729FCF
-xterm*color13:             #AD7FA8
-xterm*color14:             #fcaf3e
-xterm*color15:             #EEEEEC
 xterm*ttyModes:            erase ^?
 xterm*backarrowKeyIsErase: true
+
+URxvt*termName:            rxvt-unicode-256color
+URxvt*transparent:         false
+URxvt*font:                xft:DejaVu Sans Mono:pixelsize=13
+URxvt*shading:             10

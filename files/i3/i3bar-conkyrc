@@ -1,63 +1,16 @@
-# Print to stdout
-out_to_console yes
+conky.config = {
+  out_to_console = true,
+  out_to_x = false,
+  background = false,
+  cpu_avg_samples = 2,
+  net_avg_samples = 2,
+  no_buffers = true,
+  out_to_stderr = false,
+  update_interval = 1.0,
+  uppercase = false,
+  use_spacer = 'none',
+};
 
-# No output to X
-out_to_x no
-
-# Run in the foreground
-background no
-
-# Update every second
-update_interval 1
-
-# Run forever
-total_run_times 0
-
-# Force UTF-8
-override_utf8_locale yes
-
-# Double buffer
-double_buffer no
-
-# Output
-TEXT
-,[
-
-{
-  "full_text": " ${exec uptime -p | cut -c 4-} ",
-  "color": "\#ffffff"
-},
-{
-  "full_text": " ● ${exec top -bn1 | grep load | awk '{printf "%3.0f%", $(NF-2)*100}'} ",
-  "color": "\#888888"
-},
-{
-  "full_text": " ○ ${exec free -m | awk 'NR==2{printf "%2.0f%", $3*100/$2 }'} ",
-  "color": "\#ffffff"
-},
-{
-  "full_text": " ☊ ${exec amixer get Master | grep -o "\[.*%\]" | sed "s/\[//g" | sed "s/\]//g"} ",
-  "color": "\#888888"
-},
-{
-  "full_text": " ${exec ip addr | grep 'state UP' -A2 | tail -n1 | awk {'print $2}' | cut -f1 -d'/'} ",
-  "color": "\#ffffff"
-},
-{
-  "full_text": " ${exec whoami} ",
-  "color": "\#888888"
-},
-{
-  "full_text": " ${exec cat /etc/*-release | grep -i 'pretty_name' | cut -d'"' -f2} ",
-  "color": "\#ffffff"
-},
-{
-  "full_text": " ${exec uname -r} ",
-  "color": "\#888888"
-},
-{
-  "full_text": " ${time %a %d %b %H:%M} ",
-  "color": "\#ffffff"
-}
-
-]
+conky.text = [[
+${exec ~/.i3/i3bar-conky-text}
+]];

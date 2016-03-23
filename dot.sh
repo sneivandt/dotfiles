@@ -11,7 +11,7 @@ DIR=$(cd $(dirname "$(readlink -f "$0")") && pwd)
 
 # Read command line options. While reading this input the 'getopt' call will
 # report invalid options that were given.
-OPTS=$(getopt -o rg -l allow-root,gui -n "$(basename $0)" -- "$@")
+OPTS=$(getopt -o rg -l root,gui -n "$(basename $0)" -- "$@")
 
 # }}}
 # Helpers ----------------------------------------------------------------- {{{
@@ -123,7 +123,7 @@ helper_program_installed()
 # Print usage instructions.
 message_usage()
 {
-  echo "Usage: $(basename $0) <command> [-r | --allow-root] [-g | --gui]"
+  echo "Usage: $(basename $0) <command> [-r | --root] [-g | --gui]"
   echo
   echo "These are the available commands:"
   echo
@@ -174,12 +174,12 @@ message_invalid()
 # exit_check_root
 #
 # Exit with an error if this script is being run by root and the command line
-# flags "-r" or "--allow-root" are not set.
+# flags "-r" or "--root" are not set.
 exit_check_root()
 {
-  if [[ $EUID -eq 0 && ($(helper_flag_set "--allow-root") == "1" && $(helper_flag_set "-r") == "1") ]]
+  if [[ $EUID -eq 0 && ($(helper_flag_set "--root") == "1" && $(helper_flag_set "-r") == "1") ]]
   then
-    message_exit "Do not run this script as root. To skip this check pass the command line flag '--allow-root'."
+    message_exit "Do not run this script as root. To skip this check pass the command line flag '--root'."
     exit 1
   fi
 }
@@ -226,7 +226,7 @@ worker_install_vim_plugins()
 
 # worker_install_atom_packages
 #
-# Install atom packages listed in "files/atom/packages-list" if the package is
+# Install atom packages listed in "files/atom/.package-list" if the package is
 # not already installed.
 worker_install_atom_packages()
 {
@@ -235,7 +235,7 @@ worker_install_atom_packages()
     message_worker "Installing atom packages"
     local PACKAGES
     PACKAGES=$(apm list -b | cut -d@ -f1)
-    for package in $(cat $DIR/files/atom/packages-list)
+    for package in $(cat $DIR/files/atom/.package-list)
     do
       if [[ -z $(echo $PACKAGES | grep -sw $package) ]]
       then

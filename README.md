@@ -21,7 +21,7 @@ zsh     | [.zshenv](files/zshenv) [.zshrc](files/zshrc)
 
 ## Install
 
-stall will create symlinks in $HOME and install editor plugins.
+Install will create symlinks in $HOME and install editor plugins.
 
     ./dot.sh install
 
@@ -40,7 +40,7 @@ r      | root  | Allow root
 
 ## Configure
 
-If you want to ignore some files, create a file .symlinksignore and list the files there. This file should have the same structure as [.symlinks](.symlinks) but without the "g" flags for graphical programs.
+If you want to ignore some files, create a file *.symlinksignore* and list the files there. This file should have the same structure as [.symlinks](.symlinks) but without the *g* flags for graphical programs.
 
 ## Vagrant
 

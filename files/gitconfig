@@ -1,3 +1,5 @@
+# vi: ft=gitconfig :
+
 [user]
   email = sneivandt@users.noreply.github.com
   name = sneivandt

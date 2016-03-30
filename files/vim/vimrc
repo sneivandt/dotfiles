@@ -32,8 +32,10 @@ Plug 'vim-airline/vim-airline-themes'
 Plug 'nanotech/jellybeans.vim'
 
 " Syntax
+Plug 'PotatoesMaster/i3-vim-syntax', { 'for': 'i3' }
 Plug 'hdima/python-syntax', { 'for': 'python' }
 Plug 'jelera/vim-javascript-syntax', { 'for': 'javascript' }
+Plug 'keith/tmux.vim', { 'for': 'tmux' }
 Plug 'octol/vim-cpp-enhanced-highlight', { 'for': ['c', 'cpp'] }
 Plug 'raichoo/haskell-vim', { 'for': 'haskell' }
 Plug 'stanangeloff/php.vim', { 'for': 'php' }

@@ -12,7 +12,7 @@ RUN apt-get -qqy install git locales openssh-server tmux vim zsh
 # SSH server
 RUN mkdir /var/run/sshd
 RUN echo 'root:root' | chpasswd
-RUN sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+RUN sed -i "s/PermitRootLogin without-password/PermitRootLogin yes/" /etc/ssh/sshd_config
 
 # Locale
 RUN echo -e "en_US.UTF-8 UTF-8" >> /etc/locale.gen && /usr/sbin/locale-gen

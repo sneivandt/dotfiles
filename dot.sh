@@ -74,7 +74,9 @@ helper_symlink_exists()
 
 # helper_file_ignored
 #
-# Check if a file is ignored. Files listed in ".symlinks" with the "g" option will be ignored unless the flags "-g" or "--gui" are set. Ignored files will also be listed in '.symlinksignore'.
+# Check if a file is ignored. Files listed in ".symlinks" with the "g" option
+# will be ignored unless the flags "-g" or "--gui" are set. Ignored files will
+# also be listed in '.symlinksignore'.
 #
 # Args:
 #     $1 - The file to check.
@@ -219,7 +221,10 @@ worker_install_vim_plugins()
   if [[ $(helper_program_installed "vim") == "0" && $(helper_symlink_exists "vim") == "0" ]]
   then
     message_worker "Installing vim plugins"
-    curl -fLo $DIR/files/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+    if [[ ! -e $DIR/files/vim/autoload/plug.vim ]]
+    then
+      curl -fLo $DIR/files/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+    fi
     vim +PlugUpdate +qall
   fi
 }

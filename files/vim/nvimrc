@@ -1,5 +1,5 @@
 " System clipboard
-set clipboard=unnamedplus
+set clipboard+=unnamedplus
 
 " Enter/Exit terminal
 tnoremap <esc> <C-\><C-n><C-w><C-p>

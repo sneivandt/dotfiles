@@ -3,8 +3,8 @@
 # Apearance --------------------------------------------------------------- {{{
 
 # Window borders
-new_window pixel 4
-new_float pixel 4
+new_window pixel 3
+new_float pixel 3
 
 # Font
 font pango:$font $font_size
@@ -39,7 +39,7 @@ exec --no-startup-id feh --randomize --bg-fill ~/pictures/wallpaper/*
 # i3 Gaps ----------------------------------------------------------------- {{{
 
 # Gaps
-gaps inner 8
+gaps inner 0
 gaps outer 0
 
 # Disable gaps if there is only one container in a workspace

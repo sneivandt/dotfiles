@@ -35,7 +35,7 @@ Uninstall will remove all the symlinks created in $HOME.
 
 Short  | Long  | Behavior
 -------|-------|---------
-g      | gui   | Include graphical programs
+g      | gui   | Configure graphical programs
 r      | root  | Allow root
 
 ## Configure
@@ -44,6 +44,6 @@ If you want to ignore some files, create a file *.symlinksignore* and list the f
 
 ## Vagrant
 
-Build a vagrant image using Docker provider and ssh into the container.
+Build a container with this configuration and ssh into the container.
 
     vagrant up && vagrant ssh

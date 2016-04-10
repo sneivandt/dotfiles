@@ -7,5 +7,6 @@ language-tmux
 language-viml
 linter
 linter-jshint
+linter-javac
 minimap
 travis-ci-status

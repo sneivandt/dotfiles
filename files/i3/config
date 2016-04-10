@@ -8,8 +8,9 @@ new_float pixel 3
 
 # Font
 font pango:$font $font_size
-set $font DejaVu Sans Mono Bold
-set $font_size 8
+set $font DejaVu Sans Mono
+set $font_size 7
+set $font_size_bar 8
 
 # Colors                border  background text    indicator
 client.focused          #346514 #3465a4    #ffffff #2e9ef4
@@ -21,7 +22,7 @@ client.urgent           #2f343a #900000    #ffffff #900000
 bar {
   mode dock
   status_command ~/.i3/i3bar-conky
-  font pango:$font $font_sizepx
+  font pango:$font $font_size_bar
   colors {
     background         #000000
     statusline         #ffffff
@@ -32,21 +33,12 @@ bar {
   }
 }
 
-# Wallpaper
-exec --no-startup-id feh --randomize --bg-fill ~/pictures/wallpaper/*
-
-# }}}
-# i3 Gaps ----------------------------------------------------------------- {{{
-
 # Gaps
 gaps inner 0
-gaps outer 0
+gaps outer 12
 
-# Disable gaps if there is only one container in a workspace
-smart_borders on
-
-# Disable borders if there is only one container in a workspace
-smart_gaps on
+# Wallpaper
+exec --no-startup-id feh --randomize --bg-fill ~/pictures/wallpaper/*
 
 # }}}
 # Bindings ---------------------------------------------------------------- {{{
@@ -92,7 +84,7 @@ bindsym $mod+shift+space focus mode_toggle
 bindsym $mod+f fullscreen
 
 # Workspace names
-set $w1 1
+set $w1 1: Main
 set $w2 2
 set $w3 3
 set $w4 4
@@ -151,11 +143,11 @@ bindsym $mod+N      exec --no-startup-id scrot -u '%Y%m%d_%H%M%S.png' -e 'mv $f 
 # Screenshot workspace
 bindsym $mod+M      exec --no-startup-id scrot '%Y%m%d_%H%M%S.png' -e 'mv $f ~/pictures/scrot/'
 
-# Start xterm
+# Start urxvt
 bindsym $mod+Return exec --no-startup-id urxvt
 
 # Start dmenu
-bindsym $mod+p      exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -b -nb '#000000' -fn '$font-$font_size'"
+bindsym $mod+p      exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -b -nb '#000000' -fn '$font-$font_size_bar'"
 
 # Start Chrome
 bindsym $mod+o      exec --no-startup-id google-chrome-beta

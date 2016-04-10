@@ -130,7 +130,7 @@ message_usage()
   echo "These are the available commands:"
   echo
   echo "    help       Print this usage message"
-  echo "    install    Update git submodules, create symlinks and install editor plugins"
+  echo "    install    Create symlinks and install editor plugins"
   echo "    uninstall  Remove symlinks"
 }
 
@@ -231,7 +231,7 @@ worker_install_vim_plugins()
 
 # worker_install_atom_packages
 #
-# Install atom packages listed in "files/atom/.package-list" if the package is
+# Install atom packages listed in "files/atom/packages/list" if the package is
 # not already installed.
 worker_install_atom_packages()
 {
@@ -240,7 +240,7 @@ worker_install_atom_packages()
     message_worker "Installing atom packages"
     local PACKAGES
     PACKAGES=$(apm list -b | cut -d@ -f1)
-    for package in $(cat $DIR/files/atom/.package-list)
+    for package in $(cat $DIR/files/atom/packages/list)
     do
       if [[ -z $(echo $PACKAGES | grep -sw $package) ]]
       then

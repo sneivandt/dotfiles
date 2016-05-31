@@ -37,6 +37,12 @@ bar {
 gaps inner 8
 gaps outer 2
 
+# }}}
+# Startup ----------------------------------------------------------------- {{{
+
+# Redshift
+exec --no-startup-id redshift
+
 # Wallpaper
 exec --no-startup-id feh --randomize --bg-fill ~/pictures/wallpaper/*
 
@@ -63,6 +69,12 @@ bindsym $mod+Shift+h move left
 bindsym $mod+Shift+j move down
 bindsym $mod+Shift+k move up
 bindsym $mod+Shift+l move right
+
+# Rezize ficused window
+bindsym $mod+Mod1+h resize grow left  1 px
+bindsym $mod+Mod1+j resize grow down  1 px
+bindsym $mod+Mod1+k resize grow up    1 px
+bindsym $mod+Mod1+l resize grow right 1 px
 
 # Split in horizontal orientation
 bindsym $mod+s split v

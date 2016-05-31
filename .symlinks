@@ -4,6 +4,7 @@ bashrc
 config/git
 config/gtk-3.0/settings.ini g
 config/nvim
+config/redshift.conf g
 curlrc
 gitattributes
 gitconfig

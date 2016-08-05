@@ -1,5 +1,40 @@
 # vi: set ft=i3 :
 
+# General ----------------------------------------------------------------- {{{
+
+# Mod key
+set $mod Mod4
+
+# Drag floating windows
+floating_modifier $mod
+
+# Workspace names
+set $w1 1: Main
+set $w2 2
+set $w3 3
+set $w4 4
+set $w5 5
+set $w6 6
+set $w7 7
+set $w8 8
+set $w9 9
+set $w0 10
+
+# System mode
+set $mode_system System (l) lock, (e) logout, (s) suspend, (h) hibernate, (r) reboot, (Shift+s) shutdown
+mode "$mode_system" {
+  set $Locker i3lock -c 000000 -n && sleep 1
+  bindsym l exec --no-startup-id $Locker, mode "default"
+  bindsym e exec --no-startup-id i3-msg exit, mode "default"
+  bindsym s exec --no-startup-id $Locker && systemctl suspend, mode "default"
+  bindsym h exec --no-startup-id $Locker && systemctl hibernate, mode "default"
+  bindsym r exec --no-startup-id systemctl reboot, mode "default"
+  bindsym Shift+s exec --no-startup-id systemctl poweroff -i, mode "default"
+  bindsym Return mode "default"
+  bindsym Escape mode "default"
+}
+
+# }}}
 # Apearance --------------------------------------------------------------- {{{
 
 # Window borders
@@ -49,12 +84,6 @@ exec --no-startup-id feh --randomize --bg-fill ~/pictures/wallpaper/*
 # }}}
 # Bindings ---------------------------------------------------------------- {{{
 
-# Mod key
-set $mod Mod4
-
-# Drag floating windows
-floating_modifier $mod
-
 # Kill focused window
 bindsym $mod+q kill
 
@@ -95,18 +124,6 @@ bindsym $mod+shift+space focus mode_toggle
 # Fullscreen
 bindsym $mod+f fullscreen
 
-# Workspace names
-set $w1 1: Main
-set $w2 2
-set $w3 3
-set $w4 4
-set $w5 5
-set $w6 6
-set $w7 7
-set $w8 8
-set $w9 9
-set $w0 10
-
 # Switch to workspace
 bindsym $mod+1 workspace $w1
 bindsym $mod+2 workspace $w2
@@ -137,11 +154,11 @@ bindsym $mod+Tab workspace next
 # Restart i3 inplace
 bindsym $mod+Shift+r restart
 
+# Enter system mode
+bindsym $mod+Shift+q mode "$mode_system"
+
 # }}}
 # Exec -------------------------------------------------------------------- {{{
-
-# Exit i3
-bindsym $mod+Shift+q exec --no-startup-id "i3-nagbar -t warning -m 'Do you really want to exit i3?' -b 'Shutdown' 'systemctl poweroff' -b 'Restart' 'systemctl reboot' -b 'Logout' 'i3-msg exit' "
 
 # Volume up
 bindsym $mod+Up     exec --no-startup-id amixer set Master 2+ unmute

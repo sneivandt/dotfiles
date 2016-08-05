@@ -42,8 +42,8 @@ r      | root  | Allow root
 
 If you want to ignore some files, create a file *.symlinksignore* and list the files there. This file should have the same structure as [.symlinks](.symlinks) but without the *g* flags for graphical programs.
 
-## Vagrant
+## Docker
 
-Build a container with this configuration and ssh into the container.
+Start a container with this configuration.
 
-    vagrant up && vagrant ssh
+    docker-compose run dotfiles

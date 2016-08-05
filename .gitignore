@@ -1,4 +1,3 @@
-.vagrant
 .symlinksignore
 files/vim/.netrwhist
 files/vim/autoload/plug.vim

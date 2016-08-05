@@ -10,21 +10,24 @@ alias ....="cd ../../.."
 alias .....="cd ../../../../"
 alias ......="cd ../../../../../../"
 
+# docker
+alias dc="docker-compose"
+
+# grep
+alias grep="grep -i --color=auto"
+
 # ls
 alias l="ls"
 alias ls="ls -h --color=auto"
 alias la="ls -a"
 alias ll="ls -l"
 
-# grep colored
-alias grep="grep -i --color=auto"
+# tmux
+alias tmux="tmux -2"
 
-# Yay vim!
+# vim
 if [[ -x $(which nvim 2>/dev/null) ]]; then
   alias vi="nvim"
 elif [[ -x $(which vim 2>/dev/null) ]]; then
   alias vi="vim"
 fi
-
-# Force tmux 256 color
-alias tmux="tmux -2"

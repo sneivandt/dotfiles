@@ -15,5 +15,9 @@ then
   xset s off
   xset -dpms
   xset s noblank
+  if [[ -x $(which compton 2>/dev/null) ]]
+  then
+    compton -cCGf &
+  fi
   exec i3
 fi

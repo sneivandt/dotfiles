@@ -130,8 +130,9 @@ message_usage()
   echo "These are the available commands:"
   echo
   echo "    help       Print this usage message"
-  echo "    install    Create symlinks and install editor plugins"
+  echo "    install    Create symlinks, install editor plugins and install dotfiles cli"
   echo "    uninstall  Remove symlinks"
+  echo "    update     Update dotfiles project"
 }
 
 # message_worker
@@ -142,7 +143,7 @@ message_usage()
 #     $1 - The work that is being performed.
 message_worker()
 {
-  echo -e "\033[1;34m::\033[0m\033[1m "$1"...\033[0m"
+  echo -e ":: "$1"..."
 }
 
 # message_exit
@@ -153,7 +154,7 @@ message_worker()
 #     $1 - The reason for exiting.
 message_exit()
 {
-  echo -e "\033[1;31maborting:\033[0m "$1
+  echo -e "aborting: "$1
 }
 
 # message_invalid
@@ -198,7 +199,7 @@ exit_check_root()
 # child directories of $HOME will trigger creation of those directories.
 worker_install_symlinks()
 {
-  message_worker "Creating symlinks"
+  message_worker "Installing dotfiles"
   for link in $(cat $DIR/.symlinks | cut -d " " -f 1)
   do
     if [[ $(helper_file_ignored "$link") == "1" && $(helper_symlink_exists "$link") == "1" ]]
@@ -250,6 +251,19 @@ worker_install_atom_packages()
   fi
 }
 
+# worker_install_dotfiles_cli
+#
+# Put "dot.sh" on the $PATH
+worker_install_dotfiles_cli()
+{
+  if [[ ! -e ~/bin/dot ]]
+  then
+    message_worker "Installing dotfiles cli"
+    mkdir -pv ~/bin
+    ln -snvf $DIR/dot.sh ~/bin/dot
+  fi
+}
+
 # worker_uninstall_symlinks
 #
 # Remove all symlinks that are not ignored.
@@ -263,6 +277,20 @@ worker_uninstall_symlinks()
       rm -vf ~/.$link
     fi
   done
+}
+
+# worker_update_git_project
+#
+# Pull changes in the dotfiles git project.
+worker_update_git_project()
+{
+  if [[ $(helper_program_installed "git") == "0" ]]
+  then
+    message_worker "Updating dotfiles"
+    git --git-dir $DIR/.git pull
+  else
+    message_exit "git must be installed to perform an update."
+  fi
 }
 
 # }}}
@@ -281,6 +309,7 @@ action_install()
   worker_install_symlinks
   worker_install_vim_plugins
   worker_install_atom_packages
+  worker_install_dotfiles_cli
 }
 
 # action_uninstall
@@ -289,6 +318,14 @@ action_install()
 action_uninstall()
 {
   worker_uninstall_symlinks
+}
+
+# action_update
+#
+# Update the dotfiles project.
+action_update()
+{
+  worker_update_git_project
 }
 
 # action_usage
@@ -321,7 +358,7 @@ do
     # Call the action function for any of the valid action keywords. Only the
     # first one that is found will be processed and immediately after this
     # script will exit.
-    install | uninstall | help)
+    help | install | uninstall | update)
       helper_alias $i
       exit
       ;;

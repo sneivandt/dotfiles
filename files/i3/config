@@ -48,7 +48,7 @@ set $font_size 7
 set $font_size_bar 8
 
 # Colors                border  background text    indicator
-client.focused          #346514 #3465a4    #ffffff #2e9ef4
+client.focused          #346514 #3465a4    #ffffff #346514
 client.focused_inactive #282828 #282828    #888888 #292d2e
 client.unfocused        #282828 #282828    #888888 #292d2e
 client.urgent           #2f343a #900000    #ffffff #900000
@@ -79,7 +79,7 @@ gaps outer 2
 exec --no-startup-id redshift
 
 # Wallpaper
-exec --no-startup-id feh --randomize --bg-fill ~/pictures/wallpaper/*
+exec --no-startup-id feh --randomize --bg-fill ~/media/pictures/wallpaper/*
 
 # }}}
 # Bindings ---------------------------------------------------------------- {{{
@@ -167,10 +167,10 @@ bindsym $mod+Up     exec --no-startup-id amixer set Master 2+ unmute
 bindsym $mod+Down   exec --no-startup-id amixer set Master 2- unmute
 
 # Screenshot container
-bindsym $mod+N      exec --no-startup-id scrot -u '%Y%m%d_%H%M%S.png' -e 'mv $f ~/pictures/scrot/'
+bindsym $mod+N      exec --no-startup-id scrot -u '%Y%m%d_%H%M%S.png' -e 'mv $f ~/media/pictures/scrot/'
 
 # Screenshot workspace
-bindsym $mod+M      exec --no-startup-id scrot '%Y%m%d_%H%M%S.png' -e 'mv $f ~/pictures/scrot/'
+bindsym $mod+M      exec --no-startup-id scrot '%Y%m%d_%H%M%S.png' -e 'mv $f ~/media/pictures/scrot/'
 
 # Start urxvt
 bindsym $mod+Return exec --no-startup-id urxvt

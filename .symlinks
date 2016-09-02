@@ -1,6 +1,7 @@
 atom/config.cson g
 bash_profile
 bashrc
+config/compton.conf g
 config/git
 config/gtk-3.0/settings.ini g
 config/nvim

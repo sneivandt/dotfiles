@@ -198,7 +198,7 @@ noremap <leader>w :set wrap!<cr>
 noremap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>
 
 " Search for a string in the current directory
-noremap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
+noremap <leader>/ :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
 
 " Jump to matching element
 nmap <tab> %

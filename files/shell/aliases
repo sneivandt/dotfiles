@@ -10,9 +10,6 @@ alias ....="cd ../../.."
 alias .....="cd ../../../../"
 alias ......="cd ../../../../../../"
 
-# docker
-alias dc="docker-compose"
-
 # grep
 alias grep="grep -i --color=auto"
 

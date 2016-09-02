@@ -1,4 +1,4 @@
-FROM debian
+FROM debian:jessie
 MAINTAINER sneivandt
 
 # Link sh to bash

@@ -25,6 +25,7 @@
   co = commit
   cl = clone
   ch = checkout
+  cp = cherry-pick
   dc = difftool --cached
   di = diff
   dt = difftool

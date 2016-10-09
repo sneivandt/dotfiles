@@ -7,11 +7,11 @@
 # Get absolute path to the dotfiles project directory. This value will be
 # correct even if this script is executed from a symlink or while your working
 # directory is not the root of this project.
-DIR=$(cd $(dirname "$(readlink -f "$0")") && pwd)
+DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 
 # Read command line options. While reading this input the 'getopt' call will
 # report invalid options that were given.
-OPTS=$(getopt -o rg -l root,gui -n "$(basename $0)" -- "$@")
+OPTS=$(getopt -o rg -l root,gui -n "$(basename "$0")" -- "$@")
 
 # }}}
 # Helpers ----------------------------------------------------------------- {{{
@@ -31,7 +31,7 @@ trigger_action()
       action_usage
       ;;
     *)
-      eval "action_"$1
+      eval "action_$1"
       ;;
   esac
 }
@@ -44,7 +44,7 @@ trigger_action()
 #     $1 - The flag to check.
 is_flag_set()
 {
-  if [[ " "$OPTS" " == *\ $1\ * ]]
+  if [[ " $OPTS " == *\ $1\ * ]]
   then
     echo 0
   else
@@ -63,7 +63,7 @@ is_flag_set()
 #     bool - True of the symlink exists.
 does_symlink_exist()
 {
-  if [[ $(readlink -f $DIR/files/$1) == $(readlink -f ~/.$1) ]]
+  if [[ $(readlink -f "$DIR"/files/"$1") == $(readlink -f ~/."$1") ]]
   then
     echo 0
   else
@@ -84,10 +84,10 @@ does_symlink_exist()
 #     bool - True of the file is ignored.
 is_file_ignored()
 {
-  if [[ -n $(cat $DIR/.symlinksignore 2>/dev/null | grep -xi $1) ]]
+  if grep -qxi "$1" "$DIR"/.symlinksignore 2>/dev/null
   then
     echo 0
-  elif [[ $(is_flag_set "--gui") == "1" && $(is_flag_set "-g") == "1" && $(cat $DIR/.symlinks | grep -w $1 | cut -d " " -s -f 2) == *g* ]]
+  elif [[ $(is_flag_set "--gui") == "1" && $(is_flag_set "-g") == "1" && $(grep -w "$1" "$DIR"/.symlinks | cut -d " " -s -f 2) == *g* ]]
   then
     echo 0
   else
@@ -106,7 +106,7 @@ is_file_ignored()
 #     bool - True of the program is installed.
 is_program_installed()
 {
-  if [[ -n $(which $1 2>/dev/null) ]]
+  if [[ -n $(which "$1" 2>/dev/null) ]]
   then
     echo 0
   else
@@ -137,7 +137,7 @@ exit_if_root()
 # Print usage instructions.
 message_usage()
 {
-  echo "Usage: $(basename $0) <command> [-g | --gui] [-r | --root]"
+  echo "Usage: $(basename "$0") <command> [-g | --gui] [-r | --root]"
   echo
   echo "These are the available commands:"
   echo
@@ -155,7 +155,7 @@ message_usage()
 #     $1 - The work that is being performed.
 message_worker()
 {
-  echo -e ":: "$1"..."
+  echo -e ":: $1..."
 }
 
 # message_exit
@@ -166,7 +166,7 @@ message_worker()
 #     $1 - The reason for exiting.
 message_exit()
 {
-  echo -e "aborting: "$1
+  echo -e "aborting: $1"
 }
 
 # message_invalid
@@ -177,7 +177,7 @@ message_exit()
 #     $1 - The invalid command.
 message_invalid()
 {
-  echo "$(basename $0): '$1' is not a valid command. See '$(basename $0) help'."
+  echo "$(basename "$0"): '$1' is not a valid command. See '$(basename "$0") help'."
 }
 
 # }}}
@@ -195,7 +195,7 @@ worker_install_dotfiles_cli()
   then
     message_worker "Installing dotfiles cli"
     mkdir -pv ~/bin
-    ln -snvf $DIR/dot.sh ~/bin/dot
+    ln -snvf "$DIR"/dot.sh ~/bin/dot
   fi
 }
 
@@ -206,15 +206,15 @@ worker_install_dotfiles_cli()
 worker_install_symlinks()
 {
   message_worker "Installing dotfiles"
-  for link in $(cat $DIR/.symlinks | cut -d " " -f 1)
+  cut -d " " -f 1 < "$DIR"/.symlinks | while IFS= read -r link
   do
     if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "1" ]]
     then
       if [[ $link == *"/"* ]]
       then
-        mkdir -pv ~/.$(echo $link | rev | cut -d/ -f2- | rev)
+        mkdir -pv ~/."$(echo "$link" | rev | cut -d/ -f2- | rev)"
       fi
-      ln -snvf $DIR/files/$link ~/.$link
+      ln -snvf "$DIR"/files/"$link" ~/."$link"
     fi
   done
   chmod -c 600 ~/.ssh/config 2>/dev/null
@@ -230,7 +230,7 @@ worker_install_vim_plugins()
     message_worker "Installing vim plugins"
     if [[ ! -e $DIR/files/vim/autoload/plug.vim ]]
     then
-      curl -fLo $DIR/files/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+      curl -fLo "$DIR"/files/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
     fi
     vim +PlugUpdate +qall
   fi
@@ -247,13 +247,13 @@ worker_install_atom_packages()
     message_worker "Installing atom packages"
     local PACKAGES
     PACKAGES=$(apm list -b | cut -d@ -f1)
-    for package in $(cat $DIR/files/atom/packages/list)
+    while IFS= read -r package
     do
-      if [[ -z $(echo $PACKAGES | grep -sw $package) ]]
+      if ! echo "$PACKAGES" | grep -qsw "$package"
       then
-        apm install $package
+        apm install "$package"
       fi
-    done
+    done < "$DIR"/files/atom/packages/list
   fi
 }
 
@@ -263,11 +263,11 @@ worker_install_atom_packages()
 worker_uninstall_symlinks()
 {
   message_worker "Removing symlinks"
-  for link in $(cat $DIR/.symlinks | cut -d " " -f 1)
+  cut -d " " -f 1 < "$DIR"/.symlinks | while IFS= read -r link
   do
     if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "0" ]]
     then
-      rm -vf ~/.$link
+      rm -vf ~/."$link"
     fi
   done
 }
@@ -280,7 +280,7 @@ worker_update_git_project()
   if [[ $(is_program_installed "git") == "0" ]]
   then
     message_worker "Updating dotfiles"
-    git --git-dir $DIR/.git pull
+    git --git-dir "$DIR"/.git pull
   else
     message_exit "git must be installed to perform an update."
   fi
@@ -337,7 +337,7 @@ action_usage()
 exit_if_root
 
 # Iterate through the command line input.
-for i in $@
+for i in "$@"
 do
   case $i in
 
@@ -350,13 +350,13 @@ do
     # first one that is found will be processed and immediately after this
     # script will exit.
     help | install | uninstall | update)
-      trigger_action $i
+      trigger_action "$i"
       exit
       ;;
 
     # If an argument is found that is not valid exit with an error.
     *)
-      message_invalid $i
+      message_invalid "$i"
       exit 1
       ;;
   esac

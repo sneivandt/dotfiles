@@ -1,4 +1,4 @@
-# Dotfiles
+# Dotfiles [![Build Status](https://travis-ci.org/sneivandt/dotfiles.svg?branch=master)](https://travis-ci.org/sneivandt/dotfiles)
 
 Configuration for a Linux development environment.
 

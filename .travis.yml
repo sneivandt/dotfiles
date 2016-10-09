@@ -1,11 +1,10 @@
----
-  language: haskell
-  sudo: false
-  notifications:
-    email: true
-  ghc:
-    - 7.10
-  install:
-    - cabal install shellcheck
-  script:
-    - ./test.sh
+language: haskell
+sudo: false
+ghc:
+  - 7.10
+
+install:
+  - cabal install shellcheck
+
+script:
+  - shellcheck dot.sh

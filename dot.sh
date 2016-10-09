@@ -16,16 +16,15 @@ OPTS=$(getopt -o rg -l root,gui -n "$(basename $0)" -- "$@")
 # }}}
 # Helpers ----------------------------------------------------------------- {{{
 #
-# Helper functions. Helper functions which return a boolean value will echo a
-# zero or one to stdout which the calling function can process.
+# Helper functions.
 
-# helper_alias
+# trigger_action
 #
 # Trigger an action based on a command line argument.
 #
 # Args:
 #     $1 - The command line argument to map to an action.
-helper_alias()
+trigger_action()
 {
   case $1 in
     help)
@@ -37,13 +36,13 @@ helper_alias()
   esac
 }
 
-# helper_flag_set
+# is_flag_set
 #
 # Check if a command line flag is set.
 #
 # Args:
 #     $1 - The flag to check.
-helper_flag_set()
+is_flag_set()
 {
   if [[ " "$OPTS" " == *\ $1\ * ]]
   then
@@ -53,7 +52,7 @@ helper_flag_set()
   fi
 }
 
-# helper_symlink_exists
+# does_symlink_exist
 #
 # Check if a given symlink exists in $HOME.
 #
@@ -62,7 +61,7 @@ helper_flag_set()
 #
 # return:
 #     bool - True of the symlink exists.
-helper_symlink_exists()
+does_symlink_exist()
 {
   if [[ $(readlink -f $DIR/files/$1) == $(readlink -f ~/.$1) ]]
   then
@@ -72,7 +71,7 @@ helper_symlink_exists()
   fi
 }
 
-# helper_file_ignored
+# is_file_ignored
 #
 # Check if a file is ignored. Files listed in ".symlinks" with the "g" option
 # will be ignored unless the flags "-g" or "--gui" are set. Ignored files will
@@ -83,12 +82,12 @@ helper_symlink_exists()
 #
 # return:
 #     bool - True of the file is ignored.
-helper_file_ignored()
+is_file_ignored()
 {
   if [[ -n $(cat $DIR/.symlinksignore 2>/dev/null | grep -xi $1) ]]
   then
     echo 0
-  elif [[ $(helper_flag_set "--gui") == "1" && $(helper_flag_set "-g") == "1" && $(cat $DIR/.symlinks | grep -w $1 | cut -d " " -s -f 2) == *g* ]]
+  elif [[ $(is_flag_set "--gui") == "1" && $(is_flag_set "-g") == "1" && $(cat $DIR/.symlinks | grep -w $1 | cut -d " " -s -f 2) == *g* ]]
   then
     echo 0
   else
@@ -96,7 +95,7 @@ helper_file_ignored()
   fi
 }
 
-# helper_program_installed
+# is_program_installed
 #
 # Check if a program is installed on your $PATH.
 #
@@ -105,13 +104,26 @@ helper_file_ignored()
 #
 # return:
 #     bool - True of the program is installed.
-helper_program_installed()
+is_program_installed()
 {
   if [[ -n $(which $1 2>/dev/null) ]]
   then
     echo 0
   else
     echo 1
+  fi
+}
+
+# exit_if_root
+#
+# Exit with an error if this script is being run by root and the command line
+# flags "-r" or "--root" are not set.
+exit_if_root()
+{
+  if [[ $EUID -eq 0 && ($(is_flag_set "--root") == "1" && $(is_flag_set "-r") == "1") ]]
+  then
+    message_exit "Do not run this script as root. To skip this check pass the command line flag '--root'."
+    exit 1
   fi
 }
 
@@ -125,7 +137,7 @@ helper_program_installed()
 # Print usage instructions.
 message_usage()
 {
-  echo "Usage: $(basename $0) <command> [-r | --root] [-g | --gui]"
+  echo "Usage: $(basename $0) <command> [-g | --gui] [-r | --root]"
   echo
   echo "These are the available commands:"
   echo
@@ -169,29 +181,23 @@ message_invalid()
 }
 
 # }}}
-# Exit Checks ------------------------------------------------------------- {{{
-#
-# Functions that will stop this script from executing and exit with a non zero
-# exit status under some condition.
-
-# exit_check_root
-#
-# Exit with an error if this script is being run by root and the command line
-# flags "-r" or "--root" are not set.
-exit_check_root()
-{
-  if [[ $EUID -eq 0 && ($(helper_flag_set "--root") == "1" && $(helper_flag_set "-r") == "1") ]]
-  then
-    message_exit "Do not run this script as root. To skip this check pass the command line flag '--root'."
-    exit 1
-  fi
-}
-
-# }}}
 # Workers ----------------------------------------------------------------- {{{
 #
 # Functions that perform the core logic of this script. Workers are called by
 # action functions in series.
+
+# worker_install_dotfiles_cli
+#
+# Put "dot.sh" on the $PATH
+worker_install_dotfiles_cli()
+{
+  if [[ ! -e ~/bin/dot ]]
+  then
+    message_worker "Installing dotfiles cli"
+    mkdir -pv ~/bin
+    ln -snvf $DIR/dot.sh ~/bin/dot
+  fi
+}
 
 # worker_install_symlinks
 #
@@ -202,7 +208,7 @@ worker_install_symlinks()
   message_worker "Installing dotfiles"
   for link in $(cat $DIR/.symlinks | cut -d " " -f 1)
   do
-    if [[ $(helper_file_ignored "$link") == "1" && $(helper_symlink_exists "$link") == "1" ]]
+    if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "1" ]]
     then
       if [[ $link == *"/"* ]]
       then
@@ -219,7 +225,7 @@ worker_install_symlinks()
 # Install vim plugins managed by vim-plug as long as the "vim" symlink exists.
 worker_install_vim_plugins()
 {
-  if [[ $(helper_program_installed "vim") == "0" && $(helper_symlink_exists "vim") == "0" ]]
+  if [[ $(is_program_installed "vim") == "0" && $(does_symlink_exist "vim") == "0" ]]
   then
     message_worker "Installing vim plugins"
     if [[ ! -e $DIR/files/vim/autoload/plug.vim ]]
@@ -236,7 +242,7 @@ worker_install_vim_plugins()
 # not already installed.
 worker_install_atom_packages()
 {
-  if [[ $(helper_file_ignored "atom/config.cson") == "1" && $(helper_program_installed "apm") == "0" ]]
+  if [[ $(is_file_ignored "atom/config.cson") == "1" && $(is_program_installed "apm") == "0" ]]
   then
     message_worker "Installing atom packages"
     local PACKAGES
@@ -251,19 +257,6 @@ worker_install_atom_packages()
   fi
 }
 
-# worker_install_dotfiles_cli
-#
-# Put "dot.sh" on the $PATH
-worker_install_dotfiles_cli()
-{
-  if [[ ! -e ~/bin/dot ]]
-  then
-    message_worker "Installing dotfiles cli"
-    mkdir -pv ~/bin
-    ln -snvf $DIR/dot.sh ~/bin/dot
-  fi
-}
-
 # worker_uninstall_symlinks
 #
 # Remove all symlinks that are not ignored.
@@ -272,7 +265,7 @@ worker_uninstall_symlinks()
   message_worker "Removing symlinks"
   for link in $(cat $DIR/.symlinks | cut -d " " -f 1)
   do
-    if [[ $(helper_file_ignored "$link") == "1" && $(helper_symlink_exists "$link") == "0" ]]
+    if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "0" ]]
     then
       rm -vf ~/.$link
     fi
@@ -284,7 +277,7 @@ worker_uninstall_symlinks()
 # Pull changes in the dotfiles git project.
 worker_update_git_project()
 {
-  if [[ $(helper_program_installed "git") == "0" ]]
+  if [[ $(is_program_installed "git") == "0" ]]
   then
     message_worker "Updating dotfiles"
     git --git-dir $DIR/.git pull
@@ -297,9 +290,7 @@ worker_update_git_project()
 # Actions ----------------------------------------------------------------- {{{
 #
 # Functions which are triggered based on command line input. Each action will
-# trigger work to be performed by calling a series of worker functions. Some
-# functions may return immediately if some preconditions are not satisfied for
-# the work to be done.
+# trigger work to be performed by calling a series of worker functions.
 
 # action_install
 #
@@ -343,7 +334,7 @@ action_usage()
 # they will be triggered based on the command line arguments.
 
 # Abort if the root user is running this without permission.
-exit_check_root
+exit_if_root
 
 # Iterate through the command line input.
 for i in $@
@@ -359,7 +350,7 @@ do
     # first one that is found will be processed and immediately after this
     # script will exit.
     help | install | uninstall | update)
-      helper_alias $i
+      trigger_action $i
       exit
       ;;
 

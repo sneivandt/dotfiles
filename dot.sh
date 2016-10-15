@@ -114,19 +114,6 @@ is_program_installed()
   fi
 }
 
-# exit_if_root
-#
-# Exit with an error if this script is being run by root and the command line
-# flags "-r" or "--root" are not set.
-exit_if_root()
-{
-  if [[ $EUID -eq 0 && ($(is_flag_set "--root") == "1" && $(is_flag_set "-r") == "1") ]]
-  then
-    message_exit "Do not run this script as root. To skip this check pass the command line flag '--root'."
-    exit 1
-  fi
-}
-
 # }}}
 # Messages ---------------------------------------------------------------- {{{
 #
@@ -158,15 +145,15 @@ message_worker()
   echo -e ":: $1..."
 }
 
-# message_exit
+# message_error
 #
 # Print an exit message.
 #
 # Args:
 #     $1 - The reason for exiting.
-message_exit()
+message_error()
 {
-  echo -e "aborting: $1"
+  echo -e "error: $1"
 }
 
 # message_invalid
@@ -205,7 +192,7 @@ worker_install_dotfiles_cli()
 # child directories of $HOME will trigger creation of those directories.
 worker_install_symlinks()
 {
-  message_worker "Installing dotfiles"
+  message_worker "Installing symlinks"
   cut -d " " -f 1 < "$DIR"/.symlinks | while IFS= read -r link
   do
     if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "1" ]]
@@ -232,7 +219,7 @@ worker_install_vim_plugins()
     then
       curl -fLo "$DIR"/files/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
     fi
-    vim +PlugUpdate +qall
+    vim +PlugUpdate +qall >/dev/null 2>&1
   fi
 }
 
@@ -282,16 +269,33 @@ worker_update_git_project()
     message_worker "Updating dotfiles"
     git --git-dir "$DIR"/.git pull
   else
-    message_exit "git must be installed to perform an update."
+    message_error "git must be installed to perform an update."
+  fi
+}
+
+# }}}
+# Assertions -------------------------------------------------------------- {{{
+#
+# Assertions about the machines state that exit with an error if they are not
+# meet.
+
+# assert_user_permissions
+#
+# Verify that if this script is being run by root, that the command line flags
+# "-r" or "--root" are set.
+assert_user_permissions()
+{
+  if [[ $EUID -eq 0 && ($(is_flag_set "--root") == "1" && $(is_flag_set "-r") == "1") ]]
+  then
+    message_error "Do not run this script as root. To skip this check pass the command line flag '--root'."
+    exit 1
   fi
 }
 
 # }}}
 # Actions ----------------------------------------------------------------- {{{
 #
-# Functions which are triggered based on command line input. Each action will
-# trigger work to be performed by calling a series of worker functions.
-
+# Functions which are triggered based on command line input.
 # action_install
 #
 # Perform a full install.
@@ -334,7 +338,7 @@ action_usage()
 # they will be triggered based on the command line arguments.
 
 # Abort if the root user is running this without permission.
-exit_if_root
+assert_user_permissions
 
 # Iterate through the command line input.
 for i in "$@"

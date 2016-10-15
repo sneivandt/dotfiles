@@ -1,10 +1,7 @@
-language: haskell
-sudo: false
-ghc:
-  - 7.10
+sudo: required
 
-install:
-  - cabal install shellcheck
+services:
+  - docker
 
 script:
-  - shellcheck dot.sh
+  - docker build -t dotfiles .

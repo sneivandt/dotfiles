@@ -4,4 +4,3 @@ services:
   dotfiles:
     build:
       context: .
-      dockerfile: Dockerfile

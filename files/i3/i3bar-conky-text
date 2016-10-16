@@ -9,16 +9,16 @@ ELEMENTS=(
   "$(whoami)@$(hostname)"
 
   # Volume
-  "♪ $(printf '%4s' `amixer get Master | grep -o '\[.*%\]' | sed 's/\[//g' | sed 's/\]//g'`)"
+  "♪ $(printf '%4s' "$(amixer get Master | grep -o '\[.*%\]' | sed 's/\[//g' | sed 's/\]//g')")"
 
   # System
   "$(uname -sr)"
 
   # IP
-  "$(ip route | head -1 | cut -d' ' -f8)"
+  "$(ip route | grep -w default | cut -d' ' -f7)"
 
   # Uptime
-  "$(uptime -p)"
+  "$(uptime -p | cut -c 4-)"
 
 )
 
@@ -28,7 +28,7 @@ add_element()
 }
 
 # Spotify Now Plauing
-now_playing=$(echo `dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.freedesktop.DBus.Properties.Get string:'org.mpris.MediaPlayer2.Player' string:'Metadata'|egrep -A 2 "artist"|egrep -v "artist"|egrep -v "array"|cut -b 27-|cut -d '"' -f 1|egrep -v ^$|awk 'length>24{$0=substr($0,0,25)"..."}1'` "-" `dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.freedesktop.DBus.Properties.Get string:'org.mpris.MediaPlayer2.Player' string:'Metadata'|egrep -A 1 "title"|egrep -v "title"|cut -b 44-|cut -d '"' -f 1|egrep -v ^$|awk 'length>24{$0=substr($0,0,25)"..."}1'`)
+now_playing=$(echo $(dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.freedesktop.DBus.Properties.Get string:'org.mpris.MediaPlayer2.Player' string:'Metadata'|egrep -A 2 "artist"|egrep -v "artist"|egrep -v "array"|cut -b 27-|cut -d '"' -f 1|egrep -v ^$|awk 'length>24{$0=substr($0,0,25)"..."}1') "-" $(dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.freedesktop.DBus.Properties.Get string:'org.mpris.MediaPlayer2.Player' string:'Metadata'|egrep -A 1 "title"|egrep -v "title"|cut -b 44-|cut -d '"' -f 1|egrep -v ^$|awk 'length>24{$0=substr($0,0,25)"..."}1'))
 if [[ "$now_playing" != "-" ]]
 then
   add_element "$now_playing"
@@ -36,9 +36,13 @@ fi
 
 for((i = ${#ELEMENTS[@]} - 1; i >= 0; i--))
 do
-  echo -ne "${ELEMENTS[$i]}" | sed "s/\&/\&amp;/g"
-  if [[ $i != 0 ]]
+  element=${ELEMENTS[$i]}
+  if [[ ${#element} -gt 0 ]]
   then
-    echo -ne " • "
+    echo -ne "$element" | sed "s/\&/\&amp;/g"
+    if [[ $i != 0 ]]
+    then
+      echo -ne " • "
+    fi
   fi
 done

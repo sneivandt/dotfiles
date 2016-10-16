@@ -1,23 +1,11 @@
-atom/config.cson g
 bash_profile
 bashrc
-config/compton.conf g
 config/git
-config/gtk-3.0/settings.ini g
 config/nvim
-config/redshift.conf g
 curlrc
 gitattributes
 gitconfig
 gitignore
-gtkrc-2.0 g
-i3 g
-ideaic/config/codestyles/Custom.xml g
-ideaic/config/keymaps/Custom.xml g
-ideaic/config/options/colors.scheme.xml g
-ideaic/config/options/editor.xml g
-ideaic/config/options/ide.general.xml g
-ideaic/config/options/keymap.xml g
 shell
 ssh/config
 terminfo/r/rxvt-unicode-256color
@@ -25,8 +13,6 @@ tmux
 tmux.conf
 vim
 wgetrc
-xinitrc g
-Xresources g
 zsh
 zshenv
 zshrc

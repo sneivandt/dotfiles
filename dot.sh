@@ -87,9 +87,14 @@ is_file_ignored()
   if grep -qxi "$1" "$DIR"/.symlinksignore 2>/dev/null
   then
     echo 0
-  elif [[ $(is_flag_set "--gui") == "1" && $(is_flag_set "-g") == "1" && $(grep -w "$1" "$DIR"/.symlinks | cut -d " " -s -f 2) == *g* ]]
+  elif [[ $(is_flag_set "--gui") == "1" && $(is_flag_set "-g") == "1" ]]
   then
-    echo 0
+    if grep -xi "$1" "$DIR"/.symlinksgui
+    then
+      echo 0
+    else
+      echo 1
+    fi
   else
     echo 1
   fi
@@ -193,7 +198,7 @@ worker_install_dotfiles_cli()
 worker_install_symlinks()
 {
   message_worker "Installing symlinks"
-  cut -d " " -f 1 < "$DIR"/.symlinks | while IFS= read -r link
+  cut -d " " -f 1 < "$DIR"/.symlinks "$DIR"/.symlinksgui | while IFS= read -r link
   do
     if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "1" ]]
     then
@@ -250,7 +255,7 @@ worker_install_atom_packages()
 worker_uninstall_symlinks()
 {
   message_worker "Removing symlinks"
-  cut -d " " -f 1 < "$DIR"/.symlinks | while IFS= read -r link
+  cut -d " " -f 1 < "$DIR"/.symlinks "$DIR"/.symlinksgui | while IFS= read -r link
   do
     if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "0" ]]
     then

@@ -53,6 +53,7 @@ set cmdheight=1
 set copyindent
 set encoding=utf-8
 set expandtab
+set fdo+=search
 set fileformats=unix,dos,mac
 set formatoptions=tcqr
 set hlsearch

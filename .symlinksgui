@@ -1,0 +1,14 @@
+atom/config.cson
+config/compton.conf
+config/gtk-3.0/settings.ini
+config/redshift.conf
+gtkrc-2.0
+i3
+ideaic/config/codestyles/Custom.xml
+ideaic/config/keymaps/Custom.xml
+ideaic/config/options/colors.scheme.xml
+ideaic/config/options/editor.xml
+ideaic/config/options/ide.general.xml
+ideaic/config/options/keymap.xml
+xinitrc
+Xresources

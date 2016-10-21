@@ -9,4 +9,5 @@ linter
 linter-jshint
 linter-javac
 minimap
+open-recent
 travis-ci-status

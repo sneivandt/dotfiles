@@ -15,7 +15,7 @@ ELEMENTS=(
   "$(uname -sr)"
 
   # IP
-  "$(ip route | grep -w default | cut -d' ' -f7)"
+  "$(ip route | grep -w "default via" | head -n 1 | cut -d' ' -f7)"
 
   # Uptime
   "$(uptime -p | cut -c 4-)"

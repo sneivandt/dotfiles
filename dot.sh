@@ -136,7 +136,6 @@ message_usage()
   echo "    help       Print this usage message"
   echo "    install    Create symlinks, install editor plugins and install dotfiles cli"
   echo "    uninstall  Remove symlinks"
-  echo "    update     Update dotfiles project"
 }
 
 # message_worker
@@ -264,20 +263,6 @@ worker_uninstall_symlinks()
   done
 }
 
-# worker_update_git_project
-#
-# Pull changes in the dotfiles git project.
-worker_update_git_project()
-{
-  if [[ $(is_program_installed "git") == "0" ]]
-  then
-    message_worker "Updating dotfiles"
-    git --git-dir "$DIR"/.git pull
-  else
-    message_error "git must be installed to perform an update."
-  fi
-}
-
 # }}}
 # Assertions -------------------------------------------------------------- {{{
 #
@@ -320,14 +305,6 @@ action_uninstall()
   worker_uninstall_symlinks
 }
 
-# action_update
-#
-# Update the dotfiles project.
-action_update()
-{
-  worker_update_git_project
-}
-
 # action_usage
 #
 # Print usage instructions.
@@ -358,7 +335,7 @@ do
     # Call the action function for any of the valid action keywords. Only the
     # first one that is found will be processed and immediately after this
     # script will exit.
-    help | install | uninstall | update)
+    help | install | uninstall)
       trigger_action "$i"
       exit
       ;;

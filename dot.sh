@@ -229,8 +229,8 @@ worker_install_vim_plugins()
 
 # worker_install_atom_packages
 #
-# Install atom packages listed in "files/atom/packages/list" if the package is
-# not already installed.
+# Install atom packages listed in "atom-packages" if the package
+# is not already installed.
 worker_install_atom_packages()
 {
   if [[ $(is_file_ignored "atom/config.cson") == "1" && $(is_program_installed "apm") == "0" ]]
@@ -244,7 +244,7 @@ worker_install_atom_packages()
       then
         apm install "$package"
       fi
-    done < "$DIR"/files/atom/packages/list
+    done < "$DIR"/atom-packages
   fi
 }
 

@@ -12,7 +12,7 @@ Configuration for a Linux development environment.
 ./dot.sh install
 ```
 
-Optional command line flags.
+Command line flags.
 
 Short  | Long  | Behavior
 -------|-------|---------

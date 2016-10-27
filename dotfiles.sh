@@ -197,16 +197,19 @@ worker_install_dotfiles_cli()
 worker_install_symlinks()
 {
   message_worker "Installing symlinks"
-  cut -d " " -f 1 < "$DIR"/.symlinks "$DIR"/.symlinksgui | while IFS= read -r link
+  for file in "$DIR"/.symlinks "$DIR"/.symlinksgui
   do
-    if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "1" ]]
-    then
-      if [[ $link == *"/"* ]]
+    while read link
+    do
+      if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "1" ]]
       then
-        mkdir -pv ~/."$(echo "$link" | rev | cut -d/ -f2- | rev)"
+        if [[ $link == *"/"* ]]
+        then
+          mkdir -pv ~/."$(echo "$link" | rev | cut -d/ -f2- | rev)"
+        fi
+        ln -snvf "$DIR"/files/"$link" ~/."$link"
       fi
-      ln -snvf "$DIR"/files/"$link" ~/."$link"
-    fi
+    done < "$file"
   done
   chmod -c 600 ~/.ssh/config 2>/dev/null
 }
@@ -238,7 +241,7 @@ worker_install_atom_packages()
     message_worker "Installing atom packages"
     local PACKAGES
     PACKAGES=$(apm list -b | cut -d@ -f1)
-    while IFS= read -r package
+    while read package
     do
       if ! echo "$PACKAGES" | grep -qsw "$package"
       then
@@ -254,12 +257,15 @@ worker_install_atom_packages()
 worker_uninstall_symlinks()
 {
   message_worker "Removing symlinks"
-  cut -d " " -f 1 < "$DIR"/.symlinks "$DIR"/.symlinksgui | while IFS= read -r link
+  for file in "$DIR"/.symlinks "$DIR"/.symlinksgui
   do
-    if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "0" ]]
-    then
-      rm -vf ~/."$link"
-    fi
+    while read link
+    do
+      if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "0" ]]
+      then
+        rm -vf ~/."$link"
+      fi
+    done < "$file"
   done
 }
 

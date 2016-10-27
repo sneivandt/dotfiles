@@ -21,7 +21,7 @@ r      | root  | Allow execution as root
 
 ## Configure
 
-Files listed in *.symlinksignore* will be ignored. This file should be similar to [.symlinks](.symlinks).
+Files listed in *.symlinksignore* will be ignored.
 
 ## Docker
 

@@ -14,7 +14,7 @@ RUN echo -e "en_US.UTF-8 UTF-8" >> /etc/locale.gen && /usr/sbin/locale-gen
 
 # Install dotfiles
 COPY . /root/.dotfiles
-RUN /root/.dotfiles/dot.sh install --root
+RUN /root/.dotfiles/dotfiles.sh install --root
 
 # Use ZSH
 RUN chsh -s /usr/bin/zsh

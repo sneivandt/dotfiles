@@ -6,10 +6,10 @@ Configuration for a Linux development environment.
 
 * Create symlinks in $HOME
 * Install editor plugins
-* Install [dot.sh](dot.sh) on the user $PATH.
+* Install [dotfiles.sh](dotfiles.sh) on the user $PATH.
 
 ```
-./dot.sh install
+./dotfiles.sh install
 ```
 
 Command line flags.

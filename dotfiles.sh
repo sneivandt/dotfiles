@@ -179,14 +179,14 @@ message_invalid()
 
 # worker_install_dotfiles_cli
 #
-# Put "dot.sh" on the $PATH
+# Put "dotfiles.sh" on the $PATH
 worker_install_dotfiles_cli()
 {
-  if [[ ! -e ~/bin/dot ]]
+  if [[ ! -e ~/bin/dotfiles ]]
   then
     message_worker "Installing dotfiles cli"
     mkdir -pv ~/bin
-    ln -snvf "$DIR"/dot.sh ~/bin/dot
+    ln -snvf "$DIR"/dotfiles.sh ~/bin/dotfiles
   fi
 }
 

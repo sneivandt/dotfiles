@@ -133,8 +133,8 @@ message_usage()
   echo
   echo "These are the available commands:"
   echo
-  echo "    help       Print this usage message"
-  echo "    install    Create symlinks, install editor plugins and install dotfiles cli"
+  echo "    help       Show usage instructions"
+  echo "    install    Create symlinks, install editor plugins and install dotfiles CLI"
   echo "    uninstall  Remove symlinks"
 }
 
@@ -232,7 +232,7 @@ worker_install_vim_plugins()
 
 # worker_install_atom_packages
 #
-# Install atom packages listed in "atom-packages" if the package
+# Install atom packages listed in "resources/atom-packages" if the package
 # is not already installed.
 worker_install_atom_packages()
 {
@@ -247,7 +247,7 @@ worker_install_atom_packages()
       then
         apm install "$package"
       fi
-    done < "$DIR"/atom-packages
+    done < "$DIR"/resources/atom-packages
   fi
 }
 

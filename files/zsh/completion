@@ -1,5 +1,7 @@
 # vi set ft=zsh :
 
+[[ ! $fpath =~ .*$HOME/.zsh/completions.* ]] && fpath=($HOME/.zsh/completions $fpath)
+
 autoload -U compinit
 compinit
 

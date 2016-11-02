@@ -1,0 +1,30 @@
+#compdef dotfiles
+
+typeset -A opt_args
+
+_arguments -C \
+  '1:cmd:->cmds' \
+  '*:: :->args' \
+&& ret=0
+
+case "$state" in
+  (cmds)
+    local comands; comands=(
+      'help:Show usage instructions'
+      'install:Create symlinks, install editor plugins and install dotfiles CLI'
+      'uninstall:Remove symlinks'
+    )
+    _describe 'values' comands
+  ;;
+  (args)
+    local arguments; arguments=(
+      '--gui:Configure GUI applicaitons'
+      '-g:Configure GUI applicaitons'
+      '--root:Allow execution as root'
+      '-r:Allow execution as root'
+    )
+    _describe 'args' arguments
+  ;;
+esac
+
+return 1

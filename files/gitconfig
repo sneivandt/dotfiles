@@ -16,6 +16,8 @@
   helper = cache
 [diff]
   tool = vimdiff
+[diff "bin"]
+  textconv = hexdump -v -C
 [difftool]
   prompt = false
 [alias]
@@ -23,13 +25,13 @@
   br = branch
   ca = commit --amend --reuse-message=HEAD
   co = commit
-  cl = clone
+  cl = clone --recursive
   ch = checkout
   cp = cherry-pick
   dc = difftool --cached
   di = diff
   dt = difftool
-  fe = fetch
+  fe = fetch --prune
   lf = log -u
   lo = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
   me = merge

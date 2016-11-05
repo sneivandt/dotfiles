@@ -9,22 +9,24 @@ _arguments -C \
 
 case "$state" in
   (cmds)
-    local comands; comands=(
+    local comands
+    comands=(
       'help:Show usage instructions'
-      'install:Create symlinks, install editor plugins and install dotfiles CLI'
+      'install:Create symlinks, install plugins and install dotfiles CLI'
       'uninstall:Remove symlinks'
     )
-    _describe 'values' comands
+    _describe -t comands 'comands' comands
   ;;
   (args)
-    local arguments; arguments=(
+    local arguments
+    arguments=(
       '--gui:Configure GUI applicaitons'
       '-g:Configure GUI applicaitons'
       '--root:Allow execution as root'
       '-r:Allow execution as root'
     )
-    _describe 'args' arguments
+    _describe -t arguments 'arguments' arguments
   ;;
 esac
 
-return 1
+return 0

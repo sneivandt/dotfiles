@@ -6,6 +6,7 @@ curlrc
 gitattributes
 gitconfig
 gitignore
+npmrc
 shell
 ssh/config
 terminfo/r/rxvt-unicode-256color

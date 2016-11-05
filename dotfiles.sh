@@ -134,7 +134,7 @@ message_usage()
   echo "These are the available commands:"
   echo
   echo "    help       Show usage instructions"
-  echo "    install    Create symlinks, install editor plugins and install dotfiles CLI"
+  echo "    install    Create symlinks, install plugins and install dotfiles CLI"
   echo "    uninstall  Remove symlinks"
 }
 
@@ -199,7 +199,8 @@ worker_install_symlinks()
   message_worker "Installing symlinks"
   for file in "$DIR"/.symlinks "$DIR"/.symlinksgui
   do
-    while read link
+    local link
+    while read -r link
     do
       if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "1" ]]
       then
@@ -226,28 +227,55 @@ worker_install_vim_plugins()
     then
       curl -fLo "$DIR"/files/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
     fi
-    vim +PlugUpdate +qall >/dev/null 2>&1
+    if [[ -f /.dockerenv ]]
+    then
+      vim +PlugUpdate +qall >/dev/null 2>&1
+    else
+      vim +PlugUpdate +qall
+    fi
   fi
 }
 
-# worker_install_atom_packages
+# worker_install_apm_packages
 #
 # Install atom packages listed in "resources/atom-packages" if the package
 # is not already installed.
-worker_install_atom_packages()
+worker_install_apm_packages()
 {
-  if [[ $(is_file_ignored "atom/config.cson") == "1" && $(is_program_installed "apm") == "0" ]]
+  if [[ $(is_program_installed "apm") == "0" ]]
   then
     message_worker "Installing atom packages"
-    local PACKAGES
-    PACKAGES=$(apm list -b | cut -d@ -f1)
-    while read package
+    local packages package
+    packages=$(apm list -b | cut -d@ -f1)
+    while read -r package
     do
-      if ! echo "$PACKAGES" | grep -qsw "$package"
+      if ! echo "$packages" | grep -qsw "$package"
       then
         apm install "$package"
       fi
     done < "$DIR"/resources/atom-packages
+  fi
+}
+
+# worker_install_npm_packages
+#
+# Install atom packages listed in "resources/node-packages" if the package
+# is not already installed.
+worker_install_npm_packages()
+{
+  if [[ $(is_program_installed "npm") == "0" ]]
+  then
+    message_worker "Installing node packages"
+    local packages package
+    packages=$(ls "$(npm root -g)")
+    while read -r package
+    do
+      if ! echo "$packages" | grep -qsw "$package"
+      then
+        npm install -g "$package"
+      fi
+    done < "$DIR"/resources/node-packages
+    npm update -g
   fi
 }
 
@@ -259,7 +287,7 @@ worker_uninstall_symlinks()
   message_worker "Removing symlinks"
   for file in "$DIR"/.symlinks "$DIR"/.symlinksgui
   do
-    while read link
+    while read -r link
     do
       if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "0" ]]
       then
@@ -292,14 +320,16 @@ assert_user_permissions()
 # Actions ----------------------------------------------------------------- {{{
 #
 # Functions which are triggered based on command line input.
+
 # action_install
 #
 # Perform a full install.
 action_install()
 {
   worker_install_symlinks
+  worker_install_apm_packages
+  worker_install_npm_packages
   worker_install_vim_plugins
-  worker_install_atom_packages
   worker_install_dotfiles_cli
 }
 

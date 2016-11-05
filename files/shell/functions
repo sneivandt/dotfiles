@@ -6,9 +6,11 @@ extract()
   if [[ -z $1 ]]
   then
     echo "Usage: extract <file>\n\nSupported types: tar.bz2 tar.gz bz2 dmg gz tar tbz2 tgz zip pax pax.z rar z"
+    exit 1
   elif [[ ! -f $1 ]]
   then
     echo "'$1' is not a valid file"
+    exit 1
   else
     case $(echo $1 | tr '[:upper:]' '[:lower:]') in
       *.tar.bz2)  tar -jxvf $1                     ;;

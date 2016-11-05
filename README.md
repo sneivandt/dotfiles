@@ -4,9 +4,9 @@ Configuration for a Linux development environment.
 
 ## Install
 
-* Create symlinks in $HOME
-* Install editor plugins
-* Install [dotfiles.sh](dotfiles.sh) on the user $PATH.
+* Create symlinks
+* Install plugins
+* Install [dotfiles.sh](dotfiles.sh)
 
 ```
 ./dotfiles.sh install

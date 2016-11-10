@@ -1,4 +1,3 @@
-atom/config.cson
 config/compton.conf
 config/gtk-3.0/settings.ini
 config/redshift.conf

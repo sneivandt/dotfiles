@@ -1,3 +1,0 @@
-# vi: set ft=sh :
-
-prefix=${HOME}/.npm-packages

@@ -236,49 +236,6 @@ worker_install_vim_plugins()
   fi
 }
 
-# worker_install_apm_packages
-#
-# Install atom packages listed in "resources/atom-packages" if the package
-# is not already installed.
-worker_install_apm_packages()
-{
-  if [[ $(is_program_installed "apm") == "0" ]]
-  then
-    message_worker "Installing atom packages"
-    local packages package
-    packages=$(apm list -b | cut -d@ -f1)
-    while read -r package
-    do
-      if ! echo "$packages" | grep -qsw "$package"
-      then
-        apm install "$package"
-      fi
-    done < "$DIR"/resources/atom-packages
-  fi
-}
-
-# worker_install_npm_packages
-#
-# Install atom packages listed in "resources/node-packages" if the package
-# is not already installed.
-worker_install_npm_packages()
-{
-  if [[ $(is_program_installed "npm") == "0" ]]
-  then
-    message_worker "Installing node packages"
-    local packages package
-    packages=$(ls "$(npm root -g)")
-    while read -r package
-    do
-      if ! echo "$packages" | grep -qsw "$package"
-      then
-        npm install -g "$package"
-      fi
-    done < "$DIR"/resources/node-packages
-    npm update -g
-  fi
-}
-
 # worker_uninstall_symlinks
 #
 # Remove all symlinks that are not ignored.
@@ -327,8 +284,6 @@ assert_user_permissions()
 action_install()
 {
   worker_install_symlinks
-  worker_install_apm_packages
-  worker_install_npm_packages
   worker_install_vim_plugins
   worker_install_dotfiles_cli
 }

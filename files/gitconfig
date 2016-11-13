@@ -40,6 +40,7 @@
   rb = rebase
   ri = rebase --interactive
   rs = reset
+  ss = stash
   st = status --short
   ta = tag
 [include]

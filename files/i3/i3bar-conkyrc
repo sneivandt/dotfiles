@@ -1,16 +1,10 @@
-conky.config = {
-  out_to_console = true,
-  out_to_x = false,
-  background = false,
-  cpu_avg_samples = 2,
-  net_avg_samples = 2,
-  no_buffers = true,
-  out_to_stderr = false,
-  update_interval = 1.0,
-  uppercase = false,
-  use_spacer = 'none'
-};
+out_to_console yes
+out_to_x no
+background no
+update_interval 1
+total_run_times 0
+override_utf8_locale yes
+double_buffer no
 
-conky.text = [[
+TEXT
 ${exec ~/.i3/i3bar-conky-text}
-]];

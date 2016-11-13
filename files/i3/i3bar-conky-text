@@ -1,31 +1,29 @@
 #!/bin/bash
 
-ELEMENTS=(
-
-  # Data/Time
-  "$(date +'%a %B %d %R')"
-
-  # User@Host
-  "$(whoami)@$(hostname)"
-
-  # Volume
-  "♪ $(printf '%4s' "$(amixer get Master | grep -o '\[.*%\]' | sed 's/\[//g' | sed 's/\]//g')")"
-
-  # System
-  "$(uname -sr)"
-
-  # IP
-  "$(ip route | grep -w "default via" | head -n 1 | cut -d' ' -f7)"
-
-  # Uptime
-  "$(uptime -p | cut -c 4-)"
-
-)
+ELEMENTS=()
 
 add_element()
 {
   ELEMENTS+=("$1")
 }
+
+# Data/Time
+add_element "$(date +'%a %B %d %R')"
+
+# User@Host
+add_element "$(whoami)@$(hostname)"
+
+# Volume
+if [[ -n $(which amixer 2>/dev/null) ]]
+then
+  add_element "♪ $(printf '%4s' "$(amixer get Master | grep -o '\[.*%\]' | head -n 1 | sed 's/\[//g' | sed 's/\]//g')")"
+fi
+
+# System
+add_element "$(uname -sr)"
+
+# Uptime
+add_element "$(uptime -p | cut -c 4-)"
 
 # Spotify Now Plauing
 now_playing=$(echo $(dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.freedesktop.DBus.Properties.Get string:'org.mpris.MediaPlayer2.Player' string:'Metadata'|egrep -A 2 "artist"|egrep -v "artist"|egrep -v "array"|cut -b 27-|cut -d '"' -f 1|egrep -v ^$|awk 'length>24{$0=substr($0,0,25)"..."}1') "-" $(dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.freedesktop.DBus.Properties.Get string:'org.mpris.MediaPlayer2.Player' string:'Metadata'|egrep -A 1 "title"|egrep -v "title"|cut -b 44-|cut -d '"' -f 1|egrep -v ^$|awk 'length>24{$0=substr($0,0,25)"..."}1'))

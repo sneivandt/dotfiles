@@ -52,7 +52,6 @@ client.focused          #3465a4 #3465a4    #ffffff #3465a4
 client.focused_inactive #282828 #282828    #888888 #282828
 client.unfocused        #282828 #282828    #888888 #282828
 client.urgent           #900000 #900000    #ffffff #900000
-client.placeholder      #0c0c0c #0c0c0c    #ffffff #0c0c0c
 
 # i3bar
 bar {
@@ -68,10 +67,6 @@ bar {
     urgent_workspace   #000000 #000000 #FF0099
   }
 }
-
-# Gaps
-gaps inner 8
-gaps outer 2
 
 # }}}
 # Startup ----------------------------------------------------------------- {{{

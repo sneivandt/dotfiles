@@ -21,12 +21,12 @@ set $w9 9
 set $w0 10
 
 # System mode
-set $mode_system System (l) lock, (e) logout, (u) suspend, (h) hibernate, (r) reboot, (Shift+s) shutdown
+set $mode_system System (l) lock, (e) logout, (s) suspend, (h) hibernate, (r) reboot, (Shift+s) shutdown
 mode "$mode_system" {
   set $Locker i3lock -c 000000 -n && sleep 1
   bindsym l exec --no-startup-id $Locker, mode "default"
   bindsym e exec --no-startup-id i3-msg exit, mode "default"
-  bindsym u exec --no-startup-id $Locker && systemctl suspend, mode "default"
+  bindsym s exec --no-startup-id $Locker && systemctl suspend, mode "default"
   bindsym h exec --no-startup-id $Locker && systemctl hibernate, mode "default"
   bindsym r exec --no-startup-id systemctl reboot, mode "default"
   bindsym Shift+s exec --no-startup-id systemctl poweroff -i, mode "default"
@@ -38,12 +38,8 @@ mode "$mode_system" {
 # Apearance --------------------------------------------------------------- {{{
 
 # Window borders
-new_window pixel 3
+new_window pixel 0
 new_float pixel 3
-
-# Gaps
-gaps inner 8
-gaps outer 2
 
 # Font
 set $font Source Code Pro

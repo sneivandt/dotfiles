@@ -26,10 +26,9 @@ then
   fi
 
   # i3-gaps
-  if [[ -x $(which pacman 2>/dev/null) && -n $(pacman -Q i3-gaps 2>/dev/null) ]]
+  if [[ $(i3 -C) ]]
   then
-    cp ~/.i3/config ~/.i3/config-gaps && cat ~/.i3/gaps >> ~/.i3/config-gaps
-    exec i3 -c ~/.i3/config-gaps
+    exec i3 -c ~/.i3/config-no-gaps
   else
     exec i3
   fi

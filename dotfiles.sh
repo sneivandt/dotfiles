@@ -229,9 +229,9 @@ worker_install_vim_plugins()
     fi
     if [[ -f /.dockerenv ]]
     then
-      vim +PlugUpdate +qall >/dev/null 2>&1
+      vim +PlugUpdate +PlugUpgrade +qall >/dev/null 2>&1
     else
-      vim +PlugUpdate +qall
+      vim +PlugUpdate +PlugUpgrade +qall
     fi
   fi
 }

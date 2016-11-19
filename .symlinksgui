@@ -3,11 +3,11 @@ config/gtk-3.0/settings.ini
 config/redshift.conf
 gtkrc-2.0
 i3
-ideaic/config/codestyles/Custom.xml
-ideaic/config/keymaps/Custom.xml
-ideaic/config/options/colors.scheme.xml
-ideaic/config/options/editor.xml
-ideaic/config/options/ide.general.xml
-ideaic/config/options/keymap.xml
+IdeaIC/config/codestyles/Custom.xml
+IdeaIC/config/keymaps/Custom.xml
+IdeaIC/config/options/colors.scheme.xml
+IdeaIC/config/options/editor.xml
+IdeaIC/config/options/ide.general.xml
+IdeaIC/config/options/keymap.xml
 xinitrc
 Xresources

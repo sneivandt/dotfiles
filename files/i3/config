@@ -20,10 +20,12 @@ set $w8 8
 set $w9 9
 set $w0 10
 
+# Locker
+set $Locker i3lock -c 000000
+
 # System mode
 set $mode_system System (l) lock, (e) logout, (u) suspend, (h) hibernate, (r) reboot, (Shift+s) shutdown
 mode "$mode_system" {
-  set $Locker i3lock -c 000000 -n && sleep 1
   bindsym l exec --no-startup-id $Locker, mode "default"
   bindsym e exec --no-startup-id i3-msg exit, mode "default"
   bindsym u exec --no-startup-id $Locker && systemctl suspend, mode "default"
@@ -80,6 +82,9 @@ exec --no-startup-id redshift
 
 # Wallpaper
 exec --no-startup-id feh --randomize --bg-fill ~/media/pictures/wallpaper/*
+
+# Lock Timeout
+exec --no-startup-id xautolock -time 20 -locker "$locker"
 
 # }}}
 # Bindings ---------------------------------------------------------------- {{{

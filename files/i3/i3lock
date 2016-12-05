@@ -1,0 +1,14 @@
+#!/bin/bash
+
+if [[ -n $(which scrot 2>/dev/null) && -n $(which convert 2>/dev/null) ]]
+then
+  IMAGE=/tmp/i3lock.png
+  ICON=~/.i3/i3lock-icon.png
+  scrot $IMAGE
+  convert $IMAGE -scale 10% -scale 1000% $IMAGE
+  convert $IMAGE $ICON -gravity center -composite -matte $IMAGE
+  i3lock -u -i $IMAGE
+  rm $IMAGE
+else
+  i3lock -c 000000
+fi

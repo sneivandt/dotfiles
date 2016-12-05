@@ -21,15 +21,15 @@ set $w9 9
 set $w0 10
 
 # Locker
-set $Locker i3lock -c 000000
+set $locker ~/.i3/i3lock
 
 # System mode
 set $mode_system System (l) lock, (e) logout, (u) suspend, (h) hibernate, (r) reboot, (Shift+s) shutdown
 mode "$mode_system" {
-  bindsym l exec --no-startup-id $Locker, mode "default"
+  bindsym l exec --no-startup-id $locker, mode "default"
   bindsym e exec --no-startup-id i3-msg exit, mode "default"
-  bindsym u exec --no-startup-id $Locker && systemctl suspend, mode "default"
-  bindsym h exec --no-startup-id $Locker && systemctl hibernate, mode "default"
+  bindsym u exec --no-startup-id $locker && systemctl suspend, mode "default"
+  bindsym h exec --no-startup-id $locker && systemctl hibernate, mode "default"
   bindsym r exec --no-startup-id systemctl reboot, mode "default"
   bindsym Shift+s exec --no-startup-id systemctl poweroff -i, mode "default"
   bindsym Return mode "default"

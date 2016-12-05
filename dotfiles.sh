@@ -27,9 +27,6 @@ OPTS=$(getopt -o rg -l root,gui -n "$(basename "$0")" -- "$@")
 trigger_action()
 {
   case $1 in
-    help)
-      action_usage
-      ;;
     *)
       eval "action_$1"
       ;;
@@ -296,10 +293,10 @@ action_uninstall()
   worker_uninstall_symlinks
 }
 
-# action_usage
+# action_help
 #
 # Print usage instructions.
-action_usage()
+action_help()
 {
   message_usage
 }
@@ -341,7 +338,7 @@ done
 
 # If no actions triggered when processing the command line input, print the
 # usage instructions and exit with error.
-action_usage
+action_help
 exit 1
 
 # }}}

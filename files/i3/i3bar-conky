@@ -1,3 +1,0 @@
-#!/bin/bash
-
-conky -b -c ~/.i3/i3bar-conkyrc

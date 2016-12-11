@@ -62,7 +62,7 @@ client.urgent           #900000 #900000    #ffffff #900000
 # i3bar
 bar {
   mode dock
-  status_command ~/.i3/i3bar-conky
+  status_command i3blocks -c ~/.i3/i3blocks.conf
   font pango:$font $font_size_bar
   colors {
     background         #000000

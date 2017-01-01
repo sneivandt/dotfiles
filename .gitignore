@@ -1,4 +1,5 @@
 .symlinksignore
 files/vim/.netrwhist
 files/vim/autoload/plug.vim
+files/vim/autoload/plug.vim.old
 files/vim/plugged/

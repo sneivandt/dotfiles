@@ -9,16 +9,16 @@ set $mod Mod4
 floating_modifier $mod
 
 # Workspace names
-set $w1 1
-set $w2 2
-set $w3 3
-set $w4 4
-set $w5 5
-set $w6 6
-set $w7 7
-set $w8 8
-set $w9 9
-set $w0 10
+set $w1 0
+set $w2 1
+set $w3 2
+set $w4 3
+set $w5 4
+set $w6 5
+set $w7 6
+set $w8 7
+set $w9 8
+set $w0 9
 
 # Locker
 set $locker ~/.i3/i3lock
@@ -50,23 +50,27 @@ gaps outer 2
 # Font
 set $font Source Code Pro
 set $font_size 7
-set $font_size_bar 8
+set $font_size_bar 9
 font pango:$font $font_size
 
 # Colors                border  background text    indicator
-client.focused          #3465a4 #3465a4    #ffffff #3465a4
+client.focused          #3465a4 #3465a4    #d1d1d1 #3465a4
 client.focused_inactive #282828 #282828    #888888 #282828
 client.unfocused        #282828 #282828    #888888 #282828
-client.urgent           #900000 #900000    #ffffff #900000
+client.urgent           #900000 #900000    #d1d1d1 #900000
 
 # i3bar
 bar {
   mode invisible
+  tray_output none
   status_command polybar Bar
 }
 
 # }}}
 # Startup ----------------------------------------------------------------- {{{
+
+# Compton
+exec --no-startup-id compton
 
 # Redshift
 exec --no-startup-id redshift
@@ -172,7 +176,7 @@ bindsym $mod+M      exec --no-startup-id scrot '%Y%m%d_%H%M%S.png' -e 'mv $f ~/m
 bindsym $mod+Return exec --no-startup-id ~/.i3/choose-term
 
 # Start dmenu
-bindsym $mod+p      exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -b -nb '#000000' -fn '$font-$font_size_bar'"
+bindsym $mod+p      exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -p 'Run' -nb '#000000' -nf '#d1d1d1' -sb '#3465a4' -sf '#d1d1d1' -fn '$font-$font_size_bar'"
 
 # Start Chrome
 bindsym $mod+o      exec --no-startup-id google-chrome-beta

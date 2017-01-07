@@ -1,131 +1,92 @@
 # vi: set ft=dosini
 
 [colors]
-background = #000
-background-alt = #282828
-foreground = #fff
-foreground-alt = #555
-primary = #3465a4
-secondary = #282828
-alert = #f00
-
-[global/wm]
-margin-top = 5
-margin-bottom = 5
+white = #d1d1d1
+black = #000000
+red = #ed3636
+blue = #3465a4
 
 [bar/Bar]
 width = 100%
-height = 16
-offset-x = 0
-offset-y = 0
+height = 18
 
-background = ${colors.background}
-foreground = ${colors.foreground}
-
-overline-size = 2
-overline-color = #f00
-underline-size = 2
-underline-color = #00f
-
-bottom = true
+background = ${colors.black}
+foreground = ${colors.white}
 
 spacing = 1
-padding-left = 0
-padding-right = 2
+padding-left = 1
+padding-right = 1
 module-margin-left = 1
-module-margin-right = 2
+module-margin-right = 1
 
-font-0 = fixed:pixelsize=10;0
-font-1 = unifont:size=6:heavy:fontformat=truetype;-2
-font-2 = siji:pixelsize=10;0
+font-0 = terminus:size=9
+font-1 = FontAwesome:size=11
 
 modules-left = i3 xwindow
 modules-center =
 modules-right = volume date
 
-tray-position = xright
-tray-padding = 2
+tray-detached = false
+tray-position = right
+tray-padding = 1
 
 [module/xwindow]
 type = internal/xwindow
 label = %title:0:64:...%
 
-[module/bspwm]
-type = internal/bspwm
-ws-icon-default = x
+[module/date]
+type = internal/date
+date =   %A %b %d    %H:%M
+time = %H:%M
+interval = 5
+format-font =3
+format-padding = 1
 
-label-focused = %index%
-label-focused-background = ${colors.background-alt}
-label-focused-underline = ${colors.primary}
-label-focused-padding = 2
+[module/volume]
+type = internal/volume
 
-label-occupied = %index%
-label-occupied-padding = 2
+bar-volume-width = 10
+bar-volume-padding = 1
 
-label-urgent = %index%
-label-urgent-background = ${colors.alert}
-label-urgent-padding = 2
+format-volume = <ramp-volume>  <label-volume>
+format-volume-padding = 1
 
-label-empty = %index%
-label-empty-foreground = ${colors.foreground-alt}
-label-empty-padding = 2
+format-muted = <label-muted>
+format-muted-padding = 1
+
+label-volume = %percentage%
+
+label-muted =   %percentage%
+label-muted-foreground = ${colors.white}
+
+ramp-volume-0 = 
+ramp-volume-1 = 
+ramp-volume-2 = 
+
+ramp-headphones-0 = 
+ramp-headphones-1 = 
 
 [module/i3]
 type = internal/i3
 format = <label-state> <label-mode>
 index-sort = true
-wrapping-scroll = false
 
 label-mode = %mode%
-label-mode-padding = 2
-label-mode-foreground = ${colors.foreground}
-label-mode-background = ${colors.primary}
+label-mode-padding = 1
+label-mode-foreground = ${colors.white}
+label-mode-background = ${colors.blue}
 
-label-focused = %index%
-label-focused-background = ${module/bspwm.label-focused-background}
-label-focused-underline = ${module/bspwm.label-focused-underline}
-label-focused-padding = ${module/bspwm.label-focused-padding}
+label-focused = 
+label-focused-padding = 1
 
-label-unfocused = %index%
-label-unfocused-padding = ${module/bspwm.label-occupied-padding}
+label-unfocused = 
+label-unfocused-padding = 1
+label-unfocused-underlinde = ${colors.white}
 
-label-urgent = %index%!
-label-urgent-background = ${colors.alert}
-label-urgent-padding = ${module/bspwm.label-urgent-padding}
+label-urgent = 
+label-urgent-padding = 1
+label-urgent-foreground = ${colors.red}
 
-label-visible = %index%
-label-visible-foreground = ${module/bspwm.label-empty-padding}
-label-visible-padding = ${module/bspwm.label-empty-padding}
-
-[module/date]
-type = internal/date
-interval = 1
-
-date = %a %b
-time = %d %R
-
-label = %date% %time%
-
-[module/volume]
-type = internal/volume
-
-format-volume = <bar-volume>
-label-muted = ────────── muted ──────────
-label-muted-foreground = #66
-label-muted-font = 0
-
-bar-volume-width = 28
-bar-volume-foreground-0 = #3465a4
-bar-volume-foreground-1 = #3465a4
-bar-volume-foreground-2 = #3465a4
-bar-volume-foreground-3 = #3465a4
-bar-volume-indicator = ●
-bar-volume-indicator-foreground = #fff
-bar-volume-indicator-font = 0
-bar-volume-fill = ─
-bar-volume-fill-font = 0
-bar-volume-empty = ─
-bar-volume-empty-font = 0
-bar-volume-empty-foreground = #444
-
-
+label-visible = 
+label-visible-foreground = ${colors.white}
+label-visible-padding = 1

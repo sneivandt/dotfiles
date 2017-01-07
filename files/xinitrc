@@ -19,12 +19,6 @@ then
   xset -dpms
   xset s noblank
 
-  # compton
-  if [[ -x $(which compton 2>/dev/null) ]]
-  then
-    compton -cCGf &
-  fi
-
   # i3-gaps
   if [[ $(i3 -C) ]]
   then

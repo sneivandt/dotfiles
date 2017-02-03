@@ -27,10 +27,5 @@ export LESS_TERMCAP_ZW=$(tput rsupm)
 # Dont check mail
 unset MAILCHECK
 
-# npm
-NPM_PACKAGES="$HOME/.npm-packages"
-PATH="$NPM_PACKAGES/bin:$PATH"
-export MANPATH="$NPM_PACKAGES/share/man:$MANPATH"
-
 # Start X Windows
 [[ -z $DISPLAY && $XDG_VTNR -eq 1 && -x $(which i3 2>/dev/null) ]] && exec startx

@@ -158,6 +158,11 @@ bindsym $mod+Shift+r restart
 bindsym $mod+Shift+q mode "$mode_system"
 
 # }}}
+# Windows ----------------------------------------------------------------- {{{
+
+for_window [class="rdesktop"] floating disable
+
+# }}}
 # Exec -------------------------------------------------------------------- {{{
 
 # Volume up

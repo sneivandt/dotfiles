@@ -24,15 +24,15 @@
   ad = add
   br = branch
   ca = commit --amend --reuse-message=HEAD
-  co = commit
-  cl = clone --recursive
   ch = checkout
+  cl = clone --recursive
+  co = commit
   cp = cherry-pick
   dc = difftool --cached
   di = diff
   dt = difftool
   fe = fetch --prune
-  lf = log -u
+  ll = log -u
   lo = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
   me = merge
   pl = pull
@@ -40,7 +40,7 @@
   rb = rebase
   ri = rebase --interactive
   rs = reset
-  ss = stash
+  sh = stash --all
   st = status --short
   ta = tag
 [include]

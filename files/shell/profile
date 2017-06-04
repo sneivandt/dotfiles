@@ -27,5 +27,11 @@ export LESS_TERMCAP_ZW=$(tput rsupm)
 # Dont check mail
 unset MAILCHECK
 
+# GUI
+if [[ -e "$HOME"/.shell/profile-gui ]]
+then
+  source "$HOME"/.shell/profile-gui
+fi
+
 # Start X Windows
 [[ -z $DISPLAY && $XDG_VTNR -eq 1 && -x $(which i3 2>/dev/null) ]] && exec startx

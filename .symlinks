@@ -6,7 +6,10 @@ curlrc
 gitattributes
 gitconfig
 gitignore
-shell
+shell/aliases
+shell/functions
+shell/path
+shell/profile
 ssh/config
 terminfo/r/rxvt-unicode-256color
 tmux

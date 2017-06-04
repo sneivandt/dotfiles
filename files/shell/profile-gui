@@ -1,0 +1,4 @@
+# vi: set ft=sh :
+
+# Intellij
+export IDEA_PROPERTIES=$HOME/.idea.properties

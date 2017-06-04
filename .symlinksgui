@@ -4,11 +4,13 @@ config/polybar/config
 config/redshift.conf
 gtkrc-2.0
 i3
+idea.properties
 IdeaIC/config/codestyles/Custom.xml
 IdeaIC/config/keymaps/Custom.xml
 IdeaIC/config/options/colors.scheme.xml
 IdeaIC/config/options/editor.xml
 IdeaIC/config/options/ide.general.xml
 IdeaIC/config/options/keymap.xml
+shell/profile-gui
 xinitrc
 Xresources

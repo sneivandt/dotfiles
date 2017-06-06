@@ -24,7 +24,7 @@ git_prompt_info() {
 }
 
 host_name() {
-  if [[ -n $SSH_CONNECTION || -e /.dockerinit ]]
+  if [[ -n $SSH_CONNECTION || -e /.dockerenv ]]
   then
     echo "%{$fg[cyan]%}%m "
   fi

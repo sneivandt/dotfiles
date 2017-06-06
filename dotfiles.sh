@@ -224,12 +224,7 @@ worker_install_vim_plugins()
     then
       curl -fLo "$DIR"/files/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
     fi
-    if [[ -f /.dockerenv ]]
-    then
-      vim +PlugUpdate +PlugUpgrade +qall >/dev/null 2>&1
-    else
-      vim +PlugUpdate +PlugUpgrade +qall
-    fi
+    vim +PlugUpdate +PlugUpgrade +qall
   fi
 }
 

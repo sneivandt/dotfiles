@@ -20,9 +20,13 @@ then
   xset s noblank
 
   # i3-gaps
+  rm ~/.i3/config
+  cat ~/.i3/config-base ~/.i3/config-with-gaps >> ~/.i3/config
   if [[ $(i3 -C) ]]
   then
-    exec i3 -c ~/.i3/config-no-gaps
+    rm ~/.i3/config
+    cat ~/.i3/config-base ~/.i3/config-without-gaps >> ~/.i3/config
+    exec i3
   else
     exec i3
   fi

@@ -39,10 +39,6 @@ mode "$mode_system" {
 # }}}
 # Apearance --------------------------------------------------------------- {{{
 
-# Window borders
-new_window pixel 0
-new_float pixel 3
-
 # Font
 set $font Source Code Pro
 set $font_size 7

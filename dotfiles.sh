@@ -217,12 +217,17 @@ worker_install_symlinks()
 # Install vim plugins managed by vim-plug as long as the "vim" symlink exists.
 worker_install_vim_plugins()
 {
-  if [[ $(is_program_installed "vim") == "0" && $(does_symlink_exist "vim") == "0" && $(is_program_installed "curl") == "0" ]]
+  if [[ $(is_program_installed "vim") == "0" && $(does_symlink_exist "vim") == "0" && ($(is_program_installed "curl") == "0" || $(is_program_installed "wget") == "0") ]]
   then
     message_worker "Installing vim plugins"
     if [[ ! -e $DIR/files/vim/autoload/plug.vim ]]
     then
-      curl -fLo "$DIR"/files/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+      if [[ $(is_program_installed "curl") == "0" ]]
+      then
+        curl -fLo "$DIR"/files/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+      else
+        wget -q -P "$DIR"/files/vim/autoload https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+      fi
     fi
     vim +PlugUpdate +PlugUpgrade +qall
   fi

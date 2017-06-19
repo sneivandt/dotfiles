@@ -9,4 +9,4 @@ do
   fi
 done
 
-i3-nagbar -m "Could not find a terminal terminal emulator."
+i3-nagbar -m "Could not find a terminal emulator."

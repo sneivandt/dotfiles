@@ -19,6 +19,16 @@ alias ls="ls -h --color=auto"
 alias la="ls -a"
 alias ll="ls -l"
 
+# path
+alias path='echo $PATH | tr -s ":" "\n"'
+
+# docker
+alias d="docker"
+alias dc="docker-compose"
+
+# git
+alias g="git"
+
 # tmux
 alias tmux="tmux -2"
 

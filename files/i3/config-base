@@ -47,8 +47,8 @@ font pango:$font $font_size
 
 # class                 border  backgr  text    indicator
 client.focused          #607d8b #607d8b #DFDFDF #607d8b
-client.focused_inactive #263238 #263238 #9a9b9c #263238
-client.unfocused        #455a64 #455a64 #a1a1a1 #455a64
+client.focused_inactive #455a64 #455a64 #a1a1a1 #455a64
+client.unfocused        #263238 #263238 #9a9b9c #263238
 client.urgent           #4a4b4c #4a4b4c #fdfdfd #4a4b4c
 client.placeholder      #000000 #0c0c0c #ffffff #000000
 client.background       #000000

@@ -1,19 +1,5 @@
 #!/bin/bash
 
-# Globals ----------------------------------------------------------------- {{{
-#
-# Constant values which exist in the global scope of this script.
-
-# Get absolute path to the dotfiles project directory. This value will be
-# correct even if this script is executed from a symlink or while your working
-# directory is not the root of this project.
-DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
-
-# Read command line options. While reading this input the 'getopt' call will
-# report invalid options that were given.
-OPTS=$(getopt -o rg -l root,gui -n "$(basename "$0")" -- "$@")
-
-# }}}
 # Helpers ----------------------------------------------------------------- {{{
 #
 # Helper functions.
@@ -131,7 +117,7 @@ message_usage()
   echo "These are the available commands:"
   echo
   echo "    help       Show usage instructions"
-  echo "    install    Create symlinks, install plugins and install dotfiles CLI"
+  echo "    install    Create symlinks dotfiles CLI"
   echo "    uninstall  Remove symlinks"
 }
 
@@ -166,6 +152,24 @@ message_error()
 message_invalid()
 {
   echo "$(basename "$0"): '$1' is not a valid command. See '$(basename "$0") help'."
+}
+
+# }}}
+# Assertions -------------------------------------------------------------- {{{
+#
+# Assertions about the state that exit with an error if they are not meet.
+
+# assert_user_permissions
+#
+# Verify that if this script is being run by root, that the command line flags
+# "-r" or "--root" are set.
+assert_user_permissions()
+{
+  if [[ $EUID -eq 0 && ($(is_flag_set "--root") == "1" && $(is_flag_set "-r") == "1") ]]
+  then
+    message_error "Do not run this script as root. To skip this check pass the command line flag '--root'."
+    exit 1
+  fi
 }
 
 # }}}
@@ -212,14 +216,14 @@ worker_install_symlinks()
   chmod -c 600 ~/.ssh/config 2>/dev/null
 }
 
-# worker_install_vim_plugins
+# worker_install_vim-plug
 #
-# Install vim plugins managed by vim-plug as long as the "vim" symlink exists.
-worker_install_vim_plugins()
+# Install vim-plug as long as the "vim" symlink exists.
+worker_install_vim-plug()
 {
   if [[ $(is_program_installed "vim") == "0" && $(does_symlink_exist "vim") == "0" && ($(is_program_installed "curl") == "0" || $(is_program_installed "wget") == "0") ]]
   then
-    message_worker "Installing vim plugins"
+    message_worker "Installing vim-plug"
     if [[ ! -e $DIR/files/vim/autoload/plug.vim ]]
     then
       if [[ $(is_program_installed "curl") == "0" ]]
@@ -229,7 +233,6 @@ worker_install_vim_plugins()
         wget -q -P "$DIR"/files/vim/autoload https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
       fi
     fi
-    vim +PlugUpdate +PlugUpgrade +qall
   fi
 }
 
@@ -252,28 +255,9 @@ worker_uninstall_symlinks()
 }
 
 # }}}
-# Assertions -------------------------------------------------------------- {{{
-#
-# Assertions about the machines state that exit with an error if they are not
-# meet.
-
-# assert_user_permissions
-#
-# Verify that if this script is being run by root, that the command line flags
-# "-r" or "--root" are set.
-assert_user_permissions()
-{
-  if [[ $EUID -eq 0 && ($(is_flag_set "--root") == "1" && $(is_flag_set "-r") == "1") ]]
-  then
-    message_error "Do not run this script as root. To skip this check pass the command line flag '--root'."
-    exit 1
-  fi
-}
-
-# }}}
 # Actions ----------------------------------------------------------------- {{{
 #
-# Functions which are triggered based on command line input.
+# Functions that control the execution of the core logic.
 
 # action_install
 #
@@ -281,7 +265,7 @@ assert_user_permissions()
 action_install()
 {
   worker_install_symlinks
-  worker_install_vim_plugins
+  worker_install_vim-plug
   worker_install_dotfiles_cli
 }
 
@@ -304,8 +288,16 @@ action_help()
 # }}}
 # Main -------------------------------------------------------------------- {{{
 #
-# The entry point to this script. If the user is allowed to trigger actions,
-# they will be triggered based on the command line arguments.
+# The entry point to this script.
+
+# Get absolute path to the dotfiles project directory. This value will be
+# correct even if this script is executed from a symlink or while your working
+# directory is not the root of this project.
+DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+
+# Read command line options. While reading this input the 'getopt' call will
+# report invalid options that were given.
+OPTS=$(getopt -o rg -l root,gui -n "$(basename "$0")" -- "$@")
 
 # Abort if the root user is running this without permission.
 assert_user_permissions

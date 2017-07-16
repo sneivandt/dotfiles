@@ -1,35 +1,39 @@
 # vi set ft=zsh :
 
-git_prompt_info() {
-  current_branch=$(git rev-parse --abbrev-ref HEAD 2> /dev/null)
-  if [[ -n $current_branch ]]
-  then
-    echo -n "%{$reset_color%} %{$current_branch%}"
-    flags=(
-      "git status -s"
-      "git status | grep 'Changes not staged for commit'"
-    )
-    for flag in "${flags[@]}"
-    do
-      if [[ -z $(eval $flag 2> /dev/null) ]]
-      then
-        echo -n "%{$fg[green]%}"
-      else
-        echo -n "%{$fg[red]%}"
-      fi
-      echo -n " ●"
-    done
-    echo -n "%{$reset_color%}"
-  fi
-}
+setopt PROMPT_SUBST
 
 host_name() {
   if [[ -n $SSH_CONNECTION || -e /.dockerenv ]]
   then
-    echo "%{$fg[cyan]%}%m "
+    echo -n "%{$fg[cyan]%}%m %{$reset_color%} "
   fi
 }
 
-setopt PROMPT_SUBST
-precmd() { print -rP '$(host_name)%{$fg[yellow]%}%~$(git_prompt_info)' }
-PROMPT='%{$reset_color%}%(!.#.$) '
+working_dir() {
+  echo -n "%{$fg[yellow]%}%~%{$reset_color%}"
+}
+
+git_prompt_info() {
+  current_branch=$(git rev-parse --abbrev-ref HEAD 2> /dev/null)
+  if [[ -n $current_branch ]]
+  then
+    echo -n " %{$fg[white]%}%{$current_branch%}%{$reset_color%}"
+    if [[ $(git status --short | wc -l) -gt 0 ]]
+    then
+      echo -n "%{$fg[red]%}+$(git status --short | wc -l | awk '{$1=$1};1')%{$reset_color%}"
+    fi
+  fi
+}
+
+sudo_active() {
+  can_sudo=$(sudo -n uptime 2>&1 | grep "load" | wc -l)
+  if [[ ${can_sudo} -gt 0 ]]
+  then
+    echo -n " %{$fg[cyan]%}!%{$reset_color%}"
+  fi
+}
+
+precmd() {
+  print -rP "$(host_name)$(working_dir)$(git_prompt_info)$(sudo_active)"
+}
+PROMPT="%{$reset_color%}%(!.#.$) "

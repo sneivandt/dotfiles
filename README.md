@@ -4,7 +4,7 @@ Configuration for my Linux development environment.
 
 ## Install
 
-Install symlinks, plugins and CLI.
+Install symlinks and CLI.
 
 ```
 ./dotfiles.sh install

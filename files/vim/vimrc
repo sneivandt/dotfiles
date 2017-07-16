@@ -12,6 +12,12 @@ filetype plugin indent on
 " }}}
 " Plugins ----------------------------------------------------------------- {{{
 
+" Install missing plugins on startup
+autocmd VimEnter *
+  \   if len(filter(values(g:plugs), '!isdirectory(v:val.dir)'))
+  \|    PlugInstall --sync | source $MYVIMRC | q
+  \|  endif
+
 source ~/.vim/autoload/plug.vim
 call plug#begin('~/.vim/plugged')
 
@@ -136,7 +142,10 @@ autocmd VimResized * :wincmd =
 autocmd FileType qf :wincmd J
 
 " Close vim if a quickfix window is the only remaining buffer
-autocmd WinEnter * if winnr('$') == 1 && getbufvar(winbufnr(winnr()), '&buftype') == 'quickfix'|q|endif
+autocmd WinEnter *
+  \   if winnr('$') == 1 && getbufvar(winbufnr(winnr()), '&buftype') == 'quickfix'
+  \|    q
+  \|  endif
 
 " }}}
 " Whitespace {{{
@@ -164,6 +173,8 @@ noremap * *<c-o>
 noremap / /\v
 noremap ? ?\v
 noremap H 0
+nnoremap J L
+nnoremap K H
 noremap L $
 
 " Tabs
@@ -183,11 +194,11 @@ noremap <c-r>9 9gt
 nnoremap n nzzzv
 nnoremap N Nzzzv
 
-" Toggle spell check
-noremap K :set spell! spelllang=en_us<cr>
-
 " Clear all highlights
 noremap <space> :noh<cr>
+
+" Toggle spell check
+noremap <leader>k :set spell! spelllang=en_us<cr>
 
 " Open .vimrc
 noremap <leader>v :e ~/.vim/vimrc<cr>

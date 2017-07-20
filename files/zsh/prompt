@@ -5,7 +5,7 @@ setopt PROMPT_SUBST
 host_name() {
   if [[ -n $SSH_CONNECTION || -e /.dockerenv ]]
   then
-    echo -n "%{$fg[cyan]%}%m %{$reset_color%} "
+    echo -n "%{$fg[cyan]%}%m%{$reset_color%} "
   fi
 }
 

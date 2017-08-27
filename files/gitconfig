@@ -6,8 +6,8 @@
 [core]
   editor = vim
   pager = less
-  excludefiles = ~/.gitignore
   autocrlf = input
+  excludesfile = ~/.gitignore
 [color]
   ui = true
 [apply]

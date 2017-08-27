@@ -56,9 +56,9 @@ does_symlink_exist()
 
 # is_file_ignored
 #
-# Check if a file is ignored. Files listed in ".symlinks" with the "g" option
+# Check if a file is ignored. Files listed in "symlinks" with the "g" option
 # will be ignored unless the flags "-g" or "--gui" are set. Ignored files will
-# also be listed in '.symlinksignore'.
+# also be listed in 'symlinksignore'.
 #
 # Args:
 #     $1 - The file to check.
@@ -67,12 +67,12 @@ does_symlink_exist()
 #     bool - True of the file is ignored.
 is_file_ignored()
 {
-  if grep -qxi "$1" "$DIR"/.symlinksignore 2>/dev/null
+  if grep -qxi "$1" "$DIR"/symlinksignore 2>/dev/null
   then
     echo 0
   elif [[ $(is_flag_set "--gui") == "1" && $(is_flag_set "-g") == "1" ]]
   then
-    if grep -xi "$1" "$DIR"/.symlinksgui
+    if grep -xi "$1" "$DIR"/symlinksgui
     then
       echo 0
     else
@@ -198,7 +198,7 @@ worker_install_dotfiles_cli()
 worker_install_symlinks()
 {
   message_worker "Installing symlinks"
-  for file in "$DIR"/.symlinks "$DIR"/.symlinksgui
+  for file in "$DIR"/symlinks "$DIR"/symlinksgui
   do
     local link
     while read -r link
@@ -242,7 +242,7 @@ worker_install_vim-plug()
 worker_uninstall_symlinks()
 {
   message_worker "Removing symlinks"
-  for file in "$DIR"/.symlinks "$DIR"/.symlinksgui
+  for file in "$DIR"/symlinks "$DIR"/symlinksgui
   do
     while read -r link
     do

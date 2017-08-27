@@ -23,6 +23,7 @@ call plug#begin('~/.vim/plugged')
 
 " Plugins
 Plug 'christoomey/vim-tmux-navigator'
+Plug 'craigemery/vim-autotag'
 Plug 'ctrlpvim/ctrlp.vim'
 Plug 'junegunn/vim-easy-align'
 Plug 'scrooloose/nerdtree', { 'on': 'NERDTreeToggle' }
@@ -49,7 +50,7 @@ Plug 'stanangeloff/php.vim', { 'for': 'php' }
 call plug#end()
 
 " }}}
-" Basic options------------------------------------------------------------ {{{
+" Options------------------------------------------------------------------ {{{
 
 set autoindent
 set backspace=2
@@ -172,10 +173,10 @@ noremap k gk
 noremap * *<c-o>
 noremap / /\v
 noremap ? ?\v
-noremap H 0
+noremap H ^
 nnoremap J L
 nnoremap K H
-noremap L $
+noremap L g_
 
 " Tabs
 noremap <c-r>n :tabnew<cr>
@@ -194,6 +195,9 @@ noremap <c-r>9 9gt
 nnoremap n nzzzv
 nnoremap N Nzzzv
 
+" Ctags
+nnoremap <c-[> <c-t>
+
 " Clear all highlights
 noremap <space> :noh<cr>
 
@@ -210,7 +214,7 @@ noremap <leader>w :set wrap!<cr>
 noremap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>
 
 " Search for a string in the current directory
-noremap <leader>/ :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
+noremap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
 
 " Jump to matching element
 nmap <tab> %
@@ -328,6 +332,8 @@ let g:ctrlp_cmd='CtrlP'
 let g:ctrlp_switch_buffer='e'
 let g:ctrlp_working_path_mode='a'
 let g:ctrlp_show_hidden=1
+
+nnoremap <leader>. :CtrlPTag<cr>
 
 " }}}
 " Dispatch {{{

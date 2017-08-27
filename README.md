@@ -12,7 +12,7 @@ Install symlinks and CLI.
 
 ## Configure
 
-Files listed in *.symlinksignore* will be ignored.
+Files listed in *symlinksignore* will be ignored.
 
 ## Docker
 

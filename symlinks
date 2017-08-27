@@ -2,6 +2,7 @@ bash_profile
 bashrc
 config/git
 config/nvim
+ctags
 curlrc
 gitattributes
 gitconfig

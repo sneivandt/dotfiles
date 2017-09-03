@@ -46,7 +46,7 @@ is_flag_set()
 #     bool - True of the symlink exists.
 does_symlink_exist()
 {
-  if [[ $(readlink -f "$DIR"/files/"$1") == $(readlink -f ~/."$1") ]]
+  if [[ $(readlink -f "$DIR"/home/"$1") == $(readlink -f ~/."$1") ]]
   then
     echo 0
   else
@@ -213,7 +213,7 @@ worker_install_symlinks()
         then
           rm -rvf ~/."$link"
         fi
-        ln -snvf "$DIR"/files/"$link" ~/."$link"
+        ln -snvf "$DIR"/home/"$link" ~/."$link"
       fi
     done < "$file"
   done
@@ -227,14 +227,14 @@ worker_install_vim_plug()
 {
   if [[ $(is_program_installed "vim") == "0" && $(does_symlink_exist "vim") == "0" && ($(is_program_installed "curl") == "0" || $(is_program_installed "wget") == "0") ]]
   then
-    if [[ ! -e $DIR/files/vim/autoload/plug.vim ]]
+    if [[ ! -e $DIR/home/vim/autoload/plug.vim ]]
     then
       message_worker "Installing vim-plug"
       if [[ $(is_program_installed "curl") == "0" ]]
       then
-        curl -fLo "$DIR"/files/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+        curl -fLo "$DIR"/home/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
       else
-        wget -q -P "$DIR"/files/vim/autoload https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+        wget -q -P "$DIR"/home/vim/autoload https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
       fi
     fi
   fi

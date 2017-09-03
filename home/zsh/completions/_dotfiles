@@ -9,19 +9,19 @@ _arguments -C \
 
 case "$state" in
   (cmds)
-    local comands
-    comands=(
+    local commands
+    commands=(
       'help:Show usage instructions'
-      'install:Create symlinks, install plugins and install dotfiles CLI'
+      'install:Install symlinks, package managers and dotfiles CLI'
       'uninstall:Remove symlinks'
     )
-    _describe -t comands 'comands' comands
+    _describe -t commands 'commands' commands
   ;;
   (args)
     local arguments
     arguments=(
-      '--gui:Configure GUI applicaitons'
-      '-g:Configure GUI applicaitons'
+      '--gui:Configure GUI applications'
+      '-g:Configure GUI applications'
       '--root:Allow execution as root'
       '-r:Allow execution as root'
     )

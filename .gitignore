@@ -1,6 +1,10 @@
 .symlinksignore
+files/atom/*
 files/i3/config
 files/vim/.netrwhist
 files/vim/autoload/plug.vim
 files/vim/autoload/plug.vim.old
 files/vim/plugged/
+!files/atom/config.cson
+!files/atom/init.coffee
+!files/atom/packages.cson

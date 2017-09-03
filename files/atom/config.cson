@@ -1,0 +1,22 @@
+"*":
+  core:
+    allowPendingPaneItems: false
+    audioBeep: false
+    autoHideMenuBar: true
+    projectHome: "$HOME/src"
+    restorePreviousWindowsOnStart: "no"
+    telemetryConsent: "no"
+  editor:
+    fontFamily: "Adobe Source Code Pro"
+    fontSize: 13
+    showInvisibles: false
+    softWrap: true
+    zoomFontWhenCtrlScrolling: false
+  "exception-reporting":
+    userId: "ba77d9db-f51a-17da-b914-318a2c4a728b"
+  minimap: {}
+  "package-sync":
+    createOnChange: true
+    forceOverwrite: true
+  welcome:
+    showOnStartup: false

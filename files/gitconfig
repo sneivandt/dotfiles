@@ -18,8 +18,8 @@
   tool = vimdiff
 [diff "bin"]
   textconv = hexdump -v -C
-[difftool]
-  prompt = false
+[push]
+  followTags = true
 [alias]
   ad = add
   br = branch
@@ -28,19 +28,16 @@
   cl = clone --recursive
   co = commit
   cp = cherry-pick
-  dc = difftool --cached
   di = diff
   dt = difftool
   fe = fetch --prune
-  ll = log -u
-  lo = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
+  lg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
   me = merge
   pl = pull
   ps = push
   rb = rebase
   ri = rebase --interactive
   rs = reset
-  sh = stash --all
   st = status --short
   ta = tag
 [include]

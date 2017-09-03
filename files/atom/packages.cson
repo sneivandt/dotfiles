@@ -1,0 +1,12 @@
+packages: [
+  "busy-signal"
+  "highlight-selected"
+  "intentions"
+  "linter"
+  "linter-clang"
+  "linter-eslint"
+  "linter-pylint"
+  "linter-ui-default"
+  "minimap"
+  "package-sync"
+]

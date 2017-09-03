@@ -8,7 +8,7 @@ export LANGUAGE=en_US.UTF-8
 # Default editor
 export EDITOR=vim
 
-# Less
+# less
 export LESS=-imRj8
 export LESS_TERMCAP_mb=$(tput bold; tput setaf 2) # green
 export LESS_TERMCAP_md=$(tput bold; tput setaf 6) # cyan
@@ -23,6 +23,13 @@ export LESS_TERMCAP_ZN=$(tput ssubm)
 export LESS_TERMCAP_ZV=$(tput rsubm)
 export LESS_TERMCAP_ZO=$(tput ssupm)
 export LESS_TERMCAP_ZW=$(tput rsupm)
+
+# virtualenvwrapper
+if [[ -e $(which "virtualenvwrapper.sh") ]]
+then
+  export WORKON_HOME=~/.venv
+  source virtualenvwrapper.sh
+fi
 
 # Dont check mail
 unset MAILCHECK

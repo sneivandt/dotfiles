@@ -117,7 +117,7 @@ message_usage()
   echo "These are the available commands:"
   echo
   echo "    help       Show usage instructions"
-  echo "    install    Create symlinks dotfiles CLI"
+  echo "    install    Install symlinks, package managers and dotfiles CLI"
   echo "    uninstall  Remove symlinks"
 }
 
@@ -209,6 +209,10 @@ worker_install_symlinks()
         then
           mkdir -pv ~/."$(echo "$link" | rev | cut -d/ -f2- | rev)"
         fi
+        if [[ -e ~/."$link" ]]
+        then
+          rm -rvf ~/."$link"
+        fi
         ln -snvf "$DIR"/files/"$link" ~/."$link"
       fi
     done < "$file"
@@ -216,22 +220,37 @@ worker_install_symlinks()
   chmod -c 600 ~/.ssh/config 2>/dev/null
 }
 
-# worker_install_vim-plug
+# worker_install_vim_plug
 #
-# Install vim-plug as long as the "vim" symlink exists.
-worker_install_vim-plug()
+# Install vim-plug.
+worker_install_vim_plug()
 {
   if [[ $(is_program_installed "vim") == "0" && $(does_symlink_exist "vim") == "0" && ($(is_program_installed "curl") == "0" || $(is_program_installed "wget") == "0") ]]
   then
-    message_worker "Installing vim-plug"
     if [[ ! -e $DIR/files/vim/autoload/plug.vim ]]
     then
+      message_worker "Installing vim-plug"
       if [[ $(is_program_installed "curl") == "0" ]]
       then
         curl -fLo "$DIR"/files/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
       else
         wget -q -P "$DIR"/files/vim/autoload https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
       fi
+    fi
+  fi
+}
+
+# worker_install_atom_package_sync
+#
+# Install atom package-sync.
+worker_install_atom_package_sync()
+{
+  if [[ $(is_program_installed "apm") == "0" && $(does_symlink_exist "atom/config.cson") == "0" ]]
+  then
+    if ! apm list --installed --bare 2>/dev/null | grep -Pq 'package-sync@(?:(\d+)\.)?(?:(\d+)\.)?(\*|\d+)'
+    then
+      message_worker "Installing atom package-sync"
+      apm install package-sync
     fi
   fi
 }
@@ -265,7 +284,8 @@ worker_uninstall_symlinks()
 action_install()
 {
   worker_install_symlinks
-  worker_install_vim-plug
+  worker_install_vim_plug
+  worker_install_atom_package_sync
   worker_install_dotfiles_cli
 }
 

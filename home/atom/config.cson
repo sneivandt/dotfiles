@@ -14,9 +14,14 @@
     zoomFontWhenCtrlScrolling: false
   "exception-reporting":
     userId: "ba77d9db-f51a-17da-b914-318a2c4a728b"
+  "file-icons":
+    coloured: false
+  "git-diff": {}
   minimap: {}
   "package-sync":
     createOnChange: true
     forceOverwrite: true
+  "tree-view":
+    squashDirectoryNames: true
   welcome:
     showOnStartup: false

@@ -10,7 +10,10 @@ packages: [
   "linter-eslint"
   "linter-gcc"
   "linter-pylint"
+  "linter-shellcheck"
   "linter-ui-default"
   "minimap"
   "package-sync"
+  "pdf-view"
+  "zentabs"
 ]

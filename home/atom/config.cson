@@ -25,3 +25,6 @@
     squashDirectoryNames: true
   welcome:
     showOnStartup: false
+  zentabs:
+    maximumOpenedTabs: 8
+    neverCloseUnsaved: true

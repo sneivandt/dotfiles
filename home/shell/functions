@@ -1,4 +1,4 @@
-# vi: set ft=sh :
+#!/bin/bash
 
 # Extract archives
 extract()

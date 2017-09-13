@@ -1,4 +1,4 @@
-# vi: set ft=zsh :
+#!/bin/bash
 
 # Colors
 autoload -U colors

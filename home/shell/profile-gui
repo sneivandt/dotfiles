@@ -1,4 +1,4 @@
-# vi: set ft=sh :
+#!/bin/bash
 
 # Intellij
-export IDEA_PROPERTIES=$HOME/.idea.properties
+export IDEA_PROPERTIES=~/.idea.properties

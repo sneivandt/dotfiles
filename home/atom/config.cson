@@ -3,7 +3,7 @@
     allowPendingPaneItems: false
     audioBeep: false
     autoHideMenuBar: true
-    projectHome: "$HOME/src"
+    projectHome: "~/src"
     restorePreviousWindowsOnStart: "no"
     telemetryConsent: "no"
   editor:

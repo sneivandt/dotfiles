@@ -1,4 +1,4 @@
-# vi: set ft=sh :
+#!/bin/bash
 
 # Load global profile
 [[ -f /etc/profile ]] && . /etc/profile

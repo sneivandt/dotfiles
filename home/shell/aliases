@@ -1,4 +1,4 @@
-# vi: set ft=sh :
+#!/bin/bash
 
 # Allow alias expansion with sudo
 alias sudo="sudo "

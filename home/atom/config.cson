@@ -7,7 +7,6 @@
     restorePreviousWindowsOnStart: "no"
     telemetryConsent: "no"
   editor:
-    fontFamily: "Adobe Source Code Pro"
     fontSize: 13
     showInvisibles: false
     softWrap: true

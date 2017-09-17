@@ -13,6 +13,7 @@ IdeaIC/config/options/colors.scheme.xml
 IdeaIC/config/options/editor.xml
 IdeaIC/config/options/ide.general.xml
 IdeaIC/config/options/keymap.xml
+local/share/applications/chrome-app.desktop
 shell/profile-gui
 xinitrc
 Xresources

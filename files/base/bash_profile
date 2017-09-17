@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Load global profile
+[[ -f /etc/profile ]] && . /etc/profile
+
+# Load bashrc
+[[ -f ~/.bashrc ]] && . ~/.bashrc
+
+# Load profile
+[[ -f ~/.shell/profile ]] && . ~/.shell/profile

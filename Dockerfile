@@ -23,7 +23,8 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
     && /usr/sbin/update-locale LANG=en_US.UTF-8
 
 # Install dotfiles
-COPY . /root/.dotfiles
+COPY files/base /root/.dotfiles/files/base
+COPY dotfiles.sh /root/.dotfiles/dotfiles.sh
 RUN /root/.dotfiles/dotfiles.sh install --root
 
 ENTRYPOINT "/usr/bin/zsh"

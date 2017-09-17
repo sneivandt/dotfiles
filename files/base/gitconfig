@@ -1,0 +1,44 @@
+# vi: ft=gitconfig :
+
+[user]
+  email = sneivandt@users.noreply.github.com
+  name = sneivandt
+[core]
+  editor = vim
+  pager = less
+  autocrlf = input
+  excludesfile = ~/.gitignore
+[color]
+  ui = true
+[apply]
+  whitespace = fix
+[credential]
+  helper = cache
+[diff]
+  tool = vimdiff
+[diff "bin"]
+  textconv = hexdump -v -C
+[push]
+  followTags = true
+[alias]
+  ad = add
+  br = branch
+  ca = commit --amend --reuse-message=HEAD
+  ch = checkout
+  cl = clone --recursive
+  co = commit
+  cp = cherry-pick
+  di = diff
+  dt = difftool
+  fe = fetch --prune
+  lg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
+  me = merge
+  pl = pull
+  ps = push
+  rb = rebase
+  ri = rebase --interactive
+  rs = reset
+  st = status --short
+  ta = tag
+[include]
+  path = ~/.gitconfig.local

@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# Locale
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
+export LANGUAGE=en_US.UTF-8
+
+# Default editor
+export EDITOR=vim
+
+# less
+export LESS=-imRj8
+export LESS_TERMCAP_mb
+export LESS_TERMCAP_md
+export LESS_TERMCAP_me
+export LESS_TERMCAP_so
+export LESS_TERMCAP_se
+export LESS_TERMCAP_us
+export LESS_TERMCAP_ue
+export LESS_TERMCAP_mr
+export LESS_TERMCAP_mh
+export LESS_TERMCAP_ZN
+export LESS_TERMCAP_ZV
+export LESS_TERMCAP_ZO
+export LESS_TERMCAP_ZW
+LESS_TERMCAP_mb=$(tput bold; tput setaf 2) # green
+LESS_TERMCAP_md=$(tput bold; tput setaf 6) # cyan
+LESS_TERMCAP_me=$(tput sgr0)
+LESS_TERMCAP_so=$(tput bold; tput setaf 3; tput setab 4) # yellow on blue
+LESS_TERMCAP_se=$(tput rmso; tput sgr0)
+LESS_TERMCAP_us=$(tput smul; tput bold; tput setaf 7) # white
+LESS_TERMCAP_ue=$(tput rmul; tput sgr0)
+LESS_TERMCAP_mr=$(tput rev)
+LESS_TERMCAP_mh=$(tput dim)
+LESS_TERMCAP_ZN=$(tput ssubm)
+LESS_TERMCAP_ZV=$(tput rsubm)
+LESS_TERMCAP_ZO=$(tput ssupm)
+LESS_TERMCAP_ZW=$(tput rsupm)
+
+# virtualenvwrapper
+if [[ -e $(which "virtualenvwrapper.sh") ]]
+then
+  export WORKON_HOME=~/.venv
+  source virtualenvwrapper.sh
+fi
+
+# Shellcheck
+export SHELLCHECK_OPTS="-e SC1090"
+
+# Dont check mail
+unset MAILCHECK
+
+# GUI
+if [[ -e ~/.shell/profile-gui ]]
+then
+  source ~/.shell/profile-gui
+fi
+
+# Start X Windows
+[[ -z $DISPLAY && $XDG_VTNR -eq 1 && -x $(which i3 2>/dev/null) ]] && exec startx

@@ -1,0 +1,52 @@
+snippet #! "shebang sh" b
+#!/bin/sh
+endsnippet
+snippet #! "shebang bash" b
+#!/bin/bash
+endsnippet
+snippet fun "function" b
+${1:name}()
+{
+	${2:${VISUAL}}
+}$0
+endsnippet
+snippet if "if" b
+if [[ ${1:cond} ]]
+then
+	${2:${VISUAL}}
+${3:else}
+fi$0
+endsnippet
+snippet elif "elif" b
+elif [[ ${1:cond} ]]
+then
+	${0:${VISUAL}}
+endsnippet
+snippet else "else" b
+else
+	${0:${VISUAL}}
+endsnippet
+snippet switch "case" b
+case ${1:word} in
+	${2:pattern})
+		${3:${VISUAL}}
+		;;$4
+esac$0
+endsnippet
+snippet case "pattern" b
+${1:pattern})
+	${2:${VISUAL}}
+	;;$0
+endsnippet
+snippet for "for" b
+for $1
+do
+	${2:${VISUAL}}
+done$0
+endsnippet
+snippet while "while" b
+while [[ ${1:cond} ]];
+do
+	${2:${VISUAL}}
+done$0
+endsnippet

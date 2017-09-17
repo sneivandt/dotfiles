@@ -1,0 +1,400 @@
+" Preamble ---------------------------------------------------------------- {{{
+
+" Nocompatible
+set nocompatible
+
+" Leader key
+let mapleader=','
+
+" Filetype indent
+filetype plugin indent on
+
+" }}}
+" Plugins ----------------------------------------------------------------- {{{
+
+" Install missing plugins on startup
+autocmd VimEnter *
+  \   if len(filter(values(g:plugs), '!isdirectory(v:val.dir)'))
+  \|    PlugInstall --sync | source $MYVIMRC | q
+  \|  endif
+
+source ~/.vim/autoload/plug.vim
+call plug#begin('~/.vim/plugged')
+
+" Plugins
+Plug 'christoomey/vim-tmux-navigator'
+Plug 'craigemery/vim-autotag'
+Plug 'ctrlpvim/ctrlp.vim'
+Plug 'junegunn/vim-easy-align'
+Plug 'scrooloose/nerdtree', { 'on': 'NERDTreeToggle' }
+Plug 'sirver/ultisnips'
+Plug 'tpope/vim-commentary'
+Plug 'tpope/vim-dispatch'
+Plug 'tpope/vim-fugitive'
+Plug 'tpope/vim-surround'
+Plug 'vim-airline/vim-airline'
+Plug 'vim-airline/vim-airline-themes'
+Plug 'vim-scripts/vim-coffee-script'
+
+" Color scheme
+Plug 'nanotech/jellybeans.vim'
+
+" Syntax
+Plug 'PotatoesMaster/i3-vim-syntax', { 'for': 'i3' }
+Plug 'hdima/python-syntax', { 'for': 'python' }
+Plug 'jelera/vim-javascript-syntax', { 'for': 'javascript' }
+Plug 'keith/tmux.vim', { 'for': 'tmux' }
+Plug 'octol/vim-cpp-enhanced-highlight', { 'for': ['c', 'cpp'] }
+Plug 'raichoo/haskell-vim', { 'for': 'haskell' }
+Plug 'stanangeloff/php.vim', { 'for': 'php' }
+
+call plug#end()
+
+" }}}
+" Options------------------------------------------------------------------ {{{
+
+set autoindent
+set backspace=2
+set cindent
+set clipboard=unnamed
+set cmdheight=1
+set copyindent
+set encoding=utf-8
+set expandtab
+set fdo+=search
+set fileformats=unix,dos,mac
+set formatoptions=tcqr
+set hlsearch
+set ignorecase
+set incsearch
+set laststatus=2
+set lazyredraw
+set list
+set listchars=tab:▸\ ,trail:·
+set mouse=a
+set nobackup
+set noerrorbells
+set noswapfile
+set nonumber
+set pastetoggle=<f9>
+set preserveindent
+set ruler
+set scrolloff=5
+set shiftwidth=2
+set showmatch
+set showmode
+set smartcase
+set smartindent
+set softtabstop=2
+set splitbelow
+set splitright
+set tabstop=2
+set textwidth=0
+set ttyfast
+set viminfo=
+set wildmenu
+set wrap
+set wrapscan
+
+" Color scheme {{{
+
+syntax on
+set t_Co=256
+
+try
+  colorscheme jellybeans
+
+  " Match the background color for special keys
+  highlight SpecialKey ctermbg=233
+  highlight Search ctermfg=yellow
+catch
+  colorscheme default
+endtry
+
+" }}}
+" Wildignore {{{
+
+set wildignore+=*.bmp
+set wildignore+=*.ddl
+set wildignore+=*.exe
+set wildignore+=*.gif
+set wildignore+=*.jpeg
+set wildignore+=*.jpg
+set wildignore+=*.min.*
+set wildignore+=*.o
+set wildignore+=*.png
+set wildignore+=*.so
+set wildignore+=*.swp
+set wildignore+=*.zip
+
+set wildignore+=*/.git/*
+set wildignore+=*/.hg/*
+set wildignore+=*/.svn/*
+set wildignore+=*/__pycache__/*
+set wildignore+=*/bower_components/*
+set wildignore+=*/node_modules/*
+
+" }}}
+" Buffers {{{
+
+" Keep splits equally sized
+autocmd VimResized * :wincmd =
+
+" Make the quickfix window span the bottom of the screen
+autocmd FileType qf :wincmd J
+
+" Close vim if a quickfix window is the only remaining buffer
+autocmd WinEnter *
+  \   if winnr('$') == 1 && getbufvar(winbufnr(winnr()), '&buftype') == 'quickfix'
+  \|    q
+  \|  endif
+
+" }}}
+" Whitespace {{{
+
+" Strip trailing whitespace from every line on save
+function! StripTrailingWhitespaces() " {{{
+  let _s=@/
+  let l = line('.')
+  let c = col('.')
+  %s/\s\+$//e
+  let @/=_s
+  call cursor(l, c)
+endfunction " }}}
+autocmd BufWritePre * call StripTrailingWhitespaces()
+
+" }}}
+
+" }}}
+" Mappings ---------------------------------------------------------------- {{{
+
+noremap ; :
+noremap j gj
+noremap k gk
+noremap * *<c-o>
+noremap / /\v
+noremap ? ?\v
+noremap H ^
+nnoremap J L
+nnoremap K H
+noremap L g_
+
+" Tabs
+noremap <c-r>n :tabnew<cr>
+noremap <c-r><c-r> :tabnext<cr>
+noremap <c-r>1 1gt
+noremap <c-r>2 2gt
+noremap <c-r>3 3gt
+noremap <c-r>4 4gt
+noremap <c-r>5 5gt
+noremap <c-r>6 6gt
+noremap <c-r>7 7gt
+noremap <c-r>8 8gt
+noremap <c-r>9 9gt
+
+" Center search results while navigating
+nnoremap n nzzzv
+nnoremap N Nzzzv
+
+" Ctags
+nnoremap <c-[> <c-t>
+
+" Clear all highlights
+noremap <space> :noh<cr>
+
+" Toggle spell check
+noremap <leader>k :set spell! spelllang=en_us<cr>
+
+" Open .vimrc
+noremap <leader>v :e ~/.vim/vimrc<cr>
+
+" Toggle line wrap
+noremap <leader>w :set wrap!<cr>
+
+" Search and replace the word under the cursor
+noremap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>
+
+" Search for a string in the current directory
+noremap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
+
+" Jump to matching element
+nmap <tab> %
+
+" <C-h> fix
+nmap <BS> <C-W>h
+
+" }}}
+" Folding ----------------------------------------------------------------- {{{
+
+" Toggle fold
+nnoremap f za
+
+" Focus the current fold
+noremap <leader>z zMzvzz
+
+set foldmethod=marker
+set foldtext=FoldText()
+function! FoldText() " {{{
+  let line = getline(v:foldstart)
+  let nucolwidth = &fdc + &number * &numberwidth
+  let windowwidth = winwidth(0) - nucolwidth - 1
+  let foldedlinecount = v:foldend - v:foldstart
+  let onetab = strpart('          ', 0, &tabstop)
+  let line = substitute(line, '\t', onetab, 'g')
+  let line = strpart(line, 0, windowwidth - 2 - len(foldedlinecount))
+  let fillcharcount = windowwidth - len(line) - len(foldedlinecount)
+  return line . repeat(' ', fillcharcount) . foldedlinecount . ' '
+endfunction " }}}
+
+" }}}
+" Filetype specitic ------------------------------------------------------- {{{
+
+" C {{{
+
+" Indentation
+autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
+
+" }}}
+" Java {{{
+
+" Indentation
+autocmd Filetype java setlocal sw=4 ts=4 sts=4
+
+" }}}
+" Python {{{
+
+" Indentation
+autocmd Filetype python setlocal sw=4 ts=4 sts=4
+
+" }}}
+" Snippet {{{
+
+autocmd Filetype snippets set foldlevel=0
+
+" }}}
+
+"}}}
+" Plugin settings --------------------------------------------------------- {{{
+
+" Airline {{{
+
+let g:airline_powerline_fonts = 1
+
+if !exists('g:airline_symbols')
+    let g:airline_symbols = {}
+endif
+
+let g:airline_symbols.linenr = '␊'
+let g:airline_symbols.linenr = '␤'
+let g:airline_symbols.linenr = '¶'
+let g:airline_symbols.branch = '⎇'
+let g:airline_symbols.paste = 'ρ'
+let g:airline_symbols.paste = 'Þ'
+let g:airline_symbols.paste = '∥'
+let g:airline_symbols.whitespace = 'Ξ'
+let g:airline_symbols.branch = ''
+let g:airline_symbols.readonly = ''
+let g:airline_symbols.linenr = ''
+let g:airline_left_sep=''
+let g:airline_left_alt_sep=''
+let g:airline_right_sep=''
+let g:airline_right_alt_sep=''
+
+let g:airline#extensions#default#layout=[[ 'a', 'b', 'c' ], [ 'x', 'z', 'warning' ]]
+
+let g:airline#extensions#tabline#enabled=1
+let g:airline#extensions#tabline#show_buffers=0
+let g:airline#extensions#tabline#tab_min_count=2
+let g:airline#extensions#tabline#tab_nr_type=1
+let g:airline#extensions#tabline#left_sep=''
+let g:airline#extensions#tabline#left_alt_sep=''
+let g:airline#extensions#tabline#right_sep=''
+let g:airline#extensions#tabline#right_alt_sep=''
+let g:airline#extensions#tabline#fnamemod=':t'
+
+let g:airline#extensions#whitespace#enabled=0
+
+let g:tmuxline_separators={ 'left': '', 'left_alt': '', 'right': '', 'right_alt': '', 'space': ' ' }
+
+if ! has('gui_running')
+  set ttimeoutlen=10
+  augroup FastEscape
+    autocmd!
+    au InsertEnter * set timeoutlen=0
+    au InsertLeave * set timeoutlen=1000
+  augroup END
+endif
+
+" }}}
+" Ctrl-P {{{
+
+let g:ctrlp_map='<c-p>'
+let g:ctrlp_cmd='CtrlP'
+let g:ctrlp_switch_buffer='e'
+let g:ctrlp_working_path_mode='a'
+let g:ctrlp_show_hidden=1
+
+nnoremap <leader>. :CtrlPTag<cr>
+
+" }}}
+" Dispatch {{{
+
+nnoremap <f5> :Dispatch<CR>
+
+" }}}
+" Easy align {{{
+
+" Start interactive EasyAlign in visual mode
+vmap <Enter> <Plug>(EasyAlign)
+
+" Start interactive EasyAlign for a motion/text object
+nmap ga <Plug>(EasyAlign)
+
+" }}}
+" Nerdtree {{{
+
+let NERDTreeMinimalUI=1
+let NERDTreeShowHidden=1
+let NERDTreeRespectWildIgnore=1
+let NERDTreeWinPos='right'
+noremap <silent><c-e> :NERDTreeToggle<cr>:wincmd =<cr>
+
+" Auto close vim if Nerd tree is the only remaining buffer
+function! CloseIfOnlyNerdTreeLeft() " {{{
+  if exists('t:NERDTreeBufName')
+    if bufwinnr(t:NERDTreeBufName) != -1
+      if winnr('$') == 1
+        q
+      endif
+    endif
+  endif
+endfunction " }}}
+autocmd WinEnter * call CloseIfOnlyNerdTreeLeft()
+
+" }}}
+" Python syntax {{{
+
+let g:python_highlight_builtin_funcs=1
+let g:python_highlight_builtin_objs=1
+let g:python_highlight_exceptions=1
+let g:python_highlight_file_headers_as_comments=1
+
+" }}}
+" UltiSnips {{{
+
+" Disable python warning
+let g:UltiSnipsNoPythonWarning=1
+
+" Edid snips in horizontal split
+let g:UltiSnipsEditSplit='context'
+
+" }}}
+
+" }}}
+" Neovim ------------------------------------------------------------------ {{{
+
+if has('nvim')
+  source ~/.config/nvim/nvimrc
+endif
+
+" }}}

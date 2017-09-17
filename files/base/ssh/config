@@ -1,0 +1,14 @@
+# vi: set ft=sshconfig :
+
+Host *
+  Protocol 2
+  TCPKeepAlive yes
+  ServerAliveInterval 60
+  ServerAliveCountMax 2
+  HashKnownHosts no
+
+Host github.com
+  User git
+  HostName github.com
+  IdentityFile ~/.ssh/id_rsa
+  PreferredAuthentications publickey

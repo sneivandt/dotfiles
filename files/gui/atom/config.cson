@@ -1,0 +1,31 @@
+"*":
+  core:
+    allowPendingPaneItems: false
+    audioBeep: false
+    autoHideMenuBar: true
+    projectHome: "~/src"
+    restorePreviousWindowsOnStart: "no"
+    telemetryConsent: "no"
+  editor:
+    fontSize: 13
+    showInvisibles: false
+    softWrap: true
+    zoomFontWhenCtrlScrolling: false
+  "exception-reporting":
+    userId: "ba77d9db-f51a-17da-b914-318a2c4a728b"
+  "file-icons":
+    coloured: false
+  "git-diff": {}
+  "linter-ui-default":
+    showPanel: true
+  minimap: {}
+  "package-sync":
+    createOnChange: true
+    forceOverwrite: true
+  "tree-view":
+    squashDirectoryNames: true
+  welcome:
+    showOnStartup: false
+  zentabs:
+    maximumOpenedTabs: 8
+    neverCloseUnsaved: true

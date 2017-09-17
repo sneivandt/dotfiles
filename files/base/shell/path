@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Add $HOME/bin to $PATH
+[[ -d ~/bin && ! $PATH =~ .*~/bin.* ]] && export PATH=~/bin:$PATH

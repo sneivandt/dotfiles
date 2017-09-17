@@ -4,21 +4,6 @@
 #
 # Helper functions.
 
-# trigger_action
-#
-# Trigger an action based on a command line argument.
-#
-# Args:
-#     $1 - The command line argument to map to an action.
-trigger_action()
-{
-  case $1 in
-    *)
-      eval "action_$1"
-      ;;
-  esac
-}
-
 # is_flag_set
 #
 # Check if a command line flag is set.
@@ -37,16 +22,17 @@ is_flag_set()
 
 # does_symlink_exist
 #
-# Check if a given symlink exists in $HOME.
+# Check if a given symlink for a group exists.
 #
 # Args:
-#     $1 - The symlink to be checked.
+#     $1 - The group to be checked
+#     $2 - The symlink to be checked.
 #
 # return:
 #     bool - True of the symlink exists.
 does_symlink_exist()
 {
-  if [[ $(readlink -f "$DIR"/home/"$1") == $(readlink -f ~/."$1") ]]
+  if [[ $(readlink -f "$DIR"/files/"$1"/"$2") == $(readlink -f ~/."$2") ]]
   then
     echo 0
   else
@@ -54,33 +40,30 @@ does_symlink_exist()
   fi
 }
 
-# is_file_ignored
+# is_group_ignored
 #
-# Check if a file is ignored. Files listed in "symlinks" with the "g" option
-# will be ignored unless the flags "-g" or "--gui" are set. Ignored files will
-# also be listed in 'symlinksignore'.
+# Check if a group is ignored.
 #
 # Args:
-#     $1 - The file to check.
+#     $1 - The group to check.
 #
 # return:
-#     bool - True of the file is ignored.
-is_file_ignored()
+#     bool - True of the group is ignored.
+is_group_ignored()
 {
-  if grep -qxi "$1" "$DIR"/symlinksignore 2>/dev/null
-  then
-    echo 0
-  elif [[ $(is_flag_set "--gui") == "1" && $(is_flag_set "-g") == "1" ]]
-  then
-    if grep -xi "$1" "$DIR"/symlinksgui
-    then
-      echo 0
-    else
+  case $1 in
+    gui)
+      if [[ $(is_flag_set "--gui") == "0" || $(is_flag_set "-g") == "0" ]]
+      then
+        echo 1
+      else
+        echo 0
+      fi
+      ;;
+    *)
       echo 1
-    fi
-  else
-    echo 1
-  fi
+      ;;
+  esac
 }
 
 # is_program_installed
@@ -183,11 +166,23 @@ assert_user_permissions()
 # Put "dotfiles.sh" on the $PATH
 worker_install_dotfiles_cli()
 {
-  if [[ ! -e ~/bin/dotfiles ]]
+  if [[ $(readlink -f "$DIR"/dotfiles.sh) != $(readlink -f ~/bin/dotfiles) ]]
   then
     message_worker "Installing dotfiles cli"
     mkdir -pv ~/bin
     ln -snvf "$DIR"/dotfiles.sh ~/bin/dotfiles
+  fi
+}
+
+# worker_chmod
+#
+# Change file mode bits
+worker_chmod()
+{
+  if [[ -e ~/.ssh/config && "$(stat -c "%a" "$(readlink -f ~/.ssh/config)")" != "600" ]]
+  then
+    message_worker "Changing file mode bits"
+    chmod -c 600 ~/.ssh/config
   fi
 }
 
@@ -198,26 +193,29 @@ worker_install_dotfiles_cli()
 worker_install_symlinks()
 {
   message_worker "Installing symlinks"
-  for file in "$DIR"/symlinks "$DIR"/symlinksgui
+  groups=$(ls "$DIR"/files)
+  for group in $groups
   do
-    local link
-    while read -r link
-    do
-      if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "1" ]]
-      then
-        if [[ $link == *"/"* ]]
+    if [[ $(is_group_ignored "$group") == "1" ]]
+    then
+      local link
+      while read -r link
+      do
+        if [[ $(does_symlink_exist "$group" "$link") == "1" ]]
         then
-          mkdir -pv ~/."$(echo "$link" | rev | cut -d/ -f2- | rev)"
+          if [[ $link == *"/"* ]]
+          then
+            mkdir -pv ~/."$(echo "$link" | rev | cut -d/ -f2- | rev)"
+          fi
+          if [[ -e ~/."$link" ]]
+          then
+            rm -rvf ~/."$link"
+          fi
+          ln -snvf "$DIR"/files/"$group"/"$link" ~/."$link"
         fi
-        if [[ -e ~/."$link" ]]
-        then
-          rm -rvf ~/."$link"
-        fi
-        ln -snvf "$DIR"/home/"$link" ~/."$link"
-      fi
-    done < "$file"
+      done < "$DIR/files/$group/.symlinks"
+    fi
   done
-  chmod -c 600 ~/.ssh/config 2>/dev/null
 }
 
 # worker_install_vim_plug
@@ -225,16 +223,16 @@ worker_install_symlinks()
 # Install vim-plug.
 worker_install_vim_plug()
 {
-  if [[ $(is_program_installed "vim") == "0" && $(does_symlink_exist "vim") == "0" && ($(is_program_installed "curl") == "0" || $(is_program_installed "wget") == "0") ]]
+  if [[ $(is_program_installed "vim") == "0" && $(does_symlink_exist "base" "vim") == "0" && ($(is_program_installed "curl") == "0" || $(is_program_installed "wget") == "0") ]]
   then
-    if [[ ! -e $DIR/home/vim/autoload/plug.vim ]]
+    if [[ ! -e $DIR/files/base/vim/autoload/plug.vim ]]
     then
       message_worker "Installing vim-plug"
       if [[ $(is_program_installed "curl") == "0" ]]
       then
-        curl -fLo "$DIR"/home/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+        curl -fLo "$DIR"/files/base/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
       else
-        wget -q -P "$DIR"/home/vim/autoload https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+        wget -q -P "$DIR"/files/base/vim/autoload https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
       fi
     fi
   fi
@@ -245,7 +243,7 @@ worker_install_vim_plug()
 # Install atom package-sync.
 worker_install_atom_package_sync()
 {
-  if [[ $(is_program_installed "apm") == "0" && $(does_symlink_exist "atom/config.cson") == "0" ]]
+  if [[ $(is_program_installed "apm") == "0" && $(does_symlink_exist "gui" "atom/config.cson") == "0" ]]
   then
     if ! apm list --installed --bare 2>/dev/null | grep -Pq 'package-sync@(?:(\d+)\.)?(?:(\d+)\.)?(\*|\d+)'
     then
@@ -257,19 +255,27 @@ worker_install_atom_package_sync()
 
 # worker_uninstall_symlinks
 #
-# Remove all symlinks that are not ignored.
+# Remove all symlinks that are not in igned groups.
 worker_uninstall_symlinks()
 {
   message_worker "Removing symlinks"
-  for file in "$DIR"/symlinks "$DIR"/symlinksgui
+  groups=$(ls "$DIR"/files)
+  for group in $groups
   do
-    while read -r link
-    do
-      if [[ $(is_file_ignored "$link") == "1" && $(does_symlink_exist "$link") == "0" ]]
-      then
-        rm -vf ~/."$link"
-      fi
-    done < "$file"
+    if [[ $(is_group_ignored "$group") == "1" ]]
+    then
+      for file in "$DIR"/files/"$group"/.symlinks
+      do
+        local link
+        while read -r link
+        do
+          if [[ $(does_symlink_exist "$group" "$link") == "0" ]]
+          then
+            rm -vf ~/."$link"
+          fi
+        done < "$file"
+      done
+    fi
   done
 }
 
@@ -287,6 +293,7 @@ action_install()
   worker_install_vim_plug
   worker_install_atom_package_sync
   worker_install_dotfiles_cli
+  worker_chmod
 }
 
 # action_uninstall
@@ -327,8 +334,8 @@ for i in "$@"
 do
   case $i in
 
-    # Skip any flags. They should already have been processed when the $OPTS
-    # was initialized.
+    # Skip any flags. They should already have been processed when $OPTS was
+    # initialized.
     -*)
       ;;
 
@@ -336,7 +343,7 @@ do
     # first one that is found will be processed and immediately after this
     # script will exit.
     help | install | uninstall)
-      trigger_action "$i"
+      eval "action_$i"
       exit
       ;;
 

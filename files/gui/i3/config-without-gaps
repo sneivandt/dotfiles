@@ -1,0 +1,9 @@
+# vi: set ft=i3 :
+
+# Without i3-gaps --------------------------------------------------------- {{{
+
+# Window borders
+new_window pixel 0
+new_float pixel 3
+
+# }}}

@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Load global profile
+[[ -f /etc/zsh/zprofile ]] && . /etc/zsh/zprofile
+
+# Load zshrc
+[[ -f ~/.zshrc ]] && . ~/.zshrc
+
+# Load profile
+[[ -f ~/.shell/profile ]] && . ~/.shell/profile

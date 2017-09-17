@@ -1,0 +1,58 @@
+# vi: set ft=zsh :
+
+# Vi mode
+bindkey -v
+
+if (( ${+terminfo[smkx]} )) && (( ${+terminfo[rmkx]} )); then
+  function zle-line-init() {
+    echoti smkx
+  }
+  function zle-line-finish() {
+    echoti rmkx
+  }
+  zle -N zle-line-init
+  zle -N zle-line-finish
+fi
+
+if [[ "${terminfo[kpp]}" != "" ]]; then
+  bindkey "${terminfo[kpp]}" up-line-or-history
+fi
+if [[ "${terminfo[knp]}" != "" ]]; then
+  bindkey "${terminfo[knp]}" down-line-or-history
+fi
+if [[ "${terminfo[kcuu1]}" != "" ]]; then
+  bindkey "${terminfo[kcuu1]}" up-line-or-search
+fi
+if [[ "${terminfo[kcud1]}" != "" ]]; then
+  bindkey "${terminfo[kcud1]}" down-line-or-search
+fi
+if [[ "${terminfo[khome]}" != "" ]]; then
+  bindkey "${terminfo[khome]}" beginning-of-line
+fi
+if [[ "${terminfo[kend]}" != "" ]]; then
+  bindkey "${terminfo[kend]}" end-of-line
+fi
+if [[ "${terminfo[kdch1]}" != "" ]]; then
+  bindkey "${terminfo[kdch1]}" delete-char
+fi
+
+# Space Magic space history expansion
+bindkey ' ' magic-space
+
+# Ctrl+r Search history
+bindkey '^r' history-incremental-search-backward
+
+# Ctrl+Right Forward one word
+bindkey '^[[1;5C' forward-word
+
+# Ctrl+Left Backward one word
+bindkey '^[[1;5D' backward-word
+
+# Ctrl+s Insert "sudo " at the start of line
+sudo-command-line() {
+  [[ -z $BUFFER ]] && zle up-history
+  [[ $BUFFER != sudo\ * ]] && BUFFER="sudo $BUFFER"
+  zle end-of-line
+}
+zle -N sudo-command-line
+bindkey "^t" sudo-command-line

@@ -2,3 +2,6 @@
 
 # Intellij
 export IDEA_PROPERTIES=~/.idea.properties
+
+# Start X Windows
+[[ -z $DISPLAY && $XDG_VTNR -eq 1 && -x $(which i3 2>/dev/null) ]] && exec startx

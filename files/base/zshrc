@@ -19,19 +19,19 @@ setopt pushdsilent
 setopt pushdtohome
 
 # Prompt
-source ~/.zsh/prompt
+[[ -e ~/.zsh/prompt ]] && . ~/.zsh/prompt
 
 # Completion
-source ~/.zsh/completion
+[[ -e ~/.zsh/completion ]] && . ~/.zsh/completion
 
 # Key bindings
-source ~/.zsh/key-bindings
+[[ -e ~/.zsh/key-bindings ]] && . ~/.zsh/key-bindings
 
 # Aliases
-source ~/.shell/aliases
+[[ -e ~/.shell/aliases ]] && . ~/.shell/aliases
 
 # Functions
-source ~/.shell/functions
+[[ -e ~/.shell/functions ]] && . ~/.shell/functions
 
 # Path
-source ~/.shell/path
+[[ -e ~/.shell/path ]] && . ~/.shell/path

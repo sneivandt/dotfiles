@@ -50,8 +50,8 @@ then
   source virtualenvwrapper.sh
 fi
 
-# GUI
-if [[ -e ~/.shell/profile-gui ]]
-then
-  source ~/.shell/profile-gui
-fi
+# GUI profile
+[[ -e ~/.shell/profile-gui ]] && . ~/.shell/profile-gui
+
+# Local profile
+[[ -e ~/.shell/profile.local ]] && . ~/.shell/profile.local

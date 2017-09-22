@@ -35,8 +35,10 @@ alias tmux="tmux -2"
 
 # vim
 alias v="vi"
-if [[ -x $(which nvim 2>/dev/null) ]]; then
+if [[ -x $(which nvim 2>/dev/null) ]]
+then
   alias vi="nvim"
-elif [[ -x $(which vim 2>/dev/null) ]]; then
+elif [[ -x $(which vim 2>/dev/null) ]]
+then
   alias vi="vim"
 fi

@@ -16,8 +16,7 @@
   "file-icons":
     coloured: false
   "git-diff": {}
-  "linter-ui-default":
-    showPanel: true
+  "linter-ui-default": {}
   minimap: {}
   "package-sync":
     createOnChange: true

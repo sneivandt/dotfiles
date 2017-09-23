@@ -12,7 +12,7 @@ case "$state" in
     local commands
     commands=(
       'help:Show usage instructions'
-      'install:Install symlinks, package managers and dotfiles CLI'
+      'install:Install symlinks, package managers, packages and dotfiles CLI'
       'uninstall:Remove symlinks'
     )
     _describe -t commands 'commands' commands

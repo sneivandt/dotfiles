@@ -4,7 +4,7 @@ System configuration.
 
 ## Install
 
-Install symlinks, package managers and dotfiles CLI.
+Install symlinks, package managers, packages and dotfiles CLI.
 
 ```
 ./dotfiles.sh install

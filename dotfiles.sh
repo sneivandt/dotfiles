@@ -223,7 +223,7 @@ worker_install_symlinks()
 # Install vim-plug.
 worker_install_vim_plug()
 {
-  if [[ $(is_program_installed "vim") == "0" && $(does_symlink_exist "base" "vim") == "0" && ($(is_program_installed "curl") == "0" || $(is_program_installed "wget") == "0") ]]
+  if [[ $(is_program_installed "curl") == "0" || $(is_program_installed "wget") == "0" ]]
   then
     if [[ ! -e $DIR/files/base/vim/autoload/plug.vim ]]
     then
@@ -243,7 +243,7 @@ worker_install_vim_plug()
 # Install vim plugins
 worker_install_vim_plugins()
 {
-  if [[ $(is_program_installed "vim") == "0" && $(does_symlink_exist "base" "vim") ]]
+  if [[ $(is_program_installed "vim") == "0" ]]
   then
     message_worker "Installing vim plugins"
     if [[ -f /.dockerenv ]]
@@ -260,7 +260,7 @@ worker_install_vim_plugins()
 # Install atom package-sync.
 worker_install_atom_package_sync()
 {
-  if [[ $(is_program_installed "apm") == "0" && $(does_symlink_exist "gui" "atom/config.cson") == "0" ]]
+  if [[ $(is_group_ignored "gui") == "1" && $(is_program_installed "apm") == "0" ]]
   then
     if ! apm list --installed --bare 2>/dev/null | grep -Pq 'package-sync@(?:(\d+)\.)?(?:(\d+)\.)?(\*|\d+)'
     then
@@ -275,7 +275,7 @@ worker_install_atom_package_sync()
 # Install atom packages
 worker_install_atom_packages()
 {
-  if [[ $(is_program_installed "apm") == "0" && $(does_symlink_exist "gui" "atom/packages.cson") == "0" ]]
+  if [[ $(is_group_ignored "gui") == "1" && $(is_program_installed "apm") == "0" ]]
   then
     message_worker "Installing atom packages"
     packages=$(head -n -1 ~/.atom/packages.cson | tail -n +2 | tr "\"" " ")

@@ -1,7 +1,7 @@
 atom
 config/compton.conf
 config/gtk-3.0/settings.ini
-config/polybar/config
+config/polybar
 config/redshift.conf
 gtkrc-2.0
 i3

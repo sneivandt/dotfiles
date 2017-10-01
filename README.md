@@ -2,13 +2,18 @@
 
 System configuration.
 
-## Install
+## Usage
 
 Install symlinks, package managers, packages and dotfiles CLI.
 
 ```
 ./dotfiles.sh install
 ```
+
+| Argument | Description                     |
+| -        | -                               |
+| --gui    | Include graphical applications. |
+| --root   | Allow dotfiles to run as root.  |
 
 ## Docker
 

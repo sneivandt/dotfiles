@@ -53,15 +53,11 @@ client.urgent           #4a4b4c #4a4b4c #fdfdfd #4a4b4c
 client.placeholder      #000000 #0c0c0c #ffffff #000000
 client.background       #000000
 
-# i3bar
-bar {
-  mode invisible
-  tray_output none
-  status_command polybar Bar
-}
-
 # }}}
 # Startup ----------------------------------------------------------------- {{{
+
+# Polybar
+exec --no-startup-id SHELL=$(which sh) polybar Bar
 
 # Compton
 exec --no-startup-id compton
@@ -153,18 +149,13 @@ bindsym $mod+Shift+r restart
 bindsym $mod+Shift+q mode "$mode_system"
 
 # }}}
-# Windows ----------------------------------------------------------------- {{{
-
-for_window [class="rdesktop"] floating disable
-
-# }}}
 # Exec -------------------------------------------------------------------- {{{
 
-# Volume up
-bindsym $mod+Up     exec --no-startup-id amixer set Master 2+ unmute
-
-# Volume down
-bindsym $mod+Down   exec --no-startup-id amixer set Master 2- unmute
+# Media
+bindsym $mod+Up     exec --no-startup-id playerctl play-pause
+bindsym $mod+Down   exec --no-startup-id playerctl play-pause
+bindsym $mod+Left   exec --no-startup-id playerctl previous
+bindsym $mod+Right  exec --no-startup-id playerctl next
 
 # Screenshot container
 bindsym $mod+N      exec --no-startup-id scrot -u '%Y%m%d_%H%M%S.png' -e 'mv $f ~/media/pictures/scrot/'

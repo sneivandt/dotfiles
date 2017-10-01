@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""
+Polybar Bitcoin Module.
+"""
+
+import requests
+
+R = requests.get('https://api.coinbase.com/v2/prices/spot?currency=USD')
+JSON = R.json()
+
+print('$%.2f' % float(JSON['data']['amount']))

@@ -27,6 +27,9 @@ setopt pushdtohome
 # Key bindings
 [[ -e ~/.zsh/key-bindings ]] && . ~/.zsh/key-bindings
 
+# Plugins
+[[ -d ~/.zsh/plugins ]] && . ~/.zsh/plugins/*
+
 # Aliases
 [[ -e ~/.shell/aliases ]] && . ~/.shell/aliases
 

@@ -1,4 +1,7 @@
 #!/bin/bash
 
 # Add $HOME/bin to $PATH
-[[ -d ~/bin && ! $PATH =~ .*~/bin.* ]] && export PATH=~/bin:$PATH
+export PATH=~/bin:$PATH
+
+# Add $HOME/src/go/bin to $PATH
+export PATH=~/src/go/bin:$PATH

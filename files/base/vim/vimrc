@@ -25,6 +25,7 @@ call plug#begin('~/.vim/plugged')
 Plug 'christoomey/vim-tmux-navigator'
 Plug 'craigemery/vim-autotag'
 Plug 'ctrlpvim/ctrlp.vim'
+Plug 'fatih/vim-go'
 Plug 'junegunn/vim-easy-align'
 Plug 'scrooloose/nerdtree', { 'on': 'NERDTreeToggle' }
 Plug 'sirver/ultisnips'
@@ -197,9 +198,6 @@ noremap <c-r>9 9gt
 " Center search results while navigating
 nnoremap n nzzzv
 nnoremap N Nzzzv
-
-" Ctags
-nnoremap <c-[> <c-t>
 
 " Clear all highlights
 noremap <space> :noh<cr>

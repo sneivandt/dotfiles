@@ -43,6 +43,9 @@ export SHELLCHECK_OPTS="-e SC1090"
 # Dont check mail
 unset MAILCHECK
 
+# GOPATH
+export GOPATH=~/src/go
+
 # virtualenvwrapper
 if [[ -e $(which "virtualenvwrapper.sh") ]]
 then

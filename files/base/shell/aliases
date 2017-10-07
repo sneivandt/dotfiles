@@ -22,19 +22,10 @@ alias ll="ls -l"
 # path
 alias path='echo $PATH | tr -s ":" "\n"'
 
-# docker
-alias d="docker"
-alias dc="docker-compose"
-
-# git
-alias g="git"
-
 # tmux
-alias t="tmux"
 alias tmux="tmux -2"
 
 # vim
-alias v="vi"
 if [[ -x $(which nvim 2>/dev/null) ]]
 then
   alias vi="nvim"

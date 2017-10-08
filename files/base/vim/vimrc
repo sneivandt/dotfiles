@@ -255,6 +255,12 @@ endfunction " }}}
 autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
 
 " }}}
+" Go {{{
+
+" Indentation
+autocmd Filetype java setlocal sw=4 ts=4 sts=4 noexpandtab
+
+" }}}
 " Java {{{
 
 " Indentation
@@ -387,6 +393,15 @@ let g:UltiSnipsNoPythonWarning=1
 
 " Edid snips in horizontal split
 let g:UltiSnipsEditSplit='context'
+
+" }}}
+" Vim-go {{{
+
+" Disable autoinstall plugins
+let g:go_disable_autoinstall = 0
+
+" Disable autocreate templates
+let g:go_template_autocreate = 0
 
 " }}}
 

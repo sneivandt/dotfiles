@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Add $HOME/bin to $PATH
-export PATH=~/bin:$PATH
+export PATH=$PATH:~/bin
 
 # Add $HOME/src/go/bin to $PATH
-export PATH=~/src/go/bin:$PATH
+export PATH=$PATH:~/src/go/bin

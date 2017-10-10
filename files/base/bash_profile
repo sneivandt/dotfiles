@@ -3,8 +3,5 @@
 # Global profile
 [[ -f /etc/profile ]] && . /etc/profile
 
-# Bashrc
-[[ -f ~/.bashrc ]] && . ~/.bashrc
-
 # Profile
 [[ -f ~/.shell/profile ]] && . ~/.shell/profile

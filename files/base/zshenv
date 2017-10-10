@@ -3,8 +3,5 @@
 # Global profile
 [[ -f /etc/zsh/zprofile ]] && . /etc/zsh/zprofile
 
-# Zshrc
-[[ -f ~/.zshrc ]] && . ~/.zshrc
-
 # Profile
 [[ -f ~/.shell/profile ]] && . ~/.shell/profile

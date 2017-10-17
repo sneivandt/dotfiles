@@ -4,6 +4,7 @@ MAINTAINER sneivandt
 
 ENV DEBIAN_FRONTEND noninteractive
 
+# Install packages
 RUN apt-get update \
     && apt-get install --no-install-recommends --no-install-suggests -y \
         ca-certificates \
@@ -23,8 +24,7 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
     && /usr/sbin/update-locale LANG=en_US.UTF-8
 
 # Install dotfiles
-COPY files/base /root/.dotfiles/files/base
-COPY dotfiles.sh /root/.dotfiles/dotfiles.sh
-RUN /root/.dotfiles/dotfiles.sh install --root
+COPY . /root/dotfiles
+RUN /root/dotfiles/dotfiles.sh install --root
 
 ENTRYPOINT "/usr/bin/zsh"

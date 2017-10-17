@@ -16,6 +16,9 @@
   "file-icons":
     coloured: false
   "git-diff": {}
+  "go-plus":
+    panel:
+      displayMode: "closed"
   "linter-ui-default": {}
   minimap: {}
   "package-sync":

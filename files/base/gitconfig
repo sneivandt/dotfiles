@@ -31,7 +31,7 @@
   di = diff
   dt = difftool
   fe = fetch --prune
-  lg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
+  lo = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
   me = merge
   pl = pull
   ps = push
@@ -40,5 +40,8 @@
   rs = reset
   st = status --short
   ta = tag
+  alias         = !git config -l | grep ^alias | cut -c 7- | sort
+  contributors  = shortlog --summary --numbered
+  delete-merged = !git branch --merged origin/HEAD | egrep -v '(^\\*|master|dev)' | xargs -r -n 1 git branch -d
 [include]
   path = ~/.gitconfig.local

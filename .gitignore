@@ -2,8 +2,4 @@
 /files/base/vim/autoload/plug.vim
 /files/base/vim/autoload/plug.vim.old
 /files/base/vim/plugged/
-/files/gui/atom/*
 /files/gui/i3/config
-!/files/gui/atom/config.cson
-!/files/gui/atom/init.coffee
-!/files/gui/atom/packages.cson

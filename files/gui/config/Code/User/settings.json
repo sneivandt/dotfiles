@@ -1,0 +1,9 @@
+{
+    "workbench.welcome.enabled": false,
+    "editor.wordWrap": "on",
+    "editor.fontLigatures": true,
+    "terminal.external.linuxExec": "urxvt",
+    "update.channel": "none",
+    "window.openFoldersInNewWindow": "on",
+    "search.useIgnoreFilesByDefault": true
+}

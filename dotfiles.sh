@@ -255,40 +255,6 @@ worker_install_vim_plugins()
   fi
 }
 
-# worker_install_atom_package_sync
-#
-# Install atom package-sync.
-worker_install_atom_package_sync()
-{
-  if [[ $(is_group_ignored "gui") == "1" && $(is_program_installed "apm") == "0" ]]
-  then
-    if ! apm list --installed --bare 2>/dev/null | grep -Pq 'package-sync@(?:(\d+)\.)?(?:(\d+)\.)?(\*|\d+)'
-    then
-      message_worker "Installing atom package-sync"
-      apm install package-sync
-    fi
-  fi
-}
-
-# worker_install_atom_packages
-#
-# Install atom packages
-worker_install_atom_packages()
-{
-  if [[ $(is_group_ignored "gui") == "1" && $(is_program_installed "apm") == "0" ]]
-  then
-    message_worker "Installing atom packages"
-    packages=$(head -n -1 ~/.atom/packages.cson | tail -n +2 | tr "\"" " ")
-    for package in $packages
-    do
-      if [[ ! -d ~/.atom/packages/$package ]]
-      then
-        apm install -q "$package"
-      fi
-    done
-  fi
-}
-
 # worker_uninstall_symlinks
 #
 # Remove all symlinks that are not in igned groups.
@@ -328,8 +294,6 @@ action_install()
   worker_install_symlinks
   worker_install_vim_plug
   worker_install_vim_plugins
-  worker_install_atom_package_sync
-  worker_install_atom_packages
   worker_install_dotfiles_cli
   worker_chmod
 }

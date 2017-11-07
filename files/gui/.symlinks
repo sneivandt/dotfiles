@@ -1,4 +1,4 @@
-atom
+config/Code/User/settings.json
 config/compton.conf
 config/gtk-3.0/settings.ini
 config/polybar
@@ -7,8 +7,8 @@ gtkrc-2.0
 i3
 idea.properties
 idea/config/codestyles/Custom.xml
-idea/config/keymaps/Custom.xml
 idea/config/inspection/Custom.xml
+idea/config/keymaps/Custom.xml
 idea/config/options/colors.scheme.xml
 idea/config/options/editor.xml
 idea/config/options/ide.general.xml

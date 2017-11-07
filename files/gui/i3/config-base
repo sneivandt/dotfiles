@@ -158,10 +158,10 @@ bindsym $mod+Left   exec --no-startup-id playerctl previous
 bindsym $mod+Right  exec --no-startup-id playerctl next
 
 # Screenshot container
-bindsym $mod+N      exec --no-startup-id scrot -u '%Y%m%d_%H%M%S.png' -e 'mv $f ~/tmp/scrot/'
+bindsym $mod+N      exec --no-startup-id scrot -u '%Y%m%d_%H%M%S.png' -e 'mkdir -p ~/tmp/scrot/ && mv $f ~/tmp/scrot/'
 
 # Screenshot workspace
-bindsym $mod+M      exec --no-startup-id scrot '%Y%m%d_%H%M%S.png' -e 'mv $f ~/tmp/scroot/'
+bindsym $mod+M      exec --no-startup-id scrot '%Y%m%d_%H%M%S.png' -e 'mkdir -p ~/tmp/scrot/ && mv $f ~/tmp/scrot/'
 
 # Start terminal
 bindsym $mod+Return exec --no-startup-id ~/.i3/choose-term

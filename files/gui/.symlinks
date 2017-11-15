@@ -16,5 +16,6 @@ idea/config/options/keymap.xml
 local/share/applications/chrome-app.desktop
 shell/profile-gui
 terminfo/r/rxvt-unicode-256color
+vscode/extensions.txt
 xinitrc
 Xresources

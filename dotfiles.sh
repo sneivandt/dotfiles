@@ -255,6 +255,25 @@ worker_install_vim_plugins()
   fi
 }
 
+# worker_install_vscode_extensions
+#
+# Install vscode extensions
+worker_install_vscode_extensions()
+{
+  if [[ $(is_group_ignored "gui") == "1" && $(is_program_installed "code") == "0" ]]
+  then
+    message_worker "Installing vscode extensions"
+    local extension
+    while read -r extension
+    do
+      if ! code --list-extensions | grep -qx "$extension"
+      then
+        code --install-extension "$extension"
+      fi
+    done < "$DIR/files/gui/vscode/extensions.txt"
+  fi
+}
+
 # worker_uninstall_symlinks
 #
 # Remove all symlinks that are not in igned groups.
@@ -294,6 +313,7 @@ action_install()
   worker_install_symlinks
   worker_install_vim_plug
   worker_install_vim_plugins
+  worker_install_vscode_extensions
   worker_install_dotfiles_cli
   worker_chmod
 }
@@ -344,8 +364,16 @@ do
     # Call the action function for any of the valid action keywords. Only the
     # first one that is found will be processed and immediately after this
     # script will exit.
-    help | install | uninstall)
-      eval "action_$i"
+    help )
+      action_help
+      exit
+      ;;
+    install )
+      action_install
+      exit
+      ;;
+    uninstall )
+      action_uninstall
       exit
       ;;
 

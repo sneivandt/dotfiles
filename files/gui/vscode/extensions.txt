@@ -1,0 +1,9 @@
+PeterJausovec.vscode-docker
+lukehoban.Go
+ms-mssql.mssql
+donjayamanne.python
+ms-vscode.cpptools
+ms-vscode.csharp
+ms-vscode.PowerShell
+redhat.java
+timonwong.shellcheck

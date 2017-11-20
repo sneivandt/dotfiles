@@ -1,9 +1,17 @@
 {
-    "workbench.welcome.enabled": false,
+    "editor.minimap.showSlider": "always",
     "editor.wordWrap": "on",
     "editor.fontLigatures": true,
-    "terminal.external.linuxExec": "urxvt",
-    "update.channel": "none",
+    "workbench.panel.location": "bottom",
+    "workbench.startupEditor": "none",
+    "workbench.tips.enabled": false,
+    "workbench.welcome.enabled": false,
+    "window.menuBarVisibility": "toggle",
     "window.openFoldersInNewWindow": "on",
-    "search.useIgnoreFilesByDefault": true
+    "files.autoSave": "onFocusChange",
+    "search.useIgnoreFilesByDefault": true,
+    "update.channel": "none",
+    "debug.inlineValues": true,
+    "team.showWelcomeMessage": false,
+    "docker.showExplorer": false
 }

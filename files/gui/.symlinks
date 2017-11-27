@@ -3,6 +3,7 @@ config/compton.conf
 config/gtk-3.0/settings.ini
 config/polybar
 config/redshift.conf
+config/user-dirs.dirs
 gtkrc-2.0
 i3
 idea.properties

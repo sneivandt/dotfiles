@@ -170,7 +170,7 @@ bindsym $mod+Return exec --no-startup-id ~/.i3/choose-term
 bindsym $mod+p      exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -p 'Run' -nb '#000000' -nf '#d1d1d1' -sb '#3465a4' -sf '#d1d1d1' -fn '$font-$font_size_bar'"
 
 # Start Chrome
-bindsym $mod+o      exec --no-startup-id google-chrome-beta
+bindsym $mod+o      exec --no-startup-id ~/.i3/choose-browser
 
 # Start Thunar
 bindsym $mod+i      exec --no-startup-id thunar

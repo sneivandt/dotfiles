@@ -1,0 +1,12 @@
+#!/bin/bash
+
+for browser in google-chrome-beta google-chrome-stable firefox
+do
+  if [[ -n $(which $browser 2>/dev/null) ]]
+  then
+    exec $browser
+    exit
+  fi
+done
+
+i3-nagbar -m "Could not find a browser."

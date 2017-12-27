@@ -93,6 +93,7 @@ set tabstop=2
 set textwidth=0
 set ttyfast
 set viminfo=
+set visualbell
 set wildmenu
 set wrap
 set wrapscan
@@ -101,6 +102,7 @@ set wrapscan
 
 syntax on
 set t_Co=256
+set t_ut=
 
 try
   colorscheme jellybeans

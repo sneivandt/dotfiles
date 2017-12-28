@@ -29,6 +29,7 @@ Plug 'fatih/vim-go'
 Plug 'junegunn/vim-easy-align'
 Plug 'scrooloose/nerdtree', { 'on': 'NERDTreeToggle' }
 Plug 'sirver/ultisnips'
+Plug 'thirtythreeforty/lessspace.vim'
 Plug 'tpope/vim-commentary'
 Plug 'tpope/vim-dispatch'
 Plug 'tpope/vim-fugitive'
@@ -153,20 +154,6 @@ autocmd WinEnter *
   \   if winnr('$') == 1 && getbufvar(winbufnr(winnr()), '&buftype') == 'quickfix'
   \|    q
   \|  endif
-
-" }}}
-" Whitespace {{{
-
-" Strip trailing whitespace from every line on save
-function! StripTrailingWhitespaces() " {{{
-  let _s=@/
-  let l = line('.')
-  let c = col('.')
-  %s/\s\+$//e
-  let @/=_s
-  call cursor(l, c)
-endfunction " }}}
-autocmd BufWritePre * call StripTrailingWhitespaces()
 
 " }}}
 

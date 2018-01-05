@@ -19,6 +19,7 @@
 [diff "bin"]
   textconv = hexdump -v -C
 [push]
+  default = current
   followTags = true
 [alias]
   ad = add

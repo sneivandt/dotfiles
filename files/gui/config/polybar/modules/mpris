@@ -8,7 +8,7 @@ fi
 
 if [[ $player_status = "Playing" ]]
 then
-  echo " $metadata"
+  echo " $metadata"
 else
   echo " "
 fi

@@ -41,7 +41,7 @@ LESS_TERMCAP_ZO=$(tput ssupm)
 LESS_TERMCAP_ZW=$(tput rsupm)
 
 # Shellcheck
-export SHELLCHECK_OPTS="-e SC1090"
+export SHELLCHECK_OPTS="-e SC1090 -e SC1091"
 
 # Dont check mail
 unset MAILCHECK

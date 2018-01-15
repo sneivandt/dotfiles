@@ -15,10 +15,12 @@ spacing = 1
 padding = 1
 module-margin = 1
 font-0 = monospace:size=9
-font-1 = FontAwesome:size=11
+font-1 = Font Awesome 5 Free Solid:pixelsize=9;0
+font-2 = Font Awesome 5 Free:pixelsize=9;0
+font-3 = Font Awesome 5 Brands:pixelsize=9;0
 modules-left = i3 music
 modules-center =
-modules-right = bitcoin kernel volume date
+modules-right = bitcoin ethereum kernel volume date
 tray-detached = false
 tray-position = right
 tray-padding = 1
@@ -33,15 +35,12 @@ label-mode-foreground = ${colors.white}
 label-mode-background = ${colors.blue}
 label-focused = 
 label-focused-padding-left = 1
-label-unfocused = 
+label-unfocused = 
 label-unfocused-padding-left = 1
 label-unfocused-underlinde = ${colors.white}
 label-urgent = 
 label-urgent-padding-left = 1
 label-urgent-foreground = ${colors.red}
-label-visible = 
-label-visible-foreground = ${colors.white}
-label-visible-padding-left = 1
 
 [module/music]
 type = custom/script
@@ -59,7 +58,7 @@ label-padding-right = 1
 type = internal/volume
 format-volume = <label-volume>
 format-muted = <label-muted>
-label-volume =  %percentage:4%
+label-volume =  %percentage:3%
 label-muted =    0%
 
 [module/kernel]
@@ -69,8 +68,14 @@ tail = false
 format-prefix = " "
 exec = uname -r
 
+[module/ethereum]
+type = custom/script
+interval = 10
+format-prefix = " "
+exec = ~/.config/polybar/modules/crypto ETH
+
 [module/bitcoin]
 type = custom/script
 interval = 10
 format-prefix = " "
-exec = ~/.config/polybar/modules/bitcoin
+exec = ~/.config/polybar/modules/crypto BTC

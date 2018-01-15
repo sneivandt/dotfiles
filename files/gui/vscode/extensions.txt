@@ -1,10 +1,10 @@
 PeterJausovec.vscode-docker
 lukehoban.Go
 ms-mssql.mssql
-donjayamanne.python
+ms-python.python
+ms-vscode.PowerShell
 ms-vscode.cpptools
 ms-vscode.csharp
-ms-vscode.PowerShell
 ms-vsts.team
 redhat.java
 timonwong.shellcheck

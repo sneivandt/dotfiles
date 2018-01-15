@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Prompt
-PS1="\[\e[0;36m\]\h \[\e[0;33m\]\w\n\[\e[0m\]\$ "
+PS1="\\[\\e[0;36m\\]\\h \\[\\e[0;33m\\]\\w\\n\\[\\e[0m\\]\\$ "
 
 # Aliases
 [[ -e ~/.shell/aliases ]] && . ~/.shell/aliases

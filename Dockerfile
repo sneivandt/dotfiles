@@ -1,6 +1,6 @@
 FROM debian:stretch
 
-MAINTAINER sneivandt
+LABEL maintainer="sneivandt"
 
 ENV DEBIAN_FRONTEND noninteractive
 

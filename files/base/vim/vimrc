@@ -10,49 +10,6 @@ let mapleader=','
 filetype plugin indent on
 
 " }}}
-" Plugins ----------------------------------------------------------------- {{{
-
-" Install missing plugins on startup
-autocmd VimEnter *
-  \   if len(filter(values(g:plugs), '!isdirectory(v:val.dir)'))
-  \|    PlugInstall --sync | source $MYVIMRC | q
-  \|  endif
-
-source ~/.vim/autoload/plug.vim
-call plug#begin('~/.vim/plugged')
-
-" Plugins
-Plug 'christoomey/vim-tmux-navigator'
-Plug 'craigemery/vim-autotag'
-Plug 'ctrlpvim/ctrlp.vim'
-Plug 'fatih/vim-go'
-Plug 'junegunn/vim-easy-align'
-Plug 'scrooloose/nerdtree', { 'on': 'NERDTreeToggle' }
-Plug 'sirver/ultisnips'
-Plug 'thirtythreeforty/lessspace.vim'
-Plug 'tpope/vim-commentary'
-Plug 'tpope/vim-dispatch'
-Plug 'tpope/vim-fugitive'
-Plug 'tpope/vim-surround'
-Plug 'vim-airline/vim-airline'
-Plug 'vim-airline/vim-airline-themes'
-Plug 'vim-scripts/vim-coffee-script'
-
-" Color scheme
-Plug 'nanotech/jellybeans.vim'
-
-" Syntax
-Plug 'PotatoesMaster/i3-vim-syntax', { 'for': 'i3' }
-Plug 'hdima/python-syntax', { 'for': 'python' }
-Plug 'jelera/vim-javascript-syntax', { 'for': 'javascript' }
-Plug 'keith/tmux.vim', { 'for': 'tmux' }
-Plug 'octol/vim-cpp-enhanced-highlight', { 'for': ['c', 'cpp'] }
-Plug 'raichoo/haskell-vim', { 'for': 'haskell' }
-Plug 'stanangeloff/php.vim', { 'for': 'php' }
-
-call plug#end()
-
-" }}}
 " Options------------------------------------------------------------------ {{{
 
 set autoindent

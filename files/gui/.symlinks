@@ -1,3 +1,4 @@
+config/Code/User/keybindings.json
 config/Code/User/settings.json
 config/compton.conf
 config/gtk-3.0/settings.ini

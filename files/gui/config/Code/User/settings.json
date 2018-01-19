@@ -2,16 +2,14 @@
     "editor.minimap.showSlider": "always",
     "editor.wordWrap": "on",
     "editor.fontLigatures": true,
-    "workbench.panel.location": "bottom",
     "workbench.startupEditor": "none",
     "workbench.tips.enabled": false,
-    "workbench.welcome.enabled": false,
     "window.menuBarVisibility": "toggle",
     "window.openFoldersInNewWindow": "on",
     "files.autoSave": "onFocusChange",
-    "search.useIgnoreFilesByDefault": true,
     "update.channel": "none",
     "debug.inlineValues": true,
     "team.showWelcomeMessage": false,
-    "docker.showExplorer": false
+    "docker.showExplorer": false,
+    "window.zoomLevel": 0
 }

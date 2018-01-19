@@ -14,9 +14,9 @@ is_flag_set()
 {
   if [[ " $OPTS " == *\ $1\ * ]]
   then
-    echo 0
-  else
     echo 1
+  else
+    echo 0
   fi
 }
 
@@ -34,9 +34,9 @@ does_symlink_exist()
 {
   if [[ $(readlink -f "$DIR"/files/"$1"/"$2") == $(readlink -f ~/."$2") ]]
   then
-    echo 0
-  else
     echo 1
+  else
+    echo 0
   fi
 }
 
@@ -53,7 +53,7 @@ is_group_ignored()
 {
   case $1 in
     gui)
-      if [[ $(is_flag_set "--gui") == "0" || $(is_flag_set "-g") == "0" ]]
+      if [[ $(is_flag_set "--gui") == "0" && $(is_flag_set "-g") == "0" ]]
       then
         echo 1
       else
@@ -61,7 +61,7 @@ is_group_ignored()
       fi
       ;;
     *)
-      echo 1
+      echo 0
       ;;
   esac
 }
@@ -79,9 +79,9 @@ is_program_installed()
 {
   if [[ -n $(which "$1" 2>/dev/null) ]]
   then
-    echo 0
-  else
     echo 1
+  else
+    echo 0
   fi
 }
 
@@ -100,7 +100,7 @@ message_usage()
   echo "These are the available commands:"
   echo
   echo "    help       Show usage instructions"
-  echo "    install    Install symlinks, package managers, packages and dotfiles CLI"
+  echo "    install    Install symlinks, packages and dotfiles CLI"
   echo "    uninstall  Remove symlinks"
 }
 
@@ -148,10 +148,25 @@ message_invalid()
 # "-r" or "--root" are set.
 assert_user_permissions()
 {
-  if [[ $EUID -eq 0 && ($(is_flag_set "--root") == "1" && $(is_flag_set "-r") == "1") ]]
+  if [[ $EUID -eq 0 && ($(is_flag_set "--root") == "0" && $(is_flag_set "-r") == "0") ]]
   then
     message_error "Do not run this script as root. To skip this check pass the command line flag '--root'."
     exit 1
+  fi
+}
+
+# worker_install_git_submodules
+#
+# Install git submodules.
+worker_install_git_submodules()
+{
+  if [[ -d "$DIR"/.git && $(is_program_installed "git") == "1" ]]
+  then
+    if git submodule status | cut -c-1 | grep -q "+\\|-"
+    then
+      message_worker "Installing git submodules"
+      git -C "$DIR" submodule update --init --recursive
+    fi
   fi
 }
 
@@ -163,7 +178,7 @@ assert_user_permissions()
 
 # worker_install_dotfiles_cli
 #
-# Put "dotfiles.sh" on the $PATH
+# Put "dotfiles.sh" on the $PATH.
 worker_install_dotfiles_cli()
 {
   if [[ $(readlink -f "$DIR"/dotfiles.sh) != $(readlink -f ~/bin/dotfiles) ]]
@@ -176,7 +191,7 @@ worker_install_dotfiles_cli()
 
 # worker_chmod
 #
-# Change file mode bits
+# Change file mode bits.
 worker_chmod()
 {
   if [[ -e ~/.ssh/config && "$(stat -c "%a" "$(readlink -f ~/.ssh/config)")" != "600" ]]
@@ -192,17 +207,23 @@ worker_chmod()
 # child directories of $HOME will trigger creation of those directories.
 worker_install_symlinks()
 {
-  message_worker "Installing symlinks"
+  local act="0"
+  local groups
   groups=$(ls "$DIR"/files)
   for group in $groups
   do
-    if [[ $(is_group_ignored "$group") == "1" ]]
+    if [[ $(is_group_ignored "$group") == "0" ]]
     then
       local link
       while read -r link
       do
-        if [[ $(does_symlink_exist "$group" "$link") == "1" ]]
+        if [[ $(does_symlink_exist "$group" "$link") == "0" ]]
         then
+          if [[ $act == "0" ]]
+          then
+            act="1"
+            message_worker "Installing symlinks"
+          fi
           if [[ $link == *"/"* ]]
           then
             mkdir -pv ~/."$(echo "$link" | rev | cut -d/ -f2- | rev)"
@@ -218,56 +239,26 @@ worker_install_symlinks()
   done
 }
 
-# worker_install_vim_plug
-#
-# Install vim-plug.
-worker_install_vim_plug()
-{
-  if [[ $(is_program_installed "curl") == "0" || $(is_program_installed "wget") == "0" ]]
-  then
-    if [[ ! -e $DIR/files/base/vim/autoload/plug.vim ]]
-    then
-      message_worker "Installing vim-plug"
-      if [[ $(is_program_installed "curl") == "0" ]]
-      then
-        curl -fLo "$DIR"/files/base/vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
-      else
-        wget -q -P "$DIR"/files/base/vim/autoload https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
-      fi
-    fi
-  fi
-}
-
-# worker_install_vim_plugins
-#
-# Install vim plugins
-worker_install_vim_plugins()
-{
-  if [[ $(is_program_installed "vim") == "0" ]]
-  then
-    message_worker "Installing vim plugins"
-    if [[ -f /.dockerenv ]]
-    then
-      vim +PlugUpdate +PlugUpgrade +qall >/dev/null 2>&1
-    else
-      vim +PlugUpdate +PlugUpgrade +qall
-    fi
-  fi
-}
-
 # worker_install_vscode_extensions
 #
-# Install vscode extensions
+# Install vscode extensions.
 worker_install_vscode_extensions()
 {
-  if [[ $(is_group_ignored "gui") == "1" && $(is_program_installed "code") == "0" ]]
+  if [[ $(is_group_ignored "gui") == "0" && $(is_program_installed "code") == "1" ]]
   then
-    message_worker "Installing vscode extensions"
+    local act="0"
     local extension
+    local extensionsInstalled
+    mapfile -t extensionsInstalled < <(code --list-extensions)
     while read -r extension
     do
-      if ! code --list-extensions | grep -qx "$extension"
+      if ! echo "${extensionsInstalled[@]}" | grep -qw "$extension"
       then
+        if [[ $act == "0" ]]
+        then
+          act="1"
+          message_worker "Installing vscode extensions"
+        fi
         code --install-extension "$extension"
       fi
     done < "$DIR/files/gui/vscode/extensions.txt"
@@ -279,19 +270,25 @@ worker_install_vscode_extensions()
 # Remove all symlinks that are not in igned groups.
 worker_uninstall_symlinks()
 {
-  message_worker "Removing symlinks"
+  local act="0"
+  local groups
   groups=$(ls "$DIR"/files)
   for group in $groups
   do
-    if [[ $(is_group_ignored "$group") == "1" ]]
+    if [[ $(is_group_ignored "$group") == "0" ]]
     then
       for file in "$DIR"/files/"$group"/.symlinks
       do
         local link
         while read -r link
         do
-          if [[ $(does_symlink_exist "$group" "$link") == "0" ]]
+          if [[ $(does_symlink_exist "$group" "$link") == "1" ]]
           then
+            if [[ $act == "0" ]]
+            then
+              act="1"
+              message_worker "Removing symlinks"
+            fi
             rm -vf ~/."$link"
           fi
         done < "$file"
@@ -310,9 +307,8 @@ worker_uninstall_symlinks()
 # Perform a full install.
 action_install()
 {
+  worker_install_git_submodules
   worker_install_symlinks
-  worker_install_vim_plug
-  worker_install_vim_plugins
   worker_install_vscode_extensions
   worker_install_dotfiles_cli
   worker_chmod
@@ -364,15 +360,15 @@ do
     # Call the action function for any of the valid action keywords. Only the
     # first one that is found will be processed and immediately after this
     # script will exit.
-    help )
+    help)
       action_help
       exit
       ;;
-    install )
+    install)
       action_install
       exit
       ;;
-    uninstall )
+    uninstall)
       action_uninstall
       exit
       ;;

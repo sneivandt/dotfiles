@@ -6,5 +6,5 @@ ms-vscode.PowerShell
 ms-vscode.cpptools
 ms-vscode.csharp
 ms-vsts.team
-redhat.java
 timonwong.shellcheck
+vscjava.vscode-java-pack

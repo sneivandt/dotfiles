@@ -7,7 +7,7 @@ new_window pixel 3
 new_float pixel 3
 
 # Gaps
-gaps inner 8
+gaps inner 6
 gaps outer 2
 
 # }}}

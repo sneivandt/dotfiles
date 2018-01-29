@@ -38,7 +38,11 @@ xterm*multiScroll:         true
 xterm*ttyModes:            erase ^?
 xterm*backarrowKeyIsErase: true
 
-URxvt*termName:    rxvt-unicode-256color
-URxvt*transparent: false
-URxvt*font:        xft:Source Code Pro:pixelsize=13
-URxvt*shading:     10
+URxvt*termName:       rxvt-unicode-256color
+URxvt*transparent:    false
+URxvt*font:           xft:Source Code Pro:pixelsize=13
+URxvt*shading:        10
+URxvt*keysym.C-Up:    \033[1;5A
+URxvt*keysym.C-Down:  \033[1;5B
+URxvt*keysym.C-Right: \033[1;5C
+URxvt*keysym.C-Left:  \033[1;5D

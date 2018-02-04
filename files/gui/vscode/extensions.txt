@@ -2,9 +2,12 @@ PeterJausovec.vscode-docker
 lukehoban.Go
 ms-mssql.mssql
 ms-python.python
-ms-vscode.PowerShell
 ms-vscode.cpptools
 ms-vscode.csharp
+ms-vscode.PowerShell
+ms-vscode.vs-keybindings
 ms-vsts.team
+redhat.java
 timonwong.shellcheck
+vscjava.vscode-java-debug
 vscjava.vscode-java-pack

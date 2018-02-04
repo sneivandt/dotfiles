@@ -11,5 +11,6 @@
     "debug.inlineValues": true,
     "team.showWelcomeMessage": false,
     "docker.showExplorer": false,
-    "window.zoomLevel": 0
+    "window.zoomLevel": 0,
+    "explorer.confirmDragAndDrop": false
 }

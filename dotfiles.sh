@@ -261,7 +261,7 @@ worker_install_vscode_extensions()
         fi
         code --install-extension "$extension"
       fi
-    done < "$DIR/files/gui/vscode/extensions.txt"
+    done < "$DIR/files/gui/vscode/extensions"
   fi
 }
 

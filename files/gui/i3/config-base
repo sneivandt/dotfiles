@@ -41,8 +41,7 @@ mode "$mode_system" {
 
 # Font
 set $font Source Code Pro
-set $font_size 7
-set $font_size_bar 9
+set $font_size 8
 font pango:$font $font_size
 
 # class                 border  backgr  text    indicator
@@ -58,6 +57,9 @@ client.background       #000000
 
 # Polybar
 exec --no-startup-id SHELL=$(which sh) polybar Bar
+
+# Dunst
+exec --no-startup-id dunst -config ~/.config/dunst/dunstrc
 
 # Compton
 exec --no-startup-id compton
@@ -167,7 +169,7 @@ bindsym $mod+M      exec --no-startup-id scrot '%Y%m%d_%H%M%S.png' -e 'mkdir -p 
 bindsym $mod+Return exec --no-startup-id ~/.i3/choose-term
 
 # Start dmenu
-bindsym $mod+p      exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -p 'Run' -nb '#000000' -nf '#d1d1d1' -sb '#3465a4' -sf '#d1d1d1' -fn '$font-$font_size_bar'"
+bindsym $mod+p      exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -p 'Run' -nb '#000000' -nf '#d1d1d1' -sb '#3465a4' -sf '#d1d1d1' -fn '$font-$font_size'"
 
 # Start Chrome
 bindsym $mod+o      exec --no-startup-id ~/.i3/choose-browser

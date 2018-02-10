@@ -1,69 +1,69 @@
-[submodule "files/base/vim/pack/plugins/start/jellybeans.vim"]
-	path = files/base/vim/pack/plugins/start/jellybeans.vim
-	url = https://github.com/nanotech/jellybeans.vim
-[submodule "files/base/vim/pack/plugins/start/vim-tmux-navigator"]
-	path = files/base/vim/pack/plugins/start/vim-tmux-navigator
-	url = https://github.com/christoomey/vim-tmux-navigator
-[submodule "files/base/vim/pack/plugins/start/vim-autotag"]
-	path = files/base/vim/pack/plugins/start/vim-autotag
-	url = https://github.com/craigemery/vim-autotag
 [submodule "files/base/vim/pack/plugins/start/ctrlp.vim"]
 	path = files/base/vim/pack/plugins/start/ctrlp.vim
 	url = https://github.com/ctrlpvim/ctrlp.vim
-[submodule "files/base/vim/pack/plugins/start/vim-go"]
-	path = files/base/vim/pack/plugins/start/vim-go
-	url = https://github.com/fatih/vim-go
-[submodule "files/base/vim/pack/plugins/start/vim-easy-align"]
-	path = files/base/vim/pack/plugins/start/vim-easy-align
-	url = https://github.com/junegunn/vim-easy-align
-[submodule "files/base/vim/pack/plugins/start/nerdtree"]
-	path = files/base/vim/pack/plugins/start/nerdtree
-	url = https://github.com/scrooloose/nerdtree
-[submodule "files/base/vim/pack/plugins/start/ultisnips"]
-	path = files/base/vim/pack/plugins/start/ultisnips
-	url = https://github.com/sirver/ultisnips
+[submodule "files/base/vim/pack/plugins/start/haskell-vim"]
+	path = files/base/vim/pack/plugins/start/haskell-vim
+	url = https://github.com/raichoo/haskell-vim
+[submodule "files/base/vim/pack/plugins/start/i3-vim-syntax"]
+	path = files/base/vim/pack/plugins/start/i3-vim-syntax
+	url = https://github.com/PotatoesMaster/i3-vim-syntax
+[submodule "files/base/vim/pack/plugins/start/jellybeans.vim"]
+	path = files/base/vim/pack/plugins/start/jellybeans.vim
+	url = https://github.com/nanotech/jellybeans.vim
 [submodule "files/base/vim/pack/plugins/start/lessspace.vim"]
 	path = files/base/vim/pack/plugins/start/lessspace.vim
 	url = https://github.com/thirtythreeforty/lessspace.vim
-[submodule "files/base/vim/pack/plugins/start/vim-commentary"]
-	path = files/base/vim/pack/plugins/start/vim-commentary
-	url = https://github.com/tpope/vim-commentary
-[submodule "files/base/vim/pack/plugins/start/vim-dispatch"]
-	path = files/base/vim/pack/plugins/start/vim-dispatch
-	url = https://github.com/tpope/vim-dispatch
-[submodule "files/base/vim/pack/plugins/start/vim-fugitive"]
-	path = files/base/vim/pack/plugins/start/vim-fugitive
-	url = https://github.com/tpope/vim-fugitive
-[submodule "files/base/vim/pack/plugins/start/vim-surround"]
-	path = files/base/vim/pack/plugins/start/vim-surround
-	url = https://github.com/tpope/vim-surround
+[submodule "files/base/vim/pack/plugins/start/nerdtree"]
+	path = files/base/vim/pack/plugins/start/nerdtree
+	url = https://github.com/scrooloose/nerdtree
+[submodule "files/base/vim/pack/plugins/start/php.vim"]
+	path = files/base/vim/pack/plugins/start/php.vim
+	url = https://github.com/stanangeloff/php.vim
+[submodule "files/base/vim/pack/plugins/start/python-syntax"]
+	path = files/base/vim/pack/plugins/start/python-syntax
+	url = https://github.com/hdima/python-syntax
+[submodule "files/base/vim/pack/plugins/start/tmux.vim"]
+	path = files/base/vim/pack/plugins/start/tmux.vim
+	url = https://github.com/keith/tmux.vim
+[submodule "files/base/vim/pack/plugins/start/ultisnips"]
+	path = files/base/vim/pack/plugins/start/ultisnips
+	url = https://github.com/sirver/ultisnips
 [submodule "files/base/vim/pack/plugins/start/vim-airline"]
 	path = files/base/vim/pack/plugins/start/vim-airline
 	url = https://github.com/vim-airline/vim-airline
 [submodule "files/base/vim/pack/plugins/start/vim-airline-themes"]
 	path = files/base/vim/pack/plugins/start/vim-airline-themes
 	url = https://github.com/vim-airline/vim-airline-themes
+[submodule "files/base/vim/pack/plugins/start/vim-autotag"]
+	path = files/base/vim/pack/plugins/start/vim-autotag
+	url = https://github.com/craigemery/vim-autotag
 [submodule "files/base/vim/pack/plugins/start/vim-coffee-script"]
 	path = files/base/vim/pack/plugins/start/vim-coffee-script
 	url = https://github.com/vim-scripts/vim-coffee-script
-[submodule "files/base/vim/pack/plugins/start/i3-vim-syntax"]
-	path = files/base/vim/pack/plugins/start/i3-vim-syntax
-	url = https://github.com/PotatoesMaster/i3-vim-syntax
-[submodule "files/base/vim/pack/plugins/start/python-syntax"]
-	path = files/base/vim/pack/plugins/start/python-syntax
-	url = https://github.com/hdima/python-syntax
-[submodule "files/base/vim/pack/plugins/start/vim-javascript-syntax"]
-	path = files/base/vim/pack/plugins/start/vim-javascript-syntax
-	url = https://github.com/jelera/vim-javascript-syntax
-[submodule "files/base/vim/pack/plugins/start/tmux.vim"]
-	path = files/base/vim/pack/plugins/start/tmux.vim
-	url = https://github.com/keith/tmux.vim
+[submodule "files/base/vim/pack/plugins/start/vim-commentary"]
+	path = files/base/vim/pack/plugins/start/vim-commentary
+	url = https://github.com/tpope/vim-commentary
 [submodule "files/base/vim/pack/plugins/start/vim-cpp-enhanced-hilight"]
 	path = files/base/vim/pack/plugins/start/vim-cpp-enhanced-hilight
 	url = https://github.com/octol/vim-cpp-enhanced-highlight
-[submodule "files/base/vim/pack/plugins/start/haskell-vim"]
-	path = files/base/vim/pack/plugins/start/haskell-vim
-	url = https://github.com/raichoo/haskell-vim
-[submodule "files/base/vim/pack/plugins/start/php.vim"]
-	path = files/base/vim/pack/plugins/start/php.vim
-	url = https://github.com/stanangeloff/php.vim
+[submodule "files/base/vim/pack/plugins/start/vim-dispatch"]
+	path = files/base/vim/pack/plugins/start/vim-dispatch
+	url = https://github.com/tpope/vim-dispatch
+[submodule "files/base/vim/pack/plugins/start/vim-easy-align"]
+	path = files/base/vim/pack/plugins/start/vim-easy-align
+	url = https://github.com/junegunn/vim-easy-align
+[submodule "files/base/vim/pack/plugins/start/vim-fugitive"]
+	path = files/base/vim/pack/plugins/start/vim-fugitive
+	url = https://github.com/tpope/vim-fugitive
+[submodule "files/base/vim/pack/plugins/start/vim-go"]
+	path = files/base/vim/pack/plugins/start/vim-go
+	url = https://github.com/fatih/vim-go
+[submodule "files/base/vim/pack/plugins/start/vim-javascript-syntax"]
+	path = files/base/vim/pack/plugins/start/vim-javascript-syntax
+	url = https://github.com/jelera/vim-javascript-syntax
+[submodule "files/base/vim/pack/plugins/start/vim-tmux-navigator"]
+	path = files/base/vim/pack/plugins/start/vim-tmux-navigator
+	url = https://github.com/christoomey/vim-tmux-navigator
+[submodule "files/base/vim/pack/plugins/start/vim-surround"]
+	path = files/base/vim/pack/plugins/start/vim-surround
+	url = https://github.com/tpope/vim-surround

@@ -1,8 +1,8 @@
-.dockerignore
-.git
-.gitignore
-.gitmodules
-Dockerfile
-LICENSE
-README.md
-files/gui
+/.git
+/.dockerignore
+/.gitignore
+/.gitmodules
+/Dockerfile
+/LICENSE
+/README.md
+/files/gui

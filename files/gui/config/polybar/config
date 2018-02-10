@@ -20,7 +20,7 @@ font-2 = Font Awesome 5 Free:pixelsize=9;0
 font-3 = Font Awesome 5 Brands:pixelsize=9;0
 modules-left = i3 music
 modules-center =
-modules-right = bitcoin ethereum kernel volume date
+modules-right = msft bitcoin ethereum kernel volume date
 tray-detached = false
 tray-position = right
 tray-padding = 1
@@ -79,3 +79,9 @@ type = custom/script
 interval = 10
 format-prefix = " "
 exec = ~/.config/polybar/modules/crypto BTC
+
+[module/msft]
+type = custom/script
+interval = 10
+format-prefix = " "
+exec = ~/.config/polybar/modules/stock MSFT

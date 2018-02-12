@@ -10,6 +10,16 @@ let mapleader=','
 filetype plugin indent on
 
 " }}}
+" Plugins ----------------------------------------------------------------- {{{
+
+" Fallback package manager
+if !has("packages")
+  runtime pack/plugins/opt/vim-pathogen/autoload/pathogen.vim
+  execute pathogen#infect("pack/plugins/start/{}")
+  execute pathogen#helptags()
+endif
+
+" }}}
 " Options------------------------------------------------------------------ {{{
 
 set autoindent

@@ -9,7 +9,7 @@ then
   unset f
 fi
 
-if [[ -x $(which i3 2>/dev/null) ]]
+if [[ -n $(command -v i3) ]]
 then
 
   # X preferences

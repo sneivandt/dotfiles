@@ -20,19 +20,19 @@ is_flag_set()
   fi
 }
 
-# does_symlink_exist
+# is_symlink_installed
 #
-# Check if a given symlink for a group exists.
+# Check if a symlink for a environment exists.
 #
 # Args:
-#     $1 - The group to be checked
+#     $1 - The environment to be checked
 #     $2 - The symlink to be checked.
 #
 # return:
 #     bool - True of the symlink exists.
-does_symlink_exist()
+is_symlink_installed()
 {
-  if [[ $(readlink -f "$DIR"/files/"$1"/"$2") == $(readlink -f ~/."$2") ]]
+  if [[ $(readlink -f "$DIR"/env/"$1"/symlinks/"$2") == $(readlink -f ~/."$2") ]]
   then
     echo 1
   else
@@ -40,20 +40,36 @@ does_symlink_exist()
   fi
 }
 
-# is_group_ignored
+# is_env_ignored
 #
-# Check if a group is ignored.
+# Check if an environment is ignored.
 #
 # Args:
-#     $1 - The group to check.
+#     $1 - The environment to check.
 #
 # return:
-#     bool - True of the group is ignored.
-is_group_ignored()
+#     bool - True of the environment is ignored.
+is_env_ignored()
 {
   case $1 in
-    gui)
+    base-gui)
       if [[ $(is_flag_set "--gui") == "0" && $(is_flag_set "-g") == "0" ]]
+      then
+        echo 1
+      else
+        echo 0
+      fi
+      ;;
+    arch)
+      if [[ $(cat /etc/*-release | grep -wP 'NAME\=\".*\"') == "NAME=\"Arch Linux\"" ]]
+      then
+        echo 0
+      else
+        echo 1
+      fi
+      ;;
+    arch-gui)
+      if [[ $(is_env_ignored "base-gui") == "1" || $(is_env_ignored "arch") == "1" ]]
       then
         echo 1
       else
@@ -77,7 +93,7 @@ is_group_ignored()
 #     bool - True of the program is installed.
 is_program_installed()
 {
-  if [[ -n $(which "$1" 2>/dev/null) ]]
+  if [[ -n $(command -v "$1") ]]
   then
     echo 1
   else
@@ -155,6 +171,12 @@ assert_user_permissions()
   fi
 }
 
+# }}}
+# Workers ----------------------------------------------------------------- {{{
+#
+# Functions that perform the core logic of this script. Workers are called by
+# action functions in series.
+
 # worker_install_git_submodules
 #
 # Install git submodules.
@@ -162,7 +184,7 @@ worker_install_git_submodules()
 {
   if [[ -d "$DIR"/.git && $(is_program_installed "git") == "1" ]]
   then
-    if git submodule status | cut -c-1 | grep -q "+\\|-"
+    if git -C "$DIR" submodule status | cut -c-1 | grep -q "+\\|-"
     then
       message_worker "Installing git submodules"
       git -C "$DIR" submodule update --init --recursive
@@ -170,11 +192,128 @@ worker_install_git_submodules()
   fi
 }
 
-# }}}
-# Workers ----------------------------------------------------------------- {{{
+# worker_install_packages
 #
-# Functions that perform the core logic of this script. Workers are called by
-# action functions in series.
+# Install packages with supported package managers.
+worker_install_packages()
+{
+  if [[ $(is_env_ignored "arch") == "0" && $(is_program_installed "pacman") == "1" && $(is_program_installed "sudo") == "1" ]]
+  then
+    readarray packages < "$DIR"/env/arch/packages.conf
+    if [[ $(is_env_ignored "arch-gui") == "0" ]]
+    then
+      while IFS='' read -r package || [ -n "$package" ]
+      do
+        packages+=("$package")
+      done < "$DIR"/env/arch-gui/packages.conf
+    fi
+    installedPackages=$(pacman -Q | cut -f 1 -d ' ')
+    notInstalledPackages=()
+    for package in "${packages[@]}"
+    do
+      if ! echo "${installedPackages[@]}" | grep -qw "$package"
+      then
+        notInstalledPackages+=("$package")
+      fi
+    done
+    if [ ${#notInstalledPackages[@]} -ne 0 ]
+    then
+      message_worker "Installing packages"
+      echo "${notInstalledPackages[@]}" | sudo pacman -S --quiet --needed -
+    fi
+  fi
+}
+
+# worker_configure_shell
+#
+# Set the user shell except when running in a docker container or WSL.
+worker_configure_shell()
+{
+  if [[ $(is_program_installed "zsh") == "1" && $SHELL != $(which zsh) && ! -f /.dockerenv ]]
+  then
+    if ! uname -r | grep -qw ".*-Microsoft"
+    then
+      message_worker "Configuring user login shell"
+      chsh -s "$(which zsh)"
+    fi
+  fi
+}
+
+# worker_configure_fonts
+#
+# Update font cache if fonts are not currently cached.
+worker_configure_fonts()
+{
+  if [[ $(is_env_ignored "arch-gui") == "0" && $(is_program_installed "fc-list") == "1" && $(is_program_installed "fc-cache") == "1" && "$(fc-list : family | grep -f "$DIR"/env/arch-gui/fonts.conf -cx)" -ne "$(grep -c '' "$DIR"/env/arch-gui/fonts.conf | cut -f1 -d ' ')" ]]
+  then
+    message_worker "Updating fontconfig font cache"
+    fc-cache
+  fi
+}
+
+# worker_install_symlinks
+#
+# Create symlinks excluding any symlinks that are ignored. Symlinks that are in
+# child directories of $HOME will trigger creation of those directories.
+worker_install_symlinks()
+{
+  local work="0"
+  local envs
+  envs=$(ls "$DIR"/env)
+  for env in $envs
+  do
+    if [[ $(is_env_ignored "$env") == "0" && -e "$DIR"/env/"$env"/symlinks.conf ]]
+    then
+      local symlink
+      while IFS='' read -r symlink || [ -n "$symlink" ]
+      do
+        if [[ $(is_symlink_installed "$env" "$symlink") == "0" ]]
+        then
+          if [[ $work == "0" ]]
+          then
+            work="1"
+            message_worker "Installing symlinks"
+          fi
+          if [[ $symlink == *"/"* ]]
+          then
+            mkdir -pv ~/."$(echo "$symlink" | rev | cut -d/ -f2- | rev)"
+          fi
+          if [[ -e ~/."$symlink" ]]
+          then
+            rm -rvf ~/."$symlink"
+          fi
+          ln -snvf "$DIR"/env/"$env"/symlinks/"$symlink" ~/."$symlink"
+        fi
+      done < "$DIR"/env/"$env"/symlinks.conf
+    fi
+  done
+}
+
+# worker_install_vscode_extensions
+#
+# Install vscode extensions.
+worker_install_vscode_extensions()
+{
+  if [[ $(is_env_ignored "base-gui") == "0" && $(is_program_installed "code") == "1" ]]
+  then
+    local work="0"
+    local extension
+    local extensionsInstalled
+    mapfile -t extensionsInstalled < <(code --list-extensions)
+    while IFS='' read -r extension || [ -n "$extension" ]
+    do
+      if ! echo "${extensionsInstalled[@]}" | grep -qw "$extension"
+      then
+        if [[ $work == "0" ]]
+        then
+          work="1"
+          message_worker "Installing vscode extensions"
+        fi
+        code --install-extension "$extension"
+      fi
+    done < "$DIR/env/base-gui/vscode-extensions.conf"
+  fi
+}
 
 # worker_install_dotfiles_cli
 #
@@ -201,98 +340,31 @@ worker_chmod()
   fi
 }
 
-# worker_install_symlinks
-#
-# Create symlinks excluding any symlinks that are ignored. Symlinks that are in
-# child directories of $HOME will trigger creation of those directories.
-worker_install_symlinks()
-{
-  local act="0"
-  local groups
-  groups=$(ls "$DIR"/files)
-  for group in $groups
-  do
-    if [[ $(is_group_ignored "$group") == "0" ]]
-    then
-      local link
-      while read -r link
-      do
-        if [[ $(does_symlink_exist "$group" "$link") == "0" ]]
-        then
-          if [[ $act == "0" ]]
-          then
-            act="1"
-            message_worker "Installing symlinks"
-          fi
-          if [[ $link == *"/"* ]]
-          then
-            mkdir -pv ~/."$(echo "$link" | rev | cut -d/ -f2- | rev)"
-          fi
-          if [[ -e ~/."$link" ]]
-          then
-            rm -rvf ~/."$link"
-          fi
-          ln -snvf "$DIR"/files/"$group"/"$link" ~/."$link"
-        fi
-      done < "$DIR/files/$group/.symlinks"
-    fi
-  done
-}
-
-# worker_install_vscode_extensions
-#
-# Install vscode extensions.
-worker_install_vscode_extensions()
-{
-  if [[ $(is_group_ignored "gui") == "0" && $(is_program_installed "code") == "1" ]]
-  then
-    local act="0"
-    local extension
-    local extensionsInstalled
-    mapfile -t extensionsInstalled < <(code --list-extensions)
-    while read -r extension
-    do
-      if ! echo "${extensionsInstalled[@]}" | grep -qw "$extension"
-      then
-        if [[ $act == "0" ]]
-        then
-          act="1"
-          message_worker "Installing vscode extensions"
-        fi
-        code --install-extension "$extension"
-      fi
-    done < "$DIR/files/gui/.vscode-extensions"
-  fi
-}
-
 # worker_uninstall_symlinks
 #
-# Remove all symlinks that are not in igned groups.
+# Remove all symlinks that are not in ignored environments.
 worker_uninstall_symlinks()
 {
-  local act="0"
-  local groups
-  groups=$(ls "$DIR"/files)
-  for group in $groups
+  local work="0"
+  local envs
+  envs=$(ls "$DIR"/env)
+  for env in $envs
   do
-    if [[ $(is_group_ignored "$group") == "0" ]]
+    if [[ $(is_env_ignored "$env") == "0" && -e "$DIR"/env/"$env"/symlinks.conf ]]
     then
-      for file in "$DIR"/files/"$group"/.symlinks
+      local symlink
+      while IFS='' read -r symlink || [ -n "$symlink" ]
       do
-        local link
-        while read -r link
-        do
-          if [[ $(does_symlink_exist "$group" "$link") == "1" ]]
+        if [[ $(is_symlink_installed "$env" "$symlink") == "1" ]]
           then
-            if [[ $act == "0" ]]
+            if [[ $work == "0" ]]
             then
-              act="1"
+              work="1"
               message_worker "Removing symlinks"
             fi
-            rm -vf ~/."$link"
+            rm -vf ~/."$symlink"
           fi
-        done < "$file"
-      done
+      done < "$DIR"/env/"$env"/symlinks.conf
     fi
   done
 }
@@ -308,6 +380,9 @@ worker_uninstall_symlinks()
 action_install()
 {
   worker_install_git_submodules
+  worker_install_packages
+  worker_configure_shell
+  worker_configure_fonts
   worker_install_symlinks
   worker_install_vscode_extensions
   worker_install_dotfiles_cli

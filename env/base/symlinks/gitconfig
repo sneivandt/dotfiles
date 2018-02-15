@@ -8,19 +8,20 @@
   pager = less
   autocrlf = input
   excludesfile = ~/.gitignore
+  attributesfile = ~/.gitattributes
 [color]
   ui = true
-[apply]
-  whitespace = fix
 [credential]
   helper = cache
+[fetch]
+  prune = true
+[push]
+  default = current
+  followTags = true
 [diff]
   tool = vimdiff
 [diff "bin"]
   textconv = hexdump -v -C
-[push]
-  default = current
-  followTags = true
 [alias]
   ad = add
   br = branch

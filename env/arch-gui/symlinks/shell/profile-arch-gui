@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Start X Windows
+[[ -z $DISPLAY && $XDG_VTNR -eq 1 && -n $(command -v i3) ]] && exec startx

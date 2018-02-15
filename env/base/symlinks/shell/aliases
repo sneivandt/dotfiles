@@ -26,10 +26,10 @@ alias path='echo $PATH | tr -s ":" "\n"'
 alias tmux="tmux -2"
 
 # vim
-if [[ -x $(which nvim 2>/dev/null) ]]
+if [[ -n $(command -v nvim) ]]
 then
   alias vi="nvim"
-elif [[ -x $(which vim 2>/dev/null) ]]
+elif [[ -n $(command -v vim) ]]
 then
   alias vi="vim"
 fi

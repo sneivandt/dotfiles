@@ -2,7 +2,7 @@
 
 for browser in google-chrome-beta google-chrome-stable firefox
 do
-  if [[ -n $(which $browser 2>/dev/null) ]]
+  if [[ -n $(command -v $browser) ]]
   then
     exec $browser
     exit

@@ -50,14 +50,17 @@ unset MAILCHECK
 export GOPATH=~/src/go
 
 # virtualenvwrapper
-if [[ -e $(which "virtualenvwrapper.sh") ]]
+if [ -n "$(command -v virtualenvwrapper.sh)" ]
 then
   export WORKON_HOME=~/.venv
   source virtualenvwrapper.sh
 fi
 
-# GUI profile
+# gui profile
 [[ -e ~/.shell/profile-gui ]] && . ~/.shell/profile-gui
+
+# arch-gui profile
+[[ -e ~/.shell/profile-arch-gui ]] && . ~/.shell/profile-arch-gui
 
 # Local profile
 [[ -e ~/.shell/profile.local ]] && . ~/.shell/profile.local

@@ -2,7 +2,7 @@
 
 for terminal in urxvt urxvt256c uxterm xterm gnome-terminal
 do
-  if [[ -n $(which $terminal 2>/dev/null) ]]
+  if [[ -n $(command -v $terminal) ]]
   then
     exec $terminal
     exit

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [[ -n $(which scrot 2>/dev/null) && -n $(which convert 2>/dev/null) && -n $(which playerctl 2>/dev/null) && -n $(which amixer 2>/dev/null) ]]
+if [[ -n $(command -v scrot) && -n $(command -v convert) && -n $(command -v playerctl) && -n $(command -v amixer) ]]
 then
 
   # Make lock screen

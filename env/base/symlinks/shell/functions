@@ -16,7 +16,6 @@ extract()
       *.tar.bz2)  tar -jxvf "$1"                      ;;
       *.tar.gz)   tar -zxvf "$1"                      ;;
       *.bz2)      bunzip2 "$1"                        ;;
-      *.dmg)      hdiutil mount "$1"                  ;;
       *.gz)       gunzip "$1"                         ;;
       *.tar)      tar -xvf "$1"                       ;;
       *.tbz2)     tar -jxvf "$1"                      ;;
@@ -25,6 +24,7 @@ extract()
       *.pax.Z)    uncompress "$1" --stdout | pax -r   ;;
       *.rar)      unrar x "$1"                        ;;
       *.z)        uncompress "$1"                     ;;
+      *.7z)       7z x "$1"                           ;;
       *)          >&2 echo "File cannot be extracted" ;;
     esac
   fi

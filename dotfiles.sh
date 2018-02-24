@@ -294,25 +294,29 @@ worker_install_symlinks()
 # Install vscode extensions.
 worker_install_vscode_extensions()
 {
-  if [[ $(is_env_ignored "base-gui") == "0" && $(is_program_installed "code") == "1" ]]
-  then
-    local work="0"
-    local extension
-    local extensionsInstalled
-    mapfile -t extensionsInstalled < <(code --list-extensions)
-    while IFS='' read -r extension || [ -n "$extension" ]
-    do
-      if ! echo "${extensionsInstalled[@]}" | grep -qw "$extension"
-      then
-        if [[ $work == "0" ]]
+  codes=("code" "code-insiders")
+  for code in "${codes[@]}"
+  do
+    if [[ $(is_env_ignored "base-gui") == "0" && $(is_program_installed "$code") == "1" ]]
+    then
+      local work="0"
+      local extension
+      local extensionsInstalled
+      mapfile -t extensionsInstalled < <($code --list-extensions)
+      while IFS='' read -r extension || [ -n "$extension" ]
+      do
+        if ! echo "${extensionsInstalled[@]}" | grep -qw "$extension"
         then
-          work="1"
-          message_worker "Installing vscode extensions"
+          if [[ $work == "0" ]]
+          then
+            work="1"
+            message_worker "Installing $code extensions"
+          fi
+          $code --install-extension "$extension"
         fi
-        code --install-extension "$extension"
-      fi
-    done < "$DIR/env/base-gui/vscode-extensions.conf"
-  fi
+      done < "$DIR/env/base-gui/vscode-extensions.conf"
+    fi
+  done
 }
 
 # worker_install_dotfiles_cli

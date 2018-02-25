@@ -14,9 +14,9 @@ is_flag_set()
 {
   if [[ " $OPTS " == *\ $1\ * ]]
   then
-    echo 1
+    return 0
   else
-    echo 0
+    return 1
   fi
 }
 
@@ -34,9 +34,9 @@ is_symlink_installed()
 {
   if [[ $(readlink -f "$DIR"/env/"$1"/symlinks/"$2") == $(readlink -f ~/."$2") ]]
   then
-    echo 1
+    return 0
   else
-    echo 0
+    return 1
   fi
 }
 
@@ -53,33 +53,25 @@ is_env_ignored()
 {
   case $1 in
     base-gui)
-      if [[ $(is_flag_set "--gui") == "0" && $(is_flag_set "-g") == "0" ]]
+      if ! (is_flag_set "--gui" || is_flag_set "-g")
       then
-        echo 1
-      else
-        echo 0
+        return 0
       fi
       ;;
     arch)
-      if [[ $(cat /etc/*-release | grep -wP 'NAME\=\".*\"') == "NAME=\"Arch Linux\"" ]]
+      if [[ $(cat /etc/*-release | grep -wP 'NAME\=\".*\"') != "NAME=\"Arch Linux\"" ]]
       then
-        echo 0
-      else
-        echo 1
+        return 0
       fi
       ;;
     arch-gui)
-      if [[ $(is_env_ignored "base-gui") == "1" || $(is_env_ignored "arch") == "1" ]]
+      if is_env_ignored "base-gui" || is_env_ignored "arch"
       then
-        echo 1
-      else
-        echo 0
+        return 0
       fi
       ;;
-    *)
-      echo 0
-      ;;
   esac
+  return 1
 }
 
 # is_program_installed
@@ -95,9 +87,9 @@ is_program_installed()
 {
   if [[ -n $(command -v "$1") ]]
   then
-    echo 1
+    return 0
   else
-    echo 0
+    return 1
   fi
 }
 
@@ -164,7 +156,7 @@ message_invalid()
 # "-r" or "--root" are set.
 assert_user_permissions()
 {
-  if [[ $EUID -eq 0 && ($(is_flag_set "--root") == "0" && $(is_flag_set "-r") == "0") ]]
+  if (! (is_flag_set "--root" || is_flag_set "-r")) && [ $EUID -eq 0 ]
   then
     message_error "Do not run this script as root. To skip this check pass the command line flag '--root'."
     exit 1
@@ -182,13 +174,10 @@ assert_user_permissions()
 # Install git submodules.
 worker_install_git_submodules()
 {
-  if [[ -d "$DIR"/.git && $(is_program_installed "git") == "1" ]]
+  if [ -d "$DIR"/.git ] && is_program_installed "git" && git -C "$DIR" submodule status | cut -c-1 | grep -q "+\\|-"
   then
-    if git -C "$DIR" submodule status | cut -c-1 | grep -q "+\\|-"
-    then
-      message_worker "Installing git submodules"
-      git -C "$DIR" submodule update --init --recursive
-    fi
+    message_worker "Installing git submodules"
+    git -C "$DIR" submodule update --init --recursive
   fi
 }
 
@@ -197,10 +186,10 @@ worker_install_git_submodules()
 # Install packages with supported package managers.
 worker_install_packages()
 {
-  if [[ $(is_env_ignored "arch") == "0" && $(is_program_installed "pacman") == "1" && $(is_program_installed "sudo") == "1" ]]
+  if (! is_env_ignored "arch") && is_program_installed "pacman" && is_program_installed "sudo"
   then
     readarray packages < "$DIR"/env/arch/packages.conf
-    if [[ $(is_env_ignored "arch-gui") == "0" ]]
+    if ! is_env_ignored "arch-gui"
     then
       while IFS='' read -r package || [ -n "$package" ]
       do
@@ -229,13 +218,10 @@ worker_install_packages()
 # Set the user shell except when running in a docker container or WSL.
 worker_configure_shell()
 {
-  if [[ $(is_program_installed "zsh") == "1" && $SHELL != $(which zsh) && ! -f /.dockerenv ]]
+  if is_program_installed "zsh" && (! uname -r | grep -qw ".*-Microsoft") && [ "$SHELL" != "$(which zsh)" ] && [ ! -f .dockerenv ]
   then
-    if ! uname -r | grep -qw ".*-Microsoft"
-    then
-      message_worker "Configuring user login shell"
-      chsh -s "$(which zsh)"
-    fi
+    message_worker "Configuring user login shell"
+    chsh -s "$(which zsh)"
   fi
 }
 
@@ -244,7 +230,7 @@ worker_configure_shell()
 # Update font cache if fonts are not currently cached.
 worker_configure_fonts()
 {
-  if [[ $(is_env_ignored "arch-gui") == "0" && $(is_program_installed "fc-list") == "1" && $(is_program_installed "fc-cache") == "1" && "$(fc-list : family | grep -f "$DIR"/env/arch-gui/fonts.conf -cx)" -ne "$(grep -c '' "$DIR"/env/arch-gui/fonts.conf | cut -f1 -d ' ')" ]]
+  if (! is_env_ignored "arch-gui") && is_program_installed "fc-list" && is_program_installed "fc-cache" && [[ "$(fc-list : family | grep -f "$DIR"/env/arch-gui/fonts.conf -cx)" -ne "$(grep -c '' "$DIR"/env/arch-gui/fonts.conf | cut -f1 -d ' ')" ]]
   then
     message_worker "Updating fontconfig font cache"
     fc-cache
@@ -257,28 +243,28 @@ worker_configure_fonts()
 # child directories of $HOME will trigger creation of those directories.
 worker_install_symlinks()
 {
-  local work="0"
+  local work=false
   local envs
   envs=$(ls "$DIR"/env)
   for env in $envs
   do
-    if [[ $(is_env_ignored "$env") == "0" && -e "$DIR"/env/"$env"/symlinks.conf ]]
+    if ! is_env_ignored "$env" && [ -e "$DIR"/env/"$env"/symlinks.conf ]
     then
       local symlink
       while IFS='' read -r symlink || [ -n "$symlink" ]
       do
-        if [[ $(is_symlink_installed "$env" "$symlink") == "0" ]]
+        if ! is_symlink_installed "$env" "$symlink"
         then
-          if [[ $work == "0" ]]
+          if ! $work
           then
-            work="1"
+            work=true
             message_worker "Installing symlinks"
           fi
           if [[ $symlink == *"/"* ]]
           then
             mkdir -pv ~/."$(echo "$symlink" | rev | cut -d/ -f2- | rev)"
           fi
-          if [[ -e ~/."$symlink" ]]
+          if [ -e ~/."$symlink" ]
           then
             rm -rvf ~/."$symlink"
           fi
@@ -297,9 +283,9 @@ worker_install_vscode_extensions()
   codes=("code" "code-insiders")
   for code in "${codes[@]}"
   do
-    if [[ $(is_env_ignored "base-gui") == "0" && $(is_program_installed "$code") == "1" ]]
+    if (! is_env_ignored "base-gui") && is_program_installed "$code"
     then
-      local work="0"
+      local work=false
       local extension
       local extensionsInstalled
       mapfile -t extensionsInstalled < <($code --list-extensions)
@@ -307,9 +293,9 @@ worker_install_vscode_extensions()
       do
         if ! echo "${extensionsInstalled[@]}" | grep -qw "$extension"
         then
-          if [[ $work == "0" ]]
+          if ! $work
           then
-            work="1"
+            work=true
             message_worker "Installing $code extensions"
           fi
           $code --install-extension "$extension"
@@ -337,7 +323,7 @@ worker_install_dotfiles_cli()
 # Change file mode bits.
 worker_chmod()
 {
-  if [[ -e ~/.ssh/config && "$(stat -c "%a" "$(readlink -f ~/.ssh/config)")" != "600" ]]
+  if [ -e ~/.ssh/config ] && "$(stat -c "%a" "$(readlink -f ~/.ssh/config)")" != "600"
   then
     message_worker "Changing file mode bits"
     chmod -c 600 ~/.ssh/config
@@ -349,25 +335,25 @@ worker_chmod()
 # Remove all symlinks that are not in ignored environments.
 worker_uninstall_symlinks()
 {
-  local work="0"
+  local work=false
   local envs
   envs=$(ls "$DIR"/env)
   for env in $envs
   do
-    if [[ $(is_env_ignored "$env") == "0" && -e "$DIR"/env/"$env"/symlinks.conf ]]
+    if ! is_env_ignored "$env" && [ -e "$DIR"/env/"$env"/symlinks.conf ]
     then
       local symlink
       while IFS='' read -r symlink || [ -n "$symlink" ]
       do
-        if [[ $(is_symlink_installed "$env" "$symlink") == "1" ]]
+        if is_symlink_installed "$env" "$symlink"
+        then
+          if ! $work
           then
-            if [[ $work == "0" ]]
-            then
-              work="1"
-              message_worker "Removing symlinks"
-            fi
-            rm -vf ~/."$symlink"
+            work=true
+            message_worker "Removing symlinks"
           fi
+          rm -vf ~/."$symlink"
+        fi
       done < "$DIR"/env/"$env"/symlinks.conf
     fi
   done

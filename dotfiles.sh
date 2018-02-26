@@ -25,7 +25,7 @@ is_flag_set()
 # Check if a symlink for a environment exists.
 #
 # Args:
-#     $1 - The environment to be checked
+#     $1 - The environment to be checked.
 #     $2 - The symlink to be checked.
 #
 # return:
@@ -218,7 +218,7 @@ worker_install_packages()
 # Set the user shell except when running in a docker container or WSL.
 worker_configure_shell()
 {
-  if is_program_installed "zsh" && (! uname -r | grep -qw ".*-Microsoft") && [ "$SHELL" != "$(which zsh)" ] && [ ! -f .dockerenv ]
+  if is_program_installed "zsh" && (! uname -r | grep -qw ".*-Microsoft") && [ "$SHELL" != "$(which zsh)" ] && [ ! -f /.dockerenv ]
   then
     message_worker "Configuring user login shell"
     chsh -s "$(which zsh)"
@@ -248,7 +248,7 @@ worker_install_symlinks()
   envs=$(ls "$DIR"/env)
   for env in $envs
   do
-    if ! is_env_ignored "$env" && [ -e "$DIR"/env/"$env"/symlinks.conf ]
+    if (! is_env_ignored "$env") && [ -e "$DIR"/env/"$env"/symlinks.conf ]
     then
       local symlink
       while IFS='' read -r symlink || [ -n "$symlink" ]
@@ -323,7 +323,7 @@ worker_install_dotfiles_cli()
 # Change file mode bits.
 worker_chmod()
 {
-  if [ -e ~/.ssh/config ] && "$(stat -c "%a" "$(readlink -f ~/.ssh/config)")" != "600"
+  if [ -e ~/.ssh/config ] && [ "$(stat -c "%a" "$(readlink -f ~/.ssh/config)")" != "600" ]
   then
     message_worker "Changing file mode bits"
     chmod -c 600 ~/.ssh/config

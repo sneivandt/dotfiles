@@ -205,7 +205,7 @@ endfunction " }}}
 " }}}
 " Filetype specitic ------------------------------------------------------- {{{
 
-" C {{{
+" C/C++ {{{
 
 " Indentation
 autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
@@ -213,11 +213,8 @@ autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
 " }}}
 " Go {{{
 
-" Indentation
-autocmd Filetype java setlocal sw=4 ts=4 sts=4 noexpandtab
-
 " Listchars
-set nolist
+autocmd Filetype go set nolist
 
 " }}}
 " Java {{{

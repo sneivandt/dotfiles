@@ -7,9 +7,6 @@
 [submodule "env/base/symlinks/vim/pack/plugins/start/haskell-vim"]
 	path = env/base/symlinks/vim/pack/plugins/start/haskell-vim
 	url = https://github.com/raichoo/haskell-vim
-[submodule "env/base/symlinks/vim/pack/plugins/start/i3-vim-syntax"]
-	path = env/base/symlinks/vim/pack/plugins/start/i3-vim-syntax
-	url = https://github.com/PotatoesMaster/i3-vim-syntax
 [submodule "env/base/symlinks/vim/pack/plugins/start/jellybeans.vim"]
 	path = env/base/symlinks/vim/pack/plugins/start/jellybeans.vim
 	url = https://github.com/nanotech/jellybeans.vim
@@ -25,9 +22,6 @@
 [submodule "env/base/symlinks/vim/pack/plugins/start/python-syntax"]
 	path = env/base/symlinks/vim/pack/plugins/start/python-syntax
 	url = https://github.com/hdima/python-syntax
-[submodule "env/base/symlinks/vim/pack/plugins/start/tmux.vim"]
-	path = env/base/symlinks/vim/pack/plugins/start/tmux.vim
-	url = https://github.com/keith/tmux.vim
 [submodule "env/base/symlinks/vim/pack/plugins/start/ultisnips"]
 	path = env/base/symlinks/vim/pack/plugins/start/ultisnips
 	url = https://github.com/sirver/ultisnips

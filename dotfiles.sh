@@ -103,7 +103,7 @@ is_program_installed()
 # Print usage instructions.
 message_usage()
 {
-  echo "Usage: $(basename "$0") <command> [-g | --gui] [-r | --root]"
+  echo "Usage: $(basename "$0") <command> [-g | --gui] [-p | --pack] [-r | --root]"
   echo
   echo "These are the available commands:"
   echo
@@ -186,29 +186,32 @@ worker_install_git_submodules()
 # Install packages with supported package managers.
 worker_install_packages()
 {
-  if (! is_env_ignored "arch") && is_program_installed "pacman" && is_program_installed "sudo"
+  if is_flag_set "--pack" || is_flag_set "-p"
   then
-    readarray packages < "$DIR"/env/arch/packages.conf
-    if ! is_env_ignored "arch-gui"
+    if (! is_env_ignored "arch") && is_program_installed "pacman" && is_program_installed "sudo"
     then
-      while IFS='' read -r package || [ -n "$package" ]
-      do
-        packages+=("$package")
-      done < "$DIR"/env/arch-gui/packages.conf
-    fi
-    installedPackages=$(pacman -Q | cut -f 1 -d ' ')
-    notInstalledPackages=()
-    for package in "${packages[@]}"
-    do
-      if ! echo "${installedPackages[@]}" | grep -qw "$package"
+      readarray packages < "$DIR"/env/arch/packages.conf
+      if ! is_env_ignored "arch-gui"
       then
-        notInstalledPackages+=("$package")
+        while IFS='' read -r package || [ -n "$package" ]
+        do
+          packages+=("$package")
+        done < "$DIR"/env/arch-gui/packages.conf
       fi
-    done
-    if [ ${#notInstalledPackages[@]} -ne 0 ]
-    then
-      message_worker "Installing packages"
-      echo "${notInstalledPackages[@]}" | sudo pacman -S --quiet --needed -
+      installedPackages=$(pacman -Q | cut -f 1 -d ' ')
+      notInstalledPackages=()
+      for package in "${packages[@]}"
+      do
+        if ! echo "${installedPackages[@]}" | grep -qw "$package"
+        then
+          notInstalledPackages+=("$package")
+        fi
+      done
+      if [ ${#notInstalledPackages[@]} -ne 0 ]
+      then
+        message_worker "Installing packages"
+        echo "${notInstalledPackages[@]}" | sudo pacman -S --quiet --needed -
+      fi
     fi
   fi
 }
@@ -407,7 +410,7 @@ DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 
 # Read command line options. While reading this input the 'getopt' call will
 # report invalid options that were given.
-OPTS=$(getopt -o rg -l root,gui -n "$(basename "$0")" -- "$@")
+OPTS=$(getopt -o rgp -l root,gui,pack -n "$(basename "$0")" -- "$@")
 
 # Abort if the root user is running this without permission.
 assert_user_permissions

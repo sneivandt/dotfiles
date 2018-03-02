@@ -22,8 +22,10 @@ case "$state" in
     arguments=(
       '--gui:Configure GUI applications'
       '-g:Configure GUI applications'
-      '--root:Allow execution as root'
-      '-r:Allow execution as root'
+      '--pack:Install packages'
+      '-p:Install packages'
+      '--root:Allow running as root'
+      '-r:Allow running as root'
     )
     _describe -t arguments 'arguments' arguments
   ;;

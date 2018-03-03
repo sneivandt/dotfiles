@@ -9,11 +9,15 @@ RUN apt-get update \
     && apt-get install --no-install-recommends --no-install-suggests -y \
         ca-certificates \
         curl \
+        exuberant-ctags \
         git \
         locales \
+        openssh-client \
+        p7zip \
         tmux \
         vim \
         wget \
+        zip \
         zsh \
     && rm -rf /var/lib/apt/lists/*
 

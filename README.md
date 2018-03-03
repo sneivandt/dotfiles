@@ -13,7 +13,7 @@ Install symlinks, packages and dotfiles CLI.
 | Argument | Description                     |
 | -        | -                               |
 | --gui    | Include graphical applications. |
-| --pac    | Install packages.               |
+| --pack   | Install packages.               |
 | --root   | Allow running as root.          |
 
 ## Docker

@@ -22,7 +22,6 @@ extract()
       *.tgz)      tar -zxvf "$1"                      ;;
       *.zip)      unzip "$1"                          ;;
       *.pax.Z)    uncompress "$1" --stdout | pax -r   ;;
-      *.rar)      unrar x "$1"                        ;;
       *.z)        uncompress "$1"                     ;;
       *.7z)       7z x "$1"                           ;;
       *)          >&2 echo "File cannot be extracted" ;;

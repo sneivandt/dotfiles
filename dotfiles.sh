@@ -51,21 +51,32 @@ is_symlink_installed()
 #     bool - True of the environment is ignored.
 is_env_ignored()
 {
+  release=$(cat /etc/*-release | grep -wP 'ID_LIKE=.*' | cut -d= -f2)
+  if [[ -z $release ]]
+  then
+    release=$(cat /etc/*-release | grep -wP 'ID=.*' | cut -d= -f2)
+  fi
   case $1 in
-    base-gui)
-      if ! (is_flag_set "--gui" || is_flag_set "-g")
-      then
-        return 0
-      fi
-      ;;
     arch)
-      if [[ $(cat /etc/*-release | grep -wP 'NAME\=\".*\"') != "NAME=\"Arch Linux\"" ]]
+      if [[ $release != "archlinux" ]]
       then
         return 0
       fi
       ;;
     arch-gui)
       if is_env_ignored "base-gui" || is_env_ignored "arch"
+      then
+        return 0
+      fi
+      ;;
+    base-gui)
+      if ! (is_flag_set "--gui" || is_flag_set "-g")
+      then
+        return 0
+      fi
+      ;;
+    debian)
+      if [[ $release != "debian" ]]
       then
         return 0
       fi
@@ -183,36 +194,54 @@ worker_install_git_submodules()
 
 # worker_install_packages
 #
-# Install packages with supported package managers.
+# Install system packages.
 worker_install_packages()
 {
-  if is_flag_set "--pack" || is_flag_set "-p"
+  if (is_flag_set "--pack" || is_flag_set "-p") && is_program_installed "sudo"
   then
-    if (! is_env_ignored "arch") && is_program_installed "pacman" && is_program_installed "sudo"
-    then
-      readarray packages < "$DIR"/env/arch/packages.conf
-      if ! is_env_ignored "arch-gui"
+    envs=("arch" "debian")
+    for env in "${envs[@]}"
+    do
+      if (! is_env_ignored "$env") && [ -e "$DIR"/env/"$env"/packages.conf ]
       then
-        while IFS='' read -r package || [ -n "$package" ]
-        do
-          packages+=("$package")
-        done < "$DIR"/env/arch-gui/packages.conf
-      fi
-      installedPackages=$(pacman -Q | cut -f 1 -d ' ')
-      notInstalledPackages=()
-      for package in "${packages[@]}"
-      do
-        if ! echo "${installedPackages[@]}" | grep -qw "$package"
+        readarray packages < "$DIR"/env/"$env"/packages.conf
+        if (! is_env_ignored "$env"-gui) && [ -e "$DIR"/env/"$env"-gui/packages.conf ]
         then
-          notInstalledPackages+=("$package")
+          while IFS='' read -r package || [ -n "$package" ]
+          do
+            packages+=("$package")
+          done < "$DIR"/env/"$env"-gui/packages.conf
         fi
-      done
-      if [ ${#notInstalledPackages[@]} -ne 0 ]
-      then
-        message_worker "Installing packages"
-        echo "${notInstalledPackages[@]}" | sudo pacman -S --quiet --needed -
+        case $env in
+          arch)
+            installedPackages=$(pacman -Q | cut -f 1 -d ' ')
+            ;;
+          debian)
+            installedPackages=$(dpkg-query -f '${binary:Package}\n' -W)
+            ;;
+        esac
+        notInstalledPackages=()
+        for package in "${packages[@]}"
+        do
+          if ! echo "${installedPackages[@]}" | grep -qw "$package"
+          then
+            notInstalledPackages+=("$package")
+          fi
+        done
+        if [ ${#notInstalledPackages[@]} -ne 0 ]
+        then
+          message_worker "Installing packages"
+          case $env in
+            arch)
+              echo "${notInstalledPackages[@]}" | sudo pacman -S --quiet --needed -
+              ;;
+            debian)
+              sudo apt install --quiet --no-install-recommends --no-install-suggests "${notInstalledPackages[@]}"
+              ;;
+          esac
+        fi
       fi
-    fi
+    done
   fi
 }
 

@@ -51,10 +51,10 @@ is_symlink_installed()
 #     bool - True of the environment is ignored.
 is_env_ignored()
 {
-  release=$(cat /etc/*-release | grep -wP 'ID_LIKE=.*' | cut -d= -f2)
+  release=$(cat /etc/*-release | grep -xP 'ID_LIKE=.*' | cut -d= -f2)
   if [[ -z $release ]]
   then
-    release=$(cat /etc/*-release | grep -wP 'ID=.*' | cut -d= -f2)
+    release=$(cat /etc/*-release | grep -xP 'ID=.*' | cut -d= -f2)
   fi
   case $1 in
     arch)
@@ -136,7 +136,7 @@ message_worker()
 
 # message_error
 #
-# Print an exit message.
+# Print an error message.
 #
 # Args:
 #     $1 - The reason for exiting.

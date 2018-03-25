@@ -7,7 +7,7 @@ extract()
   then
     echo "Usage: extract <file>"
     echo
-    echo "Supported types: tar.bz2 tar.gz bz2 dmg gz tar tbz2 tgz zip pax pax.z rar z"
+    echo "Supported types: tar.bz2 tar.gz bz2 gz tar tbz2 tgz zip z 7z"
   elif [[ ! -f $1 ]]
   then
     echo "'$1' is not a valid file"
@@ -21,10 +21,23 @@ extract()
       *.tbz2)     tar -jxvf "$1"                      ;;
       *.tgz)      tar -zxvf "$1"                      ;;
       *.zip)      unzip "$1"                          ;;
-      *.pax.Z)    uncompress "$1" --stdout | pax -r   ;;
       *.z)        uncompress "$1"                     ;;
       *.7z)       7z x "$1"                           ;;
       *)          >&2 echo "File cannot be extracted" ;;
     esac
+  fi
+}
+
+# List largest files
+lf()
+{
+  if [[ -z $1 ]]
+  then
+    echo "Usage: lf <directory>"
+  elif [[ ! -d $1 ]]
+  then
+    echo "'$1' is not a valid directory"
+  else
+    find "$1" -type f -exec du -a {} + | sort -nr | numfmt --to=iec --padding=4
   fi
 }

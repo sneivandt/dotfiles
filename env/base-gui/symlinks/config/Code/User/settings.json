@@ -12,6 +12,8 @@
     "extensions.ignoreRecommendations": true,
     "files.autoSave": "onFocusChange",
     "powershell.integratedConsole.showOnStartup": false,
+    "powershell.startAutomatically": false,
+    "search.location": "panel",
     "team.showWelcomeMessage": false,
     "update.channel": "none",
     "window.menuBarVisibility": "toggle",

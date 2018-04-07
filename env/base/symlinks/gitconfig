@@ -23,27 +23,30 @@
 [diff "bin"]
   textconv = hexdump -v -C
 [alias]
+  aa = add --all
   ad = add
   br = branch
-  ca = commit --amend --reuse-message=HEAD
+  brd = branch -d
   ch = checkout
+  ci = commit
+  cia = commit --amend --reuse-message=HEAD
   cl = clone --recursive
-  co = commit
   cp = cherry-pick
   di = diff
-  dt = difftool
+  dit = difftool
   fe = fetch --prune
   lo = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
   me = merge
   pl = pull
+  plr = pull --rebase
   ps = push
   rb = rebase
-  ri = rebase --interactive
+  rbi = rebase --interactive
   rs = reset
   st = status --short
   ta = tag
-  alias         = !git config -l | grep ^alias | cut -c 7- | sort
+  alias         = !git config -l | grep ^alias. | cut -c 7- | sort
   contributors  = shortlog --summary --numbered
-  delete-merged = !git branch --merged origin/HEAD | egrep -v '(^\\*|master|dev)' | xargs -r -n 1 git branch -d
+  delete-merged = !git branch --merged origin/HEAD | egrep -v '(^\\*|master)' | xargs -r -n 1 git branch -d
 [include]
   path = ~/.gitconfig.local

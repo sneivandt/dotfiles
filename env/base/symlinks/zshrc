@@ -34,7 +34,7 @@ setopt pushdtohome
 [[ -e ~/.shell/aliases ]] && . ~/.shell/aliases
 
 # Functions
-[[ -e ~/.shell/functions ]] && . ~/.shell/functions
+[[ -e ~/.shell/functions ]] && for f in ~/.shell/functions*; do source "$f"; done
 
 # Path
 [[ -e ~/.shell/path ]] && . ~/.shell/path

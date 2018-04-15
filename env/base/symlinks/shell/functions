@@ -7,7 +7,7 @@ extract()
   then
     echo "Usage: extract <file>"
     echo
-    echo "Supported types: tar.bz2 tar.gz bz2 gz tar tbz2 tgz zip z 7z"
+    echo "Supported types: tar.bz2 tar.gz tar tbz2 tgz zip"
   elif [[ ! -f $1 ]]
   then
     echo "'$1' is not a valid file"
@@ -15,14 +15,10 @@ extract()
     case $(echo "$1" | tr '[:upper:]' '[:lower:]') in
       *.tar.bz2)  tar -jxvf "$1"                      ;;
       *.tar.gz)   tar -zxvf "$1"                      ;;
-      *.bz2)      bunzip2 "$1"                        ;;
-      *.gz)       gunzip "$1"                         ;;
       *.tar)      tar -xvf "$1"                       ;;
       *.tbz2)     tar -jxvf "$1"                      ;;
       *.tgz)      tar -zxvf "$1"                      ;;
       *.zip)      unzip "$1"                          ;;
-      *.z)        uncompress "$1"                     ;;
-      *.7z)       7z x "$1"                           ;;
       *)          >&2 echo "File cannot be extracted" ;;
     esac
   fi

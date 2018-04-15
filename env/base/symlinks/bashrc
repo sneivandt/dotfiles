@@ -7,7 +7,7 @@ PS1="\\[\\e[0;36m\\]\\h \\[\\e[0;33m\\]\\w\\n\\[\\e[0m\\]\\$ "
 [[ -e ~/.shell/aliases ]] && . ~/.shell/aliases
 
 # Functions
-[[ -e ~/.shell/functions ]] && . ~/.shell/functions
+[[ -e ~/.shell/functions ]] && for f in ~/.shell/functions*; do source "$f"; done
 
 # Path
 [[ -e ~/.shell/path ]] && . ~/.shell/path

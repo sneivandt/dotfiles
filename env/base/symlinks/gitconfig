@@ -13,6 +13,8 @@
   ui = true
 [credential]
   helper = cache
+[branch]
+  autoSetupMerge = always
 [fetch]
   prune = true
 [push]

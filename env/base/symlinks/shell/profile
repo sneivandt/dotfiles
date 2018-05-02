@@ -59,8 +59,5 @@ fi
 # gui profile
 [[ -e ~/.shell/profile-gui ]] && . ~/.shell/profile-gui
 
-# arch-gui profile
-[[ -e ~/.shell/profile-arch-gui ]] && . ~/.shell/profile-arch-gui
-
 # Local profile
 [[ -e ~/.shell/profile.local ]] && . ~/.shell/profile.local

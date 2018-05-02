@@ -10,6 +10,9 @@
 #
 # Args:
 #     $1 - The flag to check.
+#
+# return:
+#     bool - True of the flag is set.
 is_flag_set()
 {
   if [[ " $OPTS " == *\ $1\ * ]]

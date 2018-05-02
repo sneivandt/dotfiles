@@ -16,7 +16,6 @@
     "search.location": "panel",
     "team.showWelcomeMessage": false,
     "update.channel": "none",
-    "window.menuBarVisibility": "toggle",
     "window.openFoldersInNewWindow": "on",
     "window.title": "${dirty}${activeEditorLong}${separator}${rootName}${separator}${appName}",
     "window.zoomLevel": 0,

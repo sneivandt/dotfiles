@@ -58,7 +58,7 @@ label-padding-right = 1
 type = internal/volume
 format-volume = <label-volume>
 format-muted = <label-muted>
-label-volume =  %percentage:3%
+label-volume =  %percentage:3%%
 label-muted =    0%
 
 [module/kernel]

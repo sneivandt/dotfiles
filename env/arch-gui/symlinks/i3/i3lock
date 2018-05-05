@@ -15,7 +15,7 @@ then
   playerctl pause
 
   # Mute
-  SOUND=$(amixer sget Master | grep -E -o '\[on\]')
+  SOUND=$(amixer sget Master | grep -E -o '\[on\]' | head -n 1)
   amixer -q set Master mute 2>/dev/null
 
   # Lock and wait

@@ -44,11 +44,15 @@ set $font Source Code Pro
 set $font_size 8
 font pango:$font $font_size
 
+# Window borders
+new_window pixel 2
+new_float pixel 2
+
 # class                 border  backgr  text    indicator
-client.focused          #607d8b #607d8b #DFDFDF #607d8b
-client.focused_inactive #455a64 #455a64 #a1a1a1 #455a64
+client.focused          #263238 #263238 #DFDFDF #607d8b
+client.focused_inactive #263238 #263238 #a1a1a1 #455a64
 client.unfocused        #263238 #263238 #9a9b9c #263238
-client.urgent           #4a4b4c #4a4b4c #fdfdfd #4a4b4c
+client.urgent           #263238 #263238 #fdfdfd #4a4b4c
 client.placeholder      #000000 #0c0c0c #ffffff #000000
 client.background       #000000
 

@@ -2,10 +2,6 @@
 
 # With i3-gaps ------------------------------------------------------------ {{{
 
-# Window borders
-new_window pixel 1
-new_float pixel 1
-
 # Gaps
 gaps inner 6
 gaps outer 2

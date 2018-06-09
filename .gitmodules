@@ -6,7 +6,7 @@
 	url = https://github.com/ctrlpvim/ctrlp.vim
 [submodule "env/base/symlinks/vim/pack/plugins/start/haskell-vim"]
 	path = env/base/symlinks/vim/pack/plugins/start/haskell-vim
-	url = https://github.com/raichoo/haskell-vim
+	url = https://github.com/neovimhaskell/haskell-vim
 [submodule "env/base/symlinks/vim/pack/plugins/start/jellybeans.vim"]
 	path = env/base/symlinks/vim/pack/plugins/start/jellybeans.vim
 	url = https://github.com/nanotech/jellybeans.vim

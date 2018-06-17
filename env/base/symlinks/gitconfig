@@ -26,7 +26,7 @@
   aa = add --all
   ad = add
   br = branch
-  brd = branch -d
+  brl = branch --list --format '%(HEAD) %(color:red)%(objectname:short)%(color:reset) - %(color:yellow)%(refname:short)%(color:reset) %(contents:subject) %(color:green)(%(committerdate:relative))%(color:reset) %(color:blue)<%(authorname)>%(color:reset)'
   ch = checkout
   ci = commit
   cia = commit --amend --reuse-message=HEAD

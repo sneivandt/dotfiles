@@ -6,7 +6,7 @@ Crypto Currency Price
 import sys
 import requests
 
-R = requests.get('https://api.gdax.com/products/' + sys.argv[1] + '-USD/ticker')
+R = requests.get('https://api.pro.coinbase.com/products/' + sys.argv[1] + '-USD/ticker')
 JSON = R.json()
 
 print("${:,.2f}".format(float(JSON['price'])))

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for browser in chromium google-chrome-dev google-chrome-beta google-chrome-stable firefox
+for browser in chromium-dev chromium firefox
 do
   if [[ -n $(command -v $browser) ]]
   then

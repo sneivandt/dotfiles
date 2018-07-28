@@ -78,8 +78,8 @@ is_env_ignored()
         return 0
       fi
       ;;
-    debian)
-      if [[ $release != "debian" ]]
+    wsl)
+      if [[ $(uname -r | sed -n 's/.*\( *Microsoft *\).*/\1/p') != "Microsoft" ]]
       then
         return 0
       fi
@@ -202,7 +202,7 @@ worker_install_packages()
 {
   if (is_flag_set "--pack" || is_flag_set "-p") && is_program_installed "sudo"
   then
-    envs=("arch" "debian")
+    envs=("arch" "wsl")
     for env in "${envs[@]}"
     do
       if (! is_env_ignored "$env") && [ -e "$DIR"/env/"$env"/packages.conf ]
@@ -219,16 +219,16 @@ worker_install_packages()
           arch)
             installedPackages=$(pacman -Q | cut -f 1 -d ' ')
             ;;
-          debian)
+          wsl)
             installedPackages=$(dpkg-query -f '${binary:Package}\n' -W)
             ;;
         esac
         notInstalledPackages=()
         for package in "${packages[@]}"
         do
-          if ! echo "${installedPackages[@]}" | grep -qw "$package"
+          if ! echo "${installedPackages[@]}" | grep -qw "${package%$'\n'}"
           then
-            notInstalledPackages+=("$package")
+            notInstalledPackages+=("${package%$'\n'}")
           fi
         done
         if [ ${#notInstalledPackages[@]} -ne 0 ]
@@ -238,7 +238,7 @@ worker_install_packages()
             arch)
               echo "${notInstalledPackages[@]}" | sudo pacman -S --quiet --needed -
               ;;
-            debian)
+            wsl)
               sudo apt install --quiet --no-install-recommends --no-install-suggests "${notInstalledPackages[@]}"
               ;;
           esac

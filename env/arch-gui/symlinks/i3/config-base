@@ -178,7 +178,7 @@ bindsym $mod+p      exec --no-startup-id i3-dmenu-desktop --dmenu="dmenu -i -p '
 # Start Chrome
 bindsym $mod+o      exec --no-startup-id ~/.i3/choose-browser
 
-# Start Thunar
-bindsym $mod+i      exec --no-startup-id thunar
+# Start Editor
+bindsym $mod+i      exec --no-startup-id ~/.i3/choose-editor
 
 # }}}

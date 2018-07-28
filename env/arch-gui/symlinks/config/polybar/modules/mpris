@@ -1,7 +1,7 @@
 #!/bin/bash
 
 player_status=$(playerctl status 2>/dev/null)
-if [[ $? -eq 0 ]]
+if [[ $? -eq 0 ]] && playerctl metadata 'mpris:trackid' | grep -wq "spotify"
 then
   metadata=()
   artist="$(playerctl metadata artist)"
@@ -12,7 +12,7 @@ then
   metadata+=("$(playerctl metadata title)")
 fi
 
-if [[ $player_status = "Playing" ]]
+if [[ $player_status = "Playing" && ${#metadata[@]} -ne 0 ]]
 then
   echo " $(printf "%s - " "${metadata[@]}" | cut -d "-" -f 1-${#metadata[@]})"
 else

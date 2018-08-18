@@ -19,6 +19,9 @@ alias ls="ls -h --color=auto"
 alias la="ls -a"
 alias ll="ls -l"
 
+# PowerShell has corrupted me
+alias cls="clear"
+
 # path
 alias path='echo $PATH | tr -s ":" "\n"'
 

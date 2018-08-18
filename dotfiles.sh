@@ -253,10 +253,10 @@ worker_install_packages()
 # Set the user shell except when running in a docker container or WSL.
 worker_configure_shell()
 {
-  if is_program_installed "zsh" && [ "$SHELL" != "$(which zsh)" ] && [ ! -f /.dockerenv ] && [ "$(passwd --status "$USER" | cut -d' ' -f2)" == "P" ] && (! uname -r | grep -qw ".*-Microsoft")
+  if is_program_installed "zsh" && [ "$SHELL" != "$(command -v zsh)" ] && [ ! -f /.dockerenv ] && [ "$(passwd --status "$USER" | cut -d' ' -f2)" == "P" ] && (is_env_ignored "wsl")
   then
     message_worker "Configuring user login shell"
-    chsh -s "$(which zsh)"
+    chsh -s "$(command -v zsh)"
   fi
 }
 

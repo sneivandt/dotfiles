@@ -30,11 +30,4 @@ setopt pushdtohome
 # Plugins
 [[ -d ~/.zsh/plugins ]] && . ~/.zsh/plugins/*
 
-# Aliases
-[[ -e ~/.shell/aliases ]] && . ~/.shell/aliases
-
-# Functions
-[[ -e ~/.shell/functions ]] && for f in ~/.shell/functions*; do source "$f"; done
-
-# Path
-[[ -e ~/.shell/path ]] && . ~/.shell/path
+[[ -d ~/.shell/interactive ]] && for f in ~/.shell/interactive/*; do . "$f"; done

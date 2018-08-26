@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Profile
-[[ -e ~/.profile ]] && . ~/.profile
-
 # Locale
 export LC_ALL=en_US.UTF-8
 export LANG=en_US.UTF-8
@@ -53,11 +50,5 @@ export GOPATH=~/src/go
 if [ -n "$(command -v virtualenvwrapper.sh)" ]
 then
   export WORKON_HOME=~/.venv
-  source virtualenvwrapper.sh
+  . virtualenvwrapper.sh
 fi
-
-# gui profile
-[[ -e ~/.shell/profile-gui ]] && . ~/.shell/profile-gui
-
-# Local profile
-[[ -e ~/.shell/profile.local ]] && . ~/.shell/profile.local

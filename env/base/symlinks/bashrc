@@ -3,11 +3,4 @@
 # Prompt
 PS1="\\[\\e[0;36m\\]\\h \\[\\e[0;33m\\]\\w\\n\\[\\e[0m\\]\\$ "
 
-# Aliases
-[[ -e ~/.shell/aliases ]] && . ~/.shell/aliases
-
-# Functions
-[[ -e ~/.shell/functions ]] && for f in ~/.shell/functions*; do source "$f"; done
-
-# Path
-[[ -e ~/.shell/path ]] && . ~/.shell/path
+[[ -d ~/.shell/interactive ]] && for f in ~/.shell/interactive/*; do . "$f"; done

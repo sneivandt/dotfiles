@@ -3,5 +3,4 @@
 # Global profile
 [[ -f /etc/zsh/zprofile ]] && . /etc/zsh/zprofile
 
-# Profile
-[[ -f ~/.shell/profile ]] && . ~/.shell/profile
+[[ -d ~/.shell/non-interactive ]] && for f in ~/.shell/non-interactive/*; do . "$f"; done

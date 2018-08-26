@@ -3,5 +3,4 @@
 # Global profile
 [[ -f /etc/profile ]] && . /etc/profile
 
-# Profile
-[[ -f ~/.shell/profile ]] && . ~/.shell/profile
+[[ -d ~/.shell/non-interactive ]] && for f in ~/.shell/non-interactive/*; do . "$f"; done

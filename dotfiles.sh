@@ -79,7 +79,7 @@ is_env_ignored()
       fi
       ;;
     wsl)
-      if [[ $(uname -r | sed -n 's/.*\( *Microsoft *\).*/\1/p') != "Microsoft" ]]
+      if is_program_installed "wsl.exe"
       then
         return 0
       fi

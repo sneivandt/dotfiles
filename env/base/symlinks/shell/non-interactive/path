@@ -1,7 +1,14 @@
 #!/bin/bash
 
-# Add $HOME/bin to $PATH
+# ~/bin
 export PATH=$PATH:~/bin
 
-# Add $HOME/src/go/bin to $PATH
+# GOPATH
 export PATH=$PATH:~/src/go/bin
+
+# RubyGems
+if [[ -n $(command -v ruby) ]]
+then
+    PATH="$PATH:$(ruby -e 'print Gem.user_dir')/bin"
+    export GEM_HOME=$HOME/.gem
+fi

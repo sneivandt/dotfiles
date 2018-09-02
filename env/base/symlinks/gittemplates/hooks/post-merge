@@ -1,8 +1,8 @@
 #!/bin/bash
 
-proxy="$HOME"/.gittemplates/hooks-proxy/post-merge
+hook="$HOME"/.gittemplates/hooks.local/post-merge
 
-if [ -f "$proxy" ]
+if [ -f "$hook" ]
 then
-  source "$proxy"
+  source "$hook"
 fi

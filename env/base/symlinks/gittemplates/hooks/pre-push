@@ -1,8 +1,8 @@
 #!/bin/bash
 
-proxy="$HOME"/.gittemplates/hooks-proxy/pre-push
+hook="$HOME"/.gittemplates/hooks.local/pre-push
 
-if [ -f "$proxy" ]
+if [ -f "$hook" ]
 then
-  source "$proxy"
+  source "$hook"
 fi

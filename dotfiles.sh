@@ -79,7 +79,7 @@ is_env_ignored()
       fi
       ;;
     wsl)
-      if ! is_program_installed "wsl.exe"
+      if ! (is_program_installed "wsl.exe" && [[ $release == "debian" ]])
       then
         return 0
       fi

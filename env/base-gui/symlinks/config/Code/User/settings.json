@@ -1,4 +1,5 @@
-{
+{    
+    "breadcrumbs.enabled": true,
     "debug.inlineValues": true,
     "diffEditor.renderSideBySide": false,
     "docker.showExplorer": false,
@@ -20,7 +21,6 @@
     "window.title": "${dirty}${activeEditorLong}${separator}${rootName}${separator}${appName}",
     "window.zoomLevel": 0,
     "workbench.colorTheme": "Jellybeams",
-    "workbench.editor.enablePreview": false,
     "workbench.startupEditor": "none",
     "workbench.tips.enabled": false
 }

@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Windows Directories
-HOME_WIN="$(cmd.exe /c "<nul set /p=%UserProfile%" 2>/dev/null)"
-export HOME_WIN
+WINHOME=$(wslpath "$(cmd.exe /c "echo %USERPROFILE%")")
+export WINHOME
 
 # Docker for Windows
 export DOCKER_HOST=tcp://0.0.0.0:2375

@@ -253,7 +253,7 @@ worker_install_packages()
 # Set the user shell except when running in a docker container or WSL.
 worker_configure_shell()
 {
-  if is_program_installed "zsh" && [ "$SHELL" != "$(command -v zsh)" ] && [ ! -f /.dockerenv ] && [ "$(passwd --status "$USER" | cut -d' ' -f2)" == "P" ] && (is_env_ignored "wsl")
+  if is_program_installed "zsh" && [ "$SHELL" != "$(command -v zsh)" ] && [ ! -f /.dockerenv ] && [ "$(passwd --status "$USER" | cut -d' ' -f2)" == "P" ]
   then
     message_worker "Configuring user login shell"
     chsh -s "$(command -v zsh)"
@@ -358,11 +358,8 @@ worker_install_dotfiles_cli()
 # Change file mode bits.
 worker_chmod()
 {
-  if [ -e ~/.ssh/config ] && [ "$(stat -c "%a" "$(readlink -f ~/.ssh/config)")" != "600" ]
-  then
-    message_worker "Changing file mode bits"
-    chmod -c 600 ~/.ssh/config
-  fi
+  [ -e ~/.ssh/config ] && chmod -c 600 ~/.ssh/config
+  [ -e ~/.zsh ] && chmod -c -R 755 ~/.zsh
 }
 
 # worker_uninstall_symlinks
@@ -409,9 +406,9 @@ action_install()
   worker_configure_shell
   worker_configure_fonts
   worker_install_symlinks
+  worker_chmod
   worker_install_vscode_extensions
   worker_install_dotfiles_cli
-  worker_chmod
 }
 
 # action_uninstall

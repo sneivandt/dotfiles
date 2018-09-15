@@ -310,6 +310,37 @@ worker_install_symlinks()
   done
 }
 
+# worker_chmod
+#
+# Change file mode bits.
+worker_chmod()
+{
+  local envs
+  envs=$(ls "$DIR"/env)
+  for env in $envs
+  do
+    if ! is_env_ignored "$env" && [ -e "$DIR"/env/"$env"/chmod.conf ]
+    then
+      local line
+      while IFS='' read -r line || [ -n "$line" ]
+      do
+        read -r -a elements <<< "$line"
+        local file
+        local permissions
+        file=~/."${elements[0]}"
+        permissions="${elements[1]}"
+        if [ -d "$file" ]
+        then
+          chmod -c -R "$permissions" "$file"
+        elif [ -e "$file" ]
+        then
+          chmod -c "$permissions" "$file"
+        fi
+      done < "$DIR"/env/"$env"/chmod.conf
+    fi
+  done
+}
+
 # worker_install_vscode_extensions
 #
 # Install vscode extensions.
@@ -351,15 +382,6 @@ worker_install_dotfiles_cli()
     mkdir -pv ~/bin
     ln -snvf "$DIR"/dotfiles.sh ~/bin/dotfiles
   fi
-}
-
-# worker_chmod
-#
-# Change file mode bits.
-worker_chmod()
-{
-  [ -e ~/.ssh/config ] && chmod -c 600 ~/.ssh/config
-  [ -e ~/.zsh ] && chmod -c -R 755 ~/.zsh
 }
 
 # worker_uninstall_symlinks

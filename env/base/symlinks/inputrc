@@ -2,11 +2,35 @@
 set bell-style none
 
 # Movement keys
-"\e[7~":   beginning-of-line  # Home
-"\e[8~":   end-of-line        # End
-"\e[7^":   beginning-of-line  # Ctrl + Home
-"\e[8^":   end-of-line        # Ctrl + End
-"\C-H":    backward-kill-word # Ctrl + Backspace
-"\e[3^":   kill-word          # Ctrl + Delete
-"\e[1;5D": beginning-of-line  # Ctrl + Left
-"\e[1;5C": end-of-line        # Ctrl + Right
+$if bash
+    $if term=rxvt-unicode-256color
+        "\e[7~":   beginning-of-line  # Home
+        "\e[8~":   end-of-line        # End
+        "\e[7^":   beginning-of-line  # Ctrl + Home
+        "\e[8^":   end-of-line        # Ctrl + End
+        "\C-H":    backward-kill-word # Ctrl + Backspace
+        "\e[3^":   kill-word          # Ctrl + Delete
+        "\e[1;5D": beginning-of-line  # Ctrl + Left
+        "\e[1;5C": end-of-line        # Ctrl + Right
+    $endif
+    $if term=screen-256color
+        "\e[1~":   beginning-of-line  # Home
+        "\e[4~":   end-of-line        # End
+        "\e[1;5H": beginning-of-line  # Ctrl + Home
+        "\e[1;5F": end-of-line        # Ctrl + End
+                                      # Ctrl + Backspace
+        "\e[3;5~": kill-word          # Ctrl + Delete
+        "\e[1;5D": beginning-of-line  # Ctrl + Left
+        "\e[1;5C": end-of-line        # Ctrl + Right
+    $endif
+    $if term=xterm-256color
+        "\e[H":    beginning-of-line  # Home
+        "\e[F":    end-of-line        # End
+        "\e[1;5H": beginning-of-line  # Ctrl + Home
+        "\e[1;5F": end-of-line        # Ctrl + End
+        "^H":      backward-kill-word # Ctrl + Backspace
+        "\e[3;5~": kill-word          # Ctrl + Delete
+        "\e[1;5D": beginning-of-line  # Ctrl + Left
+        "\e[1;5C": end-of-line        # Ctrl + Right
+    $endif
+$endif

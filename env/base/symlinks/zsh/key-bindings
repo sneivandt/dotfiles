@@ -1,37 +1,20 @@
 # vi: set ft=zsh :
 
-if (( ${+terminfo[smkx]} )) && (( ${+terminfo[rmkx]} )); then
-  function zle-line-init() {
-    echoti smkx
-  }
-  function zle-line-finish() {
-    echoti rmkx
-  }
-  zle -N zle-line-init
-  zle -N zle-line-finish
-fi
+# Movement keys
+bindkey '\e[7~'   beginning-of-line  # Home
+bindkey '\e[8~'   end-of-line        # End
+bindkey '\e[7^'   beginning-of-line  # Ctrl + Home
+bindkey '\e[8^'   end-of-line        # Ctrl + End
+bindkey '^H'      backward-kill-word # Ctrl + Backspace
+bindkey '\e[3^'   kill-word          # Ctrl + Delete
+bindkey '\e[1;5D' beginning-of-line  # Ctrl + Left
+bindkey '\e[1;5C' end-of-line        # Ctrl + Right
 
-if [[ "${terminfo[khome]}" != "" ]]; then
-  bindkey "${terminfo[khome]}" beginning-of-line
-fi
-if [[ "${terminfo[kend]}" != "" ]]; then
-  bindkey "${terminfo[kend]}" end-of-line
-fi
-if [[ "${terminfo[kdch1]}" != "" ]]; then
-  bindkey "${terminfo[kdch1]}" delete-char
-fi
-
-# Space Magic space history expansion
+# Magic space history expansion
 bindkey ' ' magic-space
 
 # Ctrl+r Search history
-bindkey '^r' history-incremental-search-backward
-
-# Ctrl+Right Forward one word
-bindkey '^[[1;5C' forward-word
-
-# Ctrl+Left Backward one word
-bindkey '^[[1;5D' backward-word
+bindkey '^R' history-incremental-search-backward
 
 # Ctrl+s Insert "sudo " at the start of line
 sudo-command-line() {
@@ -40,4 +23,4 @@ sudo-command-line() {
   zle end-of-line
 }
 zle -N sudo-command-line
-bindkey "^t" sudo-command-line
+bindkey '^T' sudo-command-line

@@ -1,1 +1,12 @@
+# Quiet
 set bell-style none
+
+# Movement keys
+"\e[7~":   beginning-of-line  # Home
+"\e[8~":   end-of-line        # End
+"\e[7^":   beginning-of-line  # Ctrl + Home
+"\e[8^":   end-of-line        # Ctrl + End
+"\C-H":    backward-kill-word # Ctrl + Backspace
+"\e[3^":   kill-word          # Ctrl + Delete
+"\e[1;5D": beginning-of-line  # Ctrl + Left
+"\e[1;5C": end-of-line        # Ctrl + Right

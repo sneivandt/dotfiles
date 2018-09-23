@@ -9,8 +9,8 @@ then
   bindkey '\e[8^'   end-of-line        # Ctrl + End
   bindkey '^H'      backward-kill-word # Ctrl + Backspace
   bindkey '\e[3^'   kill-word          # Ctrl + Delete
-  bindkey '\e[1;5D' beginning-of-line  # Ctrl + Left
-  bindkey '\e[1;5C' end-of-line        # Ctrl + Right
+  bindkey '\e[1;5D' backward-word      # Ctrl + Left
+  bindkey '\e[1;5C' forward-word       # Ctrl + Right
 elif [[ "$TERM" == (screen*) ]]
 then
   bindkey '\e[1~'   beginning-of-line  # Home
@@ -19,8 +19,8 @@ then
   bindkey '\e[1;5F' end-of-line        # Ctrl + End
                                        # Ctrl + Backspace
   bindkey '\e[3;5~' kill-word          # Ctrl + Delete
-  bindkey '\e[1;5D' beginning-of-line  # Ctrl + Left
-  bindkey '\e[1;5C' end-of-line        # Ctrl + Right
+  bindkey '\e[1;5D' backward-word      # Ctrl + Left
+  bindkey '\e[1;5C' forward-word       # Ctrl + Right
 elif [[ "$TERM" == (xterm*) ]]
 then
   bindkey '\e[H'    beginning-of-line  # Home
@@ -29,8 +29,8 @@ then
   bindkey '\e[1;5F' end-of-line        # Ctrl + End
   bindkey '^H'      backward-kill-word # Ctrl + Backspace
   bindkey '\e[3;5~' kill-word          # Ctrl + Delete
-  bindkey '\e[1;5D' beginning-of-line  # Ctrl + Left
-  bindkey '\e[1;5C' end-of-line        # Ctrl + Right
+  bindkey '\e[1;5D' backward-word      # Ctrl + Left
+  bindkey '\e[1;5C' forward-word       # Ctrl + Right
 fi
 
 # Magic space history expansion

@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Quiet
+setopt no_beep
+setopt NO_LIST_BEEP
+set bell-style none
+
 # Colors
 autoload -U colors
 colors

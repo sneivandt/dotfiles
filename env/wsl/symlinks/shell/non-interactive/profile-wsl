@@ -3,6 +3,3 @@
 # Windows Directories
 WINHOME=$(wslpath "$(cmd.exe /c "echo %USERPROFILE%")")
 export WINHOME
-
-# Docker for Windows
-export DOCKER_HOST=tcp://0.0.0.0:2375

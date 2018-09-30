@@ -202,44 +202,37 @@ worker_install_packages()
 {
   if (is_flag_set "--pack" || is_flag_set "-p") && is_program_installed "sudo"
   then
-    envs=("arch" "wsl")
+    envs=("arch" "arch-gui" "wsl")
     for env in "${envs[@]}"
     do
       if (! is_env_ignored "$env") && [ -e "$DIR"/env/"$env"/packages.conf ]
       then
         readarray packages < "$DIR"/env/"$env"/packages.conf
-        if (! is_env_ignored "$env"-gui) && [ -e "$DIR"/env/"$env"-gui/packages.conf ]
-        then
-          while IFS='' read -r package || [ -n "$package" ]
-          do
-            packages+=("$package")
-          done < "$DIR"/env/"$env"-gui/packages.conf
-        fi
         case $env in
-          arch)
-            installedPackages=$(pacman -Q | cut -f 1 -d ' ')
+          arch | "arch-gui")
+            installed=$(pacman -Q | cut -f 1 -d ' ')
             ;;
           wsl)
-            installedPackages=$(dpkg-query -f '${binary:Package}\n' -W)
+            installed=$(dpkg-query -f '${binary:Package}\n' -W)
             ;;
         esac
-        notInstalledPackages=()
+        notinstalled=()
         for package in "${packages[@]}"
         do
-          if ! echo "${installedPackages[@]}" | grep -qw "${package%$'\n'}"
+          if ! echo "${installed[@]}" | grep -qw "${package%$'\n'}"
           then
-            notInstalledPackages+=("${package%$'\n'}")
+            notinstalled+=("${package%$'\n'}")
           fi
         done
-        if [ ${#notInstalledPackages[@]} -ne 0 ]
+        if [ ${#notinstalled[@]} -ne 0 ]
         then
           message_worker "Installing packages"
           case $env in
-            arch)
-              echo "${notInstalledPackages[@]}" | sudo pacman -S --quiet --needed -
+            arch | "arch-gui")
+              echo "${notinstalled[@]}" | sudo pacman -S --quiet --needed -
               ;;
             wsl)
-              sudo apt install --quiet --no-install-recommends --no-install-suggests "${notInstalledPackages[@]}"
+              sudo apt install --quiet --no-install-recommends --no-install-suggests "${notinstalled[@]}"
               ;;
           esac
         fi

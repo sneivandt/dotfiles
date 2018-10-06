@@ -1,6 +1,9 @@
 # Quiet
 set bell-style none
 
+# Word Style
+C-b:unix-filename-rubout
+
 # Movement keys
 $if bash
     $if term=rxvt-unicode-256color

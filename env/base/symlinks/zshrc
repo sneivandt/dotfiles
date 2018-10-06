@@ -5,6 +5,10 @@ setopt no_beep
 setopt NO_LIST_BEEP
 set bell-style none
 
+# Word Style
+autoload -U select-word-style
+select-word-style bash
+
 # Colors
 autoload -U colors
 colors

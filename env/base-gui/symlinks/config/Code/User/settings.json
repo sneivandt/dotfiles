@@ -21,7 +21,7 @@
     "window.openFoldersInNewWindow": "on",
     "window.title": "${dirty}${activeEditorLong}${separator}${rootName}${separator}${appName}",
     "window.zoomLevel": 0,
-    "workbench.colorTheme": "One Dark Pro",
+    "workbench.colorTheme": "Visual Studio Dark",
     "workbench.startupEditor": "none",
     "workbench.tips.enabled": false
 }

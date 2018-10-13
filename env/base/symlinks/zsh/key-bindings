@@ -1,6 +1,7 @@
 # vi: set ft=zsh :
 
 # Movement keys
+bindkey '\e[3~'     delete-char        # Delete
 if [[ "$TERM" == (rxvt*) ]]
 then
   bindkey '\e[7~'   beginning-of-line  # Home

@@ -183,6 +183,18 @@ assert_user_permissions()
 # Functions that perform the core logic of this script. Workers are called by
 # action functions in series.
 
+# worker_update_dotfiles
+#
+# Update dotfiles.
+worker_update_dotfiles()
+{
+  if [ -d "$DIR"/.git ] && is_program_installed "git" && git -C "$DIR" diff-index --quiet HEAD -- && "$(git -C "$DIR" remote show origin | sed -n -e 's/.*HEAD branch: //p')" -eq "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" && "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" -ne "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)"
+  then
+    message_worker "Updating dotfiles"
+    git -C "$DIR" pull
+  fi
+}
+
 # worker_install_git_submodules
 #
 # Install git submodules.
@@ -416,6 +428,7 @@ worker_uninstall_symlinks()
 # Perform a full install.
 action_install()
 {
+  worker_update_dotfiles
   worker_install_git_submodules
   worker_install_packages
   worker_configure_shell

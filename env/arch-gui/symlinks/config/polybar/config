@@ -20,7 +20,7 @@ font-2 = Font Awesome 5 Free:pixelsize=9;0
 font-3 = Font Awesome 5 Brands:pixelsize=9;0
 modules-left = i3 music
 modules-center =
-modules-right = msft kernel volume date
+modules-right = msft kernel alsa date
 tray-detached = false
 tray-position = right
 tray-padding = 1
@@ -54,8 +54,8 @@ date =  %A %b %d %H:%M
 interval = 1
 label-padding-right = 1
 
-[module/volume]
-type = internal/volume
+[module/alsa]
+type = internal/alsa
 format-volume = <label-volume>
 format-muted = <label-muted>
 label-volume =  %percentage:3%%

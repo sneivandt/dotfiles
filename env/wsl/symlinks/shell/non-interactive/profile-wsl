@@ -1,5 +1,0 @@
-#!/bin/bash
-
-# Windows Directories
-WINHOME=$(wslpath "$(cmd.exe /c "echo %USERPROFILE%")")
-export WINHOME

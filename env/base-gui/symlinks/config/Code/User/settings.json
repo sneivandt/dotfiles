@@ -12,7 +12,7 @@
     "explorer.confirmDragAndDrop": false,
     "extensions.ignoreRecommendations": true,
     "files.autoSave": "onFocusChange",
-    "git.detectSubmodules": false,
+    "git.detectSubmodules": true,
     "powershell.integratedConsole.showOnStartup": false,
     "powershell.startAutomatically": false,
     "search.location": "panel",

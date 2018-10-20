@@ -200,10 +200,23 @@ worker_update_dotfiles()
 # Install git submodules.
 worker_install_git_submodules()
 {
-  if [ -d "$DIR"/.git ] && is_program_installed "git" && git -C "$DIR" submodule status | cut -c-1 | grep -q "+\\|-"
+  if [ -d "$DIR"/.git ] && is_program_installed "git"
   then
-    message_worker "Installing git submodules"
-    git -C "$DIR" submodule update --init --recursive
+    local modules=("env/base/symlinks/vim/pack/plugins")
+    envs=("wsl")
+    for env in "${envs[@]}"
+    do
+      if (! is_env_ignored "$env")
+      then
+        modules+=("env/$env")
+      fi
+    done
+    if git -C "$DIR" submodule status "${modules[@]}" | cut -c-1 | grep -q "+\\|-"
+    then
+      message_worker "Installing git submodules"
+      echo "${modules[@]}"
+      git -C "$DIR" submodule update --init --recursive "${modules[@]}"
+    fi
   fi
 }
 

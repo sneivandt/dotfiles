@@ -203,7 +203,7 @@ worker_install_git_submodules()
   if [ -d "$DIR"/.git ] && is_program_installed "git"
   then
     local modules=("env/base/symlinks/vim/pack/plugins")
-    envs=("wsl")
+    envs=("arch" "arch-gui" "base-gui" "wsl")
     for env in "${envs[@]}"
     do
       if (! is_env_ignored "$env")

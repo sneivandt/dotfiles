@@ -1,8 +1,0 @@
-[Added Associations]
-application/xml=chromium.desktop;visual-studio-code-insiders.desktop;
-application/x-shellscript=vim.desktop;
-image/png=feh.desktop;
-text/plain=vim.desktop;
-
-[Default Applications]
-application/xml=visual-studio-code-insiders.desktop

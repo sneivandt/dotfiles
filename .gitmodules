@@ -1,15 +1,15 @@
 [submodule "env/arch"]
 	path = env/arch
-	url = git@github.com:sneivandt/dotfiles-arch
+	url = ../dotfiles-arch
 [submodule "env/arch-gui"]
 	path = env/arch-gui
-	url = git@github.com:sneivandt/dotfiles-arch-gui
+	url = ../dotfiles-arch-gui
 [submodule "env/base-gui"]
 	path = env/base-gui
-	url = git@github.com:sneivandt/dotfiles-base-gui
+	url = ../dotfiles-base-gui
 [submodule "env/wsl"]
 	path = env/wsl
-	url = git@github.com:sneivandt/dotfiles-wsl
+	url = ../dotfiles-wsl
 [submodule "env/base/symlinks/vim/pack/plugins/opt/vim-pathogen"]
 	path = env/base/symlinks/vim/pack/plugins/opt/vim-pathogen
 	url = https://github.com/tpope/vim-pathogen

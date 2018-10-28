@@ -1,0 +1,21 @@
+#!/bin/bash
+
+PS1=""
+
+# host name
+PS1+="\\[\\e[0;36m\\]\$([[ -n \"$SSH_CONNECTION\" || -e /.dockerenv ]] && echo \"bash \")"
+
+# default shell
+PS1+="\\[\\e[0;36m\\]\$([[ \"\$(command -v bash)\" != \"\$SHELL\" ]] && echo \"bash \")"
+
+# working dir
+PS1+="\\[\\e[0;33m\\]\\w "
+
+# git prompt info
+PS1+="\\[\\e[0m\\]\$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\\[\\e[0;31m\\]\$(git status --short 2>/dev/null | wc -l | awk '{s=(\$1>0)?\"+\"\$1:\"\"; print s}')"
+
+# sudo active
+PS1+="\\[\\e[0;36m\\]\$(sudo -n uptime 2>&1 | grep -c 'load' | awk '{s=(\$1>0)?\" !\":\"\"; print s}')"
+
+# prompt
+PS1+="\\n\\[\\e[0m\\]\\$ "

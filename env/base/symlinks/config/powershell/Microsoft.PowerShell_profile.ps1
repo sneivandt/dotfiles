@@ -6,8 +6,15 @@ if (Get-Module PSReadLine)
 function prompt
 {
     $origLastExitCode = $LASTEXITCODE
+    
+    $ps1 = ""
 
     $isAdmin = $env:username -eq "root"
+
+    if ($(which pwsh -eq $env:SHELL))
+    {
+        $ps1 += "pwsh "
+    }
 
     $curPath = $ExecutionContext.SessionState.Path.CurrentLocation.Path
     if ($curPath.ToLower().StartsWith($Home.ToLower()))
@@ -15,7 +22,7 @@ function prompt
         $curPath = "~" + $curPath.SubString($Home.Length)
     }
 
-    $ps1 = $curPath
+    $ps1 += $curPath
 
     $gitBranch = $(git rev-parse --abbrev-ref HEAD 2> $null)
     

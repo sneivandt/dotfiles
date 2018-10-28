@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Prompt
-PS1="\\[\\e[0;36m\\]\\h \\[\\e[0;33m\\]\\w\\n\\[\\e[0m\\]\\$ "
+[[ -e ~/.bash_prompt ]] && source ~/.bash_prompt
 
 [[ -d ~/.shell/interactive ]] && for f in ~/.shell/interactive/*; do . "$f"; done

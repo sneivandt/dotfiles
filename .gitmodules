@@ -1,15 +1,19 @@
 [submodule "env/arch"]
 	path = env/arch
 	url = ../dotfiles-arch
+	branch = master
 [submodule "env/arch-gui"]
 	path = env/arch-gui
 	url = ../dotfiles-arch-gui
+	branch = master
 [submodule "env/base-gui"]
 	path = env/base-gui
 	url = ../dotfiles-base-gui
+	branch = master
 [submodule "env/wsl"]
 	path = env/wsl
 	url = ../dotfiles-wsl
+	branch = master
 [submodule "env/base/symlinks/vim/pack/plugins/opt/vim-pathogen"]
 	path = env/base/symlinks/vim/pack/plugins/opt/vim-pathogen
 	url = https://github.com/tpope/vim-pathogen

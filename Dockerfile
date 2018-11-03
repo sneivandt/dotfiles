@@ -20,6 +20,9 @@ RUN apt-get update \
         zsh \
     && rm -rf /var/lib/apt/lists/*
 
+# Change shell
+ENV SHELL /usr/bin/zsh
+
 # Configure locale
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
     && locale-gen en_US.UTF-8 \

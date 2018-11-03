@@ -202,6 +202,7 @@ worker_install_git_submodules()
 {
   if [ -d "$DIR"/.git ] && is_program_installed "git"
   then
+    local modules
     readarray modules < "$DIR"/env/base/submodules.conf
     envs=("arch" "arch-gui" "base-gui" "wsl")
     for env in "${envs[@]}"
@@ -214,8 +215,31 @@ worker_install_git_submodules()
     if git -C "$DIR" submodule status "${modules[@]}" | cut -c-1 | grep -q "+\\|-"
     then
       message_worker "Installing git submodules"
-      echo "${modules[@]}"
       git -C "$DIR" submodule update --init --recursive "${modules[@]}"
+    fi
+  fi
+}
+
+# worker_update_git_submodules
+#
+# Update git submodules.
+worker_update_git_submodules()
+{
+  if [ -d "$DIR"/.git ] && is_program_installed "git"
+  then
+    local modules
+    envs=("arch" "arch-gui" "base-gui" "wsl")
+    for env in "${envs[@]}"
+    do
+      if (! is_env_ignored "$env")
+      then
+        modules+=("env/$env")
+      fi
+    done
+    if git -C "$DIR" submodule status "${modules[@]}" | rev | cut -d" " -f1 | rev | grep -q "(heads/master)"
+    then
+      message_worker "Updating git submodules"
+      git -C "$DIR" submodule update --init --recursive --remote "${modules[@]}"
     fi
   fi
 }
@@ -443,6 +467,7 @@ action_install()
 {
   worker_update_dotfiles
   worker_install_git_submodules
+  worker_update_git_submodules
   worker_install_packages
   worker_configure_shell
   worker_configure_fonts

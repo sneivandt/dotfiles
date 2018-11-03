@@ -204,7 +204,8 @@ worker_install_git_submodules()
   then
     local modules
     readarray modules < "$DIR"/env/base/submodules.conf
-    envs=("arch" "arch-gui" "base-gui" "wsl")
+    local envs
+    mapfile -t envs <<< "$(ls -1 env)"
     for env in "${envs[@]}"
     do
       if (! is_env_ignored "$env")
@@ -228,7 +229,8 @@ worker_update_git_submodules()
   if [ -d "$DIR"/.git ] && is_program_installed "git"
   then
     local modules
-    envs=("arch" "arch-gui" "base-gui" "wsl")
+    local envs
+    mapfile -t envs <<< "$(ls -1 env -I base)"
     for env in "${envs[@]}"
     do
       if (! is_env_ignored "$env")
@@ -236,7 +238,7 @@ worker_update_git_submodules()
         modules+=("env/$env")
       fi
     done
-    if git -C "$DIR" submodule status "${modules[@]}" | rev | cut -d" " -f1 | rev | grep -q "(heads/master)"
+    if ! git -C "$DIR" submodule status "${modules[@]}" | rev | cut -d" " -f1 | rev | grep -q "(heads/master)"
     then
       message_worker "Updating git submodules"
       git -C "$DIR" submodule update --init --recursive --remote "${modules[@]}"
@@ -251,7 +253,8 @@ worker_install_packages()
 {
   if (is_flag_set "--pack" || is_flag_set "-p") && is_program_installed "sudo"
   then
-    envs=("arch" "arch-gui" "wsl")
+    local envs
+    mapfile -t envs <<< "$(ls -1 env)"
     for env in "${envs[@]}"
     do
       if (! is_env_ignored "$env") && [ -e "$DIR"/env/"$env"/packages.conf ]
@@ -322,8 +325,8 @@ worker_install_symlinks()
 {
   local work=false
   local envs
-  envs=$(ls "$DIR"/env)
-  for env in $envs
+  mapfile -t envs <<< "$(ls -1 env)"
+  for env in "${envs[@]}"
   do
     if (! is_env_ignored "$env") && [ -e "$DIR"/env/"$env"/symlinks.conf ]
     then
@@ -358,8 +361,8 @@ worker_install_symlinks()
 worker_chmod()
 {
   local envs
-  envs=$(ls "$DIR"/env)
-  for env in $envs
+  mapfile -t envs <<< "$(ls -1 env)"
+  for env in "${envs[@]}"
   do
     if ! is_env_ignored "$env" && [ -e "$DIR"/env/"$env"/chmod.conf ]
     then
@@ -433,8 +436,8 @@ worker_uninstall_symlinks()
 {
   local work=false
   local envs
-  envs=$(ls "$DIR"/env)
-  for env in $envs
+  mapfile -t envs <<< "$(ls -1 env)"
+  for env in "${envs[@]}"
   do
     if ! is_env_ignored "$env" && [ -e "$DIR"/env/"$env"/symlinks.conf ]
     then

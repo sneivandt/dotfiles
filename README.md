@@ -1,22 +1,35 @@
 # Dotfiles [![Docker Automated build](https://img.shields.io/docker/automated/sneivandt/dotfiles.svg)](https://hub.docker.com/r/sneivandt/dotfiles/)
 
-These are my dotfiles including configuration for a generic Linux environment as well as [Arch Linux](https://www.archlinux.org/) and [WSL](https://docs.microsoft.com/en-us/windows/wsl/about) specific configuration.
+These are my dotfiles.
 
-## Install
+## Installation
+
+Install this configuration.
 
 ```
 ./dotfiles.sh install
 ```
 
-| Argument | Description                     |
-| -        | -                               |
-| --gui    | Configure GUI applications.     |
-| --pack   | Install packages.               |
-| --root   | Allow running as root.          |
+Optional arguments.
+
+| Argument | Description                 |
+| -        | -                           |
+| --gui    | Configure GUI applications. |
+| --pack   | Install packages.           |
+| --root   | Allow running as root.      |
+
+## Modules
+
+Additional configuration will be lazily loaded if required.
+
++ [Base GUI](https://github.com/sneivandt/dotfiles-base-gui)
++ [Arch](https://github.com/sneivandt/dotfiles-arch)
++ [Arch GUI](https://github.com/sneivandt/dotfiles-arch-gui)
++ [WSL](https://github.com/sneivandt/dotfiles-wsl)
 
 ## Docker
 
-Run a Docker container with this configuration.
+Run a container with this configuration.
 
 ```
 docker run -it sneivandt/dotfiles

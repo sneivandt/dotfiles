@@ -205,7 +205,7 @@ worker_install_git_submodules()
     local modules
     readarray modules < "$DIR"/env/base/submodules.conf
     local envs
-    mapfile -t envs <<< "$(ls -1 env)"
+    mapfile -t envs <<< "$(ls -1 $DIR/env -I base)"
     for env in "${envs[@]}"
     do
       if (! is_env_ignored "$env")
@@ -230,7 +230,7 @@ worker_update_git_submodules()
   then
     local modules
     local envs
-    mapfile -t envs <<< "$(ls -1 env -I base)"
+    mapfile -t envs <<< "$(ls -1 $DIR/env -I base)"
     for env in "${envs[@]}"
     do
       if (! is_env_ignored "$env")
@@ -254,7 +254,7 @@ worker_install_packages()
   if (is_flag_set "--pack" || is_flag_set "-p") && is_program_installed "sudo"
   then
     local envs
-    mapfile -t envs <<< "$(ls -1 env)"
+    mapfile -t envs <<< "$(ls -1 $DIR/env)"
     for env in "${envs[@]}"
     do
       if (! is_env_ignored "$env") && [ -e "$DIR"/env/"$env"/packages.conf ]
@@ -325,7 +325,7 @@ worker_install_symlinks()
 {
   local work=false
   local envs
-  mapfile -t envs <<< "$(ls -1 env)"
+  mapfile -t envs <<< "$(ls -1 $DIR/env)"
   for env in "${envs[@]}"
   do
     if (! is_env_ignored "$env") && [ -e "$DIR"/env/"$env"/symlinks.conf ]
@@ -361,7 +361,7 @@ worker_install_symlinks()
 worker_chmod()
 {
   local envs
-  mapfile -t envs <<< "$(ls -1 env)"
+  mapfile -t envs <<< "$(ls -1 $DIR/env)"
   for env in "${envs[@]}"
   do
     if ! is_env_ignored "$env" && [ -e "$DIR"/env/"$env"/chmod.conf ]
@@ -436,7 +436,7 @@ worker_uninstall_symlinks()
 {
   local work=false
   local envs
-  mapfile -t envs <<< "$(ls -1 env)"
+  mapfile -t envs <<< "$(ls -1 $DIR/env)"
   for env in "${envs[@]}"
   do
     if ! is_env_ignored "$env" && [ -e "$DIR"/env/"$env"/symlinks.conf ]

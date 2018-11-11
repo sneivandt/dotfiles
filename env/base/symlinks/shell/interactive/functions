@@ -37,3 +37,10 @@ lf()
     find "$1" -type f -exec du -a {} + | sort -nr | numfmt --to=iec --padding=4
   fi
 }
+
+# Generate ssh key for GitHub
+github-key()
+{
+  mkdir -p $HOME/.ssh/github
+  ssh-keygen -t rsa -P "" -C "$(git config --global user.email)" -f $HOME/.ssh/github/id_rsa
+}

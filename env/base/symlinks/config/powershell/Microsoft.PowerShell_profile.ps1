@@ -6,7 +6,7 @@ if (Get-Module PSReadLine)
 function prompt
 {
     $origLastExitCode = $LASTEXITCODE
-    
+
     $ps1 = ""
 
     $isAdmin = $env:username -eq "root"
@@ -25,7 +25,7 @@ function prompt
     $ps1 += $curPath
 
     $gitBranch = $(git rev-parse --abbrev-ref HEAD 2> $null)
-    
+
     if ($gitBranch)
     {
         $ps1 += " "

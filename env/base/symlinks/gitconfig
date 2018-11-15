@@ -4,7 +4,7 @@
   email = sneivandt@users.noreply.github.com
   name = sneivandt
 [url "git@github.com:"]
-  insteadOf = https://github.com/
+  pushInsteadOf = https://github.com/
 [core]
   editor = vim
   pager = less

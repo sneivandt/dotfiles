@@ -188,7 +188,7 @@ assert_user_permissions()
 # Update dotfiles.
 worker_update_dotfiles()
 {
-  if [ -d "$DIR"/.git ] && is_program_installed "git" && git -C "$DIR" diff-index --quiet HEAD -- && "$(git -C "$DIR" remote show origin | sed -n -e 's/.*HEAD branch: //p')" -eq "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" && "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" -ne "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)"
+  if [ -d "$DIR"/.git ] && is_program_installed "git" && git -C "$DIR" diff-index --quiet HEAD -- && [ "$(git -C "$DIR" remote show origin | sed -n -e 's/.*HEAD branch: //p')" == "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ] && [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]
   then
     message_worker "Updating dotfiles"
     git -C "$DIR" pull
@@ -205,7 +205,7 @@ worker_install_git_submodules()
     local modules
     readarray modules < "$DIR"/env/base/submodules.conf
     local envs
-    mapfile -t envs <<< "$(ls -1 $DIR/env -I base)"
+    mapfile -t envs <<< "$(ls -1 "$DIR"/env -I base)"
     for env in "${envs[@]}"
     do
       if (! is_env_ignored "$env")
@@ -230,7 +230,7 @@ worker_update_git_submodules()
   then
     local modules
     local envs
-    mapfile -t envs <<< "$(ls -1 $DIR/env -I base)"
+    mapfile -t envs <<< "$(ls -1 "$DIR"/env -I base)"
     for env in "${envs[@]}"
     do
       if (! is_env_ignored "$env")
@@ -254,7 +254,7 @@ worker_install_packages()
   if (is_flag_set "--pack" || is_flag_set "-p") && is_program_installed "sudo"
   then
     local envs
-    mapfile -t envs <<< "$(ls -1 $DIR/env)"
+    mapfile -t envs <<< "$(ls -1 "$DIR"/env)"
     for env in "${envs[@]}"
     do
       if (! is_env_ignored "$env") && [ -e "$DIR"/env/"$env"/packages.conf ]
@@ -310,7 +310,7 @@ worker_configure_shell()
 # Update font cache if fonts are not currently cached.
 worker_configure_fonts()
 {
-  if (! is_env_ignored "arch-gui") && is_program_installed "fc-list" && is_program_installed "fc-cache" && [[ "$(fc-list : family | grep -f "$DIR"/env/arch-gui/fonts.conf -cx)" -ne "$(grep -c '' "$DIR"/env/arch-gui/fonts.conf | cut -f1 -d ' ')" ]]
+  if (! is_env_ignored "arch-gui") && is_program_installed "fc-list" && is_program_installed "fc-cache" && [ "$(fc-list : family | grep -f "$DIR"/env/arch-gui/fonts.conf -cx)" != "$(grep -c '' "$DIR"/env/arch-gui/fonts.conf | cut -f1 -d ' ')" ]
   then
     message_worker "Updating fontconfig font cache"
     fc-cache
@@ -325,7 +325,7 @@ worker_install_symlinks()
 {
   local work=false
   local envs
-  mapfile -t envs <<< "$(ls -1 $DIR/env)"
+  mapfile -t envs <<< "$(ls -1 "$DIR"/env)"
   for env in "${envs[@]}"
   do
     if (! is_env_ignored "$env") && [ -e "$DIR"/env/"$env"/symlinks.conf ]
@@ -361,7 +361,7 @@ worker_install_symlinks()
 worker_chmod()
 {
   local envs
-  mapfile -t envs <<< "$(ls -1 $DIR/env)"
+  mapfile -t envs <<< "$(ls -1 "$DIR"/env)"
   for env in "${envs[@]}"
   do
     if ! is_env_ignored "$env" && [ -e "$DIR"/env/"$env"/chmod.conf ]
@@ -436,7 +436,7 @@ worker_uninstall_symlinks()
 {
   local work=false
   local envs
-  mapfile -t envs <<< "$(ls -1 $DIR/env)"
+  mapfile -t envs <<< "$(ls -1 "$DIR"/env)"
   for env in "${envs[@]}"
   do
     if ! is_env_ignored "$env" && [ -e "$DIR"/env/"$env"/symlinks.conf ]

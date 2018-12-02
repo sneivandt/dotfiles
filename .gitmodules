@@ -46,9 +46,6 @@
 [submodule "env/base/symlinks/vim/pack/plugins/start/vim-autotag"]
 	path = env/base/symlinks/vim/pack/plugins/start/vim-autotag
 	url = https://github.com/craigemery/vim-autotag
-[submodule "env/base/symlinks/vim/pack/plugins/start/vim-coffee-script"]
-	path = env/base/symlinks/vim/pack/plugins/start/vim-coffee-script
-	url = https://github.com/vim-scripts/vim-coffee-script
 [submodule "env/base/symlinks/vim/pack/plugins/start/vim-commentary"]
 	path = env/base/symlinks/vim/pack/plugins/start/vim-commentary
 	url = https://github.com/tpope/vim-commentary

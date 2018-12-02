@@ -1,0 +1,92 @@
+# vi: ft=gitconfig :
+
+[alias]
+
+  # Add
+  ad  = add
+  aa  = add --all
+
+  # Branch
+  br  = branch
+  brd = branch -d
+  brl = branch --list --format '%(HEAD) %(color:red)%(objectname:short)%(color:reset) - %(color:yellow)%(refname:short)%(color:reset) %(contents:subject) %(color:green)(%(committerdate:relative))%(color:reset) %(color:blue)<%(authorname)>%(color:reset)'
+
+  # checkout
+  ch  = checkout
+  cb  = checkout -b
+
+  # commit
+  ci  = commit -m
+  cia = commit --amend --reuse-message=HEAD
+
+  # clone
+  cl  = clone
+  clr = clone --recursive
+
+  # cherry-pick
+  cp  = cherry-pick
+
+  # diff
+  di  = diff
+  dis = diff --staged
+
+  # difftool
+  dt  = difftool
+  dts = difftool --staged
+
+  # fetch
+  fe  = fetch
+
+  # grep
+  gr  = grep --color --ignore-case -n
+
+  # log
+  lo  = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
+
+  # merge
+  me  = merge
+  mea = merge --abort
+  mec = merge --continue
+
+  # pull
+  pl  = pull
+  plr = pull --rebase
+
+  # push
+  ps  = push
+  psf = push --force
+
+  # rebase
+  rb  = rebase
+  rbi = rebase --interactive
+  rb1 = rebase --interactive HEAD^
+  rb2 = rebase --interactive HEAD^^
+  rb3 = rebase --interactive HEAD^^^
+  rb4 = rebase --interactive HEAD^^^^
+  rb5 = rebase --interactive HEAD^^^^^
+  rb6 = rebase --interactive HEAD^^^^^^
+  rb7 = rebase --interactive HEAD^^^^^^^
+  rb8 = rebase --interactive HEAD^^^^^^^^
+  rb9 = rebase --interactive HEAD^^^^^^^^^
+  rba = rebase --abort
+  rbc = rebase --continue
+
+  # reset
+  rs  = reset
+  rsc = reset --mixed HEAD^
+
+  # status
+  st  = status --short --branch
+
+  # submodule
+  smi  = submodule update --init --recursive
+  smu  = submodule update --init --recursive --remote
+
+  # List aliases
+  alias         = !git config -l | grep ^alias. | cut -c 7- | sort
+
+  # List contributors
+  contributors  = shortlog --summary --numbered
+
+  # Delete merged branches
+  delete-merged = !git branch --merged origin/HEAD | grep -E -v '(^\\*|master)' | xargs -r -n 1 git branch -d

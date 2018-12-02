@@ -26,32 +26,6 @@
   tool = vimdiff
 [diff "bin"]
   textconv = hexdump -v -C
-[alias]
-  aa  = add --all
-  ad  = add
-  br  = branch
-  brl = branch --list --format '%(HEAD) %(color:red)%(objectname:short)%(color:reset) - %(color:yellow)%(refname:short)%(color:reset) %(contents:subject) %(color:green)(%(committerdate:relative))%(color:reset) %(color:blue)<%(authorname)>%(color:reset)'
-  ch  = checkout
-  ci  = commit -m
-  cia = commit --amend --reuse-message=HEAD
-  cl  = clone --recursive
-  cp  = cherry-pick
-  di  = diff
-  dit = difftool
-  fe  = fetch --prune
-  lo  = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
-  me  = merge
-  pl  = pull
-  plr = pull --rebase
-  ps  = push
-  rb  = rebase
-  rbi = rebase --interactive
-  rs  = reset
-  st  = status --short
-  ta  = tag
-  uc  = reset --mixed HEAD~1
-  alias         = !git config -l | grep ^alias. | cut -c 7- | sort
-  contributors  = shortlog --summary --numbered
-  delete-merged = !git branch --merged origin/HEAD | grep -E -v '(^\\*|master)' | xargs -r -n 1 git branch -d
 [include]
-  path = ~/.gitconfig.local
+  path = ~/.gitconfig-alias
+  path = ~/.gitconfig-local

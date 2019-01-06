@@ -4,19 +4,25 @@ These are my dotfiles.
 
 ## Installation
 
-Install this configuration.
-
 ```
 ./dotfiles.sh install
 ```
 
-Optional arguments.
+### Commands
 
-| Argument | Description                 |
-| -        | -                           |
-| --gui    | Configure GUI applications. |
-| --pack   | Install packages.           |
-| --root   | Allow running as root.      |
+| Command   | Description                                 |
+| -         | -                                           |
+| help      | Show usage instructions                     |
+| install   | Install symlinks, packages and dotfiles CLI |
+| uninstall | Remove symlinks                             |
+
+### Options
+
+| Short | Long | Description              |
+| -     | -    | -                        |
+| g     | gui  | Include GUI applications |
+| p     | pack | Install packages         |
+| r     | root | Allow running as root    |
 
 ## Modules
 

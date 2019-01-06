@@ -117,13 +117,17 @@ is_program_installed()
 # Print usage instructions.
 message_usage()
 {
-  echo "Usage: $(basename "$0") <command> [-g | --gui] [-p | --pack] [-r | --root]"
+  echo "$(basename "$0")"
   echo
-  echo "These are the available commands:"
+  echo "Usage:"
+  echo "    $(basename "$0") help"
+  echo "    $(basename "$0") install   [-r|--root] [-g|--gui] [-p|--pack]"
+  echo "    $(basename "$0") uninstall [-r|--root] [-g|--gui]"
   echo
-  echo "    help       Show usage instructions"
-  echo "    install    Install symlinks, packages and dotfiles CLI"
-  echo "    uninstall  Remove symlinks"
+  echo "Options:"
+  echo "    -g --gui   Include GUI applications"
+  echo "    -p --pack  Install packages"
+  echo "    -r --root  Allow running as root"
 }
 
 # message_worker
@@ -501,55 +505,31 @@ action_help()
 #
 # The entry point to this script.
 
-# Get absolute path to the dotfiles project directory. This value will be
-# correct even if this script is executed from a symlink or while your working
-# directory is not the root of this project.
+# Get absolute path to the dotfiles project directory.
 DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 
-# Read command line options. While reading this input the 'getopt' call will
-# report invalid options that were given.
-OPTS=$(getopt -o rgp -l root,gui,pack -n "$(basename "$0")" -- "$@")
-
-# Abort if the root user is running this without permission.
-assert_user_permissions
-
-# Iterate through the command line input.
-for i in "$@"
-do
-  case $i in
-
-    # Skip any flags. They should already have been processed when $OPTS was
-    # initialized.
-    -*)
-      ;;
-
-    # Call the action function for any of the valid action keywords. Only the
-    # first one that is found will be processed and immediately after this
-    # script will exit.
-    help)
-      action_help
-      exit
-      ;;
-    install)
-      action_install
-      exit
-      ;;
-    uninstall)
-      action_uninstall
-      exit
-      ;;
-
-    # If an argument is found that is not valid exit with an error.
-    *)
-      message_invalid "$i"
-      exit 1
-      ;;
-  esac
-done
-
-# If no actions triggered when processing the command line input, print the
-# usage instructions and exit with error.
-action_help
-exit 1
+case $1 in
+  "" | -* | help)
+    OPTS=$(getopt -o r -l root -n "$(basename "$0")" -- "$@")
+    [ $? -ne 0 ] && exit 1
+    action_help
+    ;;
+  install)
+    OPTS=$(getopt -o rgp -l root,gui,pack -n "$(basename "$0")" -- "$@")
+    [ $? -ne 0 ] && exit 1
+    assert_user_permissions
+    action_install
+    ;;
+  uninstall)
+    OPTS=$(getopt -o rg -l root,gui -n "$(basename "$0")" -- "$@")
+    [ $? -ne 0 ] && exit 1
+    assert_user_permissions
+    action_uninstall
+    ;;
+  *)
+    message_invalid "$1"
+    exit 1
+    ;;
+esac
 
 # }}}

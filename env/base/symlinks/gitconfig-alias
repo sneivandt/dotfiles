@@ -19,6 +19,9 @@
   ci  = commit -m
   cia = commit --amend --reuse-message=HEAD
 
+  # clean
+  cal = clean -xdf
+
   # clone
   cl  = clone
   clr = clone --recursive

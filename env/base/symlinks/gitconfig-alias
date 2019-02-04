@@ -93,3 +93,9 @@
 
   # Delete merged branches
   delete-merged = !git branch --merged origin/HEAD | grep -E -v '(^\\*|master)' | xargs -r -n 1 git branch -d
+
+  # Substitute User
+  su            = !echo -n 'user.name: ' && read name && echo -n 'user.email: ' && read email && git config --replace-all user.name \"$name\" && git config --replace-all user.email \"$email\"
+
+  # Who am I?
+  whoami        = !git config user.email && git config user.name

@@ -12,3 +12,7 @@ Host github.com
   HostName github.com
   IdentityFile ~/.ssh/github/id_rsa
   PreferredAuthentications publickey
+
+Host *.visualstudio.com
+    IdentityFile ~/.ssh/vsts/id_rsa
+    PreferredAuthentications publickey

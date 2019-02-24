@@ -61,7 +61,7 @@ is_env_ignored()
   fi
   case $1 in
     arch)
-      if [[ $release != "archlinux" ]]
+      if [[ $release != "arch" && $release != "archlinux" ]]
       then
         return 0
       fi

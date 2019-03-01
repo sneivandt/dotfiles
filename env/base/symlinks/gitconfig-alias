@@ -71,6 +71,7 @@
   rb7 = rebase --interactive HEAD^^^^^^^
   rb8 = rebase --interactive HEAD^^^^^^^^
   rb9 = rebase --interactive HEAD^^^^^^^^^
+  rb0 = rebase --interactive HEAD^^^^^^^^^^
   rba = rebase --abort
   rbc = rebase --continue
 

@@ -217,6 +217,12 @@ autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
 autocmd Filetype go set nolist
 
 " }}}
+" Haskell {{{
+
+" Indentation
+autocmd Filetype hs setlocal sw=4 ts=4 sts=4
+
+" }}}
 " Java {{{
 
 " Indentation

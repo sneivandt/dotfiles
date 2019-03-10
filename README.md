@@ -20,11 +20,10 @@ These are my dotfiles.
 
 ### Options
 
-| Short | Long | Description              |
-| -     | -    | -                        |
-| g     | gui  | Include GUI applications |
-| p     | pack | Install packages         |
-| r     | root | Allow running as root    |
+| Short | Long | Description               |
+| -     | -    | -                         |
+| g     | gui  | Include GUI config        |
+| s     | sudo | Include privileged config |
 
 ## Modules
 

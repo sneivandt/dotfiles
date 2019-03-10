@@ -20,15 +20,14 @@ case "$state" in
         case $line[1] in
             (install)
                 _arguments \
-                    '--gui[Include GUI applications]' \
-                    '--pack[Install packages]' \
-                    '--root[Allow running as root]'
+                    '--gui[Include GUI config]' \
+                    '--sudo[Include privileged config]'
                 ret=0
                 ;;
             (uninstall)
                 _arguments \
-                    '--gui[Include GUI applications]' \
-                    '--root[Allow running as root]'
+                    '--gui[Include GUI config]' \
+                    '--sudo[Include privileged config]'
                 ret=0
                 ;;
         esac

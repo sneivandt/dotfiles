@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 hook="$HOME"/.gittemplates/hooks.local/post-merge
 

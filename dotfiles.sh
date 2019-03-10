@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Helpers ----------------------------------------------------------------- {{{
 #
@@ -121,13 +121,12 @@ message_usage()
   echo
   echo "Usage:"
   echo "    $(basename "$0") help"
-  echo "    $(basename "$0") install   [-r|--root] [-g|--gui] [-p|--pack]"
-  echo "    $(basename "$0") uninstall [-r|--root] [-g|--gui]"
+  echo "    $(basename "$0") install   [-s|--sudo] [-g|--gui]"
+  echo "    $(basename "$0") uninstall [-s|--sudo] [-g|--gui]"
   echo
   echo "Options:"
-  echo "    -g --gui   Include GUI applications"
-  echo "    -p --pack  Install packages"
-  echo "    -r --root  Allow running as root"
+  echo "    -g --gui   Include GUI config"
+  echo "    -s --sudo  Include privileged config"
 }
 
 # message_worker
@@ -168,15 +167,14 @@ message_invalid()
 #
 # Assertions about the state that exit with an error if they are not meet.
 
-# assert_user_permissions
+# assert_not_root
 #
-# Verify that if this script is being run by root, that the command line flags
-# "-r" or "--root" are set.
-assert_user_permissions()
+# Verify that if this script is not being run as root.
+assert_not_root()
 {
-  if (! (is_flag_set "--root" || is_flag_set "-r")) && [ $EUID -eq 0 ]
+  if [ $EUID -eq 0 ]
   then
-    message_error "Do not run this script as root. To skip this check pass the command line flag '--root'."
+    message_error "$(basename "$0") can not be run as root."
     exit 1
   fi
 }
@@ -255,7 +253,7 @@ worker_update_git_submodules()
 # Install system packages.
 worker_install_packages()
 {
-  if (is_flag_set "--pack" || is_flag_set "-p") && is_program_installed "sudo"
+  if (is_flag_set "--sudo" || is_flag_set "-s") && is_program_installed "sudo"
   then
     local envs
     mapfile -t envs <<< "$(ls -1 "$DIR"/env)"
@@ -318,6 +316,35 @@ worker_configure_fonts()
   then
     message_worker "Updating fontconfig font cache"
     fc-cache
+  fi
+}
+
+# worker_configure_cron
+#
+# Configure cron.
+worker_configure_cron()
+{
+  local work=false
+  if (! is_env_ignored "arch") && is_program_installed "crontab"
+  then
+    if [[ "$(crontab -l 2> /dev/null)" != "$(cat "$DIR"/env/arch/crontab)" ]]
+    then
+      if ! $work
+      then
+        work=true
+        message_worker "Updating crontab"
+      fi
+      crontab "$DIR"/env/arch/crontab
+    fi
+    if (is_flag_set "--sudo" || is_flag_set "-s") && is_program_installed "sudo" && [[ "$(sudo crontab -l 2> /dev/null)" != "$(cat "$DIR"/env/arch/crontab-root)" ]]
+    then
+      if ! $work
+      then
+        work=true
+        message_worker "Updating crontab"
+      fi
+      sudo crontab "$DIR"/env/arch/crontab-root
+    fi
   fi
 }
 
@@ -476,12 +503,13 @@ action_install()
   worker_install_git_submodules
   worker_update_git_submodules
   worker_install_packages
+  worker_configure_cron
   worker_configure_shell
   worker_configure_fonts
   worker_install_symlinks
-  worker_chmod
   worker_install_vscode_extensions
   worker_install_dotfiles_cli
+  worker_chmod
 }
 
 # action_uninstall
@@ -508,22 +536,22 @@ action_help()
 # Get absolute path to the dotfiles project directory.
 DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 
+assert_not_root
+
 case $1 in
   "" | -* | help)
-    OPTS=$(getopt -o r -l root -n "$(basename "$0")" -- "$@")
+    OPTS=$(getopt -o s -l sudo -n "$(basename "$0")" -- "$@")
     [ $? -ne 0 ] && exit 1
     action_help
     ;;
   install)
-    OPTS=$(getopt -o rgp -l root,gui,pack -n "$(basename "$0")" -- "$@")
+    OPTS=$(getopt -o sg -l sudo,gui -n "$(basename "$0")" -- "$@")
     [ $? -ne 0 ] && exit 1
-    assert_user_permissions
     action_install
     ;;
   uninstall)
-    OPTS=$(getopt -o rg -l root,gui -n "$(basename "$0")" -- "$@")
+    OPTS=$(getopt -o sg -l sudo,gui -n "$(basename "$0")" -- "$@")
     [ $? -ne 0 ] && exit 1
-    assert_user_permissions
     action_uninstall
     ;;
   *)

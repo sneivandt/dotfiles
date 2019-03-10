@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Delete branches merged to origin/HEAD
 ignore=$(git remote show origin | sed -n -e 's/.*HEAD branch: //p')

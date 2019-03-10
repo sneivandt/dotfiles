@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # ~/bin
 export PATH=$PATH:~/bin

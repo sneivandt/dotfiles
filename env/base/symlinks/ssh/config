@@ -14,5 +14,5 @@ Host github.com
   PreferredAuthentications publickey
 
 Host *.visualstudio.com
-    IdentityFile ~/.ssh/vsts/id_rsa
-    PreferredAuthentications publickey
+  IdentityFile ~/.ssh/vsts/id_rsa
+  PreferredAuthentications publickey

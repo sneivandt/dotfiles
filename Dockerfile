@@ -1,4 +1,4 @@
-FROM debian:stretch
+FROM debian:buster
 
 LABEL maintainer="sneivandt"
 
@@ -13,6 +13,7 @@ RUN apt-get update \
         git \
         locales \
         openssh-client \
+        ranger \
         tmux \
         vim \
         wget \
@@ -22,9 +23,7 @@ RUN apt-get update \
 
 # Configure locale
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
-    && locale-gen en_US.UTF-8 \
-    && dpkg-reconfigure locales \
-    && /usr/sbin/update-locale LANG=en_US.UTF-8
+    && locale-gen
 
 # Add user
 RUN useradd -ms /usr/bin/zsh dot

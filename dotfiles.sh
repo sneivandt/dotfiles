@@ -250,7 +250,7 @@ worker_update_git_submodules()
 
 # worker_install_packages
 #
-# Install system packages.
+# Install packages.
 worker_install_packages()
 {
   if (is_flag_set "--sudo" || is_flag_set "-s") && is_program_installed "sudo"
@@ -449,7 +449,7 @@ worker_install_vscode_extensions()
 
 # worker_install_dotfiles_cli
 #
-# Put "dotfiles.sh" on the $PATH.
+# Add "dotfiles.sh" to $PATH.
 worker_install_dotfiles_cli()
 {
   if [[ $(readlink -f "$DIR"/dotfiles.sh) != $(readlink -f ~/bin/dotfiles) ]]
@@ -462,7 +462,7 @@ worker_install_dotfiles_cli()
 
 # worker_uninstall_symlinks
 #
-# Remove all symlinks that are not in ignored environments.
+# Uninstall symlinks.
 worker_uninstall_symlinks()
 {
   local work=false

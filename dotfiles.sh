@@ -274,7 +274,7 @@ worker_install_packages()
           message_worker "Installing packages"
           case $env in
             arch | "arch-gui")
-              echo "${notinstalled[@]}" | sudo pacman -S --quiet --needed -
+              sudo pacman -S --quiet --needed "${notinstalled[@]}"
               ;;
           esac
         fi

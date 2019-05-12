@@ -10,7 +10,7 @@ host_name() {
 }
 
 default_shell() {
-  if [[ $(command -v zsh) != $SHELL ]]
+  if [[ $(command -vp zsh) != $SHELL ]]
   then
     echo -n "%{$fg[cyan]%}zsh%{$reset_color%} "
   fi

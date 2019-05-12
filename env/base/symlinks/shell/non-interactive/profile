@@ -47,7 +47,7 @@ unset MAILCHECK
 export GOPATH=~/src/go
 
 # virtualenvwrapper
-if [ -n "$(command -v virtualenvwrapper.sh)" ]
+if [ -n "$(command -vp virtualenvwrapper.sh)" ]
 then
   export WORKON_HOME=~/.venv
   . virtualenvwrapper.sh

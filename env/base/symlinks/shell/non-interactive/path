@@ -7,7 +7,7 @@ export PATH=$PATH:~/bin
 export PATH=$PATH:~/src/go/bin
 
 # RubyGems
-if [[ -n $(command -v ruby) ]]
+if [[ -n $(command -vp ruby) ]]
 then
     PATH="$PATH:$(ruby -e 'print Gem.user_dir')/bin"
     export GEM_HOME=$HOME/.gem

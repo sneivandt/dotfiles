@@ -32,7 +32,6 @@ Additional configuration will be lazily loaded if required.
 + [Base GUI](https://github.com/sneivandt/dotfiles-base-gui)
 + [Arch](https://github.com/sneivandt/dotfiles-arch)
 + [Arch GUI](https://github.com/sneivandt/dotfiles-arch-gui)
-+ [WSL](https://github.com/sneivandt/dotfiles-wsl)
 
 ## Docker
 

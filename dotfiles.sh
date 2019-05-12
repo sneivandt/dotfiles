@@ -93,7 +93,7 @@ is_env_ignored()
 #     bool - True of the program is installed.
 is_program_installed()
 {
-  if [[ -n $(command -v "$1") ]]
+  if [[ -n $(command -vp "$1") ]]
   then
     return 0
   else
@@ -288,10 +288,10 @@ worker_install_packages()
 # Set the user shell.
 worker_configure_shell()
 {
-  if is_program_installed "zsh" && [ "$SHELL" != "$(command -v zsh)" ] && [ ! -f /.dockerenv ] && [ "$(passwd --status "$USER" | cut -d' ' -f2)" == "P" ]
+  if is_program_installed "zsh" && [ "$SHELL" != "$(command -vp zsh)" ] && [ ! -f /.dockerenv ] && [ "$(passwd --status "$USER" | cut -d' ' -f2)" == "P" ]
   then
     message_worker "Configuring user login shell"
-    chsh -s "$(command -v zsh)"
+    chsh -s "$(command -vp zsh)"
   fi
 }
 

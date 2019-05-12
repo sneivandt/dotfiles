@@ -1,6 +1,6 @@
 #!/bin/sh
 
-if [ -n "$(command -v wsl.exe)" ]
+if [ -n "$(command -vp wsl.exe)" ]
 then
   WINDRIVE=${$(wslpath -a $(cmd.exe /c "echo %SYSTEMDRIVE%\\"))/$'\r'} 2>/dev/null
   WINDRIVE=$(echo $WINDRIVE | sed "s/.\{1\}$//")

@@ -234,7 +234,7 @@ worker_update_git_submodules()
         modules+=("env/$env")
       fi
     done
-    if ! git -C "$DIR" submodule status "${modules[@]}" | rev | cut -d" " -f1 | rev | grep -q "(heads/master)"
+    if [[ -z $(git -C "$DIR" submodule status "${modules[@]}" | cut -c1) ]]
     then
       message_worker "Updating git submodules"
       git -C "$DIR" submodule update --init --recursive --remote "${modules[@]}"

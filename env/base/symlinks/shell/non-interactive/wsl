@@ -1,11 +1,10 @@
 #!/bin/sh
 
-if [ -n "$(command -vp wsl.exe)" ]
+if [ -n "$(command -vp wslpath)" ]
 then
-  WINDRIVE=${$(wslpath -a $(cmd.exe /c "echo %SYSTEMDRIVE%\\"))/$'\r'} 2>/dev/null
-  WINDRIVE=$(echo $WINDRIVE | sed "s/.\{1\}$//")
+  WINDRIVE=$($(wslpath -a $(cmd.exe /c "echo %SYSTEMDRIVE%\\") 2>/dev/null) | sed "$s/..$//")
   export WINDRIVE
 
-  WINHOME=${$(wslpath -a $(cmd.exe /c "echo %USERPROFILE%"))/$'\r'} 2>/dev/null
+  WINHOME=$($(wslpath -a $(cmd.exe /c "echo %USERPROFILE%\\") 2>/dev/null) | sed "$s/..$//")
   export WINHOME
 fi

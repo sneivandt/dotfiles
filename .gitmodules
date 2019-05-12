@@ -7,9 +7,6 @@
 [submodule "env/base-gui"]
 	path = env/base-gui
 	url = ../dotfiles-base-gui
-[submodule "env/wsl"]
-	path = env/wsl
-	url = ../dotfiles-wsl
 [submodule "env/base/symlinks/vim/pack/plugins/opt/vim-pathogen"]
 	path = env/base/symlinks/vim/pack/plugins/opt/vim-pathogen
 	url = https://github.com/tpope/vim-pathogen

@@ -78,12 +78,6 @@ is_env_ignored()
         return 0
       fi
       ;;
-    wsl)
-      if ! (is_program_installed "wsl.exe" && [[ $release == "debian" ]])
-      then
-        return 0
-      fi
-      ;;
   esac
   return 1
 }
@@ -266,9 +260,6 @@ worker_install_packages()
           arch | "arch-gui")
             installed=$(pacman -Q | cut -f 1 -d ' ')
             ;;
-          wsl)
-            installed=$(dpkg-query -f '${binary:Package}\n' -W)
-            ;;
         esac
         notinstalled=()
         for package in "${packages[@]}"
@@ -285,9 +276,6 @@ worker_install_packages()
             arch | "arch-gui")
               echo "${notinstalled[@]}" | sudo pacman -S --quiet --needed -
               ;;
-            wsl)
-              sudo apt install --quiet --no-install-recommends --no-install-suggests "${notinstalled[@]}"
-              ;;
           esac
         fi
       fi
@@ -297,7 +285,7 @@ worker_install_packages()
 
 # worker_configure_shell
 #
-# Set the user shell except when running in a docker container or WSL.
+# Set the user shell.
 worker_configure_shell()
 {
   if is_program_installed "zsh" && [ "$SHELL" != "$(command -v zsh)" ] && [ ! -f /.dockerenv ] && [ "$(passwd --status "$USER" | cut -d' ' -f2)" == "P" ]

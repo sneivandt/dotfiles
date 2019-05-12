@@ -1,4 +1,4 @@
-# Dotfiles 
+# Dotfiles
 
 [![Docker Automated build](https://img.shields.io/docker/automated/sneivandt/dotfiles.svg)](https://hub.docker.com/r/sneivandt/dotfiles/)
 

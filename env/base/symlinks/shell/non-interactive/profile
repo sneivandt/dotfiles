@@ -52,3 +52,10 @@ then
   export WORKON_HOME=~/.venv
   . virtualenvwrapper.sh
 fi
+
+# wsl
+if [ -n "$(command -vp wslpath)" ]
+then
+    export WINDRIVE=$(wslpath -a -u "$(cmd.exe /c "echo %SYSTEMDRIVE%\\" 2>/dev/null)" | sed s"/..$//")
+    export WINHOME=$(wslpath -a -u "$(cmd.exe /c "echo %USERPROFILE%\\" 2>/dev/null)" | sed s"/..$//")
+fi

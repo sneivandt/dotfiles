@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 # Global profile
 [[ -f /etc/profile ]] && . /etc/profile

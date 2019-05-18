@@ -1,8 +1,8 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 hook="$HOME"/.gittemplates/hooks.local/post-merge
 
 if [ -f "$hook" ]
 then
-  source "$hook"
+  . "$hook"
 fi

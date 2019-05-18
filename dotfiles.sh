@@ -35,7 +35,7 @@ is_flag_set()
 #     bool - True of the symlink exists.
 is_symlink_installed()
 {
-  if [[ $(readlink -f "$DIR"/env/"$1"/symlinks/"$2") == $(readlink -f ~/."$2") ]]
+  if [ "$(readlink -f "$DIR"/env/"$1"/symlinks/"$2")" = "$(readlink -f ~/."$2")" ]
   then
     return 0
   else
@@ -55,13 +55,13 @@ is_symlink_installed()
 is_env_ignored()
 {
   release=$(cat /etc/*-release | grep -xP 'ID_LIKE=.*' | cut -d= -f2)
-  if [[ -z $release ]]
+  if [ -z "$release" ]
   then
     release=$(cat /etc/*-release | grep -xP 'ID=.*' | cut -d= -f2)
   fi
   case $1 in
     arch)
-      if [[ $release != "arch" && $release != "archlinux" ]]
+      if [ "$release" != "arch" ] && [ "$release" != "archlinux" ]
       then
         return 0
       fi
@@ -93,7 +93,7 @@ is_env_ignored()
 #     bool - True of the program is installed.
 is_program_installed()
 {
-  if [[ -n $(command -vp "$1") ]]
+  if [ -n "$(command -vp "$1")" ]
   then
     return 0
   else
@@ -111,7 +111,7 @@ is_program_installed()
 # Print usage instructions.
 message_usage()
 {
-  echo "$(basename "$0")"
+  basename "$0"
   echo
   echo "Usage:"
   echo "    $(basename "$0") help"
@@ -166,7 +166,7 @@ message_invalid()
 # Verify that if this script is not being run as root.
 assert_not_root()
 {
-  if [ $EUID -eq 0 ]
+  if [ "$EUID" -eq 0 ]
   then
     message_error "$(basename "$0") can not be run as root."
     exit 1
@@ -184,7 +184,7 @@ assert_not_root()
 # Update dotfiles.
 worker_update_dotfiles()
 {
-  if [ -d "$DIR"/.git ] && is_program_installed "git" && git -C "$DIR" diff-index --quiet HEAD -- && [ "$(git -C "$DIR" remote show origin | sed -n -e 's/.*HEAD branch: //p')" == "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ] && [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]
+  if [ -d "$DIR"/.git ] && is_program_installed "git" && git -C "$DIR" diff-index --quiet HEAD -- && [ "$(git -C "$DIR" remote show origin | sed -n -e 's/.*HEAD branch: //p')" = "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ] && [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]
   then
     message_worker "Updating dotfiles"
     git -C "$DIR" pull
@@ -234,7 +234,7 @@ worker_update_git_submodules()
         modules+=("env/$env")
       fi
     done
-    if [[ -z $(git -C "$DIR" submodule status "${modules[@]}" | cut -c1) ]]
+    if [ -z "$(git -C "$DIR" submodule status "${modules[@]}" | cut -c1)" ]
     then
       message_worker "Updating git submodules"
       git -C "$DIR" submodule update --init --recursive --remote "${modules[@]}"
@@ -288,7 +288,7 @@ worker_install_packages()
 # Set the user shell.
 worker_configure_shell()
 {
-  if is_program_installed "zsh" && [ "$SHELL" != "$(command -vp zsh)" ] && [ ! -f /.dockerenv ] && [ "$(passwd --status "$USER" | cut -d' ' -f2)" == "P" ]
+  if is_program_installed "zsh" && [ "$SHELL" != "$(command -vp zsh)" ] && [ ! -f /.dockerenv ] && [ "$(passwd --status "$USER" | cut -d' ' -f2)" = "P" ]
   then
     message_worker "Configuring user login shell"
     chsh -s "$(command -vp zsh)"
@@ -315,7 +315,7 @@ worker_configure_cron()
   local work=false
   if (! is_env_ignored "arch") && is_program_installed "crontab"
   then
-    if [[ "$(crontab -l 2> /dev/null)" != "$(cat "$DIR"/env/arch/crontab)" ]]
+    if [ "$(crontab -l 2> /dev/null)" != "$(cat "$DIR"/env/arch/crontab)" ]
     then
       if ! $work
       then
@@ -324,7 +324,7 @@ worker_configure_cron()
       fi
       crontab "$DIR"/env/arch/crontab
     fi
-    if (is_flag_set "--sudo" || is_flag_set "-s") && is_program_installed "sudo" && [[ "$(sudo crontab -l 2> /dev/null)" != "$(cat "$DIR"/env/arch/crontab-root)" ]]
+    if (is_flag_set "--sudo" || is_flag_set "-s") && is_program_installed "sudo" && [ "$(sudo crontab -l 2> /dev/null)" != "$(cat "$DIR"/env/arch/crontab-root)" ]
     then
       if ! $work
       then
@@ -359,7 +359,7 @@ worker_install_symlinks()
             work=true
             message_worker "Installing symlinks"
           fi
-          if [[ $symlink == *"/"* ]]
+          if [[ "$symlink" == *"/"* ]]
           then
             mkdir -pv ~/."$(echo "$symlink" | rev | cut -d/ -f2- | rev)"
           fi
@@ -440,7 +440,7 @@ worker_install_vscode_extensions()
 # Add "dotfiles.sh" to $PATH.
 worker_install_dotfiles_cli()
 {
-  if [[ $(readlink -f "$DIR"/dotfiles.sh) != $(readlink -f ~/bin/dotfiles) ]]
+  if [ "$(readlink -f "$DIR"/dotfiles.sh)" != "$(readlink -f ~/bin/dotfiles)" ]
   then
     message_worker "Installing dotfiles cli"
     mkdir -pv ~/bin
@@ -528,18 +528,15 @@ assert_not_root
 
 case $1 in
   "" | -* | help)
-    OPTS=$(getopt -o s -l sudo -n "$(basename "$0")" -- "$@")
-    [ $? -ne 0 ] && exit 1
+    OPTS=$(getopt -o s -l sudo -n "$(basename "$0")" -- "$@") || exit 1
     action_help
     ;;
   install)
-    OPTS=$(getopt -o sg -l sudo,gui -n "$(basename "$0")" -- "$@")
-    [ $? -ne 0 ] && exit 1
+    OPTS=$(getopt -o sg -l sudo,gui -n "$(basename "$0")" -- "$@") || exit 1
     action_install
     ;;
   uninstall)
-    OPTS=$(getopt -o sg -l sudo,gui -n "$(basename "$0")" -- "$@")
-    [ $? -ne 0 ] && exit 1
+    OPTS=$(getopt -o sg -l sudo,gui -n "$(basename "$0")" -- "$@") || exit 1
     action_uninstall
     ;;
   *)

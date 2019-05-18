@@ -19,10 +19,10 @@ alias sudo="sudo "
 
 alias tmux="tmux -2"
 
-if [[ -n $(command -vp nvim) ]]
+if [ -n "$(command -vp nvim)" ]
 then
   alias vi="nvim"
-elif [[ -n $(command -vp vim) ]]
+elif [ -n "$(command -vp vim)" ]
 then
   alias vi="vim"
 fi

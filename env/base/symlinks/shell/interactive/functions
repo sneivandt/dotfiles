@@ -3,12 +3,12 @@
 # Extract archives
 extract()
 {
-  if [[ -z $1 ]]
+  if [ -z "$1" ]
   then
     echo "Usage: extract <file>"
     echo
     echo "Supported types: tar.bz2 tar.gz tar tbz2 tgz zip"
-  elif [[ ! -f $1 ]]
+  elif [ ! -f "$1" ]
   then
     echo "'$1' is not a valid file"
   else
@@ -27,10 +27,10 @@ extract()
 # List largest files
 lf()
 {
-  if [[ -z $1 ]]
+  if [ -z "$1" ]
   then
     echo "Usage: lf <directory>"
-  elif [[ ! -d $1 ]]
+  elif [ ! -d "$1" ]
   then
     echo "'$1' is not a valid directory"
   else
@@ -39,8 +39,8 @@ lf()
 }
 
 # Generate ssh key for GitHub
-github-key()
+githubkey()
 {
-  mkdir -p $HOME/.ssh/github
-  ssh-keygen -t rsa -b 4096 -P "" -C "$(git config --global user.email)" -f $HOME/.ssh/github/id_rsa
+  mkdir -p "$HOME"/.ssh/github
+  ssh-keygen -t rsa -b 4096 -P "" -C "$(git config --global user.email)" -f "$HOME"/.ssh/github/id_rsa
 }

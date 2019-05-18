@@ -1,8 +1,8 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 hook="$HOME"/.gittemplates/hooks.local/pre-push
 
 if [ -f "$hook" ]
 then
-  source "$hook"
+  . "$hook"
 fi

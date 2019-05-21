@@ -15,12 +15,14 @@
 #     bool - True of the flag is set.
 is_flag_set()
 {
-  if [[ " $OPTS " == *\ $1\ * ]]
-  then
-    return 0
-  else
-    return 1
-  fi
+  case " $OPTS " in
+    *" $1 "*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 # is_symlink_installed
@@ -131,7 +133,7 @@ message_usage()
 #     $1 - The work that is being performed.
 message_worker()
 {
-  echo -e ":: $1..."
+  echo ":: $1..."
 }
 
 # message_error
@@ -142,7 +144,7 @@ message_worker()
 #     $1 - The reason for exiting.
 message_error()
 {
-  echo -e "error: $1"
+  echo "error: $1"
 }
 
 # message_invalid
@@ -166,7 +168,7 @@ message_invalid()
 # Verify that if this script is not being run as root.
 assert_not_root()
 {
-  if [ "$EUID" -eq 0 ]
+  if [ "$(id -u)" = 0 ]
   then
     message_error "$(basename "$0") can not be run as root."
     exit 1
@@ -198,15 +200,12 @@ worker_install_git_submodules()
 {
   if [ -d "$DIR"/.git ] && is_program_installed "git"
   then
-    local modules
     readarray modules < "$DIR"/env/base/submodules.conf
-    local envs
-    mapfile -t envs <<< "$(ls -1 "$DIR"/env -I base)"
-    for env in "${envs[@]}"
+    for env in "$DIR"/env/*
     do
-      if (! is_env_ignored "$env")
+      if [ "$(basename "$env")" != "base" ] && (! is_env_ignored "$(basename "$env")")
       then
-        modules+=("env/$env")
+        modules+=(env/"$(basename "$env")")
       fi
     done
     if git -C "$DIR" submodule status "${modules[@]}" | cut -c-1 | grep -q "+\\|-"
@@ -224,14 +223,11 @@ worker_update_git_submodules()
 {
   if [ -d "$DIR"/.git ] && is_program_installed "git"
   then
-    local modules
-    local envs
-    mapfile -t envs <<< "$(ls -1 "$DIR"/env -I base)"
-    for env in "${envs[@]}"
+    for env in "$DIR"/env/*
     do
-      if (! is_env_ignored "$env")
+      if [ "$(basename "$env")" != "base" ] && (! is_env_ignored "$(basename "$env")")
       then
-        modules+=("env/$env")
+        modules+=(env/"$(basename "$env")")
       fi
     done
     if [ -z "$(git -C "$DIR" submodule status "${modules[@]}" | cut -c1)" ]
@@ -249,11 +245,9 @@ worker_install_packages()
 {
   if (is_flag_set "--sudo" || is_flag_set "-s") && is_program_installed "sudo"
   then
-    local envs
-    mapfile -t envs <<< "$(ls -1 "$DIR"/env)"
-    for env in "${envs[@]}"
+    for env in "$DIR"/env/*
     do
-      if (! is_env_ignored "$env") && [ -e "$DIR"/env/"$env"/packages.conf ]
+      if [ "$(basename "$env")" != "base" ] && (! is_env_ignored "$(basename "$env")") && [ -e "$DIR"/env/"$env"/packages.conf ]
       then
         readarray packages < "$DIR"/env/"$env"/packages.conf
         case $env in
@@ -312,7 +306,7 @@ worker_configure_fonts()
 # Configure cron.
 worker_configure_cron()
 {
-  local work=false
+  work=false
   if (! is_env_ignored "arch") && is_program_installed "crontab"
   then
     if [ "$(crontab -l 2> /dev/null)" != "$(cat "$DIR"/env/arch/crontab)" ]
@@ -342,14 +336,11 @@ worker_configure_cron()
 # child directories of $HOME will trigger creation of those directories.
 worker_install_symlinks()
 {
-  local work=false
-  local envs
-  mapfile -t envs <<< "$(ls -1 "$DIR"/env)"
-  for env in "${envs[@]}"
+  work=false
+  for env in "$DIR"/env/*
   do
-    if (! is_env_ignored "$env") && [ -e "$DIR"/env/"$env"/symlinks.conf ]
+    if [ "$(basename "$env")" != "base" ] && (! is_env_ignored "$(basename "$env")") && [ -e "$DIR"/env/"$env"/symlinks.conf ]
     then
-      local symlink
       while IFS='' read -r symlink || [ -n "$symlink" ]
       do
         if ! is_symlink_installed "$env" "$symlink"
@@ -359,10 +350,9 @@ worker_install_symlinks()
             work=true
             message_worker "Installing symlinks"
           fi
-          if [[ "$symlink" == *"/"* ]]
-          then
-            mkdir -pv ~/."$(echo "$symlink" | rev | cut -d/ -f2- | rev)"
-          fi
+          case "$symlink" in
+            *"/"*) mkdir -pv ~/."$(echo "$symlink" | rev | cut -d/ -f2- | rev)"
+          esac
           if [ -e ~/."$symlink" ]
           then
             rm -rvf ~/."$symlink"
@@ -379,18 +369,13 @@ worker_install_symlinks()
 # Change file mode bits.
 worker_chmod()
 {
-  local envs
-  mapfile -t envs <<< "$(ls -1 "$DIR"/env)"
-  for env in "${envs[@]}"
+  for env in "$DIR"/env/*
   do
-    if ! is_env_ignored "$env" && [ -e "$DIR"/env/"$env"/chmod.conf ]
+    if [ "$(basename "$env")" != "base" ] && (! is_env_ignored "$(basename "$env")") && [ -e "$DIR"/env/"$env"/chmod.conf ]
     then
-      local line
       while IFS='' read -r line || [ -n "$line" ]
       do
         read -r -a elements <<< "$line"
-        local file
-        local permissions
         file=~/."${elements[0]}"
         permissions="${elements[1]}"
         if [ -d "$file" ]
@@ -415,9 +400,7 @@ worker_install_vscode_extensions()
   do
     if (! is_env_ignored "base-gui") && is_program_installed "$code"
     then
-      local work=false
-      local extension
-      local extensionsInstalled
+      work=false
       mapfile -t extensionsInstalled < <($code --list-extensions)
       while IFS='' read -r extension || [ -n "$extension" ]
       do
@@ -453,14 +436,11 @@ worker_install_dotfiles_cli()
 # Uninstall symlinks.
 worker_uninstall_symlinks()
 {
-  local work=false
-  local envs
-  mapfile -t envs <<< "$(ls -1 "$DIR"/env)"
-  for env in "${envs[@]}"
+  work=false
+  for env in "$DIR"/env/*
   do
-    if ! is_env_ignored "$env" && [ -e "$DIR"/env/"$env"/symlinks.conf ]
+    if [ "$(basename "$env")" != "base" ] && (! is_env_ignored "$(basename "$env")") && [ -e "$DIR"/env/"$env"/symlinks.conf ]
     then
-      local symlink
       while IFS='' read -r symlink || [ -n "$symlink" ]
       do
         if is_symlink_installed "$env" "$symlink"

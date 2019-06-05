@@ -1,4 +1,6 @@
 #!/bin/sh
+set -e
+# set -u
 
 # Helpers ----------------------------------------------------------------- {{{
 #
@@ -9,18 +11,14 @@
 # Check if a flag is set.
 #
 # Args:
-#     $1 - The short flag to check.
-#     $2 - The long flag to check.
+#     $1 - The flag to check.
 #
 # return:
 #     bool - True of the flag is set.
 is_flag_set()
 {
-  case " $OPTS " in
-    *" -$1 "*)
-      return 0
-      ;;
-    *" --$2 "*)
+  case "$OPTS" in
+    *"$1"*)
       return 0
       ;;
     *)
@@ -60,10 +58,10 @@ is_symlink_installed()
 #     bool - True of the environment is ignored.
 is_env_ignored()
 {
-  release=$(cat /etc/*-release | grep -xP 'ID_LIKE=.*' | cut -d= -f2)
+  release=$(cat /etc/*-release | grep -xP "ID_LIKE=.*" | cut -d= -f2)
   if [ -z "$release" ]
   then
-    release=$(cat /etc/*-release | grep -xP 'ID=.*' | cut -d= -f2)
+    release=$(cat /etc/*-release | grep -xP "ID=.*" | cut -d= -f2)
   fi
   case $1 in
     arch)
@@ -79,7 +77,7 @@ is_env_ignored()
       fi
       ;;
     base-gui)
-      if ! is_flag_set "g" "gui"
+      if ! is_flag_set "g"
       then
         return 0
       fi
@@ -120,13 +118,13 @@ message_usage()
   basename "$0"
   echo
   echo "Usage:"
-  echo "    $(basename "$0") help"
-  echo "    $(basename "$0") install   [-s|--sudo] [-g|--gui]"
-  echo "    $(basename "$0") uninstall [-s|--sudo] [-g|--gui]"
+  echo "    $(basename "$0") install   [-s] [-g]"
+  echo "    $(basename "$0") uninstall [-s] [-g]"
+  echo "    $(basename "$0") -h"
   echo
   echo "Options:"
-  echo "    -g --gui   Include GUI config"
-  echo "    -s --sudo  Include privileged config"
+  echo "    -g  Configure GUI programs"
+  echo "    -s  Use sudo"
 }
 
 # message_worker
@@ -149,17 +147,6 @@ message_worker()
 message_error()
 {
   echo "error: $1"
-}
-
-# message_invalid
-#
-# Print an invalid command message.
-#
-# Args:
-#     $1 - The invalid command.
-message_invalid()
-{
-  echo "$(basename "$0"): '$1' is not a valid command. See '$(basename "$0") help'."
 }
 
 # }}}
@@ -193,7 +180,7 @@ worker_update_dotfiles()
   if [ -d "$DIR"/.git ] \
     && is_program_installed "git" \
     && git -C "$DIR" diff-index --quiet HEAD -- \
-    && [ "$(git -C "$DIR" remote show origin | sed -n -e 's/.*HEAD branch: //p')" = "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ] \
+    && [ "$(git -C "$DIR" remote show origin | sed -n -e "s/.*HEAD branch: //p")" = "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ] \
     && [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]
   then
     message_worker "Updating dotfiles"
@@ -255,7 +242,7 @@ worker_update_git_submodules()
 # Install packages.
 worker_install_packages()
 {
-  if is_flag_set "s" "sudo" && is_program_installed "sudo"
+  if is_flag_set "s" && is_program_installed "sudo"
   then
     for env in "$DIR"/env/*
     do
@@ -264,8 +251,8 @@ worker_install_packages()
         && [ -e "$env"/packages.conf ]
       then
         case $env in
-          arch | "arch-gui")
-            installed=$(pacman -Q | cut -f 1 -d ' ')
+          arch | arch-gui)
+            installed=$(pacman -Q | cut -f 1 -d" ")
             ;;
         esac
         while IFS='' read -r package
@@ -296,12 +283,12 @@ worker_install_packages()
 worker_configure_shell()
 {
   if is_program_installed "zsh" \
-    && [ "$SHELL" != "$(zsh -c 'command -vp zsh')" ] \
+    && [ "$SHELL" != "$(zsh -c "command -vp zsh")" ] \
     && [ ! -f /.dockerenv ] \
-    && [ "$(passwd --status "$USER" | cut -d' ' -f2)" = "P" ]
+    && [ "$(passwd --status "$USER" | cut -d" " -f2)" = "P" ]
   then
     message_worker "Configuring user login shell"
-    chsh -s "$(zsh -c 'command -vp zsh')"
+    chsh -s "$(zsh -c "command -vp zsh")"
   fi
 }
 
@@ -313,7 +300,7 @@ worker_configure_fonts()
   if ! is_env_ignored "arch-gui" \
     && is_program_installed "fc-list" \
     && is_program_installed "fc-cache" \
-    && [ "$(fc-list : family | grep -f "$DIR"/env/arch-gui/fonts.conf -cx)" != "$(grep -c '' "$DIR"/env/arch-gui/fonts.conf | cut -f1 -d ' ')" ]
+    && [ "$(fc-list : family | grep -f "$DIR"/env/arch-gui/fonts.conf -cx)" != "$(grep -c "" "$DIR"/env/arch-gui/fonts.conf | cut -f1 -d" ")" ]
   then
     message_worker "Updating fontconfig font cache"
     fc-cache
@@ -337,7 +324,7 @@ worker_configure_cron()
       fi
       crontab "$DIR"/env/arch/crontab
     fi
-    if is_flag_set "s" "sudo" \
+    if is_flag_set "s" \
       && is_program_installed "sudo" \
       && [ "$(sudo crontab -l 2> /dev/null)" != "$(cat "$DIR"/env/arch/crontab-root)" ]
     then
@@ -521,22 +508,20 @@ DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 assert_not_root
 
 case $1 in
-  "" | -* | help)
-    OPTS=$(getopt -o s -l sudo -n "$(basename "$0")" -- "$@") || exit 1
-    message_usage
-    ;;
   install)
-    OPTS=$(getopt -o sg -l sudo,gui -n "$(basename "$0")" -- "$@") || exit 1
+    OPTS=$(getopt -o sg -n "$(basename "$0")" -- "$@") || exit 1
     action_install
     ;;
   uninstall)
-    OPTS=$(getopt -o sg -l sudo,gui -n "$(basename "$0")" -- "$@") || exit 1
+    OPTS=$(getopt -o sg -n "$(basename "$0")" -- "$@") || exit 1
     action_uninstall
     ;;
   *)
-    message_invalid "$1"
-    exit 1
+    OPTS=$(getopt -o h -n "$(basename "$0")" -- "$@") || exit 1
+    message_usage
     ;;
 esac
+
+message_usage && exit
 
 # }}}

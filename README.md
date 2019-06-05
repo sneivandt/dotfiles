@@ -12,18 +12,18 @@ These are my dotfiles.
 
 ### Commands
 
-| Command   | Description                                 |
-| -         | -                                           |
-| help      | Show usage instructions                     |
-| install   | Install symlinks, packages and dotfiles CLI |
-| uninstall | Remove symlinks                             |
+| Command   | Description   |
+| -         | -             |
+| install   | Install       |
+| uninstall | Uninstall     |
+| -h        | Display usage |
 
 ### Options
 
-| Short | Long | Description               |
-| -     | -    | -                         |
-| g     | gui  | Include GUI config        |
-| s     | sudo | Include privileged config |
+| Option | Description            |
+| -      | -                      |
+| g      | Configure GUI programs |
+| s      | Use sudo               |
 
 ## Modules
 

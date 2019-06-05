@@ -44,3 +44,18 @@ githubkey()
   mkdir -p "$HOME"/.ssh/github
   ssh-keygen -t rsa -b 4096 -P "" -C "$(git config --global user.email)" -f "$HOME"/.ssh/github/id_rsa
 }
+
+# Symlink SSH keys for WSL
+if [ -n "$(command -vp wslpath)" ]
+then
+  wslsshkey()
+  {
+    for i in github vsts
+    do
+      if [ -d "$WINHOME"/.ssh/"$i" ] && [ "$(readlink -f "$WINHOME"/.ssh/"$i")" != "$(readlink -f "$HOME"/.ssh/"$i")" ]
+      then
+        ln -snvf "$WINHOME"/.ssh/"$i" "$HOME"/.ssh/"$i"
+      fi
+    done
+  }
+fi

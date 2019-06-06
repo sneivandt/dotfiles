@@ -522,6 +522,4 @@ case $1 in
     ;;
 esac
 
-message_usage && exit
-
 # }}}

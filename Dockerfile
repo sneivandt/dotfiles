@@ -33,7 +33,7 @@ ENV SHELL /usr/bin/zsh
 COPY . /home/dot/dotfiles
 RUN chown -R dot:dot /home/dot
 USER dot
-RUN /home/dot/dotfiles/dotfiles.sh install
+RUN /home/dot/dotfiles/dotfiles.sh --install
 
 # Entry
 WORKDIR /home/dot

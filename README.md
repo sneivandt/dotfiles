@@ -7,23 +7,23 @@ These are my dotfiles.
 ## Installation
 
 ```
-./dotfiles.sh install
+./dotfiles.sh --install
 ```
 
 ### Commands
 
-| Command   | Description   |
-| -         | -             |
-| install   | Install       |
-| uninstall | Uninstall     |
-| -h        | Display usage |
+| Command | Description   |
+| -       | -             |
+| -I      | Install       |
+| -U      | Uninstall     |
+| -h      | Display usage |
 
 ### Options
 
 | Option | Description            |
 | -      | -                      |
-| g      | Configure GUI programs |
-| s      | Use sudo               |
+| -g     | Configure GUI programs |
+| -s     | Use sudo               |
 
 ## Modules
 

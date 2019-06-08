@@ -1,6 +1,5 @@
 #!/bin/sh
 set -e
-# set -u
 
 # Helpers ----------------------------------------------------------------- {{{
 #
@@ -17,8 +16,8 @@ set -e
 #     bool - True of the flag is set.
 is_flag_set()
 {
-  case "$OPTS" in
-    *"$1"*)
+  case " $OPTS " in
+    *" -$1 "*)
       return 0
       ;;
     *)
@@ -118,9 +117,9 @@ message_usage()
   basename "$0"
   echo
   echo "Usage:"
-  echo "    $(basename "$0") install   [-s] [-g]"
-  echo "    $(basename "$0") uninstall [-s] [-g]"
-  echo "    $(basename "$0") -h"
+  echo "    $(basename "$0") -I | --install   [-s] [-g]"
+  echo "    $(basename "$0") -U | --uninstall [-s] [-g]"
+  echo "    $(basename "$0") -h | --help"
   echo
   echo "Options:"
   echo "    -g  Configure GUI programs"
@@ -502,22 +501,25 @@ action_uninstall()
 #
 # The entry point.
 
-# Get absolute path to the dotfiles directory.
 DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 
 assert_not_root
 
 case $1 in
-  install)
-    OPTS=$(getopt -o sg -n "$(basename "$0")" -- "$@") || exit 1
+  -I* | --install)
+    OPTS=$(getopt -o Isg -l install -n "$(basename "$0")" -- "$@") || exit 1
     action_install
     ;;
-  uninstall)
-    OPTS=$(getopt -o sg -n "$(basename "$0")" -- "$@") || exit 1
+  -U* | --uninstall)
+    OPTS=$(getopt -o Usg -l uninstall -n "$(basename "$0")" -- "$@") || exit 1
     action_uninstall
     ;;
+  -h | --help)
+    OPTS=$(getopt -o h -l help -n "$(basename "$0")" -- "$@") || exit 1
+    message_usage
+    ;;
   *)
-    OPTS=$(getopt -o h -n "$(basename "$0")" -- "$@") || exit 1
+    OPTS=$(getopt -o -l -n "$(basename "$0")" -- "$@") || exit 1
     message_usage
     ;;
 esac

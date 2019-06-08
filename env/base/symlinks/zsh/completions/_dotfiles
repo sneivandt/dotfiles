@@ -1,32 +1,64 @@
 #compdef dotfiles
 
 typeset -A opt_args
+setopt extendedglob
 
-_arguments -C \
-  "1:cmd:->cmds" \
-  "*:: :->args" \
-&& ret=0
+_dotfiles_opts_commands=(
+  {-I,--install}"[Install]"
+  {-U,--uninstall}"[Uninstall]"
 
-case "$state" in
-  cmds)
-    local commands
-    commands=(
-      'install:Install'
-      'uninstall:Uninstall'
-      '-h:Show usage'
-    )
-    _describe -t commands 'command' commands && ret=0
+  {-h,--help}"[Display usage]"
+)
+
+_dotfiles_opts_common=(
+  "-s[Use sudo]"
+  "-g[Configure GUI programs]"
+)
+
+_dotfiles_action_install() {
+  _arguments -s : \
+    "(--install -I)"{-I,--install} \
+    "$_dotfiles_opts_common[@]"
+}
+
+_dotfiles_action_uninstall() {
+  _arguments -s : \
+    "(--uninstall -U)"{-U,--uninstall} \
+    "$_dotfiles_opts_common[@]"
+}
+
+local -a args cmds;
+local tmp
+args=( ${${(M)words:#-*}#-} )
+for tmp in $words
+do
+  cmds+=("${${_dotfiles_opts_commands[(r)*$tmp\[*]%%\[*}#*\)}")
+done
+
+case $args in
+  h)
+    return 0
     ;;
-  args)
-    case $line[1] in
-      install | uninstall)
-        _arguments -s \
-          "-g[Configure GUI programs]" \
-          "-s[Use sudo]" \
-        && ret=0
+  I*)
+    _dotfiles_action_install
+    ;;
+  U*)
+    _dotfiles_action_uninstall
+    ;;
+  *)
+    case ${(M)words:#--*} in
+      *--help*)
+        return 0
+        ;;
+      *--install*)
+        _dotfiles_action_install
+        ;;
+      *--uninstall*)
+        _dotfiles_action_uninstall
+        ;;
+      *)
+        _arguments -s : \
+          "$_dotfiles_opts_commands[@]"
         ;;
     esac
-  ;;
 esac
-
-return 1

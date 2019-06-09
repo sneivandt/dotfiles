@@ -245,8 +245,7 @@ worker_install_packages()
   then
     for env in "$DIR"/env/*
     do
-      if [ "$(basename "$env")" != "base" ] \
-        && ! is_env_ignored "$(basename "$env")" \
+      if ! is_env_ignored "$(basename "$env")" \
         && [ -e "$env"/packages.conf ]
       then
         case $env in
@@ -265,7 +264,7 @@ worker_install_packages()
         then
           message_worker "Installing packages"
           case $env in
-            arch | "arch-gui")
+            arch | arch-gui)
               # shellcheck disable=SC2086
               sudo pacman -S --quiet --needed $notinstalled
               ;;
@@ -345,8 +344,7 @@ worker_install_symlinks()
   work=false
   for env in "$DIR"/env/*
   do
-    if [ "$(basename "$env")" != "base" ] \
-      && ! is_env_ignored "$(basename "$env")" \
+    if ! is_env_ignored "$(basename "$env")" \
       && [ -e "$env"/symlinks.conf ]
     then
       while IFS='' read -r symlink || [ -n "$symlink" ]
@@ -445,8 +443,7 @@ worker_uninstall_symlinks()
   work=false
   for env in "$DIR"/env/*
   do
-    if [ "$(basename "$env")" != "base" ] \
-      && ! is_env_ignored "$(basename "$env")" \
+    if ! is_env_ignored "$(basename "$env")" \
       && [ -e "$DIR"/env/"$env"/symlinks.conf ]
     then
       while IFS='' read -r symlink || [ -n "$symlink" ]

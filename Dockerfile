@@ -26,8 +26,8 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
     && locale-gen
 
 # Add user
-RUN useradd -ms /usr/bin/zsh dot
-ENV SHELL /usr/bin/zsh
+RUN useradd -ms /bin/zsh dot
+ENV SHELL /bin/zsh
 
 # Install dotfiles
 COPY . /home/dot/dotfiles

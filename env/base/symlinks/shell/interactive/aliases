@@ -15,6 +15,8 @@ alias ll="ls -l"
 
 alias mkdir="mkdir -p"
 
+alias pwsh="pwsh -nologo"
+
 alias sudo="sudo "
 
 alias tmux="tmux -2"
@@ -39,7 +41,7 @@ alias .....="cd ../../../../"
 alias ......="cd ../../../../../../"
 
 # Path
-alias path='echo $PATH | tr -s ":" "\n"'
+alias path="echo $PATH | tr -s ':' '\n'"
 
 # PowerShell has corrupted me
 alias cls="clear"

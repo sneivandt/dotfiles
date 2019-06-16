@@ -7,48 +7,38 @@ function prompt
 {
     $origLastExitCode = $LASTEXITCODE
 
-    $ps1 = ""
-
-    $isAdmin = $env:username -eq "root"
-
-    if ($(which pwsh -eq $env:SHELL))
+    if ($(command -vp pwsh) -ne $env:SHELL)
     {
-        $ps1 += "pwsh "
+        Write-Host "pwsh " -NoNewLine -ForegroundColor Cyan
     }
 
     $curPath = $ExecutionContext.SessionState.Path.CurrentLocation.Path
-    if ($curPath.ToLower().StartsWith($Home.ToLower()))
+    if ($curPath.StartsWith($Home))
     {
         $curPath = "~" + $curPath.SubString($Home.Length)
     }
-
-    $ps1 += $curPath
+    Write-Host $curPath -NoNewLine -ForegroundColor Yellow
 
     $gitBranch = $(git rev-parse --abbrev-ref HEAD 2> $null)
-
     if ($gitBranch)
     {
-        $ps1 += " "
-        $ps1 += $gitBranch
-
+        Write-Host " $gitBranch" -NoNewLine -ForegroundColor White
         $changes = $($(git status --short) | Measure-Object -Line).Lines
-        if ($changes -gt 0) 
+        if ($changes -gt 0)
         {
-            $ps1 += "+"
-            $ps1 += $changes
+            Write-Host "+$changes" -NoNewLine -ForegroundColor Red
         }
     }
 
-    if ($isAdmin)
+    Write-Host
+    if ($env:username -eq "root")
     {
-        $ps1 += "`n# "
+        "# "
     }
     else
     {
-        $ps1 += "`n$ "
+        "$ "
     }
-
-    $ps1
 
     $LASTEXITCODE = $origLastExitCode
 }

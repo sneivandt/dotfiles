@@ -1,5 +1,6 @@
 #!/bin/sh
-set -e
+set -o errexit
+set -o nounset
 
 # Helpers ----------------------------------------------------------------- {{{
 #
@@ -248,6 +249,8 @@ worker_install_packages()
       if ! is_env_ignored "$(basename "$env")" \
         && [ -e "$env"/packages.conf ]
       then
+        installed=""
+        notinstalled=""
         case $env in
           arch | arch-gui)
             installed=$(pacman -Q | cut -f 1 -d" ")
@@ -502,7 +505,7 @@ DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 
 assert_not_root
 
-case $1 in
+case ${1:-} in
   -I* | --install)
     OPTS=$(getopt -o Isg -l install -n "$(basename "$0")" -- "$@") || exit 1
     action_install

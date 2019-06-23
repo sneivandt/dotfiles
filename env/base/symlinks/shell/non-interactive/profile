@@ -53,7 +53,7 @@ then
   . virtualenvwrapper.sh
 fi
 
-# wsl
+# WSL
 if [ -n "$(command -vp wslpath)" ]
 then
     WINDRIVE=$(wslpath -a -u "$(cmd.exe /c "echo %SYSTEMDRIVE%\\" 2>/dev/null)" | sed s"/..$//")

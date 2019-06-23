@@ -29,17 +29,36 @@ is_flag_set()
 
 # is_symlink_installed
 #
-# Check if a symlink for a environment exists.
+# Check if a symlink is installed.
 #
 # Args:
 #     $1 - The environment to be checked.
 #     $2 - The symlink to be checked.
 #
 # return:
-#     bool - True of the symlink exists.
+#     bool - True of the symlink is installed.
 is_symlink_installed()
 {
-  if [ "$(readlink -f "$DIR"/env/"$1"/symlinks/"$2")" = "$(readlink -f ~/."$2")" ]
+  if [ "$(readlink -f "$dir"/env/"$1"/symlinks/"$2")" = "$(readlink -f ~/."$2")" ]
+  then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# is_program_installed
+#
+# Check if a program is installed.
+#
+# Args:
+#     $1 - The program to check.
+#
+# return:
+#     bool - True of the program is installed.
+is_program_installed()
+{
+  if [ -n "$(command -vp "$1")" ]
   then
     return 0
   else
@@ -86,45 +105,33 @@ is_env_ignored()
   return 1
 }
 
-# is_program_installed
-#
-# Check if a program is installed.
-#
-# Args:
-#     $1 - The program to check.
-#
-# return:
-#     bool - True of the program is installed.
-is_program_installed()
-{
-  if [ -n "$(command -vp "$1")" ]
-  then
-    return 0
-  else
-    return 1
-  fi
-}
-
 # }}}
 # Messages ---------------------------------------------------------------- {{{
 #
-# Functions which write to stdout.
+# Functions that write to stdout.
 
 # message_usage
 #
 # Print usage instructions.
 message_usage()
 {
-  basename "$0"
+  echo "Usage: $(basename "$0") <command> [<options>]"
   echo
-  echo "Usage:"
-  echo "    $(basename "$0") -I | --install   [-s] [-g]"
-  echo "    $(basename "$0") -U | --uninstall [-s] [-g]"
-  echo "    $(basename "$0") -h | --help"
+  echo "Commands:"
+  echo
+  echo "  -I, --install    : Install"
+  echo "  -U, --uninstall  : Uninstall"
+  echo "  -h, --help       : Display usage"
   echo
   echo "Options:"
-  echo "    -g  Configure GUI programs"
-  echo "    -s  Use sudo"
+  echo
+  echo "  -g               : Configure GUI programs"
+  echo "  -s               : Use sudo"
+  echo
+  echo "Examples:"
+  echo
+  echo "  $(basename "$0") --install      # Install"
+  echo "  $(basename "$0") --uninstall    # Uninstall"
 }
 
 # message_worker
@@ -132,7 +139,7 @@ message_usage()
 # Print a worker starting message.
 #
 # Args:
-#     $1 - The work that is being performed.
+#     $1 - The message.
 message_worker()
 {
   echo ":: $1..."
@@ -146,57 +153,122 @@ message_worker()
 #     $1 - The reason for exiting.
 message_error()
 {
-  echo "error: $1"
-}
-
-# }}}
-# Assertions -------------------------------------------------------------- {{{
-#
-# Assertions about the state that exit with an error if they are not meet.
-
-# assert_not_root
-#
-# Verify that the current user is not root.
-assert_not_root()
-{
-  if [ "$(id -u)" = 0 ]
-  then
-    message_error "$(basename "$0") can not be run as root."
-    exit 1
-  fi
+  echo "ERROR: $1"
 }
 
 # }}}
 # Workers ----------------------------------------------------------------- {{{
 #
-# Functions that perform the core logic. Workers are called by action
-# functions in series.
+# Functions that perform the core logic.
 
-# worker_update_dotfiles
+# configure_cron
 #
-# Update dotfiles.
-worker_update_dotfiles()
+# Configure cron.
+configure_cron()
 {
-  if [ -d "$DIR"/.git ] \
-    && is_program_installed "git" \
-    && git -C "$DIR" diff-index --quiet HEAD -- \
-    && [ "$(git -C "$DIR" remote show origin | sed -n -e "s/.*HEAD branch: //p")" = "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ] \
-    && [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]
+  work=false
+  if ! is_env_ignored "arch" && is_program_installed "crontab"
   then
-    message_worker "Updating dotfiles"
-    git -C "$DIR" pull
+    if [ "$(crontab -l 2> /dev/null)" != "$(cat "$dir"/env/arch/crontab)" ]
+    then
+      if ! $work
+      then
+        work=true
+        message_worker "Updating crontab"
+      fi
+      crontab "$dir"/env/arch/crontab
+    fi
+    if is_flag_set "s" \
+      && is_program_installed "sudo" \
+      && [ "$(sudo crontab -l 2> /dev/null)" != "$(cat "$dir"/env/arch/crontab-root)" ]
+    then
+      if ! $work
+      then
+        work=true
+        message_worker "Updating crontab"
+      fi
+      sudo crontab "$dir"/env/arch/crontab-root
+    fi
   fi
 }
 
-# worker_install_git_submodules
+# configure_file_mode_bits
+#
+# Configure file mode bits.
+configure_file_mode_bits()
+{
+  for env in "$dir"/env/*
+  do
+    if ! is_env_ignored "$(basename "$env")" && [ -e "$env"/chmod.conf ]
+    then
+      while IFS='' read -r line || [ -n "$line" ]
+      do
+        file="$(echo "$line" | cut -d" " -f1)"
+        perm="$(echo "$line" | cut -d" " -f2)"
+        if [ -d "$file" ]
+        then
+          chmod -c -R "$perm" "$file"
+        elif [ -e "$file" ]
+        then
+          chmod -c "$perm" "$file"
+        fi
+      done < "$env"/chmod.conf
+    fi
+  done
+}
+
+# configure_fonts
+#
+# Configure fonts.
+configure_fonts()
+{
+  if ! is_env_ignored "arch-gui" \
+    && is_program_installed "fc-list" \
+    && is_program_installed "fc-cache" \
+    && [ "$(fc-list : family | grep -f "$dir"/env/arch-gui/fonts.conf -cx)" != "$(grep -c "" "$dir"/env/arch-gui/fonts.conf | cut -f1 -d" ")" ]
+  then
+    message_worker "Updating fonts"
+    fc-cache
+  fi
+}
+
+# configure_shell
+#
+# Set the user shell.
+configure_shell()
+{
+  if is_program_installed "zsh" \
+    && [ "$SHELL" != "$(zsh -c "command -vp zsh")" ] \
+    && [ ! -f /.dockerenv ] \
+    && [ "$(passwd --status "$USER" | cut -d" " -f2)" = "P" ]
+  then
+    message_worker "Configuring user shell"
+    chsh -s "$(zsh -c "command -vp zsh")"
+  fi
+}
+
+# install_dotfiles_cli
+#
+# Install dotfiles cli.
+install_dotfiles_cli()
+{
+  if [ "$(readlink -f "$dir"/dotfiles.sh)" != "$(readlink -f ~/bin/dotfiles)" ]
+  then
+    message_worker "Installing dotfiles cli"
+    mkdir -pv ~/bin
+    ln -snvf "$dir"/dotfiles.sh ~/bin/dotfiles
+  fi
+}
+
+# install_git_submodules
 #
 # Install git submodules.
-worker_install_git_submodules()
+install_git_submodules()
 {
-  if [ -d "$DIR"/.git ] && is_program_installed "git"
+  if [ -d "$dir"/.git ] && is_program_installed "git"
   then
-    modules="$(cat "$DIR"/env/base/submodules.conf)"
-    for env in "$DIR"/env/*
+    modules="$(cat "$dir"/env/base/submodules.conf)"
+    for env in "$dir"/env/*
     do
       if [ "$(basename "$env")" != "base" ] && ! is_env_ignored "$(basename "$env")"
       then
@@ -204,47 +276,23 @@ worker_install_git_submodules()
       fi
     done
     # shellcheck disable=SC2086
-    if git -C "$DIR" submodule status $modules | cut -c-1 | grep -q "+\\|-"
+    if git -C "$dir" submodule status $modules | cut -c-1 | grep -q "+\\|-"
     then
       message_worker "Installing git submodules"
       # shellcheck disable=SC2086
-      git -C "$DIR" submodule update --init --recursive $modules
+      git -C "$dir" submodule update --init --recursive $modules
     fi
   fi
 }
 
-# worker_update_git_submodules
-#
-# Update git submodules.
-worker_update_git_submodules()
-{
-  if [ -d "$DIR"/.git ] && is_program_installed "git"
-  then
-    for env in "$DIR"/env/*
-    do
-      if [ "$(basename "$env")" != "base" ] && ! is_env_ignored "$(basename "$env")"
-      then
-        modules="$modules env/"$(basename "$env")
-      fi
-    done
-    # shellcheck disable=SC2086
-    if [ -z "$(git -C "$DIR" submodule status $modules | cut -c1)" ]
-    then
-      message_worker "Updating git submodules"
-      # shellcheck disable=SC2086
-      git -C "$DIR" submodule update --init --recursive --remote $modules
-    fi
-  fi
-}
-
-# worker_install_packages
+# install_packages
 #
 # Install packages.
-worker_install_packages()
+install_packages()
 {
   if is_flag_set "s" && is_program_installed "sudo"
   then
-    for env in "$DIR"/env/*
+    for env in "$dir"/env/*
     do
       if ! is_env_ignored "$(basename "$env")" \
         && [ -e "$env"/packages.conf ]
@@ -278,74 +326,13 @@ worker_install_packages()
   fi
 }
 
-# worker_configure_shell
+# install_symlinks
 #
-# Set the user shell.
-worker_configure_shell()
-{
-  if is_program_installed "zsh" \
-    && [ "$SHELL" != "$(zsh -c "command -vp zsh")" ] \
-    && [ ! -f /.dockerenv ] \
-    && [ "$(passwd --status "$USER" | cut -d" " -f2)" = "P" ]
-  then
-    message_worker "Configuring user login shell"
-    chsh -s "$(zsh -c "command -vp zsh")"
-  fi
-}
-
-# worker_configure_fonts
-#
-# Update font cache.
-worker_configure_fonts()
-{
-  if ! is_env_ignored "arch-gui" \
-    && is_program_installed "fc-list" \
-    && is_program_installed "fc-cache" \
-    && [ "$(fc-list : family | grep -f "$DIR"/env/arch-gui/fonts.conf -cx)" != "$(grep -c "" "$DIR"/env/arch-gui/fonts.conf | cut -f1 -d" ")" ]
-  then
-    message_worker "Updating fontconfig font cache"
-    fc-cache
-  fi
-}
-
-# worker_configure_cron
-#
-# Configure cron.
-worker_configure_cron()
+# Install symlinks.
+install_symlinks()
 {
   work=false
-  if ! is_env_ignored "arch" && is_program_installed "crontab"
-  then
-    if [ "$(crontab -l 2> /dev/null)" != "$(cat "$DIR"/env/arch/crontab)" ]
-    then
-      if ! $work
-      then
-        work=true
-        message_worker "Updating crontab"
-      fi
-      crontab "$DIR"/env/arch/crontab
-    fi
-    if is_flag_set "s" \
-      && is_program_installed "sudo" \
-      && [ "$(sudo crontab -l 2> /dev/null)" != "$(cat "$DIR"/env/arch/crontab-root)" ]
-    then
-      if ! $work
-      then
-        work=true
-        message_worker "Updating crontab"
-      fi
-      sudo crontab "$DIR"/env/arch/crontab-root
-    fi
-  fi
-}
-
-# worker_install_symlinks
-#
-# Create symlinks.
-worker_install_symlinks()
-{
-  work=false
-  for env in "$DIR"/env/*
+  for env in "$dir"/env/*
   do
     if ! is_env_ignored "$(basename "$env")" \
       && [ -e "$env"/symlinks.conf ]
@@ -373,35 +360,10 @@ worker_install_symlinks()
   done
 }
 
-# worker_chmod
-#
-# Change file mode bits.
-worker_chmod()
-{
-  for env in "$DIR"/env/*
-  do
-    if ! is_env_ignored "$(basename "$env")" && [ -e "$env"/chmod.conf ]
-    then
-      while IFS='' read -r line || [ -n "$line" ]
-      do
-        file="$(echo "$line" | cut -d" " -f1)"
-        perm="$(echo "$line" | cut -d" " -f2)"
-        if [ -d "$file" ]
-        then
-          chmod -c -R "$perm" "$file"
-        elif [ -e "$file" ]
-        then
-          chmod -c "$perm" "$file"
-        fi
-      done < "$env"/chmod.conf
-    fi
-  done
-}
-
-# worker_install_vscode_extensions
+# install_vscode_extensions
 #
 # Install vscode extensions.
-worker_install_vscode_extensions()
+install_vscode_extensions()
 {
   for code in code code-insiders
   do
@@ -420,34 +382,21 @@ worker_install_vscode_extensions()
           fi
           $code --install-extension "$extension"
         fi
-      done < "$DIR/env/base-gui/vscode-extensions.conf"
+      done < "$dir/env/base-gui/vscode-extensions.conf"
     fi
   done
 }
 
-# worker_install_dotfiles_cli
-#
-# Add "dotfiles.sh" to $PATH.
-worker_install_dotfiles_cli()
-{
-  if [ "$(readlink -f "$DIR"/dotfiles.sh)" != "$(readlink -f ~/bin/dotfiles)" ]
-  then
-    message_worker "Installing dotfiles cli"
-    mkdir -pv ~/bin
-    ln -snvf "$DIR"/dotfiles.sh ~/bin/dotfiles
-  fi
-}
-
-# worker_uninstall_symlinks
+# uninstall_symlinks
 #
 # Uninstall symlinks.
-worker_uninstall_symlinks()
+uninstall_symlinks()
 {
   work=false
-  for env in "$DIR"/env/*
+  for env in "$dir"/env/*
   do
     if ! is_env_ignored "$(basename "$env")" \
-      && [ -e "$DIR"/env/"$env"/symlinks.conf ]
+      && [ -e "$dir"/env/"$env"/symlinks.conf ]
     then
       while IFS='' read -r symlink || [ -n "$symlink" ]
       do
@@ -456,7 +405,7 @@ worker_uninstall_symlinks()
           if ! $work
           then
             work=true
-            message_worker "Removing symlinks"
+            message_worker "Uninstalling symlinks"
           fi
           rm -vf ~/."$symlink"
         fi
@@ -465,54 +414,98 @@ worker_uninstall_symlinks()
   done
 }
 
-# }}}
-# Actions ----------------------------------------------------------------- {{{
+# update_dotfiles
 #
-# Controllers for the core logic.
-
-# action_install
-#
-# Perform a full install.
-action_install()
+# Update dotfiles.
+update_dotfiles()
 {
-  worker_update_dotfiles
-  worker_install_git_submodules
-  worker_update_git_submodules
-  worker_install_packages
-  worker_configure_cron
-  worker_configure_shell
-  worker_configure_fonts
-  worker_install_symlinks
-  worker_install_vscode_extensions
-  worker_install_dotfiles_cli
-  worker_chmod
+  if [ -d "$dir"/.git ] \
+    && is_program_installed "git" \
+    && git -C "$dir" diff-index --quiet HEAD -- \
+    && [ "$(git -C "$dir" remote show origin | sed -n -e "s/.*HEAD branch: //p")" = "$(git -C "$dir" rev-parse --abbrev-ref HEAD)" ] \
+    && [ "$(git -C "$dir" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$dir" log --format=format:%H -n 1 HEAD)" ]
+  then
+    message_worker "Updating dotfiles"
+    git -C "$dir" pull
+  fi
 }
 
-# action_uninstall
+# update_git_submodules
+#
+# Update git submodules.
+update_git_submodules()
+{
+  if [ -d "$dir"/.git ] && is_program_installed "git"
+  then
+    for env in "$dir"/env/*
+    do
+      if [ "$(basename "$env")" != "base" ] && ! is_env_ignored "$(basename "$env")"
+      then
+        modules="$modules env/"$(basename "$env")
+      fi
+    done
+    # shellcheck disable=SC2086
+    if [ -z "$(git -C "$dir" submodule status $modules | cut -c1)" ]
+    then
+      message_worker "Updating git submodules"
+      # shellcheck disable=SC2086
+      git -C "$dir" submodule update --init --recursive --remote $modules
+    fi
+  fi
+}
+
+# }}}
+# Commands ---------------------------------------------------------------- {{{
+#
+# Functions that implement the core logic.
+
+# install
+#
+# Perform a full install.
+install()
+{
+  update_dotfiles
+  install_git_submodules
+  update_git_submodules
+  install_packages
+  install_symlinks
+  install_dotfiles_cli
+  install_vscode_extensions
+  configure_cron
+  configure_file_mode_bits
+  configure_fonts
+  configure_shell
+}
+
+# uninstall
 #
 # Perform a full uninstall.
-action_uninstall()
+uninstall()
 {
-  worker_uninstall_symlinks
+  uninstall_symlinks
 }
 
 # }}}
 # Main -------------------------------------------------------------------- {{{
 #
-# The entry point.
+# Main.
 
-DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+if [ "$(id -u)" = 0 ]
+then
+  message_error "$(basename "$0") can not be run as root."
+  exit 1
+fi
 
-assert_not_root
+readonly dir=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 
 case ${1:-} in
   -I* | --install)
     OPTS=$(getopt -o Isg -l install -n "$(basename "$0")" -- "$@") || exit 1
-    action_install
+    install
     ;;
   -U* | --uninstall)
     OPTS=$(getopt -o Usg -l uninstall -n "$(basename "$0")" -- "$@") || exit 1
-    action_uninstall
+    uninstall
     ;;
   -h | --help)
     OPTS=$(getopt -o h -l help -n "$(basename "$0")" -- "$@") || exit 1

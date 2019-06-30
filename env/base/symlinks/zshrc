@@ -1,4 +1,4 @@
-# vi set ft=zsh :
+#!/usr/bin/env zsh
 
 # Quiet
 setopt no_beep

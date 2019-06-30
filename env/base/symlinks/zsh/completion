@@ -1,4 +1,4 @@
-# vi set ft=zsh :
+#!/usr/bin/env zsh
 
 [[ ! $fpath =~ .*~/.zsh/completions.* ]] && fpath=(~/.zsh/completions $fpath)
 

@@ -1,4 +1,4 @@
-# vi set ft=zsh :
+#!/usr/bin/env zsh
 
 # Global profile
 [[ -f /etc/zsh/zprofile ]] && . /etc/zsh/zprofile

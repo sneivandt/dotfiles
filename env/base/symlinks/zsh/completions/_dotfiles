@@ -1,3 +1,5 @@
+#!/usr/bin/env zsh
+
 #compdef dotfiles
 
 typeset -A opt_args

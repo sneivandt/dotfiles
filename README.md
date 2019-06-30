@@ -1,9 +1,5 @@
 # Dotfiles
-
-[![Docker Automated build](https://img.shields.io/docker/automated/sneivandt/dotfiles.svg)](https://hub.docker.com/r/sneivandt/dotfiles/)
-
 ## Usage
-
 ```
 Usage: dotfiles.sh <command> [<options>]
 
@@ -23,9 +19,8 @@ Examples:
   dotfiles.sh --install      # Install
   dotfiles.sh --uninstall    # Uninstall
 ```
-
 ## Docker
-
+[![Docker Automated build](https://img.shields.io/docker/automated/sneivandt/dotfiles.svg)](https://hub.docker.com/r/sneivandt/dotfiles/)
 ```
 docker run -it sneivandt/dotfiles
 ```

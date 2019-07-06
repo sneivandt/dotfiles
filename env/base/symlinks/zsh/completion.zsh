@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 
-[[ ! $fpath =~ .*~/.zsh/completions.* ]] && fpath=(~/.zsh/completions $fpath)
+fpath=(~/.zsh/completions $fpath)
 
 autoload -U compinit
 compinit

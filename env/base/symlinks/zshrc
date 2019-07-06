@@ -27,16 +27,24 @@ setopt pushdminus
 setopt pushdsilent
 setopt pushdtohome
 
+# Path
+. ~/.shell/path
+
+# Aliases
+. ~/.shell/aliases
+
 # Prompt
-[[ -e ~/.zsh/prompt ]] && . ~/.zsh/prompt
+. ~/.zsh/prompt.zsh
 
 # Completion
-[[ -e ~/.zsh/completion ]] && . ~/.zsh/completion
+. ~/.zsh/completion.zsh
 
 # Key bindings
-[[ -e ~/.zsh/key-bindings ]] && . ~/.zsh/key-bindings
+. ~/.zsh/key-bindings.zsh
 
 # Plugins
-[[ -d ~/.zsh/plugins ]] && . ~/.zsh/plugins/*
+. ~/.zsh/plugins/*
 
-[[ -d ~/.shell/interactive ]] && for f in ~/.shell/interactive/*; do . "$f"; done
+# Functions
+fpath=(~/.shell/functions $fpath)
+autoload -U ~/.shell/functions/*

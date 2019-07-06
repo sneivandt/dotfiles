@@ -3,4 +3,8 @@
 # Global profile
 [[ -f /etc/profile ]] && . /etc/profile
 
-[[ -d ~/.shell/non-interactive ]] && for f in ~/.shell/non-interactive/*; do . "$f"; done
+# Profile
+. ~/.shell/profile
+
+# GUI Profile
+[[ -f ~/.shell/profile-gui ]] && . ~/.shell/profile-gui

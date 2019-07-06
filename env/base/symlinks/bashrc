@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 
-[[ -e ~/.bash_prompt ]] && source ~/.bash_prompt
+# Path
+. ~/.shell/path
 
-[[ -d ~/.shell/interactive ]] && for f in ~/.shell/interactive/*; do . "$f"; done
+# Aliases
+. ~/.shell/aliases
+
+# Prompt
+. ~/.bash_prompt
+
+# Functions
+for f in ~/.shell/functions/*; do . "$f"; done

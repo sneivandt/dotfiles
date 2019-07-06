@@ -8,9 +8,11 @@ extract()
     echo "Usage: extract <file>"
     echo
     echo "Supported types: tar.bz2 tar.gz tar tbz2 tgz zip"
+    return 1
   elif [ ! -f "$1" ]
   then
-    echo "'$1' is not a valid file"
+    echo "'$1' is not a valid file" 1>&2
+    return 1
   else
     case $(echo "$1" | tr '[:upper:]' '[:lower:]') in
       *.tar.bz2)  tar -jxvf "$1"                      ;;
@@ -23,25 +25,3 @@ extract()
     esac
   fi
 }
-
-# Generate ssh key for GitHub
-githubkey()
-{
-  mkdir -p "$HOME"/.ssh/github
-  ssh-keygen -t rsa -b 4096 -P "" -C "$(git config --global user.email)" -f "$HOME"/.ssh/github/id_rsa
-}
-
-# Symlink SSH keys for WSL
-if [ -n "$(command -vp wslpath)" ]
-then
-  wslsshkey()
-  {
-    for i in github vsts
-    do
-      if [ -d "$WINHOME"/.ssh/"$i" ] && [ "$(readlink -f "$WINHOME"/.ssh/"$i")" != "$(readlink -f "$HOME"/.ssh/"$i")" ]
-      then
-        ln -snvf "$WINHOME"/.ssh/"$i" "$HOME"/.ssh/"$i"
-      fi
-    done
-  }
-fi

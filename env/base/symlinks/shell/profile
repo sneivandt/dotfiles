@@ -46,6 +46,10 @@ unset MAILCHECK
 # GOPATH
 export GOPATH=~/src/go
 
+# Ruby
+export GEM_HOME=$HOME/.gem
+export GEM_PATH=$HOME/.gem
+
 # virtualenvwrapper
 if [ -n "$(command -vp virtualenvwrapper.sh)" ]
 then

@@ -1,4 +1,4 @@
-#!/usr/bin/env zsh
+#compdef go
 
 # gc
 prefixes=(5 6 8)

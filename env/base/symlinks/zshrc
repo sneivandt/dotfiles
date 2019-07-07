@@ -6,11 +6,11 @@ setopt NO_LIST_BEEP
 set bell-style none
 
 # Word Style
-autoload -U select-word-style
+autoload -Uz select-word-style
 select-word-style bash
 
 # Colors
-autoload -U colors
+autoload -Uz colors
 colors
 
 # History
@@ -28,10 +28,10 @@ setopt pushdsilent
 setopt pushdtohome
 
 # Path
-. ~/.shell/path
+. ~/.shell/path.sh
 
 # Aliases
-. ~/.shell/aliases
+. ~/.shell/aliases.sh
 
 # Prompt
 . ~/.zsh/prompt.zsh
@@ -46,5 +46,5 @@ setopt pushdtohome
 . ~/.zsh/plugins/*
 
 # Functions
-fpath=(~/.shell/functions $fpath)
-autoload -U ~/.shell/functions/*
+fpath=(~/.zsh/functions $fpath)
+autoload -Uz ~/.zsh/functions/*

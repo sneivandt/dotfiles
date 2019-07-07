@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 
 # Path
-. ~/.shell/path
+. ~/.shell/path.sh
 
 # Aliases
-. ~/.shell/aliases
+. ~/.shell/aliases.sh
 
 # Prompt
-. ~/.bash_prompt
-
-# Functions
-for f in ~/.shell/functions/*; do . "$f"; done
+. ~/.bash/prompt

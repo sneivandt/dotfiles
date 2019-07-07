@@ -4,7 +4,7 @@
 [[ -f /etc/zsh/zprofile ]] && . /etc/zsh/zprofile
 
 # Profile
-. ~/.shell/profile
+. ~/.shell/profile.sh
 
 # GUI Profile
-[[ -f ~/.shell/profile-gui ]] && . ~/.shell/profile-gui
+[[ -f ~/.shell/profile-gui.sh ]] && . ~/.shell/profile-gui.sh

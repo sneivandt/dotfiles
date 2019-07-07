@@ -1,0 +1,27 @@
+#!/usr/bin/env zsh
+
+# Extract archives
+
+if [ -z "$1" ]
+then
+  echo "Usage: extract <file>"
+  echo
+  echo "Supported types: tar.bz2 tar.gz tar tbz2 tgz zip"
+  return 1
+fi
+
+if [ ! -f "$1" ]
+then
+  echo "'$1' is not a valid file" 1>&2
+  return 1
+fi
+
+case $(echo "$1" | tr '[:upper:]' '[:lower:]') in
+  *.tar.bz2)  tar -jxvf "$1"                      ;;
+  *.tar.gz)   tar -zxvf "$1"                      ;;
+  *.tar)      tar -xvf "$1"                       ;;
+  *.tbz2)     tar -jxvf "$1"                      ;;
+  *.tgz)      tar -zxvf "$1"                      ;;
+  *.zip)      unzip "$1"                          ;;
+  *)          >&2 echo "File cannot be extracted" ;;
+esac

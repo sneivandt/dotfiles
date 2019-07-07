@@ -4,7 +4,7 @@
 [[ -f /etc/profile ]] && . /etc/profile
 
 # Profile
-. ~/.shell/profile
+. ~/.shell/profile.sh
 
 # GUI Profile
-[[ -f ~/.shell/profile-gui ]] && . ~/.shell/profile-gui
+[[ -f ~/.shell/profile-gui.sh ]] && . ~/.shell/profile-gui.sh

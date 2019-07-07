@@ -1,8 +1,0 @@
-#!/bin/sh
-
-# Generate ssh key for GitHub
-ssh-keygen-github()
-{
-  mkdir -p "$HOME"/.ssh/github
-  ssh-keygen -t rsa -b 4096 -P "" -C "$(git config --global user.email)" -f "$HOME"/.ssh/github/id_rsa
-}

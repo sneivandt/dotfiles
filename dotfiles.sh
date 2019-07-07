@@ -16,7 +16,7 @@ set -o nounset
 # return:
 #     bool - True of the flag is set.
 is_flag_set()
-{(
+{
   case " $opts " in
     *" -$1 "*)
       return 0
@@ -25,7 +25,7 @@ is_flag_set()
       return 1
       ;;
   esac
-)}
+}
 
 # is_symlink_installed
 #
@@ -38,14 +38,14 @@ is_flag_set()
 # return:
 #     bool - True of the symlink is installed.
 is_symlink_installed()
-{(
+{
   if [ "$(readlink -f "$dir"/env/"$1"/symlinks/"$2")" = "$(readlink -f ~/."$2")" ]
   then
     return 0
   else
     return 1
   fi
-)}
+}
 
 # is_program_installed
 #
@@ -57,14 +57,14 @@ is_symlink_installed()
 # return:
 #     bool - True of the program is installed.
 is_program_installed()
-{(
+{
   if [ -n "$(command -vp "$1")" ]
   then
     return 0
   else
     return 1
   fi
-)}
+}
 
 # is_env_ignored
 #
@@ -76,7 +76,7 @@ is_program_installed()
 # return:
 #     bool - True of the environment is ignored.
 is_env_ignored()
-{(
+{
   case $1 in
     arch)
       if cat /etc/*-release | grep -xP "ID=.*|ID_LIKE=.*" | cut -d= -f2 | grep -qvxP "arch|archlinux"
@@ -98,7 +98,7 @@ is_env_ignored()
       ;;
   esac
   return 1
-)}
+}
 
 # }}}
 # Messages ---------------------------------------------------------------- {{{

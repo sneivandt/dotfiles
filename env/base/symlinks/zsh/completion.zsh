@@ -2,8 +2,19 @@
 
 fpath=(~/.zsh/completions $fpath)
 
-autoload -U compinit
-compinit
+autoload -Uz compinit
+
+setopt EXTENDEDGLOB
+for dump in $ZSH_COMPDUMP(#qN.m1)
+do
+  compinit
+  if [[ -s "$dump" && (! -s "$dump.zwc" || "$dump" -nt "$dump.zwc") ]]
+  then
+    zcompile "$dump"
+  fi
+done
+unsetopt EXTENDEDGLOB
+compinit -C
 
 setopt always_to_end
 setopt auto_menu

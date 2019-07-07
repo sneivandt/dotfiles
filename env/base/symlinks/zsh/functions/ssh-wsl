@@ -1,0 +1,13 @@
+#!/usr/bin/env zsh
+
+# Symlink SSH keys for WSL
+
+[ -n "$(command -vp wslpath)" ] || { echo "ERROR: Not in WSL Environment" 1>&2 && return 1; }
+
+for i in github vsts
+do
+  if [ -d "$WINHOME"/.ssh/"$i" ] && [ "$(readlink -f "$WINHOME"/.ssh/"$i")" != "$(readlink -f "$HOME"/.ssh/"$i")" ]
+  then
+    ln -snvf "$WINHOME"/.ssh/"$i" "$HOME"/.ssh/"$i"
+  fi
+done

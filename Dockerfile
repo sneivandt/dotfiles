@@ -26,15 +26,15 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
     && locale-gen
 
 # Add user
-RUN useradd -ms /bin/zsh dot
+RUN useradd -ms /bin/zsh sneivandt
 ENV SHELL /bin/zsh
 
 # Install dotfiles
-COPY . /home/dot/dotfiles
-RUN chown -R dot:dot /home/dot
-USER dot
-RUN /home/dot/dotfiles/dotfiles.sh --install
+COPY . /home/sneivandt/dotfiles
+RUN chown -R sneivandt:sneivandt /home/sneivandt
+USER sneivandt
+RUN /home/sneivandt/dotfiles/dotfiles.sh --install
 
 # Entry
-WORKDIR /home/dot
+WORKDIR /home/sneivandt
 ENTRYPOINT /usr/bin/zsh

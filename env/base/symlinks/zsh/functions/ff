@@ -1,28 +1,52 @@
 #!/usr/bin/env zsh
 
-# Locate and edit a file
+# Find file
 
 [ -n "$(command -vp fzf)"    ] || { echo "ERROR: fzf not installed"    1>&2 && return 1; }
 [ -n "$(command -vp locate)" ] || { echo "ERROR: locate not installed" 1>&2 && return 1; }
 [ -n "$(command -vp sudo)"   ] || { echo "ERROR: sudo not installed"   1>&2 && return 1; }
 [ -n "$(command -vp vim)"    ] || { echo "ERROR: vim not installed"    1>&2 && return 1; }
 
-if [ -z "$1" ]
+local opts=$(getopt -o e -n ff -- "$@") || return 1
+eval set -- "$opts"
+
+while [ $# -gt 0 ]
+do
+  case "$1" in
+    -e)
+      local edit=true
+      ;;
+    --)
+      local query="$2"
+      ;;
+  esac
+  shift
+done
+
+if [ -z "$query" ]
 then
-  echo "Usage: eloc <file>"
+  echo "Usage: ff <file> [<options>]"
+  echo
+  echo "Options:"
+  echo
+  echo " -e :  Edit the file"
   return 1
 fi
 
-files=$(locate "$1") || return 1
-file="$(echo "$files" | fzf)" || return 1
-if [ -f "$file" ]
+file="$(locate "$query" | fzf -0 -1)" || return 1
+
+if [ -z "$edit" ]
+then
+  echo "$file"
+elif [ -f "$file" ]
 then
   if [ -w "$file" ]
   then
     vim "$file"
   else
-    sudo -k -e "$file"
+    sudo -e "$file"
   fi
 else
   return 1
 fi
+

@@ -19,9 +19,9 @@ fi
 case $(echo "$1" | tr '[:upper:]' '[:lower:]') in
   *.tar.bz2)  tar -jxvf "$1"                      ;;
   *.tar.gz)   tar -zxvf "$1"                      ;;
-  *.tar)      tar -xvf "$1"                       ;;
+  *.tar)      tar -xvf  "$1"                      ;;
   *.tbz2)     tar -jxvf "$1"                      ;;
   *.tgz)      tar -zxvf "$1"                      ;;
-  *.zip)      unzip "$1"                          ;;
+  *.zip)      unzip     "$1"                      ;;
   *)          >&2 echo "File cannot be extracted" ;;
 esac

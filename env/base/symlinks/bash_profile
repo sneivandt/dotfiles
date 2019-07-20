@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 # Global profile
-[[ -f /etc/profile ]] && . /etc/profile
+[ -f /etc/profile ] && . /etc/profile
 
 # Profile
 . ~/.shell/profile.sh
 
 # GUI Profile
-[[ -f ~/.shell/profile-gui.sh ]] && . ~/.shell/profile-gui.sh
+[ -f ~/.shell/profile-gui.sh ] && . ~/.shell/profile-gui.sh

@@ -122,23 +122,14 @@ message_error()
 # Print usage information.
 message_usage()
 {
-  echo "Usage: $(basename "$0") <command> [<options>]"
-  echo
-  echo "Commands:"
-  echo
-  echo "  -I, --install    : Install"
-  echo "  -U, --uninstall  : Uninstall"
-  echo "  -h, --help       : Display usage"
+  echo "Usage:"
+  echo "  $(basename "$0") {-I --install}   [-g] [-p]"
+  echo "  $(basename "$0") {-U --uninstall} [-g]"
+  echo "  $(basename "$0") {-h --help}"
   echo
   echo "Options:"
-  echo
-  echo "  -g               : Configure GUI programs"
-  echo "  -s               : Use sudo"
-  echo
-  echo "Examples:"
-  echo
-  echo "  $(basename "$0") --install      # Install"
-  echo "  $(basename "$0") --uninstall    # Uninstall"
+  echo "  -p  Install system packages"
+  echo "  -g  Configure GUI"
   exit
 }
 
@@ -161,28 +152,6 @@ message_worker()
 # Workers ----------------------------------------------------------------- {{{
 #
 # Functions that perform the core logic.
-
-# configure_cron
-#
-# Configure cron.
-configure_cron()
-{(
-  if ! is_env_ignored "arch" && is_program_installed "crontab"
-  then
-    if [ "$(crontab -l 2> /dev/null)" != "$(cat "$dir"/env/arch/crontab)" ]
-    then
-      message_worker "Updating crontab"
-      crontab "$dir"/env/arch/crontab
-    fi
-    if is_flag_set "s" \
-      && is_program_installed "sudo" \
-      && [ "$(sudo crontab -l 2> /dev/null)" != "$(cat "$dir"/env/arch/crontab-root)" ]
-    then
-      message_worker "Updating crontab"
-      sudo crontab "$dir"/env/arch/crontab-root
-    fi
-  fi
-)}
 
 # configure_file_mode_bits
 #
@@ -231,6 +200,24 @@ configure_shell()
   fi
 )}
 
+# configure_systemd
+#
+# Configure systemd.
+configure_systemd()
+{(
+  if is_program_installed "systemctl"
+  then
+    for timer in ~/.config/systemd/user/*.timer
+    do
+      if ! systemctl --user is-active --quiet "$(basename "$timer")"
+      then
+        message_worker "Configuring systemd"
+        systemctl --user enable --now "$(basename "$timer")"
+      fi
+    done
+  fi
+)}
+
 # install_dotfiles_cli
 #
 # Install dotfiles cli.
@@ -272,7 +259,7 @@ install_git_submodules()
 # Install packages.
 install_packages()
 {(
-  if is_flag_set "s" && is_program_installed "sudo"
+  if is_flag_set "p" && is_program_installed "sudo"
   then
     packages=""
     for env in "$dir"/env/*
@@ -428,8 +415,8 @@ install()
   install_symlinks
   install_dotfiles_cli
   install_vscode_extensions
-  configure_cron
   configure_file_mode_bits
+  configure_systemd
   configure_fonts
   configure_shell
 }
@@ -452,15 +439,15 @@ then
   message_error "$(basename "$0") can not be run as root."
 fi
 
-readonly dir=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+readonly dir="$(dirname "$(readlink -f "$0")")"
 
 case ${1:-} in
   -I* | --install)
-    opts=$(getopt -o Isg -l install -n "$(basename "$0")" -- "$@") || exit 1
+    opts=$(getopt -o Ipg -l install -n "$(basename "$0")" -- "$@") || exit 1
     install
     ;;
   -U* | --uninstall)
-    opts=$(getopt -o Usg -l uninstall -n "$(basename "$0")" -- "$@") || exit 1
+    opts=$(getopt -o Ug -l uninstall -n "$(basename "$0")" -- "$@") || exit 1
     uninstall
     ;;
   -h | --help)

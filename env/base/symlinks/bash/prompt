@@ -3,10 +3,10 @@
 PS1=""
 
 # host name
-PS1+="\\[\\e[0;36m\\]\$([[ -n \"$SSH_CONNECTION\" || -e /.dockerenv ]] && echo \"bash \")"
+PS1+="\\[\\e[0;36m\\]\$([ -n \"$SSH_CONNECTION\" ] || [ -e /.dockerenv ] && echo \"bash \")"
 
 # default shell
-PS1+="\\[\\e[0;36m\\]\$([[ \"\$(command -vp bash)\" != \"\$SHELL\" ]] && echo \"bash \")"
+PS1+="\\[\\e[0;36m\\]\$([ \"\$(command -vp bash)\" != \"\$SHELL\" ] && echo \"bash \")"
 
 # working dir
 PS1+="\\[\\e[0;33m\\]\\w "

@@ -11,13 +11,17 @@ _dotfiles_opts_commands=(
 )
 
 _dotfiles_opts_common=(
-  "-s[Use sudo]"
-  "-g[Configure GUI programs]"
+  "-g[Configure GUI]"
+)
+
+_dotfiles_opts_install=(
+  "-p[Install system packages]"
 )
 
 _dotfiles_action_install() {
   _arguments -s : \
     "(--install -I)"{-I,--install} \
+    "$_dotfiles_opts_install[@]" \
     "$_dotfiles_opts_common[@]"
 }
 

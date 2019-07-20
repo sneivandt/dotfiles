@@ -1,0 +1,6 @@
+[Unit]
+Description=Clean home tmp service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "find ~/tmp -type f -mtime +7 -execdir rm -- '{}' \\;"

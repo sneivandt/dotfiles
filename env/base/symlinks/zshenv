@@ -1,10 +1,10 @@
 #!/usr/bin/env zsh
 
 # Global profile
-[[ -f /etc/zsh/zprofile ]] && . /etc/zsh/zprofile
+[ -f /etc/zsh/zprofile ] && . /etc/zsh/zprofile
 
 # Profile
 . ~/.shell/profile.sh
 
 # GUI Profile
-[[ -f ~/.shell/profile-gui.sh ]] && . ~/.shell/profile-gui.sh
+[ -f ~/.shell/profile-gui.sh ] && . ~/.shell/profile-gui.sh

@@ -52,7 +52,7 @@ prompt_cmd()
 
 sprompt_cmd()
 {
-  print -rP "$(host_name)$(default_shell)$(git_prompt_info)$(sudo_active)"
+  print -rP "%{$reset_color%}$(host_name)$(default_shell)$(git_prompt_info)$(sudo_active)"
 }
 
 PROMPT='$(prompt_cmd)

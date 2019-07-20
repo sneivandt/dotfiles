@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# Don't check mail
+unset MAILCHECK
+
 # Locale
 export LC_ALL=en_US.UTF-8
 export LANG=en_US.UTF-8
@@ -40,15 +43,8 @@ export LESS_TERMCAP_ZW
 # Shellcheck
 export SHELLCHECK_OPTS="-e SC1090 -e SC1091"
 
-# Don't check mail
-unset MAILCHECK
-
-# GOPATH
+# Golang
 export GOPATH=~/src/go
-
-# Ruby
-export GEM_HOME=$HOME/.gem
-export GEM_PATH=$HOME/.gem
 
 # virtualenvwrapper
 if [ -n "$(command -vp virtualenvwrapper.sh)" ]

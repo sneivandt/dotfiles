@@ -1,8 +1,6 @@
 [Unit]
-Description=Clean home tmp service
+Description=Clean ~/tmp
 
 [Service]
-ExecStart=/bin/sh -c "find ~/tmp -type f -mtime +7 -execdir rm -- '{}' \\;"
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=clean-home-tmp-service
+Type=oneshot
+ExecStart=/usr/bin/find ~/tmp -type f -mtime +7 -execdir rm -- '{}' \;

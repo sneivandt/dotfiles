@@ -1,9 +1,9 @@
 [Unit]
-Description=Clean home tmp timer
+Description=Clean ~/tmp every day
 
 [Timer]
 OnCalendar=daily
 Persistent=true
 
 [Install]
-WantedBy=basic.target
+WantedBy=multi-user.target

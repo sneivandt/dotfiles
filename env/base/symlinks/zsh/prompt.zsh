@@ -11,7 +11,7 @@ host_name()
 {
   if [ -n "$SSH_CONNECTION" ] || [ -e /.dockerenv ]
   then
-    echo -n "%{$fg[cyan]%}%m%{$reset_color%} "
+    echo -n " %{$fg[cyan]%}%m%{$reset_color%}"
   fi
 }
 
@@ -19,7 +19,7 @@ default_shell()
 {
   if [ $(command -vp zsh) != $SHELL ]
   then
-    echo -n "%{$fg[cyan]%}zsh%{$reset_color%} "
+    echo -n " %{$fg[cyan]%}zsh%{$reset_color%}"
   fi
 }
 

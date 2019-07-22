@@ -7,17 +7,17 @@ function prompt
 {
     $origLastExitCode = $LASTEXITCODE
 
-    if ($(command -vp pwsh) -ne $env:SHELL)
-    {
-        Write-Host "pwsh " -NoNewLine -ForegroundColor Cyan
-    }
-
     $curPath = $ExecutionContext.SessionState.Path.CurrentLocation.Path
     if ($curPath.StartsWith($Home))
     {
         $curPath = "~" + $curPath.SubString($Home.Length)
     }
     Write-Host $curPath -NoNewLine -ForegroundColor Yellow
+
+    if ($(command -vp pwsh) -ne $env:SHELL)
+    {
+        Write-Host " pwsh" -NoNewLine -ForegroundColor Cyan
+    }
 
     $gitBranch = $(git rev-parse --abbrev-ref HEAD 2> $null)
     if ($gitBranch)

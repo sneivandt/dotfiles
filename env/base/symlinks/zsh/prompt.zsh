@@ -2,16 +2,11 @@
 
 setopt PROMPT_SUBST
 
-working_dir()
-{
-  echo -n "%{$fg[yellow]%}%~%{$reset_color%}"
-}
-
 host_name()
 {
   if [ -n "$SSH_CONNECTION" ] || [ -e /.dockerenv ]
   then
-    echo -n " %{$fg[cyan]%}%m%{$reset_color%}"
+    echo -n "%{$fg[cyan]%}%m%{$reset_color%} "
   fi
 }
 
@@ -19,8 +14,13 @@ default_shell()
 {
   if [ $(command -vp zsh) != $SHELL ]
   then
-    echo -n " %{$fg[cyan]%}zsh%{$reset_color%}"
+    echo -n "%{$fg[cyan]%}zsh%{$reset_color%} "
   fi
+}
+
+working_dir()
+{
+  echo -n "%{$fg[yellow]%}%~%{$reset_color%}"
 }
 
 git_prompt_info()
@@ -52,7 +52,7 @@ prompt_cmd()
 
 sprompt_cmd()
 {
-  print -rP "%{$reset_color%}$(host_name)$(default_shell)$(git_prompt_info)$(sudo_active)"
+  print -rP "%{$reset_color%}$(host_name)$(default_shell)$(working_dir)$(git_prompt_info)$(sudo_active)"
 }
 
 PROMPT='$(prompt_cmd)
@@ -78,7 +78,7 @@ function precmd()
 
 function TRAPUSR1()
 {
-  PROMPT='$(prompt_cmd)$(cat ~/tmp/.zsh_prompt 2>/dev/null)
+  PROMPT='$(cat ~/tmp/.zsh_prompt 2>/dev/null)
 %(!.#.$) '
   ASYNC_PROC=0
   zle && zle reset-prompt

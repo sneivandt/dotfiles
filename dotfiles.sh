@@ -205,7 +205,7 @@ configure_shell()
 # Configure systemd.
 configure_systemd()
 {(
-  if is_program_installed "systemctl"
+  if [ "$(ps -p 1 -o comm=)" = "systemd" ] && is_program_installed "systemctl"
   then
     for timer in ~/.config/systemd/user/*.timer
     do

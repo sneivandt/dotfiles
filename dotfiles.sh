@@ -85,7 +85,8 @@ is_env_ignored()
       fi
       ;;
     arch-gui)
-      if is_env_ignored "base-gui" || is_env_ignored "arch"
+      if is_env_ignored "base-gui" \
+        || is_env_ignored "arch"
       then
         return 0
       fi
@@ -141,7 +142,8 @@ message_usage()
 #     $1 - The message.
 message_worker()
 {
-  if [ "${_work-unset}" = "unset" ] || ! $_work
+  if [ "${_work-unset}" = "unset" ] \
+    || ! $_work
   then
     _work=true
     echo ":: $1..."
@@ -160,7 +162,8 @@ configure_file_mode_bits()
 {(
   for env in "$dir"/env/*
   do
-    if ! is_env_ignored "$(basename "$env")" && [ -e "$env"/chmod.conf ]
+    if ! is_env_ignored "$(basename "$env")" \
+      && [ -e "$env"/chmod.conf ]
     then
       while IFS='' read -r line || [ -n "$line" ]
       do
@@ -205,14 +208,23 @@ configure_shell()
 # Configure systemd.
 configure_systemd()
 {(
-  if [ "$(ps -p 1 -o comm=)" = "systemd" ] && is_program_installed "systemctl"
+  if [ "$(ps -p 1 -o comm=)" = "systemd" ] \
+    && is_program_installed "systemctl"
   then
-    for timer in ~/.config/systemd/user/*.timer
+    for env in "$dir"/env/*
     do
-      if ! systemctl --user is-active --quiet "$(basename "$timer")"
+      if ! is_env_ignored "$(basename "$env")" \
+        && [ -d "$env"/symlinks/config/systemd/user ]
       then
-        message_worker "Configuring systemd"
-        systemctl --user enable --now "$(basename "$timer")"
+        for timer in "$env"/symlinks/config/systemd/user/*.timer
+        do
+          if [ -e "$timer" ] \
+            && ! systemctl --user is-active --quiet "$(basename "$timer")"
+          then
+            message_worker "Configuring systemd"
+            systemctl --user enable --now "$(basename "$timer")"
+          fi
+        done
       fi
     done
   fi
@@ -236,12 +248,14 @@ install_dotfiles_cli()
 # Install git submodules.
 install_git_submodules()
 {(
-  if [ -d "$dir"/.git ] && is_program_installed "git"
+  if [ -d "$dir"/.git ] \
+    && is_program_installed "git"
   then
     modules="$(cat "$dir"/env/base/submodules.conf)"
     for env in "$dir"/env/*
     do
-      if [ "$(basename "$env")" != "base" ] && ! is_env_ignored "$(basename "$env")"
+      if [ "$(basename "$env")" != "base" ] \
+        && ! is_env_ignored "$(basename "$env")"
       then
         modules="$modules "env/$(basename "$env")
       fi
@@ -259,7 +273,8 @@ install_git_submodules()
 # Install packages.
 install_packages()
 {(
-  if is_flag_set "p" && is_program_installed "sudo"
+  if is_flag_set "p" \
+    && is_program_installed "sudo"
   then
     packages=""
     for env in "$dir"/env/*
@@ -320,7 +335,8 @@ install_vscode_extensions()
 {(
   for code in code code-insiders
   do
-    if ! is_env_ignored "base-gui" && is_program_installed "$code"
+    if ! is_env_ignored "base-gui" \
+      && is_program_installed "$code"
     then
       extensions=$($code --list-extensions)
       while IFS='' read -r extension || [ -n "$extension" ]
@@ -378,12 +394,14 @@ update_dotfiles()
 # Update git submodules.
 update_git_submodules()
 {(
-  if [ -d "$dir"/.git ] && is_program_installed "git"
+  if [ -d "$dir"/.git ] \
+    && is_program_installed "git"
   then
     modules=""
     for env in "$dir"/env/*
     do
-      if [ "$(basename "$env")" != "base" ] && ! is_env_ignored "$(basename "$env")"
+      if [ "$(basename "$env")" != "base" ] \
+        && ! is_env_ignored "$(basename "$env")"
       then
         modules="$modules env/"$(basename "$env")
       fi

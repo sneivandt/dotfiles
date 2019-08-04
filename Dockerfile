@@ -1,4 +1,4 @@
-FROM debian:buster
+FROM ubuntu:eoan
 
 LABEL maintainer="sneivandt"
 

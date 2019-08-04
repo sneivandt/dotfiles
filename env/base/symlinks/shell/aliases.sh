@@ -1,8 +1,12 @@
 #!/bin/sh
 
-#
-# Change default behaviour
-#
+alias ..="cd .."
+alias ...="cd ../.."
+alias ....="cd ../../.."
+alias .....="cd ../../../../"
+alias ......="cd ../../../../../../"
+
+alias cls="clear"
 
 alias df="df -h -T"
 
@@ -14,6 +18,8 @@ alias la="ls -a"
 alias ll="ls -l"
 
 alias mkdir="mkdir -p"
+
+alias path="echo $PATH | tr -s ':' '\n'"
 
 alias pwsh="pwsh -nologo"
 
@@ -33,20 +39,3 @@ if [ -n "$(command -vp code-insiders)" ]
 then
   alias code="code-insiders"
 fi
-
-#
-# Other aliases
-#
-
-# Navigation
-alias ..="cd .."
-alias ...="cd ../.."
-alias ....="cd ../../.."
-alias .....="cd ../../../../"
-alias ......="cd ../../../../../../"
-
-# Path
-alias path="echo $PATH | tr -s ':' '\n'"
-
-# PowerShell has corrupted me
-alias cls="clear"

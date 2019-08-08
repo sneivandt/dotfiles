@@ -100,7 +100,7 @@
   alias         = !git config -l | grep ^alias. | cut -c 7- | sort
 
   # List contributors
-  contributors  = shortlog --summary --numbered
+  contributors  = shortlog --summary --email --numbered
 
   # Delete merged branches
   delete-merged = !git branch --merged origin/HEAD | grep -E -v '(^\\*|master)' | xargs -r -n 1 git branch -d

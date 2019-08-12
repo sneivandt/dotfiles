@@ -274,7 +274,8 @@ install_git_submodules()
 install_packages()
 {(
   if is_flag_set "p" \
-    && is_program_installed "sudo"
+    && is_program_installed "sudo" \
+    && is_program_installed "pacman"
   then
     packages=""
     for env in "$dir"/env/*

@@ -1,5 +1,4 @@
 # Dotfiles
-## Usage
 ```
 Usage:
   dotfiles.sh {-I --install}   [-g] [-p]

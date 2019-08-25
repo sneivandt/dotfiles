@@ -1,5 +1,5 @@
 [Unit]
-Description=Clean ~/tmp every day
+Description=Clean %h/tmp every day
 
 [Timer]
 OnCalendar=daily

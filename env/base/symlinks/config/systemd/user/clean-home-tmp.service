@@ -1,5 +1,5 @@
 [Unit]
-Description=Clean ~/tmp
+Description=Clean %h/tmp
 
 [Service]
 Type=oneshot

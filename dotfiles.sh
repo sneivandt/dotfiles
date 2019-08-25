@@ -214,17 +214,17 @@ configure_systemd()
     for env in "$dir"/env/*
     do
       if ! is_env_ignored "$(basename "$env")" \
-        && [ -d "$env"/symlinks/config/systemd/user ]
+        && [ -e "$env"/units.conf ]
       then
-        for timer in "$env"/symlinks/config/systemd/user/*.timer
+        while IFS='' read -r unit || [ -n "$unit" ]
         do
-          if [ -e "$timer" ] \
-            && ! systemctl --user is-active --quiet "$(basename "$timer")"
+          if systemctl --user list-unit-files | grep -qw "^$unit " \
+            && ! systemctl --user is-enabled --quiet "$unit"
           then
             message_worker "Configuring systemd"
-            systemctl --user enable --now "$(basename "$timer")"
+            systemctl --user enable --now "$unit"
           fi
-        done
+        done < "$env"/units.conf
       fi
     done
   fi
@@ -283,7 +283,7 @@ install_packages()
       if ! is_env_ignored "$(basename "$env")" \
         && [ -e "$env"/packages.conf ]
       then
-        while IFS='' read -r package
+        while IFS='' read -r package || [ -n "$package" ]
         do
           if ! pacman -Qq "$package" >/dev/null 2>&1
           then

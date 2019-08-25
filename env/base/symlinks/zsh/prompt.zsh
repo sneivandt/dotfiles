@@ -47,39 +47,8 @@ sudo_active()
 
 prompt_cmd()
 {
-  print -rP "%{$reset_color%}$(working_dir)"
-}
-
-sprompt_cmd()
-{
-  print -rP "%{$reset_color%}$(host_name)$(default_shell)$(working_dir)$(git_prompt_info)$(sudo_active)"
+  echo -n "%{$reset_color%}$(host_name)$(default_shell)$(working_dir)$(git_prompt_info)$(sudo_active)%{$reset_color%}"
 }
 
 PROMPT='$(prompt_cmd)
 %(!.#.$) '
-
-ASYNC_PROC=0
-function precmd()
-{
-  function async()
-  {
-    mkdir -p ~/tmp && printf "%s" "$(sprompt_cmd)" > ~/tmp/.zsh_prompt
-    kill -s USR1 $$
-  }
-
-  if [ "${ASYNC_PROC}" != 0 ]
-  then
-    kill -s HUP $ASYNC_PROC >/dev/null 2>&1 || :
-  fi
-
-  async &!
-  ASYNC_PROC=$!
-}
-
-function TRAPUSR1()
-{
-  PROMPT='$(cat ~/tmp/.zsh_prompt 2>/dev/null)
-%(!.#.$) '
-  ASYNC_PROC=0
-  zle && zle reset-prompt
-}

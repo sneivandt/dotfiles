@@ -1,6 +1,9 @@
 [Unit]
 Description=Clean %h/tmp
 
+ConditionFileIsExecutable=/usr/bin/find
+ConditionPathIsDirectory=%h/tmp
+
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/find %h/tmp -type f -mtime +7 -execdir rm -- '{}' \;

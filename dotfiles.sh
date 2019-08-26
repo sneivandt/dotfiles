@@ -167,7 +167,7 @@ configure_file_mode_bits()
     then
       while IFS='' read -r line || [ -n "$line" ]
       do
-        chmod -c -R "$(echo "$line" | cut -d " " -f1)" ~/."$(echo "$line" | cut -d " " -f2)"
+        chmod -c -R "$(echo "$line" | cut -d" " -f1)" ~/."$(echo "$line" | cut -d" " -f2)"
       done < "$env"/chmod.conf
     fi
   done
@@ -181,7 +181,7 @@ configure_fonts()
   if ! is_env_ignored "arch-gui" \
     && is_program_installed "fc-list" \
     && is_program_installed "fc-cache" \
-    && [ "$(fc-list : family | grep -f "$dir"/env/arch-gui/fonts.conf -cx)" != "$(grep -c "" "$dir"/env/arch-gui/fonts.conf | cut -f1 -d" ")" ]
+    && [ "$(fc-list : family | grep -f "$dir"/env/arch-gui/fonts.conf -cx)" != "$(grep -c "" "$dir"/env/arch-gui/fonts.conf | cut -d" " -f1)" ]
   then
     message_worker "Updating fonts"
     fc-cache
@@ -218,7 +218,7 @@ configure_systemd()
       then
         while IFS='' read -r unit || [ -n "$unit" ]
         do
-          if systemctl --user list-unit-files | grep -qw "^$unit " \
+          if systemctl --user list-unit-files | cut -d" " -f1 | grep -qx "$unit" \
             && ! systemctl --user is-enabled --quiet "$unit"
           then
             message_worker "Configuring systemd"
@@ -435,9 +435,9 @@ install()
   install_dotfiles_cli
   install_vscode_extensions
   configure_file_mode_bits
-  configure_systemd
-  configure_fonts
   configure_shell
+  configure_fonts
+  configure_systemd
 }
 
 # uninstall

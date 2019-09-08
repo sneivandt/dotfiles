@@ -407,12 +407,10 @@ update_git_submodules()
         modules="$modules env/"$(basename "$env")
       fi
     done
-    # shellcheck disable=SC2086
-    if [ -z "$(git -C "$dir" submodule status $modules | cut -c1)" ]
+    if [ -z "$(eval "git -C $dir submodule status $modules | cut -c1")" ]
     then
       message_worker "Updating git submodules"
-      # shellcheck disable=SC2086
-      git -C "$dir" submodule update --init --recursive --remote $modules
+      eval "git -C $dir submodule update --init --recursive --remote $modules"
     fi
   fi
 )}
@@ -420,7 +418,7 @@ update_git_submodules()
 # }}}
 # Commands ---------------------------------------------------------------- {{{
 #
-# Functions that implement the core logic.
+# Functions that orchestrate the core logic.
 
 # install
 #

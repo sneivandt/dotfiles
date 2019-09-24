@@ -223,6 +223,10 @@ configure_systemd()
           then
             message_worker "Configuring systemd"
             systemctl --user enable "$unit"
+            if [ "$(systemctl is-system-running)" = "running" ]
+            then
+              systemctl --user start "$unit"
+            fi
           fi
         done < "$env"/units.conf
       fi

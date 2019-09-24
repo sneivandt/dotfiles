@@ -6,4 +6,4 @@
 [ -n "$(command -vp ssh-keygen)" ] || { echo "ERROR: ssh-keygen not installed" 1>&2 && return 1; }
 
 mkdir -p "$HOME"/.ssh/github
-ssh-keygen -t rsa -b 4096 -P "" -C "$(git config --global user.email)" -f "$HOME"/.ssh/github/
+ssh-keygen -t rsa -b 4096 -P "" -C "$(git config --global user.email)" -f "$HOME"/.ssh/github/id_rsa

@@ -222,7 +222,7 @@ configure_systemd()
             && ! systemctl --user is-enabled --quiet "$unit"
           then
             message_worker "Configuring systemd"
-            systemctl --user enable --now "$unit"
+            systemctl --user enable "$unit"
           fi
         done < "$env"/units.conf
       fi

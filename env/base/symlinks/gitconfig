@@ -9,10 +9,10 @@
   editor = vim
   pager = less
   autocrlf = input
-  excludesfile = ~/.gitignore
-  attributesfile = ~/.gitattributes
+  excludesfile = ~/.config/git/gitignore
+  attributesfile = ~/.config/git/gitattributes
 [init]
-  templatedir = ~/.gittemplates/
+  templatedir = ~/.config/git/gittemplates/
 [color]
   ui = true
 [credential]
@@ -27,5 +27,5 @@
 [diff "bin"]
   textconv = hexdump -v -C
 [include]
-  path = ~/.gitconfig-alias
-  path = ~/.gitconfig-local
+  path = ~/.config/git/gitconfig-alias
+  path = ~/.config/git/gitconfig-local

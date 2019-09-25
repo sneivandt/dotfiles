@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 # Path
-. ~/.shell/path.sh
+. ~/.config/shell/path.sh
 
 # Aliases
-. ~/.shell/aliases.sh
+. ~/.config/shell/aliases.sh
 
 # Prompt
-. ~/.bash/prompt
+. ~/.config/bash/prompt

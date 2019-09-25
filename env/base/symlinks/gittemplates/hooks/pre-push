@@ -1,8 +1,0 @@
-#!/bin/sh
-
-hook="$HOME"/.gittemplates/hooks.local/pre-push
-
-if [ -f "$hook" ]
-then
-  . "$hook"
-fi

@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 
-fpath=(~/.zsh/completions $fpath)
+fpath=(~/.config/zsh/completions $fpath)
 
 autoload -Uz compinit
 

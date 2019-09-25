@@ -28,23 +28,23 @@ setopt pushdsilent
 setopt pushdtohome
 
 # Path
-. ~/.shell/path.sh
+. ~/.config/shell/path.sh
 
 # Aliases
-. ~/.shell/aliases.sh
+. ~/.config/shell/aliases.sh
 
 # Prompt
-. ~/.zsh/prompt.zsh
+. ~/.config/zsh/prompt.zsh
 
 # Completion
-. ~/.zsh/completion.zsh
+. ~/.config/zsh/completion.zsh
 
 # Key bindings
-. ~/.zsh/key-bindings.zsh
+. ~/.config/zsh/key-bindings.zsh
 
 # Plugins
-. ~/.zsh/plugins/*
+. ~/.config/zsh/plugins/*
 
 # Functions
-fpath=(~/.zsh/functions $fpath)
-autoload -Uz ~/.zsh/functions/*
+fpath=(~/.config/zsh/functions $fpath)
+autoload -Uz ~/.config/zsh/functions/*

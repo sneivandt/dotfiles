@@ -19,7 +19,7 @@ alias ll="ls -l"
 
 alias mkdir="mkdir -p"
 
-alias path="echo $PATH | tr -s ':' '\n'"
+alias path='echo $PATH | tr -s ":" "\n"'
 
 alias pwsh="pwsh -nologo"
 

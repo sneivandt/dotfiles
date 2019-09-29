@@ -6,66 +6,6 @@ set -o nounset
 #
 # Helper functions.
 
-# is_flag_set
-#
-# Check if a flag is set.
-#
-# Args:
-#     $1 - The flag to check.
-#
-# return:
-#     bool - True of the flag is set.
-is_flag_set()
-{
-  case " $opts " in
-    *" -$1 "*)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-# is_symlink_installed
-#
-# Check if a symlink is installed.
-#
-# Args:
-#     $1 - The environment to be checked.
-#     $2 - The symlink to be checked.
-#
-# return:
-#     bool - True of the symlink is installed.
-is_symlink_installed()
-{
-  if [ "$(readlink -f "$dir"/env/"$1"/symlinks/"$2")" = "$(readlink -f ~/."$2")" ]
-  then
-    return 0
-  else
-    return 1
-  fi
-}
-
-# is_program_installed
-#
-# Check if a program is installed.
-#
-# Args:
-#     $1 - The program to check.
-#
-# return:
-#     bool - True of the program is installed.
-is_program_installed()
-{
-  if [ -n "$(command -vp "$1")" ]
-  then
-    return 0
-  else
-    return 1
-  fi
-}
-
 # is_env_ignored
 #
 # Check if an environment is ignored.
@@ -101,6 +41,88 @@ is_env_ignored()
   return 1
 }
 
+# is_flag_set
+#
+# Check if a flag is set.
+#
+# Args:
+#     $1 - The flag to check.
+#
+# return:
+#     bool - True of the flag is set.
+is_flag_set()
+{
+  case " $opts " in
+    *" -$1 "*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+# is_program_installed
+#
+# Check if a program is installed.
+#
+# Args:
+#     $1 - The program to check.
+#
+# return:
+#     bool - True of the program is installed.
+is_program_installed()
+{
+  if [ -n "$(command -vp "$1")" ]
+  then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# is_shell_script
+#
+# Check if a file is a shell script.
+#
+# Args:
+#     $1 - The file to check.
+#
+# return:
+#     bool - True of the file is a shell script.
+is_shell_script()
+{
+  if [ -f "$1" ]
+  then
+    case "$(head -n 1 "$1")" in
+      '#!/bin/sh'* | '#!/bin/bash'* | '#!/usr/bin/env sh'* | '#!/usr/bin/env bash'*)
+        return 0
+        ;;
+    esac
+  fi
+  return 1
+}
+
+# is_symlink_installed
+#
+# Check if a symlink is installed.
+#
+# Args:
+#     $1 - The environment to be checked.
+#     $2 - The symlink to be checked.
+#
+# return:
+#     bool - True of the symlink is installed.
+is_symlink_installed()
+{
+  if [ "$(readlink -f "$dir"/env/"$1"/symlinks/"$2")" = "$(readlink -f ~/."$2")" ]
+  then
+    return 0
+  else
+    return 1
+  fi
+}
+
 # }}}
 # Messages ---------------------------------------------------------------- {{{
 #
@@ -125,12 +147,13 @@ message_usage()
 {
   echo "Usage:"
   echo "  $(basename "$0") {-I --install}   [-g] [-p]"
+  echo "  $(basename "$0") {-T --test}      [-g]"
   echo "  $(basename "$0") {-U --uninstall} [-g]"
   echo "  $(basename "$0") {-h --help}"
   echo
   echo "Options:"
   echo "  -p  Install system packages"
-  echo "  -g  Configure GUI"
+  echo "  -g  GUI"
   exit
 }
 
@@ -356,6 +379,60 @@ install_vscode_extensions()
   done
 )}
 
+# test_shellcheck
+#
+# run shellcheck.
+test_shellcheck()
+{(
+  if ! is_program_installed "shellcheck"
+  then
+    message_error "shellcheck not installed"
+  else
+    message_worker "Verifying shell scripts"
+    scripts="$dir"/dotfiles.sh
+    for env in "$dir"/env/*
+    do
+      if ! is_env_ignored "$(basename "$env")" \
+        && [ -e "$env"/symlinks.conf ]
+      then
+        while IFS='' read -r symlink || [ -n "$symlink" ]
+        do
+          if [ -d "$env/symlinks/$symlink" ]
+          then
+            tmpfile="$(mktemp)"
+            find "$env/symlinks/$symlink" -type f > "$tmpfile"
+            while IFS='' read -r line || [ -n "$line" ]
+            do
+              ignore=false
+              if [ -e "$env"/submodules.conf ]
+              then
+                while IFS='' read -r submodule || [ -n "$submodule" ]
+                do
+                  case "$line" in
+                    "$dir"/"$submodule"/*)
+                      ignore=true
+                      ;;
+                  esac
+                done < "$env"/submodules.conf
+              fi
+              if ! "$ignore" \
+                && is_shell_script "$line"
+              then
+                scripts="$scripts $line"
+              fi
+            done < "$tmpfile"
+            rm "$tmpfile"
+          elif is_shell_script "$env/symlinks/$symlink"
+          then
+            scripts="$scripts $env/symlinks/$symlink"
+          fi
+        done < "$env"/symlinks.conf
+      fi
+    done
+    eval "shellcheck $scripts"
+  fi
+)}
+
 # uninstall_symlinks
 #
 # Uninstall symlinks.
@@ -364,7 +441,7 @@ uninstall_symlinks()
   for env in "$dir"/env/*
   do
     if ! is_env_ignored "$(basename "$env")" \
-      && [ -e "$dir"/env/"$env"/symlinks.conf ]
+      && [ -e "$env"/symlinks.conf ]
     then
       while IFS='' read -r symlink || [ -n "$symlink" ]
       do
@@ -432,6 +509,7 @@ install()
   update_dotfiles
   install_git_submodules
   update_git_submodules
+
   install_packages
   install_symlinks
   install_dotfiles_cli
@@ -442,11 +520,27 @@ install()
   configure_systemd
 }
 
+# test
+#
+# Run tests.
+test()
+{
+  update_dotfiles
+  install_git_submodules
+  update_git_submodules
+
+  test_shellcheck
+}
+
 # uninstall
 #
 # Perform a full uninstall.
 uninstall()
 {
+  update_dotfiles
+  install_git_submodules
+  update_git_submodules
+
   uninstall_symlinks
 }
 
@@ -464,19 +558,23 @@ readonly dir="$(dirname "$(readlink -f "$0")")"
 
 case ${1:-} in
   -I* | --install)
-    opts=$(getopt -o Ipg -l install -n "$(basename "$0")" -- "$@") || exit 1
+    readonly opts="$(getopt -o Ipg -l install -n "$(basename "$0")" -- "$@")" || exit 1
     install
     ;;
+  -T* | --test)
+    readonly opts="$(getopt -o Tg -l test -n "$(basename "$0")" -- "$@")" || exit 1
+    test
+    ;;
   -U* | --uninstall)
-    opts=$(getopt -o Ug -l uninstall -n "$(basename "$0")" -- "$@") || exit 1
+    readonly opts="$(getopt -o Ug -l uninstall -n "$(basename "$0")" -- "$@")" || exit 1
     uninstall
     ;;
   -h | --help)
-    opts=$(getopt -o h -l help -n "$(basename "$0")" -- "$@") || exit 1
+    readonly opts="$(getopt -o h -l help -n "$(basename "$0")" -- "$@")" || exit 1
     message_usage
     ;;
   *)
-    opts=$(getopt -o -l -n "$(basename "$0")" -- "$@") || exit 1
+    readonly opts="$(getopt -o -l -n "$(basename "$0")" -- "$@")" || exit 1
     message_usage
     ;;
 esac

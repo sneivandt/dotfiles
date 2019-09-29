@@ -5,13 +5,14 @@ setopt extendedglob
 
 _dotfiles_opts_commands=(
   {-I,--install}"[Install]"
+  {-T,--test}"[Test]"
   {-U,--uninstall}"[Uninstall]"
 
   {-h,--help}"[Display usage]"
 )
 
 _dotfiles_opts_common=(
-  "-g[Configure GUI]"
+  "-g[GUI]"
 )
 
 _dotfiles_opts_install=(
@@ -22,6 +23,12 @@ _dotfiles_action_install() {
   _arguments -s : \
     "(--install -I)"{-I,--install} \
     "$_dotfiles_opts_install[@]" \
+    "$_dotfiles_opts_common[@]"
+}
+
+_dotfiles_action_test() {
+  _arguments -s : \
+    "(--test -T)"{-T,--test} \
     "$_dotfiles_opts_common[@]"
 }
 
@@ -46,6 +53,9 @@ case $args in
   I*)
     _dotfiles_action_install
     ;;
+  T*)
+    _dotfiles_action_test
+    ;;
   U*)
     _dotfiles_action_uninstall
     ;;
@@ -56,6 +66,9 @@ case $args in
         ;;
       *--install*)
         _dotfiles_action_install
+        ;;
+      *--test*)
+        _dotfiles_action_test
         ;;
       *--uninstall*)
         _dotfiles_action_uninstall

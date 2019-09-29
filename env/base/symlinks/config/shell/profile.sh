@@ -1,14 +1,14 @@
 #!/bin/sh
 
-# Don't check mail
+# mail
 unset MAILCHECK
 
-# Locale
+# locale
 export LC_ALL=en_US.UTF-8
 export LANG=en_US.UTF-8
 export LANGUAGE=en_US.UTF-8
 
-# Default editor
+# editor
 export EDITOR=vim
 
 # less
@@ -25,7 +25,7 @@ LESS_TERMCAP_ZN=$(tput ssubm)
 LESS_TERMCAP_ZV=$(tput rsubm)
 LESS_TERMCAP_ZO=$(tput ssupm)
 LESS_TERMCAP_ZW=$(tput rsupm)
-export LESS=-imRj8
+export LESS=-imRj8X
 export LESS_TERMCAP_mb
 export LESS_TERMCAP_md
 export LESS_TERMCAP_me
@@ -40,10 +40,13 @@ export LESS_TERMCAP_ZV
 export LESS_TERMCAP_ZO
 export LESS_TERMCAP_ZW
 
-# Shellcheck
+# man
+export MANPAGER="less -imRj8X"
+
+# _shellcheck
 export SHELLCHECK_OPTS="-e SC1090 -e SC1091"
 
-# Golang
+# golang
 export GOPATH=~/src/go
 
 # virtualenvwrapper
@@ -53,7 +56,7 @@ then
   . virtualenvwrapper.sh
 fi
 
-# WSL
+# wsl
 if [ -n "$(command -vp wslpath)" ]
 then
   WINDRIVE=$(wslpath -a -u "$(cmd.exe /c "echo %SYSTEMDRIVE%\\" 2>/dev/null)" | sed s"/..$//")

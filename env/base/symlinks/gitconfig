@@ -7,25 +7,30 @@
   pushInsteadOf = https://github.com/
 [core]
   editor = vim
-  pager = less
+  pager = less -imRj8X
   autocrlf = input
   excludesfile = ~/.config/git/gitignore
   attributesfile = ~/.config/git/gitattributes
-[init]
-  templatedir = ~/.config/git/gittemplates/
+
 [color]
   ui = true
 [credential]
   helper = cache
 [fetch]
   prune = true
+[init]
+  templatedir = ~/.config/git/gittemplates/
 [push]
   default = current
   followTags = true
+[status]
+  showStash = true
+
 [diff]
   tool = vimdiff
 [diff "bin"]
   textconv = hexdump -v -C
+
 [include]
   path = ~/.config/git/gitconfig-alias
   path = ~/.config/git/gitconfig-local

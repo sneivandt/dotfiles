@@ -13,7 +13,6 @@ RUN apt-get update \
         git \
         locales \
         openssh-client \
-        ranger \
         tmux \
         vim \
         wget \

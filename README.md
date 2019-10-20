@@ -11,7 +11,7 @@ Options:
   -g  GUI
 ```
 ## Docker
-[![Docker Automated build](https://img.shields.io/docker/automated/sneivandt/dotfiles.svg)](https://hub.docker.com/r/sneivandt/dotfiles/)
+[![Docker Build](https://img.shields.io/docker/automated/sneivandt/dotfiles.svg)](https://hub.docker.com/r/sneivandt/dotfiles/)
 ```
-docker run --rm -it sneivandt/dotfiles:latest
+docker run --rm -it sneivandt/dotfiles
 ```

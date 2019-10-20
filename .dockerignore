@@ -1,3 +1,4 @@
 *
 !env/base
+!src
 !dotfiles.sh

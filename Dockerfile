@@ -13,6 +13,7 @@ RUN apt-get update \
         git \
         locales \
         openssh-client \
+        shellcheck \
         tmux \
         vim \
         wget \

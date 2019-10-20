@@ -41,7 +41,8 @@ bindkey ' ' magic-space
 bindkey '^R' history-incremental-search-backward
 
 # Ctrl+s Insert "sudo " at the start of line
-sudo-command-line() {
+sudo-command-line()
+{
   [[ -z $BUFFER ]] && zle up-history
   [[ $BUFFER != sudo\ * ]] && BUFFER="sudo $BUFFER"
   zle end-of-line

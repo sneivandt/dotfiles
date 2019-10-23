@@ -294,11 +294,18 @@ update_dotfiles()
   if [ -d "$DIR"/.git ] \
     && is_program_installed "git" \
     && git -C "$DIR" diff-index --quiet HEAD -- \
-    && [ "$(git -C "$DIR" remote show origin | sed -n -e "s/.*HEAD branch: //p")" = "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ] \
-    && [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]
+    && [ "$(git -C "$DIR" remote show origin | sed -n -e "s/.*HEAD branch: //p")" = "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ]
   then
-    message_worker "Updating dotfiles"
-    git -C "$DIR" pull
+    if [ -z "$(git -C "$DIR" fetch --dryrun)" ]
+    then
+      message_worker "Updating dotfiles"
+      git -C "$DIR" fetch
+    fi
+    if [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]
+    then
+      message_worker "Updating dotfiles"
+      git -C "$DIR" merge
+    fi
   fi
 )}
 

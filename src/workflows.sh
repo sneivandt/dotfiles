@@ -2,7 +2,7 @@
 set -o errexit
 set -o nounset
 
-. "$DIR"/src/workers.sh
+. "$DIR"/src/stages.sh
 
 # do_install
 #

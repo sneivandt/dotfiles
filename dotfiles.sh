@@ -5,12 +5,12 @@ set -o nounset
 DIR="$(dirname "$(readlink -f "$0")")"
 export DIR
 
-. "$DIR"/src/commands.sh
-. "$DIR"/src/messages.sh
+. "$DIR"/src/logger.sh
+. "$DIR"/src/workflows.sh
 
 if [ "$(id -u)" = 0 ]
 then
-  message_error "$(basename "$0") can not be run as root."
+  log_error "$(basename "$0") can not be run as root."
 fi
 
 case ${1:-} in

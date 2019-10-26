@@ -2,8 +2,8 @@
 set -o errexit
 set -o nounset
 
-. "$DIR"/src/helpers.sh
-. "$DIR"/src/messages.sh
+. "$DIR"/src/logger.sh
+. "$DIR"/src/utils.sh
 
 # configure_file_mode_bits
 #
@@ -33,7 +33,7 @@ configure_fonts()
     && is_program_installed "fc-cache" \
     && [ "$(fc-list : family | grep -f "$DIR"/env/arch-gui/fonts.conf -cx)" != "$(grep -c "" "$DIR"/env/arch-gui/fonts.conf | cut -d" " -f1)" ]
   then
-    message_worker "Updating fonts"
+    log_stage "Updating fonts"
     fc-cache
   fi
 )}
@@ -48,7 +48,7 @@ configure_shell()
     && [ ! -f /.dockerenv ] \
     && [ "$(passwd --status "$USER" | cut -d" " -f2)" = "P" ]
   then
-    message_worker "Configuring user shell"
+    log_stage "Configuring user shell"
     chsh -s "$(zsh -c "command -vp zsh")"
   fi
 )}
@@ -71,7 +71,7 @@ configure_systemd()
           if systemctl --user list-unit-files | cut -d" " -f1 | grep -qx "$unit" \
             && ! systemctl --user is-enabled --quiet "$unit"
           then
-            message_worker "Configuring systemd"
+            log_stage "Configuring systemd"
             systemctl --user enable "$unit"
             if [ "$(systemctl is-system-running)" = "running" ]
             then
@@ -91,7 +91,7 @@ install_dotfiles_cli()
 {(
   if [ "$(readlink -f "$DIR"/dotfiles.sh)" != "$(readlink -f ~/bin/dotfiles)" ]
   then
-    message_worker "Installing dotfiles cli"
+    log_stage "Installing dotfiles cli"
     mkdir -pv ~/bin
     ln -snvf "$DIR"/dotfiles.sh ~/bin/dotfiles
   fi
@@ -114,10 +114,12 @@ install_git_submodules()
         modules="$modules "env/$(basename "$env")
       fi
     done
-    if eval "git -C $DIR submodule status $modules" | cut -c-1 | grep -q "+\\|-"
+    # shellcheck disable=SC2086
+    if git -C "$DIR" submodule status $modules | cut -c-1 | grep -q "+\\|-"
     then
-      message_worker "Installing git submodules"
-      eval "git -C $DIR submodule update --init --recursive $modules"
+      log_stage "Installing git submodules"
+      # shellcheck disable=SC2086
+      git -C "$DIR" submodule update --init --recursive $modules
     fi
   fi
 )}
@@ -148,8 +150,9 @@ install_packages()
     done
     if [ -n "$packages" ]
     then
-      message_worker "Installing packages"
-      eval "sudo pacman -S --quiet --needed $packages"
+      log_stage "Installing packages"
+      # shellcheck disable=SC2086
+      sudo pacman -S --quiet --needed $packages
     fi
   fi
 )}
@@ -168,7 +171,7 @@ install_symlinks()
       do
         if ! is_symlink_installed "$(basename "$env")" "$symlink"
         then
-          message_worker "Installing symlinks"
+          log_stage "Installing symlinks"
           case "$symlink" in
             *"/"*) mkdir -pv ~/."$(echo "$symlink" | rev | cut -d/ -f2- | rev)"
           esac
@@ -198,7 +201,7 @@ install_vscode_extensions()
       do
         if ! echo "$extensions" | grep -qw "$extension"
         then
-          message_worker "Installing $code extensions"
+          log_stage "Installing $code extensions"
           $code --install-extension "$extension"
         fi
       done < "$DIR/env/base-gui/vscode-extensions.conf"
@@ -213,9 +216,9 @@ test_shellcheck()
 {(
   if ! is_program_installed "shellcheck"
   then
-    message_error "shellcheck not installed"
+    log_error "shellcheck not installed"
   else
-    message_worker "Verifying shell scripts"
+    log_stage "Verifying shell scripts"
     scripts="$DIR"/dotfiles.sh
     for script in "$DIR"/src/*
     do
@@ -260,7 +263,8 @@ test_shellcheck()
         done < "$env"/symlinks.conf
       fi
     done
-    eval "shellcheck $scripts"
+    # shellcheck disable=SC2086
+    shellcheck $scripts
   fi
 )}
 
@@ -278,7 +282,7 @@ uninstall_symlinks()
       do
         if is_symlink_installed "$env" "$symlink"
         then
-          message_worker "Uninstalling symlinks"
+          log_stage "Uninstalling symlinks"
           rm -vf ~/."$symlink"
         fi
       done < "$env"/symlinks.conf
@@ -296,14 +300,14 @@ update_dotfiles()
     && git -C "$DIR" diff-index --quiet HEAD -- \
     && [ "$(git -C "$DIR" remote show origin | sed -n -e "s/.*HEAD branch: //p")" = "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ]
   then
-    if [ -z "$(git -C "$DIR" fetch --dryrun)" ]
+    if [ -z "$(git -C "$DIR" fetch --dry-run)" ]
     then
-      message_worker "Updating dotfiles"
+      log_stage "Updating dotfiles"
       git -C "$DIR" fetch
     fi
     if [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]
     then
-      message_worker "Updating dotfiles"
+      log_stage "Updating dotfiles"
       git -C "$DIR" merge
     fi
   fi
@@ -326,10 +330,12 @@ update_git_submodules()
         modules="$modules env/"$(basename "$env")
       fi
     done
-    if [ -z "$(eval "git -C $DIR submodule status $modules | cut -c1")" ]
+    # shellcheck disable=SC2086
+    if [ -z "$(git -C $DIR submodule status $modules | cut -c1)" ]
     then
-      message_worker "Updating git submodules"
-      eval "git -C $DIR submodule update --init --recursive --remote $modules"
+      log_stage "Updating git submodules"
+      # shellcheck disable=SC2086
+      git -C "$DIR" submodule update --init --recursive --remote $modules
     fi
   fi
 )}

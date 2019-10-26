@@ -2,22 +2,22 @@
 set -o errexit
 set -o nounset
 
-# message_error
+# log_error
 #
-# Print an error message and quit.
+# Log an error message and quit.
 #
 # Args:
 #     $1 - The reason for exiting.
-message_error()
+log_error()
 {
   echo "ERROR: $1"
   exit 1
 }
 
-# message_usage
+# log_usage
 #
-# Print usage information.
-message_usage()
+# Log usage information.
+log_usage()
 {
   echo "Usage:"
   echo "  $(basename "$0") {-I --install}   [-g] [-p]"
@@ -31,13 +31,13 @@ message_usage()
   exit
 }
 
-# message_worker
+# log_stage
 #
-# Print a message if a worker did work.
+# Log a message if a stage did work.
 #
 # Args:
 #     $1 - The message.
-message_worker()
+log_stage()
 {
   if [ "${_work-unset}" = "unset" ] \
     || ! $_work

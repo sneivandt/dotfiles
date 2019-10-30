@@ -300,7 +300,7 @@ update_dotfiles()
     && git -C "$DIR" diff-index --quiet HEAD -- \
     && [ "$(git -C "$DIR" remote show origin | sed -n -e "s/.*HEAD branch: //p")" = "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ]
   then
-    if [ -z "$(git -C "$DIR" fetch --dry-run)" ]
+    if [ -n "$(git -C "$DIR" fetch --dry-run)" ]
     then
       log_stage "Updating dotfiles"
       git -C "$DIR" fetch

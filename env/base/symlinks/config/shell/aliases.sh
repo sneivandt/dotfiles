@@ -34,8 +34,3 @@ elif [ -n "$(command -vp vim)" ]
 then
   alias vi="vim"
 fi
-
-if [ -n "$(command -vp code-insiders)" ]
-then
-  alias code="code-insiders"
-fi

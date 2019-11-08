@@ -14,7 +14,7 @@ do
   fi
 done
 unsetopt EXTENDEDGLOB
-compinit -C
+compinit -C -d ~/.cache/zsh/zcompdump-$ZSH_VERSION
 
 setopt always_to_end
 setopt auto_menu

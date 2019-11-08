@@ -33,6 +33,9 @@ setopt pushdtohome
 # Aliases
 . ~/.config/shell/aliases.sh
 
+# GUI Aliases
+[ -f ~/.config/shell/aliases-gui.sh ] && . ~/.config/shell/aliases-gui.sh
+
 # Prompt
 . ~/.config/zsh/prompt.zsh
 

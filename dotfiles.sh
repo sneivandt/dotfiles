@@ -6,12 +6,13 @@ DIR="$(dirname "$(readlink -f "$0")")"
 export DIR
 
 . "$DIR"/src/logger.sh
-. "$DIR"/src/workflows.sh
 
 if [ "$(id -u)" = 0 ]
 then
   log_error "$(basename "$0") can not be run as root."
 fi
+
+. "$DIR"/src/workflows.sh
 
 case ${1:-} in
   -I* | --install)

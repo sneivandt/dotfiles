@@ -32,5 +32,5 @@
   textconv = hexdump -v -C
 
 [include]
-  path = ~/.config/git/gitconfig-alias
+  path = ~/.config/git/gitaliases
   path = ~/.config/git/gitconfig-local

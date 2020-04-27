@@ -16,7 +16,8 @@ colors
 # History
 setopt histignorealldups
 setopt incappendhistory
-HISTFILE=~/.zhistory
+mkdir -p ~/.cache/zsh
+HISTFILE=~/.cache/zsh/history
 HISTSIZE=4096
 SAVEHIST=4096
 

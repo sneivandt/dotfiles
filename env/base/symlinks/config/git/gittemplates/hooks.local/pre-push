@@ -24,6 +24,6 @@ fi
 if [ "$author" != "" ] && [ "$author" != "$user" ]
 then
   echo "$author is the author of the last commit to origin/$branch. Are you sure you want to push to this branch?"
-  echo "If so, push with -n to bypass this pre-push hook."
+  echo "If so, push with --no-verify to bypass this pre-push hook."
   exit 1
 fi

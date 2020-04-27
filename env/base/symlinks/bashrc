@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# History
+mkdir -p ~/.cache/bash
+export HISTFILE=~/.cache/bash/history
+
 # Path
 . ~/.config/shell/path.sh
 

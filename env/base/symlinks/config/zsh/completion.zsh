@@ -14,6 +14,7 @@ do
   fi
 done
 unsetopt EXTENDEDGLOB
+mkdir -p ~/.cache/zsh
 compinit -C -d ~/.cache/zsh/zcompdump-$ZSH_VERSION
 
 setopt always_to_end

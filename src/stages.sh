@@ -211,7 +211,7 @@ install_vscode_extensions()
 
 # test_shellcheck
 #
-# run shellcheck.
+# Run shellcheck.
 test_shellcheck()
 {(
   if ! is_program_installed "shellcheck"
@@ -298,7 +298,7 @@ update_dotfiles()
   if [ -d "$DIR"/.git ] \
     && is_program_installed "git" \
     && git -C "$DIR" diff-index --quiet HEAD -- \
-    && [ "$(git -C "$DIR" remote show origin | sed -n -e "s/.*HEAD branch: //p")" = "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ]
+    && [ "$(git -C "$DIR" ref-parse --abbrev-ref origin/HEAD | cut -d/ -f2)" = "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ]
   then
     if [ -n "$(git -C "$DIR" fetch --dry-run)" ]
     then
@@ -331,7 +331,7 @@ update_git_submodules()
       fi
     done
     # shellcheck disable=SC2086
-    if [ -z "$(git -C $DIR submodule status $modules | cut -c1)" ]
+    if [ -z "$(git -C "$DIR" submodule status $modules | cut -c1)" ]
     then
       log_stage "Updating git submodules"
       # shellcheck disable=SC2086

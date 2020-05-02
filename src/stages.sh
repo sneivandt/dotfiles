@@ -298,7 +298,7 @@ update_dotfiles()
   if [ -d "$DIR"/.git ] \
     && is_program_installed "git" \
     && git -C "$DIR" diff-index --quiet HEAD -- \
-    && [ "$(git -C "$DIR" ref-parse --abbrev-ref origin/HEAD | cut -d/ -f2)" = "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ]
+    && [ "$(git -C "$DIR" rev-parse --abbrev-ref origin/HEAD | cut -d/ -f2)" = "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ]
   then
     if [ -n "$(git -C "$DIR" fetch --dry-run)" ]
     then

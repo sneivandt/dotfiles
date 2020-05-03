@@ -216,6 +216,9 @@ autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
 " Listchars
 autocmd Filetype go set nolist
 
+" Ignore go version warning
+let g:go_version_warning=0
+
 " }}}
 " Haskell {{{
 

@@ -22,7 +22,7 @@ case ${1:-} in
     do_install
     ;;
   -T* | --test)
-    OPT="$(getopt -o Tg -l test -n "$(basename "$0")" -- "$@")" \
+    OPT="$(getopt -o T -l test -n "$(basename "$0")" -- "$@")" \
       || exit 1
     export OPT
     do_test
@@ -37,12 +37,12 @@ case ${1:-} in
     OPT="$(getopt -o h -l help -n "$(basename "$0")" -- "$@")" \
       || exit 1
     export OPT
-    message_usage
+    log_usage
     ;;
   *)
     OPT="$(getopt -o -l -n "$(basename "$0")" -- "$@")" \
       || exit 1
     export OPT
-    message_usage
+    log_usage
     ;;
 esac

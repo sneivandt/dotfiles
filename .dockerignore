@@ -1,4 +1,5 @@
 *
-!env/base
-!src
-!dotfiles.sh
+!/env/base
+!/src
+!/test
+!/dotfiles.sh

@@ -12,7 +12,7 @@ _dotfiles_opts_commands=(
 )
 
 _dotfiles_opts_common=(
-  "-g[GUI]"
+  "-g[Configure GUI environment]"
 )
 
 _dotfiles_opts_install=(
@@ -28,8 +28,7 @@ _dotfiles_action_install() {
 
 _dotfiles_action_test() {
   _arguments -s : \
-    "(--test -T)"{-T,--test} \
-    "$_dotfiles_opts_common[@]"
+    "(--test -T)"{-T,--test}
 }
 
 _dotfiles_action_uninstall() {

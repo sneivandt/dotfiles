@@ -218,16 +218,15 @@ test_shellcheck()
   then
     log_error "shellcheck not installed"
   else
-    log_stage "Verifying shell scripts"
+    log_stage "Running static analysis"
     scripts="$DIR"/dotfiles.sh
-    for script in "$DIR"/src/*
+    for script in "$DIR"/src/* "$DIR"/test/*.sh "$DIR"/test/mock/*
     do
       scripts="$scripts $script"
     done
     for env in "$DIR"/env/*
     do
-      if ! is_env_ignored "$(basename "$env")" \
-        && [ -e "$env"/symlinks.conf ]
+      if [ -e "$env"/symlinks.conf ]
       then
         while IFS='' read -r symlink || [ -n "$symlink" ]
         do
@@ -266,6 +265,21 @@ test_shellcheck()
     # shellcheck disable=SC2086
     shellcheck $scripts
   fi
+)}
+
+# test_unit
+#
+# Run unit tests.
+test_unit()
+{(
+  log_stage "Running unit tests"
+  find "$DIR"/test/tmp -type f -not -name ".gitkeep" -delete
+  PATH="$DIR/test/mock:$PATH"
+  export PATH
+  for test in "$DIR"/test/*.sh
+  do
+    "$test"
+  done
 )}
 
 # uninstall_symlinks

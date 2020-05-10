@@ -10,7 +10,7 @@ set -o nounset
 #     $1 - The environment to check.
 #
 # return:
-#     bool - True of the environment is ignored.
+#     bool - True if the environment is ignored.
 is_env_ignored()
 {
   case $1 in
@@ -45,7 +45,7 @@ is_env_ignored()
 #     $1 - The flag to check.
 #
 # return:
-#     bool - True of the flag is set.
+#     bool - True if the flag is set.
 is_flag_set()
 {
   case " $OPT " in
@@ -66,7 +66,7 @@ is_flag_set()
 #     $1 - The program to check.
 #
 # return:
-#     bool - True of the program is installed.
+#     bool - True if the program is installed.
 is_program_installed()
 {
   if [ -n "$(command -vp "$1")" ]
@@ -85,7 +85,7 @@ is_program_installed()
 #     $1 - The file to check.
 #
 # return:
-#     bool - True of the file is a shell script.
+#     bool - True if the file is a shell script.
 is_shell_script()
 {
   if [ -f "$1" ]
@@ -108,7 +108,7 @@ is_shell_script()
 #     $2 - The symlink to be checked.
 #
 # return:
-#     bool - True of the symlink is installed.
+#     bool - True if the symlink is installed.
 is_symlink_installed()
 {
   if [ "$(readlink -f "$DIR"/env/"$1"/symlinks/"$2")" = "$(readlink -f ~/."$2")" ]

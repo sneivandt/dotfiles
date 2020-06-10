@@ -1,5 +1,10 @@
 #!/bin/sh
 
-# Delete branches merged to origin/HEAD
 ignore=$(git remote show origin | sed -n -e 's/.*HEAD branch: //p')
-git branch --merged origin/HEAD | grep -E -v "(^\\*|$ignore)" | xargs -r -n 1 git branch -d
+branches=$(git branch --merged origin/HEAD 2>/dev/null)
+
+# Delete branches merged to origin/HEAD
+if [ -n "$branches" ]
+then
+  echo "$branches" | grep -E -v "(^\\*|$ignore)" | xargs -r -n 1 git branch -d
+fi

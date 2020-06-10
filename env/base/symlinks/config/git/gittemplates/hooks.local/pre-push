@@ -3,7 +3,6 @@
 user=$(git config user.name)
 remote=$(git config --get remote.origin.url)
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-author=$(git log origin/"$branch" -n 1 --format='%an' 2>/dev/null)
 
 # Skip for github repos you own
 case $remote in
@@ -17,13 +16,5 @@ if [ "$branch" = "master" ] || [ "$branch" = "develop" ]
 then
   echo "You are on branch $branch. Are you sure you want to push to this branch?"
   echo "If so, push with -n to bypass this pre-push hook."
-  exit 1
-fi
-
-# Block pushing to branches you did not author
-if [ "$author" != "" ] && [ "$author" != "$user" ]
-then
-  echo "$author is the author of the last commit to origin/$branch. Are you sure you want to push to this branch?"
-  echo "If so, push with --no-verify to bypass this pre-push hook."
   exit 1
 fi

@@ -33,7 +33,6 @@ do_test()
   update_git_submodules
 
   test_shellcheck
-  test_unit
 }
 
 # do_uninstall

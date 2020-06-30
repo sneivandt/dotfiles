@@ -14,7 +14,7 @@ alias grep="grep -i --color=auto"
 
 alias l="ls"
 alias ls="ls -h --color=auto"
-alias la="ls -a"
+alias la="ls -A"
 alias ll="ls -l"
 
 alias mkdir="mkdir -p"

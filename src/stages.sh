@@ -220,10 +220,6 @@ test_shellcheck()
   else
     log_stage "Running static analysis"
     scripts="$DIR"/dotfiles.sh
-    for script in "$DIR"/src/* "$DIR"/test/*.sh "$DIR"/test/mock/*
-    do
-      scripts="$scripts $script"
-    done
     for env in "$DIR"/env/*
     do
       if [ -e "$env"/symlinks.conf ]
@@ -265,21 +261,6 @@ test_shellcheck()
     # shellcheck disable=SC2086
     shellcheck $scripts
   fi
-)}
-
-# test_unit
-#
-# Run unit tests.
-test_unit()
-{(
-  log_stage "Running unit tests"
-  find "$DIR"/test/tmp -type f -not -name ".gitkeep" -delete
-  PATH="$DIR/test/mock:$PATH"
-  export PATH
-  for test in "$DIR"/test/*.sh
-  do
-    "$test"
-  done
 )}
 
 # uninstall_symlinks

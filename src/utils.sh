@@ -15,7 +15,7 @@ is_env_ignored()
 {
   case $1 in
     arch)
-      if cat /etc/*-release | grep -xP "ID=.*|ID_LIKE=.*" | cut -d= -f2 | grep -qvxP "arch|archlinux"
+      if grep -xP "ID=.*|ID_LIKE=.*" /etc/*-release | cut -d= -f2 | grep -qvxP "arch|archlinux"
       then
         return 0
       fi

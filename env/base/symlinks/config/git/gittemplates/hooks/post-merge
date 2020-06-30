@@ -1,8 +1,0 @@
-#!/bin/sh
-
-hook="$HOME"/.config/git/gittemplates/hooks.local/post-merge
-
-if [ -f "$hook" ]
-then
-  . "$hook"
-fi

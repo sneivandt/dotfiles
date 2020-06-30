@@ -9,8 +9,8 @@
   editor = vim
   pager = less -imRj8X
   autocrlf = input
-  excludesfile = ~/.config/git/gitignore
-  attributesfile = ~/.config/git/gitattributes
+  excludesfile = ~/.config/git/ignore
+  attributesfile = ~/.config/git/attributes
 
 [color]
   ui = true
@@ -19,7 +19,7 @@
 [fetch]
   prune = true
 [init]
-  templatedir = ~/.config/git/gittemplates/
+  templatedir = ~/.config/git/templates/
 [push]
   default = current
   followTags = true
@@ -32,5 +32,5 @@
   textconv = hexdump -v -C
 
 [include]
-  path = ~/.config/git/gitaliases
-  path = ~/.config/git/gitconfig-local
+  path = ~/.config/git/aliases
+  path = ~/.config/git/config-local

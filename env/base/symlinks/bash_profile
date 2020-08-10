@@ -8,3 +8,6 @@
 
 # GUI Profile
 [ -f ~/.config/shell/profile-gui.sh ] && . ~/.config/shell/profile-gui.sh
+
+# GUI Arch Profile
+[ -f ~/.config/shell/profile-arch-gui.sh ] && . ~/.config/shell/profile-arch-gui.sh

@@ -226,10 +226,10 @@ test_shellcheck()
       then
         while IFS='' read -r symlink || [ -n "$symlink" ]
         do
-          if [ -d "$env/symlinks/$symlink" ]
+          if [ -d "$env"/symlinks/"$symlink" ]
           then
             tmpfile="$(mktemp)"
-            find "$env/symlinks/$symlink" -type f > "$tmpfile"
+            find "$env"/symlinks/"$symlink" -type f > "$tmpfile"
             while IFS='' read -r line || [ -n "$line" ]
             do
               ignore=false
@@ -251,9 +251,9 @@ test_shellcheck()
               fi
             done < "$tmpfile"
             rm "$tmpfile"
-          elif is_shell_script "$env/symlinks/$symlink"
+          elif is_shell_script "$env"/symlinks/"$symlink"
           then
-            scripts="$scripts $env/symlinks/$symlink"
+            scripts="$scripts $env"/symlinks/"$symlink"
           fi
         done < "$env"/symlinks.conf
       fi

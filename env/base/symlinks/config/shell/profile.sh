@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# xdg
+export XDG_CACHE_HOME="$HOME"/.cache
+export XDG_CONFIG_HOME="$HOME"/.config
+export XDG_DATA_HOME="$HOME"/.local/share
+
 # editor
 export EDITOR=vim
 
@@ -48,11 +53,18 @@ unset MAILCHECK
 # man
 export MANPAGER="less -imRj8X"
 
+# readline
+export INPUTRC="$XDG_CONFIG_HOME"/readline/inputrc
+
 # _shellcheck
 export SHELLCHECK_OPTS="-e SC1090 -e SC1091"
 
+# terminfo
+export TERMINFO="$XDG_DATA_HOME"/terminfo
+export TERMINFO_DIRS="$XDG_DATA_HOME"/terminfo:/usr/share/terminfo
+
 # wget
-export WGETRC=~/.config/wgetrc
+export WGETRC="$XDG_CONFIG_HOME"/wgetrc
 
 # virtualenvwrapper
 if [ -n "$(command -vp virtualenvwrapper.sh)" ]
@@ -60,10 +72,6 @@ then
   export WORKON_HOME=~/.venv
   . virtualenvwrapper.sh
 fi
-
-# xdg
-export XDG_CACHE_HOME="$HOME"/.cache
-export XDG_CONFIG_HOME="$HOME"/.config
 
 # wsl
 if [ -n "$(command -vp wslpath)" ]

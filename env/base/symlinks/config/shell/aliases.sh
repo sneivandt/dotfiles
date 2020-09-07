@@ -25,7 +25,7 @@ alias pwsh="pwsh -nologo"
 
 alias sudo="sudo "
 
-alias tmux="tmux -2"
+alias tmux="tmux -2 -f ~/.config/tmux/tmux.conf"
 
 if [ -n "$(command -vp nvim)" ]
 then

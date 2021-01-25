@@ -16,7 +16,7 @@ fi
 
 case ${1:-} in
   -I* | --install)
-    OPT="$(getopt -o Ipg -l install -n "$(basename "$0")" -- "$@")" \
+    OPT="$(getopt -o Ipgs -l install -n "$(basename "$0")" -- "$@")" \
       || exit 1
     export OPT
     do_install

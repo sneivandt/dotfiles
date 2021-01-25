@@ -33,7 +33,7 @@ log_usage()
 {
   echo "Usage:"
   echo "  $(basename "$0")"
-  echo "  $(basename "$0") {-I --install}   [-g] [-p]"
+  echo "  $(basename "$0") {-I --install}   [-g] [-p] [-s]"
   echo "  $(basename "$0") {-U --uninstall} [-g]"
   echo "  $(basename "$0") {-T --test}"
   echo "  $(basename "$0") {-h --help}"
@@ -41,6 +41,7 @@ log_usage()
   echo "Options:"
   echo "  -g  Configure GUI environment"
   echo "  -p  Install system packages"
+  echo "  -s  Install systemd units"
   exit
 }
 

@@ -17,6 +17,7 @@ _dotfiles_opts_common=(
 
 _dotfiles_opts_install=(
   "-p[Install system packages]"
+  "-s[Install systemd units]"
 )
 
 _dotfiles_action_install() {

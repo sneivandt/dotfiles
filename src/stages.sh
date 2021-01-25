@@ -58,7 +58,8 @@ configure_shell()
 # Configure systemd.
 configure_systemd()
 {(
-  if [ "$(ps -p 1 -o comm=)" = "systemd" ] \
+  if is_flag_set "s" \
+    && [ "$(ps -p 1 -o comm=)" = "systemd" ] \
     && is_program_installed "systemctl"
   then
     for env in "$DIR"/env/*

@@ -34,9 +34,6 @@
 [submodule "env/base/symlinks/vim/pack/plugins/start/python-syntax"]
 	path = env/base/symlinks/vim/pack/plugins/start/python-syntax
 	url = https://github.com/hdima/python-syntax
-[submodule "env/base/symlinks/vim/pack/plugins/start/ultisnips"]
-	path = env/base/symlinks/vim/pack/plugins/start/ultisnips
-	url = https://github.com/sirver/ultisnips
 [submodule "env/base/symlinks/vim/pack/plugins/start/vim-airline"]
 	path = env/base/symlinks/vim/pack/plugins/start/vim-airline
 	url = https://github.com/vim-airline/vim-airline

@@ -12,7 +12,7 @@ then
   log_error "$(basename "$0") can not be run as root."
 fi
 
-. "$DIR"/src/workflows.sh
+. "$DIR"/src/actions.sh
 
 case ${1:-} in
   -I* | --install)

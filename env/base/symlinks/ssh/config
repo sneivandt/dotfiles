@@ -13,6 +13,6 @@ Host github.com
   IdentityFile ~/.ssh/github/id_rsa
   PreferredAuthentications publickey
 
-Host *.visualstudio.com dev.azure.com
-  IdentityFile ~/.ssh/vsts/id_rsa
+Host *.visualstudio.com *.azure.com
+  IdentityFile ~/.ssh/ado/id_rsa
   PreferredAuthentications publickey

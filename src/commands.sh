@@ -2,7 +2,7 @@
 set -o errexit
 set -o nounset
 
-. "$DIR"/src/stages.sh
+. "$DIR"/src/tasks.sh
 
 # do_install
 #

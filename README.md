@@ -13,7 +13,7 @@ Options:
   -s  Install systemd units
 ```
 ## Docker
-[![Docker Build](https://img.shields.io/docker/automated/sneivandt/dotfiles.svg)](https://hub.docker.com/r/sneivandt/dotfiles/)
+[![Publish Docker image](https://github.com/sneivandt/dotfiles/actions/workflows/docker-image.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/docker-image.yml)
 ```
 docker run --rm -it sneivandt/dotfiles
 ```

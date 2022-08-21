@@ -1,5 +1,9 @@
 #!/bin/sh
 
+# gpg
+GPG_TTY="$(tty)"
+export GPG_TTY
+
 # xdg
 export XDG_CACHE_HOME="$HOME"/.cache
 export XDG_CONFIG_HOME="$HOME"/.config

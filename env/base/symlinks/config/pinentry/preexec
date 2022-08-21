@@ -1,5 +1,11 @@
 #!/bin/sh
 
+if ps h --format comm $(ps -C git -o ppid=) | grep -qxP "zsh" \
+  && [ -x /usr/bin/pinentry-curses ]
+then
+  exec /usr/bin/pinentry-curses "$@"
+fi
+
 if [ -f /usr/lib/libgtk-x11-2.0.so.0 ] \
   && [ -x /usr/bin/pinentry-gnome3 ]
 then

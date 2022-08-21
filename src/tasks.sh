@@ -90,11 +90,11 @@ configure_systemd()
 # Install dotfiles cli.
 install_dotfiles_cli()
 {(
-  if [ "$(readlink -f "$DIR"/dotfiles.sh)" != "$(readlink -f ~/bin/dotfiles)" ]
+  if [ "$(readlink -f "$DIR"/dotfiles.sh)" != "$(readlink -f ~/.bin/dotfiles)" ]
   then
     log_stage "Installing dotfiles cli"
-    mkdir -pv ~/bin
-    ln -snvf "$DIR"/dotfiles.sh ~/bin/dotfiles
+    mkdir -pv ~/.bin
+    ln -snvf "$DIR"/dotfiles.sh ~/.bin/dotfiles
   fi
 )}
 

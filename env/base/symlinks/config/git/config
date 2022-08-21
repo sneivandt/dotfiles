@@ -1,8 +1,9 @@
 # vi: ft=gitconfig :
 
 [user]
-  email = sneivandt@users.noreply.github.com
   name = sneivandt
+  email = sneivandt@users.noreply.github.com
+  signingkey = sneivandt@users.noreply.github.com
 [url "git@github.com:"]
   pushInsteadOf = https://github.com/
 [core]
@@ -14,10 +15,14 @@
 
 [color]
   ui = true
+[commit]
+  gpgsign = true
 [credential]
   helper = cache
 [fetch]
   prune = true
+[gpg]
+  program = gpg-pinentry-loopback
 [init]
   templatedir = ~/.config/git/templates/
 [push]
@@ -25,6 +30,8 @@
   followTags = true
 [status]
   showStash = true
+[tag]
+  gpgsign = true
 
 [diff]
   tool = vimdiff

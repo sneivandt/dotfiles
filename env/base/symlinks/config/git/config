@@ -21,8 +21,6 @@
   helper = cache
 [fetch]
   prune = true
-[gpg]
-  program = gpg-pinentry-loopback
 [init]
   templatedir = ~/.config/git/templates/
 [push]

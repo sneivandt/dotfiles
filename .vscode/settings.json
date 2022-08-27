@@ -1,0 +1,6 @@
+{
+    "search.exclude": {
+        "env/base/symlinks/vim/pack/plugins": true,
+        "env/base/symlinks/config/nvim": true,
+    }
+}

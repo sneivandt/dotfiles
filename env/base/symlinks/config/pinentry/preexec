@@ -1,6 +1,6 @@
 #!/bin/sh
 
-if ps h --format comm $(ps -C git -o ppid=) | grep -qxP "zsh" \
+if ps h --format comm $(ps -C git -o ppid=) | grep -qxP "$(basename $SHELL)" \
   && [ -x /usr/bin/pinentry-curses ]
 then
   exec /usr/bin/pinentry-curses "$@"

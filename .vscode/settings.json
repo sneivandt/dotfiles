@@ -1,6 +1,27 @@
 {
+    "git.ignoredRepositories": [
+        "env/base/symlinks/vim/pack/plugins/opt/vim-pathogen",
+        "env/base/symlinks/vim/pack/plugins/start/ctrlp.vim",
+        "env/base/symlinks/vim/pack/plugins/start/haskell-vim",
+        "env/base/symlinks/vim/pack/plugins/start/jellybeans.vim",
+        "env/base/symlinks/vim/pack/plugins/start/lessspace.vim",
+        "env/base/symlinks/vim/pack/plugins/start/nerdtree",
+        "env/base/symlinks/vim/pack/plugins/start/python-syntax",
+        "env/base/symlinks/vim/pack/plugins/start/vim-airline-themes",
+        "env/base/symlinks/vim/pack/plugins/start/vim-airline",
+        "env/base/symlinks/vim/pack/plugins/start/vim-autotag",
+        "env/base/symlinks/vim/pack/plugins/start/vim-commentary",
+        "env/base/symlinks/vim/pack/plugins/start/vim-cpp-enhanced-hilight",
+        "env/base/symlinks/vim/pack/plugins/start/vim-dispatch",
+        "env/base/symlinks/vim/pack/plugins/start/vim-easy-align",
+        "env/base/symlinks/vim/pack/plugins/start/vim-fugitive",
+        "env/base/symlinks/vim/pack/plugins/start/vim-go",
+        "env/base/symlinks/vim/pack/plugins/start/vim-javascript-syntax",
+        "env/base/symlinks/vim/pack/plugins/start/vim-surround",
+        "env/base/symlinks/vim/pack/plugins/start/vim-tmux-navigator"
+    ],
     "search.exclude": {
         "env/base/symlinks/vim/pack/plugins": true,
-        "env/base/symlinks/config/nvim": true,
+        "env/base/symlinks/config/nvim": true
     }
 }

@@ -7,7 +7,7 @@ function prompt
 {
     $origLastExitCode = $LASTEXITCODE
 
-    if ($(command -vp pwsh) -ne $env:SHELL)
+    if ($(which pwsh) -ne $env:SHELL)
     {
         Write-Host "pwsh " -NoNewLine -ForegroundColor Cyan
     }

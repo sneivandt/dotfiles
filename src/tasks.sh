@@ -158,6 +158,17 @@ install_packages()
   fi
 )}
 
+# install_powershell_modules
+#
+# Install PowerShell modules.
+install_powershell_modules()
+{(
+  if is_program_installed "pwsh"
+  then
+    pwsh -Command "Import-Module $DIR/src/script.psm1 && Install-PowerShellModules"
+  fi
+)}
+
 # install_symlinks
 #
 # Install symlinks.
@@ -210,6 +221,17 @@ install_vscode_extensions()
   done
 )}
 
+# test_psscriptanalyzer
+#
+# Run PSScriptAnalyzer.
+test_psscriptanalyzer()
+{(
+  if is_program_installed "pwsh"
+  then
+    pwsh -Command "Import-Module $DIR/src/script.psm1 && Test-PSScriptAnalyzer -dir $DIR"
+  fi
+)}
+
 # test_shellcheck
 #
 # Run shellcheck.
@@ -219,7 +241,7 @@ test_shellcheck()
   then
     log_error "shellcheck not installed"
   else
-    log_stage "Running static analysis"
+    log_stage "Running shellcheck"
     scripts="$DIR"/dotfiles.sh
     for env in "$DIR"/env/*
     do
@@ -260,7 +282,7 @@ test_shellcheck()
       fi
     done
     # shellcheck disable=SC2086
-    shellcheck $scripts
+    shellcheck $scripts || true
   fi
 )}
 

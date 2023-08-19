@@ -5,6 +5,10 @@ if (Get-Module PSReadLine)
 
 function prompt
 {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSAvoidUsingWriteHost", "")]
+    param (
+    )
+
     $origLastExitCode = $LASTEXITCODE
 
     if ($(which pwsh) -ne $env:SHELL)

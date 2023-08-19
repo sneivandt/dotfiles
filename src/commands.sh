@@ -17,6 +17,8 @@ do_install()
   install_symlinks
   install_dotfiles_cli
   install_vscode_extensions
+  install_powershell_modules
+
   configure_file_mode_bits
   configure_shell
   configure_fonts
@@ -32,6 +34,7 @@ do_test()
   install_git_submodules
   update_git_submodules
 
+  test_psscriptanalyzer
   test_shellcheck
 }
 

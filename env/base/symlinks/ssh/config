@@ -11,8 +11,10 @@ Host github.com
   User git
   HostName github.com
   IdentityFile ~/.ssh/github/id_rsa
+  IdentityFile ~/.ssh/github/id_ed25519
   PreferredAuthentications publickey
 
-Host *.visualstudio.com *.azure.com
+Host *.visualstudio.com *.dev.azure.com
   IdentityFile ~/.ssh/ado/id_rsa
+  IdentityFile ~/.ssh/ado/id_ed25519
   PreferredAuthentications publickey

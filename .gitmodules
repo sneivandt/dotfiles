@@ -67,3 +67,6 @@
 [submodule "env/base/symlinks/vim/pack/plugins/start/vim-surround"]
 	path = env/base/symlinks/vim/pack/plugins/start/vim-surround
 	url = https://github.com/tpope/vim-surround
+[submodule "env/win/fonts"]
+	path = env/win/fonts
+	url = https://github.com/powerline/fonts

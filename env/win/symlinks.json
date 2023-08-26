@@ -1,0 +1,46 @@
+[
+    {
+        "Source": "base-gui\\symlinks\\config\\code\\User\\settings.json",
+        "Target": "AppData\\Roaming\\Code\\User\\settings.json"
+    },
+    {
+        "Source": "base-gui\\symlinks\\config\\code\\User\\keybindings.json",
+        "Target": "AppData\\Roaming\\Code\\User\\keybindings.json"
+    },
+    {
+        "Source": "base\\symlinks\\config\\git\\config",
+        "Target": ".gitconfig"
+    },
+    {
+        "Source": "win\\symlinks\\config\\git\\windows",
+        "Target": ".config\\git\\windows"
+    },
+    {
+        "Source": "base\\symlinks\\config\\git\\aliases",
+        "Target": ".config\\git\\aliases"
+    },
+    {
+        "Source": "base\\symlinks\\config\\git\\attributes",
+        "Target": ".config\\git\\attributes"
+    },
+    {
+        "Source": "base\\symlinks\\config\\git\\ignore",
+        "Target": ".config\\git\\ignore"
+    },
+    {
+        "Source": "base\\symlinks\\ssh\\config",
+        "Target": ".ssh\\config"
+    },
+    {
+        "Source": "win\\symlinks\\AppData\\Local\\Packages\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\LocalState\\settings.json",
+        "Target": "AppData\\Local\\Packages\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\LocalState\\settings.json"
+    },
+    {
+        "Source": "base\\symlinks\\config\\powershell\\Microsoft.PowerShell_profile.ps1",
+        "Target": "Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1"
+    },
+    {
+        "Source": "base\\symlinks\\config\\powershell\\Microsoft.PowerShell_profile.ps1",
+        "Target": "Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1"
+    }
+]

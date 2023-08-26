@@ -16,9 +16,7 @@
 [color]
   ui = true
 [commit]
-  gpgsign = true
-[credential]
-  helper = cache
+  gpgsign = false
 [fetch]
   prune = true
 [init]
@@ -30,7 +28,7 @@
 [status]
   showStash = true
 [tag]
-  gpgsign = true
+  gpgsign = false
 
 [diff]
   tool = vimdiff
@@ -39,4 +37,11 @@
 
 [include]
   path = ~/.config/git/aliases
-  path = ~/.config/git/config-local
+  path = ~/.config/git/windows
+
+[includeIf "hasconfig:remote.*.url:https://*@dev.azure.com/**"]
+  path = ~/.config/git/private/config
+[includeIf "hasconfig:remote.*.url:https://*.visualstudio.com/**"]
+  path = ~/.config/git/private/config
+[includeIf "hasconfig:remote.*.url:git@ssh.dev.azure.com:*/**"]
+  path = ~/.config/git/private/config

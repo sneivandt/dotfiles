@@ -3,7 +3,7 @@ if (Get-Module PSReadLine)
     Set-PSReadLineOption -BellStyle None
 }
 
-function prompt
+function Prompt
 {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSAvoidUsingWriteHost", "")]
     param (
@@ -11,7 +11,9 @@ function prompt
 
     $origLastExitCode = $LASTEXITCODE
 
-    if ($(which pwsh) -ne $env:SHELL)
+    $Host.UI.RawUI.ForegroundColor = "White"
+
+    if (($null -eq $env:windir) -and $(which pwsh) -ne $env:SHELL)
     {
         Write-Host "pwsh " -NoNewLine -ForegroundColor Cyan
     }
@@ -23,14 +25,17 @@ function prompt
     }
     Write-Host $curPath -NoNewLine -ForegroundColor Yellow
 
-    $gitBranch = $(git rev-parse --abbrev-ref HEAD 2> $null)
-    if ($gitBranch)
+    if (Get-Command "git" -ErrorAction SilentlyContinue)
     {
-        Write-Host " $gitBranch" -NoNewLine -ForegroundColor White
-        $changes = $($(git status --short) | Measure-Object -Line).Lines
-        if ($changes -gt 0)
+        $gitBranch = $(git rev-parse --abbrev-ref HEAD 2> $null)
+        if ($gitBranch)
         {
-            Write-Host "+$changes" -NoNewLine -ForegroundColor Red
+            Write-Host " $gitBranch" -NoNewLine -ForegroundColor White
+            $changes = $($(git status --short) | Measure-Object -Line).Lines
+            if ($changes -gt 0)
+            {
+                Write-Host "+$changes" -NoNewLine -ForegroundColor Red
+            }
         }
     }
 

@@ -33,6 +33,9 @@ is_env_ignored()
         return 0
       fi
       ;;
+    win)
+      return 0
+      ;;
   esac
   return 1
 }

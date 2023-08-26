@@ -142,7 +142,7 @@ function Set-RegistryValue
         New-Item -Path $path -Type Folder | Out-Null
     }
 
-    if ((Get-ItemProperty -Path $path -Name $name | Select-Object -ExpandProperty $name) -ne $value)
+    if ((Get-ItemProperty -Path $path -Name $name | Select-Object -ExpandProperty $name) -ne [Environment]::ExpandEnvironmentVariables($value))
     {
         if (-not $script:act)
         {

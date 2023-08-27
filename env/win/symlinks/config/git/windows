@@ -1,3 +1,6 @@
+[code]
+  autocrlf = true
+
 [safe]
   directory = *
 

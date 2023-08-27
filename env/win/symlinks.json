@@ -16,6 +16,10 @@
         "Target": ".config\\git\\windows"
     },
     {
+        "Source": "win\\symlinks\\config\\git\\templates",
+        "Target": ".config\\git\\templates"
+    },
+    {
         "Source": "base\\symlinks\\config\\git\\aliases",
         "Target": ".config\\git\\aliases"
     },
@@ -42,5 +46,9 @@
     {
         "Source": "base\\symlinks\\config\\powershell\\Microsoft.PowerShell_profile.ps1",
         "Target": "Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1"
-    }
+    },
+    {
+        "Source": "base\\symlinks\\config\\nuget\\NuGet.config",
+        "Target": "AppData\\Roaming\\NuGet\\NuGet.config"
+    },
 ]

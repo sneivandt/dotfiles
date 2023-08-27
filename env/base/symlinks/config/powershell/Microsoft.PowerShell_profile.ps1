@@ -19,19 +19,24 @@ function Prompt
     }
 
     $curPath = $ExecutionContext.SessionState.Path.CurrentLocation.Path
+
     if ($curPath.StartsWith($Home))
     {
         $curPath = "~" + $curPath.SubString($Home.Length)
     }
+
     Write-Host $curPath -NoNewLine -ForegroundColor Yellow
 
     if (Get-Command "git" -ErrorAction SilentlyContinue)
     {
         $gitBranch = $(git rev-parse --abbrev-ref HEAD 2> $null)
+
         if ($gitBranch)
         {
             Write-Host " $gitBranch" -NoNewLine -ForegroundColor White
-            $changes = $($(git status --short) | Measure-Object -Line).Lines
+
+            $changes = $(git status --short).Count
+
             if ($changes -gt 0)
             {
                 Write-Host "+$changes" -NoNewLine -ForegroundColor Red
@@ -40,6 +45,7 @@ function Prompt
     }
 
     Write-Host
+
     if ($env:username -eq "root")
     {
         "# "

@@ -11,8 +11,8 @@ case $remote in
     ;;
 esac
 
-# Block pushing to master or develop
-if [ "$branch" = "master" ] || [ "$branch" = "develop" ]
+# Block pushing to master or main or develop
+if [ "$branch" = "master" ] || [ "$branch" = "main" ] || [ "$branch" = "develop" ]
 then
   echo "You are on branch $branch. Are you sure you want to push to this branch?"
   echo "If so, push with -n to bypass this pre-push hook."

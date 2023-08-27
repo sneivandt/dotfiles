@@ -50,5 +50,5 @@
     {
         "Source": "base\\symlinks\\config\\nuget\\NuGet.config",
         "Target": "AppData\\Roaming\\NuGet\\NuGet.config"
-    },
+    }
 ]

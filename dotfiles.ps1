@@ -6,15 +6,14 @@
     Dotfiles for Windows
 #>
 
-Import-Module $PSScriptRoot\env\win\src\Font.psm1 -Force
-Import-Module $PSScriptRoot\env\win\src\Git.psm1 -Force
-Import-Module $PSScriptRoot\env\win\src\Registry.psm1 -Force
-Import-Module $PSScriptRoot\env\win\src\Symlinks.psm1 -Force
-Import-Module $PSScriptRoot\env\win\src\VsCodeExtensions.psm1 -Force
+foreach ($module in Get-ChildItem $PSScriptRoot\env\win\src\*.psm1)
+{
+    Import-Module $module.FullName -Force
+}
 
 Update-GitSubmodules $PSScriptRoot
 
-Sync-Registry
+Sync-Registry $PSScriptRoot
 
 Install-Fonts $PSScriptRoot
 Install-Symlinks $PSScriptRoot

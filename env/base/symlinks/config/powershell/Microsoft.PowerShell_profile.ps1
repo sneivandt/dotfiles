@@ -15,7 +15,7 @@ function Prompt
 
     $Host.UI.RawUI.ForegroundColor = "White"
 
-    if (($null -eq $env:windir) -and $(which pwsh) -ne $env:SHELL)
+    if (($null -eq $env:windir) -and $(Get-Command pwsh).Path -ne $env:SHELL)
     {
         Write-Host "pwsh " -NoNewLine -ForegroundColor Cyan
     }

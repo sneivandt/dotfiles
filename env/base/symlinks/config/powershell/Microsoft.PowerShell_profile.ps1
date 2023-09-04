@@ -9,6 +9,8 @@ function Prompt
     param (
     )
 
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+
     $origLastExitCode = $LASTEXITCODE
 
     $Host.UI.RawUI.ForegroundColor = "White"
@@ -29,13 +31,14 @@ function Prompt
 
     if (Get-Command "git" -ErrorAction SilentlyContinue)
     {
-        $gitBranch = $(git rev-parse --abbrev-ref HEAD 2> $null)
+        $status = git status --short --branch 2> $null
+        $branch = ((($status | Select-Object -First 1) -replace "^## ","") -Split "\.\.\.")[0]
 
-        if ($gitBranch)
+        if ($branch)
         {
-            Write-Host " $gitBranch" -NoNewLine -ForegroundColor White
+            Write-Host " $branch" -NoNewLine -ForegroundColor White
 
-            $changes = $(git status --short).Count
+            $changes = ($status -split "\n").Count - 1
 
             if ($changes -gt 0)
             {
@@ -44,7 +47,8 @@ function Prompt
         }
     }
 
-    Write-Host
+    $elapsedTime = $timer.ElapsedMilliseconds
+    Write-Host " $elapsedTime ms" -ForegroundColor Green
 
     if ($env:username -eq "root")
     {

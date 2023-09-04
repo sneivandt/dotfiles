@@ -17,7 +17,7 @@ function Install-Fonts
 
     $font = "DejaVu Sans Mono for Powerline"
 
-    if ((Test-Path $env:windir\fonts\$font.ttf) -eq $False -and (Test-Path $env:LOCALAPPDATA\Microsoft\Windows\fonts\$font.ttf) -eq $False)
+    if (-not (Test-Path $env:windir\fonts\$font.ttf) -and -not (Test-Path $env:LOCALAPPDATA\Microsoft\Windows\fonts\$font.ttf))
     {
         Write-Output ":: Installing Fonts"
 

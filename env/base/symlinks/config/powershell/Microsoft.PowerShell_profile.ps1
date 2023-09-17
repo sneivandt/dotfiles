@@ -31,7 +31,7 @@ function Prompt
 
     if (Get-Command "git" -ErrorAction SilentlyContinue)
     {
-        $status = git status --short --branch 2> $null
+        $status = git --no-optional-locks status --short --branch --porcelain=v1 --untracked-files=no 2> $null
         $branch = ((($status | Select-Object -First 1) -replace "^## ","") -Split "\.\.\.")[0]
 
         if ($branch)

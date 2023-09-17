@@ -12,6 +12,8 @@
   autocrlf = input
   excludesfile = ~/.config/git/ignore
   attributesfile = ~/.config/git/attributes
+  untrackedCache = true
+  fsmonitor = true
 
 [color]
   ui = true
@@ -26,7 +28,7 @@
   default = current
   followTags = true
 [status]
-  showStash = true
+  showStash = false
 [tag]
   gpgsign = false
 

@@ -2,7 +2,7 @@ function Install-PowerShellModules
 {
     <#
     .SYNOPSIS
-            Install PowerShell modules
+        Install PowerShell modules
     #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSUseSingularNouns", "")]
     param (

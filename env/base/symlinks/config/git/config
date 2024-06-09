@@ -14,6 +14,7 @@
   attributesfile = ~/.config/git/attributes
   untrackedCache = true
   fsmonitor = true
+  commitgraph = true
 
 [color]
   ui = true
@@ -36,6 +37,12 @@
   tool = vimdiff
 [diff "bin"]
   textconv = hexdump -v -C
+
+[feature]
+  manyFiles = true
+
+[index]
+  version = 4
 
 [include]
   path = ~/.config/git/aliases

@@ -93,8 +93,17 @@
   st  = status --short --branch
 
   # submodule
-  smi  = submodule update --init --recursive
-  smu  = submodule update --init --recursive --remote
+  smi = submodule update --init --recursive
+  smu = submodule update --init --recursive --remote
+
+  # switch
+  sw  = switch
+
+  # worktree
+  wta = worktree add
+  wtl = worktree list
+  wtr = worktree remove
+
 
   # List aliases
   alias         = !git config -l | grep ^alias. | cut -c 7- | sort

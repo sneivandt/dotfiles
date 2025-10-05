@@ -2,12 +2,42 @@
 set -o errexit
 set -o nounset
 
+# -----------------------------------------------------------------------------
+# tasks.sh
+# -----------------------------------------------------------------------------
+# Collection of granular, mostly idempotent task primitives used by higher
+# level orchestration in commands.sh. Each function performs a narrow unit of
+# work and self‑guards (state checks) to avoid redundant operations.
+#
+# Concurrency / Subshells:
+#   Each task executes in a subshell `( )` so that temporary variable or
+#   directory changes do not leak into the caller environment.
+#
+# Naming Convention:
+#   install_*    Introduce or ensure presence of an artifact.
+#   configure_*  Adjust system/user settings post‑installation.
+#   update_*     Fetch newer versions of existing artifacts.
+#   test_*       Perform validation / static analysis.
+#   uninstall_*  Remove managed artifacts.
+#
+# Utilities / Dependencies:
+#   logger.sh (log_stage, log_error)
+#   utils.sh  (is_flag_set, is_env_ignored, is_program_installed, etc.)
+# -----------------------------------------------------------------------------
+
 . "$DIR"/src/logger.sh
 . "$DIR"/src/utils.sh
 
 # configure_file_mode_bits
 #
-# Configure file mode bits.
+# Apply chmod directives declared in each environment's chmod.conf.
+# Format per line: <mode> <relative-path-under-home>
+# Example: 600 ssh/config
+#
+# Implementation Notes:
+#   * Reads each file line safely (including last line w/o newline).
+#   * Uses -R allowing directories to be targeted; user path is prefixed with
+#     a dot (".") to match symlink convention.
 configure_file_mode_bits()
 {(
   for env in "$DIR"/env/*
@@ -25,7 +55,9 @@ configure_file_mode_bits()
 
 # configure_fonts
 #
-# Configure fonts.
+# Refresh font cache when GUI fonts list (fonts.conf) differs from currently
+# installed families. Skips if: GUI env ignored, required fc-* tools missing,
+# or all listed font families already present.
 configure_fonts()
 {(
   if ! is_env_ignored "arch-gui" \
@@ -40,7 +72,9 @@ configure_fonts()
 
 # configure_shell
 #
-# Set the user shell.
+# Change default login shell to zsh when available and not already set.
+# Skip inside Docker (/.dockerenv) and when passwd status indicates locked
+# account. Uses chsh invoking absolute path resolved via a nested zsh.
 configure_shell()
 {(
   if is_program_installed "zsh" \
@@ -55,7 +89,10 @@ configure_shell()
 
 # configure_systemd
 #
-# Configure systemd.
+# Enable (and start when user session active) user-level systemd units listed
+# in each environment's units.conf when -s flag provided. Only units already
+# installed (list-unit-files) are considered. Avoids starting during early
+# boot by checking `systemctl is-system-running` state.
 configure_systemd()
 {(
   if is_flag_set "s" \
@@ -87,7 +124,8 @@ configure_systemd()
 
 # install_dotfiles_cli
 #
-# Install dotfiles cli.
+# Create/update convenience symlink ~/.bin/dotfiles pointing to this repo's
+# primary executable (dotfiles.sh). Avoids duplication if already correct.
 install_dotfiles_cli()
 {(
   if [ "$(readlink -f "$DIR"/dotfiles.sh)" != "$(readlink -f ~/.bin/dotfiles)" ]
@@ -100,7 +138,10 @@ install_dotfiles_cli()
 
 # install_git_submodules
 #
-# Install git submodules.
+# Initialize any git submodules declared for base + active environments when
+# status indicates they are uninitialized or out of date (+ or - markers).
+# Reads base/submodules.conf then appends env paths (env/<name>). Uses
+# recursive init to support nested submodules.
 install_git_submodules()
 {(
   if [ -d "$DIR"/.git ] \
@@ -127,7 +168,10 @@ install_git_submodules()
 
 # install_packages
 #
-# Install packages.
+# Install missing system packages (Arch pacman) aggregated from all active
+# environments' packages.conf files when -p flag set. Uses `--needed` so
+# pacman skips already installed packages. Builds a single invocation for
+# efficiency. Requires sudo + pacman presence.
 install_packages()
 {(
   if is_flag_set "p" \
@@ -160,7 +204,9 @@ install_packages()
 
 # install_powershell_modules
 #
-# Install PowerShell modules.
+# Defer to PowerShell helper to install required modules (Az, PSScriptAnalyzer)
+# if pwsh is available. Keeps logic centralized in script.psm1 for Windows
+# parity and test reuse.
 install_powershell_modules()
 {(
   if is_program_installed "pwsh"
@@ -171,7 +217,9 @@ install_powershell_modules()
 
 # install_symlinks
 #
-# Install symlinks.
+# Create/update symlinks listed in each environment's symlinks.conf. Existing
+# targets are removed (non-destructively; original file replaced by managed
+# link). Creates parent directories when path contains '/'.
 install_symlinks()
 {(
   for env in "$DIR"/env/*
@@ -200,7 +248,9 @@ install_symlinks()
 
 # install_vscode_extensions
 #
-# Install vscode extensions.
+# Ensure VS Code / Code - Insiders extensions listed in base-gui config are
+# installed. Enumerates existing extensions once per binary to minimize
+# process overhead. Installs missing ones individually (VS Code has no batch).
 install_vscode_extensions()
 {(
   for code in code code-insiders
@@ -223,7 +273,9 @@ install_vscode_extensions()
 
 # test_psscriptanalyzer
 #
-# Run PSScriptAnalyzer.
+# Run PowerShell static analysis across repo when pwsh + analyzer module
+# available. Skips silently otherwise to keep CI resilient on systems without
+# PowerShell.
 test_psscriptanalyzer()
 {(
   if is_program_installed "pwsh"
@@ -234,7 +286,10 @@ test_psscriptanalyzer()
 
 # test_shellcheck
 #
-# Run shellcheck.
+# Execute shellcheck across all shell scripts discovered through env symlink
+# trees excluding any paths that reside within declared submodules (to avoid
+# flagging third-party code). Non-zero shellcheck exit is swallowed (|| true)
+# so the overall run continues; individual findings still surface.
 test_shellcheck()
 {(
   if ! is_program_installed "shellcheck"
@@ -288,7 +343,8 @@ test_shellcheck()
 
 # uninstall_symlinks
 #
-# Uninstall symlinks.
+# Remove managed symlinks when present. Does not remove now-empty parent
+# directories to avoid unintended cleanup of user-managed content.
 uninstall_symlinks()
 {(
   for env in "$DIR"/env/*
@@ -310,7 +366,9 @@ uninstall_symlinks()
 
 # update_dotfiles
 #
-# Update dotfiles.
+# Fetch + merge remote changes when local working tree is clean, current
+# branch matches remote HEAD, and upstream has diverged. Uses a conservative
+# sequence: fetch only when remote changed, then merge if commit hashes differ.
 update_dotfiles()
 {(
   if [ -d "$DIR"/.git ] \
@@ -333,7 +391,10 @@ update_dotfiles()
 
 # update_git_submodules
 #
-# Update git submodules.
+# Update git submodules for active environments (excluding base) pulling
+# latest remote commits ( --remote ) for tracking branches. Skips when status
+# output is non-empty (indicates uninitialized or modified state where an
+# install pass should happen first). Ensures recursive consistency.
 update_git_submodules()
 {(
   if [ -d "$DIR"/.git ] \

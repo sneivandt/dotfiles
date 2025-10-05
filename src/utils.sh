@@ -2,15 +2,26 @@
 set -o errexit
 set -o nounset
 
+# -----------------------------------------------------------------------------
+# utils.sh
+# -----------------------------------------------------------------------------
+# Small predicate / helper functions consumed by task + command layers.
+# Each returns 0 for "true" (POSIX convention) and 1 for "false".
+# Keep logic minimal—complex workflows belong in tasks.sh.
+# -----------------------------------------------------------------------------
+
 # is_env_ignored
 #
-# Check if an environment is ignored.
+# Returns success if the named environment directory should be skipped based
+# on host OS, selected CLI flags, or composed dependencies. Environments may
+# layer (e.g., arch-gui depends on arch + base-gui). This function encodes
+# those dependency rules centrally so callers just iterate env/* and test.
 #
 # Args:
-#     $1 - The environment to check.
+#   $1  environment name (basename of env/<name>)
 #
-# return:
-#     bool - True if the environment is ignored.
+# Result:
+#   0 ignored / skip, 1 process.
 is_env_ignored()
 {
   case $1 in
@@ -42,13 +53,14 @@ is_env_ignored()
 
 # is_flag_set
 #
-# Check if a flag is set.
+# Check whether a short flag (single character) was present in the original
+# CLI invocation as normalized by getopt and stored in $OPT.
 #
 # Args:
-#     $1 - The flag to check.
+#   $1  single-letter flag (without leading dash)
 #
-# return:
-#     bool - True if the flag is set.
+# Result:
+#   0 flag present, 1 absent.
 is_flag_set()
 {
   case " $OPT " in
@@ -63,13 +75,14 @@ is_flag_set()
 
 # is_program_installed
 #
-# Check if a program is installed.
+# Predicate for presence of an executable in PATH. Uses `command -vp` which
+# resolves shell builtins and provides absolute path for determinism.
 #
 # Args:
-#     $1 - The program to check.
+#   $1 program name
 #
-# return:
-#     bool - True if the program is installed.
+# Result:
+#   0 found, 1 missing.
 is_program_installed()
 {
   if [ -n "$(command -vp "$1")" ]
@@ -82,13 +95,14 @@ is_program_installed()
 
 # is_shell_script
 #
-# Check if a file is a shell script.
+# Heuristic: file exists and first line shebang references a POSIX / bash shell.
+# Avoids false positives on plain text without execution semantics.
 #
 # Args:
-#     $1 - The file to check.
+#   $1 path to file
 #
-# return:
-#     bool - True if the file is a shell script.
+# Result:
+#   0 matches known shell shebang, 1 otherwise.
 is_shell_script()
 {
   if [ -f "$1" ]
@@ -104,14 +118,16 @@ is_shell_script()
 
 # is_symlink_installed
 #
-# Check if a symlink is installed.
+# Compare resolved target of managed symlink against existing entry in $HOME.
+# Ensures we only re-link when drift occurred. Uses readlink -f for canonical
+# path resolution (following any intermediate symlinks).
 #
 # Args:
-#     $1 - The environment to be checked.
-#     $2 - The symlink to be checked.
+#   $1 environment name
+#   $2 relative symlink path as listed in symlinks.conf
 #
-# return:
-#     bool - True if the symlink is installed.
+# Result:
+#   0 installed & matches, 1 absent or different.
 is_symlink_installed()
 {
   if [ "$(readlink -f "$DIR"/env/"$1"/symlinks/"$2")" = "$(readlink -f ~/."$2")" ]

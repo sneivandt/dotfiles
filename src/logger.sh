@@ -2,12 +2,26 @@
 set -o errexit
 set -o nounset
 
+# -----------------------------------------------------------------------------
+# logger.sh
+# -----------------------------------------------------------------------------
+# Lightweight logging utilities used across shell tasks. Designed to keep
+# output minimal yet informative for both interactive and CI contexts.
+#
+# Conventions:
+#   * Stage messages prefixed with '::' to visually group related actions.
+#   * log_error exits immediately (caller usually aborts entire run).
+#   * log_stage prints only once per conceptual stage even if called multiple
+#     times (suppresses redundant noise) by leveraging a private _work flag.
+# -----------------------------------------------------------------------------
+
 # log_error
 #
-# Log an error message and quit.
+# Print an error message (stderr semantics not required for current usage)
+# then terminate with non‑zero exit to propagate failure to orchestrator.
 #
 # Args:
-#     $1 - The reason for exiting.
+#   $1 human readable error description
 log_error()
 {
   echo "ERROR: $1"
@@ -16,11 +30,12 @@ log_error()
 
 # log_fail
 #
-# Log a test failure.
+# Emit a standardized test failure line consumed by any higher-level test
+# harness. Relies on externally set $FILE and $TEST identifiers.
 #
 # Args:
-#     $1 - Line number.
-#     $2 - Message.
+#   $1 line number
+#   $2 failure description
 log_fail()
 {
   echo "FAIL $FILE $TEST $1 : $2"
@@ -28,7 +43,7 @@ log_fail()
 
 # log_usage
 #
-# Log usage information.
+# Display CLI help text. Called on explicit -h/--help or invalid invocation.
 log_usage()
 {
   echo "Usage:"
@@ -47,10 +62,12 @@ log_usage()
 
 # log_stage
 #
-# Log a message if a stage did work.
+# Print a stage heading exactly once for a multi-step logical unit. Subsequent
+# calls within the same subshell no-op until _work resets (new subshell or
+# script invocation). This keeps logs concise when a task loops.
 #
 # Args:
-#     $1 - The message.
+#   $1 stage description (imperative present tense preferred)
 log_stage()
 {
   if [ "${_work-unset}" = "unset" ] \

@@ -68,11 +68,11 @@ Each directory under `env/` encapsulates a logical layer. Layers can extend one 
 
 Symlink source files live under `symlinks/` within each layer. The script resolves and links them into `$HOME` (and sometimes nested config directories) while preserving pre‑existing files by backing them up (see Implementation notes in script – if not currently backing up, consider adding before destructive operations).
 
-## Scripts (`./dotfiles.sh` and `scripts/`) 📜
+## Scripts (`./dotfiles.sh`) 📜
 
 Primary entrypoint: `dotfiles.sh`
 
-Supporting shell utilities reside in `src/` and `scripts/` (e.g. `commands.sh`, `logger.sh`, `utils.sh`, `tasks.sh`) providing:
+Supporting shell utilities reside in `src/` (e.g. `commands.sh`, `logger.sh`, `utils.sh`, `tasks.sh`) providing:
 * Logging abstraction
 * Idempotent symlink creation
 * Layer resolution / ordering

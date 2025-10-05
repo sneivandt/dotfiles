@@ -1,0 +1,29 @@
+# Normalize all text files to LF in repo
+* text=auto eol=lf
+
+# Explicit text types
+*.sh text eol=lf
+*.bash text eol=lf
+*.zsh text eol=lf
+*.ps1 text eol=crlf working-tree-encoding=UTF-8
+*.psm1 text eol=crlf working-tree-encoding=UTF-8
+*.md text eol=lf diff=markdown
+*.yml text eol=lf
+gitattributes text eol=lf
+
+# Git treats these as binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+
+# Improve diffs
+*.ps1 diff=powershell
+*.psm1 diff=powershell
+*.md linguist-language=Markdown
+
+# Don't diff generated backup or cache folders if added later
+.dotfiles_backup/** -diff
+
+# Shell scripts diff driver (optional if custom driver added later)
+*.sh diff

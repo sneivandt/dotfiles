@@ -45,7 +45,6 @@ set nobackup
 set noerrorbells
 set noswapfile
 set nonumber
-set pastetoggle=<f9>
 set preserveindent
 set ruler
 set scrolloff=5

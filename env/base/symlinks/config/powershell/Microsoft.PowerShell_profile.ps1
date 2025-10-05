@@ -1,6 +1,8 @@
 if (Get-Module PSReadLine)
 {
     Set-PSReadLineOption -BellStyle None
+    Set-PSReadLineOption -HistorySearchCursorMovesToEnd
+    Set-PSReadLineOption -MaximumHistoryCount 5000
 }
 
 function Prompt

@@ -10,9 +10,9 @@ alias cls="clear"
 
 alias df="df -h -T"
 
-alias grep="grep -i --color=auto"
+alias grep="grep --color=auto"
 
-alias l="ls"
+alias l="ls -h --color=auto"
 alias ls="ls -h --color=auto"
 alias la="ls -A"
 alias ll="ls -l"
@@ -24,6 +24,9 @@ alias path='echo $PATH | tr -s ":" "\n"'
 alias pwsh="pwsh -nologo"
 
 alias sudo="sudo "
+
+alias diff="diff --color=auto"
+alias ip="ip -c"
 
 alias tmux="tmux -2 -f ~/.config/tmux/tmux.conf"
 

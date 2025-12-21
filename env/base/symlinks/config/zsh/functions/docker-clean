@@ -4,5 +4,8 @@
 
 [ -n "$(command -vp docker)" ] || { echo "ERROR: docker not installed" 1>&2 && return 1; }
 
-docker rm $(docker ps -qa) 2>/dev/null
-docker rmi $(docker images -qa) 2>/dev/null
+# Remove stopped containers
+docker container prune -f
+
+# Remove dangling images
+docker image prune -f

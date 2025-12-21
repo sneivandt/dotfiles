@@ -3,7 +3,6 @@
 [user]
   name = sneivandt
   email = sneivandt@users.noreply.github.com
-  signingkey = sneivandt@users.noreply.github.com
 [url "git@github.com:"]
   pushInsteadOf = https://github.com/
 [core]
@@ -25,9 +24,15 @@
 [init]
   defaultBranch = main
   templatedir = ~/.config/git/templates/
+[merge]
+  conflictstyle = zdiff3
 [push]
   default = current
   followTags = true
+[rebase]
+  autoStash = true
+[rerere]
+  enabled = true
 [status]
   showStash = false
 [tag]

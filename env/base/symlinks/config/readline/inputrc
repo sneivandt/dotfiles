@@ -1,6 +1,14 @@
 # Quiet
 set bell-style none
 
+# Completion
+set colored-stats on
+set completion-ignore-case on
+set completion-map-case on
+set mark-directories on
+set show-all-if-ambiguous on
+set visible-stats on
+
 # Word Style
 C-b:unix-filename-rubout
 

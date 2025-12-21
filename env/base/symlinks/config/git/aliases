@@ -112,7 +112,7 @@
   contributors  = shortlog --summary --email --numbered
 
   # Delete merged branches
-  delete-merged = !git branch --merged origin/HEAD | grep -E -v '(^\\*|master)' | xargs -r -n 1 git branch -d
+  delete-merged = !git branch --merged | grep -E -v '(^\\*|master|main|dev)' | xargs -r -n 1 git branch -d
 
   # Who am I?
   whoami        = !git config user.email && git config user.name

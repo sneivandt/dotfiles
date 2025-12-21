@@ -10,7 +10,13 @@ export XDG_CONFIG_HOME="$HOME"/.config
 export XDG_DATA_HOME="$HOME"/.local/share
 
 # editor
-export EDITOR=vim
+if [ -n "$(command -v nvim)" ]; then
+  export EDITOR=nvim
+  export VISUAL=nvim
+else
+  export EDITOR=vim
+  export VISUAL=vim
+fi
 
 # golang
 export GOPATH=~/src/go

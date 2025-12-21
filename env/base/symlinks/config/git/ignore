@@ -2,6 +2,10 @@
 /.hg
 /tags
 *.sw[op]
+*~
+*.log
+.DS_Store
+Thumbs.db
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json

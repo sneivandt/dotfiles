@@ -37,15 +37,21 @@ fi
 # Magic space history expansion
 bindkey ' ' magic-space
 
+# Shift+Tab Reverse menu complete
+bindkey '^[[Z' reverse-menu-complete
+
 # Ctrl+r Search history
 bindkey '^R' history-incremental-search-backward
 
-# Ctrl+s Insert "sudo " at the start of line
+# Ctrl+t Toggle "sudo " at the start of line
 sudo-command-line()
 {
   [[ -z $BUFFER ]] && zle up-history
-  [[ $BUFFER != sudo\ * ]] && BUFFER="sudo $BUFFER"
-  zle end-of-line
+  if [[ $BUFFER == sudo\ * ]]; then
+    LBUFFER="${LBUFFER#sudo }"
+  else
+    LBUFFER="sudo $LBUFFER"
+  fi
 }
 zle -N sudo-command-line
 bindkey '^T' sudo-command-line

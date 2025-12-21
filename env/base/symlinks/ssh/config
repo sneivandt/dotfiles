@@ -1,7 +1,6 @@
 # vi: set ft=sshconfig :
 
 Host *
-  Protocol 2
   TCPKeepAlive yes
   ServerAliveInterval 60
   ServerAliveCountMax 2

@@ -6,7 +6,7 @@ PS1=""
 PS1+="\\[\\e[0;36m\\]\$([ -n \"$SSH_CONNECTION\" ] || [ -e /.dockerenv ] && echo \"$HOSTNAME \")"
 
 # default shell
-PS1+="\\[\\e[0;36m\\]\$([ \"\$(command -vp bash)\" != \"\$SHELL\" ] && echo \"bash \")"
+PS1+="\\[\\e[0;36m\\]\$([ \"\$(command -v bash)\" != \"\$SHELL\" ] && echo \"bash \")"
 
 # working dir
 PS1+="\\[\\e[0;33m\\]\\w"

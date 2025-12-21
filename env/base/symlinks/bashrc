@@ -3,6 +3,10 @@
 # History
 mkdir -p ~/.cache/bash
 export HISTFILE=~/.cache/bash/history
+export HISTSIZE=10000
+export HISTFILESIZE=10000
+shopt -s histappend
+shopt -s checkwinsize
 
 # Path
 . ~/.config/shell/path.sh

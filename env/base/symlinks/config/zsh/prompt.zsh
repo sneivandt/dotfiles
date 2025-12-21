@@ -28,10 +28,11 @@ git_prompt_info()
   current_branch=$(git rev-parse --abbrev-ref HEAD 2> /dev/null)
   if [ -n "$current_branch" ]
   then
-    echo -n " %{$fg[white]%}%{$current_branch%}%{$reset_color%}"
-    if [ $(git status --short | wc -l) -gt 0 ]
+    echo -n " %{$fg[white]%}${current_branch}%{$reset_color%}"
+    local dirty=$(git status --short 2> /dev/null | wc -l)
+    if [ $dirty -gt 0 ]
     then
-      echo -n "%{$fg[red]%}+$(git status --short | wc -l | awk '{$1=$1};1')%{$reset_color%}"
+      echo -n "%{$fg[red]%}+${dirty// /}%{$reset_color%}"
     fi
   fi
 }

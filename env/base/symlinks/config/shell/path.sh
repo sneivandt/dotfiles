@@ -1,3 +1,3 @@
 #!/bin/sh
 
-export PATH="$PATH":~/.bin:~/src/go/bin
+export PATH="$HOME/.local/bin:$HOME/.bin:$HOME/src/go/bin:$PATH"

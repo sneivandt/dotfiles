@@ -1,5 +1,3 @@
-# vi: set ft=sshconfig :
-
 Host *
   TCPKeepAlive yes
   ServerAliveInterval 60

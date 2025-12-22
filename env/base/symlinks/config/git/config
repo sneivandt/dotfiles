@@ -1,5 +1,3 @@
-# vi: ft=gitconfig :
-
 [user]
   name = sneivandt
   email = sneivandt@users.noreply.github.com
@@ -21,6 +19,7 @@
   gpgsign = false
 [fetch]
   prune = true
+  pruneTags = true
 [init]
   defaultBranch = main
   templatedir = ~/.config/git/templates/
@@ -29,6 +28,7 @@
 [push]
   default = current
   followTags = true
+  autoSetupRemote = true
 [rebase]
   autoStash = true
 [rerere]
@@ -40,6 +40,8 @@
 
 [diff]
   tool = vimdiff
+  algorithm = histogram
+  colorMoved = default
 [diff "bin"]
   textconv = hexdump -v -C
 

@@ -15,11 +15,14 @@ colors
 
 # History
 setopt histignorealldups
-setopt incappendhistory
+setopt sharehistory
+setopt hist_expire_dups_first
+setopt hist_find_no_dups
+setopt hist_verify
 mkdir -p ~/.cache/zsh
 HISTFILE=~/.cache/zsh/history
-HISTSIZE=4096
-SAVEHIST=4096
+HISTSIZE=10000
+SAVEHIST=10000
 
 # Various options
 setopt autocd
@@ -47,7 +50,9 @@ setopt pushdtohome
 . ~/.config/zsh/key-bindings.zsh
 
 # Plugins
-. ~/.config/zsh/plugins/*
+for plugin in ~/.config/zsh/plugins/*.zsh; do
+  [ -f "$plugin" ] && . "$plugin"
+done
 
 # Functions
 fpath=(~/.config/zsh/functions $fpath)

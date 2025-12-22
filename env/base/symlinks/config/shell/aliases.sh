@@ -30,6 +30,18 @@ alias ip="ip -c"
 
 alias tmux="tmux -2 -f ~/.config/tmux/tmux.conf"
 
+# Modern replacements
+if [ -n "$(command -v eza)" ]; then
+  alias l="eza"
+  alias ls="eza"
+  alias ll="eza -l"
+  alias la="eza -la"
+fi
+
+if [ -n "$(command -v bat)" ]; then
+  alias cat="bat"
+fi
+
 if [ -n "$(command -vp nvim)" ]
 then
   alias vi="nvim"

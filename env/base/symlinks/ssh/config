@@ -3,6 +3,7 @@ Host *
   ServerAliveInterval 60
   ServerAliveCountMax 2
   HashKnownHosts no
+  AddKeysToAgent yes
 
 Host github.com
   User git

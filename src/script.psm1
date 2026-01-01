@@ -1,4 +1,4 @@
-function Install-PowerShellModules
+﻿function Install-PowerShellModules
 {
     <#
     .SYNOPSIS

@@ -1,8 +1,10 @@
 # Quiet
 set bell-style none
+set echo-control-characters off
 
 # Completion
 set colored-stats on
+set colored-completion-prefix on
 set completion-ignore-case on
 set completion-map-case on
 set mark-directories on

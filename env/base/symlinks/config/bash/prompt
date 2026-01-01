@@ -12,7 +12,7 @@ PS1+="\\[\\e[0;36m\\]\$([ \"\$(command -v bash)\" != \"\$SHELL\" ] && echo \"bas
 PS1+="\\[\\e[0;33m\\]\\w"
 
 # git prompt info
-gitprompt="\\[\\e[0m\\]\$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\\[\\e[0;31m\\]\$(git status --short 2>/dev/null | wc -l | awk '{s=(\$1>0)?\"+\"\$1:\"\"; print s}')"
+gitprompt="\\[\\e[0m\\]\$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\\[\\e[0;31m\\]\$(git --no-optional-locks status --porcelain 2>/dev/null | wc -l | awk '{s=(\$1>0)?\"+\"\$1:\"\"; print s}')"
 [ -n "$gitprompt" ] && PS1+=" $gitprompt"
 
 # sudo active

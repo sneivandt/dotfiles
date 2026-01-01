@@ -10,7 +10,7 @@ export XDG_CONFIG_HOME="$HOME"/.config
 export XDG_DATA_HOME="$HOME"/.local/share
 
 # editor
-if [ -n "$(command -v nvim)" ]; then
+if command -v nvim >/dev/null 2>&1; then
   export EDITOR=nvim
   export VISUAL=nvim
 else
@@ -76,15 +76,22 @@ export TERMINFO_DIRS="$XDG_DATA_HOME"/terminfo:/usr/share/terminfo
 # wget
 export WGETRC="$XDG_CONFIG_HOME"/wgetrc
 
+# fzf
+if command -v fd >/dev/null 2>&1; then
+  export FZF_DEFAULT_COMMAND='fd --type f --strip-cwd-prefix --hidden --follow --exclude .git'
+  export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+  export FZF_ALT_C_COMMAND='fd --type d --strip-cwd-prefix --hidden --follow --exclude .git'
+fi
+
 # virtualenvwrapper
-if [ -n "$(command -vp virtualenvwrapper.sh)" ]
+if command -v virtualenvwrapper.sh >/dev/null 2>&1
 then
   export WORKON_HOME=~/.venv
   . virtualenvwrapper.sh
 fi
 
 # wsl
-if [ -n "$(command -vp wslpath)" ]
+if command -v wslpath >/dev/null 2>&1
 then
   WINDRIVE=$(wslpath -a -u "$(cmd.exe /c "echo %SYSTEMDRIVE%\\" 2>/dev/null)" | sed s"/..$//")
   export WINDRIVE

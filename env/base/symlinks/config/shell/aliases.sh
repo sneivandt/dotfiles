@@ -19,7 +19,7 @@ alias ll="ls -l"
 
 alias mkdir="mkdir -p"
 
-alias path='echo $PATH | tr -s ":" "\n"'
+alias path='echo "$PATH" | tr -s ":" "\n"'
 
 alias pwsh="pwsh -nologo"
 
@@ -31,21 +31,28 @@ alias ip="ip -c"
 alias tmux="tmux -2 -f ~/.config/tmux/tmux.conf"
 
 # Modern replacements
-if [ -n "$(command -v eza)" ]; then
+if command -v eza >/dev/null 2>&1; then
   alias l="eza"
   alias ls="eza"
   alias ll="eza -l"
   alias la="eza -la"
+elif command -v exa >/dev/null 2>&1; then
+  alias l="exa"
+  alias ls="exa"
+  alias ll="exa -l"
+  alias la="exa -la"
 fi
 
-if [ -n "$(command -v bat)" ]; then
+if command -v bat >/dev/null 2>&1; then
   alias cat="bat"
+elif command -v batcat >/dev/null 2>&1; then
+  alias cat="batcat"
 fi
 
-if [ -n "$(command -vp nvim)" ]
+if command -v nvim >/dev/null 2>&1
 then
   alias vi="nvim"
-elif [ -n "$(command -vp vim)" ]
+elif command -v vim >/dev/null 2>&1
 then
   alias vi="vim"
 fi

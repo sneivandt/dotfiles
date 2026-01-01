@@ -2,10 +2,16 @@
 
 # Find file
 
+# shellcheck disable=SC2168,SC2155
+
 [ -n "$(command -vp fzf)"    ] || { echo "ERROR: fzf not installed"    1>&2 && return 1; }
-[ -n "$(command -vp locate)" ] || { echo "ERROR: locate not installed" 1>&2 && return 1; }
 [ -n "$(command -vp sudo)"   ] || { echo "ERROR: sudo not installed"   1>&2 && return 1; }
 [ -n "$(command -vp vim)"    ] || { echo "ERROR: vim not installed"    1>&2 && return 1; }
+
+if ! command -v locate >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then
+  echo "ERROR: neither locate nor fd installed" 1>&2
+  return 1
+fi
 
 local opts=$(getopt -o e -n ff -- "$@") || return 1
 eval set -- "$opts"
@@ -33,7 +39,15 @@ then
   return 1
 fi
 
-file="$(locate "$query" | fzf -0 -1)" || return 1
+if command -v fd >/dev/null 2>&1; then
+  file="$(fd --type f "$query" | fzf -0 -1)" || return 1
+else
+  file="$(locate "$query" | fzf -0 -1)" || return 1
+fi
+
+if [ -z "$file" ]; then
+  return 1
+fi
 
 if [ -z "$edit" ]
 then

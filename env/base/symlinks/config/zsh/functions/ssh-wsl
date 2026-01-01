@@ -3,6 +3,7 @@
 # Symlink SSH keys for WSL
 
 [ -n "$(command -vp wslpath)" ] || { echo "ERROR: Not in WSL Environment" 1>&2 && return 1; }
+[ -n "$WINHOME" ] || { echo "ERROR: WINHOME not set" 1>&2 && return 1; }
 
 for i in github vsts
 do

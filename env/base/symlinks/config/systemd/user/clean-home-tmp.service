@@ -6,4 +6,6 @@ ConditionPathIsDirectory=%h/tmp
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/find %h/tmp -type f -mtime +7 -execdir rm -- '{}' \;
+IOSchedulingClass=idle
+CPUSchedulingPolicy=idle
+ExecStart=/usr/bin/find %h/tmp -mindepth 1 -type f -mtime +7 -delete

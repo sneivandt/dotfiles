@@ -2,55 +2,55 @@
 
 These guidelines help AI code assistants produce consistent, safe contributions to this dotfiles project.
 
-## Project Goals
-- Provide reproducible, layered environment setup across Linux (Arch focus) and Windows.
-- Keep scripts POSIX `/bin/sh` compatible (avoid Bash-only constructs in `.sh`).
-- Maintain idempotency: re-running install should not produce errors or duplicate work.
-- Favor clarity over brevity; explicit checks and logging are preferred.
+## Project Overview
+This project manages dotfiles and system configuration using a layered environment approach. It supports both Linux (specifically Arch Linux) and Windows.
+- **Layered Configuration**: Configuration is split into "environments" (e.g., `base`, `arch`, `arch-gui`, `win`) located in the `env/` directory.
+- **Idempotency**: All scripts are designed to be idempotent. Re-running the installation should simply verify the state without side effects or errors.
+- **Cross-Platform**: The project uses `dotfiles.sh` (POSIX sh) for Linux and `dotfiles.ps1` (PowerShell) for Windows.
+- **Goals**:
+  - Provide reproducible, layered environment setup.
+  - Keep scripts POSIX `/bin/sh` compatible.
+  - Favor clarity over brevity; explicit checks and logging are preferred.
 
-## Conventions
-- Shell scripts: use `#!/bin/sh` unless there is a compelling reason for Bash. If Bash required, document it.
+## Environment Structure (`env/`)
+The `env/` directory contains the configuration layers. Each subdirectory (e.g., `env/base/`) represents a layer and may contain:
+- `symlinks.conf`: A list of files to be symlinked.
+- `packages.conf`: A list of system packages to install (e.g., via pacman on Arch).
+- `units.conf`: Systemd user units to enable and start.
+- `chmod.conf`: File permissions to apply to specific files.
+- `submodules.conf`: Git submodules specific to that layer.
+- `vscode-extensions.conf`: VS Code extensions to install.
+- `symlinks/`: A directory containing the actual files to be linked.
+
+## Symlink Management
+Symlinks are managed declaratively.
+- **Configuration**: Each `env/<layer>/symlinks.conf` lists the relative paths of files to link.
+- **Source**: The source file is located at `env/<layer>/symlinks/<path>`.
+- **Target**: The target is always relative to the user's home directory, prefixed with a dot.
+  - Example: A line `config/nvim` in `symlinks.conf` maps `env/base/symlinks/config/nvim` to `~/.config/nvim`.
+- **Rule**: Do not hardcode `ln -s` commands in scripts. Always add the file to the appropriate `symlinks/` folder and update `symlinks.conf`.
+
+## Shell Scripting
+- Use `#!/bin/sh` unless there is a compelling reason for Bash. If Bash required, document it.
 - Always start new shell scripts with:
   ```sh
   #!/bin/sh
   set -o errexit
   set -o nounset
-  set -o pipefail
   ```
 - Use double quotes around variable expansions except when intentional word splitting is required (add a shellcheck directive comment there).
 - Avoid process substitution and arrays (Bash features) in POSIX scripts.
 - Logging: use the existing `log_stage`, `log_error` helpers instead of ad‑hoc echo statements for operational messages.
 - Guard optional external tool usage with `is_program_installed`.
 - For loops over environment layers should reuse the pattern: `for env in "$DIR"/env/*; do ...; done` and respect `is_env_ignored`.
-
-## Symlink Management
-- Symlinks must remain declarative via `symlinks.conf` (or JSON variant if added in future). Do not hardcode specific user file paths directly in scripts.
-- If introducing backup behavior, keep backups within `~/.dotfiles_backup/<timestamp>/`. Never silently overwrite user data.
+- Avoid unnecessary subshells unless isolating environment changes.
+- Prefer constructing minimal lists before calling system package managers.
+- Always quote glob patterns when iterating variable-expanded paths.
 
 ## PowerShell
 - Match existing style: Verb-Noun function names, comment-based help, export only necessary functions via `Export-ModuleMember`.
 - Windows automation should fail gracefully when run without elevation if elevation is required.
 
 ## Testing & CI
-- Preserve existing analyzer test hooks (`./dotfiles.sh -T`).
-- When adding new linting or validation, ensure it is safe in minimal containers (no interactive prompts).
-
-## Performance & Safety
-- Avoid unnecessary subshells unless isolating environment changes.
-- Prefer constructing minimal lists before calling system package managers.
-- Always quote glob patterns when iterating variable-expanded paths.
-
-## What NOT to Do
-- Do not introduce Bashisms into existing `/bin/sh` scripts.
-- Do not auto-install large toolchains unrelated to core dotfiles.
-- Do not store secrets or machine-specific credentials.
-- Do not assume non-Arch distros unless adding a generic abstraction layer.
-
-## Prompt Engineering (For Copilot)
-When asking Copilot for help inside this repo, include context like:
-- Target: POSIX shell or PowerShell
-- Desired idempotency (describe what happens if re-run)
-- External tools allowed (e.g., pacman, systemctl)
-
-Example prompt:
-> Generate a POSIX sh function that ensures a list of directories exists, using log_stage only once if at least one directory had to be created.
+- Perform static analysis by running `dotfiles.sh -T` which includes shellcheck and other linters.
+- Ensure all scripts are idempotent; re-running should not cause errors or unintended changes.

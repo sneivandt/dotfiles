@@ -5,5 +5,11 @@
 [ -n "$(command -vp git)"        ] || { echo "ERROR: git not installed"        1>&2 && return 1; }
 [ -n "$(command -vp ssh-keygen)" ] || { echo "ERROR: ssh-keygen not installed" 1>&2 && return 1; }
 
-mkdir -p "$HOME"/.ssh/github
+mkdir -p -m 700 "$HOME"/.ssh/github
+
+if [ -f "$HOME/.ssh/github/id_ed25519" ]; then
+  echo "Key already exists: $HOME/.ssh/github/id_ed25519"
+  return 1
+fi
+
 ssh-keygen -t ed25519 -C "$(git config --global user.email)" -f "$HOME"/.ssh/github/id_ed25519

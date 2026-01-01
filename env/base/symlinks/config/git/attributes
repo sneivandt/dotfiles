@@ -1,2 +1,8 @@
 # Automatically normalize line endings for all text-based files
 * text=auto
+
+# Custom diff drivers
+*.min.js diff=min
+*.min.css diff=min
+*.json diff=json
+

@@ -1,8 +1,5 @@
 " Preamble ---------------------------------------------------------------- {{{
 
-" Nocompatible
-set nocompatible
-
 " Leader key
 let mapleader=','
 
@@ -24,7 +21,6 @@ set cindent
 set clipboard=unnamed
 set cmdheight=1
 set copyindent
-set encoding=utf-8
 set expandtab
 set fdo+=search
 set fileformats=unix,dos,mac
@@ -33,6 +29,7 @@ set hidden
 set hlsearch
 set ignorecase
 set incsearch
+set inccommand=split
 set laststatus=2
 set lazyredraw
 set list
@@ -46,6 +43,7 @@ set preserveindent
 set ruler
 set scrolloff=5
 set shiftwidth=2
+set shortmess+=c
 set showmatch
 set showmode
 set signcolumn=yes
@@ -55,6 +53,7 @@ set softtabstop=2
 set splitbelow
 set splitright
 set tabstop=2
+set termguicolors
 set textwidth=0
 set ttyfast
 set updatetime=300

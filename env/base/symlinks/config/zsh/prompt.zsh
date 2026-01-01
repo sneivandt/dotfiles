@@ -29,7 +29,7 @@ git_prompt_info()
   if [ -n "$current_branch" ]
   then
     echo -n " %{$fg[white]%}${current_branch}%{$reset_color%}"
-    local dirty=$(git status --short 2> /dev/null | wc -l)
+    local dirty=$(git --no-optional-locks status --porcelain 2> /dev/null | wc -l)
     if [ $dirty -gt 0 ]
     then
       echo -n "%{$fg[red]%}+${dirty// /}%{$reset_color%}"

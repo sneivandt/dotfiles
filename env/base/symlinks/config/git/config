@@ -15,12 +15,19 @@
 
 [color]
   ui = true
+[column]
+  ui = auto
+[branch]
+  sort = -committerdate
 [commit]
   gpgsign = false
 [fetch]
   prune = true
   pruneTags = true
   writeCommitGraph = true
+  fsckobjects = true
+[transfer]
+  fsckobjects = true
 [help]
   autocorrect = prompt
 [init]
@@ -28,6 +35,8 @@
   templatedir = ~/.config/git/templates/
 [merge]
   conflictstyle = zdiff3
+[pull]
+  rebase = true
 [push]
   default = current
   followTags = true
@@ -38,13 +47,16 @@
   enabled = true
 [status]
   showStash = false
+  submoduleSummary = true
 [tag]
   gpgsign = false
+  sort = version:refname
 
 [diff]
   tool = vimdiff
   algorithm = histogram
-  colorMoved = default
+  colorMoved = zebra
+  submodule = log
 [diff "bin"]
   textconv = hexdump -v -C
 

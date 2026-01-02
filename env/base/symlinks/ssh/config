@@ -4,15 +4,21 @@ Host *
   ServerAliveCountMax 2
   HashKnownHosts no
   AddKeysToAgent yes
+  Compression yes
+  ControlMaster auto
+  ControlPath ~/.ssh/control-%r@%h:%p
+  ControlPersist 10m
 
 Host github.com
   User git
   HostName github.com
+  LogLevel ERROR
   IdentityFile ~/.ssh/github/id_rsa
   IdentityFile ~/.ssh/github/id_ed25519
   PreferredAuthentications publickey
 
 Host *.visualstudio.com *.dev.azure.com
+  LogLevel ERROR
   IdentityFile ~/.ssh/ado/id_rsa
   IdentityFile ~/.ssh/ado/id_ed25519
   PreferredAuthentications publickey

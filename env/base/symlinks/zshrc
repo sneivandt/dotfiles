@@ -16,6 +16,8 @@ colors
 # History
 setopt histignorealldups
 setopt sharehistory
+setopt appendhistory
+setopt extendedglob
 setopt hist_expire_dups_first
 setopt hist_find_no_dups
 setopt hist_verify
@@ -57,3 +59,9 @@ done
 # Functions
 fpath=(~/.config/zsh/functions $fpath)
 autoload -Uz ~/.config/zsh/functions/*
+
+# Clear screen on startup for urxvt
+if [[ "$TERM" == "rxvt-unicode-256color" ]]
+then
+  clear
+fi

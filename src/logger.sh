@@ -48,16 +48,31 @@ log_usage()
 {
   echo "Usage:"
   echo "  $(basename "$0")"
-  echo "  $(basename "$0") {-I --install}   [-g] [-p] [-s]"
-  echo "  $(basename "$0") {-U --uninstall} [-g]"
-  echo "  $(basename "$0") {-T --test}"
+  echo "  $(basename "$0") {-I --install}   [-g] [-p] [-s] [-v]"
+  echo "  $(basename "$0") {-U --uninstall} [-g] [-v]"
+  echo "  $(basename "$0") {-T --test}      [-v]"
   echo "  $(basename "$0") {-h --help}"
   echo
   echo "Options:"
   echo "  -g  Configure GUI environment"
   echo "  -p  Install system packages"
   echo "  -s  Install systemd units"
+  echo "  -v  Enable verbose logging"
   exit
+}
+
+# log_verbose
+#
+# Print a verbose message if the -v flag is set.
+#
+# Args:
+#   $1 message
+log_verbose()
+{
+  if is_flag_set "v"
+  then
+    echo "VERBOSE: $1"
+  fi
 }
 
 # log_stage

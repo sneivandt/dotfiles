@@ -33,15 +33,16 @@ Help:
 
 ```
 dotfiles.sh
-dotfiles.sh {-I --install}   [-g] [-p] [-s]
-dotfiles.sh {-U --uninstall} [-g]
-dotfiles.sh {-T --test}
+dotfiles.sh {-I --install}   [-g] [-p] [-s] [-v]
+dotfiles.sh {-U --uninstall} [-g] [-v]
+dotfiles.sh {-T --test}      [-v]
 dotfiles.sh {-h --help}
 
 Options:
   -g  Include GUI environment layer
   -p  Install system packages defined for the layer
   -s  Install systemd user units for the layer
+  -v  Enable verbose logging
 ```
 
 ## Layered Environments (`env/`) 🧩

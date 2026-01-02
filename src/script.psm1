@@ -15,6 +15,7 @@
         Installs Az & PSScriptAnalyzer if missing.
     #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSUseSingularNouns", "")]
+    [CmdletBinding()]
     param (
     )
 
@@ -25,7 +26,7 @@
 
     foreach ($module in $modules)
     {
-        if (-not (Get-Module -Name $module -ListAvailable))
+        if (-not (Get-Module -Name $module -ListAvailable -Verbose:$false))
         {
             if (-not $act)
             {
@@ -34,6 +35,7 @@
                 Write-Output ":: Installing PowerShell Modules..."
             }
 
+            Write-Verbose "Installing module: $module"
             Install-Module -Name $module -AllowClobber -Scope CurrentUser -Force
         }
     }

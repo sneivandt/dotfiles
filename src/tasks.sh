@@ -47,7 +47,14 @@ configure_file_mode_bits()
     then
       while IFS='' read -r line || [ -n "$line" ]
       do
-        chmod -c -R "$(echo "$line" | cut -d" " -f1)" ~/."$(echo "$line" | cut -d" " -f2)"
+        mode="$(echo "$line" | cut -d" " -f1)"
+        target=~/."$(echo "$line" | cut -d" " -f2)"
+        if [ -e "$target" ] \
+          && [ -n "$(find -H "$target" ! -type l ! -perm "$mode" -print -quit 2>/dev/null)" ]
+        then
+          log_verbose "Setting mode $mode on $target"
+          chmod -c -R "$mode" "$target"
+        fi
       done < "$env"/chmod.conf
     fi
   done
@@ -66,6 +73,7 @@ configure_fonts()
     && [ "$(fc-list : family | grep -f "$DIR"/env/arch-gui/fonts.conf -cx)" != "$(grep -c "" "$DIR"/env/arch-gui/fonts.conf | cut -d" " -f1)" ]
   then
     log_stage "Updating fonts"
+    log_verbose "Running fc-cache to update font cache"
     fc-cache
   fi
 )}
@@ -83,6 +91,7 @@ configure_shell()
     && [ "$(passwd --status "$USER" | cut -d" " -f2)" = "P" ]
   then
     log_stage "Configuring user shell"
+    log_verbose "Changing shell to $(zsh -c "command -vp zsh")"
     chsh -s "$(zsh -c "command -vp zsh")"
   fi
 )}
@@ -110,9 +119,11 @@ configure_systemd()
             && ! systemctl --user is-enabled --quiet "$unit"
           then
             log_stage "Configuring systemd"
+            log_verbose "Enabling systemd unit: $unit"
             systemctl --user enable "$unit"
             if [ "$(systemctl is-system-running)" = "running" ]
             then
+              log_verbose "Starting systemd unit: $unit"
               systemctl --user start "$unit"
             fi
           fi
@@ -131,6 +142,7 @@ install_dotfiles_cli()
   if [ "$(readlink -f "$DIR"/dotfiles.sh)" != "$(readlink -f ~/.bin/dotfiles)" ]
   then
     log_stage "Installing dotfiles cli"
+    log_verbose "Linking ~/.bin/dotfiles to $DIR/dotfiles.sh"
     mkdir -pv ~/.bin
     ln -snvf "$DIR"/dotfiles.sh ~/.bin/dotfiles
   fi
@@ -160,6 +172,7 @@ install_git_submodules()
     if git -C "$DIR" submodule status $modules | cut -c-1 | grep -q "+\\|-"
     then
       log_stage "Installing git submodules"
+      log_verbose "Updating submodules: $modules"
       # shellcheck disable=SC2086
       git -C "$DIR" submodule update --init --recursive $modules
     fi
@@ -196,6 +209,7 @@ install_packages()
     if [ -n "$packages" ]
     then
       log_stage "Installing packages"
+      log_verbose "Installing packages: $packages"
       # shellcheck disable=SC2086
       sudo pacman -S --quiet --needed $packages
     fi
@@ -211,7 +225,11 @@ install_powershell_modules()
 {(
   if is_program_installed "pwsh"
   then
-    pwsh -Command "Import-Module $DIR/src/script.psm1 && Install-PowerShellModules"
+    args=""
+    if is_flag_set "v"; then
+      args="-Verbose"
+    fi
+    pwsh -Command "Import-Module $DIR/src/script.psm1 && Install-PowerShellModules $args"
   fi
 )}
 
@@ -232,6 +250,7 @@ install_symlinks()
         if ! is_symlink_installed "$(basename "$env")" "$symlink"
         then
           log_stage "Installing symlinks"
+          log_verbose "Linking $env/symlinks/$symlink to ~/.$symlink"
           case "$symlink" in
             *"/"*) mkdir -pv ~/."$(echo "$symlink" | rev | cut -d/ -f2- | rev)"
           esac
@@ -264,6 +283,7 @@ install_vscode_extensions()
         if ! echo "$extensions" | grep -qw "$extension"
         then
           log_stage "Installing $code extensions"
+          log_verbose "Installing extension: $extension"
           $code --install-extension "$extension"
         fi
       done < "$DIR/env/base-gui/vscode-extensions.conf"
@@ -280,6 +300,7 @@ test_psscriptanalyzer()
 {(
   if is_program_installed "pwsh"
   then
+    log_verbose "Running PSScriptAnalyzer"
     pwsh -Command "Import-Module $DIR/src/script.psm1 && Test-PSScriptAnalyzer -dir $DIR"
   fi
 )}
@@ -337,6 +358,7 @@ test_shellcheck()
       fi
     done
     # shellcheck disable=SC2086
+    log_verbose "Checking scripts: $scripts"
     shellcheck $scripts || true
   fi
 )}
@@ -357,6 +379,7 @@ uninstall_symlinks()
         if is_symlink_installed "$env" "$symlink"
         then
           log_stage "Uninstalling symlinks"
+          log_verbose "Removing symlink: ~/.$symlink"
           rm -vf ~/."$symlink"
         fi
       done < "$env"/symlinks.conf
@@ -379,11 +402,13 @@ update_dotfiles()
     if [ -n "$(git -C "$DIR" fetch --dry-run)" ]
     then
       log_stage "Updating dotfiles"
+      log_verbose "Fetching updates from origin"
       git -C "$DIR" fetch
     fi
     if [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]
     then
       log_stage "Updating dotfiles"
+      log_verbose "Merging updates from origin/HEAD"
       git -C "$DIR" merge
     fi
   fi
@@ -413,6 +438,7 @@ update_git_submodules()
     if [ -z "$(git -C "$DIR" submodule status $modules | cut -c1)" ]
     then
       log_stage "Updating git submodules"
+      log_verbose "Updating submodules: $modules"
       # shellcheck disable=SC2086
       git -C "$DIR" submodule update --init --recursive --remote $modules
     fi

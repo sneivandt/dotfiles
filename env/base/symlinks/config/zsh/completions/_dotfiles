@@ -13,6 +13,7 @@ _dotfiles_opts_commands=(
 
 _dotfiles_opts_common=(
   "-g[Configure GUI environment]"
+  "-v[Enable verbose logging]"
 )
 
 _dotfiles_opts_install=(
@@ -29,7 +30,8 @@ _dotfiles_action_install() {
 
 _dotfiles_action_test() {
   _arguments -s : \
-    "(--test -T)"{-T,--test}
+    "(--test -T)"{-T,--test} \
+    "-v[Enable verbose logging]"
 }
 
 _dotfiles_action_uninstall() {

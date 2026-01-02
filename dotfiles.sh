@@ -25,11 +25,12 @@ set -o nounset
 #   -g  Include GUI layer setup (fonts, desktop related dotfiles, VS Code).
 #   -p  Install system packages (Arch pacman based).
 #   -s  Install and enable user‑level systemd units.
+#   -v  Enable verbose logging.
 #
 # Usage Examples:
 #   ./dotfiles.sh --install -gp    # Install including GUI + packages.
 #   ./dotfiles.sh -U -g            # Uninstall GUI related symlinks.
-#   ./dotfiles.sh --test           # Run analyzers / linters.
+#   ./dotfiles.sh --test -v        # Run analyzers / linters with verbose output.
 #
 # Implementation Notes:
 #   * getopt is used to provide consistent long/short option handling while
@@ -55,21 +56,21 @@ fi
 case ${1:-} in
   -I* | --install)
     # Full install path (optionally gated by -g -p -s sub‑flags).
-    OPT="$(getopt -o Ipgs -l install -n "$(basename "$0")" -- "$@")" \
+    OPT="$(getopt -o Ipgsv -l install -n "$(basename "$0")" -- "$@")" \
       || exit 1
     export OPT
     do_install
     ;;
   -T* | --test)
     # Static analysis / lint checks (shellcheck, PSScriptAnalyzer).
-    OPT="$(getopt -o T -l test -n "$(basename "$0")" -- "$@")" \
+    OPT="$(getopt -o Tv -l test -n "$(basename "$0")" -- "$@")" \
       || exit 1
     export OPT
     do_test
     ;;
   -U* | --uninstall)
     # Remove installed symlinks (respecting -g to include GUI layer paths).
-    OPT="$(getopt -o Ug -l uninstall -n "$(basename "$0")" -- "$@")" \
+    OPT="$(getopt -o Ugv -l uninstall -n "$(basename "$0")" -- "$@")" \
       || exit 1
     export OPT
     do_uninstall

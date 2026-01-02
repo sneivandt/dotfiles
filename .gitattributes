@@ -22,8 +22,5 @@ gitattributes text eol=lf
 *.psm1 diff=powershell
 *.md linguist-language=Markdown
 
-# Don't diff generated backup or cache folders if added later
-.dotfiles_backup/** -diff
-
 # Shell scripts diff driver (optional if custom driver added later)
 *.sh diff

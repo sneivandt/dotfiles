@@ -1,2 +1,28 @@
 /env/base/symlinks/vim/.netrwhist
 private/*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor temporary files
+*.swp
+*.swo
+*~
+*.bak
+
+# Python
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+
+# SSH Keys (safety net)
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+*.pem
+*.ppk

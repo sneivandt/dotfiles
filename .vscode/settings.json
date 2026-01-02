@@ -26,5 +26,8 @@
         "env/base/symlinks/vim/pack/plugins": true,
         "env/base/symlinks/config/nvim": true,
         "env/win/fonts": true
+    },
+    "files.associations": {
+        "Xresources": "properties"
     }
 }

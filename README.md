@@ -123,11 +123,3 @@ This image is built by the included GitHub Actions workflow (`docker-image.yml`)
 | Package not installed | Present in correct `packages.conf` for selected flags? Package manager available? |
 | Systemd unit inactive | Was `-s` passed? Verify with `systemctl --user status <unit>` |
 | Windows registry not applied | Run PowerShell as admin; confirm `Registry.psm1` imported without errors |
-
-## License 📄
-
-See [`LICENSE`](./LICENSE).
-
----
-
-Feel free to open issues or PRs with improvements, especially around broader distro package abstractions or Windows automation refinements.

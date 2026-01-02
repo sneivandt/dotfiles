@@ -45,10 +45,10 @@ configure_file_mode_bits()
     if ! is_env_ignored "$(basename "$env")" \
       && [ -e "$env"/chmod.conf ]
     then
-      while IFS='' read -r line || [ -n "$line" ]
+      while read -r mode file || [ -n "$mode" ]
       do
-        mode="$(echo "$line" | cut -d" " -f1)"
-        target=~/."$(echo "$line" | cut -d" " -f2)"
+        case "$mode" in ""|\#*) continue ;; esac
+        target=~/."$file"
         if [ ! -e "$target" ]
         then
           log_verbose "Skipping chmod on $target: file does not exist"
@@ -82,7 +82,17 @@ configure_fonts()
     return
   fi
 
-  if [ "$(fc-list : family | grep -f "$DIR"/env/arch-gui/fonts.conf -cx)" = "$(grep -c "" "$DIR"/env/arch-gui/fonts.conf | cut -d" " -f1)" ]
+  missing_fonts=0
+  while IFS='' read -r font || [ -n "$font" ]; do
+    case "$font" in ""|\#*) continue ;; esac
+    if ! fc-list : family | grep -Fxq "$font"
+    then
+      missing_fonts=1
+      break
+    fi
+  done < "$DIR"/env/arch-gui/fonts.conf
+
+  if [ "$missing_fonts" -eq 0 ]
   then
     log_verbose "Skipping font configuration: fonts already up to date"
     return
@@ -163,6 +173,7 @@ configure_systemd()
     then
       while IFS='' read -r unit || [ -n "$unit" ]
       do
+        case "$unit" in ""|\#*) continue ;; esac
         if ! systemctl --user list-unit-files | cut -d" " -f1 | grep -qx "$unit"
         then
           log_verbose "Skipping systemd unit $unit: not found in unit files"
@@ -221,15 +232,38 @@ install_git_submodules()
     return
   fi
 
-  modules="$(cat "$DIR"/env/base/submodules.conf)"
+  known_submodules="$(git -C "$DIR" submodule status | awk '{print $2}')"
+  modules=""
+
+  if [ -f "$DIR"/env/base/submodules.conf ]
+  then
+    while IFS='' read -r module || [ -n "$module" ]; do
+      case "$module" in ""|\#*) continue ;; esac
+      modules="$modules $module"
+    done < "$DIR"/env/base/submodules.conf
+  fi
+
   for env in "$DIR"/env/*
   do
     if [ "$(basename "$env")" != "base" ] \
       && ! is_env_ignored "$(basename "$env")"
     then
-      modules="$modules "env/$(basename "$env")
+      env_module="env/$(basename "$env")"
+      if echo "$known_submodules" | grep -Fqx "$env_module"
+      then
+        modules="$modules $env_module"
+      fi
     fi
   done
+
+  modules="${modules# }"
+
+  if [ -z "$modules" ]
+  then
+    log_verbose "Skipping git submodules: no modules configured"
+    return
+  fi
+
   # shellcheck disable=SC2086
   if git -C "$DIR" submodule status $modules | cut -c-1 | grep -q "+\\|-"
   then
@@ -270,6 +304,7 @@ install_packages()
     then
       while IFS='' read -r package || [ -n "$package" ]
       do
+        case "$package" in ""|\#*) continue ;; esac
         if ! pacman -Qq "$package" >/dev/null 2>&1
         then
           packages="$packages $package"
@@ -298,7 +333,8 @@ install_powershell_modules()
   if is_program_installed "pwsh"
   then
     args=""
-    if is_flag_set "v"; then
+    if is_flag_set "v"
+    then
       args="-Verbose"
     fi
     pwsh -Command "Import-Module $DIR/src/script.psm1 && Install-PowerShellModules $args"
@@ -321,13 +357,12 @@ install_symlinks()
     then
       while IFS='' read -r symlink || [ -n "$symlink" ]
       do
+        case "$symlink" in ""|\#*) continue ;; esac
         if ! is_symlink_installed "$(basename "$env")" "$symlink"
         then
           log_stage "Installing symlinks"
           log_verbose "Linking $env/symlinks/$symlink to ~/.$symlink"
-          case "$symlink" in
-            *"/"*) mkdir -pv ~/."$(echo "$symlink" | rev | cut -d/ -f2- | rev)"
-          esac
+          mkdir -pv "$(dirname ~/."$symlink")"
           if [ -e ~/."$symlink" ]
           then
             rm -rvf ~/."$symlink"
@@ -356,6 +391,7 @@ install_vscode_extensions()
       extensions=$($code --list-extensions)
       while IFS='' read -r extension || [ -n "$extension" ]
       do
+        case "$extension" in ""|\#*) continue ;; esac
         if ! echo "$extensions" | grep -qw "$extension"
         then
           log_stage "Installing $code extensions"
@@ -534,22 +570,44 @@ update_git_submodules()
     return
   fi
 
+  known_submodules="$(git -C "$DIR" submodule status | awk '{print $2}')"
   modules=""
+
   for env in "$DIR"/env/*
   do
     if [ "$(basename "$env")" != "base" ] \
       && ! is_env_ignored "$(basename "$env")"
     then
-      modules="$modules env/"$(basename "$env")
+      env_module="env/$(basename "$env")"
+      if echo "$known_submodules" | grep -Fqx "$env_module"
+      then
+        modules="$modules $env_module"
+      fi
     fi
   done
-  # shellcheck disable=SC2086
-  if [ -z "$(git -C "$DIR" submodule status $modules | cut -c1)" ]
+
+  modules="${modules# }"
+
+  if [ -z "$modules" ]
   then
-    log_stage "Updating git submodules"
-    log_verbose "Updating submodules: $modules"
+    log_verbose "Skipping update git submodules: no modules to update"
+    return
+  fi
+
+  # shellcheck disable=SC2086
+  if [ -z "$(git -C "$DIR" submodule status $modules | cut -c1 | tr -d ' ')" ]
+  then
     # shellcheck disable=SC2086
-    git -C "$DIR" submodule update --init --recursive --remote $modules
+    updates="$(git -C "$DIR" submodule update --init --recursive --remote --dry-run $modules 2>/dev/null)" || updates=""
+    if [ -n "$updates" ]
+    then
+      log_stage "Updating git submodules"
+      log_verbose "Updating submodules: $modules"
+      # shellcheck disable=SC2086
+      git -C "$DIR" submodule update --init --recursive --remote $modules
+    else
+      log_verbose "Skipping update git submodules: already up to date with remote"
+    fi
   else
     log_verbose "Skipping update git submodules: submodules have modifications or are uninitialized"
   fi

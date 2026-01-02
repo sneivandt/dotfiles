@@ -40,15 +40,26 @@ set -o nounset
 #     a dot (".") to match symlink convention.
 configure_file_mode_bits()
 {(
+  # Iterate over all environment directories
   for env in "$DIR"/env/*
   do
+    # Check if the environment is active and has a chmod configuration file
     if ! is_env_ignored "$(basename "$env")" \
       && [ -e "$env"/chmod.conf ]
     then
+      # Read the configuration file line by line
       while read -r mode file || [ -n "$mode" ]
       do
-        case "$mode" in ""|\#*) continue ;; esac
+        # Skip empty lines and comments
+        if [ -z "$mode" ] || [ "${mode#\#}" != "$mode" ]
+        then
+          continue
+        fi
+
+        # Construct the target path (relative to home directory)
         target=~/."$file"
+
+        # Check if the target file exists
         if [ ! -e "$target" ]
         then
           log_verbose "Skipping chmod on $target: file does not exist"
@@ -57,6 +68,7 @@ configure_file_mode_bits()
           log_verbose "Skipping chmod on $target: permissions already correct"
         else
           log_verbose "Setting mode $mode on $target"
+          # Apply the permissions recursively
           chmod -c -R "$mode" "$target"
         fi
       done < "$env"/chmod.conf
@@ -71,11 +83,13 @@ configure_file_mode_bits()
 # or all listed font families already present.
 configure_fonts()
 {(
+  # Skip if the GUI environment is ignored (fonts are only relevant for GUI)
   if is_env_ignored "arch-gui"
   then
     return
   fi
 
+  # Check if font configuration tools are installed
   if ! is_program_installed "fc-list" || ! is_program_installed "fc-cache"
   then
     log_verbose "Skipping font configuration: fc-list or fc-cache not installed"
@@ -83,8 +97,14 @@ configure_fonts()
   fi
 
   missing_fonts=0
+  # Read the list of required fonts from fonts.conf
   while IFS='' read -r font || [ -n "$font" ]; do
-    case "$font" in ""|\#*) continue ;; esac
+    if [ -z "$font" ] || [ "${font#\#}" != "$font" ]
+    then
+      continue
+    fi
+
+    # Check if the font family is already installed in the system
     if ! fc-list : family | grep -Fxq "$font"
     then
       missing_fonts=1
@@ -116,6 +136,7 @@ configure_shell()
     return
   fi
 
+  # Resolve the absolute path to zsh
   zsh_path="$(zsh -c "command -vp zsh")"
   if [ "$SHELL" = "$zsh_path" ]
   then
@@ -123,12 +144,14 @@ configure_shell()
     return
   fi
 
+  # Do not change shell if running inside a Docker container
   if [ -f /.dockerenv ]
   then
     log_verbose "Skipping shell configuration: running inside Docker"
     return
   fi
 
+  # Check if the user account is usable (password status is 'P' for usable password)
   if [ "$(passwd --status "$USER" | cut -d" " -f2)" != "P" ]
   then
     log_verbose "Skipping shell configuration: user account not usable (passwd status)"
@@ -148,12 +171,14 @@ configure_shell()
 # boot by checking `systemctl is-system-running` state.
 configure_systemd()
 {(
+  # Only run if the -s flag is set
   if ! is_flag_set "s"
   then
     log_verbose "Skipping systemd configuration: -s flag not set"
     return
   fi
 
+  # Check if the system is actually running under systemd (PID 1 is systemd)
   if [ "$(ps -p 1 -o comm=)" != "systemd" ]
   then
     log_verbose "Skipping systemd configuration: not running under systemd"
@@ -173,7 +198,12 @@ configure_systemd()
     then
       while IFS='' read -r unit || [ -n "$unit" ]
       do
-        case "$unit" in ""|\#*) continue ;; esac
+        if [ -z "$unit" ] || [ "${unit#\#}" != "$unit" ]
+        then
+          continue
+        fi
+
+        # Check if the unit file is known to systemd
         if ! systemctl --user list-unit-files | cut -d" " -f1 | grep -qx "$unit"
         then
           log_verbose "Skipping systemd unit $unit: not found in unit files"
@@ -184,6 +214,8 @@ configure_systemd()
           log_stage "Configuring systemd"
           log_verbose "Enabling systemd unit: $unit"
           systemctl --user enable "$unit"
+
+          # Only start the unit if the system is fully running (avoids issues during early boot)
           if [ "$(systemctl is-system-running)" = "running" ]
           then
             log_verbose "Starting systemd unit: $unit"
@@ -201,11 +233,14 @@ configure_systemd()
 # primary executable (dotfiles.sh). Avoids duplication if already correct.
 install_dotfiles_cli()
 {(
+  # Check if the symlink already points to the correct location
   if [ "$(readlink -f "$DIR"/dotfiles.sh)" != "$(readlink -f ~/.bin/dotfiles)" ]
   then
     log_stage "Installing dotfiles cli"
     log_verbose "Linking ~/.bin/dotfiles to $DIR/dotfiles.sh"
+    # Ensure the bin directory exists
     mkdir -pv ~/.bin
+    # Create the symlink, overwriting if necessary
     ln -snvf "$DIR"/dotfiles.sh ~/.bin/dotfiles
   else
     log_verbose "Skipping dotfiles cli installation: already linked"
@@ -232,23 +267,32 @@ install_git_submodules()
     return
   fi
 
+  # Get list of all submodules known to git
   known_submodules="$(git -C "$DIR" submodule status | awk '{print $2}')"
   modules=""
 
+  # Add submodules from the base environment
   if [ -f "$DIR"/env/base/submodules.conf ]
   then
     while IFS='' read -r module || [ -n "$module" ]; do
-      case "$module" in ""|\#*) continue ;; esac
+      if [ -z "$module" ] || [ "${module#\#}" != "$module" ]
+      then
+        continue
+      fi
       modules="$modules $module"
     done < "$DIR"/env/base/submodules.conf
   fi
 
+  # Iterate over all environment directories
   for env in "$DIR"/env/*
   do
+    # Skip 'base' (handled above) and ignored environments
     if [ "$(basename "$env")" != "base" ] \
       && ! is_env_ignored "$(basename "$env")"
     then
       env_module="env/$(basename "$env")"
+
+      # Only add if it's a registered submodule in the git repo
       if echo "$known_submodules" | grep -Fqx "$env_module"
       then
         modules="$modules $env_module"
@@ -264,6 +308,7 @@ install_git_submodules()
     return
   fi
 
+  # Check for uninitialized (-) or modified (+) submodules
   # shellcheck disable=SC2086
   if git -C "$DIR" submodule status $modules | cut -c-1 | grep -q "+\\|-"
   then
@@ -297,6 +342,7 @@ install_packages()
   fi
 
   packages=""
+  # Iterate over all environments to collect packages
   for env in "$DIR"/env/*
   do
     if ! is_env_ignored "$(basename "$env")" \
@@ -304,7 +350,12 @@ install_packages()
     then
       while IFS='' read -r package || [ -n "$package" ]
       do
-        case "$package" in ""|\#*) continue ;; esac
+        if [ -z "$package" ] || [ "${package#\#}" != "$package" ]
+        then
+          continue
+        fi
+
+        # Check if package is already installed (quietly)
         if ! pacman -Qq "$package" >/dev/null 2>&1
         then
           packages="$packages $package"
@@ -330,13 +381,16 @@ install_packages()
 # parity and test reuse.
 install_powershell_modules()
 {(
+  # Check if PowerShell Core is installed
   if is_program_installed "pwsh"
   then
     args=""
+    # Pass verbose flag if set
     if is_flag_set "v"
     then
       args="-Verbose"
     fi
+    # Import the helper module and run the installation function
     pwsh -Command "Import-Module $DIR/src/script.psm1 && Install-PowerShellModules $args"
   else
     log_verbose "Skipping PowerShell modules: pwsh not installed"
@@ -357,16 +411,26 @@ install_symlinks()
     then
       while IFS='' read -r symlink || [ -n "$symlink" ]
       do
-        case "$symlink" in ""|\#*) continue ;; esac
+        if [ -z "$symlink" ] || [ "${symlink#\#}" != "$symlink" ]
+        then
+          continue
+        fi
+
+        # Check if symlink is already correctly pointing to the target
         if ! is_symlink_installed "$(basename "$env")" "$symlink"
         then
           log_stage "Installing symlinks"
           log_verbose "Linking $env/symlinks/$symlink to ~/.$symlink"
+          # Ensure parent directory exists
           mkdir -pv "$(dirname ~/."$symlink")"
+
+          # Remove existing file/directory if it exists (to replace with symlink)
           if [ -e ~/."$symlink" ]
           then
             rm -rvf ~/."$symlink"
           fi
+
+          # Create the symlink
           ln -snvf "$env"/symlinks/"$symlink" ~/."$symlink"
         else
           log_verbose "Skipping symlink $symlink: already correct"
@@ -383,15 +447,26 @@ install_symlinks()
 # process overhead. Installs missing ones individually (VS Code has no batch).
 install_vscode_extensions()
 {(
+  # Iterate over both stable and insiders versions of VS Code
   for code in code code-insiders
   do
+    # Check if base-gui is active and the code binary exists
     if ! is_env_ignored "base-gui" \
       && is_program_installed "$code"
     then
+      # Get list of currently installed extensions to avoid redundant calls
       extensions=$($code --list-extensions)
+
+      # Read the list of desired extensions
       while IFS='' read -r extension || [ -n "$extension" ]
       do
-        case "$extension" in ""|\#*) continue ;; esac
+        # Skip empty lines and comments
+        if [ -z "$extension" ] || [ "${extension#\#}" != "$extension" ]
+        then
+          continue
+        fi
+
+        # Check if extension is already installed
         if ! echo "$extensions" | grep -qw "$extension"
         then
           log_stage "Installing $code extensions"
@@ -412,9 +487,11 @@ install_vscode_extensions()
 # PowerShell.
 test_psscriptanalyzer()
 {(
+  # Check if PowerShell Core is installed
   if is_program_installed "pwsh"
   then
     log_verbose "Running PSScriptAnalyzer"
+    # Import the helper module and run the analysis function
     pwsh -Command "Import-Module $DIR/src/script.psm1 && Test-PSScriptAnalyzer -dir $DIR"
   else
     log_verbose "Skipping PSScriptAnalyzer: pwsh not installed"
@@ -429,25 +506,34 @@ test_psscriptanalyzer()
 # so the overall run continues; individual findings still surface.
 test_shellcheck()
 {(
+  # Check if shellcheck is installed
   if ! is_program_installed "shellcheck"
   then
     log_error "shellcheck not installed"
   else
     log_stage "Running shellcheck"
+    # Start with the main entry point script
     scripts="$DIR"/dotfiles.sh
+
+    # Iterate over all environments to find scripts to check
     for env in "$DIR"/env/*
     do
       if [ -e "$env"/symlinks.conf ]
       then
         while IFS='' read -r symlink || [ -n "$symlink" ]
         do
+          # Handle directories containing scripts
           if [ -d "$env"/symlinks/"$symlink" ]
           then
             tmpfile="$(mktemp)"
+
+            # Find all files within the symlinked directory
             find "$env"/symlinks/"$symlink" -type f > "$tmpfile"
             while IFS='' read -r line || [ -n "$line" ]
             do
               ignore=false
+
+              # Check if the file belongs to a submodule (third-party code) to exclude it
               if [ -e "$env"/submodules.conf ]
               then
                 while IFS='' read -r submodule || [ -n "$submodule" ]
@@ -459,6 +545,8 @@ test_shellcheck()
                   esac
                 done < "$env"/submodules.conf
               fi
+
+              # If not ignored and is a shell script, add to the list
               if ! "$ignore" \
                 && is_shell_script "$line"
               then
@@ -466,6 +554,8 @@ test_shellcheck()
               fi
             done < "$tmpfile"
             rm "$tmpfile"
+
+          # Handle individual script files
           elif is_shell_script "$env"/symlinks/"$symlink"
           then
             scripts="$scripts $env"/symlinks/"$symlink"
@@ -475,6 +565,7 @@ test_shellcheck()
     done
     # shellcheck disable=SC2086
     log_verbose "Checking scripts: $scripts"
+    # Run shellcheck on all collected scripts, ignoring errors
     shellcheck $scripts || true
   fi
 )}
@@ -485,17 +576,22 @@ test_shellcheck()
 # directories to avoid unintended cleanup of user-managed content.
 uninstall_symlinks()
 {(
+  # Iterate over all environment directories
   for env in "$DIR"/env/*
   do
+    # Check if the environment is active and has a symlinks configuration file
     if ! is_env_ignored "$(basename "$env")" \
       && [ -e "$env"/symlinks.conf ]
     then
+      # Read the configuration file line by line
       while IFS='' read -r symlink || [ -n "$symlink" ]
       do
+        # Check if the symlink is currently installed
         if is_symlink_installed "$env" "$symlink"
         then
           log_stage "Uninstalling symlinks"
           log_verbose "Removing symlink: ~/.$symlink"
+          # Remove the symlink
           rm -vf ~/."$symlink"
         else
           log_verbose "Skipping uninstall symlink $symlink: not installed"
@@ -512,27 +608,34 @@ uninstall_symlinks()
 # sequence: fetch only when remote changed, then merge if commit hashes differ.
 update_dotfiles()
 {(
+  # Check if this is a git repository
   if [ ! -d "$DIR"/.git ]
   then
     log_verbose "Skipping update dotfiles: not a git repository"
     return
   fi
+  # Check if git is installed
   if ! is_program_installed "git"
   then
     log_verbose "Skipping update dotfiles: git not installed"
     return
   fi
+
+  # Ensure working tree is clean before attempting update
   if ! git -C "$DIR" diff-index --quiet HEAD --
   then
     log_verbose "Skipping update dotfiles: working tree not clean"
     return
   fi
+
+  # Ensure we are on the same branch as the remote HEAD
   if [ "$(git -C "$DIR" rev-parse --abbrev-ref origin/HEAD | cut -d/ -f2)" != "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ]
   then
     log_verbose "Skipping update dotfiles: current branch does not match origin/HEAD"
     return
   fi
 
+  # Check if there are changes to fetch
   if [ -n "$(git -C "$DIR" fetch --dry-run)" ]
   then
     log_stage "Updating dotfiles"
@@ -541,6 +644,8 @@ update_dotfiles()
   else
     log_verbose "Skipping fetch: no updates from origin"
   fi
+
+  # Check if the local HEAD is behind the remote HEAD
   if [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]
   then
     log_stage "Updating dotfiles"
@@ -559,11 +664,13 @@ update_dotfiles()
 # install pass should happen first). Ensures recursive consistency.
 update_git_submodules()
 {(
+  # Check if this is a git repository
   if [ ! -d "$DIR"/.git ]
   then
     log_verbose "Skipping update git submodules: not a git repository"
     return
   fi
+  # Check if git is installed
   if ! is_program_installed "git"
   then
     log_verbose "Skipping update git submodules: git not installed"
@@ -573,12 +680,16 @@ update_git_submodules()
   known_submodules="$(git -C "$DIR" submodule status | awk '{print $2}')"
   modules=""
 
+  # Iterate over all environment directories
   for env in "$DIR"/env/*
   do
+    # Skip 'base' and ignored environments
     if [ "$(basename "$env")" != "base" ] \
       && ! is_env_ignored "$(basename "$env")"
     then
       env_module="env/$(basename "$env")"
+
+      # Only add if it's a registered submodule in the git repo
       if echo "$known_submodules" | grep -Fqx "$env_module"
       then
         modules="$modules $env_module"
@@ -594,11 +705,14 @@ update_git_submodules()
     return
   fi
 
+  # Ensure submodules are in a clean state (no + or - status)
   # shellcheck disable=SC2086
   if [ -z "$(git -C "$DIR" submodule status $modules | cut -c1 | tr -d ' ')" ]
   then
+    # Check for updates from remote
     # shellcheck disable=SC2086
     updates="$(git -C "$DIR" submodule update --init --recursive --remote --dry-run $modules 2>/dev/null)" || updates=""
+
     if [ -n "$updates" ]
     then
       log_stage "Updating git submodules"

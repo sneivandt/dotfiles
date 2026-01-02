@@ -49,9 +49,13 @@ configure_file_mode_bits()
       do
         mode="$(echo "$line" | cut -d" " -f1)"
         target=~/."$(echo "$line" | cut -d" " -f2)"
-        if [ -e "$target" ] \
-          && [ -n "$(find -H "$target" ! -type l ! -perm "$mode" -print -quit 2>/dev/null)" ]
+        if [ ! -e "$target" ]
         then
+          log_verbose "Skipping chmod on $target: file does not exist"
+        elif [ -z "$(find -H "$target" ! -type l ! -perm "$mode" -print -quit 2>/dev/null)" ]
+        then
+          log_verbose "Skipping chmod on $target: permissions already correct"
+        else
           log_verbose "Setting mode $mode on $target"
           chmod -c -R "$mode" "$target"
         fi
@@ -67,15 +71,26 @@ configure_file_mode_bits()
 # or all listed font families already present.
 configure_fonts()
 {(
-  if ! is_env_ignored "arch-gui" \
-    && is_program_installed "fc-list" \
-    && is_program_installed "fc-cache" \
-    && [ "$(fc-list : family | grep -f "$DIR"/env/arch-gui/fonts.conf -cx)" != "$(grep -c "" "$DIR"/env/arch-gui/fonts.conf | cut -d" " -f1)" ]
+  if is_env_ignored "arch-gui"
   then
-    log_stage "Updating fonts"
-    log_verbose "Running fc-cache to update font cache"
-    fc-cache
+    return
   fi
+
+  if ! is_program_installed "fc-list" || ! is_program_installed "fc-cache"
+  then
+    log_verbose "Skipping font configuration: fc-list or fc-cache not installed"
+    return
+  fi
+
+  if [ "$(fc-list : family | grep -f "$DIR"/env/arch-gui/fonts.conf -cx)" = "$(grep -c "" "$DIR"/env/arch-gui/fonts.conf | cut -d" " -f1)" ]
+  then
+    log_verbose "Skipping font configuration: fonts already up to date"
+    return
+  fi
+
+  log_stage "Updating fonts"
+  log_verbose "Running fc-cache to update font cache"
+  fc-cache
 )}
 
 # configure_shell
@@ -85,15 +100,34 @@ configure_fonts()
 # account. Uses chsh invoking absolute path resolved via a nested zsh.
 configure_shell()
 {(
-  if is_program_installed "zsh" \
-    && [ "$SHELL" != "$(zsh -c "command -vp zsh")" ] \
-    && [ ! -f /.dockerenv ] \
-    && [ "$(passwd --status "$USER" | cut -d" " -f2)" = "P" ]
+  if ! is_program_installed "zsh"
   then
-    log_stage "Configuring user shell"
-    log_verbose "Changing shell to $(zsh -c "command -vp zsh")"
-    chsh -s "$(zsh -c "command -vp zsh")"
+    log_verbose "Skipping shell configuration: zsh not installed"
+    return
   fi
+
+  zsh_path="$(zsh -c "command -vp zsh")"
+  if [ "$SHELL" = "$zsh_path" ]
+  then
+    log_verbose "Skipping shell configuration: shell already set to zsh"
+    return
+  fi
+
+  if [ -f /.dockerenv ]
+  then
+    log_verbose "Skipping shell configuration: running inside Docker"
+    return
+  fi
+
+  if [ "$(passwd --status "$USER" | cut -d" " -f2)" != "P" ]
+  then
+    log_verbose "Skipping shell configuration: user account not usable (passwd status)"
+    return
+  fi
+
+  log_stage "Configuring user shell"
+  log_verbose "Changing shell to $zsh_path"
+  chsh -s "$zsh_path"
 )}
 
 # configure_systemd
@@ -104,33 +138,50 @@ configure_shell()
 # boot by checking `systemctl is-system-running` state.
 configure_systemd()
 {(
-  if is_flag_set "s" \
-    && [ "$(ps -p 1 -o comm=)" = "systemd" ] \
-    && is_program_installed "systemctl"
+  if ! is_flag_set "s"
   then
-    for env in "$DIR"/env/*
-    do
-      if ! is_env_ignored "$(basename "$env")" \
-        && [ -e "$env"/units.conf ]
-      then
-        while IFS='' read -r unit || [ -n "$unit" ]
-        do
-          if systemctl --user list-unit-files | cut -d" " -f1 | grep -qx "$unit" \
-            && ! systemctl --user is-enabled --quiet "$unit"
-          then
-            log_stage "Configuring systemd"
-            log_verbose "Enabling systemd unit: $unit"
-            systemctl --user enable "$unit"
-            if [ "$(systemctl is-system-running)" = "running" ]
-            then
-              log_verbose "Starting systemd unit: $unit"
-              systemctl --user start "$unit"
-            fi
-          fi
-        done < "$env"/units.conf
-      fi
-    done
+    log_verbose "Skipping systemd configuration: -s flag not set"
+    return
   fi
+
+  if [ "$(ps -p 1 -o comm=)" != "systemd" ]
+  then
+    log_verbose "Skipping systemd configuration: not running under systemd"
+    return
+  fi
+
+  if ! is_program_installed "systemctl"
+  then
+    log_verbose "Skipping systemd configuration: systemctl not installed"
+    return
+  fi
+
+  for env in "$DIR"/env/*
+  do
+    if ! is_env_ignored "$(basename "$env")" \
+      && [ -e "$env"/units.conf ]
+    then
+      while IFS='' read -r unit || [ -n "$unit" ]
+      do
+        if ! systemctl --user list-unit-files | cut -d" " -f1 | grep -qx "$unit"
+        then
+          log_verbose "Skipping systemd unit $unit: not found in unit files"
+        elif systemctl --user is-enabled --quiet "$unit"
+        then
+          log_verbose "Skipping systemd unit $unit: already enabled"
+        else
+          log_stage "Configuring systemd"
+          log_verbose "Enabling systemd unit: $unit"
+          systemctl --user enable "$unit"
+          if [ "$(systemctl is-system-running)" = "running" ]
+          then
+            log_verbose "Starting systemd unit: $unit"
+            systemctl --user start "$unit"
+          fi
+        fi
+      done < "$env"/units.conf
+    fi
+  done
 )}
 
 # install_dotfiles_cli
@@ -145,6 +196,8 @@ install_dotfiles_cli()
     log_verbose "Linking ~/.bin/dotfiles to $DIR/dotfiles.sh"
     mkdir -pv ~/.bin
     ln -snvf "$DIR"/dotfiles.sh ~/.bin/dotfiles
+  else
+    log_verbose "Skipping dotfiles cli installation: already linked"
   fi
 )}
 
@@ -156,26 +209,36 @@ install_dotfiles_cli()
 # recursive init to support nested submodules.
 install_git_submodules()
 {(
-  if [ -d "$DIR"/.git ] \
-    && is_program_installed "git"
+  if [ ! -d "$DIR"/.git ]
   then
-    modules="$(cat "$DIR"/env/base/submodules.conf)"
-    for env in "$DIR"/env/*
-    do
-      if [ "$(basename "$env")" != "base" ] \
-        && ! is_env_ignored "$(basename "$env")"
-      then
-        modules="$modules "env/$(basename "$env")
-      fi
-    done
-    # shellcheck disable=SC2086
-    if git -C "$DIR" submodule status $modules | cut -c-1 | grep -q "+\\|-"
+    log_verbose "Skipping git submodules: not a git repository"
+    return
+  fi
+
+  if ! is_program_installed "git"
+  then
+    log_verbose "Skipping git submodules: git not installed"
+    return
+  fi
+
+  modules="$(cat "$DIR"/env/base/submodules.conf)"
+  for env in "$DIR"/env/*
+  do
+    if [ "$(basename "$env")" != "base" ] \
+      && ! is_env_ignored "$(basename "$env")"
     then
-      log_stage "Installing git submodules"
-      log_verbose "Updating submodules: $modules"
-      # shellcheck disable=SC2086
-      git -C "$DIR" submodule update --init --recursive $modules
+      modules="$modules "env/$(basename "$env")
     fi
+  done
+  # shellcheck disable=SC2086
+  if git -C "$DIR" submodule status $modules | cut -c-1 | grep -q "+\\|-"
+  then
+    log_stage "Installing git submodules"
+    log_verbose "Updating submodules: $modules"
+    # shellcheck disable=SC2086
+    git -C "$DIR" submodule update --init --recursive $modules
+  else
+    log_verbose "Skipping git submodules: already up to date"
   fi
 )}
 
@@ -187,32 +250,41 @@ install_git_submodules()
 # efficiency. Requires sudo + pacman presence.
 install_packages()
 {(
-  if is_flag_set "p" \
-    && is_program_installed "sudo" \
-    && is_program_installed "pacman"
+  if ! is_flag_set "p"
   then
-    packages=""
-    for env in "$DIR"/env/*
-    do
-      if ! is_env_ignored "$(basename "$env")" \
-        && [ -e "$env"/packages.conf ]
-      then
-        while IFS='' read -r package || [ -n "$package" ]
-        do
-          if ! pacman -Qq "$package" >/dev/null 2>&1
-          then
-            packages="$packages $package"
-          fi
-        done < "$env"/packages.conf
-      fi
-    done
-    if [ -n "$packages" ]
+    log_verbose "Skipping package installation: -p flag not set"
+    return
+  fi
+
+  if ! is_program_installed "sudo" || ! is_program_installed "pacman"
+  then
+    log_verbose "Skipping package installation: sudo or pacman not installed"
+    return
+  fi
+
+  packages=""
+  for env in "$DIR"/env/*
+  do
+    if ! is_env_ignored "$(basename "$env")" \
+      && [ -e "$env"/packages.conf ]
     then
-      log_stage "Installing packages"
-      log_verbose "Installing packages: $packages"
-      # shellcheck disable=SC2086
-      sudo pacman -S --quiet --needed $packages
+      while IFS='' read -r package || [ -n "$package" ]
+      do
+        if ! pacman -Qq "$package" >/dev/null 2>&1
+        then
+          packages="$packages $package"
+        else
+          log_verbose "Skipping package $package: already installed"
+        fi
+      done < "$env"/packages.conf
     fi
+  done
+  if [ -n "$packages" ]
+  then
+    log_stage "Installing packages"
+    log_verbose "Installing packages: $packages"
+    # shellcheck disable=SC2086
+    sudo pacman -S --quiet --needed $packages
   fi
 )}
 
@@ -230,6 +302,8 @@ install_powershell_modules()
       args="-Verbose"
     fi
     pwsh -Command "Import-Module $DIR/src/script.psm1 && Install-PowerShellModules $args"
+  else
+    log_verbose "Skipping PowerShell modules: pwsh not installed"
   fi
 )}
 
@@ -259,6 +333,8 @@ install_symlinks()
             rm -rvf ~/."$symlink"
           fi
           ln -snvf "$env"/symlinks/"$symlink" ~/."$symlink"
+        else
+          log_verbose "Skipping symlink $symlink: already correct"
         fi
       done < "$env"/symlinks.conf
     fi
@@ -285,6 +361,8 @@ install_vscode_extensions()
           log_stage "Installing $code extensions"
           log_verbose "Installing extension: $extension"
           $code --install-extension "$extension"
+        else
+          log_verbose "Skipping $code extension $extension: already installed"
         fi
       done < "$DIR/env/base-gui/vscode-extensions.conf"
     fi
@@ -302,6 +380,8 @@ test_psscriptanalyzer()
   then
     log_verbose "Running PSScriptAnalyzer"
     pwsh -Command "Import-Module $DIR/src/script.psm1 && Test-PSScriptAnalyzer -dir $DIR"
+  else
+    log_verbose "Skipping PSScriptAnalyzer: pwsh not installed"
   fi
 )}
 
@@ -381,6 +461,8 @@ uninstall_symlinks()
           log_stage "Uninstalling symlinks"
           log_verbose "Removing symlink: ~/.$symlink"
           rm -vf ~/."$symlink"
+        else
+          log_verbose "Skipping uninstall symlink $symlink: not installed"
         fi
       done < "$env"/symlinks.conf
     fi
@@ -394,23 +476,42 @@ uninstall_symlinks()
 # sequence: fetch only when remote changed, then merge if commit hashes differ.
 update_dotfiles()
 {(
-  if [ -d "$DIR"/.git ] \
-    && is_program_installed "git" \
-    && git -C "$DIR" diff-index --quiet HEAD -- \
-    && [ "$(git -C "$DIR" rev-parse --abbrev-ref origin/HEAD | cut -d/ -f2)" = "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ]
+  if [ ! -d "$DIR"/.git ]
   then
-    if [ -n "$(git -C "$DIR" fetch --dry-run)" ]
-    then
-      log_stage "Updating dotfiles"
-      log_verbose "Fetching updates from origin"
-      git -C "$DIR" fetch
-    fi
-    if [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]
-    then
-      log_stage "Updating dotfiles"
-      log_verbose "Merging updates from origin/HEAD"
-      git -C "$DIR" merge
-    fi
+    log_verbose "Skipping update dotfiles: not a git repository"
+    return
+  fi
+  if ! is_program_installed "git"
+  then
+    log_verbose "Skipping update dotfiles: git not installed"
+    return
+  fi
+  if ! git -C "$DIR" diff-index --quiet HEAD --
+  then
+    log_verbose "Skipping update dotfiles: working tree not clean"
+    return
+  fi
+  if [ "$(git -C "$DIR" rev-parse --abbrev-ref origin/HEAD | cut -d/ -f2)" != "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ]
+  then
+    log_verbose "Skipping update dotfiles: current branch does not match origin/HEAD"
+    return
+  fi
+
+  if [ -n "$(git -C "$DIR" fetch --dry-run)" ]
+  then
+    log_stage "Updating dotfiles"
+    log_verbose "Fetching updates from origin"
+    git -C "$DIR" fetch
+  else
+    log_verbose "Skipping fetch: no updates from origin"
+  fi
+  if [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]
+  then
+    log_stage "Updating dotfiles"
+    log_verbose "Merging updates from origin/HEAD"
+    git -C "$DIR" merge
+  else
+    log_verbose "Skipping merge: HEAD is up to date with origin/HEAD"
   fi
 )}
 
@@ -422,25 +523,34 @@ update_dotfiles()
 # install pass should happen first). Ensures recursive consistency.
 update_git_submodules()
 {(
-  if [ -d "$DIR"/.git ] \
-    && is_program_installed "git"
+  if [ ! -d "$DIR"/.git ]
   then
-    modules=""
-    for env in "$DIR"/env/*
-    do
-      if [ "$(basename "$env")" != "base" ] \
-        && ! is_env_ignored "$(basename "$env")"
-      then
-        modules="$modules env/"$(basename "$env")
-      fi
-    done
-    # shellcheck disable=SC2086
-    if [ -z "$(git -C "$DIR" submodule status $modules | cut -c1)" ]
+    log_verbose "Skipping update git submodules: not a git repository"
+    return
+  fi
+  if ! is_program_installed "git"
+  then
+    log_verbose "Skipping update git submodules: git not installed"
+    return
+  fi
+
+  modules=""
+  for env in "$DIR"/env/*
+  do
+    if [ "$(basename "$env")" != "base" ] \
+      && ! is_env_ignored "$(basename "$env")"
     then
-      log_stage "Updating git submodules"
-      log_verbose "Updating submodules: $modules"
-      # shellcheck disable=SC2086
-      git -C "$DIR" submodule update --init --recursive --remote $modules
+      modules="$modules env/"$(basename "$env")
     fi
+  done
+  # shellcheck disable=SC2086
+  if [ -z "$(git -C "$DIR" submodule status $modules | cut -c1)" ]
+  then
+    log_stage "Updating git submodules"
+    log_verbose "Updating submodules: $modules"
+    # shellcheck disable=SC2086
+    git -C "$DIR" submodule update --init --recursive --remote $modules
+  else
+    log_verbose "Skipping update git submodules: submodules have modifications or are uninitialized"
   fi
 )}

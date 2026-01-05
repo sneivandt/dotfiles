@@ -19,7 +19,7 @@ function Install-VsCodeExtensions
 
     $installed = code --list-extensions
 
-    foreach ($extension in (Get-Content $root\env\base-gui\vscode-extensions.conf))
+    foreach ($extension in (Get-Content $root\env\base-gui\vscode-extensions.conf | Where-Object { $_ -notmatch '^\s*#' -and $_.Trim().Length -gt 0 }))
     {
         if ($installed -notcontains $extension)
         {

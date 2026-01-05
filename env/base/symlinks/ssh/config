@@ -17,6 +17,13 @@ Host github.com
   IdentityFile ~/.ssh/github/id_ed25519
   PreferredAuthentications publickey
 
+Host github-internal
+  User git
+  HostName github.com
+  IdentityFile ~/.ssh/github_internal/id_rsa
+  IdentityFile ~/.ssh/github_internal/id_ed25519
+  PreferredAuthentications publickey
+
 Host *.visualstudio.com *.dev.azure.com
   LogLevel ERROR
   IdentityFile ~/.ssh/ado/id_rsa

@@ -5,6 +5,25 @@ if (Get-Module PSReadLine)
     Set-PSReadLineOption -MaximumHistoryCount 10000
 }
 
+$Global:GitExists = [bool](Get-Command "git" -ErrorAction SilentlyContinue)
+
+$Global:IsNestedPwsh = $false
+if ($null -eq $env:windir)
+{
+    try
+    {
+        $pwshCmd = Get-Command "pwsh" -ErrorAction Stop
+        if ($pwshCmd.Path -ne $env:SHELL)
+        {
+            $Global:IsNestedPwsh = $true
+        }
+    }
+    catch
+    {
+        # Ignore
+    }
+}
+
 function Prompt
 {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSAvoidUsingWriteHost", "")]
@@ -17,34 +36,40 @@ function Prompt
 
     $Host.UI.RawUI.ForegroundColor = "White"
 
-    if (($null -eq $env:windir) -and $(Get-Command pwsh).Path -ne $env:SHELL)
+    if ($Global:IsNestedPwsh)
     {
         Write-Host "pwsh " -NoNewLine -ForegroundColor Cyan
     }
 
     $curPath = $ExecutionContext.SessionState.Path.CurrentLocation.Path
 
-    if ($curPath.StartsWith($Home))
+    if ($curPath.StartsWith($Home, [System.StringComparison]::OrdinalIgnoreCase))
     {
         $curPath = "~" + $curPath.SubString($Home.Length)
     }
 
     Write-Host $curPath -NoNewLine -ForegroundColor Yellow
 
-    if (Get-Command "git" -ErrorAction SilentlyContinue)
+    if ($Global:GitExists)
     {
-        $status = git --no-optional-locks status --short --branch --porcelain=v1 --untracked-files=no 2> $null
-        $branch = ((($status | Select-Object -First 1) -replace "^## ","") -Split "\.\.\.")[0]
-
-        if ($branch)
+        $status = @(git --no-optional-locks status --short --branch --porcelain=v1 --untracked-files=no 2> $null)
+        
+        if ($status.Count -gt 0)
         {
-            Write-Host " $branch" -NoNewLine -ForegroundColor White
-
-            $changes = ($status -split "\n").Count - 1
-
-            if ($changes -gt 0)
+            $branchLine = $status[0]
+            if ($branchLine.StartsWith("## "))
             {
-                Write-Host "+$changes" -NoNewLine -ForegroundColor Red
+                $branchName = $branchLine.Substring(3)
+                $ellipsis = $branchName.IndexOf("...")
+                if ($ellipsis -gt 0) { $branchName = $branchName.Substring(0, $ellipsis) }
+                
+                Write-Host " $branchName" -NoNewLine -ForegroundColor White
+
+                $changes = $status.Count - 1
+                if ($changes -gt 0)
+                {
+                    Write-Host "+$changes" -NoNewLine -ForegroundColor Red
+                }
             }
         }
     }

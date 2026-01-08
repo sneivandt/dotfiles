@@ -53,7 +53,7 @@ Each directory under `env/` encapsulates a logical layer. Layers can extend one 
 |-------|---------|
 | `base` | Cross‑platform core shell + editor + git + tooling configs |
 | `base-gui` | GUI/editor (VS Code, JetBrains placeholder dirs, etc.) extras |
-| `arch` | Arch Linux specific packages & pacman/trizen configuration |
+| `arch` | Arch Linux specific packages & pacman configuration |
 | `arch-gui` | Arch desktop (X, xmonad, picom, dunst, redshift, fonts) |
 | `win` | Windows / PowerShell / registry settings & symlink metadata |
 

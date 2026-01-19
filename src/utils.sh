@@ -10,6 +10,16 @@ set -o nounset
 # Keep logic minimal—complex workflows belong in tasks.sh.
 # -----------------------------------------------------------------------------
 
+# Detect host OS once to avoid repeated expensive checks.
+# IS_ARCH: 1 (processed) if Arch Linux / Arch-based, 0 (ignored) otherwise.
+# Logic: Check /etc/*-release. If ANY match for "arch" or "archlinux" is found
+# in ID fields, we consider it Arch.
+IS_ARCH=0
+if grep -E "^(ID|ID_LIKE)=.*" /etc/*-release 2>/dev/null | cut -d= -f2 | tr -d '"' | grep -qxE "arch|archlinux"
+then
+  IS_ARCH=1
+fi
+
 # is_env_ignored
 #
 # Returns success if the named environment directory should be skipped based
@@ -26,7 +36,8 @@ is_env_ignored()
 {
   case $1 in
     arch)
-      if grep -xP "ID=.*|ID_LIKE=.*" /etc/*-release | cut -d= -f2 | grep -qvxP "arch|archlinux"
+      # If not on Arch (IS_ARCH=0), ignore it (return 0)
+      if [ "$IS_ARCH" -eq 0 ]
       then
         return 0
       fi
@@ -75,8 +86,8 @@ is_flag_set()
 
 # is_program_installed
 #
-# Predicate for presence of an executable in PATH. Uses `command -vp` which
-# resolves shell builtins and provides absolute path for determinism.
+# Predicate for presence of an executable in PATH. Use `command -v` to avoid
+# subshells and output capture overhead.
 #
 # Args:
 #   $1 program name
@@ -85,7 +96,7 @@ is_flag_set()
 #   0 found, 1 missing.
 is_program_installed()
 {
-  if [ -n "$(command -vp "$1")" ]
+  if command -v "$1" >/dev/null 2>&1
   then
     return 0
   else
@@ -130,6 +141,7 @@ is_shell_script()
 #   0 installed & matches, 1 absent or different.
 is_symlink_installed()
 {
+  # shellcheck disable=SC2012
   if [ "$(readlink -f "$DIR"/env/"$1"/symlinks/"$2")" = "$(readlink -f ~/."$2")" ]
   then
     return 0

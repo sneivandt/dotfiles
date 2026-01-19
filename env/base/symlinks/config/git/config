@@ -4,7 +4,6 @@
 [url "git@github.com:"]
   pushInsteadOf = https://github.com/
 [core]
-  editor = vim
   pager = less -imRj8X
   autocrlf = input
   excludesfile = ~/.config/git/ignore
@@ -25,9 +24,7 @@
   prune = true
   pruneTags = true
   writeCommitGraph = true
-  fsckobjects = true
 [transfer]
-  fsckobjects = true
 [help]
   autocorrect = prompt
 [init]
@@ -68,6 +65,7 @@
 
 [include]
   path = ~/.config/git/aliases
+  path = ~/.config/git/delta
   path = ~/.config/git/windows
 
 [includeIf "hasconfig:remote.*.url:https://*@dev.azure.com/**"]

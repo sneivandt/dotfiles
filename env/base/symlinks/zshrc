@@ -52,13 +52,41 @@ setopt pushdtohome
 . ~/.config/zsh/key-bindings.zsh
 
 # Plugins
-for plugin in ~/.config/zsh/plugins/*.zsh; do
+for plugin in ~/.config/zsh/plugins/*.zsh(N)
+do
   [ -f "$plugin" ] && . "$plugin"
 done
 
+# Arch Linux System Plugins
+for plugin in \
+  /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh \
+  /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh \
+  /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh \
+  /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh \
+  /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh \
+  /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+do
+  if [ -f "$plugin" ]; then
+    . "$plugin"
+  fi
+done
+
+# zoxide
+if command -v zoxide >/dev/null 2>&1
+then
+  eval "$(zoxide init zsh)"
+fi
+
+# FZF
+[ -f /usr/share/fzf/key-bindings.zsh ] && . /usr/share/fzf/key-bindings.zsh
+[ -f /usr/share/fzf/completion.zsh ] && . /usr/share/fzf/completion.zsh
+
 # Functions
 fpath=(~/.config/zsh/functions $fpath)
-autoload -Uz ~/.config/zsh/functions/*
+for func in ~/.config/zsh/functions/*(N)
+do
+  autoload -Uz "${func:t}"
+done
 
 # Clear screen on startup for urxvt
 if [[ "$TERM" == "rxvt-unicode-256color" ]]

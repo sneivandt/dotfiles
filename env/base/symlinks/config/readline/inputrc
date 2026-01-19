@@ -11,6 +11,10 @@ set mark-directories on
 set show-all-if-ambiguous on
 set visible-stats on
 
+# History
+"\e[A": history-search-backward
+"\e[B": history-search-forward
+
 # Word Style
 C-b:unix-filename-rubout
 

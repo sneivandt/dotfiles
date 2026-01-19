@@ -56,14 +56,14 @@ configure_file_mode_bits()
           continue
         fi
 
-        # Construct the target path (relative to home directory)
+        # Join paths to avoid double slash if dotfile path empty, though $file usually relative
         target=~/."$file"
 
         # Check if the target file exists
         if [ ! -e "$target" ]
         then
           log_verbose "Skipping chmod on $target: file does not exist"
-        elif [ -z "$(find -H "$target" ! -type l ! -perm "$mode" -print -quit 2>/dev/null)" ]
+        elif [ -z "$(find -H "$target" ! -type l ! -perm "$mode" -print 2>/dev/null | head -n 1)" ]
         then
           log_verbose "Skipping chmod on $target: permissions already correct"
         else
@@ -83,12 +83,6 @@ configure_file_mode_bits()
 # or all listed font families already present.
 configure_fonts()
 {(
-  # Skip if the GUI environment is ignored (fonts are only relevant for GUI)
-  if is_env_ignored "arch-gui"
-  then
-    return
-  fi
-
   # Check if font configuration tools are installed
   if ! is_program_installed "fc-list" || ! is_program_installed "fc-cache"
   then
@@ -97,20 +91,29 @@ configure_fonts()
   fi
 
   missing_fonts=0
-  # Read the list of required fonts from fonts.conf
-  while IFS='' read -r font || [ -n "$font" ]; do
-    if [ -z "$font" ] || [ "${font#\#}" != "$font" ]
+
+  for env in "$DIR"/env/*
+  do
+    if is_env_ignored "$(basename "$env")" || [ ! -e "$env"/fonts.conf ]
     then
       continue
     fi
 
-    # Check if the font family is already installed in the system
-    if ! fc-list : family | grep -Fxq "$font"
-    then
-      missing_fonts=1
-      break
-    fi
-  done < "$DIR"/env/arch-gui/fonts.conf
+    # Read the list of required fonts from fonts.conf
+    while IFS='' read -r font || [ -n "$font" ]; do
+      if [ -z "$font" ] || [ "${font#\#}" != "$font" ]
+      then
+        continue
+      fi
+
+      # Check if the font family is already installed in the system
+      if ! fc-list : family | grep -Fxq "$font"
+      then
+        missing_fonts=1
+        break 2
+      fi
+    done < "$env"/fonts.conf
+  done
 
   if [ "$missing_fonts" -eq 0 ]
   then
@@ -271,27 +274,34 @@ install_git_submodules()
   known_submodules="$(git -C "$DIR" submodule status | awk '{print $2}')"
   modules=""
 
-  # Add submodules from the base environment
-  if [ -f "$DIR"/env/base/submodules.conf ]
-  then
-    while IFS='' read -r module || [ -n "$module" ]; do
-      if [ -z "$module" ] || [ "${module#\#}" != "$module" ]
-      then
-        continue
-      fi
-      modules="$modules $module"
-    done < "$DIR"/env/base/submodules.conf
-  fi
-
   # Iterate over all environment directories
   for env in "$DIR"/env/*
   do
-    # Skip 'base' (handled above) and ignored environments
-    if [ "$(basename "$env")" != "base" ] \
-      && ! is_env_ignored "$(basename "$env")"
-    then
-      env_module="env/$(basename "$env")"
+    env_name="$(basename "$env")"
 
+    # Skip ignored environments
+    if is_env_ignored "$env_name"
+    then
+        continue
+    fi
+
+    # 1. Check for submodules.conf in the environment
+    if [ -f "$env"/submodules.conf ]
+    then
+      while IFS='' read -r module || [ -n "$module" ]
+      do
+        if [ -z "$module" ] || [ "${module#\#}" != "$module" ]
+        then
+          continue
+        fi
+        modules="$modules $module"
+      done < "$env"/submodules.conf
+    fi
+
+    # 2. Check if the environment folder itself is a submodule (excluding base)
+    if [ "$env_name" != "base" ]
+    then
+      env_module="env/$env_name"
       # Only add if it's a registered submodule in the git repo
       if echo "$known_submodules" | grep -Fqx "$env_module"
       then
@@ -310,7 +320,7 @@ install_git_submodules()
 
   # Check for uninitialized (-) or modified (+) submodules
   # shellcheck disable=SC2086
-  if git -C "$DIR" submodule status $modules | cut -c-1 | grep -q "+\\|-"
+  if git -C "$DIR" submodule status $modules | cut -c-1 | grep -q "[+-]"
   then
     log_stage "Installing git submodules"
     log_verbose "Updating submodules: $modules"
@@ -450,12 +460,22 @@ install_vscode_extensions()
   # Iterate over both stable and insiders versions of VS Code
   for code in code code-insiders
   do
-    # Check if base-gui is active and the code binary exists
-    if ! is_env_ignored "base-gui" \
-      && is_program_installed "$code"
+    # Check if the code binary exists
+    if ! is_program_installed "$code"
     then
-      # Get list of currently installed extensions to avoid redundant calls
-      extensions=$($code --list-extensions)
+      continue
+    fi
+
+    # Get list of currently installed extensions to avoid redundant calls
+    extensions=$($code --list-extensions)
+
+    # Iterate over all environments to find vscode-extensions.conf
+    for env in "$DIR"/env/*
+    do
+      if is_env_ignored "$(basename "$env")" || [ ! -e "$env"/vscode-extensions.conf ]
+      then
+        continue
+      fi
 
       # Read the list of desired extensions
       while IFS='' read -r extension || [ -n "$extension" ]
@@ -475,8 +495,8 @@ install_vscode_extensions()
         else
           log_verbose "Skipping $code extension $extension: already installed"
         fi
-      done < "$DIR/env/base-gui/vscode-extensions.conf"
-    fi
+      done < "$env"/vscode-extensions.conf
+    done
   done
 )}
 
@@ -512,8 +532,8 @@ test_shellcheck()
     log_error "shellcheck not installed"
   else
     log_stage "Running shellcheck"
-    # Start with the main entry point script
-    scripts="$DIR"/dotfiles.sh
+    # Start with the main entry point script and source scripts
+    scripts="$DIR/dotfiles.sh $DIR/src/*.sh"
 
     # Iterate over all environments to find scripts to check
     for env in "$DIR"/env/*
@@ -556,16 +576,16 @@ test_shellcheck()
             rm "$tmpfile"
 
           # Handle individual script files
-          elif is_shell_script "$env"/symlinks/"$symlink"
+          elif is_shell_script "$env/symlinks/$symlink"
           then
-            scripts="$scripts $env"/symlinks/"$symlink"
+            scripts="$scripts $env/symlinks/$symlink"
           fi
-        done < "$env"/symlinks.conf
+        done < "$env/symlinks.conf"
       fi
     done
-    # shellcheck disable=SC2086
     log_verbose "Checking scripts: $scripts"
     # Run shellcheck on all collected scripts, ignoring errors
+    # shellcheck disable=SC2086
     shellcheck $scripts || true
   fi
 )}
@@ -683,12 +703,31 @@ update_git_submodules()
   # Iterate over all environment directories
   for env in "$DIR"/env/*
   do
-    # Skip 'base' and ignored environments
-    if [ "$(basename "$env")" != "base" ] \
-      && ! is_env_ignored "$(basename "$env")"
-    then
-      env_module="env/$(basename "$env")"
+    env_name="$(basename "$env")"
 
+    # Skip ignored environments
+    if is_env_ignored "$env_name"
+    then
+      continue
+    fi
+
+    # 1. Check for submodules.conf in the environment
+    if [ -f "$env"/submodules.conf ]
+    then
+      while IFS='' read -r module || [ -n "$module" ]
+      do
+        if [ -z "$module" ] || [ "${module#\#}" != "$module" ]
+        then
+          continue
+        fi
+        modules="$modules $module"
+      done < "$env"/submodules.conf
+    fi
+
+    # 2. Check if the environment folder itself is a submodule (excluding base)
+    if [ "$env_name" != "base" ]
+    then
+      env_module="env/$env_name"
       # Only add if it's a registered submodule in the git repo
       if echo "$known_submodules" | grep -Fqx "$env_module"
       then

@@ -56,7 +56,7 @@ elif [ -f "$file" ]
 then
   if [ -w "$file" ]
   then
-    vim "$file"
+    ${EDITOR:-vim} "$file"
   else
     sudo -e "$file"
   fi

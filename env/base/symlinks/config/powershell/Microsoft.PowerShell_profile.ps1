@@ -1,3 +1,6 @@
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSAvoidGlobalVars", "")]
+param()
+
 if (Get-Module PSReadLine)
 {
     Set-PSReadLineOption -BellStyle None
@@ -10,17 +13,10 @@ $Global:GitExists = [bool](Get-Command "git" -ErrorAction SilentlyContinue)
 $Global:IsNestedPwsh = $false
 if ($null -eq $env:windir)
 {
-    try
+    $pwshCmd = Get-Command "pwsh" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -ne $pwshCmd -and $pwshCmd.Path -ne $env:SHELL)
     {
-        $pwshCmd = Get-Command "pwsh" -ErrorAction Stop
-        if ($pwshCmd.Path -ne $env:SHELL)
-        {
-            $Global:IsNestedPwsh = $true
-        }
-    }
-    catch
-    {
-        # Ignore
+        $Global:IsNestedPwsh = $true
     }
 }
 
@@ -53,7 +49,7 @@ function Prompt
     if ($Global:GitExists)
     {
         $status = @(git --no-optional-locks status --short --branch --porcelain=v1 --untracked-files=no 2> $null)
-        
+
         if ($status.Count -gt 0)
         {
             $branchLine = $status[0]
@@ -62,7 +58,7 @@ function Prompt
                 $branchName = $branchLine.Substring(3)
                 $ellipsis = $branchName.IndexOf("...")
                 if ($ellipsis -gt 0) { $branchName = $branchName.Substring(0, $ellipsis) }
-                
+
                 Write-Host " $branchName" -NoNewLine -ForegroundColor White
 
                 $changes = $status.Count - 1

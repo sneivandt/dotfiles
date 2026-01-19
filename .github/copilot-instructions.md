@@ -29,6 +29,7 @@ Symlinks are managed declaratively.
 - **Target**: The target is always relative to the user's home directory, prefixed with a dot.
   - Example: A line `config/nvim` in `symlinks.conf` maps `env/base/symlinks/config/nvim` to `~/.config/nvim`.
 - **Rule**: Do not hardcode `ln -s` commands in scripts. Always add the file to the appropriate `symlinks/` folder and update `symlinks.conf`.
+- **Backups**: Do not backup existing files before linking. This is not necessary.
 
 ## Shell Scripting
 - Use `#!/bin/sh` unless there is a compelling reason for Bash. If Bash required, document it.

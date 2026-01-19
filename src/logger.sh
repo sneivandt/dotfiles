@@ -15,6 +15,32 @@ set -o nounset
 #     times (suppresses redundant noise) by leveraging a private _work flag.
 # -----------------------------------------------------------------------------
 
+# Colors
+if [ -t 1 ]
+then
+  # shellcheck disable=SC2034
+  RED="\033[0;31m"
+  # shellcheck disable=SC2034
+  GREEN="\033[0;32m"
+  # shellcheck disable=SC2034
+  BLUE="\033[0;34m"
+  # shellcheck disable=SC2034
+  YELLOW="\033[1;33m"
+  # shellcheck disable=SC2034
+  NC="\033[0m" # No Color
+else
+  # shellcheck disable=SC2034
+  RED=""
+  # shellcheck disable=SC2034
+  GREEN=""
+  # shellcheck disable=SC2034
+  BLUE=""
+  # shellcheck disable=SC2034
+  YELLOW=""
+  # shellcheck disable=SC2034
+  NC=""
+fi
+
 # log_error
 #
 # Print an error message (stderr semantics not required for current usage)
@@ -24,7 +50,7 @@ set -o nounset
 #   $1 human readable error description
 log_error()
 {
-  echo "ERROR: $1"
+  printf "${RED}ERROR: %s${NC}\n" "$1"
   exit 1
 }
 
@@ -38,7 +64,7 @@ log_error()
 #   $2 failure description
 log_fail()
 {
-  echo "FAIL $FILE $TEST $1 : $2"
+  printf "${RED}FAIL %s %s %s : %s${NC}\n" "$FILE" "$TEST" "$1" "$2"
 }
 
 # log_usage
@@ -71,7 +97,7 @@ log_verbose()
 {
   if is_flag_set "v"
   then
-    echo "VERBOSE: $1"
+    printf "${YELLOW}VERBOSE: %s${NC}\n" "$*"
   fi
 }
 
@@ -89,6 +115,6 @@ log_stage()
     || ! $_work
   then
     _work=true
-    echo ":: $1..."
+    printf "${BLUE}:: %s...${NC}\n" "$1"
   fi
 }

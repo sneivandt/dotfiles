@@ -38,6 +38,8 @@ set mouse=a
 set nobackup
 set noerrorbells
 set noswapfile
+set undodir=~/.cache/vim/undo
+set undofile
 set nonumber
 set preserveindent
 set ruler

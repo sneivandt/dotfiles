@@ -10,6 +10,8 @@ alias cls="clear"
 
 alias df="df -h -T"
 
+alias g="git"
+
 alias grep="grep --color=auto"
 
 alias l="ls -h --color=auto"
@@ -36,6 +38,7 @@ if command -v eza >/dev/null 2>&1; then
   alias ls="eza"
   alias ll="eza -l"
   alias la="eza -la"
+  alias tree="eza --tree"
 elif command -v exa >/dev/null 2>&1; then
   alias l="exa"
   alias ls="exa"
@@ -55,4 +58,8 @@ then
 elif command -v vim >/dev/null 2>&1
 then
   alias vi="vim"
+fi
+
+if command -v tldr >/dev/null 2>&1; then
+  alias help="tldr"
 fi

@@ -16,5 +16,3 @@ node_modules/
 !.vscode/launch.json
 !.vscode/extensions.json
 *.swp
-package-lock.json
-yarn.lock

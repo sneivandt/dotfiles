@@ -1,8 +1,37 @@
 # Automatically normalize line endings for all text-based files
 * text=auto
 
+# Code diff improvements
+*.c     diff=cpp
+*.h     diff=cpp
+*.c++   diff=cpp
+*.h++   diff=cpp
+*.cpp   diff=cpp
+*.hpp   diff=cpp
+*.cc    diff=cpp
+*.hh    diff=cpp
+*.cs    diff=csharp
+*.css   diff=css
+*.html  diff=html
+*.xhtml diff=html
+*.go    diff=golang
+*.php   diff=php
+*.pl    diff=perl
+*.py    diff=python
+*.md    diff=markdown
+*.rb    diff=ruby
+*.rs    diff=rust
+*.tex   diff=tex
+
 # Custom diff drivers
 *.min.js diff=min
 *.min.css diff=min
 *.json diff=json
+
+# Binary files - do not diff
+*.lock binary
+package-lock.json binary
+yarn.lock binary
+go.sum binary
+
 

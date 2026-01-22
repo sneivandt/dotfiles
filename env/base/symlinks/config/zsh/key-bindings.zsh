@@ -55,3 +55,11 @@ sudo-command-line()
 }
 zle -N sudo-command-line
 bindkey '^T' sudo-command-line
+
+# Search based on what you typed so far
+autoload -U up-line-or-beginning-search
+autoload -U down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+bindkey "^[[A" up-line-or-beginning-search # Up
+bindkey "^[[B" down-line-or-beginning-search # Down

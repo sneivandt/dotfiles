@@ -93,3 +93,18 @@ if [[ "$TERM" == "rxvt-unicode-256color" ]]
 then
   clear
 fi
+
+# Custom FZF Ctrl+R behavior: Execute immediately
+if zle -l fzf-history-widget
+then
+  fzf-history-widget-accept() {
+    fzf-history-widget
+    if [[ $? -eq 0 ]]
+    then
+      zle accept-line
+    fi
+  }
+  zle -N fzf-history-widget-accept
+  bindkey '^R' fzf-history-widget-accept
+fi
+

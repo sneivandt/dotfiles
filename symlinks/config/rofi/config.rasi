@@ -1,0 +1,59 @@
+configuration {
+  modi: "drun,run,window";
+  show-icons: true;
+  icon-theme: "Papirus";
+  font: "Source Code Pro 12";
+  display-drun: "Apps";
+  display-run: "Run";
+  display-window: "Window";
+  drun-display-format: "{icon} {name}";
+}
+
+@theme "/dev/null"
+
+* {
+  background-color: #121212;
+  text-color: #d0d0d0;
+  spacing: 0;
+  width: 512px;
+}
+
+window {
+  border: 0;
+  padding: 10px;
+}
+
+inputbar {
+  children: [entry];
+  padding: 10px;
+  background-color: #1a1a1a;
+}
+
+entry {
+  background-color: inherit;
+  placeholder: "";
+}
+
+listview {
+  lines: 10;
+  padding: 10px 0 0 0;
+}
+
+element {
+  padding: 8px;
+}
+
+element selected {
+  background-color: #1a1a1a;
+  text-color: #61afef;
+}
+
+element-text, element-icon {
+  background-color: inherit;
+  text-color: inherit;
+}
+
+element-icon {
+  size: 24px;
+  padding: 0 10px 0 0;
+}

@@ -1,0 +1,13 @@
+#!/usr/bin/env zsh
+
+# Global profile
+[ -f /etc/zsh/zprofile ] && . /etc/zsh/zprofile
+
+# Profile
+. ~/.config/shell/profile.sh
+
+# GUI Profile
+[ -f ~/.config/shell/profile-desktop.sh ] && . ~/.config/shell/profile-desktop.sh
+
+# GUI Arch Profile
+[ -f ~/.config/shell/profile-arch-desktop.sh ] && . ~/.config/shell/profile-arch-desktop.sh

@@ -1,4 +1,7 @@
-/env/base/symlinks/vim/.netrwhist
+# Vim generated files
+/symlinks/vim/.netrwhist
+
+# Private/sensitive files
 private/*
 
 # OS generated files
@@ -11,6 +14,11 @@ desktop.ini
 *.swo
 *~
 *.bak
+.idea/
+
+# VS Code settings (but include settings.json)
+.vscode/
+!.vscode/settings.json
 
 # Python
 __pycache__/

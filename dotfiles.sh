@@ -22,15 +22,16 @@ set -o nounset
 #   1  getopt parsing failure or explicit log_error invocation.
 #
 # Flags (forwarded via $OPT after getopt normalisation):
-#   -g  Include GUI layer setup (fonts, desktop related dotfiles, VS Code).
-#   -p  Install system packages (Arch pacman based).
-#   -s  Install and enable user‑level systemd units.
 #   -v  Enable verbose logging.
+#   --profile <name>  Use predefined profile for sparse checkout filtering.
+#   --dry-run  Perform dry run without system modifications (install/uninstall only).
 #
 # Usage Examples:
-#   ./dotfiles.sh --install -gp    # Install including GUI + packages.
-#   ./dotfiles.sh -U -g            # Uninstall GUI related symlinks.
-#   ./dotfiles.sh --test -v        # Run analyzers / linters with verbose output.
+#   ./dotfiles.sh --install --profile arch-desktop    # Arch with GUI.
+#   ./dotfiles.sh --install --profile arch            # Arch CLI only.
+#   ./dotfiles.sh -I --dry-run        # Preview install without changes (verbose auto-enabled).
+#   ./dotfiles.sh -U            # Uninstall symlinks.
+#   ./dotfiles.sh --test -v     # Run analyzers / linters with verbose output.
 #
 # Implementation Notes:
 #   * getopt is used to provide consistent long/short option handling while
@@ -41,8 +42,15 @@ set -o nounset
 DIR="$(dirname "$(readlink -f "$0")")"
 export DIR
 
+# Profile selection for sparse checkout filtering
+PROFILE=""
+export PROFILE
+
 # Logging helpers (log_error, log_usage, log_stage, etc.).
-. "$DIR"/src/logger.sh
+. "$DIR"/src/linux/logger.sh
+
+# Utility functions (profile management, INI parsing, etc.).
+. "$DIR"/src/linux/utils.sh
 
 # Guard: refuse to run as root to avoid polluting /root with user config and
 # accidental privilege escalations inside tasks that assume normal user perms.
@@ -51,14 +59,98 @@ if [ "$(id -u)" = 0 ]; then
 fi
 
 # High‑level orchestration functions (do_install, do_uninstall, do_test).
-. "$DIR"/src/commands.sh
+. "$DIR"/src/linux/commands.sh
+
+# parse_profile_arg
+#
+# Parses --profile argument from getopt-normalized options.
+# Must be called after 'eval set -- "$OPT"'.
+#
+# Globals read/set:
+#   PROFILE  Set to profile value if --profile argument present
+#
+# Result:
+#   0 success
+parse_profile_arg()
+{
+  while true; do
+    case "$1" in
+      --profile)
+        PROFILE="$2"
+        if [ -z "$PROFILE" ]; then
+          log_error "Profile name cannot be empty"
+        fi
+        shift 2
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+}
+
+# resolve_profile
+#
+# Resolves the profile to use: from CLI arg, persisted config, or interactive prompt.
+# Persists the selected profile for future use.
+# Validates that the specified profile exists in profiles.ini.
+#
+# Globals read/set:
+#   PROFILE  Profile name (may be empty on input, populated on output)
+#
+# Result:
+#   0 success, exits on error
+resolve_profile()
+{
+  # If profile already specified via CLI, validate it exists
+  if [ -n "$PROFILE" ]; then
+    if ! list_available_profiles | grep -qx "$PROFILE"; then
+      log_error "Profile '$PROFILE' not found in profiles.ini"
+    fi
+    log_verbose "Using profile from command line: $PROFILE"
+    persist_profile "$PROFILE"
+    return 0
+  fi
+
+  # Try to get persisted profile
+  if PROFILE="$(get_persisted_profile)"; then
+    log_verbose "Using persisted profile: $PROFILE"
+    return 0
+  fi
+
+  # No profile specified or persisted, prompt interactively
+  log_stage "No profile specified"
+  echo "" >&2
+  if PROFILE="$(prompt_profile_selection)"; then
+    echo "" >&2
+    log_verbose "Selected profile: $PROFILE"
+    persist_profile "$PROFILE"
+    export PROFILE
+    return 0
+  else
+    log_error "Profile selection failed"
+  fi
+}
 
 case ${1:-} in
   -I* | --install)
-    # Full install path (optionally gated by -g -p -s sub‑flags).
-    OPT="$(getopt -o Ipgsv -l install -n "$(basename "$0")" -- "$@")" \
+    # Full install path for selected profile.
+    OPT="$(getopt -o Iv -l install,profile:,dry-run -n "$(basename "$0")" -- "$@")" \
       || exit 1
+    eval set -- "$OPT"
+    parse_profile_arg "$@"
     export OPT
+    export PROFILE
+    resolve_profile
+    printf "${BLUE}:: Using profile: %s${NC}\n" "$PROFILE"
+    if is_dry_run; then
+      # shellcheck disable=SC2059  # BLUE and NC are intentional color codes
+      printf "${BLUE}:: DRY-RUN MODE: No system modifications will be made${NC}\n"
+    fi
     do_install
     ;;
   -T* | --test)
@@ -69,10 +161,19 @@ case ${1:-} in
     do_test
     ;;
   -U* | --uninstall)
-    # Remove installed symlinks (respecting -g to include GUI layer paths).
-    OPT="$(getopt -o Ugv -l uninstall -n "$(basename "$0")" -- "$@")" \
+    # Remove installed symlinks for selected profile.
+    OPT="$(getopt -o Uv -l uninstall,profile:,dry-run -n "$(basename "$0")" -- "$@")" \
       || exit 1
+    eval set -- "$OPT"
+    parse_profile_arg "$@"
     export OPT
+    export PROFILE
+    resolve_profile
+    printf "${BLUE}:: Using profile: %s${NC}\n" "$PROFILE"
+    if is_dry_run; then
+      # shellcheck disable=SC2059  # BLUE and NC are intentional color codes
+      printf "${BLUE}:: DRY-RUN MODE: No system modifications will be made${NC}\n"
+    fi
     do_uninstall
     ;;
   -h | --help)

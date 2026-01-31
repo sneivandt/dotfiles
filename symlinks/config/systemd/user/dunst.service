@@ -1,0 +1,18 @@
+[Unit]
+Description=dunst
+
+Wants=xsession.target
+After=xsession.target
+
+ConditionFileIsExecutable=/usr/bin/dunst
+ConditionPathExists=%h/.config/dunst/dunstrc
+
+[Service]
+Type=simple
+
+ExecStart=/usr/bin/dunst -config %h/.config/dunst/dunstrc
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=xsession.target

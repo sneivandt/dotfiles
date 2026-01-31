@@ -1,0 +1,110 @@
+#!/usr/bin/env zsh
+
+# Quiet
+setopt no_beep
+setopt NO_LIST_BEEP
+set bell-style none
+
+# Word Style
+autoload -Uz select-word-style
+select-word-style bash
+
+# Colors
+autoload -Uz colors
+colors
+
+# History
+setopt histignorealldups
+setopt sharehistory
+setopt appendhistory
+setopt extendedglob
+setopt hist_expire_dups_first
+setopt hist_find_no_dups
+setopt hist_verify
+mkdir -p ~/.cache/zsh
+HISTFILE=~/.cache/zsh/history
+HISTSIZE=10000
+SAVEHIST=10000
+
+# Various options
+setopt autocd
+setopt autopushd
+setopt pushdminus
+setopt pushdsilent
+setopt pushdtohome
+
+# Path
+. ~/.config/shell/path.sh
+
+# Aliases
+. ~/.config/shell/aliases.sh
+
+# GUI Aliases
+[ -f ~/.config/shell/aliases-desktop.sh ] && . ~/.config/shell/aliases-desktop.sh
+
+# Prompt
+. ~/.config/zsh/prompt.zsh
+
+# Completion
+. ~/.config/zsh/completion.zsh
+
+# Key bindings
+. ~/.config/zsh/key-bindings.zsh
+
+# Plugins
+for plugin in ~/.config/zsh/plugins/*.zsh(N)
+do
+  [ -f "$plugin" ] && . "$plugin"
+done
+
+# Arch Linux System Plugins
+for plugin in \
+  /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh \
+  /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh \
+  /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh \
+  /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh \
+  /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh \
+  /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+do
+  if [ -f "$plugin" ]; then
+    . "$plugin"
+  fi
+done
+
+# zoxide
+if command -v zoxide >/dev/null 2>&1
+then
+  eval "$(zoxide init zsh)"
+fi
+
+# FZF
+[ -f /usr/share/fzf/key-bindings.zsh ] && . /usr/share/fzf/key-bindings.zsh
+[ -f /usr/share/fzf/completion.zsh ] && . /usr/share/fzf/completion.zsh
+
+# Functions
+fpath=(~/.config/zsh/functions $fpath)
+for func in ~/.config/zsh/functions/*(N)
+do
+  autoload -Uz "${func:t}"
+done
+
+# Clear screen on startup for urxvt
+if [[ "$TERM" == "rxvt-unicode-256color" ]]
+then
+  clear
+fi
+
+# Custom FZF Ctrl+R behavior: Execute immediately
+if zle -l fzf-history-widget
+then
+  fzf-history-widget-accept() {
+    fzf-history-widget
+    if [[ $? -eq 0 ]]
+    then
+      zle accept-line
+    fi
+  }
+  zle -N fzf-history-widget-accept
+  bindkey '^R' fzf-history-widget-accept
+fi
+

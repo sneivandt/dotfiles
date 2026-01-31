@@ -1,0 +1,42 @@
+[global]
+    format               = "<b>%s</b>\n%b"
+    font                 = Source Code Pro 10
+    alignment            = left
+    line_height          = 0
+    indicate_hidden      = yes
+    startup_notification = false
+    padding              = 10
+    horizontal_padding   = 10
+    frame_width          = 2
+    frame_color          = "#61afef"
+    separator_color      = frame
+    corner_radius        = 4
+    width                = 300
+    height               = 300
+    origin               = top-right
+    offset               = 30x50
+    transparency         = 10
+    idle_threshold       = 120
+    monitor              = 0
+    follow               = mouse
+    sticky_history       = yes
+    history_length       = 20
+    show_indicators      = yes
+    icon_position        = left
+    max_icon_size        = 64
+    min_icon_size        = 32
+
+[urgency_low]
+    background = "#1a1a1a"
+    foreground = "#d0d0d0"
+    timeout    = 10
+
+[urgency_normal]
+    background = "#1a1a1a"
+    foreground = "#d0d0d0"
+    timeout    = 10
+
+[urgency_critical]
+    background = "#e06c75"
+    foreground = "#ffffff"
+    timeout    = 0

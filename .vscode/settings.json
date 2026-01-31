@@ -1,31 +1,35 @@
 {
     "git.ignoredRepositories": [
-        "env/base/symlinks/vim/pack/plugins/opt/vim-pathogen",
-        "env/base/symlinks/vim/pack/plugins/start/ctrlp.vim",
-        "env/base/symlinks/vim/pack/plugins/start/haskell-vim",
-        "env/base/symlinks/vim/pack/plugins/start/jellybeans.vim",
-        "env/base/symlinks/vim/pack/plugins/start/lessspace.vim",
-        "env/base/symlinks/vim/pack/plugins/start/nerdtree",
-        "env/base/symlinks/vim/pack/plugins/start/python-syntax",
-        "env/base/symlinks/vim/pack/plugins/start/rust.vim",
-        "env/base/symlinks/vim/pack/plugins/start/vim-airline-themes",
-        "env/base/symlinks/vim/pack/plugins/start/vim-airline",
-        "env/base/symlinks/vim/pack/plugins/start/vim-autotag",
-        "env/base/symlinks/vim/pack/plugins/start/vim-commentary",
-        "env/base/symlinks/vim/pack/plugins/start/vim-cpp-enhanced-hilight",
-        "env/base/symlinks/vim/pack/plugins/start/vim-dispatch",
-        "env/base/symlinks/vim/pack/plugins/start/vim-easy-align",
-        "env/base/symlinks/vim/pack/plugins/start/vim-fugitive",
-        "env/base/symlinks/vim/pack/plugins/start/vim-go",
-        "env/base/symlinks/vim/pack/plugins/start/vim-javascript-syntax",
-        "env/base/symlinks/vim/pack/plugins/start/vim-surround",
-        "env/base/symlinks/vim/pack/plugins/start/vim-tmux-navigator",
-        "env/win/fonts"
+        "symlinks/vim/pack/plugins/opt/vim-pathogen",
+        "symlinks/vim/pack/plugins/start/ctrlp.vim",
+        "symlinks/vim/pack/plugins/start/haskell-vim",
+        "symlinks/vim/pack/plugins/start/jellybeans.vim",
+        "symlinks/vim/pack/plugins/start/lessspace.vim",
+        "symlinks/vim/pack/plugins/start/nerdtree",
+        "symlinks/vim/pack/plugins/start/python-syntax",
+        "symlinks/vim/pack/plugins/start/rust.vim",
+        "symlinks/vim/pack/plugins/start/vim-airline-themes",
+        "symlinks/vim/pack/plugins/start/vim-airline",
+        "symlinks/vim/pack/plugins/start/vim-autotag",
+        "symlinks/vim/pack/plugins/start/vim-commentary",
+        "symlinks/vim/pack/plugins/start/vim-cpp-enhanced-hilight",
+        "symlinks/vim/pack/plugins/start/vim-dispatch",
+        "symlinks/vim/pack/plugins/start/vim-easy-align",
+        "symlinks/vim/pack/plugins/start/vim-fugitive",
+        "symlinks/vim/pack/plugins/start/vim-go",
+        "symlinks/vim/pack/plugins/start/vim-javascript-syntax",
+        "symlinks/vim/pack/plugins/start/vim-surround",
+        "symlinks/vim/pack/plugins/start/vim-tmux-navigator",
+        "extern/fonts"
     ],
     "search.exclude": {
-        "env/base/symlinks/vim/pack/plugins": true,
-        "env/base/symlinks/config/nvim": true,
-        "env/win/fonts": true
+        "symlinks/vim/pack/plugins": true,
+        "symlinks/config/nvim": true,
+        "extern": true
+    },
+    "files.exclude": {
+        "symlinks/vim/pack/plugins/*": true,
+        "extern/fonts/*": true
     },
     "files.associations": {
         "Xresources": "properties"

@@ -141,16 +141,17 @@ Example - switching profiles:
 | `packages.ini` | Package list organized by profile sections (e.g., `[arch]`, `[arch-desktop]`) |
 | `units.ini` | Systemd user units to enable, organized by profile sections |
 | `chmod.ini` | Post-install permission adjustments, organized by profile sections |
-| `fonts.ini` | Font families to check/install for GUI environments |
+| `fonts.ini` | Font families to check/install (single `[fonts]` section, not profile-filtered) |
 | `submodules.ini` | Git submodules to initialize |
 | `vscode-extensions.ini` | VS Code extensions to install |
-| `registry.ini` | Windows registry settings with registry paths as sections |
+| `registry.ini` | **Windows-only**: Registry paths as sections with `key = value` format (no profile filtering) |
 | `manifest.ini` | Maps files to categories for sparse checkout exclusion |
 | `profiles.ini` | Profile definitions (category include/exclude) |
 
-All `.ini` files use standard INI format with `[section]` headers. Profile sections determine
-which items are processed based on the selected profile. Symlink targets are always relative
-to `$HOME` and prefixed with a dot (e.g., `bashrc` → `~/.bashrc`).
+Most `.ini` files use standard INI format with `[section]` headers containing simple lists.
+**Exception**: `registry.ini` uses registry paths as sections with `key = value` pairs (Windows-only).
+Profile sections determine which items are processed based on the selected profile. Symlink targets
+are always relative to `$HOME` and prefixed with a dot (e.g., `bashrc` → `~/.bashrc`).
 
 ## Scripts (`./dotfiles.sh`) 🔧
 
@@ -189,7 +190,33 @@ Key differences from Linux:
   - `conf/symlinks.ini` - Shared with Linux, Windows uses `[windows]` section
   - `conf/registry.ini` - Registry paths as sections (Windows-only, no profile filtering)
 
-See `WINDOWS.md` for detailed Windows-specific documentation.
+See [docs/WINDOWS.md](docs/WINDOWS.md) for detailed Windows-specific documentation.
+
+## Testing & CI 🧪
+
+This repository includes comprehensive CI testing that validates:
+
+* **Static analysis**: shellcheck (shell scripts) + PSScriptAnalyzer (PowerShell)
+* **Configuration validation**: INI file syntax and structure
+* **Profile installations**: Dry-run tests for all profiles (base, arch, arch-desktop, windows)
+* **Cross-platform**: Tests on both Linux (Ubuntu) and Windows runners
+* **Docker build**: Ensures the container image builds successfully
+
+Run tests locally:
+```bash
+# Run all static analysis and validation
+./dotfiles.sh --test -v
+
+# Test installation without making changes (dry-run mode)
+./dotfiles.sh --install --profile arch-desktop --dry-run
+
+# Test uninstallation without making changes
+./dotfiles.sh --uninstall --dry-run
+```
+
+The CI workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) automatically runs on pull requests to validate the project across all supported profiles and platforms. A separate workflow ([`.github/workflows/docker-image.yml`](.github/workflows/docker-image.yml)) builds and publishes the Docker image on pushes to the master branch.
+
+For more detailed information about testing, see [docs/TESTING.md](docs/TESTING.md).
 
 ## Docker 🐳
 
@@ -255,3 +282,17 @@ This image is built by GitHub Actions (`docker-image.yml`).
 | Sparse checkout not working | Ensure you're in a git repository: `git sparse-checkout list` |
 | Wrong files checked out | Verify profile with `echo $PROFILE` and check `conf/profiles.ini` |
 | Desktop files missing | Use `--profile arch-desktop` |
+
+## Contributing 🤝
+
+Contributions are welcome! Please see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines on how to contribute to this project.
+
+For security issues, please review [docs/SECURITY.md](docs/SECURITY.md) for our security policy and reporting procedures.
+
+## Additional Documentation 📚
+
+- [docs/TESTING.md](docs/TESTING.md) - Detailed testing and CI documentation
+- [docs/WINDOWS.md](docs/WINDOWS.md) - Windows-specific documentation
+- [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) - Contributing guidelines
+- [docs/SECURITY.md](docs/SECURITY.md) - Security policy
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) - Configuration file reference

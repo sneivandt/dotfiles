@@ -17,6 +17,7 @@ function Install-Symlinks
     .PARAMETER DryRun
         When specified, logs actions that would be taken without making modifications
     #>
+    # Plural name justified: function installs multiple symlinks as batch operation
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSUseSingularNouns", "")]
     [CmdletBinding()]
     param (

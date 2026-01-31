@@ -274,10 +274,6 @@ Symlinks are managed declaratively through `conf/symlinks.ini`.
   - Error suppression: Use `-ErrorAction SilentlyContinue` only when appropriate, prefer explicit checks
 
 ## File Formatting
-- **No Trailing Whitespace**: Never leave trailing whi(or `--test`)
-  - Runs `test_config_validation` - validates INI file syntax and structure
-  - Runs `test_shellcheck` - shell script linting for all `.sh` files
-## File Formatting
 - **No Trailing Whitespace**: Never leave trailing whitespace at the end of lines in any file
   - This applies to all file types: shell scripts, PowerShell, INI files, Markdown, configuration files
   - Trailing whitespace causes unnecessary git diffs and is considered poor coding hygiene
@@ -293,6 +289,13 @@ Symlinks are managed declaratively through `conf/symlinks.ini`.
 - Test with different profiles to ensure sparse checkout works correctly.
 - Use verbose mode (`-v`) for debugging: `./dotfiles.sh -I --profile arch-desktop -v`
 - Use dry-run mode to preview changes: `./dotfiles.sh -I --dry-run` (auto-enables verbose)
+- CI workflow (`.github/workflows/ci.yml`) runs automatically on pull requests to validate:
+  - Static analysis (shellcheck and PSScriptAnalyzer)
+  - Configuration file validation
+  - Profile installations with dry-run tests (base, arch, arch-desktop, windows)
+  - Cross-platform compatibility (Linux Ubuntu and Windows runners)
+  - Docker image build
+- Docker image workflow (`.github/workflows/docker-image.yml`) publishes to Docker Hub on pushes to master branch
 
 ## Common Patterns
 

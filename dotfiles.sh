@@ -146,9 +146,9 @@ case ${1:-} in
     export OPT
     export PROFILE
     resolve_profile
-    printf "${BLUE}:: Using profile: %s${NC}\n" "$PROFILE"
+    log_profile "$PROFILE"
     if is_dry_run; then
-      # shellcheck disable=SC2059  # BLUE and NC are intentional color codes
+      # shellcheck disable=SC2154,SC2059  # BLUE and NC are sourced from logger.sh
       printf "${BLUE}:: DRY-RUN MODE: No system modifications will be made${NC}\n"
     fi
     do_install
@@ -169,9 +169,9 @@ case ${1:-} in
     export OPT
     export PROFILE
     resolve_profile
-    printf "${BLUE}:: Using profile: %s${NC}\n" "$PROFILE"
+    log_profile "$PROFILE"
     if is_dry_run; then
-      # shellcheck disable=SC2059  # BLUE and NC are intentional color codes
+      # shellcheck disable=SC2154,SC2059  # BLUE and NC are sourced from logger.sh
       printf "${BLUE}:: DRY-RUN MODE: No system modifications will be made${NC}\n"
     fi
     do_uninstall

@@ -24,7 +24,14 @@ set -o nounset
 # Utilities / Dependencies:
 #   logger.sh (log_stage, log_error, log_verbose)
 #   utils.sh  (is_program_installed, read_ini_section, should_include_profile_tag)
+#
+# Expected Environment Variables:
+#   DIR  Repository root directory (exported by dotfiles.sh)
+#   OPT  CLI options string (exported by dotfiles.sh)
 # -----------------------------------------------------------------------------
+
+# DIR is exported by dotfiles.sh
+# shellcheck disable=SC2154
 
 . "$DIR"/src/linux/logger.sh
 . "$DIR"/src/linux/utils.sh
@@ -89,21 +96,24 @@ configure_file_mode_bits()
         continue
       fi
 
-      # Note: Using chmod -c to report only actual changes for idempotency
-      # The -R flag applies mode to ALL files/directories recursively
+      # Check if changes are needed
+      needs_chmod=0
       if [ -d "$target" ]; then
-        # For directories, always run chmod to ensure consistency
-        actual_changes=""
+        # For directories, always run chmod -R to ensure consistency across all contents
+        needs_chmod=1
       else
         # For files, check if mode is already correct
         current_mode="$(stat -c '%a' "$target" 2>/dev/null || echo '')"
-        if [ "$current_mode" = "$mode" ]; then
+        if [ "$current_mode" != "$mode" ]; then
+          needs_chmod=1
+        else
           log_verbose "Skipping chmod on $target: permissions already correct"
           continue
         fi
-        actual_changes="needed"
       fi
-      if [ -n "$actual_changes" ] || [ -d "$target" ]; then
+
+      # Apply chmod if needed
+      if [ "$needs_chmod" -eq 1 ]; then
         if [ $act -eq 0 ]; then
           act=1
           log_stage "Configuring file permissions"
@@ -112,6 +122,7 @@ configure_file_mode_bits()
           log_dry_run "Would set mode $mode on $target"
         else
           log_verbose "Setting mode $mode on $target"
+          # Note: -R flag applies mode recursively to ALL files/directories
           chmod -c -R "$mode" "$target"
         fi
       fi
@@ -395,14 +406,14 @@ install_git_submodules()
     fi
 
     # Check for uninitialized (-) or modified (+) submodules
-    # shellcheck disable=SC2086
+    # shellcheck disable=SC2086  # Word splitting intentional: $modules is space-separated list
     if git -C "$DIR" submodule status $modules | cut -c-1 | grep -q "[+-]"; then
       log_stage "Installing git submodules"
       if is_dry_run; then
         log_dry_run "Would update submodules: $modules"
       else
         log_verbose "Updating submodules: $modules"
-        # shellcheck disable=SC2086
+        # shellcheck disable=SC2086  # Word splitting intentional: $modules is space-separated list
         git -C "$DIR" submodule update --init --recursive $modules
       fi
     else
@@ -472,7 +483,7 @@ install_packages()
         log_dry_run "Would install packages: $packages"
       else
         log_verbose "Installing packages: $packages"
-        # shellcheck disable=SC2086
+        # shellcheck disable=SC2086  # Word splitting intentional: $packages is space-separated list
         sudo pacman -S --quiet --needed $packages
       fi
     fi
@@ -828,10 +839,10 @@ update_git_submodules()
     fi
 
     # Ensure submodules are in a clean state (no + or - status)
-    # shellcheck disable=SC2086
+    # shellcheck disable=SC2086  # Word splitting intentional: $modules is space-separated list
     if [ -z "$(git -C "$DIR" submodule status $modules | cut -c1 | tr -d ' ')" ]; then
       # Check for updates from remote
-      # shellcheck disable=SC2086
+      # shellcheck disable=SC2086  # Word splitting intentional: $modules is space-separated list
       updates="$(git -C "$DIR" submodule update --init --recursive --remote --dry-run $modules 2>/dev/null)" || updates=""
 
       if [ -n "$updates" ]; then
@@ -840,7 +851,7 @@ update_git_submodules()
           log_dry_run "Would update submodules: $modules"
         else
           log_verbose "Updating submodules: $modules"
-          # shellcheck disable=SC2086
+          # shellcheck disable=SC2086  # Word splitting intentional: $modules is space-separated list
           git -C "$DIR" submodule update --init --recursive --remote $modules
         fi
       else

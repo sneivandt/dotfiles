@@ -1,4 +1,5 @@
 {
+    // Git settings - ignore vim plugins and external fonts
     "git.ignoredRepositories": [
         "symlinks/vim/pack/plugins/opt/vim-pathogen",
         "symlinks/vim/pack/plugins/start/ctrlp.vim",
@@ -22,16 +23,64 @@
         "symlinks/vim/pack/plugins/start/vim-tmux-navigator",
         "extern/fonts"
     ],
+    // Increase git file limit warning threshold
+    "git.ignoreLimitWarning": true,
+    // Exclude certain files and directories from search
     "search.exclude": {
         "symlinks/vim/pack/plugins": true,
         "symlinks/config/nvim": true,
-        "extern": true
+        "extern": true,
+        "**/.git": true,
+        "**/__pycache__": true,
+        "**/*.log": true
     },
+    // Exclude certain files and directories from the file explorer
     "files.exclude": {
         "symlinks/vim/pack/plugins/*": true,
         "extern/fonts/*": true
     },
+    // File associations
     "files.associations": {
-        "Xresources": "properties"
+        "*.ini": "ini",
+        "*.sh": "shellscript",
+        ".shellcheckrc": "properties",
+        "dotfiles.sh": "shellscript",
+        "install.sh": "shellscript",
+        "Xresources": "properties",
+        "Xdefaults": "properties",
+        "bash_profile": "shellscript",
+        "bashrc": "shellscript",
+        "zprofile": "shellscript",
+        "zshenv": "shellscript",
+        "zshrc": "shellscript",
+        "xinitrc": "shellscript"
+    },
+    // Formatting - enforce no trailing whitespace (critical for this repo)
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    // Editor settings
+    "editor.renderWhitespace": "boundary",
+    "editor.detectIndentation": false,
+    // PowerShell settings
+    "powershell.scriptAnalysis.enable": true,
+    "[powershell]": {
+        "editor.tabSize": 4,
+        "files.encoding": "utf8bom"
+    },
+    // INI files
+    "[ini]": {
+        "editor.tabSize": 2
+    },
+    // Markdown
+    "[markdown]": {
+        "files.trimTrailingWhitespace": true
+    },
+    // YAML settings (for GitHub Actions)
+    "yaml.schemas": {
+        "https://json.schemastore.org/github-workflow.json": [
+            ".github/workflows/*.yml",
+            ".github/workflows/*.yaml"
+        ]
     }
 }

@@ -61,6 +61,19 @@ config/powershell/Microsoft.PowerShell_profile.ps1
 
 Each line is a path relative to `$env:USERPROFILE`. The source file is located at `symlinks/<same-path>` in the repository. Forward slashes are automatically converted to backslashes for Windows.
 
+### Smart Dot-Prefixing
+
+Windows symlinks use intelligent dot-prefixing:
+- **Well-known Windows folders** (AppData, Documents, etc.) remain as-is in the target path
+- **Unix-style paths** (config, ssh, etc.) are automatically prefixed with a dot
+
+Examples:
+- `AppData/Roaming/Code/User/settings.json` → `%USERPROFILE%\AppData\Roaming\Code\User\settings.json`
+- `config/git/config` → `%USERPROFILE%\.config\git\config`
+- `ssh/config` → `%USERPROFILE%\.ssh\config`
+
+This allows the same configuration repository to work across both Windows and Linux while respecting platform conventions.
+
 **Note:** Windows symlinks now share the same configuration file as Linux (`conf/symlinks.ini`) but use the `[windows]` section.
 
 To add a new link:

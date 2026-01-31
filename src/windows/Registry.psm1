@@ -118,8 +118,7 @@ function Convert-ConsoleColor
 
 function Set-RegistryValue
 {
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSUseShouldProcessForStateChangingFunctions", "")]
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param (
         [Parameter(Mandatory = $true)]
         [string]
@@ -135,6 +134,9 @@ function Set-RegistryValue
         $DryRun
     )
 
+    # Treat -WhatIf like -DryRun for consistency
+    $isDryRun = $DryRun -or $WhatIfPreference
+
     if (-not (Test-Path $path))
     {
         if (-not $script:act)
@@ -143,11 +145,11 @@ function Set-RegistryValue
             Write-Output ":: Updating Registry"
         }
 
-        if ($DryRun)
+        if ($isDryRun)
         {
             Write-Output "DRY-RUN: Would create registry path: $path"
         }
-        else
+        elseif ($PSCmdlet.ShouldProcess($path, "Create registry path"))
         {
             Write-Verbose "Creating registry path: $path"
             New-Item -Path $path -Type Folder | Out-Null
@@ -199,11 +201,11 @@ function Set-RegistryValue
             Write-Output ":: Updating Registry"
         }
 
-        if ($DryRun)
+        if ($isDryRun)
         {
             Write-Output "DRY-RUN: Would set registry value: $path $name = $value"
         }
-        else
+        elseif ($PSCmdlet.ShouldProcess("$path\$name", "Set registry value to $value"))
         {
             Write-Verbose "Setting registry value: $path $name = $value"
             Set-ItemProperty -Path $path -Name $name -Value $value

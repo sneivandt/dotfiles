@@ -19,6 +19,7 @@
         PS> Install-PowerShellModules -DryRun
         Shows what modules would be installed without actually installing them.
     #>
+    # Plural name justified: function installs multiple modules as batch operation
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSUseSingularNouns", "")]
     [CmdletBinding()]
     param (
@@ -40,7 +41,7 @@
             {
                 $act = $true
 
-                Write-Output ":: Installing PowerShell Modules..."
+                Write-Output ":: Installing PowerShell Modules"
             }
 
             if ($DryRun)

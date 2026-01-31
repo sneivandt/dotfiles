@@ -64,6 +64,7 @@ unset MAILCHECK
 
 # man
 if command -v bat >/dev/null 2>&1; then
+  # MANPAGER is executed through shell; quotes are part of the command string
   # shellcheck disable=SC2089,SC2090
   export MANPAGER="sh -c 'col -bx | bat -l man -p'"
 else

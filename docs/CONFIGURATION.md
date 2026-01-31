@@ -1,6 +1,6 @@
 # Configuration Files
 
-This directory contains all configuration files for the dotfiles management system. All files use standard INI format with section headers for organization.
+The `conf/` directory contains all configuration files for the dotfiles management system. All files use standard INI format with section headers for organization.
 
 ## Overview
 
@@ -28,11 +28,12 @@ more-entries
 **Key rules:**
 - **Profile names** (in profiles.ini only) can use hyphens: `[arch-desktop]`
 - **Section names** (in all other .ini files) use comma-separated categories: `[arch,desktop]`
-  - This indicates the section requires ALL listed categories to be active
+  - This indicates the section requires ALL listed categories to be active (AND logic)
   - Example: `[arch,desktop]` is only processed when both `arch` AND `desktop` are not excluded
+  - **Exception**: `manifest.ini` uses OR logic—`[arch,desktop]` means exclude if arch OR desktop is excluded
 - Empty lines and comments starting with `#` are ignored
 - Only sections whose required categories match the active profile are processed
-- Windows-specific files may use `key = value` format
+- `registry.ini` uses `key = value` format with registry paths as sections (Windows-only)
 
 ## Available Profiles
 

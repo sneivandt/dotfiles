@@ -23,9 +23,16 @@ set -o nounset
 #
 # Idempotency: Underlying tasks short‑circuit when no work is necessary; this
 # file intentionally does not add additional guards to keep flow readable.
+#
+# Expected Environment Variables:
+#   DIR      Repository root directory (exported by dotfiles.sh)
+#   PROFILE  Selected profile name (exported by dotfiles.sh)
+#   OPT      CLI options string (exported by dotfiles.sh)
 # -----------------------------------------------------------------------------
 
 # Task primitives (install_packages, configure_systemd, etc.).
+# DIR is exported by dotfiles.sh
+# shellcheck disable=SC2154
 . "$DIR"/src/linux/tasks.sh
 
 # Test functions (test_psscriptanalyzer, test_shellcheck).
@@ -47,8 +54,8 @@ set -o nounset
 #   * Installs pacman packages, VS Code extensions, PowerShell modules.
 do_install()
 {
-  # PROFILE is uppercase by convention to indicate it's a global constant
-  # shellcheck disable=SC2153
+  # PROFILE is exported from dotfiles.sh (uppercase is intentional)
+  # shellcheck disable=SC2153,SC2154
   configure_sparse_checkout "$PROFILE"
   update_dotfiles
   install_git_submodules
@@ -76,7 +83,15 @@ do_test()
   install_git_submodules
   update_git_submodules
 
+  # Configuration validation tests
   test_config_validation
+  test_symlinks_validation
+  test_chmod_validation
+  test_ini_syntax
+  test_category_consistency
+  test_empty_sections
+
+  # Static analysis tests
   test_psscriptanalyzer
   test_shellcheck
 }

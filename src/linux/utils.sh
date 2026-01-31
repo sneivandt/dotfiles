@@ -9,6 +9,10 @@ set -o nounset
 # Small predicate / helper functions consumed by task + command layers.
 # Each returns 0 for "true" (POSIX convention) and 1 for "false".
 # Keep logic minimal—complex workflows belong in tasks.sh.
+#
+# Expected Environment Variables:
+#   DIR  Repository root directory (exported by dotfiles.sh)
+#   OPT  CLI options string (exported by dotfiles.sh)
 # -----------------------------------------------------------------------------
 
 # Detect host OS once to avoid repeated expensive checks.
@@ -31,6 +35,8 @@ fi
 #   0 if profile found, 1 if not set
 get_persisted_profile()
 {
+  # DIR is exported by dotfiles.sh
+  # shellcheck disable=SC2154
   if [ ! -d "$DIR"/.git ]; then
     return 1
   fi
@@ -528,7 +534,11 @@ should_include_profile_tag()
 
   # Check each required category in the profile tag
   # If ANY required category is excluded, we must exclude this line
-  echo "$profile_tag" | tr ',' '\n' | while IFS='' read -r category; do
+  # Use IFS to split without creating a subshell (avoids pipe-to-while issues)
+  local old_ifs="$IFS"
+  IFS=','
+  for category in $profile_tag; do
+    IFS="$old_ifs"
     if [ -z "$category" ]; then
       continue
     fi
@@ -537,15 +547,11 @@ should_include_profile_tag()
     case ",$EXCLUDED_CATEGORIES," in
       *,"$category",*)
         # This category is excluded, so exclude the line
-        exit 1
+        return 1
         ;;
     esac
   done
-
-  # If the subshell exited with status 1, propagate that
-  if [ $? -eq 1 ]; then
-    return 1
-  fi
+  IFS="$old_ifs"
 
   # All required categories are available, include the line
   return 0
@@ -571,6 +577,8 @@ is_flag_set()
     return 0
   fi
 
+  # OPT is exported by dotfiles.sh
+  # shellcheck disable=SC2154
   case " $OPT " in
     *" -$1 "*)
       return 0

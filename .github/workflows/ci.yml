@@ -1,0 +1,182 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  # Static analysis and linting for all scripts
+  lint:
+    name: Lint and Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Install PowerShell Core
+        run: |
+          sudo apt-get install -y wget apt-transport-https software-properties-common
+          wget -q "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
+          sudo dpkg -i packages-microsoft-prod.deb
+          sudo apt-get update
+          sudo apt-get install -y powershell
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+
+      - name: Run tests
+        run: ./dotfiles.sh --test -v
+
+  # Test base profile on Linux (minimal configuration)
+  test-linux-base:
+    name: Test Linux - Base Profile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Test dry-run installation
+        run: |
+          ./dotfiles.sh --install --profile base --dry-run -v 2>&1 | tee base-output.log
+
+      - name: Verify profile-specific symlinks
+        run: ./.github/workflows/scripts/verify/verify-base-profile.sh base-output.log
+
+  # Test arch profile on Linux (headless Arch-focused)
+  test-linux-arch:
+    name: Test Linux - Arch Profile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Test dry-run installation
+        run: |
+          ./dotfiles.sh --install --profile arch --dry-run -v 2>&1 | tee arch-output.log
+
+      - name: Verify sparse checkout configuration
+        run: ./.github/workflows/scripts/verify/sparse-checkout.sh
+
+      - name: Verify profile-specific symlinks
+        run: ./.github/workflows/scripts/verify/verify-arch-profile.sh arch-output.log
+
+  # Test arch-desktop profile on Linux (full desktop environment)
+  test-linux-arch-desktop:
+    name: Test Linux - Arch Desktop Profile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Test dry-run installation
+        run: |
+          ./dotfiles.sh --install --profile arch-desktop --dry-run -v 2>&1 | tee arch-desktop-output.log
+
+      - name: Verify sparse checkout excludes Windows files
+        run: ./.github/workflows/scripts/verify/sparse-checkout-excludes-windows.sh
+
+      - name: Verify profile-specific symlinks
+        run: ./.github/workflows/scripts/verify/verify-arch-desktop-profile.sh arch-desktop-output.log
+
+  # Test uninstall functionality
+  test-linux-uninstall:
+    name: Test Linux - Uninstall
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Test dry-run uninstall
+        run: |
+          ./dotfiles.sh --uninstall --profile base --dry-run -v 2>&1 | tee uninstall-output.log
+
+      - name: Verify dry-run assertions
+        run: ./.github/workflows/scripts/verify/verify-uninstall.sh uninstall-output.log
+
+  # Test Windows profile
+  test-windows:
+    name: Test Windows - Windows Profile
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+
+      - name: Run PowerShell script analysis
+        shell: pwsh
+        run: |
+          Import-Module .\test\windows\Test.psm1
+          Test-PSScriptAnalyzer -dir $PWD
+
+      - name: Test Windows modules
+        shell: pwsh
+        run: ./.github/workflows/scripts/windows/Test-Modules.ps1
+
+      - name: Verify Windows configuration
+        shell: pwsh
+        run: ./.github/workflows/scripts/windows/Test-Configuration.ps1
+
+  # Compare profiles to ensure they produce different outputs
+  test-profile-differences:
+    name: Test Profile Differences
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Run all profiles and extract symlinks
+        run: |
+          ./dotfiles.sh --install --profile base --dry-run -v 2>&1 | tee base-full.log
+          ./dotfiles.sh --install --profile arch --dry-run -v 2>&1 | tee arch-full.log
+          ./dotfiles.sh --install --profile arch-desktop --dry-run -v 2>&1 | tee arch-desktop-full.log
+
+          # Extract only symlink-related operations for comparison
+          grep "Would link" base-full.log | sort > base-symlinks.log || true
+          grep "Would link" arch-full.log | sort > arch-symlinks.log || true
+          grep "Would link" arch-desktop-full.log | sort > arch-desktop-symlinks.log || true
+
+      - name: Verify profiles link different files
+        run: ./.github/workflows/scripts/verify/verify-profile-differences.sh
+
+  # Test Docker image build
+  test-docker:
+    name: Test Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build Docker image
+        run: docker build -t dotfiles-test .
+
+      - name: Run container smoke test
+        run: |
+          docker run --rm dotfiles-test sh -c "command -v zsh && echo 'Smoke test passed'"

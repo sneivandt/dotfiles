@@ -1,6 +1,8 @@
 #!/bin/sh
 
-# shellcheck disable=SC2046,SC2009
+# Check if git parent process is the shell to determine pinentry program
+# shellcheck disable=SC2046  # Word splitting intentional for ps arguments
+# shellcheck disable=SC2009  # ps+grep pattern needed to check parent process
 if ps h --format comm $(ps -C git -o ppid=) | grep -qxP "$(basename "$SHELL")" \
   && [ -x /usr/bin/pinentry-curses ]
 then

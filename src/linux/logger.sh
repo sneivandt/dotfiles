@@ -13,31 +13,25 @@ set -o nounset
 #   * log_error exits immediately (caller usually aborts entire run).
 #   * log_stage prints only once per conceptual stage even if called multiple
 #     times (suppresses redundant noise) by leveraging a private _work flag.
+#
+# Expected Environment Variables:
+#   FILE  Test file name (used by log_fail, set by test harness)
+#   TEST  Test name (used by log_fail, set by test harness)
 # -----------------------------------------------------------------------------
 
 # Colors
+RED=""
+GREEN=""
+BLUE=""
+YELLOW=""
+NC=""
+
 if [ -t 1 ]; then
-  # shellcheck disable=SC2034
   RED="\033[0;31m"
-  # shellcheck disable=SC2034
   GREEN="\033[0;32m"
-  # shellcheck disable=SC2034
   BLUE="\033[0;34m"
-  # shellcheck disable=SC2034
   YELLOW="\033[1;33m"
-  # shellcheck disable=SC2034
   NC="\033[0m" # No Color
-else
-  # shellcheck disable=SC2034
-  RED=""
-  # shellcheck disable=SC2034
-  GREEN=""
-  # shellcheck disable=SC2034
-  BLUE=""
-  # shellcheck disable=SC2034
-  YELLOW=""
-  # shellcheck disable=SC2034
-  NC=""
 fi
 
 # log_error
@@ -49,6 +43,7 @@ fi
 #   $1 human readable error description
 log_error()
 {
+  # shellcheck disable=SC2059  # RED and NC are controlled color codes
   printf "${RED}ERROR: %s${NC}\n" "$1"
   exit 1
 }
@@ -63,6 +58,9 @@ log_error()
 #   $2 failure description
 log_fail()
 {
+  # FILE and TEST are set by test harness
+  # shellcheck disable=SC2154
+  # shellcheck disable=SC2059  # RED and NC are controlled color codes
   printf "${RED}FAIL %s %s %s : %s${NC}\n" "$FILE" "$TEST" "$1" "$2"
 }
 
@@ -102,6 +100,7 @@ log_usage()
 log_verbose()
 {
   if is_flag_set "v"; then
+    # shellcheck disable=SC2059  # YELLOW and NC are controlled color codes
     printf "${YELLOW}VERBOSE: %s${NC}\n" "$*"
   fi
 }
@@ -116,6 +115,7 @@ log_verbose()
 log_dry_run()
 {
   if is_dry_run; then
+    # shellcheck disable=SC2059  # GREEN and NC are controlled color codes
     printf "${GREEN}DRY-RUN: %s${NC}\n" "$*"
   fi
 }
@@ -133,6 +133,19 @@ log_stage()
   if [ "${_work-unset}" = "unset" ] \
     || ! $_work; then
     _work=true
-    printf "${BLUE}:: %s...${NC}\n" "$1"
+    # shellcheck disable=SC2059  # BLUE and NC are controlled color codes
+    printf "${BLUE}:: %s${NC}\n" "$1"
   fi
+}
+
+# log_profile
+#
+# Print the currently selected profile name.
+#
+# Args:
+#   $1 profile name
+log_profile()
+{
+  # shellcheck disable=SC2059  # BLUE and NC are controlled color codes
+  printf "${BLUE}:: Using profile: %s${NC}\n" "$1"
 }

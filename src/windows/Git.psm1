@@ -13,9 +13,9 @@ function Update-GitSubmodules
     .PARAMETER DryRun
         When specified, logs actions that would be taken without making modifications
     #>
+    # Plural name justified: function updates multiple submodules as batch operation
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSUseSingularNouns", "")]
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSUseShouldProcessForStateChangingFunctions", "")]
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param (
         [Parameter(Mandatory = $true)]
         [string]
@@ -78,16 +78,17 @@ function Update-GitSubmodules
 
     # Check if any submodules need updating (uninitialized or modified)
     $status = git submodule status $modules
+    $isDryRun = $DryRun -or $WhatIfPreference
 
     if ($status -match "^[\+\-]")
     {
         Write-Output ":: Installing Git Submodules"
 
-        if ($DryRun)
+        if ($isDryRun)
         {
             Write-Output "DRY-RUN: Would update submodules: $($modules -join ' ')"
         }
-        else
+        elseif ($PSCmdlet.ShouldProcess("$($modules -join ', ')", "Update git submodules"))
         {
             Write-Verbose "Updating submodules: $($modules -join ' ')"
             git submodule update --init --recursive $modules

@@ -1,3 +1,4 @@
+# Global variables justified: profile file maintains session state
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSAvoidGlobalVars", "")]
 param()
 
@@ -22,6 +23,7 @@ if ($null -eq $env:windir)
 
 function Prompt
 {
+    # Write-Host justified: direct console output for prompt display (not pipeline data)
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSAvoidUsingWriteHost", "")]
     param (
     )

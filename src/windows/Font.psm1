@@ -15,6 +15,7 @@ function Install-Fonts
     .PARAMETER DryRun
         When specified, logs actions that would be taken without making modifications
     #>
+    # Plural name justified: function installs multiple font families as batch operation
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSUseSingularNouns", "")]
     [CmdletBinding()]
     param (

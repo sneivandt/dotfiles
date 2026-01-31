@@ -16,9 +16,10 @@ desktop.ini
 *.bak
 .idea/
 
-# VS Code settings (but include settings.json)
+# VS Code settings (but include settings.json and extensions.json)
 .vscode/
 !.vscode/settings.json
+!.vscode/extensions.json
 
 # Python
 __pycache__/

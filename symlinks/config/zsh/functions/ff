@@ -1,8 +1,7 @@
 #!/usr/bin/env zsh
+# shellcheck shell=bash  # Closest to zsh for shellcheck purposes
 
 # Find file
-
-# shellcheck disable=SC2168,SC2155
 
 [ -n "$(command -vp fzf)"    ] || { echo "ERROR: fzf not installed"    1>&2 && return 1; }
 [ -n "$(command -vp sudo)"   ] || { echo "ERROR: sudo not installed"   1>&2 && return 1; }

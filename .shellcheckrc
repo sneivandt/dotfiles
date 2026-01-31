@@ -1,0 +1,31 @@
+# ShellCheck configuration for dotfiles project
+# https://www.shellcheck.net/wiki/
+
+# Enforce POSIX sh compatibility (not bash)
+shell=sh
+
+# Disabled checks with justification:
+# SC2086: Double quote to prevent globbing and word splitting
+#   - Intentionally disabled in specific cases where word splitting is desired
+#   - Must use inline directive (# shellcheck disable=SC2086) where needed
+#   - Do not globally disable; keep inline for visibility
+
+# SC2154: var is referenced but not assigned
+#   - Variables exported from dotfiles.sh (DIR, OPT, PROFILE) are sourced
+#   - Variables from logger.sh (BLUE, NC, etc.) are sourced
+#   - Must use inline directive where the variable is defined elsewhere
+#   - Keep inline for visibility of cross-file dependencies
+
+# SC2059: Don't use variables in the printf format string
+#   - We carefully control format strings in logger.sh
+#   - Must use inline directive (# shellcheck disable=SC2059) where needed
+#   - Do not globally disable; keep inline for visibility
+
+# Enable optional checks:
+# SC2034: foo appears unused. Verify it or export it.
+enable=avoid-nullary-conditions
+enable=check-unassigned-uppercase
+
+# Additional directives
+# Use 'source' for sourcing, not '.'
+# external-sources=true

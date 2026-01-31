@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
+# shellcheck shell=bash
 
 PS1=""
 
 # host name
-PS1+="\\[\\e[0;36m\\]\$([ -n \"$SSH_CONNECTION\" ] || [ -e /.dockerenv ] && echo \"$HOSTNAME \")"
+# SSH_CONNECTION and HOSTNAME are standard environment variables
+# Quoting is intentional for delayed evaluation in PS1
+# shellcheck disable=SC2154,SC2070,SC2157,SC2086
+PS1+="\\[\\e[0;36m\\]\\$([ -n \"$SSH_CONNECTION\" ] || [ -e /.dockerenv ] && echo \"$HOSTNAME \")"
 
 # default shell
 PS1+="\\[\\e[0;36m\\]\$([ \"\$(command -v bash)\" != \"\$SHELL\" ] && echo \"bash \")"

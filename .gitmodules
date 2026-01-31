@@ -1,75 +1,63 @@
-[submodule "env/arch"]
-	path = env/arch
-	url = ../dotfiles-arch
-	branch = master
-[submodule "env/arch-gui"]
-	path = env/arch-gui
-	url = ../dotfiles-arch-gui
-	branch = master
-[submodule "env/base-gui"]
-	path = env/base-gui
-	url = ../dotfiles-base-gui
-	branch = master
-[submodule "env/base/symlinks/vim/pack/plugins/opt/vim-pathogen"]
-	path = env/base/symlinks/vim/pack/plugins/opt/vim-pathogen
+[submodule "symlinks/vim/pack/plugins/opt/vim-pathogen"]
+	path = symlinks/vim/pack/plugins/opt/vim-pathogen
 	url = https://github.com/tpope/vim-pathogen
-[submodule "env/base/symlinks/vim/pack/plugins/start/ctrlp.vim"]
-	path = env/base/symlinks/vim/pack/plugins/start/ctrlp.vim
+[submodule "symlinks/vim/pack/plugins/start/ctrlp.vim"]
+	path = symlinks/vim/pack/plugins/start/ctrlp.vim
 	url = https://github.com/ctrlpvim/ctrlp.vim
-[submodule "env/base/symlinks/vim/pack/plugins/start/haskell-vim"]
-	path = env/base/symlinks/vim/pack/plugins/start/haskell-vim
+[submodule "symlinks/vim/pack/plugins/start/haskell-vim"]
+	path = symlinks/vim/pack/plugins/start/haskell-vim
 	url = https://github.com/neovimhaskell/haskell-vim
-[submodule "env/base/symlinks/vim/pack/plugins/start/jellybeans.vim"]
-	path = env/base/symlinks/vim/pack/plugins/start/jellybeans.vim
+[submodule "symlinks/vim/pack/plugins/start/jellybeans.vim"]
+	path = symlinks/vim/pack/plugins/start/jellybeans.vim
 	url = https://github.com/nanotech/jellybeans.vim
-[submodule "env/base/symlinks/vim/pack/plugins/start/lessspace.vim"]
-	path = env/base/symlinks/vim/pack/plugins/start/lessspace.vim
+[submodule "symlinks/vim/pack/plugins/start/lessspace.vim"]
+	path = symlinks/vim/pack/plugins/start/lessspace.vim
 	url = https://github.com/thirtythreeforty/lessspace.vim
-[submodule "env/base/symlinks/vim/pack/plugins/start/nerdtree"]
-	path = env/base/symlinks/vim/pack/plugins/start/nerdtree
+[submodule "symlinks/vim/pack/plugins/start/nerdtree"]
+	path = symlinks/vim/pack/plugins/start/nerdtree
 	url = https://github.com/scrooloose/nerdtree
-[submodule "env/base/symlinks/vim/pack/plugins/start/python-syntax"]
-	path = env/base/symlinks/vim/pack/plugins/start/python-syntax
+[submodule "symlinks/vim/pack/plugins/start/python-syntax"]
+	path = symlinks/vim/pack/plugins/start/python-syntax
 	url = https://github.com/hdima/python-syntax
-[submodule "env/base/symlinks/vim/pack/plugins/start/vim-airline"]
-	path = env/base/symlinks/vim/pack/plugins/start/vim-airline
+[submodule "symlinks/vim/pack/plugins/start/vim-airline"]
+	path = symlinks/vim/pack/plugins/start/vim-airline
 	url = https://github.com/vim-airline/vim-airline
-[submodule "env/base/symlinks/vim/pack/plugins/start/vim-airline-themes"]
-	path = env/base/symlinks/vim/pack/plugins/start/vim-airline-themes
+[submodule "symlinks/vim/pack/plugins/start/vim-airline-themes"]
+	path = symlinks/vim/pack/plugins/start/vim-airline-themes
 	url = https://github.com/vim-airline/vim-airline-themes
-[submodule "env/base/symlinks/vim/pack/plugins/start/vim-autotag"]
-	path = env/base/symlinks/vim/pack/plugins/start/vim-autotag
+[submodule "symlinks/vim/pack/plugins/start/vim-autotag"]
+	path = symlinks/vim/pack/plugins/start/vim-autotag
 	url = https://github.com/craigemery/vim-autotag
-[submodule "env/base/symlinks/vim/pack/plugins/start/vim-commentary"]
-	path = env/base/symlinks/vim/pack/plugins/start/vim-commentary
+[submodule "symlinks/vim/pack/plugins/start/vim-commentary"]
+	path = symlinks/vim/pack/plugins/start/vim-commentary
 	url = https://github.com/tpope/vim-commentary
-[submodule "env/base/symlinks/vim/pack/plugins/start/vim-cpp-enhanced-hilight"]
-	path = env/base/symlinks/vim/pack/plugins/start/vim-cpp-enhanced-hilight
+[submodule "symlinks/vim/pack/plugins/start/vim-cpp-enhanced-hilight"]
+	path = symlinks/vim/pack/plugins/start/vim-cpp-enhanced-hilight
 	url = https://github.com/octol/vim-cpp-enhanced-highlight
-[submodule "env/base/symlinks/vim/pack/plugins/start/vim-dispatch"]
-	path = env/base/symlinks/vim/pack/plugins/start/vim-dispatch
+[submodule "symlinks/vim/pack/plugins/start/vim-dispatch"]
+	path = symlinks/vim/pack/plugins/start/vim-dispatch
 	url = https://github.com/tpope/vim-dispatch
-[submodule "env/base/symlinks/vim/pack/plugins/start/vim-easy-align"]
-	path = env/base/symlinks/vim/pack/plugins/start/vim-easy-align
+[submodule "symlinks/vim/pack/plugins/start/vim-easy-align"]
+	path = symlinks/vim/pack/plugins/start/vim-easy-align
 	url = https://github.com/junegunn/vim-easy-align
-[submodule "env/base/symlinks/vim/pack/plugins/start/vim-fugitive"]
-	path = env/base/symlinks/vim/pack/plugins/start/vim-fugitive
+[submodule "symlinks/vim/pack/plugins/start/vim-fugitive"]
+	path = symlinks/vim/pack/plugins/start/vim-fugitive
 	url = https://github.com/tpope/vim-fugitive
-[submodule "env/base/symlinks/vim/pack/plugins/start/vim-go"]
-	path = env/base/symlinks/vim/pack/plugins/start/vim-go
+[submodule "symlinks/vim/pack/plugins/start/vim-go"]
+	path = symlinks/vim/pack/plugins/start/vim-go
 	url = https://github.com/fatih/vim-go
-[submodule "env/base/symlinks/vim/pack/plugins/start/vim-javascript-syntax"]
-	path = env/base/symlinks/vim/pack/plugins/start/vim-javascript-syntax
+[submodule "symlinks/vim/pack/plugins/start/vim-javascript-syntax"]
+	path = symlinks/vim/pack/plugins/start/vim-javascript-syntax
 	url = https://github.com/jelera/vim-javascript-syntax
-[submodule "env/base/symlinks/vim/pack/plugins/start/vim-tmux-navigator"]
-	path = env/base/symlinks/vim/pack/plugins/start/vim-tmux-navigator
+[submodule "symlinks/vim/pack/plugins/start/vim-tmux-navigator"]
+	path = symlinks/vim/pack/plugins/start/vim-tmux-navigator
 	url = https://github.com/christoomey/vim-tmux-navigator
-[submodule "env/base/symlinks/vim/pack/plugins/start/vim-surround"]
-	path = env/base/symlinks/vim/pack/plugins/start/vim-surround
+[submodule "symlinks/vim/pack/plugins/start/vim-surround"]
+	path = symlinks/vim/pack/plugins/start/vim-surround
 	url = https://github.com/tpope/vim-surround
-[submodule "env/win/fonts"]
-	path = env/win/fonts
-	url = https://github.com/powerline/fonts
-[submodule "env/base/symlinks/vim/pack/plugins/start/rust.vim"]
-	path = env/base/symlinks/vim/pack/plugins/start/rust.vim
+[submodule "symlinks/vim/pack/plugins/start/rust.vim"]
+	path = symlinks/vim/pack/plugins/start/rust.vim
 	url = https://github.com/rust-lang/rust.vim
+[submodule "extern/fonts"]
+	path = extern/fonts
+	url = https://github.com/powerline/fonts

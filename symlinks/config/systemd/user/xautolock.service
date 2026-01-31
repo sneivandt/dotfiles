@@ -1,0 +1,18 @@
+[Unit]
+Description=xautolock
+
+Wants=xsession.target
+After=xsession.target
+
+ConditionFileIsExecutable=/usr/bin/xautolock
+ConditionPathExists=%h/.config/lock.sh
+
+[Service]
+Type=simple
+
+ExecStart=/usr/bin/xautolock -secure -time 60 -locker %h/.config/lock.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=xsession.target

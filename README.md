@@ -2,9 +2,10 @@
 
 Opinionated, scriptable, cross‑platform (Linux / Arch / Windows) dotfiles with:
 
-- Declarative symlink definitions (text and JSON)
-- Optional package + systemd unit installation
-- Segmented environment layers (base, gui, arch, windows)
+- Unified symlinks directory with git sparse checkout filtering
+- Profile-based configuration (base, arch, arch-desktop, windows)
+- Declarative symlink and package definitions
+- Automatic installation of all profile components
 - Reproducible test mode + Docker image
 - Editor (VS Code) & shell (zsh/bash) configuration
 
@@ -12,16 +13,46 @@ Opinionated, scriptable, cross‑platform (Linux / Arch / Windows) dotfiles with
 
 ## Quick Start 🚀
 
-Install base layer (shell, git, vim/nvim, etc.):
+Install with profile selection:
+```bash
+git clone https://github.com/sneivandt/dotfiles.git
+cd dotfiles
+./dotfiles.sh -I --profile arch-desktop
+```
+
+Install with interactive profile selection (first time):
 ```bash
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
 ./dotfiles.sh -I
+# You'll be prompted to select a profile interactively
+# Your selection is saved for future runs
 ```
 
-Uninstall (remove managed symlinks / units):
+Re-run with persisted profile (no prompt needed):
+```bash
+./dotfiles.sh -I
+# Uses the previously selected profile automatically
+```
+
+Install with verbose logging:
+```bash
+./dotfiles.sh -I --profile arch-desktop -v
+```
+
+Preview changes without modifying the system (dry run):
+```bash
+./dotfiles.sh -I --profile arch-desktop --dry-run
+```
+
+Uninstall (remove managed symlinks):
 ```bash
 ./dotfiles.sh -U
+```
+
+Dry run uninstall:
+```bash
+./dotfiles.sh -U --dry-run
 ```
 
 Help:
@@ -29,97 +60,198 @@ Help:
 ./dotfiles.sh -h
 ```
 
-## Usage Summary 🛠️
+## Requirements ⚙️
+
+- **Git 2.25+** (January 2020) for sparse checkout support
+
+## Usage Summary 📝
 
 ```
-dotfiles.sh
-dotfiles.sh {-I --install}   [-g] [-p] [-s] [-v]
-dotfiles.sh {-U --uninstall} [-g] [-v]
-dotfiles.sh {-T --test}      [-v]
-dotfiles.sh {-h --help}
+Usage:
+  dotfiles.sh
+  dotfiles.sh {-I --install}   [--profile PROFILE] [-v] [--dry-run]
+  dotfiles.sh {-U --uninstall} [--profile PROFILE] [-v] [--dry-run]
+  dotfiles.sh {-T --test}      [--profile PROFILE] [-v]
+  dotfiles.sh {-h --help}
 
 Options:
-  -g  Include GUI environment layer
-  -p  Install system packages defined for the layer
-  -s  Install systemd user units for the layer
-  -v  Enable verbose logging
+  --profile PROFILE  Use predefined profile for sparse checkout
+                     Available: base, arch, arch-desktop, windows
+                     If not specified:
+                       1. Uses previously persisted profile (if exists)
+                       2. Prompts interactively to select a profile
+                     Selected profile is persisted for future runs.
+  -v                 Enable verbose logging
+  --dry-run          Perform a dry run without making system modifications.
+                     Logs all actions that would be taken. Verbose logging
+                     is automatically enabled in dry-run mode for detailed
+                     output.
 ```
 
-## Layered Environments (`env/`) 🧩
+**Profile Persistence**: The selected profile is automatically saved to git config
+(`.git/config` under `dotfiles.profile`). On subsequent runs without `--profile`,
+the script uses the saved profile, making re-runs seamless.
 
-Each directory under `env/` encapsulates a logical layer. Layers can extend one another (e.g. `arch-gui` builds on `arch`, `base-gui` builds on `base`).
+## Profiles 🎯
 
-| Layer | Purpose |
-|-------|---------|
-| `base` | Cross‑platform core shell + editor + git + tooling configs |
-| `base-gui` | GUI/editor (VS Code, JetBrains placeholder dirs, etc.) extras |
-| `arch` | Arch Linux specific packages & pacman configuration |
-| `arch-gui` | Arch desktop (X, xmonad, picom, dunst, redshift, fonts) |
-| `win` | Windows / PowerShell / registry settings & symlink metadata |
+Profiles define which files are included through git sparse checkout. This allows a single repository to serve multiple environments without checking out unnecessary files.
 
-### Key Layer Files
+**Profile Selection**:
+- Specify explicitly: `./dotfiles.sh -I --profile arch-desktop`
+- Interactive prompt: `./dotfiles.sh -I` (first time or if no profile saved)
+- Automatic reuse: `./dotfiles.sh -I` (uses saved profile from previous run)
+
+| Profile | Description | Includes |
+|---------|-------------|----------|
+| `base` | Minimal setup | Core shell configs only (no OS-specific or desktop files) |
+| `arch` | Arch Linux headless | Core shell + Arch packages (no desktop) |
+| `arch-desktop` | Arch Linux desktop | Core shell + desktop tools + Arch packages + desktop environment |
+| `windows` | Windows | PowerShell + Windows registry + desktop tools (VS Code, IntelliJ IDEA) |
+
+Profiles are defined in [`conf/profiles.ini`](conf/profiles.ini) and map to file categories in [`conf/manifest.ini`](conf/manifest.ini).
+
+### How Profiles Work
+
+1. **Profile Selection**: Choose explicitly via `--profile`, or let the script use the persisted profile from a previous run, or select interactively if none exists
+2. **Sparse Checkout**: Git's sparse checkout feature excludes files based on your selected profile
+3. **OS Detection** (Linux only): On Linux systems, Arch Linux is auto-detected and non-Arch files are excluded if not running on Arch; Windows files are always excluded on Linux
+4. **Auto-Compatibility**: The system applies overrides to ensure compatibility—non-Arch systems exclude Arch-specific files, and Linux systems exclude Windows-specific files, regardless of profile selection
+5. **Persistence**: Your profile choice is saved in `.git/config` for seamless re-runs
+
+Example - first time setup with interactive selection:
+```bash
+./dotfiles.sh -I
+# Prompts you to select from available profiles
+# Selection is saved automatically
+```
+
+Example - switching profiles:
+```bash
+./dotfiles.sh -I --profile arch
+# Desktop files are automatically removed from workspace
+# Headless configs remain
+# New profile is saved for future runs
+```
+
+### Key Files in `conf/`
 
 | File | Description |
 |------|-------------|
-| `symlinks.conf` / `symlinks.json` | Declarative list of source → target mappings that `dotfiles.sh` materializes |
-| `packages.conf` | Plain list of packages (pacman / AUR or other package managers as implied) |
-| `units.conf` | Systemd user units to enable/link |
-| `chmod.conf` | Post‑install permission adjustments |
-| `submodules.conf` | Git submodules to init / update |
+| `symlinks.ini` | Declarative list of files to link from `symlinks/` to `$HOME`, organized by profile sections (includes `[windows]` section) |
+| `packages.ini` | Package list organized by profile sections (e.g., `[arch]`, `[arch-desktop]`) |
+| `units.ini` | Systemd user units to enable, organized by profile sections |
+| `chmod.ini` | Post-install permission adjustments, organized by profile sections |
+| `fonts.ini` | Font families to check/install for GUI environments |
+| `submodules.ini` | Git submodules to initialize |
+| `vscode-extensions.ini` | VS Code extensions to install |
+| `registry.ini` | Windows registry settings with registry paths as sections |
+| `manifest.ini` | Maps files to categories for sparse checkout exclusion |
+| `profiles.ini` | Profile definitions (category include/exclude) |
 
-Symlink source files live under `symlinks/` within each layer. The script resolves and links them into `$HOME` (and sometimes nested config directories) while preserving pre‑existing files by backing them up (see Implementation notes in script – if not currently backing up, consider adding before destructive operations).
+All `.ini` files use standard INI format with `[section]` headers. Profile sections determine
+which items are processed based on the selected profile. Symlink targets are always relative
+to `$HOME` and prefixed with a dot (e.g., `bashrc` → `~/.bashrc`).
 
-## Scripts (`./dotfiles.sh`) 📜
+## Scripts (`./dotfiles.sh`) 🔧
 
 Primary entrypoint: `dotfiles.sh`
 
-Supporting shell utilities reside in `src/` (e.g. `commands.sh`, `logger.sh`, `utils.sh`, `tasks.sh`) providing:
-* Logging abstraction
-* Idempotent symlink creation
-* Layer resolution / ordering
-* Package + unit install helpers
+Supporting shell utilities reside in `src/linux/`:
+* `commands.sh` - High-level install/uninstall/test orchestration
+* `tasks.sh` - Granular, idempotent task primitives
+* `utils.sh` - Helper predicates + sparse checkout configuration + INI parsing
+* `logger.sh` - Logging abstraction
 
-PowerShell module for Windows lives in `src/script.psm1` with supporting modules under `win/src/` for registry, symlinks, VS Code extensions, etc.
+PowerShell modules for Windows reside in `src/windows/`.
+
+### Implementation Highlights
+
+- **Sparse Checkout**: Files excluded by your profile are automatically removed from the working directory
+- **Idempotency**: Re-running install only performs missing work
+- **Dependency Resolution**: Profile dependencies (e.g., desktop requires certain base files) handled automatically
+- **No Backups**: Existing files are removed before linking (by design - commit first!)
 
 ### Windows
 
-See `WINDOWS.md` and the `win/` directory for:
-* Registry presets (`registry.json`, `registry-shell.json`)
-* PowerShell profile (`Microsoft.PowerShell_profile.ps1` under `env/base/symlinks/...`)
-* VS Code extension management logic (`VsCodeExtensions.psm1`)
+Windows supports profile-based configuration. The default profile is `windows`.
 
 Usage pattern (PowerShell, elevated as required):
 ```powershell
 .\dotfiles.ps1
+# Dry run mode (preview changes without modification)
+.\dotfiles.ps1 -DryRun
 ```
+
+Key differences from Linux:
+* Uses PowerShell instead of shell scripts
+* Registry settings in addition to symlinks
+* Configuration files:
+  - `conf/symlinks.ini` - Shared with Linux, Windows uses `[windows]` section
+  - `conf/registry.ini` - Registry paths as sections (Windows-only, no profile filtering)
+
+See `WINDOWS.md` for detailed Windows-specific documentation.
 
 ## Docker 🐳
 
-Run the published image for an isolated test shell (non‑destructive):
+Run the published image for an isolated test shell:
 ```bash
 docker run --rm -it sneivandt/dotfiles
 ```
 
-This image is built by the included GitHub Actions workflow (`docker-image.yml`). Useful for quickly validating scripts on a clean base environment.
+Build and run locally:
+```bash
+docker build -t dotfiles .
+docker run --rm -it dotfiles
+```
 
-## Customization ✨
+> **Note**: `docker build` is deprecated and replaced by `docker buildx build`. While `docker build` still works as an alias to BuildKit, `docker buildx` is the recommended modern interface with enhanced features.
 
-1. Fork the repo (recommended) or create a feature branch.
-2. Add or modify files under the appropriate layer `symlinks/` tree.
-3. Update `symlinks.conf` (or `.json`) with new mappings.
-4. Add packages to `packages.conf` (one per line).
-5. Add / adjust systemd units in `units.conf` and place unit files under `symlinks/config/systemd/user/`.
-6. Test with `./dotfiles.sh -T` before a full install.
+This image is built by GitHub Actions (`docker-image.yml`).
 
-### Adding a New Layer
-* Create `env/<name>/` with at least a `symlinks.conf` (even if empty) and `README.md` describing its purpose.
-* Ensure layer ordering logic (if hard‑coded) recognizes it; if dynamic, naming alone may suffice.
+## Customization 🎨
+
+### Adding New Files
+
+1. Add file to `symlinks/` directory
+2. Add entry to `conf/symlinks.ini` under appropriate section (e.g., `[base]`, `[arch-desktop]`)
+3. (Optional) Add file path to `conf/manifest.ini` if it should be excluded in certain profiles
+4. Test with `./dotfiles.sh -I --profile <your-profile>`
+
+### Adding Packages
+
+1. Add package name to `conf/packages.ini` under appropriate section:
+   ```ini
+   [arch]
+   packagename
+
+   [arch-desktop]
+   desktop-package
+   ```
+2. Packages are automatically installed when you use the matching profile
+
+### Creating a Custom Profile
+
+1. Edit `conf/profiles.ini` and add your profile section:
+   ```ini
+   [my-custom]
+   include=
+   exclude=windows,desktop
+   ```
+2. Use with `--profile my-custom`
+
+### Adding a New Category
+
+1. Add category section to `conf/manifest.ini`
+2. List all file paths that belong to that category
+3. Update profile definitions in `conf/profiles.ini` to include/exclude it
 
 ## Troubleshooting 🔍
 
 | Symptom | Check |
 |---------|-------|
-| Symlink not created | Entry missing in layer's `symlinks.conf`? Conflicting existing file? Permissions? |
-| Package not installed | Present in correct `packages.conf` for selected flags? Package manager available? |
-| Systemd unit inactive | Was `-s` passed? Verify with `systemctl --user status <unit>` |
-| Windows registry not applied | Run PowerShell as admin; confirm `Registry.psm1` imported without errors |
+| Symlink not created | Is source file excluded by sparse checkout? Check `git sparse-checkout list` |
+| Package not installed | Correct `conf/packages.ini` section present? Not excluded by profile? Package manager available? |
+| Systemd unit inactive | Unit defined in `conf/units.ini` for your profile? Verify with `systemctl --user status <unit>` |
+| Sparse checkout not working | Ensure you're in a git repository: `git sparse-checkout list` |
+| Wrong files checked out | Verify profile with `echo $PROFILE` and check `conf/profiles.ini` |
+| Desktop files missing | Use `--profile arch-desktop` |

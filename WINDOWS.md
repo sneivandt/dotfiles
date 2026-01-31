@@ -1,6 +1,6 @@
-# Windows Usage 🪟
+# Windows Usage
 
-Opinionated Windows automation layer for this dotfiles project. The PowerShell entrypoint wires together registry personalization, fonts, symlinks, and VS Code extensions in an idempotent fashion.
+Opinionated Windows automation layer for this dotfiles project. The PowerShell entrypoint wires together registry personalization, fonts, symlinks, and VS Code extensions in an idempotent fashion with profile-based filtering.
 
 ## Quick Start
 
@@ -16,66 +16,83 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 
 ## What the Script Does
 
-`dotfiles.ps1` loads each module under `env/win/src/` and executes these functions in order:
+`dotfiles.ps1` loads each module under `src/` and executes these functions in order:
 
 | Step | Module | Function | Description | Idempotency Cue |
 |------|--------|----------|-------------|-----------------|
-| 1 | `Git.psm1` | `Update-GitSubmodules` | Initializes / updates tracked submodules needed for fonts & GUI config (`env/base-gui`, `env/win/fonts`). | Only runs `git submodule update` if status indicates drift (`+` / `-`). |
-| 2 | `Registry.psm1` | `Sync-Registry` | Applies values from `registry.json` and console / shell color & behavior from `registry-shell.json` to a set of console keys. | Each value compared to existing; paths created only if missing. |
+| 1 | `Git.psm1` | `Update-GitSubmodules` | Initializes / updates all tracked submodules (fonts, vim plugins). | Only runs `git submodule update` if status indicates drift (`+` / `-`). |
+| 2 | `Registry.psm1` | `Sync-Registry` | Applies registry values from `conf/registry.ini` filtered by profile. | Each value compared to existing; paths created only if missing. |
 | 3 | `Font.psm1` | `Install-Fonts` | Installs the Powerline patched font (`DejaVu Sans Mono for Powerline`). | Skips if font already exists in system or per-user font directory. |
-| 4 | `Symlinks.psm1` | `Install-Symlinks` | Creates Windows user profile symlinks defined in `env/win/symlinks.json`. | Only creates links whose targets do not already exist. |
-| 5 | `VsCodeExtensions.psm1` | `Install-VsCodeExtensions` | Ensures VS Code extensions listed in `env/base-gui/vscode-extensions.conf` are installed. | Checks against `code --list-extensions`. |
+| 4 | `Symlinks.psm1` | `Install-Symlinks` | Creates Windows user profile symlinks from `conf/symlinks.ini` filtered by profile. | Only creates links whose targets do not already exist. |
+| 5 | `VsCodeExtensions.psm1` | `Install-VsCodeExtensions` | Ensures VS Code extensions listed in `conf/vscode-extensions.ini` are installed. | Checks against `code --list-extensions`. |
 
 ## Registry Customization
 
-Two JSON manifests drive registry changes:
+Registry configuration lives in `conf/registry.ini` using INI format with **registry paths as sections**:
 
-* `registry.json` – Arbitrary path/name/value entries applied verbatim.
-* `registry-shell.json` – Console host appearance (colors etc.). Color table entries are converted from RGB hex to the internal DWORD format.
+```ini
+[HKCU:\Console\PSReadLine]
+NormalForeground = 0xF
 
-Console keys targeted include default and PowerShell specific keys under `HKCU:\Console`. If you need to extend customization, add an entry to the JSON; the script will create missing keys.
+[HKCU:\Control Panel\International]
+sLongDate = MMMM d, yyyy
+```
+
+Each section header is a registry path, and entries use `name = value` format. Color table entries (ColorTable00-15) use 6-digit hex RGB format that gets automatically converted to the internal DWORD format.
+
+**Note:** Registry configuration doesn't use profile filtering since registry settings are Windows-only by nature.
+
+To add custom registry settings:
+1. Add entries to appropriate section in `conf/registry.ini` (or create a new section with a registry path).
+2. Re-run `./dotfiles.ps1`.
+
+The script will create missing registry keys automatically.
 
 ## Symlinks
 
-Symlink definitions live in `env/win/symlinks.json` with objects shaped:
+Symlink definitions live in `conf/symlinks.ini` under the **`[windows]` section**:
 
-```jsonc
-[
-	{ "Source": "win/symlinks/config/git/config", "Target": ".config/git/config" }
-]
+```ini
+[windows]
+AppData/Roaming/Code/User/settings.json
+config/git/config
+config/powershell/Microsoft.PowerShell_profile.ps1
 ```
 
-Source paths are resolved relative to the repository `env` directory; targets are relative to `$env:USERPROFILE`.
+Each line is a path relative to `$env:USERPROFILE`. The source file is located at `symlinks/<same-path>` in the repository. Forward slashes are automatically converted to backslashes for Windows.
+
+**Note:** Windows symlinks now share the same configuration file as Linux (`conf/symlinks.ini`) but use the `[windows]` section.
 
 To add a new link:
-1. Place the source file under `env/win/symlinks/...` (create directories as needed).
-2. Add a JSON entry.
+1. Place the source file under `symlinks/<path>` (create directories as needed).
+2. Add the path to the `[windows]` section in `conf/symlinks.ini`.
 3. Re-run `./dotfiles.ps1`.
 
 ## VS Code Extensions
 
-The file `env/base-gui/vscode-extensions.conf` is a simple newline list. Remove a line and re-run to keep new installs from occurring (does not uninstall). Add lines to expand your standard environment. The script requires the `code` CLI on PATH (Enable via VS Code: Command Palette → Shell Command: Install 'code' command in PATH).
+The file `conf/vscode-extensions.ini` contains extensions in the `[extensions]` section. Remove a line and re-run to keep new installs from occurring (does not uninstall). Add lines to expand your standard environment. The script requires the `code` CLI on PATH (Enable via VS Code: Command Palette → Shell Command: Install 'code' command in PATH).
 
 ## Fonts
 
-Font installation delegates to `env/win/fonts/install.ps1` (a submodule). Currently only ensures the Powerline patched DejaVu Sans Mono. Add more logic there if you need additional fonts.
+Font installation delegates to `extern/fonts/install.ps1` (a git submodule from powerline/fonts repository). Currently only ensures the Powerline patched DejaVu Sans Mono. The submodule is automatically updated when running `./dotfiles.ps1`.
 
 ## Updating
 
 Pull latest changes then re-run:
 
 ```powershell
+git pull
 ./dotfiles.ps1
 ```
 
-Submodules are only updated for the specific paths listed inside `Update-GitSubmodules`; extend that array to include new submodule-backed layers.
+All submodules are checked and updated automatically when the script runs.
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---------|-------|
 | No output / nothing changes | Ensure you are running an elevated PowerShell session. |
-| Symlink not created | Entry present in `symlinks.json`? Does a real file already exist at target path (preventing link)? |
+| Symlink not created | Entry present in `conf/symlinks.ini` under `[windows]` section? Does source file exist in `symlinks/`? Does a real file already exist at target path (preventing link)? |
 | Registry values unchanged | Verify keys under `HKCU:\Console` – did policy or another tool override them? Run as admin. |
 | Font not applied in terminal | Confirm the terminal profile is set to the installed font manually (script installs, but doesn't change terminal profile). |
 | VS Code extensions not installing | `code` CLI available? Run `code --version` in the same session. |
@@ -88,10 +105,6 @@ Submodules are only updated for the specific paths listed inside `Update-GitSubm
 
 ## Extending Windows Layer
 
-1. Create or modify module in `env/win/src/` exporting a function.
+1. Create or modify module in `src/` exporting a function.
 2. Add its invocation to `dotfiles.ps1` (maintain logical ordering: core prerequisites first, leaf operations last).
 3. Keep functions self‑guarded (no-op if already configured) to preserve idempotency.
-
-## Related Layers
-
-Although Windows specific logic lives here, shared configuration (shell, git, editor) originates from the `base` and `base-gui` layers via their symlinks when cloned / manually linked. At present the Windows script only manages items explicit to the Windows environment; cross‑platform symlinks are handled by invoking the Unix script on WSL or manually linking.

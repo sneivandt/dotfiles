@@ -1,0 +1,17 @@
+[Unit]
+Description=wallpaper
+
+Wants=xsession.target
+After=xsession.target
+
+ConditionFileIsExecutable=%h/.config/wallpaper/wallpaper.sh
+
+[Service]
+Environment="XDG_CACHE_HOME=%h/.cache"
+Environment="XDG_CONFIG_HOME=%h/.config"
+Type=oneshot
+
+ExecStart=%h/.config/wallpaper/wallpaper.sh
+
+[Install]
+WantedBy=xsession.target

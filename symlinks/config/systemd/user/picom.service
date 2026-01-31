@@ -1,0 +1,17 @@
+[Unit]
+Description=Picom compositor
+Documentation=man:picom(1)
+Wants=xsession.target
+After=xsession.target
+
+ConditionFileIsExecutable=/usr/bin/picom
+ConditionPathExists=%h/.config/picom/picom.conf
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/picom --config %h/.config/picom/picom.conf
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=xsession.target

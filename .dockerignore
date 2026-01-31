@@ -1,4 +1,6 @@
 *
-!env/base
+!conf
 !src
+!symlinks
+!test
 !dotfiles.sh

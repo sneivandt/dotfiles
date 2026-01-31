@@ -1,0 +1,13 @@
+[Unit]
+Description=Set initial volume to 80% and unmute
+Wants=xsession.target
+After=xsession.target
+ConditionFileIsExecutable=%h/.config/volume/init-volume.sh
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/sleep 10
+ExecStart=%h/.config/volume/init-volume.sh
+
+[Install]
+WantedBy=xsession.target

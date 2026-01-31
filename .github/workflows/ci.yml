@@ -52,7 +52,7 @@ jobs:
           ./dotfiles.sh --install --profile base --dry-run -v 2>&1 | tee base-output.log
 
       - name: Verify profile-specific symlinks
-        run: ./.github/workflows/scripts/verify/verify-base-profile.sh base-output.log
+        run: ./.github/workflows/scripts/verify/verify-profile.sh base base-output.log
 
   # Test arch profile on Linux (headless Arch-focused)
   test-linux-arch:
@@ -69,10 +69,10 @@ jobs:
           ./dotfiles.sh --install --profile arch --dry-run -v 2>&1 | tee arch-output.log
 
       - name: Verify sparse checkout configuration
-        run: ./.github/workflows/scripts/verify/sparse-checkout.sh
+        run: ./.github/workflows/scripts/verify/verify-sparse-checkout.sh
 
       - name: Verify profile-specific symlinks
-        run: ./.github/workflows/scripts/verify/verify-arch-profile.sh arch-output.log
+        run: ./.github/workflows/scripts/verify/verify-profile.sh arch arch-output.log
 
   # Test arch-desktop profile on Linux (full desktop environment)
   test-linux-arch-desktop:
@@ -89,10 +89,10 @@ jobs:
           ./dotfiles.sh --install --profile arch-desktop --dry-run -v 2>&1 | tee arch-desktop-output.log
 
       - name: Verify sparse checkout excludes Windows files
-        run: ./.github/workflows/scripts/verify/sparse-checkout-excludes-windows.sh
+        run: ./.github/workflows/scripts/verify/verify-sparse-checkout-excludes-windows.sh
 
       - name: Verify profile-specific symlinks
-        run: ./.github/workflows/scripts/verify/verify-arch-desktop-profile.sh arch-desktop-output.log
+        run: ./.github/workflows/scripts/verify/verify-profile.sh arch-desktop arch-desktop-output.log
 
   # Test uninstall functionality
   test-linux-uninstall:

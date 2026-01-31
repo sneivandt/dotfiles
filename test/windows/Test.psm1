@@ -23,6 +23,8 @@ function Test-PSScriptAnalyzer
 
     if (Get-Module -Name "PSScriptAnalyzer" -ListAvailable)
     {
+        Import-Module -Name "PSScriptAnalyzer" -Force
+
         $extensions = "*.ps1", "*.psm1"
 
         foreach ($extension in $extensions)

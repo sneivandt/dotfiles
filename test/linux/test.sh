@@ -38,7 +38,7 @@ test_psscriptanalyzer()
   then
     log_stage "Running PSScriptAnalyzer"
     # Import the helper module and run the analysis function
-    pwsh -Command "Import-Module $DIR/test/windows/Test.psm1 && Test-PSScriptAnalyzer -dir $DIR"
+    pwsh -NoProfile -Command "Import-Module '$DIR/test/windows/Test.psm1'; Test-PSScriptAnalyzer -dir '$DIR'"
   else
     log_verbose "Skipping PSScriptAnalyzer: pwsh not installed"
   fi
@@ -60,6 +60,30 @@ test_shellcheck()
     log_stage "Running shellcheck"
     # Start with the main entry point script and source scripts
     scripts="$DIR/dotfiles.sh $DIR/src/linux/*.sh"
+
+    # Add shell scripts from test/ directory
+    if [ -d "$DIR"/test ]; then
+      tmpfile="$(mktemp)"
+      find "$DIR"/test -type f -name "*.sh" > "$tmpfile"
+      while IFS='' read -r line || [ -n "$line" ]; do
+        if is_shell_script "$line"; then
+          scripts="$scripts $line"
+        fi
+      done < "$tmpfile"
+      rm "$tmpfile"
+    fi
+
+    # Add shell scripts from .github/ directory
+    if [ -d "$DIR"/.github ]; then
+      tmpfile="$(mktemp)"
+      find "$DIR"/.github -type f -name "*.sh" > "$tmpfile"
+      while IFS='' read -r line || [ -n "$line" ]; do
+        if is_shell_script "$line"; then
+          scripts="$scripts $line"
+        fi
+      done < "$tmpfile"
+      rm "$tmpfile"
+    fi
 
     # Check if symlinks.ini exists (may be excluded by sparse checkout)
     if [ ! -f "$DIR"/conf/symlinks.ini ]

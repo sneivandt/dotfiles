@@ -1,4 +1,12 @@
 {
+    // GitHub Copilot settings
+    "github.copilot.enable": {
+        "*": true,
+        "shellscript": true,
+        "powershell": true,
+        "ini": true,
+        "markdown": true
+    },
     // Git settings - ignore vim plugins and external fonts
     "git.ignoredRepositories": [
         "symlinks/vim/pack/plugins/opt/vim-pathogen",
@@ -62,19 +70,30 @@
     // Editor settings
     "editor.renderWhitespace": "boundary",
     "editor.detectIndentation": false,
+    // Shell script settings
+    "[shellscript]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.defaultFormatter": null
+    },
     // PowerShell settings
     "powershell.scriptAnalysis.enable": true,
     "[powershell]": {
-        "editor.tabSize": 4,
-        "files.encoding": "utf8bom"
+        "editor.insertSpaces": true
+    },
+    // Markdown
+    "[markdown]": {
+        "files.trimTrailingWhitespace": true,
+        "editor.wordWrap": "on",
+        "editor.quickSuggestions": {
+            "comments": "on",
+            "strings": "on",
+            "other": "on"
+        }
     },
     // INI files
     "[ini]": {
         "editor.tabSize": 2
-    },
-    // Markdown
-    "[markdown]": {
-        "files.trimTrailingWhitespace": true
     },
     // YAML settings (for GitHub Actions)
     "yaml.schemas": {

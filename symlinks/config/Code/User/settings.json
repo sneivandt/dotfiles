@@ -54,7 +54,6 @@
     "breadcrumbs.enabled": true,
     "chat.agent.enabled": true,
     "chat.agent.maxRequests": 50,
-    "chat.viewSessions.orientation": "stacked",
     "cmake.configureOnOpen": false,
     "cmake.ignoreCMakeListsMissing": true,
     "C_Cpp.intelliSenseCachePath": "~/.cache/vscode-cpptools",
@@ -135,7 +134,7 @@
     "terminal.integrated.gpuAcceleration": "on",
     "terminal.integrated.initialHint": false,
     "terminal.integrated.shellIntegration.decorationsEnabled": "never",
-    "terminal.integrated.shellIntegration.enabled": false,
+    "terminal.integrated.shellIntegration.enabled": true,
     "terminal.integrated.stickyScroll.enabled": false,
     "terminal.integrated.tabs.showActions": "never",
     "update.mode": "none",
@@ -146,5 +145,6 @@
     "workbench.iconTheme": "vs-seti",
     "workbench.startupEditor": "none",
     "workbench.tips.enabled": false,
-    "workbench.tree.enableStickyScroll": false
+    "workbench.tree.enableStickyScroll": false,
+    "chat.viewSessions.orientation": "stacked"
 }

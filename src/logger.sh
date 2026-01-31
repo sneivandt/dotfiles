@@ -74,9 +74,9 @@ log_usage()
 {
   echo "Usage:"
   echo "  $(basename "$0")"
-  echo "  $(basename "$0") {-I --install}   [-g] [-p] [-s] [-v]"
-  echo "  $(basename "$0") {-U --uninstall} [-g] [-v]"
-  echo "  $(basename "$0") {-T --test}      [-v]"
+  echo "  $(basename "$0") {-I --install}   [-g] [-p] [-s] [-v] [-q]"
+  echo "  $(basename "$0") {-U --uninstall} [-g] [-v] [-q]"
+  echo "  $(basename "$0") {-T --test}      [-v] [-q]"
   echo "  $(basename "$0") {-h --help}"
   echo
   echo "Options:"
@@ -84,6 +84,7 @@ log_usage()
   echo "  -p  Install system packages"
   echo "  -s  Install systemd units"
   echo "  -v  Enable verbose logging"
+  echo "  -q  Quiet mode (minimal output)"
   exit
 }
 
@@ -106,15 +107,40 @@ log_verbose()
 # Print a stage heading exactly once for a multi-step logical unit. Subsequent
 # calls within the same subshell no-op until _work resets (new subshell or
 # script invocation). This keeps logs concise when a task loops.
+# Skips output in quiet mode (-q flag).
 #
 # Args:
 #   $1 stage description (imperative present tense preferred)
 log_stage()
 {
+  # Skip in quiet mode
+  if is_flag_set "q"
+  then
+    return
+  fi
+  
   if [ "${_work-unset}" = "unset" ] \
     || ! $_work
   then
     _work=true
     printf "${BLUE}:: %s...${NC}\n" "$1"
+  fi
+}
+
+# log_progress
+#
+# Display a progress indicator for long-running operations with multiple items.
+# Shows progress as [current/total] item. Uses carriage return to update in place.
+# Only displayed in verbose mode (-v flag).
+#
+# Args:
+#   $1 current item number
+#   $2 total items
+#   $3 item description
+log_progress()
+{
+  if is_flag_set "v"
+  then
+    printf "\r${YELLOW}[%d/%d] %s...${NC}" "$1" "$2" "$3" >&2
   fi
 }

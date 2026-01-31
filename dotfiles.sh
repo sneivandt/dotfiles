@@ -26,11 +26,13 @@ set -o nounset
 #   -p  Install system packages (Arch pacman based).
 #   -s  Install and enable user‑level systemd units.
 #   -v  Enable verbose logging.
+#   -q  Quiet mode (minimal output, useful for scripting).
 #
 # Usage Examples:
 #   ./dotfiles.sh --install -gp    # Install including GUI + packages.
 #   ./dotfiles.sh -U -g            # Uninstall GUI related symlinks.
 #   ./dotfiles.sh --test -v        # Run analyzers / linters with verbose output.
+#   ./dotfiles.sh --install -q     # Silent install for automation.
 #
 # Implementation Notes:
 #   * getopt is used to provide consistent long/short option handling while
@@ -53,24 +55,27 @@ fi
 # High‑level orchestration functions (do_install, do_uninstall, do_test).
 . "$DIR"/src/commands.sh
 
+# Start timing if not in quiet mode
+START_TIME=$(date +%s)
+
 case ${1:-} in
   -I* | --install)
     # Full install path (optionally gated by -g -p -s sub‑flags).
-    OPT="$(getopt -o Ipgsv -l install -n "$(basename "$0")" -- "$@")" \
+    OPT="$(getopt -o Ipgqsv -l install,quiet -n "$(basename "$0")" -- "$@")" \
       || exit 1
     export OPT
     do_install
     ;;
   -T* | --test)
     # Static analysis / lint checks (shellcheck, PSScriptAnalyzer).
-    OPT="$(getopt -o Tv -l test -n "$(basename "$0")" -- "$@")" \
+    OPT="$(getopt -o Tqv -l test,quiet -n "$(basename "$0")" -- "$@")" \
       || exit 1
     export OPT
     do_test
     ;;
   -U* | --uninstall)
     # Remove installed symlinks (respecting -g to include GUI layer paths).
-    OPT="$(getopt -o Ugv -l uninstall -n "$(basename "$0")" -- "$@")" \
+    OPT="$(getopt -o Ugqv -l uninstall,quiet -n "$(basename "$0")" -- "$@")" \
       || exit 1
     export OPT
     do_uninstall
@@ -90,3 +95,14 @@ case ${1:-} in
     log_usage
     ;;
 esac
+
+# Print execution time if not in quiet mode
+if ! is_flag_set "q"
+then
+  END_TIME=$(date +%s)
+  ELAPSED=$((END_TIME - START_TIME))
+  if [ "$ELAPSED" -ge 1 ]
+  then
+    printf "${GREEN}Completed in %d seconds${NC}\n" "$ELAPSED"
+  fi
+fi

@@ -34,9 +34,9 @@ Help:
 
 ```
 dotfiles.sh
-dotfiles.sh {-I --install}   [-g] [-p] [-s] [-v]
-dotfiles.sh {-U --uninstall} [-g] [-v]
-dotfiles.sh {-T --test}      [-v]
+dotfiles.sh {-I --install}   [-g] [-p] [-s] [-v] [-q]
+dotfiles.sh {-U --uninstall} [-g] [-v] [-q]
+dotfiles.sh {-T --test}      [-v] [-q]
 dotfiles.sh {-h --help}
 
 Options:
@@ -44,6 +44,7 @@ Options:
   -p  Install system packages defined for the layer
   -s  Install systemd user units for the layer
   -v  Enable verbose logging
+  -q  Quiet mode (minimal output)
 ```
 
 ## Layered Environments (`env/`) 🧩

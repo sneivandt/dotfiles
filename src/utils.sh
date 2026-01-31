@@ -34,29 +34,20 @@ fi
 #   0 ignored / skip, 1 process.
 is_env_ignored()
 {
+  # Early return for win - always ignored
+  [ "$1" = "win" ] && return 0
+  
   case $1 in
     arch)
       # If not on Arch (IS_ARCH=0), ignore it (return 0)
-      if [ "$IS_ARCH" -eq 0 ]
-      then
-        return 0
-      fi
+      [ "$IS_ARCH" -eq 0 ] && return 0
       ;;
     arch-gui)
-      if is_env_ignored "base-gui" \
-        || is_env_ignored "arch"
-      then
-        return 0
-      fi
+      is_env_ignored "base-gui" && return 0
+      is_env_ignored "arch" && return 0
       ;;
     base-gui)
-      if ! is_flag_set "g"
-      then
-        return 0
-      fi
-      ;;
-    win)
-      return 0
+      ! is_flag_set "g" && return 0
       ;;
   esac
   return 1
@@ -148,4 +139,34 @@ is_symlink_installed()
   else
     return 1
   fi
+}
+
+# Program cache for is_program_installed_cached
+_program_cache=""
+
+# is_program_installed_cached
+#
+# Cached version of is_program_installed. Stores successful lookups in a
+# string to avoid repeated command -v calls. Useful when checking the same
+# program multiple times across different layers or iterations.
+#
+# Args:
+#   $1 program name
+#
+# Result:
+#   0 found (in cache or via command -v), 1 missing.
+is_program_installed_cached()
+{
+  # Check if already in cache
+  case "$_program_cache" in
+    *"|$1|"*) return 0 ;;
+  esac
+  
+  # Not in cache, check if installed
+  if is_program_installed "$1"
+  then
+    _program_cache="$_program_cache|$1|"
+    return 0
+  fi
+  return 1
 }

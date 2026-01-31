@@ -6,6 +6,9 @@ name: Tests
   pull_request:
     branches: [master]
 
+permissions:
+  contents: read
+
 jobs:
   shellcheck:
     name: ShellCheck
@@ -38,3 +41,4 @@ jobs:
         # We use '|| true' to treat this as a smoke test that validates script logic
         # without requiring a fully successful installation.
         run: ./dotfiles.sh --install -v || true
+

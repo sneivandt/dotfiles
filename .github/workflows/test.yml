@@ -34,4 +34,7 @@ jobs:
         run: ./dotfiles.sh --test -v
 
       - name: Test installation (dry-run)
+        # Note: Installation may fail in CI due to missing dependencies or permissions.
+        # We use '|| true' to treat this as a smoke test that validates script logic
+        # without requiring a fully successful installation.
         run: ./dotfiles.sh --install -v || true

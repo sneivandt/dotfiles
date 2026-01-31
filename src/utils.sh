@@ -149,6 +149,7 @@ _program_cache=""
 # Cached version of is_program_installed. Stores successful lookups in a
 # string to avoid repeated command -v calls. Useful when checking the same
 # program multiple times across different layers or iterations.
+# Uses pipe delimiters and exact matching to prevent false positives.
 #
 # Args:
 #   $1 program name
@@ -157,15 +158,15 @@ _program_cache=""
 #   0 found (in cache or via command -v), 1 missing.
 is_program_installed_cached()
 {
-  # Check if already in cache
-  case "$_program_cache" in
+  # Check if already in cache (exact match with surrounding pipes)
+  case "|$_program_cache|" in
     *"|$1|"*) return 0 ;;
   esac
   
   # Not in cache, check if installed
   if is_program_installed "$1"
   then
-    _program_cache="$_program_cache|$1|"
+    _program_cache="$_program_cache|$1"
     return 0
   fi
   return 1

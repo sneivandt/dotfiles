@@ -287,8 +287,6 @@ This image is built by GitHub Actions (`docker-image.yml`).
 
 Contributions are welcome! Please see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines on how to contribute to this project.
 
-For security issues, please review [docs/SECURITY.md](docs/SECURITY.md) for our security policy and reporting procedures.
-
 ## Additional Documentation 📚
 
 - [docs/TESTING.md](docs/TESTING.md) - Detailed testing and CI documentation

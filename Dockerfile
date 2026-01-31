@@ -34,5 +34,5 @@ ENTRYPOINT /usr/bin/zsh
 # Install dotfiles
 COPY --chown=sneivandt:sneivandt . /home/sneivandt/dotfiles
 USER sneivandt
-# TODO: Profile management does not work in this Dockerfile setup yet due to lack of git repository initialization
-RUN /home/sneivandt/dotfiles/dotfiles.sh --install --profile base
+RUN /home/sneivandt/dotfiles/dotfiles.sh --install --profile base \
+    && rm -rf /home/sneivandt/dotfiles/.git

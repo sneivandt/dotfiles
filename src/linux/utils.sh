@@ -428,32 +428,38 @@ configure_sparse_checkout()
     fi
     exclude_categories="$PROFILE_EXCLUDE"
 
-    # Apply auto-detection overrides
-    if [ "$IS_ARCH" -eq 0 ]; then
-      # Not on Arch - always exclude arch
+    # Apply auto-detection overrides (unless skipped for testing)
+    if ! skip_os_detection; then
+      if [ "$IS_ARCH" -eq 0 ]; then
+        # Not on Arch - always exclude arch
+        case ",$exclude_categories," in
+          *,arch,*) ;;
+          *)
+            if [ -z "$exclude_categories" ]; then
+              exclude_categories="arch"
+            else
+              exclude_categories="$exclude_categories,arch"
+            fi
+            log_verbose "Auto-detection: Excluding 'arch' category (non-Arch system)"
+            ;;
+        esac
+      fi
+
+      # Windows always excluded on Linux
       case ",$exclude_categories," in
-        *,arch,*) ;;
+        *,windows,*) ;;
         *)
           if [ -z "$exclude_categories" ]; then
-            exclude_categories="arch"
+            exclude_categories="windows"
           else
-            exclude_categories="$exclude_categories,arch"
+            exclude_categories="$exclude_categories,windows"
           fi
+          log_verbose "Auto-detection: Excluding 'windows' category (Linux system)"
           ;;
       esac
+    else
+      log_verbose "Skipping OS detection overrides (--skip-os-detection flag set)"
     fi
-
-    # Windows always excluded on Linux
-    case ",$exclude_categories," in
-      *,windows,*) ;;
-      *)
-        if [ -z "$exclude_categories" ]; then
-          exclude_categories="windows"
-        else
-          exclude_categories="$exclude_categories,windows"
-        fi
-        ;;
-    esac
   else
     # Use explicit exclusions or default to full checkout
     exclude_categories="${EXPLICIT_EXCLUDE:-}"
@@ -599,6 +605,28 @@ is_dry_run()
 {
   case " $OPT " in
     *" --dry-run "*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+# skip_os_detection
+#
+# Check if OS detection should be skipped. When enabled, profiles are used
+# as-is without automatic category exclusions based on detected OS.
+#
+# Primarily for CI testing to ensure profiles produce different outputs
+# even when running on the same OS (e.g., testing arch profile on Ubuntu).
+#
+# Result:
+#   0 skip detection, 1 perform normal detection.
+skip_os_detection()
+{
+  case " $OPT " in
+    *" --skip-os-detection "*)
       return 0
       ;;
     *)

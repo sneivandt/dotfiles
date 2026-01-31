@@ -9,6 +9,7 @@ Opinionated, scriptable, cross‑platform (Linux / Arch / Windows) dotfiles with
 - Editor (VS Code) & shell (zsh/bash) configuration
 
 [![Publish Docker image](https://github.com/sneivandt/dotfiles/actions/workflows/docker-image.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/docker-image.yml)
+[![Tests](https://github.com/sneivandt/dotfiles/actions/workflows/test.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/test.yml)
 
 ## Quick Start 🚀
 
@@ -115,6 +116,52 @@ This image is built by the included GitHub Actions workflow (`docker-image.yml`)
 * Create `env/<name>/` with at least a `symlinks.conf` (even if empty) and `README.md` describing its purpose.
 * Ensure layer ordering logic (if hard‑coded) recognizes it; if dynamic, naming alone may suffice.
 
+## Development 🔧
+
+### Running Tests Locally
+
+Validate scripts with ShellCheck and built-in tests:
+```bash
+./dotfiles.sh --test -v
+```
+
+Run tests in Docker for a clean environment:
+```bash
+docker build -t dotfiles-test .
+docker run --rm -it dotfiles-test
+```
+
+### Contributing
+
+Contributions are welcome! Please:
+
+1. Read [CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed guidelines
+2. Ensure all shell scripts pass ShellCheck with no errors
+3. Test changes locally before submitting
+4. Follow existing code style and conventions
+5. Make minimal, focused changes
+
+### Code Quality Requirements
+
+- ✅ **ShellCheck**: All scripts must pass with no errors
+- ✅ **Idempotency**: Re-running should be safe and produce no errors
+- ✅ **POSIX Compliance**: Use `/bin/sh` unless bash features required
+- ✅ **Testing**: CI tests run on ubuntu-latest and ubuntu-20.04
+
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed technical documentation.
+
+## Performance ⚡
+
+The dotfiles system includes several performance optimizations:
+
+- **Cached program checks**: Avoids repeated `command -v` lookups
+- **Batch file operations**: Processes multiple files efficiently
+- **Early returns**: Skips unnecessary work when state is already correct
+- **Minimal subprocess invocations**: Uses shell built-ins when possible
+- **Progress indicators**: Shows status for long-running operations (when `-v` flag used)
+
+Use `--quiet` flag for minimal output in scripts and automation contexts.
+
 ## Troubleshooting 🔍
 
 | Symptom | Check |
@@ -123,3 +170,4 @@ This image is built by the included GitHub Actions workflow (`docker-image.yml`)
 | Package not installed | Present in correct `packages.conf` for selected flags? Package manager available? |
 | Systemd unit inactive | Was `-s` passed? Verify with `systemctl --user status <unit>` |
 | Windows registry not applied | Run PowerShell as admin; confirm `Registry.psm1` imported without errors |
+| CI tests failing | Check [test workflow logs](https://github.com/sneivandt/dotfiles/actions/workflows/test.yml), ensure ShellCheck passes locally |

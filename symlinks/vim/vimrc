@@ -230,7 +230,7 @@ autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
 autocmd Filetype go set nolist
 
 " Disable go version warning
-let g:go_version_warning=1
+let g:go_version_warning=0
 
 " }}}
 " Haskell {{{

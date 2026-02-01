@@ -227,13 +227,11 @@ docker run --rm -it sneivandt/dotfiles
 
 Build and run locally:
 ```bash
-docker build --no-cache -t dotfiles .
-docker run --rm -it dotfiles
+docker buildx build -t dotfiles:local .
+docker run --rm -it dotfiles:local
 ```
 
-> **Note**: `docker build` is deprecated and replaced by `docker buildx build`. While `docker build` still works as an alias to BuildKit, `docker buildx` is the recommended modern interface with enhanced features.
-
-This image is built by GitHub Actions (`docker-image.yml`).
+The published image (`sneivandt/dotfiles`) is built and pushed by GitHub Actions on pushes to master ([`docker-image.yml`](.github/workflows/docker-image.yml)).
 
 ## Customization 🎨
 

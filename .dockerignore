@@ -1,3 +1,5 @@
+# Allowlist approach: exclude everything by default, then include only what's needed
+# This prevents accidentally including build artifacts, .env files, etc.
 *
 !.git
 !conf

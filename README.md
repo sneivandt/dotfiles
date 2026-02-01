@@ -69,10 +69,10 @@ Help:
 ```
 Usage:
   dotfiles.sh
-  dotfiles.sh {-I --install}   [--profile PROFILE] [-v] [--dry-run] [--skip-os-detection]
-  dotfiles.sh {-U --uninstall} [--profile PROFILE] [-v] [--dry-run] [--skip-os-detection]
-  dotfiles.sh {-T --test}      [-v]
-  dotfiles.sh {-h --help}
+  dotfiles.sh {-I | --install}   [--profile PROFILE] [-v] [--dry-run] [--skip-os-detection]
+  dotfiles.sh {-U | --uninstall} [--profile PROFILE] [-v] [--dry-run] [--skip-os-detection]
+  dotfiles.sh {-T | --test}      [-v]
+  dotfiles.sh {-h | --help}
 
 Options:
   --profile PROFILE     Use predefined profile for sparse checkout
@@ -292,6 +292,5 @@ Contributions are welcome! Please see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.m
 
 - [docs/TESTING.md](docs/TESTING.md) - Detailed testing and CI documentation
 - [docs/WINDOWS.md](docs/WINDOWS.md) - Windows-specific documentation
-- [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) - Contributing guidelines
 - [docs/SECURITY.md](docs/SECURITY.md) - Security policy
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) - Configuration file reference

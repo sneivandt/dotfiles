@@ -1,91 +1,95 @@
 #compdef dotfiles
 
-typeset -A opt_args
-setopt extendedglob
+# _dotfiles_get_profiles
+#
+# Dynamically loads profiles from conf/profiles.ini.
+# Returns an array of "profile:description" strings suitable for _describe.
+_dotfiles_get_profiles() {
+  local -a profiles
+  local profile_file="${0:A:h:h:h:h:h}/conf/profiles.ini"
 
-_dotfiles_opts_commands=(
-  {-I,--install}"[Install]"
-  {-T,--test}"[Test]"
-  {-U,--uninstall}"[Uninstall]"
+  # Profile descriptions mapping
+  local -A profile_desc
+  profile_desc[base]="Minimal core shell configuration"
+  profile_desc[arch]="Arch Linux headless"
+  profile_desc[arch-desktop]="Arch Linux desktop"
+  profile_desc[windows]="Windows environment"
 
-  {-h,--help}"[Display usage]"
-)
+  # Read profiles from profiles.ini if it exists
+  if [[ -f "$profile_file" ]]; then
+    while IFS= read -r line; do
+      # Extract section headers [profile-name]
+      if [[ $line =~ '^\[([^]]+)\]$' ]]; then
+        local profile="${match[1]}"
+        local desc="${profile_desc[$profile]:-$profile}"
+        profiles+=("${profile}:${desc}")
+      fi
+    done < "$profile_file"
+  else
+    # Fallback to hardcoded profiles if file not found
+    profiles=(
+      "base:Minimal core shell configuration"
+      "arch:Arch Linux headless"
+      "arch-desktop:Arch Linux desktop"
+      "windows:Windows environment"
+    )
+  fi
 
-_dotfiles_profiles=(
-  "base:Minimal core shell configuration"
-  "arch:Arch Linux headless"
-  "arch-desktop:Arch Linux desktop"
-  "windows:Windows environment"
-)
-
-_dotfiles_opts_common=(
-  "-v[Enable verbose logging]"
-)
-
-_dotfiles_opts_install=(
-  "--profile[Select profile]:profile:_describe 'profile' _dotfiles_profiles"
-  "--dry-run[Preview changes without system modifications]"
-  "--skip-os-detection[Skip automatic OS detection overrides]"
-)
-
-_dotfiles_action_install() {
-  _arguments -s : \
-    "(--install -I)"{-I,--install} \
-    "$_dotfiles_opts_install[@]" \
-    "$_dotfiles_opts_common[@]"
+  _describe 'profile' profiles
 }
 
-_dotfiles_action_test() {
-  _arguments -s : \
-    "(--test -T)"{-T,--test} \
-    "-v[Enable verbose logging]"
-}
+_dotfiles() {
+  local curcontext="$curcontext" state line
+  typeset -A opt_args
 
-_dotfiles_action_uninstall() {
-  _arguments -s : \
-    "(--uninstall -U)"{-U,--uninstall} \
-    "$_dotfiles_opts_install[@]" \
-    "$_dotfiles_opts_common[@]"
-}
+  local -a main_options
+  main_options=(
+    '(- *)'-h'[Display usage]'
+    '(- *)--help[Display usage]'
+    '(--install -T --test -U --uninstall -h --help)'-I'[Install dotfiles]'
+    '(-I -T --test -U --uninstall -h --help)--install[Install dotfiles]'
+    '(-I --install --test -U --uninstall -h --help)'-T'[Run tests]'
+    '(-I --install -T -U --uninstall -h --help)--test[Run tests]'
+    '(-I --install -T --test --uninstall -h --help)'-U'[Uninstall dotfiles]'
+    '(-I --install -T --test -U -h --help)--uninstall[Uninstall dotfiles]'
+  )
 
-local -a args cmds;
-local tmp
-args=( ${${(M)words:#-*}#-} )
-for tmp in $words
-do
-  cmds+=("${${_dotfiles_opts_commands[(r)*$tmp\[*]%%\[*}#*\)}")
-done
+  local -a install_options
+  install_options=(
+    '--profile[Select profile]:profile:_dotfiles_get_profiles'
+    '--dry-run[Preview changes without system modifications]'
+    '--skip-os-detection[Skip automatic OS detection overrides]'
+    '-v[Enable verbose logging]'
+  )
 
-case $args in
-  h)
-    return 0
-    ;;
-  I*)
-    _dotfiles_action_install
-    ;;
-  T*)
-    _dotfiles_action_test
-    ;;
-  U*)
-    _dotfiles_action_uninstall
-    ;;
-  *)
-    case ${(M)words:#--*} in
-      *--help*)
-        return 0
-        ;;
-      *--install*)
-        _dotfiles_action_install
-        ;;
-      *--test*)
-        _dotfiles_action_test
-        ;;
-      *--uninstall*)
-        _dotfiles_action_uninstall
-        ;;
-      *)
-        _arguments -s : \
-          "$_dotfiles_opts_commands[@]"
-        ;;
+  local -a test_options
+  test_options=(
+    '-v[Enable verbose logging]'
+  )
+
+  # Determine which action is being invoked
+  local action
+  for word in "${words[@]}"; do
+    case "$word" in
+      -I|--install) action="install"; break ;;
+      -T|--test) action="test"; break ;;
+      -U|--uninstall) action="uninstall"; break ;;
     esac
-esac
+  done
+
+  case "$action" in
+    install|uninstall)
+      _arguments -s -S \
+        "$main_options[@]" \
+        "$install_options[@]"
+      ;;
+    test)
+      _arguments -s -S \
+        "$main_options[@]" \
+        "$test_options[@]"
+      ;;
+    *)
+      _arguments -s -S "$main_options[@]"
+      ;;
+  esac
+}

@@ -29,9 +29,9 @@ set -o nounset
 # Usage Examples:
 #   ./dotfiles.sh --install --profile arch-desktop    # Arch with GUI.
 #   ./dotfiles.sh --install --profile arch            # Arch CLI only.
-#   ./dotfiles.sh -I --dry-run        # Preview install without changes (verbose auto-enabled).
-#   ./dotfiles.sh -U            # Uninstall symlinks.
-#   ./dotfiles.sh --test -v     # Run analyzers / linters with verbose output.
+#   ./dotfiles.sh -I --dry-run                        # Preview install without changes
+#   ./dotfiles.sh -U                                  # Uninstall symlinks.
+#   ./dotfiles.sh --test -v                           # Run tests with verbose output.
 #
 # Implementation Notes:
 #   * getopt is used to provide consistent long/short option handling while
@@ -93,6 +93,42 @@ parse_profile_arg()
   done
 }
 
+# check_exclusive_flags
+#
+# Validates that both short and long forms of the same flag are not used together.
+# Call after 'eval set -- "$OPT"' to check for conflicts.
+#
+# Args:
+#   $1  Short flag (e.g., "-I")
+#   $2  Long flag (e.g., "--install")
+#   $3  Flag description for error message (e.g., "install")
+#   $@  Parsed arguments from getopt
+#
+# Result:
+#   0 success, exits on error if both flags present
+check_exclusive_flags()
+{
+  local short_flag="$1"
+  local long_flag="$2"
+  local flag_desc="$3"
+  shift 3
+
+  local has_short=false
+  local has_long=false
+
+  for arg in "$@"; do
+    if [ "$arg" = "$short_flag" ]; then
+      has_short=true
+    elif [ "$arg" = "$long_flag" ]; then
+      has_long=true
+    fi
+  done
+
+  if $has_short && $has_long; then
+    log_error "Cannot use both $short_flag and $long_flag. Use one or the other."
+  fi
+}
+
 # resolve_profile
 #
 # Resolves the profile to use: from CLI arg, persisted config, or interactive prompt.
@@ -142,6 +178,7 @@ case ${1:-} in
     OPT="$(getopt -o Iv -l install,profile:,dry-run,skip-os-detection -n "$(basename "$0")" -- "$@")" \
       || exit 1
     eval set -- "$OPT"
+    check_exclusive_flags "-I" "--install" "install" "$@"
     parse_profile_arg "$@"
     export OPT
     export PROFILE
@@ -157,6 +194,8 @@ case ${1:-} in
     # Static analysis / lint checks (shellcheck, PSScriptAnalyzer).
     OPT="$(getopt -o Tv -l test -n "$(basename "$0")" -- "$@")" \
       || exit 1
+    eval set -- "$OPT"
+    check_exclusive_flags "-T" "--test" "test" "$@"
     export OPT
     do_test
     ;;
@@ -165,6 +204,7 @@ case ${1:-} in
     OPT="$(getopt -o Uv -l uninstall,profile:,dry-run,skip-os-detection -n "$(basename "$0")" -- "$@")" \
       || exit 1
     eval set -- "$OPT"
+    check_exclusive_flags "-U" "--uninstall" "uninstall" "$@"
     parse_profile_arg "$@"
     export OPT
     export PROFILE
@@ -180,6 +220,8 @@ case ${1:-} in
     # Show usage information only.
     OPT="$(getopt -o h -l help -n "$(basename "$0")" -- "$@")" \
       || exit 1
+    eval set -- "$OPT"
+    check_exclusive_flags "-h" "--help" "help" "$@"
     export OPT
     log_usage
     ;;

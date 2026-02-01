@@ -71,10 +71,10 @@ log_usage()
 {
   echo "Usage:"
   echo "  $(basename "$0")"
-  echo "  $(basename "$0") {-I --install}   [--profile PROFILE] [-v] [--dry-run] [--skip-os-detection]"
-  echo "  $(basename "$0") {-U --uninstall} [--profile PROFILE] [-v] [--dry-run] [--skip-os-detection]"
-  echo "  $(basename "$0") {-T --test}      [-v]"
-  echo "  $(basename "$0") {-h --help}"
+  echo "  $(basename "$0") {-I | --install}   [--profile PROFILE] [-v] [--dry-run] [--skip-os-detection]"
+  echo "  $(basename "$0") {-U | --uninstall} [--profile PROFILE] [-v] [--dry-run] [--skip-os-detection]"
+  echo "  $(basename "$0") {-T | --test}      [-v]"
+  echo "  $(basename "$0") {-h | --help}"
   echo
   echo "Options:"
   echo "  --profile PROFILE     Use predefined profile for sparse checkout"

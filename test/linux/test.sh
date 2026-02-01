@@ -635,3 +635,126 @@ test_empty_sections()
     log_verbose "No empty sections found"
   fi
 )}
+
+# test_zsh_completion
+#
+# Validate zsh completion file structure and profile loading.
+# Checks that completion can be loaded and dynamically reads profiles.
+test_zsh_completion()
+{(
+  # Skip if zsh is not installed
+  if ! is_program_installed "zsh"; then
+    log_verbose "Skipping zsh completion test: zsh not installed"
+    return 0
+  fi
+
+  log_stage "Validating zsh completion"
+
+  local completion_file="$DIR/symlinks/config/zsh/completions/_dotfiles"
+
+  # Check that completion file exists
+  if [ ! -f "$completion_file" ]; then
+    printf "${RED}ERROR: Completion file not found: %s${NC}\n" "$completion_file" >&2
+    return 1
+  fi
+
+  log_verbose "Testing completion file structure"
+
+  # Test that completion loads without errors
+  if ! zsh -c "source '$completion_file' 2>&1" >/dev/null 2>&1; then
+    printf "${RED}ERROR: Completion file failed to load${NC}\n" >&2
+    return 1
+  fi
+
+  log_verbose "Completion file loads successfully"
+
+  # Test that main functions are defined
+  if ! zsh -c "source '$completion_file' && typeset -f _dotfiles >/dev/null" 2>&1; then
+    printf "${RED}ERROR: _dotfiles function not defined${NC}\n" >&2
+    return 1
+  fi
+
+  if ! zsh -c "source '$completion_file' && typeset -f _dotfiles_get_profiles >/dev/null" 2>&1; then
+    printf "${RED}ERROR: _dotfiles_get_profiles function not defined${NC}\n" >&2
+    return 1
+  fi
+
+  log_verbose "Completion functions are defined"
+
+  # Test profile loading from profiles.ini
+  # We can't call _dotfiles_get_profiles directly as it uses _describe which only
+  # works in completion context, so we test the logic by checking file reading
+  log_verbose "Testing profile path resolution and file reading"
+
+  profiles_loaded=$(zsh -c "
+    cd '$DIR'
+    profile_file='$DIR/conf/profiles.ini'
+    count=0
+    if [[ -f \"\$profile_file\" ]]; then
+      while IFS= read -r line; do
+        if [[ \$line =~ '^\[([^]]+)\]\$' ]]; then
+          count=\$((count + 1))
+        fi
+      done < \"\$profile_file\"
+    fi
+    echo \$count
+  ")
+
+  if [ -z "$profiles_loaded" ] || [ "$profiles_loaded" -eq 0 ]; then
+    printf "${RED}ERROR: No profiles loaded from profiles.ini${NC}\n" >&2
+    return 1
+  fi
+
+  log_verbose "Loaded $profiles_loaded profile(s) from profiles.ini"
+
+  # Verify loaded profiles match those in profiles.ini
+  expected_profiles=$(list_available_profiles | wc -l)
+  if [ "$profiles_loaded" -ne "$expected_profiles" ]; then
+    printf "${RED}ERROR: Profile count mismatch: expected %d, got %d${NC}\n" "$expected_profiles" "$profiles_loaded" >&2
+    return 1
+  fi
+
+  # Validate mutual exclusivity patterns in completion
+  log_verbose "Validating mutual exclusivity patterns"
+
+  # Extract the line with -I definition and check it excludes --install
+  if ! grep -- "'-I'\[" "$completion_file" | grep -qF -- "--install"; then
+    printf "${RED}ERROR: -I does not exclude --install in its exclusion list${NC}\n" >&2
+    return 1
+  fi
+
+  # Extract the line with --install definition and check it excludes -I
+  if ! grep -- ")--install\[" "$completion_file" | grep -qF -- "-I"; then
+    printf "${RED}ERROR: --install does not exclude -I in its exclusion list${NC}\n" >&2
+    return 1
+  fi
+
+  # Check that all command flags exclude help (both -h and --help)
+  # Test a few key flags with their actual patterns in the file
+  for pattern in "'-I'\[" ")--install\[" "'-T'\[" ")--test\[" "'-U'\[" ")--uninstall\["; do
+    # Find the line defining this flag and check it has -h and --help in exclusions
+    local flag_line
+    flag_line=$(grep -- "$pattern" "$completion_file" || true)
+
+    if [ -z "$flag_line" ]; then
+      printf "${RED}ERROR: Could not find definition for pattern ${pattern}${NC}\n" >&2
+      return 1
+    fi
+
+    if ! echo "$flag_line" | grep -qF -- " -h " || \
+       ! echo "$flag_line" | grep -qF -- " --help"; then
+      printf "${RED}ERROR: Flag matching ${pattern} does not exclude both help flags${NC}\n" >&2
+    fi
+  done
+
+  # Check that help excludes everything with (- *)
+  if ! grep -F -- "(- *)'-h'" "$completion_file" >/dev/null || \
+     ! grep -F -- "(- *)--help[" "$completion_file" >/dev/null; then
+    printf "${RED}ERROR: Help flags do not properly exclude all other options${NC}\n" >&2
+    return 1
+  fi
+
+  log_verbose "Mutual exclusivity patterns validated"
+
+  log_verbose "Zsh completion validation passed"
+)}

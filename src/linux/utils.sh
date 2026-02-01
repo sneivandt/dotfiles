@@ -469,7 +469,6 @@ configure_sparse_checkout()
   EXCLUDED_CATEGORIES="$exclude_categories"
   export EXCLUDED_CATEGORIES
 
-  log_stage "Configuring sparse checkout"
   log_verbose "Profile: ${profile:-<none>}"
   log_verbose "Excluding categories: ${exclude_categories:-<none>}"
 
@@ -488,6 +487,20 @@ configure_sparse_checkout()
       fi
     done >> "$tmpfile"
   fi
+
+  # Check if sparse checkout configuration has changed
+  local current_config
+  current_config="$(git -C "$DIR" sparse-checkout list 2>/dev/null || echo '')"
+  local new_config
+  new_config="$(cat "$tmpfile")"
+
+  if [ "$current_config" = "$new_config" ]; then
+    log_verbose "Skipping sparse checkout: configuration unchanged"
+    rm -f "$tmpfile"
+    return 0
+  fi
+
+  log_stage "Configuring sparse checkout"
 
   # Apply sparse checkout configuration
   git -C "$DIR" sparse-checkout init --no-cone 2>/dev/null || true

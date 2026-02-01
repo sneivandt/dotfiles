@@ -96,35 +96,39 @@ configure_file_mode_bits()
         continue
       fi
 
-      # Check if changes are needed
-      needs_chmod=0
-      if [ -d "$target" ]; then
-        # For directories, always run chmod -R to ensure consistency across all contents
-        needs_chmod=1
-      else
-        # For files, check if mode is already correct
-        current_mode="$(stat -c '%a' "$target" 2>/dev/null || echo '')"
-        if [ "$current_mode" != "$mode" ]; then
-          needs_chmod=1
+      # Check if mode is already correct
+      # Use -L to dereference symlinks and check the target file's permissions
+      current_mode="$(stat -L -c '%a' "$target" 2>/dev/null || echo '')"
+      if [ "$current_mode" = "$mode" ]; then
+        # For directories, we need to check if ALL contents have correct permissions
+        if [ -d "$target" ]; then
+          # Check if any file in the directory tree has incorrect permissions
+          if find "$target" -L ! -perm "$mode" 2>/dev/null | grep -q .; then
+            # Some files have wrong permissions
+            :
+          else
+            # All files have correct permissions
+            log_verbose "Skipping chmod on $target: permissions already correct"
+            continue
+          fi
         else
+          # File has correct permissions
           log_verbose "Skipping chmod on $target: permissions already correct"
           continue
         fi
       fi
 
-      # Apply chmod if needed
-      if [ "$needs_chmod" -eq 1 ]; then
-        if [ $act -eq 0 ]; then
-          act=1
-          log_stage "Configuring file permissions"
-        fi
-        if is_dry_run; then
-          log_dry_run "Would set mode $mode on $target"
-        else
-          log_verbose "Setting mode $mode on $target"
-          # Note: -R flag applies mode recursively to ALL files/directories
-          chmod -c -R "$mode" "$target"
-        fi
+      # Apply chmod
+      if [ $act -eq 0 ]; then
+        act=1
+        log_stage "Configuring file permissions"
+      fi
+      if is_dry_run; then
+        log_dry_run "Would set mode $mode on $target"
+      else
+        log_verbose "Setting mode $mode on $target"
+        # Note: -R flag applies mode recursively to ALL files/directories
+        chmod -c -R "$mode" "$target"
       fi
     done
   done

@@ -35,7 +35,7 @@ set -o nounset
 # shellcheck disable=SC2154
 . "$DIR"/src/linux/tasks.sh
 
-# Test functions (test_psscriptanalyzer, test_shellcheck).
+# Test functions (test_config_validation, test_shellcheck, test_zsh_completion, etc.).
 . "$DIR"/test/linux/test.sh
 
 # do_install
@@ -90,6 +90,7 @@ do_test()
   test_ini_syntax
   test_category_consistency
   test_empty_sections
+  test_zsh_completion
 
   # Static analysis tests
   test_psscriptanalyzer

@@ -17,9 +17,9 @@ desktop.ini
 .idea/
 
 # VS Code settings (but include settings.json and extensions.json)
-.vscode/
-!.vscode/settings.json
+.vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
 
 # Python
 __pycache__/

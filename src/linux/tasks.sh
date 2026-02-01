@@ -745,8 +745,14 @@ update_dotfiles()
   fi
 
   # Ensure we are on the same branch as the remote HEAD
-  if [ "$(git -C "$DIR" rev-parse --abbrev-ref origin/HEAD | cut -d/ -f2)" != "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ]; then
-    log_verbose "Skipping update dotfiles: current branch does not match origin/HEAD"
+  # Check if origin/HEAD exists (it may not in CI or shallow clones)
+  if git -C "$DIR" rev-parse --verify --quiet origin/HEAD >/dev/null 2>&1; then
+    if [ "$(git -C "$DIR" rev-parse --abbrev-ref origin/HEAD | cut -d/ -f2)" != "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ]; then
+      log_verbose "Skipping update dotfiles: current branch does not match origin/HEAD"
+      return
+    fi
+  else
+    log_verbose "Skipping update dotfiles: origin/HEAD not found (shallow clone or detached HEAD)"
     return
   fi
 
@@ -764,16 +770,21 @@ update_dotfiles()
   fi
 
   # Check if the local HEAD is behind the remote HEAD
-  if [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]; then
-    log_stage "Updating dotfiles"
-    if is_dry_run; then
-      log_dry_run "Would merge updates from origin/HEAD"
+  # Only proceed if origin/HEAD exists
+  if git -C "$DIR" rev-parse --verify --quiet origin/HEAD >/dev/null 2>&1; then
+    if [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]; then
+      log_stage "Updating dotfiles"
+      if is_dry_run; then
+        log_dry_run "Would merge updates from origin/HEAD"
+      else
+        log_verbose "Merging updates from origin/HEAD"
+        git -C "$DIR" merge
+      fi
     else
-      log_verbose "Merging updates from origin/HEAD"
-      git -C "$DIR" merge
+      log_verbose "Skipping merge: HEAD is up to date with origin/HEAD"
     fi
   else
-    log_verbose "Skipping merge: HEAD is up to date with origin/HEAD"
+    log_verbose "Skipping merge: origin/HEAD not found (shallow clone or detached HEAD)"
   fi
 )}
 

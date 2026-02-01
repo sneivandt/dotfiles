@@ -9,88 +9,114 @@ tnoremap <esc> <C-\><C-n><C-w><C-p>
 autocmd BufWinEnter,WinEnter term://* startinsert
 autocmd BufLeave term://* stopinsert
 
-" <C-h> fix for tmux-navigator
-nmap <bs> :<c-u>TmuxNavigateLeft<cr>
+" <C-h> fix for tmux-navigator (overrides the mapping in vimrc)
+nnoremap <bs> :<c-u>TmuxNavigateLeft<cr>
 
 " Open terminal
 noremap <leader>t :terminal<cr>
 
-" Load Neovim-specific plugins from opt/
+" Load Neovim-specific plugins from opt/ with error handling
 " These are not loaded in Vim
-packadd! nvim-web-devicons
-packadd! nvim-tree.lua
-packadd! lualine.nvim
-packadd! plenary.nvim
-packadd! nvim-treesitter
+if has('nvim') && exists(':packadd')
+  try
+    packadd! nvim-web-devicons
+    packadd! nvim-tree.lua
+    packadd! lualine.nvim
+    packadd! plenary.nvim
+    packadd! nvim-treesitter
+  catch
+    echohl WarningMsg
+    echom "Warning: Some Neovim plugins failed to load"
+    echohl None
+  endtry
+endif
 
 " Lua configuration for Neovim plugins
+if has('nvim')
 lua << EOF
+-- Wrap all setup calls in pcall for error handling
+local function safe_setup(plugin_name, setup_func)
+  local ok, err = pcall(setup_func)
+  if not ok then
+    vim.notify("Error loading " .. plugin_name .. ": " .. tostring(err), vim.log.levels.WARN)
+  end
+end
+
 -- Setup nvim-tree (modern file explorer)
-require('nvim-tree').setup({
-  disable_netrw = true,
-  hijack_netrw = true,
-  view = {
-    width = 30,
-    side = 'right',
-  },
-  renderer = {
-    icons = {
-      show = {
-        file = true,
-        folder = true,
-        folder_arrow = true,
-        git = true,
+safe_setup("nvim-tree", function()
+  require('nvim-tree').setup({
+    disable_netrw = true,
+    hijack_netrw = true,
+    view = {
+      width = 30,
+      side = 'right',
+    },
+    renderer = {
+      icons = {
+        show = {
+          file = true,
+          folder = true,
+          folder_arrow = true,
+          git = true,
+        },
       },
     },
-  },
-  filters = {
-    dotfiles = false,
-  },
-})
+    filters = {
+      dotfiles = false,
+    },
+  })
+end)
 
 -- Setup lualine (modern statusline)
-require('lualine').setup({
-  options = {
-    theme = 'auto',
-    component_separators = '',
-    section_separators = '',
-  },
-  sections = {
-    lualine_a = {'mode'},
-    lualine_b = {'branch', 'diff'},
-    lualine_c = {'filename'},
-    lualine_x = {'encoding', 'fileformat'},
-    lualine_y = {'filetype'},
-    lualine_z = {'location'}
-  },
-  tabline = {
-    lualine_a = {},
-    lualine_b = {},
-    lualine_c = { { 'tabs', mode = 1, max_length = vim.o.columns } },
-    lualine_x = {},
-    lualine_y = {},
-    lualine_z = {}
-  },
-})
+safe_setup("lualine", function()
+  require('lualine').setup({
+    options = {
+      theme = 'auto',
+      component_separators = '',
+      section_separators = '',
+    },
+    sections = {
+      lualine_a = {'mode'},
+      lualine_b = {'branch', 'diff'},
+      lualine_c = {'filename'},
+      lualine_x = {'encoding', 'fileformat'},
+      lualine_y = {'filetype'},
+      lualine_z = {'location'}
+    },
+    tabline = {
+      lualine_a = {},
+      lualine_b = {},
+      lualine_c = { { 'tabs', mode = 1, max_length = vim.o.columns } },
+      lualine_x = {},
+      lualine_y = {},
+      lualine_z = {}
+    },
+  })
+end)
 
 -- Setup treesitter for better syntax highlighting
-require('nvim-treesitter.configs').setup({
-  ensure_installed = {
-    'python', 'javascript', 'typescript', 'lua', 'vim',
-    'rust', 'go', 'c', 'cpp', 'java', 'haskell', 'bash'
-  },
-  highlight = {
-    enable = true,
-    additional_vim_regex_highlighting = false,
-  },
-  indent = {
-    enable = true,
-  },
-})
+safe_setup("treesitter", function()
+  require('nvim-treesitter.configs').setup({
+    ensure_installed = {
+      'python', 'javascript', 'typescript', 'lua', 'vim',
+      'rust', 'go', 'c', 'cpp', 'java', 'haskell', 'bash'
+    },
+    highlight = {
+      enable = true,
+      additional_vim_regex_highlighting = false,
+    },
+    indent = {
+      enable = true,
+    },
+  })
+end)
 EOF
+endif
 
 " Key mappings for Neovim plugins
-nnoremap <silent><c-e> :NvimTreeToggle<cr>
+if has('nvim')
+  nnoremap <silent><c-e> :NvimTreeToggle<cr>
 
-" Disable vim-airline in Neovim (we use lualine instead)
-let g:loaded_airline = 1
+  " Disable vim-airline in Neovim (we use lualine instead)
+  let g:loaded_airline = 1
+endif

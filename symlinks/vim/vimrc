@@ -30,7 +30,9 @@ set hidden
 set hlsearch
 set ignorecase
 set incsearch
-set inccommand=split
+if has('nvim')
+  set inccommand=split
+endif
 set laststatus=2
 set lazyredraw
 set list
@@ -97,7 +99,7 @@ endtry
 " Wildignore {{{
 
 set wildignore+=*.bmp
-set wildignore+=*.ddl
+set wildignore+=*.dll
 set wildignore+=*.exe
 set wildignore+=*.gif
 set wildignore+=*.jpeg
@@ -227,8 +229,8 @@ autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
 " Listchars
 autocmd Filetype go set nolist
 
-" Ignore go version warning
-let g:go_version_warning=0
+" Disable go version warning
+let g:go_version_warning=1
 
 " }}}
 " Haskell {{{
@@ -360,7 +362,8 @@ noremap <silent><c-e> :NERDTreeToggle<cr>:wincmd =<cr>
 " Auto close vim if Nerd tree is the only remaining buffer
 function! CloseIfOnlyNerdTreeLeft() " {{{
   if exists('t:NERDTreeBufName')
-    if bufwinnr(t:NERDTreeBufName) != -1
+    let nerdtree_bufnr = bufnr(t:NERDTreeBufName)
+    if nerdtree_bufnr != -1 && !empty(win_findbuf(nerdtree_bufnr))
       if winnr('$') == 1
         q
       endif
@@ -372,8 +375,8 @@ autocmd WinEnter * call CloseIfOnlyNerdTreeLeft()
 " }}}
 " Vim-go {{{
 
-" Disable autoinstall plugins
-let g:go_disable_autoinstall=0
+" Auto-install Go tools when needed
+let g:go_install_all_tools=1
 
 " Disable autocreate templates
 let g:go_template_autocreate=0

@@ -35,7 +35,9 @@ function Test-PSScriptAnalyzer
             {
                 foreach ($file in $files)
                 {
-                    Invoke-ScriptAnalyzer -Path $file.FullName
+                    # Use ErrorAction Continue to handle PSScriptAnalyzer internal errors gracefully
+                    # (e.g., "Object reference not set to an instance of an object")
+                    Invoke-ScriptAnalyzer -Path $file.FullName -ErrorAction Continue
                 }
             }
         }

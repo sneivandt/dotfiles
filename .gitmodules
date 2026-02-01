@@ -1,24 +1,33 @@
 [submodule "symlinks/vim/pack/plugins/opt/vim-pathogen"]
 	path = symlinks/vim/pack/plugins/opt/vim-pathogen
 	url = https://github.com/tpope/vim-pathogen
-[submodule "symlinks/vim/pack/plugins/start/ctrlp.vim"]
-	path = symlinks/vim/pack/plugins/start/ctrlp.vim
-	url = https://github.com/ctrlpvim/ctrlp.vim
+[submodule "symlinks/vim/pack/plugins/start/fzf"]
+	path = symlinks/vim/pack/plugins/start/fzf
+	url = https://github.com/junegunn/fzf
+[submodule "symlinks/vim/pack/plugins/start/fzf.vim"]
+	path = symlinks/vim/pack/plugins/start/fzf.vim
+	url = https://github.com/junegunn/fzf.vim
 [submodule "symlinks/vim/pack/plugins/start/haskell-vim"]
 	path = symlinks/vim/pack/plugins/start/haskell-vim
 	url = https://github.com/neovimhaskell/haskell-vim
 [submodule "symlinks/vim/pack/plugins/start/jellybeans.vim"]
 	path = symlinks/vim/pack/plugins/start/jellybeans.vim
 	url = https://github.com/nanotech/jellybeans.vim
+[submodule "symlinks/vim/pack/plugins/start/tokyonight.nvim"]
+	path = symlinks/vim/pack/plugins/start/tokyonight.nvim
+	url = https://github.com/folke/tokyonight.nvim
+[submodule "symlinks/vim/pack/plugins/start/gruvbox"]
+	path = symlinks/vim/pack/plugins/start/gruvbox
+	url = https://github.com/morhetz/gruvbox
 [submodule "symlinks/vim/pack/plugins/start/lessspace.vim"]
 	path = symlinks/vim/pack/plugins/start/lessspace.vim
 	url = https://github.com/thirtythreeforty/lessspace.vim
 [submodule "symlinks/vim/pack/plugins/start/nerdtree"]
 	path = symlinks/vim/pack/plugins/start/nerdtree
 	url = https://github.com/scrooloose/nerdtree
-[submodule "symlinks/vim/pack/plugins/start/python-syntax"]
-	path = symlinks/vim/pack/plugins/start/python-syntax
-	url = https://github.com/hdima/python-syntax
+[submodule "symlinks/vim/pack/plugins/start/vim-python-pep8-indent"]
+	path = symlinks/vim/pack/plugins/start/vim-python-pep8-indent
+	url = https://github.com/Vimjas/vim-python-pep8-indent
 [submodule "symlinks/vim/pack/plugins/start/vim-airline"]
 	path = symlinks/vim/pack/plugins/start/vim-airline
 	url = https://github.com/vim-airline/vim-airline
@@ -46,9 +55,9 @@
 [submodule "symlinks/vim/pack/plugins/start/vim-go"]
 	path = symlinks/vim/pack/plugins/start/vim-go
 	url = https://github.com/fatih/vim-go
-[submodule "symlinks/vim/pack/plugins/start/vim-javascript-syntax"]
-	path = symlinks/vim/pack/plugins/start/vim-javascript-syntax
-	url = https://github.com/jelera/vim-javascript-syntax
+[submodule "symlinks/vim/pack/plugins/start/vim-javascript"]
+	path = symlinks/vim/pack/plugins/start/vim-javascript
+	url = https://github.com/pangloss/vim-javascript
 [submodule "symlinks/vim/pack/plugins/start/vim-tmux-navigator"]
 	path = symlinks/vim/pack/plugins/start/vim-tmux-navigator
 	url = https://github.com/christoomey/vim-tmux-navigator
@@ -61,3 +70,18 @@
 [submodule "extern/fonts"]
 	path = extern/fonts
 	url = https://github.com/powerline/fonts
+[submodule "symlinks/vim/pack/plugins/opt/nvim-tree.lua"]
+	path = symlinks/vim/pack/plugins/opt/nvim-tree.lua
+	url = https://github.com/nvim-tree/nvim-tree.lua
+[submodule "symlinks/vim/pack/plugins/opt/nvim-web-devicons"]
+	path = symlinks/vim/pack/plugins/opt/nvim-web-devicons
+	url = https://github.com/nvim-tree/nvim-web-devicons
+[submodule "symlinks/vim/pack/plugins/opt/lualine.nvim"]
+	path = symlinks/vim/pack/plugins/opt/lualine.nvim
+	url = https://github.com/nvim-lualine/lualine.nvim
+[submodule "symlinks/vim/pack/plugins/opt/nvim-treesitter"]
+	path = symlinks/vim/pack/plugins/opt/nvim-treesitter
+	url = https://github.com/nvim-treesitter/nvim-treesitter
+[submodule "symlinks/vim/pack/plugins/opt/plenary.nvim"]
+	path = symlinks/vim/pack/plugins/opt/plenary.nvim
+	url = https://github.com/nvim-lua/plenary.nvim

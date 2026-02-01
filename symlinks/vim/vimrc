@@ -10,7 +10,8 @@ filetype plugin indent on
 " Plugins ----------------------------------------------------------------- {{{
 
 " Native package manager is used (vim 8+)
-" Plugins are in pack/plugins/start/
+" Plugins are in pack/plugins/start/ for auto-load
+" Neovim-specific plugins are in pack/plugins/opt/ and loaded in nvimrc
 
 " }}}
 " Options------------------------------------------------------------------ {{{
@@ -71,6 +72,8 @@ syntax on
 set t_Co=256
 set t_ut=
 
+" Try modern colorschemes in order of preference
+" jellybeans (classic), tokyonight (modern), gruvbox (warm), default (fallback)
 try
   colorscheme jellybeans
 
@@ -78,7 +81,16 @@ try
   highlight SpecialKey ctermbg=233
   highlight Search ctermfg=yellow
 catch
-  colorscheme default
+  try
+    colorscheme tokyonight-night
+  catch
+    try
+      colorscheme gruvbox
+      set background=dark
+    catch
+      colorscheme default
+    endtry
+  endtry
 endtry
 
 " }}}
@@ -278,8 +290,7 @@ let g:airline#extensions#tabline#fnamemod=':t'
 
 let g:airline#extensions#whitespace#enabled=0
 
-let g:tmuxline_separators={ 'left': '', 'left_alt': '', 'right': '', 'right_alt': '', 'space': ' ' }
-
+" Fast escape in insert mode (not in GUI)
 if ! has('gui_running')
   set ttimeoutlen=10
   augroup FastEscape
@@ -290,15 +301,38 @@ if ! has('gui_running')
 endif
 
 " }}}
-" Ctrl-P {{{
+" FZF {{{
 
-let g:ctrlp_map='<c-p>'
-let g:ctrlp_cmd='CtrlP'
-let g:ctrlp_switch_buffer='e'
-let g:ctrlp_working_path_mode='a'
-let g:ctrlp_show_hidden=1
+" Use fzf for fuzzy finding (replaces ctrlp)
+let g:fzf_command_prefix = 'Fzf'
 
-nnoremap <leader>. :CtrlPTag<cr>
+" Key mappings
+nnoremap <c-p> :FzfFiles<cr>
+nnoremap <leader>. :FzfTags<cr>
+nnoremap <leader>b :FzfBuffers<cr>
+nnoremap <leader>/ :FzfRg<cr>
+
+" Use ripgrep if available for faster searching
+if executable('rg')
+  let $FZF_DEFAULT_COMMAND = 'rg --files --hidden --follow --glob "!.git/*"'
+endif
+
+" Customize fzf colors to match vim colorscheme
+let g:fzf_colors = {
+  \ 'fg':      ['fg', 'Normal'],
+  \ 'bg':      ['bg', 'Normal'],
+  \ 'hl':      ['fg', 'Comment'],
+  \ 'fg+':     ['fg', 'CursorLine', 'CursorColumn', 'Normal'],
+  \ 'bg+':     ['bg', 'CursorLine', 'CursorColumn'],
+  \ 'hl+':     ['fg', 'Statement'],
+  \ 'info':    ['fg', 'PreProc'],
+  \ 'border':  ['fg', 'Ignore'],
+  \ 'prompt':  ['fg', 'Conditional'],
+  \ 'pointer': ['fg', 'Exception'],
+  \ 'marker':  ['fg', 'Keyword'],
+  \ 'spinner': ['fg', 'Label'],
+  \ 'header':  ['fg', 'Comment']
+  \ }
 
 " }}}
 " Dispatch {{{
@@ -334,14 +368,6 @@ function! CloseIfOnlyNerdTreeLeft() " {{{
   endif
 endfunction " }}}
 autocmd WinEnter * call CloseIfOnlyNerdTreeLeft()
-
-" }}}
-" Python syntax {{{
-
-let g:python_highlight_builtin_funcs=1
-let g:python_highlight_builtin_objs=1
-let g:python_highlight_exceptions=1
-let g:python_highlight_file_headers_as_comments=1
 
 " }}}
 " Vim-go {{{

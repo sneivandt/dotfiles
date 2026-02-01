@@ -11,7 +11,7 @@ autocmd BufLeave term://* stopinsert
 
 " <C-h> fix for tmux-navigator
 " Neovim terminal mode requires this specific mapping for proper tmux integration
-" This overrides the simpler mapping in vimrc (line 193: nmap <BS> <C-W>h)
+" Overrides the simpler mapping in vimrc (line 193: nnoremap <BS> <C-W>h)
 nnoremap <bs> :<c-u>TmuxNavigateLeft<cr>
 
 " Open terminal

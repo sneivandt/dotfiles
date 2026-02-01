@@ -189,8 +189,8 @@ noremap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><l
 " Jump to matching element
 nmap <tab> %
 
-" <C-h> fix
-nmap <BS> <C-W>h
+" <C-h> fix (non-recursive for safety)
+nnoremap <BS> <C-W>h
 
 " }}}
 " Folding ----------------------------------------------------------------- {{{

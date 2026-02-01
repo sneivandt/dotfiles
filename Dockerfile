@@ -29,7 +29,7 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
 RUN useradd -ms /bin/zsh sneivandt
 WORKDIR /home/sneivandt
 ENV SHELL=/bin/zsh
-ENTRYPOINT ["/usr/bin/zsh"]
+CMD ["/usr/bin/zsh"]
 
 # Install dotfiles
 COPY --chown=sneivandt:sneivandt .git /home/sneivandt/dotfiles/.git

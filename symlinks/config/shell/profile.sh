@@ -100,8 +100,20 @@ fi
 # bat
 export BAT_THEME="ansi"
 
-# eza/exa - minimal colors
-export EZA_COLORS="di=34:ex=32"
+# eza/exa colors
+# Configure eza colors (modern ls replacement) to be less extreme
+# Reset most permission bits to plain colors without bold/bright attributes
+export EZA_COLORS="\
+ur=0:uw=0:ux=0:ue=0:\
+gr=0:gw=0:gx=0:\
+tr=0:tw=0:tx=0:\
+su=0:sf=0:xa=0:\
+uu=0:un=0:\
+gu=0:gn=0:\
+da=0:\
+sn=0:sb=0:\
+nb=0:\
+nk=0:nm=0:ng=0:nt=0"
 
 # virtualenvwrapper
 if command -v virtualenvwrapper.sh >/dev/null 2>&1; then

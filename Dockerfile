@@ -1,11 +1,20 @@
+# syntax=docker/dockerfile:1
 FROM ubuntu:jammy
 
-LABEL maintainer="sneivandt"
+LABEL org.opencontainers.image.title="dotfiles" \
+      org.opencontainers.image.description="Cross-platform dotfiles for Linux/Arch/Windows" \
+      org.opencontainers.image.authors="Stuart Neivandt" \
+      org.opencontainers.image.url="https://github.com/sneivandt/dotfiles" \
+      org.opencontainers.image.source="https://github.com/sneivandt/dotfiles" \
+      org.opencontainers.image.documentation="https://github.com/sneivandt/dotfiles/blob/master/README.md" \
+      org.opencontainers.image.licenses="MIT"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install packages
-RUN apt-get update \
+# Install packages (use BuildKit cache mount for faster rebuilds)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
     && apt-get install --no-install-recommends --no-install-suggests -y \
         ca-certificates \
         curl \
@@ -18,18 +27,17 @@ RUN apt-get update \
         vim \
         wget \
         zip \
-        zsh \
-    && rm -rf /var/lib/apt/lists/*
+        zsh
 
 # Configure locale
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
     && locale-gen
 
-# Add user
-RUN useradd -ms /bin/zsh sneivandt
+# Add user with explicit UID/GID for consistency
+RUN useradd -m -s /bin/zsh -u 1000 -U sneivandt
 WORKDIR /home/sneivandt
 ENV SHELL=/bin/zsh
-ENTRYPOINT ["/usr/bin/zsh"]
+CMD ["/usr/bin/zsh"]
 
 # Install dotfiles
 COPY --chown=sneivandt:sneivandt .git /home/sneivandt/dotfiles/.git

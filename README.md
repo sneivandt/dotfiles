@@ -223,7 +223,7 @@ For more detailed information about testing, see [docs/TESTING.md](docs/TESTING.
 
 ## Docker 🐳
 
-Run the published image for an isolated test shell:
+Run the [published image](https://hub.docker.com/r/sneivandt/dotfiles) for an isolated test shell:
 ```bash
 docker run --rm -it sneivandt/dotfiles
 ```
@@ -234,7 +234,7 @@ docker buildx build -t dotfiles:local .
 docker run --rm -it dotfiles:local
 ```
 
-The published image (`sneivandt/dotfiles`) is built and pushed by GitHub Actions on pushes to master ([`docker-image.yml`](.github/workflows/docker-image.yml)).
+The published image ([`sneivandt/dotfiles`](https://hub.docker.com/r/sneivandt/dotfiles)) is built and pushed by GitHub Actions on pushes to master ([`docker-image.yml`](.github/workflows/docker-image.yml)).
 
 ## Customization 🎨
 

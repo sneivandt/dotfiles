@@ -62,7 +62,24 @@ Help:
 
 ## Requirements ⚙️
 
-- **Git 2.25+** (January 2020) for sparse checkout support
+### Core Requirements
+
+- **Git 2.25+** (January 2020) - for sparse checkout support
+- **POSIX shell** (sh, bash, or zsh) - for Linux/Unix systems
+- **PowerShell 5.1+** (Desktop Edition) - for Windows systems (requires Administrator privileges)
+
+### Optional/Feature-Specific Requirements (Linux)
+
+These tools are optional and enable specific features when available:
+
+- **pacman** + **sudo** - for Arch Linux package installation (required for `arch` and `arch-desktop` profiles)
+- **systemctl** - for systemd user unit management
+- **zsh** - for default shell configuration
+- **fc-list** + **fc-cache** - for font configuration
+- **code** / **code-insiders** - for VS Code extension installation
+- **pwsh** (PowerShell Core) - for PowerShell module management on Linux
+
+The installation script gracefully skips features when required tools are unavailable.
 
 ## Usage Summary 📝
 
@@ -141,7 +158,7 @@ Example - switching profiles:
 | File | Description |
 |------|-------------|
 | `symlinks.ini` | Declarative list of files to link from `symlinks/` to `$HOME`, organized by profile sections (includes `[windows]` section) |
-| `packages.ini` | Package list organized by profile sections (e.g., `[arch]`, `[arch-desktop]`) |
+| `packages.ini` | Package list organized by profile sections (e.g., `[arch]`, `[arch,desktop]`) |
 | `units.ini` | Systemd user units to enable, organized by profile sections |
 | `chmod.ini` | Post-install permission adjustments, organized by profile sections |
 | `fonts.ini` | Font families to check/install (single `[fonts]` section, not profile-filtered) |
@@ -241,7 +258,7 @@ The published image ([`sneivandt/dotfiles`](https://hub.docker.com/r/sneivandt/d
 ### Adding New Files
 
 1. Add file to `symlinks/` directory
-2. Add entry to `conf/symlinks.ini` under appropriate section (e.g., `[base]`, `[arch-desktop]`)
+2. Add entry to `conf/symlinks.ini` under appropriate section (e.g., `[base]`, `[arch,desktop]`)
 3. (Optional) Add file path to `conf/manifest.ini` if it should be excluded in certain profiles
 4. Test with `./dotfiles.sh -I --profile <your-profile>`
 
@@ -252,7 +269,7 @@ The published image ([`sneivandt/dotfiles`](https://hub.docker.com/r/sneivandt/d
    [arch]
    packagename
 
-   [arch-desktop]
+   [arch,desktop]
    desktop-package
    ```
 2. Packages are automatically installed when you use the matching profile

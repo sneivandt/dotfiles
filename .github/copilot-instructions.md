@@ -164,7 +164,7 @@ Section headers are registry paths, and assignments are registry key/value pairs
 
 ## Symlink Management
 Symlinks are managed declaratively through `conf/symlinks.ini`.
-- **Configuration**: `conf/symlinks.ini` uses INI sections for each profile (e.g., `[base]`, `[arch-desktop]`, `[windows]`)
+- **Configuration**: `conf/symlinks.ini` uses INI sections for each profile (e.g., `[base]`, `[arch,desktop]`, `[windows]`)
 - **Source**: Source files are located in `symlinks/<path>` at the repository root (without leading dot)
 - **Target** (Linux): Targets are relative to `$HOME`, prefixed with a dot by the script
   - Example: `config/nvim` in `[base]` section maps `symlinks/config/nvim` to `~/.config/nvim`

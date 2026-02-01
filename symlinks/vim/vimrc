@@ -74,6 +74,12 @@ let g:airline#extensions#tabline#enabled = 1
 let g:airline_theme='jellybeans'
 
 " ----------------------------------------------------------------------------
+" Key Mappings - Define leader key first
+" ----------------------------------------------------------------------------
+" Set leader key to space
+let mapleader = " "
+
+" ----------------------------------------------------------------------------
 " CtrlP Configuration
 " ----------------------------------------------------------------------------
 let g:ctrlp_map = '<c-p>'
@@ -91,10 +97,8 @@ nnoremap <leader>n :NERDTreeToggle<CR>
 autocmd BufEnter * if tabpagenr('$') == 1 && winnr('$') == 1 && exists('b:NERDTree') && b:NERDTree.isTabTree() | quit | endif
 
 " ----------------------------------------------------------------------------
-" Key Mappings
+" Additional Key Mappings
 " ----------------------------------------------------------------------------
-" Set leader key to space
-let mapleader = " "
 
 " Clear search highlighting with <leader>/
 nnoremap <leader>/ :nohlsearch<CR>

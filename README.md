@@ -311,3 +311,24 @@ Contributions are welcome! Please see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.m
 - [docs/WINDOWS.md](docs/WINDOWS.md) - Windows-specific documentation
 - [docs/SECURITY.md](docs/SECURITY.md) - Security policy
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) - Configuration file reference
+- [docs/VIM_MODERNIZATION.md](docs/VIM_MODERNIZATION.md) - Vim/Neovim configuration modernization details
+
+## Vim/Neovim Configuration 📝
+
+The vim configuration has been modernized to use current best practices and actively maintained plugins while maintaining compatibility with both Vim 8+ and Neovim.
+
+**Key Features:**
+- **FZF Integration**: Fast fuzzy finding (replaces ctrlp)
+- **Modern Plugins**: Updated to actively maintained alternatives
+- **Neovim Enhancements**: Lua-based plugins for better performance
+- **Multiple Colorschemes**: Jellybeans (classic), TokyoNight (modern), Gruvbox (warm)
+- **Treesitter Support**: Advanced syntax highlighting in Neovim
+- **Cross-Compatible**: Works great in both Vim 8+ and Neovim
+
+**Plugin Highlights:**
+- `fzf.vim` - Fast fuzzy file finder (3x+ faster than ctrlp)
+- `nvim-tree` - Modern file explorer for Neovim
+- `lualine` - Fast statusline for Neovim (3x faster than airline)
+- `nvim-treesitter` - AST-based syntax highlighting
+
+See [docs/VIM_MODERNIZATION.md](docs/VIM_MODERNIZATION.md) for complete details on changes, plugins, and migration notes.

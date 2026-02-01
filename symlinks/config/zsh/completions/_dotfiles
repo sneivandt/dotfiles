@@ -25,6 +25,7 @@ _dotfiles_opts_common=(
 _dotfiles_opts_install=(
   "--profile[Select profile]:profile:_describe 'profile' _dotfiles_profiles"
   "--dry-run[Preview changes without system modifications]"
+  "--skip-os-detection[Skip automatic OS detection overrides]"
 )
 
 _dotfiles_action_install() {

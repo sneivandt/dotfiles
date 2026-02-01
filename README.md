@@ -69,23 +69,26 @@ Help:
 ```
 Usage:
   dotfiles.sh
-  dotfiles.sh {-I --install}   [--profile PROFILE] [-v] [--dry-run]
-  dotfiles.sh {-U --uninstall} [--profile PROFILE] [-v] [--dry-run]
-  dotfiles.sh {-T --test}      [--profile PROFILE] [-v]
+  dotfiles.sh {-I --install}   [--profile PROFILE] [-v] [--dry-run] [--skip-os-detection]
+  dotfiles.sh {-U --uninstall} [--profile PROFILE] [-v] [--dry-run] [--skip-os-detection]
+  dotfiles.sh {-T --test}      [-v]
   dotfiles.sh {-h --help}
 
 Options:
-  --profile PROFILE  Use predefined profile for sparse checkout
-                     Available: base, arch, arch-desktop, windows
-                     If not specified:
-                       1. Uses previously persisted profile (if exists)
-                       2. Prompts interactively to select a profile
-                     Selected profile is persisted for future runs.
-  -v                 Enable verbose logging
-  --dry-run          Perform a dry run without making system modifications.
-                     Logs all actions that would be taken. Verbose logging
-                     is automatically enabled in dry-run mode for detailed
-                     output.
+  --profile PROFILE     Use predefined profile for sparse checkout
+                        Available: base, arch, arch-desktop, windows
+                        If not specified:
+                          1. Uses previously persisted profile (if exists)
+                          2. Prompts interactively to select a profile
+                        Selected profile is persisted for future runs.
+  -v                    Enable verbose logging
+  --dry-run             Perform a dry run without making system modifications.
+                        Logs all actions that would be taken. Verbose logging
+                        is automatically enabled in dry-run mode for detailed
+                        output.
+  --skip-os-detection   Skip automatic OS detection overrides. Allows testing
+                        arch profile on non-Arch systems. Primarily for CI
+                        testing to ensure profile differentiation.
 ```
 
 **Profile Persistence**: The selected profile is automatically saved to git config

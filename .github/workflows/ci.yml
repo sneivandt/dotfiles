@@ -67,7 +67,7 @@ jobs:
 
       - name: Test dry-run installation
         run: |
-          ./dotfiles.sh --install --profile arch --dry-run -v 2>&1 | tee arch-output.log
+          ./dotfiles.sh --install --profile arch --dry-run --skip-os-detection -v 2>&1 | tee arch-output.log
 
       - name: Verify sparse checkout configuration
         run: ./.github/workflows/scripts/verify/verify-sparse-checkout.sh
@@ -87,7 +87,7 @@ jobs:
 
       - name: Test dry-run installation
         run: |
-          ./dotfiles.sh --install --profile arch-desktop --dry-run -v 2>&1 | tee arch-desktop-output.log
+          ./dotfiles.sh --install --profile arch-desktop --dry-run --skip-os-detection -v 2>&1 | tee arch-desktop-output.log
 
       - name: Verify sparse checkout excludes Windows files
         run: ./.github/workflows/scripts/verify/verify-sparse-checkout-excludes-windows.sh
@@ -104,6 +104,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Run actual installation first
+        run: |
+          ./dotfiles.sh --install --profile base -v
 
       - name: Test dry-run uninstall
         run: |
@@ -153,9 +157,9 @@ jobs:
 
       - name: Run all profiles and extract symlinks
         run: |
-          ./dotfiles.sh --install --profile base --dry-run -v 2>&1 | tee base-full.log
-          ./dotfiles.sh --install --profile arch --dry-run -v 2>&1 | tee arch-full.log
-          ./dotfiles.sh --install --profile arch-desktop --dry-run -v 2>&1 | tee arch-desktop-full.log
+          ./dotfiles.sh --install --profile base --dry-run --skip-os-detection -v 2>&1 | tee base-full.log
+          ./dotfiles.sh --install --profile arch --dry-run --skip-os-detection -v 2>&1 | tee arch-full.log
+          ./dotfiles.sh --install --profile arch-desktop --dry-run --skip-os-detection -v 2>&1 | tee arch-desktop-full.log
 
           # Extract only symlink-related operations for comparison
           grep "Would link" base-full.log | sort > base-symlinks.log || true

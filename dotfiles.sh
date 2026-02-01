@@ -139,7 +139,7 @@ resolve_profile()
 case ${1:-} in
   -I* | --install)
     # Full install path for selected profile.
-    OPT="$(getopt -o Iv -l install,profile:,dry-run -n "$(basename "$0")" -- "$@")" \
+    OPT="$(getopt -o Iv -l install,profile:,dry-run,skip-os-detection -n "$(basename "$0")" -- "$@")" \
       || exit 1
     eval set -- "$OPT"
     parse_profile_arg "$@"
@@ -162,7 +162,7 @@ case ${1:-} in
     ;;
   -U* | --uninstall)
     # Remove installed symlinks for selected profile.
-    OPT="$(getopt -o Uv -l uninstall,profile:,dry-run -n "$(basename "$0")" -- "$@")" \
+    OPT="$(getopt -o Uv -l uninstall,profile:,dry-run,skip-os-detection -n "$(basename "$0")" -- "$@")" \
       || exit 1
     eval set -- "$OPT"
     parse_profile_arg "$@"

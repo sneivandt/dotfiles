@@ -1,0 +1,135 @@
+" ============================================================================
+" Vim Configuration
+" ============================================================================
+
+" ----------------------------------------------------------------------------
+" Basic Settings
+" ----------------------------------------------------------------------------
+set nocompatible              " Don't try to be vi compatible
+filetype plugin indent on     " Enable filetype detection and plugins
+syntax on                     " Enable syntax highlighting
+
+" Encoding
+set encoding=utf-8
+set fileencoding=utf-8
+
+" Display
+set number                    " Show line numbers
+set ruler                     " Show cursor position
+set showcmd                   " Show command in bottom bar
+set showmode                  " Show current mode
+set showmatch                 " Highlight matching braces
+set cursorline                " Highlight current line
+set laststatus=2              " Always show status line
+set wildmenu                  " Visual autocomplete for command menu
+set wildmode=longest:full,full
+
+" Search
+set incsearch                 " Search as characters are entered
+set hlsearch                  " Highlight search matches
+set ignorecase                " Case insensitive search
+set smartcase                 " Case sensitive when uppercase present
+
+" Indentation
+set autoindent                " Copy indent from current line
+set smartindent               " Smart auto-indenting
+set expandtab                 " Use spaces instead of tabs
+set tabstop=2                 " Number of visual spaces per TAB
+set shiftwidth=2              " Number of spaces for autoindent
+set softtabstop=2             " Number of spaces in tab when editing
+
+" Performance
+set lazyredraw                " Don't redraw while executing macros
+set ttyfast                   " Faster terminal connection
+
+" Misc
+set backspace=indent,eol,start " Allow backspace over everything
+set hidden                    " Allow hidden buffers
+set history=1000              " Command history
+set undolevels=1000           " Undo history
+set visualbell                " No beeping
+set noerrorbells              " No error bells
+
+" ----------------------------------------------------------------------------
+" Plugin Configuration
+" ----------------------------------------------------------------------------
+
+" Vim 8+ native package loading is enabled automatically
+" Plugins are loaded from:
+" - pack/plugins/start/* (loaded automatically)
+" - pack/plugins/opt/* (loaded manually with :packadd)
+
+" ----------------------------------------------------------------------------
+" Color Scheme
+" ----------------------------------------------------------------------------
+set background=dark
+" Try to load colorscheme, silently fail if not available
+silent! colorscheme jellybeans
+
+" ----------------------------------------------------------------------------
+" Airline Configuration
+" ----------------------------------------------------------------------------
+let g:airline_powerline_fonts = 1
+let g:airline#extensions#tabline#enabled = 1
+let g:airline_theme='jellybeans'
+
+" ----------------------------------------------------------------------------
+" CtrlP Configuration
+" ----------------------------------------------------------------------------
+let g:ctrlp_map = '<c-p>'
+let g:ctrlp_cmd = 'CtrlP'
+let g:ctrlp_working_path_mode = 'ra'
+let g:ctrlp_user_command = ['.git', 'cd %s && git ls-files -co --exclude-standard']
+
+" ----------------------------------------------------------------------------
+" NERDTree Configuration
+" ----------------------------------------------------------------------------
+" Toggle NERDTree with <leader>n
+nnoremap <leader>n :NERDTreeToggle<CR>
+
+" Close vim if NERDTree is the only window remaining
+autocmd BufEnter * if tabpagenr('$') == 1 && winnr('$') == 1 && exists('b:NERDTree') && b:NERDTree.isTabTree() | quit | endif
+
+" ----------------------------------------------------------------------------
+" Key Mappings
+" ----------------------------------------------------------------------------
+" Set leader key to space
+let mapleader = " "
+
+" Clear search highlighting with <leader>/
+nnoremap <leader>/ :nohlsearch<CR>
+
+" Easy window navigation
+nnoremap <C-h> <C-w>h
+nnoremap <C-j> <C-w>j
+nnoremap <C-k> <C-w>k
+nnoremap <C-l> <C-w>l
+
+" Easy buffer navigation
+nnoremap <leader>bn :bnext<CR>
+nnoremap <leader>bp :bprevious<CR>
+nnoremap <leader>bd :bdelete<CR>
+
+" Save with <leader>w
+nnoremap <leader>w :w<CR>
+
+" Quit with <leader>q
+nnoremap <leader>q :q<CR>
+
+" EasyAlign mappings
+" Start interactive EasyAlign in visual mode (e.g. vipga)
+xmap ga <Plug>(EasyAlign)
+" Start interactive EasyAlign for a motion/text object (e.g. gaip)
+nmap ga <Plug>(EasyAlign)
+
+" ----------------------------------------------------------------------------
+" Neovim-specific Configuration
+" ----------------------------------------------------------------------------
+if has('nvim')
+  " Source neovim-specific settings
+  if filereadable(expand('~/.vim/nvimrc'))
+    source ~/.vim/nvimrc
+  elseif filereadable(expand('~/.config/nvim/nvimrc'))
+    source ~/.config/nvim/nvimrc
+  endif
+endif

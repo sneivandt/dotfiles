@@ -489,6 +489,17 @@ configure_sparse_checkout()
 
   rm -f "$tmpfile"
 
+  # Force git to apply sparse-checkout rules to the working directory
+  # This is critical for Docker builds where all files are copied first.
+  #
+  # Remove the symlinks directory completely, then use reset --hard to restore
+  # the working tree according to sparse checkout rules. Unlike 'git checkout path',
+  # 'git reset --hard' respects sparse checkout configuration.
+  if [ -d "$DIR"/symlinks ]; then
+    rm -rf "$DIR"/symlinks
+  fi
+  git -C "$DIR" reset --hard HEAD >/dev/null 2>&1 || true
+
   return 0
 }
 

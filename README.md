@@ -227,7 +227,7 @@ docker run --rm -it sneivandt/dotfiles
 
 Build and run locally:
 ```bash
-docker build -t dotfiles .
+docker build --no-cache -t dotfiles .
 docker run --rm -it dotfiles
 ```
 

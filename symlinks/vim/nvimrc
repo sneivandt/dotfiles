@@ -18,11 +18,9 @@ nnoremap <bs> :<c-u>TmuxNavigateLeft<cr>
 " Open terminal
 noremap <leader>t :terminal<cr>
 
-" OPTIONAL: Enable lazy.nvim plugin manager
-" Set this environment variable to use lazy.nvim instead of git submodules:
-"   export NVIM_USE_LAZY=1
-" Without this, the traditional vim pack approach with git submodules is used.
-if $NVIM_USE_LAZY == '1'
+" Plugin loading: lazy.nvim for Neovim, git submodules for Vim
+if has('nvim')
+  " Neovim: Use lazy.nvim plugin manager by default
   lua << EOF
     -- Bootstrap and configure lazy.nvim
     pcall(function()
@@ -30,24 +28,18 @@ if $NVIM_USE_LAZY == '1'
     end)
 EOF
 else
-  " Traditional vim pack loading (existing behavior)
-  " Load Neovim-specific plugins from opt/ if they exist
-  " These are optional Lua plugins not loaded in Vim
-  " Also load vim-airline as fallback if lualine isn't available
+  " Vim: Use traditional vim pack loading with git submodules
+  " Load plugins from pack/ directory
+  " These plugins work with Vim 8+ native package management
   silent! packadd nvim-web-devicons
   silent! packadd nvim-tree.lua
   silent! packadd lualine.nvim
   silent! packadd plenary.nvim
   silent! packadd nvim-treesitter
 
-  " Load vim-airline as fallback if lualine isn't available
-  lua << EOF
-    local has_lualine = pcall(require, 'lualine')
-    if not has_lualine then
-      vim.cmd('packadd vim-airline')
-      vim.cmd('packadd vim-airline-themes')
-    end
-EOF
+  " Load vim-airline for Vim (Neovim uses lualine)
+  silent! packadd vim-airline
+  silent! packadd vim-airline-themes
 endif
 
 " Lua configuration for Neovim plugins (only if available)

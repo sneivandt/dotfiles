@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 
-# Update mirrorlist using reflector (modern replacement for rankmirrors)
+# Update mirrorlist using reflector
 
 [ -n "$(command -vp reflector)" ] || { echo "ERROR: reflector not installed" 1>&2 && return 1; }
 

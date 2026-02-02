@@ -18,23 +18,37 @@ nnoremap <bs> :<c-u>TmuxNavigateLeft<cr>
 " Open terminal
 noremap <leader>t :terminal<cr>
 
-" Load Neovim-specific plugins from opt/ if they exist
-" These are optional Lua plugins not loaded in Vim
-" Also load vim-airline as fallback if lualine isn't available
-silent! packadd nvim-web-devicons
-silent! packadd nvim-tree.lua
-silent! packadd lualine.nvim
-silent! packadd plenary.nvim
-silent! packadd nvim-treesitter
-
-" Load vim-airline as fallback if lualine isn't available
-lua << EOF
-  local has_lualine = pcall(require, 'lualine')
-  if not has_lualine then
-    vim.cmd('packadd vim-airline')
-    vim.cmd('packadd vim-airline-themes')
-  end
+" OPTIONAL: Enable lazy.nvim plugin manager
+" Set this environment variable to use lazy.nvim instead of git submodules:
+"   export NVIM_USE_LAZY=1
+" Without this, the traditional vim pack approach with git submodules is used.
+if $NVIM_USE_LAZY == '1'
+  lua << EOF
+    -- Bootstrap and configure lazy.nvim
+    pcall(function()
+      require('lazy-bootstrap')
+    end)
 EOF
+else
+  " Traditional vim pack loading (existing behavior)
+  " Load Neovim-specific plugins from opt/ if they exist
+  " These are optional Lua plugins not loaded in Vim
+  " Also load vim-airline as fallback if lualine isn't available
+  silent! packadd nvim-web-devicons
+  silent! packadd nvim-tree.lua
+  silent! packadd lualine.nvim
+  silent! packadd plenary.nvim
+  silent! packadd nvim-treesitter
+
+  " Load vim-airline as fallback if lualine isn't available
+  lua << EOF
+    local has_lualine = pcall(require, 'lualine')
+    if not has_lualine then
+      vim.cmd('packadd vim-airline')
+      vim.cmd('packadd vim-airline-themes')
+    end
+EOF
+endif
 
 " Lua configuration for Neovim plugins (only if available)
 if has('nvim')

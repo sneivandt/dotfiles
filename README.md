@@ -173,6 +173,27 @@ Most `.ini` files use standard INI format with `[section]` headers containing si
 Profile sections determine which items are processed based on the selected profile. Symlink targets
 are always relative to `$HOME` and prefixed with a dot (e.g., `bashrc` → `~/.bashrc`).
 
+## Vim/Neovim Configuration 📝
+
+### Plugin Management
+
+The repository supports **two plugin management approaches**:
+
+1. **Git Submodules (Default)** - Traditional Vim 8+ native pack system
+   - Compatible with both Vim and Neovim
+   - Plugins managed as git submodules in `.gitmodules`
+   - No external dependencies required
+
+2. **lazy.nvim (Modern, Optional)** - Modern Neovim plugin manager
+   - Neovim only (Vim 8+ uses submodules)
+   - Lazy loading, lockfiles, automatic installation
+   - Better dependency management and faster startup
+   - Enable with: `export NVIM_USE_LAZY=1`
+
+**Recommendation**: Neovim users should consider enabling lazy.nvim for improved performance and modern plugin management. See [`symlinks/config/nvim/README.md`](symlinks/config/nvim/README.md) for migration details.
+
+Both approaches use the same plugins and configuration, ensuring a consistent experience regardless of the management method chosen.
+
 ## Scripts (`./dotfiles.sh`) 🔧
 
 Primary entrypoint: `dotfiles.sh`

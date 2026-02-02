@@ -169,6 +169,29 @@ jobs:
       - name: Verify profiles link different files
         run: ./.github/workflows/scripts/verify/verify-profile-differences.sh
 
+  # Test vim and neovim startup
+  test-vim-nvim:
+    name: Test Vim and Neovim
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install vim and neovim
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y vim neovim
+
+      - name: Install base profile
+        run: |
+          ./dotfiles.sh --install --profile base -v
+
+      - name: Run vim/nvim tests
+        run: |
+          ./dotfiles.sh --test -v
+
   # Test Docker image build
   test-docker:
     name: Test Docker Build

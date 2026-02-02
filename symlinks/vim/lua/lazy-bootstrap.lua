@@ -103,7 +103,7 @@ require("lazy").setup({
           lualine_b = { "branch", "diff", "diagnostics" },
           lualine_c = { { "filename", path = 1 } },
           lualine_x = { "encoding", "fileformat" },
-          lualine_y = { "filetype", "progress" },
+          lualine_y = { "filetype" },
           lualine_z = { { "location", separator = { right = "" }, left_padding = 2 } }
         },
         tabline = {
@@ -227,13 +227,13 @@ require("lazy").setup({
             if vim.wo.diff then return "]c" end
             vim.schedule(function() gs.next_hunk() end)
             return "<Ignore>"
-          end, {expr=true})
+          end, {expr = true})
 
           map("n", "[c", function()
             if vim.wo.diff then return "[c" end
             vim.schedule(function() gs.prev_hunk() end)
             return "<Ignore>"
-          end, {expr=true})
+          end, {expr = true})
 
           -- Actions
           map("n", "<leader>hs", gs.stage_hunk)

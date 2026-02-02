@@ -6,6 +6,7 @@
     Windows bootstrap entry point for dotfiles repository.
 .DESCRIPTION
     Aggregates module functions from src/ and performs a full setup:
+      * Git configuration (Initialize-GitConfig)
       * Registry configuration (Sync-Registry / conf/registry.ini)
       * Symlink creation (Install-Symlinks)
       * VS Code Extensions (Install-VsCodeExtensions)
@@ -60,7 +61,7 @@ if ($DryRun)
 # Get excluded categories for this profile
 $excluded = Get-ProfileExclusion -Root $PSScriptRoot -ProfileName $SelectedProfile
 
-# Note: Registry settings are not profile-filtered (Windows-only, applies to all)
+Initialize-GitConfig -Root $PSScriptRoot -DryRun:$DryRun
 Sync-Registry -root $PSScriptRoot -DryRun:$DryRun
 Install-Symlinks -root $PSScriptRoot -excludedCategories $excluded -DryRun:$DryRun
 Install-VsCodeExtensions -root $PSScriptRoot -excludedCategories $excluded -DryRun:$DryRun

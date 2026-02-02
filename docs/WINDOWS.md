@@ -16,13 +16,34 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 
 ## What the Script Does
 
-`dotfiles.ps1` loads each module under `src/` and executes these functions in order:
+`dotfiles.ps1` loads each module under `src/windows` and executes these functions in order:
 
 | Step | Module | Function | Description | Idempotency Cue |
 |------|--------|----------|-------------|-----------------|
-| 1 | `Registry.psm1` | `Sync-Registry` | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
-| 2 | `Symlinks.psm1` | `Install-Symlinks` | Creates Windows user profile symlinks from `conf/symlinks.ini` filtered by profile. | Only creates links whose targets do not already exist. |
-| 3 | `VsCodeExtensions.psm1` | `Install-VsCodeExtensions` | Ensures VS Code extensions listed in `conf/vscode-extensions.ini` are installed. | Checks against `code --list-extensions`. |
+| 1 | `Git.psm1` | `Initialize-GitConfig` | Configures Git to handle symlinks as text files on Windows. | Only sets `core.symlinks=false` if not already configured. |
+| 2 | `Registry.psm1` | `Sync-Registry` | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
+| 3 | `Symlinks.psm1` | `Install-Symlinks` | Creates Windows user profile symlinks from `conf/symlinks.ini` filtered by profile. | Only creates links whose targets do not already exist. |
+| 4 | `VsCodeExtensions.psm1` | `Install-VsCodeExtensions` | Ensures VS Code extensions listed in `conf/vscode-extensions.ini` are installed. | Checks against `code --list-extensions`. |
+## Git Configuration
+
+The repository contains symlinks (e.g., `symlinks/config/nvim` → `../vim`) that are tracked in Git. On Windows, creating actual symlinks during Git operations requires either Developer Mode enabled or Administrator privileges.
+
+To avoid permission errors during `git pull` and `git checkout`, the script **automatically configures** Git to treat symlinks as regular text files:
+
+```powershell
+git config --local core.symlinks false
+```
+
+This configuration:
+- Prevents `error: unable to create symlink: Permission denied` during Git operations
+- Stores symlink targets as plain text files in the working directory
+- Is applied automatically on first run (idempotent—won't change if already set)
+- Does not affect the actual Windows symlink creation by `Install-Symlinks` (which creates proper symlinks in your user profile)
+
+**Manual Configuration:** If you encounter symlink errors before running the script (e.g., during initial `git clone` or `git pull`), run:
+```powershell
+git config core.symlinks false
+```
 
 ## Registry Customization
 
@@ -110,6 +131,6 @@ git pull
 
 ## Extending Windows Layer
 
-1. Create or modify module in `src/` exporting a function.
-2. Add its invocation to `dotfiles.ps1` (maintain logical ordering: core prerequisites first, leaf operations last).
+1. Create or modify module in `src/windows/` exporting a function.
+2. Add its invocation to `dotfiles.ps1` (maintain logical ordering: Git config first, core prerequisites, then leaf operations).
 3. Keep functions self‑guarded (no-op if already configured) to preserve idempotency.

@@ -159,26 +159,31 @@ function Set-RegistryValue
     # Get current value with type-aware comparison
     $currentValue = $null
     $valueExists = $false
-    try
+
+    # In dry-run mode, path might not exist yet
+    if (-not (Test-Path $path))
     {
-        $currentValue = Get-ItemPropertyValue -Path $path -Name $name -ErrorAction Stop
-        $valueExists = $true
+        Write-Verbose "Registry path $path does not exist (will be created)"
+        $valueExists = $false
     }
-    catch [System.Management.Automation.PSArgumentException]
+    else
     {
-        # Value doesn't exist - this is expected
-        Write-Verbose "Registry value $name does not exist in $path"
-    }
-    catch [System.Management.Automation.ItemNotFoundException]
-    {
-        # Path doesn't exist - will be created above
-        Write-Verbose "Registry path $path does not exist"
-    }
-    catch
-    {
-        # Unexpected error (permission denied, etc.)
-        Write-Warning "Failed to read registry value $name from $path`: $_"
-        return
+        try
+        {
+            $currentValue = Get-ItemPropertyValue -Path $path -Name $name -ErrorAction Stop
+            $valueExists = $true
+        }
+        catch [System.Management.Automation.PSArgumentException]
+        {
+            # Value doesn't exist - this is expected
+            Write-Verbose "Registry value $name does not exist in $path"
+        }
+        catch
+        {
+            # Unexpected error (permission denied, etc.)
+            Write-Warning "Failed to read registry value $name from $path`: $_"
+            return
+        }
     }
 
     $expandedValue = [Environment]::ExpandEnvironmentVariables($value)

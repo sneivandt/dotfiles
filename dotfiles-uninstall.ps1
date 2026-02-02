@@ -106,7 +106,7 @@ foreach ($section in $sections)
 
         foreach ($folder in $wellKnownFolders)
         {
-            if ($targetPath -like "$folder\*" -or $targetPath -eq $folder)
+            if ($targetPath -like "$folder\\*" -or $targetPath -eq $folder)
             {
                 $shouldAddDot = $false
                 break

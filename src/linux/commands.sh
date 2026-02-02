@@ -35,9 +35,6 @@ set -o nounset
 # shellcheck disable=SC2154
 . "$DIR"/src/linux/tasks.sh
 
-# Test functions (test_config_validation, test_shellcheck, test_zsh_completion, etc.).
-. "$DIR"/test/linux/test.sh
-
 # do_install
 #
 # Perform a full install of the selected profile.
@@ -78,6 +75,11 @@ do_install()
 do_test()
 {
   update_dotfiles
+
+  # Source test functions only when needed
+  . "$DIR"/test/linux/test-config.sh
+  . "$DIR"/test/linux/test-static-analysis.sh
+  . "$DIR"/test/linux/test-applications.sh
 
   # Configuration validation tests
   test_config_validation

@@ -231,8 +231,11 @@ test_config_validation()
 
       # Check if the file/directory exists in symlinks/
       if [ ! -e "$DIR"/symlinks/"$file" ]; then
+        # Check if it's a symlink (even if broken, it might be valid in other profiles)
+        if [ -L "$DIR"/symlinks/"$file" ]; then
+          log_verbose "File $file in manifest.ini is a symlink (target may be excluded by sparse checkout)"
         # Check if it's tracked in git (might be excluded by sparse checkout)
-        if [ -d "$DIR"/.git ] && git -C "$DIR" ls-files "symlinks/$file" 2>/dev/null | grep -q .; then
+        elif [ -d "$DIR"/.git ] && git -C "$DIR" ls-files "symlinks/$file" 2>/dev/null | grep -q .; then
           log_verbose "File $file in manifest.ini is tracked but excluded by sparse checkout"
         else
           printf "${RED}ERROR: File listed in manifest.ini [$section] does not exist: symlinks/%s${NC}\n" "$file" >&2
@@ -326,8 +329,11 @@ test_symlinks_validation()
 
       # Check if the file/directory exists in symlinks/
       if [ ! -e "$DIR"/symlinks/"$symlink" ]; then
+        # Check if it's a symlink (even if broken, it might be valid in other profiles)
+        if [ -L "$DIR"/symlinks/"$symlink" ]; then
+          log_verbose "File $symlink in symlinks.ini [$section] is a symlink (target may be excluded by sparse checkout)"
         # Check if it's tracked in git (might be excluded by sparse checkout)
-        if [ -d "$DIR"/.git ] && git -C "$DIR" ls-files "symlinks/$symlink" 2>/dev/null | grep -q .; then
+        elif [ -d "$DIR"/.git ] && git -C "$DIR" ls-files "symlinks/$symlink" 2>/dev/null | grep -q .; then
           log_verbose "File $symlink in symlinks.ini [$section] is tracked but excluded by sparse checkout"
         else
           printf "${RED}ERROR: File listed in symlinks.ini [$section] does not exist: symlinks/%s${NC}\n" "$symlink" >&2

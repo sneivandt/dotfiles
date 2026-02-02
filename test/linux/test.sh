@@ -784,13 +784,22 @@ test_vim_opens()
   # Test 2: Check if custom vimrc is installed
   if [ -f "$HOME/.vim/vimrc" ]; then
     log_verbose "Custom vimrc found at ~/.vim/vimrc"
-    
+
     # Test that vim can start with the custom vimrc
     # Use ex mode with immediate quit and explicit stdin redirect
-    if timeout 5 vim -E -s -c 'quit' </dev/null >/dev/null 2>&1; then
-      log_verbose "Vim loads custom vimrc successfully"
+    if is_program_installed "timeout"; then
+      if timeout 5 vim -E -s -c 'quit' </dev/null >/dev/null 2>&1; then
+        log_verbose "Vim loads custom vimrc successfully"
+      else
+        printf "${YELLOW}WARNING: Vim may have issues loading custom vimrc${NC}\n" >&2
+      fi
     else
-      printf "${YELLOW}WARNING: Vim may have issues loading custom vimrc${NC}\n" >&2
+      # Fallback without timeout
+      if vim -E -s -c 'quit' </dev/null >/dev/null 2>&1; then
+        log_verbose "Vim loads custom vimrc successfully"
+      else
+        printf "${YELLOW}WARNING: Vim may have issues loading custom vimrc${NC}\n" >&2
+      fi
     fi
   else
     log_verbose "No custom vimrc installed, basic vim test complete"
@@ -822,12 +831,21 @@ test_nvim_opens()
   # Test 2: Check if nvim config directory exists (supports various config layouts)
   if [ -d "$HOME/.config/nvim" ]; then
     log_verbose "Custom nvim config directory found"
-    
+
     # Test that nvim can start with the custom config in headless mode
-    if timeout 5 nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1; then
-      log_verbose "Nvim loads custom config successfully"
+    if is_program_installed "timeout"; then
+      if timeout 5 nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1; then
+        log_verbose "Nvim loads custom config successfully"
+      else
+        printf "${YELLOW}WARNING: Nvim may have issues loading custom config${NC}\n" >&2
+      fi
     else
-      printf "${YELLOW}WARNING: Nvim may have issues loading custom config${NC}\n" >&2
+      # Fallback without timeout
+      if nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1; then
+        log_verbose "Nvim loads custom config successfully"
+      else
+        printf "${YELLOW}WARNING: Nvim may have issues loading custom config${NC}\n" >&2
+      fi
     fi
   else
     log_verbose "No custom nvim config installed, basic nvim test complete"

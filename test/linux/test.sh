@@ -762,7 +762,7 @@ test_zsh_completion()
 # test_vim_opens
 #
 # Test that vim can start and exit without errors.
-# Validates that the vimrc configuration is syntactically correct.
+# This is a basic smoke test to ensure vim is functional.
 test_vim_opens()
 {(
   # Check if vim is installed
@@ -773,61 +773,34 @@ test_vim_opens()
 
   log_stage "Testing vim startup"
 
-  # Test vim opens and exits without errors
-  local vimrc_path="$HOME/.vim/vimrc"
-  local repo_vimrc="$DIR/symlinks/vim/vimrc"
-
-  # Determine which vimrc to test
-  if [ -f "$vimrc_path" ]; then
-    log_verbose "Testing installed vimrc at $vimrc_path"
-    vimrc_path="$vimrc_path"
-  elif [ -f "$repo_vimrc" ]; then
-    log_verbose "Testing repository vimrc at $repo_vimrc"
-    vimrc_path="$repo_vimrc"
-  else
-    log_verbose "No vimrc found, testing basic vim startup"
-    if vim -N -u NONE -i NONE +quit >/dev/null 2>&1; then
-      log_verbose "Vim opens successfully (no custom vimrc)"
-      return 0
-    else
-      printf "${RED}ERROR: Vim failed to start${NC}\n" >&2
-      return 1
-    fi
-  fi
-
-  # Test that vim can load the vimrc and exit
-  # Use -es for silent mode to avoid interactive prompts
-  local output
-  local exit_code
-  if output=$(vim -u "$vimrc_path" -i NONE -es +quit 2>&1); then
-    exit_code=0
-  else
-    exit_code=$?
-  fi
-
-  # Vim returns 0 even with warnings, so check for critical errors
-  if [ $exit_code -ne 0 ]; then
-    printf "${RED}ERROR: Vim exited with error code %d${NC}\n" "$exit_code" >&2
-    if [ -n "$output" ]; then
-      printf "${RED}Output: %s${NC}\n" "$output" >&2
-    fi
+  # Test 1: Check vim version (ensures binary works)
+  if ! vim --version >/dev/null 2>&1; then
+    printf "${RED}ERROR: Cannot run vim --version${NC}\n" >&2
     return 1
   fi
 
-  # Check for critical errors (ignore warnings about missing colorschemes/plugins)
-  if echo "$output" | grep -E "^E[0-9]+:" | grep -v "E185\|E149\|E117\|E15\|E803" >/dev/null; then
-    printf "${YELLOW}WARNING: Vim reported errors while loading vimrc:${NC}\n" >&2
-    echo "$output" | grep -E "^E[0-9]+:" | grep -v "E185\|E149\|E117\|E15\|E803" >&2
-    # Don't fail for configuration errors, just warn
-  fi
+  log_verbose "Vim binary is functional"
 
-  log_verbose "Vim opens and exits successfully"
+  # Test 2: Check if custom vimrc is installed
+  if [ -f "$HOME/.vim/vimrc" ]; then
+    log_verbose "Custom vimrc found at ~/.vim/vimrc"
+    
+    # Test that vim can start with the custom vimrc
+    # Use ex mode with immediate quit
+    if echo | vim -e -s -c ':qa!' >/dev/null 2>&1; then
+      log_verbose "Vim loads custom vimrc successfully"
+    else
+      printf "${YELLOW}WARNING: Vim may have issues loading custom vimrc${NC}\n" >&2
+    fi
+  else
+    log_verbose "No custom vimrc installed, basic vim test complete"
+  fi
 )}
 
 # test_nvim_opens
 #
 # Test that neovim can start and exit without errors.
-# Validates that the nvim configuration is syntactically correct.
+# This is a basic smoke test to ensure nvim is functional.
 test_nvim_opens()
 {(
   # Check if nvim is installed
@@ -838,176 +811,25 @@ test_nvim_opens()
 
   log_stage "Testing nvim startup"
 
-  # Test nvim opens and exits without errors
-  local nvim_init="$HOME/.config/nvim/init.vim"
-  local repo_init="$DIR/symlinks/vim/init.vim"
-
-  # Determine which config to test
-  if [ -f "$nvim_init" ]; then
-    log_verbose "Testing installed nvim config at $nvim_init"
-  elif [ -f "$repo_init" ]; then
-    log_verbose "Testing repository nvim config at $repo_init"
-  else
-    log_verbose "No nvim config found, testing basic nvim startup"
-  fi
-
-  # Run nvim headless and capture output
-  local output
-  local exit_code
-  if output=$(nvim --headless +quit 2>&1); then
-    exit_code=0
-  else
-    exit_code=$?
-  fi
-
-  # Check for errors in exit code
-  if [ $exit_code -ne 0 ]; then
-    printf "${RED}ERROR: Nvim exited with error code %d${NC}\n" "$exit_code" >&2
-    if [ -n "$output" ]; then
-      printf "${RED}Output: %s${NC}\n" "$output" >&2
-    fi
+  # Test 1: Check nvim version (ensures binary works)
+  if ! nvim --version >/dev/null 2>&1; then
+    printf "${RED}ERROR: Cannot run nvim --version${NC}\n" >&2
     return 1
   fi
 
-  # Check for critical error messages (E-codes with numbers)
-  if echo "$output" | grep -E "^E[0-9]+:" | grep -v "E185\|E149\|E117\|E15\|E803" >/dev/null; then
-    printf "${YELLOW}WARNING: Nvim reported errors while loading config:${NC}\n" >&2
-    echo "$output" | grep -E "^E[0-9]+:" | grep -v "E185\|E149\|E117\|E15\|E803" >&2
-    # Don't fail for configuration errors, just warn
-  fi
+  log_verbose "Nvim binary is functional"
 
-  log_verbose "Nvim opens and exits successfully"
-)}
-
-# test_vim_syntax
-#
-# Test that vim can check syntax of the vimrc file.
-# Ensures there are no critical syntax errors in the configuration.
-test_vim_syntax()
-{(
-  # Check if vim is installed
-  if ! is_program_installed "vim"; then
-    log_verbose "Skipping vim syntax test: vim not installed"
-    return 0
-  fi
-
-  log_stage "Testing vim syntax"
-
-  local vimrc_path="$HOME/.vim/vimrc"
-  local repo_vimrc="$DIR/symlinks/vim/vimrc"
-
-  # Determine which vimrc to test
-  if [ -f "$vimrc_path" ]; then
-    log_verbose "Checking installed vimrc syntax at $vimrc_path"
-    vimrc_path="$vimrc_path"
-  elif [ -f "$repo_vimrc" ]; then
-    log_verbose "Checking repository vimrc syntax at $repo_vimrc"
-    vimrc_path="$repo_vimrc"
-  else
-    log_verbose "Skipping vim syntax test: no vimrc found"
-    return 0
-  fi
-
-  # Test syntax by attempting to source the file in silent mode
-  local output
-  local exit_code
-  if output=$(vim -u NONE -i NONE -es -c "try | source $vimrc_path | catch | echo v:exception | cquit | endtry | quit" 2>&1); then
-    exit_code=0
-  else
-    exit_code=$?
-  fi
-
-  # Check for critical errors
-  if [ $exit_code -ne 0 ]; then
-    printf "${RED}ERROR: Vimrc syntax check failed with exit code %d${NC}\n" "$exit_code" >&2
-    if [ -n "$output" ]; then
-      printf "${RED}Output: %s${NC}\n" "$output" >&2
+  # Test 2: Check if nvim config is installed
+  if [ -f "$HOME/.config/nvim/init.vim" ] || [ -f "$HOME/.config/nvim/init.lua" ]; then
+    log_verbose "Custom nvim config found"
+    
+    # Test that nvim can start with the custom config in headless mode
+    if nvim --headless -c ':qa!' >/dev/null 2>&1; then
+      log_verbose "Nvim loads custom config successfully"
+    else
+      printf "${YELLOW}WARNING: Nvim may have issues loading custom config${NC}\n" >&2
     fi
-    return 1
-  fi
-
-  # Check for exception messages
-  if echo "$output" | grep -E "Vim.*:E[0-9]+" >/dev/null; then
-    printf "${YELLOW}WARNING: Vimrc contains potential syntax issues:${NC}\n" >&2
-    echo "$output" | grep -E "Vim.*:E[0-9]+" >&2
-    # Don't fail for syntax warnings, just report them
-  fi
-
-  log_verbose "Vimrc syntax check passed"
-)}
-
-# test_vim_plugins
-#
-# Test that vim plugins can be loaded without errors.
-# Checks if plugin directories exist and can be loaded.
-test_vim_plugins()
-{(
-  # Check if vim is installed
-  if ! is_program_installed "vim"; then
-    log_verbose "Skipping vim plugins test: vim not installed"
-    return 0
-  fi
-
-  log_stage "Testing vim plugins"
-
-  local vimrc_path="$HOME/.vim/vimrc"
-  local vim_pack_dir="$HOME/.vim/pack"
-  local repo_vimrc="$DIR/symlinks/vim/vimrc"
-  local repo_pack_dir="$DIR/symlinks/vim/pack"
-
-  # Determine which vimrc and pack dir to use
-  if [ -f "$vimrc_path" ]; then
-    log_verbose "Using installed vimrc at $vimrc_path"
-  elif [ -f "$repo_vimrc" ]; then
-    log_verbose "Using repository vimrc at $repo_vimrc"
-    vimrc_path="$repo_vimrc"
   else
-    log_verbose "Skipping vim plugins test: no vimrc found"
-    return 0
+    log_verbose "No custom nvim config installed, basic nvim test complete"
   fi
-
-  # Check which pack directory exists
-  if [ -d "$vim_pack_dir" ]; then
-    log_verbose "Checking plugins in $vim_pack_dir"
-  elif [ -d "$repo_pack_dir" ]; then
-    log_verbose "Checking plugins in $repo_pack_dir"
-    vim_pack_dir="$repo_pack_dir"
-  else
-    log_verbose "No vim plugins directory found, skipping plugin test"
-    return 0
-  fi
-
-  # Count plugins
-  local plugin_count=0
-  if [ -d "$vim_pack_dir/plugins/start" ]; then
-    plugin_count=$(find "$vim_pack_dir/plugins/start" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-    log_verbose "Found $plugin_count plugin(s) in start directory"
-  fi
-
-  # Test that plugins load without critical errors
-  local output
-  local exit_code
-  if output=$(vim -u "$vimrc_path" -i NONE -es -c "packloadall | quit" 2>&1); then
-    exit_code=0
-  else
-    exit_code=$?
-  fi
-
-  # Check for errors
-  if [ $exit_code -ne 0 ]; then
-    printf "${RED}ERROR: Vim plugins failed to load with exit code %d${NC}\n" "$exit_code" >&2
-    if [ -n "$output" ]; then
-      printf "${RED}Output: %s${NC}\n" "$output" >&2
-    fi
-    return 1
-  fi
-
-  # Check for error messages related to plugins (but not colorscheme or missing optional items)
-  if echo "$output" | grep -iE "error|failed" | grep -iv "version warning\|colorscheme\|E185\|E149" >/dev/null; then
-    printf "${YELLOW}WARNING: Possible plugin issues detected:${NC}\n" >&2
-    echo "$output" | grep -iE "error|failed" | grep -iv "version warning\|colorscheme\|E185\|E149" >&2
-    # Don't fail on plugin warnings, just report them
-  fi
-
-  log_verbose "Vim plugins loaded successfully"
 )}

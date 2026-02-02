@@ -21,6 +21,7 @@ jobs:
         run: |
           DIR="$(pwd)"
           export DIR
+          export OPT=""
           . ./src/linux/logger.sh
           . ./src/linux/utils.sh
           . ./test/linux/test-config.sh
@@ -64,6 +65,7 @@ jobs:
           # Source the test file and run shellcheck directly
           DIR="$(pwd)"
           export DIR
+          export OPT=""
           . ./src/linux/logger.sh
           . ./src/linux/utils.sh
           . ./test/linux/test-static-analysis.sh
@@ -74,6 +76,7 @@ jobs:
           # Source the test file and run PSScriptAnalyzer directly
           DIR="$(pwd)"
           export DIR
+          export OPT=""
           . ./src/linux/logger.sh
           . ./src/linux/utils.sh
           . ./test/linux/test-static-analysis.sh
@@ -102,6 +105,7 @@ jobs:
         run: |
           DIR="$(pwd)"
           export DIR
+          export OPT=""
           . ./src/linux/logger.sh
           . ./src/linux/utils.sh
           . ./test/linux/test-applications.sh

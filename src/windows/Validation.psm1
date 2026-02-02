@@ -201,7 +201,7 @@ function Show-InstallationPreview
         $status = git submodule status 2>&1
         Pop-Location
 
-        if ($status -match "^[\+\-]")
+        if ($status -match "^[+\-]")
         {
             $moduleCount = ($status | Measure-Object).Count
             Write-Output "Git Submodules: $moduleCount will be initialized/updated"

@@ -1,5 +1,9 @@
 #!/usr/bin/env zsh
 
+# Guard against multiple sourcing
+[ -n "$ZSHRC_LOADED" ] && return
+export ZSHRC_LOADED=1
+
 # Quiet
 setopt no_beep
 setopt NO_LIST_BEEP
@@ -21,7 +25,7 @@ setopt extendedglob
 setopt hist_expire_dups_first
 setopt hist_find_no_dups
 setopt hist_verify
-mkdir -p ~/.cache/zsh
+[ -d ~/.cache/zsh ] || mkdir -p ~/.cache/zsh
 HISTFILE=~/.cache/zsh/history
 HISTSIZE=10000
 SAVEHIST=10000
@@ -34,27 +38,47 @@ setopt pushdsilent
 setopt pushdtohome
 
 # Path
-. ~/.config/shell/path.sh
+if [ -f ~/.config/shell/path.sh ]; then
+  . ~/.config/shell/path.sh
+else
+  echo "Warning: ~/.config/shell/path.sh not found" >&2
+fi
 
 # Aliases
-. ~/.config/shell/aliases.sh
+if [ -f ~/.config/shell/aliases.sh ]; then
+  . ~/.config/shell/aliases.sh
+else
+  echo "Warning: ~/.config/shell/aliases.sh not found" >&2
+fi
 
-# GUI Aliases
+# GUI Aliases (optional)
 [ -f ~/.config/shell/aliases-desktop.sh ] && . ~/.config/shell/aliases-desktop.sh
 
 # Prompt
-. ~/.config/zsh/prompt.zsh
+if [ -f ~/.config/zsh/prompt.zsh ]; then
+  . ~/.config/zsh/prompt.zsh
+else
+  echo "Warning: ~/.config/zsh/prompt.zsh not found" >&2
+fi
 
 # Completion
-. ~/.config/zsh/completion.zsh
+if [ -f ~/.config/zsh/completion.zsh ]; then
+  . ~/.config/zsh/completion.zsh
+else
+  echo "Warning: ~/.config/zsh/completion.zsh not found" >&2
+fi
 
 # Key bindings
-. ~/.config/zsh/key-bindings.zsh
+if [ -f ~/.config/zsh/key-bindings.zsh ]; then
+  . ~/.config/zsh/key-bindings.zsh
+else
+  echo "Warning: ~/.config/zsh/key-bindings.zsh not found" >&2
+fi
 
 # Plugins
 for plugin in ~/.config/zsh/plugins/*.zsh(N)
 do
-  [ -f "$plugin" ] && . "$plugin"
+  . "$plugin"
 done
 
 # Arch Linux System Plugins
@@ -77,7 +101,7 @@ then
   eval "$(zoxide init zsh)"
 fi
 
-# FZF
+# FZF (optional)
 [ -f /usr/share/fzf/key-bindings.zsh ] && . /usr/share/fzf/key-bindings.zsh
 [ -f /usr/share/fzf/completion.zsh ] && . /usr/share/fzf/completion.zsh
 

@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
+# Guard against multiple sourcing
+[ -n "$BASHRC_LOADED" ] && return
+export BASHRC_LOADED=1
+
 # History
-mkdir -p ~/.cache/bash
+[ -d ~/.cache/bash ] || mkdir -p ~/.cache/bash
 export HISTFILE=~/.cache/bash/history
 export HISTSIZE=10000
 export HISTFILESIZE=10000
@@ -10,16 +14,28 @@ shopt -s histappend
 shopt -s checkwinsize
 
 # Path
-. ~/.config/shell/path.sh
+if [ -f ~/.config/shell/path.sh ]; then
+  . ~/.config/shell/path.sh
+else
+  echo "Warning: ~/.config/shell/path.sh not found" >&2
+fi
 
 # Aliases
-. ~/.config/shell/aliases.sh
+if [ -f ~/.config/shell/aliases.sh ]; then
+  . ~/.config/shell/aliases.sh
+else
+  echo "Warning: ~/.config/shell/aliases.sh not found" >&2
+fi
 
-# GUI Aliases
+# GUI Aliases (optional)
 [ -f ~/.config/shell/aliases-desktop.sh ] && . ~/.config/shell/aliases-desktop.sh
 
 # Prompt
-. ~/.config/bash/prompt
+if [ -f ~/.config/bash/prompt ]; then
+  . ~/.config/bash/prompt
+else
+  echo "Warning: ~/.config/bash/prompt not found" >&2
+fi
 
 # zoxide
 if command -v zoxide >/dev/null 2>&1

@@ -66,7 +66,7 @@ Help:
 
 - **Git 2.25+** (January 2020) - for sparse checkout support
 - **POSIX shell** (sh, bash, or zsh) - for Linux/Unix systems
-- **PowerShell 5.1+** (Desktop Edition) - for Windows systems (requires Administrator privileges)
+- **PowerShell 7+** (PowerShell Core) - for Windows systems (requires Administrator privileges)
 
 ### Optional/Feature-Specific Requirements (Linux)
 
@@ -172,6 +172,20 @@ Most `.ini` files use standard INI format with `[section]` headers containing si
 **Exception**: `registry.ini` uses registry paths as sections with `key = value` pairs (Windows-only).
 Profile sections determine which items are processed based on the selected profile. Symlink targets
 are always relative to `$HOME` and prefixed with a dot (e.g., `bashrc` → `~/.bashrc`).
+
+## Vim/Neovim Configuration 📝
+
+### Plugin Management
+
+**Neovim** uses **lazy.nvim**, a modern plugin manager:
+- Lazy loading, lockfiles, automatic installation
+- Better dependency management and faster startup
+- Auto-bootstraps on first launch
+- Pinned to specific commit for security
+
+**Vim** (non-Neovim) runs without plugins for simplicity.
+
+See [`symlinks/vim/README.md`](symlinks/vim/README.md) for detailed configuration and usage.
 
 ## Scripts (`./dotfiles.sh`) 🔧
 

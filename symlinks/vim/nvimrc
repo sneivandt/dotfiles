@@ -18,26 +18,15 @@ nnoremap <bs> :<c-u>TmuxNavigateLeft<cr>
 " Open terminal
 noremap <leader>t :terminal<cr>
 
-" Load Neovim-specific plugins from opt/ if they exist
-" These are optional Lua plugins not loaded in Vim
-" Also load vim-airline as fallback if lualine isn't available
-silent! packadd nvim-web-devicons
-silent! packadd nvim-tree.lua
-silent! packadd lualine.nvim
-silent! packadd plenary.nvim
-silent! packadd nvim-treesitter
-
-" Load vim-airline as fallback if lualine isn't available
+" Plugin loading: lazy.nvim for Neovim
 lua << EOF
-  local has_lualine = pcall(require, 'lualine')
-  if not has_lualine then
-    vim.cmd('packadd vim-airline')
-    vim.cmd('packadd vim-airline-themes')
-  end
+  -- Bootstrap and configure lazy.nvim
+  pcall(function()
+    require('lazy-bootstrap')
+  end)
 EOF
 
-" Lua configuration for Neovim plugins (only if available)
-if has('nvim')
+" Lua configuration for Neovim plugins
 lua << EOF
 -- Helper to check if a module exists
 local function module_exists(name)
@@ -130,12 +119,9 @@ if module_exists('nvim-treesitter.configs') then
   end)
 end
 EOF
-endif
 
-" Key mappings for Neovim plugins (only if plugins are available)
-if has('nvim')
-  " Only map NvimTreeToggle if nvim-tree is available
-  if exists(':NvimTreeToggle')
-    nnoremap <silent><c-e> :NvimTreeToggle<cr>
-  endif
+" Key mappings for Neovim plugins
+" Only map NvimTreeToggle if nvim-tree is available
+if exists(':NvimTreeToggle')
+  nnoremap <silent><c-e> :NvimTreeToggle<cr>
 endif

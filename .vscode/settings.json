@@ -7,40 +7,9 @@
         "ini": true,
         "markdown": true
     },
-    // Git settings - ignore vim plugins and external fonts
+    // Git settings - ignore external fonts submodule (used for Windows font installation)
     "git.ignoredRepositories": [
-        "extern/fonts",
-        "symlinks/vim/pack/plugins/opt/lualine.nvim",
-        "symlinks/vim/pack/plugins/opt/nvim-tree.lua",
-        "symlinks/vim/pack/plugins/opt/nvim-treesitter",
-        "symlinks/vim/pack/plugins/opt/nvim-web-devicons",
-        "symlinks/vim/pack/plugins/opt/plenary.nvim",
-        "symlinks/vim/pack/plugins/opt/vim-airline-themes",
-        "symlinks/vim/pack/plugins/opt/vim-airline",
-        "symlinks/vim/pack/plugins/opt/vim-pathogen",
-        "symlinks/vim/pack/plugins/start/ctrlp.vim",
-        "symlinks/vim/pack/plugins/start/fzf.vim",
-        "symlinks/vim/pack/plugins/start/fzf",
-        "symlinks/vim/pack/plugins/start/gruvbox",
-        "symlinks/vim/pack/plugins/start/haskell-vim",
-        "symlinks/vim/pack/plugins/start/jellybeans.vim",
-        "symlinks/vim/pack/plugins/start/lessspace.vim",
-        "symlinks/vim/pack/plugins/start/nerdtree",
-        "symlinks/vim/pack/plugins/start/python-syntax",
-        "symlinks/vim/pack/plugins/start/rust.vim",
-        "symlinks/vim/pack/plugins/start/tokyonight.nvim",
-        "symlinks/vim/pack/plugins/start/vim-autotag",
-        "symlinks/vim/pack/plugins/start/vim-commentary",
-        "symlinks/vim/pack/plugins/start/vim-cpp-enhanced-hilight",
-        "symlinks/vim/pack/plugins/start/vim-dispatch",
-        "symlinks/vim/pack/plugins/start/vim-easy-align",
-        "symlinks/vim/pack/plugins/start/vim-fugitive",
-        "symlinks/vim/pack/plugins/start/vim-go",
-        "symlinks/vim/pack/plugins/start/vim-javascript-syntax",
-        "symlinks/vim/pack/plugins/start/vim-javascript",
-        "symlinks/vim/pack/plugins/start/vim-python-pep8-indent",
-        "symlinks/vim/pack/plugins/start/vim-surround",
-        "symlinks/vim/pack/plugins/start/vim-tmux-navigator"
+        "extern/fonts"
     ],
     // Increase git file limit warning threshold
     "git.ignoreLimitWarning": true,
@@ -55,7 +24,6 @@
     },
     // Exclude certain files and directories from the file explorer
     "files.exclude": {
-        "symlinks/vim/pack/plugins/*": true,
         "extern/fonts/*": true
     },
     // File associations

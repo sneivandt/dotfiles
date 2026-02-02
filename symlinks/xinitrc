@@ -11,11 +11,7 @@ then
 fi
 
 # Load X resources
-if [ -f "$HOME/.Xresources" ]; then
-  xrdb "$HOME/.Xresources"
-else
-  echo "Warning: $HOME/.Xresources not found" >&2
-fi
+[ -f "$HOME/.Xresources" ] && xrdb "$HOME/.Xresources"
 
 # Disable screen blanking and power management
 xset s off

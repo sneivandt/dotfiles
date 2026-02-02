@@ -3,13 +3,22 @@
 
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not vim.loop.fs_stat(lazypath) then
+  -- Pin to a specific commit for security and reproducibility
+  -- Update this commit hash periodically to get security fixes
+  local lazy_commit = "077102c5bfc578693f12377846d427f49bc50076" -- v11.14.1 (2024-11-20)
   vim.fn.system({
     "git",
     "clone",
     "--filter=blob:none",
     "https://github.com/folke/lazy.nvim.git",
-    "--branch=stable",
     lazypath,
+  })
+  vim.fn.system({
+    "git",
+    "-C",
+    lazypath,
+    "checkout",
+    lazy_commit,
   })
 end
 vim.opt.rtp:prepend(lazypath)

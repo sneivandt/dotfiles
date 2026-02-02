@@ -19,15 +19,14 @@ nnoremap <bs> :<c-u>TmuxNavigateLeft<cr>
 noremap <leader>t :terminal<cr>
 
 " Plugin loading: lazy.nvim for Neovim
-" Neovim: Use lazy.nvim plugin manager by default
 lua << EOF
   -- Bootstrap and configure lazy.nvim
   pcall(function()
     require('lazy-bootstrap')
   end)
 EOF
-" Lua configuration for Neovim plugins (only if available)
-if has('nvim')
+
+" Lua configuration for Neovim plugins
 lua << EOF
 -- Helper to check if a module exists
 local function module_exists(name)
@@ -120,12 +119,9 @@ if module_exists('nvim-treesitter.configs') then
   end)
 end
 EOF
-endif
 
-" Key mappings for Neovim plugins (only if plugins are available)
-if has('nvim')
-  " Only map NvimTreeToggle if nvim-tree is available
-  if exists(':NvimTreeToggle')
-    nnoremap <silent><c-e> :NvimTreeToggle<cr>
-  endif
+" Key mappings for Neovim plugins
+" Only map NvimTreeToggle if nvim-tree is available
+if exists(':NvimTreeToggle')
+  nnoremap <silent><c-e> :NvimTreeToggle<cr>
 endif

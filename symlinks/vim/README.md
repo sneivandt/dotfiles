@@ -1,12 +1,10 @@
 # Neovim Plugin Management
 
-This directory contains configuration for Neovim and Vim with modern lazy.nvim plugin management for Neovim and traditional git submodules for Vim.
+This directory contains configuration for Neovim with modern lazy.nvim plugin management.
 
 ## Current Setup
 
-The configuration uses **different approaches** based on the editor:
-
-### Neovim (Default: lazy.nvim)
+### Neovim (lazy.nvim)
 
 Neovim uses **lazy.nvim**, a modern plugin manager with:
 - Fast startup through lazy loading
@@ -14,6 +12,7 @@ Neovim uses **lazy.nvim**, a modern plugin manager with:
 - Automatic plugin installation
 - Better dependency management
 - Built-in plugin profiling
+- Pinned to a specific commit for security and reproducibility
 
 **First-Time Setup:**
 
@@ -25,15 +24,13 @@ When you first launch Neovim:
 
 No configuration or environment variables needed - it works out of the box.
 
-### Vim (Git Submodules)
+**Security Note:** The bootstrap process pins lazy.nvim to a specific commit hash to prevent supply-chain attacks. The commit is periodically updated to get security fixes.
 
-Vim uses the traditional **git submodules** approach with Vim's native pack system (`~/.vim/pack/plugins/`):
-- Compatible with Vim 8+
-- Plugins are managed as git submodules
-- No external dependencies required
-- Manual submodule management via git commands
+### Vim (No Plugins)
 
-### Plugin Management with lazy.nvim (Neovim)
+Regular Vim (non-Neovim) runs without plugins for simplicity. All plugin functionality is provided by Neovim through lazy.nvim.
+
+### Plugin Management with lazy.nvim
 
 You can use lazy.nvim commands in Neovim:
 
@@ -45,14 +42,13 @@ You can use lazy.nvim commands in Neovim:
 
 ### Configuration
 
-Plugins are defined in `lua/lazy-bootstrap.lua`. The configuration includes all essential plugins for both Vim and Neovim, with Neovim-specific plugins conditionally loaded.
+Plugins are defined in `lua/lazy-bootstrap.lua`. The configuration includes all essential plugins for Neovim development.
 
 ## Files
 
 - `init.vim` - Main entry point, sources `~/.vim/vimrc`
-- `nvimrc` - Plugin loading logic (lazy.nvim for Neovim, git submodules for Vim)
+- `nvimrc` - Plugin loading logic for Neovim
 - `lua/lazy-bootstrap.lua` - lazy.nvim bootstrap and plugin definitions (Neovim only)
-- `pack/` - Git submodule plugins (Vim only)
 
 ## Troubleshooting
 
@@ -62,8 +58,9 @@ If you see errors with lazy.nvim:
 2. Clean lazy.nvim cache: `rm -rf ~/.local/share/nvim/lazy`
 3. Restart Neovim to re-download plugins
 
-### Using git submodules for Vim
-If you're using Vim (not Neovim), ensure submodules are initialized:
-```bash
-cd ~/dotfiles && git submodule update --init --recursive
-```
+### Updating lazy.nvim
+To update to a newer version of lazy.nvim:
+1. Check the latest stable release at https://github.com/folke/lazy.nvim/releases
+2. Update the commit hash in `lua/lazy-bootstrap.lua`
+3. Remove the lazy.nvim directory: `rm -rf ~/.local/share/nvim/lazy/lazy.nvim`
+4. Restart Neovim to re-download

@@ -177,22 +177,15 @@ are always relative to `$HOME` and prefixed with a dot (e.g., `bashrc` → `~/.b
 
 ### Plugin Management
 
-The repository uses **different plugin management approaches** for Vim and Neovim:
+**Neovim** uses **lazy.nvim**, a modern plugin manager:
+- Lazy loading, lockfiles, automatic installation
+- Better dependency management and faster startup
+- Auto-bootstraps on first launch
+- Pinned to specific commit for security
 
-1. **lazy.nvim (Default for Neovim)** - Modern Neovim plugin manager
-   - Neovim only, enabled by default
-   - Lazy loading, lockfiles, automatic installation
-   - Better dependency management and faster startup
-   - Auto-bootstraps on first launch
-
-2. **Git Submodules (Vim)** - Traditional Vim 8+ native pack system
-   - Used for Vim (non-Neovim)
-   - Plugins managed as git submodules in `.gitmodules`
-   - Compatible with Vim 8+
+**Vim** (non-Neovim) runs without plugins for simplicity.
 
 See [`symlinks/vim/README.md`](symlinks/vim/README.md) for detailed configuration and usage.
-
-Both approaches use the same core plugins and configuration, ensuring a consistent experience.
 
 ## Scripts (`./dotfiles.sh`) 🔧
 

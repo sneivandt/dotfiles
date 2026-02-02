@@ -63,9 +63,15 @@ if ($DryRun)
 # Get excluded categories for this profile
 $excluded = Get-ProfileExclusion -Root $PSScriptRoot -ProfileName $SelectedProfile
 
+# Show installation preview in verbose mode
+if ($VerbosePreference -eq 'Continue')
+{
+    Show-InstallationPreview -root $PSScriptRoot -excludedCategories $excluded
+}
+
 Update-GitSubmodules -root $PSScriptRoot -DryRun:$DryRun
 # Note: Registry settings are not profile-filtered (Windows-only, applies to all)
 Sync-Registry -root $PSScriptRoot -DryRun:$DryRun
 Install-Fonts -root $PSScriptRoot -DryRun:$DryRun
 Install-Symlinks -root $PSScriptRoot -excludedCategories $excluded -DryRun:$DryRun
-Install-VsCodeExtensions -root $PSScriptRoot -DryRun:$DryRun
+Install-VsCodeExtensions -root $PSScriptRoot -excludedCategories $excluded -DryRun:$DryRun

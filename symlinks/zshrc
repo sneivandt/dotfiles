@@ -109,13 +109,16 @@ else
     fi
   done
 
-  # Save cache
-  mkdir -p ~/.cache/zsh
-  echo "typeset -ga _ZSH_PLUGIN_LIST=(" > "$_ZSH_PLUGIN_CACHE"
+  # Save cache atomically to avoid partial writes
+  cache_dir="${_ZSH_PLUGIN_CACHE%/*}"
+  mkdir -p "$cache_dir"
+  tmp_cache="$(mktemp "${_ZSH_PLUGIN_CACHE}.XXXXXX")" || return 1
+  echo "typeset -ga _ZSH_PLUGIN_LIST=(" > "$tmp_cache"
   for plugin in "${_ZSH_PLUGIN_LIST[@]}"; do
-    echo "  \"$plugin\"" >> "$_ZSH_PLUGIN_CACHE"
+    echo "  \"$plugin\"" >> "$tmp_cache"
   done
-  echo ")" >> "$_ZSH_PLUGIN_CACHE"
+  echo ")" >> "$tmp_cache"
+  mv "$tmp_cache" "$_ZSH_PLUGIN_CACHE"
 fi
 
 # Load cached plugins

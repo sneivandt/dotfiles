@@ -17,108 +17,124 @@ nnoremap <bs> :<c-u>TmuxNavigateLeft<cr>
 " Open terminal
 noremap <leader>t :terminal<cr>
 
-" Load Neovim-specific plugins from opt/ with error handling
-" These are not loaded in Vim
+" Load Neovim-specific plugins from opt/ if they exist
+" These are optional Lua plugins not loaded in Vim
 if has('nvim') && exists(':packadd')
-  try
-    packadd! nvim-web-devicons
-    packadd! nvim-tree.lua
-    packadd! lualine.nvim
-    packadd! plenary.nvim
-    packadd! nvim-treesitter
-  catch
-    echohl WarningMsg
-    echom "Warning: Some Neovim plugins failed to load"
-    echohl None
-  endtry
+  " Silently try to load optional Neovim plugins
+  silent! packadd nvim-web-devicons
+  silent! packadd nvim-tree.lua
+  silent! packadd lualine.nvim
+  silent! packadd plenary.nvim
+  silent! packadd nvim-treesitter
 endif
 
-" Lua configuration for Neovim plugins
+" Lua configuration for Neovim plugins (only if available)
 if has('nvim')
 lua << EOF
--- Wrap all setup calls in pcall for error handling
-local function safe_setup(plugin_name, setup_func)
-  local ok, err = pcall(setup_func)
-  if not ok then
-    vim.notify("Error loading " .. plugin_name .. ": " .. tostring(err), vim.log.levels.WARN)
+-- Helper to check if a module exists
+local function module_exists(name)
+  if package.loaded[name] then
+    return true
+  else
+    for _, searcher in ipairs(package.searchers or package.loaders) do
+      local loader = searcher(name)
+      if type(loader) == 'function' then
+        package.preload[name] = loader
+        return true
+      end
+    end
+    return false
   end
 end
 
--- Setup nvim-tree (modern file explorer)
-safe_setup("nvim-tree", function()
-  require('nvim-tree').setup({
-    disable_netrw = true,
-    hijack_netrw = true,
-    view = {
-      width = 30,
-      side = 'right',
-    },
-    renderer = {
-      icons = {
-        show = {
-          file = true,
-          folder = true,
-          folder_arrow = true,
-          git = true,
+-- Setup nvim-tree (modern file explorer) if available
+if module_exists('nvim-tree') then
+  pcall(function()
+    require('nvim-tree').setup({
+      disable_netrw = true,
+      hijack_netrw = true,
+      view = {
+        width = 30,
+        side = 'right',
+      },
+      renderer = {
+        icons = {
+          show = {
+            file = true,
+            folder = true,
+            folder_arrow = true,
+            git = true,
+          },
         },
       },
-    },
-    filters = {
-      dotfiles = false,
-    },
-  })
-end)
+      filters = {
+        dotfiles = false,
+      },
+    })
+  end)
+end
 
--- Setup lualine (modern statusline)
-safe_setup("lualine", function()
-  require('lualine').setup({
-    options = {
-      theme = 'auto',
-      component_separators = '',
-      section_separators = '',
-    },
-    sections = {
-      lualine_a = {'mode'},
-      lualine_b = {'branch', 'diff'},
-      lualine_c = {'filename'},
-      lualine_x = {'encoding', 'fileformat'},
-      lualine_y = {'filetype'},
-      lualine_z = {'location'}
-    },
-    tabline = {
-      lualine_a = {},
-      lualine_b = {},
-      lualine_c = { { 'tabs', mode = 1, max_length = vim.o.columns } },
-      lualine_x = {},
-      lualine_y = {},
-      lualine_z = {}
-    },
-  })
-end)
+-- Setup lualine (modern statusline) if available
+if module_exists('lualine') then
+  pcall(function()
+    require('lualine').setup({
+      options = {
+        theme = 'auto',
+        component_separators = '',
+        section_separators = '',
+      },
+      sections = {
+        lualine_a = {'mode'},
+        lualine_b = {'branch', 'diff'},
+        lualine_c = {'filename'},
+        lualine_x = {'encoding', 'fileformat'},
+        lualine_y = {'filetype'},
+        lualine_z = {'location'}
+      },
+      tabline = {
+        lualine_a = {},
+        lualine_b = {},
+        lualine_c = { { 'tabs', mode = 1, max_length = vim.o.columns } },
+        lualine_x = {},
+        lualine_y = {},
+        lualine_z = {}
+      },
+    })
+  end)
+end
 
--- Setup treesitter for better syntax highlighting
-safe_setup("treesitter", function()
-  require('nvim-treesitter.configs').setup({
-    ensure_installed = {
-      'python', 'javascript', 'typescript', 'lua', 'vim',
-      'rust', 'go', 'c', 'cpp', 'java', 'haskell', 'bash'
-    },
-    highlight = {
-      enable = true,
-      additional_vim_regex_highlighting = false,
-    },
-    indent = {
-      enable = true,
-    },
-  })
-end)
+-- Setup treesitter for better syntax highlighting if available
+if module_exists('nvim-treesitter.configs') then
+  pcall(function()
+    require('nvim-treesitter.configs').setup({
+      ensure_installed = {
+        'python', 'javascript', 'typescript', 'lua', 'vim',
+        'rust', 'go', 'c', 'cpp', 'java', 'haskell', 'bash'
+      },
+      highlight = {
+        enable = true,
+        additional_vim_regex_highlighting = false,
+      },
+      indent = {
+        enable = true,
+      },
+    })
+  end)
+end
 EOF
 endif
 
-" Key mappings for Neovim plugins
+" Key mappings for Neovim plugins (only if plugins are available)
 if has('nvim')
-  nnoremap <silent><c-e> :NvimTreeToggle<cr>
+  " Only map NvimTreeToggle if nvim-tree is available
+  if exists(':NvimTreeToggle')
+    nnoremap <silent><c-e> :NvimTreeToggle<cr>
+  endif
 
-  " Disable vim-airline in Neovim (we use lualine instead)
-  let g:loaded_airline = 1
+  " Disable vim-airline in Neovim if lualine is available (fallback to airline otherwise)
+  lua << EOF
+    if package.loaded['lualine'] or pcall(require, 'lualine') then
+      vim.g.loaded_airline = 1
+    end
+EOF
 endif

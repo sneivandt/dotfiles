@@ -5,7 +5,7 @@
     "copyFormatting": "none",
     "copyOnSelect": false,
     "defaultProfile": "{505ae8ff-4b0a-4666-8d59-1c476f7ffe0d}",
-    "keybindings": 
+    "keybindings":
     [
         {
             "id": "Terminal.ToggleCommandPalette",
@@ -29,15 +29,15 @@
         }
     ],
     "launchMode": "maximized",
-    "newTabMenu": 
+    "newTabMenu":
     [
         {
             "type": "remainingProfiles"
         }
     ],
-    "profiles": 
+    "profiles":
     {
-        "defaults": 
+        "defaults":
         {
             "background": "#151515",
             "closeOnExit": "graceful",
@@ -45,9 +45,9 @@
             "commandline": "powershell.exe -nologo",
             "cursorColor": "#FFFFFF",
             "cursorShape": "bar",
-            "font": 
+            "font":
             {
-                "face": "DejaVu Sans Mono for Powerline",
+                "face": "Cascadia Mono",
                 "size": 10
             },
             "historySize": 9001,
@@ -57,7 +57,7 @@
             "suppressApplicationTitle": true,
             "useAcrylic": false
         },
-        "list": 
+        "list":
         [
             {
                 "commandline": "pwsh.exe -nologo",
@@ -98,7 +98,7 @@
             }
         ]
     },
-    "schemes": 
+    "schemes":
     [
         {
             "background": "#151515",

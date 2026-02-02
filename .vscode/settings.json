@@ -7,10 +7,6 @@
         "ini": true,
         "markdown": true
     },
-    // Git settings - ignore external fonts submodule (used for Windows font installation)
-    "git.ignoredRepositories": [
-        "extern/fonts"
-    ],
     // Increase git file limit warning threshold
     "git.ignoreLimitWarning": true,
     // Exclude certain files and directories from search
@@ -21,10 +17,6 @@
         "**/.git": true,
         "**/__pycache__": true,
         "**/*.log": true
-    },
-    // Exclude certain files and directories from the file explorer
-    "files.exclude": {
-        "extern/fonts/*": true
     },
     // File associations
     "files.associations": {

@@ -58,8 +58,6 @@ do_install()
   # shellcheck disable=SC2153,SC2154
   configure_sparse_checkout "$PROFILE"
   update_dotfiles
-  install_git_submodules
-  update_git_submodules
 
   install_packages
   install_symlinks
@@ -75,13 +73,11 @@ do_install()
 
 # do_test
 #
-# Run static analysis / linting without applying configuration changes beyond
-# ensuring required submodules are present. Intended for CI / validation.
+# Run static analysis / linting without applying configuration changes.
+# Intended for CI / validation.
 do_test()
 {
   update_dotfiles
-  install_git_submodules
-  update_git_submodules
 
   # Configuration validation tests
   test_config_validation
@@ -104,13 +100,11 @@ do_test()
 # do_uninstall
 #
 # Remove managed symlinks (and only those) for enabled environments. Leaves
-# packages, shells, fonts, and submodules untouched to avoid data loss.
+# packages, shells, and fonts untouched to avoid data loss.
 do_uninstall()
 {
   configure_sparse_checkout "$PROFILE"
   update_dotfiles
-  install_git_submodules
-  update_git_submodules
 
   uninstall_symlinks
 }

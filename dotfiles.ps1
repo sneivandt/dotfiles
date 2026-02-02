@@ -6,13 +6,11 @@
     Windows bootstrap entry point for dotfiles repository.
 .DESCRIPTION
     Aggregates module functions from src/ and performs a full setup:
-      * Git submodule sync (Update-GitSubmodules)
       * Registry configuration (Sync-Registry / conf/registry.ini)
-      * Font installation (Install-Fonts)
       * Symlink creation (Install-Symlinks)
       * VS Code Extensions (Install-VsCodeExtensions)
 
-    Must run elevated for registry + font operations. Script is intentionally
+    Must run elevated for registry operations. Script is intentionally
     linear; each function internally guards idempotency to allow safe re-runs.
 
     The script always uses the "windows" profile. Profile selection is not
@@ -49,12 +47,11 @@ if ($DryRun)
 
 foreach ($module in Get-ChildItem $PSScriptRoot\src\windows\*.psm1)
 {
-    # Import each supporting module (Font, Git, Profile, Registry, Symlinks, VsCodeExtensions)
+    # Import each supporting module (Profile, Registry, Symlinks, VsCodeExtensions)
     # -Force ensures updated definitions override any cached versions when re-run.
     Import-Module $module.FullName -Force
 }
 
-Write-Output ":: Using profile: $SelectedProfile"
 if ($DryRun)
 {
     Write-Output ":: DRY-RUN MODE: No system modifications will be made"
@@ -63,9 +60,7 @@ if ($DryRun)
 # Get excluded categories for this profile
 $excluded = Get-ProfileExclusion -Root $PSScriptRoot -ProfileName $SelectedProfile
 
-Update-GitSubmodules -root $PSScriptRoot -DryRun:$DryRun
 # Note: Registry settings are not profile-filtered (Windows-only, applies to all)
 Sync-Registry -root $PSScriptRoot -DryRun:$DryRun
-Install-Fonts -root $PSScriptRoot -DryRun:$DryRun
 Install-Symlinks -root $PSScriptRoot -excludedCategories $excluded -DryRun:$DryRun
 Install-VsCodeExtensions -root $PSScriptRoot -excludedCategories $excluded -DryRun:$DryRun

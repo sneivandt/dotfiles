@@ -71,22 +71,26 @@ set visualbell
 set wildmenu
 set wrap
 set wrapscan
+" Modern UI enhancements
+set cursorline          " Highlight current line
+set pumblend=10         " Popup menu transparency (nvim only)
+set winblend=10         " Floating window transparency (nvim only)
 
 " Color scheme {{{
 
 syntax on
 
 " Try modern colorschemes in order of preference
-" jellybeans (classic), tokyonight (modern), gruvbox (warm), default (fallback)
+" tokyonight (modern, matches tmux), jellybeans (classic fallback), gruvbox (warm), default (fallback)
 try
-  colorscheme jellybeans
-
-  " Match the background color for special keys
-  highlight SpecialKey ctermbg=233
-  highlight Search ctermfg=yellow
+  colorscheme tokyonight-night
 catch
   try
-    colorscheme tokyonight-night
+    colorscheme jellybeans
+
+    " Match the background color for special keys
+    highlight SpecialKey ctermbg=233
+    highlight Search ctermfg=yellow
   catch
     try
       colorscheme gruvbox

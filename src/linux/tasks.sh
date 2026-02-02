@@ -606,6 +606,7 @@ install_symlinks()
 # Ensure VS Code / Code - Insiders extensions listed in vscode-extensions.ini are
 # installed. Enumerates existing extensions once per binary to minimize
 # process overhead. Installs missing ones individually (VS Code has no batch).
+# Supports profile-based sections for filtering extensions by category.
 install_vscode_extensions()
 {(
   # Check if vscode-extensions.ini exists (may be excluded by sparse checkout)
@@ -613,6 +614,9 @@ install_vscode_extensions()
     log_verbose "Skipping VS Code extensions: no vscode-extensions.ini found"
     return
   fi
+
+  # Get list of sections from vscode-extensions.ini
+  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/vscode-extensions.ini | tr -d '[]')"
 
   # Iterate over both stable and insiders versions of VS Code
   for code in code code-insiders
@@ -627,12 +631,22 @@ install_vscode_extensions()
 
     # Check if any extensions need installing
     tmpfile="$(mktemp)"
-    read_ini_section "$DIR"/conf/vscode-extensions.ini "extensions" | while IFS='' read -r extension || [ -n "$extension" ]
+    for section in $sections
     do
-      if [ -n "$extension" ] && ! echo "$extensions" | grep -qw "$extension"; then
-        echo "$extension"
+      # Check if this section/profile should be included
+      if ! should_include_profile_tag "$section"; then
+        log_verbose "Skipping VS Code extensions section [$section]: profile not included"
+        continue
       fi
-    done > "$tmpfile"
+
+      # Read extensions from this section
+      read_ini_section "$DIR"/conf/vscode-extensions.ini "$section" | while IFS='' read -r extension || [ -n "$extension" ]
+      do
+        if [ -n "$extension" ] && ! echo "$extensions" | grep -qw "$extension"; then
+          echo "$extension"
+        fi
+      done
+    done | sort -u > "$tmpfile"
 
     if [ -s "$tmpfile" ]; then
       log_stage "Installing $code extensions"
@@ -652,11 +666,19 @@ install_vscode_extensions()
     rm -f "$tmpfile"
 
     # Log already installed extensions
-    read_ini_section "$DIR"/conf/vscode-extensions.ini "extensions" | while IFS='' read -r extension || [ -n "$extension" ]
+    for section in $sections
     do
-      if [ -n "$extension" ] && echo "$extensions" | grep -qw "$extension"; then
-        log_verbose "Skipping $code extension $extension: already installed"
+      # Check if this section/profile should be included
+      if ! should_include_profile_tag "$section"; then
+        continue
       fi
+
+      read_ini_section "$DIR"/conf/vscode-extensions.ini "$section" | while IFS='' read -r extension || [ -n "$extension" ]
+      do
+        if [ -n "$extension" ] && echo "$extensions" | grep -qw "$extension"; then
+          log_verbose "Skipping $code extension $extension: already installed"
+        fi
+      done
     done
   done
 )}

@@ -68,4 +68,4 @@ Update-GitSubmodules -root $PSScriptRoot -DryRun:$DryRun
 Sync-Registry -root $PSScriptRoot -DryRun:$DryRun
 Install-Fonts -root $PSScriptRoot -DryRun:$DryRun
 Install-Symlinks -root $PSScriptRoot -excludedCategories $excluded -DryRun:$DryRun
-Install-VsCodeExtensions -root $PSScriptRoot -DryRun:$DryRun
+Install-VsCodeExtensions -root $PSScriptRoot -excludedCategories $excluded -DryRun:$DryRun

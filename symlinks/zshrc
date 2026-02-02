@@ -86,6 +86,8 @@ done
 typeset -g _ZSH_PLUGIN_CACHE="${HOME}/.cache/zsh/system-plugins.cache"
 typeset -g _ZSH_PLUGIN_LIST=()
 
+# Check cache freshness
+# (#qNmh-24) = glob qualifier: quiet, no error if missing, modified less than 24 hours ago
 if [[ -f "$_ZSH_PLUGIN_CACHE" && -n ${_ZSH_PLUGIN_CACHE}(#qNmh-24) ]]; then
   # Cache is fresh, load from cache
   source "$_ZSH_PLUGIN_CACHE"

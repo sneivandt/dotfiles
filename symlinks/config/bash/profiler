@@ -17,4 +17,5 @@ bash-profile() {
   echo "To delete log: rm $logfile"
 }
 
-alias bash-startup-time='for i in {1..10}; do /usr/bin/time -f "%E elapsed" bash -ic exit 2>&1 | grep elapsed; done'
+# Measure startup time (portable - works with bash built-in time)
+alias bash-startup-time='for i in {1..10}; do time bash -ic exit 2>&1 | grep real; done'

@@ -12,6 +12,7 @@ typeset -g ZSH_COMPDUMP="${ZSH_COMPDUMP:-${HOME}/.cache/zsh/zcompdump-${ZSH_VERS
 mkdir -p "${ZSH_COMPDUMP:h}"
 
 # Check if compdump needs regeneration (once per 24 hours)
+# (#qNmh-24) = glob qualifier: quiet, no error if missing, modified less than 24 hours ago
 if [[ -n ${ZSH_COMPDUMP}(#qNmh-24) ]]; then
   # Dump file is recent, use fast mode
   compinit -C -d "$ZSH_COMPDUMP"

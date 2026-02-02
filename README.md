@@ -66,7 +66,7 @@ Help:
 
 - **Git 2.25+** (January 2020) - for sparse checkout support
 - **POSIX shell** (sh, bash, or zsh) - for Linux/Unix systems
-- **PowerShell 5.1+** (Desktop Edition) - for Windows systems (requires Administrator privileges)
+- **PowerShell 7+** (PowerShell Core) - for Windows systems (requires Administrator privileges)
 
 ### Optional/Feature-Specific Requirements (Linux)
 

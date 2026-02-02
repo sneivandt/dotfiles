@@ -616,7 +616,8 @@ test_empty_sections()
     # Get all sections, one per line
     grep -E '^\[.+\]$' "$ini_file" | tr -d '[]' | while IFS='' read -r section || [ -n "$section" ]; do
       # Read section and count non-empty, non-comment lines
-      entry_count="$(read_ini_section "$ini_file" "$section" | grep -vc '^$')"
+      # Use || true to prevent grep from failing when section is empty
+      entry_count="$(read_ini_section "$ini_file" "$section" | grep -vc '^$' || true)"
 
       if [ "$entry_count" -eq 0 ]; then
         printf "${YELLOW}WARNING: Empty section [%s] in %s${NC}\n" "$section" "$filename" >&2

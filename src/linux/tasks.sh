@@ -646,7 +646,7 @@ install_vscode_extensions()
           echo "$extension"
         fi
       done
-    done > "$tmpfile"
+    done | sort -u > "$tmpfile"
 
     if [ -s "$tmpfile" ]; then
       log_stage "Installing $code extensions"

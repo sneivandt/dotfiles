@@ -81,6 +81,9 @@ function Install-VsCodeExtensions
         return
     }
 
+    # Remove duplicates if same extension appears in multiple sections
+    $extensionsToInstall = $extensionsToInstall | Select-Object -Unique
+
     # Iterate over both stable and insiders versions of VS Code
     foreach ($code in @('code', 'code-insiders'))
     {

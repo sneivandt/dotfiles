@@ -122,7 +122,7 @@ require("lazy").setup({
     cond = function() return vim.fn.has("nvim") == 1 end,
     build = ":TSUpdate",
     config = function()
-      require("nvim-treesitter.configs").setup({
+      require("nvim-treesitter").setup({
         ensure_installed = {
           "python", "javascript", "typescript", "lua", "vim",
           "rust", "go", "c", "cpp", "java", "haskell", "bash"

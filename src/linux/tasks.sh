@@ -169,7 +169,9 @@ configure_fonts()
     fi
 
     # Check if the font family is already installed in the system
-    if ! fc-list : family | grep -Fxq "$font"; then
+    # fc-list outputs comma-separated family names, so we need to handle that
+    # Convert commas to newlines and check for exact match of any family name
+    if ! fc-list : family | tr ',' '\n' | grep -Fxq "$font"; then
       missing_fonts=1
       break
     fi
@@ -493,7 +495,7 @@ install_packages()
       else
         log_verbose "Installing packages: $packages"
         # shellcheck disable=SC2086  # Word splitting intentional: $packages is space-separated list
-        sudo pacman -S --quiet --needed $packages
+        sudo pacman -S --quiet --needed --noconfirm $packages
       fi
     fi
   }

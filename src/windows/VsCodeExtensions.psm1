@@ -117,7 +117,8 @@ function Install-VsCodeExtensions
                     $output = & $code --install-extension $extension 2>&1
                     if ($LASTEXITCODE -ne 0)
                     {
-                        Write-Warning "Failed to install extension $extension for $code`: $output"
+                        $errorMessage = if ($output -is [array]) { $output -join "`n" } else { $output }
+                        Write-Warning "Failed to install extension $extension for $code`: $errorMessage"
                     }
                 }
             }

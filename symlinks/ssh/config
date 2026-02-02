@@ -5,9 +5,6 @@ Host *
   HashKnownHosts no
   AddKeysToAgent yes
   Compression yes
-  ControlMaster auto
-  ControlPath ~/.ssh/control-%r@%h:%p
-  ControlPersist 10m
 
 Host github.com
   User git

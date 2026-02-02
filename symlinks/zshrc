@@ -82,11 +82,11 @@ do
 done
 
 # Performance: Cache system plugin paths to avoid repeated filesystem checks
-# Only search for plugins if cache is stale (older than 1 day)
+# Only search for plugins if cache is stale (older than 24 hours)
 typeset -g _ZSH_PLUGIN_CACHE="${HOME}/.cache/zsh/system-plugins.cache"
 typeset -g _ZSH_PLUGIN_LIST=()
 
-if [[ -f "$_ZSH_PLUGIN_CACHE" && -n ${_ZSH_PLUGIN_CACHE}(#qNmh-20) ]]; then
+if [[ -f "$_ZSH_PLUGIN_CACHE" && -n ${_ZSH_PLUGIN_CACHE}(#qNmh-24) ]]; then
   # Cache is fresh, load from cache
   source "$_ZSH_PLUGIN_CACHE"
 else

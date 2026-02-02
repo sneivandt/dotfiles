@@ -9,8 +9,8 @@ autoload -Uz compinit
 typeset -g ZSH_COMPDUMP="${ZSH_COMPDUMP:-${HOME}/.cache/zsh/zcompdump-${ZSH_VERSION}}"
 mkdir -p ~/.cache/zsh
 
-# Check if compdump needs regeneration (once per day)
-if [[ -n ${ZSH_COMPDUMP}(#qNmh-20) ]]; then
+# Check if compdump needs regeneration (once per 24 hours)
+if [[ -n ${ZSH_COMPDUMP}(#qNmh-24) ]]; then
   # Dump file is recent, use fast mode
   compinit -C -d "$ZSH_COMPDUMP"
 else

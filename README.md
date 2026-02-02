@@ -190,7 +190,7 @@ The repository uses **different plugin management approaches** for Vim and Neovi
    - Plugins managed as git submodules in `.gitmodules`
    - Compatible with Vim 8+
 
-See [`symlinks/config/nvim/README.md`](symlinks/config/nvim/README.md) for detailed configuration and usage.
+See [`symlinks/vim/README.md`](symlinks/vim/README.md) for detailed configuration and usage.
 
 Both approaches use the same core plugins and configuration, ensuring a consistent experience.
 

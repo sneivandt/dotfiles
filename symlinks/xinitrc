@@ -1,5 +1,6 @@
 #!/bin/sh
 
+# Source system-wide xinitrc.d scripts
 if [ -d "/etc/X11/xinit/xinitrc.d" ]
 then
   for f in /etc/X11/xinit/xinitrc.d/*
@@ -9,13 +10,20 @@ then
   unset f
 fi
 
-# preferences
-[ -f "$HOME/.Xresources" ] && xrdb "$HOME/.Xresources"
+# Load X resources
+if [ -f "$HOME/.Xresources" ]; then
+  xrdb "$HOME/.Xresources"
+else
+  echo "Warning: $HOME/.Xresources not found" >&2
+fi
+
+# Disable screen blanking and power management
 xset s off
 xset -dpms
 xset s noblank
 
-# xsession.target
+# Initialize systemd user session for X
+# This allows user systemd units to access X environment variables
 if [ -f /etc/X11/xinit/xinitrc.d/50-systemd-user.sh ] && [ -n "$(command -vp systemctl)" ]
 then
   /etc/X11/xinit/xinitrc.d/50-systemd-user.sh
@@ -23,8 +31,11 @@ then
   systemctl --no-block --user start xsession.target
 fi
 
-# xmonad
+# Start window manager
 if [ -n "$(command -vp xmonad)" ]
 then
   exec xmonad
+else
+  echo "Error: xmonad not found, cannot start window manager" >&2
+  exit 1
 fi

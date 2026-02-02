@@ -93,7 +93,7 @@ function Install-Symlinks
 
             foreach ($folder in $wellKnownFolders)
             {
-                if ($targetPath -like "$folder\\*" -or $targetPath -eq $folder)
+                if ($targetPath.StartsWith("$folder\", [StringComparison]::OrdinalIgnoreCase) -or $targetPath -eq $folder)
                 {
                     $shouldAddDot = $false
                     break

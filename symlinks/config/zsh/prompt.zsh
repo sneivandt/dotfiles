@@ -42,7 +42,6 @@ sudo_active()
   fi
 }
 
-# Optimized prompt command
 prompt_cmd()
 {
   echo -n "%{$reset_color%}${_ZSH_PROMPT_HOST}${_ZSH_PROMPT_SHELL}%{$fg[yellow]%}%~%{$reset_color%}$(git_prompt_info)$(sudo_active)%{$reset_color%}"

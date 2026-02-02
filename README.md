@@ -301,50 +301,6 @@ The published image ([`sneivandt/dotfiles`](https://hub.docker.com/r/sneivandt/d
 | Wrong files checked out | Verify profile with `echo $PROFILE` and check `conf/profiles.ini` |
 | Desktop files missing | Use `--profile arch-desktop` |
 
-## Performance Optimization ⚡
-
-The shell configurations have been optimized for fast startup and responsive prompts:
-
-### Optimizations Applied
-
-- **Smart Git Status**: Uses `--porcelain=v1 --untracked-files=no` for faster git prompt updates
-- **Cached Static Values**: SSH status, shell detection, and other static info cached at startup
-- **Zsh Completion Caching**: Compdump regenerated once per day, compiled for faster loading
-- **Plugin Path Caching**: System plugin paths cached to avoid repeated filesystem checks
-- **Optimized LESS Colors**: Terminal capability checks (`tput`) called once per capability
-- **Fast Sudo Check**: Uses `sudo -n true` instead of `sudo -n uptime` for instant status
-
-### Profile Startup Time
-
-For users who want to measure or debug startup performance:
-
-**Zsh profiling:**
-```bash
-# Run zsh with profiling enabled (shows top 20 slowest functions)
-zsh-profile
-
-# Measure 10 consecutive startup times
-zsh-startup-time
-```
-
-**Bash profiling:**
-```bash
-# Profile bash startup (shows timing for each command)
-bash-profile
-
-# Measure 10 consecutive startup times
-bash-startup-time
-```
-
-These utilities are included in the configurations and help identify bottlenecks in your specific setup.
-
-### Tips for Faster Shells
-
-1. **Large Git Repositories**: In very large repos, git status can still be slow. Consider disabling the git prompt temporarily
-2. **Network Filesystems**: Shell configuration on NFS/CIFS can be slow. Consider using local cache directories
-3. **Plugin Count**: Minimize the number of zsh plugins for faster startup
-4. **Completion Systems**: For bash, keep completion scripts minimal
-
 ## Contributing 🤝
 
 Contributions are welcome! Please see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines on how to contribute to this project.

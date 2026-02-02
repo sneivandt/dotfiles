@@ -231,8 +231,10 @@ test_config_validation()
 
       # Check if the file/directory exists in symlinks/
       if [ ! -e "$DIR"/symlinks/"$file" ]; then
+        # Strip trailing slash for symlink check (trailing slash prevents -L from detecting symlinks)
+        local file_no_slash="${file%/}"
         # Check if it's a symlink (even if broken, it might be valid in other profiles)
-        if [ -L "$DIR"/symlinks/"$file" ]; then
+        if [ -L "$DIR"/symlinks/"$file_no_slash" ]; then
           log_verbose "File $file in manifest.ini is a symlink (target may be excluded by sparse checkout)"
         # Check if it's tracked in git (might be excluded by sparse checkout)
         elif [ -d "$DIR"/.git ] && git -C "$DIR" ls-files "symlinks/$file" 2>/dev/null | grep -q .; then

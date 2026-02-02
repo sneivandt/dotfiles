@@ -1,26 +1,61 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
+# Performance: Cache static checks that don't change during session
+_BASH_PROMPT_SSH=""
+if [ -n "$SSH_CONNECTION" ] || [ -e /.dockerenv ]; then
+  _BASH_PROMPT_SSH="$HOSTNAME "
+fi
+
+_BASH_PROMPT_SHELL=""
+if [ "$(command -v bash)" != "$SHELL" ]; then
+  _BASH_PROMPT_SHELL="bash "
+fi
+
+# Fast git prompt info
+__bash_git_prompt()
+{
+  local branch changes
+  # Fast check: only run if in git repo
+  if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    return
+  fi
+
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  if [ -n "$branch" ]; then
+    printf " %s" "$branch"
+    # Performance: Use git status with --porcelain=v1 and untracked-files=no for speed
+    changes=$(git --no-optional-locks status --porcelain=v1 --untracked-files=no 2>/dev/null | wc -l)
+    if [ "$changes" -gt 0 ]; then
+      printf "\001\e[0;31m\002+%s\001\e[0m\002" "$changes"
+    fi
+  fi
+}
+
+# Check sudo status (cached per prompt)
+__bash_sudo_prompt()
+{
+  if sudo -n true 2>/dev/null; then
+    printf " \001\e[0;36m\002!\001\e[0m\002"
+  fi
+}
+
 PS1=""
 
-# host name
-# SSH_CONNECTION and HOSTNAME are standard environment variables
-# Quoting is intentional for delayed evaluation in PS1
-# shellcheck disable=SC2154,SC2070,SC2157,SC2086
-PS1+="\\[\\e[0;36m\\]\\$([ -n \"$SSH_CONNECTION\" ] || [ -e /.dockerenv ] && echo \"$HOSTNAME \")"
+# host name (cached)
+PS1+="\\[\\e[0;36m\\]$_BASH_PROMPT_SSH"
 
-# default shell
-PS1+="\\[\\e[0;36m\\]\$([ \"\$(command -v bash)\" != \"\$SHELL\" ] && echo \"bash \")"
+# default shell (cached)
+PS1+="\\[\\e[0;36m\\]$_BASH_PROMPT_SHELL"
 
 # working dir
-PS1+="\\[\\e[0;33m\\]\\w"
+PS1+="\\[\\e[0;33m\\]\\w\\[\\e[0m\\]"
 
-# git prompt info
-gitprompt="\\[\\e[0m\\]\$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\\[\\e[0;31m\\]\$(git --no-optional-locks status --porcelain 2>/dev/null | wc -l | awk '{s=(\$1>0)?\"+\"\$1:\"\"; print s}')"
-[ -n "$gitprompt" ] && PS1+=" $gitprompt"
+# git prompt info (function call for dynamic content)
+PS1+="\$(__bash_git_prompt)"
 
-# sudo active
-PS1+="\\[\\e[0;36m\\]\$(sudo -n uptime 2>&1 | grep -c 'load' | awk '{s=(\$1>0)?\" !\":\"\"; print s}')"
+# sudo active (function call for dynamic content)
+PS1+="\$(__bash_sudo_prompt)"
 
 # prompt
-PS1+="\\n\\[\\e[0m\\]\\$ "
+PS1+="\\n\\$ "

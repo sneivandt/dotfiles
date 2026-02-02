@@ -1,13 +1,21 @@
 #!/usr/bin/env zsh
 
-# Global profile
+# Guard against multiple sourcing
+[ -n "$ZSHENV_LOADED" ] && return
+export ZSHENV_LOADED=1
+
+# Global profile (optional)
 [ -f /etc/zsh/zprofile ] && . /etc/zsh/zprofile
 
 # Profile
-. ~/.config/shell/profile.sh
+if [ -f ~/.config/shell/profile.sh ]; then
+  . ~/.config/shell/profile.sh
+else
+  echo "Warning: ~/.config/shell/profile.sh not found" >&2
+fi
 
-# GUI Profile
+# GUI Profile (optional)
 [ -f ~/.config/shell/profile-desktop.sh ] && . ~/.config/shell/profile-desktop.sh
 
-# GUI Arch Profile
+# GUI Arch Profile (optional)
 [ -f ~/.config/shell/profile-arch-desktop.sh ] && . ~/.config/shell/profile-arch-desktop.sh

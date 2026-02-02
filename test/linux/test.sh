@@ -231,8 +231,13 @@ test_config_validation()
 
       # Check if the file/directory exists in symlinks/
       if [ ! -e "$DIR"/symlinks/"$file" ]; then
+        # Strip trailing slash for symlink check (trailing slash prevents -L from detecting symlinks)
+        local file_no_slash="${file%/}"
+        # Check if it's a symlink (even if broken, it might be valid in other profiles)
+        if [ -L "$DIR"/symlinks/"$file_no_slash" ]; then
+          log_verbose "File $file in manifest.ini is a symlink (target may be excluded by sparse checkout)"
         # Check if it's tracked in git (might be excluded by sparse checkout)
-        if [ -d "$DIR"/.git ] && git -C "$DIR" ls-files "symlinks/$file" 2>/dev/null | grep -q .; then
+        elif [ -d "$DIR"/.git ] && git -C "$DIR" ls-files "symlinks/$file" 2>/dev/null | grep -q .; then
           log_verbose "File $file in manifest.ini is tracked but excluded by sparse checkout"
         else
           printf "${RED}ERROR: File listed in manifest.ini [$section] does not exist: symlinks/%s${NC}\n" "$file" >&2
@@ -326,13 +331,32 @@ test_symlinks_validation()
 
       # Check if the file/directory exists in symlinks/
       if [ ! -e "$DIR"/symlinks/"$symlink" ]; then
-        # Check if it's tracked in git (might be excluded by sparse checkout)
-        if [ -d "$DIR"/.git ] && git -C "$DIR" ls-files "symlinks/$symlink" 2>/dev/null | grep -q .; then
-          log_verbose "File $symlink in symlinks.ini [$section] is tracked but excluded by sparse checkout"
+        # Check if the path itself is a symlink (even if broken)
+        if [ -L "$DIR"/symlinks/"$symlink" ]; then
+          log_verbose "File $symlink in symlinks.ini [$section] is a symlink (target may be excluded by sparse checkout)"
         else
-          printf "${RED}ERROR: File listed in symlinks.ini [$section] does not exist: symlinks/%s${NC}\n" "$symlink" >&2
-          errors=$(cat "$errors_file")
-          echo $((errors + 1)) > "$errors_file"
+          # Check if any parent directory is a symlink (which might be broken due to sparse checkout)
+          local path_to_check="$symlink"
+          local is_under_symlink=false
+          while [ "$path_to_check" != "." ] && [ "$path_to_check" != "/" ]; do
+            path_to_check="$(dirname "$path_to_check")"
+            if [ -L "$DIR"/symlinks/"$path_to_check" ]; then
+              is_under_symlink=true
+              log_verbose "File $symlink in symlinks.ini [$section] is under symlink directory $path_to_check (target may be excluded by sparse checkout)"
+              break
+            fi
+          done
+          
+          # If not under a symlink, check if tracked in git
+          if [ "$is_under_symlink" = false ]; then
+            if [ -d "$DIR"/.git ] && git -C "$DIR" ls-files "symlinks/$symlink" 2>/dev/null | grep -q .; then
+              log_verbose "File $symlink in symlinks.ini [$section] is tracked but excluded by sparse checkout"
+            else
+              printf "${RED}ERROR: File listed in symlinks.ini [$section] does not exist: symlinks/%s${NC}\n" "$symlink" >&2
+              errors=$(cat "$errors_file")
+              echo $((errors + 1)) > "$errors_file"
+            fi
+          fi
         fi
       fi
     done
@@ -758,4 +782,97 @@ test_zsh_completion()
   log_verbose "Mutual exclusivity patterns validated"
 
   log_verbose "Zsh completion validation passed"
+)}
+
+# test_vim_opens
+#
+# Test that vim can start and exit without errors.
+# This is a basic smoke test to ensure vim is functional.
+test_vim_opens()
+{(
+  # Check if vim is installed
+  if ! is_program_installed "vim"; then
+    log_verbose "Skipping vim test: vim not installed"
+    return 0
+  fi
+
+  log_stage "Testing vim startup"
+
+  # Test 1: Check vim version (ensures binary works)
+  if ! vim --version >/dev/null 2>&1; then
+    printf "${RED}ERROR: Cannot run vim --version${NC}\n" >&2
+    return 1
+  fi
+
+  log_verbose "Vim binary is functional"
+
+  # Test 2: Check if custom vimrc is installed
+  if [ -f "$HOME/.vim/vimrc" ]; then
+    log_verbose "Custom vimrc found at ~/.vim/vimrc"
+
+    # Test that vim can start with the custom vimrc
+    # Use ex mode with immediate quit and explicit stdin redirect
+    if is_program_installed "timeout"; then
+      if timeout 5 vim -E -s -c 'quit' </dev/null >/dev/null 2>&1; then
+        log_verbose "Vim loads custom vimrc successfully"
+      else
+        printf "${YELLOW}WARNING: Vim may have issues loading custom vimrc${NC}\n" >&2
+      fi
+    else
+      # Fallback without timeout
+      if vim -E -s -c 'quit' </dev/null >/dev/null 2>&1; then
+        log_verbose "Vim loads custom vimrc successfully"
+      else
+        printf "${YELLOW}WARNING: Vim may have issues loading custom vimrc${NC}\n" >&2
+      fi
+    fi
+  else
+    log_verbose "No custom vimrc installed, basic vim test complete"
+  fi
+)}
+
+# test_nvim_opens
+#
+# Test that neovim can start and exit without errors.
+# This is a basic smoke test to ensure nvim is functional.
+test_nvim_opens()
+{(
+  # Check if nvim is installed
+  if ! is_program_installed "nvim"; then
+    log_verbose "Skipping nvim test: nvim not installed"
+    return 0
+  fi
+
+  log_stage "Testing nvim startup"
+
+  # Test 1: Check nvim version (ensures binary works)
+  if ! nvim --version >/dev/null 2>&1; then
+    printf "${RED}ERROR: Cannot run nvim --version${NC}\n" >&2
+    return 1
+  fi
+
+  log_verbose "Nvim binary is functional"
+
+  # Test 2: Check if nvim config directory exists (supports various config layouts)
+  if [ -d "$HOME/.config/nvim" ]; then
+    log_verbose "Custom nvim config directory found"
+
+    # Test that nvim can start with the custom config in headless mode
+    if is_program_installed "timeout"; then
+      if timeout 5 nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1; then
+        log_verbose "Nvim loads custom config successfully"
+      else
+        printf "${YELLOW}WARNING: Nvim may have issues loading custom config${NC}\n" >&2
+      fi
+    else
+      # Fallback without timeout
+      if nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1; then
+        log_verbose "Nvim loads custom config successfully"
+      else
+        printf "${YELLOW}WARNING: Nvim may have issues loading custom config${NC}\n" >&2
+      fi
+    fi
+  else
+    log_verbose "No custom nvim config installed, basic nvim test complete"
+  fi
 )}

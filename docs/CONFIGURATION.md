@@ -73,7 +73,6 @@ exclude=windows
 **Example**:
 ```ini
 [desktop]
-extern/fonts/
 symlinks/config/xmonad/
 symlinks/Xresources
 
@@ -182,23 +181,6 @@ dunst.service
 [fonts]
 Noto Color Emoji
 Source Code Pro
-```
-
----
-
-### `submodules.ini`
-**Purpose**: Defines git submodules to initialize and update.
-
-**Format**: Sections represent categories; entries are submodule paths.
-
-**Example**:
-```ini
-[vim-plugins]
-symlinks/vim/pack/plugins/start/vim-fugitive
-symlinks/vim/pack/plugins/start/nerdtree
-
-[fonts]
-extern/fonts
 ```
 
 ---

@@ -46,10 +46,9 @@ test_psscriptanalyzer()
 
 # test_shellcheck
 #
-# Execute shellcheck across all shell scripts discovered in symlinks/
-# excluding any paths that reside within declared submodules (to avoid
-# flagging third-party code). Non-zero shellcheck exit is swallowed (|| true)
-# so the overall run continues; individual findings still surface.
+# Execute shellcheck across all shell scripts discovered in symlinks/ and
+# other directories. Non-zero shellcheck exit is swallowed (|| true) so the
+# overall run continues; individual findings still surface.
 test_shellcheck()
 {(
   # Check if shellcheck is installed
@@ -92,36 +91,6 @@ test_shellcheck()
       # shellcheck disable=SC2086  # Word splitting intentional: $scripts is space-separated list
       shellcheck $scripts || true
       return
-    fi
-
-    # Read submodules to exclude from checking
-    submodules=""
-    if [ -f "$DIR"/conf/submodules.ini ]; then
-      sections="$(grep -E '^\[.*\]$' "$DIR"/conf/submodules.ini | tr -d '[]')"
-      for section in $sections; do
-        # Read all submodules from this section and add to list
-        if read_ini_section "$DIR"/conf/submodules.ini "$section" >/dev/null 2>&1; then
-          read_ini_section "$DIR"/conf/submodules.ini "$section" | while IFS='' read -r submodule || [ -n "$submodule" ]; do
-            if [ -n "$submodule" ]; then
-              echo "$submodule"
-            fi
-          done
-        fi
-      done | {
-        # Build space-separated list from all submodules
-        sub_list=""
-        while IFS='' read -r submodule; do
-          sub_list="$sub_list $submodule"
-        done
-        # Trim leading space and output
-        echo "${sub_list# }"
-      } > "$DIR"/.submodules_tmp
-
-      # Read from temp file to avoid subshell scope issues
-      if [ -f "$DIR"/.submodules_tmp ]; then
-        submodules="$(cat "$DIR"/.submodules_tmp)"
-        rm -f "$DIR"/.submodules_tmp
-      fi
     fi
 
     # Iterate through symlinks.ini sections to find scripts
@@ -187,13 +156,5 @@ test_shellcheck()
       done
     done
 
-    # Read all collected scripts from temp file
-    scripts="$(cat "$scripts_tmp" | tr '\n' ' ')"
-    rm -f "$scripts_tmp"
-
-    log_verbose "Checking scripts: $scripts"
-    # Run shellcheck on all collected scripts, ignoring errors
-    # shellcheck disable=SC2086  # Word splitting intentional: $scripts is space-separated list
-    shellcheck $scripts || true
-  fi
-)}
+    # Read a# If is a shell script, add to the list
+            if

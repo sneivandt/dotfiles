@@ -2,7 +2,7 @@
 
 # Guard against multiple sourcing
 [ -n "$ZSHENV_LOADED" ] && return
-export ZSHENV_LOADED=1
+ZSHENV_LOADED=1
 
 # Global profile (optional)
 [ -f /etc/zsh/zprofile ] && . /etc/zsh/zprofile

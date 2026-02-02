@@ -1,5 +1,0 @@
-# Git submodules
-# Font installation for Windows (uses powerline/fonts)
-[submodule "extern/fonts"]
-	path = extern/fonts
-	url = https://github.com/powerline/fonts

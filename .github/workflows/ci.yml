@@ -14,8 +14,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Run configuration validation tests
         run: |
@@ -39,8 +37,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Install shellcheck
         run: |
@@ -89,8 +85,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Install vim, neovim, and zsh
         run: |
@@ -120,8 +114,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Test dry-run installation
         run: |
@@ -137,8 +129,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Test dry-run installation
         run: |
@@ -157,8 +147,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Test dry-run installation
         run: |
@@ -177,8 +165,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Run actual installation first
         run: |
@@ -198,8 +184,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Install PSScriptAnalyzer
         shell: pwsh
@@ -227,8 +211,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Run all profiles and extract symlinks
         run: |
@@ -251,8 +233,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Build Docker image
         run: docker build -t dotfiles-test .

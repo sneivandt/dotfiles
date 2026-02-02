@@ -59,7 +59,6 @@ require("lazy").setup({
   -- Neovim-specific plugins (only loaded in Neovim)
   {
     "nvim-tree/nvim-tree.lua",
-    dependencies = { "nvim-tree/nvim-web-devicons" },
     cond = function() return vim.fn.has("nvim") == 1 end,
     config = function()
       require("nvim-tree").setup({
@@ -72,10 +71,10 @@ require("lazy").setup({
         renderer = {
           icons = {
             show = {
-              file = true,
-              folder = true,
+              file = false,
+              folder = false,
               folder_arrow = true,
-              git = true,
+              git = false,
             },
           },
         },
@@ -88,22 +87,23 @@ require("lazy").setup({
 
   {
     "nvim-lualine/lualine.nvim",
-    dependencies = { "nvim-tree/nvim-web-devicons" },
     cond = function() return vim.fn.has("nvim") == 1 end,
     config = function()
       require("lualine").setup({
         options = {
-          theme = "auto",
-          component_separators = "",
-          section_separators = "",
+          theme = "tokyonight",
+          component_separators = { left = "|", right = "|" },
+          section_separators = { left = "", right = "" },
+          globalstatus = true,
+          icons_enabled = false,
         },
         sections = {
-          lualine_a = {"mode"},
-          lualine_b = {"branch", "diff"},
-          lualine_c = {"filename"},
-          lualine_x = {"encoding", "fileformat"},
-          lualine_y = {"filetype"},
-          lualine_z = {"location"}
+          lualine_a = { "mode" },
+          lualine_b = { "branch", "diff", "diagnostics" },
+          lualine_c = { { "filename", path = 1 } },
+          lualine_x = { "encoding", "fileformat" },
+          lualine_y = { "filetype" },
+          lualine_z = { "location" }
         },
         tabline = {
           lualine_a = {},
@@ -122,23 +122,139 @@ require("lazy").setup({
     cond = function() return vim.fn.has("nvim") == 1 end,
     build = ":TSUpdate",
     config = function()
-      require("nvim-treesitter").setup({
-        ensure_installed = {
-          "python", "javascript", "typescript", "lua", "vim",
-          "rust", "go", "c", "cpp", "java", "haskell", "bash"
-        },
-        highlight = {
-          enable = true,
-          additional_vim_regex_highlighting = false,
-        },
+      local ok, treesitter = pcall(require, "nvim-treesitter.configs")
+      if ok then
+        treesitter.setup({
+          ensure_installed = {
+            "python", "javascript", "typescript", "lua", "vim", "vimdoc",
+            "rust", "go", "c", "cpp", "java", "haskell", "bash",
+            "json", "yaml", "toml", "markdown", "markdown_inline"
+          },
+          highlight = {
+            enable = true,
+            additional_vim_regex_highlighting = false,
+          },
+          indent = {
+            enable = true,
+          },
+          incremental_selection = {
+            enable = true,
+            keymaps = {
+              init_selection = "<CR>",
+              scope_incremental = "<CR>",
+              node_incremental = "<TAB>",
+              node_decremental = "<S-TAB>",
+            },
+          },
+        })
+      end
+    end,
+  },
+
+  { "nvim-lua/plenary.nvim", cond = function() return vim.fn.has("nvim") == 1 end },
+
+  -- Modern indent guides
+  {
+    "lukas-reineke/indent-blankline.nvim",
+    main = "ibl",
+    cond = function() return vim.fn.has("nvim") == 1 end,
+    config = function()
+      require("ibl").setup({
         indent = {
-          enable = true,
+          char = "|",
+          tab_char = "|",
+        },
+        scope = {
+          enabled = true,
+          show_start = false,
+          show_end = false,
+        },
+        exclude = {
+          filetypes = {
+            "help",
+            "alpha",
+            "dashboard",
+            "neo-tree",
+            "Trouble",
+            "lazy",
+            "mason",
+            "notify",
+            "toggleterm",
+            "lazyterm",
+          },
         },
       })
     end,
   },
 
-  { "nvim-lua/plenary.nvim", cond = function() return vim.fn.has("nvim") == 1 end },
+  -- Git integration with inline blame and signs
+  {
+    "lewis6991/gitsigns.nvim",
+    cond = function() return vim.fn.has("nvim") == 1 end,
+    config = function()
+      require("gitsigns").setup({
+        signs = {
+          add          = { text = "+" },
+          change       = { text = "~" },
+          delete       = { text = "_" },
+          topdelete    = { text = "-" },
+          changedelete = { text = "~" },
+          untracked    = { text = "|" },
+        },
+        signcolumn = true,
+        numhl = false,
+        linehl = false,
+        word_diff = false,
+        watch_gitdir = {
+          interval = 1000,
+          follow_files = true
+        },
+        current_line_blame = false,
+        current_line_blame_opts = {
+          virt_text = true,
+          virt_text_pos = "eol",
+          delay = 1000,
+        },
+        on_attach = function(bufnr)
+          local gs = package.loaded.gitsigns
+
+          local function map(mode, l, r, opts)
+            opts = opts or {}
+            opts.buffer = bufnr
+            vim.keymap.set(mode, l, r, opts)
+          end
+
+          -- Navigation
+          map("n", "]c", function()
+            if vim.wo.diff then return "]c" end
+            vim.schedule(function() gs.next_hunk() end)
+            return "<Ignore>"
+          end, {expr = true})
+
+          map("n", "[c", function()
+            if vim.wo.diff then return "[c" end
+            vim.schedule(function() gs.prev_hunk() end)
+            return "<Ignore>"
+          end, {expr = true})
+
+          -- Actions
+          map("n", "<leader>hs", gs.stage_hunk)
+          map("n", "<leader>hr", gs.reset_hunk)
+          map("v", "<leader>hs", function() gs.stage_hunk {vim.fn.line("."), vim.fn.line("v")} end)
+          map("v", "<leader>hr", function() gs.reset_hunk {vim.fn.line("."), vim.fn.line("v")} end)
+          map("n", "<leader>hS", gs.stage_buffer)
+          map("n", "<leader>hu", gs.undo_stage_hunk)
+          map("n", "<leader>hR", gs.reset_buffer)
+          map("n", "<leader>hp", gs.preview_hunk)
+          map("n", "<leader>hb", function() gs.blame_line{full=true} end)
+          map("n", "<leader>tb", gs.toggle_current_line_blame)
+          map("n", "<leader>hd", gs.diffthis)
+          map("n", "<leader>hD", function() gs.diffthis("~") end)
+          map("n", "<leader>td", gs.toggle_deleted)
+        end
+      })
+    end,
+  },
 }, {
   -- Lazy.nvim configuration options
   defaults = {

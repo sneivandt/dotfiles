@@ -77,7 +77,11 @@ function Install-VsCodeExtensions
                 else
                 {
                     Write-Verbose "Installing extension: $extension"
-                    & $code --install-extension $extension
+                    $output = & $code --install-extension $extension 2>&1
+                    if ($LASTEXITCODE -ne 0)
+                    {
+                        Write-Warning "Failed to install extension $extension for $code`: $output"
+                    }
                 }
             }
             else

@@ -1,2 +1,5 @@
-# No git submodules - plugins are managed by lazy.nvim for Neovim
-# Vim (non-Neovim) runs without plugins
+# Git submodules
+# Font installation for Windows (uses powerline/fonts)
+[submodule "extern/fonts"]
+	path = extern/fonts
+	url = https://github.com/powerline/fonts

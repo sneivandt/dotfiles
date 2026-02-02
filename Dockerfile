@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM ubuntu:22.04
+FROM ubuntu:latest
 
 LABEL org.opencontainers.image.title="dotfiles" \
       org.opencontainers.image.description="Cross-platform dotfiles for Linux/Arch/Windows" \

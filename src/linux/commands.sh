@@ -17,8 +17,6 @@ set -o nounset
 #
 # Ordering Rationale:
 #   * update_dotfiles occurs first to ensure latest task definitions.
-#   * git submodules (install/update) precede operations relying on their
-#     presence (e.g., symlink creation referencing submodule content).
 #   * install_* steps proceed before configure_* to guarantee prerequisites.
 #
 # Idempotency: Underlying tasks short‑circuit when no work is necessary; this

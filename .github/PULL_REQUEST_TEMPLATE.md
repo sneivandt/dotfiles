@@ -37,7 +37,6 @@
 - [ ] Updated `conf/packages.ini`
 - [ ] Updated `conf/symlinks.ini`
 - [ ] Updated `conf/units.ini`
-- [ ] Updated `conf/submodules.ini`
 - [ ] Updated `conf/manifest.ini`
 - [ ] Updated `conf/profiles.ini`
 - [ ] Other: <!-- specify -->

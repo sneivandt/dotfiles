@@ -4,8 +4,8 @@
 " Terminal navigation
 augroup NeovimTerminal
   autocmd!
-  autocmd BufWinEnter,WinEnter term://* startinsert
-  autocmd BufLeave term://* stopinsert
+  autocmd BufWinEnter,WinEnter term:* startinsert
+  autocmd BufLeave term:* stopinsert
 augroup END
 
 tnoremap <esc> <C-\><C-n><C-w><C-p>
@@ -21,103 +21,8 @@ noremap <leader>t :terminal<cr>
 " Plugin loading: lazy.nvim for Neovim
 lua << EOF
   -- Bootstrap and configure lazy.nvim
-  pcall(function()
-    require('lazy-bootstrap')
-  end)
-EOF
-
-" Lua configuration for Neovim plugins
-lua << EOF
--- Helper to check if a module exists
-local function module_exists(name)
-  if package.loaded[name] then
-    return true
-  else
-    for _, searcher in ipairs(package.searchers or package.loaders) do
-      local loader = searcher(name)
-      if type(loader) == 'function' then
-        package.preload[name] = loader
-        return true
-      end
-    end
-    return false
-  end
-end
-
--- Setup nvim-tree (modern file explorer) if available
-if module_exists('nvim-tree') then
-  pcall(function()
-    require('nvim-tree').setup({
-      disable_netrw = true,
-      hijack_netrw = true,
-      view = {
-        width = 30,
-        side = 'right',
-      },
-      renderer = {
-        icons = {
-          show = {
-            file = true,
-            folder = true,
-            folder_arrow = true,
-            git = true,
-          },
-        },
-      },
-      filters = {
-        dotfiles = false,
-      },
-    })
-  end)
-end
-
--- Setup lualine (modern statusline) if available
-if module_exists('lualine') then
-  pcall(function()
-    require('lualine').setup({
-      options = {
-        theme = 'auto',
-        component_separators = '',
-        section_separators = '',
-      },
-      sections = {
-        lualine_a = {'mode'},
-        lualine_b = {'branch', 'diff'},
-        lualine_c = {'filename'},
-        lualine_x = {'encoding', 'fileformat'},
-        lualine_y = {'filetype'},
-        lualine_z = {'location'}
-      },
-      tabline = {
-        lualine_a = {},
-        lualine_b = {},
-        lualine_c = { { 'tabs', mode = 1, max_length = vim.o.columns } },
-        lualine_x = {},
-        lualine_y = {},
-        lualine_z = {}
-      },
-    })
-  end)
-end
-
--- Setup treesitter for better syntax highlighting if available
-if module_exists('nvim-treesitter.configs') then
-  pcall(function()
-    require('nvim-treesitter.configs').setup({
-      ensure_installed = {
-        'python', 'javascript', 'typescript', 'lua', 'vim',
-        'rust', 'go', 'c', 'cpp', 'java', 'haskell', 'bash'
-      },
-      highlight = {
-        enable = true,
-        additional_vim_regex_highlighting = false,
-      },
-      indent = {
-        enable = true,
-      },
-    })
-  end)
-end
+  -- All plugin configurations are in lua/lazy-bootstrap.lua
+  require('lazy-bootstrap')
 EOF
 
 " Key mappings for Neovim plugins

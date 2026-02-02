@@ -5,12 +5,12 @@ setopt PROMPT_SUBST
 # Performance: Cache static values that don't change during session
 typeset -g _ZSH_PROMPT_HOST=""
 if [ -n "$SSH_CONNECTION" ] || [ -e /.dockerenv ]; then
-  _ZSH_PROMPT_HOST="%{$fg[cyan]%}%m%{$reset_color%} "
+  _ZSH_PROMPT_HOST="%F{cyan}%m%f "
 fi
 
 typeset -g _ZSH_PROMPT_SHELL=""
 if [ "$(command -vp zsh)" != "$SHELL" ]; then
-  _ZSH_PROMPT_SHELL="%{$fg[cyan]%}zsh%{$reset_color%} "
+  _ZSH_PROMPT_SHELL="%F{cyan}zsh%f "
 fi
 
 # Fast git prompt info
@@ -24,11 +24,11 @@ git_prompt_info()
   local current_branch
   current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
   if [ -n "$current_branch" ]; then
-    echo -n " %{$fg[white]%}${current_branch}%{$reset_color%}"
+    echo -n " %F{white}${current_branch}%f"
     # Performance: Use --porcelain=v1 and --untracked-files=no for speed
     local changes=$(git --no-optional-locks status --porcelain=v1 --untracked-files=no 2>/dev/null | wc -l)
     if [ "${changes:-0}" -gt 0 ]; then
-      echo -n "%{$fg[red]%}+${changes// /}%{$reset_color%}"
+      echo -n "%F{red}+${changes// /}%f"
     fi
   fi
 }
@@ -38,13 +38,13 @@ sudo_active()
 {
   # Performance: Use sudo -n true instead of uptime
   if sudo -n true 2>/dev/null; then
-    echo -n " %{$fg[cyan]%}!%{$reset_color%}"
+    echo -n " %F{cyan}!%f"
   fi
 }
 
 prompt_cmd()
 {
-  echo -n "%{$reset_color%}${_ZSH_PROMPT_HOST}${_ZSH_PROMPT_SHELL}%{$fg[yellow]%}%~%{$reset_color%}$(git_prompt_info)$(sudo_active)%{$reset_color%}"
+  echo -n "%f${_ZSH_PROMPT_HOST}${_ZSH_PROMPT_SHELL}%F{yellow}%~%f$(git_prompt_info)$(sudo_active)%f"
 }
 
 PROMPT='$(prompt_cmd)

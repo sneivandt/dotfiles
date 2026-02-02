@@ -61,16 +61,6 @@ The installation scripts in this repository execute with user privileges and per
    - Existing configurations are not backed up (by design)
    - Commit important files before running
 
-### Supply Chain Security
-
-This repository uses git submodules:
-- `extern/fonts` - powerline/fonts repository
-
-**Recommendations**:
-- Review submodule sources before initializing
-- Verify submodule commit hashes
-- Update submodules regularly for security patches
-
 ### Windows-Specific Considerations
 
 Windows scripts require elevation for:
@@ -107,7 +97,7 @@ Linux scripts may use `sudo` for:
 
 1. **Audit**: Review created symlinks and installed packages
 2. **Monitor**: Watch for unexpected system behavior
-3. **Update**: Keep the repository and submodules updated
+3. **Update**: Keep the repository updated
 4. **Report**: Report any security issues found
 
 ### For Public Repositories

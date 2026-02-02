@@ -32,7 +32,9 @@
         "zprofile": "shellscript",
         "zshenv": "shellscript",
         "zshrc": "shellscript",
-        "xinitrc": "shellscript"
+        "xinitrc": "shellscript",
+        "nvimrc": "lua",
+        "vimrc": "lua"
     },
     // Formatting - enforce no trailing whitespace (critical for this repo)
     "files.trimTrailingWhitespace": true,

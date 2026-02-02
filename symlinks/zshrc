@@ -2,7 +2,7 @@
 
 # Guard against multiple sourcing
 [ -n "$ZSHRC_LOADED" ] && return
-export ZSHRC_LOADED=1
+ZSHRC_LOADED=1
 
 # Quiet
 setopt no_beep
@@ -12,10 +12,6 @@ set bell-style none
 # Word Style
 autoload -Uz select-word-style
 select-word-style bash
-
-# Colors
-autoload -Uz colors
-colors
 
 # History
 setopt histignorealldups

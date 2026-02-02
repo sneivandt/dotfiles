@@ -26,7 +26,6 @@ All configuration files use standard INI format with section headers:
 - **`units.ini`**: Systemd user units organized by category sections
 - **`chmod.ini`**: File permissions organized by category sections
 - **`fonts.ini`**: Font families to check/install
-- **`submodules.ini`**: Git submodules organized by category
 - **`vscode-extensions.ini`**: VS Code extensions in `[extensions]` section
 - **`registry.ini`**: Windows registry settings with registry paths as sections
 
@@ -46,12 +45,7 @@ The source directory for all dotfiles to be symlinked. Files here are filtered b
 - **`Profile.psm1`**: Profile filtering and INI parsing utilities
 - **`Symlinks.psm1`**: Windows symlink installation
 - **`Registry.psm1`**: Registry configuration
-- **`Font.psm1`**: Font installation
-- **`Git.psm1`**: Git submodule management
 - **`VsCodeExtensions.psm1`**: VS Code extension installation
-
-### `extern/` - External Dependencies
-Git submodules (e.g., powerline fonts) that are initialized based on configuration.
 
 ## Profile System
 Profiles control which files are checked out and which configuration sections are processed. This allows a single repository to support multiple environments (Linux headless, Linux desktop, Windows) while only checking out relevant files.

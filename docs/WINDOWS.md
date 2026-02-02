@@ -1,10 +1,10 @@
 # Windows Usage
 
-Opinionated Windows automation layer for this dotfiles project. The PowerShell entrypoint wires together registry personalization, fonts, symlinks, and VS Code extensions in an idempotent fashion with profile-based filtering.
+Opinionated Windows automation layer for this dotfiles project. The PowerShell entrypoint wires together registry personalization, symlinks, and VS Code extensions in an idempotent fashion with profile-based filtering.
 
 ## Quick Start
 
-Open an elevated PowerShell (most tasks require admin to write HKCU console keys, install fonts, and create symlinks in some protected locations) then run:
+Open an elevated PowerShell (most tasks require admin to write HKCU console keys and create symlinks in some protected locations) then run:
 
 ```powershell
 git clone https://github.com/sneivandt/dotfiles.git
@@ -12,7 +12,7 @@ cd dotfiles
 ./dotfiles.ps1
 ```
 
-Re‑run the script at any time; operations are skipped when already satisfied (fonts present, extensions installed, registry values unchanged, symlinks existing).
+Re‑run the script at any time; operations are skipped when already satisfied (extensions installed, registry values unchanged, symlinks existing).
 
 ## What the Script Does
 
@@ -20,11 +20,9 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 
 | Step | Module | Function | Description | Idempotency Cue |
 |------|--------|----------|-------------|-----------------|
-| 1 | `Git.psm1` | `Update-GitSubmodules` | Initializes / updates all tracked submodules (fonts, vim plugins). | Only runs `git submodule update` if status indicates drift (`+` / `-`). |
-| 2 | `Registry.psm1` | `Sync-Registry` | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
-| 3 | `Font.psm1` | `Install-Fonts` | Installs fonts listed in `conf/fonts.ini`. | Skips if font already exists in system or per-user font directory. |
-| 4 | `Symlinks.psm1` | `Install-Symlinks` | Creates Windows user profile symlinks from `conf/symlinks.ini` filtered by profile. | Only creates links whose targets do not already exist. |
-| 5 | `VsCodeExtensions.psm1` | `Install-VsCodeExtensions` | Ensures VS Code extensions listed in `conf/vscode-extensions.ini` are installed. | Checks against `code --list-extensions`. |
+| 1 | `Registry.psm1` | `Sync-Registry` | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
+| 2 | `Symlinks.psm1` | `Install-Symlinks` | Creates Windows user profile symlinks from `conf/symlinks.ini` filtered by profile. | Only creates links whose targets do not already exist. |
+| 3 | `VsCodeExtensions.psm1` | `Install-VsCodeExtensions` | Ensures VS Code extensions listed in `conf/vscode-extensions.ini` are installed. | Checks against `code --list-extensions`. |
 
 ## Registry Customization
 
@@ -86,10 +84,6 @@ To add a new link:
 
 The file `conf/vscode-extensions.ini` contains extensions in the `[extensions]` section. Remove a line and re-run to keep new installs from occurring (does not uninstall). Add lines to expand your standard environment. The script requires the `code` CLI on PATH (Enable via VS Code: Command Palette → Shell Command: Install 'code' command in PATH).
 
-## Fonts
-
-Font installation delegates to `extern/fonts/install.ps1` (a git submodule from powerline/fonts repository). Fonts are configured in `conf/fonts.ini` in the `[fonts]` section. The submodule is automatically updated when running `./dotfiles.ps1`.
-
 ## Updating
 
 Pull latest changes then re-run:
@@ -99,8 +93,6 @@ git pull
 ./dotfiles.ps1
 ```
 
-All submodules are checked and updated automatically when the script runs.
-
 ## Troubleshooting
 
 | Symptom | Check |
@@ -108,7 +100,6 @@ All submodules are checked and updated automatically when the script runs.
 | No output / nothing changes | Ensure you are running an elevated PowerShell session. |
 | Symlink not created | Entry present in `conf/symlinks.ini` under `[windows]` section? Does source file exist in `symlinks/`? Does a real file already exist at target path (preventing link)? |
 | Registry values unchanged | Verify keys under `HKCU:\Console` – did policy or another tool override them? Run as admin. |
-| Font not applied in terminal | Confirm the terminal profile is set to the installed font manually (script installs, but doesn't change terminal profile). |
 | VS Code extensions not installing | `code` CLI available? Run `code --version` in the same session. |
 
 ## Safety & Idempotency Notes

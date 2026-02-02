@@ -162,7 +162,6 @@ Example - switching profiles:
 | `units.ini` | Systemd user units to enable, organized by profile sections |
 | `chmod.ini` | Post-install permission adjustments, organized by profile sections |
 | `fonts.ini` | Font families to check/install (single `[fonts]` section, not profile-filtered) |
-| `submodules.ini` | Git submodules to initialize |
 | `vscode-extensions.ini` | VS Code extensions to install |
 | `registry.ini` | **Windows-only**: Registry paths as sections with `key = value` format (no profile filtering) |
 | `manifest.ini` | Maps files to categories for sparse checkout exclusion |

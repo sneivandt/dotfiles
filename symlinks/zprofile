@@ -2,7 +2,7 @@
 
 # Guard against multiple sourcing
 [ -n "$ZPROFILE_LOADED" ] && return
-export ZPROFILE_LOADED=1
+ZPROFILE_LOADED=1
 
 # Start X Windows on tty1 if not already running
 [ -z "$DISPLAY" ] && [ "$XDG_VTNR" -eq 1 ] && exec startx

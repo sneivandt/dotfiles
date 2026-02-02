@@ -81,18 +81,49 @@ do
   . "$plugin"
 done
 
-# Arch Linux System Plugins
-for plugin in \
-  /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh \
-  /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh \
-  /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh \
-  /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh \
-  /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh \
-  /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-do
-  if [ -f "$plugin" ]; then
-    . "$plugin"
-  fi
+# Performance: Cache system plugin paths to avoid repeated filesystem checks
+# Only search for plugins if cache is stale (older than 24 hours)
+typeset -g _ZSH_PLUGIN_CACHE="${HOME}/.cache/zsh/system-plugins.cache"
+typeset -g _ZSH_PLUGIN_LIST=()
+
+# Check cache freshness
+# (#qNmh-24) = glob qualifier: quiet, no error if missing, modified less than 24 hours ago
+if [[ -f "$_ZSH_PLUGIN_CACHE" && -n ${_ZSH_PLUGIN_CACHE}(#qNmh-24) ]]; then
+  # Cache is fresh, load from cache
+  source "$_ZSH_PLUGIN_CACHE"
+else
+  # Build cache
+  typeset -ga _ZSH_PLUGIN_CANDIDATES=(
+    /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+    /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+    /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+    /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+    /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+    /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+  )
+
+  _ZSH_PLUGIN_LIST=()
+  for plugin in "${_ZSH_PLUGIN_CANDIDATES[@]}"; do
+    if [[ -f "$plugin" ]]; then
+      _ZSH_PLUGIN_LIST+=("$plugin")
+    fi
+  done
+
+  # Save cache atomically to avoid partial writes
+  cache_dir="${_ZSH_PLUGIN_CACHE%/*}"
+  mkdir -p "$cache_dir"
+  tmp_cache="$(mktemp "${_ZSH_PLUGIN_CACHE}.XXXXXX")" || return 1
+  echo "typeset -ga _ZSH_PLUGIN_LIST=(" > "$tmp_cache"
+  for plugin in "${_ZSH_PLUGIN_LIST[@]}"; do
+    echo "  \"$plugin\"" >> "$tmp_cache"
+  done
+  echo ")" >> "$tmp_cache"
+  mv "$tmp_cache" "$_ZSH_PLUGIN_CACHE"
+fi
+
+# Load cached plugins
+for plugin in "${_ZSH_PLUGIN_LIST[@]}"; do
+  source "$plugin"
 done
 
 # zoxide

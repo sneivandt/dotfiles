@@ -28,8 +28,6 @@ function Prompt
     param (
     )
 
-    $timer = [Diagnostics.Stopwatch]::StartNew()
-
     $origLastExitCode = $LASTEXITCODE
 
     $Host.UI.RawUI.ForegroundColor = "White"
@@ -50,6 +48,7 @@ function Prompt
 
     if ($Global:GitExists)
     {
+        # Performance: Use --porcelain=v1 and --untracked-files=no for faster git status
         $status = @(git --no-optional-locks status --short --branch --porcelain=v1 --untracked-files=no 2> $null)
 
         if ($status.Count -gt 0)
@@ -72,8 +71,7 @@ function Prompt
         }
     }
 
-    $elapsedTime = $timer.ElapsedMilliseconds
-    Write-Host " $elapsedTime ms" -ForegroundColor Green
+    Write-Host ""
 
     if ($env:username -eq "root")
     {

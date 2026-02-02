@@ -4,18 +4,26 @@ fpath=(~/.config/zsh/completions $fpath)
 
 autoload -Uz compinit
 
-setopt EXTENDEDGLOB
-for dump in $ZSH_COMPDUMP(#qN.m1)
-do
-  compinit
-  if [ -s "$dump" ] && (! -s "$dump.zwc" || "$dump" -nt "$dump.zwc")
-  then
-    zcompile "$dump"
+# Performance: Only regenerate compdump once per day
+# This significantly speeds up shell startup
+typeset -g ZSH_COMPDUMP="${ZSH_COMPDUMP:-${HOME}/.cache/zsh/zcompdump-${ZSH_VERSION}}"
+
+# Ensure cache directory exists (extract directory from ZSH_COMPDUMP path)
+mkdir -p "${ZSH_COMPDUMP:h}"
+
+# Check if compdump needs regeneration (once per 24 hours)
+# (#qNmh-24) = glob qualifier: quiet, no error if missing, modified less than 24 hours ago
+if [[ -n ${ZSH_COMPDUMP}(#qNmh-24) ]]; then
+  # Dump file is recent, use fast mode
+  compinit -C -d "$ZSH_COMPDUMP"
+else
+  # Regenerate dump file
+  compinit -d "$ZSH_COMPDUMP"
+  # Compile zsh compdump for faster loading
+  if [[ ! -f "${ZSH_COMPDUMP}.zwc" || "${ZSH_COMPDUMP}" -nt "${ZSH_COMPDUMP}.zwc" ]]; then
+    zcompile "$ZSH_COMPDUMP"
   fi
-done
-unsetopt EXTENDEDGLOB
-mkdir -p ~/.cache/zsh
-compinit -C -d ~/.cache/zsh/zcompdump-$ZSH_VERSION
+fi
 
 setopt always_to_end
 setopt auto_menu

@@ -10,7 +10,8 @@ filetype plugin indent on
 " Plugins ----------------------------------------------------------------- {{{
 
 " Native package manager is used (vim 8+)
-" Plugins are in pack/plugins/start/
+" Plugins are in pack/plugins/start/ for auto-load
+" Neovim-specific plugins are in pack/plugins/opt/ and loaded in nvimrc
 
 " }}}
 " Options------------------------------------------------------------------ {{{
@@ -29,7 +30,9 @@ set hidden
 set hlsearch
 set ignorecase
 set incsearch
-set inccommand=split
+if has('nvim')
+  set inccommand=split
+endif
 set laststatus=2
 set lazyredraw
 set list
@@ -71,6 +74,8 @@ syntax on
 set t_Co=256
 set t_ut=
 
+" Try modern colorschemes in order of preference
+" jellybeans (classic), tokyonight (modern), gruvbox (warm), default (fallback)
 try
   colorscheme jellybeans
 
@@ -78,14 +83,23 @@ try
   highlight SpecialKey ctermbg=233
   highlight Search ctermfg=yellow
 catch
-  colorscheme default
+  try
+    colorscheme tokyonight-night
+  catch
+    try
+      colorscheme gruvbox
+      set background=dark
+    catch
+      colorscheme default
+    endtry
+  endtry
 endtry
 
 " }}}
 " Wildignore {{{
 
 set wildignore+=*.bmp
-set wildignore+=*.ddl
+set wildignore+=*.dll
 set wildignore+=*.exe
 set wildignore+=*.gif
 set wildignore+=*.jpeg
@@ -116,10 +130,7 @@ autocmd VimResized * :wincmd =
 autocmd FileType qf :wincmd J
 
 " Close vim if a quickfix window is the only remaining buffer
-autocmd WinEnter *
-  \   if winnr('$') == 1 && getbufvar(winbufnr(winnr()), '&buftype') == 'quickfix'
-  \|    q
-  \|  endif
+autocmd WinEnter * if winnr('$') == 1 && getbufvar(winbufnr(winnr()), '&buftype') == 'quickfix' | q | endif
 
 " }}}
 
@@ -175,8 +186,8 @@ noremap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><l
 " Jump to matching element
 nmap <tab> %
 
-" <C-h> fix
-nmap <BS> <C-W>h
+" <C-h> fix (non-recursive for safety)
+nnoremap <BS> <C-W>h
 
 " }}}
 " Folding ----------------------------------------------------------------- {{{
@@ -215,7 +226,7 @@ autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
 " Listchars
 autocmd Filetype go set nolist
 
-" Ignore go version warning
+" Disable go version warning
 let g:go_version_warning=0
 
 " }}}
@@ -278,8 +289,7 @@ let g:airline#extensions#tabline#fnamemod=':t'
 
 let g:airline#extensions#whitespace#enabled=0
 
-let g:tmuxline_separators={ 'left': '', 'left_alt': '', 'right': '', 'right_alt': '', 'space': ' ' }
-
+" Fast escape in insert mode (not in GUI)
 if ! has('gui_running')
   set ttimeoutlen=10
   augroup FastEscape
@@ -290,15 +300,38 @@ if ! has('gui_running')
 endif
 
 " }}}
-" Ctrl-P {{{
+" FZF {{{
 
-let g:ctrlp_map='<c-p>'
-let g:ctrlp_cmd='CtrlP'
-let g:ctrlp_switch_buffer='e'
-let g:ctrlp_working_path_mode='a'
-let g:ctrlp_show_hidden=1
+" Use fzf for fuzzy finding (replaces ctrlp)
+let g:fzf_command_prefix = 'Fzf'
 
-nnoremap <leader>. :CtrlPTag<cr>
+" Key mappings
+nnoremap <c-p> :FzfFiles<cr>
+nnoremap <leader>. :FzfTags<cr>
+nnoremap <leader>b :FzfBuffers<cr>
+nnoremap <leader>/ :FzfRg<cr>
+
+" Use ripgrep if available for faster searching
+if executable('rg')
+  let $FZF_DEFAULT_COMMAND = 'rg --files --hidden --follow --glob "!.git/*"'
+endif
+
+" Customize fzf colors to match vim colorscheme
+let g:fzf_colors = {
+      \ 'fg':      ['fg', 'Normal'],
+      \ 'bg':      ['bg', 'Normal'],
+      \ 'hl':      ['fg', 'Comment'],
+      \ 'fg+':     ['fg', 'CursorLine', 'CursorColumn', 'Normal'],
+      \ 'bg+':     ['bg', 'CursorLine', 'CursorColumn'],
+      \ 'hl+':     ['fg', 'Statement'],
+      \ 'info':    ['fg', 'PreProc'],
+      \ 'border':  ['fg', 'Ignore'],
+      \ 'prompt':  ['fg', 'Conditional'],
+      \ 'pointer': ['fg', 'Exception'],
+      \ 'marker':  ['fg', 'Keyword'],
+      \ 'spinner': ['fg', 'Label'],
+      \ 'header':  ['fg', 'Comment']
+      \ }
 
 " }}}
 " Dispatch {{{
@@ -326,7 +359,8 @@ noremap <silent><c-e> :NERDTreeToggle<cr>:wincmd =<cr>
 " Auto close vim if Nerd tree is the only remaining buffer
 function! CloseIfOnlyNerdTreeLeft() " {{{
   if exists('t:NERDTreeBufName')
-    if bufwinnr(t:NERDTreeBufName) != -1
+    let nerdtree_bufnr = bufnr(t:NERDTreeBufName)
+    if nerdtree_bufnr != -1 && !empty(win_findbuf(nerdtree_bufnr))
       if winnr('$') == 1
         q
       endif
@@ -336,18 +370,10 @@ endfunction " }}}
 autocmd WinEnter * call CloseIfOnlyNerdTreeLeft()
 
 " }}}
-" Python syntax {{{
-
-let g:python_highlight_builtin_funcs=1
-let g:python_highlight_builtin_objs=1
-let g:python_highlight_exceptions=1
-let g:python_highlight_file_headers_as_comments=1
-
-" }}}
 " Vim-go {{{
 
-" Disable autoinstall plugins
-let g:go_disable_autoinstall=0
+" Auto-install Go tools when needed
+let g:go_install_all_tools=1
 
 " Disable autocreate templates
 let g:go_template_autocreate=0

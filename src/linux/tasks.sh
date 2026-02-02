@@ -409,9 +409,14 @@ install_git_submodules()
       return
     fi
 
+    # Initialize submodules first to register them with git from .gitmodules
+    # This ensures git recognizes all modules even if they were manually added to .gitmodules
+    # shellcheck disable=SC2086  # Word splitting intentional: $modules is space-separated list
+    git -C "$DIR" submodule init $modules >/dev/null 2>&1 || true
+
     # Check for uninitialized (-) or modified (+) submodules
     # shellcheck disable=SC2086  # Word splitting intentional: $modules is space-separated list
-    if git -C "$DIR" submodule status $modules | cut -c-1 | grep -q "[+-]"; then
+    if git -C "$DIR" submodule status $modules 2>/dev/null | cut -c-1 | grep -q "[+-]"; then
       log_stage "Installing git submodules"
       if is_dry_run; then
         log_dry_run "Would update submodules: $modules"
@@ -853,9 +858,14 @@ update_git_submodules()
       return
     fi
 
+    # Initialize submodules first to register them with git from .gitmodules
+    # This ensures git recognizes all modules even if they were manually added to .gitmodules
+    # shellcheck disable=SC2086  # Word splitting intentional: $modules is space-separated list
+    git -C "$DIR" submodule init $modules >/dev/null 2>&1 || true
+
     # Ensure submodules are in a clean state (no + or - status)
     # shellcheck disable=SC2086  # Word splitting intentional: $modules is space-separated list
-    if [ -z "$(git -C "$DIR" submodule status $modules | cut -c1 | tr -d ' ')" ]; then
+    if [ -z "$(git -C "$DIR" submodule status $modules 2>/dev/null | cut -c1 | tr -d ' ')" ]; then
       # Check for updates from remote
       # shellcheck disable=SC2086  # Word splitting intentional: $modules is space-separated list
       updates="$(git -C "$DIR" submodule update --init --recursive --remote --dry-run $modules 2>/dev/null)" || updates=""

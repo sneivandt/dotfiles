@@ -1,13 +1,140 @@
+" Neovim-specific configuration
+" This file is sourced after the main vimrc
+
 " System clipboard
 set clipboard+=unnamedplus
 
-" Enter/Exit terminal
+" Terminal navigation
 tnoremap <esc> <C-\><C-n><C-w><C-p>
 autocmd BufWinEnter,WinEnter term://* startinsert
 autocmd BufLeave term://* stopinsert
 
-" <C-h> fix
-nmap <bs> :<c-u>TmuxNavigateLeft<cr>
+" <C-h> fix for tmux-navigator
+" Neovim terminal mode requires this specific mapping for proper tmux integration
+" Overrides the simpler mapping in vimrc (line 193: nnoremap <BS> <C-W>h)
+nnoremap <bs> :<c-u>TmuxNavigateLeft<cr>
 
 " Open terminal
 noremap <leader>t :terminal<cr>
+
+" Load Neovim-specific plugins from opt/ if they exist
+" These are optional Lua plugins not loaded in Vim
+if has('nvim') && exists(':packadd')
+  " Silently try to load optional Neovim plugins
+  silent! packadd nvim-web-devicons
+  silent! packadd nvim-tree.lua
+  silent! packadd lualine.nvim
+  silent! packadd plenary.nvim
+  silent! packadd nvim-treesitter
+endif
+
+" Lua configuration for Neovim plugins (only if available)
+if has('nvim')
+lua << EOF
+-- Helper to check if a module exists
+local function module_exists(name)
+  if package.loaded[name] then
+    return true
+  else
+    for _, searcher in ipairs(package.searchers or package.loaders) do
+      local loader = searcher(name)
+      if type(loader) == 'function' then
+        package.preload[name] = loader
+        return true
+      end
+    end
+    return false
+  end
+end
+
+-- Setup nvim-tree (modern file explorer) if available
+if module_exists('nvim-tree') then
+  pcall(function()
+    require('nvim-tree').setup({
+      disable_netrw = true,
+      hijack_netrw = true,
+      view = {
+        width = 30,
+        side = 'right',
+      },
+      renderer = {
+        icons = {
+          show = {
+            file = true,
+            folder = true,
+            folder_arrow = true,
+            git = true,
+          },
+        },
+      },
+      filters = {
+        dotfiles = false,
+      },
+    })
+  end)
+end
+
+-- Setup lualine (modern statusline) if available
+if module_exists('lualine') then
+  pcall(function()
+    require('lualine').setup({
+      options = {
+        theme = 'auto',
+        component_separators = '',
+        section_separators = '',
+      },
+      sections = {
+        lualine_a = {'mode'},
+        lualine_b = {'branch', 'diff'},
+        lualine_c = {'filename'},
+        lualine_x = {'encoding', 'fileformat'},
+        lualine_y = {'filetype'},
+        lualine_z = {'location'}
+      },
+      tabline = {
+        lualine_a = {},
+        lualine_b = {},
+        lualine_c = { { 'tabs', mode = 1, max_length = vim.o.columns } },
+        lualine_x = {},
+        lualine_y = {},
+        lualine_z = {}
+      },
+    })
+  end)
+end
+
+-- Setup treesitter for better syntax highlighting if available
+if module_exists('nvim-treesitter.configs') then
+  pcall(function()
+    require('nvim-treesitter.configs').setup({
+      ensure_installed = {
+        'python', 'javascript', 'typescript', 'lua', 'vim',
+        'rust', 'go', 'c', 'cpp', 'java', 'haskell', 'bash'
+      },
+      highlight = {
+        enable = true,
+        additional_vim_regex_highlighting = false,
+      },
+      indent = {
+        enable = true,
+      },
+    })
+  end)
+end
+EOF
+endif
+
+" Key mappings for Neovim plugins (only if plugins are available)
+if has('nvim')
+  " Only map NvimTreeToggle if nvim-tree is available
+  if exists(':NvimTreeToggle')
+    nnoremap <silent><c-e> :NvimTreeToggle<cr>
+  endif
+
+  " Disable vim-airline in Neovim if lualine is available (fallback to airline otherwise)
+  lua << EOF
+    if package.loaded['lualine'] or pcall(require, 'lualine') then
+      vim.g.loaded_airline = 1
+    end
+EOF
+endif

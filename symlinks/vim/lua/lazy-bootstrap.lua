@@ -130,23 +130,6 @@ require("lazy").setup({
   },
 
   { "nvim-lua/plenary.nvim", cond = function() return vim.fn.has("nvim") == 1 end },
-
-  -- Fallback statusline for vim (not neovim)
-  {
-    "vim-airline/vim-airline",
-    dependencies = { "vim-airline/vim-airline-themes" },
-    cond = function()
-      return vim.fn.has("nvim") == 0
-    end,
-  },
-
-  -- NERDTree for vim (not neovim, which uses nvim-tree)
-  {
-    "scrooloose/nerdtree",
-    cond = function()
-      return vim.fn.has("nvim") == 0
-    end,
-  },
 }, {
   -- Lazy.nvim configuration options
   defaults = {

@@ -198,17 +198,27 @@ Windows supports profile-based configuration. The default profile is `windows`.
 
 Usage pattern (PowerShell, elevated as required):
 ```powershell
+# Install with default windows profile
 .\dotfiles.ps1
+
 # Dry run mode (preview changes without modification)
 .\dotfiles.ps1 -DryRun
+
+# Uninstall (remove all symlinks)
+.\dotfiles-uninstall.ps1
+
+# Uninstall dry run
+.\dotfiles-uninstall.ps1 -DryRun
 ```
 
 Key differences from Linux:
 * Uses PowerShell instead of shell scripts
 * Registry settings in addition to symlinks
+* Includes uninstall script for easy removal of symlinks
 * Configuration files:
   - `conf/symlinks.ini` - Shared with Linux, Windows uses `[windows]` section
   - `conf/registry.ini` - Registry paths as sections (Windows-only, no profile filtering)
+  - `conf/vscode-extensions.ini` - Supports `[windows]` section for Windows-specific extensions
 
 See [docs/WINDOWS.md](docs/WINDOWS.md) for detailed Windows-specific documentation.
 

@@ -1,13 +1,14 @@
 " Neovim-specific configuration
 " This file is sourced after the main vimrc
 
-" System clipboard
-set clipboard+=unnamedplus
-
 " Terminal navigation
+augroup NeovimTerminal
+  autocmd!
+  autocmd BufWinEnter,WinEnter term://* startinsert
+  autocmd BufLeave term://* stopinsert
+augroup END
+
 tnoremap <esc> <C-\><C-n><C-w><C-p>
-autocmd BufWinEnter,WinEnter term://* startinsert
-autocmd BufLeave term://* stopinsert
 
 " <C-h> fix for tmux-navigator
 " Neovim terminal mode requires this specific mapping for proper tmux integration

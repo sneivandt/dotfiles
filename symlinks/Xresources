@@ -56,4 +56,5 @@ URxvt.matcher.button: 1
 
 ! Keybindings
 URxvt.keysym.Control-Shift-C: perl:clipboard:copy
-URxvt.keysym.Control-V:       perl:clipboard:paste
+URxvt.keysym.Control-Shift-V: perl:clipboard:paste
+URxvt.keysym.Shift-Insert:    perl:clipboard:paste

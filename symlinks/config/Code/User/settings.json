@@ -133,6 +133,7 @@
     "terminal.integrated.enableVisualBell": false,
     "terminal.integrated.gpuAcceleration": "on",
     "terminal.integrated.initialHint": false,
+    "terminal.integrated.rightClickBehavior": "paste",
     "terminal.integrated.shellIntegration.decorationsEnabled": "never",
     "terminal.integrated.shellIntegration.enabled": true,
     "terminal.integrated.stickyScroll.enabled": false,

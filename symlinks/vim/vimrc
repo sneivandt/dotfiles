@@ -19,7 +19,12 @@ filetype plugin indent on
 set autoindent
 set backspace=2
 set cindent
-set clipboard=unnamed
+" Use system clipboard (+ register on Linux, * on others)
+if has('unnamedplus')
+  set clipboard=unnamedplus
+else
+  set clipboard=unnamed
+endif
 set cmdheight=1
 set copyindent
 set expandtab
@@ -44,6 +49,10 @@ set noswapfile
 set undodir=~/.cache/vim/undo
 set undofile
 set nonumber
+" Create undo directory if it doesn't exist
+if !isdirectory(expand(&undodir))
+  call mkdir(expand(&undodir), 'p', 0700)
+endif
 set preserveindent
 set ruler
 set scrolloff=5
@@ -58,7 +67,9 @@ set softtabstop=2
 set splitbelow
 set splitright
 set tabstop=2
-set termguicolors
+if has('termguicolors')
+  set termguicolors
+endif
 set textwidth=0
 set ttyfast
 set updatetime=300
@@ -123,14 +134,17 @@ set wildignore+=*/node_modules/*
 " }}}
 " Buffers {{{
 
-" Keep splits equally sized
-autocmd VimResized * :wincmd =
+augroup VimBuffers
+  autocmd!
+  " Keep splits equally sized
+  autocmd VimResized * :wincmd =
 
-" Make the quickfix window span the bottom of the screen
-autocmd FileType qf :wincmd J
+  " Make the quickfix window span the bottom of the screen
+  autocmd FileType qf :wincmd J
 
-" Close vim if a quickfix window is the only remaining buffer
-autocmd WinEnter * if winnr('$') == 1 && getbufvar(winbufnr(winnr()), '&buftype') == 'quickfix' | q | endif
+  " Close vim if a quickfix window is the only remaining buffer
+  autocmd WinEnter * if winnr('$') == 1 && getbufvar(winbufnr(winnr()), '&buftype') == 'quickfix' | q | endif
+augroup END
 
 " }}}
 
@@ -171,14 +185,14 @@ noremap <space> :noh<cr>
 " Toggle spell check
 noremap <leader>k :set spell! spelllang=en_us<cr>
 
-" Open .vimrc
-noremap <leader>v :e ~/.vim/vimrc<cr>
+" Open vimrc (works for both vim and neovim)
+noremap <leader>v :e $MYVIMRC<cr>
 
 " Toggle line wrap
 noremap <leader>w :set wrap!<cr>
 
 " Search and replace the word under the cursor
-noremap <leader>r :%s/\<<c-r><c-w>\>//g<left><left>
+noremap <leader>r :%s/\<<c-r><c-w>\>/<c-r><c-w>/g<left><left>
 
 " Search for a string in the current directory
 noremap <leader>g :vimgrep //j ** <bar> cw<left><left><left><left><left><left><left><left><left><left>
@@ -217,14 +231,20 @@ endfunction " }}}
 
 " C/C++ {{{
 
-" Indentation
-autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
+augroup FiletypeCCpp
+  autocmd!
+  " Indentation
+  autocmd Filetype c,cpp setlocal sw=4 ts=4 sts=4
+augroup END
 
 " }}}
 " Go {{{
 
-" Listchars
-autocmd Filetype go set nolist
+augroup FiletypeGo
+  autocmd!
+  " Listchars
+  autocmd Filetype go set nolist
+augroup END
 
 " Disable go version warning
 let g:go_version_warning=0
@@ -232,25 +252,37 @@ let g:go_version_warning=0
 " }}}
 " Haskell {{{
 
-" Indentation
-autocmd Filetype hs setlocal sw=4 ts=4 sts=4
+augroup FiletypeHaskell
+  autocmd!
+  " Indentation
+  autocmd Filetype haskell setlocal sw=4 ts=4 sts=4
+augroup END
 
 " }}}
 " Java {{{
 
-" Indentation
-autocmd Filetype java setlocal sw=4 ts=4 sts=4
+augroup FiletypeJava
+  autocmd!
+  " Indentation
+  autocmd Filetype java setlocal sw=4 ts=4 sts=4
+augroup END
 
 " }}}
 " Python {{{
 
-" Indentation
-autocmd Filetype python setlocal sw=4 ts=4 sts=4
+augroup FiletypePython
+  autocmd!
+  " Indentation
+  autocmd Filetype python setlocal sw=4 ts=4 sts=4
+augroup END
 
 " }}}
 " Snippet {{{
 
-autocmd Filetype snippets set foldlevel=0
+augroup FiletypeSnippets
+  autocmd!
+  autocmd Filetype snippets set foldlevel=0
+augroup END
 
 " }}}
 
@@ -333,6 +365,16 @@ let g:fzf_colors = {
       \ 'header':  ['fg', 'Comment']
       \ }
 
+" Close fzf after selecting an item (default behavior, but make it explicit)
+let g:fzf_action = {
+      \ 'ctrl-t': 'tab split',
+      \ 'ctrl-x': 'split',
+      \ 'ctrl-v': 'vsplit'
+      \ }
+
+" Layout - use bottom split that closes after selection
+let g:fzf_layout = { 'down': '~40%' }
+
 " }}}
 " Dispatch {{{
 
@@ -367,7 +409,11 @@ function! CloseIfOnlyNerdTreeLeft() " {{{
     endif
   endif
 endfunction " }}}
-autocmd WinEnter * call CloseIfOnlyNerdTreeLeft()
+
+augroup NerdTreeAutoClose
+  autocmd!
+  autocmd WinEnter * call CloseIfOnlyNerdTreeLeft()
+augroup END
 
 " }}}
 " Vim-go {{{

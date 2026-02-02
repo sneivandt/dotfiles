@@ -1,6 +1,3 @@
-[submodule "symlinks/vim/pack/plugins/opt/vim-pathogen"]
-	path = symlinks/vim/pack/plugins/opt/vim-pathogen
-	url = https://github.com/tpope/vim-pathogen
 [submodule "symlinks/vim/pack/plugins/start/fzf"]
 	path = symlinks/vim/pack/plugins/start/fzf
 	url = https://github.com/junegunn/fzf
@@ -28,11 +25,11 @@
 [submodule "symlinks/vim/pack/plugins/start/vim-python-pep8-indent"]
 	path = symlinks/vim/pack/plugins/start/vim-python-pep8-indent
 	url = https://github.com/Vimjas/vim-python-pep8-indent
-[submodule "symlinks/vim/pack/plugins/start/vim-airline"]
-	path = symlinks/vim/pack/plugins/start/vim-airline
+[submodule "symlinks/vim/pack/plugins/opt/vim-airline"]
+	path = symlinks/vim/pack/plugins/opt/vim-airline
 	url = https://github.com/vim-airline/vim-airline
-[submodule "symlinks/vim/pack/plugins/start/vim-airline-themes"]
-	path = symlinks/vim/pack/plugins/start/vim-airline-themes
+[submodule "symlinks/vim/pack/plugins/opt/vim-airline-themes"]
+	path = symlinks/vim/pack/plugins/opt/vim-airline-themes
 	url = https://github.com/vim-airline/vim-airline-themes
 [submodule "symlinks/vim/pack/plugins/start/vim-autotag"]
 	path = symlinks/vim/pack/plugins/start/vim-autotag

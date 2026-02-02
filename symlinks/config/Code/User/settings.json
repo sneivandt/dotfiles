@@ -84,7 +84,10 @@
     "explorer.confirmDragAndDrop": false,
     "extensions.ignoreRecommendations": true,
     "files.associations": {
-        "*.json": "jsonc"
+        "*.json": "jsonc",
+        "*vimrc": "vim",
+        "vimrc": "vim",
+        "nvimrc": "vim"
     },
     "files.autoSave": "onFocusChange",
     "git.defaultCloneDirectory": "~/src",

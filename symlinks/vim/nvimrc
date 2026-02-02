@@ -20,14 +20,21 @@ noremap <leader>t :terminal<cr>
 
 " Load Neovim-specific plugins from opt/ if they exist
 " These are optional Lua plugins not loaded in Vim
-if has('nvim') && exists(':packadd')
-  " Silently try to load optional Neovim plugins
-  silent! packadd nvim-web-devicons
-  silent! packadd nvim-tree.lua
-  silent! packadd lualine.nvim
-  silent! packadd plenary.nvim
-  silent! packadd nvim-treesitter
-endif
+" Also load vim-airline as fallback if lualine isn't available
+silent! packadd nvim-web-devicons
+silent! packadd nvim-tree.lua
+silent! packadd lualine.nvim
+silent! packadd plenary.nvim
+silent! packadd nvim-treesitter
+
+" Load vim-airline as fallback if lualine isn't available
+lua << EOF
+  local has_lualine = pcall(require, 'lualine')
+  if not has_lualine then
+    vim.cmd('packadd vim-airline')
+    vim.cmd('packadd vim-airline-themes')
+  end
+EOF
 
 " Lua configuration for Neovim plugins (only if available)
 if has('nvim')
@@ -131,11 +138,4 @@ if has('nvim')
   if exists(':NvimTreeToggle')
     nnoremap <silent><c-e> :NvimTreeToggle<cr>
   endif
-
-  " Disable vim-airline in Neovim if lualine is available (fallback to airline otherwise)
-  lua << EOF
-    if package.loaded['lualine'] or pcall(require, 'lualine') then
-      vim.g.loaded_airline = 1
-    end
-EOF
 endif

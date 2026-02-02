@@ -5,6 +5,9 @@
 [ -n "$BASHRC_LOADED" ] && return
 export BASHRC_LOADED=1
 
+# Performance profiling (optional)
+[ -f ~/.config/bash/profiler ] && . ~/.config/bash/profiler
+
 # History
 [ -d ~/.cache/bash ] || mkdir -p ~/.cache/bash
 export HISTFILE=~/.cache/bash/history

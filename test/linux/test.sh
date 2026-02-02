@@ -786,8 +786,8 @@ test_vim_opens()
     log_verbose "Custom vimrc found at ~/.vim/vimrc"
     
     # Test that vim can start with the custom vimrc
-    # Use ex mode with immediate quit
-    if echo | vim -e -s -c ':qa!' >/dev/null 2>&1; then
+    # Use ex mode with immediate quit and explicit stdin redirect
+    if timeout 5 vim -E -s -c 'quit' </dev/null >/dev/null 2>&1; then
       log_verbose "Vim loads custom vimrc successfully"
     else
       printf "${YELLOW}WARNING: Vim may have issues loading custom vimrc${NC}\n" >&2
@@ -819,12 +819,12 @@ test_nvim_opens()
 
   log_verbose "Nvim binary is functional"
 
-  # Test 2: Check if nvim config is installed
-  if [ -f "$HOME/.config/nvim/init.vim" ] || [ -f "$HOME/.config/nvim/init.lua" ]; then
-    log_verbose "Custom nvim config found"
+  # Test 2: Check if nvim config directory exists (supports various config layouts)
+  if [ -d "$HOME/.config/nvim" ]; then
+    log_verbose "Custom nvim config directory found"
     
     # Test that nvim can start with the custom config in headless mode
-    if nvim --headless -c ':qa!' >/dev/null 2>&1; then
+    if timeout 5 nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1; then
       log_verbose "Nvim loads custom config successfully"
     else
       printf "${YELLOW}WARNING: Nvim may have issues loading custom config${NC}\n" >&2

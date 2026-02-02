@@ -173,6 +173,8 @@ jobs:
   test-vim-nvim:
     name: Test Vim and Neovim
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

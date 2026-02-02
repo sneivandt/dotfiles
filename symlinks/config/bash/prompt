@@ -15,7 +15,7 @@ fi
 # Fast git prompt info
 __bash_git_prompt()
 {
-  local branch dirty
+  local branch changes
   # Fast check: only run if in git repo
   if ! git rev-parse --git-dir >/dev/null 2>&1; then
     return
@@ -25,9 +25,9 @@ __bash_git_prompt()
   if [ -n "$branch" ]; then
     printf " %s" "$branch"
     # Performance: Use git status with --porcelain=v1 and untracked-files=no for speed
-    dirty=$(git --no-optional-locks status --porcelain=v1 --untracked-files=no 2>/dev/null | wc -l)
-    if [ "$dirty" -gt 0 ]; then
-      printf "\001\e[0;31m\002+%s\001\e[0m\002" "$dirty"
+    changes=$(git --no-optional-locks status --porcelain=v1 --untracked-files=no 2>/dev/null | wc -l)
+    if [ "$changes" -gt 0 ]; then
+      printf "\001\e[0;31m\002+%s\001\e[0m\002" "$changes"
     fi
   fi
 }

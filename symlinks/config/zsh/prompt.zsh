@@ -26,9 +26,9 @@ git_prompt_info()
   if [ -n "$current_branch" ]; then
     echo -n " %{$fg[white]%}${current_branch}%{$reset_color%}"
     # Performance: Use --porcelain=v1 and --untracked-files=no for speed
-    local dirty=$(git --no-optional-locks status --porcelain=v1 --untracked-files=no 2>/dev/null | wc -l)
-    if [ $dirty -gt 0 ]; then
-      echo -n "%{$fg[red]%}+${dirty// /}%{$reset_color%}"
+    local changes=$(git --no-optional-locks status --porcelain=v1 --untracked-files=no 2>/dev/null | wc -l)
+    if [ $changes -gt 0 ]; then
+      echo -n "%{$fg[red]%}+${changes// /}%{$reset_color%}"
     fi
   fi
 }

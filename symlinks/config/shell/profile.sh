@@ -52,19 +52,22 @@ if [ -n "$TERM" ] && command -v tput >/dev/null 2>&1; then
   LESS_TERMCAP_mr="${_tput_rev}"
   LESS_TERMCAP_mh="${_tput_dim}"
 
+  # Note: ssubm/rsubm/ssupm/rsupm are not standard terminfo capabilities
+  # Only define if tput doesn't fail
+  _tput_ssubm=$(tput ssubm 2>/dev/null) || true
+  _tput_rsubm=$(tput rsubm 2>/dev/null) || true
+  _tput_ssupm=$(tput ssupm 2>/dev/null) || true
+  _tput_rsupm=$(tput rsupm 2>/dev/null) || true
+
+  LESS_TERMCAP_ZN="${_tput_ssubm}"
+  LESS_TERMCAP_ZV="${_tput_rsubm}"
+  LESS_TERMCAP_ZO="${_tput_ssupm}"
+  LESS_TERMCAP_ZW="${_tput_rsupm}"
+
   # Clean up temporary variables
   unset _tput_bold _tput_sgr0 _tput_setaf_2 _tput_setaf_6 _tput_setaf_3
   unset _tput_setab_4 _tput_setaf_7 _tput_smul _tput_rmul _tput_rmso
-  unset _tput_rev _tput_dim
-fi
-
-# Note: ssubm/rsubm/ssupm/rsupm are not standard terminfo capabilities
-# Only define if tput doesn't fail
-if [ -n "$TERM" ] && command -v tput >/dev/null 2>&1; then
-  LESS_TERMCAP_ZN=$(tput ssubm 2>/dev/null) || true
-  LESS_TERMCAP_ZV=$(tput rsubm 2>/dev/null) || true
-  LESS_TERMCAP_ZO=$(tput ssupm 2>/dev/null) || true
-  LESS_TERMCAP_ZW=$(tput rsupm 2>/dev/null) || true
+  unset _tput_rev _tput_dim _tput_ssubm _tput_rsubm _tput_ssupm _tput_rsupm
 fi
 
 LESSHISTFILE=/dev/null

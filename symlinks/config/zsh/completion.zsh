@@ -7,7 +7,9 @@ autoload -Uz compinit
 # Performance: Only regenerate compdump once per day
 # This significantly speeds up shell startup
 typeset -g ZSH_COMPDUMP="${ZSH_COMPDUMP:-${HOME}/.cache/zsh/zcompdump-${ZSH_VERSION}}"
-mkdir -p ~/.cache/zsh
+
+# Ensure cache directory exists (extract directory from ZSH_COMPDUMP path)
+mkdir -p "${ZSH_COMPDUMP:h}"
 
 # Check if compdump needs regeneration (once per 24 hours)
 if [[ -n ${ZSH_COMPDUMP}(#qNmh-24) ]]; then

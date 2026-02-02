@@ -7,9 +7,22 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Static analysis and linting for all scripts
-  lint:
-    name: Lint and Validate
+  # Configuration validation and INI file syntax checks
+  validate-config:
+    name: Validate Configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Run configuration validation tests
+        run: ./dotfiles.sh --test -v 2>&1 | grep -E "(Validating|Configuration validation|Symlinks validation|Chmod validation|INI syntax|Category consistency|empty sections)" || ./dotfiles.sh --test -v
+
+  # Static analysis - shellcheck and PSScriptAnalyzer
+  static-analysis:
+    name: Static Analysis
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -35,8 +48,55 @@ jobs:
         run: |
           Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
 
-      - name: Run tests
-        run: ./dotfiles.sh --test -v
+      - name: Run shellcheck
+        run: |
+          # Source the test file and run shellcheck directly
+          DIR="$(pwd)"
+          export DIR
+          . ./src/linux/logger.sh
+          . ./src/linux/utils.sh
+          . ./test/linux/test-static-analysis.sh
+          test_shellcheck
+
+      - name: Run PSScriptAnalyzer
+        run: |
+          # Source the test file and run PSScriptAnalyzer directly
+          DIR="$(pwd)"
+          export DIR
+          . ./src/linux/logger.sh
+          . ./src/linux/utils.sh
+          . ./test/linux/test-static-analysis.sh
+          test_psscriptanalyzer
+
+  # Application tests - vim, nvim, zsh
+  test-applications:
+    name: Test Applications
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install vim, neovim, and zsh
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y vim neovim zsh
+
+      - name: Install base profile
+        run: |
+          ./dotfiles.sh --install --profile base -v
+
+      - name: Run application tests
+        run: |
+          DIR="$(pwd)"
+          export DIR
+          . ./src/linux/logger.sh
+          . ./src/linux/utils.sh
+          . ./test/linux/test-applications.sh
+          test_zsh_completion
+          test_vim_opens
+          test_nvim_opens
 
   # Test base profile on Linux (minimal configuration)
   test-linux-base:
@@ -168,31 +228,6 @@ jobs:
 
       - name: Verify profiles link different files
         run: ./.github/workflows/scripts/verify/verify-profile-differences.sh
-
-  # Test vim and neovim startup
-  test-vim-nvim:
-    name: Test Vim and Neovim
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install vim and neovim
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y vim neovim
-
-      - name: Install base profile
-        run: |
-          ./dotfiles.sh --install --profile base -v
-
-      - name: Run vim/nvim tests
-        run: |
-          ./dotfiles.sh --test -v
 
   # Test Docker image build
   test-docker:

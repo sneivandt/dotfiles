@@ -35,8 +35,10 @@ set -o nounset
 # shellcheck disable=SC2154
 . "$DIR"/src/linux/tasks.sh
 
-# Test functions (test_config_validation, test_shellcheck, test_zsh_completion, etc.).
-. "$DIR"/test/linux/test.sh
+# Test functions - split by test type for better organization
+. "$DIR"/test/linux/test-config.sh
+. "$DIR"/test/linux/test-static-analysis.sh
+. "$DIR"/test/linux/test-applications.sh
 
 # do_install
 #

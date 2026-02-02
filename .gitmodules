@@ -64,9 +64,6 @@
 [submodule "symlinks/vim/pack/plugins/start/rust.vim"]
 	path = symlinks/vim/pack/plugins/start/rust.vim
 	url = https://github.com/rust-lang/rust.vim
-[submodule "extern/fonts"]
-	path = extern/fonts
-	url = https://github.com/powerline/fonts
 [submodule "symlinks/vim/pack/plugins/opt/nvim-tree.lua"]
 	path = symlinks/vim/pack/plugins/opt/nvim-tree.lua
 	url = https://github.com/nvim-tree/nvim-tree.lua

@@ -73,7 +73,18 @@ function Install-Fonts
             {
                 Write-Verbose "Installing font: $font"
                 $script = Join-Path (Join-Path $root "extern\fonts") install.ps1
-                & $script "$font"
+                try
+                {
+                    & $script "$font"
+                    if ($LASTEXITCODE -ne 0)
+                    {
+                        Write-Warning "Font installation script exited with code $LASTEXITCODE for font: $font"
+                    }
+                }
+                catch
+                {
+                    Write-Warning "Failed to install font $font`: $_"
+                }
             }
         }
         else

@@ -21,8 +21,8 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 | Step | Module | Function | Description | Idempotency Cue |
 |------|--------|----------|-------------|-----------------|
 | 1 | `Git.psm1` | `Update-GitSubmodules` | Initializes / updates all tracked submodules (fonts, vim plugins). | Only runs `git submodule update` if status indicates drift (`+` / `-`). |
-| 2 | `Registry.psm1` | `Sync-Registry` | Applies registry values from `conf/registry.ini` filtered by profile. | Each value compared to existing; paths created only if missing. |
-| 3 | `Font.psm1` | `Install-Fonts` | Installs the Powerline patched font (`DejaVu Sans Mono for Powerline`). | Skips if font already exists in system or per-user font directory. |
+| 2 | `Registry.psm1` | `Sync-Registry` | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
+| 3 | `Font.psm1` | `Install-Fonts` | Installs fonts listed in `conf/fonts.ini`. | Skips if font already exists in system or per-user font directory. |
 | 4 | `Symlinks.psm1` | `Install-Symlinks` | Creates Windows user profile symlinks from `conf/symlinks.ini` filtered by profile. | Only creates links whose targets do not already exist. |
 | 5 | `VsCodeExtensions.psm1` | `Install-VsCodeExtensions` | Ensures VS Code extensions listed in `conf/vscode-extensions.ini` are installed. | Checks against `code --list-extensions`. |
 
@@ -55,8 +55,9 @@ Symlink definitions live in `conf/symlinks.ini` under the **`[windows]` section*
 ```ini
 [windows]
 AppData/Roaming/Code/User/settings.json
-config/git/config
-config/powershell/Microsoft.PowerShell_profile.ps1
+AppData/Roaming/Code - Insiders/User/settings.json
+AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json
+config/git/windows
 ```
 
 Each line is a path relative to `$env:USERPROFILE`. The source file is located at `symlinks/<same-path>` in the repository. Forward slashes are automatically converted to backslashes for Windows.
@@ -87,7 +88,7 @@ The file `conf/vscode-extensions.ini` contains extensions in the `[extensions]` 
 
 ## Fonts
 
-Font installation delegates to `extern/fonts/install.ps1` (a git submodule from powerline/fonts repository). Currently only ensures the Powerline patched DejaVu Sans Mono. The submodule is automatically updated when running `./dotfiles.ps1`.
+Font installation delegates to `extern/fonts/install.ps1` (a git submodule from powerline/fonts repository). Fonts are configured in `conf/fonts.ini` in the `[fonts]` section. The submodule is automatically updated when running `./dotfiles.ps1`.
 
 ## Updating
 
@@ -112,9 +113,9 @@ All submodules are checked and updated automatically when the script runs.
 
 ## Safety & Idempotency Notes
 
-* Script does not delete existing regular files that block symlink creation; you'll need to back them up and remove manually.
-* Registry writes are limited to HKCU (user scope) console keys and additional configured paths; no HKLM modifications occur.
-* Re-running is safe; modules emit section headers only when performing actions.
+* Script does not delete existing regular files that block symlink creation; you'll need to back them up and remove manually
+* Registry writes are limited to HKCU (user scope) console keys and additional configured paths; no HKLM modifications occur
+* Re-running is safe; modules emit section headers only when performing actions
 
 ## Extending Windows Layer
 

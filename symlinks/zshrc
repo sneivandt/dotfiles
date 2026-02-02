@@ -78,11 +78,7 @@ fi
 # Plugins
 for plugin in ~/.config/zsh/plugins/*.zsh(N)
 do
-  if [ -f "$plugin" ]; then
-    . "$plugin"
-  else
-    echo "Warning: Plugin $plugin not found" >&2
-  fi
+  . "$plugin"
 done
 
 # Arch Linux System Plugins

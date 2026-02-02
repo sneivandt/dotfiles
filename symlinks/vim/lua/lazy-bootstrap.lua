@@ -123,10 +123,11 @@ require("lazy").setup({
     cond = function() return vim.fn.has("nvim") == 1 end,
     build = ":TSUpdate",
     config = function()
-      require("nvim-treesitter").setup({
+      require("nvim-treesitter.configs").setup({
         ensure_installed = {
-          "python", "javascript", "typescript", "lua", "vim",
-          "rust", "go", "c", "cpp", "java", "haskell", "bash"
+          "python", "javascript", "typescript", "lua", "vim", "vimdoc",
+          "rust", "go", "c", "cpp", "java", "haskell", "bash",
+          "json", "yaml", "toml", "markdown", "markdown_inline"
         },
         highlight = {
           enable = true,
@@ -134,6 +135,15 @@ require("lazy").setup({
         },
         indent = {
           enable = true,
+        },
+        incremental_selection = {
+          enable = true,
+          keymaps = {
+            init_selection = "<CR>",
+            scope_incremental = "<CR>",
+            node_incremental = "<TAB>",
+            node_decremental = "<S-TAB>",
+          },
         },
       })
     end,

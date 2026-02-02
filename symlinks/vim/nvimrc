@@ -106,8 +106,9 @@ if module_exists('nvim-treesitter.configs') then
   pcall(function()
     require('nvim-treesitter.configs').setup({
       ensure_installed = {
-        'python', 'javascript', 'typescript', 'lua', 'vim',
-        'rust', 'go', 'c', 'cpp', 'java', 'haskell', 'bash'
+        'python', 'javascript', 'typescript', 'lua', 'vim', 'vimdoc',
+        'rust', 'go', 'c', 'cpp', 'java', 'haskell', 'bash',
+        'json', 'yaml', 'toml', 'markdown', 'markdown_inline'
       },
       highlight = {
         enable = true,
@@ -115,6 +116,15 @@ if module_exists('nvim-treesitter.configs') then
       },
       indent = {
         enable = true,
+      },
+      incremental_selection = {
+        enable = true,
+        keymaps = {
+          init_selection = '<CR>',
+          scope_incremental = '<CR>',
+          node_incremental = '<TAB>',
+          node_decremental = '<S-TAB>',
+        },
       },
     })
   end)

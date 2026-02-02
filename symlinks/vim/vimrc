@@ -84,6 +84,13 @@ syntax on
 " tokyonight (modern, matches tmux), jellybeans (classic fallback), gruvbox (warm), default (fallback)
 try
   colorscheme tokyonight-night
+
+  " Enhanced highlighting for tokyonight
+  highlight CursorLine guibg=#24283b ctermbg=235
+  highlight CursorLineNr guifg=#7aa2f7 gui=bold ctermfg=4
+  highlight LineNr guifg=#565f89 ctermfg=239
+  highlight SignColumn guibg=#1a1b26 ctermbg=234
+  highlight VertSplit guifg=#414868 guibg=#1a1b26 ctermfg=239 ctermbg=234
 catch
   try
     colorscheme jellybeans

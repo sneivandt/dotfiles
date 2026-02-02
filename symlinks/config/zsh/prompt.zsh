@@ -27,7 +27,7 @@ git_prompt_info()
     echo -n " %{$fg[white]%}${current_branch}%{$reset_color%}"
     # Performance: Use --porcelain=v1 and --untracked-files=no for speed
     local changes=$(git --no-optional-locks status --porcelain=v1 --untracked-files=no 2>/dev/null | wc -l)
-    if [ $changes -gt 0 ]; then
+    if [ "${changes:-0}" -gt 0 ]; then
       echo -n "%{$fg[red]%}+${changes// /}%{$reset_color%}"
     fi
   fi

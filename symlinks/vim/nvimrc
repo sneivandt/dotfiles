@@ -18,30 +18,14 @@ nnoremap <bs> :<c-u>TmuxNavigateLeft<cr>
 " Open terminal
 noremap <leader>t :terminal<cr>
 
-" Plugin loading: lazy.nvim for Neovim, git submodules for Vim
-if has('nvim')
-  " Neovim: Use lazy.nvim plugin manager by default
-  lua << EOF
-    -- Bootstrap and configure lazy.nvim
-    pcall(function()
-      require('lazy-bootstrap')
-    end)
+" Plugin loading: lazy.nvim for Neovim
+" Neovim: Use lazy.nvim plugin manager by default
+lua << EOF
+  -- Bootstrap and configure lazy.nvim
+  pcall(function()
+    require('lazy-bootstrap')
+  end)
 EOF
-else
-  " Vim: Use traditional vim pack loading with git submodules
-  " Load plugins from pack/ directory
-  " These plugins work with Vim 8+ native package management
-  silent! packadd nvim-web-devicons
-  silent! packadd nvim-tree.lua
-  silent! packadd lualine.nvim
-  silent! packadd plenary.nvim
-  silent! packadd nvim-treesitter
-
-  " Load vim-airline for Vim (Neovim uses lualine)
-  silent! packadd vim-airline
-  silent! packadd vim-airline-themes
-endif
-
 " Lua configuration for Neovim plugins (only if available)
 if has('nvim')
 lua << EOF

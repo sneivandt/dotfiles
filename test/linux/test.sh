@@ -331,16 +331,32 @@ test_symlinks_validation()
 
       # Check if the file/directory exists in symlinks/
       if [ ! -e "$DIR"/symlinks/"$symlink" ]; then
-        # Check if it's a symlink (even if broken, it might be valid in other profiles)
+        # Check if the path itself is a symlink (even if broken)
         if [ -L "$DIR"/symlinks/"$symlink" ]; then
           log_verbose "File $symlink in symlinks.ini [$section] is a symlink (target may be excluded by sparse checkout)"
-        # Check if it's tracked in git (might be excluded by sparse checkout)
-        elif [ -d "$DIR"/.git ] && git -C "$DIR" ls-files "symlinks/$symlink" 2>/dev/null | grep -q .; then
-          log_verbose "File $symlink in symlinks.ini [$section] is tracked but excluded by sparse checkout"
         else
-          printf "${RED}ERROR: File listed in symlinks.ini [$section] does not exist: symlinks/%s${NC}\n" "$symlink" >&2
-          errors=$(cat "$errors_file")
-          echo $((errors + 1)) > "$errors_file"
+          # Check if any parent directory is a symlink (which might be broken due to sparse checkout)
+          local path_to_check="$symlink"
+          local is_under_symlink=false
+          while [ "$path_to_check" != "." ] && [ "$path_to_check" != "/" ]; do
+            path_to_check="$(dirname "$path_to_check")"
+            if [ -L "$DIR"/symlinks/"$path_to_check" ]; then
+              is_under_symlink=true
+              log_verbose "File $symlink in symlinks.ini [$section] is under symlink directory $path_to_check (target may be excluded by sparse checkout)"
+              break
+            fi
+          done
+          
+          # If not under a symlink, check if tracked in git
+          if [ "$is_under_symlink" = false ]; then
+            if [ -d "$DIR"/.git ] && git -C "$DIR" ls-files "symlinks/$symlink" 2>/dev/null | grep -q .; then
+              log_verbose "File $symlink in symlinks.ini [$section] is tracked but excluded by sparse checkout"
+            else
+              printf "${RED}ERROR: File listed in symlinks.ini [$section] does not exist: symlinks/%s${NC}\n" "$symlink" >&2
+              errors=$(cat "$errors_file")
+              echo $((errors + 1)) > "$errors_file"
+            fi
+          fi
         fi
       fi
     done

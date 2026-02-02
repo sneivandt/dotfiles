@@ -154,16 +154,39 @@ function Install-Symlinks
                     $parentDir = Split-Path -Parent $targetFullPath
                     if (-not (Test-Path $parentDir))
                     {
-                        New-Item -Path $parentDir -ItemType Directory -Force | Out-Null
+                        try
+                        {
+                            New-Item -Path $parentDir -ItemType Directory -Force | Out-Null
+                        }
+                        catch
+                        {
+                            Write-Warning "Failed to create parent directory $parentDir`: $_"
+                            continue
+                        }
                     }
 
                     # Remove existing file/directory if it exists (to replace with symlink)
                     if (Test-Path $targetFullPath)
                     {
-                        Remove-Item -Path $targetFullPath -Recurse -Force
+                        try
+                        {
+                            Remove-Item -Path $targetFullPath -Recurse -Force
+                        }
+                        catch
+                        {
+                            Write-Warning "Failed to remove existing item at $targetFullPath`: $_"
+                            continue
+                        }
                     }
 
-                    New-Item -Path $targetFullPath -ItemType SymbolicLink -Value $sourcePath -Force > $null
+                    try
+                    {
+                        New-Item -Path $targetFullPath -ItemType SymbolicLink -Value $sourcePath -Force -ErrorAction Stop | Out-Null
+                    }
+                    catch
+                    {
+                        Write-Warning "Failed to create symlink at $targetFullPath`: $_"
+                    }
                 }
             }
             else

@@ -95,6 +95,10 @@ do_test()
   # Static analysis tests
   test_psscriptanalyzer
   test_shellcheck
+
+  # Application tests
+  test_vim_opens
+  test_nvim_opens
 }
 
 # do_uninstall

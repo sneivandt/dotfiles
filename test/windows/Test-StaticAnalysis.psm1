@@ -51,8 +51,6 @@ function Test-PSScriptAnalyzer
                         # PSScriptAnalyzer returns findings as output objects, not errors
                         # Capture error stream to filter out known intermittent internal errors
                         # while preserving legitimate analysis errors
-                        $ErrorActionPreference = 'Continue'
-                        $findings = $null
 
                         # Redirect error stream to capture intermittent errors
                         $errorOutput = @()
@@ -63,8 +61,7 @@ function Test-PSScriptAnalyzer
                         {
                             $errorMsg = $err.ToString()
                             # Filter out known intermittent PSScriptAnalyzer internal errors
-                            if ($errorMsg -notmatch 'Object reference not set to an instance|dynamic module' `
-                                -and $errorMsg -notmatch 'dynamic assembly')
+                            if ($errorMsg -notmatch '(Object reference not set to an instance|dynamic module|dynamic assembly)')
                             {
                                 Write-Warning "PSScriptAnalyzer error analyzing $($file.Name): $errorMsg"
                             }

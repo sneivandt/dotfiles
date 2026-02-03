@@ -226,8 +226,9 @@ test_nvim_opens()
     log_verbose "Custom nvim config directory found"
 
     # Test that nvim can start with the custom config in headless mode
+    # Note: First run may take longer due to lazy.nvim bootstrap (git clone)
     if is_program_installed "timeout"; then
-      if timeout 5 nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1; then
+      if timeout 30 nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1; then
         log_verbose "Nvim loads custom config successfully"
       else
         printf "%sERROR: Nvim failed to load custom config%s\n" "${RED}" "${NC}" >&2

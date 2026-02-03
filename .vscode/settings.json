@@ -38,8 +38,6 @@
     },
     // Formatting - enforce no trailing whitespace (critical for this repo)
     "files.trimTrailingWhitespace": true,
-    "files.insertFinalNewline": true,
-    "files.trimFinalNewlines": true,
     // Editor settings
     "editor.renderWhitespace": "boundary",
     "editor.detectIndentation": false,

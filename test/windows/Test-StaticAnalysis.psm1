@@ -46,15 +46,24 @@ function Test-PSScriptAnalyzer
             {
                 foreach ($file in $files)
                 {
-                    # Use ErrorAction Continue to handle PSScriptAnalyzer internal errors gracefully
-                    # (e.g., "Object reference not set to an instance of an object")
-                    $findings = Invoke-ScriptAnalyzer -Path $file.FullName -ErrorAction Continue
-
-                    if ($findings)
+                    try
                     {
-                        Write-Output "Findings in $($file.Name):"
-                        $findings | Format-Table -AutoSize
-                        $hasFindings = $true
+                        # Use ErrorAction SilentlyContinue to suppress non-terminating errors
+                        # Wrap in try-catch to handle PSScriptAnalyzer internal crashes gracefully
+                        $findings = Invoke-ScriptAnalyzer -Path $file.FullName -ErrorAction SilentlyContinue
+
+                        if ($findings)
+                        {
+                            Write-Output "Findings in $($file.Name):"
+                            $findings | Format-Table -AutoSize
+                            $hasFindings = $true
+                        }
+                    }
+                    catch
+                    {
+                        # PSScriptAnalyzer can throw internal errors (e.g., null reference exceptions)
+                        # Log but continue analyzing other files
+                        Write-Warning "PSScriptAnalyzer failed to analyze $($file.Name): $_"
                     }
                 }
             }

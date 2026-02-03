@@ -13,7 +13,6 @@ $ErrorActionPreference = "Stop"
 Import-Module .\src\windows\Profile.psm1 -Force
 
 # Only import Symlinks module if running Desktop edition (it requires Desktop)
-$symlinksFunctions = $null
 if ($PSVersionTable.PSEdition -eq 'Desktop')
 {
     Import-Module .\src\windows\Symlinks.psm1 -Force

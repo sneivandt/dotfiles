@@ -158,6 +158,35 @@ jobs:
       - name: Verify profile-specific symlinks
         run: ./.github/workflows/scripts/verify/verify-profile.sh arch-desktop arch-desktop-output.log
 
+  # Test idempotency - install profiles twice to verify no errors
+  test-linux-idempotency:
+    name: Test Linux - Idempotency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Test base profile idempotency
+        run: |
+          echo "=== First installation ==="
+          ./dotfiles.sh --install --profile base -v
+          echo "=== Second installation (should be idempotent) ==="
+          ./dotfiles.sh --install --profile base -v
+
+      - name: Test arch profile idempotency
+        run: |
+          echo "=== First installation ==="
+          ./dotfiles.sh --install --profile arch --skip-os-detection -v
+          echo "=== Second installation (should be idempotent) ==="
+          ./dotfiles.sh --install --profile arch --skip-os-detection -v
+
+      - name: Test arch-desktop profile idempotency
+        run: |
+          echo "=== First installation ==="
+          ./dotfiles.sh --install --profile arch-desktop --skip-os-detection -v
+          echo "=== Second installation (should be idempotent) ==="
+          ./dotfiles.sh --install --profile arch-desktop --skip-os-detection -v
+
   # Test uninstall functionality
   test-linux-uninstall:
     name: Test Linux - Uninstall
@@ -203,6 +232,23 @@ jobs:
       - name: Verify Windows configuration
         shell: pwsh
         run: ./.github/workflows/scripts/windows/Test-Configuration.ps1
+
+  # Test Windows idempotency
+  test-windows-idempotency:
+    name: Test Windows - Idempotency
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Test Windows profile idempotency
+        shell: pwsh
+        run: |
+          Import-Module .\test\windows\Test.psm1
+          if (-not (Test-IdempotencyInstall -Profile "windows" -Verbose)) {
+            Write-Error "Windows idempotency test failed"
+            exit 1
+          }
 
   # Compare profiles to ensure they produce different outputs
   test-profile-differences:

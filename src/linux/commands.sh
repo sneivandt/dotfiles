@@ -78,6 +78,7 @@ do_test()
   . "$DIR"/test/linux/test-config.sh
   . "$DIR"/test/linux/test-static-analysis.sh
   . "$DIR"/test/linux/test-applications.sh
+  . "$DIR"/test/linux/test-idempotency.sh
 
   # Configuration validation tests
   test_config_validation
@@ -96,6 +97,9 @@ do_test()
   test_vim_opens
   test_nvim_opens
   test_nvim_plugins
+
+  # Idempotency tests
+  test_idempotency_symlinks
 }
 
 # do_uninstall

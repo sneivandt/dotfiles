@@ -82,7 +82,28 @@ Test different profiles to ensure sparse checkout and configuration work correct
 
 ## Idempotency Testing
 
-All scripts are designed to be idempotent. Test by running installation multiple times:
+All scripts are designed to be idempotent. The project includes both automated and manual idempotency tests.
+
+### Automated Idempotency Tests
+
+Run automated idempotency tests using the test flag:
+
+```bash
+./dotfiles.sh -T
+# Includes test_idempotency_symlinks test
+```
+
+Automated tests are also part of CI and validate:
+- **`test_idempotency_symlinks`** - Verifies symlink installation is idempotent
+- **Profile idempotency** - CI runs each profile installation twice:
+  - `base` profile
+  - `arch` profile (with --skip-os-detection)
+  - `arch-desktop` profile (with --skip-os-detection)
+  - `windows` profile (on Windows runner)
+
+### Manual Idempotency Testing
+
+Test by running installation multiple times:
 
 ```bash
 # First run
@@ -109,6 +130,7 @@ Runs automatically on pull requests and pushes to validate:
 - Static analysis (shellcheck and PSScriptAnalyzer)
 - Configuration file validation
 - Profile installations with dry-run tests
+- **Idempotency tests** - Runs installation twice for each profile
 - Cross-platform compatibility (Linux Ubuntu and Windows runners)
 - Docker image build
 
@@ -120,7 +142,7 @@ Publishes Docker image to Docker Hub on pushes to master branch.
 Replicate CI validation locally:
 
 ```bash
-# Run static analysis
+# Run all tests including idempotency
 ./dotfiles.sh -T
 
 # Test each profile with dry-run
@@ -135,10 +157,15 @@ Replicate CI validation locally:
 ## Test Files
 
 ### Linux Tests
-- `test/linux/test.sh` - Shell script test suite
+- `test/linux/test-config.sh` - Configuration validation tests
+- `test/linux/test-static-analysis.sh` - Shell script linting (shellcheck, PSScriptAnalyzer)
+- `test/linux/test-applications.sh` - Application tests (vim, nvim, zsh)
+- `test/linux/test-idempotency.sh` - Idempotency tests for installers
 
 ### Windows Tests
-- `test/windows/Test.psm1` - PowerShell test module
+- `test/windows/Test.psm1` - PowerShell test module entry point
+- `test/windows/Test-StaticAnalysis.psm1` - PSScriptAnalyzer tests
+- `test/windows/Test-Idempotency.psm1` - Windows idempotency tests
 
 ## Best Practices
 

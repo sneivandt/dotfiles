@@ -102,7 +102,7 @@ jobs:
           export OPT=""
           . ./src/linux/logger.sh
           . ./src/linux/utils.sh
-          . ./test/linux/test-applications.sh
+          . ./.github/workflows/scripts/linux/test-applications.sh
           test_zsh_completion
           test_vim_opens
           test_nvim_opens
@@ -116,7 +116,7 @@ jobs:
           export PROFILE="base"
           . ./src/linux/logger.sh
           . ./src/linux/utils.sh
-          . ./test/linux/test-idempotency.sh
+          . ./.github/workflows/scripts/linux/test-idempotency.sh
           test_idempotency_symlinks
 
   # Test base profile on Linux (minimal configuration)

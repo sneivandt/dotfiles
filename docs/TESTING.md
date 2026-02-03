@@ -94,7 +94,7 @@ Idempotency tests are run automatically in CI. They validate:
   - `arch-desktop` profile (with --skip-os-detection)
   - `windows` profile (on Windows runner)
 
-Note: Idempotency tests require actual installations and are run in separate CI jobs. They are not included in `./dotfiles.sh -T` which focuses on static analysis and configuration validation.
+**Note:** Idempotency and application tests require actual installations and are run in CI jobs via `.github/workflows/scripts/test-idempotency.sh` and `.github/workflows/scripts/test-applications.sh`. They are not included in `./dotfiles.sh -T` which focuses on static analysis and configuration validation.
 
 ### Manual Idempotency Testing
 
@@ -151,16 +151,17 @@ Replicate CI validation locally:
 
 ## Test Files
 
-### Linux Tests
+### Tests Run by `dotfiles.sh -T`
 - `test/linux/test-config.sh` - Configuration validation tests
 - `test/linux/test-static-analysis.sh` - Shell script linting (shellcheck, PSScriptAnalyzer)
-- `test/linux/test-applications.sh` - Application tests (vim, nvim, zsh)
-- `test/linux/test-idempotency.sh` - Idempotency tests for installers
 
-### Windows Tests
+### CI-Only Tests (require actual installations)
+- `.github/workflows/scripts/linux/test-applications.sh` - Application tests (vim, nvim, zsh)
+- `.github/workflows/scripts/linux/test-idempotency.sh` - Idempotency tests for installers
+- `.github/workflows/scripts/windows/Test-Configuration.ps1` - Windows configuration tests
+- `.github/workflows/scripts/windows/Test-Modules.ps1` - Windows module tests
 - `test/windows/Test.psm1` - PowerShell test module entry point
-- `test/windows/Test-StaticAnalysis.psm1` - PSScriptAnalyzer tests
-- `test/windows/Test-Idempotency.psm1` - Windows idempotency tests
+- `test/windows/Test-StaticAnalysis.psm1` - PSScriptAnalyzer tests (also used by `dotfiles.sh -T`)
 
 ## Best Practices
 

@@ -47,8 +47,6 @@ test_psscriptanalyzer()
 # test_shellcheck
 #
 # Execute shellcheck across all shell scripts discovered in symlinks/
-# Non-zero shellcheck exit is swallowed (|| true) so the overall run
-# continues; individual findings still surface.
 test_shellcheck()
 {(
   # Check if shellcheck is installed
@@ -148,8 +146,7 @@ test_shellcheck()
 
     log_verbose "Checking scripts: $scripts"
     # Run shellcheck on all collected scripts
-    # Allow SC1090/SC1091 warnings without failing (can't follow sourced files in dotfiles)
     # shellcheck disable=SC2086  # Word splitting intentional: $scripts is space-separated list
-    shellcheck --exclude=SC1090,SC1091 $scripts
+    shellcheck $scripts
   fi
 )}

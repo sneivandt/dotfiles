@@ -49,9 +49,26 @@ function Test-PSScriptAnalyzer
                     try
                     {
                         # PSScriptAnalyzer returns findings as output objects, not errors
-                        # Use ErrorAction SilentlyContinue to suppress intermittent internal errors
-                        # (e.g., assembly loading issues, null reference exceptions)
-                        $findings = Invoke-ScriptAnalyzer -Path $file.FullName -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+                        # Capture error stream to filter out known intermittent internal errors
+                        # while preserving legitimate analysis errors
+                        $ErrorActionPreference = 'Continue'
+                        $findings = $null
+
+                        # Redirect error stream to capture intermittent errors
+                        $errorOutput = @()
+                        $findings = Invoke-ScriptAnalyzer -Path $file.FullName -ErrorAction SilentlyContinue -ErrorVariable errorOutput
+
+                        # Log non-trivial errors (not the known assembly/null reference issues)
+                        foreach ($err in $errorOutput)
+                        {
+                            $errorMsg = $err.ToString()
+                            # Filter out known intermittent PSScriptAnalyzer internal errors
+                            if ($errorMsg -notmatch 'Object reference not set to an instance|dynamic module' `
+                                -and $errorMsg -notmatch 'dynamic assembly')
+                            {
+                                Write-Warning "PSScriptAnalyzer error analyzing $($file.Name): $errorMsg"
+                            }
+                        }
 
                         if ($findings)
                         {
@@ -62,7 +79,7 @@ function Test-PSScriptAnalyzer
                     }
                     catch
                     {
-                        # Catch PSScriptAnalyzer internal errors (e.g., null reference exceptions)
+                        # Catch unexpected terminating errors
                         # Log but continue analyzing other files
                         Write-Warning "PSScriptAnalyzer failed to analyze $($file.Name): $_"
                     }

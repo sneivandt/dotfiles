@@ -86,20 +86,15 @@ All scripts are designed to be idempotent. The project includes both automated a
 
 ### Automated Idempotency Tests
 
-Run automated idempotency tests using the test flag:
-
-```bash
-./dotfiles.sh -T
-# Includes test_idempotency_symlinks test
-```
-
-Automated tests are also part of CI and validate:
-- **`test_idempotency_symlinks`** - Verifies symlink installation is idempotent
+Idempotency tests are run automatically in CI. They validate:
+- **`test_idempotency_symlinks`** - Verifies symlink installation is idempotent (runs in test-applications job)
 - **Profile idempotency** - CI runs each profile installation twice:
   - `base` profile
   - `arch` profile (with --skip-os-detection)
   - `arch-desktop` profile (with --skip-os-detection)
   - `windows` profile (on Windows runner)
+
+Note: Idempotency tests require actual installations and are run in separate CI jobs. They are not included in `./dotfiles.sh -T` which focuses on static analysis and configuration validation.
 
 ### Manual Idempotency Testing
 

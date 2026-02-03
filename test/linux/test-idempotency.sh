@@ -89,9 +89,11 @@ run_install_twice()
 
   # Check that second run didn't create new symlinks
   # (Should all be skipped as "already linked" or similar)
-  if grep -q "Linking" "$second_run_log" && ! grep -q "Skipping.*already linked" "$second_run_log"; then
-    printf "${YELLOW}WARNING: Second run appears to have created new symlinks${NC}\n" >&2
-    printf "${YELLOW}This may indicate non-idempotent behavior${NC}\n" >&2
+  if grep -q "Linking" "$second_run_log"; then
+    if ! grep -q "Skipping.*already linked" "$second_run_log"; then
+      printf "${YELLOW}WARNING: Second run appears to have created new symlinks${NC}\n" >&2
+      printf "${YELLOW}This may indicate non-idempotent behavior${NC}\n" >&2
+    fi
   fi
 
   # Verify no errors in second run

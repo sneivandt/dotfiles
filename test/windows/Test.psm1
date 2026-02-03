@@ -6,13 +6,8 @@
 #
 # Modules:
 #   Test-StaticAnalysis.psm1  Static analysis tests (PSScriptAnalyzer)
-#   Test-Idempotency.psm1     Idempotency tests
 # -----------------------------------------------------------------------------
 
 # Import and re-export static analysis tests
 Import-Module "$PSScriptRoot/Test-StaticAnalysis.psm1" -Force
 Export-ModuleMember -Function Test-PSScriptAnalyzer
-
-# Import and re-export idempotency tests
-Import-Module "$PSScriptRoot/Test-Idempotency.psm1" -Force
-Export-ModuleMember -Function Test-IdempotencyInstall

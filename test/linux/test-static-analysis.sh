@@ -143,13 +143,12 @@ test_shellcheck()
     done
 
     # Read all collected scripts from temp file
-    scripts="$(cat "$scripts_tmp" | tr '\n' ' ')"
+    scripts="$(tr '\n' ' ' < "$scripts_tmp")"
     rm -f "$scripts_tmp"
 
     log_verbose "Checking scripts: $scripts"
     # Run shellcheck on all collected scripts
-    # Only fail on errors, not warnings (--severity=error)
     # shellcheck disable=SC2086  # Word splitting intentional: $scripts is space-separated list
-    shellcheck --severity=error $scripts
+    shellcheck $scripts
   fi
 )}

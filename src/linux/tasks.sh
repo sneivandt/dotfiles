@@ -319,9 +319,9 @@ configure_systemd()
           # Only start the unit if the system is fully running (avoids issues during early boot)
           if [ "$(systemctl is-system-running)" = "running" ]; then
             log_verbose "Starting systemd unit: $unit"
-            # Allow start to fail (e.g., desktop services in headless CI environments)
-            if ! systemctl --user start "$unit" 2>/dev/null; then
-              log_verbose "Warning: Failed to start $unit (may require display server)"
+            # Allow start to fail (e.g., services requiring display server in headless CI)
+            if ! systemctl --user start "$unit"; then
+              log_verbose "Warning: Failed to start $unit - service may not be available in this environment"
             fi
           fi
         fi

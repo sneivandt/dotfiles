@@ -33,8 +33,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
     && locale-gen
 
-# Add user with explicit UID/GID for consistency
-RUN useradd -m -s /bin/zsh -u 1000 -U sneivandt
+# Add user (let system assign UID to avoid conflicts)
+RUN useradd -m -s /bin/zsh -U sneivandt
 WORKDIR /home/sneivandt
 ENV SHELL=/bin/zsh
 CMD ["/usr/bin/zsh"]

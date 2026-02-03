@@ -25,9 +25,9 @@ else
 # Verify registry.ini is parseable
 if (Test-Path .\conf\registry.ini)
 {
-    Write-Output "✓ registry.ini exists"
+    Write-Output "[PASS] registry.ini exists"
     $sections = Get-Content .\conf\registry.ini | Where-Object { $_ -match '^\[.*\]$' }
-    Write-Output "✓ Found $($sections.Count) registry sections"
+    Write-Output "[PASS] Found $($sections.Count) registry sections"
 }
 
 # Verify symlinks.ini has Windows section and check specific symlinks
@@ -36,7 +36,7 @@ if (Test-Path .\conf\symlinks.ini)
     $content = Get-Content .\conf\symlinks.ini -Raw
     if ($content -match '\[windows\]')
     {
-        Write-Output "✓ Windows symlinks section found"
+        Write-Output "[PASS] Windows symlinks section found"
     }
     else
     {
@@ -60,7 +60,7 @@ if (Test-Path .\conf\symlinks.ini)
         $found = $windowsSymlinks | Where-Object { $_ -like "*$item*" }
         if ($found)
         {
-            Write-Output "✓ Found expected Windows item: $item"
+            Write-Output "[PASS] Found expected Windows item: $item"
         }
         else
         {

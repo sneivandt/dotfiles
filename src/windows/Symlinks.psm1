@@ -1,5 +1,13 @@
-#Requires -PSEdition Desktop
 #Requires -RunAsAdministrator
+
+<#
+.SYNOPSIS
+    Symlink management utilities for Windows dotfiles
+.DESCRIPTION
+    Creates and manages symbolic links from the symlinks/ directory to their
+    target locations in the user's profile. Supports profile-based filtering
+    to only install symlinks relevant to the active profile.
+#>
 
 function Install-Symlinks
 {

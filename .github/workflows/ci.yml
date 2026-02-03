@@ -245,6 +245,22 @@ jobs:
         shell: pwsh
         run: ./.github/workflows/scripts/windows/Test-Configuration.ps1
 
+      - name: Test dry-run installation (PowerShell Core)
+        shell: pwsh
+        run: |
+          $VerbosePreference = 'Continue'
+          .\dotfiles.ps1 -DryRun -Verbose 2>&1 | Tee-Object -FilePath windows-output.log
+
+      - name: Verify Windows profile symlinks
+        shell: pwsh
+        run: |
+          $output = Get-Content windows-output.log
+          if ($output -notmatch "DRY-RUN") {
+            Write-Error "Expected dry-run output"
+            exit 1
+          }
+          Write-Output "✓ Dry-run test passed for Windows profile"
+
   # Compare profiles to ensure they produce different outputs
   test-profile-differences:
     name: Test Profile Differences

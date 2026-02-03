@@ -1,4 +1,11 @@
-#Requires -PSEdition Desktop
+<#
+.SYNOPSIS
+    VS Code extension management for Windows dotfiles
+.DESCRIPTION
+    Installs VS Code extensions from configuration file, supporting both
+    stable (code) and insiders (code-insiders) editions. Supports profile-based
+    filtering to install only extensions relevant to the active profile.
+#>
 
 function Install-VsCodeExtensions
 {

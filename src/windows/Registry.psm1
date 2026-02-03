@@ -1,5 +1,195 @@
-#Requires -PSEdition Desktop
 #Requires -RunAsAdministrator
+
+<#
+.SYNOPSIS
+    Windows registry management for dotfiles
+.DESCRIPTION
+    Applies registry settings from configuration file using .NET registry APIs
+    for PowerShell Core compatibility. Reads from conf/registry.ini where
+    sections are registry paths and entries are name = value pairs.
+#>
+
+function Get-RegistryHiveAndKey
+{
+    <#
+    .SYNOPSIS
+        Parse registry path into hive and subkey
+    .DESCRIPTION
+        Converts PowerShell registry path format (HKCU:\Software\Example)
+        into .NET registry hive object and subkey path for PowerShell Core compatibility.
+    .OUTPUTS
+        PSCustomObject with Hive (RegistryKey) and SubKey (string) properties
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]
+        $Path
+    )
+
+    # Parse registry path format: HIVE:\SubKey
+    if ($Path -match '^(HKEY_CURRENT_USER|HKCU)[:\\](.*)$')
+    {
+        return [PSCustomObject]@{
+            Hive = [Microsoft.Win32.Registry]::CurrentUser
+            SubKey = $matches[2]
+        }
+    }
+    elseif ($Path -match '^(HKEY_LOCAL_MACHINE|HKLM)[:\\](.*)$')
+    {
+        return [PSCustomObject]@{
+            Hive = [Microsoft.Win32.Registry]::LocalMachine
+            SubKey = $matches[2]
+        }
+    }
+    elseif ($Path -match '^(HKEY_CLASSES_ROOT|HKCR)[:\\](.*)$')
+    {
+        return [PSCustomObject]@{
+            Hive = [Microsoft.Win32.Registry]::ClassesRoot
+            SubKey = $matches[2]
+        }
+    }
+    elseif ($Path -match '^(HKEY_USERS|HKU)[:\\](.*)$')
+    {
+        return [PSCustomObject]@{
+            Hive = [Microsoft.Win32.Registry]::Users
+            SubKey = $matches[2]
+        }
+    }
+    else
+    {
+        throw "Unsupported registry path format: $Path"
+    }
+}
+
+function Test-RegistryPath
+{
+    <#
+    .SYNOPSIS
+        Test if registry path exists using .NET APIs
+    .DESCRIPTION
+        PowerShell Core compatible registry path existence check.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]
+        $Path
+    )
+
+    $parsed = Get-RegistryHiveAndKey -Path $Path
+    $key = $parsed.Hive.OpenSubKey($parsed.SubKey, $false)
+    $exists = $null -ne $key
+    if ($key) { $key.Close() }
+    return $exists
+}
+
+function New-RegistryPath
+{
+    <#
+    .SYNOPSIS
+        Create registry path using .NET APIs
+    .DESCRIPTION
+        PowerShell Core compatible registry path creation.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]
+        $Path
+    )
+
+    $parsed = Get-RegistryHiveAndKey -Path $Path
+    $key = $parsed.Hive.CreateSubKey($parsed.SubKey)
+    if ($key) { $key.Close() }
+}
+
+function Get-RegistryValue
+{
+    <#
+    .SYNOPSIS
+        Get registry value using .NET APIs
+    .DESCRIPTION
+        PowerShell Core compatible registry value retrieval.
+    .OUTPUTS
+        Registry value or $null if not found
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]
+        $Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]
+        $Name
+    )
+
+    $parsed = Get-RegistryHiveAndKey -Path $Path
+    $key = $parsed.Hive.OpenSubKey($parsed.SubKey, $false)
+    if (-not $key)
+    {
+        return $null
+    }
+
+    try
+    {
+        return $key.GetValue($Name, $null)
+    }
+    finally
+    {
+        $key.Close()
+    }
+}
+
+function Set-RegistryKeyValue
+{
+    <#
+    .SYNOPSIS
+        Set registry value using .NET APIs
+    .DESCRIPTION
+        PowerShell Core compatible registry value setting.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]
+        $Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]
+        $Name,
+
+        [Parameter(Mandatory = $true)]
+        $Value
+    )
+
+    $parsed = Get-RegistryHiveAndKey -Path $Path
+    $key = $parsed.Hive.OpenSubKey($parsed.SubKey, $true)
+    if (-not $key)
+    {
+        throw "Registry path does not exist: $Path"
+    }
+
+    try
+    {
+        # Determine registry value type
+        $valueKind = if ($Value -is [int])
+        {
+            [Microsoft.Win32.RegistryValueKind]::DWord
+        }
+        else
+        {
+            [Microsoft.Win32.RegistryValueKind]::String
+        }
+
+        $key.SetValue($Name, $Value, $valueKind)
+    }
+    finally
+    {
+        $key.Close()
+    }
+}
 
 function Sync-Registry
 {
@@ -9,6 +199,7 @@ function Sync-Registry
     .DESCRIPTION
         Applies registry settings from configuration file.
         Format: Sections are registry paths, entries are name = value
+        Uses .NET registry APIs for PowerShell Core compatibility.
     .PARAMETER root
         Repository root directory
     .PARAMETER DryRun
@@ -137,7 +328,7 @@ function Set-RegistryValue
     # Treat -WhatIf like -DryRun for consistency
     $isDryRun = $DryRun -or $WhatIfPreference
 
-    if (-not (Test-Path $path))
+    if (-not (Test-RegistryPath -Path $path))
     {
         if (-not $script:act)
         {
@@ -152,7 +343,7 @@ function Set-RegistryValue
         elseif ($PSCmdlet.ShouldProcess($path, "Create registry path"))
         {
             Write-Verbose "Creating registry path: $path"
-            New-Item -Path $path -Type Folder | Out-Null
+            New-RegistryPath -Path $path
         }
     }
 
@@ -161,7 +352,7 @@ function Set-RegistryValue
     $valueExists = $false
 
     # In dry-run mode, path might not exist yet
-    if (-not (Test-Path $path))
+    if (-not (Test-RegistryPath -Path $path))
     {
         Write-Verbose "Registry path $path does not exist (will be created)"
         $valueExists = $false
@@ -170,13 +361,12 @@ function Set-RegistryValue
     {
         try
         {
-            $currentValue = Get-ItemPropertyValue -Path $path -Name $name -ErrorAction Stop
-            $valueExists = $true
-        }
-        catch [System.Management.Automation.PSArgumentException]
-        {
-            # Value doesn't exist - this is expected
-            Write-Verbose "Registry value $name does not exist in $path"
+            $currentValue = Get-RegistryValue -Path $path -Name $name
+            $valueExists = $null -ne $currentValue
+            if (-not $valueExists)
+            {
+                Write-Verbose "Registry value $name does not exist in $path"
+            }
         }
         catch
         {
@@ -226,7 +416,9 @@ function Set-RegistryValue
         elseif ($PSCmdlet.ShouldProcess("$path\$name", "Set registry value to $value"))
         {
             Write-Verbose "Setting registry value: $path $name = $value"
-            Set-ItemProperty -Path $path -Name $name -Value $value
+            # Convert numeric strings to integers for proper registry type
+            $finalValue = if ($value -match '^-?\d+$') { [int]$value } else { $value }
+            Set-RegistryKeyValue -Path $path -Name $name -Value $finalValue
         }
     }
     else

@@ -94,7 +94,7 @@ Idempotency tests are run automatically in CI. They validate:
   - `arch-desktop` profile (with --skip-os-detection)
   - `windows` profile (on Windows runner)
 
-**Note:** Idempotency and application tests require actual installations and are run in CI jobs via `.github/workflows/scripts/test-idempotency.sh` and `.github/workflows/scripts/test-applications.sh`. They are not included in `./dotfiles.sh -T` which focuses on static analysis and configuration validation.
+**Note:** Idempotency and application tests require actual installations and are run in CI jobs via `.github/workflows/scripts/linux/test-idempotency.sh` and `.github/workflows/scripts/linux/test-applications.sh`. They are not included in `./dotfiles.sh -T` which focuses on static analysis and configuration validation.
 
 ### Manual Idempotency Testing
 

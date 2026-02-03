@@ -57,8 +57,8 @@ run_install_twice()
   log_verbose "Running first installation (profile=$profile)"
   # shellcheck disable=SC2086  # Intentional word splitting for optional additional_flags
   if ! "$DIR"/dotfiles.sh --install --profile "$profile" $additional_flags -v >"$first_run_log" 2>&1; then
-    printf "${RED}ERROR: First installation run failed for profile %s${NC}\n" "$profile" >&2
-    printf "${RED}Output:${NC}\n" >&2
+    printf "%sERROR: First installation run failed for profile %s%s\n" "${RED}" "$profile" "${NC}" >&2
+    printf "%sOutput:%s\n" "${RED}" "${NC}" >&2
     cat "$first_run_log" >&2
     rm -f "$first_run_log" "$second_run_log"
     return 1
@@ -70,9 +70,9 @@ run_install_twice()
   log_verbose "Running second installation (should be idempotent)"
   # shellcheck disable=SC2086  # Intentional word splitting for optional additional_flags
   if ! "$DIR"/dotfiles.sh --install --profile "$profile" $additional_flags -v >"$second_run_log" 2>&1; then
-    printf "${RED}ERROR: Second installation run failed for profile %s${NC}\n" "$profile" >&2
-    printf "${RED}This indicates the installation is not idempotent${NC}\n" >&2
-    printf "${RED}Output:${NC}\n" >&2
+    printf "%sERROR: Second installation run failed for profile %s%s\n" "${RED}" "$profile" "${NC}" >&2
+    printf "%sThis indicates the installation is not idempotent%s\n" "${RED}" "${NC}" >&2
+    printf "%sOutput:%s\n" "${RED}" "${NC}" >&2
     cat "$second_run_log" >&2
     rm -f "$first_run_log" "$second_run_log"
     return 1
@@ -91,15 +91,15 @@ run_install_twice()
   # (Should all be skipped as "already linked" or similar)
   if grep -q "Linking" "$second_run_log"; then
     if ! grep -q "Skipping.*already linked" "$second_run_log"; then
-      printf "${YELLOW}WARNING: Second run appears to have created new symlinks${NC}\n" >&2
-      printf "${YELLOW}This may indicate non-idempotent behavior${NC}\n" >&2
+      printf "%sWARNING: Second run appears to have created new symlinks%s\n" "${YELLOW}" "${NC}" >&2
+      printf "%sThis may indicate non-idempotent behavior%s\n" "${YELLOW}" "${NC}" >&2
     fi
   fi
 
   # Verify no errors in second run
   if grep -qi "error" "$second_run_log"; then
-    printf "${RED}ERROR: Second installation run contained errors for profile %s${NC}\n" "$profile" >&2
-    printf "${RED}Output:${NC}\n" >&2
+    printf "%sERROR: Second installation run contained errors for profile %s%s\n" "${RED}" "$profile" "${NC}" >&2
+    printf "%sOutput:%s\n" "${RED}" "${NC}" >&2
     cat "$second_run_log" >&2
     rm -f "$first_run_log" "$second_run_log"
     return 1
@@ -202,7 +202,7 @@ test_idempotency_symlinks()
 
   # First run
   if ! install_symlinks >"$first_run_log" 2>&1; then
-    printf "${RED}ERROR: First symlink installation failed${NC}\n" >&2
+    printf "%sERROR: First symlink installation failed%s\n" "${RED}" "${NC}" >&2
     cat "$first_run_log" >&2
     HOME="$original_home"
     export HOME
@@ -216,8 +216,8 @@ test_idempotency_symlinks()
   # Second run (should be idempotent)
   log_verbose "Running second symlink installation"
   if ! install_symlinks >"$second_run_log" 2>&1; then
-    printf "${RED}ERROR: Second symlink installation failed${NC}\n" >&2
-    printf "${RED}This indicates symlink installation is not idempotent${NC}\n" >&2
+    printf "%sERROR: Second symlink installation failed%s\n" "${RED}" "${NC}" >&2
+    printf "%sThis indicates symlink installation is not idempotent%s\n" "${RED}" "${NC}" >&2
     cat "$second_run_log" >&2
     HOME="$original_home"
     export HOME
@@ -233,7 +233,7 @@ test_idempotency_symlinks()
   broken_links=$(find "$test_home" -type l ! -exec test -e {} \; -print 2>/dev/null || echo "")
 
   if [ -n "$broken_links" ]; then
-    printf "${RED}ERROR: Found broken symlinks after second run:${NC}\n" >&2
+    printf "%sERROR: Found broken symlinks after second run:%s\n" "${RED}" "${NC}" >&2
     echo "$broken_links" >&2
     HOME="$original_home"
     export HOME

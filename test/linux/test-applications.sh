@@ -53,7 +53,7 @@ test_zsh_completion()
 
   # Test that completion loads without errors
   if ! zsh -c "source '$completion_file' 2>&1" >/dev/null 2>&1; then
-    printf "${RED}ERROR: Completion file failed to load${NC}\n" >&2
+    printf "%sERROR: Completion file failed to load%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
 
@@ -61,12 +61,12 @@ test_zsh_completion()
 
   # Test that main functions are defined
   if ! zsh -c "source '$completion_file' && typeset -f _dotfiles >/dev/null" 2>&1; then
-    printf "${RED}ERROR: _dotfiles function not defined${NC}\n" >&2
+    printf "%sERROR: _dotfiles function not defined%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
 
   if ! zsh -c "source '$completion_file' && typeset -f _dotfiles_get_profiles >/dev/null" 2>&1; then
-    printf "${RED}ERROR: _dotfiles_get_profiles function not defined${NC}\n" >&2
+    printf "%sERROR: _dotfiles_get_profiles function not defined%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
 
@@ -92,7 +92,7 @@ test_zsh_completion()
   ")
 
   if [ -z "$profiles_loaded" ] || [ "$profiles_loaded" -eq 0 ]; then
-    printf "${RED}ERROR: No profiles loaded from profiles.ini${NC}\n" >&2
+    printf "%sERROR: No profiles loaded from profiles.ini%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
 
@@ -110,13 +110,13 @@ test_zsh_completion()
 
   # Extract the line with -I definition and check it excludes --install
   if ! grep -- "'-I'\[" "$completion_file" | grep -qF -- "--install"; then
-    printf "${RED}ERROR: -I does not exclude --install in its exclusion list${NC}\n" >&2
+    printf "%sERROR: -I does not exclude --install in its exclusion list%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
 
   # Extract the line with --install definition and check it excludes -I
   if ! grep -- ")--install\[" "$completion_file" | grep -qF -- "-I"; then
-    printf "${RED}ERROR: --install does not exclude -I in its exclusion list${NC}\n" >&2
+    printf "%sERROR: --install does not exclude -I in its exclusion list%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
 
@@ -128,20 +128,20 @@ test_zsh_completion()
     flag_line=$(grep -- "$pattern" "$completion_file" || true)
 
     if [ -z "$flag_line" ]; then
-      printf "${RED}ERROR: Could not find definition for pattern ${pattern}${NC}\n" >&2
+      printf "%sERROR: Could not find definition for pattern %s%s\n" "${RED}" "${pattern}" "${NC}" >&2
       return 1
     fi
 
     if ! echo "$flag_line" | grep -qF -- " -h " || \
        ! echo "$flag_line" | grep -qF -- " --help"; then
-      printf "${RED}ERROR: Flag matching ${pattern} does not exclude both help flags${NC}\n" >&2
+      printf "%sERROR: Flag matching %s does not exclude both help flags%s\n" "${RED}" "${pattern}" "${NC}" >&2
     fi
   done
 
   # Check that help excludes everything with (- *)
   if ! grep -F -- "(- *)'-h'" "$completion_file" >/dev/null || \
      ! grep -F -- "(- *)--help[" "$completion_file" >/dev/null; then
-    printf "${RED}ERROR: Help flags do not properly exclude all other options${NC}\n" >&2
+    printf "%sERROR: Help flags do not properly exclude all other options%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
 
@@ -166,7 +166,7 @@ test_vim_opens()
 
   # Test 1: Check vim version (ensures binary works)
   if ! vim --version >/dev/null 2>&1; then
-    printf "${RED}ERROR: Cannot run vim --version${NC}\n" >&2
+    printf "%sERROR: Cannot run vim --version%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
 
@@ -182,14 +182,14 @@ test_vim_opens()
       if timeout 5 vim -E -s -c 'quit' </dev/null >/dev/null 2>&1; then
         log_verbose "Vim loads custom vimrc successfully"
       else
-        printf "${YELLOW}WARNING: Vim may have issues loading custom vimrc${NC}\n" >&2
+        printf "%sWARNING: Vim may have issues loading custom vimrc%s\n" "${YELLOW}" "${NC}" >&2
       fi
     else
       # Fallback without timeout
       if vim -E -s -c 'quit' </dev/null >/dev/null 2>&1; then
         log_verbose "Vim loads custom vimrc successfully"
       else
-        printf "${YELLOW}WARNING: Vim may have issues loading custom vimrc${NC}\n" >&2
+        printf "%sWARNING: Vim may have issues loading custom vimrc%s\n" "${YELLOW}" "${NC}" >&2
       fi
     fi
   else
@@ -213,7 +213,7 @@ test_nvim_opens()
 
   # Test 1: Check nvim version (ensures binary works)
   if ! nvim --version >/dev/null 2>&1; then
-    printf "${RED}ERROR: Cannot run nvim --version${NC}\n" >&2
+    printf "%sERROR: Cannot run nvim --version%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
 
@@ -228,14 +228,14 @@ test_nvim_opens()
       if timeout 5 nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1; then
         log_verbose "Nvim loads custom config successfully"
       else
-        printf "${YELLOW}WARNING: Nvim may have issues loading custom config${NC}\n" >&2
+        printf "%sWARNING: Nvim may have issues loading custom config%s\n" "${YELLOW}" "${NC}" >&2
       fi
     else
       # Fallback without timeout
       if nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1; then
         log_verbose "Nvim loads custom config successfully"
       else
-        printf "${YELLOW}WARNING: Nvim may have issues loading custom config${NC}\n" >&2
+        printf "%sWARNING: Nvim may have issues loading custom config%s\n" "${YELLOW}" "${NC}" >&2
       fi
     fi
   else
@@ -284,8 +284,8 @@ test_nvim_plugins()
   # Test 1: Check if lazy.nvim directory exists
   local lazy_path="$HOME/.local/share/nvim/lazy/lazy.nvim"
   if [ ! -d "$lazy_path" ]; then
-    printf "${YELLOW}WARNING: lazy.nvim not installed at expected path${NC}\n" >&2
-    printf "${YELLOW}Run :Lazy sync in nvim to install plugins${NC}\n" >&2
+    printf "%sWARNING: lazy.nvim not installed at expected path%s\n" "${YELLOW}" "${NC}" >&2
+    printf "%sRun :Lazy sync in nvim to install plugins%s\n" "${YELLOW}" "${NC}" >&2
     rm -f "$errors_file"
     return 0
   else
@@ -303,11 +303,11 @@ test_nvim_plugins()
     log_verbose "Found $plugin_count plugin directories in $plugin_dir"
 
     if [ "$plugin_count" -lt 5 ]; then
-      printf "${YELLOW}WARNING: Only $plugin_count plugins found (expected 20+)${NC}\n" >&2
-      printf "${YELLOW}Run :Lazy sync in nvim to install missing plugins${NC}\n" >&2
+      printf "%sWARNING: Only %d plugins found (expected 20+)%s\n" "${YELLOW}" "$plugin_count" "${NC}" >&2
+      printf "%sRun :Lazy sync in nvim to install missing plugins%s\n" "${YELLOW}" "${NC}" >&2
     fi
   else
-    printf "${RED}ERROR: Plugin directory not found: $plugin_dir${NC}\n" >&2
+    printf "%sERROR: Plugin directory not found: %s%s\n" "${RED}" "$plugin_dir" "${NC}" >&2
     errors=$(cat "$errors_file")
     echo $((errors + 1)) > "$errors_file"
   fi
@@ -326,8 +326,8 @@ test_nvim_plugins()
   done
 
   if [ "$missing_count" -gt 0 ]; then
-    printf "${YELLOW}WARNING: $missing_count critical plugin(s) not installed${NC}\n" >&2
-    printf "${YELLOW}Run :Lazy sync in nvim to install missing plugins${NC}\n" >&2
+    printf "%sWARNING: %d critical plugin(s) not installed%s\n" "${YELLOW}" "$missing_count" "${NC}" >&2
+    printf "%sRun :Lazy sync in nvim to install missing plugins%s\n" "${YELLOW}" "${NC}" >&2
   else
     log_verbose "All critical plugins are installed"
   fi
@@ -340,9 +340,9 @@ test_nvim_plugins()
   load_test="$($timeout_cmd nvim --headless +'qa!' 2>&1 >/dev/null || echo "FAILED")"
 
   if [ "$load_test" = "FAILED" ] || [ -n "$load_test" ]; then
-    printf "${RED}ERROR: nvim failed to start with plugin configuration${NC}\n" >&2
+    printf "%sERROR: nvim failed to start with plugin configuration%s\n" "${RED}" "${NC}" >&2
     if [ -n "$load_test" ]; then
-      printf "${RED}Error output: %s${NC}\n" "$load_test" >&2
+      printf "%sError output: %s%s\n" "${RED}" "$load_test" "${NC}" >&2
     fi
     errors=$(cat "$errors_file")
     echo $((errors + 1)) > "$errors_file"
@@ -353,7 +353,7 @@ test_nvim_plugins()
   # Test 5: Verify lazy-lock.json exists (indicates plugins were successfully installed)
   local lock_file="$DIR/symlinks/vim/lazy-lock.json"
   if [ ! -f "$lock_file" ]; then
-    printf "${YELLOW}WARNING: lazy-lock.json not found (plugins may not be locked)${NC}\n" >&2
+    printf "%sWARNING: lazy-lock.json not found (plugins may not be locked)%s\n" "${YELLOW}" "${NC}" >&2
   else
     log_verbose "lazy-lock.json found - plugin versions are locked"
 
@@ -363,7 +363,7 @@ test_nvim_plugins()
     log_verbose "lazy-lock.json contains $locked_plugins plugin entries"
 
     if [ "$locked_plugins" -lt 15 ]; then
-      printf "${YELLOW}WARNING: Only $locked_plugins plugins in lazy-lock.json (expected 20+)${NC}\n" >&2
+      printf "%sWARNING: Only %d plugins in lazy-lock.json (expected 20+)%s\n" "${YELLOW}" "$locked_plugins" "${NC}" >&2
     fi
   fi
 

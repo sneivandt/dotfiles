@@ -76,6 +76,12 @@ require("lazy").setup({
               folder_arrow = true,
               git = false,
             },
+            glyphs = {
+              folder = {
+                arrow_closed = "+",
+                arrow_open = "-",
+              },
+            },
           },
         },
         filters = {

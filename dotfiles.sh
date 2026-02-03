@@ -106,12 +106,12 @@ parse_profile_arg()
 #
 # Result:
 #   0 success, exits on error if both flags present
+# shellcheck disable=SC3043  # 'local' is widely supported even if not strictly POSIX
 check_exclusive_flags()
 {
   local short_flag="$1"
   local long_flag="$2"
-  local flag_desc="$3"
-  shift 3
+  shift 2
 
   local has_short=false
   local has_long=false

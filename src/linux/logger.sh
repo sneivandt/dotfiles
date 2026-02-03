@@ -34,6 +34,8 @@ if [ -t 1 ]; then
   NC="\033[0m" # No Color
 fi
 
+export RED GREEN BLUE YELLOW NC
+
 # log_error
 #
 # Print an error message (stderr semantics not required for current usage)

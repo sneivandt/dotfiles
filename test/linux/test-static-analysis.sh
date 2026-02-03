@@ -89,7 +89,7 @@ test_shellcheck()
     then
       log_verbose "No symlinks.ini found, checking only main scripts"
       # shellcheck disable=SC2086  # Word splitting intentional: $scripts is space-separated list
-      shellcheck $scripts || true
+      shellcheck $scripts
       return
     fi
 
@@ -147,8 +147,8 @@ test_shellcheck()
     rm -f "$scripts_tmp"
 
     log_verbose "Checking scripts: $scripts"
-    # Run shellcheck on all collected scripts, ignoring errors
+    # Run shellcheck on all collected scripts
     # shellcheck disable=SC2086  # Word splitting intentional: $scripts is space-separated list
-    shellcheck $scripts || true
+    shellcheck $scripts
   fi
 )}

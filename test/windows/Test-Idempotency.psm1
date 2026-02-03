@@ -1,12 +1,3 @@
-# -----------------------------------------------------------------------------
-# Test-Idempotency.psm1
-# -----------------------------------------------------------------------------
-# Idempotency tests for Windows dotfiles installation.
-#
-# Functions:
-#   Test-IdempotencyInstall  Test that installation is idempotent
-# -----------------------------------------------------------------------------
-
 <#
 .SYNOPSIS
 Tests that dotfiles installation is idempotent on Windows.

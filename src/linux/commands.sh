@@ -77,8 +77,6 @@ do_test()
   # Source test functions only when needed
   . "$DIR"/test/linux/test-config.sh
   . "$DIR"/test/linux/test-static-analysis.sh
-  . "$DIR"/test/linux/test-applications.sh
-  . "$DIR"/test/linux/test-idempotency.sh
 
   # Configuration validation tests
   test_config_validation
@@ -87,19 +85,14 @@ do_test()
   test_ini_syntax
   test_category_consistency
   test_empty_sections
-  test_zsh_completion
 
   # Static analysis tests
   test_psscriptanalyzer
   test_shellcheck
 
-  # Application tests
-  test_vim_opens
-  test_nvim_opens
-  test_nvim_plugins
-
-  # Idempotency tests
-  test_idempotency_symlinks
+  # Note: Application tests (test_vim_opens, test_nvim_opens, test_nvim_plugins)
+  # and idempotency tests (test_idempotency_*) are run separately in CI
+  # as they require specific tools to be installed and actual installations.
 }
 
 # do_uninstall

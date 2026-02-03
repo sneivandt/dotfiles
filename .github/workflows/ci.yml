@@ -106,6 +106,18 @@ jobs:
           test_zsh_completion
           test_vim_opens
           test_nvim_opens
+          test_nvim_plugins
+
+      - name: Run idempotency tests
+        run: |
+          DIR="$(pwd)"
+          export DIR
+          export OPT=""
+          export PROFILE="base"
+          . ./src/linux/logger.sh
+          . ./src/linux/utils.sh
+          . ./test/linux/test-idempotency.sh
+          test_idempotency_symlinks
 
   # Test base profile on Linux (minimal configuration)
   test-linux-base:

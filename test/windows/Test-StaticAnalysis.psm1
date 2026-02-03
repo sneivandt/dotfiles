@@ -48,9 +48,9 @@ function Test-PSScriptAnalyzer
                 {
                     try
                     {
-                        # Use ErrorAction SilentlyContinue to suppress non-terminating errors
-                        # Wrap in try-catch to handle PSScriptAnalyzer internal crashes gracefully
-                        $findings = Invoke-ScriptAnalyzer -Path $file.FullName -ErrorAction SilentlyContinue
+                        # Use ErrorAction Stop to catch all errors in try-catch
+                        # This allows us to handle both analysis findings and internal crashes
+                        $findings = Invoke-ScriptAnalyzer -Path $file.FullName -ErrorAction Stop
 
                         if ($findings)
                         {

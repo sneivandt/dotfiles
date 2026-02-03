@@ -125,7 +125,7 @@ Runs automatically on pull requests and pushes to validate:
 - Static analysis (shellcheck and PSScriptAnalyzer)
 - Configuration file validation
 - Profile installations with dry-run tests
-- **Idempotency tests** - Runs installation twice for each profile
+- Idempotency tests (runs installation twice for each profile)
 - Cross-platform compatibility (Linux Ubuntu and Windows runners)
 - Docker image build
 

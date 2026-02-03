@@ -34,11 +34,11 @@ function Test-IdempotencyInstall {
         return $false
     }
 
-    Write-Verbose "Running first installation"
+    Write-Verbose "Running first installation (dry-run mode for CI)"
 
     # First installation run
-    # Note: dotfiles.ps1 only accepts -DryRun switch, no -Install or -Profile parameters
-    $firstRunOutput = & pwsh -File $dotfilesScript -Verbose 2>&1
+    # Note: Use -DryRun for CI testing since actual installation requires admin privileges
+    $firstRunOutput = & pwsh -File $dotfilesScript -DryRun -Verbose 2>&1
     $firstRunExitCode = $LASTEXITCODE
 
     if ($firstRunExitCode -ne 0) {
@@ -53,7 +53,7 @@ function Test-IdempotencyInstall {
     Write-Verbose "Running second installation (should be idempotent)"
 
     # Second installation run (should be idempotent)
-    $secondRunOutput = & pwsh -File $dotfilesScript -Verbose 2>&1
+    $secondRunOutput = & pwsh -File $dotfilesScript -DryRun -Verbose 2>&1
     $secondRunExitCode = $LASTEXITCODE
 
     if ($secondRunExitCode -ne 0) {

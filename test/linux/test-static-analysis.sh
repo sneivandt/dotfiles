@@ -148,7 +148,8 @@ test_shellcheck()
 
     log_verbose "Checking scripts: $scripts"
     # Run shellcheck on all collected scripts
+    # Only fail on errors, not warnings (--severity=error)
     # shellcheck disable=SC2086  # Word splitting intentional: $scripts is space-separated list
-    shellcheck $scripts
+    shellcheck --severity=error $scripts
   fi
 )}

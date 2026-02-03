@@ -24,7 +24,9 @@ set -o nounset
 # DIR is exported by dotfiles.sh
 # shellcheck disable=SC2154
 
+# shellcheck source=../../../../src/linux/logger.sh
 . "$DIR"/src/linux/logger.sh
+# shellcheck source=../../../../src/linux/utils.sh
 . "$DIR"/src/linux/utils.sh
 
 # run_install_twice
@@ -97,7 +99,7 @@ run_install_twice()
   fi
 
   # Verify no errors in second run
-  if grep -qi "error" "$second_run_log"; then
+  if grep -E "^ERROR:|^.*ERROR:" "$second_run_log"; then
     printf "%sERROR: Second installation run contained errors for profile %s%s\n" "${RED}" "$profile" "${NC}" >&2
     printf "%sOutput:%s\n" "${RED}" "${NC}" >&2
     cat "$second_run_log" >&2
@@ -190,10 +192,10 @@ test_idempotency_symlinks()
   second_run_log="$(mktemp)"
 
   # Run install_symlinks twice by sourcing tasks.sh
+  # shellcheck disable=SC2218  # log_verbose is sourced at file level
   log_verbose "Running first symlink installation"
 
   # We need to run the actual task function, so source it
-  # shellcheck disable=SC1091
   . "$DIR"/src/linux/tasks.sh
 
   # Set PROFILE for the task

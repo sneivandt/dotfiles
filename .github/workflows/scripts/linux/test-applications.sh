@@ -182,14 +182,16 @@ test_vim_opens()
       if timeout 5 vim -E -s -c 'quit' </dev/null >/dev/null 2>&1; then
         log_verbose "Vim loads custom vimrc successfully"
       else
-        printf "%sWARNING: Vim may have issues loading custom vimrc%s\n" "${YELLOW}" "${NC}" >&2
+        printf "%sERROR: Vim failed to load custom vimrc%s\n" "${RED}" "${NC}" >&2
+        return 1
       fi
     else
       # Fallback without timeout
       if vim -E -s -c 'quit' </dev/null >/dev/null 2>&1; then
         log_verbose "Vim loads custom vimrc successfully"
       else
-        printf "%sWARNING: Vim may have issues loading custom vimrc%s\n" "${YELLOW}" "${NC}" >&2
+        printf "%sERROR: Vim failed to load custom vimrc%s\n" "${RED}" "${NC}" >&2
+        return 1
       fi
     fi
   else
@@ -224,18 +226,21 @@ test_nvim_opens()
     log_verbose "Custom nvim config directory found"
 
     # Test that nvim can start with the custom config in headless mode
+    # Note: First run may take longer due to lazy.nvim bootstrap (git clone)
     if is_program_installed "timeout"; then
-      if timeout 5 nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1; then
+      if timeout 30 nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1; then
         log_verbose "Nvim loads custom config successfully"
       else
-        printf "%sWARNING: Nvim may have issues loading custom config%s\n" "${YELLOW}" "${NC}" >&2
+        printf "%sERROR: Nvim failed to load custom config%s\n" "${RED}" "${NC}" >&2
+        return 1
       fi
     else
       # Fallback without timeout
       if nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1; then
         log_verbose "Nvim loads custom config successfully"
       else
-        printf "%sWARNING: Nvim may have issues loading custom config%s\n" "${YELLOW}" "${NC}" >&2
+        printf "%sERROR: Nvim failed to load custom config%s\n" "${RED}" "${NC}" >&2
+        return 1
       fi
     fi
   else

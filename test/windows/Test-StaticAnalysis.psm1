@@ -1,3 +1,13 @@
+<#
+.SYNOPSIS
+    Static analysis test module for PowerShell scripts.
+
+.DESCRIPTION
+    Provides PSScriptAnalyzer-based static analysis functionality for PowerShell
+    scripts in the repository. Scans for .ps1 and .psm1 files and reports any
+    violations of PowerShell best practices.
+#>
+
 function Test-PSScriptAnalyzer
 {
     <#
@@ -26,6 +36,7 @@ function Test-PSScriptAnalyzer
         Import-Module -Name "PSScriptAnalyzer" -Force
 
         $extensions = "*.ps1", "*.psm1"
+        $hasFindings = $false
 
         foreach ($extension in $extensions)
         {
@@ -35,11 +46,32 @@ function Test-PSScriptAnalyzer
             {
                 foreach ($file in $files)
                 {
-                    # Use ErrorAction Continue to handle PSScriptAnalyzer internal errors gracefully
-                    # (e.g., "Object reference not set to an instance of an object")
-                    Invoke-ScriptAnalyzer -Path $file.FullName -ErrorAction Continue
+                    try
+                    {
+                        # PSScriptAnalyzer returns findings as output objects, not errors
+                        # Use ErrorAction Continue to handle internal crashes gracefully
+                        $findings = Invoke-ScriptAnalyzer -Path $file.FullName -ErrorAction Continue
+
+                        if ($findings)
+                        {
+                            Write-Output "Findings in $($file.Name):"
+                            $findings | Format-Table -AutoSize
+                            $hasFindings = $true
+                        }
+                    }
+                    catch
+                    {
+                        # Catch PSScriptAnalyzer internal errors (e.g., null reference exceptions)
+                        # Log but continue analyzing other files
+                        Write-Warning "PSScriptAnalyzer failed to analyze $($file.Name): $_"
+                    }
                 }
             }
+        }
+
+        if ($hasFindings)
+        {
+            Write-Error "PSScriptAnalyzer found issues in PowerShell scripts"
         }
     }
     else

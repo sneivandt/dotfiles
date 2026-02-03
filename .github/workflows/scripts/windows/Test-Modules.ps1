@@ -1,4 +1,3 @@
-#!/usr/bin/env pwsh
 <#
 .SYNOPSIS
     Tests that all Windows PowerShell modules can be loaded successfully.

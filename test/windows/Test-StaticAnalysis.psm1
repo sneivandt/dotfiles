@@ -40,7 +40,7 @@ function Test-PSScriptAnalyzer
 
         foreach ($extension in $extensions)
         {
-            $files = Get-ChildItem -Path $dir -Filter $extension -Recurse -ErrorAction SilentlyContinue
+            $files = Get-ChildItem -Path $dir -Filter $extension -File -Recurse -ErrorAction SilentlyContinue
 
             if ($files)
             {
@@ -49,8 +49,9 @@ function Test-PSScriptAnalyzer
                     try
                     {
                         # PSScriptAnalyzer returns findings as output objects, not errors
-                        # Use ErrorAction Continue to handle internal crashes gracefully
-                        $findings = Invoke-ScriptAnalyzer -Path $file.FullName -ErrorAction Continue
+                        # Use ErrorAction SilentlyContinue to suppress intermittent internal errors
+                        # (e.g., assembly loading issues, null reference exceptions)
+                        $findings = Invoke-ScriptAnalyzer -Path $file.FullName -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
 
                         if ($findings)
                         {

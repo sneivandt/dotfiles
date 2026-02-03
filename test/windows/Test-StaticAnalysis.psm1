@@ -48,9 +48,9 @@ function Test-PSScriptAnalyzer
                 {
                     try
                     {
-                        # Use ErrorAction Stop to catch all errors in try-catch
-                        # This allows us to handle both analysis findings and internal crashes
-                        $findings = Invoke-ScriptAnalyzer -Path $file.FullName -ErrorAction Stop
+                        # PSScriptAnalyzer returns findings as output objects, not errors
+                        # Use ErrorAction Continue to handle internal crashes gracefully
+                        $findings = Invoke-ScriptAnalyzer -Path $file.FullName -ErrorAction Continue
 
                         if ($findings)
                         {
@@ -61,7 +61,7 @@ function Test-PSScriptAnalyzer
                     }
                     catch
                     {
-                        # PSScriptAnalyzer can throw internal errors (e.g., null reference exceptions)
+                        # Catch PSScriptAnalyzer internal errors (e.g., null reference exceptions)
                         # Log but continue analyzing other files
                         Write-Warning "PSScriptAnalyzer failed to analyze $($file.Name): $_"
                     }

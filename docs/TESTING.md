@@ -137,7 +137,7 @@ Publishes Docker image to Docker Hub on pushes to master branch.
 Replicate CI validation locally:
 
 ```bash
-# Run all tests including idempotency
+# Run static analysis and configuration validation tests
 ./dotfiles.sh -T
 
 # Test each profile with dry-run
@@ -146,7 +146,7 @@ Replicate CI validation locally:
 ./dotfiles.sh -I --profile arch-desktop --dry-run
 
 # On Windows
-./dotfiles.ps1 -Install -Profile windows -DryRun
+./dotfiles.ps1 -DryRun
 ```
 
 ## Test Files

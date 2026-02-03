@@ -257,7 +257,7 @@ jobs:
         shell: pwsh
         run: |
           Import-Module .\test\windows\Test.psm1
-          if (-not (Test-IdempotencyInstall -Profile "windows" -Verbose)) {
+          if (-not (Test-IdempotencyInstall -Verbose)) {
             Write-Error "Windows idempotency test failed"
             exit 1
           }

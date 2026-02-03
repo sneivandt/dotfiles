@@ -17,24 +17,20 @@ Runs the installation process twice and verifies that:
 2. No unnecessary changes are made
 3. All operations are properly skipped when already correct
 
-.PARAMETER Profile
-The profile to test (default: "windows")
+Note: dotfiles.ps1 always uses the "windows" profile and only accepts -DryRun switch.
 
 .OUTPUTS
 System.Boolean
 
 .EXAMPLE
-Test-IdempotencyInstall -Profile "windows" -Verbose
+Test-IdempotencyInstall -Verbose
 #>
 function Test-IdempotencyInstall {
     [CmdletBinding()]
     [OutputType([System.Boolean])]
-    param(
-        [Parameter(Mandatory = $false)]
-        [string]$Profile = "windows"
-    )
+    param()
 
-    Write-Output ":: Testing $Profile profile idempotency"
+    Write-Output ":: Testing Windows profile idempotency"
 
     # Get the repository root directory
     $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -47,14 +43,15 @@ function Test-IdempotencyInstall {
         return $false
     }
 
-    Write-Verbose "Running first installation (profile=$Profile)"
+    Write-Verbose "Running first installation"
 
     # First installation run
-    $firstRunOutput = & pwsh -File $dotfilesScript -Install -Profile $Profile -Verbose 2>&1
+    # Note: dotfiles.ps1 only accepts -DryRun switch, no -Install or -Profile parameters
+    $firstRunOutput = & pwsh -File $dotfilesScript -Verbose 2>&1
     $firstRunExitCode = $LASTEXITCODE
 
     if ($firstRunExitCode -ne 0) {
-        Write-Error "First installation run failed for profile $Profile"
+        Write-Error "First installation run failed"
         Write-Error "Exit code: $firstRunExitCode"
         Write-Error "Output:"
         $firstRunOutput | ForEach-Object { Write-Error $_ }
@@ -65,11 +62,11 @@ function Test-IdempotencyInstall {
     Write-Verbose "Running second installation (should be idempotent)"
 
     # Second installation run (should be idempotent)
-    $secondRunOutput = & pwsh -File $dotfilesScript -Install -Profile $Profile -Verbose 2>&1
+    $secondRunOutput = & pwsh -File $dotfilesScript -Verbose 2>&1
     $secondRunExitCode = $LASTEXITCODE
 
     if ($secondRunExitCode -ne 0) {
-        Write-Error "Second installation run failed for profile $Profile"
+        Write-Error "Second installation run failed"
         Write-Error "This indicates the installation is not idempotent"
         Write-Error "Exit code: $secondRunExitCode"
         Write-Error "Output:"
@@ -89,14 +86,14 @@ function Test-IdempotencyInstall {
     $errorCount = ($secondRunOutput | Where-Object { $_ -like "*ERROR:*" -or $_ -like "*Error:*" }).Count
 
     if ($errorCount -gt 0) {
-        Write-Error "Second installation run contained $errorCount error(s) for profile $Profile"
+        Write-Error "Second installation run contained $errorCount error(s)"
         Write-Error "Output:"
         $secondRunOutput | Where-Object { $_ -like "*ERROR:*" -or $_ -like "*Error:*" } | ForEach-Object { Write-Error $_ }
         return $false
     }
 
-    Write-Verbose "Idempotency verified for profile $Profile"
-    Write-Output "✓ $Profile profile idempotency test passed"
+    Write-Verbose "Idempotency verified for Windows profile"
+    Write-Output "✓ Windows profile idempotency test passed"
 
     return $true
 }

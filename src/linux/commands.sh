@@ -95,6 +95,7 @@ do_test()
   # Application tests
   test_vim_opens
   test_nvim_opens
+  test_nvim_plugins
 }
 
 # do_uninstall

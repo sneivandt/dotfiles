@@ -242,3 +242,139 @@ test_nvim_opens()
     log_verbose "No custom nvim config installed, basic nvim test complete"
   fi
 )}
+
+# test_nvim_plugins
+#
+# Test that Neovim plugins are installed and can be loaded.
+# Validates lazy.nvim plugin manager installation and all configured plugins.
+test_nvim_plugins()
+{(
+  # Check if nvim is installed
+  if ! is_program_installed "nvim"; then
+    log_verbose "Skipping nvim plugin test: nvim not installed"
+    return 0
+  fi
+
+  # Check if lazy-bootstrap.lua exists (may be excluded by sparse checkout)
+  local lazy_config="$DIR/symlinks/vim/lua/lazy-bootstrap.lua"
+  if [ ! -f "$lazy_config" ]; then
+    log_verbose "Skipping nvim plugin test: lazy-bootstrap.lua not found"
+    return 0
+  fi
+
+  # Check if nvim config is installed
+  if [ ! -f "$HOME/.config/nvim/nvimrc" ]; then
+    log_verbose "Skipping nvim plugin test: nvimrc not installed"
+    return 0
+  fi
+
+  log_stage "Testing nvim plugin installation"
+
+  local errors_file
+  errors_file="$(mktemp)"
+  echo 0 > "$errors_file"
+
+  # Set timeout command
+  local timeout_cmd="timeout 30"
+  if ! is_program_installed "timeout"; then
+    timeout_cmd=""
+    log_verbose "timeout not available, tests may hang if nvim blocks"
+  fi
+
+  # Test 1: Check if lazy.nvim directory exists
+  local lazy_path="$HOME/.local/share/nvim/lazy/lazy.nvim"
+  if [ ! -d "$lazy_path" ]; then
+    printf "${YELLOW}WARNING: lazy.nvim not installed at expected path${NC}\n" >&2
+    printf "${YELLOW}Run :Lazy sync in nvim to install plugins${NC}\n" >&2
+    rm -f "$errors_file"
+    return 0
+  else
+    log_verbose "lazy.nvim is installed at $lazy_path"
+  fi
+
+  # Test 2: Count installed plugins by checking directories
+  log_verbose "Checking installed plugin directories"
+  local plugin_dir="$HOME/.local/share/nvim/lazy"
+  local plugin_count=0
+
+  if [ -d "$plugin_dir" ]; then
+    # Count directories in lazy plugin directory
+    plugin_count=$(find "$plugin_dir" -mindepth 1 -maxdepth 1 -type d | wc -l)
+    log_verbose "Found $plugin_count plugin directories in $plugin_dir"
+
+    if [ "$plugin_count" -lt 5 ]; then
+      printf "${YELLOW}WARNING: Only $plugin_count plugins found (expected 20+)${NC}\n" >&2
+      printf "${YELLOW}Run :Lazy sync in nvim to install missing plugins${NC}\n" >&2
+    fi
+  else
+    printf "${RED}ERROR: Plugin directory not found: $plugin_dir${NC}\n" >&2
+    errors=$(cat "$errors_file")
+    echo $((errors + 1)) > "$errors_file"
+  fi
+
+  # Test 3: Verify specific critical plugins exist
+  log_verbose "Checking critical plugin directories"
+
+  local critical_plugins="lazy.nvim fzf.vim nvim-tree.lua lualine.nvim tokyonight.nvim vim-fugitive"
+  local missing_count=0
+
+  for plugin in $critical_plugins; do
+    if [ ! -d "$plugin_dir/$plugin" ]; then
+      log_verbose "Missing critical plugin: $plugin"
+      missing_count=$((missing_count + 1))
+    fi
+  done
+
+  if [ "$missing_count" -gt 0 ]; then
+    printf "${YELLOW}WARNING: $missing_count critical plugin(s) not installed${NC}\n" >&2
+    printf "${YELLOW}Run :Lazy sync in nvim to install missing plugins${NC}\n" >&2
+  else
+    log_verbose "All critical plugins are installed"
+  fi
+
+  # Test 4: Try loading nvim with configuration in headless mode
+  log_verbose "Testing nvim can load with plugin configuration"
+
+  local load_test
+  # Use minimal test - just start and quit
+  load_test="$($timeout_cmd nvim --headless +'qa!' 2>&1 >/dev/null || echo "FAILED")"
+
+  if [ "$load_test" = "FAILED" ] || [ -n "$load_test" ]; then
+    printf "${RED}ERROR: nvim failed to start with plugin configuration${NC}\n" >&2
+    if [ -n "$load_test" ]; then
+      printf "${RED}Error output: %s${NC}\n" "$load_test" >&2
+    fi
+    errors=$(cat "$errors_file")
+    echo $((errors + 1)) > "$errors_file"
+  else
+    log_verbose "nvim starts successfully with plugin configuration"
+  fi
+
+  # Test 5: Verify lazy-lock.json exists (indicates plugins were successfully installed)
+  local lock_file="$DIR/symlinks/vim/lazy-lock.json"
+  if [ ! -f "$lock_file" ]; then
+    printf "${YELLOW}WARNING: lazy-lock.json not found (plugins may not be locked)${NC}\n" >&2
+  else
+    log_verbose "lazy-lock.json found - plugin versions are locked"
+
+    # Count plugins in lockfile
+    local locked_plugins
+    locked_plugins="$(grep -c '": {' "$lock_file" || echo "0")"
+    log_verbose "lazy-lock.json contains $locked_plugins plugin entries"
+
+    if [ "$locked_plugins" -lt 15 ]; then
+      printf "${YELLOW}WARNING: Only $locked_plugins plugins in lazy-lock.json (expected 20+)${NC}\n" >&2
+    fi
+  fi
+
+  # Check for errors
+  errors=$(cat "$errors_file")
+  rm -f "$errors_file"
+
+  if [ "$errors" -gt 0 ]; then
+    printf "${RED}Nvim plugin validation found %d error(s)${NC}\n" "$errors" >&2
+    return 1
+  else
+    log_verbose "Nvim plugin validation passed"
+  fi
+)}

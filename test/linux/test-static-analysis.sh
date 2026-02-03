@@ -46,9 +46,9 @@ test_psscriptanalyzer()
 
 # test_shellcheck
 #
-# Execute shellcheck across all shell scripts discovered in symlinks/ and
-# other directories. Non-zero shellcheck exit is swallowed (|| true) so the
-# overall run continues; individual findings still surface.
+# Execute shellcheck across all shell scripts discovered in symlinks/
+# Non-zero shellcheck exit is swallowed (|| true) so the overall run
+# continues; individual findings still surface.
 test_shellcheck()
 {(
   # Check if shellcheck is installed
@@ -126,22 +126,8 @@ test_shellcheck()
           find "$DIR"/symlinks/"$symlink" -type f > "$tmpfile"
           while IFS='' read -r line || [ -n "$line" ]
           do
-            ignore=false
-
-            # Check if the file belongs to a submodule (third-party code) to exclude it
-            for submodule in $submodules
-            do
-              case "$line" in
-                "$DIR"/"$submodule"/*)
-                  ignore=true
-                  break
-                  ;;
-              esac
-            done
-
-            # If not ignored and is a shell script, add to the list
-            if ! "$ignore" \
-              && is_shell_script "$line"
+            # If is a shell script, add to the list
+            if is_shell_script "$line"
             then
               echo "$line" >> "$scripts_tmp"
             fi
@@ -156,5 +142,13 @@ test_shellcheck()
       done
     done
 
-    # Read a# If is a shell script, add to the list
-            if
+    # Read all collected scripts from temp file
+    scripts="$(cat "$scripts_tmp" | tr '\n' ' ')"
+    rm -f "$scripts_tmp"
+
+    log_verbose "Checking scripts: $scripts"
+    # Run shellcheck on all collected scripts, ignoring errors
+    # shellcheck disable=SC2086  # Word splitting intentional: $scripts is space-separated list
+    shellcheck $scripts || true
+  fi
+)}

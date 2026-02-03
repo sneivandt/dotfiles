@@ -82,7 +82,23 @@ Test different profiles to ensure sparse checkout and configuration work correct
 
 ## Idempotency Testing
 
-All scripts are designed to be idempotent. Test by running installation multiple times:
+All scripts are designed to be idempotent. The project includes both automated and manual idempotency tests.
+
+### Automated Idempotency Tests
+
+Idempotency tests are run automatically in CI. They validate:
+- **`test_idempotency_symlinks`** - Verifies symlink installation is idempotent (runs in test-applications job)
+- **Profile idempotency** - CI runs each profile installation twice:
+  - `base` profile
+  - `arch` profile (with --skip-os-detection)
+  - `arch-desktop` profile (with --skip-os-detection)
+  - `windows` profile (on Windows runner)
+
+Note: Idempotency tests require actual installations and are run in separate CI jobs. They are not included in `./dotfiles.sh -T` which focuses on static analysis and configuration validation.
+
+### Manual Idempotency Testing
+
+Test by running installation multiple times:
 
 ```bash
 # First run
@@ -109,6 +125,7 @@ Runs automatically on pull requests and pushes to validate:
 - Static analysis (shellcheck and PSScriptAnalyzer)
 - Configuration file validation
 - Profile installations with dry-run tests
+- Idempotency tests (runs installation twice for each profile)
 - Cross-platform compatibility (Linux Ubuntu and Windows runners)
 - Docker image build
 
@@ -120,7 +137,7 @@ Publishes Docker image to Docker Hub on pushes to master branch.
 Replicate CI validation locally:
 
 ```bash
-# Run static analysis
+# Run static analysis and configuration validation tests
 ./dotfiles.sh -T
 
 # Test each profile with dry-run
@@ -129,16 +146,21 @@ Replicate CI validation locally:
 ./dotfiles.sh -I --profile arch-desktop --dry-run
 
 # On Windows
-./dotfiles.ps1 -Install -Profile windows -DryRun
+./dotfiles.ps1 -DryRun
 ```
 
 ## Test Files
 
 ### Linux Tests
-- `test/linux/test.sh` - Shell script test suite
+- `test/linux/test-config.sh` - Configuration validation tests
+- `test/linux/test-static-analysis.sh` - Shell script linting (shellcheck, PSScriptAnalyzer)
+- `test/linux/test-applications.sh` - Application tests (vim, nvim, zsh)
+- `test/linux/test-idempotency.sh` - Idempotency tests for installers
 
 ### Windows Tests
-- `test/windows/Test.psm1` - PowerShell test module
+- `test/windows/Test.psm1` - PowerShell test module entry point
+- `test/windows/Test-StaticAnalysis.psm1` - PSScriptAnalyzer tests
+- `test/windows/Test-Idempotency.psm1` - Windows idempotency tests
 
 ## Best Practices
 

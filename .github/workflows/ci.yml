@@ -106,6 +106,18 @@ jobs:
           test_zsh_completion
           test_vim_opens
           test_nvim_opens
+          test_nvim_plugins
+
+      - name: Run idempotency tests
+        run: |
+          DIR="$(pwd)"
+          export DIR
+          export OPT=""
+          export PROFILE="base"
+          . ./src/linux/logger.sh
+          . ./src/linux/utils.sh
+          . ./test/linux/test-idempotency.sh
+          test_idempotency_symlinks
 
   # Test base profile on Linux (minimal configuration)
   test-linux-base:
@@ -157,6 +169,35 @@ jobs:
 
       - name: Verify profile-specific symlinks
         run: ./.github/workflows/scripts/verify/verify-profile.sh arch-desktop arch-desktop-output.log
+
+  # Test idempotency - install profiles twice to verify no errors
+  test-linux-idempotency:
+    name: Test Linux - Idempotency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Test base profile idempotency
+        run: |
+          echo "=== First installation ==="
+          ./dotfiles.sh --install --profile base -v
+          echo "=== Second installation (should be idempotent) ==="
+          ./dotfiles.sh --install --profile base -v
+
+      - name: Test arch profile idempotency
+        run: |
+          echo "=== First installation ==="
+          ./dotfiles.sh --install --profile arch --skip-os-detection -v
+          echo "=== Second installation (should be idempotent) ==="
+          ./dotfiles.sh --install --profile arch --skip-os-detection -v
+
+      - name: Test arch-desktop profile idempotency
+        run: |
+          echo "=== First installation ==="
+          ./dotfiles.sh --install --profile arch-desktop --skip-os-detection -v
+          echo "=== Second installation (should be idempotent) ==="
+          ./dotfiles.sh --install --profile arch-desktop --skip-os-detection -v
 
   # Test uninstall functionality
   test-linux-uninstall:

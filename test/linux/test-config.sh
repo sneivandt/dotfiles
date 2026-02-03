@@ -400,7 +400,7 @@ test_category_consistency()
   # Remove duplicates and sort
   sort -u "$valid_categories" -o "$valid_categories"
 
-  log_verbose "Valid categories/sections: $(cat "$valid_categories" | tr '\n' ',' | sed 's/,$//')"
+  log_verbose "Valid categories/sections: $(tr '\n' ',' < "$valid_categories" | sed 's/,$//')"
 
   # Check section names in all config files (except profiles.ini and registry.ini)
   for ini_file in "$DIR"/conf/*.ini; do

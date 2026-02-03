@@ -143,12 +143,13 @@ test_shellcheck()
     done
 
     # Read all collected scripts from temp file
-    scripts="$(cat "$scripts_tmp" | tr '\n' ' ')"
+    scripts="$(tr '\n' ' ' < "$scripts_tmp")"
     rm -f "$scripts_tmp"
 
     log_verbose "Checking scripts: $scripts"
     # Run shellcheck on all collected scripts
+    # Allow SC1090/SC1091 warnings without failing (can't follow sourced files in dotfiles)
     # shellcheck disable=SC2086  # Word splitting intentional: $scripts is space-separated list
-    shellcheck $scripts
+    shellcheck --exclude=SC1090,SC1091 $scripts
   fi
 )}

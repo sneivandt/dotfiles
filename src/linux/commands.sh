@@ -78,6 +78,7 @@ do_test()
   . "$DIR"/test/linux/test-config.sh
   . "$DIR"/test/linux/test-static-analysis.sh
   . "$DIR"/test/linux/test-applications.sh
+  . "$DIR"/test/linux/test-idempotency.sh
 
   # Configuration validation tests
   test_config_validation
@@ -95,6 +96,16 @@ do_test()
   # Application tests
   test_vim_opens
   test_nvim_opens
+
+  # Idempotency tests
+  test_install_symlinks_idempotency
+  test_configure_file_mode_bits_idempotency
+  test_configure_systemd_idempotency
+  test_configure_shell_idempotency
+  test_install_dotfiles_cli_idempotency
+  test_install_packages_idempotency
+  test_install_vscode_extensions_idempotency
+  test_full_install_idempotency
 }
 
 # do_uninstall

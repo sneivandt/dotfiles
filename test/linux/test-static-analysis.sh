@@ -97,6 +97,12 @@ test_shellcheck()
     # Get list of sections from symlinks.ini
     sections="$(grep -E '^\[.*\]$' "$DIR"/conf/symlinks.ini | tr -d '[]')"
 
+    # Get list of git submodules to exclude from checking (third-party code)
+    submodules=""
+    if [ -f "$DIR"/.gitmodules ]; then
+      submodules=$(git -C "$DIR" config --file .gitmodules --get-regexp path | awk '{ print $2 }')
+    fi
+
     # Use temp file to collect scripts to avoid subshell scope issues
     scripts_tmp="$(mktemp)"
     echo "$scripts" > "$scripts_tmp"
@@ -156,5 +162,16 @@ test_shellcheck()
       done
     done
 
-    # Read a# If is a shell script, add to the list
-            if
+    # Read all collected scripts and run shellcheck
+    scripts=$(cat "$scripts_tmp")
+    rm "$scripts_tmp"
+
+    if [ -z "$scripts" ]; then
+      log_verbose "No shell scripts found to check"
+      return
+    fi
+
+    # shellcheck disable=SC2086  # Word splitting intentional: $scripts is space-separated list
+    shellcheck $scripts || true
+  fi
+)}

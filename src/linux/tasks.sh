@@ -88,7 +88,7 @@ configure_file_mode_bits()
         continue
       fi
 
-      target=~/."$file"
+      target="$HOME/.$file"
 
       # Check if the target file exists - skip gracefully if not
       if [ ! -e "$target" ]; then
@@ -337,17 +337,17 @@ configure_systemd()
 install_dotfiles_cli()
 {(
   # Check if the symlink already points to the correct location
-  if [ "$(readlink -f "$DIR"/dotfiles.sh)" != "$(readlink -f ~/.bin/dotfiles)" ]; then
+  if [ "$(readlink -f "$DIR"/dotfiles.sh)" != "$(readlink -f "$HOME"/.bin/dotfiles)" ]; then
     log_stage "Installing dotfiles cli"
     if is_dry_run; then
-      log_dry_run "Would create directory ~/.bin"
-      log_dry_run "Would link ~/.bin/dotfiles to $DIR/dotfiles.sh"
+      log_dry_run "Would create directory $HOME/.bin"
+      log_dry_run "Would link $HOME/.bin/dotfiles to $DIR/dotfiles.sh"
     else
-      log_verbose "Linking ~/.bin/dotfiles to $DIR/dotfiles.sh"
+      log_verbose "Linking $HOME/.bin/dotfiles to $DIR/dotfiles.sh"
       # Ensure the bin directory exists
-      mkdir -pv ~/.bin
+      mkdir -pv "$HOME"/.bin
       # Create the symlink, overwriting if necessary
-      ln -snvf "$DIR"/dotfiles.sh ~/.bin/dotfiles
+      ln -snvf "$DIR"/dotfiles.sh "$HOME"/.bin/dotfiles
     fi
   else
     log_verbose "Skipping dotfiles cli installation: already linked"
@@ -550,7 +550,7 @@ install_vscode_extensions()
     fi
 
     # Get list of currently installed extensions to avoid redundant calls
-    extensions=$($code --list-extensions)
+    extensions="$($code --list-extensions)"
 
     # Check if any extensions need installing
     tmpfile="$(mktemp)"

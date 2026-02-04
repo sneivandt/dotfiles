@@ -91,8 +91,11 @@ function New-RegistryPath
         Create registry path using .NET APIs
     .DESCRIPTION
         PowerShell Core compatible registry path creation.
+        This is an internal helper function. ShouldProcess is handled by calling function.
     #>
-    [CmdletBinding(SupportsShouldProcess = $true)]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification='Internal helper function. ShouldProcess is handled by calling function Set-RegistryValue.')]
+    [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]
         [string]
@@ -149,8 +152,11 @@ function Set-RegistryKeyValue
         Set registry value using .NET APIs
     .DESCRIPTION
         PowerShell Core compatible registry value setting.
+        This is an internal helper function. ShouldProcess is handled by calling function.
     #>
-    [CmdletBinding(SupportsShouldProcess = $true)]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification='Internal helper function. ShouldProcess is handled by calling function Set-RegistryValue.')]
+    [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]
         [string]

@@ -4,16 +4,20 @@ Windows automation layer for this dotfiles project. The PowerShell entrypoint (`
 
 ## Quick Start
 
+**Requirements:**
+- **PowerShell Core (pwsh)**: All PowerShell scripts require PowerShell Core edition
+- **Administrator privileges**: Required for registry modification and symlink creation (not needed for dry-run mode)
+
 The Windows script always uses the "windows" profile (profile selection is not available on Windows).
 
-Open an elevated PowerShell (most tasks require admin to write HKCU console keys and create symlinks in some protected locations) then run:
+Open an elevated PowerShell Core session then run:
 
 ```powershell
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
 ./dotfiles.ps1
 
-# Dry-run mode (preview changes without modification)
+# Dry-run mode (preview changes without modification, no admin required)
 ./dotfiles.ps1 -DryRun
 
 # With verbose output
@@ -129,13 +133,16 @@ git pull
 
 | Symptom | Check |
 |---------|-------|
-| No output / nothing changes | Ensure you are running an elevated PowerShell session. |
-| Symlink not created | Entry present in `conf/symlinks.ini` under `[windows]` section? Does source file exist in `symlinks/`? Does a real file already exist at target path (preventing link)? |
+| "Requires PowerShell Core" error | Install PowerShell Core (pwsh) instead of using Windows PowerShell. Download from https://github.com/PowerShell/PowerShell |
+| No output / nothing changes | Ensure you are running an elevated PowerShell Core session. |
+| Symlink not created | Entry present in `conf/symlinks.ini` under `[windows]` section? Does source file exist in `symlinks/`? Does a real file already exist at target path (preventing link)? Running as admin? |
 | Registry values unchanged | Verify keys under `HKCU:\Console` – did policy or another tool override them? Run as admin. |
 | VS Code extensions not installing | `code` CLI available? Run `code --version` in the same session. |
 
 ## Safety & Idempotency Notes
 
+* **PowerShell Core Required**: All scripts use `#Requires -PSEdition Core` to ensure compatibility with PowerShell Core
+* **Dry-Run Mode**: The `-DryRun` parameter allows previewing changes without administrator privileges
 * Script does not delete existing regular files that block symlink creation; you'll need to back them up and remove manually
 * Registry writes are limited to HKCU (user scope) console keys and additional configured paths; no HKLM modifications occur
 * Re-running is safe; modules emit section headers only when performing actions

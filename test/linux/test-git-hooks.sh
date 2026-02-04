@@ -132,6 +132,19 @@ test_hook_blocks "OAuth client secret" 'client_secret = "1234567890abcdef1234567
 printf "\nTesting generic patterns...\n"
 test_hook_blocks "Generic secret" 'secret = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0"'
 
+# Test PII patterns
+printf "\nTesting PII patterns...\n"
+test_hook_blocks "Email address" "user_email = john.doe@example.com"
+test_hook_blocks "Phone number (formatted)" "phone = (555) 123-4567"
+test_hook_blocks "Phone number (dashes)" "contact = 555-123-4567"
+test_hook_blocks "Phone number (plain)" "phone_number = 5551234567"
+test_hook_blocks "SSN (formatted)" "ssn = 123-45-6789"
+test_hook_blocks "SSN (plain)" "social_security_number = 123456789"
+test_hook_blocks "Credit card (spaces)" "cc = 4532 1234 5678 9010"
+test_hook_blocks "Credit card (dashes)" "card_number = 4532-1234-5678-9010"
+test_hook_blocks "IPv4 address" "server_ip = 192.168.1.100"
+test_hook_blocks "IPv6 address" "ipv6 = 2001:0db8:85a3:0000:0000:8a2e:0370:7334"
+
 # Test clean commits (should be allowed)
 printf "\nTesting clean commits...\n"
 test_hook_allows "# This is a clean comment"

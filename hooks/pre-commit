@@ -53,8 +53,17 @@ fi
 # Track if any secrets were found
 found_secrets=0
 
+# Get list of staged files to a temporary file to avoid subshell issues
+# Use null-delimited list converted to newlines to handle filenames with spaces
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+git diff --cached --name-only --diff-filter=ACM -z "$against" | tr '\0' '\n' > "$tmpfile"
+
 # Check each staged file
-for file in $(git diff --cached --name-only --diff-filter=ACM "$against"); do
+while IFS= read -r file; do
+  # Skip empty lines
+  [ -z "$file" ] && continue
+
   # Skip deleted files
   if [ ! -f "$file" ]; then
     continue
@@ -89,7 +98,7 @@ for file in $(git diff --cached --name-only --diff-filter=ACM "$against"); do
   done <<PATTERNS_EOF
 $PATTERNS
 PATTERNS_EOF
-done
+done < "$tmpfile"
 
 # If secrets were found, prevent the commit
 if [ "$found_secrets" -eq 1 ]; then

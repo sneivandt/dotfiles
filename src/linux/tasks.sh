@@ -742,4 +742,76 @@ update_dotfiles()
   fi
 )}
 
+# install_repository_git_hooks
+#
+# Install git hooks for this dotfiles repository as symlinks.
+# Hooks are stored in the hooks/ directory and symlinked into .git/hooks/
+# so that updates to the hook files are automatically reflected.
+#
+# Implementation Notes:
+#   * Only installs hooks for this repository (not user's git templates)
+#   * Creates symlinks so hook updates don't require reinstallation
+#   * Makes hook files executable before symlinking
+#   * Skips if not a git repository or if hooks don't exist
+install_repository_git_hooks()
+{(
+  # Check if this is a git repository
+  if [ ! -d "$DIR"/.git ]; then
+    log_verbose "Skipping git hooks: not a git repository"
+    return
+  fi
+
+  # Check if hooks directory exists
+  if [ ! -d "$DIR"/hooks ]; then
+    log_verbose "Skipping git hooks: hooks directory not found"
+    return
+  fi
+
+  log_stage "Installing repository git hooks"
+
+  # Find all hook files in hooks/ directory
+  for hook_file in "$DIR"/hooks/*; do
+    # Skip if no files found (glob didn't match)
+    if [ ! -e "$hook_file" ]; then
+      continue
+    fi
+
+    # Skip README and non-executable files
+    hook_name=$(basename "$hook_file")
+    case "$hook_name" in
+      README.md|*.txt|*.md) continue ;;
+    esac
+
+    # Target location in .git/hooks/
+    target="$DIR/.git/hooks/$hook_name"
+
+    # Make source hook executable
+    if [ ! -x "$hook_file" ]; then
+      if is_dry_run; then
+        log_dry_run "Would make executable: hooks/$hook_name"
+      else
+        log_verbose "Making executable: hooks/$hook_name"
+        chmod +x "$hook_file"
+      fi
+    fi
+
+    # Check if symlink already exists and points to correct location
+    if [ -L "$target" ] && [ "$(readlink "$target")" = "$hook_file" ]; then
+      log_verbose "Skipping hook $hook_name: already installed"
+      continue
+    fi
+
+    # Install the hook as a symlink
+    if is_dry_run; then
+      log_dry_run "Would install hook: $hook_name"
+    else
+      log_verbose "Installing hook: $hook_name"
+      # Remove existing file/symlink if present
+      rm -f "$target"
+      # Create symlink using absolute path
+      ln -s "$hook_file" "$target"
+    fi
+  done
+)}
+
 

@@ -283,6 +283,27 @@ jobs:
       - name: Verify profiles link different files
         run: ./.github/workflows/scripts/verify/verify-profile-differences.sh
 
+  # Test pre-commit hook functionality
+  test-git-hooks:
+    name: Test Git Hooks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure git
+        run: |
+          git config user.name "CI Test"
+          git config user.email "ci@test.local"
+
+      - name: Install git hooks
+        run: |
+          ln -sf "$(pwd)/hooks/pre-commit" .git/hooks/pre-commit
+          chmod +x .git/hooks/pre-commit
+
+      - name: Run pre-commit hook tests
+        run: ./test/linux/test-git-hooks.sh
+
   # Test Docker image build
   test-docker:
     name: Test Docker Build

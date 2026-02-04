@@ -54,6 +54,7 @@ do_install()
   configure_sparse_checkout "$PROFILE"
   update_dotfiles
 
+  install_repository_git_hooks
   install_packages
   install_symlinks
   install_dotfiles_cli

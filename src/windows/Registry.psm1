@@ -66,9 +66,9 @@ function Test-RegistryPath
 {
     <#
     .SYNOPSIS
-        Test if registry path exists using .NET APIs
+        Test if registry path exists
     .DESCRIPTION
-        PowerShell Core compatible registry path existence check.
+        PowerShell Core compatible registry path existence check using native cmdlet.
     #>
     [CmdletBinding()]
     param (
@@ -77,20 +77,17 @@ function Test-RegistryPath
         $Path
     )
 
-    $parsed = Get-RegistryHiveAndKey -Path $Path
-    $key = $parsed.Hive.OpenSubKey($parsed.SubKey, $false)
-    $exists = $null -ne $key
-    if ($key) { $key.Close() }
-    return $exists
+    return Test-Path -Path $Path -ErrorAction SilentlyContinue
 }
 
 function New-RegistryPath
 {
     <#
     .SYNOPSIS
-        Create registry path using .NET APIs
+        Create registry path using PowerShell cmdlets
     .DESCRIPTION
         PowerShell Core compatible registry path creation.
+        Creates parent paths recursively if needed.
         This is an internal helper function. ShouldProcess is handled by calling function.
     #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
@@ -102,18 +99,25 @@ function New-RegistryPath
         $Path
     )
 
-    $parsed = Get-RegistryHiveAndKey -Path $Path
-    $key = $parsed.Hive.CreateSubKey($parsed.SubKey)
-    if ($key) { $key.Close() }
+    # Use PowerShell cmdlet instead of .NET API for better compatibility
+    # New-Item will create parent paths if -Force is used
+    try
+    {
+        $null = New-Item -Path $Path -Force -ErrorAction Stop
+    }
+    catch
+    {
+        throw "Failed to create registry path: $Path - $_"
+    }
 }
 
 function Get-RegistryValue
 {
     <#
     .SYNOPSIS
-        Get registry value using .NET APIs
+        Get registry value
     .DESCRIPTION
-        PowerShell Core compatible registry value retrieval.
+        PowerShell Core compatible registry value retrieval using native cmdlet.
     .OUTPUTS
         Registry value or $null if not found
     #>
@@ -128,20 +132,14 @@ function Get-RegistryValue
         $Name
     )
 
-    $parsed = Get-RegistryHiveAndKey -Path $Path
-    $key = $parsed.Hive.OpenSubKey($parsed.SubKey, $false)
-    if (-not $key)
-    {
-        return $null
-    }
-
     try
     {
-        return $key.GetValue($Name, $null)
+        $item = Get-ItemProperty -Path $Path -Name $Name -ErrorAction Stop
+        return $item.$Name
     }
-    finally
+    catch
     {
-        $key.Close()
+        return $null
     }
 }
 
@@ -149,9 +147,9 @@ function Set-RegistryKeyValue
 {
     <#
     .SYNOPSIS
-        Set registry value using .NET APIs
+        Set registry value
     .DESCRIPTION
-        PowerShell Core compatible registry value setting.
+        PowerShell Core compatible registry value setting using native cmdlet.
         This is an internal helper function. ShouldProcess is handled by calling function.
     #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
@@ -170,30 +168,23 @@ function Set-RegistryKeyValue
         $Value
     )
 
-    $parsed = Get-RegistryHiveAndKey -Path $Path
-    $key = $parsed.Hive.OpenSubKey($parsed.SubKey, $true)
-    if (-not $key)
+    # Determine property type for Set-ItemProperty
+    $propertyType = if ($Value -is [int])
     {
-        throw "Registry path does not exist: $Path"
+        'DWord'
+    }
+    else
+    {
+        'String'
     }
 
     try
     {
-        # Determine registry value type
-        $valueKind = if ($Value -is [int])
-        {
-            [Microsoft.Win32.RegistryValueKind]::DWord
-        }
-        else
-        {
-            [Microsoft.Win32.RegistryValueKind]::String
-        }
-
-        $key.SetValue($Name, $Value, $valueKind)
+        Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $propertyType -ErrorAction Stop
     }
-    finally
+    catch
     {
-        $key.Close()
+        throw "Failed to set registry value: $Path\$Name - $_"
     }
 }
 
@@ -349,7 +340,22 @@ function Set-RegistryValue
         elseif ($PSCmdlet.ShouldProcess($path, "Create registry path"))
         {
             Write-Verbose "Creating registry path: $path"
-            New-RegistryPath -Path $path
+            try
+            {
+                New-RegistryPath -Path $path
+
+                # Verify path was created
+                if (-not (Test-RegistryPath -Path $path))
+                {
+                    Write-Warning "Failed to create registry path: $path (path does not exist after creation attempt)"
+                    return
+                }
+            }
+            catch
+            {
+                Write-Warning "Failed to create registry path: $path - $_"
+                return
+            }
         }
     }
 
@@ -382,29 +388,50 @@ function Set-RegistryValue
         }
     }
 
-    $expandedValue = [Environment]::ExpandEnvironmentVariables($value)
+    # Don't expand environment variables for comparison - registry values can contain unexpanded vars
     $needsUpdate = $false
 
     if (-not $valueExists)
     {
         $needsUpdate = $true
     }
-    elseif ($currentValue -is [int] -and $expandedValue -match '^-?\d+$')
+    elseif ($currentValue -is [int] -and $value -match '^-?\d+$')
     {
         # Both numeric - compare as integers
-        $needsUpdate = ($currentValue -ne [int]$expandedValue)
+        $needsUpdate = ($currentValue -ne [int]$value)
     }
-    elseif ($currentValue -is [int] -or $expandedValue -match '^0x[0-9a-fA-F]+$')
+    elseif ($currentValue -is [int] -or $value -match '^0x[0-9a-fA-F]+$' -or $currentValue -match '^0x[0-9a-fA-F]+$')
     {
         # Handle hex values - convert for comparison
-        $currentInt = if ($currentValue -is [int]) { $currentValue } else { [Convert]::ToInt32($currentValue, 16) }
-        $expandedInt = if ($expandedValue -match '^0x') { [Convert]::ToInt32($expandedValue, 16) } else { [int]$expandedValue }
-        $needsUpdate = ($currentInt -ne $expandedInt)
+        # Current value might be int, hex string, or plain string representation of hex
+        $currentInt = if ($currentValue -is [int])
+        {
+            $currentValue
+        }
+        elseif ($currentValue -match '^0x([0-9a-fA-F]+)$')
+        {
+            [Convert]::ToInt32($matches[1], 16)
+        }
+        else
+        {
+            [int]$currentValue
+        }
+
+        $valueInt = if ($value -match '^0x([0-9a-fA-F]+)$')
+        {
+            [Convert]::ToInt32($matches[1], 16)
+        }
+        else
+        {
+            [int]$value
+        }
+
+        $needsUpdate = ($currentInt -ne $valueInt)
     }
     else
     {
-        # String comparison
-        $needsUpdate = ($currentValue -ne $expandedValue)
+        # String comparison - compare literally without expanding environment variables
+        $needsUpdate = ($currentValue -ne $value)
     }
 
     if ($needsUpdate)
@@ -422,8 +449,19 @@ function Set-RegistryValue
         elseif ($PSCmdlet.ShouldProcess("$path\$name", "Set registry value to $value"))
         {
             Write-Verbose "Setting registry value: $path $name = $value"
-            # Convert numeric strings to integers for proper registry type
-            $finalValue = if ($value -match '^-?\d+$') { [int]$value } else { $value }
+            # Convert numeric strings and hex values to integers for proper registry type
+            $finalValue = if ($value -match '^0x([0-9a-fA-F]+)$')
+            {
+                [Convert]::ToInt32($matches[1], 16)
+            }
+            elseif ($value -match '^-?\d+$')
+            {
+                [int]$value
+            }
+            else
+            {
+                $value
+            }
             Set-RegistryKeyValue -Path $path -Name $name -Value $finalValue
         }
     }

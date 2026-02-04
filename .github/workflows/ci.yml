@@ -141,7 +141,7 @@ jobs:
 
       - name: Test dry-run installation
         run: |
-          SKIP_OS_FLAG="${{ matrix.skip_os == 'true' && '--skip-os-detection' || '' }}"
+          SKIP_OS_FLAG="${{ matrix.skip_os == true && '--skip-os-detection' || '' }}"
           ./dotfiles.sh --install --profile ${{ matrix.profile }} --dry-run $SKIP_OS_FLAG -v 2>&1 | tee ${{ matrix.profile }}-output.log
 
       - name: Run extra verification
@@ -170,7 +170,7 @@ jobs:
 
       - name: Test profile idempotency
         run: |
-          SKIP_OS_FLAG="${{ matrix.skip_os == 'true' && '--skip-os-detection' || '' }}"
+          SKIP_OS_FLAG="${{ matrix.skip_os == true && '--skip-os-detection' || '' }}"
           echo "=== First installation ==="
           ./dotfiles.sh --install --profile ${{ matrix.profile }} $SKIP_OS_FLAG -v
           echo "=== Second installation (should be idempotent) ==="

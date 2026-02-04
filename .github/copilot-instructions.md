@@ -89,7 +89,7 @@ Example usage:
 - **`base`**: Minimal core shell configuration (excludes OS-specific and desktop files)
 - **`arch`**: Arch Linux headless (includes Arch packages, excludes desktop)
 - **`arch-desktop`**: Arch Linux desktop (includes desktop tools, window manager, fonts)
-- **`desktop`**: Generic desktop (includes desktop tools like VS Code without OS-specific packages)
+- **`desktop`**: Generic Linux desktop (includes desktop tools like VS Code without OS-specific packages)
 - **`windows`**: Windows environment (PowerShell, registry settings)
 
 ### Profile Persistence Implementation

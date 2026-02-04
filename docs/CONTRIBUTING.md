@@ -164,7 +164,7 @@ entry-two
    - `base` - Minimal
    - `arch` - Arch Linux headless
    - `arch-desktop` - Arch Linux desktop
-   - `desktop` - Generic desktop
+   - `desktop` - Generic Linux desktop
    - `windows` - Windows (if applicable)
 
 ### CI Testing

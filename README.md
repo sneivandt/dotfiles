@@ -126,7 +126,7 @@ Profiles define which files are included through git sparse checkout. This allow
 | `base` | Minimal setup | Core shell configs only (no OS-specific or desktop files) |
 | `arch` | Arch Linux headless | Core shell + Arch packages (no desktop) |
 | `arch-desktop` | Arch Linux desktop | Core shell + desktop tools + Arch packages + desktop environment |
-| `desktop` | Generic desktop | Core shell + desktop tools (VS Code, IntelliJ IDEA) without OS-specific packages |
+| `desktop` | Generic Linux desktop | Core shell + desktop tools (VS Code, IntelliJ IDEA) without OS-specific packages |
 | `windows` | Windows | PowerShell + Windows registry + desktop tools (VS Code, IntelliJ IDEA) |
 
 Profiles are defined in [`conf/profiles.ini`](conf/profiles.ini) and map to file categories in [`conf/manifest.ini`](conf/manifest.ini).

@@ -1,5 +1,3 @@
-#Requires -PSEdition Core
-
 <#
 .SYNOPSIS
     Profile filtering utilities for Windows dotfiles
@@ -8,7 +6,6 @@
     similar to the Linux implementation. Reads profile definitions from
     conf/profiles.ini and filters sections accordingly.
 .NOTES
-    Requires: PowerShell Core
     Admin: Not required
 #>
 

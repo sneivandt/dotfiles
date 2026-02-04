@@ -1,5 +1,3 @@
-#Requires -PSEdition Core
-
 <#
 .SYNOPSIS
     Git configuration utilities for Windows dotfiles
@@ -8,7 +6,6 @@
     around symlink handling which can cause permission issues if not properly
     configured.
 .NOTES
-    Requires: PowerShell Core
     Admin: Not required
 #>
 

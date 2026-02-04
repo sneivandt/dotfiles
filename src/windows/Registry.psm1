@@ -1,14 +1,11 @@
-#Requires -PSEdition Core
-
 <#
 .SYNOPSIS
     Windows registry management for dotfiles
 .DESCRIPTION
     Applies registry settings from configuration file using .NET registry APIs
-    for PowerShell Core compatibility. Reads from conf/registry.ini where
-    sections are registry paths and entries are name = value pairs.
+    compatible with both PowerShell Core and Windows PowerShell. Reads from
+    conf/registry.ini where sections are registry paths and entries are name = value pairs.
 .NOTES
-    Requires: PowerShell Core
     Admin: Required for registry modification (not required in dry-run mode)
 #>
 

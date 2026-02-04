@@ -1,5 +1,3 @@
-#Requires -PSEdition Core
-
 <#
 .SYNOPSIS
     VS Code extension management for Windows dotfiles
@@ -8,7 +6,6 @@
     stable (code) and insiders (code-insiders) editions. Supports profile-based
     filtering to install only extensions relevant to the active profile.
 .NOTES
-    Requires: PowerShell Core
     Admin: Not required
 #>
 

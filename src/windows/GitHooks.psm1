@@ -1,5 +1,3 @@
-#Requires -PSEdition Core
-
 <#
 .SYNOPSIS
     Git hooks management utilities for the dotfiles repository
@@ -8,9 +6,40 @@
     Hooks are stored in the hooks/ directory and symlinked into .git/hooks/
     so that updates to hook files are automatically reflected.
 .NOTES
-    Requires: PowerShell Core
     Admin: Not required (git hooks are in user repository)
 #>
+
+function Test-IsSymbolicLink
+{
+    <#
+    .SYNOPSIS
+        Test if an item is a symbolic link (cross-edition compatible)
+    .DESCRIPTION
+        Works in both PowerShell Core and Windows PowerShell (Desktop).
+        Core uses .LinkType property, Desktop uses Attributes flag.
+    #>
+    [OutputType([System.Boolean])]
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileSystemInfo]
+        $Item
+    )
+
+    if ($null -eq $Item)
+    {
+        return $false
+    }
+
+    # PowerShell Core (6.0+) has LinkType property
+    if ($Item.PSObject.Properties.Name -contains 'LinkType')
+    {
+        return $Item.LinkType -eq 'SymbolicLink'
+    }
+
+    # Windows PowerShell (Desktop 5.1) uses Attributes
+    return ($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq [System.IO.FileAttributes]::ReparsePoint
+}
 
 function Install-RepositoryGitHooks
 {
@@ -118,7 +147,7 @@ function Install-RepositoryGitHooks
         if (Test-Path $targetPath)
         {
             $item = Get-Item $targetPath -Force
-            if ($item.LinkType -eq "SymbolicLink")
+            if (Test-IsSymbolicLink -Item $item)
             {
                 $linkTarget = $item.Target
                 if ($linkTarget -eq $sourcePath)

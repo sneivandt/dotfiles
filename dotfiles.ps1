@@ -1,5 +1,3 @@
-#Requires -PSEdition Core
-
 <#
 .SYNOPSIS
     Windows bootstrap entry point for dotfiles repository.
@@ -20,7 +18,7 @@
     When specified, logs all actions that would be taken without making
     system modifications. Use -Verbose for detailed output.
 .NOTES
-    Requires: PowerShell Core
+    Compatible with both PowerShell Core (pwsh) and Windows PowerShell (5.1+)
     Admin: Required for registry modification and symlink creation
            (not required in dry-run mode)
 .EXAMPLE

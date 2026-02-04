@@ -159,7 +159,7 @@ configure_fonts()
 
   # Read the list of required fonts from the [fonts] section
   # Check if any fonts are missing using a temp file for POSIX compliance
-  tmpfile=$(mktemp)
+  tmpfile="$(mktemp)"
   read_ini_section "$DIR"/conf/fonts.ini "fonts" > "$tmpfile"
 
   missing_fonts=0

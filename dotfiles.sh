@@ -124,7 +124,7 @@ check_exclusive_flags()
     fi
   done
 
-  if $has_short && $has_long; then
+  if [ "$has_short" = true ] && [ "$has_long" = true ]; then
     log_error "Cannot use both $short_flag and $long_flag. Use one or the other."
   fi
 }

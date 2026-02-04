@@ -27,7 +27,8 @@ response=$(curl -sSL "https://wallhaven.cc/api/v1/search?sorting=random&purity=1
 url=$(echo "$response" | jq -r '.data as $d | ($d | map(select(.favorites >= 1000))) | if length > 0 then . else $d end | .[].path' | shuf -n 1)
 
 if [ -n "$url" ] && [ "$url" != "null" ]; then
-  curl -sfSL "$url" > "$tmpfile"
-  mv "$tmpfile" "${XDG_CACHE_HOME:-$HOME/.cache}"/wallpaper
-  feh - --bg-fill --no-fehbg < "${XDG_CACHE_HOME:-$HOME/.cache}"/wallpaper
+  if curl -sfSL "$url" > "$tmpfile" && [ -s "$tmpfile" ]; then
+    mv "$tmpfile" "${XDG_CACHE_HOME:-$HOME/.cache}"/wallpaper
+    feh --bg-fill --no-fehbg < "${XDG_CACHE_HOME:-$HOME/.cache}"/wallpaper
+  fi
 fi

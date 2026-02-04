@@ -185,8 +185,7 @@ case ${1:-} in
     resolve_profile
     log_profile "$PROFILE"
     if is_dry_run; then
-      # shellcheck disable=SC2154,SC2059  # BLUE and NC are sourced from logger.sh
-      printf "${BLUE}:: DRY-RUN MODE: No system modifications will be made${NC}\n"
+      printf ":: DRY-RUN MODE: No system modifications will be made\n"
     fi
     do_install
     ;;
@@ -211,8 +210,7 @@ case ${1:-} in
     resolve_profile
     log_profile "$PROFILE"
     if is_dry_run; then
-      # shellcheck disable=SC2154,SC2059  # BLUE and NC are sourced from logger.sh
-      printf "${BLUE}:: DRY-RUN MODE: No system modifications will be made${NC}\n"
+      printf ":: DRY-RUN MODE: No system modifications will be made\n"
     fi
     do_uninstall
     ;;

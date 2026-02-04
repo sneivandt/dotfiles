@@ -595,9 +595,6 @@ should_include_profile_tag()
 # Check whether a short flag (single character) was present in the original
 # CLI invocation as normalized by getopt and stored in $OPT.
 #
-# Special behavior: verbose flag (-v) is automatically enabled when dry-run
-# mode is active to provide visibility into what actions would be taken.
-#
 # Args:
 #   $1  single-letter flag (without leading dash)
 #
@@ -605,11 +602,6 @@ should_include_profile_tag()
 #   0 flag present, 1 absent.
 is_flag_set()
 {
-  # Automatically enable verbose flag when in dry-run mode
-  if [ "$1" = "v" ] && is_dry_run; then
-    return 0
-  fi
-
   # OPT is exported by dotfiles.sh
   # shellcheck disable=SC2154
   case " $OPT " in

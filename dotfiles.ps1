@@ -16,8 +16,7 @@
     supported on Windows.
 .PARAMETER DryRun
     When specified, logs all actions that would be taken without making
-    system modifications. Verbose output is automatically enabled in dry-run
-    mode to provide detailed visibility into intended actions.
+    system modifications. Use -Verbose for detailed output.
 .NOTES
     Keep this file minimal--logic lives in imported modules for testability.
 .EXAMPLE
@@ -25,7 +24,7 @@
     Executes complete provisioning sequence with "windows" profile.
 .EXAMPLE
     PS> .\dotfiles.ps1 -DryRun
-    Show what would be changed without making modifications (verbose auto-enabled).
+    Show what would be changed without making modifications.
 #>
 
 [CmdletBinding()]
@@ -61,12 +60,6 @@ if (-not $DryRun)
 
 # Windows always uses the "windows" profile
 $SelectedProfile = "windows"
-
-# Automatically enable verbose output when in dry-run mode
-if ($DryRun)
-{
-    $VerbosePreference = 'Continue'
-}
 
 foreach ($module in Get-ChildItem $PSScriptRoot\src\windows\*.psm1)
 {

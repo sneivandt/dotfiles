@@ -9,18 +9,9 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-# Import Profile module (no edition requirement)
+# Import Profile and Symlinks modules (both require PowerShell Core)
 Import-Module .\src\windows\Profile.psm1 -Force
-
-# Only import Symlinks module if running Desktop edition (it requires Desktop)
-if ($PSVersionTable.PSEdition -eq 'Desktop')
-{
-    Import-Module .\src\windows\Symlinks.psm1 -Force
-}
-else
-{
-    Write-Output "Skipping Symlinks.psm1 import: Requires Desktop edition (running $($PSVersionTable.PSEdition))"
-}
+Import-Module .\src\windows\Symlinks.psm1 -Force
 
 # Verify registry.ini is parseable
 if (Test-Path .\conf\registry.ini)

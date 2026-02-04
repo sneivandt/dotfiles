@@ -5,6 +5,8 @@
     Installs VS Code extensions from configuration file, supporting both
     stable (code) and insiders (code-insiders) editions. Supports profile-based
     filtering to install only extensions relevant to the active profile.
+.NOTES
+    Admin: Not required
 #>
 
 function Install-VsCodeExtensions

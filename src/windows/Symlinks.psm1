@@ -1,5 +1,3 @@
-#Requires -RunAsAdministrator
-
 <#
 .SYNOPSIS
     Symlink management utilities for Windows dotfiles
@@ -7,7 +5,41 @@
     Creates and manages symbolic links from the symlinks/ directory to their
     target locations in the user's profile. Supports profile-based filtering
     to only install symlinks relevant to the active profile.
+.NOTES
+    Admin: Required for creating symbolic links (not required in dry-run mode)
 #>
+
+function Test-IsSymbolicLink
+{
+    <#
+    .SYNOPSIS
+        Test if an item is a symbolic link (cross-edition compatible)
+    .DESCRIPTION
+        Works in both PowerShell Core and Windows PowerShell (Desktop).
+        Core uses .LinkType property, Desktop uses Attributes flag.
+    #>
+    [OutputType([System.Boolean])]
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileSystemInfo]
+        $Item
+    )
+
+    if ($null -eq $Item)
+    {
+        return $false
+    }
+
+    # PowerShell Core (6.0+) has LinkType property
+    if ($Item.PSObject.Properties.Name -contains 'LinkType')
+    {
+        return $Item.LinkType -eq 'SymbolicLink'
+    }
+
+    # Windows PowerShell (Desktop 5.1) uses Attributes
+    return ($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq [System.IO.FileAttributes]::ReparsePoint
+}
 
 function Install-Symlinks
 {
@@ -121,7 +153,7 @@ function Install-Symlinks
             if (Test-Path $targetFullPath)
             {
                 $item = Get-Item $targetFullPath -Force -ErrorAction SilentlyContinue
-                if ($item -and $item.LinkType -eq 'SymbolicLink')
+                if (Test-IsSymbolicLink -Item $item)
                 {
                     # Resolve both paths to absolute for comparison
                     $currentTarget = $item.Target

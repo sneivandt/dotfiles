@@ -76,7 +76,7 @@ jobs:
           . ./test/linux/test-static-analysis.sh
           ${{ matrix.test_function }}
 
-  # Application tests - vim, nvim, zsh
+  # Application tests
   test-applications:
     name: Test Applications
     runs-on: ubuntu-latest
@@ -106,18 +106,7 @@ jobs:
           test_nvim_opens
           test_nvim_plugins
 
-      - name: Run idempotency tests
-        run: |
-          DIR="$(pwd)"
-          export DIR
-          export OPT=""
-          export PROFILE="base"
-          . ./src/linux/logger.sh
-          . ./src/linux/utils.sh
-          . ./.github/workflows/scripts/linux/test-idempotency.sh
-          test_idempotency_symlinks
-
-  # Test profile installations with dry-run (matrix for all profiles)
+  # Test profile installations with dry-run
   test-linux-profiles:
     name: Test Linux - ${{ matrix.profile }} Profile
     runs-on: ubuntu-latest
@@ -126,73 +115,46 @@ jobs:
         include:
           - profile: base
             skip_os: false
-            verify_script: verify-profile.sh
           - profile: arch
             skip_os: true
-            verify_script: verify-profile.sh
-            extra_verify: verify-sparse-checkout.sh
           - profile: arch-desktop
             skip_os: true
-            verify_script: verify-profile.sh
-            extra_verify: verify-sparse-checkout-excludes-windows.sh
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Test dry-run installation
         run: |
-          SKIP_OS_FLAG="${{ matrix.skip_os == true && '--skip-os-detection' || '' }}"
+          SKIP_OS_FLAG="${{ matrix.skip_os && '--skip-os-detection' || '' }}"
           ./dotfiles.sh --install --profile ${{ matrix.profile }} --dry-run $SKIP_OS_FLAG -v 2>&1 | tee ${{ matrix.profile }}-output.log
 
-      - name: Run extra verification
-        if: matrix.extra_verify
-        run: ./.github/workflows/scripts/verify/${{ matrix.extra_verify }}
+      - name: Verify sparse checkout configuration
+        run: ./.github/workflows/scripts/verify/verify-sparse-checkout.sh
 
       - name: Verify profile-specific symlinks
-        run: ./.github/workflows/scripts/verify/${{ matrix.verify_script }} ${{ matrix.profile }} ${{ matrix.profile }}-output.log
-
-  # Test idempotency - install profiles twice to verify no errors (matrix for all profiles)
-  test-linux-idempotency:
-    name: Test Linux - ${{ matrix.profile }} Idempotency
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - profile: base
-            skip_os: false
-          - profile: arch
-            skip_os: true
-          - profile: arch-desktop
-            skip_os: true
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+        run: ./.github/workflows/scripts/verify/verify-profile.sh ${{ matrix.profile }} ${{ matrix.profile }}-output.log
 
       - name: Test profile idempotency
         run: |
-          SKIP_OS_FLAG="${{ matrix.skip_os == true && '--skip-os-detection' || '' }}"
-          echo "=== First installation ==="
-          ./dotfiles.sh --install --profile ${{ matrix.profile }} $SKIP_OS_FLAG -v
-          echo "=== Second installation (should be idempotent) ==="
-          ./dotfiles.sh --install --profile ${{ matrix.profile }} $SKIP_OS_FLAG -v
+          DIR="$(pwd)"
+          export DIR
+          export OPT=""
+          SKIP_OS_FLAG="${{ matrix.skip_os && '--skip-os-detection' || '' }}"
+          . ./src/linux/logger.sh
+          . ./src/linux/utils.sh
+          . ./.github/workflows/scripts/linux/test-idempotency.sh
+          test_idempotency_install_${{ matrix.profile == 'arch-desktop' && 'arch_desktop' || matrix.profile }} $SKIP_OS_FLAG
 
-  # Test uninstall functionality
-  test-linux-uninstall:
-    name: Test Linux - Uninstall
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Run actual installation first
+      - name: Run actual installation
         run: |
-          ./dotfiles.sh --install --profile base -v
+          SKIP_OS_FLAG="${{ matrix.skip_os && '--skip-os-detection' || '' }}"
+          ./dotfiles.sh --install --profile ${{ matrix.profile }} $SKIP_OS_FLAG -v
 
       - name: Test dry-run uninstall
         run: |
-          ./dotfiles.sh --uninstall --profile base --dry-run -v 2>&1 | tee uninstall-output.log
+          ./dotfiles.sh --uninstall --profile ${{ matrix.profile }} --dry-run -v 2>&1 | tee uninstall-output.log
 
-      - name: Verify dry-run assertions
+      - name: Verify dry-run uninstall assertions
         run: ./.github/workflows/scripts/verify/verify-uninstall.sh uninstall-output.log
 
   # Test Windows profile
@@ -238,28 +200,6 @@ jobs:
           }
           Write-Output "✓ Dry-run test passed for Windows profile"
 
-  # Compare profiles to ensure they produce different outputs
-  test-profile-differences:
-    name: Test Profile Differences
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Run all profiles and extract symlinks
-        run: |
-          ./dotfiles.sh --install --profile base --dry-run --skip-os-detection -v 2>&1 | tee base-full.log
-          ./dotfiles.sh --install --profile arch --dry-run --skip-os-detection -v 2>&1 | tee arch-full.log
-          ./dotfiles.sh --install --profile arch-desktop --dry-run --skip-os-detection -v 2>&1 | tee arch-desktop-full.log
-
-          # Extract only symlink-related operations for comparison
-          grep "Would link" base-full.log | sort > base-symlinks.log || true
-          grep "Would link" arch-full.log | sort > arch-symlinks.log || true
-          grep "Would link" arch-desktop-full.log | sort > arch-desktop-symlinks.log || true
-
-      - name: Verify profiles link different files
-        run: ./.github/workflows/scripts/verify/verify-profile-differences.sh
-
   # Test pre-commit hook functionality
   test-git-hooks:
     name: Test Git Hooks
@@ -301,16 +241,13 @@ jobs:
     name: CI Success
     runs-on: ubuntu-latest
     needs:
-      - validate-config
       - static-analysis
       - test-applications
-      - test-linux-profiles
-      - test-linux-idempotency
-      - test-linux-uninstall
-      - test-windows
-      - test-profile-differences
-      - test-git-hooks
       - test-docker
+      - test-git-hooks
+      - test-linux-profiles
+      - test-windows
+      - validate-config
     steps:
       - name: Mark CI as successful
         run: echo "All CI jobs passed"

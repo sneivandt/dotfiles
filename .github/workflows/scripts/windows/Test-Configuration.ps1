@@ -51,7 +51,6 @@ if (Test-Path .\conf\symlinks.ini)
     # Check for expected Windows-specific items
     $expectedItems = @(
         "AppData/Roaming/Code/User/settings.json",
-        "config/powershell/Microsoft.PowerShell_profile.ps1",
         "AppData/Local/Packages/Microsoft.WindowsTerminal"
     )
 

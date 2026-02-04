@@ -51,9 +51,56 @@ function Install-RepositoryGitHooks
 
     $act = $false
 
-    # Get all hook files (exclude README and documentation files)
+    # Only install real git hook scripts: whitelist of known hook names
+    $validHookNames = @(
+        'applypatch-msg',
+        'pre-applypatch',
+        'post-applypatch',
+        'pre-commit',
+        'pre-merge-commit',
+        'prepare-commit-msg',
+        'commit-msg',
+        'post-commit',
+        'pre-rebase',
+        'post-checkout',
+        'post-merge',
+        'pre-push',
+        'pre-receive',
+        'update',
+        'proc-receive',
+        'post-receive',
+        'post-update',
+        'reference-transaction',
+        'push-to-checkout',
+        'pre-auto-gc',
+        'post-rewrite',
+        'sendemail-validate',
+        'fsmonitor-watchman',
+        'p4-changelist',
+        'p4-prepare-changelist',
+        'p4-post-changelist',
+        'p4-pre-submit',
+        'post-index-change'
+    )
+
+    # Get all hook files that match known git hook names
     $hookFiles = Get-ChildItem -Path $hooksSourceDir -File | Where-Object {
-        $_.Name -notmatch '\.(md|txt)$'
+        $validHookNames -contains $_.Name
+    }
+
+    # Ensure .git/hooks directory exists
+    $gitHooksDir = Join-Path $gitDir "hooks"
+    if (-not (Test-Path $gitHooksDir))
+    {
+        if ($DryRun)
+        {
+            Write-Output "DRY-RUN: Would create directory: .git/hooks"
+        }
+        else
+        {
+            Write-Verbose "Creating directory: .git/hooks"
+            New-Item -ItemType Directory -Path $gitHooksDir -Force | Out-Null
+        }
     }
 
     foreach ($hookFile in $hookFiles)

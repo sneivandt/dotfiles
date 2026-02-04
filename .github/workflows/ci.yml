@@ -83,6 +83,9 @@ jobs:
     strategy:
       matrix:
         include:
+          - application: git
+            packages: git
+            tests: config aliases behavior
           - application: zsh
             packages: zsh
             tests: completion

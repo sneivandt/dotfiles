@@ -153,8 +153,6 @@ configure_fonts()
     return
   fi
 
-  missing_fonts=0
-
   log_verbose "Checking fonts from: conf/fonts.ini"
 
   # Read the list of required fonts from the [fonts] section

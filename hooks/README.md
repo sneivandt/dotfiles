@@ -1,6 +1,6 @@
 # Repository Git Hooks
 
-This directory contains git hooks that are automatically installed the dotfiles installation script.
+This directory contains git hooks that are automatically installed by the dotfiles installation script.
 
 ## Available Hooks
 

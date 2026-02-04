@@ -769,18 +769,55 @@ install_repository_git_hooks()
 
   log_stage "Installing repository git hooks"
 
-  # Find all hook files in hooks/ directory
-  for hook_file in "$DIR"/hooks/*; do
-    # Skip if no files found (glob didn't match)
+  # Ensure .git/hooks directory exists
+  if [ ! -d "$DIR/.git/hooks" ]; then
+    if is_dry_run; then
+      log_dry_run "Would create directory: .git/hooks"
+    else
+      log_verbose "Creating directory: .git/hooks"
+      mkdir -p "$DIR/.git/hooks"
+    fi
+  fi
+
+  # Only install real git hook scripts: whitelist of known hook names
+  hook_names="
+applypatch-msg
+commit-msg
+fsmonitor-watchman
+post-applypatch
+post-checkout
+post-commit
+post-index-change
+post-merge
+post-receive
+post-rewrite
+post-update
+p4-changelist
+p4-post-changelist
+p4-pre-submit
+p4-prepare-changelist
+pre-applypatch
+pre-auto-gc
+pre-commit
+pre-merge-commit
+pre-push
+pre-rebase
+pre-receive
+prepare-commit-msg
+proc-receive
+push-to-checkout
+reference-transaction
+sendemail-validate
+update
+"
+
+  for hook_name in $hook_names; do
+    hook_file="$DIR/hooks/$hook_name"
+
+    # Skip if this hook script is not present in hooks/
     if [ ! -e "$hook_file" ]; then
       continue
     fi
-
-    # Skip README and non-executable files
-    hook_name=$(basename "$hook_file")
-    case "$hook_name" in
-      README.md|*.txt|*.md) continue ;;
-    esac
 
     # Target location in .git/hooks/
     target="$DIR/.git/hooks/$hook_name"

@@ -1,3 +1,5 @@
+#Requires -PSEdition Core
+
 <#
 .SYNOPSIS
     Windows registry management for dotfiles
@@ -5,9 +7,9 @@
     Applies registry settings from configuration file using .NET registry APIs
     for PowerShell Core compatibility. Reads from conf/registry.ini where
     sections are registry paths and entries are name = value pairs.
-
-    Note: Registry modification requires administrator privileges. The module
-    supports dry-run mode which does not require elevation.
+.NOTES
+    Requires: PowerShell Core
+    Admin: Required for registry modification (not required in dry-run mode)
 #>
 
 function Get-RegistryHiveAndKey

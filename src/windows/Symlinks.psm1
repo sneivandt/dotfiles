@@ -1,4 +1,4 @@
-#Requires -RunAsAdministrator
+#Requires -PSEdition Core
 
 <#
 .SYNOPSIS
@@ -7,6 +7,9 @@
     Creates and manages symbolic links from the symlinks/ directory to their
     target locations in the user's profile. Supports profile-based filtering
     to only install symlinks relevant to the active profile.
+.NOTES
+    Requires: PowerShell Core
+    Admin: Required for creating symbolic links (not required in dry-run mode)
 #>
 
 function Install-Symlinks

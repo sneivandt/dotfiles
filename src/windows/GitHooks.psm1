@@ -1,3 +1,5 @@
+#Requires -PSEdition Core
+
 <#
 .SYNOPSIS
     Git hooks management utilities for the dotfiles repository
@@ -5,6 +7,9 @@
     Installs git hooks for the dotfiles repository as symbolic links.
     Hooks are stored in the hooks/ directory and symlinked into .git/hooks/
     so that updates to hook files are automatically reflected.
+.NOTES
+    Requires: PowerShell Core
+    Admin: Not required (git hooks are in user repository)
 #>
 
 function Install-RepositoryGitHooks

@@ -1,3 +1,5 @@
+#Requires -PSEdition Core
+
 <#
 .SYNOPSIS
     Profile filtering utilities for Windows dotfiles
@@ -5,6 +7,9 @@
     Provides helpers for profile-based section filtering in configuration files,
     similar to the Linux implementation. Reads profile definitions from
     conf/profiles.ini and filters sections accordingly.
+.NOTES
+    Requires: PowerShell Core
+    Admin: Not required
 #>
 
 function Test-ShouldIncludeSection

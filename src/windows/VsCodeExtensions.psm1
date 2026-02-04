@@ -1,3 +1,5 @@
+#Requires -PSEdition Core
+
 <#
 .SYNOPSIS
     VS Code extension management for Windows dotfiles
@@ -5,6 +7,9 @@
     Installs VS Code extensions from configuration file, supporting both
     stable (code) and insiders (code-insiders) editions. Supports profile-based
     filtering to install only extensions relevant to the active profile.
+.NOTES
+    Requires: PowerShell Core
+    Admin: Not required
 #>
 
 function Install-VsCodeExtensions

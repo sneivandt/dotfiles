@@ -1,3 +1,5 @@
+#Requires -PSEdition Core
+
 <#
 .SYNOPSIS
     Git configuration utilities for Windows dotfiles
@@ -5,6 +7,9 @@
     Configures Git settings to ensure smooth operation on Windows, particularly
     around symlink handling which can cause permission issues if not properly
     configured.
+.NOTES
+    Requires: PowerShell Core
+    Admin: Not required
 #>
 
 function Initialize-GitConfig

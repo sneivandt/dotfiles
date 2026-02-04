@@ -88,7 +88,7 @@ configure_file_mode_bits()
         continue
       fi
 
-      target=~/."$file"
+      target="$HOME/.$file"
 
       # Check if the target file exists - skip gracefully if not
       if [ ! -e "$target" ]; then
@@ -153,13 +153,11 @@ configure_fonts()
     return
   fi
 
-  missing_fonts=0
-
   log_verbose "Checking fonts from: conf/fonts.ini"
 
   # Read the list of required fonts from the [fonts] section
   # Check if any fonts are missing using a temp file for POSIX compliance
-  tmpfile=$(mktemp)
+  tmpfile="$(mktemp)"
   read_ini_section "$DIR"/conf/fonts.ini "fonts" > "$tmpfile"
 
   missing_fonts=0
@@ -337,17 +335,17 @@ configure_systemd()
 install_dotfiles_cli()
 {(
   # Check if the symlink already points to the correct location
-  if [ "$(readlink -f "$DIR"/dotfiles.sh)" != "$(readlink -f ~/.bin/dotfiles)" ]; then
+  if [ "$(readlink -f "$DIR"/dotfiles.sh)" != "$(readlink -f "$HOME"/.bin/dotfiles)" ]; then
     log_stage "Installing dotfiles cli"
     if is_dry_run; then
-      log_dry_run "Would create directory ~/.bin"
-      log_dry_run "Would link ~/.bin/dotfiles to $DIR/dotfiles.sh"
+      log_dry_run "Would create directory $HOME/.bin"
+      log_dry_run "Would link $HOME/.bin/dotfiles to $DIR/dotfiles.sh"
     else
-      log_verbose "Linking ~/.bin/dotfiles to $DIR/dotfiles.sh"
+      log_verbose "Linking $HOME/.bin/dotfiles to $DIR/dotfiles.sh"
       # Ensure the bin directory exists
-      mkdir -pv ~/.bin
+      mkdir -pv "$HOME"/.bin
       # Create the symlink, overwriting if necessary
-      ln -snvf "$DIR"/dotfiles.sh ~/.bin/dotfiles
+      ln -snvf "$DIR"/dotfiles.sh "$HOME"/.bin/dotfiles
     fi
   else
     log_verbose "Skipping dotfiles cli installation: already linked"
@@ -499,23 +497,23 @@ install_symlinks()
           log_stage "Installing symlinks"
         fi
         if is_dry_run; then
-          log_dry_run "Would ensure parent directory: $(dirname ~/".$symlink")"
-          if [ -e ~/".$symlink" ]; then
-            log_dry_run "Would remove existing: ~/.$symlink"
+          log_dry_run "Would ensure parent directory: $(dirname "$HOME"/."$symlink")"
+          if [ -e "$HOME"/."$symlink" ]; then
+            log_dry_run "Would remove existing: $HOME/.$symlink"
           fi
-          log_dry_run "Would link $DIR/symlinks/$symlink to ~/.$symlink"
+          log_dry_run "Would link $DIR/symlinks/$symlink to $HOME/.$symlink"
         else
-          log_verbose "Linking $DIR/symlinks/$symlink to ~/.$symlink"
+          log_verbose "Linking $DIR/symlinks/$symlink to $HOME/.$symlink"
           # Ensure parent directory exists
-          mkdir -pv "$(dirname ~/".$symlink")"
+          mkdir -pv "$(dirname "$HOME"/."$symlink")"
 
           # Remove existing file/directory if it exists (to replace with symlink)
-          if [ -e ~/".$symlink" ]; then
-            rm -rvf ~/".$symlink"
+          if [ -e "$HOME"/."$symlink" ]; then
+            rm -rvf "$HOME"/."$symlink"
           fi
 
           # Create the symlink
-          ln -snvf "$DIR"/symlinks/"$symlink" ~/".$symlink"
+          ln -snvf "$DIR"/symlinks/"$symlink" "$HOME"/."$symlink"
         fi
       else
         log_verbose "Skipping symlink $symlink: already correct"
@@ -550,7 +548,7 @@ install_vscode_extensions()
     fi
 
     # Get list of currently installed extensions to avoid redundant calls
-    extensions=$($code --list-extensions)
+    extensions="$($code --list-extensions)"
 
     # Check if any extensions need installing
     tmpfile="$(mktemp)"
@@ -659,11 +657,11 @@ uninstall_symlinks()
       # Check if the symlink is currently installed
       if is_symlink_installed "$symlink"; then
         if is_dry_run; then
-          log_dry_run "Would remove symlink: ~/.$symlink"
+          log_dry_run "Would remove symlink: $HOME/.$symlink"
         else
-          log_verbose "Removing symlink: ~/.$symlink"
+          log_verbose "Removing symlink: $HOME/.$symlink"
           # Remove the symlink
-          rm -vf ~/".$symlink"
+          rm -vf "$HOME"/."$symlink"
         fi
       else
         log_verbose "Skipping uninstall symlink $symlink: not installed"

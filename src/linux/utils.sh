@@ -708,7 +708,7 @@ is_shell_script()
 #   0 installed & matches, 1 absent or different.
 is_symlink_installed()
 {
-  if [ "$(readlink -f "$DIR"/symlinks/"$1")" = "$(readlink -f ~/".$1")" ]; then
+  if [ "$(readlink -f "$DIR"/symlinks/"$1")" = "$(readlink -f "$HOME"/."$1")" ]; then
     return 0
   else
     return 1

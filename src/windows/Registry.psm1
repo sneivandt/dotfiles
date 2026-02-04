@@ -1,5 +1,3 @@
-#Requires -RunAsAdministrator
-
 <#
 .SYNOPSIS
     Windows registry management for dotfiles
@@ -7,6 +5,9 @@
     Applies registry settings from configuration file using .NET registry APIs
     for PowerShell Core compatibility. Reads from conf/registry.ini where
     sections are registry paths and entries are name = value pairs.
+
+    Note: Registry modification requires administrator privileges. The module
+    supports dry-run mode which does not require elevation.
 #>
 
 function Get-RegistryHiveAndKey
@@ -91,7 +92,10 @@ function New-RegistryPath
         Create registry path using .NET APIs
     .DESCRIPTION
         PowerShell Core compatible registry path creation.
+        This is an internal helper function. ShouldProcess is handled by calling function.
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification='Internal helper function. ShouldProcess is handled by calling function Set-RegistryValue.')]
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]
@@ -149,7 +153,10 @@ function Set-RegistryKeyValue
         Set registry value using .NET APIs
     .DESCRIPTION
         PowerShell Core compatible registry value setting.
+        This is an internal helper function. ShouldProcess is handled by calling function.
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification='Internal helper function. ShouldProcess is handled by calling function Set-RegistryValue.')]
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]

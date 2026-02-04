@@ -742,4 +742,113 @@ update_dotfiles()
   fi
 )}
 
+# install_repository_git_hooks
+#
+# Install git hooks for this dotfiles repository as symlinks.
+# Hooks are stored in the hooks/ directory and symlinked into .git/hooks/
+# so that updates to the hook files are automatically reflected.
+#
+# Implementation Notes:
+#   * Only installs hooks for this repository (not user's git templates)
+#   * Creates symlinks so hook updates don't require reinstallation
+#   * Makes hook files executable before symlinking
+#   * Skips if not a git repository or if hooks don't exist
+install_repository_git_hooks()
+{(
+  # Check if this is a git repository
+  if [ ! -d "$DIR"/.git ]; then
+    log_verbose "Skipping git hooks: not a git repository"
+    return
+  fi
+
+  # Check if hooks directory exists
+  if [ ! -d "$DIR"/hooks ]; then
+    log_verbose "Skipping git hooks: hooks directory not found"
+    return
+  fi
+
+  log_stage "Installing repository git hooks"
+
+  # Ensure .git/hooks directory exists
+  if [ ! -d "$DIR/.git/hooks" ]; then
+    if is_dry_run; then
+      log_dry_run "Would create directory: .git/hooks"
+    else
+      log_verbose "Creating directory: .git/hooks"
+      mkdir -p "$DIR/.git/hooks"
+    fi
+  fi
+
+  # Only install real git hook scripts: whitelist of known hook names
+  hook_names="
+applypatch-msg
+commit-msg
+fsmonitor-watchman
+post-applypatch
+post-checkout
+post-commit
+post-index-change
+post-merge
+post-receive
+post-rewrite
+post-update
+p4-changelist
+p4-post-changelist
+p4-pre-submit
+p4-prepare-changelist
+pre-applypatch
+pre-auto-gc
+pre-commit
+pre-merge-commit
+pre-push
+pre-rebase
+pre-receive
+prepare-commit-msg
+proc-receive
+push-to-checkout
+reference-transaction
+sendemail-validate
+update
+"
+
+  for hook_name in $hook_names; do
+    hook_file="$DIR/hooks/$hook_name"
+
+    # Skip if this hook script is not present in hooks/
+    if [ ! -e "$hook_file" ]; then
+      continue
+    fi
+
+    # Target location in .git/hooks/
+    target="$DIR/.git/hooks/$hook_name"
+
+    # Make source hook executable
+    if [ ! -x "$hook_file" ]; then
+      if is_dry_run; then
+        log_dry_run "Would make executable: hooks/$hook_name"
+      else
+        log_verbose "Making executable: hooks/$hook_name"
+        chmod +x "$hook_file"
+      fi
+    fi
+
+    # Check if symlink already exists and points to correct location
+    if [ -L "$target" ] && [ "$(readlink "$target")" = "$hook_file" ]; then
+      log_verbose "Skipping hook $hook_name: already installed"
+      continue
+    fi
+
+    # Install the hook as a symlink
+    if is_dry_run; then
+      log_dry_run "Would install hook: $hook_name"
+    else
+      log_verbose "Installing hook: $hook_name"
+      # Remove existing file/symlink if present
+      rm -f "$target"
+      # Create symlink using absolute path
+      ln -s "$hook_file" "$target"
+    fi
+  done
+)}
+
 

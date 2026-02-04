@@ -100,9 +100,8 @@ Options:
                         Selected profile is persisted for future runs.
   -v                    Enable verbose logging
   --dry-run             Perform a dry run without making system modifications.
-                        Logs all actions that would be taken. Verbose logging
-                        is automatically enabled in dry-run mode for detailed
-                        output.
+                        Logs all actions that would be taken. Use -v for
+                        detailed output.
   --skip-os-detection   Skip automatic OS detection overrides. Allows testing
                         arch profile on non-Arch systems. Primarily for CI
                         testing to ensure profile differentiation.
@@ -127,7 +126,7 @@ Profiles define which files are included through git sparse checkout. This allow
 | `arch` | Arch Linux headless | Core shell + Arch packages (no desktop) |
 | `arch-desktop` | Arch Linux desktop | Core shell + desktop tools + Arch packages + desktop environment |
 | `desktop` | Generic Linux desktop | Core shell + desktop tools (VS Code, IntelliJ IDEA) without OS-specific packages |
-| `windows` | Windows | PowerShell + Windows registry + desktop tools (VS Code, IntelliJ IDEA) |
+| `windows` | Windows (fixed) | PowerShell + Windows registry + desktop tools (VS Code, IntelliJ IDEA). **Note:** Windows always uses this profile; profile selection is not available. |
 
 Profiles are defined in [`conf/profiles.ini`](conf/profiles.ini) and map to file categories in [`conf/manifest.ini`](conf/manifest.ini).
 
@@ -208,13 +207,15 @@ PowerShell modules for Windows reside in `src/windows/`.
 
 ### Windows
 
-Windows supports profile-based configuration. The default profile is `windows`.
+Windows uses a fixed "windows" profile (profile selection is not available).
 
 Usage pattern (PowerShell, elevated as required):
 ```powershell
 .\dotfiles.ps1
 # Dry run mode (preview changes without modification)
 .\dotfiles.ps1 -DryRun
+# With verbose output
+.\dotfiles.ps1 -Verbose
 ```
 
 Key differences from Linux:

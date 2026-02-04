@@ -1,8 +1,10 @@
 # Windows Usage
 
-Opinionated Windows automation layer for this dotfiles project. The PowerShell entrypoint wires together registry personalization, symlinks, and VS Code extensions in an idempotent fashion with profile-based filtering.
+Windows automation layer for this dotfiles project. The PowerShell entrypoint (`dotfiles.ps1`) always uses the fixed "windows" profile and wires together registry personalization, symlinks, and VS Code extensions in an idempotent fashion.
 
 ## Quick Start
+
+The Windows script always uses the "windows" profile (profile selection is not available on Windows).
 
 Open an elevated PowerShell (most tasks require admin to write HKCU console keys and create symlinks in some protected locations) then run:
 
@@ -10,6 +12,15 @@ Open an elevated PowerShell (most tasks require admin to write HKCU console keys
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
 ./dotfiles.ps1
+
+# Dry-run mode (preview changes without modification)
+./dotfiles.ps1 -DryRun
+
+# With verbose output
+./dotfiles.ps1 -Verbose
+
+# Dry-run with verbose output
+./dotfiles.ps1 -DryRun -Verbose
 ```
 
 Re‑run the script at any time; operations are skipped when already satisfied (extensions installed, registry values unchanged, symlinks existing).

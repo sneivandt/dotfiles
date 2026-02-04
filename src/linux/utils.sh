@@ -145,6 +145,9 @@ prompt_profile_selection()
       arch-desktop)
         desc="Arch Linux desktop (GUI, window manager, fonts)"
         ;;
+      desktop)
+        desc="Generic desktop (GUI, no OS-specific packages)"
+        ;;
       windows)
         desc="Windows environment (PowerShell, registry)"
         ;;

@@ -20,7 +20,7 @@ Thank you for your interest in contributing! This document provides guidelines f
 ### Before Making Changes
 
 1. Review the project guidelines in `.github/copilot-instructions.md`
-2. Understand the profile system (base, arch, arch-desktop, windows)
+2. Understand the profile system (base, arch, arch-desktop, desktop, windows)
 3. Test existing functionality:
    ```bash
    ./dotfiles.sh -T
@@ -164,6 +164,7 @@ entry-two
    - `base` - Minimal
    - `arch` - Arch Linux headless
    - `arch-desktop` - Arch Linux desktop
+   - `desktop` - Generic desktop
    - `windows` - Windows (if applicable)
 
 ### CI Testing

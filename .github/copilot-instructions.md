@@ -4,7 +4,7 @@ These guidelines help AI code assistants produce consistent, safe contributions 
 
 ## Project Overview
 This project manages dotfiles and system configuration using a profile-based sparse checkout approach. It supports both Linux (specifically Arch Linux) and Windows.
-- **Profile-Based Configuration**: Configuration uses profiles (e.g., `base`, `arch`, `arch-desktop`, `windows`) defined in `conf/profiles.ini` that control which files are checked out via git sparse checkout.
+- **Profile-Based Configuration**: Configuration uses profiles (e.g., `base`, `arch`, `arch-desktop`, `desktop`, `windows`) defined in `conf/profiles.ini` that control which files are checked out via git sparse checkout.
 - **INI Configuration Format**: All configuration files (`conf/*.ini`) use standard INI format with `[section]` headers for organization.
 - **Idempotency**: All scripts are designed to be idempotent. Re-running the installation should simply verify the state without side effects or errors.
 - **Cross-Platform**: The project uses `dotfiles.sh` (POSIX sh) for Linux and `dotfiles.ps1` (PowerShell) for Windows.
@@ -89,6 +89,7 @@ Example usage:
 - **`base`**: Minimal core shell configuration (excludes OS-specific and desktop files)
 - **`arch`**: Arch Linux headless (includes Arch packages, excludes desktop)
 - **`arch-desktop`**: Arch Linux desktop (includes desktop tools, window manager, fonts)
+- **`desktop`**: Generic desktop (includes desktop tools like VS Code without OS-specific packages)
 - **`windows`**: Windows environment (PowerShell, registry settings)
 
 ### Profile Persistence Implementation
@@ -286,7 +287,7 @@ Symlinks are managed declaratively through `conf/symlinks.ini`.
 - CI workflow (`.github/workflows/ci.yml`) runs automatically on pull requests to validate:
   - Static analysis (shellcheck and PSScriptAnalyzer)
   - Configuration file validation
-  - Profile installations with dry-run tests (base, arch, arch-desktop, windows)
+  - Profile installations with dry-run tests (base, arch, arch-desktop, desktop, windows)
   - Cross-platform compatibility (Linux Ubuntu and Windows runners)
   - Docker image build
 - Docker image workflow (`.github/workflows/docker-image.yml`) publishes to Docker Hub on pushes to master branch

@@ -130,6 +130,8 @@ jobs:
             skip_os: true
           - profile: arch-desktop
             skip_os: true
+          - profile: desktop
+            skip_os: false
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

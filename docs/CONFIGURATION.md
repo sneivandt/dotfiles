@@ -42,6 +42,7 @@ Profiles are defined in `profiles.ini`:
 - **`base`**: Minimal core shell configuration (cross-platform)
 - **`arch`**: Arch Linux headless (includes Arch packages, excludes desktop)
 - **`arch-desktop`**: Arch Linux desktop (includes desktop tools, window manager, fonts)
+- **`desktop`**: Generic desktop (includes desktop tools like VS Code and IntelliJ IDEA, excludes OS-specific packages)
 - **`windows`**: Windows environment (PowerShell, registry settings, desktop tools like VS Code and IntelliJ IDEA)
 
 ## Configuration Files

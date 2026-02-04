@@ -70,6 +70,9 @@ Test different profiles to ensure sparse checkout and configuration work correct
 # Test base profile
 ./dotfiles.sh -I --profile base --dry-run
 
+# Test desktop profile
+./dotfiles.sh -I --profile desktop --dry-run
+
 # Test arch profile
 ./dotfiles.sh -I --profile arch --dry-run
 
@@ -92,6 +95,7 @@ Idempotency tests are run automatically in CI. They validate:
   - `base` profile
   - `arch` profile (with --skip-os-detection)
   - `arch-desktop` profile (with --skip-os-detection)
+  - `desktop` profile
   - `windows` profile (on Windows runner)
 
 **Note:** Idempotency and application tests require actual installations and are run in CI jobs via `.github/workflows/scripts/linux/test-idempotency.sh` and `.github/workflows/scripts/linux/test-applications.sh`. They are not included in `./dotfiles.sh -T` which focuses on static analysis and configuration validation.
@@ -142,6 +146,7 @@ Replicate CI validation locally:
 
 # Test each profile with dry-run
 ./dotfiles.sh -I --profile base --dry-run
+./dotfiles.sh -I --profile desktop --dry-run
 ./dotfiles.sh -I --profile arch --dry-run
 ./dotfiles.sh -I --profile arch-desktop --dry-run
 

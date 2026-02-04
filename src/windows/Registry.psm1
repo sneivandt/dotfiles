@@ -97,7 +97,6 @@ function New-RegistryPath
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
         Justification='Internal helper function. ShouldProcess is handled by calling function Set-RegistryValue.')]
     [CmdletBinding()]
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification='Internal helper function called by Sync-Registry which handles DryRun')]
     param (
         [Parameter(Mandatory = $true)]
         [string]

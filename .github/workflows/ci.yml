@@ -255,7 +255,7 @@ jobs:
         shell: pwsh
         run: |
           $output = Get-Content windows-output.log
-          if ($output -notmatch "DRY-RUN") {
+          if (-not ($output -match "DRY-RUN")) {
             Write-Error "Expected dry-run output"
             exit 1
           }

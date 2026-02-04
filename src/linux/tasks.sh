@@ -499,23 +499,23 @@ install_symlinks()
           log_stage "Installing symlinks"
         fi
         if is_dry_run; then
-          log_dry_run "Would ensure parent directory: $(dirname ~/".$symlink")"
-          if [ -e ~/".$symlink" ]; then
-            log_dry_run "Would remove existing: ~/.$symlink"
+          log_dry_run "Would ensure parent directory: $(dirname "$HOME"/."$symlink")"
+          if [ -e "$HOME"/."$symlink" ]; then
+            log_dry_run "Would remove existing: $HOME/.$symlink"
           fi
-          log_dry_run "Would link $DIR/symlinks/$symlink to ~/.$symlink"
+          log_dry_run "Would link $DIR/symlinks/$symlink to $HOME/.$symlink"
         else
-          log_verbose "Linking $DIR/symlinks/$symlink to ~/.$symlink"
+          log_verbose "Linking $DIR/symlinks/$symlink to $HOME/.$symlink"
           # Ensure parent directory exists
-          mkdir -pv "$(dirname ~/".$symlink")"
+          mkdir -pv "$(dirname "$HOME"/."$symlink")"
 
           # Remove existing file/directory if it exists (to replace with symlink)
-          if [ -e ~/".$symlink" ]; then
-            rm -rvf ~/".$symlink"
+          if [ -e "$HOME"/."$symlink" ]; then
+            rm -rvf "$HOME"/."$symlink"
           fi
 
           # Create the symlink
-          ln -snvf "$DIR"/symlinks/"$symlink" ~/".$symlink"
+          ln -snvf "$DIR"/symlinks/"$symlink" "$HOME"/."$symlink"
         fi
       else
         log_verbose "Skipping symlink $symlink: already correct"
@@ -659,11 +659,11 @@ uninstall_symlinks()
       # Check if the symlink is currently installed
       if is_symlink_installed "$symlink"; then
         if is_dry_run; then
-          log_dry_run "Would remove symlink: ~/.$symlink"
+          log_dry_run "Would remove symlink: $HOME/.$symlink"
         else
-          log_verbose "Removing symlink: ~/.$symlink"
+          log_verbose "Removing symlink: $HOME/.$symlink"
           # Remove the symlink
-          rm -vf ~/".$symlink"
+          rm -vf "$HOME"/."$symlink"
         fi
       else
         log_verbose "Skipping uninstall symlink $symlink: not installed"

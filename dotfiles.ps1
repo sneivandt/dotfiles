@@ -8,9 +8,9 @@
       * Symlink creation (Install-Symlinks)
       * VS Code Extensions (Install-VsCodeExtensions)
 
-    Registry operations require administrator privileges when not in dry-run mode.
-    Script is intentionally linear; each function internally guards idempotency
-    to allow safe re-runs.
+    Registry operations and symlink creation require administrator privileges
+    when not in dry-run mode. Script is intentionally linear; each function
+    internally guards idempotency to allow safe re-runs.
 
     The script always uses the "windows" profile. Profile selection is not
     supported on Windows.
@@ -18,7 +18,9 @@
     When specified, logs all actions that would be taken without making
     system modifications. Use -Verbose for detailed output.
 .NOTES
-    Keep this file minimal--logic lives in imported modules for testability.
+    Compatible with both PowerShell Core (pwsh) and Windows PowerShell (5.1+)
+    Admin: Required for registry modification and symlink creation
+           (not required in dry-run mode)
 .EXAMPLE
     PS> .\dotfiles.ps1
     Executes complete provisioning sequence with "windows" profile.

@@ -78,22 +78,34 @@ jobs:
 
   # Application tests
   test-applications:
-    name: Test Applications
+    name: Test Application - ${{ matrix.application }}
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - application: zsh
+            packages: zsh
+            tests: completion
+          - application: vim
+            packages: vim
+            tests: opens
+          - application: nvim
+            packages: neovim
+            tests: opens plugins
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install vim, neovim, and zsh
+      - name: Install ${{ matrix.packages }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y vim neovim zsh
+          sudo apt-get install -y ${{ matrix.packages }}
 
       - name: Install base profile
         run: |
           ./dotfiles.sh --install --profile base -v
 
-      - name: Run application tests
+      - name: Run ${{ matrix.application }} tests
         run: |
           DIR="$(pwd)"
           export DIR
@@ -101,14 +113,13 @@ jobs:
           . ./src/linux/logger.sh
           . ./src/linux/utils.sh
           . ./.github/workflows/scripts/linux/test-applications.sh
-          test_zsh_completion
-          test_vim_opens
-          test_nvim_opens
-          test_nvim_plugins
+          for test in ${{ matrix.tests }}; do
+            test_${{ matrix.application }}_${test}
+          done
 
-  # Test profile installations with dry-run
+  # Test Linux profiles
   test-linux-profiles:
-    name: Test Linux - ${{ matrix.profile }} Profile
+    name: Test Linux - ${{ matrix.profile }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -159,7 +170,7 @@ jobs:
 
   # Test Windows profile
   test-windows:
-    name: Test Windows - Windows Profile
+    name: Test Windows
     runs-on: windows-latest
     steps:
       - name: Check out repository
@@ -200,7 +211,7 @@ jobs:
           }
           Write-Output "✓ Dry-run test passed for Windows profile"
 
-  # Test pre-commit hook functionality
+  # Test pre-commit hooks
   test-git-hooks:
     name: Test Git Hooks
     runs-on: ubuntu-latest

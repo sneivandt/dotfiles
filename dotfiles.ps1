@@ -19,7 +19,7 @@
     system modifications. Verbose output is automatically enabled in dry-run
     mode to provide detailed visibility into intended actions.
 .NOTES
-    Keep this file minimal—logic lives in imported modules for testability.
+    Keep this file minimal--logic lives in imported modules for testability.
 .EXAMPLE
     PS> .\dotfiles.ps1
     Executes complete provisioning sequence with "windows" profile.
@@ -45,7 +45,6 @@ if (-not $DryRun)
         {
             $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
             $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-            
             if (-not $isAdmin)
             {
                 Write-Error "This script requires administrator privileges to modify registry settings and create symlinks. Please run as administrator or use -DryRun to preview changes."

@@ -1,5 +1,5 @@
 #!/bin/sh
-# shellcheck disable=SC3043  # 'local' is widely supported even if not strictly POSIX
+# shellcheck disable=SC3043,SC2154  # 'local' is widely supported; color variables sourced from logger.sh
 set -o errexit
 set -o nounset
 
@@ -311,6 +311,7 @@ test_ini_syntax()
 
       # Check for section headers
       if echo "$line" | grep -Eq '^\[.+\]$'; then
+        # shellcheck disable=SC2034  # in_section used for validation context
         in_section=true
         section_name="$(echo "$line" | tr -d '[]')"
 

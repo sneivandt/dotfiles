@@ -1,6 +1,6 @@
 # Repository Git Hooks
 
-This directory contains git hooks that are automatically installed by the dotfiles installation script.
+The `hooks/` directory contains git hooks that are automatically installed by the dotfiles installation script.
 
 ## Available Hooks
 
@@ -42,7 +42,7 @@ git commit --no-verify
 
 #### Customization
 
-The detection patterns are defined in [sensitive-patterns.ini](sensitive-patterns.ini), organized into sections by pattern type:
+The detection patterns are defined in [sensitive-patterns.ini](../hooks/sensitive-patterns.ini), organized into sections by pattern type:
 - `api-keys` - Generic API keys and secrets
 - `passwords` - Password patterns
 - `tokens` - Bearer tokens and authorization headers

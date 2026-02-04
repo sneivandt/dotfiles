@@ -104,13 +104,13 @@ printf "\nTesting database patterns...\n"
 test_hook_blocks "MySQL connection" "mysql://user:password@localhost:3306/db"
 test_hook_blocks "PostgreSQL connection" "postgresql://admin:secret@db.example.com/mydb"
 
-# Test Heroku API keys (UUID format)
+# Test Heroku API keys (UUID format with context)
 printf "\nTesting Heroku patterns...\n"
-test_hook_blocks "Heroku UUID" "HEROKU_API_KEY=550e8400-e29b-41d4-a716-446655440000"
+test_hook_blocks "Heroku API key" "HEROKU_API_KEY=550e8400-e29b-41d4-a716-446655440000"
 
 # Test Slack tokens
 printf "\nTesting Slack patterns...\n"
-test_hook_blocks "Slack bot token" "SLACK_TOKEN=xoxb-1111111111111-2222222222222-EXAMPLEEXAMPLEEXAMPLEEX"
+test_hook_blocks "Slack bot token" "SLACK_TOKEN=xoxb-1111111111111-2222222222222-EXAMPLEEXAMPLEEXAMPLEEXA"
 
 # Test Stripe keys
 printf "\nTesting Stripe patterns...\n"

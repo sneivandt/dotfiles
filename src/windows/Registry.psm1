@@ -92,7 +92,7 @@ function New-RegistryPath
     .DESCRIPTION
         PowerShell Core compatible registry path creation.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param (
         [Parameter(Mandatory = $true)]
         [string]
@@ -150,7 +150,7 @@ function Set-RegistryKeyValue
     .DESCRIPTION
         PowerShell Core compatible registry value setting.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param (
         [Parameter(Mandatory = $true)]
         [string]

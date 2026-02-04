@@ -12,6 +12,7 @@ set -o nounset
 #   test_idempotency_install_base          Test base profile idempotency
 #   test_idempotency_install_arch          Test arch profile idempotency
 #   test_idempotency_install_arch_desktop  Test arch-desktop profile idempotency
+#   test_idempotency_install_desktop       Test desktop profile idempotency
 #
 # Dependencies:
 #   logger.sh (log_stage, log_error, log_verbose)
@@ -161,6 +162,21 @@ test_idempotency_install_arch_desktop()
   fi
 
   log_verbose "Arch-desktop profile idempotency test passed"
+)}
+
+# test_idempotency_install_desktop
+#
+# Test that the desktop profile installation is idempotent.
+test_idempotency_install_desktop()
+{(
+  log_stage "Testing desktop profile idempotency"
+
+  # Run with desktop profile
+  if ! run_install_twice "desktop" ""; then
+    return 1
+  fi
+
+  log_verbose "Desktop profile idempotency test passed"
 )}
 
 # test_idempotency_symlinks

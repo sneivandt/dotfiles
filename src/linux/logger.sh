@@ -80,7 +80,7 @@ log_usage()
   echo
   echo "Options:"
   echo "  --profile PROFILE     Use predefined profile for sparse checkout"
-  echo "                        Available: base, arch, arch-desktop, windows"
+  echo "                        Available: base, arch, arch-desktop, desktop, windows"
   echo "                        If not specified:"
   echo "                          1. Uses previously persisted profile (if exists)"
   echo "                          2. Prompts interactively to select a profile"

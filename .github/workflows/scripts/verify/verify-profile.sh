@@ -122,9 +122,59 @@ case "$profile" in
     echo "✓ Windows items properly excluded"
     ;;
 
+  desktop)
+    echo "Checking for base profile symlink operations"
+    if ! grep -q "Would link.*bashrc" "$log_file"; then
+      echo "Error: Should link bashrc in desktop profile"
+      exit 1
+    fi
+    if ! grep -q "Would link.*zshrc" "$log_file"; then
+      echo "Error: Should link zshrc in desktop profile"
+      exit 1
+    fi
+    echo "✓ Base symlinks confirmed"
+
+    echo "Checking for desktop-specific symlink operations"
+    if ! grep -q "Would link.*config/Code/User/settings\.json" "$log_file"; then
+      echo "Error: Should link VS Code settings in desktop profile"
+      exit 1
+    fi
+    if ! grep -q "Would link.*config/shell/aliases-desktop\.sh" "$log_file"; then
+      echo "Error: Should link desktop aliases in desktop profile"
+      exit 1
+    fi
+    echo "✓ Desktop-specific symlinks confirmed"
+
+    echo "Verifying arch-specific items are NOT linked"
+    if grep -q "Would link.*config/pacman\.conf" "$log_file"; then
+      echo "Error: Should not link pacman.conf in desktop profile"
+      exit 1
+    fi
+    if grep -q "Would link.*xmonad" "$log_file"; then
+      echo "Error: Should not link xmonad in desktop profile"
+      exit 1
+    fi
+    if grep -q "Would link.*Xresources" "$log_file"; then
+      echo "Error: Should not link Xresources in desktop profile"
+      exit 1
+    fi
+    echo "✓ Arch-specific items properly excluded"
+
+    echo "Verifying Windows items are NOT linked"
+    if grep -q "Would link.*WindowsTerminal" "$log_file"; then
+      echo "Error: Should not link WindowsTerminal in desktop profile"
+      exit 1
+    fi
+    if grep -q "Would link.*AppData" "$log_file"; then
+      echo "Error: Should not link AppData items in desktop profile"
+      exit 1
+    fi
+    echo "✓ Windows items properly excluded"
+    ;;
+
   *)
     echo "Error: Unknown profile '$profile'"
-    echo "Supported profiles: base, arch, arch-desktop"
+    echo "Supported profiles: base, arch, arch-desktop, desktop"
     exit 1
     ;;
 esac

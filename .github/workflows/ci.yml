@@ -9,22 +9,28 @@ on:
 jobs:
   # Configuration validation and INI file syntax checks
   validate-config:
-    name: Validate Config - ${{ matrix.test }}
+    name: Validate Config - ${{ matrix.name }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        test:
-          - config_validation
-          - symlinks_validation
-          - chmod_validation
-          - ini_syntax
-          - category_consistency
-          - empty_sections
+        include:
+          - test: config_validation
+            name: Configuration Consistency
+          - test: symlinks_validation
+            name: Symlinks References
+          - test: chmod_validation
+            name: File Permissions
+          - test: ini_syntax
+            name: INI Syntax
+          - test: category_consistency
+            name: Category Consistency
+          - test: empty_sections
+            name: Empty Sections Check
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Run ${{ matrix.test }}
+      - name: Run ${{ matrix.name }}
         run: |
           DIR="$(pwd)"
           export DIR

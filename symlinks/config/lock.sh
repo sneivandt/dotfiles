@@ -5,11 +5,11 @@ set -o nounset
 if command -v playerctl >/dev/null 2>&1 && command -v amixer >/dev/null 2>&1; then
 
   # Pause player
-  STATUS=$(playerctl status 2>/dev/null || true)
+  STATUS="$(playerctl status 2>/dev/null || true)"
   playerctl pause 2>/dev/null || true
 
   # Mute
-  SOUND=$(amixer sget Master | grep -E -o "\[on\]" | head -n 1 || true)
+  SOUND="$(amixer sget Master | grep -E -o "\[on\]" | head -n 1 || true)"
   amixer -q sset Master mute 2>/dev/null || true
 
   # Lock and wait

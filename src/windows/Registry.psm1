@@ -158,7 +158,6 @@ function Set-RegistryKeyValue
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
         Justification='Internal helper function. ShouldProcess is handled by calling function Set-RegistryValue.')]
     [CmdletBinding()]
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification='Internal helper function called by Set-RegistryValue which handles ShouldProcess')]
     param (
         [Parameter(Mandatory = $true)]
         [string]

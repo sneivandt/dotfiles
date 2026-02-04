@@ -565,12 +565,21 @@ test_git_behavior()
   test_repo="$(mktemp -d)"
   log_verbose "Creating test repository at $test_repo"
 
-  cd "$test_repo"
+  # Store original directory for cleanup
+  local orig_dir
+  orig_dir="$(pwd)"
+
+  # Change to test directory
+  if ! cd "$test_repo"; then
+    printf "%sERROR: Failed to change to test directory%s\n" "${RED}" "${NC}" >&2
+    rm -rf "$test_repo"
+    return 1
+  fi
 
   # Initialize repository and configure user
   if ! git init >/dev/null 2>&1; then
     printf "%sERROR: Failed to initialize test repository%s\n" "${RED}" "${NC}" >&2
-    cd - >/dev/null
+    cd "$orig_dir" || true
     rm -rf "$test_repo"
     return 1
   fi
@@ -652,7 +661,7 @@ test_git_behavior()
   fi
 
   # Clean up
-  cd - >/dev/null
+  cd "$orig_dir" || true
   rm -rf "$test_repo"
 
   log_verbose "Git behavior test passed"

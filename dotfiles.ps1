@@ -1,5 +1,3 @@
-﻿#Requires -RunAsAdministrator
-
 <#
 .SYNOPSIS
     Windows bootstrap entry point for dotfiles repository.
@@ -10,8 +8,9 @@
       * Symlink creation (Install-Symlinks)
       * VS Code Extensions (Install-VsCodeExtensions)
 
-    Must run elevated for registry operations. Script is intentionally
-    linear; each function internally guards idempotency to allow safe re-runs.
+    Registry operations require administrator privileges when not in dry-run mode.
+    Script is intentionally linear; each function internally guards idempotency
+    to allow safe re-runs.
 
     The script always uses the "windows" profile. Profile selection is not
     supported on Windows.

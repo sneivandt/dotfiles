@@ -11,7 +11,7 @@ Opinionated, scriptable, cross‑platform (Linux / Arch / Windows) dotfiles with
 
 [![Publish Docker image](https://github.com/sneivandt/dotfiles/actions/workflows/docker-image.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/docker-image.yml)
 
-## Quick Start 🚀
+## Quick Start
 
 Install with profile selection:
 ```bash
@@ -60,7 +60,7 @@ Help:
 ./dotfiles.sh -h
 ```
 
-## Requirements ⚙️
+## Requirements
 
 ### Core Requirements
 
@@ -81,7 +81,7 @@ These tools are optional and enable specific features when available:
 
 The installation script gracefully skips features when required tools are unavailable.
 
-## Usage Summary 📝
+## Usage Summary
 
 ```
 Usage:
@@ -111,7 +111,7 @@ Options:
 (`.git/config` under `dotfiles.profile`). On subsequent runs without `--profile`,
 the script uses the saved profile, making re-runs seamless.
 
-## Profiles 🎯
+## Profiles
 
 Profiles define which files are included through git sparse checkout. This allows a single repository to serve multiple environments without checking out unnecessary files.
 
@@ -172,21 +172,7 @@ Most `.ini` files use standard INI format with `[section]` headers containing si
 Profile sections determine which items are processed based on the selected profile. Symlink targets
 are always relative to `$HOME` and prefixed with a dot (e.g., `bashrc` → `~/.bashrc`).
 
-## Vim/Neovim Configuration 📝
-
-### Plugin Management
-
-**Neovim** uses **lazy.nvim**, a modern plugin manager:
-- Lazy loading, lockfiles, automatic installation
-- Better dependency management and faster startup
-- Auto-bootstraps on first launch
-- Pinned to specific commit for security
-
-**Vim** (non-Neovim) runs without plugins for simplicity.
-
-See [`symlinks/vim/README.md`](symlinks/vim/README.md) for detailed configuration and usage.
-
-## Scripts (`./dotfiles.sh`) 🔧
+## Scripts (`./dotfiles.sh`)
 
 Primary entrypoint: `dotfiles.sh`
 
@@ -227,7 +213,7 @@ Key differences from Linux:
 
 See [docs/WINDOWS.md](docs/WINDOWS.md) for detailed Windows-specific documentation.
 
-## Testing & CI 🧪
+## Testing & CI
 
 This repository includes comprehensive CI testing that validates:
 
@@ -253,7 +239,7 @@ The CI workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) automat
 
 For more detailed information about testing, see [docs/TESTING.md](docs/TESTING.md).
 
-## Docker 🐳
+## Docker
 
 Run the [published image](https://hub.docker.com/r/sneivandt/dotfiles) for an isolated test shell:
 ```bash
@@ -268,7 +254,7 @@ docker run --rm -it dotfiles:local
 
 The published image ([`sneivandt/dotfiles`](https://hub.docker.com/r/sneivandt/dotfiles)) is built and pushed by GitHub Actions on pushes to master ([`docker-image.yml`](.github/workflows/docker-image.yml)).
 
-## Customization 🎨
+## Customization
 
 ### Adding New Files
 
@@ -305,7 +291,7 @@ The published image ([`sneivandt/dotfiles`](https://hub.docker.com/r/sneivandt/d
 2. List all file paths that belong to that category
 3. Update profile definitions in `conf/profiles.ini` to include/exclude it
 
-## Troubleshooting 🔍
+## Troubleshooting
 
 | Symptom | Check |
 |---------|-------|
@@ -316,11 +302,11 @@ The published image ([`sneivandt/dotfiles`](https://hub.docker.com/r/sneivandt/d
 | Wrong files checked out | Verify profile with `echo $PROFILE` and check `conf/profiles.ini` |
 | Desktop files missing | Use `--profile arch-desktop` |
 
-## Contributing 🤝
+## Contributing
 
 Contributions are welcome! Please see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines on how to contribute to this project.
 
-## Additional Documentation 📚
+## Additional Documentation
 
 - [docs/TESTING.md](docs/TESTING.md) - Detailed testing and CI documentation
 - [docs/WINDOWS.md](docs/WINDOWS.md) - Windows-specific documentation

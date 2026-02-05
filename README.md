@@ -326,3 +326,4 @@ Contributions are welcome! Please see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.m
 - [docs/WINDOWS.md](docs/WINDOWS.md) - Windows-specific documentation
 - [docs/SECURITY.md](docs/SECURITY.md) - Security policy
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) - Configuration file reference
+- [docs/HOOKS.md](docs/HOOKS.md) - Git hooks documentation

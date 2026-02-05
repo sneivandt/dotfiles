@@ -132,6 +132,7 @@
     "search.useGlobalIgnoreFiles": true,
     "telemetry.telemetryLevel": "off",
     "terminal.integrated.defaultProfile.linux": "zsh",
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
     "terminal.integrated.enablePersistentSessions": false,
     "terminal.integrated.enableVisualBell": false,
     "terminal.integrated.gpuAcceleration": "on",

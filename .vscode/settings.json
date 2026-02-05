@@ -1,19 +1,12 @@
 {
     // GitHub Copilot settings
     "github.copilot.enable": {
-        "*": true,
-        "shellscript": true,
-        "powershell": true,
-        "ini": true,
-        "markdown": true
+        "*": true
     },
     // Increase git file limit warning threshold
     "git.ignoreLimitWarning": true,
     // Exclude certain files and directories from search
     "search.exclude": {
-        "symlinks/vim/pack/plugins": true,
-        "symlinks/config/nvim": true,
-        "extern": true,
         "**/.git": true,
         "**/__pycache__": true,
         "**/*.log": true

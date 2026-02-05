@@ -1,13 +1,17 @@
 [Unit]
 Description=Set initial volume to 80% and unmute
 Wants=xsession.target
-After=xsession.target
+After=xsession.target pulseaudio.service pipewire-pulse.service
 ConditionFileIsExecutable=%h/.config/volume/init-volume.sh
 
 [Service]
 Type=oneshot
-ExecStartPre=/usr/bin/sleep 10
+RemainAfterExit=yes
+# Give PulseAudio time to restore its state, then override it
+ExecStartPre=/usr/bin/sleep 3
 ExecStart=%h/.config/volume/init-volume.sh
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=xsession.target

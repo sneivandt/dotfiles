@@ -97,7 +97,7 @@ function Update-DotfilesRepository
         Update-DotfilesRepository -Root $PSScriptRoot -DryRun
         Shows what update operations would be performed
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param (
         [Parameter(Mandatory = $true)]
         [string]
@@ -157,7 +157,7 @@ function Update-DotfilesRepository
             {
                 Write-Output "DRY-RUN: Would fetch updates from origin"
             }
-            else
+            elseif ($PSCmdlet.ShouldProcess("dotfiles repository", "Fetch updates from origin"))
             {
                 Write-Verbose "Fetching updates from origin"
                 git fetch
@@ -179,7 +179,7 @@ function Update-DotfilesRepository
             {
                 Write-Output "DRY-RUN: Would merge updates from origin/HEAD"
             }
-            else
+            elseif ($PSCmdlet.ShouldProcess("dotfiles repository", "Merge updates from origin/HEAD"))
             {
                 Write-Verbose "Merging updates from origin/HEAD"
                 git merge origin/HEAD

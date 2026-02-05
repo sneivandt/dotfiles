@@ -132,6 +132,12 @@ test_hook_blocks "OAuth client secret" 'client_secret = "1234567890abcdef1234567
 printf "\nTesting generic patterns...\n"
 test_hook_blocks "Generic secret" 'secret = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0"'
 
+# Test UUID/GUID patterns
+printf "\nTesting UUID patterns...\n"
+test_hook_blocks "UUID in URL" "https://example.com/auth/12345678-1234-1234-1234-123456789abc"
+test_hook_blocks "GUID assignment" "tenant_id = abcdef12-3456-7890-abcd-ef1234567890"
+test_hook_blocks "UUID constant" "const CLIENT_ID = '11111111-2222-3333-4444-555555555555'"
+
 # Test PII patterns
 printf "\nTesting PII patterns...\n"
 test_hook_blocks "Email address" "user_email = john.doe@example.com"

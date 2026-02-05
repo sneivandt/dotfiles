@@ -85,41 +85,35 @@ function Install-RepositoryGitHooks
 
     $act = $false
 
-    # Only install real git hook scripts: whitelist of known hook names
-    $validHookNames = @(
-        'applypatch-msg',
-        'pre-applypatch',
-        'post-applypatch',
-        'pre-commit',
-        'pre-merge-commit',
-        'prepare-commit-msg',
-        'commit-msg',
-        'post-commit',
-        'pre-rebase',
-        'post-checkout',
-        'post-merge',
-        'pre-push',
-        'pre-receive',
-        'update',
-        'proc-receive',
-        'post-receive',
-        'post-update',
-        'reference-transaction',
-        'push-to-checkout',
-        'pre-auto-gc',
-        'post-rewrite',
-        'sendemail-validate',
-        'fsmonitor-watchman',
-        'p4-changelist',
-        'p4-prepare-changelist',
-        'p4-post-changelist',
-        'p4-pre-submit',
-        'post-index-change'
-    )
+    # Get all files in hooks/ directory, excluding non-hook files
+    # (config files, documentation, hidden files)
+    $excludeExtensions = @('.md', '.txt', '.ini', '.yaml', '.yml', '.json')
+    $excludeNames = @('README')
 
-    # Get all hook files that match known git hook names
     $hookFiles = Get-ChildItem -Path $hooksSourceDir -File | Where-Object {
-        $validHookNames -contains $_.Name
+        # Exclude files with non-hook extensions
+        $ext = $_.Extension
+        if ($excludeExtensions -contains $ext)
+        {
+            Write-Verbose "Skipping non-hook file: $($_.Name)"
+            return $false
+        }
+
+        # Exclude specific non-hook filenames
+        if ($excludeNames -contains $_.BaseName)
+        {
+            Write-Verbose "Skipping non-hook file: $($_.Name)"
+            return $false
+        }
+
+        # Exclude hidden files (starting with .)
+        if ($_.Name -like '.*')
+        {
+            Write-Verbose "Skipping hidden file: $($_.Name)"
+            return $false
+        }
+
+        return $true
     }
 
     # Ensure .git/hooks directory exists

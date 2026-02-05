@@ -765,10 +765,14 @@ install_repository_git_hooks()
     return
   fi
 
-  log_stage "Installing repository git hooks"
+  local act=0
 
   # Ensure .git/hooks directory exists
   if [ ! -d "$DIR/.git/hooks" ]; then
+    if [ $act -eq 0 ]; then
+      act=1
+      log_stage "Installing repository git hooks"
+    fi
     if is_dry_run; then
       log_dry_run "Would create directory: .git/hooks"
     else
@@ -777,51 +781,32 @@ install_repository_git_hooks()
     fi
   fi
 
-  # Only install real git hook scripts: whitelist of known hook names
-  hook_names="
-applypatch-msg
-commit-msg
-fsmonitor-watchman
-post-applypatch
-post-checkout
-post-commit
-post-index-change
-post-merge
-post-receive
-post-rewrite
-post-update
-p4-changelist
-p4-post-changelist
-p4-pre-submit
-p4-prepare-changelist
-pre-applypatch
-pre-auto-gc
-pre-commit
-pre-merge-commit
-pre-push
-pre-rebase
-pre-receive
-prepare-commit-msg
-proc-receive
-push-to-checkout
-reference-transaction
-sendemail-validate
-update
-"
-
-  for hook_name in $hook_names; do
-    hook_file="$DIR/hooks/$hook_name"
-
-    # Skip if this hook script is not present in hooks/
-    if [ ! -e "$hook_file" ]; then
+  # Process all files in hooks/ directory, excluding non-hook files
+  for hook_file in "$DIR"/hooks/*; do
+    # Skip if not a regular file
+    if [ ! -f "$hook_file" ]; then
       continue
     fi
+
+    hook_name="$(basename "$hook_file")"
+
+    # Skip non-hook files (config files, documentation, hidden files)
+    case "$hook_name" in
+      *.md|*.txt|*.ini|*.yaml|*.yml|*.json|README|.*)
+        log_verbose "Skipping non-hook file: $hook_name"
+        continue
+        ;;
+    esac
 
     # Target location in .git/hooks/
     target="$DIR/.git/hooks/$hook_name"
 
     # Make source hook executable
     if [ ! -x "$hook_file" ]; then
+      if [ $act -eq 0 ]; then
+        act=1
+        log_stage "Installing repository git hooks"
+      fi
       if is_dry_run; then
         log_dry_run "Would make executable: hooks/$hook_name"
       else
@@ -837,6 +822,10 @@ update
     fi
 
     # Install the hook as a symlink
+    if [ $act -eq 0 ]; then
+      act=1
+      log_stage "Installing repository git hooks"
+    fi
     if is_dry_run; then
       log_dry_run "Would install hook: $hook_name"
     else

@@ -1,6 +1,10 @@
 [core]
   editor = code --wait
   autocrlf = true
+  pager = less -imRj8X
+
+[interactive]
+  diffFilter =
 
 [safe]
   directory = *

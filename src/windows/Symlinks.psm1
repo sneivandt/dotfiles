@@ -123,6 +123,31 @@ function Install-Symlinks
                 continue
             }
 
+            # Check if source is a path reference file (contains only a relative path)
+            # This allows sharing configs between Linux (.config) and Windows (AppData) locations
+            if (Test-Path $sourcePath -PathType Leaf)
+            {
+                $content = Get-Content $sourcePath -Raw -ErrorAction SilentlyContinue
+                if ($content -and $content.Trim() -match '^(\.\./)+[^\s]+$')
+                {
+                    # File contains only a relative path - resolve to actual config file
+                    $sourceDir = Split-Path -Parent $sourcePath
+                    $referencedPath = Join-Path $sourceDir $content.Trim()
+                    $resolvedPath = [System.IO.Path]::GetFullPath($referencedPath)
+
+                    if (Test-Path $resolvedPath)
+                    {
+                        Write-Verbose "Resolved $link reference to $(Split-Path -Leaf $resolvedPath)"
+                        $sourcePath = $resolvedPath
+                    }
+                    else
+                    {
+                        Write-Verbose "Skipping symlink $link`: referenced file not found at $resolvedPath"
+                        continue
+                    }
+                }
+            }
+
             # Target is relative to user profile
             # Convert forward slashes to backslashes for Windows paths
             $targetPath = $link -replace '/', '\'

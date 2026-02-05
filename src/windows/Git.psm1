@@ -77,4 +77,123 @@ function Initialize-GitConfig
     }
 }
 
-Export-ModuleMember -Function Initialize-GitConfig
+function Update-DotfilesRepository
+{
+    <#
+    .SYNOPSIS
+        Update dotfiles repository from remote
+    .DESCRIPTION
+        Fetches and merges updates from the remote repository when the working
+        tree is clean and the local branch is behind the remote. Conservative
+        approach: only updates if on the same branch as origin/HEAD and no
+        local changes exist.
+
+        Idempotent - skips if already up to date or conditions not met.
+    .PARAMETER Root
+        Root directory of the dotfiles repository
+    .PARAMETER DryRun
+        If specified, shows what would be done without making changes
+    .EXAMPLE
+        Update-DotfilesRepository -Root $PSScriptRoot -DryRun
+        Shows what update operations would be performed
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]
+        $Root,
+
+        [Parameter(Mandatory = $false)]
+        [switch]
+        $DryRun
+    )
+
+    # Check if this is a git repository
+    if (-not (Test-Path (Join-Path $Root ".git")))
+    {
+        Write-Verbose "Skipping repository update: not a git repository"
+        return
+    }
+
+    Push-Location $Root
+    try
+    {
+        # Check if working tree is clean
+        $status = git status --porcelain 2>$null
+        if ($status)
+        {
+            Write-Verbose "Skipping repository update: working tree not clean"
+            return
+        }
+
+        # Check if origin/HEAD exists (may not in shallow clones)
+        $originHead = git rev-parse --verify --quiet origin/HEAD 2>$null
+        if (-not $originHead)
+        {
+            Write-Verbose "Skipping repository update: origin/HEAD not found (shallow clone or detached HEAD)"
+            return
+        }
+
+        # Check if current branch matches origin/HEAD
+        $originBranch = git rev-parse --abbrev-ref origin/HEAD 2>$null
+        if ($originBranch)
+        {
+            $originBranch = $originBranch -replace '^origin/', ''
+            $currentBranch = git rev-parse --abbrev-ref HEAD 2>$null
+
+            if ($currentBranch -ne $originBranch)
+            {
+                Write-Verbose "Skipping repository update: current branch ($currentBranch) does not match origin/HEAD ($originBranch)"
+                return
+            }
+        }
+
+        # Check if there are changes to fetch
+        $fetchDryRun = git fetch --dry-run 2>&1
+        if ($fetchDryRun)
+        {
+            Write-Output ":: Updating dotfiles"
+            if ($DryRun)
+            {
+                Write-Output "DRY-RUN: Would fetch updates from origin"
+            }
+            else
+            {
+                Write-Verbose "Fetching updates from origin"
+                git fetch
+            }
+        }
+        else
+        {
+            Write-Verbose "Skipping fetch: no updates from origin"
+        }
+
+        # Check if local HEAD is behind origin/HEAD
+        $localHead = git rev-parse HEAD 2>$null
+        $remoteHead = git rev-parse origin/HEAD 2>$null
+
+        if ($localHead -ne $remoteHead)
+        {
+            Write-Output ":: Updating dotfiles"
+            if ($DryRun)
+            {
+                Write-Output "DRY-RUN: Would merge updates from origin/HEAD"
+            }
+            else
+            {
+                Write-Verbose "Merging updates from origin/HEAD"
+                git merge origin/HEAD
+            }
+        }
+        else
+        {
+            Write-Verbose "Skipping merge: HEAD is up to date with origin/HEAD"
+        }
+    }
+    finally
+    {
+        Pop-Location
+    }
+}
+
+Export-ModuleMember -Function Initialize-GitConfig, Update-DotfilesRepository

@@ -79,6 +79,7 @@ if ($DryRun)
 $excluded = Get-ProfileExclusion -Root $PSScriptRoot -ProfileName $SelectedProfile
 
 Initialize-GitConfig -Root $PSScriptRoot -DryRun:$DryRun
+Update-DotfilesRepository -Root $PSScriptRoot -DryRun:$DryRun
 Install-RepositoryGitHooks -root $PSScriptRoot -DryRun:$DryRun
 Sync-Registry -root $PSScriptRoot -DryRun:$DryRun
 Install-Symlinks -root $PSScriptRoot -excludedCategories $excluded -DryRun:$DryRun

@@ -85,9 +85,9 @@ function Test-PackageInstalled
     }
 }
 
-[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Function installs multiple packages, plural is appropriate')]
 function Install-Packages
 {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Function installs multiple packages, plural is appropriate')]
     <#
     .SYNOPSIS
         Install missing packages from conf/packages.ini

@@ -228,4 +228,4 @@ function Install-Packages
 }
 
 # Export only the public function
-Export-ModuleMember -Function Install-Packagess
+Export-ModuleMember -Function Install-Packages

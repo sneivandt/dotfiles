@@ -503,18 +503,25 @@ configure_sparse_checkout()
     return 0
   fi
 
-  # Check for staged changes before modifying sparse checkout
-  # git reset --hard will discard staged changes, so we must fail fast
-  if git -C "$DIR" diff --cached --quiet 2>/dev/null; then
-    : # No staged changes, safe to proceed
-  else
-    rm -f "$tmpfile"
-    log_error "Cannot change sparse checkout: staged changes detected. Commit or unstage changes first."
+  # Check for uncommitted changes before modifying sparse checkout
+  # git reset --hard will discard staged and unstaged changes, so we must fail fast
+  # Skip check in dry-run mode since we won't actually run reset --hard
+  if ! is_dry_run; then
+    if ! git -C "$DIR" diff --quiet 2>/dev/null || ! git -C "$DIR" diff --cached --quiet 2>/dev/null; then
+      rm -f "$tmpfile"
+      log_error "Cannot change sparse checkout: uncommitted changes detected. Commit or stash changes first."
+    fi
   fi
 
   log_stage "Configuring sparse checkout"
 
   # Apply sparse checkout configuration
+  if is_dry_run; then
+    log_dry_run "Would configure sparse checkout"
+    rm -f "$tmpfile"
+    return 0
+  fi
+
   git -C "$DIR" sparse-checkout init --no-cone 2>/dev/null || true
   git -C "$DIR" sparse-checkout set --no-cone --stdin < "$tmpfile" 2>/dev/null || true
 
@@ -717,7 +724,18 @@ is_shell_script()
 #   0 installed & matches, 1 absent or different.
 is_symlink_installed()
 {
-  if [ "$(readlink -f "$DIR"/symlinks/"$1")" = "$(readlink -f "$HOME"/."$1")" ]; then
+  # Check if target exists first
+  if [ ! -e "$HOME"/."$1" ]; then
+    return 1
+  fi
+
+  # Compare canonical paths
+  local source_path
+  local target_path
+  source_path="$(readlink -f "$DIR"/symlinks/"$1" 2>/dev/null || echo '')"
+  target_path="$(readlink -f "$HOME"/."$1" 2>/dev/null || echo '')"
+
+  if [ -n "$source_path" ] && [ -n "$target_path" ] && [ "$source_path" = "$target_path" ]; then
     return 0
   else
     return 1

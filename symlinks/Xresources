@@ -27,7 +27,7 @@ xterm*renderFont:          true
 xterm*locale:              true
 xterm*metaSendsEscape:     true
 xterm*VT100.geometry:      80x25
-xterm*faceName:            xft:Source Code Pro:pixelsize=13
+xterm*faceName:            xft:SauceCodePro Nerd Font:pixelsize=13
 xterm*dynamicColors:       true
 xterm*utf8:                2
 xterm*eightBitInput:       true
@@ -46,8 +46,8 @@ URxvt*depth:          24
 URxvt*transparent:    false
 URxvt*buffered:       true
 URxvt*skipBuiltinGlyphs: true
-URxvt*font:           xft:Source Code Pro:pixelsize=13:antialias=true:hinting=true
-URxvt*boldFont:       xft:Source Code Pro::bold:pixelsize=13:antialias=true:hinting=true
+URxvt*font:           xft:SauceCodePro Nerd Font:pixelsize=13:antialias=true:hinting=true
+URxvt*boldFont:       xft:SauceCodePro Nerd Font:style=Bold:pixelsize=13:antialias=true:hinting=true
 URxvt*letterSpace:    0
 URxvt*lineSpace:      0
 URxvt*saveLines:      10000

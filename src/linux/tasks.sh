@@ -97,25 +97,12 @@ configure_file_mode_bits()
       fi
 
       # Check if mode is already correct
-      # Use -L to dereference symlinks and check the target file's permissions
+      # For files/symlinks, check the target's permissions using -L
       current_mode="$(stat -L -c '%a' "$target" 2>/dev/null || echo '')"
       if [ "$current_mode" = "$mode" ]; then
-        # For directories, we need to check if ALL contents have correct permissions
-        if [ -d "$target" ]; then
-          # Check if any file in the directory tree has incorrect permissions
-          if find "$target" -L ! -perm "$mode" 2>/dev/null | grep -q .; then
-            # Some files have wrong permissions
-            :
-          else
-            # All files have correct permissions
-            log_verbose "Skipping chmod on $target: permissions already correct"
-            continue
-          fi
-        else
-          # File has correct permissions
-          log_verbose "Skipping chmod on $target: permissions already correct"
-          continue
-        fi
+        # Permissions already correct
+        log_verbose "Skipping chmod on $target: permissions already correct"
+        continue
       fi
 
       # Apply chmod
@@ -512,15 +499,16 @@ install_symlinks()
         else
           log_verbose "Linking $DIR/symlinks/$symlink to $HOME/.$symlink"
           # Ensure parent directory exists
-          mkdir -pv "$(dirname "$HOME"/."$symlink")"
+          mkdir -p "$(dirname "$HOME"/."$symlink")"
 
-          # Remove existing file/directory if it exists (to replace with symlink)
-          if [ -e "$HOME"/."$symlink" ]; then
-            rm -rvf "$HOME"/."$symlink"
+          # Remove existing file/directory/symlink if it exists (to replace with symlink)
+          # Use -e for existing files/dirs and -L for symlinks (including broken ones)
+          if [ -e "$HOME"/."$symlink" ] || [ -L "$HOME"/."$symlink" ]; then
+            rm -rf "$HOME"/."$symlink"
           fi
 
           # Create the symlink
-          ln -snvf "$DIR"/symlinks/"$symlink" "$HOME"/."$symlink"
+          ln -snf "$DIR"/symlinks/"$symlink" "$HOME"/."$symlink"
         fi
       else
         log_verbose "Skipping symlink $symlink: already correct"
@@ -668,7 +656,7 @@ uninstall_symlinks()
         else
           log_verbose "Removing symlink: $HOME/.$symlink"
           # Remove the symlink
-          rm -vf "$HOME"/."$symlink"
+          rm -f "$HOME"/."$symlink"
         fi
       else
         log_verbose "Skipping uninstall symlink $symlink: not installed"
@@ -715,24 +703,20 @@ update_dotfiles()
     return
   fi
 
-  # Check if there are changes to fetch
-  if [ -n "$(git -C "$DIR" fetch --dry-run)" ]; then
-    log_stage "Updating dotfiles"
-    if is_dry_run; then
-      log_dry_run "Would fetch updates from origin"
-    else
-      log_verbose "Fetching updates from origin"
-      git -C "$DIR" fetch
-    fi
+  # Always fetch to ensure we have latest remote refs
+  # git fetch --dry-run produces no output, so we can't use it to detect changes
+  log_stage "Updating dotfiles"
+  if is_dry_run; then
+    log_dry_run "Would fetch updates from origin"
   else
-    log_verbose "Skipping fetch: no updates from origin"
+    log_verbose "Fetching updates from origin"
+    git -C "$DIR" fetch
   fi
 
   # Check if the local HEAD is behind the remote HEAD
   # Only proceed if origin/HEAD exists
   if git -C "$DIR" rev-parse --verify --quiet origin/HEAD >/dev/null 2>&1; then
     if [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]; then
-      log_stage "Updating dotfiles"
       if is_dry_run; then
         log_dry_run "Would merge updates from origin/HEAD"
       else

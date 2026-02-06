@@ -13,6 +13,9 @@ fi
 # Load X resources
 [ -f "$HOME/.Xresources" ] && xrdb "$HOME/.Xresources"
 
+# Set normal cursor for root window (prevents X cursor)
+xsetroot -cursor_name left_ptr
+
 # Disable screen blanking and power management
 xset s off
 xset -dpms

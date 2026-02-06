@@ -5,6 +5,10 @@
 *toolBar:     false
 Xft.dpi:      96
 
+! Cursor theme
+Xcursor.theme: Adwaita
+Xcursor.size:  24
+
 *color0:  #2E3436
 *color1:  #a40000
 *color2:  #4E9A06

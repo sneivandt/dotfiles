@@ -85,6 +85,7 @@ function Test-PackageInstalled
     }
 }
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Function installs multiple packages, plural is appropriate')]
 function Install-Packages
 {
     <#
@@ -227,4 +228,4 @@ function Install-Packages
 }
 
 # Export only the public function
-Export-ModuleMember -Function Install-Packages
+Export-ModuleMember -Function Install-Packagess

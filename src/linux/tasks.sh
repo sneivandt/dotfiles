@@ -705,7 +705,6 @@ update_dotfiles()
 
   # Always fetch to ensure we have latest remote refs
   # git fetch --dry-run produces no output, so we can't use it to detect changes
-  log_stage "Updating dotfiles"
   if is_dry_run; then
     log_dry_run "Would fetch updates from origin"
   else
@@ -717,6 +716,7 @@ update_dotfiles()
   # Only proceed if origin/HEAD exists
   if git -C "$DIR" rev-parse --verify --quiet origin/HEAD >/dev/null 2>&1; then
     if [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]; then
+      log_stage "Updating dotfiles"
       if is_dry_run; then
         log_dry_run "Would merge updates from origin/HEAD"
       else

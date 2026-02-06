@@ -148,24 +148,15 @@ function Update-DotfilesRepository
             }
         }
 
-        # Check if there are changes to fetch
-        $fetchDryRun = git fetch --dry-run 2>&1
-        if ($fetchDryRun)
+        # Always fetch to ensure we have latest remote refs
+        if ($DryRun)
         {
-            Write-Output ":: Updating dotfiles"
-            if ($DryRun)
-            {
-                Write-Output "DRY-RUN: Would fetch updates from origin"
-            }
-            elseif ($PSCmdlet.ShouldProcess("dotfiles repository", "Fetch updates from origin"))
-            {
-                Write-Verbose "Fetching updates from origin"
-                git fetch
-            }
+            Write-Output "DRY-RUN: Would fetch updates from origin"
         }
-        else
+        elseif ($PSCmdlet.ShouldProcess("dotfiles repository", "Fetch updates from origin"))
         {
-            Write-Verbose "Skipping fetch: no updates from origin"
+            Write-Verbose "Fetching updates from origin"
+            git fetch
         }
 
         # Check if local HEAD is behind origin/HEAD

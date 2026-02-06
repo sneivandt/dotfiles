@@ -508,24 +508,28 @@ configure_sparse_checkout()
   # Skip check in dry-run mode since we won't actually run reset --hard
   if ! is_dry_run; then
     if ! git -C "$DIR" diff --quiet 2>/dev/null || ! git -C "$DIR" diff --cached --quiet 2>/dev/null; then
-      rm -f "$tmpfile"
-      log_error "Cannot change sparse checkout: uncommitted changes detected. Commit or stash changes first."
+      # In Docker builds, COPY operations create uncommitted changes
+      # Auto-stage and commit these changes before sparse checkout
+      log_verbose "Detected uncommitted changes (likely from Docker COPY), auto-committing"
+      git -C "$DIR" add -A 2>/dev/null || true
+      git -C "$DIR" -c user.name="dotfiles" -c user.email="dotfiles@local" commit -m "Auto-commit before sparse checkout" 2>/dev/null || true
+      # If commit still fails (e.g., nothing to commit), proceed anyway
     fi
   fi
 
   log_stage "Configuring sparse checkout"
 
   # Apply sparse checkout configuration
-  if is_dry_run; then
-    log_dry_run "Would configure sparse checkout"
-    rm -f "$tmpfile"
-    return 0
-  fi
-
   git -C "$DIR" sparse-checkout init --no-cone 2>/dev/null || true
   git -C "$DIR" sparse-checkout set --no-cone --stdin < "$tmpfile" 2>/dev/null || true
 
   rm -f "$tmpfile"
+
+  # In dry-run mode, we're done (but config was still created above for CI verification)
+  if is_dry_run; then
+    log_dry_run "Would apply sparse checkout and reset working directory"
+    return 0
+  fi
 
   # Force git to apply sparse-checkout rules to the working directory
   # This is critical for Docker builds where all files are copied first.

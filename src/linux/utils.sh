@@ -503,6 +503,15 @@ configure_sparse_checkout()
     return 0
   fi
 
+  # Check for staged changes before modifying sparse checkout
+  # git reset --hard will discard staged changes, so we must fail fast
+  if git -C "$DIR" diff --cached --quiet 2>/dev/null; then
+    : # No staged changes, safe to proceed
+  else
+    rm -f "$tmpfile"
+    log_error "Cannot change sparse checkout: staged changes detected. Commit or unstage changes first."
+  fi
+
   log_stage "Configuring sparse checkout"
 
   # Apply sparse checkout configuration

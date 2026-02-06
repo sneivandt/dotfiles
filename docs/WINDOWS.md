@@ -36,9 +36,10 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 | Step | Module | Function | Description | Idempotency Cue |
 |------|--------|----------|-------------|-----------------|
 | 1 | `Git.psm1` | `Initialize-GitConfig` | Configures Git to handle symlinks as text files on Windows. | Only sets `core.symlinks=false` if not already configured. |
-| 2 | `Registry.psm1` | `Sync-Registry` | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
-| 3 | `Symlinks.psm1` | `Install-Symlinks` | Creates Windows user profile symlinks from `conf/symlinks.ini` filtered by profile. | Only creates links whose targets do not already exist. |
-| 4 | `VsCodeExtensions.psm1` | `Install-VsCodeExtensions` | Ensures VS Code extensions listed in `conf/vscode-extensions.ini` are installed. | Checks against `code --list-extensions`. |
+| 2 | `Packages.psm1` | `Install-Packages` | Installs missing packages from `conf/packages.ini` using winget. | Skips already-installed packages. |
+| 3 | `Registry.psm1` | `Sync-Registry` | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
+| 4 | `Symlinks.psm1` | `Install-Symlinks` | Creates Windows user profile symlinks from `conf/symlinks.ini` filtered by profile. | Only creates links whose targets do not already exist. |
+| 5 | `VsCodeExtensions.psm1` | `Install-VsCodeExtensions` | Ensures VS Code extensions listed in `conf/vscode-extensions.ini` are installed. | Checks against `code --list-extensions`. |
 ## Git Configuration
 
 The repository contains symlinks (e.g., `symlinks/config/nvim` → `../vim`) that are tracked in Git. On Windows, creating actual symlinks during Git operations requires either Developer Mode enabled or Administrator privileges.
@@ -59,6 +60,39 @@ This configuration:
 ```powershell
 git config core.symlinks false
 ```
+
+## Package Management
+
+Package installation uses Windows Package Manager (winget) to install missing packages from `conf/packages.ini`.
+
+**Requirements:**
+- **winget**: Built into Windows 11 and modern Windows 10. If not available, install from: https://aka.ms/getwinget
+
+Configuration lives in `conf/packages.ini` under the **`[windows]` section**:
+
+```ini
+[windows]
+Git.Git
+Microsoft.PowerShell
+Microsoft.VisualStudioCode
+```
+
+Each line is a **winget package ID** (case-sensitive). The script:
+- Checks if each package is already installed (idempotent)
+- Installs only missing packages
+- Uses silent installation with automatic acceptance of licenses
+- Handles elevation automatically when packages require it
+
+To find package IDs, use:
+```powershell
+winget search <package-name>
+```
+
+To add packages:
+1. Add the winget package ID to the `[windows]` section in `conf/packages.ini`
+2. Re-run `./dotfiles.ps1`
+
+**Note:** Package installation respects the profile system. Only packages in sections not excluded by the "windows" profile will be installed.
 
 ## Registry Customization
 

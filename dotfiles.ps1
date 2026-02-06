@@ -4,6 +4,7 @@
 .DESCRIPTION
     Aggregates module functions from src/ and performs a full setup:
       * Git configuration (Initialize-GitConfig)
+      * Package installation (Install-Packages)
       * Registry configuration (Sync-Registry / conf/registry.ini)
       * Symlink creation (Install-Symlinks)
       * VS Code Extensions (Install-VsCodeExtensions)
@@ -81,6 +82,7 @@ $excluded = Get-ProfileExclusion -Root $PSScriptRoot -ProfileName $SelectedProfi
 Initialize-GitConfig -Root $PSScriptRoot -DryRun:$DryRun
 Update-DotfilesRepository -Root $PSScriptRoot -DryRun:$DryRun
 Install-RepositoryGitHooks -root $PSScriptRoot -DryRun:$DryRun
+Install-Packages -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun
 Sync-Registry -root $PSScriptRoot -DryRun:$DryRun
 Install-Symlinks -root $PSScriptRoot -excludedCategories $excluded -DryRun:$DryRun
 Install-VsCodeExtensions -root $PSScriptRoot -excludedCategories $excluded -DryRun:$DryRun

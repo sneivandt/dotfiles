@@ -252,10 +252,19 @@ function Sync-Registry
         # Parse key=value format
         if ($currentPath -and $line -match '^(.+?)\s*=\s*(.+)$')
         {
+            $valuePart = $matches[2].Trim()
+            # Strip inline comments (everything after # character, including #)
+            # Handle both "value # comment" and "value# comment" formats
+            $commentIndex = $valuePart.IndexOf('#')
+            if ($commentIndex -ge 0)
+            {
+                $valuePart = $valuePart.Substring(0, $commentIndex).Trim()
+            }
+
             $registryEntries += [PSCustomObject]@{
                 Path = $currentPath
                 Name = $matches[1].Trim()
-                Value = $matches[2].Trim()
+                Value = $valuePart
             }
         }
         elseif ($currentPath)
@@ -400,33 +409,76 @@ function Set-RegistryValue
         # Both numeric - compare as integers
         $needsUpdate = ($currentValue -ne [int]$value)
     }
-    elseif ($currentValue -is [int] -or $value -match '^0x[0-9a-fA-F]+$' -or $currentValue -match '^0x[0-9a-fA-F]+$')
+    elseif ($currentValue -is [int] -or $currentValue -is [uint32] -or $value -match '^0x[0-9a-fA-F]+$' -or $currentValue -match '^0x[0-9a-fA-F]+$')
     {
-        # Handle hex values - convert for comparison
-        # Current value might be int, hex string, or plain string representation of hex
-        $currentInt = if ($currentValue -is [int])
+        # Handle hex and numeric values - convert for comparison
+        # Registry DWORD values can be Int32 (signed) or UInt32 (unsigned)
+        # Need to handle both negative values and large positive values (like color codes)
+
+        # Detect corrupted values (e.g., "0x00200078 # comment") and mark for update
+        if ($currentValue -is [string] -and $currentValue.Contains('#'))
         {
-            $currentValue
-        }
-        elseif ($currentValue -match '^0x([0-9a-fA-F]+)$')
-        {
-            [Convert]::ToInt32($matches[1], 16)
+            Write-Verbose "Detected corrupted registry value (contains comment): $name = $currentValue"
+            $needsUpdate = $true
         }
         else
         {
-            [int]$currentValue
-        }
+            try
+            {
+                # First, determine what the config value represents
+                $valueInt = if ($value -match '^0x([0-9a-fA-F]+)$')
+                {
+                    # Hex value - convert as unsigned (colors, etc.)
+                    [int64][Convert]::ToUInt64($matches[1], 16)
+                }
+                elseif ($value -match '^-\d+$')
+                {
+                    # Negative decimal value
+                    [int64]$value
+                }
+                else
+                {
+                    # Positive decimal value
+                    [int64]$value
+                }
 
-        $valueInt = if ($value -match '^0x([0-9a-fA-F]+)$')
-        {
-            [Convert]::ToInt32($matches[1], 16)
-        }
-        else
-        {
-            [int]$value
-        }
+                # Convert current registry value to match the expected type
+                $currentInt = if ($currentValue -is [int])
+                {
+                    [int64]$currentValue
+                }
+                elseif ($currentValue -is [uint32])
+                {
+                    # If config value is negative and registry value is large, convert two's complement
+                    if ($valueInt -lt 0 -and [uint32]$currentValue -ge 0x80000000)
+                    {
+                        # Convert two's complement: subtract 2^32 to get negative value
+                        [int64]$currentValue - 0x100000000
+                    }
+                    else
+                    {
+                        # Positive value or color code - keep as unsigned
+                        [int64]$currentValue
+                    }
+                }
+                elseif ($currentValue -match '^0x([0-9a-fA-F]+)$')
+                {
+                    [int64][Convert]::ToUInt64($matches[1], 16)
+                }
+                else
+                {
+                    [int64]$currentValue
+                }
 
-        $needsUpdate = ($currentInt -ne $valueInt)
+                $needsUpdate = ($currentInt -ne $valueInt)
+            }
+            catch
+            {
+                # Conversion failed - likely corrupted value, mark for update
+                Write-Verbose "Failed to convert registry value for comparison (likely corrupted): $name = $currentValue - $_"
+                $needsUpdate = $true
+            }
+        }
     }
     else
     {

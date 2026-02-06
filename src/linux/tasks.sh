@@ -407,14 +407,21 @@ install_packages()
       packages="$packages $package"
     done
 
+    # Trim leading/trailing whitespace from packages list
+    packages="$(echo "$packages" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+
     if [ -n "$packages" ]; then
-      log_stage "Installing packages"
       if is_dry_run; then
+        log_stage "Installing packages"
         log_dry_run "Would install packages: $packages"
       else
-        log_verbose "Installing packages: $packages"
+        log_verbose "Checking if packages need installation: $packages"
         # shellcheck disable=SC2086  # Word splitting intentional: $packages is space-separated list
-        sudo pacman -S --quiet --needed --noconfirm $packages
+        output=$(sudo pacman -S --quiet --needed --noconfirm $packages 2>&1 | grep -v "is up to date -- skipping" || true)
+        if [ -n "$output" ]; then
+          log_stage "Installing packages"
+          echo "$output"
+        fi
       fi
     fi
   }

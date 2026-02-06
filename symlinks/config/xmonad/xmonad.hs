@@ -48,20 +48,21 @@ main = do
       , normalBorderColor  = myNormalBorderColor
       , focusedBorderColor = myFocusedBorderColor
       , layoutHook         = myLayoutHook
-      , manageHook         = namedScratchpadManageHook scratchpads <+> fullscreenManageHook <+> manageDocks
+      , manageHook         = namedScratchpadManageHook scratchpads <+> fullscreenManageHook
       , handleEventHook    = fullscreenEventHook
+      , startupHook        = refresh
       , logHook            = myLogHook wsBar
       } `additionalKeysP` myKeys
 -- }}}
 -- Layout ----------------------------------------------------------------- {{{
-myLayoutHook = avoidStruts
-             $ smartBorders
-             $ fullscreenFull
+myLayoutHook = smartBorders
+             $ mkToggle (NOBORDERS ?? EOT)
              $ mkToggle (FULL ?? EOT)
+             $ avoidStruts
+             $ fullscreenFull
              $ mkToggle (single REFLECTX)
              $ mkToggle (single REFLECTY)
              $ mkToggle (single MIRROR)
-             $ mkToggle (single NOBORDERS)
              $ lMas ||| lGrd ||| lTal
                where
                  gap  = 4
@@ -101,6 +102,7 @@ myKeys =
   , ("M-S-s",       spawn "flameshot gui --clipboard --accept-on-select")
     -- Layout
   , ("M-f",         sendMessage $ Toggle FULL)
+  , ("M-b",         sendMessage ToggleStruts)
   , ("M-x",         sendMessage $ Toggle REFLECTX)
   , ("M-y",         sendMessage $ Toggle REFLECTY)
   , ("M-z",         sendMessage $ Toggle MIRROR)

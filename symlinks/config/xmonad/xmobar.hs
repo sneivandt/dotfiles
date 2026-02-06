@@ -20,10 +20,10 @@ Config {
     , template = " %StdinReader%}{%playing%   %volume%   %date%   %time%  "
 -- }}}
 -- General ---------------------------------------------------------------- {{{
-    , lowerOnStart     = True
+    , lowerOnStart     = False
     , hideOnStart      = False
     , allDesktops      = True
-    , overrideRedirect = True
+    , overrideRedirect = False
     , pickBroadest     = False
     , persistent       = True
 -- }}}

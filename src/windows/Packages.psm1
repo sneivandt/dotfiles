@@ -192,17 +192,16 @@ function Install-Packages
     # Install missing packages
     if ($packagesToInstall.Count -gt 0)
     {
-        # Print stage header only once when we have work to do
-        if (-not $act)
-        {
-            $act = $true
-            Write-Output ":: Installing packages"
-        }
-
         foreach ($package in $packagesToInstall)
         {
             if ($DryRun)
             {
+                # Print stage header only once in dry-run mode
+                if (-not $act)
+                {
+                    $act = $true
+                    Write-Output ":: Installing packages"
+                }
                 Write-Output "DRY-RUN: Would install package: $package"
             }
             else
@@ -213,10 +212,36 @@ function Install-Packages
                 # --silent: non-interactive installation
                 # --accept-package-agreements: auto-accept package licenses
                 # --accept-source-agreements: auto-accept source agreements
-                winget install --id $package --exact --source winget --silent --accept-package-agreements --accept-source-agreements
-                if ($LASTEXITCODE -ne 0)
+                $output = winget install --id $package --exact --source winget --silent --accept-package-agreements --accept-source-agreements 2>&1
+                $exitCode = $LASTEXITCODE
+
+                # Only print stage header and output if installation actually happened
+                # (exitcode 0 = success, -1978335189 = already installed)
+                if ($exitCode -eq 0)
                 {
-                    Write-Warning "Failed to install package: $package (exit code: $LASTEXITCODE)"
+                    # Print stage header only once when we have actual work
+                    if (-not $act)
+                    {
+                        $act = $true
+                        Write-Output ":: Installing packages"
+                    }
+                    # Show output for successful installations
+                    $output | Out-String | Write-Output
+                }
+                elseif ($exitCode -ne -1978335189)
+                {
+                    # Print stage header for errors
+                    if (-not $act)
+                    {
+                        $act = $true
+                        Write-Output ":: Installing packages"
+                    }
+                    Write-Warning "Failed to install package: $package (exit code: $exitCode)"
+                }
+                else
+                {
+                    # Package already installed (exit code -1978335189), skip silently
+                    Write-Verbose "Package $package already installed (skipped)"
                 }
             }
         }

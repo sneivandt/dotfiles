@@ -2,7 +2,7 @@
 set -o errexit
 set -o nounset
 
-for terminal in urxvt urxvt256c uxterm xterm gnome-terminal
+for terminal in xterm uxterm urxvt urxvt256c gnome-terminal
 do
   if command -v "$terminal" >/dev/null 2>&1
   then

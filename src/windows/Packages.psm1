@@ -87,7 +87,6 @@ function Test-PackageInstalled
 
 function Install-Packages
 {
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Function installs multiple packages, plural is appropriate')]
     <#
     .SYNOPSIS
         Install missing packages from conf/packages.ini
@@ -114,6 +113,7 @@ function Install-Packages
     .EXAMPLE
         Install-Packages -Root $PSScriptRoot -ExcludedCategories "arch,desktop" -DryRun
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Function installs multiple packages, plural is appropriate')]
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]

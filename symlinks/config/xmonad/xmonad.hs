@@ -55,10 +55,10 @@ main = do
       } `additionalKeysP` myKeys
 -- }}}
 -- Layout ----------------------------------------------------------------- {{{
-myLayoutHook = smartBorders
+myLayoutHook = avoidStruts
+             $ smartBorders
              $ mkToggle (NOBORDERS ?? EOT)
              $ mkToggle (FULL ?? EOT)
-             $ avoidStruts
              $ fullscreenFull
              $ mkToggle (single REFLECTX)
              $ mkToggle (single REFLECTY)

@@ -100,8 +100,6 @@ function Install-VsCodeExtensions
         if (-not (Get-Command $code -ErrorAction SilentlyContinue))
         {
             Write-Verbose "Skipping $code`: not installed"
-            # Clear LASTEXITCODE to prevent script exit with non-zero code
-            $global:LASTEXITCODE = 0
             continue
         }
 

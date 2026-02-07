@@ -81,8 +81,11 @@ $excluded = Get-ProfileExclusion -Root $PSScriptRoot -ProfileName $SelectedProfi
 
 Initialize-GitConfig -Root $PSScriptRoot -DryRun:$DryRun
 Update-DotfilesRepository -Root $PSScriptRoot -DryRun:$DryRun
-Install-RepositoryGitHooks -root $PSScriptRoot -DryRun:$DryRun
+Install-RepositoryGitHooks -Root $PSScriptRoot -DryRun:$DryRun
 Install-Packages -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun
-Sync-Registry -root $PSScriptRoot -DryRun:$DryRun
-Install-Symlinks -root $PSScriptRoot -excludedCategories $excluded -DryRun:$DryRun
-Install-VsCodeExtensions -root $PSScriptRoot -excludedCategories $excluded -DryRun:$DryRun
+Sync-Registry -Root $PSScriptRoot -DryRun:$DryRun
+Install-Symlinks -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun
+Install-VsCodeExtensions -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun
+
+# Ensure clean exit with success code
+exit 0

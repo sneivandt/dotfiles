@@ -186,7 +186,16 @@ function Install-Symlinks
                     {
                         $currentTarget = $currentTarget[0]
                     }
-                    $resolvedCurrent = [System.IO.Path]::GetFullPath($currentTarget)
+                    # Handle relative paths by resolving from the symlink's directory
+                    if (-not [System.IO.Path]::IsPathRooted($currentTarget))
+                    {
+                        $linkDir = Split-Path -Parent $targetFullPath
+                        $resolvedCurrent = [System.IO.Path]::GetFullPath((Join-Path $linkDir $currentTarget))
+                    }
+                    else
+                    {
+                        $resolvedCurrent = [System.IO.Path]::GetFullPath($currentTarget)
+                    }
                     $resolvedSource = [System.IO.Path]::GetFullPath($sourcePath)
                     if ($resolvedCurrent -eq $resolvedSource)
                     {

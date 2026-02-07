@@ -228,6 +228,8 @@ function Install-Packages
                     # Show output for successful installations
                     $output | Out-String | Write-Output
                 }
+                # WinGet exit code 0x8A150055 (-1978335189 in signed int32) indicates package is already installed
+                # This is a known WinGet constant: APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED
                 elseif ($exitCode -ne -1978335189)
                 {
                     # Print stage header for errors

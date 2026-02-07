@@ -207,6 +207,14 @@ nmap <tab> %
 " <C-h> fix (non-recursive for safety)
 nnoremap <BS> <C-W>h
 
+" Uniform Copy/Paste (GUI-like behavior)
+" Copy selection to system clipboard with Ctrl+C
+vnoremap <C-c> "+y
+" Paste from system clipboard with Ctrl+V (Insert/Command modes)
+inoremap <C-v> <C-r>+
+cnoremap <C-v> <C-r>+
+" Note: Ctrl+V in Normal mode is preserved for Visual Block mode
+
 " }}}
 " Folding ----------------------------------------------------------------- {{{
 

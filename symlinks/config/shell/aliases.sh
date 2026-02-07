@@ -61,3 +61,9 @@ fi
 if command -v tldr >/dev/null 2>&1; then
   alias help="tldr"
 fi
+
+if command -v xclip >/dev/null 2>&1; then
+  alias clip="xclip -selection clipboard"
+  alias pbcopy="xclip -selection clipboard -in"
+  alias pbpaste="xclip -selection clipboard -out"
+fi

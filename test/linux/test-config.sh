@@ -396,6 +396,7 @@ test_category_consistency()
     echo "fonts"
     echo "extensions"
     echo "vim-plugins"
+    echo "aur"
   } > "$valid_categories"
 
   # Remove duplicates and sort

@@ -56,6 +56,8 @@ do_install()
 
   install_repository_git_hooks
   install_packages
+  install_paru
+  install_aur_packages
   install_symlinks
   install_dotfiles_cli
   install_vscode_extensions

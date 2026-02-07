@@ -116,22 +116,26 @@ config/xmonad/xmonad.hs
 ---
 
 ### `packages.ini`
-**Purpose**: Lists system packages to install via package manager (pacman on Arch Linux).
+**Purpose**: Lists system packages to install via package manager.
+- **Linux**: Uses `pacman` (Arch Linux) and `paru` (AUR)
+- **Windows**: Uses `winget`
 
 **Format**: Sections represent profiles; entries are package names.
+- Sections with `aur` tag are handled by `paru` (e.g., `[arch,aur]`)
+- Arch Linux sections without the `aur` tag (e.g., `[arch]`, `[arch,desktop]`) are handled by the standard package manager (`pacman`)
+- Windows sections (e.g., `[windows]`) are handled by `winget`
 
 **Example**:
 ```ini
 [arch]
 git
-neovim
-tmux
-zsh
+base-devel
+
+[arch,aur]
+powershell-bin
 
 [arch,desktop]
 alacritty
-rofi
-xterm
 ```
 
 ---

@@ -434,11 +434,11 @@ install_paru()
 
   # Create temp directory
   tmp_dir="$(mktemp -d)"
-  log_verbose "Cloning paru.bin to $tmp_dir"
+  log_verbose "Cloning paru-git to $tmp_dir"
 
   # Use a subshell to ensure we return to original directory and clean up
   (
-    git clone https://aur.archlinux.org/paru.bin.git "$tmp_dir"
+    git clone https://aur.archlinux.org/paru-git.git "$tmp_dir"
     cd "$tmp_dir"
     log_verbose "Building paru..."
     makepkg -si --noconfirm

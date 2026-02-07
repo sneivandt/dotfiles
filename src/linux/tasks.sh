@@ -315,6 +315,76 @@ configure_systemd()
   done
 )}
 
+install_aur_packages()
+{(
+  if ! is_program_installed "paru"; then
+    log_verbose "Skipping AUR packages: paru not installed"
+    return
+  fi
+
+  # Check if packages.ini exists
+  if [ ! -f "$DIR"/conf/packages.ini ]; then
+    log_verbose "Skipping AUR packages: no packages.ini found"
+    return
+  fi
+
+  packages=""
+  log_verbose "Processing AUR packages from: conf/packages.ini"
+
+  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/packages.ini | tr -d '[]')"
+
+  for section in $sections
+  do
+    if ! should_include_profile_tag "$section"; then
+      log_verbose "Skipping AUR packages section [$section]: profile not included"
+      continue
+    fi
+
+    # Only process sections containing 'aur' tag
+    case ",$section," in
+      *,aur,*) ;;
+      *) continue ;;
+    esac
+
+    read_ini_section "$DIR"/conf/packages.ini "$section" | while IFS='' read -r package || [ -n "$package" ]
+    do
+      if [ -z "$package" ]; then
+        continue
+      fi
+
+      if ! pacman -Qq "$package" >/dev/null 2>&1; then
+        echo "$package"
+      else
+        log_verbose "Skipping AUR package $package: already installed" >&2
+      fi
+    done
+  done | {
+    packages=""
+    while IFS='' read -r package
+    do
+      packages="$packages $package"
+    done
+
+    packages="$(echo "$packages" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+
+    if [ -n "$packages" ]; then
+      if is_dry_run; then
+        log_stage "Installing AUR packages"
+        log_dry_run "Would install AUR packages: $packages"
+      else
+        log_verbose "Checking if AUR packages need installation: $packages"
+        # paru handles sudo internally, do not use sudo here
+        # shellcheck disable=SC2086  # Word splitting intentional: $packages is space-separated list
+        output=$(paru -S --needed --noconfirm $packages 2>&1 | grep -v "is up to date -- skipping" || true)
+        if [ -n "$output" ]; then
+          log_stage "Installing AUR packages"
+          echo "$output"
+        fi
+      fi
+    fi
+  }
+)}
+
 # install_dotfiles_cli
 #
 # Create/update convenience symlink ~/.bin/dotfiles pointing to this repo's
@@ -337,6 +407,44 @@ install_dotfiles_cli()
   else
     log_verbose "Skipping dotfiles cli installation: already linked"
   fi
+)}
+
+# install_paru
+#
+# Helper to install paru (AUR helper) if not present.
+install_paru()
+{(
+  if is_program_installed "paru"; then
+    log_verbose "Skipping paru installation: already installed"
+    return
+  fi
+
+  # Check prerequisites
+  if ! is_program_installed "git" || ! is_program_installed "makepkg" || ! is_program_installed "cargo"; then
+    log_verbose "Skipping paru installation: git, makepkg, or cargo not installed"
+    return
+  fi
+
+  log_stage "Installing paru (AUR helper)"
+
+  if is_dry_run; then
+    log_dry_run "Would clone and build paru from AUR"
+    return
+  fi
+
+  # Create temp directory
+  tmp_dir="$(mktemp -d)"
+  log_verbose "Cloning paru.bin to $tmp_dir"
+
+  # Use a subshell to ensure we return to original directory and clean up
+  (
+    git clone https://aur.archlinux.org/paru.bin.git "$tmp_dir"
+    cd "$tmp_dir"
+    log_verbose "Building paru..."
+    makepkg -si --noconfirm
+  )
+
+  rm -rf "$tmp_dir"
 )}
 
 # install_packages
@@ -372,6 +480,15 @@ install_packages()
       log_verbose "Skipping packages section [$section]: profile not included"
       continue
     fi
+
+    # Skip AUR sections (they contain 'aur' tag)
+    # These are handled by install_aur_packages
+    case ",$section," in
+      *,aur,*)
+        log_verbose "Skipping packages section [$section]: AUR packages handled separately"
+        continue
+        ;;
+    esac
 
     # Read packages from this section
     read_ini_section "$DIR"/conf/packages.ini "$section" | while IFS='' read -r package || [ -n "$package" ]

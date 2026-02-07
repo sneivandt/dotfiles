@@ -274,17 +274,53 @@ function Sync-Registry
         }
     }
 
-    foreach ($entry in $registryEntries)
-    {
-        $v = $entry.Value
+    # Group entries by registry path for batch reading
+    # This significantly improves performance by reading all values from each key at once
+    $entriesByPath = $registryEntries | Group-Object -Property Path
 
-        # Convert color table entries from hex to DWORD
-        if ($entry.Name -like "ColorTable*" -and $v -match '^[0-9a-fA-F]{6}$')
+    foreach ($pathGroup in $entriesByPath)
+    {
+        $registryPath = $pathGroup.Name
+        $entries = $pathGroup.Group
+
+        # Batch read all current values for this registry path
+        # This is much faster than individual Get-RegistryValue calls for each entry
+        $currentValues = @{}
+        if (Test-RegistryPath -Path $registryPath)
         {
-            $v = Convert-ConsoleColor "#$v"
+            try
+            {
+                $keyProperties = Get-ItemProperty -Path $registryPath -ErrorAction Stop
+                # Store all property values in hashtable for fast lookup
+                foreach ($property in $keyProperties.PSObject.Properties)
+                {
+                    # Skip built-in PowerShell properties (PSPath, PSParentPath, etc.)
+                    if ($property.Name -notlike 'PS*')
+                    {
+                        $currentValues[$property.Name] = $property.Value
+                    }
+                }
+            }
+            catch
+            {
+                Write-Warning "Failed to read registry key $registryPath`: $_"
+            }
         }
 
-        Set-RegistryValue -Path $entry.Path -Name $entry.Name -Value $v -DryRun:$DryRun
+        # Process each entry in this path
+        foreach ($entry in $entries)
+        {
+            $v = $entry.Value
+
+            # Convert color table entries from hex to DWORD
+            if ($entry.Name -like "ColorTable*" -and $v -match '^[0-9a-fA-F]{6}$')
+            {
+                $v = Convert-ConsoleColor "#$v"
+            }
+
+            # Pass current values to avoid redundant registry reads
+            Set-RegistryValue -Path $entry.Path -Name $entry.Name -Value $v -CurrentValues $currentValues -DryRun:$DryRun
+        }
     }
 }
 Export-ModuleMember -Function Sync-Registry
@@ -326,6 +362,9 @@ function Set-RegistryValue
         [Parameter(Mandatory = $true)]
         [string]
         $value,
+        [Parameter(Mandatory = $false)]
+        [hashtable]
+        $CurrentValues,
         [Parameter(Mandatory = $false)]
         [switch]
         $DryRun
@@ -369,6 +408,8 @@ function Set-RegistryValue
     }
 
     # Get current value with type-aware comparison
+    # If CurrentValues hashtable is provided (batch mode), use it for much faster lookup
+    # Otherwise, fall back to individual registry read (legacy compatibility)
     $currentValue = $null
     $valueExists = $false
 
@@ -378,8 +419,22 @@ function Set-RegistryValue
         Write-Verbose "Registry path $path does not exist (will be created)"
         $valueExists = $false
     }
+    elseif ($null -ne $CurrentValues)
+    {
+        # Batch mode: Use pre-read values from hashtable (fast)
+        $valueExists = $CurrentValues.ContainsKey($name)
+        if ($valueExists)
+        {
+            $currentValue = $CurrentValues[$name]
+        }
+        else
+        {
+            Write-Verbose "Registry value $name does not exist in $path"
+        }
+    }
     else
     {
+        # Legacy mode: Individual registry read (slow, for backward compatibility)
         try
         {
             $currentValue = Get-RegistryValue -Path $path -Name $name

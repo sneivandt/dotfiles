@@ -24,6 +24,12 @@ import Graphics.X11.Xlib.Extras
 import Foreign.C.Types (CLong)
 import Data.List (isInfixOf)
 -- }}}
+-- Startup ---------------------------------------------------------------- {{{
+myStartupHook = do
+  spawn "autocutsel -fork -selection CLIPBOARD"
+  spawn "autocutsel -fork -selection PRIMARY"
+  refresh
+-- }}}
 -- Theme ------------------------------------------------------------------ {{{
 myBorderWidth        = 3
 myNormalBorderColor  = "#1a1a1a"
@@ -50,7 +56,7 @@ main = do
       , layoutHook         = myLayoutHook
       , manageHook         = namedScratchpadManageHook scratchpads <+> fullscreenManageHook
       , handleEventHook    = fullscreenEventHook
-      , startupHook        = refresh
+      , startupHook        = myStartupHook
       , logHook            = myLogHook wsBar
       } `additionalKeysP` myKeys
 -- }}}

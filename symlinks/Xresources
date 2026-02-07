@@ -73,6 +73,11 @@ URxvt.perl-ext-common: default,matcher,clipboard
 URxvt.url-launcher:   /usr/bin/xdg-open
 URxvt.matcher.button: 1
 
+! Clipboard configuration - use CLIPBOARD selection
+URxvt.clipboard.autocopy: false
+URxvt.clipboard.copycmd:  xclip -selection clipboard -in
+URxvt.clipboard.pastecmd: xclip -selection clipboard -out
+
 ! Keybindings
 URxvt.keysym.Control-Shift-C: perl:clipboard:copy
 URxvt.keysym.Control-Shift-V: perl:clipboard:paste

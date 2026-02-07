@@ -86,3 +86,6 @@ Install-Packages -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryR
 Sync-Registry -Root $PSScriptRoot -DryRun:$DryRun
 Install-Symlinks -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun
 Install-VsCodeExtensions -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun
+
+# Ensure clean exit with success code
+exit 0

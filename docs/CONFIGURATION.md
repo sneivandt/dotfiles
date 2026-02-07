@@ -122,7 +122,8 @@ config/xmonad/xmonad.hs
 
 **Format**: Sections represent profiles; entries are package names.
 - Sections with `aur` tag are handled by `paru` (e.g., `[arch,aur]`)
-- Other sections are handled by standard package manager (`pacman`)
+- Arch Linux sections without the `aur` tag (e.g., `[arch]`, `[arch,desktop]`) are handled by the standard package manager (`pacman`)
+- Windows sections (e.g., `[windows]`) are handled by `winget`
 
 **Example**:
 ```ini

@@ -42,46 +42,131 @@ function Test-WingetInstalled
     }
 }
 
-function Test-PackageInstalled
+function Get-InstalledPackages
 {
     <#
     .SYNOPSIS
-        Check if a package is already installed via winget
+        Get list of all installed packages via winget
     .DESCRIPTION
-        Uses winget list to check if a package is installed.
-        Quietly checks installation status without verbose output.
-    .PARAMETER PackageId
-        The winget package ID to check
+        Retrieves all installed packages from winget in a single call.
+        Much faster than checking packages individually.
     .OUTPUTS
-        Boolean indicating whether the package is installed
+        Array of package IDs that are currently installed
     #>
-    [OutputType([System.Boolean])]
+    # Plural name justified: function returns multiple packages as array
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Function returns multiple packages, plural is appropriate')]
+    [OutputType([System.String[]])]
     [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]
-        $PackageId
-    )
+    param ()
 
     try
     {
-        # Use winget list to check if package is installed
-        # Redirect output to avoid noise, just check exit code
-        $output = winget list --id $PackageId --exact 2>&1
-        if ($LASTEXITCODE -eq 0)
+        Write-Verbose "Retrieving list of all installed packages from winget..."
+
+        # Use winget export to get JSON output which is much more reliable than parsing text output
+        # Export to a temp file then read it
+        $tempFile = [System.IO.Path]::GetTempFileName()
+        try
         {
-            # Check if output contains the package (not just "No installed package found")
-            $outputStr = $output | Out-String
-            if ($outputStr -match [regex]::Escape($PackageId))
+            # Export installed packages to JSON
+            $null = winget export --output $tempFile --accept-source-agreements 2>&1
+
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tempFile))
             {
-                return $true
+                Write-Verbose "Failed to export package list (exit code: $LASTEXITCODE), falling back to list command"
+                # Fallback: parse winget list output
+                return Get-InstalledPackagesFallback
+            }
+
+            # Read and parse JSON
+            $json = Get-Content $tempFile -Raw | ConvertFrom-Json
+            $installedPackages = @()
+
+            if ($json.Sources)
+            {
+                foreach ($source in $json.Sources)
+                {
+                    if ($source.Packages)
+                    {
+                        foreach ($package in $source.Packages)
+                        {
+                            if ($package.PackageIdentifier)
+                            {
+                                $installedPackages += $package.PackageIdentifier
+                                Write-Verbose "  Found installed package: $($package.PackageIdentifier)"
+                            }
+                        }
+                    }
+                }
+            }
+
+            Write-Verbose "Found $($installedPackages.Count) installed package(s) total"
+            return $installedPackages
+        }
+        finally
+        {
+            # Clean up temp file
+            if (Test-Path $tempFile)
+            {
+                Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
             }
         }
-        return $false
     }
     catch
     {
-        return $false
+        Write-Verbose "Error retrieving installed packages: $_"
+        return [string[]]@()
+    }
+}
+
+function Get-InstalledPackagesFallback
+{
+    <#
+    .SYNOPSIS
+        Fallback method to get installed packages by parsing winget list output
+    .DESCRIPTION
+        Used when winget export fails. Less reliable but better than nothing.
+    #>
+    [OutputType([System.String[]])]
+    [CmdletBinding()]
+    param ()
+
+    try
+    {
+        Write-Verbose "Using fallback method to parse winget list output..."
+        $output = winget list --accept-source-agreements 2>&1
+
+        if ($LASTEXITCODE -ne 0)
+        {
+            Write-Verbose "Fallback method failed (exit code: $LASTEXITCODE)"
+            return [string[]]@()
+        }
+
+        $installedPackages = @()
+        $stringOutput = ($output | Out-String) -split "`n"
+
+        foreach ($line in $stringOutput)
+        {
+            # Match package IDs more strictly - must contain at least one dot and be reasonable length
+            if ($line -match '\b([A-Za-z][A-Za-z0-9]{2,}\.[A-Za-z0-9][\w\.\-]{2,})\b')
+            {
+                $packageId = $matches[1]
+                # Additional validation: reasonable package ID format
+                if ($packageId.Length -le 100 -and ($packageId.Split('.').Count -ge 2))
+                {
+                    $installedPackages += $packageId
+                    Write-Verbose "  Found installed package: $packageId"
+                }
+            }
+        }
+
+        Write-Verbose "Fallback found $($installedPackages.Count) installed package(s)"
+        return $installedPackages
+    }
+    catch
+    {
+        Write-Verbose "Fallback method error: $_"
+        return [string[]]@()
     }
 }
 
@@ -152,14 +237,21 @@ function Install-Packages
         Where-Object { $_ -match '^\[.+\]$' } |
         ForEach-Object { $_ -replace '^\[|\]$', '' }
 
+    Write-Verbose "Found $($sections.Count) section(s) in packages.ini: $($sections -join ', ')"
+
     # Track if we've printed the stage header
     $act = $false
+
+    # Get all installed packages once (much faster than checking individually)
+    $installedPackages = Get-InstalledPackages
 
     # Collect packages to install
     $packagesToInstall = @()
 
     foreach ($section in $sections)
     {
+        Write-Verbose "Processing packages section: [$section]"
+
         # Check if this section should be included
         if (-not (Test-ShouldIncludeSection -SectionName $section -ExcludedCategories $ExcludedCategories))
         {
@@ -169,6 +261,7 @@ function Install-Packages
 
         # Read packages from this section
         $packages = Read-IniSection -FilePath $configFile -SectionName $section
+        Write-Verbose "Found $($packages.Count) package(s) in section [$section]"
 
         foreach ($package in $packages)
         {
@@ -177,17 +270,22 @@ function Install-Packages
                 continue
             }
 
-            # Check if package is already installed
-            if (Test-PackageInstalled -PackageId $package)
+            Write-Verbose "Checking package: $package"
+
+            # Check if package is already installed (using cached list, case-insensitive)
+            if ($installedPackages -contains $package)
             {
                 Write-Verbose "Skipping package $package`: already installed"
                 continue
             }
 
             # Add to install list
+            Write-Verbose "Package $package needs installation"
             $packagesToInstall += $package
         }
     }
+
+    Write-Verbose "Total packages to install: $($packagesToInstall.Count)"
 
     # Install missing packages
     if ($packagesToInstall.Count -gt 0)
@@ -206,7 +304,16 @@ function Install-Packages
             }
             else
             {
+                # Print stage header before attempting installation
+                if (-not $act)
+                {
+                    $act = $true
+                    Write-Output ":: Installing packages"
+                }
+
                 Write-Verbose "Installing package: $package"
+                Write-Output "Installing: $package"
+
                 # Install package with winget
                 # --source winget: use winget repository (avoid msstore errors)
                 # --silent: non-interactive installation
@@ -215,35 +322,27 @@ function Install-Packages
                 $output = winget install --id $package --exact --source winget --silent --accept-package-agreements --accept-source-agreements 2>&1
                 $exitCode = $LASTEXITCODE
 
-                # Only print stage header and output if installation actually happened
-                # (exitcode 0 = success, -1978335189 = already installed)
+                # Handle different exit codes
                 if ($exitCode -eq 0)
                 {
-                    # Print stage header only once when we have actual work
-                    if (-not $act)
-                    {
-                        $act = $true
-                        Write-Output ":: Installing packages"
-                    }
+                    # Success
+                    Write-Verbose "Successfully installed: $package"
                     # Show output for successful installations
                     $output | Out-String | Write-Output
                 }
                 # WinGet exit code 0x8A150055 (-1978335189 in signed int32) indicates package is already installed
                 # This is a known WinGet constant: APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED
-                elseif ($exitCode -ne -1978335189)
+                elseif ($exitCode -eq -1978335189)
                 {
-                    # Print stage header for errors
-                    if (-not $act)
-                    {
-                        $act = $true
-                        Write-Output ":: Installing packages"
-                    }
-                    Write-Warning "Failed to install package: $package (exit code: $exitCode)"
+                    # Package already installed (exit code -1978335189)
+                    Write-Verbose "Package $package already installed (winget reported as installed)"
+                    Write-Output "Already installed: $package"
                 }
                 else
                 {
-                    # Package already installed (exit code -1978335189), skip silently
-                    Write-Verbose "Package $package already installed (skipped)"
+                    # Other errors - show warning and output
+                    Write-Warning "Failed to install package: $package (exit code: $exitCode)"
+                    $output | Out-String | Write-Output
                 }
             }
         }

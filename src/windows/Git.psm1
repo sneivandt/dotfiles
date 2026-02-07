@@ -46,7 +46,9 @@ function Initialize-GitConfig
     Push-Location $Root
     try
     {
+        Write-Verbose "Checking git configuration: core.symlinks"
         $currentSymlinks = git config --local --get core.symlinks 2>$null
+        Write-Verbose "Current core.symlinks value: $(if ($currentSymlinks) { $currentSymlinks } else { '(not set)' })"
 
         if ($currentSymlinks -ne 'false')
         {
@@ -115,10 +117,13 @@ function Update-DotfilesRepository
         return
     }
 
+    Write-Verbose "Checking repository status for updates..."
+
     Push-Location $Root
     try
     {
         # Check if working tree is clean
+        Write-Verbose "Checking if working tree is clean..."
         $status = git status --porcelain 2>$null
         if ($status)
         {
@@ -160,8 +165,38 @@ function Update-DotfilesRepository
         }
 
         # Check if local HEAD is behind origin/HEAD
+        Write-Verbose "Comparing local HEAD with origin/HEAD..."
         $localHead = git rev-parse HEAD 2>$null
         $remoteHead = git rev-parse origin/HEAD 2>$null
+
+        $localHeadDisplay = if ([string]::IsNullOrEmpty($localHead))
+        {
+            "<missing>"
+        }
+        elseif ($localHead.Length -ge 7)
+        {
+            $localHead.Substring(0, 7)
+        }
+        else
+        {
+            $localHead
+        }
+
+        $remoteHeadDisplay = if ([string]::IsNullOrEmpty($remoteHead))
+        {
+            "<missing>"
+        }
+        elseif ($remoteHead.Length -ge 7)
+        {
+            $remoteHead.Substring(0, 7)
+        }
+        else
+        {
+            $remoteHead
+        }
+
+        Write-Verbose "Local HEAD: $localHeadDisplay..."
+        Write-Verbose "Remote HEAD: $remoteHeadDisplay..."
 
         if ($localHead -ne $remoteHead)
         {

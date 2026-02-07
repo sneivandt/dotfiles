@@ -83,12 +83,16 @@ function Install-RepositoryGitHooks
         return
     }
 
+    Write-Verbose "Reading git hooks from: hooks/"
+
     $act = $false
 
     # Get all files in hooks/ directory, excluding non-hook files
     # (config files, documentation, hidden files)
     $excludeExtensions = @('.md', '.txt', '.ini', '.yaml', '.yml', '.json')
     $excludeNames = @('README')
+
+    Write-Verbose "Scanning for hook files (excluding: $($excludeExtensions -join ', ') and hidden files)..."
 
     $hookFiles = Get-ChildItem -Path $hooksSourceDir -File | Where-Object {
         # Exclude files with non-hook extensions
@@ -116,6 +120,8 @@ function Install-RepositoryGitHooks
         return $true
     }
 
+    Write-Verbose "Found $($hookFiles.Count) hook file(s) to install"
+
     # Ensure .git/hooks directory exists
     $gitHooksDir = Join-Path $gitDir "hooks"
     if (-not (Test-Path $gitHooksDir))
@@ -136,6 +142,7 @@ function Install-RepositoryGitHooks
         $hookName = $hookFile.Name
         $sourcePath = $hookFile.FullName
         $targetPath = Join-Path $gitDir "hooks\$hookName"
+        Write-Verbose "Checking hook: $hookName"
 
         # Check if symlink already exists and points to correct location
         if (Test-Path $targetPath)

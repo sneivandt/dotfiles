@@ -432,19 +432,18 @@ install_paru()
     return
   fi
 
-  # Create temp directory
+  # Create temp directory and set up cleanup trap
   tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "$tmp_dir"' EXIT
   log_verbose "Cloning paru.bin to $tmp_dir"
 
-  # Use a subshell to ensure we return to original directory and clean up
+  # Use a subshell to ensure we return to original directory
   (
     git clone https://aur.archlinux.org/paru.bin.git "$tmp_dir"
     cd "$tmp_dir"
     log_verbose "Building paru..."
     makepkg -si --noconfirm
   )
-
-  rm -rf "$tmp_dir"
 )}
 
 # install_packages

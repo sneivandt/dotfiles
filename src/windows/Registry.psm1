@@ -429,7 +429,8 @@ function Set-RegistryValue
                 $valueInt = if ($value -match '^0x([0-9a-fA-F]+)$')
                 {
                     # Hex value - convert as unsigned (colors, etc.)
-                    [int64][Convert]::ToUInt64($matches[1], 16)
+                    # Don't cast to int64 as it would lose unsigned data for large values
+                    [Convert]::ToUInt64($matches[1], 16)
                 }
                 elseif ($value -match '^-\d+$')
                 {
@@ -463,7 +464,8 @@ function Set-RegistryValue
                 }
                 elseif ($currentValue -match '^0x([0-9a-fA-F]+)$')
                 {
-                    [int64][Convert]::ToUInt64($matches[1], 16)
+                    # Don't cast to int64 as it would lose unsigned data for large values
+                    [Convert]::ToUInt64($matches[1], 16)
                 }
                 else
                 {
@@ -504,7 +506,8 @@ function Set-RegistryValue
             # Convert numeric strings and hex values to integers for proper registry type
             $finalValue = if ($value -match '^0x([0-9a-fA-F]+)$')
             {
-                [Convert]::ToInt32($matches[1], 16)
+                # Use ToUInt32 for hex values to handle color codes correctly (prevents overflow for values > 0x7FFFFFFF)
+                [Convert]::ToUInt32($matches[1], 16)
             }
             elseif ($value -match '^-?\d+$')
             {

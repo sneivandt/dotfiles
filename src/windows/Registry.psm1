@@ -274,17 +274,54 @@ function Sync-Registry
         }
     }
 
-    foreach ($entry in $registryEntries)
-    {
-        $v = $entry.Value
+    # Group entries by registry path for batch reading
+    # This significantly improves performance by reading all values from each key at once
+    $entriesByPath = $registryEntries | Group-Object -Property Path
 
-        # Convert color table entries from hex to DWORD
-        if ($entry.Name -like "ColorTable*" -and $v -match '^[0-9a-fA-F]{6}$')
+    foreach ($pathGroup in $entriesByPath)
+    {
+        $registryPath = $pathGroup.Name
+        $entries = $pathGroup.Group
+
+        # Batch read all current values for this registry path
+        # This is much faster than individual Get-RegistryValue calls for each entry
+        $currentValues = @{}
+        if (Test-RegistryPath -Path $registryPath)
         {
-            $v = Convert-ConsoleColor "#$v"
+            try
+            {
+                $keyProperties = Get-ItemProperty -Path $registryPath -ErrorAction Stop
+                # Store all property values in hashtable for fast lookup
+                # Skip PowerShell's built-in properties that Get-ItemProperty adds
+                $psBuiltInProperties = @('PSPath', 'PSParentPath', 'PSChildName', 'PSProvider', 'PSDrive')
+                foreach ($property in $keyProperties.PSObject.Properties)
+                {
+                    if ($property.Name -notin $psBuiltInProperties)
+                    {
+                        $currentValues[$property.Name] = $property.Value
+                    }
+                }
+            }
+            catch
+            {
+                Write-Warning "Failed to read registry key $registryPath`: $_"
+            }
         }
 
-        Set-RegistryValue -Path $entry.Path -Name $entry.Name -Value $v -DryRun:$DryRun
+        # Process each entry in this path
+        foreach ($entry in $entries)
+        {
+            $v = $entry.Value
+
+            # Convert color table entries from hex to DWORD
+            if ($entry.Name -like "ColorTable*" -and $v -match '^[0-9a-fA-F]{6}$')
+            {
+                $v = Convert-ConsoleColor "#$v"
+            }
+
+            # Pass current values to avoid redundant registry reads
+            Set-RegistryValue -Path $entry.Path -Name $entry.Name -Value $v -CurrentValues $currentValues -DryRun:$DryRun
+        }
     }
 }
 Export-ModuleMember -Function Sync-Registry
@@ -319,13 +356,16 @@ function Set-RegistryValue
     param (
         [Parameter(Mandatory = $true)]
         [string]
-        $path,
+        $Path,
         [Parameter(Mandatory = $true)]
         [string]
-        $name,
+        $Name,
         [Parameter(Mandatory = $true)]
         [string]
-        $value,
+        $Value,
+        [Parameter(Mandatory = $false)]
+        [hashtable]
+        $CurrentValues,
         [Parameter(Mandatory = $false)]
         [switch]
         $DryRun
@@ -334,7 +374,7 @@ function Set-RegistryValue
     # Treat -WhatIf like -DryRun for consistency
     $isDryRun = $DryRun -or $WhatIfPreference
 
-    if (-not (Test-RegistryPath -Path $path))
+    if (-not (Test-RegistryPath -Path $Path))
     {
         if (-not $script:act)
         {
@@ -344,55 +384,71 @@ function Set-RegistryValue
 
         if ($isDryRun)
         {
-            Write-Output "DRY-RUN: Would create registry path: $path"
+            Write-Output "DRY-RUN: Would create registry path: $Path"
         }
-        elseif ($PSCmdlet.ShouldProcess($path, "Create registry path"))
+        elseif ($PSCmdlet.ShouldProcess($Path, "Create registry path"))
         {
-            Write-Verbose "Creating registry path: $path"
+            Write-Verbose "Creating registry path: $Path"
             try
             {
-                New-RegistryPath -Path $path
+                New-RegistryPath -Path $Path
 
                 # Verify path was created
-                if (-not (Test-RegistryPath -Path $path))
+                if (-not (Test-RegistryPath -Path $Path))
                 {
-                    Write-Warning "Failed to create registry path: $path (path does not exist after creation attempt)"
+                    Write-Warning "Failed to create registry path: $Path (path does not exist after creation attempt)"
                     return
                 }
             }
             catch
             {
-                Write-Warning "Failed to create registry path: $path - $_"
+                Write-Warning "Failed to create registry path: $Path - $_"
                 return
             }
         }
     }
 
     # Get current value with type-aware comparison
+    # If CurrentValues hashtable is provided (batch mode), use it for much faster lookup
+    # Otherwise, fall back to individual registry read (legacy compatibility)
     $currentValue = $null
     $valueExists = $false
 
     # In dry-run mode, path might not exist yet
-    if (-not (Test-RegistryPath -Path $path))
+    if (-not (Test-RegistryPath -Path $Path))
     {
-        Write-Verbose "Registry path $path does not exist (will be created)"
+        Write-Verbose "Registry path $Path does not exist (will be created)"
         $valueExists = $false
+    }
+    elseif ($null -ne $CurrentValues)
+    {
+        # Batch mode: Use pre-read values from hashtable (fast)
+        $valueExists = $CurrentValues.ContainsKey($Name)
+        if ($valueExists)
+        {
+            $currentValue = $CurrentValues[$Name]
+        }
+        else
+        {
+            Write-Verbose "Registry value $Name does not exist in $Path"
+        }
     }
     else
     {
+        # Legacy mode: Individual registry read (slow, for backward compatibility)
         try
         {
-            $currentValue = Get-RegistryValue -Path $path -Name $name
+            $currentValue = Get-RegistryValue -Path $Path -Name $Name
             $valueExists = $null -ne $currentValue
             if (-not $valueExists)
             {
-                Write-Verbose "Registry value $name does not exist in $path"
+                Write-Verbose "Registry value $Name does not exist in $Path"
             }
         }
         catch
         {
             # Unexpected error (permission denied, etc.)
-            Write-Warning "Failed to read registry value $name from $path`: $_"
+            Write-Warning "Failed to read registry value $Name from $Path`: $_"
             return
         }
     }
@@ -404,12 +460,12 @@ function Set-RegistryValue
     {
         $needsUpdate = $true
     }
-    elseif ($currentValue -is [int] -and $value -match '^-?\d+$')
+    elseif ($currentValue -is [int] -and $Value -match '^-?\d+$')
     {
         # Both numeric - compare as integers
-        $needsUpdate = ($currentValue -ne [int]$value)
+        $needsUpdate = ($currentValue -ne [int]$Value)
     }
-    elseif ($currentValue -is [int] -or $currentValue -is [uint32] -or $value -match '^0x[0-9a-fA-F]+$' -or $currentValue -match '^0x[0-9a-fA-F]+$')
+    elseif ($currentValue -is [int] -or $currentValue -is [uint32] -or $Value -match '^0x[0-9a-fA-F]+$' -or $currentValue -match '^0x[0-9a-fA-F]+$')
     {
         # Handle hex and numeric values - convert for comparison
         # Registry DWORD values can be Int32 (signed) or UInt32 (unsigned)
@@ -418,7 +474,7 @@ function Set-RegistryValue
         # Detect corrupted values (e.g., "0x00200078 # comment") and mark for update
         if ($currentValue -is [string] -and $currentValue.Contains('#'))
         {
-            Write-Verbose "Detected corrupted registry value (contains comment): $name = $currentValue"
+            Write-Verbose "Detected corrupted registry value (contains comment): $Name = $currentValue"
             $needsUpdate = $true
         }
         else
@@ -426,21 +482,21 @@ function Set-RegistryValue
             try
             {
                 # First, determine what the config value represents
-                $valueInt = if ($value -match '^0x([0-9a-fA-F]+)$')
+                $valueInt = if ($Value -match '^0x([0-9a-fA-F]+)$')
                 {
                     # Hex value - convert as unsigned (colors, etc.)
                     # Don't cast to int64 as it would lose unsigned data for large values
                     [Convert]::ToUInt64($matches[1], 16)
                 }
-                elseif ($value -match '^-\d+$')
+                elseif ($Value -match '^-\d+$')
                 {
                     # Negative decimal value
-                    [int64]$value
+                    [int64]$Value
                 }
                 else
                 {
                     # Positive decimal value
-                    [int64]$value
+                    [int64]$Value
                 }
 
                 # Convert current registry value to match the expected type
@@ -477,7 +533,7 @@ function Set-RegistryValue
             catch
             {
                 # Conversion failed - likely corrupted value, mark for update
-                Write-Verbose "Failed to convert registry value for comparison (likely corrupted): $name = $currentValue - $_"
+                Write-Verbose "Failed to convert registry value for comparison (likely corrupted): $Name = $currentValue - $_"
                 $needsUpdate = $true
             }
         }
@@ -485,7 +541,7 @@ function Set-RegistryValue
     else
     {
         # String comparison - compare literally without expanding environment variables
-        $needsUpdate = ($currentValue -ne $value)
+        $needsUpdate = ($currentValue -ne $Value)
     }
 
     if ($needsUpdate)
@@ -498,30 +554,30 @@ function Set-RegistryValue
 
         if ($isDryRun)
         {
-            Write-Output "DRY-RUN: Would set registry value: $path $name = $value"
+            Write-Output "DRY-RUN: Would set registry value: $Path $Name = $Value"
         }
-        elseif ($PSCmdlet.ShouldProcess("$path\$name", "Set registry value to $value"))
+        elseif ($PSCmdlet.ShouldProcess("$Path\$Name", "Set registry value to $Value"))
         {
-            Write-Verbose "Setting registry value: $path $name = $value"
+            Write-Verbose "Setting registry value: $Path $Name = $Value"
             # Convert numeric strings and hex values to integers for proper registry type
-            $finalValue = if ($value -match '^0x([0-9a-fA-F]+)$')
+            $finalValue = if ($Value -match '^0x([0-9a-fA-F]+)$')
             {
                 # Use ToUInt32 for hex values to handle color codes correctly (prevents overflow for values > 0x7FFFFFFF)
                 [Convert]::ToUInt32($matches[1], 16)
             }
-            elseif ($value -match '^-?\d+$')
+            elseif ($Value -match '^-?\d+$')
             {
-                [int]$value
+                [int]$Value
             }
             else
             {
-                $value
+                $Value
             }
-            Set-RegistryKeyValue -Path $path -Name $name -Value $finalValue
+            Set-RegistryKeyValue -Path $Path -Name $Name -Value $finalValue
         }
     }
     else
     {
-        Write-Verbose "Skipping registry value $name in $path`: already correct"
+        Write-Verbose "Skipping registry value $Name in $Path`: already correct"
     }
 }

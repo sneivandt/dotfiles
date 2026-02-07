@@ -97,11 +97,11 @@ function Install-VsCodeExtensions
     }
 
     # Remove duplicates if same extension appears in multiple sections
-    $uniqueCount = $extensionsToInstall.Count
+    $originalCount = $extensionsToInstall.Count
     $extensionsToInstall = $extensionsToInstall | Select-Object -Unique
-    if ($extensionsToInstall.Count -lt $uniqueCount)
+    if ($extensionsToInstall.Count -lt $originalCount)
     {
-        Write-Verbose "Removed $($uniqueCount - $extensionsToInstall.Count) duplicate extension(s)"
+        Write-Verbose "Removed $($originalCount - $extensionsToInstall.Count) duplicate extension(s)"
     }
     Write-Verbose "Total extensions to process: $($extensionsToInstall.Count)"
 

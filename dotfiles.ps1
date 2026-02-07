@@ -87,25 +87,25 @@ Write-Verbose "Excluded categories: $(if ($excluded) { $excluded } else { '(none
 Write-Verbose "Starting installation sequence..."
 
 Write-Verbose "[1/7] Initializing Git configuration..."
-Initialize-GitConfig -Root $PSScriptRoot -DryRun:$DryRun -Verbose:$VerbosePreference
+Initialize-GitConfig -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
 Write-Verbose "[2/7] Checking for repository updates..."
-Update-DotfilesRepository -Root $PSScriptRoot -DryRun:$DryRun -Verbose:$VerbosePreference
+Update-DotfilesRepository -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
 Write-Verbose "[3/7] Installing repository git hooks..."
-Install-RepositoryGitHooks -Root $PSScriptRoot -DryRun:$DryRun -Verbose:$VerbosePreference
+Install-RepositoryGitHooks -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
 Write-Verbose "[4/7] Installing packages..."
-Install-Packages -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:$VerbosePreference
+Install-Packages -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
 Write-Verbose "[5/7] Syncing registry settings..."
-Sync-Registry -Root $PSScriptRoot -DryRun:$DryRun -Verbose:$VerbosePreference
+Sync-Registry -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
 Write-Verbose "[6/7] Installing symlinks..."
-Install-Symlinks -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:$VerbosePreference
+Install-Symlinks -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
 Write-Verbose "[7/7] Installing VS Code extensions..."
-Install-VsCodeExtensions -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:$VerbosePreference
+Install-VsCodeExtensions -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
 Write-Verbose "Installation sequence complete!"
 

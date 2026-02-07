@@ -168,8 +168,35 @@ function Update-DotfilesRepository
         Write-Verbose "Comparing local HEAD with origin/HEAD..."
         $localHead = git rev-parse HEAD 2>$null
         $remoteHead = git rev-parse origin/HEAD 2>$null
-        Write-Verbose "Local HEAD: $($localHead.Substring(0, 7))..."
-        Write-Verbose "Remote HEAD: $($remoteHead.Substring(0, 7))..."
+
+        $localHeadDisplay = if ([string]::IsNullOrEmpty($localHead))
+        {
+            "<missing>"
+        }
+        elseif ($localHead.Length -ge 7)
+        {
+            $localHead.Substring(0, 7)
+        }
+        else
+        {
+            $localHead
+        }
+
+        $remoteHeadDisplay = if ([string]::IsNullOrEmpty($remoteHead))
+        {
+            "<missing>"
+        }
+        elseif ($remoteHead.Length -ge 7)
+        {
+            $remoteHead.Substring(0, 7)
+        }
+        else
+        {
+            $remoteHead
+        }
+
+        Write-Verbose "Local HEAD: $localHeadDisplay..."
+        Write-Verbose "Remote HEAD: $remoteHeadDisplay..."
 
         if ($localHead -ne $remoteHead)
         {

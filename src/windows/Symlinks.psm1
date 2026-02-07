@@ -75,6 +75,7 @@ function Install-Symlinks
     )
 
     $configFile = Join-Path $root "conf\symlinks.ini"
+    Write-Verbose "Reading symlink configuration from: conf/symlinks.ini"
 
     if (-not (Test-Path $configFile))
     {
@@ -97,11 +98,15 @@ function Install-Symlinks
         }
     }
 
+    Write-Verbose "Found $($sections.Count) section(s) in symlinks.ini: $($sections -join ', ')"
+
     $act = $false
 
     # Process each section that should be included
     foreach ($section in $sections)
     {
+        Write-Verbose "Processing symlinks section: [$section]"
+
         # Check if this section/profile should be included
         if (-not (Test-ShouldIncludeSection -SectionName $section -ExcludedCategories $excludedCategories))
         {
@@ -111,11 +116,15 @@ function Install-Symlinks
 
         # Read symlink paths from this section using helper
         $links = Read-IniSection -FilePath $configFile -SectionName $section
+        Write-Verbose "Found $($links.Count) symlink(s) in section [$section]"
 
         foreach ($link in $links)
         {
+            Write-Verbose "Checking symlink: $link"
+
             # Check if source file exists (may be excluded by sparse checkout)
             $sourcePath = Join-Path $root "symlinks\$link"
+            Write-Verbose "  Source path: $sourcePath"
 
             if (-not (Test-Path $sourcePath))
             {
@@ -161,6 +170,7 @@ function Install-Symlinks
                 if ($targetPath.StartsWith("$folder\", [StringComparison]::OrdinalIgnoreCase) -or $targetPath -eq $folder)
                 {
                     $shouldAddDot = $false
+                    Write-Verbose "  Detected well-known Windows folder: $folder"
                     break
                 }
             }
@@ -172,6 +182,7 @@ function Install-Symlinks
                 $targetPath = "." + $targetPath
             }
             $targetFullPath = Join-Path $env:USERPROFILE $targetPath
+            Write-Verbose "  Target path: $targetFullPath"
 
             # Check if symlink exists and points to correct target
             $isCorrectLink = $false

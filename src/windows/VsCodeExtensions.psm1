@@ -44,6 +44,7 @@ function Install-VsCodeExtensions
     )
 
     $configFile = Join-Path $root "conf\vscode-extensions.ini"
+    Write-Verbose "Reading VS Code extension configuration from: conf/vscode-extensions.ini"
 
     if (-not (Test-Path $configFile))
     {
@@ -68,10 +69,14 @@ function Install-VsCodeExtensions
         return
     }
 
+    Write-Verbose "Found $($sections.Count) section(s) in vscode-extensions.ini: $($sections -join ', ')"
+
     # Collect all extensions that should be installed based on profile
     $extensionsToInstall = @()
     foreach ($section in $sections)
     {
+        Write-Verbose "Processing extensions section: [$section]"
+
         # Check if this section should be included based on profile
         if (-not (Test-ShouldIncludeSection -SectionName $section -ExcludedCategories $excludedCategories))
         {
@@ -81,6 +86,7 @@ function Install-VsCodeExtensions
 
         # Read extensions from this section
         $sectionExtensions = Read-IniSection -FilePath $configFile -SectionName $section
+        Write-Verbose "Found $($sectionExtensions.Count) extension(s) in section [$section]"
         $extensionsToInstall += $sectionExtensions
     }
 
@@ -91,11 +97,19 @@ function Install-VsCodeExtensions
     }
 
     # Remove duplicates if same extension appears in multiple sections
+    $uniqueCount = $extensionsToInstall.Count
     $extensionsToInstall = $extensionsToInstall | Select-Object -Unique
+    if ($extensionsToInstall.Count -lt $uniqueCount)
+    {
+        Write-Verbose "Removed $($uniqueCount - $extensionsToInstall.Count) duplicate extension(s)"
+    }
+    Write-Verbose "Total extensions to process: $($extensionsToInstall.Count)"
 
     # Iterate over both stable and insiders versions of VS Code
     foreach ($code in @('code', 'code-insiders'))
     {
+        Write-Verbose "Checking for VS Code binary: $code"
+
         # Check if the code binary exists
         if (-not (Get-Command $code -ErrorAction SilentlyContinue))
         {
@@ -106,7 +120,9 @@ function Install-VsCodeExtensions
         $act = $false
 
         # Get list of currently installed extensions to avoid redundant calls
+        Write-Verbose "Retrieving list of installed extensions for $code..."
         $installed = & $code --list-extensions
+        Write-Verbose "Found $($installed.Count) installed extension(s) for $code"
 
         foreach ($extension in $extensionsToInstall)
         {

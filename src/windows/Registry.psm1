@@ -214,6 +214,7 @@ function Sync-Registry
     )
 
     $configFile = Join-Path $root "conf\registry.ini"
+    Write-Verbose "Reading registry configuration from: conf/registry.ini"
 
     if (-not (Test-Path $configFile))
     {
@@ -226,6 +227,7 @@ function Sync-Registry
 
     # Read registry configuration from .ini file
     # Format: Sections are registry paths, entries are name = value
+    Write-Verbose "Parsing registry.ini file..."
     $content = Get-Content $configFile
     $currentPath = $null
     $registryEntries = @()
@@ -274,6 +276,8 @@ function Sync-Registry
         }
     }
 
+    Write-Verbose "Found $($registryEntries.Count) registry value(s) across $($registryEntries | Select-Object -ExpandProperty Path -Unique | Measure-Object | Select-Object -ExpandProperty Count) key(s)"
+
     # Group entries by registry path for batch reading
     # This significantly improves performance by reading all values from each key at once
     $entriesByPath = $registryEntries | Group-Object -Property Path
@@ -282,6 +286,7 @@ function Sync-Registry
     {
         $registryPath = $pathGroup.Name
         $entries = $pathGroup.Group
+        Write-Verbose "Processing registry key: $registryPath ($($entries.Count) value(s))"
 
         # Batch read all current values for this registry path
         # This is much faster than individual Get-RegistryValue calls for each entry

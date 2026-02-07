@@ -279,22 +279,6 @@ function Install-Packages
                 continue
             }
 
-            # Double-check with case-insensitive comparison in case of ID casing differences
-            $found = $false
-            foreach ($installedPkg in $installedPackages)
-            {
-                if ($installedPkg -eq $package)
-                {
-                    Write-Verbose "Skipping package $package`: already installed (case-insensitive match)"
-                    $found = $true
-                    break
-                }
-            }
-            if ($found)
-            {
-                continue
-            }
-
             # Add to install list
             Write-Verbose "Package $package needs installation"
             $packagesToInstall += $package

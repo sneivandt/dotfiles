@@ -53,6 +53,8 @@ function Get-InstalledPackages
     .OUTPUTS
         Array of package IDs that are currently installed
     #>
+    # Plural name justified: function returns multiple packages as array
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Function returns multiple packages, plural is appropriate')]
     [OutputType([System.String[]])]
     [CmdletBinding()]
     param ()
@@ -113,7 +115,7 @@ function Get-InstalledPackages
     catch
     {
         Write-Verbose "Error retrieving installed packages: $_"
-        return @()
+        return [string[]]@()
     }
 }
 
@@ -137,7 +139,7 @@ function Get-InstalledPackagesFallback
         if ($LASTEXITCODE -ne 0)
         {
             Write-Verbose "Fallback method failed (exit code: $LASTEXITCODE)"
-            return @()
+            return [string[]]@()
         }
 
         $installedPackages = @()
@@ -164,7 +166,7 @@ function Get-InstalledPackagesFallback
     catch
     {
         Write-Verbose "Fallback method error: $_"
-        return @()
+        return [string[]]@()
     }
 }
 

@@ -156,3 +156,9 @@ Host github.com
 - [GitHub Security Best Practices](https://docs.github.com/en/code-security)
 - [git-secrets](https://github.com/awslabs/git-secrets) - Prevent committing secrets
 - [truffleHog](https://github.com/trufflesecurity/trufflehog) - Find secrets in git history
+
+## See Also
+
+- [Git Hooks](HOOKS.md) - Pre-commit hook for detecting sensitive data
+- [Contributing](CONTRIBUTING.md) - Security considerations for contributors
+- [Usage Guide](USAGE.md) - Dry-run mode for safe testing

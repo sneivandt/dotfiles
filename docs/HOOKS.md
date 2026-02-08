@@ -88,3 +88,9 @@ Hooks are written in POSIX shell (`#!/bin/sh`) and work on:
 - **Linux**: Native shell support
 - **Windows**: Git for Windows includes Git Bash
 - **macOS**: Native shell support
+
+## See Also
+
+- [Architecture](ARCHITECTURE.md) - Git hooks installation process
+- [Security](SECURITY.md) - Security best practices and sensitive data handling
+- [Contributing](CONTRIBUTING.md) - Guidelines for hook development

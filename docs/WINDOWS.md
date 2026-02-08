@@ -1,8 +1,14 @@
 # Windows Usage
 
-Windows automation layer for this dotfiles project. The PowerShell entrypoint (`dotfiles.ps1`) always uses the fixed "windows" profile and wires together registry personalization, symlinks, and VS Code extensions in an idempotent fashion.
+Windows automation for the dotfiles project. The PowerShell entrypoint (`dotfiles.ps1`) provides registry personalization, symlinks, package installation, and VS Code extensions in an idempotent fashion.
 
 The dotfiles installer installs itself as a PowerShell module, making the `Install-Dotfiles` command available from anywhere in PowerShell.
+
+**See Also:**
+- [Usage Guide](USAGE.md) - General usage instructions
+- [Configuration Reference](CONFIGURATION.md) - Configuration file formats
+- [Architecture](ARCHITECTURE.md) - Implementation details
+- [Troubleshooting](TROUBLESHOOTING.md) - Windows-specific troubleshooting
 
 ## Quick Start
 
@@ -322,8 +328,10 @@ In dry-run mode:
 * Registry writes are limited to HKCU (user scope) console keys and additional configured paths; no HKLM modifications occur
 * Re-running is safe; modules emit section headers only when performing actions
 
-## Extending Windows Layer
+## See Also
 
-1. Create or modify module in `src/windows/` exporting a function.
-2. Add its invocation to `dotfiles.ps1` (maintain logical ordering: Git config first, core prerequisites, then leaf operations).
-3. Keep functions self‑guarded (no-op if already configured) to preserve idempotency.
+- [Configuration Reference](CONFIGURATION.md) - Details on `conf/packages.ini`, `conf/registry.ini`, `conf/symlinks.ini`
+- [Usage Guide](USAGE.md) - General installation and usage
+- [Troubleshooting](TROUBLESHOOTING.md) - Windows troubleshooting
+- [Architecture](ARCHITECTURE.md) - Windows module architecture
+- [Testing](TESTING.md) - Testing Windows changes

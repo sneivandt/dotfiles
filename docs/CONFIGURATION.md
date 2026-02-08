@@ -262,8 +262,88 @@ Configuration files are automatically processed based on the selected profile:
 
 All items defined in matching profile sections are automatically installed.
 
+## Examples
+
+### Example: Base Profile Configuration
+
+A minimal setup with core shell configuration:
+
+```ini
+# profiles.ini
+[base]
+include=
+exclude=windows,desktop,arch
+
+# symlinks.ini
+[base]
+bashrc
+vimrc
+config/git/config
+
+# packages.ini
+[base]
+git
+vim
+```
+
+### Example: Desktop Profile with Multiple Categories
+
+Configuration requiring multiple categories:
+
+```ini
+# profiles.ini
+[arch-desktop]
+include=arch,desktop
+exclude=windows
+
+# packages.ini
+[arch]
+base-devel
+pacman-contrib
+
+[desktop]
+code
+
+[arch,desktop]
+xorg-server
+xmonad
+
+# symlinks.ini
+[arch,desktop]
+xinitrc
+config/xmonad/xmonad.hs
+```
+
+### Example: Conditional Package Installation
+
+Install packages only when specific categories are active:
+
+```ini
+# packages.ini
+[arch]
+# Always installed on Arch
+git
+base-devel
+
+[arch,aur]
+# AUR packages on Arch
+paru-bin
+
+[arch,desktop]
+# Only on Arch with desktop
+alacritty
+dunst
+
+[arch,desktop,aur]
+# AUR desktop packages on Arch
+xmonad-contrib-git
+```
+
 ## See Also
 
-- Main project README for installation instructions
+- [Usage Guide](USAGE.md) - How to use configuration files
+- [Profile System](PROFILES.md) - Understanding profile filtering
+- [Customization Guide](CUSTOMIZATION.md) - Adding new configuration
+- [Architecture](ARCHITECTURE.md) - How configuration is processed
 - `src/linux/utils.sh` - INI parsing functions (`read_ini_section`, `should_include_profile_tag`)
 - `src/linux/tasks.sh` - Task functions that process configuration files

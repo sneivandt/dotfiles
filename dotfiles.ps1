@@ -81,6 +81,11 @@ if (-not $DryRun)
                 try
                 {
                     $process = Start-Process -FilePath $psExe -ArgumentList $arguments -Verb RunAs -PassThru -Wait
+                    # Check if elevated process failed
+                    if ($process.ExitCode -ne 0)
+                    {
+                        Write-Error "Elevated process exited with code $($process.ExitCode). Installation may have failed. Check the elevated window output for details."
+                    }
                     # Return the exit code from the elevated process
                     exit $process.ExitCode
                 }

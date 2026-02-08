@@ -49,8 +49,39 @@ if (-not $DryRun)
             $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
             if (-not $isAdmin)
             {
-                Write-Error "This script requires administrator privileges to modify registry settings and create symlinks. Please run as administrator or use -DryRun to preview changes."
-                exit 1
+                # Automatically request elevation by re-launching the script
+                Write-Output "Not running as administrator. Requesting elevation..."
+
+                # Determine which PowerShell executable to use
+                $edition = $PSVersionTable.PSEdition
+                if ($edition -eq 'Core')
+                {
+                    $psExe = 'pwsh'
+                }
+                else
+                {
+                    # Desktop edition (Windows PowerShell)
+                    $psExe = 'powershell'
+                }
+
+                # Build argument list
+                $arguments = @(
+                    '-NoProfile',
+                    '-ExecutionPolicy', 'Bypass',
+                    '-File', "`"$PSCommandPath`""
+                )
+
+                # Preserve -Verbose flag
+                if ($VerbosePreference -eq 'Continue')
+                {
+                    $arguments += '-Verbose'
+                }
+
+                # Launch elevated process
+                Start-Process -FilePath $psExe -ArgumentList $arguments -Verb RunAs
+
+                # Exit successfully after spawning elevated process
+                exit 0
             }
         }
         catch

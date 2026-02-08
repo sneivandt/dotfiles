@@ -131,9 +131,18 @@ test_paru_available()
 {(
   log_stage "Testing paru availability"
 
-  # Debug: Print PATH for troubleshooting
+  # Debug: Print PATH and search for paru
   log_verbose "Current PATH: $PATH"
-  log_verbose "Which paru: $(command -v paru || echo 'not found')"
+  
+  # Find paru binary
+  paru_path="$(command -v paru 2>/dev/null || echo '')"
+  if [ -n "$paru_path" ]; then
+    log_verbose "Paru found at: $paru_path"
+    log_verbose "Paru permissions: $(ls -la "$paru_path" 2>/dev/null || echo 'cannot stat')"
+    log_verbose "Paru file type: $(file "$paru_path" 2>/dev/null || echo 'cannot determine')"
+  else
+    log_verbose "Paru not found in PATH"
+  fi
 
   # Check if paru is installed
   if ! is_program_installed "paru"; then
@@ -144,11 +153,14 @@ test_paru_available()
   log_verbose "Paru binary found in PATH"
 
   # Test 1: Check paru version
+  log_verbose "Attempting to run: paru --version"
   if ! paru --version >/dev/null 2>&1; then
     printf "%sERROR: Cannot run paru --version%s\n" "${RED}" "${NC}" >&2
-    # Debug: Try to get more information
+    # Debug: Try to get more information about the error
+    log_verbose "Direct execution attempt output:"
     paru --version 2>&1 || true
-    ls -la "$(command -v paru)" || true
+    log_verbose "Checking for missing dependencies (ldd):"
+    ldd "$paru_path" 2>&1 || true
     return 1
   fi
 

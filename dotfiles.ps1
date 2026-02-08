@@ -64,30 +64,33 @@ if (-not $DryRun)
                     $psExe = 'powershell'
                 }
 
-                # Build argument list
+                # Build argument list that keeps window open
+                $scriptCommand = @"
+& '$PSCommandPath'
+Write-Host
+Write-Host 'Installation complete. Press any key to close...' -ForegroundColor Green
+`$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+"@
+
                 $arguments = @(
                     '-NoProfile',
                     '-ExecutionPolicy', 'Bypass',
-                    '-File', ('"{0}"' -f $PSCommandPath)
+                    '-Command', $scriptCommand
                 )
 
                 # Preserve -Verbose flag
                 if ($VerbosePreference -eq 'Continue')
                 {
-                    $arguments += '-Verbose'
+                    $arguments += '; Write-Verbose "Verbose mode enabled"'
                 }
 
-                # Launch elevated process
+                # Launch elevated process without waiting
                 try
                 {
-                    $process = Start-Process -FilePath $psExe -ArgumentList $arguments -Verb RunAs -PassThru -Wait
-                    # Check if elevated process failed
-                    if ($process.ExitCode -ne 0)
-                    {
-                        Write-Error "Elevated process failed with exit code $($process.ExitCode). Run with -Verbose for detailed output, or use -DryRun to preview changes."
-                    }
-                    # Return the exit code from the elevated process
-                    exit $process.ExitCode
+                    $process = Start-Process -FilePath $psExe -ArgumentList $arguments -Verb RunAs -PassThru
+                    Write-Output "Elevated PowerShell window opened (PID: $($process.Id))."
+                    # Exit original shell immediately
+                    exit 0
                 }
                 catch [System.ComponentModel.Win32Exception]
                 {

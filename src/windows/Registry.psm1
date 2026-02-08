@@ -562,7 +562,7 @@ function Set-RegistryValue
         if ($isDryRun)
         {
             Write-DryRunMessage -Message "Would set registry value: $Path $Name = $Value"
-            Increment-Counter -CounterName "registry_keys_set"
+            Add-Counter -CounterName "registry_keys_set"
         }
         elseif ($PSCmdlet.ShouldProcess("$Path\$Name", "Set registry value to $Value"))
         {
@@ -582,7 +582,7 @@ function Set-RegistryValue
                 $Value
             }
             Set-RegistryKeyValue -Path $Path -Name $Name -Value $finalValue
-            Increment-Counter -CounterName "registry_keys_set"
+            Add-Counter -CounterName "registry_keys_set"
         }
     }
     else

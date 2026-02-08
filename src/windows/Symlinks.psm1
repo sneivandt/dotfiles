@@ -232,7 +232,7 @@ function Install-Symlinks
                         Write-DryRunMessage -Message "Would remove existing: $targetFullPath"
                     }
                     Write-DryRunMessage -Message "Would create symlink: $targetFullPath -> $sourcePath"
-                    Increment-Counter -CounterName "symlinks_created"
+                    Add-Counter -CounterName "symlinks_created"
                 }
                 else
                 {
@@ -270,7 +270,7 @@ function Install-Symlinks
                     try
                     {
                         New-Item -Path $targetFullPath -ItemType SymbolicLink -Value $sourcePath -Force -ErrorAction Stop | Out-Null
-                        Increment-Counter -CounterName "symlinks_created"
+                        Add-Counter -CounterName "symlinks_created"
                     }
                     catch
                     {

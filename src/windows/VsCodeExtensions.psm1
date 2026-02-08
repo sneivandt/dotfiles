@@ -140,7 +140,7 @@ function Install-VsCodeExtensions
                 if ($DryRun)
                 {
                     Write-DryRunMessage -Message "Would install extension: $extension"
-                    Increment-Counter -CounterName "vscode_extensions_installed"
+                    Add-Counter -CounterName "vscode_extensions_installed"
                 }
                 else
                 {
@@ -152,7 +152,7 @@ function Install-VsCodeExtensions
                     }
                     else
                     {
-                        Increment-Counter -CounterName "vscode_extensions_installed"
+                        Add-Counter -CounterName "vscode_extensions_installed"
                     }
                 }
             }

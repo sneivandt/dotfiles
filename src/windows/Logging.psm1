@@ -153,7 +153,7 @@ function Write-DryRunMessage
     Write-LogMessage -Message $output
 }
 
-function Increment-Counter
+function Add-Counter
 {
     <#
     .SYNOPSIS
@@ -163,7 +163,6 @@ function Increment-Counter
     .PARAMETER CounterName
         Counter name (e.g., "packages_installed", "symlinks_created")
     #>
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseApprovedVerbs', '', Justification = 'Increment is clear and appropriate for counter operations')]
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]
@@ -321,7 +320,7 @@ Export-ModuleMember -Function @(
     'Write-ProgressMessage',
     'Write-Stage',
     'Write-DryRunMessage',
-    'Increment-Counter',
+    'Add-Counter',
     'Get-Counter',
     'Write-InstallationSummary'
 )

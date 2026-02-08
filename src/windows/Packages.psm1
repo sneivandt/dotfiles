@@ -302,7 +302,7 @@ function Install-Packages
                     Write-Stage -Message "Installing packages"
                 }
                 Write-DryRunMessage -Message "Would install package: $package"
-                Increment-Counter -CounterName "packages_installed"
+                Add-Counter -CounterName "packages_installed"
             }
             else
             {
@@ -331,7 +331,7 @@ function Install-Packages
                     Write-Verbose "Successfully installed: $package"
                     # Show output for successful installations
                     $output | Out-String | Write-Output
-                    Increment-Counter -CounterName "packages_installed"
+                    Add-Counter -CounterName "packages_installed"
                 }
                 # WinGet exit code 0x8A150055 (-1978335189 in signed int32) indicates package is already installed
                 # This is a known WinGet constant: APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED

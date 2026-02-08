@@ -191,6 +191,69 @@ PowerShell modules for Windows reside in `src/windows/`.
 - **Dependency Resolution**: Profile dependencies (e.g., desktop requires certain base files) handled automatically
 - **No Backups**: Existing files are removed before linking (by design - commit first!)
 
+### Logging and Summary
+
+The installation includes a comprehensive logging system that tracks all operations and provides detailed summaries.
+
+**Log File Location:**
+- Linux: `${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/install.log`
+- Windows: `%LOCALAPPDATA%\dotfiles\install.log`
+
+The persistent log file includes:
+- Timestamp of installation
+- Selected profile
+- All operations performed
+- Verbose details (even when not displayed on console)
+- Summary statistics
+
+**Operation Counters:**
+
+Linux tracks:
+- Packages installed (pacman)
+- AUR packages installed (paru)
+- Symlinks created
+- Symlinks removed (uninstall)
+- VS Code extensions installed
+- PowerShell modules installed (when pwsh available)
+- Systemd user units enabled
+- Font cache updates
+- File permissions set (chmod)
+
+Windows tracks:
+- Packages installed (winget)
+- PowerShell modules installed
+- Symlinks created
+- VS Code extensions installed
+- Registry keys set
+
+**Dry-Run Mode:**
+
+When using `--dry-run`, the logging system:
+- Shows what would be done without making changes
+- Tracks counters for operations that would be performed
+- Labels summary with "(would be)" suffix
+- Still writes to the log file for review
+
+Example summary output (Linux):
+```
+:: Installation Summary
+   Packages installed: 15
+   AUR packages installed: 3
+   Symlinks created: 8
+   VS Code extensions installed: 5
+   Systemd units enabled: 2
+   Log file: /home/user/.cache/dotfiles/install.log
+```
+
+In dry-run mode, counters show what would happen:
+```
+:: Installation Summary
+   Packages installed (would be): 15
+   AUR packages installed (would be): 3
+   Symlinks created (would be): 8
+   Log file: /home/user/.cache/dotfiles/install.log
+```
+
 ### Windows
 
 Windows uses a fixed "windows" profile (profile selection is not available).

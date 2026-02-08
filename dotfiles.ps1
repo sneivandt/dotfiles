@@ -71,6 +71,13 @@ if (-not $DryRun)
                     '-File', $PSCommandPath
                 )
 
+                # Preserve -DryRun flag (currently always false in this code path,
+                # but preserved for consistency and future-proofing)
+                if ($DryRun)
+                {
+                    $arguments += '-DryRun'
+                }
+
                 # Preserve -Verbose flag
                 if ($VerbosePreference -eq 'Continue')
                 {
@@ -78,7 +85,16 @@ if (-not $DryRun)
                 }
 
                 # Launch elevated process
-                Start-Process -FilePath $psExe -ArgumentList $arguments -Verb RunAs
+                try
+                {
+                    Start-Process -FilePath $psExe -ArgumentList $arguments -Verb RunAs
+                }
+                catch
+                {
+                    # User cancelled UAC prompt or elevation failed
+                    Write-Error "Elevation was cancelled or failed. Administrator privileges are required to modify registry settings and create symlinks. Please run as administrator or use -DryRun to preview changes."
+                    exit 1
+                }
 
                 # Exit successfully after spawning elevated process
                 exit 0

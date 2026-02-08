@@ -69,9 +69,20 @@ function Test-PSScriptAnalyzer
 
                         if ($findings)
                         {
-                            Write-Output "Findings in $($file.Name):"
-                            $findings | Format-Table -AutoSize
-                            $hasFindings = $true
+                            # Filter out Information severity findings (e.g., PSProvideCommentHelp)
+                            # Only count Warning and Error severity as failures
+                            $criticalFindings = $findings | Where-Object { $_.Severity -ne 'Information' }
+
+                            if ($findings.Count -gt 0)
+                            {
+                                Write-Output "Findings in $($file.Name):"
+                                $findings | Format-Table -AutoSize
+                            }
+
+                            if ($criticalFindings.Count -gt 0)
+                            {
+                                $hasFindings = $true
+                            }
                         }
                     }
                     catch

@@ -266,6 +266,7 @@ function Write-InstallationSummary
 
     # Get counter values
     $packagesInstalled = Get-Counter -CounterName "packages_installed"
+    $modulesInstalled = Get-Counter -CounterName "modules_installed"
     $symlinksCreated = Get-Counter -CounterName "symlinks_created"
     $vscodeExtensionsInstalled = Get-Counter -CounterName "vscode_extensions_installed"
     $registryKeysSet = Get-Counter -CounterName "registry_keys_set"
@@ -276,6 +277,12 @@ function Write-InstallationSummary
     if ($packagesInstalled -gt 0)
     {
         Write-Output "   Packages installed${modeSuffix}: $packagesInstalled"
+        $hasChanges = $true
+    }
+
+    if ($modulesInstalled -gt 0)
+    {
+        Write-Output "   PowerShell modules installed${modeSuffix}: $modulesInstalled"
         $hasChanges = $true
     }
 
@@ -319,6 +326,10 @@ function Write-InstallationSummary
         if ($packagesInstalled -gt 0)
         {
             Write-LogMessage -Message "   Packages installed: $packagesInstalled"
+        }
+        if ($modulesInstalled -gt 0)
+        {
+            Write-LogMessage -Message "   PowerShell modules installed: $modulesInstalled"
         }
         if ($symlinksCreated -gt 0)
         {

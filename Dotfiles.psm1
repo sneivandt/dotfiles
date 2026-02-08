@@ -60,14 +60,6 @@ $Script:ModuleRoot = Get-DotfilesRoot
 
 function Install-Dotfiles
 {
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Dotfiles is a product name, not a plural')]
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $false)]
-        [switch]
-        $DryRun
-    )
-
     <#
     .SYNOPSIS
         Install dotfiles configuration on Windows
@@ -93,6 +85,13 @@ function Install-Dotfiles
         Install-Dotfiles -DryRun -Verbose
         Preview what would be installed with detailed output
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Dotfiles is a product name, not a plural')]
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $false)]
+        [switch]
+        $DryRun
+    )
 
     # Check for administrator privileges when not in dry-run mode
     if (-not $DryRun)
@@ -228,15 +227,6 @@ Read-Host
 
 function Update-Dotfiles
 {
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Dotfiles is a product name, not a plural')]
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Delegates to Install-Dotfiles which handles all state changes')]
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $false)]
-        [switch]
-        $DryRun
-    )
-
     <#
     .SYNOPSIS
         Update dotfiles repository and re-install configuration
@@ -258,6 +248,14 @@ function Update-Dotfiles
         Update-Dotfiles -DryRun -Verbose
         Preview what would be updated with detailed output
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Dotfiles is a product name, not a plural')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Delegates to Install-Dotfiles which handles all state changes')]
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $false)]
+        [switch]
+        $DryRun
+    )
 
     Write-Output ":: Updating dotfiles repository and configuration"
 

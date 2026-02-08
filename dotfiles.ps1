@@ -87,7 +87,9 @@ if (-not $DryRun)
                 # Launch elevated process
                 try
                 {
-                    Start-Process -FilePath $psExe -ArgumentList $arguments -Verb RunAs
+                    $process = Start-Process -FilePath $psExe -ArgumentList $arguments -Verb RunAs -PassThru -Wait
+                    # Return the exit code from the elevated process
+                    exit $process.ExitCode
                 }
                 catch
                 {
@@ -95,9 +97,6 @@ if (-not $DryRun)
                     Write-Error "Elevation was cancelled or failed. Administrator privileges are required to modify registry settings and create symlinks. Please run as administrator or use -DryRun to preview changes."
                     exit 1
                 }
-
-                # Exit successfully after spawning elevated process
-                exit 0
             }
         }
         catch

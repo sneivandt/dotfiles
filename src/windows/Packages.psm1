@@ -61,7 +61,7 @@ function Get-InstalledPackages
 
     try
     {
-        Write-Verbose "Retrieving list of all installed packages from winget..."
+        Write-VerboseMessage "Retrieving list of all installed packages from winget..."
 
         # Use winget export to get JSON output which is much more reliable than parsing text output
         # Export to a temp file then read it
@@ -73,7 +73,7 @@ function Get-InstalledPackages
 
             if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tempFile))
             {
-                Write-Verbose "Failed to export package list (exit code: $LASTEXITCODE), falling back to list command"
+                Write-VerboseMessage "Failed to export package list (exit code: $LASTEXITCODE), falling back to list command"
                 # Fallback: parse winget list output
                 return Get-InstalledPackagesFallback
             }
@@ -93,14 +93,14 @@ function Get-InstalledPackages
                             if ($package.PackageIdentifier)
                             {
                                 $installedPackages += $package.PackageIdentifier
-                                Write-Verbose "  Found installed package: $($package.PackageIdentifier)"
+                                Write-VerboseMessage "  Found installed package: $($package.PackageIdentifier)"
                             }
                         }
                     }
                 }
             }
 
-            Write-Verbose "Found $($installedPackages.Count) installed package(s) total"
+            Write-VerboseMessage "Found $($installedPackages.Count) installed package(s) total"
             return $installedPackages
         }
         finally
@@ -114,7 +114,7 @@ function Get-InstalledPackages
     }
     catch
     {
-        Write-Verbose "Error retrieving installed packages: $_"
+        Write-VerboseMessage "Error retrieving installed packages: $_"
         return [string[]]@()
     }
 }
@@ -133,12 +133,12 @@ function Get-InstalledPackagesFallback
 
     try
     {
-        Write-Verbose "Using fallback method to parse winget list output..."
+        Write-VerboseMessage "Using fallback method to parse winget list output..."
         $output = winget list --accept-source-agreements 2>&1
 
         if ($LASTEXITCODE -ne 0)
         {
-            Write-Verbose "Fallback method failed (exit code: $LASTEXITCODE)"
+            Write-VerboseMessage "Fallback method failed (exit code: $LASTEXITCODE)"
             return [string[]]@()
         }
 
@@ -155,17 +155,17 @@ function Get-InstalledPackagesFallback
                 if ($packageId.Length -le 100 -and ($packageId.Split('.').Count -ge 2))
                 {
                     $installedPackages += $packageId
-                    Write-Verbose "  Found installed package: $packageId"
+                    Write-VerboseMessage "  Found installed package: $packageId"
                 }
             }
         }
 
-        Write-Verbose "Fallback found $($installedPackages.Count) installed package(s)"
+        Write-VerboseMessage "Fallback found $($installedPackages.Count) installed package(s)"
         return $installedPackages
     }
     catch
     {
-        Write-Verbose "Fallback method error: $_"
+        Write-VerboseMessage "Fallback method error: $_"
         return [string[]]@()
     }
 }
@@ -217,8 +217,8 @@ function Install-Packages
     # Check if winget is available
     if (-not (Test-WingetInstalled))
     {
-        Write-Verbose "Skipping package installation: winget not installed"
-        Write-Verbose "Install winget from: https://aka.ms/getwinget"
+        Write-VerboseMessage "Skipping package installation: winget not installed"
+        Write-VerboseMessage "Install winget from: https://aka.ms/getwinget"
         return
     }
 
@@ -226,19 +226,19 @@ function Install-Packages
     $configFile = Join-Path $Root "conf\packages.ini"
     if (-not (Test-Path $configFile))
     {
-        Write-Verbose "Skipping packages: no packages.ini found"
+        Write-VerboseMessage "Skipping packages: no packages.ini found"
         return
     }
 
     Write-ProgressMessage -Message "Checking packages..."
-    Write-Verbose "Processing packages from: conf/packages.ini"
+    Write-VerboseMessage "Processing packages from: conf/packages.ini"
 
     # Get all sections from packages.ini
     $sections = Get-Content $configFile |
         Where-Object { $_ -match '^\[.+\]$' } |
         ForEach-Object { $_ -replace '^\[|\]$', '' }
 
-    Write-Verbose "Found $($sections.Count) section(s) in packages.ini: $($sections -join ', ')"
+    Write-VerboseMessage "Found $($sections.Count) section(s) in packages.ini: $($sections -join ', ')"
 
     # Track if we've printed the stage header
     $act = $false
@@ -251,18 +251,18 @@ function Install-Packages
 
     foreach ($section in $sections)
     {
-        Write-Verbose "Processing packages section: [$section]"
+        Write-VerboseMessage "Processing packages section: [$section]"
 
         # Check if this section should be included
         if (-not (Test-ShouldIncludeSection -SectionName $section -ExcludedCategories $ExcludedCategories))
         {
-            Write-Verbose "Skipping packages section [$section]: profile not included"
+            Write-VerboseMessage "Skipping packages section [$section]: profile not included"
             continue
         }
 
         # Read packages from this section
         $packages = Read-IniSection -FilePath $configFile -SectionName $section
-        Write-Verbose "Found $($packages.Count) package(s) in section [$section]"
+        Write-VerboseMessage "Found $($packages.Count) package(s) in section [$section]"
 
         foreach ($package in $packages)
         {
@@ -271,22 +271,22 @@ function Install-Packages
                 continue
             }
 
-            Write-Verbose "Checking package: $package"
+            Write-VerboseMessage "Checking package: $package"
 
             # Check if package is already installed (using cached list, case-insensitive)
             if ($installedPackages -contains $package)
             {
-                Write-Verbose "Skipping package $package`: already installed"
+                Write-VerboseMessage "Skipping package $package`: already installed"
                 continue
             }
 
             # Add to install list
-            Write-Verbose "Package $package needs installation"
+            Write-VerboseMessage "Package $package needs installation"
             $packagesToInstall += $package
         }
     }
 
-    Write-Verbose "Total packages to install: $($packagesToInstall.Count)"
+    Write-VerboseMessage "Total packages to install: $($packagesToInstall.Count)"
 
     # Install missing packages
     if ($packagesToInstall.Count -gt 0)
@@ -313,7 +313,7 @@ function Install-Packages
                     Write-Stage -Message "Installing packages"
                 }
 
-                Write-Verbose "Installing package: $package"
+                Write-VerboseMessage "Installing package: $package"
                 Write-Output "Installing: $package"
 
                 # Install package with winget
@@ -328,7 +328,7 @@ function Install-Packages
                 if ($exitCode -eq 0)
                 {
                     # Success
-                    Write-Verbose "Successfully installed: $package"
+                    Write-VerboseMessage "Successfully installed: $package"
                     # Show output for successful installations
                     $output | Out-String | Write-Output
                     Add-Counter -CounterName "packages_installed"
@@ -338,7 +338,7 @@ function Install-Packages
                 elseif ($exitCode -eq -1978335189)
                 {
                     # Package already installed (exit code -1978335189)
-                    Write-Verbose "Package $package already installed (winget reported as installed)"
+                    Write-VerboseMessage "Package $package already installed (winget reported as installed)"
                     Write-Output "Already installed: $package"
                 }
                 else
@@ -352,7 +352,7 @@ function Install-Packages
     }
     else
     {
-        Write-Verbose "No packages to install: all packages already present"
+        Write-VerboseMessage "No packages to install: all packages already present"
     }
 }
 

@@ -18,10 +18,9 @@ function Install-DotfilesModule
         directory, making the Install-Dotfiles and Update-Dotfiles commands
         available from anywhere in PowerShell.
 
-        The module is installed to the first existing location under $env:USERPROFILE
-        that is listed in $env:PSModulePath, typically
-        %USERPROFILE%\Documents\PowerShell\Modules (PowerShell Core) or
-        %USERPROFILE%\Documents\WindowsPowerShell\Modules (Windows PowerShell).
+        The module is installed to the first user-scoped directory in $env:PSModulePath
+        (typically %USERPROFILE%\Documents\PowerShell\Modules\Dotfiles for PowerShell Core
+        or %USERPROFILE%\Documents\WindowsPowerShell\Modules\Dotfiles for Windows PowerShell).
 
         After installation, you can run:
             Install-Dotfiles        # Install/update dotfiles
@@ -52,48 +51,48 @@ function Install-DotfilesModule
     # Track if we've printed the stage header
     $act = $false
 
-    # Determine target module directory
-    $userModulePaths = $env:PSModulePath -split [System.IO.Path]::PathSeparator |
-        Where-Object { $_ -like "*$env:USERPROFILE*" } |
-        Where-Object { Test-Path $_ -PathType Container -ErrorAction SilentlyContinue }
+    # Find the first writable user modules directory in PSModulePath
+    $modulePaths = $env:PSModulePath -split [System.IO.Path]::PathSeparator
+    $userModulePath = $null
 
-    if (-not $userModulePaths)
+    foreach ($path in $modulePaths)
     {
-        # No existing user module path found, create default one
-        $psVersion = $PSVersionTable.PSVersion.Major
-        if ($psVersion -ge 6)
+        # Look for paths under USERPROFILE (not Program Files or system directories)
+        if ($path -like "$env:USERPROFILE*")
         {
-            # PowerShell Core
-            $targetBase = Join-Path $env:USERPROFILE "Documents\PowerShell\Modules"
+            $userModulePath = $path
+            break
+        }
+    }
+
+    # Fallback to default if not found
+    if (-not $userModulePath)
+    {
+        # Use the standard user module path for current PowerShell edition
+        if ($PSVersionTable.PSEdition -eq 'Core')
+        {
+            $userModulePath = Join-Path $env:USERPROFILE "Documents\PowerShell\Modules"
         }
         else
         {
-            # Windows PowerShell
-            $targetBase = Join-Path $env:USERPROFILE "Documents\WindowsPowerShell\Modules"
+            # Desktop edition (Windows PowerShell)
+            $userModulePath = Join-Path $env:USERPROFILE "Documents\WindowsPowerShell\Modules"
         }
-
-        if (-not (Test-Path $targetBase))
-        {
-            if ($DryRun)
-            {
-                Write-Verbose "Would create module directory: $targetBase"
-            }
-            else
-            {
-                Write-Verbose "Creating module directory: $targetBase"
-                New-Item -ItemType Directory -Path $targetBase -Force | Out-Null
-            }
-        }
-
-        $targetModuleDir = Join-Path $targetBase "Dotfiles"
     }
-    else
+
+    # Ensure the modules directory exists
+    if (-not (Test-Path $userModulePath))
     {
-        # Use first writable user module path
-        $targetBase = $userModulePaths[0]
-        $targetModuleDir = Join-Path $targetBase "Dotfiles"
-        Write-Verbose "Target module path: $targetBase"
+        Write-VerboseMessage "Creating user modules directory: $userModulePath"
+        if (-not $DryRun)
+        {
+            New-Item -ItemType Directory -Path $userModulePath -Force | Out-Null
+        }
     }
+
+    # Target module directory
+    $targetModuleDir = Join-Path $userModulePath "Dotfiles"
+    Write-VerboseMessage "Target module path: $targetModuleDir"
 
     # Check if module already installed
     $existingModule = Get-Module -ListAvailable -Name Dotfiles -ErrorAction SilentlyContinue |
@@ -102,8 +101,8 @@ function Install-DotfilesModule
 
     if ($existingModule)
     {
-        Write-Verbose "Dotfiles module already installed at: $targetModuleDir"
-        Write-Verbose "Existing version: $($existingModule.Version)"
+        Write-VerboseMessage "Dotfiles module already installed at: $targetModuleDir"
+        Write-VerboseMessage "Existing version: $($existingModule.Version)"
     }
 
     # Files to copy
@@ -178,7 +177,8 @@ function Install-DotfilesModule
 
     if (-not $needsUpdate)
     {
-        Write-Verbose "Skipping module installation: already up to date"
+        Write-VerboseMessage "Skipping module installation: already up to date"
+        Write-VerboseMessage "Module location: $targetModuleDir"
         return
     }
 
@@ -200,7 +200,7 @@ function Install-DotfilesModule
         # Create target directory
         if (-not (Test-Path $targetModuleDir))
         {
-            Write-Verbose "Creating module directory: $targetModuleDir"
+            Write-VerboseMessage "Creating module directory: $targetModuleDir"
             New-Item -ItemType Directory -Path $targetModuleDir -Force | Out-Null
         }
 
@@ -212,7 +212,7 @@ function Install-DotfilesModule
 
             if (Test-Path $sourcePath)
             {
-                Write-Verbose "Copying: $file"
+                Write-VerboseMessage "Copying: $file"
                 Copy-Item -Path $sourcePath -Destination $targetPath -Force
             }
             else
@@ -229,7 +229,7 @@ function Install-DotfilesModule
 
             if (Test-Path $sourcePath)
             {
-                Write-Verbose "Copying directory: $dir"
+                Write-VerboseMessage "Copying directory: $dir"
                 # Remove existing directory if present
                 if (Test-Path $targetPath)
                 {

@@ -106,8 +106,64 @@ function Install-Dotfiles
                 $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
                 if (-not $isAdmin)
                 {
-                    Write-Error "This command requires administrator privileges to modify registry settings and create symlinks. Please run as administrator or use -DryRun to preview changes."
-                    return
+                    # Automatically request elevation by re-launching the command
+                    Write-Output "Not running as administrator. Requesting elevation..."
+
+                    # Determine which PowerShell executable to use
+                    $edition = $PSVersionTable.PSEdition
+                    if ($edition -eq 'Core')
+                    {
+                        $psExe = 'pwsh'
+                    }
+                    else
+                    {
+                        # Desktop edition (Windows PowerShell)
+                        $psExe = 'powershell'
+                    }
+
+                    # Build command to re-run Install-Dotfiles in elevated session
+                    $verboseArg = if ($VerbosePreference -eq 'Continue') { ' -Verbose' } else { '' }
+                    $scriptCommand = @"
+Import-Module Dotfiles -Force
+Install-Dotfiles$verboseArg
+Write-Host
+Write-Host 'Installation complete. Press Enter to close...' -ForegroundColor Green
+Read-Host
+"@
+
+                    $arguments = @(
+                        '-NoProfile',
+                        '-ExecutionPolicy', 'Bypass',
+                        '-Command', $scriptCommand
+                    )
+
+                    # Launch elevated process without waiting
+                    try
+                    {
+                        $process = Start-Process -FilePath $psExe -ArgumentList $arguments -Verb RunAs -PassThru
+                        Write-Output "Elevated PowerShell window opened (PID: $($process.Id))."
+                        # Exit original shell immediately
+                        return
+                    }
+                    catch [System.ComponentModel.Win32Exception]
+                    {
+                        # UAC was cancelled (ERROR_CANCELLED = 1223) or access denied
+                        if ($_.Exception.NativeErrorCode -eq 1223)
+                        {
+                            Write-Error "UAC elevation was cancelled by user. Administrator privileges are required to modify registry settings and create symlinks. Please run as administrator or use -DryRun to preview changes."
+                        }
+                        else
+                        {
+                            Write-Error "Failed to elevate: $($_.Exception.Message)"
+                        }
+                        return
+                    }
+                    catch
+                    {
+                        # Other unexpected errors (e.g., PowerShell executable not found)
+                        Write-Error "Failed to start elevated process: $($_.Exception.Message)"
+                        return
+                    }
                 }
             }
             catch

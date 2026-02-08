@@ -75,11 +75,11 @@ function Install-Symlinks
     )
 
     $configFile = Join-Path $root "conf\symlinks.ini"
-    Write-Verbose "Reading symlink configuration from: conf/symlinks.ini"
+    Write-VerboseMessage "Reading symlink configuration from: conf/symlinks.ini"
 
     if (-not (Test-Path $configFile))
     {
-        Write-Verbose "Skipping symlinks: no symlinks.ini found"
+        Write-VerboseMessage "Skipping symlinks: no symlinks.ini found"
         return
     }
 
@@ -100,37 +100,37 @@ function Install-Symlinks
         }
     }
 
-    Write-Verbose "Found $($sections.Count) section(s) in symlinks.ini: $($sections -join ', ')"
+    Write-VerboseMessage "Found $($sections.Count) section(s) in symlinks.ini: $($sections -join ', ')"
 
     $act = $false
 
     # Process each section that should be included
     foreach ($section in $sections)
     {
-        Write-Verbose "Processing symlinks section: [$section]"
+        Write-VerboseMessage "Processing symlinks section: [$section]"
 
         # Check if this section/profile should be included
         if (-not (Test-ShouldIncludeSection -SectionName $section -ExcludedCategories $excludedCategories))
         {
-            Write-Verbose "Skipping symlinks section [$section]: profile not included"
+            Write-VerboseMessage "Skipping symlinks section [$section]: profile not included"
             continue
         }
 
         # Read symlink paths from this section using helper
         $links = Read-IniSection -FilePath $configFile -SectionName $section
-        Write-Verbose "Found $($links.Count) symlink(s) in section [$section]"
+        Write-VerboseMessage "Found $($links.Count) symlink(s) in section [$section]"
 
         foreach ($link in $links)
         {
-            Write-Verbose "Checking symlink: $link"
+            Write-VerboseMessage "Checking symlink: $link"
 
             # Check if source file exists (may be excluded by sparse checkout)
             $sourcePath = Join-Path $root "symlinks\$link"
-            Write-Verbose "  Source path: $sourcePath"
+            Write-VerboseMessage "  Source path: $sourcePath"
 
             if (-not (Test-Path $sourcePath))
             {
-                Write-Verbose "Skipping symlink $link`: source file excluded"
+                Write-VerboseMessage "Skipping symlink $link`: source file excluded"
                 continue
             }
 
@@ -148,12 +148,12 @@ function Install-Symlinks
 
                     if (Test-Path $resolvedPath)
                     {
-                        Write-Verbose "Resolved $link reference to $(Split-Path -Leaf $resolvedPath)"
+                        Write-VerboseMessage "Resolved $link reference to $(Split-Path -Leaf $resolvedPath)"
                         $sourcePath = $resolvedPath
                     }
                     else
                     {
-                        Write-Verbose "Skipping symlink $link`: referenced file not found at $resolvedPath"
+                        Write-VerboseMessage "Skipping symlink $link`: referenced file not found at $resolvedPath"
                         continue
                     }
                 }
@@ -172,7 +172,7 @@ function Install-Symlinks
                 if ($targetPath.StartsWith("$folder\", [StringComparison]::OrdinalIgnoreCase) -or $targetPath -eq $folder)
                 {
                     $shouldAddDot = $false
-                    Write-Verbose "  Detected well-known Windows folder: $folder"
+                    Write-VerboseMessage "  Detected well-known Windows folder: $folder"
                     break
                 }
             }
@@ -184,7 +184,7 @@ function Install-Symlinks
                 $targetPath = "." + $targetPath
             }
             $targetFullPath = Join-Path $env:USERPROFILE $targetPath
-            Write-Verbose "  Target path: $targetFullPath"
+            Write-VerboseMessage "  Target path: $targetFullPath"
 
             # Check if symlink exists and points to correct target
             $isCorrectLink = $false
@@ -236,7 +236,7 @@ function Install-Symlinks
                 }
                 else
                 {
-                    Write-Verbose "Linking $sourcePath to $targetFullPath"
+                    Write-VerboseMessage "Linking $sourcePath to $targetFullPath"
 
                     # Ensure parent directory exists
                     $parentDir = Split-Path -Parent $targetFullPath
@@ -280,7 +280,7 @@ function Install-Symlinks
             }
             else
             {
-                Write-Verbose "Skipping symlink $link`: already correct"
+                Write-VerboseMessage "Skipping symlink $link`: already correct"
             }
         }
     }

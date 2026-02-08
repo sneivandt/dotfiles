@@ -153,6 +153,31 @@ function Write-DryRunMessage
     Write-LogMessage -Message $output
 }
 
+function Write-VerboseMessage
+{
+    <#
+    .SYNOPSIS
+        Write a verbose message that is always logged but only displayed when -Verbose is specified
+    .DESCRIPTION
+        This function ensures verbose messages are always written to the log file
+        while respecting the -Verbose preference for console output.
+    .PARAMETER Message
+        Verbose message to log
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]
+        $Message
+    )
+
+    # Always write to log file
+    Write-LogMessage -Message "VERBOSE: $Message"
+
+    # Only write to console if -Verbose was specified
+    Write-Verbose $Message
+}
+
 function Add-Counter
 {
     <#
@@ -320,6 +345,7 @@ Export-ModuleMember -Function @(
     'Write-ProgressMessage',
     'Write-Stage',
     'Write-DryRunMessage',
+    'Write-VerboseMessage',
     'Add-Counter',
     'Get-Counter',
     'Write-InstallationSummary'

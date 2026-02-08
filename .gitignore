@@ -28,9 +28,6 @@ __pycache__/
 # Logs
 *.log
 
-# Module testing/staging directory
-C/
-
 # SSH Keys (safety net)
 id_rsa
 id_rsa.pub

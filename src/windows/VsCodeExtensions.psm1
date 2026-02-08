@@ -44,11 +44,11 @@ function Install-VsCodeExtensions
     )
 
     $configFile = Join-Path $root "conf\vscode-extensions.ini"
-    Write-Verbose "Reading VS Code extension configuration from: conf/vscode-extensions.ini"
+    Write-VerboseMessage "Reading VS Code extension configuration from: conf/vscode-extensions.ini"
 
     if (-not (Test-Path $configFile))
     {
-        Write-Verbose "Skipping VS Code extensions: no vscode-extensions.ini found"
+        Write-VerboseMessage "Skipping VS Code extensions: no vscode-extensions.ini found"
         return
     }
 
@@ -67,34 +67,34 @@ function Install-VsCodeExtensions
 
     if ($sections.Count -eq 0)
     {
-        Write-Verbose "Skipping VS Code extensions: no sections found"
+        Write-VerboseMessage "Skipping VS Code extensions: no sections found"
         return
     }
 
-    Write-Verbose "Found $($sections.Count) section(s) in vscode-extensions.ini: $($sections -join ', ')"
+    Write-VerboseMessage "Found $($sections.Count) section(s) in vscode-extensions.ini: $($sections -join ', ')"
 
     # Collect all extensions that should be installed based on profile
     $extensionsToInstall = @()
     foreach ($section in $sections)
     {
-        Write-Verbose "Processing extensions section: [$section]"
+        Write-VerboseMessage "Processing extensions section: [$section]"
 
         # Check if this section should be included based on profile
         if (-not (Test-ShouldIncludeSection -SectionName $section -ExcludedCategories $excludedCategories))
         {
-            Write-Verbose "Skipping VS Code extensions section [$section]: profile not included"
+            Write-VerboseMessage "Skipping VS Code extensions section [$section]: profile not included"
             continue
         }
 
         # Read extensions from this section
         $sectionExtensions = Read-IniSection -FilePath $configFile -SectionName $section
-        Write-Verbose "Found $($sectionExtensions.Count) extension(s) in section [$section]"
+        Write-VerboseMessage "Found $($sectionExtensions.Count) extension(s) in section [$section]"
         $extensionsToInstall += $sectionExtensions
     }
 
     if ($extensionsToInstall.Count -eq 0)
     {
-        Write-Verbose "Skipping VS Code extensions: no extensions configured for current profile"
+        Write-VerboseMessage "Skipping VS Code extensions: no extensions configured for current profile"
         return
     }
 
@@ -103,28 +103,28 @@ function Install-VsCodeExtensions
     $extensionsToInstall = $extensionsToInstall | Select-Object -Unique
     if ($extensionsToInstall.Count -lt $originalCount)
     {
-        Write-Verbose "Removed $($originalCount - $extensionsToInstall.Count) duplicate extension(s)"
+        Write-VerboseMessage "Removed $($originalCount - $extensionsToInstall.Count) duplicate extension(s)"
     }
-    Write-Verbose "Total extensions to process: $($extensionsToInstall.Count)"
+    Write-VerboseMessage "Total extensions to process: $($extensionsToInstall.Count)"
 
     # Iterate over both stable and insiders versions of VS Code
     foreach ($code in @('code', 'code-insiders'))
     {
-        Write-Verbose "Checking for VS Code binary: $code"
+        Write-VerboseMessage "Checking for VS Code binary: $code"
 
         # Check if the code binary exists
         if (-not (Get-Command $code -ErrorAction SilentlyContinue))
         {
-            Write-Verbose "Skipping $code`: not installed"
+            Write-VerboseMessage "Skipping $code`: not installed"
             continue
         }
 
         $act = $false
 
         # Get list of currently installed extensions to avoid redundant calls
-        Write-Verbose "Retrieving list of installed extensions for $code..."
+        Write-VerboseMessage "Retrieving list of installed extensions for $code..."
         $installed = & $code --list-extensions
-        Write-Verbose "Found $($installed.Count) installed extension(s) for $code"
+        Write-VerboseMessage "Found $($installed.Count) installed extension(s) for $code"
 
         foreach ($extension in $extensionsToInstall)
         {
@@ -144,7 +144,7 @@ function Install-VsCodeExtensions
                 }
                 else
                 {
-                    Write-Verbose "Installing extension: $extension"
+                    Write-VerboseMessage "Installing extension: $extension"
                     $output = & $code --install-extension $extension 2>&1
                     if ($LASTEXITCODE -ne 0)
                     {
@@ -158,7 +158,7 @@ function Install-VsCodeExtensions
             }
             else
             {
-                Write-Verbose "Skipping $code extension $extension`: already installed"
+                Write-VerboseMessage "Skipping $code extension $extension`: already installed"
             }
         }
     }

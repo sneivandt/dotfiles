@@ -46,9 +46,9 @@ function Initialize-GitConfig
     Push-Location $Root
     try
     {
-        Write-Verbose "Checking git configuration: core.symlinks"
+        Write-VerboseMessage "Checking git configuration: core.symlinks"
         $currentSymlinks = git config --local --get core.symlinks 2>$null
-        Write-Verbose "Current core.symlinks value: $(if ($currentSymlinks) { $currentSymlinks } else { '(not set)' })"
+        Write-VerboseMessage "Current core.symlinks value: $(if ($currentSymlinks) { $currentSymlinks } else { '(not set)' })"
 
         if ($currentSymlinks -ne 'false')
         {
@@ -64,13 +64,13 @@ function Initialize-GitConfig
             }
             else
             {
-                Write-Verbose "Setting core.symlinks = false"
+                Write-VerboseMessage "Setting core.symlinks = false"
                 git config --local core.symlinks false
             }
         }
         else
         {
-            Write-Verbose "Git core.symlinks already configured"
+            Write-VerboseMessage "Git core.symlinks already configured"
         }
     }
     finally
@@ -119,11 +119,11 @@ function Update-DotfilesRepository
     # Check if this is a git repository
     if (-not (Test-Path (Join-Path $Root ".git")))
     {
-        Write-Verbose "Skipping repository update: not a git repository"
+        Write-VerboseMessage "Skipping repository update: not a git repository"
         return
     }
 
-    Write-Verbose "Checking repository status for updates..."
+    Write-VerboseMessage "Checking repository status for updates..."
 
     Push-Location $Root
     try
@@ -132,7 +132,7 @@ function Update-DotfilesRepository
         $originHead = git rev-parse --verify --quiet origin/HEAD 2>$null
         if (-not $originHead)
         {
-            Write-Verbose "Skipping repository update: origin/HEAD not found (shallow clone or detached HEAD)"
+            Write-VerboseMessage "Skipping repository update: origin/HEAD not found (shallow clone or detached HEAD)"
             return
         }
 
@@ -145,7 +145,7 @@ function Update-DotfilesRepository
 
             if ($currentBranch -ne $originBranch)
             {
-                Write-Verbose "Skipping repository update: current branch ($currentBranch) does not match origin/HEAD ($originBranch)"
+                Write-VerboseMessage "Skipping repository update: current branch ($currentBranch) does not match origin/HEAD ($originBranch)"
                 return
             }
         }
@@ -160,7 +160,7 @@ function Update-DotfilesRepository
         }
         elseif ($PSCmdlet.ShouldProcess("dotfiles repository", "Fetch updates from origin"))
         {
-            Write-Verbose "Fetching updates from origin"
+            Write-VerboseMessage "Fetching updates from origin"
             git fetch
             if ($LASTEXITCODE -ne 0)
             {
@@ -170,7 +170,7 @@ function Update-DotfilesRepository
         }
 
         # Check if local HEAD is behind origin/HEAD
-        Write-Verbose "Comparing local HEAD with origin/HEAD..."
+        Write-VerboseMessage "Comparing local HEAD with origin/HEAD..."
         $localHead = git rev-parse HEAD 2>$null
         $remoteHead = git rev-parse origin/HEAD 2>$null
 
@@ -200,12 +200,12 @@ function Update-DotfilesRepository
             $remoteHead
         }
 
-        Write-Verbose "Local HEAD: $localHeadDisplay..."
-        Write-Verbose "Remote HEAD: $remoteHeadDisplay..."
+        Write-VerboseMessage "Local HEAD: $localHeadDisplay..."
+        Write-VerboseMessage "Remote HEAD: $remoteHeadDisplay..."
 
         if ($localHead -eq $remoteHead)
         {
-            Write-Verbose "Skipping merge: HEAD is up to date with origin/HEAD"
+            Write-VerboseMessage "Skipping merge: HEAD is up to date with origin/HEAD"
             return
         }
 
@@ -213,7 +213,7 @@ function Update-DotfilesRepository
         Write-Output ":: Updating dotfiles"
 
         # Check if working tree has changes
-        Write-Verbose "Checking if working tree has changes..."
+        Write-VerboseMessage "Checking if working tree has changes..."
         $status = git status --porcelain 2>$null
         $hasChanges = ($null -ne $status -and $status.Length -gt 0)
 
@@ -222,7 +222,7 @@ function Update-DotfilesRepository
 
         if ($hasChanges)
         {
-            Write-Verbose "Working tree has changes - will stash before updating"
+            Write-VerboseMessage "Working tree has changes - will stash before updating"
 
             if ($effectiveDryRun)
             {
@@ -233,7 +233,7 @@ function Update-DotfilesRepository
                 # Create stash with timestamp for identification
                 $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
                 $stashName = "dotfiles-auto-stash-$timestamp"
-                Write-Verbose "Creating stash: $stashName"
+                Write-VerboseMessage "Creating stash: $stashName"
 
                 # Stash both staged and unstaged changes, including untracked files
                 $stashOutput = git stash push -u -m $stashName 2>&1
@@ -250,7 +250,7 @@ changes before running this script again:
                     return
                 }
                 $stashCreated = $true
-                Write-Verbose "Successfully stashed changes"
+                Write-VerboseMessage "Successfully stashed changes"
             }
         }
 
@@ -261,13 +261,13 @@ changes before running this script again:
         }
         elseif ($PSCmdlet.ShouldProcess("dotfiles repository", "Merge updates from origin/HEAD"))
         {
-            Write-Verbose "Merging updates from origin/HEAD"
+            Write-VerboseMessage "Merging updates from origin/HEAD"
             $mergeOutput = git merge origin/HEAD 2>&1
             $mergeExitCode = $LASTEXITCODE
 
             if ($mergeExitCode -ne 0)
             {
-                Write-Verbose "Git merge output: $mergeOutput"
+                Write-VerboseMessage "Git merge output: $mergeOutput"
 
                 # Merge failed - check if we need to abort
                 $inMerge = $null -ne (git rev-parse --verify MERGE_HEAD 2>$null)
@@ -309,20 +309,20 @@ Please review and resolve any conflicts manually:
                 return
             }
 
-            Write-Verbose "Successfully merged updates"
+            Write-VerboseMessage "Successfully merged updates"
 
             # Re-apply stash if we created one
             if ($stashCreated)
             {
                 if ($PSCmdlet.ShouldProcess("stashed changes", "Re-apply"))
                 {
-                    Write-Verbose "Re-applying stashed changes..."
+                    Write-VerboseMessage "Re-applying stashed changes..."
                     $popOutput = git stash pop 2>&1
                     $popExitCode = $LASTEXITCODE
 
                     if ($popExitCode -ne 0)
                     {
-                        Write-Verbose "Git stash pop output: $popOutput"
+                        Write-VerboseMessage "Git stash pop output: $popOutput"
 
                         # Stash pop failed - likely due to conflicts
                         Write-Warning @"
@@ -343,7 +343,7 @@ Or discard your local changes:
                         return
                     }
 
-                    Write-Verbose "Successfully re-applied stashed changes"
+                    Write-VerboseMessage "Successfully re-applied stashed changes"
                     Write-Output "Repository updated successfully and local changes preserved"
                 }
             }

@@ -68,8 +68,8 @@ if (-not $DryRun)
                 $scriptCommand = @"
 & '$PSCommandPath'
 Write-Host
-Write-Host 'Installation complete. Press any key to close...' -ForegroundColor Green
-`$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+Write-Host 'Installation complete. Press Enter to close...' -ForegroundColor Green
+Read-Host
 "@
 
                 $arguments = @(
@@ -123,8 +123,8 @@ Write-Host 'Installation complete. Press any key to close...' -ForegroundColor G
 
 # Windows always uses the "windows" profile
 $SelectedProfile = "windows"
-Write-Verbose "Using profile: $SelectedProfile"
 
+# Load modules first before using any custom functions
 Write-Verbose "Loading Windows modules from: src/windows/"
 foreach ($module in Get-ChildItem $PSScriptRoot\src\windows\*.psm1)
 {
@@ -137,43 +137,45 @@ foreach ($module in Get-ChildItem $PSScriptRoot\src\windows\*.psm1)
 # Initialize logging system (log file, counters)
 Initialize-Logging -Profile $SelectedProfile
 
+Write-VerboseMessage "Using profile: $SelectedProfile"
+
 if ($DryRun)
 {
     Write-Stage -Message "DRY-RUN MODE: No system modifications will be made"
 }
 
 # Get excluded categories for this profile
-Write-Verbose "Resolving excluded categories for profile: $SelectedProfile"
+Write-VerboseMessage "Resolving excluded categories for profile: $SelectedProfile"
 $excluded = Get-ProfileExclusion -Root $PSScriptRoot -ProfileName $SelectedProfile
-Write-Verbose "Excluded categories: $(if ($excluded) { $excluded } else { '(none)' })"
+Write-VerboseMessage "Excluded categories: $(if ($excluded) { $excluded } else { '(none)' })"
 
-Write-Verbose "Starting installation sequence..."
+Write-VerboseMessage "Starting installation sequence..."
 
-Write-Verbose "[1/8] Initializing Git configuration..."
+Write-VerboseMessage "[1/8] Initializing Git configuration..."
 Initialize-GitConfig -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-Write-Verbose "[2/8] Checking for repository updates..."
+Write-VerboseMessage "[2/8] Checking for repository updates..."
 Update-DotfilesRepository -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-Write-Verbose "[3/8] Installing repository git hooks..."
+Write-VerboseMessage "[3/8] Installing repository git hooks..."
 Install-RepositoryGitHooks -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-Write-Verbose "[4/8] Installing Dotfiles PowerShell module..."
+Write-VerboseMessage "[4/8] Installing Dotfiles PowerShell module..."
 Install-DotfilesModule -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-Write-Verbose "[5/8] Installing packages..."
+Write-VerboseMessage "[5/8] Installing packages..."
 Install-Packages -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-Write-Verbose "[6/8] Syncing registry settings..."
+Write-VerboseMessage "[6/8] Syncing registry settings..."
 Sync-Registry -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-Write-Verbose "[7/8] Installing symlinks..."
+Write-VerboseMessage "[7/8] Installing symlinks..."
 Install-Symlinks -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-Write-Verbose "[8/8] Installing VS Code extensions..."
+Write-VerboseMessage "[8/8] Installing VS Code extensions..."
 Install-VsCodeExtensions -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-Write-Verbose "Installation sequence complete!"
+Write-VerboseMessage "Installation sequence complete!"
 
 # Display summary of operations
 Write-InstallationSummary -DryRun:$DryRun

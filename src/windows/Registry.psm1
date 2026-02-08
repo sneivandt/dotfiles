@@ -214,11 +214,11 @@ function Sync-Registry
     )
 
     $configFile = Join-Path $root "conf\registry.ini"
-    Write-Verbose "Reading registry configuration from: conf/registry.ini"
+    Write-VerboseMessage "Reading registry configuration from: conf/registry.ini"
 
     if (-not (Test-Path $configFile))
     {
-        Write-Verbose "Skipping registry: no registry.ini found"
+        Write-VerboseMessage "Skipping registry: no registry.ini found"
         return
     }
 
@@ -229,7 +229,7 @@ function Sync-Registry
 
     # Read registry configuration from .ini file
     # Format: Sections are registry paths, entries are name = value
-    Write-Verbose "Parsing registry.ini file..."
+    Write-VerboseMessage "Parsing registry.ini file..."
     $content = Get-Content $configFile
     $currentPath = $null
     $registryEntries = @()
@@ -278,7 +278,7 @@ function Sync-Registry
         }
     }
 
-    Write-Verbose "Found $($registryEntries.Count) registry value(s) across $($registryEntries | Select-Object -ExpandProperty Path -Unique | Measure-Object | Select-Object -ExpandProperty Count) key(s)"
+    Write-VerboseMessage "Found $($registryEntries.Count) registry value(s) across $($registryEntries | Select-Object -ExpandProperty Path -Unique | Measure-Object | Select-Object -ExpandProperty Count) key(s)"
 
     # Group entries by registry path for batch reading
     # This significantly improves performance by reading all values from each key at once
@@ -288,7 +288,7 @@ function Sync-Registry
     {
         $registryPath = $pathGroup.Name
         $entries = $pathGroup.Group
-        Write-Verbose "Processing registry key: $registryPath ($($entries.Count) value(s))"
+        Write-VerboseMessage "Processing registry key: $registryPath ($($entries.Count) value(s))"
 
         # Batch read all current values for this registry path
         # This is much faster than individual Get-RegistryValue calls for each entry
@@ -395,7 +395,7 @@ function Set-RegistryValue
         }
         elseif ($PSCmdlet.ShouldProcess($Path, "Create registry path"))
         {
-            Write-Verbose "Creating registry path: $Path"
+            Write-VerboseMessage "Creating registry path: $Path"
             try
             {
                 New-RegistryPath -Path $Path
@@ -424,7 +424,7 @@ function Set-RegistryValue
     # In dry-run mode, path might not exist yet
     if (-not (Test-RegistryPath -Path $Path))
     {
-        Write-Verbose "Registry path $Path does not exist (will be created)"
+        Write-VerboseMessage "Registry path $Path does not exist (will be created)"
         $valueExists = $false
     }
     elseif ($null -ne $CurrentValues)
@@ -437,7 +437,7 @@ function Set-RegistryValue
         }
         else
         {
-            Write-Verbose "Registry value $Name does not exist in $Path"
+            Write-VerboseMessage "Registry value $Name does not exist in $Path"
         }
     }
     else
@@ -449,7 +449,7 @@ function Set-RegistryValue
             $valueExists = $null -ne $currentValue
             if (-not $valueExists)
             {
-                Write-Verbose "Registry value $Name does not exist in $Path"
+                Write-VerboseMessage "Registry value $Name does not exist in $Path"
             }
         }
         catch
@@ -481,7 +481,7 @@ function Set-RegistryValue
         # Detect corrupted values (e.g., "0x00200078 # comment") and mark for update
         if ($currentValue -is [string] -and $currentValue.Contains('#'))
         {
-            Write-Verbose "Detected corrupted registry value (contains comment): $Name = $currentValue"
+            Write-VerboseMessage "Detected corrupted registry value (contains comment): $Name = $currentValue"
             $needsUpdate = $true
         }
         else
@@ -540,7 +540,7 @@ function Set-RegistryValue
             catch
             {
                 # Conversion failed - likely corrupted value, mark for update
-                Write-Verbose "Failed to convert registry value for comparison (likely corrupted): $Name = $currentValue - $_"
+                Write-VerboseMessage "Failed to convert registry value for comparison (likely corrupted): $Name = $currentValue - $_"
                 $needsUpdate = $true
             }
         }
@@ -566,7 +566,7 @@ function Set-RegistryValue
         }
         elseif ($PSCmdlet.ShouldProcess("$Path\$Name", "Set registry value to $Value"))
         {
-            Write-Verbose "Setting registry value: $Path $Name = $Value"
+            Write-VerboseMessage "Setting registry value: $Path $Name = $Value"
             # Convert numeric strings and hex values to integers for proper registry type
             $finalValue = if ($Value -match '^0x([0-9a-fA-F]+)$')
             {
@@ -587,6 +587,6 @@ function Set-RegistryValue
     }
     else
     {
-        Write-Verbose "Skipping registry value $Name in $Path`: already correct"
+        Write-VerboseMessage "Skipping registry value $Name in $Path`: already correct"
     }
 }

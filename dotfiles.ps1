@@ -68,7 +68,7 @@ if (-not $DryRun)
                 $arguments = @(
                     '-NoProfile',
                     '-ExecutionPolicy', 'Bypass',
-                    '-File', "`"$PSCommandPath`""
+                    '-File', $PSCommandPath
                 )
 
                 # Preserve -Verbose flag

@@ -420,8 +420,8 @@ install_paru()
   fi
 
   # Check prerequisites
-  if ! is_program_installed "git" || ! is_program_installed "makepkg"; then
-    log_verbose "Skipping paru installation: git or makepkg not installed"
+  if ! is_program_installed "git" || ! is_program_installed "makepkg" || ! is_program_installed "cargo"; then
+    log_verbose "Skipping paru installation: git, makepkg, or cargo not installed"
     return
   fi
 
@@ -435,11 +435,11 @@ install_paru()
   # Create temp directory and set up cleanup trap
   tmp_dir="$(mktemp -d)"
   trap 'rm -rf "$tmp_dir"' EXIT
-  log_verbose "Cloning paru-bin to $tmp_dir"
+  log_verbose "Cloning paru-git to $tmp_dir"
 
   # Use a subshell to ensure we return to original directory
   (
-    git clone https://aur.archlinux.org/paru-bin.git "$tmp_dir"
+    git clone https://aur.archlinux.org/paru-git.git "$tmp_dir"
     cd "$tmp_dir"
     log_verbose "Building paru..."
     makepkg -si --noconfirm

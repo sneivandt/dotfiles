@@ -31,7 +31,7 @@ set -o nounset
 # test_paru_prerequisites
 #
 # Verify that prerequisites for paru installation are met.
-# Paru-bin requires git and makepkg to install the pre-compiled binary from AUR.
+# Paru requires git, makepkg, and cargo to build from source.
 #
 # Returns:
 #   0 if all prerequisites are installed
@@ -41,7 +41,7 @@ test_paru_prerequisites()
   log_stage "Testing paru prerequisites"
 
   local missing_count=0
-  local prerequisites="git makepkg"
+  local prerequisites="git makepkg cargo"
 
   for prereq in $prerequisites; do
     if is_program_installed "$prereq"; then
@@ -142,8 +142,6 @@ test_paru_available()
   # Test 1: Check paru version
   if ! paru --version >/dev/null 2>&1; then
     printf "%sERROR: Cannot run paru --version%s\n" "${RED}" "${NC}" >&2
-    # Show the actual error for debugging
-    paru --version 2>&1 || true
     return 1
   fi
 

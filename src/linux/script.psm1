@@ -48,6 +48,7 @@
             if ($DryRun)
             {
                 Write-Output "DRY-RUN: Would install module: $module"
+                $installed_count++
             }
             else
             {

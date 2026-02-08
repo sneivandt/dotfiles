@@ -194,6 +194,9 @@ function Install-DotfilesModule
         Write-Output "DRY-RUN: Would install Dotfiles module to: $targetModuleDir"
         Write-Output "DRY-RUN: Would copy files: $($filesToCopy -join ', ')"
         Write-Output "DRY-RUN: Would copy directories: $($dirsToCopy -join ', ')"
+
+        # Track installation for summary (in dry-run mode)
+        Add-Counter -CounterName "modules_installed"
     }
     else
     {
@@ -257,6 +260,9 @@ function Install-DotfilesModule
         Write-Output ""
         Write-Output "To reload the module in the current session, run:"
         Write-Output "  Import-Module Dotfiles -Force"
+
+        # Track installation for summary
+        Add-Counter -CounterName "modules_installed"
     }
 }
 

@@ -254,6 +254,61 @@ git pull
 
 Note: Manual `git pull` may require stashing your changes first if the working tree is dirty.
 
+## Logging and Summary
+
+The dotfiles installation includes a comprehensive logging system that tracks all operations and provides detailed summaries.
+
+### Log File Location
+
+All installation operations are logged to: `%LOCALAPPDATA%\dotfiles\install.log`
+
+This persistent log file includes:
+- Timestamp of installation
+- Selected profile
+- All operations performed
+- Verbose details (even when not displayed on console)
+- Summary statistics
+
+The log file is useful for troubleshooting installation issues or reviewing what changes were made.
+
+### Operation Counters
+
+The installation tracks various operations and displays a summary at the end:
+
+- **Packages installed**: Number of winget packages installed
+- **PowerShell modules installed**: Number of times the Dotfiles module was installed/updated
+- **Symlinks created**: Number of symlinks created in user profile
+- **VS Code extensions installed**: Number of extensions installed
+- **Registry keys set**: Number of registry values modified
+
+### Dry-Run Mode
+
+When using `-DryRun`, the logging system:
+- Shows what would be done without making changes
+- Tracks counters for operations that would be performed
+- Labels summary with "(would be)" suffix
+- Still writes to the log file for review
+
+Example summary output:
+```
+:: Installation Summary
+   Packages installed: 3
+   PowerShell modules installed: 1
+   Symlinks created: 5
+   VS Code extensions installed: 2
+   Registry keys set: 12
+   Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
+```
+
+In dry-run mode:
+```
+:: Installation Summary
+   Packages installed (would be): 3
+   PowerShell modules installed (would be): 1
+   Symlinks created (would be): 5
+   Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
+```
+
 ## Troubleshooting
 
 | Symptom | Check |

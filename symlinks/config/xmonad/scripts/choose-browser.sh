@@ -6,39 +6,38 @@ for browser in chromium-dev chromium
 do
   if command -v "$browser" >/dev/null 2>&1
   then
-    browser="$browser --enable-features=OverlayScrollbar"
     if [ -z "${1:-}" ]
     then
-      $browser
+      "$browser" --enable-features=OverlayScrollbar
     else
       case $(echo "$@" | tr '[:upper:]' '[:lower:]') in
         "prime video")
-          $browser --app="https://amazon.com/video"
+          "$browser" --enable-features=OverlayScrollbar --app="https://amazon.com/video"
           ;;
         "chatgpt")
-          $browser --app="https://chat.openai.com"
+          "$browser" --enable-features=OverlayScrollbar --app="https://chat.openai.com"
           ;;
         "lichess")
-          $browser --app="https://lichess.org"
+          "$browser" --enable-features=OverlayScrollbar --app="https://lichess.org"
           ;;
         "netflix")
-          $browser --app="https://netflix.com"
+          "$browser" --enable-features=OverlayScrollbar --app="https://netflix.com"
           ;;
         "youtube")
-          $browser --app="http://youtube.com/"
+          "$browser" --enable-features=OverlayScrollbar --app="http://youtube.com/"
           ;;
         "<iframe "*)
           browser_url=$(echo "$*" | sed -n 's/.* src="\([^" '\'' ]*\)".*/\1/p')
-          $browser --app="$browser_url"
+          "$browser" --enable-features=OverlayScrollbar --app="$browser_url"
           ;;
         "file://"*)
-          $browser --app="$*"
+          "$browser" --enable-features=OverlayScrollbar --app="$*"
           ;;
         "https://"*)
-          $browser --app="$*"
+          "$browser" --enable-features=OverlayScrollbar --app="$*"
           ;;
         *)
-          $browser --app="https://$*"
+          "$browser" --enable-features=OverlayScrollbar --app="https://$*"
           ;;
       esac
     fi

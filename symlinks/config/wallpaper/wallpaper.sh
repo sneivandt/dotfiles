@@ -14,6 +14,7 @@ else
 fi
 
 tmpfile="$(mktemp)"
+trap 'rm -f "$tmpfile"' EXIT
 query="abstract+shapes+dark"
 
 # Exclude people and text explicitly in the query to be safe
@@ -29,6 +30,6 @@ url=$(echo "$response" | jq -r '.data as $d | ($d | map(select(.favorites >= 100
 if [ -n "$url" ] && [ "$url" != "null" ]; then
   if curl -sfSL "$url" > "$tmpfile" && [ -s "$tmpfile" ]; then
     mv "$tmpfile" "${XDG_CACHE_HOME:-$HOME/.cache}"/wallpaper
-    feh --bg-fill --no-fehbg < "${XDG_CACHE_HOME:-$HOME/.cache}"/wallpaper
+    feh --bg-fill --no-fehbg "${XDG_CACHE_HOME:-$HOME/.cache}"/wallpaper
   fi
 fi

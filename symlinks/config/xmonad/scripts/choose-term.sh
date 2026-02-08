@@ -8,9 +8,9 @@ do
   then
     if [ "${1:-}" = "--class" ] && { [ "$terminal" = "urxvt" ] || [ "$terminal" = "xterm" ] || [ "$terminal" = "uxterm" ] || [ "$terminal" = "urxvt256c" ]; }; then
         shift
-        exec $terminal -name "$@"
+        exec "$terminal" -name "$@"
     else
-        exec $terminal "$@"
+        exec "$terminal" "$@"
     fi
   fi
 done

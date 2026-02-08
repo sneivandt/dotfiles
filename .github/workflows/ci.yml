@@ -192,6 +192,7 @@ jobs:
       - name: Install prerequisites in Arch container
         run: |
           pacman -Sy --noconfirm
+          pacman -S --noconfirm --needed pacman
           pacman -S --noconfirm base-devel git sudo
 
       - name: Create test user (paru cannot run as root)

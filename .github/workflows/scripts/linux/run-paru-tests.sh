@@ -24,9 +24,7 @@ REPO_DIR="$1"
 cd "$REPO_DIR"
 DIR="$REPO_DIR"
 export DIR
-# Enable verbose mode for debugging
-OPT="-v"
-export OPT
+export OPT=""
 
 . ./src/linux/logger.sh
 . ./src/linux/utils.sh

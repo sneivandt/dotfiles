@@ -181,7 +181,7 @@ jobs:
 
   # Test paru (AUR helper) installation and functionality
   test-paru:
-    name: Test Paru (Arch Linux)
+    name: Test Paru Installation
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
@@ -200,71 +200,11 @@ jobs:
           echo "testuser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           chown -R testuser:testuser .
 
-      - name: Test paru prerequisites
+      - name: Run paru tests
         run: |
           REPO_DIR=$(pwd)
-          su testuser -c "cd $REPO_DIR && \
-            DIR=\"$REPO_DIR\" && export DIR && \
-            export OPT=\"\" && \
-            . ./src/linux/logger.sh && \
-            . ./src/linux/utils.sh && \
-            . ./.github/workflows/scripts/linux/test-paru.sh && \
-            test_paru_prerequisites"
-
-      - name: Test paru installation
-        run: |
-          REPO_DIR=$(pwd)
-          su testuser -c "cd $REPO_DIR && \
-            DIR=\"$REPO_DIR\" && export DIR && \
-            export OPT=\"\" && \
-            . ./src/linux/logger.sh && \
-            . ./src/linux/utils.sh && \
-            . ./.github/workflows/scripts/linux/test-paru.sh && \
-            test_paru_install"
-
-      - name: Test paru availability
-        run: |
-          REPO_DIR=$(pwd)
-          su testuser -c "cd $REPO_DIR && \
-            DIR=\"$REPO_DIR\" && export DIR && \
-            export OPT=\"\" && \
-            . ./src/linux/logger.sh && \
-            . ./src/linux/utils.sh && \
-            . ./.github/workflows/scripts/linux/test-paru.sh && \
-            test_paru_available"
-
-      - name: Test AUR package functionality (dry-run)
-        run: |
-          REPO_DIR=$(pwd)
-          su testuser -c "cd $REPO_DIR && \
-            DIR=\"$REPO_DIR\" && export DIR && \
-            export OPT=\"\" && \
-            . ./src/linux/logger.sh && \
-            . ./src/linux/utils.sh && \
-            . ./.github/workflows/scripts/linux/test-paru.sh && \
-            test_aur_packages"
-
-      - name: Test paru configuration
-        run: |
-          REPO_DIR=$(pwd)
-          su testuser -c "cd $REPO_DIR && \
-            DIR=\"$REPO_DIR\" && export DIR && \
-            export OPT=\"\" && \
-            . ./src/linux/logger.sh && \
-            . ./src/linux/utils.sh && \
-            . ./.github/workflows/scripts/linux/test-paru.sh && \
-            test_paru_config"
-
-      - name: Test paru idempotency
-        run: |
-          REPO_DIR=$(pwd)
-          su testuser -c "cd $REPO_DIR && \
-            DIR=\"$REPO_DIR\" && export DIR && \
-            export OPT=\"\" && \
-            . ./src/linux/logger.sh && \
-            . ./src/linux/utils.sh && \
-            . ./.github/workflows/scripts/linux/test-paru.sh && \
-            test_paru_idempotency"
+          chmod +x ./.github/workflows/scripts/linux/run-paru-tests.sh
+          su - testuser -c "cd \"$REPO_DIR\" && ./.github/workflows/scripts/linux/run-paru-tests.sh \"$REPO_DIR\""
 
   # Test Windows profile
   test-windows:

@@ -92,6 +92,11 @@ test_paru_install()
   PROFILE="arch"
   export PROFILE
 
+  # Set EXCLUDED_CATEGORIES for arch profile (empty = include all)
+  # For arch profile, we exclude: windows (since this is Linux)
+  EXCLUDED_CATEGORIES="windows"
+  export EXCLUDED_CATEGORIES
+
   # Clear dry-run flag if set (we need actual installation for this test)
   OPT=""
   export OPT
@@ -208,6 +213,10 @@ test_aur_packages()
   PROFILE="arch"
   export PROFILE
 
+  # Set EXCLUDED_CATEGORIES for arch profile
+  EXCLUDED_CATEGORIES="windows"
+  export EXCLUDED_CATEGORIES
+
   # Use dry-run mode to avoid actually installing packages in CI
   # (unless explicitly disabled for real testing)
   if [ "${TEST_PARU_REAL_INSTALL:-0}" = "1" ]; then
@@ -308,6 +317,11 @@ test_paru_idempotency()
   # Set required environment variables
   PROFILE="arch"
   export PROFILE
+
+  # Set EXCLUDED_CATEGORIES for arch profile
+  EXCLUDED_CATEGORIES="windows"
+  export EXCLUDED_CATEGORIES
+
   OPT=""
   export OPT
 

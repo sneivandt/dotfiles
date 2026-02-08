@@ -6,7 +6,8 @@
     for the dotfiles installation process on Windows. Supports persistent
     log files and operation counting for summary reporting.
 .NOTES
-    All logging output is mirrored to a persistent log file for troubleshooting.
+    Logging output written through this module's helper functions is mirrored
+    to a persistent log file for troubleshooting.
 #>
 
 # Module-level variables for log file location
@@ -231,7 +232,6 @@ function Write-InstallationSummary
     # Get counter values
     $packagesInstalled = Get-Counter -CounterName "packages_installed"
     $symlinksCreated = Get-Counter -CounterName "symlinks_created"
-    $symlinksRemoved = Get-Counter -CounterName "symlinks_removed"
     $vscodeExtensionsInstalled = Get-Counter -CounterName "vscode_extensions_installed"
     $registryKeysSet = Get-Counter -CounterName "registry_keys_set"
 
@@ -247,12 +247,6 @@ function Write-InstallationSummary
     if ($symlinksCreated -gt 0)
     {
         Write-Output "   Symlinks created: $symlinksCreated"
-        $hasChanges = $true
-    }
-
-    if ($symlinksRemoved -gt 0)
-    {
-        Write-Output "   Symlinks removed: $symlinksRemoved"
         $hasChanges = $true
     }
 
@@ -294,10 +288,6 @@ function Write-InstallationSummary
         if ($symlinksCreated -gt 0)
         {
             Write-LogMessage -Message "   Symlinks created: $symlinksCreated"
-        }
-        if ($symlinksRemoved -gt 0)
-        {
-            Write-LogMessage -Message "   Symlinks removed: $symlinksRemoved"
         }
         if ($vscodeExtensionsInstalled -gt 0)
         {

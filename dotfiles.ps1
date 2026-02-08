@@ -131,13 +131,13 @@ foreach ($module in Get-ChildItem $PSScriptRoot\src\windows\*.psm1)
     Import-Module $module.FullName -Force
 }
 
-if ($DryRun)
-{
-    Write-Output ":: DRY-RUN MODE: No system modifications will be made"
-}
-
 # Initialize logging system (log file, counters)
 Initialize-Logging -Profile $SelectedProfile
+
+if ($DryRun)
+{
+    Write-Stage -Message "DRY-RUN MODE: No system modifications will be made"
+}
 
 # Get excluded categories for this profile
 Write-Verbose "Resolving excluded categories for profile: $SelectedProfile"

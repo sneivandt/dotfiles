@@ -13,8 +13,9 @@ set -o nounset
 #   * log_error exits immediately (caller usually aborts entire run).
 #   * log_stage prints only once per conceptual stage even if called multiple
 #     times (suppresses redundant noise) by leveraging a private _work flag.
-#   * All output is mirrored to a persistent log file for troubleshooting.
-#   * Counters track operations for summary reporting.
+#   * Output written through log_* helpers is mirrored to a persistent log
+#     file for troubleshooting. Direct command output must be explicitly logged.
+#   * Counters track operations for summary reporting (only in non-dry-run mode).
 #
 # Expected Environment Variables:
 #   FILE  Test file name (used by log_fail, set by test harness)
@@ -85,7 +86,8 @@ _log_to_file()
 {
   if [ -n "${DOTFILES_LOG_FILE:-}" ] && [ -f "$DOTFILES_LOG_FILE" ]; then
     # Strip ANSI color codes and write to file
-    echo "$*" | sed 's/\x1b\[[0-9;]*m//g' >> "$DOTFILES_LOG_FILE" 2>/dev/null || true
+    # Use \033 instead of \x1b for better POSIX portability
+    echo "$*" | sed 's/\033\[[0-9;]*m//g' >> "$DOTFILES_LOG_FILE" 2>/dev/null || true
   fi
 }
 
@@ -150,7 +152,7 @@ log_summary()
   local vscode_extensions_installed="$(get_counter "vscode_extensions_installed")"
   local powershell_modules_installed="$(get_counter "powershell_modules_installed")"
   local systemd_units_enabled="$(get_counter "systemd_units_enabled")"
-  local fonts_installed="$(get_counter "fonts_installed")"
+  local fonts_cache_updated="$(get_counter "fonts_cache_updated")"
   local chmod_applied="$(get_counter "chmod_applied")"
   local symlinks_removed="$(get_counter "symlinks_removed")"
 
@@ -185,8 +187,8 @@ log_summary()
     summary="${summary}   Systemd units enabled: $systemd_units_enabled\n"
   fi
 
-  if [ "$fonts_installed" -gt 0 ]; then
-    summary="${summary}   Fonts installed: $fonts_installed\n"
+  if [ "$fonts_cache_updated" -gt 0 ]; then
+    summary="${summary}   Font cache updated: $fonts_cache_updated times\n"
   fi
 
   if [ "$chmod_applied" -gt 0 ]; then

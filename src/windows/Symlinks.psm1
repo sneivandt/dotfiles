@@ -232,7 +232,6 @@ function Install-Symlinks
                         Write-DryRunMessage -Message "Would remove existing: $targetFullPath"
                     }
                     Write-DryRunMessage -Message "Would create symlink: $targetFullPath -> $sourcePath"
-                    Increment-Counter -CounterName "symlinks_created"
                 }
                 else
                 {

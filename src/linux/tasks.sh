@@ -113,7 +113,6 @@ configure_file_mode_bits()
       fi
       if is_dry_run; then
         log_dry_run "Would set mode $mode on $target"
-        increment_counter "chmod_applied"
       else
         log_verbose "Setting mode $mode on $target"
         # Note: -R flag applies mode recursively to ALL files/directories
@@ -175,11 +174,10 @@ configure_fonts()
   log_stage "Updating fonts"
   if is_dry_run; then
     log_dry_run "Would run fc-cache to update font cache"
-    increment_counter "fonts_installed"
   else
     log_verbose "Running fc-cache to update font cache"
     fc-cache
-    increment_counter "fonts_installed"
+    increment_counter "fonts_cache_updated"
   fi
 )}
 
@@ -304,7 +302,6 @@ configure_systemd()
           if [ "$(systemctl is-system-running)" = "running" ]; then
             log_dry_run "Would start systemd unit: $unit"
           fi
-          increment_counter "systemd_units_enabled"
         else
           log_verbose "Enabling systemd unit: $unit"
           systemctl --user enable "$unit"
@@ -382,24 +379,22 @@ install_aur_packages()
       if is_dry_run; then
         log_stage "Installing AUR packages"
         log_dry_run "Would install AUR packages: $packages"
-        # Count packages for summary
-        for pkg in $packages; do
-          increment_counter "aur_packages_installed"
-        done
       else
         log_verbose "Checking if AUR packages need installation: $packages"
         # paru handles sudo internally, do not use sudo here
         # shellcheck disable=SC2086  # Word splitting intentional: $packages is space-separated list
-        output=$(paru -S --needed --noconfirm $packages 2>&1 | grep -v "is up to date -- skipping" || true)
-        if [ -n "$output" ]; then
+        if paru -S --needed --noconfirm $packages 2>&1; then
           log_stage "Installing AUR packages"
-          echo "$output"
-          # Count installed AUR packages
-          for pkg in $packages; do
-            if echo "$output" | grep -q "$pkg"; then
-              increment_counter "aur_packages_installed"
-            fi
+          # Count packages that were in the install list (they needed installation)
+          # Use echo and wc to count words without creating unused variables
+          package_count=$(echo "$packages" | wc -w)
+          count=0
+          while [ "$count" -lt "$package_count" ]; do
+            increment_counter "aur_packages_installed"
+            count=$((count + 1))
           done
+        else
+          log_verbose "Warning: Some AUR packages may have failed to install"
         fi
       fi
     fi
@@ -540,23 +535,21 @@ install_packages()
       if is_dry_run; then
         log_stage "Installing packages"
         log_dry_run "Would install packages: $packages"
-        # Count packages for summary
-        for pkg in $packages; do
-          increment_counter "packages_installed"
-        done
       else
         log_verbose "Checking if packages need installation: $packages"
         # shellcheck disable=SC2086  # Word splitting intentional: $packages is space-separated list
-        output=$(sudo pacman -S --quiet --needed --noconfirm $packages 2>&1 | grep -v "is up to date -- skipping" || true)
-        if [ -n "$output" ]; then
+        if sudo pacman -S --quiet --needed --noconfirm $packages 2>&1; then
           log_stage "Installing packages"
-          echo "$output"
-          # Count installed packages
-          for pkg in $packages; do
-            if echo "$output" | grep -q "$pkg"; then
-              increment_counter "packages_installed"
-            fi
+          # Count packages that were in the install list (they needed installation)
+          # Use echo and wc to count words without creating unused variables
+          package_count=$(echo "$packages" | wc -w)
+          count=0
+          while [ "$count" -lt "$package_count" ]; do
+            increment_counter "packages_installed"
+            count=$((count + 1))
           done
+        else
+          log_verbose "Warning: Some packages may have failed to install"
         fi
       fi
     fi
@@ -648,7 +641,6 @@ install_symlinks()
             log_dry_run "Would remove existing: $HOME/.$symlink"
           fi
           log_dry_run "Would link $DIR/symlinks/$symlink to $HOME/.$symlink"
-          increment_counter "symlinks_created"
         else
           log_verbose "Linking $DIR/symlinks/$symlink to $HOME/.$symlink"
           # Ensure parent directory exists
@@ -728,7 +720,6 @@ install_vscode_extensions()
       do
         if is_dry_run; then
           log_dry_run "Would install extension: $extension"
-          increment_counter "vscode_extensions_installed"
         else
           log_verbose "Installing extension: $extension"
           $code --install-extension "$extension"
@@ -813,7 +804,6 @@ uninstall_symlinks()
       if is_symlink_installed "$symlink"; then
         if is_dry_run; then
           log_dry_run "Would remove symlink: $HOME/.$symlink"
-          increment_counter "symlinks_removed"
         else
           log_verbose "Removing symlink: $HOME/.$symlink"
           # Remove the symlink

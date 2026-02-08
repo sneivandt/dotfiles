@@ -71,13 +71,6 @@ if (-not $DryRun)
                     '-File', $PSCommandPath
                 )
 
-                # Preserve -DryRun flag (currently always false in this code path,
-                # but preserved for consistency and future-proofing)
-                if ($DryRun)
-                {
-                    $arguments += '-DryRun'
-                }
-
                 # Preserve -Verbose flag
                 if ($VerbosePreference -eq 'Continue')
                 {
@@ -91,10 +84,23 @@ if (-not $DryRun)
                     # Return the exit code from the elevated process
                     exit $process.ExitCode
                 }
+                catch [System.ComponentModel.Win32Exception]
+                {
+                    # UAC was cancelled (ERROR_CANCELLED = 1223) or access denied
+                    if ($_.Exception.NativeErrorCode -eq 1223)
+                    {
+                        Write-Error "UAC elevation was cancelled by user. Administrator privileges are required to modify registry settings and create symlinks. Please run as administrator or use -DryRun to preview changes."
+                    }
+                    else
+                    {
+                        Write-Error "Failed to elevate: $($_.Exception.Message)"
+                    }
+                    exit 1
+                }
                 catch
                 {
-                    # User cancelled UAC prompt or elevation failed
-                    Write-Error "Elevation was cancelled or failed. Administrator privileges are required to modify registry settings and create symlinks. Please run as administrator or use -DryRun to preview changes."
+                    # Other unexpected errors (e.g., PowerShell executable not found)
+                    Write-Error "Failed to start elevated process: $($_.Exception.Message)"
                     exit 1
                 }
             }

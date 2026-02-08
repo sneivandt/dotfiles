@@ -1,5 +1,5 @@
 #!/bin/sh
-# shellcheck disable=SC3043,SC2154  # 'local' is widely supported; color variables sourced from logger.sh
+# shellcheck disable=SC3043,SC2154,SC2030,SC2031  # 'local' is widely supported; color variables sourced from logger.sh; subshell variable modifications are intentional
 set -o errexit
 set -o nounset
 

@@ -206,20 +206,24 @@ function Install-Symlinks
                     {
                         $currentTarget = $currentTarget[0]
                     }
-                    # Handle relative paths by resolving from the symlink's directory
-                    if (-not [System.IO.Path]::IsPathRooted($currentTarget))
+                    # Validate target before resolving
+                    if (-not [string]::IsNullOrWhiteSpace($currentTarget))
                     {
-                        $linkDir = Split-Path -Parent $targetFullPath
-                        $resolvedCurrent = [System.IO.Path]::GetFullPath((Join-Path $linkDir $currentTarget))
-                    }
-                    else
-                    {
-                        $resolvedCurrent = [System.IO.Path]::GetFullPath($currentTarget)
-                    }
-                    $resolvedSource = [System.IO.Path]::GetFullPath($sourcePath)
-                    if ($resolvedCurrent -eq $resolvedSource)
-                    {
-                        $isCorrectLink = $true
+                        # Handle relative paths by resolving from the symlink's directory
+                        if (-not [System.IO.Path]::IsPathRooted($currentTarget))
+                        {
+                            $linkDir = Split-Path -Parent $targetFullPath
+                            $resolvedCurrent = [System.IO.Path]::GetFullPath((Join-Path $linkDir $currentTarget))
+                        }
+                        else
+                        {
+                            $resolvedCurrent = [System.IO.Path]::GetFullPath($currentTarget)
+                        }
+                        $resolvedSource = [System.IO.Path]::GetFullPath($sourcePath)
+                        if ($resolvedCurrent -eq $resolvedSource)
+                        {
+                            $isCorrectLink = $true
+                        }
                     }
                 }
             }

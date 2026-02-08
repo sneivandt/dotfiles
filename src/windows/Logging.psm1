@@ -84,7 +84,7 @@ function Write-LogMessage
     }
 }
 
-function Write-Progress
+function Write-ProgressMessage
 {
     <#
     .SYNOPSIS
@@ -161,6 +161,7 @@ function Increment-Counter
     .PARAMETER CounterName
         Counter name (e.g., "packages_installed", "symlinks_created")
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseApprovedVerbs', '', Justification = 'Increment is clear and appropriate for counter operations')]
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]
@@ -316,7 +317,7 @@ function Write-InstallationSummary
 # Export only the public functions
 Export-ModuleMember -Function @(
     'Initialize-Logging',
-    'Write-Progress',
+    'Write-ProgressMessage',
     'Write-Stage',
     'Write-DryRunMessage',
     'Increment-Counter',

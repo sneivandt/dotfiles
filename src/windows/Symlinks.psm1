@@ -83,7 +83,7 @@ function Install-Symlinks
         return
     }
 
-    Write-Progress -Message "Checking symlinks..."
+    Write-ProgressMessage -Message "Checking symlinks..."
 
     # Get list of sections from symlinks.ini
     $content = Get-Content $configFile

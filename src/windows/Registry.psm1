@@ -222,7 +222,7 @@ function Sync-Registry
         return
     }
 
-    Write-Progress -Message "Checking registry settings..."
+    Write-ProgressMessage -Message "Checking registry settings..."
 
     # Use script scope for $act so Set-RegistryValue helper can modify it
     $script:act = $false

@@ -52,7 +52,7 @@ function Install-VsCodeExtensions
         return
     }
 
-    Write-Progress -Message "Checking VS Code extensions..."
+    Write-ProgressMessage -Message "Checking VS Code extensions..."
 
     # Get all sections from the config file
     $content = Get-Content $configFile

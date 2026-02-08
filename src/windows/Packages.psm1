@@ -230,7 +230,7 @@ function Install-Packages
         return
     }
 
-    Write-Progress -Message "Checking packages..."
+    Write-ProgressMessage -Message "Checking packages..."
     Write-Verbose "Processing packages from: conf/packages.ini"
 
     # Get all sections from packages.ini

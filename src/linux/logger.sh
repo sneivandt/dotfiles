@@ -95,6 +95,7 @@ _log_to_file()
 #
 # Args:
 #   $1 counter name (e.g., "packages_installed", "symlinks_created")
+# shellcheck disable=SC3043  # 'local' is widely supported even if not strictly POSIX
 increment_counter()
 {
   local counter_name="$1"
@@ -119,6 +120,7 @@ increment_counter()
 #
 # Returns:
 #   Counter value (0 if counter doesn't exist)
+# shellcheck disable=SC3043  # 'local' is widely supported even if not strictly POSIX
 get_counter()
 {
   local counter_name="$1"
@@ -135,6 +137,8 @@ get_counter()
 #
 # Print a summary of all operations performed during install/uninstall.
 # Should be called at the end of install/uninstall operations.
+# shellcheck disable=SC3043  # 'local' is widely supported even if not strictly POSIX
+# shellcheck disable=SC2155  # get_counter always succeeds and returns 0 on error
 log_summary()
 {
   # shellcheck disable=SC2059  # BLUE and NC are controlled color codes

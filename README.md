@@ -195,7 +195,7 @@ PowerShell modules for Windows reside in `src/windows/`.
 
 Windows uses a fixed "windows" profile (profile selection is not available).
 
-Usage pattern (PowerShell, elevated as required):
+**Initial Installation** (PowerShell, elevated as required):
 ```powershell
 .\dotfiles.ps1
 # Dry run mode (preview changes without modification)
@@ -204,8 +204,27 @@ Usage pattern (PowerShell, elevated as required):
 .\dotfiles.ps1 -Verbose
 ```
 
+**Using Module Commands** (after initial installation):
+
+The installer automatically installs the dotfiles as a PowerShell module, making commands available anywhere:
+```powershell
+# Install or update dotfiles from anywhere
+Install-Dotfiles
+
+# Preview changes without modification
+Install-Dotfiles -DryRun -Verbose
+
+# Update repository and re-install (with automatic stashing)
+Update-Dotfiles
+
+# Get help
+Get-Help Install-Dotfiles -Full
+```
+
 Key differences from Linux:
 * Uses PowerShell instead of shell scripts
+* Installs as a PowerShell module for command-line access
+* Automatic repository updates with robust stashing
 * Registry settings in addition to symlinks
 * Configuration files:
   - `conf/symlinks.ini` - Shared with Linux, Windows uses `[windows]` section

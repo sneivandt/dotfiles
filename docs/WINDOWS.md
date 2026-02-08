@@ -2,6 +2,8 @@
 
 Windows automation layer for this dotfiles project. The PowerShell entrypoint (`dotfiles.ps1`) always uses the fixed "windows" profile and wires together registry personalization, symlinks, and VS Code extensions in an idempotent fashion.
 
+**New:** The dotfiles installer now installs itself as a PowerShell module, making the `Install-Dotfiles` and `Update-Dotfiles` commands available from anywhere in PowerShell.
+
 ## Quick Start
 
 **Requirements:**
@@ -9,6 +11,8 @@ Windows automation layer for this dotfiles project. The PowerShell entrypoint (`
 - **Administrator privileges**: Required for registry modification and symlink creation (not needed for dry-run mode)
 
 The Windows script always uses the "windows" profile (profile selection is not available on Windows).
+
+### Initial Installation
 
 Open an elevated PowerShell session (either PowerShell Core or Windows PowerShell) then run:
 
@@ -27,7 +31,28 @@ cd dotfiles
 ./dotfiles.ps1 -DryRun -Verbose
 ```
 
-Re‑run the script at any time; operations are skipped when already satisfied (extensions installed, registry values unchanged, symlinks existing).
+### Using the Module Commands
+
+After the initial installation, the dotfiles are available as PowerShell module commands:
+
+```powershell
+# Install or update dotfiles from anywhere
+Install-Dotfiles
+
+# Preview changes without modification
+Install-Dotfiles -DryRun -Verbose
+
+# Update repository and re-install (with automatic stashing)
+Update-Dotfiles
+
+# Get help
+Get-Help Install-Dotfiles -Full
+Get-Help Update-Dotfiles -Full
+```
+
+The module commands can be run from any directory without needing to navigate to the dotfiles repository.
+
+Re‑run the script or commands at any time; operations are skipped when already satisfied (extensions installed, registry values unchanged, symlinks existing).
 
 ## What the Script Does
 
@@ -36,10 +61,13 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 | Step | Module | Function | Description | Idempotency Cue |
 |------|--------|----------|-------------|-----------------|
 | 1 | `Git.psm1` | `Initialize-GitConfig` | Configures Git to handle symlinks as text files on Windows. | Only sets `core.symlinks=false` if not already configured. |
-| 2 | `Packages.psm1` | `Install-Packages` | Installs missing packages from `conf/packages.ini` using winget. | Skips already-installed packages. |
-| 3 | `Registry.psm1` | `Sync-Registry` | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
-| 4 | `Symlinks.psm1` | `Install-Symlinks` | Creates Windows user profile symlinks from `conf/symlinks.ini` filtered by profile. | Only creates links whose targets do not already exist. |
-| 5 | `VsCodeExtensions.psm1` | `Install-VsCodeExtensions` | Ensures VS Code extensions listed in `conf/vscode-extensions.ini` are installed. | Checks against `code --list-extensions`. |
+| 2 | `Git.psm1` | `Update-DotfilesRepository` | Updates the repository from remote with automatic stashing of local changes. | Skips if already up to date; stashes and re-applies local changes automatically. |
+| 3 | `GitHooks.psm1` | `Install-RepositoryGitHooks` | Installs git hooks for the repository. | Skips if hooks already installed. |
+| 4 | `Module.psm1` | `Install-DotfilesModule` | Installs the Dotfiles PowerShell module to the user's modules directory. | Skips if module already installed and up to date. |
+| 5 | `Packages.psm1` | `Install-Packages` | Installs missing packages from `conf/packages.ini` using winget. | Skips already-installed packages. |
+| 6 | `Registry.psm1` | `Sync-Registry` | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
+| 7 | `Symlinks.psm1` | `Install-Symlinks` | Creates Windows user profile symlinks from `conf/symlinks.ini` filtered by profile. | Only creates links whose targets do not already exist. |
+| 8 | `VsCodeExtensions.psm1` | `Install-VsCodeExtensions` | Ensures VS Code extensions listed in `conf/vscode-extensions.ini` are installed. | Checks against `code --list-extensions`. |
 ## Git Configuration
 
 The repository contains symlinks (e.g., `symlinks/config/nvim` → `../vim`) that are tracked in Git. On Windows, creating actual symlinks during Git operations requires either Developer Mode enabled or Administrator privileges.
@@ -60,6 +88,44 @@ This configuration:
 ```powershell
 git config core.symlinks false
 ```
+
+## Automatic Repository Updates
+
+The installation process includes an automatic repository update step (`Update-DotfilesRepository`) that safely updates the dotfiles repository from the remote with robust handling of local changes:
+
+### How It Works
+
+1. **Detects Changes**: Checks for any staged, unstaged, or untracked files in the working tree
+2. **Stashes Automatically**: If changes are found, creates a timestamped stash before updating
+3. **Fetches and Merges**: Fetches from origin and merges updates from the remote branch
+4. **Re-applies Changes**: Automatically re-applies the stash after a successful update
+5. **Clear Error Messages**: Provides detailed guidance if manual intervention is needed
+
+### Behavior
+
+- **Clean working tree**: Updates proceed normally with no stashing
+- **Dirty working tree**: Changes are automatically stashed, repository is updated, then changes are re-applied
+- **Merge conflicts**: If conflicts occur during merge or stash re-application, the operation is aborted and you receive clear instructions on how to resolve manually
+- **Already up to date**: Skips update if local HEAD matches remote HEAD
+
+### Manual Resolution
+
+If automatic stash re-application fails due to conflicts, you'll see a message like:
+
+```
+WARNING: Successfully updated dotfiles, but failed to re-apply your stashed changes
+due to conflicts. Your changes are preserved in stash: dotfiles-auto-stash-2024-02-08_12-30-45
+
+To resolve this manually:
+    1. Review the conflicts: git status
+    2. Manually apply the stash and resolve conflicts:
+       git stash apply stash^{/dotfiles-auto-stash-2024-02-08_12-30-45}
+    3. Resolve any conflicts in the affected files
+    4. Once resolved, drop the stash:
+       git stash drop stash^{/dotfiles-auto-stash-2024-02-08_12-30-45}
+```
+
+This ensures your local changes are never lost while keeping the update process safe and automatic.
 
 ## Package Management
 
@@ -156,12 +222,37 @@ The file `conf/vscode-extensions.ini` contains extensions in the `[extensions]` 
 
 ## Updating
 
-Pull latest changes then re-run:
+The dotfiles repository is automatically updated during installation via the `Update-DotfilesRepository` function, which handles local changes safely.
+
+### Automatic Updates (Recommended)
+
+Simply re-run the installer or use the module command:
+
+```powershell
+# Using the module command (available anywhere)
+Update-Dotfiles
+
+# Or re-run the installer script
+./dotfiles.ps1
+```
+
+Both methods automatically:
+- Stash any local changes
+- Fetch and merge updates from remote
+- Re-apply your local changes
+
+See the [Automatic Repository Updates](#automatic-repository-updates) section for details on conflict handling.
+
+### Manual Updates
+
+If you prefer to update manually:
 
 ```powershell
 git pull
 ./dotfiles.ps1
 ```
+
+Note: Manual `git pull` may require stashing your changes first if the working tree is dirty.
 
 ## Troubleshooting
 

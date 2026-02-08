@@ -327,8 +327,7 @@ base-devel
 
 [arch,aur]
 # AUR packages on Arch (paru is installed automatically)
-yay
-trizen
+powershell-bin
 
 [arch,desktop]
 # Only on Arch with desktop
@@ -337,7 +336,8 @@ dunst
 
 [arch,desktop,aur]
 # AUR desktop packages on Arch
-xmonad-contrib-git
+chromium-widevine
+spotify
 ```
 
 ## See Also

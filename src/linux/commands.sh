@@ -49,6 +49,9 @@ set -o nounset
 #   * Installs pacman packages, VS Code extensions, PowerShell modules.
 do_install()
 {
+  # Initialize logging system (log file, counters)
+  init_logging
+
   # PROFILE is exported from dotfiles.sh (uppercase is intentional)
   # shellcheck disable=SC2153,SC2154
   configure_sparse_checkout "$PROFILE"
@@ -67,6 +70,9 @@ do_install()
   configure_shell
   configure_fonts
   configure_systemd
+
+  # Display summary of operations
+  log_summary
 }
 
 # do_test
@@ -104,8 +110,14 @@ do_test()
 # packages, shells, and fonts untouched to avoid data loss.
 do_uninstall()
 {
+  # Initialize logging system (log file, counters)
+  init_logging
+
   configure_sparse_checkout "$PROFILE"
   update_dotfiles
 
   uninstall_symlinks
+
+  # Display summary of operations
+  log_summary
 }

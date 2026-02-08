@@ -32,6 +32,7 @@
     $modules = @("Az", "PSScriptAnalyzer")
 
     $act = $false
+    $installed_count = 0
 
     foreach ($module in $modules)
     {
@@ -52,8 +53,23 @@
             {
                 Write-Verbose "Installing module: $module"
                 Install-Module -Name $module -AllowClobber -Scope CurrentUser -Force
+                $installed_count++
             }
         }
+    }
+
+    # Write counter to file for Linux summary (matches logger.sh counter format)
+    if ($installed_count -gt 0)
+    {
+        # Use XDG_CACHE_HOME or ~/.cache for Linux compatibility
+        $cache_home = if ($env:XDG_CACHE_HOME) { $env:XDG_CACHE_HOME } else { Join-Path $HOME ".cache" }
+        $counter_dir = Join-Path $cache_home "dotfiles/counters"
+        if (-not (Test-Path $counter_dir))
+        {
+            New-Item -Path $counter_dir -ItemType Directory -Force | Out-Null
+        }
+        $counter_file = Join-Path $counter_dir "powershell_modules_installed"
+        $installed_count | Out-File -FilePath $counter_file -Encoding utf8
     }
 }
 Export-ModuleMember -Function Install-PowerShellModules

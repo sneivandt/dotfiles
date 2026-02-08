@@ -55,6 +55,7 @@ configure_file_mode_bits()
     return
   fi
 
+  log_progress "Checking file permissions..."
   log_verbose "Processing chmod config: conf/chmod.ini"
 
   # Get list of sections from chmod.ini
@@ -112,10 +113,12 @@ configure_file_mode_bits()
       fi
       if is_dry_run; then
         log_dry_run "Would set mode $mode on $target"
+        increment_counter "chmod_applied"
       else
         log_verbose "Setting mode $mode on $target"
         # Note: -R flag applies mode recursively to ALL files/directories
         chmod -c -R "$mode" "$target"
+        increment_counter "chmod_applied"
       fi
     done
   done
@@ -140,6 +143,7 @@ configure_fonts()
     return
   fi
 
+  log_progress "Checking fonts..."
   log_verbose "Checking fonts from: conf/fonts.ini"
 
   # Read the list of required fonts from the [fonts] section
@@ -171,9 +175,11 @@ configure_fonts()
   log_stage "Updating fonts"
   if is_dry_run; then
     log_dry_run "Would run fc-cache to update font cache"
+    increment_counter "fonts_cache_updated"
   else
     log_verbose "Running fc-cache to update font cache"
     fc-cache
+    increment_counter "fonts_cache_updated"
   fi
 )}
 
@@ -242,6 +248,7 @@ configure_systemd()
     return
   fi
 
+  log_progress "Checking systemd units..."
   log_verbose "Processing systemd units from: conf/units.ini"
 
   # Get list of sections from units.ini
@@ -297,9 +304,11 @@ configure_systemd()
           if [ "$(systemctl is-system-running)" = "running" ]; then
             log_dry_run "Would start systemd unit: $unit"
           fi
+          increment_counter "systemd_units_enabled"
         else
           log_verbose "Enabling systemd unit: $unit"
           systemctl --user enable "$unit"
+          increment_counter "systemd_units_enabled"
 
           # Only start the unit if the system is fully running (avoids issues during early boot)
           if [ "$(systemctl is-system-running)" = "running" ]; then
@@ -327,6 +336,8 @@ install_aur_packages()
     log_verbose "Skipping AUR packages: no packages.ini found"
     return
   fi
+
+  log_progress "Checking AUR packages..."
 
   packages=""
   log_verbose "Processing AUR packages from: conf/packages.ini"
@@ -368,17 +379,32 @@ install_aur_packages()
     packages="$(echo "$packages" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 
     if [ -n "$packages" ]; then
+      # Count packages in the list
+      package_count=$(echo "$packages" | wc -w)
+
       if is_dry_run; then
         log_stage "Installing AUR packages"
         log_dry_run "Would install AUR packages: $packages"
+        # Count packages for dry-run summary
+        count=0
+        while [ "$count" -lt "$package_count" ]; do
+          increment_counter "aur_packages_installed"
+          count=$((count + 1))
+        done
       else
         log_verbose "Checking if AUR packages need installation: $packages"
         # paru handles sudo internally, do not use sudo here
         # shellcheck disable=SC2086  # Word splitting intentional: $packages is space-separated list
-        output=$(paru -S --needed --noconfirm $packages 2>&1 | grep -v "is up to date -- skipping" || true)
-        if [ -n "$output" ]; then
+        if paru -S --needed --noconfirm $packages 2>&1; then
           log_stage "Installing AUR packages"
-          echo "$output"
+          # Count packages that were in the install list (they needed installation)
+          count=0
+          while [ "$count" -lt "$package_count" ]; do
+            increment_counter "aur_packages_installed"
+            count=$((count + 1))
+          done
+        else
+          log_verbose "Warning: Some AUR packages may have failed to install"
         fi
       fi
     fi
@@ -464,6 +490,8 @@ install_packages()
     return
   fi
 
+  log_progress "Checking packages..."
+
   packages=""
   log_verbose "Processing packages from: conf/packages.ini"
 
@@ -514,16 +542,31 @@ install_packages()
     packages="$(echo "$packages" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 
     if [ -n "$packages" ]; then
+      # Count packages in the list
+      package_count=$(echo "$packages" | wc -w)
+
       if is_dry_run; then
         log_stage "Installing packages"
         log_dry_run "Would install packages: $packages"
+        # Count packages for dry-run summary
+        count=0
+        while [ "$count" -lt "$package_count" ]; do
+          increment_counter "packages_installed"
+          count=$((count + 1))
+        done
       else
         log_verbose "Checking if packages need installation: $packages"
         # shellcheck disable=SC2086  # Word splitting intentional: $packages is space-separated list
-        output=$(sudo pacman -S --quiet --needed --noconfirm $packages 2>&1 | grep -v "is up to date -- skipping" || true)
-        if [ -n "$output" ]; then
+        if sudo pacman -S --quiet --needed --noconfirm $packages 2>&1; then
           log_stage "Installing packages"
-          echo "$output"
+          # Count packages that were in the install list (they needed installation)
+          count=0
+          while [ "$count" -lt "$package_count" ]; do
+            increment_counter "packages_installed"
+            count=$((count + 1))
+          done
+        else
+          log_verbose "Warning: Some packages may have failed to install"
         fi
       fi
     fi
@@ -538,6 +581,7 @@ install_powershell_modules()
 {(
   # Check if PowerShell Core is installed
   if is_program_installed "pwsh"; then
+    log_progress "Checking PowerShell modules..."
     args=""
     # Pass verbose flag if set
     if is_flag_set "v"; then
@@ -566,6 +610,8 @@ install_symlinks()
     log_verbose "Skipping symlinks: no symlinks.ini found"
     return
   fi
+
+  log_progress "Checking symlinks..."
 
   # Get list of sections from symlinks.ini
   sections="$(grep -E '^\[.+\]$' "$DIR"/conf/symlinks.ini | tr -d '[]')"
@@ -612,6 +658,7 @@ install_symlinks()
             log_dry_run "Would remove existing: $HOME/.$symlink"
           fi
           log_dry_run "Would link $DIR/symlinks/$symlink to $HOME/.$symlink"
+          increment_counter "symlinks_created"
         else
           log_verbose "Linking $DIR/symlinks/$symlink to $HOME/.$symlink"
           # Ensure parent directory exists
@@ -625,6 +672,7 @@ install_symlinks()
 
           # Create the symlink
           ln -snf "$DIR"/symlinks/"$symlink" "$HOME"/."$symlink"
+          increment_counter "symlinks_created"
         fi
       else
         log_verbose "Skipping symlink $symlink: already correct"
@@ -646,6 +694,8 @@ install_vscode_extensions()
     log_verbose "Skipping VS Code extensions: no vscode-extensions.ini found"
     return
   fi
+
+  log_progress "Checking VS Code extensions..."
 
   # Get list of sections from vscode-extensions.ini
   sections="$(grep -E '^\[.+\]$' "$DIR"/conf/vscode-extensions.ini | tr -d '[]')"
@@ -688,9 +738,11 @@ install_vscode_extensions()
       do
         if is_dry_run; then
           log_dry_run "Would install extension: $extension"
+          increment_counter "vscode_extensions_installed"
         else
           log_verbose "Installing extension: $extension"
           $code --install-extension "$extension"
+          increment_counter "vscode_extensions_installed"
         fi
       done < "$tmpfile"
     fi
@@ -726,6 +778,8 @@ uninstall_symlinks()
     log_verbose "Skipping uninstall symlinks: no symlinks.ini found"
     return
   fi
+
+  log_progress "Checking symlinks to remove..."
 
   # Get list of sections from symlinks.ini
   sections="$(grep -E '^\[.+\]$' "$DIR"/conf/symlinks.ini | tr -d '[]')"
@@ -769,10 +823,12 @@ uninstall_symlinks()
       if is_symlink_installed "$symlink"; then
         if is_dry_run; then
           log_dry_run "Would remove symlink: $HOME/.$symlink"
+          increment_counter "symlinks_removed"
         else
           log_verbose "Removing symlink: $HOME/.$symlink"
           # Remove the symlink
           rm -f "$HOME"/."$symlink"
+          increment_counter "symlinks_removed"
         fi
       else
         log_verbose "Skipping uninstall symlink $symlink: not installed"

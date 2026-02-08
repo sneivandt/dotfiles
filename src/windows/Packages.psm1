@@ -230,6 +230,7 @@ function Install-Packages
         return
     }
 
+    Write-ProgressMessage -Message "Checking packages..."
     Write-Verbose "Processing packages from: conf/packages.ini"
 
     # Get all sections from packages.ini
@@ -298,9 +299,10 @@ function Install-Packages
                 if (-not $act)
                 {
                     $act = $true
-                    Write-Output ":: Installing packages"
+                    Write-Stage -Message "Installing packages"
                 }
-                Write-Output "DRY-RUN: Would install package: $package"
+                Write-DryRunMessage -Message "Would install package: $package"
+                Increment-Counter -CounterName "packages_installed"
             }
             else
             {
@@ -308,7 +310,7 @@ function Install-Packages
                 if (-not $act)
                 {
                     $act = $true
-                    Write-Output ":: Installing packages"
+                    Write-Stage -Message "Installing packages"
                 }
 
                 Write-Verbose "Installing package: $package"
@@ -329,6 +331,7 @@ function Install-Packages
                     Write-Verbose "Successfully installed: $package"
                     # Show output for successful installations
                     $output | Out-String | Write-Output
+                    Increment-Counter -CounterName "packages_installed"
                 }
                 # WinGet exit code 0x8A150055 (-1978335189 in signed int32) indicates package is already installed
                 # This is a known WinGet constant: APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED

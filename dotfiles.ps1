@@ -125,15 +125,18 @@ Write-Verbose "Using profile: $SelectedProfile"
 Write-Verbose "Loading Windows modules from: src/windows/"
 foreach ($module in Get-ChildItem $PSScriptRoot\src\windows\*.psm1)
 {
-    # Import each supporting module (Profile, Registry, Symlinks, VsCodeExtensions)
+    # Import each supporting module (Profile, Registry, Symlinks, VsCodeExtensions, Logging)
     # -Force ensures updated definitions override any cached versions when re-run.
     Write-Verbose "Importing module: $($module.Name)"
     Import-Module $module.FullName -Force
 }
 
+# Initialize logging system (log file, counters)
+Initialize-Logging -Profile $SelectedProfile
+
 if ($DryRun)
 {
-    Write-Output ":: DRY-RUN MODE: No system modifications will be made"
+    Write-Stage -Message "DRY-RUN MODE: No system modifications will be made"
 }
 
 # Get excluded categories for this profile
@@ -168,6 +171,9 @@ Write-Verbose "[8/8] Installing VS Code extensions..."
 Install-VsCodeExtensions -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
 Write-Verbose "Installation sequence complete!"
+
+# Display summary of operations
+Write-InstallationSummary -DryRun:$DryRun
 
 # Ensure clean exit with success code
 exit 0

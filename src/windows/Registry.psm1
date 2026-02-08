@@ -222,6 +222,8 @@ function Sync-Registry
         return
     }
 
+    Write-ProgressMessage -Message "Checking registry settings..."
+
     # Use script scope for $act so Set-RegistryValue helper can modify it
     $script:act = $false
 
@@ -384,12 +386,12 @@ function Set-RegistryValue
         if (-not $script:act)
         {
             $script:act = $true
-            Write-Output ":: Updating Registry"
+            Write-Stage -Message "Updating Registry"
         }
 
         if ($isDryRun)
         {
-            Write-Output "DRY-RUN: Would create registry path: $Path"
+            Write-DryRunMessage -Message "Would create registry path: $Path"
         }
         elseif ($PSCmdlet.ShouldProcess($Path, "Create registry path"))
         {
@@ -554,12 +556,13 @@ function Set-RegistryValue
         if (-not $script:act)
         {
             $script:act = $true
-            Write-Output ":: Updating Registry"
+            Write-Stage -Message "Updating Registry"
         }
 
         if ($isDryRun)
         {
-            Write-Output "DRY-RUN: Would set registry value: $Path $Name = $Value"
+            Write-DryRunMessage -Message "Would set registry value: $Path $Name = $Value"
+            Increment-Counter -CounterName "registry_keys_set"
         }
         elseif ($PSCmdlet.ShouldProcess("$Path\$Name", "Set registry value to $Value"))
         {
@@ -579,6 +582,7 @@ function Set-RegistryValue
                 $Value
             }
             Set-RegistryKeyValue -Path $Path -Name $Name -Value $finalValue
+            Increment-Counter -CounterName "registry_keys_set"
         }
     }
     else

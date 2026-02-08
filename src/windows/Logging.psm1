@@ -224,11 +224,21 @@ function Write-InstallationSummary
     .DESCRIPTION
         Displays counters for packages, symlinks, extensions, etc.
         Should be called at the end of install/uninstall operations.
+        In dry-run mode, shows counts of actions that would be taken.
+    .PARAMETER DryRun
+        Indicates if this is a dry-run to adjust summary labels
     #>
     [CmdletBinding()]
-    param ()
+    param (
+        [Parameter(Mandatory = $false)]
+        [switch]
+        $DryRun
+    )
 
     Write-Stage -Message "Installation Summary"
+
+    # Determine label suffix based on mode
+    $modeSuffix = if ($DryRun) { " (would be)" } else { "" }
 
     # Get counter values
     $packagesInstalled = Get-Counter -CounterName "packages_installed"
@@ -241,25 +251,25 @@ function Write-InstallationSummary
 
     if ($packagesInstalled -gt 0)
     {
-        Write-Output "   Packages installed: $packagesInstalled"
+        Write-Output "   Packages installed${modeSuffix}: $packagesInstalled"
         $hasChanges = $true
     }
 
     if ($symlinksCreated -gt 0)
     {
-        Write-Output "   Symlinks created: $symlinksCreated"
+        Write-Output "   Symlinks created${modeSuffix}: $symlinksCreated"
         $hasChanges = $true
     }
 
     if ($vscodeExtensionsInstalled -gt 0)
     {
-        Write-Output "   VS Code extensions installed: $vscodeExtensionsInstalled"
+        Write-Output "   VS Code extensions installed${modeSuffix}: $vscodeExtensionsInstalled"
         $hasChanges = $true
     }
 
     if ($registryKeysSet -gt 0)
     {
-        Write-Output "   Registry keys set: $registryKeysSet"
+        Write-Output "   Registry keys set${modeSuffix}: $registryKeysSet"
         $hasChanges = $true
     }
 

@@ -170,7 +170,7 @@ Install-VsCodeExtensions -Root $PSScriptRoot -ExcludedCategories $excluded -DryR
 Write-Verbose "Installation sequence complete!"
 
 # Display summary of operations
-Write-InstallationSummary
+Write-InstallationSummary -DryRun:$DryRun
 
 # Ensure clean exit with success code
 exit 0

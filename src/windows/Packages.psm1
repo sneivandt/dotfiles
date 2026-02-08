@@ -302,6 +302,7 @@ function Install-Packages
                     Write-Stage -Message "Installing packages"
                 }
                 Write-DryRunMessage -Message "Would install package: $package"
+                Increment-Counter -CounterName "packages_installed"
             }
             else
             {

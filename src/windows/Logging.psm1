@@ -68,11 +68,12 @@ function Write-LogMessage
     .DESCRIPTION
         Strips ANSI color codes and writes the message to the persistent log file.
     .PARAMETER Message
-        Message to log
+        Message to log (can be empty for blank lines)
     #>
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]
         $Message
     )

@@ -4,39 +4,7 @@ Technical documentation covering the implementation and design of the dotfiles m
 
 ## Overview
 
-This dotfiles project is designed as a cross-platform, profile-based configuration management system with the following architecture:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Entry Points                             │
-│  dotfiles.sh (Linux)          dotfiles.ps1 (Windows)        │
-└────────────────┬──────────────────────────┬─────────────────┘
-                 │                          │
-     ┌───────────▼──────────┐   ┌──────────▼─────────┐
-     │  src/linux/          │   │  src/windows/      │
-     │  ├─ commands.sh      │   │  ├─ Dotfiles.psm1  │
-     │  ├─ tasks.sh         │   │  ├─ Packages.psm1  │
-     │  ├─ utils.sh         │   │  ├─ Symlinks.psm1  │
-     │  └─ logger.sh        │   │  └─ ...            │
-     └──────────┬───────────┘   └────────┬───────────┘
-                │                        │
-                └────────┬───────────────┘
-                         │
-            ┌────────────▼────────────┐
-            │   Configuration Files   │
-            │   conf/*.ini            │
-            │   ├─ profiles.ini       │
-            │   ├─ manifest.ini       │
-            │   ├─ symlinks.ini       │
-            │   ├─ packages.ini       │
-            │   └─ ...                │
-            └────────────┬────────────┘
-                         │
-            ┌────────────▼────────────┐
-            │   Source Files          │
-            │   symlinks/             │
-            └─────────────────────────┘
-```
+This dotfiles project is designed as a cross-platform, profile-based configuration management system.
 
 ## Design Principles
 

@@ -18,12 +18,7 @@ Cross-platform dotfiles management system with profile-based configuration for L
 ```bash
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-./dotfiles.sh -I --profile arch-desktop
-```
-
-Interactive profile selection:
-```bash
-./dotfiles.sh -I  # Prompts for profile on first run
+./dotfiles.sh -I  # Prompts for profile selection
 ```
 
 ### Windows

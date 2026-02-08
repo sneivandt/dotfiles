@@ -83,14 +83,20 @@ function Update-DotfilesRepository
 {
     <#
     .SYNOPSIS
-        Update dotfiles repository from remote
+        Update dotfiles repository from remote with robust stashing support
     .DESCRIPTION
-        Fetches and merges updates from the remote repository when the working
-        tree is clean and the local branch is behind the remote. Conservative
-        approach: only updates if on the same branch as origin/HEAD and no
-        local changes exist.
+        Fetches and merges updates from the remote repository, automatically
+        stashing any local changes before the update and re-applying them after.
+        Provides clear error messages if manual intervention is required.
 
-        Idempotent - skips if already up to date or conditions not met.
+        The function:
+        - Detects all types of working tree changes (staged, unstaged, untracked)
+        - Stashes changes before pulling updates
+        - Re-applies the stash after successful pull
+        - Handles conflicts and errors with clear user guidance
+        - Only updates if on the same branch as origin/HEAD
+
+        Idempotent - skips if already up to date.
     .PARAMETER Root
         Root directory of the dotfiles repository
     .PARAMETER DryRun
@@ -122,15 +128,6 @@ function Update-DotfilesRepository
     Push-Location $Root
     try
     {
-        # Check if working tree is clean
-        Write-Verbose "Checking if working tree is clean..."
-        $status = git status --porcelain 2>$null
-        if ($status)
-        {
-            Write-Verbose "Skipping repository update: working tree not clean"
-            return
-        }
-
         # Check if origin/HEAD exists (may not in shallow clones)
         $originHead = git rev-parse --verify --quiet origin/HEAD 2>$null
         if (-not $originHead)
@@ -153,8 +150,11 @@ function Update-DotfilesRepository
             }
         }
 
+        # Treat -WhatIf like -DryRun for consistency
+        $effectiveDryRun = $DryRun -or $WhatIfPreference
+
         # Always fetch to ensure we have latest remote refs
-        if ($DryRun)
+        if ($effectiveDryRun)
         {
             Write-Output "DRY-RUN: Would fetch updates from origin"
         }
@@ -162,6 +162,11 @@ function Update-DotfilesRepository
         {
             Write-Verbose "Fetching updates from origin"
             git fetch
+            if ($LASTEXITCODE -ne 0)
+            {
+                Write-Warning "Failed to fetch updates from origin. Please check your network connection and try again."
+                return
+            }
         }
 
         # Check if local HEAD is behind origin/HEAD
@@ -198,22 +203,154 @@ function Update-DotfilesRepository
         Write-Verbose "Local HEAD: $localHeadDisplay..."
         Write-Verbose "Remote HEAD: $remoteHeadDisplay..."
 
-        if ($localHead -ne $remoteHead)
-        {
-            Write-Output ":: Updating dotfiles"
-            if ($DryRun)
-            {
-                Write-Output "DRY-RUN: Would merge updates from origin/HEAD"
-            }
-            elseif ($PSCmdlet.ShouldProcess("dotfiles repository", "Merge updates from origin/HEAD"))
-            {
-                Write-Verbose "Merging updates from origin/HEAD"
-                git merge origin/HEAD
-            }
-        }
-        else
+        if ($localHead -eq $remoteHead)
         {
             Write-Verbose "Skipping merge: HEAD is up to date with origin/HEAD"
+            return
+        }
+
+        # We have updates to pull
+        Write-Output ":: Updating dotfiles"
+
+        # Check if working tree has changes
+        Write-Verbose "Checking if working tree has changes..."
+        $status = git status --porcelain 2>$null
+        $hasChanges = ($null -ne $status -and $status.Length -gt 0)
+
+        $stashCreated = $false
+        $stashName = ""
+
+        if ($hasChanges)
+        {
+            Write-Verbose "Working tree has changes - will stash before updating"
+
+            if ($effectiveDryRun)
+            {
+                Write-Output "DRY-RUN: Would stash working tree changes"
+            }
+            elseif ($PSCmdlet.ShouldProcess("working tree changes", "Stash"))
+            {
+                # Create stash with timestamp for identification
+                $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+                $stashName = "dotfiles-auto-stash-$timestamp"
+                Write-Verbose "Creating stash: $stashName"
+
+                # Stash both staged and unstaged changes, including untracked files
+                $stashOutput = git stash push -u -m $stashName 2>&1
+                if ($LASTEXITCODE -ne 0)
+                {
+                    Write-Warning "Git stash output: $stashOutput"
+                    Write-Warning @"
+Failed to stash working tree changes. Please manually stash or commit your
+changes before running this script again:
+    git stash push -u -m "my-changes"
+    .\dotfiles.ps1
+    git stash pop
+"@
+                    return
+                }
+                $stashCreated = $true
+                Write-Verbose "Successfully stashed changes"
+            }
+        }
+
+        # Perform the merge
+        if ($effectiveDryRun)
+        {
+            Write-Output "DRY-RUN: Would merge updates from origin/HEAD"
+        }
+        elseif ($PSCmdlet.ShouldProcess("dotfiles repository", "Merge updates from origin/HEAD"))
+        {
+            Write-Verbose "Merging updates from origin/HEAD"
+            $mergeOutput = git merge origin/HEAD 2>&1
+            $mergeExitCode = $LASTEXITCODE
+
+            if ($mergeExitCode -ne 0)
+            {
+                Write-Verbose "Git merge output: $mergeOutput"
+
+                # Merge failed - check if we need to abort
+                $inMerge = $null -ne (git rev-parse --verify MERGE_HEAD 2>$null)
+
+                if ($inMerge)
+                {
+                    Write-Warning "Merge conflict detected. Aborting merge..."
+                    git merge --abort 2>&1 | Out-Null
+                }
+
+                if ($stashCreated)
+                {
+                    Write-Warning @"
+Failed to merge updates from origin/HEAD due to conflicts.
+Your local changes have been preserved in stash: $stashName
+
+To resolve this manually:
+    1. Review the conflicts: git diff origin/HEAD
+    2. Apply the stash and resolve conflicts:
+       git stash apply "stash^{/$stashName}"
+    3. Manually merge or resolve conflicts
+    4. Once resolved, drop the stash:
+       git stash drop "stash^{/$stashName}"
+
+Or discard your local changes and try again:
+    git stash drop "stash^{/$stashName}"
+    .\dotfiles.ps1
+"@
+                }
+                else
+                {
+                    Write-Warning @"
+Failed to merge updates from origin/HEAD. Your working tree remains unchanged.
+Please review and resolve any conflicts manually:
+    git status
+    git diff origin/HEAD
+"@
+                }
+                return
+            }
+
+            Write-Verbose "Successfully merged updates"
+
+            # Re-apply stash if we created one
+            if ($stashCreated)
+            {
+                if ($PSCmdlet.ShouldProcess("stashed changes", "Re-apply"))
+                {
+                    Write-Verbose "Re-applying stashed changes..."
+                    $popOutput = git stash pop 2>&1
+                    $popExitCode = $LASTEXITCODE
+
+                    if ($popExitCode -ne 0)
+                    {
+                        Write-Verbose "Git stash pop output: $popOutput"
+
+                        # Stash pop failed - likely due to conflicts
+                        Write-Warning @"
+Successfully updated dotfiles, but failed to re-apply your stashed changes
+due to conflicts. Your changes are preserved in stash: $stashName
+
+To resolve this manually:
+    1. Review the conflicts: git status
+    2. Manually apply the stash and resolve conflicts:
+       git stash apply "stash^{/$stashName}"
+    3. Resolve any conflicts in the affected files
+    4. Once resolved, drop the stash:
+       git stash drop "stash^{/$stashName}"
+
+Or discard your local changes:
+    git stash drop "stash^{/$stashName}"
+"@
+                        return
+                    }
+
+                    Write-Verbose "Successfully re-applied stashed changes"
+                    Write-Output "Repository updated successfully and local changes preserved"
+                }
+            }
+            else
+            {
+                Write-Output "Repository updated successfully"
+            }
         }
     }
     finally

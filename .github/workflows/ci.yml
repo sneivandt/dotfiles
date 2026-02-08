@@ -229,6 +229,10 @@ jobs:
         shell: pwsh
         run: ./.github/workflows/scripts/windows/Test-Modules.ps1
 
+      - name: Test Dotfiles PowerShell module
+        shell: pwsh
+        run: ./.github/workflows/scripts/windows/Test-DotfilesModule.ps1
+
       - name: Verify Windows configuration
         shell: pwsh
         run: ./.github/workflows/scripts/windows/Test-Configuration.ps1

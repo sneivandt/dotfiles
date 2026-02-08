@@ -41,7 +41,7 @@ test_paru_prerequisites()
   log_stage "Testing paru prerequisites"
 
   local missing_count=0
-  local prerequisites="git makepkg cargo"
+  local prerequisites="git makepkg"
 
   for prereq in $prerequisites; do
     if is_program_installed "$prereq"; then

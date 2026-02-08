@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Tests the Dotfiles PowerShell module manifest and module.
 .DESCRIPTION

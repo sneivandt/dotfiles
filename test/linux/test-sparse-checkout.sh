@@ -757,13 +757,15 @@ test_sparse_checkout_uncommitted_changes_docker()
   # Configure sparse checkout (should auto-commit changes)
   configure_sparse_checkout "base"
 
-  # Check that changes were committed
-  if ! git -C "$test_repo" diff --quiet && ! git -C "$test_repo" diff --cached --quiet; then
-    # Still have uncommitted changes - check if they were staged
-    if git -C "$test_repo" diff --cached --quiet; then
-      DIR="$original_dir"; OPT="$original_opt"
-      log_error "Expected uncommitted changes to be auto-committed"
-    fi
+  # Check that changes were committed (no uncommitted or staged changes remain)
+  if ! git -C "$test_repo" diff --quiet; then
+    DIR="$original_dir"; OPT="$original_opt"
+    log_error "Expected uncommitted changes to be auto-committed (working tree not clean)"
+  fi
+
+  if ! git -C "$test_repo" diff --cached --quiet; then
+    DIR="$original_dir"; OPT="$original_opt"
+    log_error "Expected staged changes to be auto-committed (index not clean)"
   fi
 
   # Restore variables
@@ -799,10 +801,11 @@ test_sparse_checkout_git_reset_sequence()
   OPT=" --skip-os-detection "
   export EXCLUDED_CATEGORIES=""
 
-  # Add a file that should be removed by sparse checkout
-  echo "should be removed" > "$test_repo/symlinks/arch.txt"
-  git -C "$test_repo" add symlinks/arch.txt
-  git -C "$test_repo" commit -q -m "Add file to be removed"
+  # The arch.txt file exists from initial commit and should be removed by sparse checkout with base profile
+  if [ ! -f "$test_repo/symlinks/arch.txt" ]; then
+    DIR="$original_dir"; OPT="$original_opt"
+    log_error "Expected arch.txt to exist before sparse checkout"
+  fi
 
   # Configure sparse checkout with base profile (excludes arch)
   configure_sparse_checkout "base"
@@ -861,11 +864,11 @@ test_sparse_checkout_dry_run_no_modifications()
     log_error "Expected dry-run message in output"
   fi
 
-  # The symlinks directory should not have been deleted
-  # (reset --hard is skipped in dry-run, so working tree stays intact)
+  # The symlinks directory should not have been deleted by rm -rf
+  # (lines 540-543 are skipped in dry-run mode)
   if [ ! -d "$test_repo/symlinks" ]; then
     DIR="$original_dir"; OPT="$original_opt"
-    log_error "Expected symlinks directory to still exist in dry-run mode"
+    log_error "Expected symlinks directory to still exist (rm -rf skipped in dry-run)"
   fi
 
   # Restore variables

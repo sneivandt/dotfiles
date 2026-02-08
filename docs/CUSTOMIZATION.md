@@ -567,7 +567,9 @@ mkdir -p symlinks/bin
 
 # 2. Add script
 cat > symlinks/bin/my-tool.sh << 'EOF'
-#!/bin/bash
+#!/bin/sh
+set -o errexit
+set -o nounset
 echo "My custom tool"
 EOF
 

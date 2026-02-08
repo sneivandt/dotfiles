@@ -270,7 +270,7 @@ cat conf/vscode-extensions.ini
 - Press Ctrl+C to cancel
 - Try installing extensions manually
 - Check VS Code marketplace availability
-- Run with --skip-vscode-extensions if needed
+- Temporarily comment out extensions in `conf/vscode-extensions.ini` to skip them
 
 ## Permission Issues
 

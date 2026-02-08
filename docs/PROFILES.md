@@ -27,7 +27,7 @@ Profiles can be selected in three ways, in order of priority:
 **Example - First time setup:**
 ```bash
 ./dotfiles.sh -I
-# Prompts: "Select profile (1-4): "
+# Prompts: "Select profile (1-5): "
 # Selection is saved to .git/config for future runs
 ```
 

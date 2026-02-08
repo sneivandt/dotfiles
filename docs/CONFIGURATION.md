@@ -326,8 +326,9 @@ git
 base-devel
 
 [arch,aur]
-# AUR packages on Arch
-paru-bin
+# AUR packages on Arch (paru is installed automatically)
+yay
+trizen
 
 [arch,desktop]
 # Only on Arch with desktop

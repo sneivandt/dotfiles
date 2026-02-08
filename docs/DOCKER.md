@@ -12,7 +12,7 @@ The easiest way to try the dotfiles in an isolated environment:
 docker run --rm -it sneivandt/dotfiles
 ```
 
-This drops you into a shell with the dotfiles pre-installed using the `arch-desktop` profile.
+This drops you into a shell with the dotfiles pre-installed using the `base` profile.
 
 ### Build Local Image
 
@@ -42,28 +42,29 @@ docker pull sneivandt/dotfiles:v1.0.0
 
 ## Dockerfile Overview
 
-The Dockerfile builds a complete Arch Linux environment with dotfiles:
+The Dockerfile builds an Ubuntu-based environment with dotfiles:
 
 ```dockerfile
-FROM archlinux:latest
+FROM ubuntu:latest
 
-# System setup
-RUN pacman -Syu --noconfirm
-RUN pacman -S --noconfirm git base-devel sudo
+# Install packages
+RUN apt-get update && apt-get install -y \
+    git vim zsh tmux \
+    ca-certificates curl
 
-# Create user and configure sudo
-RUN useradd -m -G wheel -s /bin/bash dotfiles
-RUN echo '%wheel ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+# Add user
+RUN useradd -m -s /bin/zsh sneivandt
+WORKDIR /home/sneivandt
 
-# Clone and install dotfiles
-USER dotfiles
-WORKDIR /home/dotfiles
-RUN git clone https://github.com/sneivandt/dotfiles.git
-WORKDIR /home/dotfiles/dotfiles
-RUN ./dotfiles.sh -I --profile arch-desktop
+# Install dotfiles
+COPY --chown=sneivandt:sneivandt . /home/sneivandt/dotfiles/
+USER sneivandt
+RUN /home/sneivandt/dotfiles/dotfiles.sh --install --profile base
 
-CMD ["/bin/bash"]
+CMD ["/usr/bin/zsh"]
 ```
+
+For an Arch Linux variant, see the examples below.
 
 ## Use Cases
 

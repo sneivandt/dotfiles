@@ -86,6 +86,7 @@ do_test()
   # Source test functions only when needed
   . "$DIR"/test/linux/test-config.sh
   . "$DIR"/test/linux/test-static-analysis.sh
+  . "$DIR"/test/linux/test-sparse-checkout.sh
 
   # Configuration validation tests
   test_config_validation
@@ -94,6 +95,25 @@ do_test()
   test_ini_syntax
   test_category_consistency
   test_empty_sections
+
+  # Sparse checkout tests
+  test_sparse_checkout_profile_not_found
+  test_sparse_checkout_profile_with_exclusions
+  test_sparse_checkout_profile_with_includes
+  test_sparse_checkout_auto_exclude_arch_on_non_arch
+  test_sparse_checkout_auto_exclude_windows_on_linux
+  test_sparse_checkout_skip_os_detection_flag
+  test_sparse_checkout_os_detection_combinations
+  test_sparse_checkout_pattern_generation
+  test_sparse_checkout_unchanged_config_skipped
+  test_sparse_checkout_config_change_detected
+  test_sparse_checkout_manifest_interaction
+  test_sparse_checkout_not_git_repository
+  test_sparse_checkout_uncommitted_changes_docker
+  test_sparse_checkout_git_reset_sequence
+  test_sparse_checkout_dry_run_no_modifications
+  test_sparse_checkout_dry_run_validates_config
+  test_sparse_checkout_idempotent
 
   # Static analysis tests
   test_psscriptanalyzer

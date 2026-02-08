@@ -51,6 +51,8 @@ try
     Import-Module $modulePath -Force -ErrorAction Stop
 
     # Call Install-Dotfiles with the same parameters
+    # Set ErrorActionPreference to Continue to allow non-terminating errors
+    $ErrorActionPreference = 'Continue'
     Install-Dotfiles -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 }
 catch

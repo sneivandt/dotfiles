@@ -188,8 +188,9 @@ Read-Host
 
         # Import each supporting module (Profile, Registry, Symlinks, VsCodeExtensions, Logging)
         # -Force ensures updated definitions override any cached versions when re-run.
+        # -Global ensures functions are available in all scopes
         Write-Verbose "Importing module: $($module.Name)"
-        Import-Module $module.FullName -Force
+        Import-Module $module.FullName -Force -Global
     }
 
     # Initialize logging system (log file, counters)

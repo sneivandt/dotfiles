@@ -15,8 +15,8 @@ function Install-DotfilesModule
         Install Dotfiles module to user's PowerShell modules directory
     .DESCRIPTION
         Copies the Dotfiles module files to the user's PowerShell modules
-        directory, making the Install-Dotfiles and Update-Dotfiles commands
-        available from anywhere in PowerShell.
+        directory, making the Install-Dotfiles command available from
+        anywhere in PowerShell.
 
         The module is installed to the first user-scoped directory in $env:PSModulePath
         (typically %USERPROFILE%\Documents\PowerShell\Modules\Dotfiles for PowerShell Core
@@ -24,7 +24,6 @@ function Install-DotfilesModule
 
         After installation, you can run:
             Install-Dotfiles        # Install/update dotfiles
-            Update-Dotfiles         # Update repository and re-install
             Get-Help Install-Dotfiles -Full  # View help
     .PARAMETER Root
         Root directory of the dotfiles repository
@@ -105,10 +104,10 @@ function Install-DotfilesModule
         Write-VerboseMessage "Existing version: $($existingModule.Version)"
     }
 
-    # Files to copy
+    # Files to copy from src/windows
     $filesToCopy = @(
-        "Dotfiles.psd1",
-        "Dotfiles.psm1"
+        "src\windows\Dotfiles.psd1",
+        "src\windows\Dotfiles.psm1"
     )
 
     # Directories to copy
@@ -130,7 +129,9 @@ function Install-DotfilesModule
         foreach ($file in $filesToCopy)
         {
             $sourcePath = Join-Path $Root $file
-            $targetPath = Join-Path $targetModuleDir $file
+            # Extract just the filename for target
+            $fileName = Split-Path $file -Leaf
+            $targetPath = Join-Path $targetModuleDir $fileName
 
             if (-not (Test-Path $targetPath))
             {
@@ -207,15 +208,17 @@ function Install-DotfilesModule
             New-Item -ItemType Directory -Path $targetModuleDir -Force | Out-Null
         }
 
-        # Copy module files
+        # Copy module manifest and main module file to module root
         foreach ($file in $filesToCopy)
         {
             $sourcePath = Join-Path $Root $file
-            $targetPath = Join-Path $targetModuleDir $file
+            # Extract just the filename (Dotfiles.psd1 or Dotfiles.psm1)
+            $fileName = Split-Path $file -Leaf
+            $targetPath = Join-Path $targetModuleDir $fileName
 
             if (Test-Path $sourcePath)
             {
-                Write-VerboseMessage "Copying: $file"
+                Write-VerboseMessage "Copying: $fileName"
                 Copy-Item -Path $sourcePath -Destination $targetPath -Force
             }
             else
@@ -248,14 +251,12 @@ function Install-DotfilesModule
 
         Write-Output "Dotfiles module installed to: $targetModuleDir"
         Write-Output ""
-        Write-Output "The following commands are now available:"
+        Write-Output "The following command is now available:"
         Write-Output "  Install-Dotfiles    - Install or update dotfiles configuration"
-        Write-Output "  Update-Dotfiles     - Update repository and re-install"
         Write-Output ""
         Write-Output "Example usage:"
         Write-Output "  Install-Dotfiles"
         Write-Output "  Install-Dotfiles -DryRun -Verbose"
-        Write-Output "  Update-Dotfiles"
         Write-Output "  Get-Help Install-Dotfiles -Full"
         Write-Output ""
         Write-Output "To reload the module in the current session, run:"

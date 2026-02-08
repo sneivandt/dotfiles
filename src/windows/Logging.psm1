@@ -11,7 +11,8 @@
 #>
 
 # Module-level variables for log file location
-$script:LogDir = Join-Path $env:LOCALAPPDATA "dotfiles"
+# Use defensive initialization for cross-platform testing
+$script:LogDir = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "dotfiles" } else { Join-Path ([System.IO.Path]::GetTempPath()) "dotfiles" }
 $script:LogFile = Join-Path $script:LogDir "install.log"
 $script:CounterDir = Join-Path $script:LogDir "counters"
 

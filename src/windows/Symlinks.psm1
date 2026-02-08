@@ -74,6 +74,13 @@ function Install-Symlinks
         $DryRun
     )
 
+    # Skip on non-Windows platforms (cross-platform testing)
+    if (-not $env:USERPROFILE)
+    {
+        Write-VerboseMessage "Skipping symlinks: not on Windows platform (\$env:USERPROFILE is null)"
+        return
+    }
+
     $configFile = Join-Path $root "conf\symlinks.ini"
     Write-VerboseMessage "Reading symlink configuration from: conf/symlinks.ini"
 

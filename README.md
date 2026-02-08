@@ -269,16 +269,13 @@ Windows uses a fixed "windows" profile (profile selection is not available).
 
 **Using Module Commands** (after initial installation):
 
-The installer automatically installs the dotfiles as a PowerShell module, making commands available anywhere:
+The installer automatically installs the dotfiles as a PowerShell module, making the command available anywhere:
 ```powershell
 # Install or update dotfiles from anywhere
 Install-Dotfiles
 
 # Preview changes without modification
 Install-Dotfiles -DryRun -Verbose
-
-# Update repository and re-install (with automatic stashing)
-Update-Dotfiles
 
 # Get help
 Get-Help Install-Dotfiles -Full

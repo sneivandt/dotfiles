@@ -2,9 +2,10 @@
 .SYNOPSIS
     Dotfiles PowerShell module for Windows
 .DESCRIPTION
-    Provides commands to install and update dotfiles configuration on Windows.
-    This module wraps the dotfiles.ps1 script functionality into reusable
-    PowerShell commands that can be run from anywhere.
+    Provides the Install-Dotfiles command to install and update dotfiles
+    configuration on Windows. This module wraps the dotfiles.ps1 script
+    functionality into a reusable PowerShell command that can be run from
+    anywhere.
 .NOTES
     Compatible with both PowerShell Core (pwsh) and Windows PowerShell (5.1+)
 #>
@@ -175,92 +176,68 @@ Read-Host
 
     # Windows always uses the "windows" profile
     $SelectedProfile = "windows"
-    Write-Verbose "Using profile: $SelectedProfile"
 
     Write-Verbose "Loading Windows modules from: $Script:ModuleRoot\src\windows\"
     foreach ($module in Get-ChildItem "$Script:ModuleRoot\src\windows\*.psm1")
     {
-        # Import each supporting module (Profile, Registry, Symlinks, VsCodeExtensions)
+        # Skip the Dotfiles module itself to avoid circular import
+        if ($module.Name -eq 'Dotfiles.psm1')
+        {
+            continue
+        }
+
+        # Import each supporting module (Profile, Registry, Symlinks, VsCodeExtensions, Logging)
         # -Force ensures updated definitions override any cached versions when re-run.
+        # -Global ensures functions are available in all scopes
         Write-Verbose "Importing module: $($module.Name)"
-        Import-Module $module.FullName -Force
+        Import-Module $module.FullName -Force -Global
     }
+
+    # Initialize logging system (log file, counters)
+    Initialize-Logging -Profile $SelectedProfile
+
+    Write-VerboseMessage "Using profile: $SelectedProfile"
 
     if ($DryRun)
     {
-        Write-Output ":: DRY-RUN MODE: No system modifications will be made"
+        Write-Stage -Message "DRY-RUN MODE: No system modifications will be made"
     }
 
     # Get excluded categories for this profile
-    Write-Verbose "Resolving excluded categories for profile: $SelectedProfile"
+    Write-VerboseMessage "Resolving excluded categories for profile: $SelectedProfile"
     $excluded = Get-ProfileExclusion -Root $Script:ModuleRoot -ProfileName $SelectedProfile
-    Write-Verbose "Excluded categories: $(if ($excluded) { $excluded } else { '(none)' })"
+    Write-VerboseMessage "Excluded categories: $(if ($excluded) { $excluded } else { '(none)' })"
 
-    Write-Verbose "Starting installation sequence..."
+    Write-VerboseMessage "Starting installation sequence..."
 
-    Write-Verbose "[1/7] Initializing Git configuration..."
+    Write-VerboseMessage "[1/8] Initializing Git configuration..."
     Initialize-GitConfig -Root $Script:ModuleRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-Verbose "[2/7] Checking for repository updates..."
+    Write-VerboseMessage "[2/8] Checking for repository updates..."
     Update-DotfilesRepository -Root $Script:ModuleRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-Verbose "[3/7] Installing repository git hooks..."
+    Write-VerboseMessage "[3/8] Installing repository git hooks..."
     Install-RepositoryGitHooks -Root $Script:ModuleRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    # Note: Module installation step is skipped when running from the module itself
-    # (dotfiles.ps1 includes this as step 4/8)
+    Write-VerboseMessage "[4/8] Installing Dotfiles PowerShell module..."
+    Install-DotfilesModule -Root $Script:ModuleRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-Verbose "[4/7] Installing packages..."
+    Write-VerboseMessage "[5/8] Installing packages..."
     Install-Packages -Root $Script:ModuleRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-Verbose "[5/7] Syncing registry settings..."
+    Write-VerboseMessage "[6/8] Syncing registry settings..."
     Sync-Registry -Root $Script:ModuleRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-Verbose "[6/7] Installing symlinks..."
+    Write-VerboseMessage "[7/8] Installing symlinks..."
     Install-Symlinks -Root $Script:ModuleRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-Verbose "[7/7] Installing VS Code extensions..."
+    Write-VerboseMessage "[8/8] Installing VS Code extensions..."
     Install-VsCodeExtensions -Root $Script:ModuleRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-Verbose "Installation sequence complete!"
+    Write-VerboseMessage "Installation sequence complete!"
+
+    # Display summary of operations
+    Write-InstallationSummary -DryRun:$DryRun
 }
 
-function Update-Dotfiles
-{
-    <#
-    .SYNOPSIS
-        Update dotfiles repository and re-install configuration
-    .DESCRIPTION
-        Updates the dotfiles repository from the remote and re-runs the
-        installation to apply any changes. Local changes are automatically
-        stashed and re-applied.
-
-        This is a convenience command that combines repository update with
-        a fresh installation.
-    .PARAMETER DryRun
-        Preview changes without making system modifications
-    .PARAMETER Verbose
-        Show detailed output
-    .EXAMPLE
-        Update-Dotfiles
-        Updates repository and re-installs dotfiles
-    .EXAMPLE
-        Update-Dotfiles -DryRun -Verbose
-        Preview what would be updated with detailed output
-    #>
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Dotfiles is a product name, not a plural')]
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Delegates to Install-Dotfiles which handles all state changes')]
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $false)]
-        [switch]
-        $DryRun
-    )
-
-    Write-Output ":: Updating dotfiles repository and configuration"
-
-    # Run the full installation, which includes the update step
-    Install-Dotfiles -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
-}
-
-Export-ModuleMember -Function Install-Dotfiles, Update-Dotfiles
+Export-ModuleMember -Function Install-Dotfiles

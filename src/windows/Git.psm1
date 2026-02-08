@@ -264,8 +264,7 @@ changes before running this script again:
             if ($mergeExitCode -ne 0)
             {
                 # Merge failed - check if we need to abort
-                $mergeStatus = git status --porcelain 2>$null
-                $inMerge = (git rev-parse --verify MERGE_HEAD 2>$null) -ne $null
+                $inMerge = $null -ne (git rev-parse --verify MERGE_HEAD 2>$null)
 
                 if ($inMerge)
                 {

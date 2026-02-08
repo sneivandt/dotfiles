@@ -12,6 +12,7 @@
 # Store the module root for accessing repository files
 $Script:ModuleRoot = $PSScriptRoot
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Dotfiles is a product name, not a plural')]
 function Install-Dotfiles
 {
     <#
@@ -39,7 +40,7 @@ function Install-Dotfiles
         Install-Dotfiles -DryRun -Verbose
         Preview what would be installed with detailed output
     #>
-    [CmdletBinding(SupportsShouldProcess = $true)]
+    [CmdletBinding()]
     param (
         [Parameter(Mandatory = $false)]
         [switch]
@@ -119,6 +120,8 @@ function Install-Dotfiles
     Write-Verbose "Installation sequence complete!"
 }
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Dotfiles is a product name, not a plural')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Delegates to Install-Dotfiles which handles all state changes')]
 function Update-Dotfiles
 {
     <#
@@ -142,7 +145,7 @@ function Update-Dotfiles
         Update-Dotfiles -DryRun -Verbose
         Preview what would be updated with detailed output
     #>
-    [CmdletBinding(SupportsShouldProcess = $true)]
+    [CmdletBinding()]
     param (
         [Parameter(Mandatory = $false)]
         [switch]

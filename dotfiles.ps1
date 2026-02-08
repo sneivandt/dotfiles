@@ -45,10 +45,16 @@ param (
 
 # Import the Dotfiles module from the repository
 $modulePath = Join-Path $PSScriptRoot "src\windows\Dotfiles.psm1"
-Import-Module $modulePath -Force
 
-# Call Install-Dotfiles with the same parameters
-Install-Dotfiles -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
+try
+{
+    Import-Module $modulePath -Force -ErrorAction Stop
 
-# Ensure clean exit with success code
-exit 0
+    # Call Install-Dotfiles with the same parameters
+    Install-Dotfiles -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
+}
+catch
+{
+    Write-Error "Failed to run dotfiles installation: $_"
+    exit 1
+}

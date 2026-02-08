@@ -2,7 +2,7 @@
 
 Windows automation layer for this dotfiles project. The PowerShell entrypoint (`dotfiles.ps1`) always uses the fixed "windows" profile and wires together registry personalization, symlinks, and VS Code extensions in an idempotent fashion.
 
-**New:** The dotfiles installer now installs itself as a PowerShell module, making the `Install-Dotfiles` and `Update-Dotfiles` commands available from anywhere in PowerShell.
+**New:** The dotfiles installer now installs itself as a PowerShell module, making the `Install-Dotfiles` command available from anywhere in PowerShell.
 
 ## Quick Start
 
@@ -33,7 +33,7 @@ cd dotfiles
 
 ### Using the Module Commands
 
-After the initial installation, the dotfiles are available as PowerShell module commands:
+After the initial installation, the dotfiles are available as a PowerShell module command:
 
 ```powershell
 # Install or update dotfiles from anywhere
@@ -42,15 +42,11 @@ Install-Dotfiles
 # Preview changes without modification
 Install-Dotfiles -DryRun -Verbose
 
-# Update repository and re-install (with automatic stashing)
-Update-Dotfiles
-
 # Get help
 Get-Help Install-Dotfiles -Full
-Get-Help Update-Dotfiles -Full
 ```
 
-The module commands can be run from any directory without needing to navigate to the dotfiles repository.
+The module command can be run from any directory without needing to navigate to the dotfiles repository.
 
 Re‑run the script or commands at any time; operations are skipped when already satisfied (extensions installed, registry values unchanged, symlinks existing).
 
@@ -230,7 +226,7 @@ Simply re-run the installer or use the module command:
 
 ```powershell
 # Using the module command (available anywhere)
-Update-Dotfiles
+Install-Dotfiles
 
 # Or re-run the installer script
 ./dotfiles.ps1

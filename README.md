@@ -221,16 +221,16 @@ Linux tracks:
 
 Windows tracks:
 - Packages installed (winget)
-- PowerShell modules installed
+- Dotfiles PowerShell module installed/updated
 - Symlinks created
 - VS Code extensions installed
 - Registry keys set
 
 **Dry-Run Mode:**
 
-When using `--dry-run`, the logging system:
+When using `--dry-run` (Linux) or `-DryRun` (Windows), the logging system:
 - Shows what would be done without making changes
-- Tracks counters for operations that would be performed
+- Tracks counters for most operations that would be performed
 - Labels summary with "(would be)" suffix
 - Still writes to the log file for review
 

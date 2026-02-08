@@ -15,6 +15,12 @@ Thank you for your interest in contributing! This document provides guidelines f
    git checkout -b feature/your-feature-name
    ```
 
+**Before making changes**, familiarize yourself with:
+- [Architecture Documentation](ARCHITECTURE.md) - Understanding the system design
+- [Profile System](PROFILES.md) - How profiles work
+- [Configuration Reference](CONFIGURATION.md) - Configuration file formats
+- [Testing Documentation](TESTING.md) - How to test your changes
+
 ## Development Workflow
 
 ### Before Making Changes
@@ -271,10 +277,18 @@ chore(ci): update shellcheck version
 
 When adding features or changing behavior:
 
-1. Update main [README.md](../README.md) if it affects usage
-2. Update [WINDOWS.md](WINDOWS.md) for Windows-specific changes
-3. Update [CONFIGURATION.md](CONFIGURATION.md) for configuration changes
-4. Add examples to help users understand the feature
+1. Update main [README.md](../README.md) if it affects core usage
+2. Update specialized documentation:
+   - [USAGE.md](USAGE.md) - For installation and usage changes
+   - [PROFILES.md](PROFILES.md) - For profile system changes
+   - [CONFIGURATION.md](CONFIGURATION.md) - For configuration file changes
+   - [CUSTOMIZATION.md](CUSTOMIZATION.md) - For customization features
+   - [WINDOWS.md](WINDOWS.md) - For Windows-specific changes
+   - [ARCHITECTURE.md](ARCHITECTURE.md) - For implementation changes
+   - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - For common issues
+3. Add examples to help users understand the feature
+4. Update cross-references in related documents
+5. Update [docs/README.md](README.md) if adding new documentation files
 
 ## Questions or Help
 

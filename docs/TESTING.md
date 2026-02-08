@@ -186,15 +186,24 @@ When contributing changes:
    - If modifying base configuration, test `base` profile
    - If modifying Arch-specific items, test `arch` and `arch-desktop` profiles
    - If modifying Windows items, test `windows` profile
+   - See [Profile System](PROFILES.md) for profile details
 
 4. **Verify idempotency:**
    - Run installation twice
    - Ensure second run completes cleanly without errors
+   - See [Architecture](ARCHITECTURE.md) for idempotency design
 
 5. **Check output:**
    - Use verbose mode to verify operations
    - Ensure appropriate logging messages
    - Verify no trailing whitespace in files
+
+## See Also
+
+- [Contributing Guide](CONTRIBUTING.md) - Development workflow
+- [Architecture](ARCHITECTURE.md) - Implementation details
+- [Configuration Reference](CONFIGURATION.md) - Configuration file formats
+- [Usage Guide](USAGE.md) - Testing different profiles
 
 ## Troubleshooting Tests
 

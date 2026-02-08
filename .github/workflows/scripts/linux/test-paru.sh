@@ -142,6 +142,8 @@ test_paru_available()
   # Test 1: Check paru version
   if ! paru --version >/dev/null 2>&1; then
     printf "%sERROR: Cannot run paru --version%s\n" "${RED}" "${NC}" >&2
+    # Show the actual error for debugging
+    paru --version 2>&1 || true
     return 1
   fi
 

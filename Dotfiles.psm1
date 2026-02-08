@@ -105,6 +105,9 @@ function Install-Dotfiles
     Write-Verbose "[3/7] Installing repository git hooks..."
     Install-RepositoryGitHooks -Root $Script:ModuleRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
+    # Note: Module installation step is skipped when running from the module itself
+    # (dotfiles.ps1 includes this as step 4/8)
+
     Write-Verbose "[4/7] Installing packages..."
     Install-Packages -Root $Script:ModuleRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 

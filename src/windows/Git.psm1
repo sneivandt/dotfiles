@@ -233,9 +233,10 @@ function Update-DotfilesRepository
                 Write-Verbose "Creating stash: $stashName"
 
                 # Stash both staged and unstaged changes, including untracked files
-                git stash push -u -m $stashName 2>&1 | Out-Null
+                $stashOutput = git stash push -u -m $stashName 2>&1
                 if ($LASTEXITCODE -ne 0)
                 {
+                    Write-Warning "Git stash output: $stashOutput"
                     Write-Warning @"
 Failed to stash working tree changes. Please manually stash or commit your
 changes before running this script again:
@@ -258,11 +259,13 @@ changes before running this script again:
         elseif ($PSCmdlet.ShouldProcess("dotfiles repository", "Merge updates from origin/HEAD"))
         {
             Write-Verbose "Merging updates from origin/HEAD"
-            git merge origin/HEAD 2>&1 | Out-Null
+            $mergeOutput = git merge origin/HEAD 2>&1
             $mergeExitCode = $LASTEXITCODE
 
             if ($mergeExitCode -ne 0)
             {
+                Write-Verbose "Git merge output: $mergeOutput"
+
                 # Merge failed - check if we need to abort
                 $inMerge = $null -ne (git rev-parse --verify MERGE_HEAD 2>$null)
 
@@ -309,11 +312,13 @@ Please review and resolve any conflicts manually:
             if ($stashCreated)
             {
                 Write-Verbose "Re-applying stashed changes..."
-                git stash pop 2>&1 | Out-Null
+                $popOutput = git stash pop 2>&1
                 $popExitCode = $LASTEXITCODE
 
                 if ($popExitCode -ne 0)
                 {
+                    Write-Verbose "Git stash pop output: $popOutput"
+
                     # Stash pop failed - likely due to conflicts
                     Write-Warning @"
 Successfully updated dotfiles, but failed to re-apply your stashed changes

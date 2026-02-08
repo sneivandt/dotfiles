@@ -202,8 +202,9 @@ jobs:
 
       - name: Test paru prerequisites
         run: |
-          su - testuser -c "cd $(pwd) && \
-            DIR=\"\$(pwd)\" && export DIR && \
+          REPO_DIR=$(pwd)
+          su testuser -c "cd $REPO_DIR && \
+            DIR=\"$REPO_DIR\" && export DIR && \
             export OPT=\"\" && \
             . ./src/linux/logger.sh && \
             . ./src/linux/utils.sh && \
@@ -212,8 +213,9 @@ jobs:
 
       - name: Test paru installation
         run: |
-          su - testuser -c "cd $(pwd) && \
-            DIR=\"\$(pwd)\" && export DIR && \
+          REPO_DIR=$(pwd)
+          su testuser -c "cd $REPO_DIR && \
+            DIR=\"$REPO_DIR\" && export DIR && \
             export OPT=\"\" && \
             . ./src/linux/logger.sh && \
             . ./src/linux/utils.sh && \
@@ -222,8 +224,9 @@ jobs:
 
       - name: Test paru availability
         run: |
-          su - testuser -c "cd $(pwd) && \
-            DIR=\"\$(pwd)\" && export DIR && \
+          REPO_DIR=$(pwd)
+          su testuser -c "cd $REPO_DIR && \
+            DIR=\"$REPO_DIR\" && export DIR && \
             export OPT=\"\" && \
             . ./src/linux/logger.sh && \
             . ./src/linux/utils.sh && \
@@ -232,8 +235,9 @@ jobs:
 
       - name: Test AUR package functionality (dry-run)
         run: |
-          su - testuser -c "cd $(pwd) && \
-            DIR=\"\$(pwd)\" && export DIR && \
+          REPO_DIR=$(pwd)
+          su testuser -c "cd $REPO_DIR && \
+            DIR=\"$REPO_DIR\" && export DIR && \
             export OPT=\"\" && \
             . ./src/linux/logger.sh && \
             . ./src/linux/utils.sh && \
@@ -242,8 +246,9 @@ jobs:
 
       - name: Test paru configuration
         run: |
-          su - testuser -c "cd $(pwd) && \
-            DIR=\"\$(pwd)\" && export DIR && \
+          REPO_DIR=$(pwd)
+          su testuser -c "cd $REPO_DIR && \
+            DIR=\"$REPO_DIR\" && export DIR && \
             export OPT=\"\" && \
             . ./src/linux/logger.sh && \
             . ./src/linux/utils.sh && \
@@ -252,8 +257,9 @@ jobs:
 
       - name: Test paru idempotency
         run: |
-          su - testuser -c "cd $(pwd) && \
-            DIR=\"\$(pwd)\" && export DIR && \
+          REPO_DIR=$(pwd)
+          su testuser -c "cd $REPO_DIR && \
+            DIR=\"$REPO_DIR\" && export DIR && \
             export OPT=\"\" && \
             . ./src/linux/logger.sh && \
             . ./src/linux/utils.sh && \

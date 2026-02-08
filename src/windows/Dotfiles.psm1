@@ -180,6 +180,12 @@ Read-Host
     Write-Verbose "Loading Windows modules from: $Script:ModuleRoot\src\windows\"
     foreach ($module in Get-ChildItem "$Script:ModuleRoot\src\windows\*.psm1")
     {
+        # Skip the Dotfiles module itself to avoid circular import
+        if ($module.Name -eq 'Dotfiles.psm1')
+        {
+            continue
+        }
+
         # Import each supporting module (Profile, Registry, Symlinks, VsCodeExtensions, Logging)
         # -Force ensures updated definitions override any cached versions when re-run.
         Write-Verbose "Importing module: $($module.Name)"

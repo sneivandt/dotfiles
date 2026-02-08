@@ -2,7 +2,7 @@
 
 Windows automation layer for this dotfiles project. The PowerShell entrypoint (`dotfiles.ps1`) always uses the fixed "windows" profile and wires together registry personalization, symlinks, and VS Code extensions in an idempotent fashion.
 
-**New:** The dotfiles installer now installs itself as a PowerShell module, making the `Install-Dotfiles` command available from anywhere in PowerShell.
+The dotfiles installer installs itself as a PowerShell module, making the `Install-Dotfiles` command available from anywhere in PowerShell.
 
 ## Quick Start
 

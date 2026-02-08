@@ -52,6 +52,8 @@ function Install-VsCodeExtensions
         return
     }
 
+    Write-Progress -Message "Checking VS Code extensions..."
+
     # Get all sections from the config file
     $content = Get-Content $configFile
     $sections = @()
@@ -132,12 +134,13 @@ function Install-VsCodeExtensions
                 if (-not $act)
                 {
                     $act = $true
-                    Write-Output ":: Installing $code Extensions"
+                    Write-Stage -Message "Installing $code Extensions"
                 }
 
                 if ($DryRun)
                 {
-                    Write-Output "DRY-RUN: Would install extension: $extension"
+                    Write-DryRunMessage -Message "Would install extension: $extension"
+                    Increment-Counter -CounterName "vscode_extensions_installed"
                 }
                 else
                 {
@@ -146,6 +149,10 @@ function Install-VsCodeExtensions
                     if ($LASTEXITCODE -ne 0)
                     {
                         Write-Warning "Failed to install extension $extension for $code`: $output"
+                    }
+                    else
+                    {
+                        Increment-Counter -CounterName "vscode_extensions_installed"
                     }
                 }
             }

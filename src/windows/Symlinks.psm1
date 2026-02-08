@@ -83,6 +83,8 @@ function Install-Symlinks
         return
     }
 
+    Write-Progress -Message "Checking symlinks..."
+
     # Get list of sections from symlinks.ini
     $content = Get-Content $configFile
     $sections = @()
@@ -220,16 +222,17 @@ function Install-Symlinks
                 if (-not $act)
                 {
                     $act = $true
-                    Write-Output ":: Installing Symlinks"
+                    Write-Stage -Message "Installing Symlinks"
                 }
 
                 if ($DryRun)
                 {
                     if (Test-Path $targetFullPath)
                     {
-                        Write-Output "DRY-RUN: Would remove existing: $targetFullPath"
+                        Write-DryRunMessage -Message "Would remove existing: $targetFullPath"
                     }
-                    Write-Output "DRY-RUN: Would create symlink: $targetFullPath -> $sourcePath"
+                    Write-DryRunMessage -Message "Would create symlink: $targetFullPath -> $sourcePath"
+                    Increment-Counter -CounterName "symlinks_created"
                 }
                 else
                 {
@@ -267,6 +270,7 @@ function Install-Symlinks
                     try
                     {
                         New-Item -Path $targetFullPath -ItemType SymbolicLink -Value $sourcePath -Force -ErrorAction Stop | Out-Null
+                        Increment-Counter -CounterName "symlinks_created"
                     }
                     catch
                     {

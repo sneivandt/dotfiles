@@ -44,7 +44,7 @@ param (
 )
 
 # Import the Dotfiles module from the repository
-$modulePath = Join-Path $PSScriptRoot "Dotfiles.psm1"
+$modulePath = Join-Path $PSScriptRoot "src\windows\Dotfiles.psm1"
 Import-Module $modulePath -Force
 
 # Call Install-Dotfiles with the same parameters

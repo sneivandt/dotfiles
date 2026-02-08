@@ -2,9 +2,10 @@
 .SYNOPSIS
     Dotfiles PowerShell module for Windows
 .DESCRIPTION
-    Provides commands to install and update dotfiles configuration on Windows.
-    This module wraps the dotfiles.ps1 script functionality into reusable
-    PowerShell commands that can be run from anywhere.
+    Provides the Install-Dotfiles command to install and update dotfiles
+    configuration on Windows. This module wraps the dotfiles.ps1 script
+    functionality into a reusable PowerShell command that can be run from
+    anywhere.
 .NOTES
     Compatible with both PowerShell Core (pwsh) and Windows PowerShell (5.1+)
 #>
@@ -232,42 +233,4 @@ Read-Host
     Write-InstallationSummary -DryRun:$DryRun
 }
 
-function Update-Dotfiles
-{
-    <#
-    .SYNOPSIS
-        Update dotfiles repository and re-install configuration
-    .DESCRIPTION
-        Updates the dotfiles repository from the remote and re-runs the
-        installation to apply any changes. Local changes are automatically
-        stashed and re-applied.
-
-        This is a convenience command that combines repository update with
-        a fresh installation.
-    .PARAMETER DryRun
-        Preview changes without making system modifications
-    .PARAMETER Verbose
-        Show detailed output
-    .EXAMPLE
-        Update-Dotfiles
-        Updates repository and re-installs dotfiles
-    .EXAMPLE
-        Update-Dotfiles -DryRun -Verbose
-        Preview what would be updated with detailed output
-    #>
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Dotfiles is a product name, not a plural')]
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Delegates to Install-Dotfiles which handles all state changes')]
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $false)]
-        [switch]
-        $DryRun
-    )
-
-    Write-Output ":: Updating dotfiles repository and configuration"
-
-    # Run the full installation, which includes the update step
-    Install-Dotfiles -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
-}
-
-Export-ModuleMember -Function Install-Dotfiles, Update-Dotfiles
+Export-ModuleMember -Function Install-Dotfiles

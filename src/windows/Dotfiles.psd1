@@ -18,13 +18,13 @@
     Copyright = '(c) sneivandt. All rights reserved.'
 
     # Description of the functionality provided by this module
-    Description = 'Dotfiles management module for Windows. Provides commands to install and update dotfiles configuration.'
+    Description = 'Dotfiles management module for Windows. Provides the Install-Dotfiles command to install and update dotfiles configuration.'
 
     # Minimum version of the PowerShell engine required by this module
     PowerShellVersion = '5.1'
 
     # Functions to export from this module
-    FunctionsToExport = @('Install-Dotfiles', 'Update-Dotfiles')
+    FunctionsToExport = @('Install-Dotfiles')
 
     # Cmdlets to export from this module
     CmdletsToExport = @()

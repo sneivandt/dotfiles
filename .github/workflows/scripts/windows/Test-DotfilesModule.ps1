@@ -19,10 +19,10 @@ Write-Output "PowerShell Edition: $($PSVersionTable.PSEdition)"
 Write-Output ""
 
 # Test module manifest
-Write-Output "Testing module manifest: Dotfiles.psd1"
+Write-Output "Testing module manifest: src/windows/Dotfiles.psd1"
 try
 {
-    $manifest = Test-ModuleManifest -Path .\Dotfiles.psd1 -ErrorAction Stop
+    $manifest = Test-ModuleManifest -Path .\src\windows\Dotfiles.psd1 -ErrorAction Stop
     Write-Output "  Module version: $($manifest.Version)"
     Write-Output "  Exported functions: $($manifest.ExportedFunctions.Keys -join ', ')"
     Write-Output "  Success"
@@ -36,11 +36,11 @@ catch
 Write-Output ""
 
 # Test module import from repository
-Write-Output "Testing module import: Dotfiles.psm1 (from repository)"
+Write-Output "Testing module import: src/windows/Dotfiles.psm1 (from repository)"
 try
 {
     # First, load the supporting modules that Dotfiles depends on
-    $srcModules = Get-ChildItem .\src\windows\*.psm1
+    $srcModules = Get-ChildItem .\src\windows\*.psm1 | Where-Object { $_.Name -ne 'Dotfiles.psm1' }
     foreach ($module in $srcModules)
     {
         Write-Verbose "Importing supporting module: $($module.Name)"
@@ -48,7 +48,7 @@ try
     }
 
     # Now import the main module
-    Import-Module .\Dotfiles.psm1 -Force -ErrorAction Stop
+    Import-Module .\src\windows\Dotfiles.psm1 -Force -ErrorAction Stop
     Write-Output "  Success"
 }
 catch
@@ -61,7 +61,7 @@ Write-Output ""
 
 # Verify exported functions
 Write-Output "Verifying exported functions"
-$expectedFunctions = @('Install-Dotfiles', 'Update-Dotfiles')
+$expectedFunctions = @('Install-Dotfiles')
 $missingFunctions = @()
 
 foreach ($func in $expectedFunctions)
@@ -99,8 +99,8 @@ try
     Write-Output "  Created temporary module directory: $installedModulePath"
 
     # Manually copy module files (simulating what Install-DotfilesModule does)
-    Copy-Item -Path ".\Dotfiles.psd1" -Destination $installedModulePath -Force
-    Copy-Item -Path ".\Dotfiles.psm1" -Destination $installedModulePath -Force
+    Copy-Item -Path ".\src\windows\Dotfiles.psd1" -Destination $installedModulePath -Force
+    Copy-Item -Path ".\src\windows\Dotfiles.psm1" -Destination $installedModulePath -Force
     Write-Output "  ✓ Copied module files"
 
     # Copy required directories

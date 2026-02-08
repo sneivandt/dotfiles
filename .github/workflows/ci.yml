@@ -179,6 +179,87 @@ jobs:
       - name: Verify dry-run uninstall assertions
         run: ./.github/workflows/scripts/verify/verify-uninstall.sh uninstall-output.log
 
+  # Test paru (AUR helper) installation and functionality
+  test-paru:
+    name: Test Paru (Arch Linux)
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install prerequisites in Arch container
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git cargo sudo
+
+      - name: Create test user (paru cannot run as root)
+        run: |
+          useradd -m -G wheel testuser
+          echo "testuser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R testuser:testuser .
+
+      - name: Test paru prerequisites
+        run: |
+          su - testuser -c "cd $(pwd) && \
+            DIR=\"\$(pwd)\" && export DIR && \
+            export OPT=\"\" && \
+            . ./src/linux/logger.sh && \
+            . ./src/linux/utils.sh && \
+            . ./.github/workflows/scripts/linux/test-paru.sh && \
+            test_paru_prerequisites"
+
+      - name: Test paru installation
+        run: |
+          su - testuser -c "cd $(pwd) && \
+            DIR=\"\$(pwd)\" && export DIR && \
+            export OPT=\"\" && \
+            . ./src/linux/logger.sh && \
+            . ./src/linux/utils.sh && \
+            . ./.github/workflows/scripts/linux/test-paru.sh && \
+            test_paru_install"
+
+      - name: Test paru availability
+        run: |
+          su - testuser -c "cd $(pwd) && \
+            DIR=\"\$(pwd)\" && export DIR && \
+            export OPT=\"\" && \
+            . ./src/linux/logger.sh && \
+            . ./src/linux/utils.sh && \
+            . ./.github/workflows/scripts/linux/test-paru.sh && \
+            test_paru_available"
+
+      - name: Test AUR package functionality (dry-run)
+        run: |
+          su - testuser -c "cd $(pwd) && \
+            DIR=\"\$(pwd)\" && export DIR && \
+            export OPT=\"\" && \
+            . ./src/linux/logger.sh && \
+            . ./src/linux/utils.sh && \
+            . ./.github/workflows/scripts/linux/test-paru.sh && \
+            test_aur_packages"
+
+      - name: Test paru configuration
+        run: |
+          su - testuser -c "cd $(pwd) && \
+            DIR=\"\$(pwd)\" && export DIR && \
+            export OPT=\"\" && \
+            . ./src/linux/logger.sh && \
+            . ./src/linux/utils.sh && \
+            . ./.github/workflows/scripts/linux/test-paru.sh && \
+            test_paru_config"
+
+      - name: Test paru idempotency
+        run: |
+          su - testuser -c "cd $(pwd) && \
+            DIR=\"\$(pwd)\" && export DIR && \
+            export OPT=\"\" && \
+            . ./src/linux/logger.sh && \
+            . ./src/linux/utils.sh && \
+            . ./.github/workflows/scripts/linux/test-paru.sh && \
+            test_paru_idempotency"
+
   # Test Windows profile
   test-windows:
     name: Test Windows
@@ -268,6 +349,7 @@ jobs:
       - test-docker
       - test-git-hooks
       - test-linux-profiles
+      - test-paru
       - test-windows
       - validate-config
     steps:

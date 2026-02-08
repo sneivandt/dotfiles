@@ -31,7 +31,7 @@ set -o nounset
 # test_paru_prerequisites
 #
 # Verify that prerequisites for paru installation are met.
-# Paru requires git, makepkg, and cargo to build from source.
+# Paru-bin requires git and makepkg to install the pre-compiled binary from AUR.
 #
 # Returns:
 #   0 if all prerequisites are installed

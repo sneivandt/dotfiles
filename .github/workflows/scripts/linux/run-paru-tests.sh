@@ -10,6 +10,11 @@ set -o nounset
 # Runs all paru tests in a single execution to reduce overhead.
 # -----------------------------------------------------------------------------
 
+if [ "$#" -ne 1 ]; then
+  echo "Usage: $0 <repo-dir>" >&2
+  exit 1
+fi
+
 REPO_DIR="$1"
 
 cd "$REPO_DIR"

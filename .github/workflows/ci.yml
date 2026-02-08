@@ -204,7 +204,7 @@ jobs:
         run: |
           REPO_DIR=$(pwd)
           chmod +x ./.github/workflows/scripts/linux/run-paru-tests.sh
-          su - testuser -c "cd $REPO_DIR && PATH=/usr/bin:/usr/local/bin:\$PATH ./.github/workflows/scripts/linux/run-paru-tests.sh $REPO_DIR"
+          su - testuser -c "cd \"$REPO_DIR\" && PATH=/usr/bin:/usr/local/bin:\$PATH ./.github/workflows/scripts/linux/run-paru-tests.sh \"$REPO_DIR\""
 
   # Test Windows profile
   test-windows:

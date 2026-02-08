@@ -84,7 +84,7 @@ if (-not $DryRun)
                     # Check if elevated process failed
                     if ($process.ExitCode -ne 0)
                     {
-                        Write-Error "Elevated process exited with code $($process.ExitCode). Installation may have failed. Check the elevated window output for details."
+                        Write-Error "Elevated process failed with exit code $($process.ExitCode). Run with -Verbose for detailed output, or use -DryRun to preview changes."
                     }
                     # Return the exit code from the elevated process
                     exit $process.ExitCode

@@ -131,6 +131,10 @@ test_paru_available()
 {(
   log_stage "Testing paru availability"
 
+  # Debug: Print PATH for troubleshooting
+  log_verbose "Current PATH: $PATH"
+  log_verbose "Which paru: $(command -v paru || echo 'not found')"
+
   # Check if paru is installed
   if ! is_program_installed "paru"; then
     printf "%sERROR: Paru is not installed%s\n" "${RED}" "${NC}" >&2
@@ -142,6 +146,9 @@ test_paru_available()
   # Test 1: Check paru version
   if ! paru --version >/dev/null 2>&1; then
     printf "%sERROR: Cannot run paru --version%s\n" "${RED}" "${NC}" >&2
+    # Debug: Try to get more information
+    paru --version 2>&1 || true
+    ls -la "$(command -v paru)" || true
     return 1
   fi
 

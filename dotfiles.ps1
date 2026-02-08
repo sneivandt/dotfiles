@@ -49,8 +49,65 @@ if (-not $DryRun)
             $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
             if (-not $isAdmin)
             {
-                Write-Error "This script requires administrator privileges to modify registry settings and create symlinks. Please run as administrator or use -DryRun to preview changes."
-                exit 1
+                # Automatically request elevation by re-launching the script
+                Write-Output "Not running as administrator. Requesting elevation..."
+
+                # Determine which PowerShell executable to use
+                $edition = $PSVersionTable.PSEdition
+                if ($edition -eq 'Core')
+                {
+                    $psExe = 'pwsh'
+                }
+                else
+                {
+                    # Desktop edition (Windows PowerShell)
+                    $psExe = 'powershell'
+                }
+
+                # Build argument list
+                $arguments = @(
+                    '-NoProfile',
+                    '-ExecutionPolicy', 'Bypass',
+                    '-File', ('"{0}"' -f $PSCommandPath)
+                )
+
+                # Preserve -Verbose flag
+                if ($VerbosePreference -eq 'Continue')
+                {
+                    $arguments += '-Verbose'
+                }
+
+                # Launch elevated process
+                try
+                {
+                    $process = Start-Process -FilePath $psExe -ArgumentList $arguments -Verb RunAs -PassThru -Wait
+                    # Check if elevated process failed
+                    if ($process.ExitCode -ne 0)
+                    {
+                        Write-Error "Elevated process failed with exit code $($process.ExitCode). Run with -Verbose for detailed output, or use -DryRun to preview changes."
+                    }
+                    # Return the exit code from the elevated process
+                    exit $process.ExitCode
+                }
+                catch [System.ComponentModel.Win32Exception]
+                {
+                    # UAC was cancelled (ERROR_CANCELLED = 1223) or access denied
+                    if ($_.Exception.NativeErrorCode -eq 1223)
+                    {
+                        Write-Error "UAC elevation was cancelled by user. Administrator privileges are required to modify registry settings and create symlinks. Please run as administrator or use -DryRun to preview changes."
+                    }
+                    else
+                    {
+                        Write-Error "Failed to elevate: $($_.Exception.Message)"
+                    }
+                    exit 1
+                }
+                catch
+                {
+                    # Other unexpected errors (e.g., PowerShell executable not found)
+                    Write-Error "Failed to start elevated process: $($_.Exception.Message)"
+                    exit 1
+                }
             }
         }
         catch

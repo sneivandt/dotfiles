@@ -15,6 +15,10 @@ if [ "$#" -ne 1 ]; then
   exit 1
 fi
 
+# Ensure standard paths are in PATH (needed for su - login shells)
+PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:$PATH"
+export PATH
+
 REPO_DIR="$1"
 
 cd "$REPO_DIR"

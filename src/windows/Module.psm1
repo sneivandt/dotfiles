@@ -18,8 +18,9 @@ function Install-DotfilesModule
         directory, making the Install-Dotfiles and Update-Dotfiles commands
         available from anywhere in PowerShell.
 
-        The module is installed to the first writable location in $env:PSModulePath,
-        typically %USERPROFILE%\Documents\PowerShell\Modules (PowerShell Core) or
+        The module is installed to the first existing location under $env:USERPROFILE
+        that is listed in $env:PSModulePath, typically
+        %USERPROFILE%\Documents\PowerShell\Modules (PowerShell Core) or
         %USERPROFILE%\Documents\WindowsPowerShell\Modules (Windows PowerShell).
 
         After installation, you can run:
@@ -114,7 +115,8 @@ function Install-DotfilesModule
     # Directories to copy
     $dirsToCopy = @(
         "src",
-        "conf"
+        "conf",
+        "symlinks"
     )
 
     # Check if we need to update
@@ -144,6 +146,32 @@ function Install-DotfilesModule
             {
                 $needsUpdate = $true
                 break
+            }
+        }
+
+        # Check if any directories need updating (check existence and do a simple comparison)
+        if (-not $needsUpdate)
+        {
+            foreach ($dir in $dirsToCopy)
+            {
+                $sourcePath = Join-Path $Root $dir
+                $targetPath = Join-Path $targetModuleDir $dir
+
+                if (-not (Test-Path $targetPath))
+                {
+                    $needsUpdate = $true
+                    break
+                }
+
+                # Simple check: compare file counts as a heuristic
+                $sourceFiles = Get-ChildItem -Path $sourcePath -Recurse -File -ErrorAction SilentlyContinue
+                $targetFiles = Get-ChildItem -Path $targetPath -Recurse -File -ErrorAction SilentlyContinue
+
+                if ($sourceFiles.Count -ne $targetFiles.Count)
+                {
+                    $needsUpdate = $true
+                    break
+                }
             }
         }
     }

@@ -150,8 +150,11 @@ function Update-DotfilesRepository
             }
         }
 
+        # Treat -WhatIf like -DryRun for consistency
+        $effectiveDryRun = $DryRun -or $WhatIfPreference
+
         # Always fetch to ensure we have latest remote refs
-        if ($DryRun)
+        if ($effectiveDryRun)
         {
             Write-Output "DRY-RUN: Would fetch updates from origin"
         }
@@ -221,11 +224,11 @@ function Update-DotfilesRepository
         {
             Write-Verbose "Working tree has changes - will stash before updating"
 
-            if ($DryRun)
+            if ($effectiveDryRun)
             {
                 Write-Output "DRY-RUN: Would stash working tree changes"
             }
-            else
+            elseif ($PSCmdlet.ShouldProcess("working tree changes", "Stash"))
             {
                 # Create stash with timestamp for identification
                 $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
@@ -252,7 +255,7 @@ changes before running this script again:
         }
 
         # Perform the merge
-        if ($DryRun)
+        if ($effectiveDryRun)
         {
             Write-Output "DRY-RUN: Would merge updates from origin/HEAD"
         }
@@ -284,13 +287,13 @@ Your local changes have been preserved in stash: $stashName
 To resolve this manually:
     1. Review the conflicts: git diff origin/HEAD
     2. Apply the stash and resolve conflicts:
-       git stash apply stash^{/$stashName}
+       git stash apply "stash^{/$stashName}"
     3. Manually merge or resolve conflicts
     4. Once resolved, drop the stash:
-       git stash drop stash^{/$stashName}
+       git stash drop "stash^{/$stashName}"
 
 Or discard your local changes and try again:
-    git stash drop stash^{/$stashName}
+    git stash drop "stash^{/$stashName}"
     .\dotfiles.ps1
 "@
                 }
@@ -311,35 +314,38 @@ Please review and resolve any conflicts manually:
             # Re-apply stash if we created one
             if ($stashCreated)
             {
-                Write-Verbose "Re-applying stashed changes..."
-                $popOutput = git stash pop 2>&1
-                $popExitCode = $LASTEXITCODE
-
-                if ($popExitCode -ne 0)
+                if ($PSCmdlet.ShouldProcess("stashed changes", "Re-apply"))
                 {
-                    Write-Verbose "Git stash pop output: $popOutput"
+                    Write-Verbose "Re-applying stashed changes..."
+                    $popOutput = git stash pop 2>&1
+                    $popExitCode = $LASTEXITCODE
 
-                    # Stash pop failed - likely due to conflicts
-                    Write-Warning @"
+                    if ($popExitCode -ne 0)
+                    {
+                        Write-Verbose "Git stash pop output: $popOutput"
+
+                        # Stash pop failed - likely due to conflicts
+                        Write-Warning @"
 Successfully updated dotfiles, but failed to re-apply your stashed changes
 due to conflicts. Your changes are preserved in stash: $stashName
 
 To resolve this manually:
     1. Review the conflicts: git status
     2. Manually apply the stash and resolve conflicts:
-       git stash apply stash^{/$stashName}
+       git stash apply "stash^{/$stashName}"
     3. Resolve any conflicts in the affected files
     4. Once resolved, drop the stash:
-       git stash drop stash^{/$stashName}
+       git stash drop "stash^{/$stashName}"
 
 Or discard your local changes:
-    git stash drop stash^{/$stashName}
+    git stash drop "stash^{/$stashName}"
 "@
-                    return
-                }
+                        return
+                    }
 
-                Write-Verbose "Successfully re-applied stashed changes"
-                Write-Output "Repository updated successfully and local changes preserved"
+                    Write-Verbose "Successfully re-applied stashed changes"
+                    Write-Output "Repository updated successfully and local changes preserved"
+                }
             }
             else
             {

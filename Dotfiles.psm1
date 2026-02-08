@@ -9,8 +9,54 @@
     Compatible with both PowerShell Core (pwsh) and Windows PowerShell (5.1+)
 #>
 
+function Get-DotfilesRoot
+{
+    <#
+    .SYNOPSIS
+        Resolve the root directory of the dotfiles repository
+    .DESCRIPTION
+        Prefer an explicit DOTFILES_ROOT environment variable when it points
+        to a valid git repository. Otherwise, walk up from the module's
+        install directory looking for a .git directory. If no repository
+        can be found, fall back to the module root.
+    #>
+
+    # 1. Prefer an explicit environment variable if it points to a git repo
+    $envRoot = $env:DOTFILES_ROOT
+    if ($envRoot -and (Test-Path -LiteralPath $envRoot))
+    {
+        $gitDir = Join-Path -Path $envRoot -ChildPath '.git'
+        if (Test-Path -LiteralPath $gitDir)
+        {
+            return (Resolve-Path -LiteralPath $envRoot).ProviderPath
+        }
+    }
+
+    # 2. Walk up from the module directory to find the nearest .git
+    $candidate = $PSScriptRoot
+    while ($candidate)
+    {
+        $gitDir = Join-Path -Path $candidate -ChildPath '.git'
+        if (Test-Path -LiteralPath $gitDir)
+        {
+            return $candidate
+        }
+
+        $parent = Split-Path -Path $candidate -Parent
+        if (-not $parent -or $parent -eq $candidate)
+        {
+            break
+        }
+
+        $candidate = $parent
+    }
+
+    # 3. Fallback to the module install directory (previous behavior)
+    return $PSScriptRoot
+}
+
 # Store the module root for accessing repository files
-$Script:ModuleRoot = $PSScriptRoot
+$Script:ModuleRoot = Get-DotfilesRoot
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Dotfiles is a product name, not a plural')]
 function Install-Dotfiles

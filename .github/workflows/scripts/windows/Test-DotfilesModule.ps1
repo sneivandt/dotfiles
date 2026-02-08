@@ -6,6 +6,8 @@
     - The module manifest (Dotfiles.psd1) is valid
     - The module (Dotfiles.psm1) can be imported
     - Exported functions are available
+    - The module can be installed to PSModulePath
+    - The installed module can be imported by name
 #>
 
 param()
@@ -33,8 +35,8 @@ catch
 
 Write-Output ""
 
-# Test module import
-Write-Output "Testing module import: Dotfiles.psm1"
+# Test module import from repository
+Write-Output "Testing module import: Dotfiles.psm1 (from repository)"
 try
 {
     # First, load the supporting modules that Dotfiles depends on
@@ -80,6 +82,83 @@ if ($missingFunctions.Count -gt 0)
     Write-Output ""
     Write-Output "Missing functions: $($missingFunctions -join ', ')"
     exit 1
+}
+
+Write-Output ""
+
+# Test module installation to a temporary PSModulePath
+Write-Output "Testing module installation"
+$tempModulesDir = Join-Path $env:TEMP "dotfiles-test-modules-$(Get-Random)"
+try
+{
+    # Create temporary modules directory
+    New-Item -ItemType Directory -Path $tempModulesDir -Force | Out-Null
+    Write-Output "  Created temporary modules directory: $tempModulesDir"
+
+    # Add to PSModulePath temporarily
+    $originalModulePath = $env:PSModulePath
+    $env:PSModulePath = "$tempModulesDir;$env:PSModulePath"
+    Write-Output "  Added to PSModulePath temporarily"
+
+    # Install the module
+    Import-Module .\src\windows\Module.psm1 -Force
+    Install-DotfilesModule -Root $PWD -DryRun:$false -Verbose
+
+    # Check if module was installed
+    $installedModulePath = Join-Path $tempModulesDir "Dotfiles"
+    if (-not (Test-Path $installedModulePath))
+    {
+        throw "Module was not installed to expected location: $installedModulePath"
+    }
+    Write-Output "  ✓ Module installed to: $installedModulePath"
+
+    # Verify required directories were copied
+    $requiredDirs = @("src", "conf", "symlinks")
+    foreach ($dir in $requiredDirs)
+    {
+        $dirPath = Join-Path $installedModulePath $dir
+        if (-not (Test-Path $dirPath))
+        {
+            throw "Required directory not copied: $dir"
+        }
+        Write-Output "  ✓ Directory copied: $dir"
+    }
+
+    # Remove the repository-loaded module
+    Remove-Module Dotfiles -Force -ErrorAction SilentlyContinue
+
+    # Try importing the installed module by name
+    Write-Output "  Testing import of installed module by name..."
+    Import-Module Dotfiles -Force -ErrorAction Stop
+    Write-Output "  ✓ Installed module imported successfully"
+
+    # Verify functions are available from installed module
+    foreach ($func in $expectedFunctions)
+    {
+        if (-not (Get-Command $func -ErrorAction SilentlyContinue))
+        {
+            throw "Function not available from installed module: $func"
+        }
+        Write-Output "  ✓ $func available from installed module"
+    }
+
+    Write-Output "  Success"
+}
+catch
+{
+    Write-Output "  Failed: $_"
+    exit 1
+}
+finally
+{
+    # Restore original PSModulePath
+    $env:PSModulePath = $originalModulePath
+
+    # Clean up temporary directory
+    if (Test-Path $tempModulesDir)
+    {
+        Remove-Item -Path $tempModulesDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Write-Output ""

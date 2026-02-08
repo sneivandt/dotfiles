@@ -2,16 +2,19 @@
 .SYNOPSIS
     Windows bootstrap entry point for dotfiles repository.
 .DESCRIPTION
-    Aggregates module functions from src/ and performs a full setup:
+    This script is a thin wrapper around the Dotfiles PowerShell module.
+    It loads the module and calls Install-Dotfiles to perform a full setup:
       * Git configuration (Initialize-GitConfig)
+      * Repository update (Update-DotfilesRepository)
+      * Git hooks installation (Install-RepositoryGitHooks)
+      * Dotfiles module installation (Install-DotfilesModule)
       * Package installation (Install-Packages)
       * Registry configuration (Sync-Registry / conf/registry.ini)
       * Symlink creation (Install-Symlinks)
       * VS Code Extensions (Install-VsCodeExtensions)
 
     Registry operations and symlink creation require administrator privileges
-    when not in dry-run mode. Script is intentionally linear; each function
-    internally guards idempotency to allow safe re-runs.
+    when not in dry-run mode.
 
     The script always uses the "windows" profile. Profile selection is not
     supported on Windows.
@@ -28,6 +31,9 @@
 .EXAMPLE
     PS> .\dotfiles.ps1 -DryRun
     Show what would be changed without making modifications.
+.EXAMPLE
+    PS> .\dotfiles.ps1 -Verbose
+    Show detailed installation progress.
 #>
 
 [CmdletBinding()]
@@ -37,148 +43,12 @@ param (
     $DryRun
 )
 
-# Check for administrator privileges when not in dry-run mode
-if (-not $DryRun)
-{
-    # Only check for admin on Windows (this script is Windows-only anyway)
-    if ($IsWindows -or (-not (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue)))
-    {
-        try
-        {
-            $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-            $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-            if (-not $isAdmin)
-            {
-                # Automatically request elevation by re-launching the script
-                Write-Output "Not running as administrator. Requesting elevation..."
+# Import the Dotfiles module from the repository
+$modulePath = Join-Path $PSScriptRoot "Dotfiles.psm1"
+Import-Module $modulePath -Force
 
-                # Determine which PowerShell executable to use
-                $edition = $PSVersionTable.PSEdition
-                if ($edition -eq 'Core')
-                {
-                    $psExe = 'pwsh'
-                }
-                else
-                {
-                    # Desktop edition (Windows PowerShell)
-                    $psExe = 'powershell'
-                }
-
-                # Build argument list that keeps window open
-                $scriptCommand = @"
-& '$PSCommandPath'
-Write-Host
-Write-Host 'Installation complete. Press Enter to close...' -ForegroundColor Green
-Read-Host
-"@
-
-                $arguments = @(
-                    '-NoProfile',
-                    '-ExecutionPolicy', 'Bypass',
-                    '-Command', $scriptCommand
-                )
-
-                # Preserve -Verbose flag
-                if ($VerbosePreference -eq 'Continue')
-                {
-                    $arguments += '; Write-Verbose "Verbose mode enabled"'
-                }
-
-                # Launch elevated process without waiting
-                try
-                {
-                    $process = Start-Process -FilePath $psExe -ArgumentList $arguments -Verb RunAs -PassThru
-                    Write-Output "Elevated PowerShell window opened (PID: $($process.Id))."
-                    # Exit original shell immediately
-                    exit 0
-                }
-                catch [System.ComponentModel.Win32Exception]
-                {
-                    # UAC was cancelled (ERROR_CANCELLED = 1223) or access denied
-                    if ($_.Exception.NativeErrorCode -eq 1223)
-                    {
-                        Write-Error "UAC elevation was cancelled by user. Administrator privileges are required to modify registry settings and create symlinks. Please run as administrator or use -DryRun to preview changes."
-                    }
-                    else
-                    {
-                        Write-Error "Failed to elevate: $($_.Exception.Message)"
-                    }
-                    exit 1
-                }
-                catch
-                {
-                    # Other unexpected errors (e.g., PowerShell executable not found)
-                    Write-Error "Failed to start elevated process: $($_.Exception.Message)"
-                    exit 1
-                }
-            }
-        }
-        catch
-        {
-            # If we can't determine admin status (e.g., on non-Windows), assume it's okay
-            Write-Verbose "Unable to determine administrator status: $($_.Exception.Message)"
-        }
-    }
-}
-
-# Windows always uses the "windows" profile
-$SelectedProfile = "windows"
-
-# Load modules first before using any custom functions
-Write-Verbose "Loading Windows modules from: src/windows/"
-foreach ($module in Get-ChildItem $PSScriptRoot\src\windows\*.psm1)
-{
-    # Import each supporting module (Profile, Registry, Symlinks, VsCodeExtensions, Logging)
-    # -Force ensures updated definitions override any cached versions when re-run.
-    Write-Verbose "Importing module: $($module.Name)"
-    Import-Module $module.FullName -Force
-}
-
-# Initialize logging system (log file, counters)
-Initialize-Logging -Profile $SelectedProfile
-
-Write-VerboseMessage "Using profile: $SelectedProfile"
-
-if ($DryRun)
-{
-    Write-Stage -Message "DRY-RUN MODE: No system modifications will be made"
-}
-
-# Get excluded categories for this profile
-Write-VerboseMessage "Resolving excluded categories for profile: $SelectedProfile"
-$excluded = Get-ProfileExclusion -Root $PSScriptRoot -ProfileName $SelectedProfile
-Write-VerboseMessage "Excluded categories: $(if ($excluded) { $excluded } else { '(none)' })"
-
-Write-VerboseMessage "Starting installation sequence..."
-
-Write-VerboseMessage "[1/8] Initializing Git configuration..."
-Initialize-GitConfig -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
-
-Write-VerboseMessage "[2/8] Checking for repository updates..."
-Update-DotfilesRepository -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
-
-Write-VerboseMessage "[3/8] Installing repository git hooks..."
-Install-RepositoryGitHooks -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
-
-Write-VerboseMessage "[4/8] Installing Dotfiles PowerShell module..."
-Install-DotfilesModule -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
-
-Write-VerboseMessage "[5/8] Installing packages..."
-Install-Packages -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
-
-Write-VerboseMessage "[6/8] Syncing registry settings..."
-Sync-Registry -Root $PSScriptRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
-
-Write-VerboseMessage "[7/8] Installing symlinks..."
-Install-Symlinks -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
-
-Write-VerboseMessage "[8/8] Installing VS Code extensions..."
-Install-VsCodeExtensions -Root $PSScriptRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
-
-Write-VerboseMessage "Installation sequence complete!"
-
-# Display summary of operations
-Write-InstallationSummary -DryRun:$DryRun
+# Call Install-Dotfiles with the same parameters
+Install-Dotfiles -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
 # Ensure clean exit with success code
 exit 0

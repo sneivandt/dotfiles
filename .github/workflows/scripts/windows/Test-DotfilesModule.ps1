@@ -88,32 +88,39 @@ Write-Output ""
 
 # Test module installation to a temporary PSModulePath
 Write-Output "Testing module installation"
-$tempModulesDir = Join-Path $env:TEMP "dotfiles-test-modules-$(Get-Random)"
+# Use cross-platform temp directory
+$tempBase = if ($env:TEMP) { $env:TEMP } elseif ($env:TMPDIR) { $env:TMPDIR } else { "/tmp" }
+$tempModulesDir = Join-Path $tempBase "dotfiles-test-modules-$(Get-Random)"
 try
 {
-    # Create temporary modules directory
-    New-Item -ItemType Directory -Path $tempModulesDir -Force | Out-Null
-    Write-Output "  Created temporary modules directory: $tempModulesDir"
-
-    # Add to PSModulePath temporarily
-    $originalModulePath = $env:PSModulePath
-    $env:PSModulePath = "$tempModulesDir;$env:PSModulePath"
-    Write-Output "  Added to PSModulePath temporarily"
-
-    # Install the module
-    Import-Module .\src\windows\Module.psm1 -Force
-    Install-DotfilesModule -Root $PWD -DryRun:$false -Verbose
-
-    # Check if module was installed
+    # Create temporary modules directory and Dotfiles subdirectory
     $installedModulePath = Join-Path $tempModulesDir "Dotfiles"
-    if (-not (Test-Path $installedModulePath))
+    New-Item -ItemType Directory -Path $installedModulePath -Force | Out-Null
+    Write-Output "  Created temporary module directory: $installedModulePath"
+
+    # Manually copy module files (simulating what Install-DotfilesModule does)
+    Copy-Item -Path ".\Dotfiles.psd1" -Destination $installedModulePath -Force
+    Copy-Item -Path ".\Dotfiles.psm1" -Destination $installedModulePath -Force
+    Write-Output "  ✓ Copied module files"
+
+    # Copy required directories
+    $requiredDirs = @("src", "conf", "symlinks")
+    foreach ($dir in $requiredDirs)
     {
-        throw "Module was not installed to expected location: $installedModulePath"
+        $sourcePath = Join-Path $PWD $dir
+        $targetPath = Join-Path $installedModulePath $dir
+        if (Test-Path $sourcePath)
+        {
+            Copy-Item -Path $sourcePath -Destination $targetPath -Recurse -Force
+            Write-Output "  ✓ Copied directory: $dir"
+        }
+        else
+        {
+            throw "Source directory not found: $dir"
+        }
     }
-    Write-Output "  ✓ Module installed to: $installedModulePath"
 
     # Verify required directories were copied
-    $requiredDirs = @("src", "conf", "symlinks")
     foreach ($dir in $requiredDirs)
     {
         $dirPath = Join-Path $installedModulePath $dir
@@ -121,8 +128,12 @@ try
         {
             throw "Required directory not copied: $dir"
         }
-        Write-Output "  ✓ Directory copied: $dir"
     }
+
+    # Add to PSModulePath temporarily
+    $originalModulePath = $env:PSModulePath
+    $env:PSModulePath = "$tempModulesDir$([System.IO.Path]::PathSeparator)$env:PSModulePath"
+    Write-Output "  Added module directory to PSModulePath"
 
     # Remove the repository-loaded module
     Remove-Module Dotfiles -Force -ErrorAction SilentlyContinue

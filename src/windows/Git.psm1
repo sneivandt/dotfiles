@@ -42,12 +42,20 @@ function Initialize-GitConfig
     # Track if we've printed the stage header
     $act = $false
 
+    # Verify we're in a git repository
+    if (-not (Test-Path (Join-Path $Root ".git")))
+    {
+        Write-VerboseMessage "Skipping Git configuration: not a git repository"
+        return
+    }
+
     # Check current symlinks setting
     Push-Location $Root
     try
     {
         Write-VerboseMessage "Checking git configuration: core.symlinks"
-        $currentSymlinks = git config --local --get core.symlinks 2>$null
+        $currentSymlinks = git config --local --get core.symlinks 2>&1 | Out-String
+        $currentSymlinks = $currentSymlinks.Trim()
         Write-VerboseMessage "Current core.symlinks value: $(if ($currentSymlinks) { $currentSymlinks } else { '(not set)' })"
 
         if ($currentSymlinks -ne 'false')
@@ -65,7 +73,7 @@ function Initialize-GitConfig
             else
             {
                 Write-VerboseMessage "Setting core.symlinks = false"
-                git config --local core.symlinks false
+                $null = git config --local core.symlinks false 2>&1
             }
         }
         else

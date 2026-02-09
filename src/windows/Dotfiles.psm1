@@ -123,8 +123,9 @@ function Install-Dotfiles
 
                     # Build command to re-run Install-Dotfiles in elevated session
                     $verboseArg = if ($VerbosePreference -eq 'Continue') { ' -Verbose' } else { '' }
+                    $modulePath = Join-Path $Script:ModuleRoot "src\windows\Dotfiles.psm1"
                     $scriptCommand = @"
-Import-Module Dotfiles -Force
+Import-Module '$modulePath' -Force
 Install-Dotfiles$verboseArg
 Write-Host
 Write-Host 'Installation complete. Press Enter to close...' -ForegroundColor Green
@@ -177,20 +178,36 @@ Read-Host
     # Windows always uses the "windows" profile
     $SelectedProfile = "windows"
 
-    Write-Verbose "Loading Windows modules from: $Script:ModuleRoot\src\windows\"
-    foreach ($module in Get-ChildItem "$Script:ModuleRoot\src\windows\*.psm1")
-    {
-        # Skip the Dotfiles module itself to avoid circular import
-        if ($module.Name -eq 'Dotfiles.psm1')
-        {
-            continue
-        }
+    # Import modules in dependency order
+    # Logging and Profile modules must be loaded first as other modules depend on them
+    $moduleLoadOrder = @(
+        'Logging.psm1',
+        'Profile.psm1',
+        'Git.psm1',
+        'GitHooks.psm1',
+        'Module.psm1',
+        'Packages.psm1',
+        'Registry.psm1',
+        'Symlinks.psm1',
+        'VsCodeExtensions.psm1'
+    )
 
-        # Import each supporting module (Profile, Registry, Symlinks, VsCodeExtensions, Logging)
-        # -Force ensures updated definitions override any cached versions when re-run.
-        # -Global ensures functions are available in all scopes
-        Write-Verbose "Importing module: $($module.Name)"
-        Import-Module $module.FullName -Force -Global
+    Write-Verbose "Loading Windows modules from: $Script:ModuleRoot\src\windows\"
+    foreach ($moduleName in $moduleLoadOrder)
+    {
+        $modulePath = Join-Path "$Script:ModuleRoot\src\windows" $moduleName
+        if (Test-Path $modulePath)
+        {
+            # Import each supporting module
+            # -Force ensures updated definitions override any cached versions when re-run.
+            # -Global ensures functions are available in all scopes
+            Write-Verbose "Importing module: $moduleName"
+            Import-Module $modulePath -Force -Global
+        }
+        else
+        {
+            Write-Warning "Module not found: $modulePath"
+        }
     }
 
     # Initialize logging system (log file, counters)

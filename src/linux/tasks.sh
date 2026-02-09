@@ -158,11 +158,24 @@ configure_fonts()
     return
   fi
 
+  # Get all sections from fonts.ini and check if any match the profile
+  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/fonts.ini | tr -d '[]')"
+
+  has_matching_section=0
+  for section in $sections; do
+    if should_include_profile_tag "$section"; then
+      has_matching_section=1
+      break
+    fi
+  done
+
+  if [ "$has_matching_section" -eq 0 ]; then
+    log_verbose "Skipping font configuration: no sections match current profile"
+    return
+  fi
+
   log_progress "Checking fonts..."
   log_verbose "Checking fonts from: conf/fonts.ini"
-
-  # Get all sections from fonts.ini and process only those matching the profile
-  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/fonts.ini | tr -d '[]')"
 
   # Track if any fonts are missing across all relevant sections
   missing_fonts=0

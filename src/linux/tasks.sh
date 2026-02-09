@@ -55,12 +55,26 @@ configure_file_mode_bits()
     return
   fi
 
-  log_progress "Checking file permissions..."
-  log_verbose "Processing chmod config: conf/chmod.ini"
-
   # Get list of sections from chmod.ini
   # Sections use comma-separated categories (e.g., [base], [arch,desktop])
   sections="$(grep -E '^\[.+\]$' "$DIR"/conf/chmod.ini | tr -d '[]')"
+
+  # Check if any sections match the active profile
+  has_matching_section=0
+  for section in $sections; do
+    if should_include_profile_tag "$section"; then
+      has_matching_section=1
+      break
+    fi
+  done
+
+  if [ "$has_matching_section" -eq 0 ]; then
+    log_verbose "Skipping chmod: no sections match active profile"
+    return
+  fi
+
+  log_progress "Checking file permissions..."
+  log_verbose "Processing chmod config: conf/chmod.ini"
 
   local act=0
 
@@ -248,11 +262,25 @@ configure_systemd()
     return
   fi
 
-  log_progress "Checking systemd units..."
-  log_verbose "Processing systemd units from: conf/units.ini"
-
   # Get list of sections from units.ini
   sections="$(grep -E '^\[.+\]$' "$DIR"/conf/units.ini | tr -d '[]')"
+
+  # Check if any sections match the active profile
+  has_matching_section=0
+  for section in $sections; do
+    if should_include_profile_tag "$section"; then
+      has_matching_section=1
+      break
+    fi
+  done
+
+  if [ "$has_matching_section" -eq 0 ]; then
+    log_verbose "Skipping systemd units: no sections match active profile"
+    return
+  fi
+
+  log_progress "Checking systemd units..."
+  log_verbose "Processing systemd units from: conf/units.ini"
 
   # Collect all units that need to be enabled across all sections
   # to print stage header only once
@@ -611,10 +639,24 @@ install_symlinks()
     return
   fi
 
-  log_progress "Checking symlinks..."
-
   # Get list of sections from symlinks.ini
   sections="$(grep -E '^\[.+\]$' "$DIR"/conf/symlinks.ini | tr -d '[]')"
+
+  # Check if any sections match the active profile
+  has_matching_section=0
+  for section in $sections; do
+    if should_include_profile_tag "$section"; then
+      has_matching_section=1
+      break
+    fi
+  done
+
+  if [ "$has_matching_section" -eq 0 ]; then
+    log_verbose "Skipping symlinks: no sections match active profile"
+    return
+  fi
+
+  log_progress "Checking symlinks..."
 
   local act=0
 
@@ -695,10 +737,30 @@ install_vscode_extensions()
     return
   fi
 
-  log_progress "Checking VS Code extensions..."
-
   # Get list of sections from vscode-extensions.ini
   sections="$(grep -E '^\[.+\]$' "$DIR"/conf/vscode-extensions.ini | tr -d '[]')"
+
+  # Check if any sections match the active profile
+  has_matching_section=0
+  for section in $sections; do
+    if should_include_profile_tag "$section"; then
+      has_matching_section=1
+      break
+    fi
+  done
+
+  if [ "$has_matching_section" -eq 0 ]; then
+    log_verbose "Skipping VS Code extensions: no sections match active profile"
+    return
+  fi
+
+  # Check if VS Code is installed
+  if ! is_program_installed "code" && ! is_program_installed "code-insiders"; then
+    log_verbose "Skipping VS Code extensions: code not installed"
+    return
+  fi
+
+  log_progress "Checking VS Code extensions..."
 
   # Iterate over both stable and insiders versions of VS Code
   for code in code code-insiders

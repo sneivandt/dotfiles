@@ -42,7 +42,6 @@
             "background": "#151515",
             "closeOnExit": "graceful",
             "colorScheme": "MyTheme",
-            "commandline": "powershell.exe -nologo",
             "cursorColor": "#FFFFFF",
             "cursorShape": "bar",
             "font":
@@ -68,6 +67,7 @@
                 "startingDirectory": "%USERPROFILE%"
             },
             {
+                "commandline": "powershell.exe -nologo",
                 "guid": "{61c54bbd-c2c6-5271-96e7-009a87ff44bf}",
                 "hidden": false,
                 "name": "Windows PowerShell"
@@ -88,7 +88,7 @@
                 "hidden": false,
                 "name": "Ubuntu",
                 "source": "Windows.Terminal.Wsl",
-                "startingDirectory": "//wsl$/Ubuntu/home/${env:USERNAME}"
+                "startingDirectory": "~"
             },
             {
                 "guid": "{16208362-94fc-5b1f-a491-5b2624d5ab56}",

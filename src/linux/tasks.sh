@@ -141,8 +141,9 @@ configure_file_mode_bits()
 # configure_fonts
 #
 # Refresh font cache when GUI fonts list (conf/fonts.ini) differs from currently
-# installed families. Skips if: required fc-* tools missing, fonts.ini excluded
-# by sparse checkout, or all listed font families already present.
+# installed families. Processes only sections matching the active profile.
+# Skips if: required fc-* tools missing, fonts.ini missing, no matching profile
+# sections, or all listed font families already present.
 configure_fonts()
 {(
   # Check if font configuration tools are installed
@@ -160,25 +161,36 @@ configure_fonts()
   log_progress "Checking fonts..."
   log_verbose "Checking fonts from: conf/fonts.ini"
 
-  # Read the list of required fonts from the [fonts] section
-  # Check if any fonts are missing using a temp file for POSIX compliance
-  tmpfile="$(mktemp)"
-  read_ini_section "$DIR"/conf/fonts.ini "fonts" > "$tmpfile"
+  # Get all sections from fonts.ini and process only those matching the profile
+  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/fonts.ini | tr -d '[]')"
 
+  # Track if any fonts are missing across all relevant sections
   missing_fonts=0
-  while IFS='' read -r font || [ -n "$font" ]; do
-    if [ -z "$font" ]; then
+  tmpfile="$(mktemp)"
+
+  for section in $sections; do
+    if ! should_include_profile_tag "$section"; then
+      log_verbose "Skipping font section [$section]: profile not included"
       continue
     fi
 
-    # Check if the font family is already installed in the system
-    # fc-list outputs comma-separated family names, so we need to handle that
-    # Convert commas to newlines and check for exact match of any family name
-    if ! fc-list : family | tr ',' '\n' | grep -Fxq "$font"; then
-      missing_fonts=1
-      break
-    fi
-  done < "$tmpfile"
+    # Read fonts from this section
+    read_ini_section "$DIR"/conf/fonts.ini "$section" > "$tmpfile"
+
+    while IFS='' read -r font || [ -n "$font" ]; do
+      if [ -z "$font" ]; then
+        continue
+      fi
+
+      # Check if the font family is already installed in the system
+      # fc-list outputs comma-separated family names, so we need to handle that
+      # Convert commas to newlines and check for exact match of any family name
+      if ! fc-list : family | tr ',' '\n' | grep -Fxq "$font"; then
+        missing_fonts=1
+        break 2  # Break out of both loops
+      fi
+    done < "$tmpfile"
+  done
   rm -f "$tmpfile"
 
   if [ "$missing_fonts" -eq 0 ]; then

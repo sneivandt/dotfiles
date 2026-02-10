@@ -114,3 +114,9 @@
 
   # Who am I?
   whoami        = !git config user.email && git config user.name
+
+  # AI PR for GitHub: create PR with AI-generated title and description
+  prgh = "!~/.config/git/ai-pr.sh github"
+
+  # AI PR for Azure DevOps: create PR with AI-generated title and description
+  praz = "!~/.config/git/ai-pr.sh azure"

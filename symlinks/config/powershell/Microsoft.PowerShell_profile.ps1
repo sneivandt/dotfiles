@@ -92,7 +92,7 @@ if (Get-Command "gh" -ErrorAction SilentlyContinue)
     {
         if ($args.Count -eq 0)
         {
-            gh copilot -i chat
+            gh copilot
         }
         else
         {

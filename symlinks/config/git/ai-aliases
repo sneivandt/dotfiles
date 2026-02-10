@@ -1,0 +1,75 @@
+# GitHub Copilot AI Git Aliases
+#
+# These aliases integrate GitHub Copilot CLI with Git for AI-assisted workflows.
+#
+# Prerequisites:
+# - Install GitHub CLI: https://cli.github.com/
+# - Install Copilot extension: gh extension install github/gh-copilot
+# - Authenticate: gh auth login
+#
+# Usage:
+#   git cai           - Generate AI commit message and commit staged changes
+#   git explain <cmd> - Explain what a git command does
+#   git review        - Get AI code review of staged changes
+#   git summarize [n] - Summarize last n commits (default: 5)
+#   git fixup         - Get AI suggestions for fixing current changes
+#
+# Shell Aliases (also available):
+#   ai                - Start interactive Copilot chat
+#   aic <query>       - Get command suggestion from Copilot
+
+# AI-powered Git aliases using GitHub Copilot CLI
+[alias]
+    # AI commit: stage changes and generate commit message with AI
+    cai = "!f() { \
+        if [ -z \"$(git diff --cached)\" ]; then \
+            echo \"No staged changes. Staging all changes...\"; \
+            git add -A; \
+        fi; \
+        if ! command -v gh >/dev/null 2>&1; then \
+            echo \"Error: gh CLI not found\"; \
+            return 1; \
+        fi; \
+        echo \"Generating commit message...\"; \
+        MSG=$(git diff --cached | gh copilot suggest \"Generate a conventional commit message for these changes. Output only the commit message, no explanations.\"); \
+        if [ -z \"$MSG\" ]; then \
+            echo \"Failed to generate commit message\"; \
+            return 1; \
+        fi; \
+        echo \"Suggested commit message:\"; \
+        echo \"$MSG\"; \
+        echo \"\"; \
+        read -p \"Use this message? [y/N] \" -n 1 -r; \
+        echo; \
+        if [[ $REPLY =~ ^[Yy]$ ]]; then \
+            git commit -m \"$MSG\"; \
+        else \
+            echo \"Commit cancelled\"; \
+        fi; \
+    }; f"
+
+    # AI explain: explain what a git command does
+    explain = "!f() { \
+        gh copilot explain \"$*\"; \
+    }; f"
+
+    # AI review: get AI code review of staged changes
+    review = "!f() { \
+        if [ -z \"$(git diff --cached)\" ]; then \
+            echo \"No staged changes. Reviewing all unstaged changes...\"; \
+            git diff | gh copilot chat -m \"Review this code for potential issues, bugs, and improvements\"; \
+        else \
+            git diff --cached | gh copilot chat -m \"Review this code for potential issues, bugs, and improvements\"; \
+        fi; \
+    }; f"
+
+    # AI summarize: summarize recent commits
+    summarize = "!f() { \
+        COUNT=${1:-5}; \
+        git log -n \"$COUNT\" --pretty=format:\"%h %s\" | gh copilot chat -m \"Summarize what these commits accomplish\"; \
+    }; f"
+
+    # AI fixup: suggest fixup for current changes
+    fixup = "!f() { \
+        git diff | gh copilot suggest \"Suggest what might be wrong with this code and how to fix it\"; \
+    }; f"

@@ -67,3 +67,9 @@ if command -v xclip >/dev/null 2>&1; then
   alias pbcopy="xclip -selection clipboard -in"
   alias pbpaste="xclip -selection clipboard -out"
 fi
+
+# AI / GitHub Copilot CLI aliases
+if command -v gh >/dev/null 2>&1 && gh copilot --version >/dev/null 2>&1; then
+  alias ai="gh copilot chat"
+  alias aic="gh copilot suggest"
+fi

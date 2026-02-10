@@ -65,6 +65,7 @@
 
 [include]
   path = ~/.config/git/aliases
+  path = ~/.config/git/ai-aliases
   path = ~/.config/git/delta
   path = ~/.config/git/windows
 

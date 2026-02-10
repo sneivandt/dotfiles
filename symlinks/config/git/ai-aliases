@@ -13,6 +13,8 @@
 #   git review        - Get AI code review of staged changes
 #   git summarize [n] - Summarize last n commits (default: 5)
 #   git fixup         - Get AI suggestions for fixing current changes
+#   git prgh          - Create GitHub PR with AI-generated title and description
+#   git praz          - Create Azure DevOps PR with AI-generated title and description
 #
 # Shell Aliases (also available):
 #   ai                - Start interactive Copilot chat
@@ -72,4 +74,125 @@
     # AI fixup: suggest fixup for current changes
     fixup = "!f() { \
         git diff | gh copilot suggest \"Suggest what might be wrong with this code and how to fix it\"; \
+    }; f"
+
+    # AI PR for GitHub: create PR with AI-generated title and description
+    prgh = "!f() { \
+        if ! command -v gh >/dev/null 2>&1; then \
+            echo \"Error: gh CLI not found. Install from https://cli.github.com/\"; \
+            return 1; \
+        fi; \
+        CURRENT_BRANCH=$(git branch --show-current); \
+        if [ -z \"$CURRENT_BRANCH\" ]; then \
+            echo \"Error: Not on a branch\"; \
+            return 1; \
+        fi; \
+        DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5); \
+        if [ -z \"$DEFAULT_BRANCH\" ]; then \
+            DEFAULT_BRANCH=\"main\"; \
+        fi; \
+        if [ \"$CURRENT_BRANCH\" = \"$DEFAULT_BRANCH\" ]; then \
+            echo \"Error: Cannot create PR from default branch ($DEFAULT_BRANCH)\"; \
+            return 1; \
+        fi; \
+        echo \"Generating PR title and description...\"; \
+        DIFF=$(git diff \"$DEFAULT_BRANCH\"...HEAD); \
+        if [ -z \"$DIFF\" ]; then \
+            echo \"Error: No changes between $DEFAULT_BRANCH and $CURRENT_BRANCH\"; \
+            return 1; \
+        fi; \
+        COMMITS=$(git log \"$DEFAULT_BRANCH\"..HEAD --pretty=format:'%h %s'); \
+        PROMPT=\"Based on these commits and changes, generate a pull request title (one line) and description (multiple paragraphs with markdown formatting). Format your response EXACTLY as:\n\nTITLE: <title here>\n\nDESCRIPTION:\n<description here>\n\nCommits:\n$COMMITS\"; \
+        AI_RESPONSE=$(echo \"$PROMPT\" | gh copilot suggest -t shell 2>/dev/null || echo \"$PROMPT\" | gh copilot chat 2>/dev/null); \
+        if [ -z \"$AI_RESPONSE\" ]; then \
+            echo \"Failed to generate PR content\"; \
+            return 1; \
+        fi; \
+        PR_TITLE=$(echo \"$AI_RESPONSE\" | grep -A 1 '^TITLE:' | tail -1 | sed 's/^TITLE: *//' | sed 's/^[[:space:]]*//'); \
+        PR_BODY=$(echo \"$AI_RESPONSE\" | sed -n '/^DESCRIPTION:/,/^$/p' | tail -n +2); \
+        if [ -z \"$PR_TITLE\" ]; then \
+            PR_TITLE=$(echo \"$COMMITS\" | head -1 | cut -d' ' -f2-); \
+        fi; \
+        if [ -z \"$PR_BODY\" ]; then \
+            PR_BODY=\"## Changes\n\n$COMMITS\"; \
+        fi; \
+        echo \"\"; \
+        echo \"=== Generated PR ===\"; \
+        echo \"Title: $PR_TITLE\"; \
+        echo \"\"; \
+        echo \"Description:\"; \
+        echo \"$PR_BODY\"; \
+        echo \"===================\"; \
+        echo \"\"; \
+        read -p \"Create PR with this content? [y/N] \" -n 1 -r; \
+        echo; \
+        if [[ $REPLY =~ ^[Yy]$ ]]; then \
+            gh pr create --title \"$PR_TITLE\" --body \"$PR_BODY\" \"$@\"; \
+        else \
+            echo \"PR creation cancelled\"; \
+        fi; \
+    }; f"
+
+    # AI PR for Azure DevOps: create PR with AI-generated title and description
+    praz = "!f() { \
+        if ! command -v az >/dev/null 2>&1; then \
+            echo \"Error: Azure CLI (az) not found. Install from https://docs.microsoft.com/cli/azure/install-azure-cli\"; \
+            return 1; \
+        fi; \
+        CURRENT_BRANCH=$(git branch --show-current); \
+        if [ -z \"$CURRENT_BRANCH\" ]; then \
+            echo \"Error: Not on a branch\"; \
+            return 1; \
+        fi; \
+        DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5); \
+        if [ -z \"$DEFAULT_BRANCH\" ]; then \
+            DEFAULT_BRANCH=\"main\"; \
+        fi; \
+        if [ \"$CURRENT_BRANCH\" = \"$DEFAULT_BRANCH\" ]; then \
+            echo \"Error: Cannot create PR from default branch ($DEFAULT_BRANCH)\"; \
+            return 1; \
+        fi; \
+        echo \"Generating PR title and description...\"; \
+        DIFF=$(git diff \"$DEFAULT_BRANCH\"...HEAD); \
+        if [ -z \"$DIFF\" ]; then \
+            echo \"Error: No changes between $DEFAULT_BRANCH and $CURRENT_BRANCH\"; \
+            return 1; \
+        fi; \
+        COMMITS=$(git log \"$DEFAULT_BRANCH\"..HEAD --pretty=format:'%h %s'); \
+        if ! command -v gh >/dev/null 2>&1; then \
+            echo \"Warning: gh CLI not found for AI generation, using commit messages\"; \
+            PR_TITLE=$(echo \"$COMMITS\" | head -1 | cut -d' ' -f2-); \
+            PR_BODY=\"## Changes\n\n$COMMITS\"; \
+        else \
+            PROMPT=\"Based on these commits and changes, generate a pull request title (one line) and description (multiple paragraphs with markdown formatting). Format your response EXACTLY as:\n\nTITLE: <title here>\n\nDESCRIPTION:\n<description here>\n\nCommits:\n$COMMITS\"; \
+            AI_RESPONSE=$(echo \"$PROMPT\" | gh copilot suggest -t shell 2>/dev/null || echo \"$PROMPT\" | gh copilot chat 2>/dev/null); \
+            if [ -z \"$AI_RESPONSE\" ]; then \
+                PR_TITLE=$(echo \"$COMMITS\" | head -1 | cut -d' ' -f2-); \
+                PR_BODY=\"## Changes\n\n$COMMITS\"; \
+            else \
+                PR_TITLE=$(echo \"$AI_RESPONSE\" | grep -A 1 '^TITLE:' | tail -1 | sed 's/^TITLE: *//' | sed 's/^[[:space:]]*//'); \
+                PR_BODY=$(echo \"$AI_RESPONSE\" | sed -n '/^DESCRIPTION:/,/^$/p' | tail -n +2); \
+                if [ -z \"$PR_TITLE\" ]; then \
+                    PR_TITLE=$(echo \"$COMMITS\" | head -1 | cut -d' ' -f2-); \
+                fi; \
+                if [ -z \"$PR_BODY\" ]; then \
+                    PR_BODY=\"## Changes\n\n$COMMITS\"; \
+                fi; \
+            fi; \
+        fi; \
+        echo \"\"; \
+        echo \"=== Generated PR ===\"; \
+        echo \"Title: $PR_TITLE\"; \
+        echo \"\"; \
+        echo \"Description:\"; \
+        echo \"$PR_BODY\"; \
+        echo \"===================\"; \
+        echo \"\"; \
+        read -p \"Create PR with this content? [y/N] \" -n 1 -r; \
+        echo; \
+        if [[ $REPLY =~ ^[Yy]$ ]]; then \
+            az repos pr create --title \"$PR_TITLE\" --description \"$PR_BODY\" --source-branch \"$CURRENT_BRANCH\" --target-branch \"$DEFAULT_BRANCH\" \"$@\"; \
+        else \
+            echo \"PR creation cancelled\"; \
+        fi; \
     }; f"

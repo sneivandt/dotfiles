@@ -84,3 +84,25 @@ function Prompt
 
     $LASTEXITCODE = $origLastExitCode
 }
+
+# AI / GitHub Copilot CLI aliases
+if (Get-Command "gh" -ErrorAction SilentlyContinue)
+{
+    # Check if gh copilot extension is installed
+    $copilotInstalled = & gh extension list 2>$null | Select-String -Pattern "copilot" -Quiet
+    if ($copilotInstalled)
+    {
+        function Invoke-CopilotChat
+        {
+            gh copilot chat $args
+        }
+
+        function Invoke-CopilotSuggest
+        {
+            gh copilot suggest $args
+        }
+
+        Set-Alias -Name ai -Value Invoke-CopilotChat
+        Set-Alias -Name aic -Value Invoke-CopilotSuggest
+    }
+}

@@ -1,0 +1,243 @@
+# GitHub Copilot AI Git Aliases
+#
+# These aliases integrate GitHub Copilot CLI with Git for AI-assisted workflows.
+#
+# Prerequisites:
+# - Install GitHub CLI: https://cli.github.com/
+# - Install Copilot extension: gh extension install github/gh-copilot
+# - Authenticate: gh auth login
+#
+# Usage:
+#   git cai           - Generate AI commit message and commit staged changes
+#   git explain <cmd> - Explain what a git command does
+#   git review        - Get AI code review of staged changes
+#   git summarize [n] - Summarize last n commits (default: 5)
+#   git fixup         - Get AI suggestions for fixing current changes
+#   git prgh          - Create GitHub PR with AI-generated title and description
+#   git praz          - Create Azure DevOps PR with AI-generated title and description
+#
+# Shell Aliases (also available):
+#   ai                - Start interactive Copilot chat
+#   aic <query>       - Get command suggestion from Copilot
+
+# AI-powered Git aliases using GitHub Copilot CLI
+[alias]
+    # AI commit: stage changes and generate commit message with AI
+    cai = "!f() { \
+        if [ -z \"$(git diff --cached)\" ]; then \
+            echo \"No staged changes. Staging all changes...\"; \
+            git add -A; \
+        fi; \
+        if ! command -v gh >/dev/null 2>&1; then \
+            echo \"Error: gh CLI not found\"; \
+            return 1; \
+        fi; \
+        if ! gh copilot --version >/dev/null 2>&1; then \
+            echo \"Error: gh copilot extension not found. Install with: gh extension install github/gh-copilot\"; \
+            return 1; \
+        fi; \
+        echo \"Generating commit message...\"; \
+        MSG=$(git diff --cached | gh copilot suggest \"Generate a conventional commit message for these changes. Output only the commit message, no explanations.\"); \
+        if [ -z \"$MSG\" ]; then \
+            echo \"Failed to generate commit message\"; \
+            return 1; \
+        fi; \
+        echo \"Suggested commit message:\"; \
+        echo \"$MSG\"; \
+        echo \"\"; \
+        printf \"Use this message? [y/N] \"; \
+        IFS= read -r ans; \
+        case \"$ans\" in \
+            [Yy]*) git commit -m \"$MSG\" ;; \
+            *) echo \"Commit cancelled\" ;; \
+        esac; \
+    }; f"
+
+    # AI explain: explain what a git command does
+    explain = "!f() { \
+        if ! command -v gh >/dev/null 2>&1; then \
+            echo \"Error: gh CLI not found\"; \
+            return 1; \
+        fi; \
+        if ! gh copilot --version >/dev/null 2>&1; then \
+            echo \"Error: gh copilot extension not found. Install with: gh extension install github/gh-copilot\"; \
+            return 1; \
+        fi; \
+        gh copilot explain \"$*\"; \
+    }; f"
+
+    # AI review: get AI code review of staged changes
+    review = "!f() { \
+        if ! command -v gh >/dev/null 2>&1; then \
+            echo \"Error: gh CLI not found\"; \
+            return 1; \
+        fi; \
+        if ! gh copilot --version >/dev/null 2>&1; then \
+            echo \"Error: gh copilot extension not found. Install with: gh extension install github/gh-copilot\"; \
+            return 1; \
+        fi; \
+        if [ -z \"$(git diff --cached)\" ]; then \
+            echo \"No staged changes. Reviewing all unstaged changes...\"; \
+            git diff | gh copilot chat -m \"Review this code for potential issues, bugs, and improvements\"; \
+        else \
+            git diff --cached | gh copilot chat -m \"Review this code for potential issues, bugs, and improvements\"; \
+        fi; \
+    }; f"
+
+    # AI summarize: summarize recent commits
+    summarize = "!f() { \
+        if ! command -v gh >/dev/null 2>&1; then \
+            echo \"Error: gh CLI not found\"; \
+            return 1; \
+        fi; \
+        if ! gh copilot --version >/dev/null 2>&1; then \
+            echo \"Error: gh copilot extension not found. Install with: gh extension install github/gh-copilot\"; \
+            return 1; \
+        fi; \
+        COUNT=${1:-5}; \
+        git log -n \"$COUNT\" --pretty=format:\"%h %s\" | gh copilot chat -m \"Summarize what these commits accomplish\"; \
+    }; f"
+
+    # AI fixup: suggest fixup for current changes
+    fixup = "!f() { \
+        if ! command -v gh >/dev/null 2>&1; then \
+            echo \"Error: gh CLI not found\"; \
+            return 1; \
+        fi; \
+        if ! gh copilot --version >/dev/null 2>&1; then \
+            echo \"Error: gh copilot extension not found. Install with: gh extension install github/gh-copilot\"; \
+            return 1; \
+        fi; \
+        git diff | gh copilot suggest \"Suggest what might be wrong with this code and how to fix it\"; \
+    }; f"
+
+    # AI PR for GitHub: create PR with AI-generated title and description
+    prgh = "!f() { \
+        if ! command -v gh >/dev/null 2>&1; then \
+            echo \"Error: gh CLI not found. Install from https://cli.github.com/\"; \
+            return 1; \
+        fi; \
+        if ! gh copilot --version >/dev/null 2>&1; then \
+            echo \"Error: gh copilot extension not found. Install with: gh extension install github/gh-copilot\"; \
+            return 1; \
+        fi; \
+        CURRENT_BRANCH=$(git branch --show-current); \
+        if [ -z \"$CURRENT_BRANCH\" ]; then \
+            echo \"Error: Not on a branch\"; \
+            return 1; \
+        fi; \
+        DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5); \
+        if [ -z \"$DEFAULT_BRANCH\" ]; then \
+            DEFAULT_BRANCH=\"main\"; \
+        fi; \
+        if [ \"$CURRENT_BRANCH\" = \"$DEFAULT_BRANCH\" ]; then \
+            echo \"Error: Cannot create PR from default branch ($DEFAULT_BRANCH)\"; \
+            return 1; \
+        fi; \
+        echo \"Generating PR title and description...\"; \
+        git diff --quiet \"$DEFAULT_BRANCH\"...HEAD; \
+        DIFF_STATUS=$?; \
+        if [ \"$DIFF_STATUS\" -eq 0 ]; then \
+            echo \"Error: No changes between $DEFAULT_BRANCH and $CURRENT_BRANCH\"; \
+            return 1; \
+        elif [ \"$DIFF_STATUS\" -ne 1 ]; then \
+            echo \"Error: Failed to compute diff between $DEFAULT_BRANCH and $CURRENT_BRANCH\"; \
+            return 1; \
+        fi; \
+        COMMITS=$(git log \"$DEFAULT_BRANCH\"..HEAD --pretty=format:'%h %s'); \
+        PROMPT=\"Based on these commits and changes, generate a pull request title (one line) and description (multiple paragraphs with markdown formatting). Format your response EXACTLY as:\n\nTITLE: <title here>\n\nDESCRIPTION:\n<description here>\n\nCommits:\n$COMMITS\"; \
+        AI_RESPONSE=$(printf '%b' \"$PROMPT\" | gh copilot suggest -t shell 2>/dev/null || printf '%b' \"$PROMPT\" | gh copilot chat 2>/dev/null); \
+        if [ -z \"$AI_RESPONSE\" ]; then \
+            echo \"Failed to generate PR content\"; \
+            return 1; \
+        fi; \
+        PR_TITLE=$(echo \"$AI_RESPONSE\" | grep '^TITLE:' | head -1 | sed 's/^TITLE:[[:space:]]*//'); \
+        PR_BODY=$(echo \"$AI_RESPONSE\" | sed -n '/^DESCRIPTION:/,/^Commits:/p' | sed '1d;$d'); \
+        if [ -z \"$PR_TITLE\" ]; then \
+            PR_TITLE=$(echo \"$COMMITS\" | head -1 | cut -d' ' -f2-); \
+        fi; \
+        if [ -z \"$PR_BODY\" ]; then \
+            PR_BODY=\"## Changes\n\n$COMMITS\"; \
+        fi; \
+        echo \"\"; \
+        echo \"=== Generated PR ===\"; \
+        echo \"Title: $PR_TITLE\"; \
+        echo \"\"; \
+        echo \"Description:\"; \
+        printf '%b\n' \"$PR_BODY\"; \
+        echo \"===================\"; \
+        echo \"\"; \
+        printf \"Create PR with this content? [y/N] \"; \
+        IFS= read -r ans; \
+        case \"$ans\" in \
+            [Yy]*) gh pr create --title \"$PR_TITLE\" --body \"$PR_BODY\" \"$@\" ;; \
+            *) echo \"PR creation cancelled\" ;; \
+        esac; \
+    }; f"
+
+    # AI PR for Azure DevOps: create PR with AI-generated title and description
+    praz = "!f() { \
+        if ! command -v az >/dev/null 2>&1; then \
+            echo \"Error: Azure CLI (az) not found. Install from https://docs.microsoft.com/cli/azure/install-azure-cli\"; \
+            return 1; \
+        fi; \
+        CURRENT_BRANCH=$(git branch --show-current); \
+        if [ -z \"$CURRENT_BRANCH\" ]; then \
+            echo \"Error: Not on a branch\"; \
+            return 1; \
+        fi; \
+        DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5); \
+        if [ -z \"$DEFAULT_BRANCH\" ]; then \
+            DEFAULT_BRANCH=\"main\"; \
+        fi; \
+        if [ \"$CURRENT_BRANCH\" = \"$DEFAULT_BRANCH\" ]; then \
+            echo \"Error: Cannot create PR from default branch ($DEFAULT_BRANCH)\"; \
+            return 1; \
+        fi; \
+        echo \"Generating PR title and description...\"; \
+        git diff --quiet \"$DEFAULT_BRANCH\"...HEAD; \
+        DIFF_STATUS=$?; \
+        if [ \"$DIFF_STATUS\" -eq 0 ]; then \
+            echo \"Error: No changes between $DEFAULT_BRANCH and $CURRENT_BRANCH\"; \
+            return 1; \
+        elif [ \"$DIFF_STATUS\" -ne 1 ]; then \
+            echo \"Error: Failed to compute diff between $DEFAULT_BRANCH and $CURRENT_BRANCH\"; \
+            return 1; \
+        fi; \
+        COMMITS=$(git log \"$DEFAULT_BRANCH\"..HEAD --pretty=format:'%h %s'); \
+        if ! command -v gh >/dev/null 2>&1 || ! gh copilot --version >/dev/null 2>&1; then \
+            echo \"Warning: gh CLI or copilot extension not found, using commit messages\"; \
+            PR_TITLE=$(echo \"$COMMITS\" | head -1 | cut -d' ' -f2-); \
+            PR_BODY=\"## Changes\n\n$COMMITS\"; \
+        else \
+            PROMPT=\"Based on these commits and changes, generate a pull request title (one line) and description (multiple paragraphs with markdown formatting). Format your response EXACTLY as:\n\nTITLE: <title here>\n\nDESCRIPTION:\n<description here>\n\nCommits:\n$COMMITS\"; \
+            AI_RESPONSE=$(printf '%b' \"$PROMPT\" | gh copilot suggest -t shell 2>/dev/null || printf '%b' \"$PROMPT\" | gh copilot chat 2>/dev/null); \
+            if [ -z \"$AI_RESPONSE\" ]; then \
+                PR_TITLE=$(echo \"$COMMITS\" | head -1 | cut -d' ' -f2-); \
+                PR_BODY=\"## Changes\n\n$COMMITS\"; \
+            else \
+                PR_TITLE=$(echo \"$AI_RESPONSE\" | grep '^TITLE:' | head -1 | sed 's/^TITLE:[[:space:]]*//'); \
+                PR_BODY=$(echo \"$AI_RESPONSE\" | sed -n '/^DESCRIPTION:/,/^Commits:/p' | sed '1d;$d'); \
+                if [ -z \"$PR_TITLE\" ]; then \
+                    PR_TITLE=$(echo \"$COMMITS\" | head -1 | cut -d' ' -f2-); \
+                fi; \
+                if [ -z \"$PR_BODY\" ]; then \
+                    PR_BODY=\"## Changes\n\n$COMMITS\"; \
+                fi; \
+            fi; \
+        fi; \
+        echo \"\"; \
+        echo \"=== Generated PR ===\"; \
+        echo \"Title: $PR_TITLE\"; \
+        echo \"\"; \
+        echo \"Description:\"; \
+        printf '%b\n' \"$PR_BODY\"; \
+        echo \"===================\"; \
+        echo \"\"; \
+        printf \"Create PR with this content? [y/N] \"; \
+        IFS= read -r ans; \
+        case \"$ans\" in \
+            [Yy]*) az repos pr create --title \"$PR_TITLE\" --description \"$PR_BODY\" --source-branch \"$CURRENT_BRANCH\" --target-branch \"$DEFAULT_BRANCH\" \"$@\" ;; \
+            *) echo \"PR creation cancelled\" ;; \
+        esac; \
+    }; f"

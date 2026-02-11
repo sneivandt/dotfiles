@@ -241,9 +241,9 @@ Preview what would be done without making changes:
 
 **Example dry-run output:**
 ```
-DRY-RUN: Would install package: alacritty
-DRY-RUN: Would create symlink: /home/user/.config/alacritty
-DRY-RUN: Would enable systemd unit: picom.service
+Would install package: alacritty
+Would create symlink: /home/user/.config/alacritty
+Would enable systemd unit: picom.service
 ```
 
 ## Logging

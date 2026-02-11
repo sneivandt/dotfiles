@@ -98,11 +98,11 @@ _log_to_file()
     local clean_message
     clean_message="$(printf '%s\n' "$message" | sed 's/\033\[[0-9;]*m//g' 2>/dev/null || printf '%s\n' "$message")"
 
-    # Format: [YYYY-MM-DD HH:MM:SS] [LEVEL   ] message
+    # Format: YYYY-MM-DD HH:MM:SS LEVEL    message
     # Level is padded to 8 characters
     local timestamp
     timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
-    printf "[%s] [%-8s] %s\n" "$timestamp" "$level" "$clean_message" >> "$DOTFILES_LOG_FILE" 2>/dev/null || true
+    printf "%s %-8s %s\n" "$timestamp" "$level" "$clean_message" >> "$DOTFILES_LOG_FILE" 2>/dev/null || true
   fi
 }
 

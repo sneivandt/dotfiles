@@ -92,10 +92,10 @@ function Write-LogMessage
         # Strip ANSI color codes (basic pattern - PowerShell doesn't typically use them in default output)
         $cleanMessage = $Message -replace '\x1b\[[0-9;]*m', ''
 
-        # Format: [YYYY-MM-DD HH:MM:SS] [LEVEL   ] message
+        # Format: YYYY-MM-DD HH:MM:SS LEVEL    message
         # Level is padded to 8 characters
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        $formattedMessage = "[$timestamp] [$($Level.PadRight(8))] $cleanMessage"
+        $formattedMessage = "$timestamp $($Level.PadRight(8)) $cleanMessage"
         $formattedMessage | Out-File -FilePath $script:LogFile -Append -Encoding utf8
     }
 }

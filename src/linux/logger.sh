@@ -236,8 +236,9 @@ log_summary()
   if [ -z "$summary" ]; then
     _log_to_file "INFO" "No changes made (all components already configured)"
   else
-    # Write summary lines to log file
-    echo "$summary" | sed 's/\\n/\n/g' | while IFS='' read -r line; do
+    # Write summary lines to log file using printf for direct logging
+    # shellcheck disable=SC2059  # summary is a controlled format string
+    printf "$summary" | while IFS='' read -r line; do
       if [ -n "$line" ]; then
         _log_to_file "INFO" "$line"
       fi
@@ -270,7 +271,7 @@ log_error()
 {
   # shellcheck disable=SC2059  # RED and NC are controlled color codes
   printf "${RED}ERROR: %s${NC}\n" "$1"
-  _log_to_file "ERROR" "ERROR: $1"
+  _log_to_file "ERROR" "$1"
   exit 1
 }
 
@@ -367,7 +368,7 @@ log_stage()
     _work=true
     # shellcheck disable=SC2059  # BLUE and NC are controlled color codes
     printf "${BLUE}:: %s${NC}\n" "$1"
-    _log_to_file "STAGE" ":: $1"
+    _log_to_file "STAGE" "$1"
   fi
 }
 
@@ -381,5 +382,5 @@ log_profile()
 {
   # shellcheck disable=SC2059  # BLUE and NC are controlled color codes
   printf "${BLUE}:: Using profile: %s${NC}\n" "$1"
-  _log_to_file "STAGE" ":: Using profile: $1"
+  _log_to_file "STAGE" "Using profile: $1"
 }

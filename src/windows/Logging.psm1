@@ -142,7 +142,7 @@ function Write-Stage
 
     $output = ":: $Message"
     Write-Output $output
-    Write-LogMessage -Level "STAGE" -Message $output
+    Write-LogMessage -Level "STAGE" -Message $Message
 }
 
 function Write-DryRunMessage

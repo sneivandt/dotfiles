@@ -68,10 +68,17 @@ function Write-LogMessage
         Internal function to write a message to the log file with timestamp and level
     .DESCRIPTION
         Strips ANSI color codes and writes the message to the persistent log file.
-        Level prefix is fixed-width (6 chars).
+        Level prefix is fixed-width (6 chars) for clean column alignment.
         Format: YYYY-MM-DD HH:MM:SS LEVEL  message
+
+        All level keywords are exactly 6 characters for consistent formatting:
+        - INFO   (with 2 trailing spaces)
+        - VERBOS (abbreviated from VERBOSE)
+        - ERROR  (with 1 trailing space)
+        - STAGE  (with 1 trailing space)
+        - DRYRUN (no hyphen)
     .PARAMETER Level
-        Log level (e.g., "INFO  ", "VERBOS", "ERROR ", "DRYRUN", "STAGE ")
+        Log level keyword (exactly 6 characters)
     .PARAMETER Message
         Message to log (may be empty; line will still be timestamped)
     #>

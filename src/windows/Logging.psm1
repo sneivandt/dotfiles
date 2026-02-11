@@ -65,14 +65,22 @@ function Write-LogMessage
 {
     <#
     .SYNOPSIS
-        Internal function to write a message to the log file
+        Internal function to write a message to the log file with timestamp and level
     .DESCRIPTION
         Strips ANSI color codes and writes the message to the persistent log file.
+        Level prefix is fixed-width (8 chars) with whitespace padding.
+        Format: [YYYY-MM-DD HH:MM:SS] [LEVEL   ] message
+    .PARAMETER Level
+        Log level (e.g., "INFO", "VERBOSE", "ERROR", "DRY-RUN", "STAGE")
     .PARAMETER Message
-        Message to log (can be empty for blank lines)
+        Message to log (may be empty; line will still be timestamped)
     #>
     [CmdletBinding()]
     param (
+        [Parameter(Mandatory = $true)]
+        [string]
+        $Level,
+
         [Parameter(Mandatory = $true)]
         [AllowEmptyString()]
         [string]
@@ -83,7 +91,12 @@ function Write-LogMessage
     {
         # Strip ANSI color codes (basic pattern - PowerShell doesn't typically use them in default output)
         $cleanMessage = $Message -replace '\x1b\[[0-9;]*m', ''
-        $cleanMessage | Out-File -FilePath $script:LogFile -Append -Encoding utf8
+
+        # Format: YYYY-MM-DD HH:MM:SS LEVEL    message
+        # Level is padded to 8 characters
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $formattedMessage = "$timestamp $($Level.PadRight(8)) $cleanMessage"
+        $formattedMessage | Out-File -FilePath $script:LogFile -Append -Encoding utf8
     }
 }
 
@@ -107,7 +120,7 @@ function Write-ProgressMessage
 
     $output = "   $Message"
     Write-Output $output
-    Write-LogMessage -Message $output
+    Write-LogMessage -Level "INFO" -Message $output
 }
 
 function Write-Stage
@@ -129,7 +142,7 @@ function Write-Stage
 
     $output = ":: $Message"
     Write-Output $output
-    Write-LogMessage -Message $output
+    Write-LogMessage -Level "STAGE" -Message $Message
 }
 
 function Write-DryRunMessage
@@ -139,6 +152,7 @@ function Write-DryRunMessage
         Write a dry-run message
     .DESCRIPTION
         Prints a message indicating what would happen in dry-run mode.
+        Console output has no prefix, log file has DRY-RUN prefix.
     .PARAMETER Message
         Action description
     #>
@@ -149,9 +163,11 @@ function Write-DryRunMessage
         $Message
     )
 
-    $output = "DRY-RUN: $Message"
-    Write-Output $output
-    Write-LogMessage -Message $output
+    # Console output without prefix
+    Write-Output $Message
+
+    # Log file with DRY-RUN prefix
+    Write-LogMessage -Level "DRY-RUN" -Message $Message
 }
 
 function Write-VerboseMessage
@@ -162,6 +178,7 @@ function Write-VerboseMessage
     .DESCRIPTION
         This function ensures verbose messages are always written to the log file
         while respecting the -Verbose preference for console output.
+        Note: PowerShell's Write-Verbose adds its own "VERBOSE:" prefix to console output.
     .PARAMETER Message
         Verbose message to log
     #>
@@ -172,10 +189,10 @@ function Write-VerboseMessage
         $Message
     )
 
-    # Always write to log file
-    Write-LogMessage -Message "VERBOSE: $Message"
+    # Always write to log file with VERBOSE prefix
+    Write-LogMessage -Level "VERBOSE" -Message $Message
 
-    # Only write to console if -Verbose was specified
+    # Only write to console if -Verbose was specified (no prefix)
     Write-Verbose $Message
 }
 
@@ -317,37 +334,37 @@ function Write-InstallationSummary
     }
 
     # Write summary to log file
-    Write-LogMessage -Message ""
-    Write-LogMessage -Message "=========================================="
-    Write-LogMessage -Message "Installation Summary"
-    Write-LogMessage -Message "=========================================="
+    Write-LogMessage -Level "INFO" -Message ""
+    Write-LogMessage -Level "INFO" -Message "=========================================="
+    Write-LogMessage -Level "INFO" -Message "Installation Summary"
+    Write-LogMessage -Level "INFO" -Message "=========================================="
 
     if ($hasChanges)
     {
         if ($packagesInstalled -gt 0)
         {
-            Write-LogMessage -Message "   Packages installed: $packagesInstalled"
+            Write-LogMessage -Level "INFO" -Message "   Packages installed: $packagesInstalled"
         }
         if ($modulesInstalled -gt 0)
         {
-            Write-LogMessage -Message "   PowerShell modules installed: $modulesInstalled"
+            Write-LogMessage -Level "INFO" -Message "   PowerShell modules installed: $modulesInstalled"
         }
         if ($symlinksCreated -gt 0)
         {
-            Write-LogMessage -Message "   Symlinks created: $symlinksCreated"
+            Write-LogMessage -Level "INFO" -Message "   Symlinks created: $symlinksCreated"
         }
         if ($vscodeExtensionsInstalled -gt 0)
         {
-            Write-LogMessage -Message "   VS Code extensions installed: $vscodeExtensionsInstalled"
+            Write-LogMessage -Level "INFO" -Message "   VS Code extensions installed: $vscodeExtensionsInstalled"
         }
         if ($registryKeysSet -gt 0)
         {
-            Write-LogMessage -Message "   Registry keys set: $registryKeysSet"
+            Write-LogMessage -Level "INFO" -Message "   Registry keys set: $registryKeysSet"
         }
     }
     else
     {
-        Write-LogMessage -Message "   No changes made (all components already configured)"
+        Write-LogMessage -Level "INFO" -Message "   No changes made (all components already configured)"
     }
 }
 

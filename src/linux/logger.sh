@@ -79,10 +79,10 @@ init_logging()
 #
 # Internal: write a message to the persistent log file with timestamp and level.
 # Strips ANSI color codes for clean file output.
-# Level prefix is fixed-width (8 chars) with whitespace padding.
+# Level prefix is fixed-width (6 chars).
 #
 # Args:
-#   $1 level (e.g., "INFO", "VERBOSE", "ERROR", "DRY-RUN", "STAGE")
+#   $1 level (e.g., "INFO  ", "VERBOS", "ERROR ", "DRYRUN", "STAGE ")
 #   $2+ message to log
 # shellcheck disable=SC3043  # 'local' is widely supported even if not strictly POSIX
 _log_to_file()
@@ -98,11 +98,11 @@ _log_to_file()
     local clean_message
     clean_message="$(printf '%s\n' "$message" | sed 's/\033\[[0-9;]*m//g' 2>/dev/null || printf '%s\n' "$message")"
 
-    # Format: YYYY-MM-DD HH:MM:SS LEVEL    message
-    # Level is padded to 8 characters
+    # Format: YYYY-MM-DD HH:MM:SS LEVEL  message
+    # Level is exactly 6 characters
     local timestamp
     timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
-    printf "%s %-8s %s\n" "$timestamp" "$level" "$clean_message" >> "$DOTFILES_LOG_FILE" 2>/dev/null || true
+    printf "%s %s %s\n" "$timestamp" "$level" "$clean_message" >> "$DOTFILES_LOG_FILE" 2>/dev/null || true
   fi
 }
 
@@ -230,18 +230,18 @@ log_summary()
   fi
 
   # Also write summary to log file
-  _log_to_file "INFO" ""
-  _log_to_file "INFO" "=========================================="
-  _log_to_file "INFO" "Installation Summary"
-  _log_to_file "INFO" "=========================================="
+  _log_to_file "INFO  " ""
+  _log_to_file "INFO  " "=========================================="
+  _log_to_file "INFO  " "Installation Summary"
+  _log_to_file "INFO  " "=========================================="
   if [ -z "$summary" ]; then
-    _log_to_file "INFO" "No changes made (all components already configured)"
+    _log_to_file "INFO  " "No changes made (all components already configured)"
   else
     # Write summary lines to log file using printf for direct logging
     # shellcheck disable=SC2059  # summary is a controlled format string
     printf "$summary" | while IFS='' read -r line; do
       if [ -n "$line" ]; then
-        _log_to_file "INFO" "$line"
+        _log_to_file "INFO  " "$line"
       fi
     done
   fi
@@ -258,7 +258,7 @@ log_summary()
 log_progress()
 {
   printf "   %s\n" "$*"
-  _log_to_file "INFO" "   $*"
+  _log_to_file "INFO  " "   $*"
 }
 
 # log_error
@@ -272,7 +272,7 @@ log_error()
 {
   # shellcheck disable=SC2059  # RED and NC are controlled color codes
   printf "${RED}ERROR: %s${NC}\n" "$1"
-  _log_to_file "ERROR" "$1"
+  _log_to_file "ERROR " "$1"
   exit 1
 }
 
@@ -330,7 +330,7 @@ log_usage()
 #   $1 message
 log_verbose()
 {
-  _log_to_file "VERBOSE" "$*"
+  _log_to_file "VERBOS" "$*"
   if is_flag_set "v"; then
     # shellcheck disable=SC2059  # YELLOW and NC are controlled color codes
     printf "${YELLOW}%s${NC}\n" "$*"
@@ -350,7 +350,7 @@ log_dry_run()
   if is_dry_run; then
     # shellcheck disable=SC2059  # GREEN and NC are controlled color codes
     printf "${GREEN}%s${NC}\n" "$*"
-    _log_to_file "DRY-RUN" "$*"
+    _log_to_file "DRYRUN" "$*"
   fi
 }
 
@@ -369,7 +369,7 @@ log_stage()
     _work=true
     # shellcheck disable=SC2059  # BLUE and NC are controlled color codes
     printf "${BLUE}:: %s${NC}\n" "$1"
-    _log_to_file "STAGE" "$1"
+    _log_to_file "STAGE " "$1"
   fi
 }
 
@@ -383,5 +383,5 @@ log_profile()
 {
   # shellcheck disable=SC2059  # BLUE and NC are controlled color codes
   printf "${BLUE}:: Using profile: %s${NC}\n" "$1"
-  _log_to_file "STAGE" "Using profile: $1"
+  _log_to_file "STAGE " "Using profile: $1"
 }

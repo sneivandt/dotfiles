@@ -94,8 +94,9 @@ _log_to_file()
 
     # Strip ANSI color codes from message
     # Use \033 instead of \x1b for better POSIX portability
+    # Fall back to original message if sed fails
     local clean_message
-    clean_message="$(echo "$message" | sed 's/\033\[[0-9;]*m//g')"
+    clean_message="$(printf '%s\n' "$message" | sed 's/\033\[[0-9;]*m//g' 2>/dev/null || printf '%s\n' "$message")"
 
     # Format: [YYYY-MM-DD HH:MM:SS] [LEVEL   ] message
     # Level is padded to 8 characters

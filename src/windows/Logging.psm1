@@ -73,7 +73,7 @@ function Write-LogMessage
     .PARAMETER Level
         Log level (e.g., "INFO", "VERBOSE", "ERROR", "DRY-RUN", "STAGE")
     .PARAMETER Message
-        Message to log (can be empty for blank lines)
+        Message to log (may be empty; line will still be timestamped)
     #>
     [CmdletBinding()]
     param (
@@ -178,7 +178,7 @@ function Write-VerboseMessage
     .DESCRIPTION
         This function ensures verbose messages are always written to the log file
         while respecting the -Verbose preference for console output.
-        Console output has no prefix, log file has VERBOSE prefix.
+        Note: PowerShell's Write-Verbose adds its own "VERBOSE:" prefix to console output.
     .PARAMETER Message
         Verbose message to log
     #>

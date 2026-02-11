@@ -400,7 +400,7 @@ install_aur_packages()
   for section in $sections
   do
     if ! should_include_profile_tag "$section"; then
-      log_verbose "Skipping AUR packages section [$section]: profile not included"
+      log_verbose "Skipping AUR packages section [$section]: profile not included" >&2
       continue
     fi
 
@@ -557,7 +557,7 @@ install_packages()
   do
     # Check if this section/profile should be included
     if ! should_include_profile_tag "$section"; then
-      log_verbose "Skipping packages section [$section]: profile not included"
+      log_verbose "Skipping packages section [$section]: profile not included" >&2
       continue
     fi
 
@@ -565,7 +565,7 @@ install_packages()
     # These are handled by install_aur_packages
     case ",$section," in
       *,aur,*)
-        log_verbose "Skipping packages section [$section]: AUR packages handled separately"
+        log_verbose "Skipping packages section [$section]: AUR packages handled separately" >&2
         continue
         ;;
     esac
@@ -804,7 +804,7 @@ install_vscode_extensions()
     do
       # Check if this section/profile should be included
       if ! should_include_profile_tag "$section"; then
-        log_verbose "Skipping VS Code extensions section [$section]: profile not included"
+        log_verbose "Skipping VS Code extensions section [$section]: profile not included" >&2
         continue
       fi
 

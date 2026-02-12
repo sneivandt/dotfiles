@@ -9,7 +9,7 @@
 *.psm1 text eol=lf working-tree-encoding=UTF-8
 *.md text eol=lf diff=markdown
 *.yml text eol=lf
-gitattributes text eol=lf
+.gitattributes text eol=lf
 
 # Git treats these as binary
 *.png binary

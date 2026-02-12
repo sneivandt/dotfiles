@@ -122,8 +122,10 @@ function Install-Dotfiles
                     }
 
                     # Build command to re-run Install-Dotfiles in elevated session
+                    # Pass the repository root so the elevated session uses the same files
                     $verboseArg = if ($VerbosePreference -eq 'Continue') { ' -Verbose' } else { '' }
                     $scriptCommand = @"
+`$env:DOTFILES_ROOT = '$Script:ModuleRoot'
 Import-Module Dotfiles -Force
 Install-Dotfiles$verboseArg
 Write-Host

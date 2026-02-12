@@ -8,13 +8,13 @@ console_output="$2"
 # Determine log file location
 log_file="${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/install.log"
 
-# Validate DRY-RUN mode by checking the persistent log file
-echo "Checking for DRY-RUN messages in log file: $log_file"
-if ! grep -q ' DRY-RUN ' "$log_file"; then
-  echo "Error: No DRY-RUN messages found in log file"
+# Validate DRY mode by checking the persistent log file
+echo "Checking for DRY messages in log file: $log_file"
+if ! grep -q ' DRY ' "$log_file"; then
+  echo "Error: No DRY messages found in log file"
   exit 1
 fi
-echo "✓ DRY-RUN mode confirmed"
+echo "✓ DRY mode confirmed"
 
 # Profile-specific assertions
 case "$profile" in

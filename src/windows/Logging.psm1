@@ -68,10 +68,17 @@ function Write-LogMessage
         Internal function to write a message to the log file with timestamp and level
     .DESCRIPTION
         Strips ANSI color codes and writes the message to the persistent log file.
-        Level prefix is fixed-width (8 chars) with whitespace padding.
-        Format: [YYYY-MM-DD HH:MM:SS] [LEVEL   ] message
+        Level prefix is fixed-width (3 chars) for clean column alignment.
+        Format: YYYY-MM-DD HH:MM:SS LVL message
+
+        All level keywords are exactly 3 characters for consistent formatting:
+        - INF (info)
+        - VRB (verbose)
+        - ERR (error)
+        - STG (stage)
+        - DRY (dry-run)
     .PARAMETER Level
-        Log level (e.g., "INFO", "VERBOSE", "ERROR", "DRY-RUN", "STAGE")
+        Log level keyword (exactly 3 characters)
     .PARAMETER Message
         Message to log (may be empty; line will still be timestamped)
     #>
@@ -92,10 +99,10 @@ function Write-LogMessage
         # Strip ANSI color codes (basic pattern - PowerShell doesn't typically use them in default output)
         $cleanMessage = $Message -replace '\x1b\[[0-9;]*m', ''
 
-        # Format: YYYY-MM-DD HH:MM:SS LEVEL    message
-        # Level is padded to 8 characters
+        # Format: YYYY-MM-DD HH:MM:SS LVL message
+        # Level is exactly 3 characters
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        $formattedMessage = "$timestamp $($Level.PadRight(8)) $cleanMessage"
+        $formattedMessage = "$timestamp $Level $cleanMessage"
         $formattedMessage | Out-File -FilePath $script:LogFile -Append -Encoding utf8
     }
 }
@@ -120,7 +127,7 @@ function Write-ProgressMessage
 
     $output = "   $Message"
     Write-Output $output
-    Write-LogMessage -Level "INFO" -Message $output
+    Write-LogMessage -Level "INF" -Message $output
 }
 
 function Write-Stage
@@ -142,7 +149,7 @@ function Write-Stage
 
     $output = ":: $Message"
     Write-Output $output
-    Write-LogMessage -Level "STAGE" -Message $Message
+    Write-LogMessage -Level "STG" -Message $Message
 }
 
 function Write-DryRunMessage
@@ -166,8 +173,8 @@ function Write-DryRunMessage
     # Console output without prefix
     Write-Output $Message
 
-    # Log file with DRY-RUN prefix
-    Write-LogMessage -Level "DRY-RUN" -Message $Message
+    # Log file with DRY prefix
+    Write-LogMessage -Level "DRY" -Message $Message
 }
 
 function Write-VerboseMessage
@@ -189,8 +196,8 @@ function Write-VerboseMessage
         $Message
     )
 
-    # Always write to log file with VERBOSE prefix
-    Write-LogMessage -Level "VERBOSE" -Message $Message
+    # Always write to log file with VRB prefix
+    Write-LogMessage -Level "VRB" -Message $Message
 
     # Only write to console if -Verbose was specified (no prefix)
     Write-Verbose $Message
@@ -289,82 +296,62 @@ function Write-InstallationSummary
     $vscodeExtensionsInstalled = Get-Counter -CounterName "vscode_extensions_installed"
     $registryKeysSet = Get-Counter -CounterName "registry_keys_set"
 
-    # Build summary
+    # Build summary - write to both console and log
     $hasChanges = $false
 
     if ($packagesInstalled -gt 0)
     {
-        Write-Output "   Packages installed${modeSuffix}: $packagesInstalled"
+        $message = "   Packages installed${modeSuffix}: $packagesInstalled"
+        Write-Output $message
+        Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
     }
 
     if ($modulesInstalled -gt 0)
     {
-        Write-Output "   PowerShell modules installed${modeSuffix}: $modulesInstalled"
+        $message = "   PowerShell modules installed${modeSuffix}: $modulesInstalled"
+        Write-Output $message
+        Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
     }
 
     if ($symlinksCreated -gt 0)
     {
-        Write-Output "   Symlinks created${modeSuffix}: $symlinksCreated"
+        $message = "   Symlinks created${modeSuffix}: $symlinksCreated"
+        Write-Output $message
+        Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
     }
 
     if ($vscodeExtensionsInstalled -gt 0)
     {
-        Write-Output "   VS Code extensions installed${modeSuffix}: $vscodeExtensionsInstalled"
+        $message = "   VS Code extensions installed${modeSuffix}: $vscodeExtensionsInstalled"
+        Write-Output $message
+        Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
     }
 
     if ($registryKeysSet -gt 0)
     {
-        Write-Output "   Registry keys set${modeSuffix}: $registryKeysSet"
+        $message = "   Registry keys set${modeSuffix}: $registryKeysSet"
+        Write-Output $message
+        Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
     }
 
     if (-not $hasChanges)
     {
-        Write-Output "   No changes made (all components already configured)"
+        $message = "   No changes made (all components already configured)"
+        Write-Output $message
+        Write-LogMessage -Level "INF" -Message $message
     }
 
     # Log file location
     if (Test-Path $script:LogFile)
     {
-        Write-Output "   Log file: $script:LogFile"
-    }
-
-    # Write summary to log file
-    Write-LogMessage -Level "INFO" -Message ""
-    Write-LogMessage -Level "INFO" -Message "=========================================="
-    Write-LogMessage -Level "INFO" -Message "Installation Summary"
-    Write-LogMessage -Level "INFO" -Message "=========================================="
-
-    if ($hasChanges)
-    {
-        if ($packagesInstalled -gt 0)
-        {
-            Write-LogMessage -Level "INFO" -Message "   Packages installed: $packagesInstalled"
-        }
-        if ($modulesInstalled -gt 0)
-        {
-            Write-LogMessage -Level "INFO" -Message "   PowerShell modules installed: $modulesInstalled"
-        }
-        if ($symlinksCreated -gt 0)
-        {
-            Write-LogMessage -Level "INFO" -Message "   Symlinks created: $symlinksCreated"
-        }
-        if ($vscodeExtensionsInstalled -gt 0)
-        {
-            Write-LogMessage -Level "INFO" -Message "   VS Code extensions installed: $vscodeExtensionsInstalled"
-        }
-        if ($registryKeysSet -gt 0)
-        {
-            Write-LogMessage -Level "INFO" -Message "   Registry keys set: $registryKeysSet"
-        }
-    }
-    else
-    {
-        Write-LogMessage -Level "INFO" -Message "   No changes made (all components already configured)"
+        $message = "   Log file: $script:LogFile"
+        Write-Output $message
+        Write-LogMessage -Level "INF" -Message $message
     }
 }
 

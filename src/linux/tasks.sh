@@ -156,6 +156,7 @@ configure_fonts()
   log_verbose "Checking fonts from: conf/fonts.ini"
 
   # Create temp file with cleanup trap
+  local tmpfile
   tmpfile="$(mktemp)"
   trap 'rm -f "$tmpfile"' EXIT
 
@@ -285,6 +286,7 @@ configure_systemd()
 
   # Collect all units that need to be enabled across all sections
   # to print stage header only once
+  local tmpfile
   tmpfile="$(mktemp)"
   trap 'rm -f "$tmpfile"' EXIT
   for section in $sections
@@ -758,7 +760,9 @@ install_vscode_extensions()
     extensions="$($code --list-extensions)"
 
     # Check if any extensions need installing
+    local tmpfile
     tmpfile="$(mktemp)"
+    trap 'rm -f "$tmpfile"' EXIT
     for section in $sections
     do
       # Check if this section/profile should be included
@@ -837,6 +841,7 @@ uninstall_symlinks()
   sections="$(grep -E '^\[.+\]$' "$DIR"/conf/symlinks.ini | tr -d '[]')"
 
   # Collect all symlinks that need to be removed to print stage header only once
+  local tmpfile
   tmpfile="$(mktemp)"
   trap 'rm -f "$tmpfile"' EXIT
   for section in $sections

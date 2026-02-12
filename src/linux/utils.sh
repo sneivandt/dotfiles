@@ -479,7 +479,6 @@ configure_sparse_checkout()
   # Build sparse checkout patterns
   local tmpfile
   tmpfile="$(mktemp)"
-  trap 'rm -f "$tmpfile"' EXIT
 
   # Start with all top-level files
   echo "/*" > "$tmpfile"

@@ -48,7 +48,7 @@ Preview changes without making modifications:
 # Dry-run automatically enables verbose mode
 ```
 
-All system modifications will be logged without being executed. Console output shows actions like "Would install package: X" while the log file includes structured entries with timestamps and DRY-RUN level.
+All system modifications will be logged without being executed. Console output shows actions like "Would install package: X" while the log file includes structured entries with timestamps and DRY level.
 
 ### Verbose Mode
 

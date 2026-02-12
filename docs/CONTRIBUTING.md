@@ -114,7 +114,7 @@ exclude=windows,desktop
 - **Error Handling**: Fail gracefully, check prerequisites
 - **Logging Conventions**:
   - Stage headers: `Write-Output ":: Stage Name"`
-  - Dry-run: `Write-Output "Would <action>"` (console) / `Write-LogMessage -Level "DRY-RUN"` (log file)
+  - Dry-run: `Write-Output "Would <action>"` (console) / `Write-LogMessage -Level "DRY"` (log file)
   - Verbose: `Write-Verbose "<message>"`
 - **Idempotency**: Check state before modifications
 - **Dry-Run Support**: All functions should support `-DryRun` switch

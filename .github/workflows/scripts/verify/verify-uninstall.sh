@@ -8,8 +8,8 @@ console_output="$1"
 log_file="${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/install.log"
 
 echo "Checking for DRY-RUN mode confirmation"
-# Check for DRY-RUN in log file or DRY-RUN MODE message in console
-if grep -q ' DRY-RUN ' "$log_file" || grep -q "DRY-RUN MODE" "$console_output"; then
+# Check for DRY in log file or DRY-RUN MODE message in console
+if grep -q ' DRY ' "$log_file" || grep -q "DRY-RUN MODE" "$console_output"; then
   echo "✓ DRY-RUN mode confirmed"
 else
   echo "Error: No DRY-RUN confirmation found"

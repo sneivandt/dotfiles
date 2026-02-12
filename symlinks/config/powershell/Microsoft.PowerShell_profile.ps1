@@ -88,23 +88,28 @@ function Prompt
 # AI / GitHub Copilot CLI aliases
 if (Get-Command "gh" -ErrorAction SilentlyContinue)
 {
-    function Invoke-CopilotChat
+    # Check if gh copilot extension is installed
+    gh copilot --version 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0)
     {
-        if ($args.Count -eq 0)
+        function Invoke-CopilotChat
         {
-            gh copilot
+            if ($args.Count -eq 0)
+            {
+                gh copilot
+            }
+            else
+            {
+                gh copilot -p ($args -join ' ')
+            }
         }
-        else
+
+        function Invoke-CopilotSuggest
         {
-            gh copilot -p ($args -join ' ')
+            gh copilot -i suggest $args
         }
-    }
 
-    function Invoke-CopilotSuggest
-    {
-        gh copilot -i suggest $args
+        Set-Alias -Name ai -Value Invoke-CopilotChat
+        Set-Alias -Name aic -Value Invoke-CopilotSuggest
     }
-
-    Set-Alias -Name ai -Value Invoke-CopilotChat
-    Set-Alias -Name aic -Value Invoke-CopilotSuggest
 }

@@ -24,7 +24,7 @@ do
           "$browser" --enable-features=OverlayScrollbar --app="https://netflix.com"
           ;;
         "youtube")
-          "$browser" --enable-features=OverlayScrollbar --app="http://youtube.com/"
+          "$browser" --enable-features=OverlayScrollbar --app="https://youtube.com/"
           ;;
         "<iframe "*)
           browser_url=$(echo "$*" | sed -n 's/.* src="\([^" '\'' ]*\)".*/\1/p')

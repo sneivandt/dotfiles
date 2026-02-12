@@ -184,43 +184,43 @@ log_summary()
   local summary=""
 
   if [ "$packages_installed" -gt 0 ]; then
-    summary="${summary}   Packages installed${mode_suffix}: $packages_installed\n"
+    summary="${summary}Packages installed${mode_suffix}: $packages_installed\n"
   fi
 
   if [ "$aur_packages_installed" -gt 0 ]; then
-    summary="${summary}   AUR packages installed${mode_suffix}: $aur_packages_installed\n"
+    summary="${summary}AUR packages installed${mode_suffix}: $aur_packages_installed\n"
   fi
 
   if [ "$symlinks_created" -gt 0 ]; then
-    summary="${summary}   Symlinks created${mode_suffix}: $symlinks_created\n"
+    summary="${summary}Symlinks created${mode_suffix}: $symlinks_created\n"
   fi
 
   if [ "$symlinks_removed" -gt 0 ]; then
-    summary="${summary}   Symlinks removed${mode_suffix}: $symlinks_removed\n"
+    summary="${summary}Symlinks removed${mode_suffix}: $symlinks_removed\n"
   fi
 
   if [ "$vscode_extensions_installed" -gt 0 ]; then
-    summary="${summary}   VS Code extensions installed${mode_suffix}: $vscode_extensions_installed\n"
+    summary="${summary}VS Code extensions installed${mode_suffix}: $vscode_extensions_installed\n"
   fi
 
   if [ "$powershell_modules_installed" -gt 0 ]; then
-    summary="${summary}   PowerShell modules installed${mode_suffix}: $powershell_modules_installed\n"
+    summary="${summary}PowerShell modules installed${mode_suffix}: $powershell_modules_installed\n"
   fi
 
   if [ "$systemd_units_enabled" -gt 0 ]; then
-    summary="${summary}   Systemd units enabled${mode_suffix}: $systemd_units_enabled\n"
+    summary="${summary}Systemd units enabled${mode_suffix}: $systemd_units_enabled\n"
   fi
 
   if [ "$fonts_cache_updated" -gt 0 ]; then
-    summary="${summary}   Font cache updated${mode_suffix}: $fonts_cache_updated times\n"
+    summary="${summary}Font cache updated${mode_suffix}: $fonts_cache_updated times\n"
   fi
 
   if [ "$chmod_applied" -gt 0 ]; then
-    summary="${summary}   File permissions set${mode_suffix}: $chmod_applied\n"
+    summary="${summary}File permissions set${mode_suffix}: $chmod_applied\n"
   fi
 
   if [ -z "$summary" ]; then
-    echo "   No changes made (all components already configured)"
+    echo "No changes made (all components already configured)"
   else
     # shellcheck disable=SC2059
     printf "$summary"
@@ -228,7 +228,7 @@ log_summary()
 
   # Log file location
   if [ -f "$DOTFILES_LOG_FILE" ]; then
-    echo "   Log file: $DOTFILES_LOG_FILE"
+    echo "Log file: $DOTFILES_LOG_FILE"
   fi
 
   # Also write summary to log file
@@ -258,8 +258,8 @@ log_summary()
 #   $1 progress description (e.g., "Checking packages", "Installing symlinks")
 log_progress()
 {
-  printf "   %s\n" "$*"
-  _log_to_file "INF" "   $*"
+  printf "%s\n" "$*"
+  _log_to_file "INF" "$*"
 }
 
 # log_error

@@ -89,7 +89,7 @@ function Prompt
 if (Get-Command "gh" -ErrorAction SilentlyContinue)
 {
     # Check if gh copilot extension is installed
-    $null = & gh copilot --version 2>&1 | Out-Null
+    gh copilot --version 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0)
     {
         function Invoke-CopilotChat

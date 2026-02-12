@@ -285,6 +285,11 @@ function Write-InstallationSummary
 
     Write-Stage -Message "Installation Summary"
 
+    # Write separator lines to log file (similar to Linux)
+    Write-LogMessage -Level "INF" -Message "=========================================="
+    Write-LogMessage -Level "INF" -Message "Installation Summary"
+    Write-LogMessage -Level "INF" -Message "=========================================="
+
     # Determine label suffix based on mode
     $modeSuffix = if ($DryRun) { " (would be)" } else { "" }
 

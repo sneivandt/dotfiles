@@ -273,32 +273,32 @@ After installation, a summary is displayed:
 **Linux example:**
 ```
 :: Installation Summary
-   Packages installed: 15
-   AUR packages installed: 3
-   Symlinks created: 8
-   VS Code extensions installed: 5
-   Systemd units enabled: 2
-   Log file: /home/user/.cache/dotfiles/install.log
+Packages installed: 15
+AUR packages installed: 3
+Symlinks created: 8
+VS Code extensions installed: 5
+Systemd units enabled: 2
+Log file: /home/user/.cache/dotfiles/install.log
 ```
 
 **Windows example:**
 ```
 :: Installation Summary
-   Packages installed: 3
-   PowerShell modules installed: 1
-   Symlinks created: 5
-   VS Code extensions installed: 2
-   Registry keys set: 12
-   Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
+Packages installed: 3
+PowerShell modules installed: 1
+Symlinks created: 5
+VS Code extensions installed: 2
+Registry keys set: 12
+Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
 ```
 
 **Dry-run summary:**
 Counters show "(would be)" suffix:
 ```
 :: Installation Summary
-   Packages installed (would be): 15
-   Symlinks created (would be): 8
-   Log file: /home/user/.cache/dotfiles/install.log
+Packages installed (would be): 15
+Symlinks created (would be): 8
+Log file: /home/user/.cache/dotfiles/install.log
 ```
 
 ## Idempotency

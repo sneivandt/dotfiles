@@ -294,21 +294,21 @@ When using `-DryRun`, the logging system:
 Example summary output:
 ```
 :: Installation Summary
-   Packages installed: 3
-   PowerShell modules installed: 1
-   Symlinks created: 5
-   VS Code extensions installed: 2
-   Registry keys set: 12
-   Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
+Packages installed: 3
+PowerShell modules installed: 1
+Symlinks created: 5
+VS Code extensions installed: 2
+Registry keys set: 12
+Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
 ```
 
 In dry-run mode:
 ```
 :: Installation Summary
-   Packages installed (would be): 3
-   PowerShell modules installed (would be): 1
-   Symlinks created (would be): 5
-   Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
+Packages installed (would be): 3
+PowerShell modules installed (would be): 1
+Symlinks created (would be): 5
+Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
 ```
 
 ## Troubleshooting

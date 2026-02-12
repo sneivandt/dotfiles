@@ -2,8 +2,8 @@
 
 # Generate ssh key for GitHub
 
-[ -n "$(command -vp git)"        ] || { echo "ERROR: git not installed"        1>&2 && return 1; }
-[ -n "$(command -vp ssh-keygen)" ] || { echo "ERROR: ssh-keygen not installed" 1>&2 && return 1; }
+[ -n "$(command -v git)"        ] || { echo "ERROR: git not installed"        1>&2 && return 1; }
+[ -n "$(command -v ssh-keygen)" ] || { echo "ERROR: ssh-keygen not installed" 1>&2 && return 1; }
 
 mkdir -p -m 700 "$HOME"/.ssh/github
 

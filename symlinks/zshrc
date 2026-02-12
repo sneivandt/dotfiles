@@ -107,7 +107,7 @@ else
 
   # Save cache atomically to avoid partial writes
   cache_dir="${_ZSH_PLUGIN_CACHE%/*}"
-  mkdir -p "$cache_dir"
+  mkdir -p "$cache_dir" || return 1
   tmp_cache="$(mktemp "${_ZSH_PLUGIN_CACHE}.XXXXXX")" || return 1
   echo "typeset -ga _ZSH_PLUGIN_LIST=(" > "$tmp_cache"
   for plugin in "${_ZSH_PLUGIN_LIST[@]}"; do

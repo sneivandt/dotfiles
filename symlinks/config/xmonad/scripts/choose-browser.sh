@@ -45,3 +45,6 @@ do
   fi
 done
 unset browser
+
+echo "ERROR: No supported browser found" >&2
+exit 1

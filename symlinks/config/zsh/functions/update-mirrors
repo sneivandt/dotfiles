@@ -2,6 +2,6 @@
 
 # Update mirrorlist using reflector
 
-[ -n "$(command -vp reflector)" ] || { echo "ERROR: reflector not installed" 1>&2 && return 1; }
+[ -n "$(command -v reflector)" ] || { echo "ERROR: reflector not installed" 1>&2 && return 1; }
 
 sudo reflector --country US --protocol https --latest 6 --sort rate --save /etc/pacman.d/mirrorlist

@@ -354,6 +354,60 @@ configure_systemd()
   done
 )}
 
+# _install_package_list
+#
+# Internal helper to install a list of packages with a specific command.
+# Handles dry-run mode, package counting, and counter increments.
+#
+# Args:
+#   $1  package_list - space-separated list of packages to install
+#   $2  install_command - command to run (e.g., "sudo pacman -S --quiet --needed --noconfirm" or "paru -S --needed --noconfirm")
+#   $3  stage_message - message for log_stage (e.g., "Installing packages" or "Installing AUR packages")
+#   $4  counter_name - counter to increment (e.g., "packages_installed" or "aur_packages_installed")
+#
+# Result:
+#   0 success or dry-run, 1 if some packages failed
+_install_package_list()
+{
+  local packages="$1"
+  local install_command="$2"
+  local stage_message="$3"
+  local counter_name="$4"
+
+  if [ -z "$packages" ]; then
+    return 0
+  fi
+
+  # Count packages in the list
+  local package_count
+  package_count=$(echo "$packages" | wc -w)
+
+  if is_dry_run; then
+    log_stage "$stage_message"
+    log_dry_run "Would install packages: $packages"
+    # Count packages for dry-run summary
+    local count=0
+    while [ "$count" -lt "$package_count" ]; do
+      increment_counter "$counter_name"
+      count=$((count + 1))
+    done
+  else
+    log_verbose "Checking if packages need installation: $packages"
+    # shellcheck disable=SC2086  # Word splitting intentional: $packages is space-separated list
+    if $install_command $packages 2>&1; then
+      log_stage "$stage_message"
+      # Count packages that were in the install list (they needed installation)
+      local count=0
+      while [ "$count" -lt "$package_count" ]; do
+        increment_counter "$counter_name"
+        count=$((count + 1))
+      done
+    else
+      log_verbose "Warning: Some packages may have failed to install"
+    fi
+  fi
+}
+
 install_aur_packages()
 {(
   if ! is_program_installed "paru"; then
@@ -408,36 +462,9 @@ install_aur_packages()
 
     packages="$(echo "$packages" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 
-    if [ -n "$packages" ]; then
-      # Count packages in the list
-      package_count=$(echo "$packages" | wc -w)
-
-      if is_dry_run; then
-        log_stage "Installing AUR packages"
-        log_dry_run "Would install AUR packages: $packages"
-        # Count packages for dry-run summary
-        count=0
-        while [ "$count" -lt "$package_count" ]; do
-          increment_counter "aur_packages_installed"
-          count=$((count + 1))
-        done
-      else
-        log_verbose "Checking if AUR packages need installation: $packages"
-        # paru handles sudo internally, do not use sudo here
-        # shellcheck disable=SC2086  # Word splitting intentional: $packages is space-separated list
-        if paru -S --needed --noconfirm $packages 2>&1; then
-          log_stage "Installing AUR packages"
-          # Count packages that were in the install list (they needed installation)
-          count=0
-          while [ "$count" -lt "$package_count" ]; do
-            increment_counter "aur_packages_installed"
-            count=$((count + 1))
-          done
-        else
-          log_verbose "Warning: Some AUR packages may have failed to install"
-        fi
-      fi
-    fi
+    # Use common installation helper
+    # Note: paru handles sudo internally, do not use sudo
+    _install_package_list "$packages" "paru -S --needed --noconfirm" "Installing AUR packages" "aur_packages_installed"
   }
 )}
 
@@ -569,35 +596,8 @@ install_packages()
     # Trim leading/trailing whitespace from packages list
     packages="$(echo "$packages" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 
-    if [ -n "$packages" ]; then
-      # Count packages in the list
-      package_count=$(echo "$packages" | wc -w)
-
-      if is_dry_run; then
-        log_stage "Installing packages"
-        log_dry_run "Would install packages: $packages"
-        # Count packages for dry-run summary
-        count=0
-        while [ "$count" -lt "$package_count" ]; do
-          increment_counter "packages_installed"
-          count=$((count + 1))
-        done
-      else
-        log_verbose "Checking if packages need installation: $packages"
-        # shellcheck disable=SC2086  # Word splitting intentional: $packages is space-separated list
-        if sudo pacman -S --quiet --needed --noconfirm $packages 2>&1; then
-          log_stage "Installing packages"
-          # Count packages that were in the install list (they needed installation)
-          count=0
-          while [ "$count" -lt "$package_count" ]; do
-            increment_counter "packages_installed"
-            count=$((count + 1))
-          done
-        else
-          log_verbose "Warning: Some packages may have failed to install"
-        fi
-      fi
-    fi
+    # Use common installation helper
+    _install_package_list "$packages" "sudo pacman -S --quiet --needed --noconfirm" "Installing packages" "packages_installed"
   }
 )}
 

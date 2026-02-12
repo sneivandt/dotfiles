@@ -51,6 +51,9 @@ do_install()
   # Initialize logging system (log file, counters)
   init_logging
 
+  # Run pre-flight checks before making any changes
+  check_dependencies
+
   # PROFILE is exported from dotfiles.sh (uppercase is intentional)
   # shellcheck disable=SC2153
   configure_sparse_checkout "$PROFILE"

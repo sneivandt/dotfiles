@@ -120,7 +120,7 @@ prompt_profile_selection()
   profiles="$(list_available_profiles)"
 
   if [ -z "$profiles" ]; then
-    log_error "No profiles found in conf/profiles.ini"
+    log_error "No profiles found in $DIR/conf/profiles.ini. Please check that the file exists and contains profile definitions."
   fi
 
   echo "Available profiles:" >&2
@@ -167,7 +167,7 @@ EOF
 
   # Validate selection
   if ! echo "$selection" | grep -qE '^[0-9]+$'; then
-    log_error "Invalid selection: $selection"
+    log_error "Invalid selection: '$selection' (expected a number between 1 and $profile_count)"
   fi
 
   # Get profile by number
@@ -175,7 +175,7 @@ EOF
   selected_profile="$(echo "$profiles" | sed -n "${selection}p")"
 
   if [ -z "$selected_profile" ]; then
-    log_error "Invalid selection: $selection"
+    log_error "Invalid selection: $selection (expected a number between 1 and $profile_count)"
   fi
 
   echo "$selected_profile"
@@ -427,7 +427,8 @@ configure_sparse_checkout()
   # Resolve profile to exclude categories
   if [ -n "$profile" ]; then
     if ! parse_profile "$profile"; then
-      log_error "Profile '$profile' not found in profiles.ini"
+      available="$(list_available_profiles | tr '\n' ', ' | sed 's/,$//')"
+      log_error "Profile '$profile' not found in $DIR/conf/profiles.ini. Available profiles: $available"
     fi
     exclude_categories="$PROFILE_EXCLUDE"
 
@@ -729,19 +730,19 @@ has_matching_sections()
 {
   local config_file="$1"
   local sections
-  
+
   if [ ! -f "$config_file" ]; then
     return 1
   fi
-  
+
   sections="$(grep -E '^\[.+\]$' "$config_file" | tr -d '[]')"
-  
+
   for section in $sections; do
     if should_include_profile_tag "$section"; then
       return 0
     fi
   done
-  
+
   return 1
 }
 
@@ -775,3 +776,66 @@ is_symlink_installed()
     return 1
   fi
 }
+
+# check_dependencies
+#
+# Verifies that required system dependencies are available before installation.
+# Checks for essential commands and minimum versions where applicable.
+#
+# Checks performed:
+#   * Core POSIX utilities (ln, mkdir, stat, awk, sed, grep, cat, etc.)
+#   * Git availability and version (sparse checkout requires 2.25+)
+#   * Write permissions to $HOME
+#
+# Result:
+#   0 all checks passed, 1 missing dependency or check failed (exits on error)
+check_dependencies()
+{(
+  log_verbose "Checking system dependencies..."
+  local errors=0
+
+  # Check core utilities
+  local required_commands="ln mkdir stat awk sed grep cat rm cp mv chmod dirname basename mktemp date tr cut sort"
+  for cmd in $required_commands; do
+    if ! is_program_installed "$cmd"; then
+      log_error "Required command not found: $cmd. Please install it and try again."
+      errors=$((errors + 1))
+    fi
+  done
+
+  # Check git
+  if ! is_program_installed "git"; then
+    log_error "Git is not installed. Please install git and try again."
+    errors=$((errors + 1))
+  else
+    # Check git version for sparse checkout support (needs 2.25+)
+    git_version=$(git --version 2>/dev/null | awk '{print $3}' || echo "0.0.0")
+    git_major=$(echo "$git_version" | cut -d. -f1)
+    git_minor=$(echo "$git_version" | cut -d. -f2)
+
+    if [ "$git_major" -lt 2 ] || { [ "$git_major" -eq 2 ] && [ "$git_minor" -lt 25 ]; }; then
+      log_verbose "Warning: Git version $git_version detected. Sparse checkout works best with Git 2.25+."
+    fi
+  fi
+
+  # Check HOME directory write permissions
+  if [ ! -w "$HOME" ]; then
+    log_error "No write permission to HOME directory: $HOME"
+    errors=$((errors + 1))
+  fi
+
+  # Check if we're in a git repository
+  if [ -d "$DIR/.git" ]; then
+    # Verify git directory is accessible
+    if ! git -C "$DIR" status >/dev/null 2>&1; then
+      log_verbose "Warning: Git repository exists but 'git status' failed. Repository may be corrupted."
+    fi
+  fi
+
+  if [ "$errors" -gt 0 ]; then
+    log_error "Pre-flight checks failed with $errors error(s). Please fix the issues above and try again."
+  fi
+
+  log_verbose "Pre-flight checks passed"
+  return 0
+)}

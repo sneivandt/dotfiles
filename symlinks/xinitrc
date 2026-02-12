@@ -23,7 +23,7 @@ xset s noblank
 
 # Initialize systemd user session for X
 # This allows user systemd units to access X environment variables
-if [ -f /etc/X11/xinit/xinitrc.d/50-systemd-user.sh ] && [ -n "$(command -vp systemctl)" ]
+if [ -f /etc/X11/xinit/xinitrc.d/50-systemd-user.sh ] && [ -n "$(command -v systemctl)" ]
 then
   /etc/X11/xinit/xinitrc.d/50-systemd-user.sh
   systemctl --user import-environment PATH DBUS_SESSION_BUS_ADDRESS DISPLAY XAUTHORITY
@@ -31,7 +31,7 @@ then
 fi
 
 # Start window manager
-if [ -n "$(command -vp xmonad)" ]
+if [ -n "$(command -v xmonad)" ]
 then
   exec xmonad
 else

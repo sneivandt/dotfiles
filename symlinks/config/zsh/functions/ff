@@ -3,9 +3,9 @@
 
 # Find file
 
-[ -n "$(command -vp fzf)"    ] || { echo "ERROR: fzf not installed"    1>&2 && return 1; }
-[ -n "$(command -vp sudo)"   ] || { echo "ERROR: sudo not installed"   1>&2 && return 1; }
-[ -n "$(command -vp vim)"    ] || { echo "ERROR: vim not installed"    1>&2 && return 1; }
+[ -n "$(command -v fzf)"    ] || { echo "ERROR: fzf not installed"    1>&2 && return 1; }
+[ -n "$(command -v sudo)"   ] || { echo "ERROR: sudo not installed"   1>&2 && return 1; }
+[ -n "$(command -v vim)"    ] || { echo "ERROR: vim not installed"    1>&2 && return 1; }
 
 if ! command -v locate >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then
   echo "ERROR: neither locate nor fd installed" 1>&2

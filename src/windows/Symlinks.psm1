@@ -90,6 +90,13 @@ function Install-Symlinks
         return
     }
 
+    # Check if any sections match the active profile
+    if (-not (Test-HasMatchingSections -FilePath $configFile -ExcludedCategories $excludedCategories))
+    {
+        Write-VerboseMessage "Skipping symlinks: no sections match current profile"
+        return
+    }
+
     Write-ProgressMessage -Message "Checking symlinks..."
 
     # Get list of sections from symlinks.ini

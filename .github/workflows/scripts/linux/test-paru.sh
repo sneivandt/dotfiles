@@ -1,5 +1,5 @@
 #!/bin/sh
-# shellcheck disable=SC3043,SC2154,SC2030,SC2031  # 'local' is widely supported; color variables sourced from logger.sh; subshell variable modifications are intentional
+# shellcheck disable=SC2030,SC2031  # subshell variable modifications are intentional
 set -o errexit
 set -o nounset
 
@@ -22,11 +22,9 @@ set -o nounset
 #   DIR  Repository root directory (exported by dotfiles.sh)
 # -----------------------------------------------------------------------------
 
-# DIR is exported by dotfiles.sh
-# shellcheck disable=SC2154
-
 . "$DIR"/src/linux/logger.sh
 . "$DIR"/src/linux/utils.sh
+. "$DIR"/src/linux/tasks.sh
 
 # test_paru_prerequisites
 #
@@ -84,9 +82,6 @@ test_paru_install()
     log_verbose "Skipping paru installation: prerequisites not met"
     return 1
   fi
-
-  # Source tasks.sh to get install_paru function
-  . "$DIR"/src/linux/tasks.sh
 
   # Set required environment variables for tasks
   PROFILE="arch"
@@ -206,9 +201,6 @@ test_aur_packages()
 
   log_verbose "Found AUR package sections in packages.ini"
 
-  # Source tasks.sh to get install_aur_packages function
-  . "$DIR"/src/linux/tasks.sh
-
   # Set required environment variables
   PROFILE="arch"
   export PROFILE
@@ -310,9 +302,6 @@ test_paru_config()
 test_paru_idempotency()
 {(
   log_stage "Testing paru idempotency"
-
-  # Source tasks.sh to get install_paru function
-  . "$DIR"/src/linux/tasks.sh
 
   # Set required environment variables
   PROFILE="arch"

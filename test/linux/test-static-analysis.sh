@@ -1,5 +1,4 @@
 #!/bin/sh
-# shellcheck disable=SC3043  # 'local' is widely supported even if not strictly POSIX
 set -o errexit
 set -o nounset
 

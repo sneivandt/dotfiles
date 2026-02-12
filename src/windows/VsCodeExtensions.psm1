@@ -52,6 +52,13 @@ function Install-VsCodeExtensions
         return
     }
 
+    # Check if any sections match the active profile
+    if (-not (Test-HasMatchingSections -FilePath $configFile -ExcludedCategories $excludedCategories))
+    {
+        Write-VerboseMessage "Skipping VS Code extensions: no sections match current profile"
+        return
+    }
+
     Write-ProgressMessage -Message "Checking VS Code extensions..."
 
     # Get all sections from the config file
@@ -65,13 +72,9 @@ function Install-VsCodeExtensions
         }
     }
 
-    if ($sections.Count -eq 0)
-    {
-        Write-VerboseMessage "Skipping VS Code extensions: no sections found"
-        return
-    }
-
     Write-VerboseMessage "Found $($sections.Count) section(s) in vscode-extensions.ini: $($sections -join ', ')"
+
+    $act = $false
 
     # Collect all extensions that should be installed based on profile
     $extensionsToInstall = @()

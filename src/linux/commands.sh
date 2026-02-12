@@ -29,8 +29,7 @@ set -o nounset
 # -----------------------------------------------------------------------------
 
 # Task primitives (install_packages, configure_systemd, etc.).
-# DIR is exported by dotfiles.sh
-# shellcheck disable=SC2154
+
 . "$DIR"/src/linux/tasks.sh
 
 # do_install
@@ -53,7 +52,7 @@ do_install()
   init_logging
 
   # PROFILE is exported from dotfiles.sh (uppercase is intentional)
-  # shellcheck disable=SC2153,SC2154
+  # shellcheck disable=SC2153
   configure_sparse_checkout "$PROFILE"
   update_dotfiles
 

@@ -1,5 +1,4 @@
 #!/bin/sh
-# shellcheck disable=SC3043,SC2154  # 'local' is widely supported; color variables sourced from logger.sh
 set -o errexit
 set -o nounset
 
@@ -20,9 +19,6 @@ set -o nounset
 # Expected Environment Variables:
 #   DIR  Repository root directory (exported by dotfiles.sh)
 # -----------------------------------------------------------------------------
-
-# DIR is exported by dotfiles.sh
-# shellcheck disable=SC2154
 
 . "$DIR"/src/linux/logger.sh
 . "$DIR"/src/linux/utils.sh

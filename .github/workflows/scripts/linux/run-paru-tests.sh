@@ -1,5 +1,5 @@
 #!/bin/sh
-# shellcheck disable=SC3043,SC2154,SC2030,SC2031
+# shellcheck disable=SC2030,SC2031
 set -o errexit
 set -o nounset
 

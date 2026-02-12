@@ -235,4 +235,56 @@ function Read-IniSection
     return $entries
 }
 
-Export-ModuleMember -Function Test-ShouldIncludeSection, Get-ProfileExclusion, Read-IniSection
+function Test-HasMatchingSections
+{
+    <#
+    .SYNOPSIS
+        Check if a configuration file has any sections matching the profile
+    .DESCRIPTION
+        Returns true if at least one section in the INI file should be included
+        based on the excluded categories. Mirrors the Linux has_matching_sections() utility.
+    .PARAMETER FilePath
+        Path to the INI configuration file
+    .PARAMETER ExcludedCategories
+        Comma-separated list of categories to exclude
+    .EXAMPLE
+        Test-HasMatchingSections -FilePath "conf\symlinks.ini" -ExcludedCategories "arch,desktop"
+        Returns $true if any section should be processed
+    #>
+    # Plural name justified: function checks if multiple sections match (returns boolean)
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Function checks multiple sections, plural is semantically correct')]
+    [OutputType([System.Boolean])]
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]
+        $FilePath,
+
+        [Parameter(Mandatory = $false)]
+        [string]
+        $ExcludedCategories = ""
+    )
+
+    if (-not (Test-Path $FilePath))
+    {
+        return $false
+    }
+
+    $content = Get-Content $FilePath
+    foreach ($line in $content)
+    {
+        $line = $line.Trim()
+        if ($line -match '^\[(.+)\]$')
+        {
+            $section = $matches[1]
+            if (Test-ShouldIncludeSection -SectionName $section -ExcludedCategories $ExcludedCategories)
+            {
+                return $true
+            }
+        }
+    }
+
+    return $false
+}
+
+Export-ModuleMember -Function Test-ShouldIncludeSection, Get-ProfileExclusion, Read-IniSection, Test-HasMatchingSections

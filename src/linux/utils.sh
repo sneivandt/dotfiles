@@ -1,5 +1,4 @@
 #!/bin/sh
-# shellcheck disable=SC3043  # 'local' is widely supported even if not strictly POSIX
 set -o errexit
 set -o nounset
 
@@ -35,8 +34,6 @@ fi
 #   0 if profile found, 1 if not set
 get_persisted_profile()
 {
-  # DIR is exported by dotfiles.sh
-  # shellcheck disable=SC2154
   if [ ! -d "$DIR"/.git ]; then
     return 1
   fi
@@ -260,10 +257,12 @@ read_ini_section()
 #
 # Result:
 #   0 success, 1 profile not found
+# shellcheck disable=SC2034  # PROFILE_INCLUDE and PROFILE_EXCLUDE are set for external use
 parse_profile()
 {
   local profile="$1"
   local in_profile=0
+  local found_profile=0
 
   PROFILE_INCLUDE=""
   PROFILE_EXCLUDE=""
@@ -284,6 +283,7 @@ parse_profile()
       section_name="${section_name%\]}"
       if [ "$section_name" = "$profile" ]; then
         in_profile=1
+        found_profile=1
       else
         in_profile=0
       fi
@@ -308,8 +308,8 @@ parse_profile()
     fi
   done < "$DIR"/conf/profiles.ini
 
-  # If we found the profile, return success
-  if [ -n "$PROFILE_INCLUDE" ] || [ -n "$PROFILE_EXCLUDE" ]; then
+  # Return success if we found the profile section (regardless of whether values are empty)
+  if [ "$found_profile" -eq 1 ]; then
     return 0
   fi
   return 1
@@ -478,6 +478,7 @@ configure_sparse_checkout()
   # Build sparse checkout patterns
   local tmpfile
   tmpfile="$(mktemp)"
+  trap 'rm -f "$tmpfile"' EXIT
 
   # Start with all top-level files
   echo "/*" > "$tmpfile"
@@ -622,8 +623,6 @@ should_include_profile_tag()
 #   0 flag present, 1 absent.
 is_flag_set()
 {
-  # OPT is exported by dotfiles.sh
-  # shellcheck disable=SC2154
   case " $OPT " in
     *" -$1 "*)
       return 0
@@ -712,6 +711,37 @@ is_shell_script()
         ;;
     esac
   fi
+  return 1
+}
+
+# has_matching_sections
+#
+# Check if an INI configuration file has any sections matching the current profile.
+# Returns true (0) if at least one section in the file should be included based on
+# the active profile's excluded categories.
+#
+# Args:
+#   $1  Path to INI file
+#
+# Result:
+#   0 if file has matching sections, 1 if no matches or file doesn't exist
+has_matching_sections()
+{
+  local config_file="$1"
+  local sections
+  
+  if [ ! -f "$config_file" ]; then
+    return 1
+  fi
+  
+  sections="$(grep -E '^\[.+\]$' "$config_file" | tr -d '[]')"
+  
+  for section in $sections; do
+    if should_include_profile_tag "$section"; then
+      return 0
+    fi
+  done
+  
   return 1
 }
 

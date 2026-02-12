@@ -146,10 +146,11 @@ function Update-DotfilesRepository
 
         # Check if current branch matches origin/HEAD
         $originBranch = git rev-parse --abbrev-ref origin/HEAD 2>$null
+        $currentBranch = git rev-parse --abbrev-ref HEAD 2>$null
+
         if ($originBranch)
         {
             $originBranch = $originBranch -replace '^origin/', ''
-            $currentBranch = git rev-parse --abbrev-ref HEAD 2>$null
 
             if ($currentBranch -ne $originBranch)
             {
@@ -265,11 +266,11 @@ changes before running this script again:
         # Perform the merge
         if ($effectiveDryRun)
         {
-            Write-Output "DRY-RUN: Would merge updates from origin/HEAD"
+            Write-Output "DRY-RUN: Would merge updates from origin/HEAD to $currentBranch"
         }
-        elseif ($PSCmdlet.ShouldProcess("dotfiles repository", "Merge updates from origin/HEAD"))
+        elseif ($PSCmdlet.ShouldProcess("dotfiles repository", "Merge updates from origin/HEAD to $currentBranch"))
         {
-            Write-VerboseMessage "Merging updates from origin/HEAD"
+            Write-VerboseMessage "Merging updates from origin/HEAD to $currentBranch"
             $mergeOutput = git merge origin/HEAD 2>&1
             $mergeExitCode = $LASTEXITCODE
 

@@ -1,5 +1,4 @@
 #!/bin/sh
-# shellcheck disable=SC3043,SC2154  # 'local' is widely supported; color variables sourced from logger.sh
 set -o errexit
 set -o nounset
 

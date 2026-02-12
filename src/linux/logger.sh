@@ -90,7 +90,6 @@ init_logging()
 #      - STG (stage)
 #      - DRY (dry-run)
 #   $2+ message to log
-# shellcheck disable=SC3043  # 'local' is widely supported even if not strictly POSIX
 _log_to_file()
 {
   if [ -n "${DOTFILES_LOG_FILE:-}" ] && [ -f "$DOTFILES_LOG_FILE" ]; then
@@ -118,7 +117,6 @@ _log_to_file()
 #
 # Args:
 #   $1 counter name (e.g., "packages_installed", "symlinks_created")
-# shellcheck disable=SC3043  # 'local' is widely supported even if not strictly POSIX
 increment_counter()
 {
   local counter_name="$1"
@@ -143,7 +141,6 @@ increment_counter()
 #
 # Returns:
 #   Counter value (0 if counter doesn't exist)
-# shellcheck disable=SC3043  # 'local' is widely supported even if not strictly POSIX
 get_counter()
 {
   local counter_name="$1"
@@ -161,7 +158,6 @@ get_counter()
 # Print a summary of all operations performed during install/uninstall.
 # Should be called at the end of install/uninstall operations.
 # In dry-run mode, shows counts of actions that would be taken.
-# shellcheck disable=SC3043  # 'local' is widely supported even if not strictly POSIX
 # shellcheck disable=SC2155  # get_counter always succeeds and returns 0 on error
 log_summary()
 {
@@ -236,7 +232,6 @@ log_summary()
   fi
 
   # Also write summary to log file
-  _log_to_file "INF" ""
   _log_to_file "INF" "=========================================="
   _log_to_file "INF" "Installation Summary"
   _log_to_file "INF" "=========================================="

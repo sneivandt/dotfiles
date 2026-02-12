@@ -1,5 +1,4 @@
 #!/bin/sh
-# shellcheck disable=SC3043  # 'local' is widely supported even if not strictly POSIX
 set -o errexit
 set -o nounset
 
@@ -30,9 +29,6 @@ set -o nounset
 #   OPT  CLI options string (exported by dotfiles.sh)
 # -----------------------------------------------------------------------------
 
-# DIR is exported by dotfiles.sh
-# shellcheck disable=SC2154
-
 . "$DIR"/src/linux/logger.sh
 . "$DIR"/src/linux/utils.sh
 
@@ -55,26 +51,18 @@ configure_file_mode_bits()
     return
   fi
 
-  # Get list of sections from chmod.ini
-  # Sections use comma-separated categories (e.g., [base], [arch,desktop])
-  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/chmod.ini | tr -d '[]')"
-
   # Check if any sections match the active profile
-  has_matching_section=0
-  for section in $sections; do
-    if should_include_profile_tag "$section"; then
-      has_matching_section=1
-      break
-    fi
-  done
-
-  if [ "$has_matching_section" -eq 0 ]; then
+  if ! has_matching_sections "$DIR"/conf/chmod.ini; then
     log_verbose "Skipping chmod: no sections match active profile"
     return
   fi
 
   log_progress "Checking file permissions..."
   log_verbose "Processing chmod config: conf/chmod.ini"
+
+  # Get list of sections from chmod.ini
+  # Sections use comma-separated categories (e.g., [base], [arch,desktop])
+  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/chmod.ini | tr -d '[]')"
 
   local act=0
 
@@ -95,9 +83,9 @@ configure_file_mode_bits()
       fi
 
       # Parse mode and file from line (format: <mode> <file>)
-      # Use read with proper word splitting to handle tabs and multiple spaces
+      # Use awk to handle any whitespace (spaces or tabs) between fields
       mode="$(echo "$line" | awk '{print $1}')"
-      file="$(echo "$line" | cut -d' ' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      file="$(echo "$line" | awk '{$1=""; sub(/^[[:space:]]+/, ""); print}')"
 
       if [ -z "$mode" ] || [ -z "$file" ]; then
         continue
@@ -148,7 +136,7 @@ configure_fonts()
 {(
   # Check if font configuration tools are installed
   if ! is_program_installed "fc-list" || ! is_program_installed "fc-cache"; then
-    log_verbose "Skipping font configuration: fc-list or fc-cache not installed"
+    log_verbose "Skipping font configuration: fc-list or fc-cache not installed (install fontconfig)"
     return
   fi
 
@@ -158,18 +146,8 @@ configure_fonts()
     return
   fi
 
-  # Get all sections from fonts.ini and check if any match the profile
-  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/fonts.ini | tr -d '[]')"
-
-  has_matching_section=0
-  for section in $sections; do
-    if should_include_profile_tag "$section"; then
-      has_matching_section=1
-      break
-    fi
-  done
-
-  if [ "$has_matching_section" -eq 0 ]; then
+  # Check if any sections match the active profile
+  if ! has_matching_sections "$DIR"/conf/fonts.ini; then
     log_verbose "Skipping font configuration: no sections match current profile"
     return
   fi
@@ -177,9 +155,15 @@ configure_fonts()
   log_progress "Checking fonts..."
   log_verbose "Checking fonts from: conf/fonts.ini"
 
+  # Create temp file with cleanup trap
+  tmpfile="$(mktemp)"
+  trap 'rm -f "$tmpfile"' EXIT
+
+  # Get all sections from fonts.ini
+  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/fonts.ini | tr -d '[]')"
+
   # Track if any fonts are missing across all relevant sections
   missing_fonts=0
-  tmpfile="$(mktemp)"
 
   for section in $sections; do
     if ! should_include_profile_tag "$section"; then
@@ -287,19 +271,8 @@ configure_systemd()
     return
   fi
 
-  # Get list of sections from units.ini
-  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/units.ini | tr -d '[]')"
-
   # Check if any sections match the active profile
-  has_matching_section=0
-  for section in $sections; do
-    if should_include_profile_tag "$section"; then
-      has_matching_section=1
-      break
-    fi
-  done
-
-  if [ "$has_matching_section" -eq 0 ]; then
+  if ! has_matching_sections "$DIR"/conf/units.ini; then
     log_verbose "Skipping systemd units: no sections match active profile"
     return
   fi
@@ -307,9 +280,13 @@ configure_systemd()
   log_progress "Checking systemd units..."
   log_verbose "Processing systemd units from: conf/units.ini"
 
+  # Get list of sections from units.ini
+  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/units.ini | tr -d '[]')"
+
   # Collect all units that need to be enabled across all sections
   # to print stage header only once
   tmpfile="$(mktemp)"
+  trap 'rm -f "$tmpfile"' EXIT
   for section in $sections
   do
     if should_include_profile_tag "$section"; then
@@ -500,7 +477,7 @@ install_paru()
 
   # Check prerequisites
   if ! is_program_installed "git" || ! is_program_installed "makepkg" || ! is_program_installed "cargo"; then
-    log_verbose "Skipping paru installation: git, makepkg, or cargo not installed"
+    log_verbose "Skipping paru installation: missing prerequisites (install git, base-devel, rust)"
     return
   fi
 
@@ -516,13 +493,11 @@ install_paru()
   trap 'rm -rf "$tmp_dir"' EXIT
   log_verbose "Cloning paru-git to $tmp_dir"
 
-  # Use a subshell to ensure we return to original directory
-  (
-    git clone https://aur.archlinux.org/paru-git.git "$tmp_dir"
-    cd "$tmp_dir"
-    log_verbose "Building paru..."
-    makepkg -si --noconfirm
-  )
+  # Clone and build in the temp directory
+  cd "$tmp_dir"
+  git clone https://aur.archlinux.org/paru-git.git .
+  log_verbose "Building paru..."
+  makepkg -si --noconfirm
 )}
 
 # install_packages
@@ -533,7 +508,7 @@ install_paru()
 install_packages()
 {(
   if ! is_program_installed "sudo" || ! is_program_installed "pacman"; then
-    log_verbose "Skipping package installation: sudo or pacman not installed"
+    log_verbose "Skipping package installation: sudo or pacman not installed (Arch Linux required)"
     return
   fi
 
@@ -664,24 +639,16 @@ install_symlinks()
     return
   fi
 
-  # Get list of sections from symlinks.ini
-  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/symlinks.ini | tr -d '[]')"
-
   # Check if any sections match the active profile
-  has_matching_section=0
-  for section in $sections; do
-    if should_include_profile_tag "$section"; then
-      has_matching_section=1
-      break
-    fi
-  done
-
-  if [ "$has_matching_section" -eq 0 ]; then
+  if ! has_matching_sections "$DIR"/conf/symlinks.ini; then
     log_verbose "Skipping symlinks: no sections match active profile"
     return
   fi
 
   log_progress "Checking symlinks..."
+
+  # Get list of sections from symlinks.ini
+  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/symlinks.ini | tr -d '[]')"
 
   local act=0
 
@@ -762,30 +729,22 @@ install_vscode_extensions()
     return
   fi
 
-  # Get list of sections from vscode-extensions.ini
-  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/vscode-extensions.ini | tr -d '[]')"
-
   # Check if any sections match the active profile
-  has_matching_section=0
-  for section in $sections; do
-    if should_include_profile_tag "$section"; then
-      has_matching_section=1
-      break
-    fi
-  done
-
-  if [ "$has_matching_section" -eq 0 ]; then
+  if ! has_matching_sections "$DIR"/conf/vscode-extensions.ini; then
     log_verbose "Skipping VS Code extensions: no sections match active profile"
     return
   fi
 
   # Check if VS Code is installed
   if ! is_program_installed "code" && ! is_program_installed "code-insiders"; then
-    log_verbose "Skipping VS Code extensions: code not installed"
+    log_verbose "Skipping VS Code extensions: code not installed (install VS Code or Code Insiders)"
     return
   fi
 
   log_progress "Checking VS Code extensions..."
+
+  # Get list of sections from vscode-extensions.ini
+  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/vscode-extensions.ini | tr -d '[]')"
 
   # Iterate over both stable and insiders versions of VS Code
   for code in code code-insiders
@@ -811,7 +770,7 @@ install_vscode_extensions()
       # Read extensions from this section
       read_ini_section "$DIR"/conf/vscode-extensions.ini "$section" | while IFS='' read -r extension || [ -n "$extension" ]
       do
-        if [ -n "$extension" ] && ! echo "$extensions" | grep -qw "$extension"; then
+        if [ -n "$extension" ] && ! echo "$extensions" | grep -qxF "$extension"; then
           echo "$extension"
         fi
       done
@@ -846,7 +805,7 @@ install_vscode_extensions()
 
       read_ini_section "$DIR"/conf/vscode-extensions.ini "$section" | while IFS='' read -r extension || [ -n "$extension" ]
       do
-        if [ -n "$extension" ] && echo "$extensions" | grep -qw "$extension"; then
+        if [ -n "$extension" ] && echo "$extensions" | grep -qxF "$extension"; then
           log_verbose "Skipping $code extension $extension: already installed"
         fi
       done
@@ -866,6 +825,12 @@ uninstall_symlinks()
     return
   fi
 
+  # Check if any sections match the active profile
+  if ! has_matching_sections "$DIR"/conf/symlinks.ini; then
+    log_verbose "Skipping uninstall symlinks: no sections match current profile"
+    return
+  fi
+
   log_progress "Checking symlinks to remove..."
 
   # Get list of sections from symlinks.ini
@@ -873,6 +838,7 @@ uninstall_symlinks()
 
   # Collect all symlinks that need to be removed to print stage header only once
   tmpfile="$(mktemp)"
+  trap 'rm -f "$tmpfile"' EXIT
   for section in $sections
   do
     if should_include_profile_tag "$section"; then
@@ -922,8 +888,6 @@ uninstall_symlinks()
       fi
     done
   done
-
-  rm -f "$tmpfile"
 )}
 
 # update_dotfiles
@@ -953,8 +917,15 @@ update_dotfiles()
   # Ensure we are on the same branch as the remote HEAD
   # Check if origin/HEAD exists (it may not in CI or shallow clones)
   if git -C "$DIR" rev-parse --verify --quiet origin/HEAD >/dev/null 2>&1; then
-    if [ "$(git -C "$DIR" rev-parse --abbrev-ref origin/HEAD | cut -d/ -f2)" != "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" ]; then
-      log_verbose "Skipping update dotfiles: current branch does not match origin/HEAD"
+    local current_branch
+    local remote_branch
+    current_branch="$(git -C "$DIR" rev-parse --abbrev-ref HEAD)"
+    remote_branch="$(git -C "$DIR" rev-parse --abbrev-ref origin/HEAD)"
+    # Strip 'origin/' prefix from remote branch name
+    remote_branch="${remote_branch#origin/}"
+
+    if [ "$remote_branch" != "$current_branch" ]; then
+      log_verbose "Skipping update dotfiles: current branch '$current_branch' does not match origin/HEAD '$remote_branch'"
       return
     fi
   else
@@ -977,9 +948,9 @@ update_dotfiles()
     if [ "$(git -C "$DIR" log --format=format:%H -n 1 origin/HEAD)" != "$(git -C "$DIR" log --format=format:%H -n 1 HEAD)" ]; then
       log_stage "Updating dotfiles"
       if is_dry_run; then
-        log_dry_run "Would merge updates from origin/HEAD"
+        log_dry_run "Would merge updates from origin/HEAD to $current_branch"
       else
-        log_verbose "Merging updates from origin/HEAD"
+        log_verbose "Merging updates from origin/HEAD to $current_branch"
         git -C "$DIR" merge
       fi
     else

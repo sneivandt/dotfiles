@@ -5,8 +5,8 @@
 *.sh text eol=lf
 *.bash text eol=lf
 *.zsh text eol=lf
-*.ps1 text eol=crlf working-tree-encoding=UTF-8
-*.psm1 text eol=crlf working-tree-encoding=UTF-8
+*.ps1 text eol=lf working-tree-encoding=UTF-8
+*.psm1 text eol=lf working-tree-encoding=UTF-8
 *.md text eol=lf diff=markdown
 *.yml text eol=lf
 gitattributes text eol=lf

@@ -43,6 +43,11 @@ param (
     $DryRun
 )
 
+# Set DOTFILES_ROOT environment variable so the module can find the repository
+# This ensures that even if the module is loaded from an installed location,
+# it will use the repository as the source for updates
+$env:DOTFILES_ROOT = $PSScriptRoot
+
 # Import the Dotfiles module from the repository
 $modulePath = Join-Path $PSScriptRoot "src\windows\Dotfiles.psm1"
 

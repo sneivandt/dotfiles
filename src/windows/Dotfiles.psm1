@@ -123,9 +123,8 @@ function Install-Dotfiles
 
                     # Build command to re-run Install-Dotfiles in elevated session
                     $verboseArg = if ($VerbosePreference -eq 'Continue') { ' -Verbose' } else { '' }
-                    $modulePath = Join-Path $Script:ModuleRoot "src\windows\Dotfiles.psm1"
                     $scriptCommand = @"
-Import-Module '$modulePath' -Force
+Import-Module Dotfiles -Force
 Install-Dotfiles$verboseArg
 Write-Host
 Write-Host 'Installation complete. Press Enter to close...' -ForegroundColor Green

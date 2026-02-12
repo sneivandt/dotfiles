@@ -68,17 +68,17 @@ function Write-LogMessage
         Internal function to write a message to the log file with timestamp and level
     .DESCRIPTION
         Strips ANSI color codes and writes the message to the persistent log file.
-        Level prefix is fixed-width (6 chars) for clean column alignment.
-        Format: YYYY-MM-DD HH:MM:SS LEVEL  message
+        Level prefix is fixed-width (3 chars) for clean column alignment.
+        Format: YYYY-MM-DD HH:MM:SS LVL message
 
-        All level keywords are exactly 6 characters for consistent formatting:
-        - INFO   (with 2 trailing spaces)
-        - VERBOS (abbreviated from VERBOSE)
-        - ERROR  (with 1 trailing space)
-        - STAGE  (with 1 trailing space)
-        - DRYRUN (no hyphen)
+        All level keywords are exactly 3 characters for consistent formatting:
+        - INF (info)
+        - VRB (verbose)
+        - ERR (error)
+        - STG (stage)
+        - DRY (dry-run)
     .PARAMETER Level
-        Log level keyword (exactly 6 characters)
+        Log level keyword (exactly 3 characters)
     .PARAMETER Message
         Message to log (may be empty; line will still be timestamped)
     #>
@@ -99,8 +99,8 @@ function Write-LogMessage
         # Strip ANSI color codes (basic pattern - PowerShell doesn't typically use them in default output)
         $cleanMessage = $Message -replace '\x1b\[[0-9;]*m', ''
 
-        # Format: YYYY-MM-DD HH:MM:SS LEVEL  message
-        # Level is exactly 6 characters
+        # Format: YYYY-MM-DD HH:MM:SS LVL message
+        # Level is exactly 3 characters
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $formattedMessage = "$timestamp $Level $cleanMessage"
         $formattedMessage | Out-File -FilePath $script:LogFile -Append -Encoding utf8
@@ -127,7 +127,7 @@ function Write-ProgressMessage
 
     $output = "   $Message"
     Write-Output $output
-    Write-LogMessage -Level "INFO  " -Message $output
+    Write-LogMessage -Level "INF" -Message $output
 }
 
 function Write-Stage
@@ -149,7 +149,7 @@ function Write-Stage
 
     $output = ":: $Message"
     Write-Output $output
-    Write-LogMessage -Level "STAGE " -Message $Message
+    Write-LogMessage -Level "STG" -Message $Message
 }
 
 function Write-DryRunMessage
@@ -173,8 +173,8 @@ function Write-DryRunMessage
     # Console output without prefix
     Write-Output $Message
 
-    # Log file with DRYRUN prefix
-    Write-LogMessage -Level "DRYRUN" -Message $Message
+    # Log file with DRY prefix
+    Write-LogMessage -Level "DRY" -Message $Message
 }
 
 function Write-VerboseMessage
@@ -196,8 +196,8 @@ function Write-VerboseMessage
         $Message
     )
 
-    # Always write to log file with VERBOS prefix
-    Write-LogMessage -Level "VERBOS" -Message $Message
+    # Always write to log file with VRB prefix
+    Write-LogMessage -Level "VRB" -Message $Message
 
     # Only write to console if -Verbose was specified (no prefix)
     Write-Verbose $Message
@@ -303,7 +303,7 @@ function Write-InstallationSummary
     {
         $message = "   Packages installed${modeSuffix}: $packagesInstalled"
         Write-Output $message
-        Write-LogMessage -Level "INFO  " -Message $message
+        Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
     }
 
@@ -311,7 +311,7 @@ function Write-InstallationSummary
     {
         $message = "   PowerShell modules installed${modeSuffix}: $modulesInstalled"
         Write-Output $message
-        Write-LogMessage -Level "INFO  " -Message $message
+        Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
     }
 
@@ -319,7 +319,7 @@ function Write-InstallationSummary
     {
         $message = "   Symlinks created${modeSuffix}: $symlinksCreated"
         Write-Output $message
-        Write-LogMessage -Level "INFO  " -Message $message
+        Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
     }
 
@@ -327,7 +327,7 @@ function Write-InstallationSummary
     {
         $message = "   VS Code extensions installed${modeSuffix}: $vscodeExtensionsInstalled"
         Write-Output $message
-        Write-LogMessage -Level "INFO  " -Message $message
+        Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
     }
 
@@ -335,7 +335,7 @@ function Write-InstallationSummary
     {
         $message = "   Registry keys set${modeSuffix}: $registryKeysSet"
         Write-Output $message
-        Write-LogMessage -Level "INFO  " -Message $message
+        Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
     }
 
@@ -343,7 +343,7 @@ function Write-InstallationSummary
     {
         $message = "   No changes made (all components already configured)"
         Write-Output $message
-        Write-LogMessage -Level "INFO  " -Message $message
+        Write-LogMessage -Level "INF" -Message $message
     }
 
     # Log file location
@@ -351,7 +351,7 @@ function Write-InstallationSummary
     {
         $message = "   Log file: $script:LogFile"
         Write-Output $message
-        Write-LogMessage -Level "INFO  " -Message $message
+        Write-LogMessage -Level "INF" -Message $message
     }
 }
 

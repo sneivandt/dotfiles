@@ -167,7 +167,7 @@ __go_tool_complete() {
         ;;
       graph)
         ;;
-      init)   
+      init)
         ;;
       tidy)
         _arguments -s -w : \

@@ -125,9 +125,8 @@ function Write-ProgressMessage
         $Message
     )
 
-    $output = "   $Message"
-    Write-Output $output
-    Write-LogMessage -Level "INF" -Message $output
+    Write-Output $Message
+    Write-LogMessage -Level "INF" -Message $Message
 }
 
 function Write-Stage
@@ -301,7 +300,7 @@ function Write-InstallationSummary
 
     if ($packagesInstalled -gt 0)
     {
-        $message = "   Packages installed${modeSuffix}: $packagesInstalled"
+        $message = "Packages installed${modeSuffix}: $packagesInstalled"
         Write-Output $message
         Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
@@ -309,7 +308,7 @@ function Write-InstallationSummary
 
     if ($modulesInstalled -gt 0)
     {
-        $message = "   PowerShell modules installed${modeSuffix}: $modulesInstalled"
+        $message = "PowerShell modules installed${modeSuffix}: $modulesInstalled"
         Write-Output $message
         Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
@@ -317,7 +316,7 @@ function Write-InstallationSummary
 
     if ($symlinksCreated -gt 0)
     {
-        $message = "   Symlinks created${modeSuffix}: $symlinksCreated"
+        $message = "Symlinks created${modeSuffix}: $symlinksCreated"
         Write-Output $message
         Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
@@ -325,7 +324,7 @@ function Write-InstallationSummary
 
     if ($vscodeExtensionsInstalled -gt 0)
     {
-        $message = "   VS Code extensions installed${modeSuffix}: $vscodeExtensionsInstalled"
+        $message = "VS Code extensions installed${modeSuffix}: $vscodeExtensionsInstalled"
         Write-Output $message
         Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
@@ -333,7 +332,7 @@ function Write-InstallationSummary
 
     if ($registryKeysSet -gt 0)
     {
-        $message = "   Registry keys set${modeSuffix}: $registryKeysSet"
+        $message = "Registry keys set${modeSuffix}: $registryKeysSet"
         Write-Output $message
         Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true
@@ -341,7 +340,7 @@ function Write-InstallationSummary
 
     if (-not $hasChanges)
     {
-        $message = "   No changes made (all components already configured)"
+        $message = "No changes made (all components already configured)"
         Write-Output $message
         Write-LogMessage -Level "INF" -Message $message
     }
@@ -349,7 +348,7 @@ function Write-InstallationSummary
     # Log file location
     if (Test-Path $script:LogFile)
     {
-        $message = "   Log file: $script:LogFile"
+        $message = "Log file: $script:LogFile"
         Write-Output $message
         Write-LogMessage -Level "INF" -Message $message
     }

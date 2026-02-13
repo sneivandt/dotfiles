@@ -19,6 +19,11 @@ function Initialize-GitConfig
         containing the target path. This prevents permission errors during
         git pull and checkout operations on Windows.
 
+        Creates ~/.gitconfig to redirect global config writes away from the
+        XDG config (which is symlinked to the dotfiles repo). Git Credential
+        Manager writes credential entries to the global config, and without
+        this redirect those writes would dirty the tracked dotfiles config.
+
         Idempotent - only sets the value if not already configured.
     .PARAMETER Root
         Root directory of the dotfiles repository
@@ -49,6 +54,34 @@ function Initialize-GitConfig
         return
     }
 
+    # Ensure ~/.gitconfig exists to absorb global config writes from GCM.
+    # When ~/.gitconfig is absent, git config --global writes to the XDG
+    # location (~/.config/git/config) which is symlinked to the dotfiles
+    # repo. Creating ~/.gitconfig redirects those writes here instead.
+    $gitconfigPath = Join-Path $env:USERPROFILE ".gitconfig"
+    if ($env:USERPROFILE -and -not (Test-Path $gitconfigPath))
+    {
+        if (-not $act)
+        {
+            $act = $true
+            Write-Stage -Message "Git Configuration"
+        }
+
+        if ($DryRun)
+        {
+            Write-DryRunMessage -Message "Would create $gitconfigPath to redirect global config writes"
+        }
+        else
+        {
+            Write-VerboseMessage "Creating $gitconfigPath to redirect global config writes"
+            Set-Content -Path $gitconfigPath -Value "# Absorbs writes from git config --global (e.g. GCM credential entries).`n# Dotfiles settings live in ~/.config/git/config (symlinked).`n" -NoNewline
+        }
+    }
+    else
+    {
+        Write-VerboseMessage "Global gitconfig redirect already in place"
+    }
+
     # Check current symlinks setting
     Push-Location $Root
     try
@@ -63,12 +96,12 @@ function Initialize-GitConfig
             if (-not $act)
             {
                 $act = $true
-                Write-Output ":: Git Configuration"
+                Write-Stage -Message "Git Configuration"
             }
 
             if ($DryRun)
             {
-                Write-Output "DRY-RUN: Would set git config core.symlinks false"
+                Write-DryRunMessage -Message "Would set git config core.symlinks false"
             }
             else
             {

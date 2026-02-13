@@ -68,10 +68,9 @@ if [ -z "$CURRENT_BRANCH" ]; then
 fi
 
 # Determine default branch (usually main or master)
-# Query remote to find the HEAD branch
-DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
+# Use local ref to avoid slow network call to remote
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
 if [ -z "$DEFAULT_BRANCH" ]; then
-  # Fallback to 'main' if remote query fails
   DEFAULT_BRANCH="main"
 fi
 
@@ -88,8 +87,7 @@ echo "Generating PR title and description..."
 #   0 if no differences
 #   1 if there are differences
 #   >1 if error occurred
-git diff --quiet "$DEFAULT_BRANCH"...HEAD
-DIFF_STATUS=$?
+git diff --quiet "$DEFAULT_BRANCH"...HEAD && DIFF_STATUS=0 || DIFF_STATUS=$?
 if [ "$DIFF_STATUS" -eq 0 ]; then
   echo "Error: No changes between $DEFAULT_BRANCH and $CURRENT_BRANCH"
   exit 1
@@ -99,13 +97,14 @@ elif [ "$DIFF_STATUS" -ne 1 ]; then
 fi
 
 # Collect commit messages and diff for AI generation
-# Format: short hash + subject line
 COMMITS=$(git log "$DEFAULT_BRANCH"..HEAD --pretty=format:'%h %s')
-# Get full diff between branches (three-dot syntax for merge base)
-DIFF=$(git diff "$DEFAULT_BRANCH"...HEAD)
+# Get diff stat summary and the actual diff (truncated to avoid prompt limits)
+DIFF_STAT=$(git diff "$DEFAULT_BRANCH"...HEAD --stat)
+DIFF=$(git diff "$DEFAULT_BRANCH"...HEAD | head -500)
+# List changed files for additional context
+CHANGED_FILES=$(git diff "$DEFAULT_BRANCH"...HEAD --name-only)
 
-# Check if GitHub Copilot is available for AI generation
-# Copilot is optional for azure mode but enhances both modes
+# Check if GitHub Copilot CLI is available
 HAS_COPILOT=true
 if ! command -v gh >/dev/null 2>&1; then
   HAS_COPILOT=false
@@ -113,45 +112,71 @@ fi
 
 # Generate PR title and description
 if [ "$HAS_COPILOT" = false ]; then
-  # Fallback: use first commit message as title, list commits as body
-  echo "Warning: gh CLI or copilot extension not found, using commit messages"
+  echo "Warning: gh CLI not found, using commit messages as fallback"
   PR_TITLE=$(echo "$COMMITS" | head -1 | cut -d' ' -f2-)
   PR_BODY="## Changes
 
 $COMMITS"
 else
-  # Use GitHub Copilot to generate AI-powered PR title and description
-  # Construct prompt with structured format requirements
-  PROMPT="Based on these commits and diff, generate a pull request title (one line) and description (multiple paragraphs with markdown formatting). Format your response EXACTLY as:
+  # Build a prompt focused on the actual code changes
+  PROMPT="You are generating a pull request title and description. Analyze the code diff below and describe WHAT changed and WHY based on the actual modifications, not the commit messages.
 
-TITLE: <title here>
+Format your response EXACTLY as (no extra text before TITLE):
+TITLE: <a concise descriptive title summarizing the change>
 
 DESCRIPTION:
-<description here>
+<markdown description with sections like ## Summary, ## Changes, ## Impact as appropriate>
 
-Commits:
-$COMMITS
+Files changed:
+$CHANGED_FILES
 
-Diff:
+Diff stats:
+$DIFF_STAT
+
+Code diff:
 $DIFF"
-  # Send prompt to Copilot and capture response
-  # Suppress stderr to avoid progress messages
-  AI_RESPONSE=$(printf '%b' "$PROMPT" | gh copilot -p "" 2>/dev/null) || true
+
+  # Write prompt to a temp file to avoid shell argument length limits
+  PROMPT_FILE=$(mktemp)
+  printf '%s' "$PROMPT" > "$PROMPT_FILE"
+
+  # Setup cleanup trap to restore MCP config on any exit (success or failure)
+  MCP_USER_CONFIG="$HOME/.copilot/mcp-config.json"
+  MCP_BACKUP=""
+  cleanup_mcp_config() {
+    if [ -n "$MCP_BACKUP" ] && [ -f "$MCP_BACKUP" ]; then
+      mv "$MCP_BACKUP" "$MCP_USER_CONFIG" 2>/dev/null || true
+    fi
+    rm -f "$PROMPT_FILE" 2>/dev/null || true
+  }
+  trap cleanup_mcp_config EXIT
+
+  # Temporarily hide MCP config so Copilot CLI doesn't start MCP servers (slow)
+  if [ -f "$MCP_USER_CONFIG" ]; then
+    MCP_BACKUP="$MCP_USER_CONFIG.bak"
+    mv "$MCP_USER_CONFIG" "$MCP_BACKUP"
+  fi
+
+  # Use gh copilot CLI — ask it to read and respond to the prompt file
+  AI_RESPONSE=$(gh copilot -- -p "Read the file $PROMPT_FILE and follow the instructions in it exactly. Output ONLY what the instructions ask for." \
+    --disable-builtin-mcps \
+    --allow-all-tools \
+    2>/dev/null) || true
+
+  # Strip Copilot CLI usage stats from the response
+  AI_RESPONSE=$(echo "$AI_RESPONSE" | sed '/^● /d' | sed '/^Total usage/,$d')
 
   # Parse AI response or fallback to commit messages
   if [ -z "$AI_RESPONSE" ]; then
-    # AI generation failed, use fallback
     PR_TITLE=$(echo "$COMMITS" | head -1 | cut -d' ' -f2-)
     PR_BODY="## Changes
 
 $COMMITS"
   else
-    # Extract title and description from AI response
-    # Title is prefixed with "TITLE:", description is between "DESCRIPTION:" and "Diff:"
     PR_TITLE=$(echo "$AI_RESPONSE" | grep '^TITLE:' | head -1 | sed 's/^TITLE:[[:space:]]*//')
-    PR_BODY=$(echo "$AI_RESPONSE" | sed -n '/^DESCRIPTION:/,/^Diff:/p' | sed '1d;$d')
+    # Extract everything after DESCRIPTION: line
+    PR_BODY=$(echo "$AI_RESPONSE" | sed -n '/^DESCRIPTION:/,$p' | sed '1d')
 
-    # Validate extraction succeeded, fallback if empty
     if [ -z "$PR_TITLE" ]; then
       PR_TITLE=$(echo "$COMMITS" | head -1 | cut -d' ' -f2-)
     fi
@@ -180,6 +205,11 @@ IFS= read -r ans
 # Process user response
 case "$ans" in
   [Yy]*)
+    # Push branch to remote if not already there
+    if ! git ls-remote --exit-code origin "refs/heads/$CURRENT_BRANCH" >/dev/null 2>&1; then
+      echo "Pushing branch '$CURRENT_BRANCH' to origin..."
+      git push -u origin "$CURRENT_BRANCH"
+    fi
     # User confirmed, create PR using selected mode
     case "$MODE" in
       github)

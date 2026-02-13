@@ -205,6 +205,34 @@ rust-lang.rust-analyzer
 
 ---
 
+### `copilot-skills.ini`
+**Purpose**: Lists GitHub Copilot CLI skill folders to download and install.
+
+**Format**: Sections represent profiles; entries are GitHub folder URLs.
+
+**Example**:
+```ini
+[base]
+https://github.com/github/awesome-copilot/blob/main/skills/azure-devops-cli
+https://github.com/microsoft/skills/blob/main/.github/skills/azure-identity-dotnet
+
+[desktop]
+https://github.com/example/skills/blob/main/skills/web-dev-helper
+```
+
+**How it works**:
+- Skills are downloaded to `~/.copilot/skills/` directory
+- Each URL points to a folder in a GitHub repository
+- The entire folder (including subdirectories) is downloaded
+- Folder name is extracted from the URL path
+- Requires `gh` CLI for GitHub Copilot functionality
+
+**URL format**: Both `/blob/` and `/tree/` URLs are supported:
+- `https://github.com/owner/repo/blob/branch/path/to/folder`
+- `https://github.com/owner/repo/tree/branch/path/to/folder`
+
+---
+
 ### `registry.ini`
 **Purpose**: Configures Windows registry settings.
 

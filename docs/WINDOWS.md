@@ -1,6 +1,6 @@
 # Windows Usage
 
-Windows automation for the dotfiles project. The PowerShell entrypoint (`dotfiles.ps1`) provides registry personalization, symlinks, package installation, and VS Code extensions in an idempotent fashion.
+Windows automation for the dotfiles project. The PowerShell entrypoint (`dotfiles.ps1`) provides registry personalization, symlinks, package installation, VS Code extensions, and GitHub Copilot CLI skills in an idempotent fashion.
 
 The dotfiles installer installs itself as a PowerShell module, making the `Install-Dotfiles` command available from anywhere in PowerShell.
 
@@ -70,6 +70,7 @@ Re‑run the script or commands at any time; operations are skipped when already
 | 6 | `Registry.psm1` | `Sync-Registry` | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
 | 7 | `Symlinks.psm1` | `Install-Symlinks` | Creates Windows user profile symlinks from `conf/symlinks.ini` filtered by profile. | Only creates links whose targets do not already exist. |
 | 8 | `VsCodeExtensions.psm1` | `Install-VsCodeExtensions` | Ensures VS Code extensions listed in `conf/vscode-extensions.ini` are installed. | Checks against `code --list-extensions`. |
+| 9 | `CopilotSkills.psm1` | `Install-CopilotSkills` | Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`. | Skips if skill files already exist with same content. |
 ## Git Configuration
 
 The repository contains symlinks (e.g., `symlinks/config/nvim` → `../vim`) that are tracked in Git. On Windows, creating actual symlinks during Git operations requires either Developer Mode enabled or Administrator privileges.
@@ -222,6 +223,27 @@ To add a new link:
 
 The file `conf/vscode-extensions.ini` contains extensions in the `[extensions]` section. Remove a line and re-run to keep new installs from occurring (does not uninstall). Add lines to expand your standard environment. The script requires the `code` CLI on PATH (Enable via VS Code: Command Palette → Shell Command: Install 'code' command in PATH).
 
+## GitHub Copilot CLI Skills
+
+The file `conf/copilot-skills.ini` contains GitHub Copilot CLI skill folder URLs organized by profile sections (e.g., `[base]`, `[windows]`). Each URL points to a folder in a GitHub repository containing skill definition files.
+
+**Format**:
+```ini
+[base]
+https://github.com/github/awesome-copilot/blob/main/skills/azure-devops-cli
+https://github.com/microsoft/skills/blob/main/.github/skills/azure-identity-dotnet
+```
+
+**How it works**:
+- Skills are downloaded to `$HOME/.copilot/skills/` directory
+- The entire folder (including subdirectories) is downloaded recursively
+- Each file is checked for changes before updating (idempotent)
+- Skills extend GitHub Copilot CLI with additional context and functionality
+
+**Requirements**:
+- GitHub Copilot CLI (`gh copilot`) must be installed
+- Skills are automatically downloaded during installation
+
 ## Updating
 
 The dotfiles repository is automatically updated during installation via the `Update-DotfilesRepository` function, which handles local changes safely.
@@ -281,6 +303,7 @@ The installation tracks various operations and displays a summary at the end:
 - **PowerShell modules installed**: Number of times the Dotfiles module was installed/updated
 - **Symlinks created**: Number of symlinks created in user profile
 - **VS Code extensions installed**: Number of extensions installed
+- **Copilot skills installed**: Number of GitHub Copilot CLI skills downloaded
 - **Registry keys set**: Number of registry values modified
 
 ### Dry-Run Mode
@@ -298,6 +321,7 @@ Packages installed: 3
 PowerShell modules installed: 1
 Symlinks created: 5
 VS Code extensions installed: 2
+Copilot skills installed: 2
 Registry keys set: 12
 Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
 ```

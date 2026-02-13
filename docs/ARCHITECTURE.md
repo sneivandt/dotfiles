@@ -95,6 +95,7 @@ Granular, idempotent task functions:
 - `install_systemd_units` - Enables systemd units
 - `install_fonts` - Installs fonts
 - `install_vscode_extensions` - Installs VS Code extensions
+- `install_copilot_skills` - Downloads GitHub Copilot CLI skills
 - `install_pwsh_modules` - Installs PowerShell modules
 - `install_git_hooks` - Installs repository hooks
 - And more...

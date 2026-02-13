@@ -856,8 +856,6 @@ install_copilot_skills()
   # Ensure skills directory exists
   local skills_dir="$HOME/.copilot/skills"
 
-  local act=0
-
   # Helper function to recursively download GitHub folder contents
   download_github_folder()
   {
@@ -904,12 +902,8 @@ install_copilot_skills()
           log_verbose "Skipping file $file_name: no changes"
           rm -f "$temp_file"
         else
-          if [ "$act" -eq 0 ]; then
-            act=1
-            log_stage "Installing Copilot CLI skills"
-          fi
           mv "$temp_file" "$file_path"
-          local relative_path="${file_path#$target_path/}"
+          local relative_path="${file_path#"$target_path"/}"
           log_verbose "Installed file: $relative_path"
           eval "$files_downloaded_var=\$((\$$files_downloaded_var + 1))"
         fi
@@ -970,14 +964,12 @@ install_copilot_skills()
       target_dir="$skills_dir/$folder_name"
 
       if is_dry_run; then
-        if [ $act -eq 0 ]; then
-          act=1
-          log_stage "Installing Copilot CLI skills"
-        fi
+        log_stage "Installing Copilot CLI skills"
         log_dry_run "Would create directory: $target_dir"
         log_dry_run "Would download skill folder from $url (including subdirectories)"
         increment_counter "copilot_skills_installed"
       else
+        log_stage "Installing Copilot CLI skills"
         log_verbose "Downloading skill folder from $url"
 
         # Ensure target directory exists

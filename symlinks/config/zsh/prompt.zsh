@@ -9,7 +9,7 @@ if [ -n "$SSH_CONNECTION" ] || [ -e /.dockerenv ]; then
 fi
 
 typeset -g _ZSH_PROMPT_SHELL=""
-if [ "$(command -v zsh)" != "$SHELL" ]; then
+if [ "$(readlink -f "$(command -v zsh)")" != "$(readlink -f "$SHELL")" ]; then
   _ZSH_PROMPT_SHELL="%F{cyan}zsh%f "
 fi
 

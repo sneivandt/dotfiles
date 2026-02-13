@@ -120,7 +120,11 @@
         "jupyter-notebook": "right"
     },
     "notifications.excludeList": [
-        "*"
+        "git.missing",
+        "settingsSync.showSyncedNotification",
+        "update.showVisibleNewUpdate",
+        "vscode.extension-editing",
+        "workbench.statusbar.changedSettingsNotification"
     ],
     "powershell.integratedConsole.showOnStartup": false,
     "powershell.sideBar.CommandExplorerVisibility": false,

@@ -113,7 +113,7 @@ function Install-CopilotSkills
     $act = $false
 
     # Helper function to recursively download folder contents
-    function Download-GitHubFolder
+    function Get-GitHubFolder
     {
         param (
             [string]$owner,
@@ -190,7 +190,7 @@ function Install-CopilotSkills
                     Write-VerboseMessage "Processing subdirectory: $($item.name)"
 
                     # Recursively download subdirectory
-                    Download-GitHubFolder -owner $owner -repo $repo -branch $branch -apiPath $subPath -targetPath $subTargetPath -filesDownloaded $filesDownloaded -actRef $actRef
+                    Get-GitHubFolder -owner $owner -repo $repo -branch $branch -apiPath $subPath -targetPath $subTargetPath -filesDownloaded $filesDownloaded -actRef $actRef
                 }
             }
         }
@@ -247,7 +247,7 @@ function Install-CopilotSkills
                 $actRef = [ref]$act
 
                 # Recursively download folder contents
-                Download-GitHubFolder -owner $owner -repo $repo -branch $branch -apiPath $folderPath -targetPath $targetDir -filesDownloaded ([ref]$filesDownloaded) -actRef $actRef
+                Get-GitHubFolder -owner $owner -repo $repo -branch $branch -apiPath $folderPath -targetPath $targetDir -filesDownloaded ([ref]$filesDownloaded) -actRef $actRef
 
                 $act = $actRef.Value
 

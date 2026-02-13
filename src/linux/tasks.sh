@@ -956,8 +956,8 @@ install_copilot_skills()
 
       owner="$(echo "$url" | sed -E 's|.*/github\.com/([^/]+)/.*|\1|')"
       repo="$(echo "$url" | sed -E 's|.*/github\.com/[^/]+/([^/]+)/.*|\1|')"
-      branch="$(echo "$url" | sed -E 's|.*/(blob|tree)/([^/]+)/.*|\2|')"
-      folder_path="$(echo "$url" | sed -E 's|.*/(blob|tree)/[^/]+/(.+)|\2|')"
+      branch="$(echo "$url" | sed -E 's#.*/(blob|tree)/([^/]+)/.*#\2#')"
+      folder_path="$(echo "$url" | sed -E 's#.*/(blob|tree)/[^/]+/(.+)#\2#')"
 
       # Extract folder name from path (last segment)
       folder_name="$(basename "$folder_path")"

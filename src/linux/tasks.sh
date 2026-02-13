@@ -817,6 +817,188 @@ install_vscode_extensions()
   done
 )}
 
+# install_copilot_skills
+#
+# Download and install GitHub Copilot CLI skill folders from GitHub URLs listed
+# in copilot-skills.ini. Skills are downloaded to ~/.copilot/skills/ directory.
+# Supports profile-based sections for filtering skills by category.
+install_copilot_skills()
+{(
+  # Check if copilot-skills.ini exists (may be excluded by sparse checkout)
+  if [ ! -f "$DIR"/conf/copilot-skills.ini ]; then
+    log_verbose "Skipping Copilot CLI skills: no copilot-skills.ini found"
+    return
+  fi
+
+  # Check if any sections match the active profile
+  if ! has_matching_sections "$DIR"/conf/copilot-skills.ini; then
+    log_verbose "Skipping Copilot CLI skills: no sections match active profile"
+    return
+  fi
+
+  # Check if curl is available for downloading (required for GitHub API)
+  if ! is_program_installed "curl"; then
+    log_verbose "Skipping Copilot CLI skills: curl not installed"
+    return
+  fi
+
+  # Check if jq is available for JSON parsing
+  if ! is_program_installed "jq"; then
+    log_verbose "Skipping Copilot CLI skills: jq not installed"
+    return
+  fi
+
+  log_progress "Checking Copilot CLI skills..."
+
+  # Get list of sections from copilot-skills.ini
+  sections="$(grep -E '^\[.+\]$' "$DIR"/conf/copilot-skills.ini | tr -d '[]')"
+
+  # Ensure skills directory exists
+  local skills_dir="$HOME/.copilot/skills"
+
+  local act=0
+
+  # Helper function to recursively download GitHub folder contents
+  download_github_folder()
+  {
+    local owner="$1"
+    local repo="$2"
+    local branch="$3"
+    local api_path="$4"
+    local target_path="$5"
+    local files_downloaded_var="$6"
+
+    local api_url="https://api.github.com/repos/$owner/$repo/contents/$api_path?ref=$branch"
+    log_verbose "Fetching contents from: $api_path"
+
+    local temp_json
+    temp_json="$(mktemp)"
+    if ! curl -fsSL "$api_url" > "$temp_json"; then
+      log_verbose "Failed to fetch contents from $api_url"
+      rm -f "$temp_json"
+      return
+    fi
+
+    # Process files
+    jq -r '.[] | select(.type == "file") | .name + "|" + .download_url' "$temp_json" | while IFS='|' read -r file_name download_url
+    do
+      if [ -z "$file_name" ] || [ -z "$download_url" ]; then
+        continue
+      fi
+
+      local file_path="$target_path/$file_name"
+      local file_dir
+      file_dir="$(dirname "$file_path")"
+
+      # Ensure directory exists
+      mkdir -p "$file_dir"
+
+      log_verbose "Downloading file: $file_name"
+
+      # Download to temporary file first
+      local temp_file
+      temp_file="$(mktemp)"
+      if curl -fsSL "$download_url" > "$temp_file"; then
+        # Check if file exists and content is different
+        if [ -f "$file_path" ] && cmp -s "$temp_file" "$file_path"; then
+          log_verbose "Skipping file $file_name: no changes"
+          rm -f "$temp_file"
+        else
+          if [ "$act" -eq 0 ]; then
+            act=1
+            log_stage "Installing Copilot CLI skills"
+          fi
+          mv "$temp_file" "$file_path"
+          local relative_path="${file_path#$target_path/}"
+          log_verbose "Installed file: $relative_path"
+          eval "$files_downloaded_var=\$((\$$files_downloaded_var + 1))"
+        fi
+      else
+        log_verbose "Failed to download file from $download_url"
+        rm -f "$temp_file"
+      fi
+    done
+
+    # Process subdirectories recursively
+    jq -r '.[] | select(.type == "dir") | .name + "|" + .path' "$temp_json" | while IFS='|' read -r dir_name dir_path
+    do
+      if [ -z "$dir_name" ] || [ -z "$dir_path" ]; then
+        continue
+      fi
+
+      local sub_target_path="$target_path/$dir_name"
+      log_verbose "Processing subdirectory: $dir_name"
+
+      # Recursively download subdirectory
+      download_github_folder "$owner" "$repo" "$branch" "$dir_path" "$sub_target_path" "$files_downloaded_var"
+    done
+
+    rm -f "$temp_json"
+  }
+
+  # Process each section that should be included
+  for section in $sections
+  do
+    # Check if this section/profile should be included
+    if ! should_include_profile_tag "$section"; then
+      log_verbose "Skipping Copilot CLI skills section [$section]: profile not included"
+      continue
+    fi
+
+    # Read skill URLs from this section
+    read_ini_section "$DIR"/conf/copilot-skills.ini "$section" | while IFS='' read -r url || [ -n "$url" ]
+    do
+      if [ -z "$url" ]; then
+        continue
+      fi
+
+      # Parse GitHub URL to extract components
+      # Example: https://github.com/user/repo/blob/main/path/folder
+      #      or: https://github.com/user/repo/tree/main/path/folder
+      if ! echo "$url" | grep -qE 'github\.com/[^/]+/[^/]+/(blob|tree)/[^/]+/.+'; then
+        log_verbose "Invalid GitHub URL format: $url"
+        continue
+      fi
+
+      owner="$(echo "$url" | sed -E 's|.*/github\.com/([^/]+)/.*|\1|')"
+      repo="$(echo "$url" | sed -E 's|.*/github\.com/[^/]+/([^/]+)/.*|\1|')"
+      branch="$(echo "$url" | sed -E 's|.*/(blob|tree)/([^/]+)/.*|\2|')"
+      folder_path="$(echo "$url" | sed -E 's|.*/(blob|tree)/[^/]+/(.+)|\2|')"
+
+      # Extract folder name from path (last segment)
+      folder_name="$(basename "$folder_path")"
+      target_dir="$skills_dir/$folder_name"
+
+      if is_dry_run; then
+        if [ $act -eq 0 ]; then
+          act=1
+          log_stage "Installing Copilot CLI skills"
+        fi
+        log_dry_run "Would create directory: $target_dir"
+        log_dry_run "Would download skill folder from $url (including subdirectories)"
+        increment_counter "copilot_skills_installed"
+      else
+        log_verbose "Downloading skill folder from $url"
+
+        # Ensure target directory exists
+        mkdir -p "$target_dir"
+
+        files_downloaded=0
+
+        # Recursively download folder contents
+        download_github_folder "$owner" "$repo" "$branch" "$folder_path" "$target_dir" "files_downloaded"
+
+        if [ $files_downloaded -gt 0 ]; then
+          log_verbose "Installed skill: $folder_name ($files_downloaded file(s))"
+          increment_counter "copilot_skills_installed"
+        else
+          log_verbose "Skipping skill $folder_name: no changes"
+        fi
+      fi
+    done
+  done
+)}
+
 # uninstall_symlinks
 #
 # Remove managed symlinks when present. Does not remove now-empty parent

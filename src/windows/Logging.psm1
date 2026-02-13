@@ -294,6 +294,7 @@ function Write-InstallationSummary
     $symlinksCreated = Get-Counter -CounterName "symlinks_created"
     $vscodeExtensionsInstalled = Get-Counter -CounterName "vscode_extensions_installed"
     $registryKeysSet = Get-Counter -CounterName "registry_keys_set"
+    $copilotSkillsInstalled = Get-Counter -CounterName "copilot_skills_installed"
 
     # Build summary - write to both console and log
     $hasChanges = $false
@@ -333,6 +334,14 @@ function Write-InstallationSummary
     if ($registryKeysSet -gt 0)
     {
         $message = "Registry keys set${modeSuffix}: $registryKeysSet"
+        Write-Output $message
+        Write-LogMessage -Level "INF" -Message $message
+        $hasChanges = $true
+    }
+
+    if ($copilotSkillsInstalled -gt 0)
+    {
+        $message = "Copilot CLI skills installed${modeSuffix}: $copilotSkillsInstalled"
         Write-Output $message
         Write-LogMessage -Level "INF" -Message $message
         $hasChanges = $true

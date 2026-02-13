@@ -66,6 +66,7 @@ do_install()
   install_symlinks
   install_dotfiles_cli
   install_vscode_extensions
+  install_copilot_skills
   install_powershell_modules
 
   configure_file_mode_bits

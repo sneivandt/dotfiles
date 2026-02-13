@@ -190,7 +190,8 @@ Read-Host
         'Packages.psm1',
         'Registry.psm1',
         'Symlinks.psm1',
-        'VsCodeExtensions.psm1'
+        'VsCodeExtensions.psm1',
+        'CopilotSkills.psm1'
     )
 
     Write-Verbose "Loading Windows modules from: $Script:ModuleRoot\src\windows\"
@@ -228,29 +229,32 @@ Read-Host
 
     Write-VerboseMessage "Starting installation sequence..."
 
-    Write-VerboseMessage "[1/8] Initializing Git configuration..."
+    Write-VerboseMessage "Initializing Git configuration..."
     Initialize-GitConfig -Root $Script:ModuleRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-VerboseMessage "[2/8] Checking for repository updates..."
+    Write-VerboseMessage "Checking for repository updates..."
     Update-DotfilesRepository -Root $Script:ModuleRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-VerboseMessage "[3/8] Installing repository git hooks..."
+    Write-VerboseMessage "Installing repository git hooks..."
     Install-RepositoryGitHooks -Root $Script:ModuleRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-VerboseMessage "[4/8] Installing Dotfiles PowerShell module..."
+    Write-VerboseMessage "Installing Dotfiles PowerShell module..."
     Install-DotfilesModule -Root $Script:ModuleRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-VerboseMessage "[5/8] Installing packages..."
+    Write-VerboseMessage "Installing packages..."
     Install-Packages -Root $Script:ModuleRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-VerboseMessage "[6/8] Syncing registry settings..."
+    Write-VerboseMessage "Syncing registry settings..."
     Sync-Registry -Root $Script:ModuleRoot -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-VerboseMessage "[7/8] Installing symlinks..."
+    Write-VerboseMessage "Installing symlinks..."
     Install-Symlinks -Root $Script:ModuleRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
-    Write-VerboseMessage "[8/8] Installing VS Code extensions..."
+    Write-VerboseMessage "Installing VS Code extensions..."
     Install-VsCodeExtensions -Root $Script:ModuleRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
+
+    Write-VerboseMessage "Installing Copilot CLI skills..."
+    Install-CopilotSkills -Root $Script:ModuleRoot -ExcludedCategories $excluded -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 
     Write-VerboseMessage "Installation sequence complete!"
 

@@ -272,6 +272,61 @@ cat conf/vscode-extensions.ini
 - Check VS Code marketplace availability
 - Temporarily comment out extensions in `conf/vscode-extensions.ini` to skip them
 
+### GitHub Copilot Skills Issues
+
+#### Skills not downloaded
+**Symptoms**: GitHub Copilot CLI skills from config not downloaded.
+
+**Solution**:
+```bash
+# Verify gh CLI is available
+which gh
+gh --version
+
+# Verify Copilot extension is installed
+gh extension list | grep copilot
+
+# Check skills directory
+ls -la ~/.copilot/skills/
+
+# Verify skill URLs in conf/copilot-skills.ini
+cat conf/copilot-skills.ini
+```
+
+#### Skill download fails
+**Symptoms**: Error messages during skill download or skills directory empty.
+
+**Possible causes and solutions**:
+
+1. **Invalid GitHub URL format**:
+   ```bash
+   # Verify URL format
+   # Correct: https://github.com/owner/repo/blob/branch/path/to/folder
+   # Incorrect: https://github.com/owner/repo/tree/branch/path/to/folder
+   ```
+
+2. **Network connectivity issues**:
+   ```bash
+   # Test GitHub API access
+   curl -I https://api.github.com
+   
+   # Try downloading skill manually
+   # Visit the URL in a browser to verify it exists
+   ```
+
+3. **GitHub rate limiting**:
+   - Wait a few minutes and try again
+   - Authenticate with GitHub: `gh auth login`
+
+4. **Permissions on skills directory**:
+   ```bash
+   # Check directory permissions
+   ls -ld ~/.copilot/skills/
+   
+   # Fix if needed
+   chmod 755 ~/.copilot/skills/
+   ```
+
 ## Permission Issues
 
 ### Linux

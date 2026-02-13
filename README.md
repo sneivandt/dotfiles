@@ -48,6 +48,7 @@ Optional tools enable additional features:
 - `pacman` - Arch Linux package installation
 - `systemctl` - Systemd unit management
 - `code` - VS Code extension installation
+- `gh` - GitHub Copilot CLI skill installation
 - `pwsh` - PowerShell module management (Linux)
 
 See [Usage Guide](docs/USAGE.md) for details.
@@ -106,6 +107,7 @@ Configuration is defined in `conf/*.ini` files using standard INI format:
 - **`packages.ini`** - System packages to install
 - **`units.ini`** - Systemd units to enable
 - **`vscode-extensions.ini`** - VS Code extensions
+- **`copilot-skills.ini`** - GitHub Copilot CLI skills
 - **`registry.ini`** - Windows registry settings
 - **`fonts.ini`** - Font families to install
 - **`chmod.ini`** - File permissions

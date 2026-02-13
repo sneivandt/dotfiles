@@ -213,6 +213,40 @@ my-task.timer
    ./dotfiles.sh -I
    ```
 
+## Adding GitHub Copilot CLI Skills
+
+GitHub Copilot CLI can be extended with custom skills that provide additional context and functionality.
+
+1. **Find skill folder URL**:
+   - Browse GitHub repositories with Copilot skills
+   - Find the folder containing skill definition files
+   - Copy the GitHub URL (e.g., `https://github.com/owner/repo/blob/main/skills/skill-name`)
+
+2. **Add to conf/copilot-skills.ini**:
+   ```ini
+   [base]
+   https://github.com/github/awesome-copilot/blob/main/skills/azure-devops-cli
+   https://github.com/microsoft/skills/blob/main/.github/skills/azure-identity-dotnet
+
+   [desktop]
+   https://github.com/example/skills/blob/main/skills/web-dev-helper
+   ```
+
+3. **Install**:
+   ```bash
+   ./dotfiles.sh -I
+   ```
+   Or on Windows:
+   ```powershell
+   .\dotfiles.ps1
+   ```
+
+**Notes**:
+- Skills are downloaded to `~/.copilot/skills/` directory
+- The entire folder (including subdirectories) is downloaded
+- Requires GitHub Copilot CLI (`gh copilot`) to be functional
+- Skills are profile-aware - use appropriate sections
+
 ## Adding Registry Settings (Windows)
 
 1. **Edit conf/registry.ini**:

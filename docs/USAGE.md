@@ -186,8 +186,9 @@ The installation process handles different components based on your profile:
 5. **Install Fonts** - Installs font families from `conf/fonts.ini`
 6. **Set Permissions** - Applies file permissions from `conf/chmod.ini`
 7. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.ini`
-8. **Install PowerShell Modules** - Installs modules when pwsh is available
-9. **Install Git Hooks** - Symlinks repository git hooks
+8. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`
+9. **Install PowerShell Modules** - Installs modules when pwsh is available
+10. **Install Git Hooks** - Symlinks repository git hooks
 
 ### Windows Installation Steps
 
@@ -199,6 +200,7 @@ The installation process handles different components based on your profile:
 6. **Apply Registry Settings** - Configures registry from `conf/registry.ini`
 7. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
 8. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.ini`
+9. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`
 
 ## Verbose Mode
 
@@ -277,6 +279,7 @@ Packages installed: 15
 AUR packages installed: 3
 Symlinks created: 8
 VS Code extensions installed: 5
+Copilot skills installed: 2
 Systemd units enabled: 2
 Log file: /home/user/.cache/dotfiles/install.log
 ```
@@ -288,6 +291,7 @@ Packages installed: 3
 PowerShell modules installed: 1
 Symlinks created: 5
 VS Code extensions installed: 2
+Copilot skills installed: 2
 Registry keys set: 12
 Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
 ```

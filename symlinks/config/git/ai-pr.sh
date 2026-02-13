@@ -45,11 +45,6 @@ case "$MODE" in
       echo "Error: gh CLI not found. Install from https://cli.github.com/"
       exit 1
     fi
-    # Copilot extension is required for GitHub mode
-    if ! gh copilot --version >/dev/null 2>&1; then
-      echo "Error: gh copilot extension not found. Install with: gh extension install github/gh-copilot"
-      exit 1
-    fi
     ;;
   azure)
     # Azure mode requires az CLI
@@ -112,7 +107,7 @@ DIFF=$(git diff "$DEFAULT_BRANCH"...HEAD)
 # Check if GitHub Copilot is available for AI generation
 # Copilot is optional for azure mode but enhances both modes
 HAS_COPILOT=true
-if ! command -v gh >/dev/null 2>&1 || ! gh copilot --version >/dev/null 2>&1; then
+if ! command -v gh >/dev/null 2>&1; then
   HAS_COPILOT=false
 fi
 

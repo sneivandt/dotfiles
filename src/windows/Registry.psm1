@@ -566,7 +566,14 @@ function Set-RegistryValue
         }
         elseif ($PSCmdlet.ShouldProcess("$Path\$Name", "Set registry value to $Value"))
         {
-            Write-VerboseMessage "Setting registry value: $Path $Name = $Value"
+            if ($valueExists)
+            {
+                Write-VerboseMessage "Setting registry value: $Path $Name = $Value (was: $currentValue)"
+            }
+            else
+            {
+                Write-VerboseMessage "Setting registry value: $Path $Name = $Value (creating new)"
+            }
             # Convert numeric strings and hex values to integers for proper registry type
             $finalValue = if ($Value -match '^0x([0-9a-fA-F]+)$')
             {
@@ -587,6 +594,6 @@ function Set-RegistryValue
     }
     else
     {
-        Write-VerboseMessage "Skipping registry value $Name in $Path`: already correct"
+        Write-VerboseMessage "Skipping registry value $Name in $Path`: already set to $Value"
     }
 }

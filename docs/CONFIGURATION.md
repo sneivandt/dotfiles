@@ -227,7 +227,9 @@ https://github.com/example/skills/blob/main/skills/web-dev-helper
 - Folder name is extracted from the URL path
 - Requires `gh` CLI for GitHub Copilot functionality
 
-**URL format**: `https://github.com/owner/repo/blob/branch/path/to/folder`
+**URL format**: Both `/blob/` and `/tree/` URLs are supported:
+- `https://github.com/owner/repo/blob/branch/path/to/folder`
+- `https://github.com/owner/repo/tree/branch/path/to/folder`
 
 ---
 

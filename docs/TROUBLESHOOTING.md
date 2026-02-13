@@ -300,9 +300,10 @@ cat conf/copilot-skills.ini
 
 1. **Invalid GitHub URL format**:
    ```bash
-   # Verify URL format
+   # Verify URL format (both blob and tree URLs work)
    # Correct: https://github.com/owner/repo/blob/branch/path/to/folder
-   # Incorrect: https://github.com/owner/repo/tree/branch/path/to/folder
+   # Correct: https://github.com/owner/repo/tree/branch/path/to/folder
+   # Incorrect: https://github.com/owner/repo (missing path)
    ```
 
 2. **Network connectivity issues**:

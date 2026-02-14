@@ -68,6 +68,7 @@ Use skills for technical details:
 Skills provide agent-specific technical patterns. Use them when writing code:
 
 - **`creating-skills`** - Creating new GitHub Copilot Agent Skills
+- **`customization-guide`** - Programmatically adding configuration items
 - **`ini-configuration`** - Working with INI configuration files
 - **`shell-patterns`** - Shell scripting patterns and conventions
 - **`powershell-patterns`** - PowerShell scripting patterns and conventions

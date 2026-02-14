@@ -505,8 +505,8 @@ install_paru()
   fi
 
   # Check prerequisites
-  if ! is_program_installed "git" || ! is_program_installed "makepkg" || ! is_program_installed "cargo"; then
-    log_verbose "Skipping paru installation: missing prerequisites (install git, base-devel, rust)"
+  if ! is_program_installed "git" || ! is_program_installed "makepkg"; then
+    log_verbose "Skipping paru installation: missing prerequisites (install git, base-devel)"
     return
   fi
 
@@ -520,12 +520,15 @@ install_paru()
   # Create temp directory and set up cleanup trap
   tmp_dir="$(mktemp -d)"
   trap 'rm -rf "$tmp_dir"' EXIT
-  log_verbose "Cloning paru-git to $tmp_dir"
+
+  # Use paru-bin (pre-compiled binary) instead of paru-git to avoid Rust compilation
+  # This is significantly faster, especially in CI environments
+  log_verbose "Cloning paru-bin to $tmp_dir"
 
   # Clone and build in the temp directory
   cd "$tmp_dir"
-  git clone https://aur.archlinux.org/paru-git.git .
-  log_verbose "Building paru..."
+  git clone https://aur.archlinux.org/paru-bin.git .
+  log_verbose "Installing paru from pre-compiled binary..."
   makepkg -si --noconfirm
 )}
 

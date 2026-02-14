@@ -40,7 +40,11 @@ function Test-PSScriptAnalyzer
 
         foreach ($extension in $extensions)
         {
-            $files = Get-ChildItem -Path $dir -Filter $extension -File -Recurse -ErrorAction SilentlyContinue
+            $files = @()
+            if (Test-Path $dir)
+            {
+                $files = Get-ChildItem -Path $dir -Filter $extension -File -Recurse -ErrorAction SilentlyContinue
+            }
 
             if ($files)
             {

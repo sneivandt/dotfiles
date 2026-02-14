@@ -119,6 +119,7 @@ function Install-RepositoryGitHooks
 
         return $true
     }
+    }
 
     Write-VerboseMessage "Found $($hookFiles.Count) hook file(s) to install"
 

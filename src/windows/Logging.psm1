@@ -57,7 +57,11 @@ Profile: $Profile
     # Reset all counters
     if (Test-Path $script:CounterDir)
     {
-        Get-ChildItem -Path $script:CounterDir -File | Remove-Item -Force
+        $counterFiles = Get-ChildItem -Path $script:CounterDir -File -ErrorAction SilentlyContinue
+        if ($counterFiles)
+        {
+            $counterFiles | Remove-Item -Force
+        }
     }
 }
 

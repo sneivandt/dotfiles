@@ -348,7 +348,7 @@ docker compose exec dotfiles zsh
 
 6. **Allowlist .dockerignore**: Exclude everything by default, then include only needed files
 
-7. **Pin versions**: Consider pinning base image versions for reproducibility (e.g., `ubuntu:22.04` instead of `latest`)
+7. **Pin versions**: Consider pinning base image versions for reproducibility (e.g., `ubuntu:24.04` instead of `latest`)
 
 8. **Test locally first**: Always test Docker builds locally before pushing to CI/CD
 

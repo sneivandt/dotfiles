@@ -170,10 +170,7 @@ function Install-DotfilesModule
                 {
                     $sourceFiles = Get-ChildItem -Path $sourcePath -Recurse -File -ErrorAction SilentlyContinue
                 }
-                if (Test-Path $targetPath)
-                {
-                    $targetFiles = Get-ChildItem -Path $targetPath -Recurse -File -ErrorAction SilentlyContinue
-                }
+                $targetFiles = Get-ChildItem -Path $targetPath -Recurse -File -ErrorAction SilentlyContinue
 
                 if ($sourceFiles.Count -ne $targetFiles.Count)
                 {

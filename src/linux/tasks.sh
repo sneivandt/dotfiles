@@ -505,15 +505,16 @@ install_paru()
   fi
 
   # Check prerequisites
-  if ! is_program_installed "git" || ! is_program_installed "makepkg"; then
-    log_verbose "Skipping paru installation: missing prerequisites (install git, base-devel)"
+  # Note: sudo is required for makepkg -si to install the package via pacman
+  if ! is_program_installed "git" || ! is_program_installed "makepkg" || ! is_program_installed "sudo"; then
+    log_verbose "Skipping paru installation: missing prerequisites (install git, base-devel, sudo)"
     return
   fi
 
   log_stage "Installing paru (AUR helper)"
 
   if is_dry_run; then
-    log_dry_run "Would clone and build paru from AUR"
+    log_dry_run "Would install paru-bin (pre-compiled) from AUR"
     return
   fi
 
@@ -529,6 +530,7 @@ install_paru()
   cd "$tmp_dir"
   git clone https://aur.archlinux.org/paru-bin.git .
   log_verbose "Installing paru from pre-compiled binary..."
+  # makepkg -si installs via pacman, which requires sudo privileges
   makepkg -si --noconfirm
 )}
 

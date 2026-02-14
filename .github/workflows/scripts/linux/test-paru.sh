@@ -29,7 +29,8 @@ set -o nounset
 # test_paru_prerequisites
 #
 # Verify that prerequisites for paru installation are met.
-# Paru-bin requires git and makepkg (base-devel) to install from AUR.
+# Paru-bin requires git, makepkg (base-devel), and sudo to install from AUR.
+# The sudo command is needed because makepkg -si installs packages via pacman.
 #
 # Returns:
 #   0 if all prerequisites are installed
@@ -39,7 +40,7 @@ test_paru_prerequisites()
   log_stage "Testing paru prerequisites"
 
   local missing_count=0
-  local prerequisites="git makepkg"
+  local prerequisites="git makepkg sudo"
 
   for prereq in $prerequisites; do
     if is_program_installed "$prereq"; then

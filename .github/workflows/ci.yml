@@ -194,6 +194,8 @@ jobs:
 
       - name: Install prerequisites in Arch container
         run: |
+          # Use -Sy instead of -Syu to skip full system upgrade for speed
+          # This is safe in CI as we use a fresh container each run
           pacman -Sy --noconfirm
           pacman -S --noconfirm base-devel git sudo
 

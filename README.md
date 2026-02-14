@@ -115,31 +115,6 @@ Configuration is defined in `conf/*.ini` files using standard INI format:
 
 See the [Configuration Reference](docs/CONFIGURATION.md) for detailed format documentation.
 
-## GitHub Copilot Agent Skills
-
-This repository includes Agent Skills in `.github/skills/` to help GitHub Copilot provide better coding assistance:
-
-**Technical Patterns**:
-- **`shell-patterns`** - Shell scripting conventions
-- **`powershell-patterns`** - PowerShell scripting conventions
-- **`ini-configuration`** - INI file format and parsing
-- **`logging-patterns`** - Logging conventions
-
-**System Understanding**:
-- **`profile-system`** - Profile-based configuration
-- **`symlink-management`** - Symlink management conventions
-- **`package-management`** - Package installation patterns
-
-**Development Support**:
-- **`customization-guide`** - Adding configuration items programmatically
-- **`testing-patterns`** - Testing and validation patterns
-- **`git-hooks-patterns`** - Git hooks and security scanning
-- **`creating-skills`** - Creating new agent skills
-
-These skills are automatically discovered by GitHub Copilot and help ensure code contributions follow project conventions.
-
-For information on how documentation is organized (instructions vs skills vs docs), see [Documentation Structure](docs/DOCUMENTATION.md).
-
 ## Testing
 
 Run all tests (static analysis and configuration validation):

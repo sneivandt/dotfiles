@@ -28,20 +28,7 @@ See `docs/ARCHITECTURE.md` for complete system design and repository structure.
 - `docs/CUSTOMIZATION.md` - Adding configuration items
 - `docs/TROUBLESHOOTING.md` - Common issues and solutions
 
-### 2. Follow Technical Patterns
-
-Use skills for technical details:
-- **`shell-patterns`** - Shell script coding conventions
-- **`powershell-patterns`** - PowerShell coding conventions
-- **`ini-configuration`** - INI file format and parsing
-- **`profile-system`** - Profile filtering and sparse checkout
-- **`symlink-management`** - Symlink conventions and rules
-- **`package-management`** - Package installation patterns
-- **`logging-patterns`** - Logging conventions
-- **`testing-patterns`** - Testing and validation
-- **`git-hooks-patterns`** - Git hooks and security scanning
-
-### 3. Code Quality
+### 2. Code Quality
 
 **File Formatting**: Never leave trailing whitespace at the end of lines. This applies to all file types.
 
@@ -55,29 +42,13 @@ Use skills for technical details:
 ./dotfiles.sh -I --dry-run  # Preview changes without applying
 ```
 
-### 4. Security
+### 3. Security
 
 **Before finalizing**:
 - Run `code_review` tool for automated review
 - Run `codeql_checker` tool to scan for vulnerabilities
 - Never commit secrets, credentials, or sensitive data
 - Fix any security issues found
-
-## Available Skills
-
-Skills provide agent-specific technical patterns. Use them when writing code:
-
-- **`creating-skills`** - Creating new GitHub Copilot Agent Skills
-- **`customization-guide`** - Programmatically adding configuration items
-- **`ini-configuration`** - Working with INI configuration files
-- **`shell-patterns`** - Shell scripting patterns and conventions
-- **`powershell-patterns`** - PowerShell scripting patterns and conventions
-- **`profile-system`** - Understanding the profile system
-- **`symlink-management`** - Detailed symlink conventions
-- **`package-management`** - Package installation patterns
-- **`logging-patterns`** - Logging conventions and patterns
-- **`git-hooks-patterns`** - Git hooks and sensitive data detection
-- **`testing-patterns`** - Testing conventions and validation
 
 ## Documentation Structure
 

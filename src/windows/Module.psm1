@@ -164,8 +164,16 @@ function Install-DotfilesModule
                 }
 
                 # Simple check: compare file counts as a heuristic
-                $sourceFiles = Get-ChildItem -Path $sourcePath -Recurse -File -ErrorAction SilentlyContinue
-                $targetFiles = Get-ChildItem -Path $targetPath -Recurse -File -ErrorAction SilentlyContinue
+                $sourceFiles = @()
+                $targetFiles = @()
+                if (Test-Path $sourcePath)
+                {
+                    $sourceFiles = Get-ChildItem -Path $sourcePath -Recurse -File -ErrorAction SilentlyContinue
+                }
+                if (Test-Path $targetPath)
+                {
+                    $targetFiles = Get-ChildItem -Path $targetPath -Recurse -File -ErrorAction SilentlyContinue
+                }
 
                 if ($sourceFiles.Count -ne $targetFiles.Count)
                 {

@@ -94,7 +94,13 @@ function Install-RepositoryGitHooks
 
     Write-VerboseMessage "Scanning for hook files (excluding: $($excludeExtensions -join ', ') and hidden files)..."
 
-    $hookFiles = Get-ChildItem -Path $hooksSourceDir -File | Where-Object {
+    $hookFiles = @()
+    if (Test-Path $hooksSourceDir)
+    {
+        $hookFiles = Get-ChildItem -Path $hooksSourceDir -File
+    }
+
+    $hookFiles = $hookFiles | Where-Object {
         # Exclude files with non-hook extensions
         $ext = $_.Extension
         if ($excludeExtensions -contains $ext)

@@ -7,6 +7,7 @@ Cross-platform dotfiles management system with profile-based configuration for L
 - 🔗 Git sparse checkout for environment-specific files
 - 📦 Declarative package and symlink management
 - 🔄 Idempotent installation (safe to re-run)
+- 🤖 GitHub Copilot Agent Skills for development guidance
 - 🧪 Comprehensive testing and CI
 - 🐳 Docker image for isolated testing
 
@@ -113,6 +114,17 @@ Configuration is defined in `conf/*.ini` files using standard INI format:
 - **`chmod.ini`** - File permissions
 
 See the [Configuration Reference](docs/CONFIGURATION.md) for detailed format documentation.
+
+## GitHub Copilot Agent Skills
+
+This repository includes Agent Skills in `.github/skills/` to help GitHub Copilot provide better guidance when working with the codebase:
+
+- **`ini-configuration`** - Working with INI configuration files
+- **`shell-patterns`** - Shell scripting patterns and conventions
+- **`powershell-patterns`** - PowerShell scripting patterns and conventions
+- **`profile-system`** - Understanding the profile system
+
+These skills are automatically discovered by GitHub Copilot CLI and Copilot in supported editors.
 
 ## Testing
 

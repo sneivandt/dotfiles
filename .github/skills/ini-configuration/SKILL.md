@@ -44,7 +44,7 @@ more-entries
 SettingName = SettingValue
 AnotherSetting = AnotherValue
 ```
-Section headers are registry paths, and assignments are registry key/value pairs.
+Section headers are registry paths, and assignments are registry key/value pairs. **Note**: Registry configuration does not use profile filtering since it is Windows-only by nature. All registry settings are applied when running on Windows.
 
 ## Parsing INI Files
 
@@ -58,12 +58,16 @@ do
 done
 ```
 
+**Behavior**: The helper automatically skips empty lines and comment lines (starting with `#`). Empty sections return no output, so the loop body won't execute. This is safe and expected behavior.
+
 ### Windows (PowerShell)
 
 Use `Read-IniSection` helper from `src/windows/Profile.psm1`:
 ```powershell
 $fonts = Read-IniSection -FilePath $configFile -SectionName "fonts"
 ```
+
+**Behavior**: The helper automatically skips empty lines and comment lines (starting with `#`). Empty sections return an empty array, so iterating over the result is safe.
 
 ## Profile Filtering
 

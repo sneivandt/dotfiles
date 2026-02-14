@@ -14,7 +14,16 @@ This skill provides guidance on git hooks implementation and sensitive data dete
 
 ## Overview
 
-The project uses git hooks to enforce security and quality standards before commits. Hooks are stored in the `hooks/` directory and automatically installed as symlinks in `.git/hooks/`.
+The project uses git hooks to enforce security and quality standards before commits. Hooks are automatically installed as symlinks during dotfiles setup, making them easy to maintain and version control.
+
+### Key Features
+- **Pre-commit scanning**: Detect sensitive information before it reaches the repository
+- **Automatic installation**: Hooks are installed as symlinks during `dotfiles.sh -I` or `dotfiles.ps1 -Install`
+- **Pattern-based detection**: Configurable patterns in `hooks/sensitive-patterns.ini`
+- **Cross-platform**: Works on Linux, macOS, and Windows (via Git Bash)
+- **Bypassable**: Use `--no-verify` for false positives
+
+Hooks are stored in the `hooks/` directory and automatically installed as symlinks in `.git/hooks/`. See the `contributing-guide` skill for the complete development workflow.
 
 ## Available Hooks
 

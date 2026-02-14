@@ -163,7 +163,7 @@ If the file should only be checked out for certain profiles:
 symlinks/config/myapp
 ```
 
-This excludes the file when desktop is excluded.
+This excludes the file when desktop is excluded. See the `profile-system` skill for details on how sparse checkout works with profiles.
 
 #### 4. Test
 ```bash
@@ -313,7 +313,7 @@ exclude=desktop
 # Result: base profile won't check out symlinks/config/xmonad
 ```
 
-The symlink installation will skip entries where source files don't exist (filtered by sparse checkout).
+The symlink installation will skip entries where source files don't exist (filtered by sparse checkout). These entries are silently skipped with no error - the installation task checks for file existence before attempting to create symlinks. Use verbose mode (`-v`) to see which symlinks are skipped and why.
 
 ### Cross-Platform Symlinks
 
@@ -329,6 +329,8 @@ config/git/config
 The same source file creates symlinks on both:
 - Linux: `~/.config/git/config`
 - Windows: `%USERPROFILE%\.config\git\config`
+
+**Note**: This design assumes you run the installation script on only one platform at a time. If you're using dual-boot or have access to the same home directory from multiple OS, the last installation will overwrite. To avoid conflicts, use platform-specific profile sections (e.g., use `[base]` for Linux-only files and `[windows]` for Windows-only files).
 
 ## Troubleshooting
 

@@ -119,3 +119,14 @@ if (Test-ShouldIncludeSection -SectionName $section -ExcludedCategories $exclude
   # Process this section
 }
 ```
+
+## Rules
+
+- Profile selection priority: CLI argument > persisted profile > interactive prompt
+- System detection always overrides profile configuration for compatibility
+- Profile names use hyphens (e.g., `arch-desktop`)
+- Section names in config files use comma-separated categories (e.g., `arch,desktop`)
+- Comma-separated sections require ALL categories to be active (logical AND)
+- Selected profile is persisted to `.git/config` for reuse
+- Always use helper functions for profile filtering (`should_include_profile_tag`, `Test-ShouldIncludeSection`)
+- Configuration items are automatically installed based on active profile sections

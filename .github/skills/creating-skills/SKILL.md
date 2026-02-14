@@ -232,3 +232,11 @@ The project also supports external GitHub Copilot CLI skills via `conf/copilot-s
 - Cross-reference related skills where appropriate
 - Keep skills updated as codebase patterns evolve
 - Test skill changes by running the test suite
+
+### Validating Rules
+Ensure your skill follows all rules by:
+1. **Run tests**: `./dotfiles.sh -T` validates YAML frontmatter and markdown syntax
+2. **Check cross-references**: Verify links to other skills use correct names
+3. **Review structure**: Compare with existing skills for consistency
+4. **Validate examples**: Ensure code examples are accurate and follow project patterns
+5. **Check length**: Keep skills focused and under 300 lines when possible

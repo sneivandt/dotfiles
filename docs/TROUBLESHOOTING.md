@@ -310,7 +310,7 @@ cat conf/copilot-skills.ini
    ```bash
    # Test GitHub API access
    curl -I https://api.github.com
-   
+
    # Try downloading skill manually
    # Visit the URL in a browser to verify it exists
    ```
@@ -323,7 +323,7 @@ cat conf/copilot-skills.ini
    ```bash
    # Check directory permissions
    ls -ld ~/.copilot/skills/
-   
+
    # Fix if needed
    chmod 755 ~/.copilot/skills/
    ```

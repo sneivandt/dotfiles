@@ -29,7 +29,8 @@ set -o nounset
 # test_paru_prerequisites
 #
 # Verify that prerequisites for paru installation are met.
-# Paru requires git, makepkg, and cargo to build from source.
+# Paru-git requires git, makepkg (base-devel), cargo (rust), and sudo to build from source.
+# The sudo command is needed because makepkg -si installs packages via pacman.
 #
 # Returns:
 #   0 if all prerequisites are installed
@@ -39,7 +40,7 @@ test_paru_prerequisites()
   log_stage "Testing paru prerequisites"
 
   local missing_count=0
-  local prerequisites="git makepkg cargo"
+  local prerequisites="git makepkg cargo sudo"
 
   for prereq in $prerequisites; do
     if is_program_installed "$prereq"; then
@@ -135,13 +136,19 @@ test_paru_available()
   log_verbose "Paru binary found in PATH"
 
   # Test 1: Check paru version
-  if ! paru --version >/dev/null 2>&1; then
-    printf "%sERROR: Cannot run paru --version%s\n" "${RED}" "${NC}" >&2
+  # Note: Capture stderr to help debug any issues
+  local version_output
+  local version_exit_code
+  version_output="$(paru --version 2>&1)" || version_exit_code=$?
+  
+  if [ "${version_exit_code:-0}" -ne 0 ]; then
+    printf "%sERROR: Cannot run paru --version (exit code: %s)%s\n" "${RED}" "${version_exit_code}" "${NC}" >&2
+    printf "%sOutput: %s%s\n" "${YELLOW}" "$version_output" "${NC}" >&2
     return 1
   fi
 
   local version
-  version="$(paru --version 2>&1 | head -n 1)"
+  version="$(echo "$version_output" | head -n 1)"
   log_verbose "Paru version: $version"
 
   # Test 2: Test paru help command

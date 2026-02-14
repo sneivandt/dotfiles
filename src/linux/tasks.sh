@@ -505,28 +505,36 @@ install_paru()
   fi
 
   # Check prerequisites
-  if ! is_program_installed "git" || ! is_program_installed "makepkg" || ! is_program_installed "cargo"; then
-    log_verbose "Skipping paru installation: missing prerequisites (install git, base-devel, rust)"
+  # Note: sudo is required for makepkg -si to install the package via pacman
+  # cargo is required to build paru from source (Rust application)
+  if ! is_program_installed "git" || ! is_program_installed "makepkg" || ! is_program_installed "sudo" || ! is_program_installed "cargo"; then
+    log_verbose "Skipping paru installation: missing prerequisites (install git, base-devel, sudo, rust)"
     return
   fi
 
   log_stage "Installing paru (AUR helper)"
 
   if is_dry_run; then
-    log_dry_run "Would clone and build paru from AUR"
+    log_dry_run "Would build and install paru from AUR"
     return
   fi
 
   # Create temp directory and set up cleanup trap
   tmp_dir="$(mktemp -d)"
   trap 'rm -rf "$tmp_dir"' EXIT
+
+  # Use paru-git (build from source) as paru-bin has known issues
+  # See: https://aur.archlinux.org/packages/paru-bin (v2.1.0 flagged with issues)
+  # Use parallel compilation to speed up the build
   log_verbose "Cloning paru-git to $tmp_dir"
 
   # Clone and build in the temp directory
   cd "$tmp_dir"
   git clone https://aur.archlinux.org/paru-git.git .
-  log_verbose "Building paru..."
-  makepkg -si --noconfirm
+  log_verbose "Building paru from source (using parallel compilation)..."
+  # makepkg -si installs via pacman, which requires sudo privileges
+  # Use parallel make to speed up compilation
+  MAKEFLAGS="-j$(nproc)" makepkg -si --noconfirm
 )}
 
 # install_packages

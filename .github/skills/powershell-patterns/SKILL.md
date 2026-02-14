@@ -30,9 +30,11 @@ Write-Output ":: Stage Name"
 - Set `$act = $true` after first action
 
 ### Action Types
-- Dry-run actions: `Write-Output "DRY-RUN: Would <action>"`
+- Dry-run actions: `Write-Output "DRY-RUN: Would <action>"` (shown when `-DryRun` is set)
 - Verbose details: `Write-Verbose "<message>"` for routine operations
 - Skipping actions: `Write-Verbose "Skipping <item>: <reason>"`
+
+**Note**: Logging output does not automatically prevent actions. Always check the `$DryRun` switch before performing system modifications. The `Write-Output "DRY-RUN: ..."` pattern is a convention for clarity, but you must still wrap actual work in the `else` block:
 
 ### Stage Logging Pattern
 ```powershell
@@ -109,6 +111,8 @@ Use `Get-ProfileExclusion` to resolve profile to excluded categories in main scr
 $excludedCategories = Get-ProfileExclusion -Profile $profile
 ```
 
+See the `profile-system` skill for details on how profile filtering works and section naming conventions.
+
 ## Configuration Processing Pattern
 
 ```powershell
@@ -160,12 +164,19 @@ Configuration files in `conf/` follow these patterns:
   - Well-known Windows folders (AppData, Documents, etc.) remain as-is in target
   - Unix-style paths (config, ssh) get prefixed with dot by Symlinks.psm1
 - **`registry.ini`**: Registry paths as sections with `name = value` format
-  - No profile filtering (Windows-only by nature)
+  - Section headers are registry paths (e.g., `[HKCU:\Software\Example]`)
+  - No profile filtering (Windows-only by nature, all settings applied on Windows)
 - **All other INI files**: Follow section-based format like Linux (e.g., `[windows]`, `[base]`)
 
-## File Formatting
+## Rules
 
-**No Trailing Whitespace**: Never leave trailing whitespace at the end of lines.
-- This applies to all file types
-- Trailing whitespace causes unnecessary git diffs
-- Most editors can be configured to automatically remove trailing whitespace on save
+- Use Verb-Noun function names with approved PowerShell verbs
+- Include comment-based help for exported functions
+- Export only necessary functions via `Export-ModuleMember`
+- Support `-DryRun` switch for all functions that modify system state
+- Use `Write-Output` for stage headers with `::` prefix
+- Use `Write-Verbose` for routine operations and skipped items
+- Check idempotency before performing actions
+- Always use `Read-IniSection` helper for INI parsing
+- Use `Test-ShouldIncludeSection` for profile filtering
+- Prefer explicit checks over `-ErrorAction SilentlyContinue`

@@ -58,7 +58,9 @@ Use existing helpers instead of ad-hoc echo statements:
   - Resets automatically in new subshell
 - `log_verbose "Message"` - Verbose details (only shown with `-v` flag)
 - `log_error "Error"` - Error messages (exits with status 1)
-- `log_dry_run "Would <action>"` - Dry-run actions (always shown in dry-run mode)
+- `log_dry_run "Would <action>"` - Dry-run actions (automatically shown when `is_dry_run` is true)
+
+**Note**: When using `log_dry_run`, you still need to check `is_dry_run` before performing actions. The logging helper only controls message output, not execution logic. Always wrap actual work in an `else` block:
 
 ## Task Function Pattern
 
@@ -132,6 +134,24 @@ From `src/linux/utils.sh`:
 - `is_dry_run` - Check if running in dry-run mode
 - `should_include_profile_tag` - Check if section/profile should be processed
 
+### Profile Filtering Pattern
+Use `should_include_profile_tag` to check if a section should be processed. The function returns 0 (success) if the section should be included, 1 (failure) if it should be skipped:
+
+```sh
+# Positive check - process if section is included
+if should_include_profile_tag "$section"; then
+  # Process this section
+fi
+
+# Negative check - skip if section is not included
+if ! should_include_profile_tag "$section"; then
+  log_verbose "Skipping section [$section]: profile not included"
+  continue
+fi
+```
+
+Both patterns are valid. Use the positive check when you want to focus on the processing logic, and the negative check when you want to explicitly skip early in a loop. See the `profile-system` skill for details on how profile filtering works.
+
 ## Package Management
 
 Prefer constructing minimal lists before calling system package managers:
@@ -148,9 +168,14 @@ if [ -n "$packages_to_install" ]; then
 fi
 ```
 
-## File Formatting
+## Rules
 
-**No Trailing Whitespace**: Never leave trailing whitespace at the end of lines.
-- This applies to all file types
-- Trailing whitespace causes unnecessary git diffs
-- Most editors can be configured to automatically remove trailing whitespace on save
+- All shell scripts must use `#!/bin/sh` for POSIX compatibility
+- Always use compact conditional style with `then` on same line
+- Quote all variable expansions except when intentional word splitting is needed
+- Use logging helpers instead of direct echo statements
+- Wrap task functions in subshells for isolation
+- Check idempotency before performing actions
+- Support dry-run mode with `is_dry_run` checks
+- Guard optional tools with `is_program_installed`
+- Construct minimal package lists before calling package managers

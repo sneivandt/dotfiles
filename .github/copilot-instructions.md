@@ -7,6 +7,11 @@ These guidelines help AI code assistants produce consistent, safe contributions 
 > - `shell-patterns` - Shell scripting patterns and conventions
 > - `powershell-patterns` - PowerShell scripting patterns and conventions
 > - `profile-system` - Understanding the profile system
+> - `testing-patterns` - Testing conventions and validation patterns
+> - `git-hooks-patterns` - Git hooks patterns and sensitive data detection
+> - `contributing-guide` - Contributing guidelines and development workflow
+> - `symlink-management` - Detailed symlink conventions and management
+> - `creating-skills` - Guide for creating new GitHub Copilot Agent Skills
 
 ## Project Overview
 This project manages dotfiles and system configuration using a profile-based sparse checkout approach. It supports both Linux (specifically Arch Linux) and Windows.

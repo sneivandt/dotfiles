@@ -24,16 +24,19 @@ This directory contains comprehensive documentation for the dotfiles project.
 - **[Customization](CUSTOMIZATION.md)** - Adding files, packages, and profiles
 - **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
 - **[Security](SECURITY.md)** - Security policy and best practices
+- **[Documentation Structure](DOCUMENTATION.md)** - How documentation is organized (instructions, skills, docs)
 
 ## Documentation Organization
 
-The documentation is organized to support different user needs:
+The documentation is organized to support different audiences and use cases:
 
 1. **Quick Start**: Main README provides essential information to get started
 2. **Platform Guides**: Platform-specific documentation for Linux and Windows
 3. **Deep Dives**: Detailed guides for specific features (profiles, configuration, etc.)
 4. **Developer Resources**: Contributing, testing, and architecture documentation
 5. **Reference**: Troubleshooting, customization, and security information
+
+**For information about how documentation is structured in this project** (instructions vs skills vs docs), see **[Documentation Structure](DOCUMENTATION.md)**.
 
 ## Contributing to Documentation
 

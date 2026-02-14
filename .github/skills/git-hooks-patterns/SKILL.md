@@ -23,7 +23,7 @@ The project uses git hooks to enforce security and quality standards before comm
 - **Cross-platform**: Works on Linux, macOS, and Windows (via Git Bash)
 - **Bypassable**: Use `--no-verify` for false positives
 
-Hooks are stored in the `hooks/` directory and automatically installed as symlinks in `.git/hooks/`. See the `contributing-guide` skill for the complete development workflow.
+Hooks are stored in the `hooks/` directory and automatically installed as symlinks in `.git/hooks/`. See `docs/CONTRIBUTING.md` for the complete development workflow.
 
 ## Available Hooks
 

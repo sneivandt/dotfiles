@@ -16,10 +16,13 @@ Thank you for your interest in contributing! This document provides guidelines f
    ```
 
 **Before making changes**, familiarize yourself with:
+- [Documentation Structure](DOCUMENTATION.md) - Understanding instructions, skills, and docs
 - [Architecture Documentation](ARCHITECTURE.md) - Understanding the system design
 - [Profile System](PROFILES.md) - How profiles work
 - [Configuration Reference](CONFIGURATION.md) - Configuration file formats
 - [Testing Documentation](TESTING.md) - How to test your changes
+
+**Agent Skills**: For technical coding patterns, GitHub Copilot uses skills in `.github/skills/`. See `.github/copilot-instructions.md` for the complete list.
 
 ## Development Workflow
 

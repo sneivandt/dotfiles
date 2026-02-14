@@ -162,6 +162,10 @@ resolve_profile()
   echo "" >&2
   if PROFILE="$(prompt_profile_selection)"; then
     echo "" >&2
+    # Validate that profile is not empty
+    if [ -z "$PROFILE" ]; then
+      log_error "Profile selection returned empty value"
+    fi
     log_verbose "Selected profile: $PROFILE"
     persist_profile "$PROFILE"
     export PROFILE

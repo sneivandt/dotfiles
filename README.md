@@ -117,14 +117,28 @@ See the [Configuration Reference](docs/CONFIGURATION.md) for detailed format doc
 
 ## GitHub Copilot Agent Skills
 
-This repository includes Agent Skills in `.github/skills/` to help GitHub Copilot provide better guidance when working with the codebase:
+This repository includes Agent Skills in `.github/skills/` to help GitHub Copilot provide better coding assistance:
 
-- **`ini-configuration`** - Working with INI configuration files
-- **`shell-patterns`** - Shell scripting patterns and conventions
-- **`powershell-patterns`** - PowerShell scripting patterns and conventions
-- **`profile-system`** - Understanding the profile system
+**Technical Patterns**:
+- **`shell-patterns`** - Shell scripting conventions
+- **`powershell-patterns`** - PowerShell scripting conventions
+- **`ini-configuration`** - INI file format and parsing
+- **`logging-patterns`** - Logging conventions
 
-These skills are automatically discovered by GitHub Copilot CLI and Copilot in supported editors.
+**System Understanding**:
+- **`profile-system`** - Profile-based configuration
+- **`symlink-management`** - Symlink management conventions
+- **`package-management`** - Package installation patterns
+
+**Development Support**:
+- **`customization-guide`** - Adding configuration items programmatically
+- **`testing-patterns`** - Testing and validation patterns
+- **`git-hooks-patterns`** - Git hooks and security scanning
+- **`creating-skills`** - Creating new agent skills
+
+These skills are automatically discovered by GitHub Copilot and help ensure code contributions follow project conventions.
+
+For information on how documentation is organized (instructions vs skills vs docs), see [Documentation Structure](docs/DOCUMENTATION.md).
 
 ## Testing
 

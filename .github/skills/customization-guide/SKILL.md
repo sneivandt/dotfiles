@@ -1,16 +1,16 @@
 ---
 name: customization-guide
 description: >
-  Guide for adding new configuration items to the dotfiles project.
-  Use when adding symlinks, packages, systemd units, VS Code extensions, or Windows registry settings.
+  Technical guide for programmatically adding configuration items to the dotfiles project.
+  Use when an agent needs to add symlinks, packages, systemd units, VS Code extensions, or Windows registry settings.
 metadata:
   author: sneivandt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Customization Guide
 
-This skill provides step-by-step guidance for extending the dotfiles system with new configuration items.
+This skill provides technical patterns for agents to programmatically extend the dotfiles system with new configuration items.
 
 ## Overview
 
@@ -369,27 +369,27 @@ When adding configuration items, choose the appropriate profile section:
 
 See the `profile-system` skill for complete profile details.
 
-## Rules for Adding Configuration Items
+## Rules for Agents Adding Configuration Items
 
 1. **Use appropriate configuration files**: Each item type has a dedicated INI file in `conf/`
 
-2. **Follow INI format**: Use section headers with comma-separated categories for profile filtering
+2. **Follow INI format**: Use section headers with comma-separated categories for profile filtering (see `ini-configuration` skill)
 
-3. **Test with dry-run first**: Run `./dotfiles.sh -I --dry-run` to preview changes before applying
+3. **Test with dry-run first**: Always run `./dotfiles.sh -I --dry-run` to preview changes before applying
 
 4. **One item per line**: Don't combine multiple items on a single line
 
 5. **Use relative paths**: Paths in symlinks.ini and chmod.ini are relative to home directory
 
-6. **No leading dots in symlinks/**: Source files in `symlinks/` directory have no leading dots
+6. **No leading dots in symlinks/**: Source files in `symlinks/` directory have no leading dots (dots are added by the scripts)
 
-7. **Document special items**: Add comments in INI files for non-obvious configurations
+7. **Add manifest entries when needed**: If files should be excluded in certain profiles, update `conf/manifest.ini` with sparse checkout patterns
 
-8. **Test across profiles**: If adding profile-specific items, test with different profiles
+8. **Test across profiles**: If adding profile-specific items, test with `--profile` flag for different profiles
 
-9. **Commit all parts**: When adding symlinks, commit both the source file and the INI entry
+9. **Commit atomically**: When adding symlinks, commit both the source file and the INI entry together
 
-10. **Update manifest.ini if needed**: Add sparse checkout exclusions for profile-specific files
+10. **Refer humans to docs**: For user-facing customization procedures, direct users to `docs/CUSTOMIZATION.md`
 
 ## Cross-References
 

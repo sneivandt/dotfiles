@@ -856,6 +856,12 @@ install_copilot_skills()
   # Ensure skills directory exists
   local skills_dir="$HOME/.copilot/skills"
 
+  # Track whether we've logged the stage message (use file since loops run in subshell)
+  local stage_logged_file
+  stage_logged_file="$(mktemp)"
+  # shellcheck disable=SC2064  # We want expansion now, not at trap time
+  trap "rm -f '$stage_logged_file'" EXIT
+
   # Helper function to recursively download GitHub folder contents
   download_github_folder()
   {
@@ -964,12 +970,15 @@ install_copilot_skills()
       target_dir="$skills_dir/$folder_name"
 
       if is_dry_run; then
-        log_stage "Installing Copilot CLI skills"
+        # Log stage message once on first skill in dry-run mode
+        if [ ! -f "$stage_logged_file" ]; then
+          log_stage "Installing Copilot CLI skills"
+          touch "$stage_logged_file"
+        fi
         log_dry_run "Would create directory: $target_dir"
         log_dry_run "Would download skill folder from $url (including subdirectories)"
         increment_counter "copilot_skills_installed"
       else
-        log_stage "Installing Copilot CLI skills"
         log_verbose "Downloading skill folder from $url"
 
         # Ensure target directory exists
@@ -981,6 +990,11 @@ install_copilot_skills()
         download_github_folder "$owner" "$repo" "$branch" "$folder_path" "$target_dir" "files_downloaded"
 
         if [ $files_downloaded -gt 0 ]; then
+          # Log stage message once on first skill with changes
+          if [ ! -f "$stage_logged_file" ]; then
+            log_stage "Installing Copilot CLI skills"
+            touch "$stage_logged_file"
+          fi
           log_verbose "Installed skill: $folder_name ($files_downloaded file(s))"
           increment_counter "copilot_skills_installed"
         else

@@ -1,0 +1,114 @@
+# ============================================================================
+# .copilotignore - Exclude files from GitHub Copilot indexing
+# Security, privacy, and performance optimization
+# ============================================================================
+
+# ============================================================================
+# Security & Credentials - Never index these
+# ============================================================================
+
+# SSH configuration and keys
+symlinks/ssh/config
+**/.ssh/**
+**/ssh/**
+**/*id_rsa*
+**/*id_ed25519*
+**/*.pub
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+
+# Git credentials
+**/.git-credentials
+**/.netrc
+symlinks/config/git/credentials
+
+# Generic secrets patterns
+**/*secret*
+**/*password*
+**/*credential*
+**/*token*
+**/.env
+**/.env.*
+**/secrets.json
+**/secrets.yaml
+**/secrets.yml
+
+# GPG keys
+**/.gnupg/**
+**/gpg/**
+
+# ============================================================================
+# Build Artifacts & Dependencies - Not useful for AI context
+# ============================================================================
+
+# Node.js
+**/node_modules/**
+**/package-lock.json
+**/yarn.lock
+**/pnpm-lock.yaml
+
+# Python
+**/__pycache__/**
+**/*.pyc
+**/.pytest_cache/**
+**/.venv/**
+**/venv/**
+**/*.egg-info/**
+
+# Compiled binaries
+**/*.o
+**/*.so
+**/*.dylib
+**/*.dll
+**/*.exe
+
+# Minified files (not useful for AI)
+**/*.min.js
+**/*.min.css
+**/*.bundle.js
+
+# Build outputs
+**/dist/**
+**/build/**
+**/target/**
+**/out/**
+
+# ============================================================================
+# IDE & Editor Files - Already in git ignore
+# ============================================================================
+
+**/.idea/**
+**/.vscode/**
+**/*.swp
+**/*.swo
+**/.DS_Store
+**/Thumbs.db
+
+# ============================================================================
+# Logs & Temporary Files - Not useful for context
+# ============================================================================
+
+**/*.log
+**/logs/**
+**/tmp/**
+**/temp/**
+**/*~
+
+# ============================================================================
+# Large Data Files - Performance reasons
+# ============================================================================
+
+**/*.sqlite
+**/*.db
+**/*.sqlite3
+**/cache/**
+**/.cache/**
+
+# ============================================================================
+# Git Internals - Not useful for AI
+# ============================================================================
+
+**/.git/**
+**/.gitmodules

@@ -31,10 +31,11 @@ Source files in `symlinks/` have **no leading dots**.
 `compute_target()` in `tasks/symlinks.rs`:
 - Most paths: `$HOME/.<entry>` (dot prepended)
 - `Documents/` paths: `$HOME/Documents/...` (no dot)
+- `AppData/` paths: `$HOME/AppData/...` (no dot)
 
 ```rust
 fn compute_target(home: &Path, source: &str) -> PathBuf {
-    if source.starts_with("Documents/") { home.join(source) }
+    if source.starts_with("Documents/") || source.starts_with("AppData/") { home.join(source) }
     else { home.join(format!(".{source}")) }
 }
 ```

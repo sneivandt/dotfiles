@@ -126,27 +126,49 @@ pub fn run_guarded(
 mod tests {
     use super::*;
 
+    /// Helper: run a simple echo command cross-platform.
+    fn echo_result(msg: &str) -> Result<ExecResult> {
+        #[cfg(windows)]
+        {
+            run("cmd", &["/C", "echo", msg])
+        }
+        #[cfg(not(windows))]
+        {
+            run("echo", &[msg])
+        }
+    }
+
     #[test]
     fn run_echo() {
-        let result = run("echo", &["hello"]).unwrap();
+        let result = echo_result("hello").unwrap();
         assert!(result.success);
         assert_eq!(result.stdout.trim(), "hello");
     }
 
     #[test]
     fn run_failure() {
+        #[cfg(windows)]
+        let result = run("cmd", &["/C", "exit", "1"]);
+        #[cfg(not(windows))]
         let result = run("false", &[]);
         assert!(result.is_err());
     }
 
     #[test]
     fn run_unchecked_failure() {
+        #[cfg(windows)]
+        let result = run_unchecked("cmd", &["/C", "exit", "1"]).unwrap();
+        #[cfg(not(windows))]
         let result = run_unchecked("false", &[]).unwrap();
         assert!(!result.success);
     }
 
     #[test]
-    fn which_finds_echo() {
+    fn which_finds_known_program() {
+        // `cmd` always exists on Windows; `echo` is a real binary on Unix.
+        #[cfg(windows)]
+        assert!(which("cmd"));
+        #[cfg(not(windows))]
         assert!(which("echo"));
     }
 
@@ -165,6 +187,9 @@ mod tests {
     #[test]
     fn run_guarded_real() {
         let log = Logger::new(false);
+        #[cfg(windows)]
+        let result = run_guarded(false, &log, "cmd", &["/C", "echo", "test"]).unwrap();
+        #[cfg(not(windows))]
         let result = run_guarded(false, &log, "echo", &["test"]).unwrap();
         assert!(result.is_some());
         assert!(result.unwrap().success);
@@ -173,6 +198,9 @@ mod tests {
     #[test]
     fn run_in_tempdir() {
         let dir = std::env::temp_dir();
+        #[cfg(windows)]
+        let result = run_in(&dir, "cmd", &["/C", "echo", "hello"]).unwrap();
+        #[cfg(not(windows))]
         let result = run_in(&dir, "echo", &["hello"]).unwrap();
         assert!(result.success);
     }

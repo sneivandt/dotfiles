@@ -16,7 +16,7 @@ impl Task for CheckFonts {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let font_list = get_installed_fonts();
-        let mut found = 0u32;
+        let mut already_ok = 0u32;
         let mut missing = 0u32;
 
         for font in &ctx.config.fonts {
@@ -24,7 +24,7 @@ impl Task for CheckFonts {
                 .as_ref()
                 .is_some_and(|list| list.contains(&font.name))
             {
-                found += 1;
+                already_ok += 1;
                 ctx.log.debug(&format!("ok: {} (installed)", font.name));
             } else {
                 missing += 1;
@@ -38,12 +38,12 @@ impl Task for CheckFonts {
 
         if ctx.dry_run {
             ctx.log
-                .info(&format!("{found} installed, {missing} missing"));
+                .info(&format!("{missing} would change, {already_ok} already ok"));
             return Ok(TaskResult::DryRun);
         }
 
         ctx.log
-            .info(&format!("{found} fonts found, {missing} missing"));
+            .info(&format!("{already_ok} found, {missing} missing"));
         Ok(TaskResult::Ok)
     }
 }

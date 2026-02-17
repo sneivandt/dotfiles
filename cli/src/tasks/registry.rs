@@ -17,23 +17,41 @@ impl Task for ApplyRegistry {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let mut count = 0u32;
+        let mut already_ok = 0u32;
 
         for entry in &ctx.config.registry {
+            // Escape single quotes in all interpolated values for PowerShell
+            let key_escaped = entry.key_path.replace('\'', "''");
+            let name_escaped = entry.value_name.replace('\'', "''");
+
+            // Check if value already matches
+            let is_correct = check_registry_value(&key_escaped, &name_escaped, &entry.value_data);
+
             if ctx.dry_run {
-                ctx.log.dry_run(&format!(
-                    "registry: {}\\{} = {}",
-                    entry.key_path, entry.value_name, entry.value_data
-                ));
-                count += 1;
+                if is_correct {
+                    ctx.log.debug(&format!(
+                        "ok: {}\\{} = {} (already set)",
+                        entry.key_path, entry.value_name, entry.value_data
+                    ));
+                    already_ok += 1;
+                } else {
+                    ctx.log.dry_run(&format!(
+                        "would set registry: {}\\{} = {}",
+                        entry.key_path, entry.value_name, entry.value_data
+                    ));
+                    count += 1;
+                }
+                continue;
+            }
+
+            // Skip if already correct
+            if is_correct {
+                already_ok += 1;
                 continue;
             }
 
             // Detect value type: hex (0x...) or plain integer → DWord, else String
             let (ps_value, ps_type) = format_registry_value(&entry.value_data);
-
-            // Escape single quotes in all interpolated values for PowerShell
-            let key_escaped = entry.key_path.replace('\'', "''");
-            let name_escaped = entry.value_name.replace('\'', "''");
 
             let script = format!(
                 "if (!(Test-Path '{key_escaped}')) {{ New-Item -Path '{key_escaped}' -Force | Out-Null }}; \
@@ -54,12 +72,47 @@ impl Task for ApplyRegistry {
         }
 
         if ctx.dry_run {
+            ctx.log
+                .info(&format!("{count} would change, {already_ok} already ok"));
             return Ok(TaskResult::DryRun);
         }
 
-        ctx.log.info(&format!("{count} registry entries applied"));
+        ctx.log
+            .info(&format!("{count} applied, {already_ok} already ok"));
         Ok(TaskResult::Ok)
     }
+}
+
+/// Check if a registry value already matches the expected data.
+fn check_registry_value(key_escaped: &str, name_escaped: &str, expected_data: &str) -> bool {
+    // Query the current value via PowerShell
+    let script = format!(
+        "try {{ $v = (Get-ItemProperty -Path '{key_escaped}' -Name '{name_escaped}' -ErrorAction Stop).'{name_escaped}'; Write-Output $v }} catch {{ Write-Output '::NOT_FOUND::' }}"
+    );
+    let result = match exec::run_unchecked("powershell", &["-Command", &script]) {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    if !result.success {
+        return false;
+    }
+    let current = result.stdout.trim();
+    if current == "::NOT_FOUND::" {
+        return false;
+    }
+
+    // Compare: for numeric values, compare as integers; for strings, compare directly
+    if let Some(hex) = expected_data
+        .strip_prefix("0x")
+        .or_else(|| expected_data.strip_prefix("0X"))
+        && let Ok(expected_num) = u64::from_str_radix(hex, 16)
+    {
+        return current.parse::<u64>().ok() == Some(expected_num);
+    }
+    if let Ok(expected_num) = expected_data.parse::<i64>() {
+        return current.parse::<i64>().ok() == Some(expected_num);
+    }
+    current == expected_data
 }
 
 /// Format a registry value for PowerShell, returning (value_expr, type_name).

@@ -16,21 +16,40 @@ impl Task for ConfigureGit {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let settings: &[(&str, &str)] =
+            &[("core.autocrlf", "false"), ("credential.helper", "manager")];
+
+        let mut already_ok = 0u32;
+        let mut would_change = 0u32;
+
+        for &(key, desired) in settings {
+            let current = exec::run_unchecked("git", &["config", "--global", "--get", key])
+                .map(|r| r.stdout.trim().to_string())
+                .unwrap_or_default();
+
+            if current == desired {
+                ctx.log
+                    .debug(&format!("ok: {key} = {desired} (already set)"));
+                already_ok += 1;
+            } else {
+                if ctx.dry_run {
+                    ctx.log.dry_run(&format!("would set {key} = {desired}"));
+                } else {
+                    exec::run("git", &["config", "--global", key, desired])?;
+                }
+                would_change += 1;
+            }
+        }
+
         if ctx.dry_run {
-            ctx.log.dry_run("configure git settings");
+            ctx.log.info(&format!(
+                "{would_change} would change, {already_ok} already ok"
+            ));
             return Ok(TaskResult::DryRun);
         }
 
-        // Set core.autocrlf to false on Windows
-        exec::run("git", &["config", "--global", "core.autocrlf", "false"])?;
-
-        // Set credential helper
-        exec::run(
-            "git",
-            &["config", "--global", "credential.helper", "manager"],
-        )?;
-
-        ctx.log.info("git configured");
+        ctx.log
+            .info(&format!("{would_change} changed, {already_ok} already ok"));
         Ok(TaskResult::Ok)
     }
 }

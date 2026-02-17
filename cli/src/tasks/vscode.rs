@@ -26,7 +26,7 @@ impl Task for InstallVsCodeExtensions {
         let mut skipped = 0u32;
 
         if ctx.dry_run {
-            let installed = exec::run_unchecked(&cmd, &["--list-extensions"])
+            let installed = run_code_cmd(&cmd, &["--list-extensions"])
                 .map(|r| r.stdout.to_lowercase())
                 .unwrap_or_default();
 
@@ -47,7 +47,7 @@ impl Task for InstallVsCodeExtensions {
         }
 
         for ext in &ctx.config.vscode_extensions {
-            let result = exec::run_unchecked(&cmd, &["--install-extension", &ext.id, "--force"])?;
+            let result = run_code_cmd(&cmd, &["--install-extension", &ext.id, "--force"])?;
             if result.success {
                 count += 1;
             } else {
@@ -68,4 +68,19 @@ fn find_code_command() -> Option<String> {
         }
     }
     None
+}
+
+/// Run a VS Code CLI command. On Windows, `.cmd` wrappers need `cmd.exe /C`.
+fn run_code_cmd(cmd: &str, args: &[&str]) -> anyhow::Result<exec::ExecResult> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut full_args = vec!["/C", cmd];
+        full_args.extend(args);
+        exec::run_unchecked("cmd", &full_args)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        exec::run_unchecked(cmd, args)
+    }
 }

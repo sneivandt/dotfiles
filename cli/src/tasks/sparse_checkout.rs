@@ -1,7 +1,57 @@
 use anyhow::Result;
+use std::path::Path;
 
 use super::{Context, Task, TaskResult};
 use crate::exec;
+
+/// Remove broken symlinks in `~/.config/git/` that point into the dotfiles
+/// repo's `symlinks/` directory.  These become dangling when sparse-checkout
+/// excludes `symlinks/`, which then prevents git from running at all because
+/// it cannot read its own XDG config / exclude files.
+fn remove_broken_git_symlinks(ctx: &Context) {
+    let git_config_dir = ctx.home.join(".config").join("git");
+    if !git_config_dir.exists() {
+        return;
+    }
+    let symlinks_dir = ctx.symlinks_dir();
+    let entries = match std::fs::read_dir(&git_config_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !is_broken_symlink_into(&path, &symlinks_dir) {
+            continue;
+        }
+        ctx.log.debug(&format!(
+            "removing broken git config symlink: {}",
+            path.display()
+        ));
+        let _ = remove_path(&path);
+    }
+}
+
+/// Returns true when `path` is a symlink whose target lives under `dir` and
+/// the target does not exist on disk.
+fn is_broken_symlink_into(path: &Path, dir: &Path) -> bool {
+    match std::fs::symlink_metadata(path) {
+        Ok(m) if m.is_symlink() => {}
+        _ => return false,
+    }
+    match std::fs::read_link(path) {
+        Ok(target) if target.starts_with(dir) => !target.exists(),
+        _ => false,
+    }
+}
+
+fn remove_path(path: &Path) -> std::io::Result<()> {
+    let meta = std::fs::symlink_metadata(path)?;
+    if meta.is_dir() {
+        std::fs::remove_dir(path)
+    } else {
+        std::fs::remove_file(path)
+    }
+}
 
 /// Configure git sparse checkout based on the profile manifest.
 pub struct SparseCheckout;
@@ -24,6 +74,9 @@ impl Task for SparseCheckout {
             }
             return Ok(TaskResult::DryRun);
         }
+
+        // Clean up broken git config symlinks that prevent git from running.
+        remove_broken_git_symlinks(ctx);
 
         let root = ctx.root();
 

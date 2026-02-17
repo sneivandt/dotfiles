@@ -8,6 +8,17 @@ use crate::exec;
 use crate::logging::Logger;
 use crate::platform::Platform;
 
+/// Required configuration files in conf/ directory.
+const REQUIRED_CONFIGS: &[&str] = &[
+    "profiles.ini",
+    "symlinks.ini",
+    "packages.ini",
+    "manifest.ini",
+];
+
+/// PowerShell file extensions.
+const POWERSHELL_EXTENSIONS: &[&str] = &["ps1", "psm1", "psd1"];
+
 /// Run the test/validation command.
 pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Logger) -> Result<()> {
     let platform = Platform::detect();
@@ -48,13 +59,7 @@ pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Logger) -> Result<()> {
 
     // Validate conf directory
     let conf = root.join("conf");
-    let required_configs = [
-        "profiles.ini",
-        "symlinks.ini",
-        "packages.ini",
-        "manifest.ini",
-    ];
-    for config_file in &required_configs {
+    for config_file in REQUIRED_CONFIGS {
         if !conf.join(config_file).exists() {
             log.error(&format!("missing config: conf/{config_file}"));
             errors += 1;
@@ -217,7 +222,7 @@ fn discover_shell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Recursively discover `PowerShell` scripts (.ps1, .psm1) in a directory.
+/// Recursively discover `PowerShell` scripts (.ps1, .psm1, .psd1) in a directory.
 fn discover_powershell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -228,7 +233,8 @@ fn discover_powershell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
             discover_powershell_scripts(&path, out);
         } else if path.is_file()
             && let Some(ext) = path.extension()
-            && (ext == "ps1" || ext == "psm1" || ext == "psd1")
+            && let Some(ext_str) = ext.to_str()
+            && POWERSHELL_EXTENSIONS.contains(&ext_str)
         {
             out.push(path);
         }

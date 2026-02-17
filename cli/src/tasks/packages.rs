@@ -113,7 +113,7 @@ impl Task for InstallParu {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_linux() && ctx.platform.is_arch && !exec::which("paru")
+        ctx.platform.is_linux() && ctx.platform.is_arch
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

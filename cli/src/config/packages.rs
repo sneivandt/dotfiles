@@ -12,14 +12,23 @@ pub struct Package {
 
 /// Load packages from packages.ini, filtered by active categories.
 ///
-/// Sections with "aur" in their categories are AUR packages (installed via paru).
+/// The "aur" tag is a package-type marker (not a profile category) and is
+/// excluded from AND-logic filtering. It is only used to set `is_aur`.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Package>> {
     let sections = ini::parse_sections(path)?;
-    let filtered = ini::filter_sections_and(&sections, active_categories);
 
     let mut packages = Vec::new();
-    for section in &filtered {
+    for section in &sections {
         let is_aur = section.categories.contains(&"aur".to_string());
+        // Filter on profile categories only (ignore "aur" marker)
+        let dominated = section
+            .categories
+            .iter()
+            .filter(|c| c.as_str() != "aur")
+            .all(|cat| active_categories.contains(cat));
+        if !dominated {
+            continue;
+        }
         for item in &section.items {
             packages.push(Package {
                 name: item.clone(),
@@ -47,19 +56,18 @@ mod tests {
         let (_dir, path) =
             write_temp_ini("[arch]\ngit\nvim\n\n[arch,aur]\nparu-bin\n\n[windows]\nwinget-pkg\n");
         let packages = load(&path, &["base".to_string(), "arch".to_string()]).unwrap();
-        assert_eq!(packages.len(), 2);
+        assert_eq!(packages.len(), 3);
         assert!(!packages[0].is_aur);
         assert_eq!(packages[0].name, "git");
+        assert!(packages[2].is_aur);
+        assert_eq!(packages[2].name, "paru-bin");
     }
 
     #[test]
     fn aur_packages_detected() {
         let (_dir, path) = write_temp_ini("[arch,aur]\nparu-bin\nyay\n");
-        let packages = load(
-            &path,
-            &["base".to_string(), "arch".to_string(), "aur".to_string()],
-        )
-        .unwrap();
+        // "aur" is a package-type marker, not a profile category
+        let packages = load(&path, &["base".to_string(), "arch".to_string()]).unwrap();
         assert_eq!(packages.len(), 2);
         assert!(packages[0].is_aur);
         assert!(packages[1].is_aur);

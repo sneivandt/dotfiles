@@ -18,8 +18,6 @@ use crate::platform::Platform;
 #[derive(Debug)]
 pub struct Config {
     pub root: PathBuf,
-    #[allow(dead_code)]
-    pub profile: profiles::Profile,
     pub packages: Vec<packages::Package>,
     pub symlinks: Vec<symlinks::Symlink>,
     pub registry: Vec<registry::RegistryEntry>,
@@ -73,7 +71,6 @@ impl Config {
 
         Ok(Self {
             root: root.to_path_buf(),
-            profile: profile.clone(),
             packages,
             symlinks,
             registry,

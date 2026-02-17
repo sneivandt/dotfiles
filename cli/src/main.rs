@@ -10,7 +10,8 @@ mod platform;
 mod tasks;
 
 fn main() -> Result<()> {
-    let _ = enable_ansi_support::enable_ansi_support();
+    // Enable ANSI colors on Windows; best-effort, platform-specific feature
+    enable_ansi_support::enable_ansi_support().ok();
     let args = cli::Cli::parse();
     let log = logging::Logger::new(args.verbose);
 

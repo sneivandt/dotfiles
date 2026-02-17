@@ -91,7 +91,8 @@ impl Logger {
                 chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
             );
             // Truncate and write header (new run = fresh log)
-            let _ = fs::write(path, header);
+            // Best-effort; logging failures are non-fatal
+            fs::write(path, header).ok();
         }
 
         Self {
@@ -108,7 +109,8 @@ impl Logger {
         {
             let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
             let clean = strip_ansi(msg);
-            let _ = writeln!(f, "{ts} {level} {clean}");
+            // Best-effort; logging failures are non-fatal
+            writeln!(f, "{ts} {level} {clean}").ok();
         }
     }
 

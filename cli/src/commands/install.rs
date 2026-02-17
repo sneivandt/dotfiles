@@ -27,7 +27,7 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
         config.symlinks.len()
     ));
 
-    let ctx = Context::new(&config, &platform, log, global.dry_run, false)?;
+    let ctx = Context::new(&config, &platform, log, global.dry_run)?;
 
     // Build the task list
     let all_tasks: Vec<Box<dyn Task>> = vec![

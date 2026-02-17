@@ -25,8 +25,6 @@ pub struct Context<'a> {
     pub platform: &'a Platform,
     pub log: &'a Logger,
     pub dry_run: bool,
-    #[allow(dead_code)]
-    pub verbose: bool,
     pub home: std::path::PathBuf,
 }
 
@@ -36,7 +34,6 @@ impl<'a> Context<'a> {
         platform: &'a Platform,
         log: &'a Logger,
         dry_run: bool,
-        verbose: bool,
     ) -> Result<Self> {
         let home = if cfg!(target_os = "windows") {
             std::env::var("USERPROFILE")
@@ -54,7 +51,6 @@ impl<'a> Context<'a> {
             platform,
             log,
             dry_run,
-            verbose,
             home: std::path::PathBuf::from(home),
         })
     }

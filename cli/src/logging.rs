@@ -81,9 +81,11 @@ impl Logger {
 
         // Write header to log file
         if let Some(ref path) = log_file {
+            let version = option_env!("DOTFILES_VERSION")
+                .unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
             let header = format!(
                 "==========================================\n\
-                 Dotfiles {}\n\
+                 Dotfiles {version} {}\n\
                  ==========================================\n",
                 chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
             );

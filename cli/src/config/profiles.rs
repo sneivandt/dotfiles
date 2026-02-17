@@ -156,6 +156,7 @@ pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profi
 }
 
 /// Try to read the persisted profile from git config.
+#[must_use]
 pub fn read_persisted(root: &Path) -> Option<String> {
     let output = std::process::Command::new("git")
         .args(["config", "--local", "dotfiles.profile"])

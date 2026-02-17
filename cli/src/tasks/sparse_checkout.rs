@@ -57,7 +57,7 @@ fn remove_path(path: &Path) -> std::io::Result<()> {
 pub struct SparseCheckout;
 
 impl Task for SparseCheckout {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Configure sparse checkout"
     }
 

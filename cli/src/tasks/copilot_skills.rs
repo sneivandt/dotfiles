@@ -8,7 +8,7 @@ use crate::exec;
 pub struct InstallCopilotSkills;
 
 impl Task for InstallCopilotSkills {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Install Copilot skills"
     }
 
@@ -95,8 +95,7 @@ fn download_github_folder(url: &str, dest: &Path) -> Result<()> {
 
     let dir_name = dest
         .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "skill".to_string());
+        .map_or_else(|| "skill".to_string(), |n| n.to_string_lossy().to_string());
     let tmp = std::env::temp_dir().join(format!("dotfiles-skill-{dir_name}"));
 
     if tmp.exists() {

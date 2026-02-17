@@ -7,7 +7,7 @@ use crate::exec;
 pub struct UpdateRepository;
 
 impl Task for UpdateRepository {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Update repository"
     }
 

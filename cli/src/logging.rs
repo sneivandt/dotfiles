@@ -76,6 +76,7 @@ fn strip_ansi(s: &str) -> String {
 }
 
 impl Logger {
+    #[must_use]
     pub fn new(verbose: bool) -> Self {
         let log_file = log_file_path();
 
@@ -205,7 +206,7 @@ impl Logger {
             };
 
             let line = format!("{icon} {}{suffix}", task.name);
-            println!("  {color}{}\x1b[0m", line);
+            println!("  {color}{line}\x1b[0m");
             self.write_to_file("INF", &line);
         }
 

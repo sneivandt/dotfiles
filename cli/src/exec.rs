@@ -94,6 +94,7 @@ pub fn run_interactive(program: &str, args: &[&str]) -> Result<bool> {
 }
 
 /// Check if a program is available on PATH.
+#[must_use]
 pub fn which(program: &str) -> bool {
     #[cfg(target_os = "windows")]
     let check = Command::new("where").arg(program).output();
@@ -104,7 +105,7 @@ pub fn which(program: &str) -> bool {
     check.is_ok_and(|o| o.status.success())
 }
 
-/// Run a command with dry-run guard. If dry_run is true, logs the command
+/// Run a command with dry-run guard. If `dry_run` is true, logs the command
 /// instead of executing it. Returns Ok(None) for dry-run, Ok(Some(result))
 /// for real execution.
 #[allow(dead_code)]

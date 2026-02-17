@@ -7,7 +7,7 @@ use crate::exec;
 pub struct InstallPackages;
 
 impl Task for InstallPackages {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Install packages"
     }
 
@@ -35,7 +35,7 @@ impl Task for InstallPackages {
 pub struct InstallAurPackages;
 
 impl Task for InstallAurPackages {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Install AUR packages"
     }
 
@@ -108,7 +108,7 @@ impl Task for InstallAurPackages {
 pub struct InstallParu;
 
 impl Task for InstallParu {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Install paru"
     }
 
@@ -150,8 +150,7 @@ impl Task for InstallParu {
 
         // Build with parallel compilation
         let nproc = exec::run("nproc", &[])
-            .map(|r| r.stdout.trim().to_string())
-            .unwrap_or_else(|_| "4".to_string());
+            .map_or_else(|_| "4".to_string(), |r| r.stdout.trim().to_string());
 
         let makeflags = format!("-j{nproc}");
         exec::run_in_with_env(

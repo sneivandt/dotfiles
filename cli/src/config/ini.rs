@@ -134,6 +134,7 @@ pub fn parse_kv_sections_from_str(content: &str) -> Result<Vec<KvSection>> {
 
 /// Filter sections by active categories using AND logic:
 /// A section is included only if ALL of its categories are in the active set.
+#[must_use]
 pub fn filter_sections_and(sections: &[Section], active_categories: &[String]) -> Vec<Section> {
     sections
         .iter()
@@ -148,6 +149,7 @@ pub fn filter_sections_and(sections: &[Section], active_categories: &[String]) -
 
 /// Filter key-value sections by active categories using AND logic.
 #[allow(dead_code)]
+#[must_use]
 pub fn filter_kv_sections_and(
     sections: &[KvSection],
     active_categories: &[String],
@@ -166,6 +168,7 @@ pub fn filter_kv_sections_and(
 /// Filter sections by excluded categories using OR logic (for manifest):
 /// A section is excluded if ANY of its categories are in the excluded set.
 #[allow(dead_code)]
+#[must_use]
 pub fn filter_sections_or_exclude(
     sections: &[Section],
     excluded_categories: &[String],

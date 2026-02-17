@@ -7,7 +7,7 @@ use crate::exec;
 pub struct ConfigureSystemd;
 
 impl Task for ConfigureSystemd {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Configure systemd units"
     }
 

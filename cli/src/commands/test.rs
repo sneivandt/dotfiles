@@ -116,7 +116,7 @@ fn run_shellcheck(root: &Path, log: &Logger) -> Result<u32> {
         .iter()
         .filter_map(|p| p.to_str().map(String::from))
         .collect();
-    args.extend(paths.iter().map(|s| s.as_str()));
+    args.extend(paths.iter().map(std::string::String::as_str));
     let result = exec::run_unchecked("shellcheck", &args)?;
     if result.success {
         log.info("shellcheck passed");
@@ -134,7 +134,7 @@ fn run_shellcheck(root: &Path, log: &Logger) -> Result<u32> {
     }
 }
 
-/// Run PSScriptAnalyzer on PowerShell files when pwsh is available.
+/// Run `PSScriptAnalyzer` on `PowerShell` files when pwsh is available.
 fn run_psscriptanalyzer(root: &Path, log: &Logger) -> Result<u32> {
     if !exec::which("pwsh") {
         log.info("pwsh not installed, skipping PSScriptAnalyzer");
@@ -217,7 +217,7 @@ fn discover_shell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Recursively discover PowerShell scripts (.ps1, .psm1) in a directory.
+/// Recursively discover `PowerShell` scripts (.ps1, .psm1) in a directory.
 fn discover_powershell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;

@@ -6,7 +6,7 @@ use super::{Context, Task, TaskResult};
 pub struct GitHooks;
 
 impl Task for GitHooks {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Install git hooks"
     }
 
@@ -107,7 +107,7 @@ impl Task for GitHooks {
 pub struct UninstallHooks;
 
 impl Task for UninstallHooks {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Remove git hooks"
     }
 

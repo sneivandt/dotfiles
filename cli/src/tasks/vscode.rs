@@ -7,7 +7,7 @@ use crate::exec;
 pub struct InstallVsCodeExtensions;
 
 impl Task for InstallVsCodeExtensions {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Install VS Code extensions"
     }
 

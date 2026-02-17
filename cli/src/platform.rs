@@ -25,6 +25,7 @@ pub struct Platform {
 
 impl Platform {
     /// Detect the current platform.
+    #[must_use]
     pub fn detect() -> Self {
         Self {
             os: Self::detect_os(),
@@ -38,16 +39,19 @@ impl Platform {
         Self { os, is_arch }
     }
 
+    #[must_use]
     pub fn is_linux(&self) -> bool {
         self.os == Os::Linux
     }
 
+    #[must_use]
     pub fn is_windows(&self) -> bool {
         self.os == Os::Windows
     }
 
     /// Check whether a profile category tag should be excluded based on platform.
     /// Returns true if the tag is incompatible with this platform.
+    #[must_use]
     pub fn excludes_category(&self, category: &str) -> bool {
         match category {
             "windows" => self.os != Os::Windows,

@@ -41,7 +41,9 @@ impl<'a> Context<'a> {
         let home = if cfg!(target_os = "windows") {
             std::env::var("USERPROFILE")
                 .or_else(|_| std::env::var("HOME"))
-                .map_err(|_| anyhow::anyhow!("neither USERPROFILE nor HOME environment variable is set"))?
+                .map_err(|_| {
+                    anyhow::anyhow!("neither USERPROFILE nor HOME environment variable is set")
+                })?
         } else {
             std::env::var("HOME")
                 .map_err(|_| anyhow::anyhow!("HOME environment variable is not set"))?
@@ -58,19 +60,19 @@ impl<'a> Context<'a> {
     }
 
     /// Root directory of the dotfiles repository.
-    #[must_use] 
+    #[must_use]
     pub fn root(&self) -> &Path {
         &self.config.root
     }
 
     /// Symlinks source directory.
-    #[must_use] 
+    #[must_use]
     pub fn symlinks_dir(&self) -> std::path::PathBuf {
         self.config.root.join("symlinks")
     }
 
     /// Hooks source directory.
-    #[must_use] 
+    #[must_use]
     pub fn hooks_dir(&self) -> std::path::PathBuf {
         self.config.root.join("hooks")
     }

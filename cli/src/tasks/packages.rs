@@ -149,7 +149,8 @@ impl Task for InstallParu {
         )?;
 
         // Build with parallel compilation
-        let nproc = exec::run("nproc", &[]).map_or_else(|_| "4".to_string(), |r| r.stdout.trim().to_string());
+        let nproc = exec::run("nproc", &[])
+            .map_or_else(|_| "4".to_string(), |r| r.stdout.trim().to_string());
 
         let makeflags = format!("-j{nproc}");
         exec::run_in_with_env(

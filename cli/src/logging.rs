@@ -76,7 +76,7 @@ fn strip_ansi(s: &str) -> String {
 }
 
 impl Logger {
-    #[must_use] 
+    #[must_use]
     pub fn new(verbose: bool) -> Self {
         let log_file = log_file_path();
 

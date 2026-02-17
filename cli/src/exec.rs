@@ -94,7 +94,7 @@ pub fn run_interactive(program: &str, args: &[&str]) -> Result<bool> {
 }
 
 /// Check if a program is available on PATH.
-#[must_use] 
+#[must_use]
 pub fn which(program: &str) -> bool {
     #[cfg(target_os = "windows")]
     let check = Command::new("where").arg(program).output();

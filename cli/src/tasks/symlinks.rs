@@ -114,6 +114,7 @@ impl Task for UninstallSymlinks {
         }
 
         if ctx.dry_run {
+            ctx.log.info(&format!("{count} would remove"));
             return Ok(TaskResult::DryRun);
         }
 

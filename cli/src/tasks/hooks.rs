@@ -107,6 +107,7 @@ impl Task for UninstallHooks {
         let hooks_dst = ctx.root().join(".git/hooks");
 
         let mut count = 0u32;
+        let mut skipped = 0u32;
         for entry in std::fs::read_dir(&hooks_src)? {
             let entry = entry?;
             let path = entry.path();
@@ -119,6 +120,7 @@ impl Task for UninstallHooks {
             let dst = hooks_dst.join(&filename);
 
             if !dst.exists() {
+                skipped += 1;
                 continue;
             }
 
@@ -136,6 +138,8 @@ impl Task for UninstallHooks {
         }
 
         if ctx.dry_run {
+            ctx.log
+                .info(&format!("{count} would change, {skipped} already gone"));
             return Ok(TaskResult::DryRun);
         }
 

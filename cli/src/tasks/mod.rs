@@ -108,6 +108,7 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
             ctx.log.record_task(task.name(), TaskStatus::Ok, None);
         }
         Ok(TaskResult::Skipped(reason)) => {
+            ctx.log.info(&format!("skipped: {reason}"));
             ctx.log
                 .record_task(task.name(), TaskStatus::Skipped, Some(&reason));
         }

@@ -88,7 +88,8 @@ test_chmod_validation()
     entries="$(read_ini_section "$DIR/conf/chmod.ini" "$section")" || true
     echo "$entries" | while IFS='' read -r entry || [ -n "$entry" ]; do
       [ -n "$entry" ] || continue
-      file="${entry%%=*}"
+      # chmod.ini format: <mode> <path>, extract just the path
+      file="$(echo "$entry" | awk '{print $2}')"
       file="$(echo "$file" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
       if [ ! -e "$DIR/symlinks/$file" ] && [ ! -L "$DIR/symlinks/$file" ]; then
         printf "%sERROR: chmod.ini [%s] references missing: symlinks/%s%s\n" "${RED}" "$section" "$file" "${NC}" >&2

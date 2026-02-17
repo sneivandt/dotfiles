@@ -5,6 +5,7 @@ use super::ini;
 
 /// A file permission directive.
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // fields used on unix only (tasks/chmod.rs)
 pub struct ChmodEntry {
     /// Permission mode (e.g., "600", "755").
     pub mode: String,

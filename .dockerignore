@@ -2,8 +2,8 @@
 # This prevents accidentally including build artifacts, .env files, etc.
 *
 !.git
+!cli
 !conf
-!src
+!hooks
 !symlinks
-!test
 !dotfiles.sh

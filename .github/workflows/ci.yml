@@ -167,7 +167,8 @@ jobs:
         run: |
           DIR="$(pwd)"
           export DIR
-          . ./.github/workflows/scripts/linux/test-config.sh
+          cd .github/workflows/scripts/linux
+          . ./test-config.sh
           test_${{ matrix.test }}
 
   # Static analysis - shellcheck and PSScriptAnalyzer
@@ -206,7 +207,8 @@ jobs:
         run: |
           DIR="$(pwd)"
           export DIR
-          . ./.github/workflows/scripts/linux/test-static-analysis.sh
+          cd .github/workflows/scripts/linux
+          . ./test-static-analysis.sh
           ${{ matrix.test_function }}
 
   # Application tests
@@ -253,7 +255,8 @@ jobs:
         run: |
           DIR="$(pwd)"
           export DIR
-          . ./.github/workflows/scripts/linux/test-applications.sh
+          cd .github/workflows/scripts/linux
+          . ./test-applications.sh
           for test in ${{ matrix.tests }}; do
             test_${{ matrix.application }}_${test}
           done

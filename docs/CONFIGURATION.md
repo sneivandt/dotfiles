@@ -176,20 +176,6 @@ dunst.service
 
 ---
 
-### `fonts.ini`
-**Purpose**: Lists font families to check for presence and install if missing.
-
-**Format**: Single `[fonts]` section with font family names.
-
-**Example**:
-```ini
-[fonts]
-Noto Color Emoji
-Source Code Pro
-```
-
----
-
 ### `vscode-extensions.ini`
 **Purpose**: Lists VS Code extensions to install.
 
@@ -272,7 +258,7 @@ my-new-package
    exclude=windows,desktop
    ```
 2. Add sections to other config files as needed
-3. Use with `--profile my-profile`
+3. Use with `-p my-profile`
 
 ## Usage
 
@@ -280,12 +266,12 @@ Configuration files are automatically processed based on the selected profile:
 
 **Linux**:
 ```bash
-./dotfiles.sh -I --profile arch-desktop
+./dotfiles.sh install -p arch-desktop
 ```
 
 **Windows**:
 ```powershell
-.\dotfiles.ps1
+.\dotfiles.ps1 install -p windows
 ```
 
 All items defined in matching profile sections are automatically installed.
@@ -374,5 +360,5 @@ spotify
 - [Profile System](PROFILES.md) - Understanding profile filtering
 - [Customization Guide](CUSTOMIZATION.md) - Adding new configuration
 - [Architecture](ARCHITECTURE.md) - How configuration is processed
-- `src/linux/utils.sh` - INI parsing functions (`read_ini_section`, `should_include_profile_tag`)
-- `src/linux/tasks.sh` - Task functions that process configuration files
+- `cli/src/config/ini.rs` - INI parser implementation
+- `cli/src/config/` - Configuration loader modules

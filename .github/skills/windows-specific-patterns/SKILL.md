@@ -2,7 +2,7 @@
 name: windows-specific-patterns
 description: >
   Windows-specific implementation patterns and considerations beyond general PowerShell patterns.
-  Use when working with Windows features, registry, fonts, admin privileges, or Windows-specific architecture.
+  Use when working with Windows features, registry, admin privileges, or Windows-specific architecture.
 metadata:
   author: sneivandt
   version: "1.0"
@@ -16,7 +16,6 @@ This skill documents Windows-specific implementation patterns and architectural 
 
 The Windows implementation provides equivalent functionality to the Linux version while accommodating platform differences:
 - **Registry Configuration**: Windows registry management (no Linux equivalent)
-- **Font Management**: Font presence verification (Linux uses package manager)
 - **Administrator Privileges**: Required for symlinks and registry (Linux uses sudo selectively)
 - **PowerShell Modules**: Modular architecture matching Linux shell functions
 - **Fixed Profile**: Windows always uses "windows" profile (no selection)
@@ -57,7 +56,7 @@ Key functions:
 # Parse registry path into hive and subkey
 function Get-RegistryHiveAndKey {
     param ([string]$Path)
-    
+
     if ($Path -match '^(HKEY_CURRENT_USER|HKCU)[:\\](.*)$') {
         return [PSCustomObject]@{
             Hive = [Microsoft.Win32.Registry]::CurrentUser
@@ -71,7 +70,7 @@ function Get-RegistryHiveAndKey {
 function Sync-Registry {
     [CmdletBinding()]
     param ([switch]$DryRun)
-    
+
     # Read conf/registry.ini
     # For each section (registry path):
     #   - Create path if missing
@@ -105,54 +104,6 @@ if ($value -match '^0x[0-9A-Fa-f]+$') {
     $type = [Microsoft.Win32.RegistryValueKind]::String  # Default to string
 }
 ```
-
-### Font Management
-
-#### Configuration File: fonts.ini
-
-**Location**: `conf/fonts.ini`
-
-Lists fonts to verify presence (not installation):
-
-```ini
-[desktop]
-Noto Color Emoji
-Noto Sans CJK KR
-SauceCodePro Nerd Font
-```
-
-**Format:**
-- **Section headers**: Profile tags (desktop, arch-desktop, etc.)
-- **Entries**: Font family names (one per line)
-- **Profile filtering**: Uses standard profile logic (AND logic for multi-tags)
-
-#### Font Implementation
-
-**Module**: `src/windows/Packages.psm1` (combined with package management)
-
-Font verification (non-installation):
-
-```powershell
-function Test-FontInstalled {
-    param ([string]$FontName)
-    
-    # Check installed fonts registry key
-    $fontsKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"
-    $fonts = Get-ChildItem -Path $fontsKey
-    
-    foreach ($font in $fonts) {
-        if ($font.PSChildName -like "*$FontName*") {
-            return $true
-        }
-    }
-    return $false
-}
-```
-
-**Behavior:**
-- **Checks presence only** - does not install fonts
-- **Reports missing fonts** - users install manually or via package manager
-- **Cross-platform parity**: Linux checks fonts via package installation
 
 ### Administrator Privilege Requirements
 
@@ -219,7 +170,7 @@ src/windows/
 ├── GitHooks.psm1           # Git hooks installation
 ├── Logging.psm1            # Logging and counter utilities
 ├── Module.psm1             # PowerShell module installation
-├── Packages.psm1           # Package and font management
+├── Packages.psm1           # Package management
 ├── Profile.psm1            # Profile configuration utilities
 ├── Registry.psm1           # Windows registry management
 ├── Symlinks.psm1           # Symlink creation
@@ -284,8 +235,8 @@ Install-Dotfiles -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 function Install-Dotfiles {
     [CmdletBinding()]
     param ([switch]$DryRun)
-    
-    Initialize-Logging -Profile "windows"
+
+    Initialize-Logging -ProfileName "windows"
     Initialize-GitConfig -DryRun:$DryRun
     Install-Packages -DryRun:$DryRun
     Sync-Registry -DryRun:$DryRun
@@ -308,7 +259,6 @@ Export-ModuleMember -Function 'Install-Dotfiles'
 | **Profile Selection** | Interactive/CLI selection | Fixed "windows" profile |
 | **Sparse Checkout** | Profile-based filtering | Fixed "windows" exclusions |
 | **Dry-Run** | `--dry-run` flag | `-DryRun` parameter |
-| **Font Management** | Package installation | Presence verification |
 
 ### Windows-Only Features
 
@@ -319,11 +269,7 @@ Features that exist only on Windows:
    - Essential for Windows customization
    - Console colors, Explorer settings, regional formats
 
-2. **Font Verification** (`conf/fonts.ini`)
-   - Linux installs fonts via packages
-   - Windows checks presence, users install manually
-
-3. **Developer Mode Check**
+2. **Developer Mode Check**
    - Windows-specific symlink alternative
    - No Linux equivalent (Linux always allows symlinks)
 
@@ -408,8 +354,8 @@ New-Item -ItemType SymbolicLink -Path "$HOME\.vimrc" -Target "..\symlinks\vimrc"
 # In Dotfiles.psm1
 function Install-Dotfiles {
     # Profile is always "windows"
-    Initialize-Logging -Profile "windows"
-    
+    Initialize-Logging -ProfileName "windows"
+
     # No profile selection logic
     # No sparse checkout configuration (not needed - Windows has no Linux files)
 }
@@ -434,18 +380,6 @@ WindowSize = 0x00200078
 # All settings applied on Windows
 ```
 
-**Exception - fonts.ini:**
-
-Fonts.ini uses profile sections for consistency with Linux:
-
-```ini
-[desktop]
-Noto Color Emoji
-SauceCodePro Nerd Font
-```
-
-But since Windows always implies "desktop" context, all sections are typically processed.
-
 ## Common Windows Patterns
 
 ### Pattern: Registry Key Creation
@@ -456,7 +390,7 @@ function Ensure-RegistryPath {
         [string]$Path,
         [switch]$DryRun
     )
-    
+
     if (-not (Test-Path $Path)) {
         if ($DryRun) {
             Write-LogDryRun "Would create registry key: $Path"
@@ -478,7 +412,7 @@ function Sync-RegistryValue {
         [object]$Value,
         [switch]$DryRun
     )
-    
+
     $current = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
     if ($null -eq $current -or $current.$Name -ne $Value) {
         if ($DryRun) {
@@ -500,17 +434,17 @@ function New-DotfileSymlink {
         [string]$TargetPath,
         [switch]$DryRun
     )
-    
+
     if (Test-Path $LinkPath) {
         Write-LogVerbose "Symlink already exists: $LinkPath"
         return
     }
-    
+
     if ($DryRun) {
         Write-LogDryRun "Would create symlink: $LinkPath -> $TargetPath"
         return
     }
-    
+
     # Requires admin unless Developer Mode enabled
     try {
         New-Item -ItemType SymbolicLink -Path $LinkPath -Target $TargetPath -Force
@@ -530,19 +464,19 @@ function Install-Package {
         [string]$PackageId,
         [switch]$DryRun
     )
-    
+
     # Check if already installed
     $installed = winget list --id $PackageId 2>$null | Select-String $PackageId
     if ($installed) {
         Write-LogVerbose "Package already installed: $PackageId"
         return
     }
-    
+
     if ($DryRun) {
         Write-LogDryRun "Would install package: $PackageId"
         return
     }
-    
+
     Write-LogVerbose "Installing package: $PackageId"
     winget install --id $PackageId --silent --accept-package-agreements --accept-source-agreements
     if ($LASTEXITCODE -eq 0) {
@@ -624,4 +558,3 @@ When working with Windows-specific features:
 - **`src/windows/Registry.psm1`** - Registry management
 - **`src/windows/Symlinks.psm1`** - Symlink creation
 - **`conf/registry.ini`** - Registry configuration
-- **`conf/fonts.ini`** - Font verification list

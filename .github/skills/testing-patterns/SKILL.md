@@ -5,265 +5,86 @@ description: >
   Use when creating tests, running validation, or setting up CI/CD.
 metadata:
   author: sneivandt
-  version: "1.0"
+  version: "2.0"
 ---
 
 # Testing Patterns
 
-This skill provides guidance on testing conventions and validation patterns used in the dotfiles project.
-
-## Test Suite Overview
-
-The project includes comprehensive testing to validate configuration, scripts, and installations:
-
-- **Configuration Validation**: INI file syntax and structure
-- **Static Analysis**: Shell and PowerShell linting
-- **Idempotency Tests**: Verify repeated runs are safe
-- **Profile Tests**: Validate different profile configurations
+The project uses Rust's built-in test framework, cargo clippy, and cargo fmt.
 
 ## Running Tests
 
-### All Tests
 ```bash
-./dotfiles.sh -T
-# or
-./dotfiles.sh --test
+cargo test                      # All unit + integration tests
+cargo clippy -- -D warnings     # Lint check
+cargo fmt -- --check            # Format check
+./dotfiles.sh test              # Config validation via Rust engine
 ```
 
-### Test Components
+## Unit Tests
 
-#### 1. Configuration Validation (`test_config_validation`)
-Validates all configuration files in `conf/`:
-- INI file syntax checking
-- Section format validation
-- Profile definition consistency
-- Category consistency across files
-- Empty section detection
+Every module has inline tests with `#[cfg(test)]`:
 
-Implementation: `src/linux/commands.sh`
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#### 2. Shell Script Linting (`test_shellcheck`)
-Runs shellcheck on all `.sh` files:
-- POSIX compliance checking
-- Variable usage validation
-- Quoting issues detection
-- Common scripting errors
-
-Requires: `shellcheck` package
-
-#### 3. PowerShell Script Analysis (`test_psscriptanalyzer`)
-Runs PSScriptAnalyzer on all `.ps1` and `.psm1` files:
-- PowerShell best practices
-- Cmdlet usage validation
-- Parameter validation
-- Common PowerShell issues
-
-Requires: `PSScriptAnalyzer` module (installed via `pwsh`)
-
-## Manual Testing Modes
-
-### Dry-Run Mode
-Preview changes without making modifications:
-
-```bash
-./dotfiles.sh -I --dry-run
-```
-
-Characteristics:
-- Automatically enables verbose mode
-- Shows "DRY-RUN: Would <action>" messages
-- No system modifications made
-- Full operation logging to file
-
-Use cases:
-- Testing new configurations
-- Previewing profile changes
-- Verifying installation steps
-- CI/CD validation
-
-### Verbose Mode
-Enable detailed logging:
-
-```bash
-./dotfiles.sh -I -v
-# or
-./dotfiles.sh -I --verbose
-```
-
-Shows:
-- Detailed operation logs
-- Skipped items with reasons
-- File operations
-- Configuration processing
-
-Use for debugging and understanding behavior.
-
-## Profile Testing
-
-Test each profile to ensure sparse checkout and configuration work correctly:
-
-```bash
-# Linux profiles
-./dotfiles.sh -I --profile base --dry-run
-./dotfiles.sh -I --profile arch --dry-run --skip-os-detection
-./dotfiles.sh -I --profile arch-desktop --dry-run --skip-os-detection
-./dotfiles.sh -I --profile desktop --dry-run
-
-# Windows profile
-./dotfiles.ps1 -Install -Profile windows -DryRun
-```
-
-**Note**: Use `--skip-os-detection` for testing Arch-specific profiles on non-Arch systems in dry-run mode.
-
-## Idempotency Testing
-
-All operations must be idempotent (safe to run multiple times).
-
-### Automated Tests
-CI runs each profile installation twice to verify idempotency:
-- First run: Initial installation
-- Second run: Should skip all actions (already configured)
-
-### Manual Idempotency Verification
-```bash
-# First run - full installation
-./dotfiles.sh -I --profile base
-
-# Second run - should skip everything
-./dotfiles.sh -I --profile base -v
-
-# Check logs for "Skipping" messages
-```
-
-### Idempotency Patterns
-
-#### Check Before Action
-```sh
-# Check if symlink already correct
-if [ -L "$target" ] && [ "$(readlink "$target")" = "$source" ]; then
-  log_verbose "Skipping: already correct"
-  return
-fi
-```
-
-#### Skip Already Installed
-```sh
-# Check if package installed
-if is_program_installed "$package"; then
-  log_verbose "Skipping $package: already installed"
-  continue
-fi
-```
-
-#### Verify State First
-```powershell
-# Check registry value
-if (Test-RegistryValue $key $name $value) {
-  Write-Verbose "Skipping: already set"
-  continue
+    #[test]
+    fn test_something() {
+        let result = my_function("input");
+        assert_eq!(result, "expected");
+    }
 }
 ```
 
-## CI/CD Integration
+### Testing by Module Type
 
-### GitHub Actions Workflows
-
-#### Main CI Workflow (`.github/workflows/ci.yml`)
-Runs on every pull request:
-- Static analysis (shellcheck, PSScriptAnalyzer)
-- Configuration validation
-- Dry-run profile tests on Ubuntu and Windows
-- Docker image build test
-
-#### Docker Image Workflow (`.github/workflows/docker-image.yml`)
-Runs on pushes to master:
-- Builds Docker image
-- Publishes to Docker Hub
-- Tags with version and latest
-
-### Test Matrix
-CI tests all profiles across platforms:
-
-**Linux (Ubuntu runner)**:
-- base profile (dry-run)
-- arch profile (dry-run with --skip-os-detection)
-- arch-desktop profile (dry-run with --skip-os-detection)
-- desktop profile (dry-run)
-
-**Windows (Windows runner)**:
-- windows profile (dry-run)
-
-## Writing Tests
-
-### Test Function Pattern
-Located in `src/linux/commands.sh`:
-
-```sh
-test_my_feature()
-{(
-  log_stage "Testing feature"
-
-  # Setup
-  test_data="value"
-
-  # Run test
-  if ! validate_something "$test_data"; then
-    log_error "Test failed: validation error"
-  fi
-
-  # Cleanup if needed
-  log_verbose "Test passed"
-)}
+**Config parsers** — use `parse_sections_from_str()` to avoid file I/O:
+```rust
+#[test]
+fn parse_simple_section() {
+    let sections = parse_sections_from_str("[base]\nitem1\n").unwrap();
+    assert_eq!(sections[0].items, vec!["item1"]);
+}
 ```
 
-### Adding New Tests
+**Tasks** — test helper functions (e.g., `compute_target()`):
+```rust
+#[test]
+fn target_for_config() {
+    assert_eq!(compute_target(&PathBuf::from("/home/u"), "config/git/config"),
+               PathBuf::from("/home/u/.config/git/config"));
+}
+```
 
-1. Add test function to `src/linux/commands.sh` or test scripts
-2. Call from `do_test()` function
-3. Use `log_error` to fail tests
-4. Ensure idempotency - tests should be runnable multiple times
+**CLI** — test parsing with `Cli::parse_from()`:
+```rust
+#[test]
+fn parse_dry_run() {
+    let cli = Cli::parse_from(["dotfiles", "--dry-run", "install"]);
+    assert!(cli.global.dry_run);
+}
+```
 
-## Debugging Failed Tests
+**Platform** — use `Platform::new()` to control detection:
+```rust
+#[test]
+fn excludes_windows_on_linux() {
+    assert!(Platform::new(Os::Linux, false).excludes_category("windows"));
+}
+```
 
-### ShellCheck Failures
-1. Review the reported line and issue code (SC####)
-2. Check shellcheck wiki: https://www.shellcheck.net/wiki/SC####
-3. Fix the issue or add suppression comment if false positive:
-   ```sh
-   # shellcheck disable=SC2086
-   ```
+## Integration Tests
 
-### PSScriptAnalyzer Failures
-1. Review the rule name and message
-2. Fix the issue following PowerShell best practices
-3. Or suppress with:
-   ```powershell
-   [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSRuleName', '')]
-   ```
+Dev-dependencies include `assert_cmd` and `predicates` for CLI-level testing.
 
-### Configuration Validation Failures
-1. Check INI file syntax
-2. Verify section headers use correct format: `[section-name]`
-3. Ensure categories are consistent across files
-4. Check for empty sections
+## CI/CD
 
-## Test Coverage
-
-Current test coverage includes:
-- ✅ INI configuration syntax and structure
-- ✅ Shell script POSIX compliance
-- ✅ PowerShell script best practices
-- ✅ Profile sparse checkout functionality
-- ✅ Symlink installation idempotency
-- ✅ Multi-profile support
-- ✅ Cross-platform compatibility (Linux + Windows)
+GitHub Actions: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt -- --check`, dry-run profile tests on Linux/Windows. Config validation via `./dotfiles.sh test`.
 
 ## Rules
 
-- All code changes must pass the test suite
-- New features should include appropriate tests
-- Tests must be idempotent (safe to run multiple times)
-- Use dry-run mode for CI/CD validation
-- Profile tests must cover all supported profiles
-- Static analysis issues must be fixed or justified
-- Always test idempotency manually before committing
+1. Every new module must include `#[cfg(test)] mod tests`
+2. Test pure functions; use `Platform::new()` and string parsers to avoid I/O
+3. Run `cargo clippy` and `cargo fmt` before committing

@@ -13,8 +13,7 @@ shell=sh
 #   - We use 'local' extensively for proper scoping
 #   - Supported by all modern shells (dash, bash, zsh, ash)
 # SC2154: Referenced but not assigned
-#   - Variables like $DIR, $OPT, $PROFILE are exported by dotfiles.sh
-#   - Color variables are sourced from logger.sh
+#   - Variables like $DIR, $PROFILE are exported by dotfiles.sh
 disable=SC1090,SC1091,SC3043,SC2154
 
 # Enable optional checks:

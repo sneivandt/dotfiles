@@ -126,13 +126,13 @@ fn download_github_folder(url: &str, dest: &Path) -> Result<()> {
     // Copy result to destination
     let src = tmp.join(&subpath);
     if !src.exists() {
-        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::remove_dir_all(&tmp).ok(); // Cleanup on error (best effort)
         anyhow::bail!("path '{subpath}' not found in repository");
     }
 
     copy_dir_recursive(&src, dest)?;
 
-    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::remove_dir_all(&tmp).ok(); // Cleanup (best effort)
     Ok(())
 }
 

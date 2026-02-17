@@ -160,8 +160,8 @@ impl Task for InstallParu {
             &[("MAKEFLAGS", &makeflags)],
         )?;
 
-        // Cleanup
-        let _ = std::fs::remove_dir_all(&tmp);
+        // Cleanup (ignore errors - best effort)
+        std::fs::remove_dir_all(&tmp).ok();
 
         ctx.log.info("paru installed successfully");
         Ok(TaskResult::Ok)

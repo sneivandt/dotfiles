@@ -35,8 +35,10 @@ impl Task for ConfigureSystemd {
             }
 
             // Reload daemon before first enable
-            if changed == 0 {
-                let _ = exec::run("systemctl", &["--user", "daemon-reload"]);
+            if changed == 0
+                && let Err(e) = exec::run("systemctl", &["--user", "daemon-reload"])
+            {
+                ctx.log.debug(&format!("daemon-reload failed: {e}"));
             }
 
             let result =

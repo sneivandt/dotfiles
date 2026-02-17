@@ -27,7 +27,9 @@ fn remove_broken_git_symlinks(ctx: &Context) {
             "removing broken git config symlink: {}",
             path.display()
         ));
-        let _ = remove_path(&path);
+        if let Err(e) = remove_path(&path) {
+            ctx.log.debug(&format!("failed to remove symlink: {e}"));
+        }
     }
 }
 

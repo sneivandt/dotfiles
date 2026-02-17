@@ -57,7 +57,7 @@ Key functions:
 # Parse registry path into hive and subkey
 function Get-RegistryHiveAndKey {
     param ([string]$Path)
-    
+
     if ($Path -match '^(HKEY_CURRENT_USER|HKCU)[:\\](.*)$') {
         return [PSCustomObject]@{
             Hive = [Microsoft.Win32.Registry]::CurrentUser
@@ -71,7 +71,7 @@ function Get-RegistryHiveAndKey {
 function Sync-Registry {
     [CmdletBinding()]
     param ([switch]$DryRun)
-    
+
     # Read conf/registry.ini
     # For each section (registry path):
     #   - Create path if missing
@@ -135,11 +135,11 @@ Font verification (non-installation):
 ```powershell
 function Test-FontInstalled {
     param ([string]$FontName)
-    
+
     # Check installed fonts registry key
     $fontsKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"
     $fonts = Get-ChildItem -Path $fontsKey
-    
+
     foreach ($font in $fonts) {
         if ($font.PSChildName -like "*$FontName*") {
             return $true
@@ -284,8 +284,8 @@ Install-Dotfiles -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue')
 function Install-Dotfiles {
     [CmdletBinding()]
     param ([switch]$DryRun)
-    
-    Initialize-Logging -Profile "windows"
+
+    Initialize-Logging -ProfileName "windows"
     Initialize-GitConfig -DryRun:$DryRun
     Install-Packages -DryRun:$DryRun
     Sync-Registry -DryRun:$DryRun
@@ -408,8 +408,8 @@ New-Item -ItemType SymbolicLink -Path "$HOME\.vimrc" -Target "..\symlinks\vimrc"
 # In Dotfiles.psm1
 function Install-Dotfiles {
     # Profile is always "windows"
-    Initialize-Logging -Profile "windows"
-    
+    Initialize-Logging -ProfileName "windows"
+
     # No profile selection logic
     # No sparse checkout configuration (not needed - Windows has no Linux files)
 }
@@ -456,7 +456,7 @@ function Ensure-RegistryPath {
         [string]$Path,
         [switch]$DryRun
     )
-    
+
     if (-not (Test-Path $Path)) {
         if ($DryRun) {
             Write-LogDryRun "Would create registry key: $Path"
@@ -478,7 +478,7 @@ function Sync-RegistryValue {
         [object]$Value,
         [switch]$DryRun
     )
-    
+
     $current = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
     if ($null -eq $current -or $current.$Name -ne $Value) {
         if ($DryRun) {
@@ -500,17 +500,17 @@ function New-DotfileSymlink {
         [string]$TargetPath,
         [switch]$DryRun
     )
-    
+
     if (Test-Path $LinkPath) {
         Write-LogVerbose "Symlink already exists: $LinkPath"
         return
     }
-    
+
     if ($DryRun) {
         Write-LogDryRun "Would create symlink: $LinkPath -> $TargetPath"
         return
     }
-    
+
     # Requires admin unless Developer Mode enabled
     try {
         New-Item -ItemType SymbolicLink -Path $LinkPath -Target $TargetPath -Force
@@ -530,19 +530,19 @@ function Install-Package {
         [string]$PackageId,
         [switch]$DryRun
     )
-    
+
     # Check if already installed
     $installed = winget list --id $PackageId 2>$null | Select-String $PackageId
     if ($installed) {
         Write-LogVerbose "Package already installed: $PackageId"
         return
     }
-    
+
     if ($DryRun) {
         Write-LogDryRun "Would install package: $PackageId"
         return
     }
-    
+
     Write-LogVerbose "Installing package: $PackageId"
     winget install --id $PackageId --silent --accept-package-agreements --accept-source-agreements
     if ($LASTEXITCODE -eq 0) {

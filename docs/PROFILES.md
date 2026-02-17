@@ -20,26 +20,26 @@ The profile system operates through several coordinated mechanisms:
 
 Profiles can be selected in three ways, in order of priority:
 
-1. **Explicit CLI argument**: `--profile arch-desktop` (highest priority)
+1. **Explicit CLI argument**: `-p, --profile arch-desktop` (highest priority)
 2. **Persisted profile**: Automatically read from `.git/config`
 3. **Interactive prompt**: If no profile is set, you'll be prompted to select one
 
 **Example - First time setup:**
 ```bash
-./dotfiles.sh -I
+./dotfiles.sh install
 # Prompts: "Select profile (1-5): "
 # Selection is saved to .git/config for future runs
 ```
 
 **Example - Subsequent runs:**
 ```bash
-./dotfiles.sh -I
+./dotfiles.sh install
 # Uses saved profile, no prompt
 ```
 
 **Example - Override saved profile:**
 ```bash
-./dotfiles.sh -I --profile base
+./dotfiles.sh install -p base
 # Uses 'base' and updates saved profile
 ```
 
@@ -87,12 +87,6 @@ The system applies automatic overrides to ensure compatibility:
 - **All Linux systems**: Always exclude `windows` category (even if profile includes it)
 
 This prevents incompatible operations regardless of profile selection.
-
-**Bypass for testing:**
-```bash
-./dotfiles.sh -I --profile arch --skip-os-detection
-# Allows testing arch profile on non-Arch systems
-```
 
 ### 5. Profile Persistence
 
@@ -146,13 +140,13 @@ When you switch profiles, the sparse checkout automatically adjusts:
 
 ```bash
 # Switch from arch-desktop to base
-./dotfiles.sh -I --profile base
+./dotfiles.sh install -p base
 # Desktop-specific files are automatically removed from workspace
 # Symlinks to desktop files are removed
 # Your selection is saved for future runs
 
 # Switch back to arch-desktop
-./dotfiles.sh -I --profile arch-desktop
+./dotfiles.sh install -p arch-desktop
 # Desktop files are checked out again
 # Desktop symlinks are created
 ```
@@ -170,7 +164,7 @@ You can create custom profiles for specific needs:
 
 2. **Use your profile:**
    ```bash
-   ./dotfiles.sh -I --profile my-custom
+   ./dotfiles.sh install -p my-custom
    ```
 
 3. **Add profile-specific configuration:**
@@ -211,7 +205,7 @@ This allows fine-grained control over which items are installed in different env
 ```bash
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-./dotfiles.sh -I --profile base
+./dotfiles.sh install -p base
 # Only core shell configs, no desktop or OS-specific files
 ```
 
@@ -219,7 +213,7 @@ cd dotfiles
 ```bash
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-./dotfiles.sh -I --profile arch-desktop
+./dotfiles.sh install -p arch-desktop
 # Full desktop environment with Arch packages
 ```
 
@@ -227,7 +221,7 @@ cd dotfiles
 ```bash
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-./dotfiles.sh -I --profile desktop
+./dotfiles.sh install -p desktop
 # Desktop tools without Arch-specific packages
 ```
 
@@ -235,7 +229,7 @@ cd dotfiles
 ```powershell
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-.\dotfiles.ps1
+.\dotfiles.ps1 install -p windows
 # Windows profile is automatically used
 ```
 
@@ -250,20 +244,20 @@ git config --local --get dotfiles.profile
 git sparse-checkout list
 
 # Reapply profile
-./dotfiles.sh -I --profile <your-profile>
+./dotfiles.sh install -p <your-profile>
 ```
 
 ### Desktop files missing on Arch
 Use the `arch-desktop` profile, not `arch`:
 ```bash
-./dotfiles.sh -I --profile arch-desktop
+./dotfiles.sh install -p arch-desktop
 ```
 
 ### Package installation failing
 Check that the package is defined in a section matching your active profile:
 ```bash
 # Enable verbose mode to see what sections are being processed
-./dotfiles.sh -I -v
+./dotfiles.sh install -v
 ```
 
 ## See Also

@@ -30,10 +30,26 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 1. Review the project guidelines in `.github/copilot-instructions.md`
 2. Understand the profile system (base, arch, arch-desktop, desktop, windows)
-3. Test existing functionality:
+3. Ensure Rust toolchain is installed (`rustup`)
+4. Run existing tests:
    ```bash
-   ./dotfiles.sh -T
+   cd cli && cargo test
    ```
+
+### Building and Testing Locally
+
+```bash
+# Build the binary
+cargo build --manifest-path cli/Cargo.toml
+
+# Run all checks (same as CI)
+cargo fmt  --check --manifest-path cli/Cargo.toml
+cargo clippy --manifest-path cli/Cargo.toml -- -D warnings
+cargo test --manifest-path cli/Cargo.toml
+
+# Run end-to-end with --build flag (builds from source)
+./dotfiles.sh --build install -p base -d
+```
 
 ### Making Changes
 
@@ -63,6 +79,35 @@ Thank you for your interest in contributing! This document provides guidelines f
    symlinks/config/mynewconfig
    ```
 
+#### Adding New Tasks
+
+1. Create a new file in `cli/src/tasks/` implementing the `Task` trait:
+   ```rust
+   pub struct MyNewTask;
+
+   impl Task for MyNewTask {
+       fn name(&self) -> &str { "My New Task" }
+
+       fn should_run(&self, ctx: &Context) -> bool {
+           ctx.platform.is_linux()
+       }
+
+       fn run(&self, ctx: &Context) -> Result<TaskResult> {
+           // Idempotent implementation
+           Ok(TaskResult::Ok)
+       }
+   }
+   ```
+2. Add the module to `cli/src/tasks/mod.rs`
+3. Add the task to the task list in `cli/src/commands/install.rs`
+
+#### Adding New Configuration Types
+
+1. Create INI file in `conf/`
+2. Add a parser module in `cli/src/config/` (follow existing patterns like `packages.rs`)
+3. Add the field to the `Config` struct and load it in `Config::load()`
+4. Create a task in `cli/src/tasks/` that consumes the config
+
 #### Creating New Profiles
 
 Define in `conf/profiles.ini`:
@@ -72,59 +117,22 @@ include=
 exclude=windows,desktop
 ```
 
-### Shell Scripting Guidelines
+### Rust Code Guidelines
 
-- **POSIX Compliance**: Use `#!/bin/sh` unless Bash features are absolutely required
-- **Error Handling**: Always include:
-  ```sh
-  set -o errexit
-  set -o nounset
-  ```
-- **Conditional Style**: Use compact format:
-  ```sh
-  if [ condition ]; then
-    # code
-  fi
-  ```
-- **Logging**: Use existing helpers instead of echo:
-  - `log_stage "Stage Name"` - Stage headers
-  - `log_verbose "Message"` - Verbose details
-  - `log_error "Error"` - Error messages
-  - `log_dry_run "Would <action>"` - Dry-run actions
-- **Quotes**: Always quote variable expansions: `"$var"`
-- **Task Functions**: Wrap in subshells for isolation:
-  ```sh
-  my_task() {(
-    # task body
-  )}
-  ```
+- **Error Handling**: Use `anyhow::Result` with `.context()` for all fallible operations
+- **Task Pattern**: Implement the `Task` trait in `cli/src/tasks/`; use `should_run()` for platform/profile gating
 - **Idempotency**: Always check if action is needed before taking it
 - **No Trailing Whitespace**: Remove all trailing whitespace from files
+- **Formatting**: Run `cargo fmt` before committing
+- **Linting**: Ensure `cargo clippy -- -D warnings` passes with no warnings
 
-### PowerShell Guidelines
+### Shell Wrapper Guidelines
 
-- **Function Names**: Use Verb-Noun convention (e.g., `Install-Symlinks`)
-- **Module Exports**: Use `Export-ModuleMember` to control exports
-- **Comment-Based Help**: Document functions with:
-  ```powershell
-  <#
-  .SYNOPSIS
-  Brief description
-  .DESCRIPTION
-  Detailed description
-  #>
-  ```
-- **Error Handling**: Fail gracefully, check prerequisites
-- **Logging Conventions**:
-  - Stage headers: `Write-Output ":: Stage Name"`
-  - Dry-run: `Write-Output "Would <action>"` (console) / `Write-LogMessage -Level "DRY"` (log file)
-  - Verbose: `Write-Verbose "<message>"`
-- **Idempotency**: Check state before modifications
-- **Dry-Run Support**: All functions should support `-DryRun` switch
-- **No Trailing Whitespace**: Remove all trailing whitespace from files
-  - This applies to all file types and is a project-wide requirement
-  - Trailing whitespace causes unnecessary git diffs and is poor coding hygiene
-  - Configure your editor to automatically remove trailing whitespace on save
+The shell wrappers (`dotfiles.sh`, `dotfiles.ps1`) are thin entry points that download or build the binary. When modifying them:
+
+- **POSIX Compliance**: `dotfiles.sh` uses `#!/bin/sh` — avoid Bash-specific features
+- **Minimal Logic**: Keep the wrappers thin; add new logic to the Rust binary instead
+- **Error Handling**: `set -o errexit` and `set -o nounset` in `dotfiles.sh`
 
 ### INI Configuration Format
 
@@ -147,28 +155,20 @@ entry-two
 
 ### Required Before Submitting
 
-1. **Static Analysis**:
+1. **Rust Checks**:
    ```bash
-   ./dotfiles.sh -T
+   cargo fmt  --check --manifest-path cli/Cargo.toml
+   cargo clippy --manifest-path cli/Cargo.toml -- -D warnings
+   cargo test --manifest-path cli/Cargo.toml
    ```
-   This runs:
-   - Configuration validation (INI file syntax)
-   - shellcheck (shell scripts)
-   - PSScriptAnalyzer (PowerShell scripts)
 
 2. **Dry-Run Testing**:
    ```bash
-   ./dotfiles.sh -I --profile arch-desktop --dry-run
+   ./dotfiles.sh --build install -p arch-desktop -d
    ```
-   Verify the script detects your changes correctly
+   Verify the binary detects your changes correctly
 
-3. **Verbose Testing**:
-   ```bash
-   ./dotfiles.sh -I --profile arch-desktop -v
-   ```
-   Check for proper logging output
-
-4. **Profile-Specific Testing**:
+3. **Profile-Specific Testing**:
    Test with all relevant profiles:
    - `base` - Minimal
    - `arch` - Arch Linux headless
@@ -178,12 +178,15 @@ entry-two
 
 ### CI Testing
 
-GitHub Actions automatically runs tests on pull requests:
-- Static analysis (shellcheck, PSScriptAnalyzer)
-- Configuration validation
-- Profile installations (dry-run) for all profiles
-- Cross-platform tests (Linux Ubuntu and Windows)
+GitHub Actions automatically runs on pull requests:
+- Rust formatting (`cargo fmt --check`)
+- Rust linting (`cargo clippy`)
+- Rust tests (`cargo test`)
+- Release builds (Linux and Windows)
+- Integration tests (dry-run install per profile)
+- Shell wrapper linting (shellcheck on `dotfiles.sh` and `install.sh`)
 - Docker image build
+- Git hooks tests
 
 ## Commit Guidelines
 
@@ -225,11 +228,10 @@ chore(ci): update shellcheck version
 ## Pull Request Process
 
 1. **Before Submitting**:
-   - Ensure all tests pass (`./dotfiles.sh -T`)
-   - Test with `--dry-run` mode
+   - Ensure all Rust checks pass (`cargo fmt --check`, `cargo clippy`, `cargo test`)
+   - Test with `-d` (dry-run) mode
    - Update documentation if needed
    - Remove trailing whitespace from all files
-   - Verify changes with verbose mode
 
 2. **PR Description**:
    - Describe what changes you made and why
@@ -238,9 +240,9 @@ chore(ci): update shellcheck version
    - Note any breaking changes
 
 3. **Checklist** (automatically provided by PR template):
-   - [ ] Ran `./dotfiles.sh -T` successfully
-   - [ ] Tested with `--dry-run` mode
-   - [ ] Tested with verbose mode (`-v`)
+   - [ ] Ran `cargo test` successfully
+   - [ ] Ran `cargo clippy` with no warnings
+   - [ ] Tested with `-d` (dry-run) mode
    - [ ] No trailing whitespace
    - [ ] Updated documentation
 
@@ -251,23 +253,19 @@ chore(ci): update shellcheck version
 
 ## Code Style
 
-### Shell Scripts
+### Rust (Core Engine)
 
-- Use 2 spaces for indentation
-- Follow POSIX shell conventions
-- Use helper functions from `src/linux/utils.sh`:
-  - `read_ini_section` for INI parsing
-  - `should_include_profile_tag` for profile filtering
-  - `is_program_installed` for tool checks
+- Run `cargo fmt` before committing
+- Follow standard Rust conventions and idioms
+- Use `anyhow::Result` with `.context()` for error handling
+- Implement `Task` trait for new installation tasks
+- Place unit tests in inline `#[cfg(test)]` modules
 - Document complex logic with comments
 
-### PowerShell
+### Shell Wrappers
 
-- Use 4 spaces for indentation (PowerShell convention)
-- Follow PowerShell best practices
-- Use helper functions from `src/windows/Profile.psm1`:
-  - `Read-IniSection` for INI parsing
-  - `Test-ShouldIncludeSection` for profile filtering
+- `dotfiles.sh`: POSIX shell, 2-space indentation, minimal logic
+- `dotfiles.ps1`: PowerShell, 4-space indentation, minimal logic
 
 ### Configuration Files
 

@@ -1,4 +1,26 @@
 # syntax=docker/dockerfile:1
+FROM ubuntu:latest AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Rust and build dependencies
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+    && apt-get install --no-install-recommends --no-install-suggests -y \
+        ca-certificates \
+        curl \
+        git
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /build
+COPY cli/ cli/
+COPY .git .git
+RUN cargo build --release --manifest-path cli/Cargo.toml \
+    && strip cli/target/release/dotfiles
+
 FROM ubuntu:latest
 
 LABEL org.opencontainers.image.title="dotfiles" \
@@ -22,7 +44,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         git \
         locales \
         openssh-client \
-        shellcheck \
         tmux \
         vim \
         wget \
@@ -42,10 +63,9 @@ CMD ["/usr/bin/zsh"]
 # Install dotfiles
 COPY --chown=sneivandt:sneivandt .git /home/sneivandt/dotfiles/.git
 COPY --chown=sneivandt:sneivandt conf /home/sneivandt/dotfiles/conf
-COPY --chown=sneivandt:sneivandt src /home/sneivandt/dotfiles/src
 COPY --chown=sneivandt:sneivandt symlinks /home/sneivandt/dotfiles/symlinks
-COPY --chown=sneivandt:sneivandt test /home/sneivandt/dotfiles/test
-COPY --chown=sneivandt:sneivandt dotfiles.sh /home/sneivandt/dotfiles/dotfiles.sh
+COPY --chown=sneivandt:sneivandt hooks /home/sneivandt/dotfiles/hooks
+COPY --from=builder /build/cli/target/release/dotfiles /home/sneivandt/dotfiles/bin/dotfiles
 USER sneivandt
-RUN /home/sneivandt/dotfiles/dotfiles.sh --install --profile base \
+RUN /home/sneivandt/dotfiles/bin/dotfiles --root /home/sneivandt/dotfiles -p base install \
     && rm -rf /home/sneivandt/dotfiles/.git

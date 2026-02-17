@@ -1,254 +1,85 @@
 ---
 name: logging-patterns
 description: >
-  Logging conventions and patterns for the dotfiles project.
-  Use when working with console output, persistent logging, counters, or summary reporting.
+  Logging conventions and patterns for the dotfiles Rust engine.
+  Use when working with console output, task recording, or summary reporting.
 metadata:
   author: sneivandt
-  version: "1.0"
+  version: "2.0"
 ---
 
 # Logging Patterns
 
-This skill documents logging conventions and patterns used across both Linux shell scripts and Windows PowerShell modules in the dotfiles project.
+All logging is via `Logger` in `cli/src/logging.rs`, passed to tasks through `Context`.
 
-## Overview
+## Logger API
 
-The dotfiles project uses a consistent logging system across platforms:
-- **Persistent Logs**: All operations write to log files for troubleshooting
-- **Counter Tracking**: Operations counted for summary statistics
-- **Consistent Formatting**: Same log levels and formats on both platforms
-- **Dry-Run Support**: Preview mode shows what would happen without making changes
-
-## Log File Locations
-
-### Linux
-```bash
-$XDG_CACHE_HOME/dotfiles/install.log  # Default: ~/.cache/dotfiles/install.log
-$XDG_CACHE_HOME/dotfiles/counters/    # Counter files
-```
-
-### Windows
-```powershell
-$env:LOCALAPPDATA\dotfiles\install.log  # Usually: C:\Users\<user>\AppData\Local\dotfiles\install.log
-$env:LOCALAPPDATA\dotfiles\counters\    # Counter files
-```
-
-## Log Levels
-
-Both platforms use identical 3-character log level codes for consistent formatting:
-
-| Level | Code | Usage |
-|-------|------|-------|
-| Info | `INF` | General progress messages |
-| Verbose | `VRB` | Detailed diagnostic output (only shown with -v flag) |
-| Error | `ERR` | Error messages |
-| Stage | `STG` | Major stage headers (prefixed with ::) |
-| Dry-Run | `DRY` | Dry-run preview messages |
-
-## Log Format
-
-All log files use the same format on both platforms:
-```
-YYYY-MM-DD HH:MM:SS LVL message
-2026-02-14 10:30:45 INF Checking packages
-2026-02-14 10:30:46 VRB Package vim already installed
-2026-02-14 10:30:47 STG Installing symlinks
-```
-
-## Shell Logging Functions (Linux)
-
-### init_logging
-Initialize the logging system at the start of installation:
-```bash
-init_logging  # Creates log directory and file, resets counters
-```
-
-### log_stage
-Print a stage heading with `::` prefix:
-```bash
-log_stage "Installing packages"
-# Output: :: Installing packages
-```
-
-### log_verbose
-Print verbose diagnostic information (only shown with `-v` flag):
-```bash
-log_verbose "Package already installed: vim"
-# Output only if verbose mode enabled
-```
-
-### log_dry_run
-Print dry-run preview message:
-```bash
-log_dry_run "Would install package: vim"
-# Output: Would install package: vim
-```
-
-### log_error
-Print error message and exit immediately:
-```bash
-log_error "Package manager not found"
-# Output: Error: Package manager not found
-# Script exits with code 1
-```
-
-### increment_counter / get_counter
-Track operation counts:
-```bash
-increment_counter "packages_installed"
-count=$(get_counter "packages_installed")
-```
-
-### log_summary
-Print installation summary at the end:
-```bash
-log_summary
-# Output:
-# :: Installation Summary
-# Packages installed: 5
-# Symlinks created: 12
-# Log file: ~/.cache/dotfiles/install.log
-```
-
-## PowerShell Logging Functions (Windows)
-
-### Initialize-Logging
-Initialize the logging system:
-```powershell
-Initialize-Logging -Profile "windows"
-```
-
-### Write-Stage
-Print a stage heading:
-```powershell
-Write-Stage "Installing packages"
-# Output: :: Installing packages
-```
-
-### Write-VerboseMessage
-Print verbose diagnostic (only shown with `-Verbose` flag):
-```powershell
-Write-VerboseMessage "Package already installed: Git.Git"
-# Output only if -Verbose specified
-```
-
-### Write-DryRunMessage
-Print dry-run preview:
-```powershell
-Write-DryRunMessage "Would install package: Git.Git"
-```
-
-### Write-ProgressMessage
-Print general progress information:
-```powershell
-Write-ProgressMessage "Checking packages"
-```
-
-### Add-Counter / Get-Counter
-Track operation counts:
-```powershell
-Add-Counter -CounterName "packages_installed"
-$count = Get-Counter -CounterName "packages_installed"
-```
-
-### Write-InstallationSummary
-Print installation summary:
-```powershell
-Write-InstallationSummary -DryRun:$false
-```
-
-## Counter Names
-
-Standard counter names used across both platforms:
-
-| Counter Name | Description |
-|--------------|-------------|
-| `packages_installed` | System packages installed |
-| `aur_packages_installed` | AUR packages installed (Linux only) |
-| `symlinks_created` | Symlinks created |
-| `symlinks_removed` | Symlinks removed |
-| `vscode_extensions_installed` | VS Code extensions installed |
-| `powershell_modules_installed` | PowerShell modules installed |
-| `systemd_units_enabled` | Systemd units enabled (Linux only) |
-| `fonts_cache_updated` | Font cache updates |
-| `chmod_applied` | File permissions set |
-| `registry_values_set` | Registry values set (Windows only) |
-
-## Rules for Logging
-
-1. **Always initialize logging**: Call `init_logging` (shell) or `Initialize-Logging` (PowerShell) at the start of install/uninstall operations
-
-2. **Use stage messages for major sections**: Group related operations under stage headings with `log_stage` or `Write-Stage`
-
-3. **Use verbose for details**: Diagnostic information should use `log_verbose` or `Write-VerboseMessage` so it's hidden by default
-
-4. **Track all operations**: Increment counters for all installation actions so the summary is accurate
-
-5. **Always show summary**: Call `log_summary` or `Write-InstallationSummary` at the end of operations
-
-6. **Clean log files**: Strip ANSI color codes before writing to log files (done automatically)
-
-7. **Idempotent counting**: Only increment counters when actual work is performed, not when items are already configured
-
-8. **Dry-run clarity**: In dry-run mode, use appropriate labels ("would be") and dry-run logging functions
-
-## Example: Shell Script with Logging
-
-```bash
-# Initialize at start
-init_logging
-
-# Stage heading
-log_stage "Installing packages"
-
-# Operation with verbose output
-if ! is_program_installed "vim"; then
-    log_verbose "Installing package: vim"
-    if ! is_dry_run; then
-        sudo pacman -S --noconfirm vim
-        increment_counter "packages_installed"
-    else
-        log_dry_run "Would install package: vim"
-        increment_counter "packages_installed"
-    fi
-else
-    log_verbose "Package already installed: vim"
-fi
-
-# Summary at end
-log_summary
-```
-
-## Example: PowerShell Script with Logging
-
-```powershell
-# Initialize at start
-Initialize-Logging -Profile "windows"
-
-# Stage heading
-Write-Stage "Installing packages"
-
-# Operation with verbose output
-if (-not (Test-PackageInstalled -PackageId "Git.Git")) {
-    Write-VerboseMessage "Installing package: Git.Git"
-    if (-not $DryRun) {
-        winget install --id Git.Git --silent
-        Add-Counter -CounterName "packages_installed"
-    } else {
-        Write-DryRunMessage "Would install package: Git.Git"
-        Add-Counter -CounterName "packages_installed"
-    }
-} else {
-    Write-VerboseMessage "Package already installed: Git.Git"
+```rust
+impl Logger {
+    pub fn stage(&self, msg: &str);     // Bold blue "==>" header
+    pub fn info(&self, msg: &str);      // Indented message
+    pub fn debug(&self, msg: &str);     // Only when verbose=true on terminal
+    pub fn warn(&self, msg: &str);      // Yellow to stderr
+    pub fn error(&self, msg: &str);     // Red to stderr
+    pub fn dry_run(&self, msg: &str);   // Yellow "[DRY RUN]" prefix
 }
-
-# Summary at end
-Write-InstallationSummary -DryRun:$DryRun
 ```
 
-## Cross-References
+All messages (including `debug`) are always written to a persistent log file at
+`$XDG_CACHE_HOME/dotfiles/install.log` (default `~/.cache/dotfiles/install.log`)
+with timestamps and ANSI codes stripped. The log file path is shown in the summary.
 
-- See the `shell-patterns` skill for shell script conventions
-- See the `powershell-patterns` skill for PowerShell conventions
-- See the `testing-patterns` skill for testing logging output
+| Method | Use For |
+|--------|---------|
+| `stage` | Major section headers (one per task) |
+| `info` | Summary counts ("12 symlinks created") |
+| `debug` | Per-item detail (verbose only on terminal, always in log file) |
+| `dry_run` | Preview of what would happen |
+
+## Task Recording & Summary
+
+`tasks::execute()` automatically records each task result:
+
+```rust
+pub fn execute(task: &dyn Task, ctx: &Context) {
+    if !task.should_run(ctx) {
+        ctx.log.record_task(task.name(), TaskStatus::Skipped, Some("not applicable"));
+        return;
+    }
+    ctx.log.stage(task.name());
+    match task.run(ctx) {
+        Ok(TaskResult::Ok) => ctx.log.record_task(task.name(), TaskStatus::Ok, None),
+        // ... Skipped, DryRun, Err handled similarly
+    }
+}
+```
+
+`log.print_summary()` shows totals at end of run. Don't call `record_task` inside tasks.
+
+## Pattern in Task::run()
+
+```rust
+fn run(&self, ctx: &Context) -> Result<TaskResult> {
+    let mut count = 0u32;
+    for item in &ctx.config.items {
+        if ctx.dry_run {
+            ctx.log.dry_run(&format!("would process {}", item.name));
+            count += 1;
+            continue;
+        }
+        ctx.log.debug(&format!("processing {}", item.name));
+        count += 1;
+    }
+    if ctx.dry_run { return Ok(TaskResult::DryRun); }
+    ctx.log.info(&format!("{count} items processed"));
+    Ok(TaskResult::Ok)
+}
+```
+
+## Rules
+
+1. Access logger via `ctx.log` — never create a second `Logger`
+2. Use `debug` for per-item detail; `info` for summary counts
+3. Check `ctx.dry_run` before side effects; use `ctx.log.dry_run()` for preview
+4. Return `TaskResult::DryRun` in dry-run mode
+5. Task recording is automatic via `tasks::execute()` — don't call `record_task` in tasks

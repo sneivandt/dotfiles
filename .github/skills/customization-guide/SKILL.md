@@ -5,395 +5,78 @@ description: >
   Use when an agent needs to add symlinks, packages, systemd units, VS Code extensions, or Windows registry settings.
 metadata:
   author: sneivandt
-  version: "1.1"
+  version: "2.0"
 ---
 
 # Customization Guide
 
-This skill provides technical patterns for agents to programmatically extend the dotfiles system with new configuration items.
+Patterns for extending the dotfiles system. Task logic is in `cli/src/tasks/*.rs`; config is loaded from INI files in `conf/` by `cli/src/config/*.rs`.
 
-## Overview
+## Configuration Types
 
-The dotfiles system supports multiple types of configuration items:
-- **Symlinks**: Link configuration files from repository to home directory
-- **Packages**: Install system packages (Linux/Windows)
-- **Systemd Units**: Enable systemd user services and timers (Linux)
-- **VS Code Extensions**: Install VS Code extensions
-- **Copilot Skills**: Download external GitHub Copilot CLI skills
-- **Registry Settings**: Configure Windows registry values (Windows)
-- **File Permissions**: Set chmod permissions on files (Linux)
-- **Fonts**: Check and install font families
+| Type | INI File | Config Module | Task Module |
+|------|----------|---------------|-------------|
+| Symlinks | `symlinks.ini` | `config::symlinks` | `tasks::symlinks` |
+| Packages | `packages.ini` | `config::packages` | `tasks::packages` |
+| Systemd | `units.ini` | `config::units` | `tasks::systemd` |
+| VS Code | `vscode-extensions.ini` | `config::vscode` | `tasks::vscode` |
+| Registry | `registry.ini` | `config::registry` | `tasks::registry` |
+| Chmod | `chmod.ini` | `config::chmod` | `tasks::chmod` |
+| Fonts | `fonts.ini` | `config::fonts` | `tasks::fonts` |
+| Copilot Skills | `copilot-skills.ini` | `config::copilot_skills` | `tasks::copilot_skills` |
 
-All configurations use INI files in the `conf/` directory and are profile-aware.
+All configs are profile-aware (loaded via `config::ini::filter_sections_and`).
 
 ## Adding Symlinks
 
-### Single File Symlink
+1. Create source in `symlinks/` (no leading dot): `symlinks/config/myapp/config.yml`
+2. Add to `conf/symlinks.ini`: `[base]\nconfig/myapp/config.yml`
+3. Optionally add to `conf/manifest.ini` for sparse checkout
+4. Test: `./dotfiles.sh install -d`
 
-1. **Create the source file** in `symlinks/` directory (without leading dot):
-```bash
-mkdir -p symlinks/config/mynewapp
-echo "my config" > symlinks/config/mynewapp/config.yml
-```
-
-2. **Add entry to conf/symlinks.ini**:
-```ini
-[base]
-config/mynewapp/config.yml
-```
-Or for profile-specific config:
-```ini
-[arch,desktop]
-config/mynewapp/config.yml
-```
-
-3. **Optionally add to manifest.ini** (if file should be excluded in certain profiles):
-```ini
-[desktop]
-symlinks/config/mynewapp/
-```
-
-4. **Install the symlink**:
-```bash
-./dotfiles.sh -I
-```
-
-The file will be symlinked: `symlinks/config/mynewapp/config.yml` → `~/.config/mynewapp/config.yml`
-
-### Directory Symlink
-
-For applications with multiple config files, link the entire directory:
-
-```bash
-# Create directory structure
-mkdir -p symlinks/config/myapp
-touch symlinks/config/myapp/config.yml
-touch symlinks/config/myapp/themes.yml
-```
-
-Add to `conf/symlinks.ini`:
-```ini
-[base]
-config/myapp
-```
-
-This links the entire directory: `symlinks/config/myapp` → `~/.config/myapp`
-
-See the `symlink-management` skill for detailed symlink conventions.
+See `symlink-management` skill.
 
 ## Adding Packages
 
-### Linux Packages
-
-1. **Find the correct package name**:
-```bash
-# Official repositories
-pacman -Ss <search-term>
-
-# AUR packages
-paru -Ss <search-term>
-```
-
-2. **Edit conf/packages.ini**:
 ```ini
 [arch]
 my-package
-another-package
-
-[arch,desktop]
-desktop-package
-
 [arch,aur]
 my-aur-package-bin
-
-[arch,desktop,aur]
-desktop-aur-package
-```
-
-3. **Install**:
-```bash
-./dotfiles.sh -I
-```
-
-### Windows Packages
-
-1. **Find package ID**:
-```powershell
-winget search <package-name>
-# Note the exact Package ID (e.g., Microsoft.PowerShell)
-```
-
-2. **Edit conf/packages.ini**:
-```ini
 [windows]
 Microsoft.PowerShell
-Microsoft.VisualStudioCode
-Git.Git
 ```
 
-3. **Install**:
-```powershell
-.\dotfiles.ps1
-```
-
-See the `package-management` skill for detailed package patterns.
+The config loader tags AUR packages from `[*,aur]` sections. See `package-management` skill.
 
 ## Adding Systemd Units
 
-### Service Unit
-
-1. **Create unit file in symlinks**:
-```bash
-mkdir -p symlinks/config/systemd/user
-cat > symlinks/config/systemd/user/my-service.service << 'EOF'
-[Unit]
-Description=My Custom Service
-
-[Service]
-ExecStart=/usr/bin/myapp
-
-[Install]
-WantedBy=default.target
-EOF
-```
-
-2. **Add unit file to conf/symlinks.ini**:
-```ini
-[base]
-config/systemd/user/my-service.service
-```
-
-3. **Add to conf/units.ini to enable it**:
-```ini
-[base]
-my-service.service
-```
-
-4. **Install and enable**:
-```bash
-./dotfiles.sh -I
-# Unit is automatically symlinked and enabled
-```
-
-### Timer Unit
-
-Timer units require both a service and timer file:
-
-```bash
-# Create service file
-cat > symlinks/config/systemd/user/my-task.service << 'EOF'
-[Unit]
-Description=My Periodic Task
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/my-script.sh
-EOF
-
-# Create timer file
-cat > symlinks/config/systemd/user/my-task.timer << 'EOF'
-[Unit]
-Description=Run My Task Daily
-
-[Timer]
-OnCalendar=daily
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-```
-
-Add both to `conf/symlinks.ini` and the timer to `conf/units.ini`:
-```ini
-# symlinks.ini
-[base]
-config/systemd/user/my-task.service
-config/systemd/user/my-task.timer
-
-# units.ini
-[base]
-my-task.timer
-```
+Create unit in `symlinks/config/systemd/user/`, add to `conf/symlinks.ini` and `conf/units.ini`.
 
 ## Adding VS Code Extensions
 
-1. **Find extension ID**:
-   - Open VS Code
-   - Go to Extensions view
-   - Click on extension
-   - Copy the ID (e.g., `ms-python.python`)
-
-2. **Add to conf/vscode-extensions.ini**:
 ```ini
+# conf/vscode-extensions.ini — [extensions] is not profile-filtered
 [extensions]
 ms-python.python
-rust-lang.rust-analyzer
-github.copilot
 ```
 
-3. **Install**:
-```bash
-./dotfiles.sh -I
-# Or on Windows:
-.\dotfiles.ps1
-```
+## Adding Registry (Windows)
 
-**Notes**:
-- The `[extensions]` section is special - not profile-based
-- Extensions are installed via `code --install-extension`
-- Requires VS Code to be installed
-
-## Adding GitHub Copilot CLI Skills
-
-1. **Find skill folder URL**:
-   - Browse GitHub repositories with Copilot skills
-   - Find the folder containing skill definition files
-   - Copy the GitHub URL (e.g., `https://github.com/owner/repo/blob/main/skills/skill-name`)
-
-2. **Add to conf/copilot-skills.ini**:
 ```ini
-[base]
-https://github.com/github/awesome-copilot/blob/main/skills/azure-devops-cli
-
-[desktop]
-https://github.com/example/skills/blob/main/skills/web-dev-helper
-```
-
-3. **Install**:
-```bash
-./dotfiles.sh -I
-# Or on Windows:
-.\dotfiles.ps1
-```
-
-**Notes**:
-- Skills are downloaded to `~/.copilot/skills/` directory
-- The entire folder (including subdirectories) is downloaded
-- Requires GitHub Copilot CLI (`gh copilot`) to be functional
-- Skills are profile-aware - use appropriate sections
-
-## Adding Registry Settings (Windows)
-
-1. **Identify registry key and value**:
-   - Use Registry Editor (regedit) to find the key
-   - Note the full path, value name, type, and data
-
-2. **Add to conf/registry.ini** using registry path as section:
-```ini
+# conf/registry.ini — key=value format, not profile-filtered
 [HKCU\Software\MyApp]
-SettingName=REG_SZ:My Value
-EnableFeature=REG_DWORD:1
-FilePath=REG_EXPAND_SZ:%USERPROFILE%\Documents
-
-[HKCU\Control Panel\Desktop]
-AutoColorization=REG_DWORD:0
+Setting=REG_SZ:Value
 ```
 
-**Format**: `ValueName=TYPE:Data`
+## Profile Sections
 
-**Supported Types**:
-- `REG_SZ`: String value
-- `REG_DWORD`: 32-bit integer (use decimal or 0x hex)
-- `REG_QWORD`: 64-bit integer
-- `REG_EXPAND_SZ`: Expandable string (with environment variables)
-- `REG_MULTI_SZ`: Multi-string value (use `\0` as separator)
-- `REG_BINARY`: Binary data (hex string)
+`[base]` all systems · `[arch]` Arch Linux · `[arch,desktop]` desktop GUI · `[windows]` Windows. See `profile-system` skill.
 
-3. **Apply settings**:
-```powershell
-.\dotfiles.ps1
-```
+## Rules
 
-**Notes**:
-- Registry settings are Windows-only (no profile filtering)
-- Keys are created if they don't exist
-- Requires admin elevation for HKLM keys
-
-## Adding File Permissions (Linux)
-
-1. **Add to conf/chmod.ini**:
-```ini
-[base]
-700 config/myapp/secrets.yml
-755 bin/my-script.sh
-
-[arch,desktop]
-644 config/desktop-app/config.ini
-```
-
-**Format**: `<mode> <relative-path-under-home>`
-
-2. **Apply permissions**:
-```bash
-./dotfiles.sh -I
-```
-
-**Notes**:
-- Paths are relative to `$HOME` and prefixed with `.` automatically
-- Permissions are applied recursively with `-R` flag
-- Skips gracefully if target file doesn't exist
-
-## Adding Fonts (Linux)
-
-1. **Add to conf/fonts.ini**:
-```ini
-[base]
-JetBrains Mono
-FiraCode Nerd Font
-
-[arch,desktop]
-Noto Sans
-```
-
-2. **Install fonts and update cache**:
-```bash
-./dotfiles.sh -I
-```
-
-**Notes**:
-- Font names are checked with `fc-list` command
-- Only missing fonts trigger cache update
-- Fonts must be installed separately (via packages or manually)
-
-## Profile Selection Guidelines
-
-When adding configuration items, choose the appropriate profile section:
-
-- **`[base]`**: Essential items needed on all systems
-- **`[arch]`**: Arch Linux-specific items (headless + desktop)
-- **`[arch,desktop]`**: Desktop environment items (GUI apps)
-- **`[desktop]`**: Cross-platform desktop items
-- **`[windows]`**: Windows-specific items
-- **`[extensions]`**: VS Code extensions (special case - not profile-filtered)
-
-See the `profile-system` skill for complete profile details.
-
-## Rules for Agents Adding Configuration Items
-
-1. **Use appropriate configuration files**: Each item type has a dedicated INI file in `conf/`
-
-2. **Follow INI format**: Use section headers with comma-separated categories for profile filtering (see `ini-configuration` skill)
-
-3. **Test with dry-run first**: Always run `./dotfiles.sh -I --dry-run` to preview changes before applying
-
-4. **One item per line**: Don't combine multiple items on a single line
-
-5. **Use relative paths**: Paths in symlinks.ini and chmod.ini are relative to home directory
-
-6. **No leading dots in symlinks/**: Source files in `symlinks/` directory have no leading dots (dots are added by the scripts)
-
-7. **Add manifest entries when needed**: If files should be excluded in certain profiles, update `conf/manifest.ini` with sparse checkout patterns
-
-8. **Test across profiles**: If adding profile-specific items, test with `--profile` flag for different profiles
-
-9. **Commit atomically**: When adding symlinks, commit both the source file and the INI entry together
-
-10. **Refer humans to docs**: For user-facing customization procedures, direct users to `docs/CUSTOMIZATION.md`
-
-## Cross-References
-
-- See the `profile-system` skill for profile filtering and sparse checkout
-- See the `symlink-management` skill for detailed symlink conventions
-- See the `package-management` skill for package installation patterns
-- See the `ini-configuration` skill for INI file format details
+1. Each type uses its dedicated INI file in `conf/`
+2. Test with `./dotfiles.sh install -d`
+3. One item per line; no leading dots in `symlinks/`
+4. Commit source files and INI entries atomically
+5. See `ini-configuration` skill for format details

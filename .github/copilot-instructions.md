@@ -1,61 +1,65 @@
 # GitHub Copilot Project Instructions
 
-Core universal guidance for AI code assistants working on this dotfiles project.
+Core guidance for AI code assistants working on this dotfiles project.
 
 ## Project Overview
 
-This project manages dotfiles and system configuration using a profile-based sparse checkout approach for Linux and Windows environments.
+This project manages dotfiles and system configuration using a profile-based sparse checkout approach for Linux and Windows. A **Rust binary** in `cli/` is the engine; the shell wrappers (`dotfiles.sh`, `dotfiles.ps1`) only bootstrap and invoke it.
 
 **Core Principles**:
-- **Profile-Based**: Uses profiles (base, arch, arch-desktop, desktop, windows) to control sparse checkout and configuration
-- **Idempotent**: All scripts can be safely re-run without side effects
-- **Cross-Platform**: POSIX shell (`/bin/sh`) for Linux, PowerShell for Windows
-- **Declarative**: Configuration in INI files, automatic installation
+- **Profile-Based**: Profiles (base, arch, arch-desktop, desktop, windows) control sparse checkout and configuration
+- **Idempotent**: Every run converges to the declared state without side effects
+- **Cross-Platform**: Single Rust binary; thin POSIX shell and PowerShell wrappers
+- **Declarative**: Configuration lives in `conf/` INI files, parsed natively by the Rust engine
 
-See `docs/ARCHITECTURE.md` for complete system design and repository structure.
+## Architecture
+
+| Layer | Path | Role |
+|---|---|---|
+| Rust engine | `cli/` | Cargo project — config parsing, symlinks, file ops, orchestration |
+| Shell wrappers | `dotfiles.sh` / `dotfiles.ps1` | Download or `cargo build` the binary, then exec it |
+| Configuration | `conf/` | INI files (unchanged from previous design) |
+| Symlinks | `symlinks/` | Managed by the Rust engine |
+| Skills | `.github/skills/` | Agent-specific coding patterns |
+| Docs | `docs/` | Human-readable guides and reference |
+
+The Rust binary uses **clap** for CLI parsing and **anyhow** for error handling. It handles all file operations natively and only shells out for package managers (`pacman`, `paru`, `winget`) and service management (`systemctl`).
+
+See `docs/ARCHITECTURE.md` for the full system design.
 
 ## Working with This Codebase
 
-### 1. Before Making Changes
+### Before Making Changes
 
-**Always check relevant skills first** - this project uses GitHub Copilot Agent Skills for detailed technical patterns:
-- `.github/skills/` - Agent-specific coding patterns and conventions
-- See skill descriptions in the available skills list below
+- Check `.github/skills/` for detailed technical patterns and conventions
+- Refer to `docs/CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/CUSTOMIZATION.md`, and `docs/TROUBLESHOOTING.md` for context
 
-**For human context and procedures**, refer to documentation:
-- `docs/CONTRIBUTING.md` - Contribution workflow
-- `docs/ARCHITECTURE.md` - System design and structure
-- `docs/CUSTOMIZATION.md` - Adding configuration items
-- `docs/TROUBLESHOOTING.md` - Common issues and solutions
+### Code Quality
 
-### 2. Code Quality
+**Rust code** lives in `cli/`. Follow standard Rust idioms (use `anyhow::Result`, derive `clap` args, etc.). Never leave trailing whitespace in any file.
 
-**File Formatting**: Never leave trailing whitespace at the end of lines. This applies to all file types.
-
-**Testing**: Always run tests before committing:
+**Testing** — always run before committing:
 ```bash
-./dotfiles.sh -T  # Runs shellcheck, PSScriptAnalyzer, and config validation
+cd cli && cargo fmt --check && cargo clippy -- -D warnings && cargo test
 ```
 
-**Dry-Run**: Test changes safely:
+**Integration tests** run alongside unit tests via `cargo test` and exercise config parsing, symlinking, and dry-run behaviour.
+
+**Dry-run** — preview changes without applying:
 ```bash
-./dotfiles.sh -I --dry-run  # Preview changes without applying
+./dotfiles.sh install -d
 ```
 
-### 3. Security
+### Security
 
-**Before finalizing**:
-- Run `code_review` tool for automated review
-- Run `codeql_checker` tool to scan for vulnerabilities
+- Run `code_review` and `codeql_checker` tools before finalising
 - Never commit secrets, credentials, or sensitive data
 - Fix any security issues found
 
 ## Documentation Structure
 
-This project maintains clear separation between different documentation types:
+- **`.github/copilot-instructions.md`** — this file (universal agent guidance)
+- **`.github/skills/`** — agent-specific technical patterns and conventions
+- **`docs/`** — human-readable guides (also useful for agents needing context)
 
-- **`.github/copilot-instructions.md`** (this file) - Core universal agent guidance
-- **`.github/skills/`** - Agent-specific technical patterns and coding conventions
-- **`docs/`** - Human-readable guides and reference documentation (also useful for agents needing context)
-
-When in doubt, check skills for technical patterns and docs for procedures and context.
+When in doubt, check skills for technical patterns and docs for procedures.

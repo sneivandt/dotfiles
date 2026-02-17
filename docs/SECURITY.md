@@ -47,13 +47,13 @@ The installation scripts in this repository execute with user privileges and per
 2. **Before running**:
    - Review `dotfiles.sh` or `dotfiles.ps1` source code
    - Check `conf/*.ini` files for packages and settings
-   - Use `--dry-run` mode to preview changes:
+   - Use `-d` (dry-run) mode to preview changes:
      ```bash
-     ./dotfiles.sh -I --profile arch-desktop --dry-run
+     ./dotfiles.sh install -p arch-desktop -d
      ```
    - Run static analysis tests:
      ```bash
-     ./dotfiles.sh -T
+     ./dotfiles.sh test
      ```
 
 3. **Idempotency**:
@@ -91,7 +91,7 @@ Linux scripts may use `sudo` for:
 1. **Fork and review**: Fork the repository and review code before running
 2. **Test in a VM**: Test in a virtual machine or container first
 3. **Backup**: Backup existing configuration files
-4. **Dry run**: Always test with `--dry-run` first
+4. **Dry run**: Always test with `-d` (dry-run) first
 
 ### After Installation
 

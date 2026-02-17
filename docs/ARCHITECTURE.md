@@ -4,7 +4,7 @@ Technical documentation covering the implementation and design of the dotfiles m
 
 ## Overview
 
-This dotfiles project is designed as a cross-platform, profile-based configuration management system.
+This dotfiles project is a cross-platform, profile-based configuration management system built around a **Rust core engine** (`cli/`). Thin shell wrappers (`dotfiles.sh` on Linux, `dotfiles.ps1` on Windows) download or build the binary and forward all arguments to it. Configuration lives in declarative INI files (`conf/`), and the binary handles parsing, profile resolution, platform detection, and task execution.
 
 ## Design Principles
 
@@ -13,164 +13,197 @@ This dotfiles project is designed as a cross-platform, profile-based configurati
 **Challenge**: Support both Linux (Arch, Debian, etc.) and Windows with a unified configuration approach.
 
 **Solution**:
-- Separate entry points (`dotfiles.sh` for Linux, `dotfiles.ps1` for Windows)
-- Shared configuration format (INI files)
-- Platform-specific logic isolated in separate modules
-- Profile system to exclude platform-specific files
+- Single Rust binary compiled for both platforms
+- Thin platform-native entry points (`dotfiles.sh`, `dotfiles.ps1`) that download or build the binary
+- Shared configuration format (INI files in `conf/`)
+- Compile-time platform detection via `cfg!(target_os)` plus runtime checks (e.g. `/etc/arch-release`)
+- Profile system to exclude platform-specific files and configuration
 
 ### 2. Idempotency
 
-**Challenge**: Allow script to be run multiple times safely.
+**Challenge**: Allow the tool to be run multiple times safely.
 
 **Solution**:
-- Check existence/state before every operation
-- Skip operations that are already complete
-- Log skipped operations in verbose mode
+- Every task checks existence/state before acting
+- Operations that are already complete are skipped
+- Skipped operations are logged in verbose mode
 - No side effects on re-runs
-
-**Implementation examples**:
-```bash
-# Check before creating symlink
-if [ -L "$target" ] && [ "$(readlink "$target")" = "$source" ]; then
-  log_verbose "Skipping: already correct"
-  return
-fi
-```
-
-```powershell
-# Check before installing package
-if (Test-PackageInstalled $packageId) {
-  Write-Verbose "Skipping $packageId: already installed"
-  continue
-}
-```
 
 ### 3. Profile-Based Configuration
 
 **Challenge**: Support multiple environments (headless server, desktop, Windows) from one repository.
 
 **Solution**:
-- Profile definitions map to category exclusions
+- Profile definitions in `conf/profiles.ini` map to category exclusions
 - Git sparse checkout excludes files by category
-- Configuration sections filtered by active categories
+- INI section names carry category tags; the binary filters them against the active profile
 - Automatic OS detection provides safety overrides
 
-### 4. POSIX Shell Compatibility
+### 4. Binary Distribution
 
-**Challenge**: Work across different Linux distributions with varying shell implementations.
+**Challenge**: End users should not need a Rust toolchain installed.
 
 **Solution**:
-- Use `#!/bin/sh` for maximum compatibility
-- Avoid Bash-specific features (arrays, process substitution)
-- Test with shellcheck for POSIX compliance
-- Document any Bash requirements explicitly
+- GitHub Actions builds release binaries on every push to `master` that touches `cli/` or `conf/`
+- The release workflow (`.github/workflows/release.yml`) publishes Linux and Windows binaries with SHA-256 checksums
+- The shell wrappers download the latest release and cache the version for one hour (`.dotfiles-version-cache`)
+- A `--build` flag builds from source for development
+
+## High-Level Architecture
+
+```
+┌─────────────┐      ┌─────────────┐
+│ dotfiles.sh  │      │ dotfiles.ps1│   Thin wrappers
+│  (Linux)     │      │  (Windows)  │   download/build binary
+└──────┬───────┘      └──────┬──────┘
+       │                     │
+       ▼                     ▼
+┌──────────────────────────────────────┐
+│         cli/ (Rust binary)          │
+│                                      │
+│  cli.rs         — clap argument      │
+│                   parsing            │
+│  commands/      — install, uninstall,│
+│                   test, version      │
+│  config/        — INI loading &      │
+│                   profile resolution │
+│  tasks/         — Task trait impls   │
+│  platform.rs    — OS detection       │
+│  logging.rs     — structured logging │
+│  exec.rs        — subprocess exec    │
+└──────────────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────┐
+│            conf/ (INI files)         │
+│  packages.ini  symlinks.ini          │
+│  profiles.ini  manifest.ini          │
+│  units.ini     fonts.ini             │
+│  registry.ini  vscode-extensions.ini │
+│  chmod.ini     copilot-skills.ini    │
+└──────────────────────────────────────┘
+```
 
 ## Component Architecture
 
-### Linux Components
+### Shell Wrappers
 
-#### Entry Point (`dotfiles.sh`)
+#### `dotfiles.sh` (Linux)
 
-Main script that:
-- Parses command-line arguments
-- Sources supporting modules
-- Dispatches to command handlers
-- Handles errors and exits
+POSIX shell script that:
+- Checks for a `--build` flag; if set, runs `cargo build --release` in `cli/` and executes the resulting binary
+- Otherwise, checks the version cache (`.dotfiles-version-cache`, max age 3600 s)
+- If stale or missing, queries the GitHub Releases API for the latest tag, downloads the binary to `bin/dotfiles`, and verifies its SHA-256 checksum
+- Forwards all remaining arguments to the binary with `--root`
 
-#### Commands Module (`src/linux/commands.sh`)
+#### `dotfiles.ps1` (Windows)
 
-High-level orchestration functions:
-- `do_install` - Coordinates installation steps
-- `do_uninstall` - Removes managed symlinks
-- `do_test` - Runs validation tests
+PowerShell script with identical logic:
+- `-Build` switch builds from source with `cargo build --release`
+- Otherwise downloads `dotfiles-windows-x86_64.exe` from GitHub Releases
+- Verifies checksum and caches version
+- Forwards arguments to the binary
 
-Each command function delegates to task primitives.
+### Rust Core (`cli/`)
 
-#### Tasks Module (`src/linux/tasks.sh`)
+The binary is built with `cargo` from `cli/Cargo.toml`. Key dependencies:
 
-Granular, idempotent task functions:
-- `install_sparse_checkout` - Configures git sparse checkout
-- `install_packages` - Installs system packages
-- `install_symlinks` - Creates symlinks
-- `install_systemd_units` - Enables systemd units
-- `install_fonts` - Installs fonts
-- `install_vscode_extensions` - Installs VS Code extensions
-- `install_copilot_skills` - Downloads GitHub Copilot CLI skills
-- `install_pwsh_modules` - Installs PowerShell modules
-- `install_git_hooks` - Installs repository hooks
-- And more...
+- **clap** — CLI argument parsing with derive macros
+- **anyhow** — error handling and context propagation
 
-**Task Function Pattern**:
-```bash
-task_name()
-{(
-  # Wrapped in subshell for isolation
-  # Check prerequisites
-  if ! is_program_installed "tool"; then
-    log_verbose "Skipping: tool not installed"
-    return
-  fi
+#### Entry Point (`main.rs`)
 
-  # Do work
-  log_stage "Task Name"
+Parses CLI arguments via `cli::Cli`, creates a `Logger`, and dispatches to the matching command handler.
 
-  # Idempotent operations
-  if is_dry_run; then
-    log_dry_run "Would perform action"
-  else
-    log_verbose "Performing action"
-    # actual work
-  fi
-)}
+#### CLI (`cli.rs`)
+
+Defines the command structure using clap derive:
+
+```
+dotfiles [-v] [-p PROFILE] [-d] [--root DIR] <COMMAND>
+
+Commands:
+  install     Install dotfiles and configure system
+  uninstall   Remove installed dotfiles
+  test        Run self-tests and validation
+  version     Print version information
+
+Install options:
+  --skip TASK,...   Skip specific tasks
+  --only TASK,...   Run only specific tasks
 ```
 
-#### Utils Module (`src/linux/utils.sh`)
+#### Commands (`commands/`)
 
-Helper functions and predicates:
-- `read_ini_section` - Parse INI configuration files
-- `should_include_profile_tag` - Check if section matches active profile
-- `is_program_installed` - Check if program is available
-- `is_dry_run` - Check if dry-run mode is active
-- Profile selection and persistence functions
-- Sparse checkout configuration
+- **`install.rs`** — Resolves profile, loads `Config`, builds the task list, filters by `--skip`/`--only`, and executes each task via `tasks::execute()`
+- **`uninstall.rs`** — Removes managed symlinks
+- **`test.rs`** — Runs configuration validation
 
-#### Logger Module (`src/linux/logger.sh`)
+#### Config (`config/`)
 
-Logging abstraction:
-- `init_logging` - Initialize log file and counters
-- `log_stage` - Print stage headers (once per subshell)
-- `log_verbose` - Print verbose messages
-- `log_error` - Print errors and exit
-- `log_dry_run` - Print dry-run actions
-- Operation counters and summary
+`Config::load()` reads all INI files from `conf/` and filters sections against the active profile's categories:
 
-### Windows Components
+| Module | File | Description |
+|---|---|---|
+| `profiles.rs` | `profiles.ini` | Profile resolution and category computation |
+| `ini.rs` | (all) | Generic INI parser |
+| `packages.rs` | `packages.ini` | System packages (pacman, AUR, winget) |
+| `symlinks.rs` | `symlinks.ini` | Symlink mappings |
+| `units.rs` | `units.ini` | Systemd units (Linux only) |
+| `fonts.rs` | `fonts.ini` | Font families |
+| `chmod.rs` | `chmod.ini` | File permissions |
+| `vscode.rs` | `vscode-extensions.ini` | VS Code extensions |
+| `copilot_skills.rs` | `copilot-skills.ini` | GitHub Copilot CLI skills |
+| `registry.rs` | `registry.ini` | Windows registry entries |
+| `manifest.rs` | `manifest.ini` | Sparse checkout file mappings |
 
-#### Entry Point (`dotfiles.ps1`)
+#### Tasks (`tasks/`)
 
-Thin wrapper that:
-- Imports `Dotfiles.psm1`
-- Calls `Install-Dotfiles` with parameters
-- Handles errors
+Each task implements the `Task` trait:
 
-#### Dotfiles Module (`src/windows/Dotfiles.psm1`)
+```rust
+pub trait Task {
+    /// Human-readable task name.
+    fn name(&self) -> &str;
 
-Main module that orchestrates installation:
-- Loads supporting modules
-- Executes installation steps in order
-- Exports `Install-Dotfiles` command
+    /// Whether this task should run on the current platform/profile.
+    fn should_run(&self, ctx: &Context) -> bool;
 
-#### Supporting Modules
+    /// Execute the task.
+    fn run(&self, ctx: &Context) -> Result<TaskResult>;
+}
+```
 
-- **`Git.psm1`** - Git configuration and repository updates
-- **`GitHooks.psm1`** - Git hooks installation
-- **`Module.psm1`** - PowerShell module installation
-- **`Packages.psm1`** - Package management (winget)
-- **`Registry.psm1`** - Registry configuration
-- **`Symlinks.psm1`** - Symlink creation
-- **`VsCodeExtensions.psm1`** - VS Code extension installation
-- **`Profile.psm1`** - Profile filtering and INI parsing
-- **`Logging.psm1`** - Logging and operation counters
+A shared `Context` struct carries the loaded `Config`, `Platform`, `Logger`, and flags (`dry_run`, `verbose`, `home` path).
+
+The `execute()` function runs a task, recording the result (`Ok`, `Skipped`, `DryRun`, `Failed`) in the logger.
+
+**Implemented tasks** (`cli/src/tasks/`):
+- `sparse_checkout` — Configure git sparse checkout
+- `update` — Update repository
+- `hooks` — Install git hooks
+- `packages` — Install system packages (pacman, paru, AUR)
+- `symlinks` — Create symlinks
+- `vscode` — Install VS Code extensions
+- `copilot_skills` — Download Copilot CLI skills
+- `chmod` — Apply file permissions
+- `shell` — Configure default shell
+- `fonts` — Check/install fonts
+- `systemd` — Enable systemd units
+- `registry` — Apply Windows registry settings
+- `git_config` — Configure git settings
+
+#### Platform Detection (`platform.rs`)
+
+The `Platform` struct detects the OS at compile time (`cfg!(target_os)`) and checks for Arch Linux at runtime (`/etc/arch-release`). It exposes helpers like `is_linux()`, `is_windows()`, `is_arch`, and `excludes_category()` which tasks use to decide whether to run.
+
+#### Logging (`logging.rs`)
+
+Structured logger that:
+- Prints stage headers for each task
+- Records task outcomes (Ok, Skipped, DryRun, Failed)
+- Tracks operation counters
+- Prints a summary at the end of execution
 
 ### Configuration System
 
@@ -192,193 +225,119 @@ entry-two
 
 #### Configuration Processing
 
-1. Read configuration file
-2. Parse sections
-3. Filter sections by active profile
-4. Process entries in matching sections
-
-**Implementation**:
-```bash
-# Get all sections
-sections="$(grep -E '^\[.+\]$' "$config" | tr -d '[]')"
-
-# Process matching sections
-for section in $sections; do
-  if ! should_include_profile_tag "$section"; then
-    log_verbose "Skipping section [$section]"
-    continue
-  fi
-
-  # Process entries
-  read_ini_section "$config" "$section" | while IFS='' read -r item; do
-    # Handle item
-  done
-done
-```
+1. `Config::load()` reads each INI file from `conf/`
+2. Each config module parses sections and entries
+3. Sections are filtered against the active profile's `active_categories`
+4. Platform-specific configs (e.g. registry on Windows, units on Linux) are loaded conditionally
 
 ### Sparse Checkout System
 
 Git's sparse checkout feature controls which files are checked out.
 
 **Implementation flow**:
-1. Read profile from `profiles.ini`
-2. Parse excluded categories
-3. Apply OS detection overrides
-4. Read file mappings from `manifest.ini`
-5. Build exclusion patterns
-6. Configure `git sparse-checkout set`
+1. Resolve profile from `profiles.ini`
+2. Compute excluded categories from profile definition plus platform detection
+3. Load file mappings from `manifest.ini`
+4. Build exclusion patterns
+5. Configure `git sparse-checkout set`
 
 **Pattern logic** (manifest.ini):
 - Uses OR logic for exclusions
 - `[arch,desktop]` means "exclude if arch OR desktop is excluded"
 - Ensures files common to multiple categories are excluded appropriately
 
-### Logging System
-
-#### Linux
-
-Log file: `${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/install.log`
-
-**Initialization**:
-```bash
-init_logging() {
-  # Create log directory
-  # Initialize log file with timestamp
-  # Initialize operation counters
-}
-```
-
-**Stage logging**:
-```bash
-log_stage() {
-  # Print stage header once per subshell
-  # Uses _work flag to track if already printed
-  # Resets in new subshell (task function pattern)
-}
-```
-
-**Operation counters**:
-- Global variables track counts
-- Incremented in both dry-run and real modes
-- Displayed in summary
-
-#### Windows
-
-Log file: `%LOCALAPPDATA%\dotfiles\install.log`
-
-**Similar structure** but using PowerShell:
-- `Initialize-Logging` - Set up log file
-- `Write-VerboseMessage` - Log verbose details
-- Stage headers with `$act` flag
-- Operation counters in module-scoped variables
-
 ### Error Handling
 
-#### Linux
+The binary uses `anyhow::Result` throughout. Each config loader and task adds context via `.context()`:
 
-```bash
-set -o errexit  # Exit on error
-set -o nounset  # Exit on undefined variable
+```rust
+packages::load(&conf.join("packages.ini"), active_categories)
+    .context("loading packages.ini")?;
 ```
 
-**Controlled errors**:
-```bash
-if ! command; then
-  log_error "Error message"
-  # Exits with status 1
-fi
-```
-
-#### Windows
-
-```powershell
-try {
-  Import-Module -ErrorAction Stop
-  # operations
-} catch {
-  Write-Error "Error: $_"
-  exit 1
-}
-```
+Task failures are caught by `tasks::execute()` and recorded as `TaskStatus::Failed` — the binary continues executing remaining tasks and reports all failures in the summary.
 
 ## Testing Architecture
 
-### Static Analysis
+### Rust Tests
 
-**Linux**:
-- shellcheck for shell scripts
-- PSScriptAnalyzer for PowerShell (when pwsh available)
-- Configuration validation
+- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/ini.rs`)
 
-**Windows**:
-- PSScriptAnalyzer for PowerShell scripts
+The project uses `assert_cmd` and `predicates` as dev-dependencies for CLI-level testing.
 
 ### Configuration Validation
 
-Validates:
+The `test` command validates:
 - INI file syntax
 - Section format
 - Profile definitions
 - File references
 
-### Idempotency Tests
+### CI Pipeline
 
-Runs installation twice and verifies:
-- No errors on second run
-- Consistent state
-- Proper skip messages
+GitHub Actions CI (`.github/workflows/ci.yml`) runs on pull requests:
 
-### CI Testing
+| Job | What it checks |
+|---|---|
+| `rust-fmt` | `cargo fmt --check` |
+| `rust-clippy` | `cargo clippy -- -D warnings` |
+| `rust-test` | `cargo test` |
+| `build-linux` | Release build + binary smoke test |
+| `build-windows` | Release build + binary smoke test |
+| `script-lint` | shellcheck on `dotfiles.sh` and `install.sh` |
+| `integration-linux` | Dry-run install for `base` and `desktop` profiles |
+| `integration-windows` | Dry-run install for `windows` profile |
+| `test-docker` | Docker image build + smoke test |
+| `test-git-hooks` | Pre-commit hook tests |
 
-GitHub Actions workflows:
-- Test all profiles
-- Test both platforms (Linux, Windows)
-- Run static analysis
-- Run configuration validation
-- Test Docker build
+### Release Pipeline
+
+GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `master` when `cli/` or `conf/` change:
+1. Builds Linux and Windows release binaries
+2. Generates SHA-256 checksums
+3. Creates a GitHub Release with version tag `v0.1.<run_number>`
 
 ## Extension Points
+
+### Adding New Tasks
+
+1. Create a new file in `cli/src/tasks/` implementing the `Task` trait
+2. Add the module to `cli/src/tasks/mod.rs`
+3. Add the task to the task list in `commands/install.rs`
 
 ### Adding New Configuration Types
 
 1. Create INI file in `conf/`
-2. Add task function to process it
-3. Add to installation sequence
-4. Document in CONFIGURATION.md
-
-### Adding New Platforms
-
-1. Create platform-specific modules
-2. Add profile and category for platform
-3. Update manifest.ini with platform files
-4. Create platform-specific entry point
+2. Add a config parser in `cli/src/config/`
+3. Add the field to the `Config` struct and load it in `Config::load()`
+4. Create a task in `cli/src/tasks/` that consumes the config
+5. Document in CONFIGURATION.md
 
 ### Adding Custom Profiles
 
-1. Define in `profiles.ini`
+1. Define in `conf/profiles.ini`
 2. Add sections to configuration files
-3. Map files in `manifest.ini`
+3. Map files in `conf/manifest.ini`
 
 ## Performance Considerations
+
+### Binary Distribution
+
+- Pre-compiled binaries eliminate the need for a Rust toolchain on end-user machines
+- The version cache (`.dotfiles-version-cache`, 1 hour TTL) avoids GitHub API calls on every invocation
+- Offline fallback: if GitHub is unreachable and a local binary exists, it is used as-is
+
+### Compiled Binary
+
+- Release builds use LTO, single codegen unit, and size optimization (`opt-level = "z"`)
+- Binary is stripped in CI for minimal size
+- Startup and execution are significantly faster than interpreted shell scripts
 
 ### Sparse Checkout Benefits
 
 - Reduces disk usage (only relevant files checked out)
 - Faster git operations (fewer files to track)
 - Cleaner workspace (no irrelevant files)
-
-### Parallel Operations
-
-Most operations are sequential for simplicity and reliability. Potential parallelization opportunities:
-- Package installation (requires dependency analysis)
-- Symlink creation (safe to parallelize)
-- VS Code extension installation (already handled by `code` CLI)
-
-### Caching
-
-- Package manager caches (pacman, winget) handle package caching
-- Git sparse checkout caches file exclusions
-- No application-level caching needed
 
 ## Security Considerations
 
@@ -389,6 +348,11 @@ Pre-commit hook scans for sensitive data:
 - Private keys
 - Cloud provider credentials
 - Generic high-entropy secrets
+
+### Binary Verification
+
+- Release binaries include SHA-256 checksums (`checksums.sha256`)
+- Both shell wrappers verify the checksum after download
 
 ### Symlink Safety
 

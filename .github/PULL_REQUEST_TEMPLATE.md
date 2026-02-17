@@ -22,11 +22,11 @@
 
 ## Testing Performed
 <!-- Describe the testing you've done -->
-- [ ] Ran `./dotfiles.sh -T` (static analysis and validation)
+- [ ] Ran `./dotfiles.sh test` (static analysis and validation)
 - [ ] Tested installation with affected profile(s)
 - [ ] Verified idempotency (re-running doesn't cause errors)
-- [ ] Tested in dry-run mode (`./dotfiles.sh -I --dry-run`)
-- [ ] Tested with verbose mode (`./dotfiles.sh -I -v`)
+- [ ] Tested in dry-run mode (`./dotfiles.sh install -d`)
+- [ ] Tested with verbose mode (`./dotfiles.sh install -v`)
 
 **Test environment:**
 - OS: <!-- e.g., Arch Linux, Ubuntu, Windows 11 -->
@@ -48,11 +48,9 @@
 - [ ] Code comments added/updated for complex logic
 
 ## Checklist
-- [ ] Code follows POSIX sh compatibility (for shell scripts)
-- [ ] PowerShell functions follow Verb-Noun naming convention
-- [ ] All new scripts are idempotent
-- [ ] No trailing whitespace in any files
-- [ ] Used existing logging helpers (`log_stage`, `log_verbose`, etc.)
+- [ ] Rust code passes `cargo fmt --check` and `cargo clippy -- -D warnings`
+- [ ] Shell wrappers follow POSIX sh compatibility
+- [ ] All new tasks are idempotent
 - [ ] Added items to INI config files rather than hardcoding
 - [ ] CI checks pass (automatically verified)
 

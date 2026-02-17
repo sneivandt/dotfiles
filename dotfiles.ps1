@@ -1,65 +1,263 @@
 <#
 .SYNOPSIS
-    Windows bootstrap entry point for dotfiles repository.
+    PowerShell entry point for dotfiles management engine.
 .DESCRIPTION
-    This script is a thin wrapper around the Dotfiles PowerShell module.
-    It loads the module and calls Install-Dotfiles to perform a full setup:
-      * Git configuration (Initialize-GitConfig)
-      * Repository update (Update-DotfilesRepository)
-      * Git hooks installation (Install-RepositoryGitHooks)
-      * Dotfiles module installation (Install-DotfilesModule)
-      * Package installation (Install-Packages)
-      * Registry configuration (Sync-Registry / conf/registry.ini)
-      * Symlink creation (Install-Symlinks)
-      * VS Code Extensions (Install-VsCodeExtensions)
+    Thin wrapper that downloads (or builds with -Build) the dotfiles Rust binary
+    and forwards all arguments to it. Works on both Windows and Linux (pwsh).
 
-    Registry operations and symlink creation require administrator privileges
-    when not in dry-run mode.
-
-    The script always uses the "windows" profile. Profile selection is not
-    supported on Windows.
+    Default: downloads the latest published binary from GitHub Releases.
+    -Build:  builds the Rust binary from source (requires cargo).
+.PARAMETER Action
+    Subcommand to run: install, uninstall, test, or version.
+.PARAMETER Build
+    Build and run from source instead of using the published binary.
+.PARAMETER ProfileName
+    Profile to use (base, arch, desktop, arch-desktop, windows).
 .PARAMETER DryRun
-    When specified, logs all actions that would be taken without making
-    system modifications. Use -Verbose for detailed output.
-.NOTES
-    Compatible with both PowerShell Core (pwsh) and Windows PowerShell (5.1+)
-    Admin: Required for registry modification and symlink creation
-           (not required in dry-run mode)
+    Preview changes without applying them.
 .EXAMPLE
-    PS> .\dotfiles.ps1
-    Executes complete provisioning sequence with "windows" profile.
+    PS> .\dotfiles.ps1 install -p windows -d
 .EXAMPLE
-    PS> .\dotfiles.ps1 -DryRun
-    Show what would be changed without making modifications.
-.EXAMPLE
-    PS> .\dotfiles.ps1 -Verbose
-    Show detailed installation progress.
+    PS> .\dotfiles.ps1 -Build install -p arch
 #>
 
 [CmdletBinding()]
 param (
-    [Parameter(Mandatory = $false)]
-    [switch]
-    $DryRun
+    [Parameter(Position = 0)]
+    [ValidateSet('install', 'uninstall', 'test', 'version')]
+    [string]$Action,
+
+    [switch]$Build,
+
+    [ValidateSet('base', 'arch', 'desktop', 'arch-desktop', 'windows')]
+    [Alias('p')]
+    [string]$ProfileName,
+
+    [Alias('d')]
+    [switch]$DryRun
 )
 
-# Set DOTFILES_ROOT environment variable so the module can find the repository
-# This ensures that even if the module is loaded from an installed location,
-# it will use the repository as the source for updates
-$env:DOTFILES_ROOT = $PSScriptRoot
+$ErrorActionPreference = 'Stop'
+$DotfilesRoot = $PSScriptRoot
+$Repo = "sneivandt/dotfiles"
+$BinDir = Join-Path $DotfilesRoot "bin"
+$CacheFile = Join-Path $DotfilesRoot ".dotfiles-version-cache"
+$CacheMaxAge = 3600
 
-# Import the Dotfiles module from the repository
-$modulePath = Join-Path $PSScriptRoot "src\windows\Dotfiles.psm1"
+# Build CLI arguments from declared parameters
+$CliArgs = @()
+if ($ProfileName) { $CliArgs += '--profile'; $CliArgs += $ProfileName }
+if ($DryRun) { $CliArgs += '--dry-run' }
+if ($VerbosePreference -ne 'SilentlyContinue') { $CliArgs += '--verbose' }
+if ($Action) { $CliArgs += $Action }
 
-try
+# Platform detection
+if ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
 {
-    Import-Module $modulePath -Force -ErrorAction Stop
-
-    # Call Install-Dotfiles with the same parameters
-    Install-Dotfiles -DryRun:$DryRun -Verbose:($VerbosePreference -eq 'Continue') -ErrorAction Stop
+    $BinaryName = "dotfiles.exe"
+    $AssetName = "dotfiles-windows-x86_64.exe"
 }
-catch
+else
 {
-    Write-Error "Failed to run dotfiles installation: $_"
+    $BinaryName = "dotfiles"
+    $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'aarch64' } else { 'x86_64' }
+    $AssetName = "dotfiles-linux-$arch"
+}
+$Binary = Join-Path $BinDir $BinaryName
+
+# Auto-elevate to administrator on Windows when not in dry-run mode
+if (-not $DryRun -and ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT')))
+{
+    $currentPrincipal = New-Object Security.Principal.WindowsPrincipal(
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    )
+    $isAdmin = $currentPrincipal.IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator
+    )
+    if (-not $isAdmin)
+    {
+        Write-Output "Not running as administrator. Requesting elevation..."
+
+        if ($PSVersionTable.PSEdition -eq 'Core')
+        {
+            $psExe = 'pwsh'
+        }
+        else
+        {
+            $psExe = 'powershell'
+        }
+
+        $scriptArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
+        if ($Build) { $scriptArgs += '-Build' }
+        if ($ProfileName) { $scriptArgs += '-ProfileName'; $scriptArgs += $ProfileName }
+        if ($DryRun) { $scriptArgs += '-DryRun' }
+        if ($PSBoundParameters.ContainsKey('Verbose')) { $scriptArgs += '-Verbose' }
+        if ($Action) { $scriptArgs += $Action }
+
+        try
+        {
+            $process = Start-Process -FilePath $psExe -ArgumentList $scriptArgs -Verb RunAs -PassThru
+            Write-Output "Elevated PowerShell window opened (PID: $($process.Id))."
+            exit 0
+        }
+        catch [System.ComponentModel.Win32Exception]
+        {
+            if ($_.Exception.NativeErrorCode -eq 1223)
+            {
+                Write-Error "UAC elevation was cancelled. Administrator privileges are required. Use -d (dry-run) to preview changes."
+            }
+            else
+            {
+                Write-Error "Failed to elevate: $($_.Exception.Message)"
+            }
+            exit 1
+        }
+        catch
+        {
+            Write-Error "Failed to start elevated process: $($_.Exception.Message)"
+            exit 1
+        }
+    }
+}
+
+# Build mode: build from source
+if ($Build)
+{
+    if (-not (Get-Command cargo -ErrorAction SilentlyContinue))
+    {
+        Write-Error "cargo not found. Install Rust to use -Build mode."
+        exit 1
+    }
+    Push-Location (Join-Path $DotfilesRoot "cli")
+    try
+    {
+        cargo build --release --quiet
+        $BuildBinary = Join-Path $DotfilesRoot (Join-Path "cli" (Join-Path "target" (Join-Path "release" $BinaryName)))
+        & $BuildBinary --root $DotfilesRoot @CliArgs
+        exit $LASTEXITCODE
+    }
+    finally
+    {
+        Pop-Location
+    }
+}
+
+# Production mode: ensure latest binary
+function Get-LocalVersion
+{
+    if (Test-Path $Binary)
+    {
+        $output = & $Binary version 2>$null
+        if ($output -match 'dotfiles\s+(.+)')
+        {
+            return $Matches[1]
+        }
+    }
+    return "none"
+}
+
+function Get-LatestVersion
+{
+    try
+    {
+        $response = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 10
+        return $response.tag_name
+    }
+    catch
+    {
+        return ""
+    }
+}
+
+function Get-Binary
+{
+    param ([string]$Version)
+
+    $url = "https://github.com/$Repo/releases/download/$Version/$AssetName"
+
+    if (-not (Test-Path $BinDir))
+    {
+        New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+    }
+
+    Write-Information "Downloading dotfiles $Version..."
+    Invoke-WebRequest -Uri $url -OutFile $Binary -UseBasicParsing
+
+    # Verify checksum
+    $checksumUrl = "https://github.com/$Repo/releases/download/$Version/checksums.sha256"
+    try
+    {
+        $checksums = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing).Content
+        $checksumMatch = [System.IO.Path]::GetFileNameWithoutExtension($AssetName)
+        $expected = ($checksums -split "`n" | Where-Object { $_ -match $checksumMatch }) -replace '\s+.*', ''
+        $actual = (Get-FileHash -Path $Binary -Algorithm SHA256).Hash.ToLower()
+        if ($expected -and ($expected -ne $actual))
+        {
+            Remove-Item $Binary -Force
+            Write-Error "Checksum verification failed!"
+            exit 1
+        }
+    }
+    catch
+    {
+        Write-Verbose "Could not verify checksum: $_"
+    }
+
+    # Make binary executable on Linux
+    if ($IsLinux -or $IsMacOS)
+    {
+        chmod +x $Binary
+    }
+}
+
+function Write-CacheFile
+{
+    param ([string]$Version)
+    @($Version, [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) | Set-Content $CacheFile
+}
+
+function Test-CacheFresh
+{
+    if (-not (Test-Path $CacheFile))
+    {
+        return $false
+    }
+    $lines = Get-Content $CacheFile
+    if ($lines.Count -lt 2)
+    {
+        return $false
+    }
+    $cachedTs = [int]$lines[1]
+    $now = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    return (($now - $cachedTs) -lt $CacheMaxAge)
+}
+
+# Ensure binary is present and up to date
+$localVersion = Get-LocalVersion
+
+if (($localVersion -ne "none") -and (Test-CacheFresh))
+{
+    & $Binary --root $DotfilesRoot @CliArgs
+    exit $LASTEXITCODE
+}
+
+$latest = Get-LatestVersion
+if ([string]::IsNullOrEmpty($latest))
+{
+    if ($localVersion -ne "none")
+    {
+        & $Binary --root $DotfilesRoot @CliArgs
+        exit $LASTEXITCODE
+    }
+    Write-Error "Cannot determine latest version and no local binary found. Use -Build to build from source."
     exit 1
 }
+
+if (($localVersion -eq "none") -or ($localVersion -ne $latest))
+{
+    Get-Binary -Version $latest
+}
+
+Write-CacheFile -Version $latest
+& $Binary --root $DotfilesRoot @CliArgs
+exit $LASTEXITCODE

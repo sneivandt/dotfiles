@@ -1,8 +1,6 @@
 # Windows Usage
 
-Windows automation for the dotfiles project. The PowerShell entrypoint (`dotfiles.ps1`) provides registry personalization, symlinks, package installation, VS Code extensions, and GitHub Copilot CLI skills in an idempotent fashion.
-
-The dotfiles installer installs itself as a PowerShell module, making the `Install-Dotfiles` command available from anywhere in PowerShell.
+Windows dotfiles management powered by the Rust core engine. The PowerShell entrypoint (`dotfiles.ps1`) is a thin wrapper that downloads (or builds) the Rust binary and forwards all arguments to it, providing registry personalization, symlinks, package installation, VS Code extensions, and GitHub Copilot CLI skills in an idempotent fashion.
 
 **See Also:**
 - [Usage Guide](USAGE.md) - General usage instructions
@@ -16,7 +14,7 @@ The dotfiles installer installs itself as a PowerShell module, making the `Insta
 - **PowerShell**: Compatible with both PowerShell Core (pwsh) and Windows PowerShell (5.1+)
 - **Administrator privileges**: Required for registry modification and symlink creation (not needed for dry-run mode)
 
-The Windows script always uses the "windows" profile (profile selection is not available on Windows).
+The Windows profile is used by default when running on Windows.
 
 ### Initial Installation
 
@@ -25,52 +23,38 @@ Open an elevated PowerShell session (either PowerShell Core or Windows PowerShel
 ```powershell
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-./dotfiles.ps1
+.\dotfiles.ps1 install -p windows
 
 # Dry-run mode (preview changes without modification, no admin required)
-./dotfiles.ps1 -DryRun
+.\dotfiles.ps1 install -p windows -d
 
 # With verbose output
-./dotfiles.ps1 -Verbose
+.\dotfiles.ps1 install -p windows -v
 
-# Dry-run with verbose output
-./dotfiles.ps1 -DryRun -Verbose
+# Build and run from source (development)
+.\dotfiles.ps1 -Build install -p windows
 ```
 
-### Using the Module Commands
+Re‑run the script at any time; operations are skipped when already satisfied (extensions installed, registry values unchanged, symlinks existing).
 
-After the initial installation, the dotfiles are available as a PowerShell module command:
+## What the Binary Does
 
-```powershell
-# Install or update dotfiles from anywhere
-Install-Dotfiles
+`dotfiles.ps1` downloads (or builds) the Rust binary and forwards all arguments to it. The binary runs the following tasks on Windows:
 
-# Preview changes without modification
-Install-Dotfiles -DryRun -Verbose
+| Step | Task | Description | Idempotency Cue |
+|------|------|-------------|-----------------|
+| 1 | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
+| 2 | Update Repository | Updates the repository from remote. | Skips if already up to date. |
+| 3 | Git Hooks | Installs repository git hooks. | Skips if hooks already installed. |
+| 4 | Packages | Installs missing packages from `conf/packages.ini` using winget. | Skips already-installed packages. |
+| 5 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.ini`. | Only creates links whose targets do not already exist. |
+| 6 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.ini`. | Checks against `code --list-extensions`. |
+| 7 | Copilot Skills | Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`. | Skips if skill files already exist. |
+| 8 | Registry | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
+| 9 | Git Config | Configures git settings (e.g., `core.symlinks=false`). | Skips if already configured. |
 
-# Get help
-Get-Help Install-Dotfiles -Full
-```
+Tasks that don't apply to Windows (systemd, shell, chmod, fonts, paru) are automatically skipped via platform detection.
 
-The module command can be run from any directory without needing to navigate to the dotfiles repository.
-
-Re‑run the script or commands at any time; operations are skipped when already satisfied (extensions installed, registry values unchanged, symlinks existing).
-
-## What the Script Does
-
-`dotfiles.ps1` loads each module under `src/windows` and executes these functions in order:
-
-| Step | Module | Function | Description | Idempotency Cue |
-|------|--------|----------|-------------|-----------------|
-| 1 | `Git.psm1` | `Initialize-GitConfig` | Configures Git to handle symlinks as text files on Windows. | Only sets `core.symlinks=false` if not already configured. |
-| 2 | `Git.psm1` | `Update-DotfilesRepository` | Updates the repository from remote with automatic stashing of local changes. | Skips if already up to date; stashes and re-applies local changes automatically. |
-| 3 | `GitHooks.psm1` | `Install-RepositoryGitHooks` | Installs git hooks for the repository. | Skips if hooks already installed. |
-| 4 | `Module.psm1` | `Install-DotfilesModule` | Installs the Dotfiles PowerShell module to the user's modules directory. | Skips if module already installed and up to date. |
-| 5 | `Packages.psm1` | `Install-Packages` | Installs missing packages from `conf/packages.ini` using winget. | Skips already-installed packages. |
-| 6 | `Registry.psm1` | `Sync-Registry` | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
-| 7 | `Symlinks.psm1` | `Install-Symlinks` | Creates Windows user profile symlinks from `conf/symlinks.ini` filtered by profile. | Only creates links whose targets do not already exist. |
-| 8 | `VsCodeExtensions.psm1` | `Install-VsCodeExtensions` | Ensures VS Code extensions listed in `conf/vscode-extensions.ini` are installed. | Checks against `code --list-extensions`. |
-| 9 | `CopilotSkills.psm1` | `Install-CopilotSkills` | Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`. | Skips if skill files already exist with same content. |
 ## Git Configuration
 
 The repository contains symlinks (e.g., `symlinks/config/nvim` → `../vim`) that are tracked in Git. On Windows, creating actual symlinks during Git operations requires either Developer Mode enabled or Administrator privileges.
@@ -85,7 +69,7 @@ This configuration:
 - Prevents `error: unable to create symlink: Permission denied` during Git operations
 - Stores symlink targets as plain text files in the working directory
 - Is applied automatically on first run (idempotent—won't change if already set)
-- Does not affect the actual Windows symlink creation by `Install-Symlinks` (which creates proper symlinks in your user profile)
+- Does not affect the actual Windows symlink creation by the binary (which creates proper symlinks in your user profile)
 
 **Manual Configuration:** If you encounter symlink errors before running the script (e.g., during initial `git clone` or `git pull`), run:
 ```powershell
@@ -94,7 +78,7 @@ git config core.symlinks false
 
 ## Automatic Repository Updates
 
-The installation process includes an automatic repository update step (`Update-DotfilesRepository`) that safely updates the dotfiles repository from the remote with robust handling of local changes:
+The installation process includes an automatic repository update task that safely updates the dotfiles repository from the remote:
 
 ### How It Works
 
@@ -146,7 +130,7 @@ Microsoft.PowerShell
 Microsoft.VisualStudioCode
 ```
 
-Each line is a **winget package ID** (case-sensitive). The script:
+Each line is a **winget package ID** (case-sensitive). The binary:
 - Checks if each package is already installed (idempotent)
 - Installs only missing packages
 - Uses silent installation with automatic acceptance of licenses
@@ -246,24 +230,20 @@ https://github.com/microsoft/skills/blob/main/.github/skills/azure-identity-dotn
 
 ## Updating
 
-The dotfiles repository is automatically updated during installation via the `Update-DotfilesRepository` function, which handles local changes safely.
+The dotfiles repository is automatically updated during installation. The binary handles local changes safely.
 
 ### Automatic Updates (Recommended)
 
-Simply re-run the installer or use the module command:
+Simply re-run the installer:
 
 ```powershell
-# Using the module command (available anywhere)
-Install-Dotfiles
-
-# Or re-run the installer script
-./dotfiles.ps1
+.\dotfiles.ps1 install -p windows
 ```
 
-Both methods automatically:
-- Stash any local changes
-- Fetch and merge updates from remote
-- Re-apply your local changes
+The binary automatically:
+- Stashes any local changes
+- Fetches and merges updates from remote
+- Re-applies your local changes
 
 See the [Automatic Repository Updates](#automatic-repository-updates) section for details on conflict handling.
 
@@ -273,7 +253,7 @@ If you prefer to update manually:
 
 ```powershell
 git pull
-./dotfiles.ps1
+.\dotfiles.ps1 install -p windows
 ```
 
 Note: Manual `git pull` may require stashing your changes first if the working tree is dirty.
@@ -300,7 +280,6 @@ The log file is useful for troubleshooting installation issues or reviewing what
 The installation tracks various operations and displays a summary at the end:
 
 - **Packages installed**: Number of winget packages installed
-- **PowerShell modules installed**: Number of times the Dotfiles module was installed/updated
 - **Symlinks created**: Number of symlinks created in user profile
 - **VS Code extensions installed**: Number of extensions installed
 - **Copilot skills installed**: Number of GitHub Copilot CLI skills downloaded
@@ -308,7 +287,7 @@ The installation tracks various operations and displays a summary at the end:
 
 ### Dry-Run Mode
 
-When using `-DryRun`, the logging system:
+When using `-d` (dry-run), the logging system:
 - Shows what would be done without making changes
 - Tracks counters for operations that would be performed
 - Labels summary with "(would be)" suffix
@@ -318,7 +297,6 @@ Example summary output:
 ```
 :: Installation Summary
 Packages installed: 3
-PowerShell modules installed: 1
 Symlinks created: 5
 VS Code extensions installed: 2
 Copilot skills installed: 2
@@ -330,7 +308,6 @@ In dry-run mode:
 ```
 :: Installation Summary
 Packages installed (would be): 3
-PowerShell modules installed (would be): 1
 Symlinks created (would be): 5
 Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
 ```
@@ -347,10 +324,10 @@ Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
 ## Safety & Idempotency Notes
 
 * **Cross-Edition Compatible**: Scripts work with both PowerShell Core and Windows PowerShell (5.1+)
-* **Dry-Run Mode**: The `-DryRun` parameter allows previewing changes without administrator privileges
-* Script does not delete existing regular files that block symlink creation; you'll need to back them up and remove manually
+* **Dry-Run Mode**: The `-d` (dry-run) flag allows previewing changes without administrator privileges
+* The binary does not delete existing regular files that block symlink creation; you'll need to back them up and remove manually
 * Registry writes are limited to HKCU (user scope) console keys and additional configured paths; no HKLM modifications occur
-* Re-running is safe; modules emit section headers only when performing actions
+* Re-running is safe; tasks skip work that is already complete
 
 ## See Also
 

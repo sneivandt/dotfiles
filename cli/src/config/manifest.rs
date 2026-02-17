@@ -6,9 +6,6 @@ use super::ini;
 /// Sparse checkout manifest — files to exclude by category.
 #[derive(Debug, Clone)]
 pub struct Manifest {
-    /// Files that should be present (not excluded).
-    #[allow(dead_code)]
-    pub included_files: Vec<String>,
     /// Files that should be excluded (in excluded categories).
     pub excluded_files: Vec<String>,
 }
@@ -20,7 +17,6 @@ pub struct Manifest {
 pub fn load(path: &Path, excluded_categories: &[String]) -> Result<Manifest> {
     let sections = ini::parse_sections(path)?;
 
-    let mut included_files = Vec::new();
     let mut excluded_files = Vec::new();
 
     for section in &sections {
@@ -30,19 +26,12 @@ pub fn load(path: &Path, excluded_categories: &[String]) -> Result<Manifest> {
             .iter()
             .any(|cat| excluded_categories.contains(cat));
 
-        for item in &section.items {
-            if should_exclude {
-                excluded_files.push(item.clone());
-            } else {
-                included_files.push(item.clone());
-            }
+        if should_exclude {
+            excluded_files.extend(section.items.iter().cloned());
         }
     }
 
-    Ok(Manifest {
-        included_files,
-        excluded_files,
-    })
+    Ok(Manifest { excluded_files })
 }
 
 #[cfg(test)]
@@ -57,21 +46,15 @@ mod tests {
 
         // Excluding 'windows' should exclude file3
         let excluded = ["windows".to_string()];
-        let mut included = Vec::new();
         let mut excluded_files = Vec::new();
 
         for section in &sections {
             let should_exclude = section.categories.iter().any(|cat| excluded.contains(cat));
-            for item in &section.items {
-                if should_exclude {
-                    excluded_files.push(item.clone());
-                } else {
-                    included.push(item.clone());
-                }
+            if should_exclude {
+                excluded_files.extend(section.items.iter().cloned());
             }
         }
 
-        assert_eq!(included, vec!["file1", "file2", "file4"]);
         assert_eq!(excluded_files, vec!["file3"]);
     }
 

@@ -2,8 +2,6 @@ use anyhow::{Context, Result, bail};
 use std::path::Path;
 use std::process::{Command, Output};
 
-use crate::logging::Logger;
-
 /// Result of a command execution.
 #[derive(Debug)]
 pub struct ExecResult {
@@ -79,20 +77,6 @@ pub fn run_unchecked(program: &str, args: &[&str]) -> Result<ExecResult> {
     Ok(ExecResult::from(output))
 }
 
-/// Run a command with output inherited to the terminal (for interactive commands).
-#[allow(dead_code)]
-pub fn run_interactive(program: &str, args: &[&str]) -> Result<bool> {
-    let status = Command::new(program)
-        .args(args)
-        .stdin(std::process::Stdio::inherit())
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .status()
-        .with_context(|| format!("failed to execute: {program}"))?;
-
-    Ok(status.success())
-}
-
 /// Check if a program is available on PATH.
 #[must_use]
 pub fn which(program: &str) -> bool {
@@ -103,24 +87,6 @@ pub fn which(program: &str) -> bool {
     let check = Command::new("which").arg(program).output();
 
     check.is_ok_and(|o| o.status.success())
-}
-
-/// Run a command with dry-run guard. If `dry_run` is true, logs the command
-/// instead of executing it. Returns Ok(None) for dry-run, Ok(Some(result))
-/// for real execution.
-#[allow(dead_code)]
-pub fn run_guarded(
-    dry_run: bool,
-    log: &Logger,
-    program: &str,
-    args: &[&str],
-) -> Result<Option<ExecResult>> {
-    if dry_run {
-        let cmd = format!("{program} {}", args.join(" "));
-        log.dry_run(&cmd);
-        return Ok(None);
-    }
-    run(program, args).map(Some)
 }
 
 #[cfg(test)]
@@ -176,24 +142,6 @@ mod tests {
     #[test]
     fn which_missing_program() {
         assert!(!which("this-program-does-not-exist-12345"));
-    }
-
-    #[test]
-    fn run_guarded_dry_run() {
-        let log = Logger::new(false);
-        let result = run_guarded(true, &log, "echo", &["test"]).unwrap();
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn run_guarded_real() {
-        let log = Logger::new(false);
-        #[cfg(windows)]
-        let result = run_guarded(false, &log, "cmd", &["/C", "echo", "test"]).unwrap();
-        #[cfg(not(windows))]
-        let result = run_guarded(false, &log, "echo", &["test"]).unwrap();
-        assert!(result.is_some());
-        assert!(result.unwrap().success);
     }
 
     #[test]

@@ -12,6 +12,9 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
     let platform = Platform::detect();
     let root = resolve_root(global)?;
 
+    let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    log.info(&format!("dotfiles {version}"));
+
     log.stage("Resolving profile");
     let profile = profiles::resolve_from_args(global.profile.as_deref(), &root, &platform)?;
     log.info(&format!("profile: {}", profile.name));

@@ -77,6 +77,15 @@ get_local_version() {
   fi
 }
 
+# Get the version tag from the cache file (line 1)
+get_cached_version() {
+  if [ -f "$CACHE_FILE" ]; then
+    sed -n '1p' "$CACHE_FILE" 2>/dev/null || echo ""
+  else
+    echo ""
+  fi
+}
+
 # Get the latest release tag from GitHub
 get_latest_version() {
   if command -v curl >/dev/null 2>&1; then
@@ -149,6 +158,7 @@ ensure_binary() {
   if [ -z "$latest" ]; then
     # Can't reach GitHub — use existing binary if available
     if [ "$local_version" != "none" ]; then
+      echo "Using cached dotfiles $local_version (offline)"
       return 0
     fi
     echo "ERROR: Cannot determine latest version and no local binary found." >&2
@@ -156,8 +166,10 @@ ensure_binary() {
     exit 1
   fi
 
-  # Download if missing or outdated
-  if [ "$local_version" = "none" ] || [ "$local_version" != "$latest" ]; then
+  # Compare cached release tag (not binary's self-reported version) to avoid
+  # unnecessary re-downloads when git-describe output differs from release tag.
+  cached=$(get_cached_version)
+  if [ "$local_version" = "none" ] || [ "$cached" != "$latest" ]; then
     download_binary "$latest"
   fi
 

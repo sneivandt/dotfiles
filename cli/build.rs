@@ -1,8 +1,11 @@
 use std::process::Command;
 
 fn main() {
-    // Embed the git tag or describe as the version
-    if let Ok(output) = Command::new("git")
+    // Prefer DOTFILES_VERSION env var if set (e.g., by CI release workflow),
+    // otherwise fall back to git describe for local development builds.
+    if let Ok(version) = std::env::var("DOTFILES_VERSION") {
+        println!("cargo:rustc-env=DOTFILES_VERSION={version}");
+    } else if let Ok(output) = Command::new("git")
         .args(["describe", "--tags", "--always", "--dirty"])
         .output()
         && output.status.success()
@@ -11,7 +14,8 @@ fn main() {
         println!("cargo:rustc-env=DOTFILES_VERSION={version}");
     }
 
-    // Re-run if git HEAD changes
+    // Re-run if git HEAD changes or env var changes
     println!("cargo:rerun-if-changed=../.git/HEAD");
     println!("cargo:rerun-if-changed=../.git/refs/");
+    println!("cargo:rerun-if-env-changed=DOTFILES_VERSION");
 }

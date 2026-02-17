@@ -216,6 +216,19 @@ function Write-CacheFile
     @($Version, [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) | Set-Content $CacheFile
 }
 
+function Get-CachedVersion
+{
+    if (Test-Path $CacheFile)
+    {
+        $lines = Get-Content $CacheFile
+        if ($lines.Count -ge 1)
+        {
+            return $lines[0]
+        }
+    }
+    return ""
+}
+
 function Test-CacheFresh
 {
     if (-not (Test-Path $CacheFile))
@@ -246,6 +259,7 @@ if ([string]::IsNullOrEmpty($latest))
 {
     if ($localVersion -ne "none")
     {
+        Write-Output "Using cached dotfiles $localVersion (offline)"
         & $Binary --root $DotfilesRoot @CliArgs
         exit $LASTEXITCODE
     }
@@ -253,7 +267,10 @@ if ([string]::IsNullOrEmpty($latest))
     exit 1
 }
 
-if (($localVersion -eq "none") -or ($localVersion -ne $latest))
+# Compare cached release tag (not binary's self-reported version) to avoid
+# unnecessary re-downloads when git-describe output differs from release tag.
+$cached = Get-CachedVersion
+if (($localVersion -eq "none") -or ($cached -ne $latest))
 {
     Get-Binary -Version $latest
 }

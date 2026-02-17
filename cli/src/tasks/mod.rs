@@ -37,23 +37,24 @@ impl<'a> Context<'a> {
         log: &'a Logger,
         dry_run: bool,
         verbose: bool,
-    ) -> Self {
+    ) -> Result<Self> {
         let home = if cfg!(target_os = "windows") {
             std::env::var("USERPROFILE")
                 .or_else(|_| std::env::var("HOME"))
-                .expect("neither USERPROFILE nor HOME is set")
+                .map_err(|_| anyhow::anyhow!("neither USERPROFILE nor HOME environment variable is set"))?
         } else {
-            std::env::var("HOME").expect("HOME is not set")
+            std::env::var("HOME")
+                .map_err(|_| anyhow::anyhow!("HOME environment variable is not set"))?
         };
 
-        Self {
+        Ok(Self {
             config,
             platform,
             log,
             dry_run,
             verbose,
             home: std::path::PathBuf::from(home),
-        }
+        })
     }
 
     /// Root directory of the dotfiles repository.

@@ -35,7 +35,7 @@ PATTERNS_FILE="$(dirname "$HOOK_FILE")/sensitive-patterns.ini"
 # Check if patterns file exists
 if [ ! -f "$PATTERNS_FILE" ]; then
   printf "${RED}ERROR: Patterns file not found: %s${NC}\n" "$PATTERNS_FILE"
-  printf "${YELLOW}Cannot perform credential scanning without patterns file.${NC}\n"
+  printf '%sCannot perform credential scanning without patterns file.%s\n' "$YELLOW" "$NC"
   exit 1
 fi
 
@@ -91,8 +91,8 @@ while IFS= read -r file; do
       # Check if any of these matches are in the staged diff
       if echo "$diff" | grep -qiE -- "$pattern"; then
         if [ "$found_secrets" -eq 0 ]; then
-          printf "${RED}ERROR: Potential sensitive information detected!${NC}\n"
-          printf "${RED}======================================================${NC}\n\n"
+          printf '%sERROR: Potential sensitive information detected!%s\n' "$RED" "$NC"
+          printf '%s======================================================%s\n\n' "$RED" "$NC"
           found_secrets=1
         fi
 
@@ -108,10 +108,10 @@ done < "$tmpfile"
 
 # If secrets were found, prevent the commit
 if [ "$found_secrets" -eq 1 ]; then
-  printf "${RED}======================================================${NC}\n"
-  printf "${RED}Commit aborted to prevent leaking sensitive data.${NC}\n"
-  printf "${YELLOW}Please review and remove any sensitive information.${NC}\n"
-  printf "${YELLOW}If this is a false positive, use:${NC}\n"
+  printf '%s======================================================%s\n' "$RED" "$NC"
+  printf '%sCommit aborted to prevent leaking sensitive data.%s\n' "$RED" "$NC"
+  printf '%sPlease review and remove any sensitive information.%s\n' "$YELLOW" "$NC"
+  printf '%sIf this is a false positive, use:%s\n' "$YELLOW" "$NC"
   printf "  git commit --no-verify\n\n"
   exit 1
 fi

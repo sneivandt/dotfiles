@@ -19,7 +19,7 @@ pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Logger) -> Result<(
     log.stage("Loading configuration");
     let config = Config::load(&root, &profile, &platform)?;
 
-    let ctx = Context::new(&config, &platform, log, global.dry_run, false);
+    let ctx = Context::new(&config, &platform, log, global.dry_run, false)?;
 
     let tasks: Vec<Box<dyn Task>> = vec![
         Box::new(tasks::symlinks::UninstallSymlinks),

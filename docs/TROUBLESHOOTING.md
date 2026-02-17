@@ -27,7 +27,7 @@ git config --local --get dotfiles.profile
 git config --local --get dotfiles.profile
 
 # Override with explicit profile
-./dotfiles.sh -I --profile <correct-profile>
+./dotfiles.sh install -p <correct-profile>
 ```
 
 ### Sparse Checkout Issues
@@ -44,7 +44,7 @@ git sparse-checkout list
 git config --local --get dotfiles.profile
 
 # Reapply profile to fix sparse checkout
-./dotfiles.sh -I --profile <your-profile>
+./dotfiles.sh install -p <your-profile>
 
 # Force git to update working directory
 git checkout HEAD -- .
@@ -55,7 +55,7 @@ git checkout HEAD -- .
 
 **Solution**: Use the `arch-desktop` profile, not `arch`:
 ```bash
-./dotfiles.sh -I --profile arch-desktop
+./dotfiles.sh install -p arch-desktop
 ```
 
 The `arch` profile is for headless servers and excludes desktop files.
@@ -72,7 +72,7 @@ git sparse-checkout list
 git sparse-checkout init --cone
 
 # Reapply profile
-./dotfiles.sh -I --profile <your-profile>
+./dotfiles.sh install -p <your-profile>
 ```
 
 ### Symlink Issues
@@ -98,7 +98,7 @@ git sparse-checkout init --cone
 
    # If it's a regular file, back it up and remove
    mv ~/.<path> ~/.<path>.backup
-   ./dotfiles.sh -I
+   ./dotfiles.sh install
    ```
 
 3. **Entry not in correct section**:
@@ -113,7 +113,7 @@ git sparse-checkout init --cone
    # Symlink creation should create parents automatically
    # If not, create manually:
    mkdir -p ~/.config/
-   ./dotfiles.sh -I
+   ./dotfiles.sh install
    ```
 
 #### Symlink points to wrong location
@@ -125,7 +125,7 @@ git sparse-checkout init --cone
 rm ~/.<path>
 
 # Reinstall
-./dotfiles.sh -I
+./dotfiles.sh install
 ```
 
 #### Permission denied creating symlink (Windows)
@@ -156,7 +156,7 @@ rm ~/.<path>
    grep -A2 "\[arch-desktop\]" conf/profiles.ini
 
    # Verify section isn't excluded
-   ./dotfiles.sh -I -v | grep "Skipping section"
+   ./dotfiles.sh install -v | grep "Skipping section"
    ```
 
 3. **Package manager not available**:
@@ -184,7 +184,7 @@ rm ~/.<path>
 which paru
 
 # Install paru if missing
-./dotfiles.sh -I --profile arch-desktop
+./dotfiles.sh install -p arch-desktop
 
 # Try installing package manually to see error
 paru -S <package-name>
@@ -395,8 +395,8 @@ git pull
 # Reapply changes
 git stash pop
 
-# Or let Windows script handle it automatically
-Install-Dotfiles  # Handles stashing automatically
+# Or let the binary handle it automatically
+.\dotfiles.ps1 install -p windows  # Handles stashing automatically
 ```
 
 ### Merge conflicts
@@ -426,40 +426,24 @@ git pull
 git config core.symlinks false
 
 # Or let script configure it automatically
-.\dotfiles.ps1
+.\dotfiles.ps1 install -p windows
 ```
 
 ## Test Failures
 
 ### Shellcheck failures
-**Symptoms**: `./dotfiles.sh -T` reports shellcheck errors.
+**Symptoms**: CI reports shellcheck errors on wrapper scripts.
 
 **Solution**:
 ```bash
 # Run shellcheck directly to see details
-shellcheck src/linux/*.sh
+shellcheck dotfiles.sh install.sh
 
 # Fix issues in reported files
 # Common issues:
 # - Missing quotes around variables
 # - Using non-POSIX features
 # - Undefined variables
-```
-
-### PSScriptAnalyzer failures
-**Symptoms**: Test reports PowerShell script issues.
-
-**Solution**:
-```powershell
-# Run PSScriptAnalyzer directly
-Import-Module PSScriptAnalyzer
-Invoke-ScriptAnalyzer -Path src/windows/ -Recurse
-
-# Fix reported issues
-# Common issues:
-# - Missing parameter validation
-# - Incorrect verb usage
-# - Missing help comments
 ```
 
 ### Configuration validation failures
@@ -473,7 +457,7 @@ Invoke-ScriptAnalyzer -Path src/windows/ -Recurse
 # Verify file references exist
 
 # Run verbose test mode
-./dotfiles.sh -T -v
+./dotfiles.sh test -v
 ```
 
 ## Profile-Specific Issues
@@ -483,7 +467,7 @@ Invoke-ScriptAnalyzer -Path src/windows/ -Recurse
 #### Minimal setup but need more
 **Solution**: Switch to a more complete profile:
 ```bash
-./dotfiles.sh -I --profile arch-desktop
+./dotfiles.sh install -p arch-desktop
 ```
 
 ### Arch Profile
@@ -491,14 +475,15 @@ Invoke-ScriptAnalyzer -Path src/windows/ -Recurse
 #### Desktop files missing
 **Solution**: Use `arch-desktop` instead:
 ```bash
-./dotfiles.sh -I --profile arch-desktop
+./dotfiles.sh install -p arch-desktop
 ```
 
 #### Not on Arch but want to test
-**Solution**: Use `--skip-os-detection` (for testing only):
+**Solution**: Use `-d` (dry-run) to preview what would happen:
 ```bash
-./dotfiles.sh -I --profile arch --skip-os-detection --dry-run
+./dotfiles.sh install -p arch -d
 ```
+Note: OS detection overrides will still exclude incompatible tasks on non-Arch systems.
 
 ### Desktop Profile
 
@@ -506,7 +491,7 @@ Invoke-ScriptAnalyzer -Path src/windows/ -Recurse
 **Solution**: Desktop profile intentionally excludes OS-specific packages. Use OS-specific profile:
 ```bash
 # For Arch Linux
-./dotfiles.sh -I --profile arch-desktop
+./dotfiles.sh install -p arch-desktop
 ```
 
 ### Windows Profile
@@ -527,7 +512,7 @@ Invoke-ScriptAnalyzer -Path src/windows/ -Recurse
 **Solution**:
 ```bash
 # Run with verbose mode to see skip reasons
-./dotfiles.sh -I --dry-run -v
+./dotfiles.sh install -d -v
 ```
 
 ## Verbose Mode Issues
@@ -536,8 +521,8 @@ Invoke-ScriptAnalyzer -Path src/windows/ -Recurse
 **Symptoms**: Verbose mode shows overwhelming amount of information.
 
 **Solution**:
-- Redirect to file: `./dotfiles.sh -I -v 2>&1 | tee install.log`
-- Use dry-run first to estimate scope: `./dotfiles.sh -I --dry-run`
+- Redirect to file: `./dotfiles.sh install -v 2>&1 | tee install.log`
+- Use dry-run first to estimate scope: `./dotfiles.sh install -d`
 - Check log file instead: `cat ~/.cache/dotfiles/install.log`
 
 ## Docker Issues
@@ -575,12 +560,12 @@ If you're still experiencing issues:
 
 2. **Run with verbose mode**:
    ```bash
-   ./dotfiles.sh -I -v
+   ./dotfiles.sh install -v
    ```
 
 3. **Run tests**:
    ```bash
-   ./dotfiles.sh -T -v
+   ./dotfiles.sh test -v
    ```
 
 4. **Check existing issues**:

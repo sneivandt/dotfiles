@@ -42,29 +42,34 @@ docker pull sneivandt/dotfiles:v1.0.0
 
 ## Dockerfile Overview
 
-The Dockerfile builds an Ubuntu-based environment with dotfiles:
+The Dockerfile uses a multi-stage build:
+
+1. **Builder stage**: Compiles the Rust binary from `cli/` using cargo
+2. **Runtime stage**: Ubuntu-based image with the pre-compiled binary
 
 ```dockerfile
+# Stage 1: Build the Rust binary
+FROM ubuntu:latest AS builder
+RUN apt-get update && apt-get install -y ca-certificates curl git
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+WORKDIR /build
+COPY cli/ cli/
+COPY .git .git
+RUN cargo build --release --manifest-path cli/Cargo.toml && strip cli/target/release/dotfiles
+
+# Stage 2: Runtime image
 FROM ubuntu:latest
-
-# Install packages
-RUN apt-get update && apt-get install -y \
-    git vim zsh tmux \
-    ca-certificates curl
-
-# Add user
+RUN apt-get update && apt-get install -y git vim zsh tmux ...
 RUN useradd -m -s /bin/zsh sneivandt
-WORKDIR /home/sneivandt
-
-# Install dotfiles
-COPY --chown=sneivandt:sneivandt . /home/sneivandt/dotfiles/
+COPY --chown=sneivandt:sneivandt conf /home/sneivandt/dotfiles/conf
+COPY --chown=sneivandt:sneivandt symlinks /home/sneivandt/dotfiles/symlinks
+COPY --from=builder /build/cli/target/release/dotfiles /home/sneivandt/dotfiles/bin/dotfiles
 USER sneivandt
-RUN /home/sneivandt/dotfiles/dotfiles.sh --install --profile base
-
+RUN /home/sneivandt/dotfiles/bin/dotfiles --root /home/sneivandt/dotfiles -p base install
 CMD ["/usr/bin/zsh"]
 ```
 
-For an Arch Linux variant, see the examples below.
+See the actual [`Dockerfile`](../Dockerfile) for the full implementation with BuildKit cache mounts and locale configuration.
 
 ## Use Cases
 
@@ -161,7 +166,7 @@ USER dotfiles
 WORKDIR /home/dotfiles
 RUN git clone https://github.com/sneivandt/dotfiles.git && \
     cd dotfiles && \
-    ./dotfiles.sh -I --profile base
+    ./dotfiles.sh install -p base
 
 WORKDIR /home/dotfiles/dotfiles
 CMD ["/bin/bash"]
@@ -187,7 +192,7 @@ USER dotfiles
 WORKDIR /home/dotfiles
 RUN git clone https://github.com/sneivandt/dotfiles.git && \
     cd dotfiles && \
-    ./dotfiles.sh -I --profile arch-desktop
+    ./dotfiles.sh install -p arch-desktop
 
 WORKDIR /home/dotfiles
 CMD ["/bin/zsh"]
@@ -212,7 +217,7 @@ WORKDIR /home/dotfiles
 
 RUN git clone https://github.com/sneivandt/dotfiles.git
 WORKDIR /home/dotfiles/dotfiles
-RUN ./dotfiles.sh -I --profile base
+RUN ./dotfiles.sh install -p base
 
 # Stage 2: Runtime
 FROM archlinux:latest
@@ -244,7 +249,7 @@ FROM archlinux:latest
 
 RUN git clone ${DOTFILES_REPO} dotfiles
 WORKDIR /home/dotfiles/dotfiles
-RUN ./dotfiles.sh -I --profile ${PROFILE}
+RUN ./dotfiles.sh install -p ${PROFILE}
 ```
 
 Build with custom arguments:

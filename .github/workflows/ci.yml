@@ -10,6 +10,136 @@ permissions:
   contents: read
 
 jobs:
+  # Rust formatting check
+  rust-fmt:
+    name: Rust Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --check --manifest-path cli/Cargo.toml
+
+  # Rust linting
+  rust-clippy:
+    name: Rust Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('cli/Cargo.lock') }}
+
+      - name: Run clippy
+        run: cargo clippy --manifest-path cli/Cargo.toml -- -D warnings
+
+  # Rust tests
+  rust-test:
+    name: Rust Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('cli/Cargo.lock') }}
+
+      - name: Run tests
+        run: cargo test --manifest-path cli/Cargo.toml
+
+  # Build Linux binary
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('cli/Cargo.lock') }}
+
+      - name: Build release binary
+        run: cargo build --release --manifest-path cli/Cargo.toml
+
+      - name: Verify binary runs
+        run: ./cli/target/release/dotfiles version
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotfiles-linux
+          path: cli/target/release/dotfiles
+          retention-days: 1
+
+  # Build Windows binary
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('cli/Cargo.lock') }}
+
+      - name: Build release binary
+        run: cargo build --release --manifest-path cli/Cargo.toml
+
+      - name: Verify binary runs
+        run: .\cli\target\release\dotfiles.exe version
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotfiles-windows
+          path: cli/target/release/dotfiles.exe
+          retention-days: 1
+
   # Configuration validation and INI file syntax checks
   validate-config:
     name: Validate Config - ${{ matrix.name }}
@@ -37,10 +167,8 @@ jobs:
         run: |
           DIR="$(pwd)"
           export DIR
-          export OPT=""
-          . ./src/linux/logger.sh
-          . ./src/linux/utils.sh
-          . ./test/linux/test-config.sh
+          cd .github/workflows/scripts/linux
+          . ./test-config.sh
           test_${{ matrix.test }}
 
   # Static analysis - shellcheck and PSScriptAnalyzer
@@ -79,16 +207,15 @@ jobs:
         run: |
           DIR="$(pwd)"
           export DIR
-          export OPT=""
-          . ./src/linux/logger.sh
-          . ./src/linux/utils.sh
-          . ./test/linux/test-static-analysis.sh
+          cd .github/workflows/scripts/linux
+          . ./test-static-analysis.sh
           ${{ matrix.test_function }}
 
   # Application tests
   test-applications:
     name: Test Application - ${{ matrix.application }}
     runs-on: ubuntu-latest
+    needs: [build-linux]
     strategy:
       matrix:
         include:
@@ -113,74 +240,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ${{ matrix.packages }}
 
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: dotfiles-linux
+          path: bin/
+
       - name: Install base profile
         run: |
-          ./dotfiles.sh --install --profile base -v
+          chmod +x bin/dotfiles
+          ./bin/dotfiles --root . -p base install -v
 
       - name: Run ${{ matrix.application }} tests
         run: |
           DIR="$(pwd)"
           export DIR
-          export OPT=""
-          . ./src/linux/logger.sh
-          . ./src/linux/utils.sh
-          . ./.github/workflows/scripts/linux/test-applications.sh
+          cd .github/workflows/scripts/linux
+          . ./test-applications.sh
           for test in ${{ matrix.tests }}; do
             test_${{ matrix.application }}_${test}
           done
-
-  # Test Linux profiles
-  test-linux-profiles:
-    name: Test Linux - ${{ matrix.profile }}
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - profile: base
-            skip_os: false
-          - profile: arch
-            skip_os: true
-          - profile: arch-desktop
-            skip_os: true
-          - profile: desktop
-            skip_os: false
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Test dry-run installation
-        run: |
-          SKIP_OS_FLAG="${{ matrix.skip_os && '--skip-os-detection' || '' }}"
-          ./dotfiles.sh --install --profile ${{ matrix.profile }} --dry-run $SKIP_OS_FLAG -v 2>&1 | tee ${{ matrix.profile }}-output.log
-
-      - name: Verify sparse checkout configuration
-        run: ./.github/workflows/scripts/verify/verify-sparse-checkout.sh
-
-      - name: Verify profile-specific symlinks
-        run: ./.github/workflows/scripts/verify/verify-profile.sh ${{ matrix.profile }} ${{ matrix.profile }}-output.log
-
-      - name: Test profile idempotency
-        run: |
-          DIR="$(pwd)"
-          export DIR
-          export OPT=""
-          SKIP_OS_FLAG="${{ matrix.skip_os && '--skip-os-detection' || '' }}"
-          . ./src/linux/logger.sh
-          . ./src/linux/utils.sh
-          . ./.github/workflows/scripts/linux/test-idempotency.sh
-          test_idempotency_install_${{ matrix.profile == 'arch-desktop' && 'arch_desktop' || matrix.profile }} $SKIP_OS_FLAG
-
-      - name: Run actual installation
-        run: |
-          SKIP_OS_FLAG="${{ matrix.skip_os && '--skip-os-detection' || '' }}"
-          ./dotfiles.sh --install --profile ${{ matrix.profile }} $SKIP_OS_FLAG -v
-
-      - name: Test dry-run uninstall
-        run: |
-          ./dotfiles.sh --uninstall --profile ${{ matrix.profile }} --dry-run -v 2>&1 | tee uninstall-output.log
-
-      - name: Verify dry-run uninstall assertions
-        run: ./.github/workflows/scripts/verify/verify-uninstall.sh uninstall-output.log
 
   # Test paru (AUR helper) installation and functionality
   test-paru:
@@ -208,57 +287,87 @@ jobs:
       - name: Run paru tests
         run: |
           REPO_DIR=$(pwd)
-          chmod +x ./.github/workflows/scripts/linux/run-paru-tests.sh
-          su - testuser -c "cd \"$REPO_DIR\" && ./.github/workflows/scripts/linux/run-paru-tests.sh \"$REPO_DIR\""
+          chmod +x ./.github/workflows/scripts/linux/test-paru.sh
+          su - testuser -c "cd \"$REPO_DIR\" && ./.github/workflows/scripts/linux/test-paru.sh \"$REPO_DIR\""
 
-  # Test Windows profile
-  test-windows:
-    name: Test Windows
-    runs-on: windows-latest
+  # Script linting (thin wrappers)
+  script-lint:
+    name: Script Lint
+    runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install PSScriptAnalyzer
-        shell: pwsh
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck
+        run: shellcheck dotfiles.sh install.sh
+
+  # Integration test: dry-run install for each Linux profile
+  integration-linux:
+    name: Integration - ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    needs: [build-linux]
+    strategy:
+      matrix:
+        profile: [base, desktop]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: dotfiles-linux
+          path: bin/
+
+      - name: Make binary executable
+        run: chmod +x bin/dotfiles
+
+      - name: Test dry-run install
         run: |
-          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          ./bin/dotfiles --root . -p ${{ matrix.profile }} -d install
 
-      - name: Run PowerShell script analysis
-        shell: pwsh
+      - name: Test validation
         run: |
-          Import-Module .\test\windows\Test.psm1
-          Test-PSScriptAnalyzer -dir $PWD
+          ./bin/dotfiles --root . -p ${{ matrix.profile }} test
 
-      - name: Test Windows modules
-        shell: pwsh
-        run: ./.github/workflows/scripts/windows/Test-Modules.ps1
+  # Integration test: Windows dry-run
+  integration-windows:
+    name: Integration - windows
+    runs-on: windows-latest
+    needs: [build-windows]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - name: Test Dotfiles PowerShell module
-        shell: pwsh
-        run: ./.github/workflows/scripts/windows/Test-DotfilesModule.ps1
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: dotfiles-windows
+          path: bin/
 
-      - name: Verify Windows configuration
-        shell: pwsh
-        run: ./.github/workflows/scripts/windows/Test-Configuration.ps1
-
-      - name: Test dry-run installation (PowerShell Core)
-        shell: pwsh
+      - name: Test dry-run install
         run: |
-          $VerbosePreference = 'Continue'
-          .\dotfiles.ps1 -DryRun -Verbose 2>&1 | Tee-Object -FilePath windows-output.log
+          .\bin\dotfiles.exe --root . -p windows -d install
 
-      - name: Verify Windows profile symlinks
-        shell: pwsh
+  # Test Docker build
+  test-docker:
+    name: Test Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t dotfiles-test .
+
+      - name: Run container smoke test
         run: |
-          $output = Get-Content windows-output.log
-          if (-not ($output -match "DRY")) {
-            Write-Error "Expected dry-run output"
-            exit 1
-          }
-          Write-Output "✓ Dry-run test passed for Windows profile"
+          docker run --rm dotfiles-test sh -c "command -v zsh && echo 'Smoke test passed'"
 
-  # Test pre-commit hooks
+  # Test git hooks
   test-git-hooks:
     name: Test Git Hooks
     runs-on: ubuntu-latest
@@ -277,36 +386,27 @@ jobs:
           chmod +x .git/hooks/pre-commit
 
       - name: Run pre-commit hook tests
-        run: ./test/linux/test-git-hooks.sh
+        run: ./.github/workflows/scripts/linux/test-git-hooks.sh
 
-  # Test Docker image build
-  test-docker:
-    name: Test Docker Build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: docker build -t dotfiles-test .
-
-      - name: Run container smoke test
-        run: |
-          docker run --rm dotfiles-test sh -c "command -v zsh && echo 'Smoke test passed'"
-
-  # Summary job - require only this one in branch protection
+  # Summary job
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
     needs:
+      - rust-fmt
+      - rust-clippy
+      - rust-test
+      - build-linux
+      - build-windows
+      - script-lint
       - static-analysis
+      - validate-config
       - test-applications
+      - test-paru
+      - integration-linux
+      - integration-windows
       - test-docker
       - test-git-hooks
-      - test-linux-profiles
-      - test-paru
-      - test-windows
-      - validate-config
     steps:
       - name: Mark CI as successful
         run: echo "All CI jobs passed"

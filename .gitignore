@@ -25,6 +25,15 @@ desktop.ini
 __pycache__/
 *.pyc
 
+# Rust build artifacts
+cli/target/
+**/*.rs.bk
+*.pdb
+
+# Binary distribution
+bin/
+.dotfiles-version-cache
+
 # Logs
 *.log
 

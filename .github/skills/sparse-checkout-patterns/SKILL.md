@@ -55,7 +55,7 @@ config/xmonad/
 
 **Logic Explanation:**
 - `[windows]` - Excluded if `windows` category is excluded
-- `[arch]` - Excluded if `arch` category is excluded  
+- `[arch]` - Excluded if `arch` category is excluded
 - `[arch,desktop]` - Excluded if **EITHER** `arch` **OR** `desktop` is excluded (not both required)
 
 This ensures files shared by multiple categories are excluded when ANY category is excluded, preventing partial checkouts of related files.
@@ -295,7 +295,7 @@ xinitrc                 # X11 initialization
 1. **Sparse Checkout** (manifest.ini with OR logic)
    - Controls which files exist in working directory
    - Uses OR logic: `[arch,desktop]` = exclude if arch OR desktop excluded
-   
+
 2. **Configuration Processing** (packages.ini, symlinks.ini with AND logic)
    - Controls which items are installed/processed
    - Uses AND logic: `[arch,desktop]` = process only if arch AND desktop active

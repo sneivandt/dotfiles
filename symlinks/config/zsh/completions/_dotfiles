@@ -1,14 +1,16 @@
-#compdef dotfiles
+#compdef dotfiles dotfiles.sh
 
-# _dotfiles_get_profiles
+# Zsh completion for the dotfiles CLI (Rust binary).
 #
-# Dynamically loads profiles from conf/profiles.ini.
-# Returns an array of "profile:description" strings suitable for _describe.
+# Commands:  install, uninstall, test, version
+# Global:    -v/--verbose, -p/--profile, -d/--dry-run, --root
+# Install:   --skip, --only
+# Wrapper:   --build  (dotfiles.sh only)
+
 _dotfiles_get_profiles() {
   local -a profiles
   local profile_file="${0:A:h:h:h:h:h}/conf/profiles.ini"
 
-  # Profile descriptions mapping
   local -A profile_desc
   profile_desc[base]="Minimal core shell configuration"
   profile_desc[arch]="Arch Linux headless"
@@ -16,10 +18,8 @@ _dotfiles_get_profiles() {
   profile_desc[desktop]="Generic Linux desktop"
   profile_desc[windows]="Windows environment"
 
-  # Read profiles from profiles.ini if it exists
   if [[ -f "$profile_file" ]]; then
     while IFS= read -r line; do
-      # Extract section headers [profile-name]
       if [[ $line =~ '^\[([^]]+)\]$' ]]; then
         local profile="${match[1]}"
         local desc="${profile_desc[$profile]:-$profile}"
@@ -27,7 +27,6 @@ _dotfiles_get_profiles() {
       fi
     done < "$profile_file"
   else
-    # Fallback to hardcoded profiles if file not found
     profiles=(
       "base:Minimal core shell configuration"
       "arch:Arch Linux headless"
@@ -44,54 +43,45 @@ _dotfiles() {
   local curcontext="$curcontext" state line
   typeset -A opt_args
 
-  local -a main_options
-  main_options=(
-    '(- *)'-h'[Display usage]'
-    '(- *)--help[Display usage]'
-    '(--install -T --test -U --uninstall -h --help)'-I'[Install dotfiles]'
-    '(-I -T --test -U --uninstall -h --help)--install[Install dotfiles]'
-    '(-I --install --test -U --uninstall -h --help)'-T'[Run tests]'
-    '(-I --install -T -U --uninstall -h --help)--test[Run tests]'
-    '(-I --install -T --test --uninstall -h --help)'-U'[Uninstall dotfiles]'
-    '(-I --install -T --test -U -h --help)--uninstall[Uninstall dotfiles]'
+  local -a global_options
+  global_options=(
+    '(-v --verbose)'{-v,--verbose}'[Enable verbose output]'
+    '(-p --profile)'{-p,--profile}'[Profile to use]:profile:_dotfiles_get_profiles'
+    '(-d --dry-run)'{-d,--dry-run}'[Preview changes without applying]'
+    '--root[Override dotfiles root directory]:directory:_directories'
+    '--build[Build from source instead of downloading binary (dotfiles.sh only)]'
+    '(- *)'{-h,--help}'[Display help]'
   )
 
-  local -a install_options
-  install_options=(
-    '--profile[Select profile]:profile:_dotfiles_get_profiles'
-    '--dry-run[Preview changes without system modifications]'
-    '--skip-os-detection[Skip automatic OS detection overrides]'
-    '-v[Enable verbose logging]'
+  local -a commands
+  commands=(
+    'install:Install dotfiles and configure system'
+    'uninstall:Remove installed dotfiles'
+    'test:Run self-tests and validation'
+    'version:Print version information'
   )
 
-  local -a test_options
-  test_options=(
-    '-v[Enable verbose logging]'
-  )
+  _arguments -s -S -C \
+    "$global_options[@]" \
+    '1:command:->command' \
+    '*::arg:->args'
 
-  # Determine which action is being invoked
-  local action
-  for word in "${words[@]}"; do
-    case "$word" in
-      -I|--install) action="install"; break ;;
-      -T|--test) action="test"; break ;;
-      -U|--uninstall) action="uninstall"; break ;;
-    esac
-  done
-
-  case "$action" in
-    install|uninstall)
-      _arguments -s -S \
-        "$main_options[@]" \
-        "$install_options[@]"
+  case "$state" in
+    command)
+      _describe 'command' commands
       ;;
-    test)
-      _arguments -s -S \
-        "$main_options[@]" \
-        "$test_options[@]"
-      ;;
-    *)
-      _arguments -s -S "$main_options[@]"
+    args)
+      case "${line[1]}" in
+        install)
+          _arguments -s -S \
+            '--skip[Skip specific tasks]:tasks:' \
+            '--only[Run only specific tasks]:tasks:' \
+            "$global_options[@]"
+          ;;
+        uninstall|test|version)
+          _arguments -s -S "$global_options[@]"
+          ;;
+      esac
       ;;
   esac
 }

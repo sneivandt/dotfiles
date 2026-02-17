@@ -2,235 +2,167 @@
 set -o errexit
 set -o nounset
 
-# -----------------------------------------------------------------------------
-# dotfiles.sh
-# -----------------------------------------------------------------------------
-# Entry point for the *nix (Arch‑focused) dotfiles workflow.
+# dotfiles.sh — Thin entry point for the dotfiles management engine.
 #
-# Responsibilities:
-#   * Parse top‑level CLI flags / modes (install, uninstall, test, help).
-#   * Prevent execution as root (operations are intended for an unprivileged
-#     user; elevation is performed ad‑hoc inside specific tasks where needed).
-#   * Source shared logging helpers and higher‑level command orchestrators.
+# Default: downloads the latest published binary from GitHub Releases.
+# --build: builds the Rust binary from source (requires cargo).
 #
-# Behavior & Idempotency:
-#   Re‑running the same mode should only perform missing work. Individual
-#   tasks are defensive (checking existing state before mutating it).
-#
-# Exit Codes:
-#   0  Success / help displayed.
-#   1  getopt parsing failure or explicit log_error invocation.
-#
-# Flags (forwarded via $OPT after getopt normalisation):
-#   -v  Enable verbose logging.
-#   --profile <name>  Use predefined profile for sparse checkout filtering.
-#   --dry-run  Perform dry run without system modifications (install/uninstall only).
-#
-# Usage Examples:
-#   ./dotfiles.sh --install --profile arch-desktop    # Arch with GUI.
-#   ./dotfiles.sh --install --profile arch            # Arch CLI only.
-#   ./dotfiles.sh -I --dry-run                        # Preview install without changes
-#   ./dotfiles.sh -U                                  # Uninstall symlinks.
-#   ./dotfiles.sh --test -v                           # Run tests with verbose output.
-#
-# Implementation Notes:
-#   * getopt is used to provide consistent long/short option handling while
-#     preserving a single aggregated $OPT evaluated by helper predicates.
-#   * No work is performed directly in this file beyond dispatching.
-# -----------------------------------------------------------------------------
+# All arguments (except --build) are forwarded to the dotfiles binary.
 
-DIR="$(dirname "$(readlink -f "$0")")"
-export DIR
+DOTFILES_ROOT="$(dirname "$(readlink -f "$0")")"
+export DOTFILES_ROOT
 
-# Profile selection for sparse checkout filtering
-PROFILE=""
-export PROFILE
+REPO="sneivandt/dotfiles"
+BIN_DIR="$DOTFILES_ROOT/bin"
+BINARY="$BIN_DIR/dotfiles"
+CACHE_FILE="$DOTFILES_ROOT/.dotfiles-version-cache"
+CACHE_MAX_AGE=3600  # seconds
 
-# Logging helpers (log_error, log_usage, log_stage, etc.).
-. "$DIR"/src/linux/logger.sh
+# --------------------------------------------------------------------------- #
+# Parse --build flag (remove it from args forwarded to binary)
+# --------------------------------------------------------------------------- #
+BUILD_MODE=false
+for arg in "$@"; do
+  if [ "$arg" = "--build" ]; then
+    BUILD_MODE=true
+    break
+  fi
+done
 
-# Utility functions (profile management, INI parsing, etc.).
-. "$DIR"/src/linux/utils.sh
+# Rebuild args without --build
+set_args() {
+  FORWARD_ARGS=""
+  for arg in "$@"; do
+    if [ "$arg" != "--build" ]; then
+      FORWARD_ARGS="$FORWARD_ARGS \"$arg\""
+    fi
+  done
+}
+set_args "$@"
 
-# Guard: refuse to run as root to avoid polluting /root with user config and
-# accidental privilege escalations inside tasks that assume normal user perms.
-if [ "$(id -u)" = 0 ]; then
-  log_error "$(basename "$0") can not be run as root."
+# --------------------------------------------------------------------------- #
+# Build mode: build from source and run
+# --------------------------------------------------------------------------- #
+if [ "$BUILD_MODE" = true ]; then
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "ERROR: cargo not found. Install Rust to use --build mode." >&2
+    exit 1
+  fi
+  cd "$DOTFILES_ROOT/cli"
+  cargo build --release
+  eval exec "$DOTFILES_ROOT/cli/target/release/dotfiles" --root "$DOTFILES_ROOT" "$FORWARD_ARGS"
 fi
 
-# High‑level orchestration functions (do_install, do_uninstall, do_test).
-. "$DIR"/src/linux/commands.sh
+# --------------------------------------------------------------------------- #
+# Production mode: ensure latest binary is available
+# --------------------------------------------------------------------------- #
 
-# parse_profile_arg
-#
-# Parses --profile argument from getopt-normalized options.
-# Must be called after 'eval set -- "$OPT"'.
-#
-# Globals read/set:
-#   PROFILE  Set to profile value if --profile argument present
-#
-# Result:
-#   0 success
-parse_profile_arg()
-{
-  while true; do
-    case "$1" in
-      --profile)
-        PROFILE="$2"
-        if [ -z "$PROFILE" ]; then
-          log_error "Profile name cannot be empty"
-        fi
-        shift 2
-        ;;
-      --)
-        shift
-        break
-        ;;
-      *)
-        shift
-        ;;
-    esac
-  done
+# Check if the cached version is still fresh
+is_cache_fresh() {
+  if [ ! -f "$CACHE_FILE" ]; then
+    return 1
+  fi
+  cached_ts=$(sed -n '2p' "$CACHE_FILE" 2>/dev/null || echo "0")
+  now=$(date +%s)
+  age=$((now - cached_ts))
+  [ "$age" -lt "$CACHE_MAX_AGE" ]
 }
 
-# check_exclusive_flags
-#
-# Validates that both short and long forms of the same flag are not used together.
-# Call after 'eval set -- "$OPT"' to check for conflicts.
-#
-# Args:
-#   $1  Short flag (e.g., "-I")
-#   $2  Long flag (e.g., "--install")
-#   $3  Flag description for error message (e.g., "install")
-#   $@  Parsed arguments from getopt
-#
-# Result:
-#   0 success, exits on error if both flags present
-check_exclusive_flags()
-{
-  local short_flag="$1"
-  local long_flag="$2"
-  shift 2
-
-  local has_short=false
-  local has_long=false
-
-  for arg in "$@"; do
-    if [ "$arg" = "$short_flag" ]; then
-      has_short=true
-    elif [ "$arg" = "$long_flag" ]; then
-      has_long=true
-    fi
-  done
-
-  if [ "$has_short" = true ] && [ "$has_long" = true ]; then
-    log_error "Cannot use both $short_flag and $long_flag. Use one or the other."
-  fi
-}
-
-# resolve_profile
-#
-# Resolves the profile to use: from CLI arg, persisted config, or interactive prompt.
-# Persists the selected profile for future use.
-# Validates that the specified profile exists in profiles.ini.
-#
-# Globals read/set:
-#   PROFILE  Profile name (may be empty on input, populated on output)
-#
-# Result:
-#   0 success, exits on error
-resolve_profile()
-{
-  # If profile already specified via CLI, validate it exists
-  if [ -n "$PROFILE" ]; then
-    if ! list_available_profiles | grep -qx "$PROFILE"; then
-      log_error "Profile '$PROFILE' not found in profiles.ini"
-    fi
-    log_verbose "Using profile from command line: $PROFILE"
-    persist_profile "$PROFILE"
-    return 0
-  fi
-
-  # Try to get persisted profile
-  if PROFILE="$(get_persisted_profile)"; then
-    log_verbose "Using persisted profile: $PROFILE"
-    return 0
-  fi
-
-  # No profile specified or persisted, prompt interactively
-  log_stage "No profile specified"
-  echo "" >&2
-  if PROFILE="$(prompt_profile_selection)"; then
-    echo "" >&2
-    # Validate that profile is not empty
-    if [ -z "$PROFILE" ]; then
-      log_error "Profile selection returned empty value"
-    fi
-    log_verbose "Selected profile: $PROFILE"
-    persist_profile "$PROFILE"
-    export PROFILE
-    return 0
+# Get the currently installed binary version
+get_local_version() {
+  if [ -x "$BINARY" ]; then
+    "$BINARY" version 2>/dev/null | awk '{print $2}' || echo "none"
   else
-    log_error "Profile selection failed"
+    echo "none"
   fi
 }
 
-case ${1:-} in
-  -I* | --install)
-    # Full install path for selected profile.
-    OPT="$(getopt -o Iv -l install,profile:,dry-run,skip-os-detection -n "$(basename "$0")" -- "$@")" \
-      || exit 1
-    eval set -- "$OPT"
-    check_exclusive_flags "-I" "--install" "install" "$@"
-    parse_profile_arg "$@"
-    export OPT
-    export PROFILE
-    resolve_profile
-    log_profile "$PROFILE"
-    if is_dry_run; then
-      printf ":: DRY-RUN MODE: No system modifications will be made\n"
+# Get the latest release tag from GitHub
+get_latest_version() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO- "https://api.github.com/repos/$REPO/releases/latest" \
+      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
+  else
+    echo ""
+  fi
+}
+
+# Download the binary for the given version tag
+download_binary() {
+  version="$1"
+  url="https://github.com/$REPO/releases/download/$version/dotfiles-linux-x86_64"
+
+  mkdir -p "$BIN_DIR"
+
+  echo "Downloading dotfiles $version..."
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -o "$BINARY" "$url"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$BINARY" "$url"
+  else
+    echo "ERROR: curl or wget required to download binary." >&2
+    exit 1
+  fi
+
+  chmod +x "$BINARY"
+
+  # Download and verify checksum if available
+  checksum_url="https://github.com/$REPO/releases/download/$version/checksums.sha256"
+  if command -v sha256sum >/dev/null 2>&1; then
+    tmpfile=$(mktemp)
+    if curl -fsSL -o "$tmpfile" "$checksum_url" 2>/dev/null || \
+       wget -qO "$tmpfile" "$checksum_url" 2>/dev/null; then
+      expected=$(grep "dotfiles-linux-x86_64" "$tmpfile" | awk '{print $1}')
+      actual=$(sha256sum "$BINARY" | awk '{print $1}')
+      if [ -n "$expected" ] && [ "$expected" != "$actual" ]; then
+        echo "ERROR: Checksum verification failed!" >&2
+        rm -f "$BINARY"
+        rm -f "$tmpfile"
+        exit 1
+      fi
     fi
-    do_install
-    ;;
-  -T* | --test)
-    # Static analysis / lint checks (shellcheck, PSScriptAnalyzer).
-    OPT="$(getopt -o Tv -l test -n "$(basename "$0")" -- "$@")" \
-      || exit 1
-    eval set -- "$OPT"
-    check_exclusive_flags "-T" "--test" "test" "$@"
-    export OPT
-    do_test
-    ;;
-  -U* | --uninstall)
-    # Remove installed symlinks for selected profile.
-    OPT="$(getopt -o Uv -l uninstall,profile:,dry-run,skip-os-detection -n "$(basename "$0")" -- "$@")" \
-      || exit 1
-    eval set -- "$OPT"
-    check_exclusive_flags "-U" "--uninstall" "uninstall" "$@"
-    parse_profile_arg "$@"
-    export OPT
-    export PROFILE
-    resolve_profile
-    log_profile "$PROFILE"
-    if is_dry_run; then
-      printf ":: DRY-RUN MODE: No system modifications will be made\n"
+    rm -f "$tmpfile"
+  fi
+}
+
+# Update the version cache
+update_cache() {
+  version="$1"
+  echo "$version" > "$CACHE_FILE"
+  date +%s >> "$CACHE_FILE"
+}
+
+# Ensure binary is present and up to date
+ensure_binary() {
+  local_version=$(get_local_version)
+
+  # Fast path: binary exists and cache is fresh
+  if [ "$local_version" != "none" ] && is_cache_fresh; then
+    return 0
+  fi
+
+  # Check latest version
+  latest=$(get_latest_version)
+  if [ -z "$latest" ]; then
+    # Can't reach GitHub — use existing binary if available
+    if [ "$local_version" != "none" ]; then
+      return 0
     fi
-    do_uninstall
-    ;;
-  -h | --help)
-    # Show usage information only.
-    OPT="$(getopt -o h -l help -n "$(basename "$0")" -- "$@")" \
-      || exit 1
-    eval set -- "$OPT"
-    check_exclusive_flags "-h" "--help" "help" "$@"
-    export OPT
-    log_usage
-    ;;
-  *)
-    # Fallback: any other input falls through to usage.
-    OPT="$(getopt -o -l -n "$(basename "$0")" -- "$@")" \
-      || exit 1
-    export OPT
-    log_usage
-    ;;
-esac
+    echo "ERROR: Cannot determine latest version and no local binary found." >&2
+    echo "Use --build to build from source, or check your internet connection." >&2
+    exit 1
+  fi
+
+  # Download if missing or outdated
+  if [ "$local_version" = "none" ] || [ "$local_version" != "$latest" ]; then
+    download_binary "$latest"
+  fi
+
+  update_cache "$latest"
+}
+
+ensure_binary
+eval exec "$BINARY" --root "$DOTFILES_ROOT" "$FORWARD_ARGS"

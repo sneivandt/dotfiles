@@ -32,7 +32,7 @@ Guide to customizing and extending the dotfiles system for your needs.
 
 4. **Install symlink**:
    ```bash
-   ./dotfiles.sh -I
+   ./dotfiles.sh install
    ```
 
 The file will be symlinked from `symlinks/config/mynewapp/config.yml` to `~/.config/mynewapp/config.yml`.
@@ -88,7 +88,7 @@ This links the entire directory.
 
 4. **Install**:
    ```bash
-   ./dotfiles.sh -I
+   ./dotfiles.sh install
    ```
 
 ### Adding Windows Packages
@@ -109,9 +109,7 @@ This links the entire directory.
 
 3. **Install**:
    ```powershell
-   .\dotfiles.ps1
-   # Or from anywhere:
-   Install-Dotfiles
+   .\dotfiles.ps1 install -p windows
    ```
 
 ## Adding Systemd Units
@@ -147,7 +145,7 @@ This links the entire directory.
 
 4. **Install and enable**:
    ```bash
-   ./dotfiles.sh -I
+   ./dotfiles.sh install
    # Unit is automatically symlinked and enabled
    ```
 
@@ -210,7 +208,7 @@ my-task.timer
 
 3. **Install**:
    ```bash
-   ./dotfiles.sh -I
+   ./dotfiles.sh install
    ```
 
 ## Adding GitHub Copilot CLI Skills
@@ -234,11 +232,11 @@ GitHub Copilot CLI can be extended with custom skills that provide additional co
 
 3. **Install**:
    ```bash
-   ./dotfiles.sh -I
+   ./dotfiles.sh install
    ```
    Or on Windows:
    ```powershell
-   .\dotfiles.ps1
+   .\dotfiles.ps1 install -p windows
    ```
 
 **Notes**:
@@ -267,7 +265,7 @@ GitHub Copilot CLI can be extended with custom skills that provide additional co
 
 3. **Apply**:
    ```powershell
-   .\dotfiles.ps1
+   .\dotfiles.ps1 install -p windows
    ```
 
 ## Adding File Permissions
@@ -291,30 +289,7 @@ To set specific permissions on symlinked files:
 
 3. **Apply**:
    ```bash
-   ./dotfiles.sh -I
-   ```
-
-## Adding Fonts
-
-1. **Add font files to repository**:
-   ```bash
-   # Place font files in appropriate location
-   # (They should be downloaded/installed, not committed)
-   ```
-
-2. **Edit conf/fonts.ini**:
-   ```ini
-   [fonts]
-   Source Code Pro
-   Noto Color Emoji
-   JetBrains Mono
-   ```
-
-3. **Install**:
-   ```bash
-   ./dotfiles.sh -I
-   # Fonts are checked and installed if missing
-   # Font cache is automatically updated
+   ./dotfiles.sh install
    ```
 
 ## Creating Custom Profiles
@@ -347,7 +322,7 @@ To set specific permissions on symlinked files:
 
 4. **Use profile**:
    ```bash
-   ./dotfiles.sh -I --profile my-server
+   ./dotfiles.sh install -p my-server
    ```
 
 ### Complex Profile with Dependencies
@@ -490,7 +465,7 @@ config/xmonad/
 Always test with dry-run first:
 
 ```bash
-./dotfiles.sh -I --profile my-custom --dry-run -v
+./dotfiles.sh install -p my-custom -d -v
 ```
 
 Review the output for:
@@ -505,14 +480,14 @@ Test changes incrementally:
 
 1. **Add one package**:
    ```bash
-   ./dotfiles.sh -I --dry-run
+   ./dotfiles.sh install -d
    ```
 
 2. **Verify it appears in dry-run output**
 
 3. **Actually install**:
    ```bash
-   ./dotfiles.sh -I
+   ./dotfiles.sh install
    ```
 
 4. **Verify it worked**:
@@ -525,7 +500,7 @@ Test changes incrementally:
 Run static analysis on configuration changes:
 
 ```bash
-./dotfiles.sh -T
+./dotfiles.sh test
 ```
 
 This checks:
@@ -558,7 +533,7 @@ neovim
 EOF
 
 # 4. Install
-./dotfiles.sh -I --profile arch-desktop
+./dotfiles.sh install -p arch-desktop
 ```
 
 ### Example: Custom Development Profile
@@ -590,7 +565,7 @@ config/dev-tools
 EOF
 
 # 4. Use profile
-./dotfiles.sh -I --profile dev
+./dotfiles.sh install -p dev
 ```
 
 ### Example: Adding Custom Scripts
@@ -622,7 +597,7 @@ cat >> conf/chmod.ini << 'EOF'
 EOF
 
 # 5. Install
-./dotfiles.sh -I
+./dotfiles.sh install
 ```
 
 ## Best Practices
@@ -632,7 +607,7 @@ EOF
 3. **Test with dry-run** before actual installation
 4. **Keep sections organized** with comments
 5. **Document custom profiles** in comments
-6. **Validate configuration** with `./dotfiles.sh -T`
+6. **Validate configuration** with `./dotfiles.sh test`
 7. **Version control** all configuration changes
 8. **Review logs** after installation
 

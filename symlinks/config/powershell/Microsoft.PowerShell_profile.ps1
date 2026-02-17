@@ -108,3 +108,10 @@ if (Get-Command "gh" -ErrorAction SilentlyContinue)
     Set-Alias -Name ai -Value Invoke-CopilotChat
     Set-Alias -Name aic -Value Invoke-CopilotSuggest
 }
+
+# Ensure Cargo (Rust) bin directory is in PATH
+$cargoDir = Join-Path $HOME ".cargo\bin"
+if ((Test-Path $cargoDir) -and ($env:Path -notlike "*$cargoDir*"))
+{
+    $env:Path += ";$cargoDir"
+}

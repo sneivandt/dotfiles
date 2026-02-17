@@ -317,7 +317,7 @@ function Install-Symlinks {
         [switch]
         $DryRun
     )
-    
+
     # Function implementation
 }
 ```
@@ -356,7 +356,7 @@ function Install-Dotfiles {
     param (
         [switch]$DryRun
     )
-    
+
     # Propagate DryRun to all called functions
     Install-Packages -DryRun:$DryRun
     Sync-Registry -DryRun:$DryRun
@@ -369,7 +369,7 @@ function Install-Dotfiles {
 ```powershell
 function Write-LogDryRun {
     param ([string]$Message)
-    
+
     Write-Host "[DRY-RUN] $Message" -ForegroundColor Cyan
     Write-LogMessage -Level "DRY" -Message $Message
 }
@@ -410,7 +410,7 @@ Write-LogStage "Installing packages"
 # Output: :: Installing packages
 # File:   2026-02-14 10:30:00 STG Installing packages
 
-# Info: General progress  
+# Info: General progress
 Write-LogVerbose "Processing package: Git"
 # Output: Processing package: Git (only with -Verbose)
 # File:   2026-02-14 10:30:01 VRB Processing package: Git

@@ -50,16 +50,16 @@ This project maintains three distinct types of documentation, each serving a spe
 
 **Available Skills**:
 - `creating-skills` - Creating new GitHub Copilot Agent Skills
-- `ini-configuration` - Working with INI configuration files
-- `shell-patterns` - Shell scripting patterns and conventions
-- `powershell-patterns` - PowerShell scripting patterns and conventions
-- `profile-system` - Understanding the profile system
-- `symlink-management` - Detailed symlink conventions
-- `package-management` - Package installation patterns
-- `logging-patterns` - Logging conventions and patterns
-- `git-hooks-patterns` - Git hooks and sensitive data detection
-- `testing-patterns` - Testing conventions and validation
 - `customization-guide` - Programmatically adding configuration items
+- `git-hooks-patterns` - Git hooks and sensitive data detection
+- `ini-configuration` - Working with INI configuration files
+- `logging-patterns` - Logging conventions and patterns
+- `package-management` - Package installation patterns
+- `profile-system` - Understanding the profile system
+- `rust-patterns` - Rust coding patterns for the core engine
+- `shell-patterns` - Shell scripting patterns and conventions
+- `symlink-management` - Detailed symlink conventions
+- `testing-patterns` - Testing conventions and validation
 
 **When to read these**: When writing or modifying code, check relevant skills for established patterns.
 

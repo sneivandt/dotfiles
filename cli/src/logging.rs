@@ -1,17 +1,6 @@
 use std::fs;
-use std::io::{self, Write};
+use std::io::Write;
 use std::path::PathBuf;
-
-/// Log level for output messages.
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Level {
-    Debug,
-    Info,
-    Stage,
-    Warn,
-    Error,
-}
 
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]
@@ -226,34 +215,6 @@ impl Logger {
             println!("  \x1b[2mlog: {}\x1b[0m", path.display());
             self.write_to_file("INF", &format!("log: {}", path.display()));
         }
-    }
-
-    /// Prompt the user to select from a list of options. Returns the selected index.
-    #[allow(dead_code)]
-    pub fn prompt_select(&self, prompt: &str, options: &[&str]) -> io::Result<usize> {
-        println!("\n{prompt}");
-        for (i, option) in options.iter().enumerate() {
-            println!("  \x1b[1m{}\x1b[0m) {option}", i + 1);
-        }
-        print!("\nSelect [1-{}]: ", options.len());
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-
-        let choice: usize = input
-            .trim()
-            .parse()
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid selection"))?;
-
-        if choice == 0 || choice > options.len() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "selection out of range",
-            ));
-        }
-
-        Ok(choice - 1)
     }
 }
 

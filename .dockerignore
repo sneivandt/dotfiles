@@ -1,9 +1,14 @@
 # Allowlist approach: exclude everything by default, then include only what's needed
 # This prevents accidentally including build artifacts, .env files, etc.
 *
-!.git
-!cli
-!conf
-!hooks
-!symlinks
+!.git/
+!.git/**
+!cli/
+!cli/**
+!conf/
+!conf/**
+!hooks/
+!hooks/**
+!symlinks/
+!symlinks/**
 !dotfiles.sh

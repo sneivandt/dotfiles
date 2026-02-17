@@ -58,16 +58,19 @@ impl<'a> Context<'a> {
     }
 
     /// Root directory of the dotfiles repository.
+    #[must_use] 
     pub fn root(&self) -> &Path {
         &self.config.root
     }
 
     /// Symlinks source directory.
+    #[must_use] 
     pub fn symlinks_dir(&self) -> std::path::PathBuf {
         self.config.root.join("symlinks")
     }
 
     /// Hooks source directory.
+    #[must_use] 
     pub fn hooks_dir(&self) -> std::path::PathBuf {
         self.config.root.join("hooks")
     }

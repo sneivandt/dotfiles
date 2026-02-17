@@ -7,7 +7,7 @@ use super::{Context, Task, TaskResult};
 pub struct InstallSymlinks;
 
 impl Task for InstallSymlinks {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Install symlinks"
     }
 
@@ -122,7 +122,7 @@ impl Task for InstallSymlinks {
 pub struct UninstallSymlinks;
 
 impl Task for UninstallSymlinks {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Remove symlinks"
     }
 
@@ -182,7 +182,7 @@ fn strip_win_prefix(p: &Path) -> std::path::PathBuf {
 ///
 /// Symlink sources like "bashrc" map to "$HOME/.bashrc".
 /// Sources like "config/git/config" map to "$HOME/.config/git/config".
-/// Sources under "Documents/" or "AppData/" map to "$HOME/..." (no dot prefix).
+/// Sources under "Documents/" or "`AppData`/" map to "$HOME/..." (no dot prefix).
 fn compute_target(home: &Path, source: &str) -> std::path::PathBuf {
     if source.starts_with("Documents/")
         || source.starts_with("documents/")
@@ -220,7 +220,7 @@ fn remove_symlink(path: &Path) -> Result<()> {
 
 /// Check if metadata represents a directory-like entry.
 /// On Windows, `symlink_metadata().is_dir()` returns `false` for directory symlinks,
-/// so we check the raw FILE_ATTRIBUTE_DIRECTORY bit instead.
+/// so we check the raw `FILE_ATTRIBUTE_DIRECTORY` bit instead.
 fn is_dir_like(meta: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {

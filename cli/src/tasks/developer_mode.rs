@@ -7,7 +7,7 @@ use crate::exec;
 pub struct EnableDeveloperMode;
 
 impl Task for EnableDeveloperMode {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Enable developer mode"
     }
 

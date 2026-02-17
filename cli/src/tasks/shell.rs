@@ -7,7 +7,7 @@ use crate::exec;
 pub struct ConfigureShell;
 
 impl Task for ConfigureShell {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Configure default shell"
     }
 

@@ -6,7 +6,7 @@ use super::{Context, Task, TaskResult};
 pub struct ApplyFilePermissions;
 
 impl Task for ApplyFilePermissions {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Apply file permissions"
     }
 

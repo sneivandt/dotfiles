@@ -61,7 +61,7 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
             }
             true
         })
-        .map(|t| t.as_ref())
+        .map(std::convert::AsRef::as_ref)
         .collect();
 
     for task in tasks_to_run {

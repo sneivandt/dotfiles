@@ -7,7 +7,7 @@ use crate::exec;
 pub struct ConfigureGit;
 
 impl Task for ConfigureGit {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Configure git"
     }
 

@@ -7,7 +7,7 @@ use crate::exec;
 pub struct ApplyRegistry;
 
 impl Task for ApplyRegistry {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Apply registry settings"
     }
 
@@ -27,8 +27,7 @@ impl Task for ApplyRegistry {
         for (i, entry) in entries.iter().enumerate() {
             let is_correct = current_values
                 .get(i)
-                .map(|v| value_matches(v, &entry.value_data))
-                .unwrap_or(false);
+                .is_some_and(|v| value_matches(v, &entry.value_data));
 
             if is_correct {
                 if ctx.dry_run {
@@ -79,7 +78,7 @@ impl Task for ApplyRegistry {
     }
 }
 
-/// Batch-check all registry values in a single PowerShell invocation.
+/// Batch-check all registry values in a single `PowerShell` invocation.
 /// Returns a Vec where each entry is either the current value string or
 /// a sentinel indicating not-found.
 fn batch_check_registry(entries: &[crate::config::registry::RegistryEntry]) -> Vec<String> {
@@ -110,7 +109,7 @@ fn batch_check_registry(entries: &[crate::config::registry::RegistryEntry]) -> V
         .collect()
 }
 
-/// Batch-set registry values in a single PowerShell invocation.
+/// Batch-set registry values in a single `PowerShell` invocation.
 /// Returns indices of entries that failed.
 fn batch_set_registry(
     entries: &[crate::config::registry::RegistryEntry],
@@ -165,7 +164,7 @@ fn value_matches(current: &str, expected_data: &str) -> bool {
     current == expected_data
 }
 
-/// Format a registry value for PowerShell, returning (value_expr, type_name).
+/// Format a registry value for `PowerShell`, returning (`value_expr`, `type_name`).
 fn format_registry_value(data: &str) -> (String, &'static str) {
     // Hex integer: 0x...
     if let Some(hex) = data.strip_prefix("0x").or_else(|| data.strip_prefix("0X"))

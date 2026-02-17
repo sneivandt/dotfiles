@@ -46,7 +46,7 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 **Solution**:
 - GitHub Actions builds release binaries on every push to `master` that touches `cli/` or `conf/`
 - The release workflow (`.github/workflows/release.yml`) publishes Linux and Windows binaries with SHA-256 checksums
-- The shell wrappers download the latest release and cache the version for one hour (`.dotfiles-version-cache`)
+- The shell wrappers download the latest release and cache the version for one hour (`bin/.dotfiles-version-cache`)
 - A `--build` flag builds from source for development
 
 ## High-Level Architecture
@@ -92,7 +92,7 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 
 POSIX shell script that:
 - Checks for a `--build` flag; if set, runs `cargo build --release` in `cli/` and executes the resulting binary
-- Otherwise, checks the version cache (`.dotfiles-version-cache`, max age 3600 s)
+- Otherwise, checks the version cache (`bin/.dotfiles-version-cache`, max age 3600 s)
 - If stale or missing, queries the GitHub Releases API for the latest tag, downloads the binary to `bin/dotfiles`, and verifies its SHA-256 checksum
 - Forwards all remaining arguments to the binary with `--root`
 
@@ -322,7 +322,7 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 ### Binary Distribution
 
 - Pre-compiled binaries eliminate the need for a Rust toolchain on end-user machines
-- The version cache (`.dotfiles-version-cache`, 1 hour TTL) avoids GitHub API calls on every invocation
+- The version cache (`bin/.dotfiles-version-cache`, 1 hour TTL) avoids GitHub API calls on every invocation
 - Offline fallback: if GitHub is unreachable and a local binary exists, it is used as-is
 
 ### Compiled Binary

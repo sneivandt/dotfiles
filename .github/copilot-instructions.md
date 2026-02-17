@@ -62,4 +62,9 @@ cd cli && cargo fmt --check && cargo clippy -- -D warnings && cargo test
 - **`.github/skills/`** — agent-specific technical patterns and conventions
 - **`docs/`** — human-readable guides (also useful for agents needing context)
 
+**Where to put new content:**
+- Universal agent rules or project overview → this file
+- Technical coding patterns or format specs → a skill in `.github/skills/`
+- User guides, procedures, or troubleshooting → a doc in `docs/`
+
 When in doubt, check skills for technical patterns and docs for procedures.

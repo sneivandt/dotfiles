@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::{Context, Task, TaskResult};
+use super::{Context, Task, TaskResult, TaskStats};
 use crate::exec;
 
 /// Install system packages via pacman or winget.
@@ -23,9 +23,14 @@ impl Task for InstallPackages {
             return Ok(TaskResult::Skipped("no packages to install".to_string()));
         }
 
+        ctx.log
+            .debug(&format!("{} non-AUR packages to process", packages.len()));
+
         if ctx.platform.is_linux() {
+            ctx.log.debug("using pacman package manager");
             install_pacman(ctx, &packages)
         } else {
+            ctx.log.debug("using winget package manager");
             install_winget(ctx, &packages)
         }
     }
@@ -53,24 +58,24 @@ impl Task for InstallAurPackages {
         }
 
         if !exec::which("paru") {
+            ctx.log
+                .debug("paru not found in PATH, skipping AUR packages");
             return Ok(TaskResult::Skipped("paru not installed".to_string()));
         }
 
         let names: Vec<&str> = packages.iter().map(|p| p.name.as_str()).collect();
+        ctx.log.debug(&format!(
+            "checking {} AUR packages against installed list",
+            names.len()
+        ));
+        let installed = pacman_installed_set();
 
-        let installed_list = exec::run_unchecked("pacman", &["-Q"])
-            .map(|r| r.stdout)
-            .unwrap_or_default();
-
-        let mut already = 0u32;
+        let mut stats = TaskStats::new();
         let mut to_install: Vec<&str> = Vec::new();
         for name in &names {
-            if installed_list
-                .lines()
-                .any(|l| l.starts_with(&format!("{name} ")))
-            {
+            if installed.contains(*name) {
                 ctx.log.debug(&format!("ok: {name} (already installed)"));
-                already += 1;
+                stats.already_ok += 1;
             } else {
                 to_install.push(name);
             }
@@ -80,27 +85,24 @@ impl Task for InstallAurPackages {
             for name in &to_install {
                 ctx.log.dry_run(&format!("would install (AUR): {name}"));
             }
-            ctx.log.info(&format!(
-                "{} would change, {already} already ok",
-                to_install.len()
-            ));
-            return Ok(TaskResult::DryRun);
+            stats.changed = to_install.len() as u32;
+            return Ok(stats.finish(ctx));
         }
 
         if to_install.is_empty() {
-            ctx.log.info(&format!("0 changed, {already} already ok"));
-            return Ok(TaskResult::Ok);
+            return Ok(stats.finish(ctx));
         }
 
         let mut args = vec!["-S", "--needed", "--noconfirm"];
         args.extend(&to_install);
-        exec::run("paru", &args)?;
-
-        ctx.log.info(&format!(
-            "{} changed, {already} already ok",
+        ctx.log.debug(&format!(
+            "running paru to install {} AUR packages",
             to_install.len()
         ));
-        Ok(TaskResult::Ok)
+        exec::run("paru", &args)?;
+
+        stats.changed = to_install.len() as u32;
+        Ok(stats.finish(ctx))
     }
 }
 
@@ -118,6 +120,7 @@ impl Task for InstallParu {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if exec::which("paru") {
+            ctx.log.debug("paru already in PATH");
             ctx.log.info("paru already installed");
             return Ok(TaskResult::Ok);
         }
@@ -132,13 +135,16 @@ impl Task for InstallParu {
             if !exec::which(dep) {
                 anyhow::bail!("missing prerequisite: {dep}");
             }
+            ctx.log.debug(&format!("prerequisite ok: {dep}"));
         }
 
         let tmp = std::env::temp_dir().join("paru-build");
         if tmp.exists() {
+            ctx.log.debug("removing previous paru build directory");
             std::fs::remove_dir_all(&tmp)?;
         }
 
+        ctx.log.debug("cloning paru-bin from AUR");
         exec::run(
             "git",
             &[
@@ -153,6 +159,8 @@ impl Task for InstallParu {
             .map_or_else(|_| "4".to_string(), |r| r.stdout.trim().to_string());
 
         let makeflags = format!("-j{nproc}");
+        ctx.log
+            .debug(&format!("building with MAKEFLAGS={makeflags}"));
         exec::run_in_with_env(
             &tmp,
             "makepkg",
@@ -168,29 +176,37 @@ impl Task for InstallParu {
     }
 }
 
+/// Query pacman for all installed package names.
+fn pacman_installed_set() -> std::collections::HashSet<String> {
+    exec::run_unchecked("pacman", &["-Q"])
+        .map(|r| {
+            r.stdout
+                .lines()
+                .filter_map(|l| l.split_whitespace().next().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn install_pacman(
     ctx: &Context,
     packages: &[&crate::config::packages::Package],
 ) -> Result<TaskResult> {
     if !exec::which("pacman") {
+        ctx.log.debug("pacman not found in PATH");
         return Ok(TaskResult::Skipped("pacman not found".to_string()));
     }
 
     let names: Vec<&str> = packages.iter().map(|p| p.name.as_str()).collect();
+    ctx.log.debug("querying installed packages via pacman -Q");
+    let installed = pacman_installed_set();
 
-    let installed_list = exec::run_unchecked("pacman", &["-Q"])
-        .map(|r| r.stdout)
-        .unwrap_or_default();
-
-    let mut already = 0u32;
+    let mut stats = TaskStats::new();
     let mut to_install: Vec<&str> = Vec::new();
     for name in &names {
-        if installed_list
-            .lines()
-            .any(|l| l.starts_with(&format!("{name} ")))
-        {
+        if installed.contains(*name) {
             ctx.log.debug(&format!("ok: {name} (already installed)"));
-            already += 1;
+            stats.already_ok += 1;
         } else {
             to_install.push(name);
         }
@@ -200,31 +216,28 @@ fn install_pacman(
         for name in &to_install {
             ctx.log.dry_run(&format!("would install: {name}"));
         }
-        ctx.log.info(&format!(
-            "{} would change, {already} already ok",
-            to_install.len()
-        ));
-        return Ok(TaskResult::DryRun);
+        stats.changed = to_install.len() as u32;
+        return Ok(stats.finish(ctx));
     }
 
     if to_install.is_empty() {
-        ctx.log.info(&format!("0 changed, {already} already ok"));
-        return Ok(TaskResult::Ok);
+        return Ok(stats.finish(ctx));
     }
 
     let mut args = vec!["-S", "--needed", "--noconfirm"];
     args.extend(&to_install);
+    ctx.log.debug(&format!(
+        "running sudo pacman to install {} packages",
+        to_install.len()
+    ));
     exec::run("sudo", &{
         let mut a = vec!["pacman"];
         a.extend(&args);
         a
     })?;
 
-    ctx.log.info(&format!(
-        "{} changed, {already} already ok",
-        to_install.len()
-    ));
-    Ok(TaskResult::Ok)
+    stats.changed = to_install.len() as u32;
+    Ok(stats.finish(ctx))
 }
 
 fn install_winget(
@@ -232,21 +245,23 @@ fn install_winget(
     packages: &[&crate::config::packages::Package],
 ) -> Result<TaskResult> {
     if !exec::which("winget") {
+        ctx.log.debug("winget not found in PATH");
         return Ok(TaskResult::Skipped("winget not found".to_string()));
     }
 
     // Query installed packages once upfront
+    ctx.log.debug("querying installed packages via winget list");
     let list = exec::run_unchecked("winget", &["list", "--accept-source-agreements"])
         .map(|r| r.stdout)
         .unwrap_or_default();
 
+    let mut stats = TaskStats::new();
     let mut to_install: Vec<&str> = Vec::new();
-    let mut already = 0u32;
 
     for pkg in packages {
         if list.contains(&pkg.name) {
             ctx.log.debug(&format!("{} is installed", pkg.name));
-            already += 1;
+            stats.already_ok += 1;
         } else {
             to_install.push(&pkg.name);
         }
@@ -256,14 +271,10 @@ fn install_winget(
         for name in &to_install {
             ctx.log.dry_run(&format!("would install: {name}"));
         }
-        ctx.log.info(&format!(
-            "{} would change, {already} already ok",
-            to_install.len()
-        ));
-        return Ok(TaskResult::DryRun);
+        stats.changed = to_install.len() as u32;
+        return Ok(stats.finish(ctx));
     }
 
-    let mut changed = 0u32;
     for name in &to_install {
         let result = exec::run_unchecked(
             "winget",
@@ -279,13 +290,11 @@ fn install_winget(
 
         if result.success {
             ctx.log.debug(&format!("{name} installed"));
-            changed += 1;
+            stats.changed += 1;
         } else {
             ctx.log.info(&format!("{name} failed to install"));
         }
     }
 
-    ctx.log
-        .info(&format!("{changed} changed, {already} already ok"));
-    Ok(TaskResult::Ok)
+    Ok(stats.finish(ctx))
 }

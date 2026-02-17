@@ -17,16 +17,17 @@ impl Task for ApplyFilePermissions {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         #[cfg(unix)]
         {
+            use super::TaskStats;
             use std::os::unix::fs::PermissionsExt;
 
-            let mut count = 0u32;
-            let mut already_ok = 0u32;
+            let mut stats = TaskStats::new();
             for entry in &ctx.config.chmod {
                 let target = ctx.home.join(format!(".{}", entry.path));
 
                 if !target.exists() {
                     ctx.log
                         .debug(&format!("target missing, skipping: {}", target.display()));
+                    stats.skipped += 1;
                     continue;
                 }
 
@@ -39,7 +40,7 @@ impl Task for ApplyFilePermissions {
                         target.display(),
                         entry.mode
                     ));
-                    already_ok += 1;
+                    stats.already_ok += 1;
                     continue;
                 }
 
@@ -50,7 +51,7 @@ impl Task for ApplyFilePermissions {
                         target.display(),
                         current
                     ));
-                    count += 1;
+                    stats.changed += 1;
                     continue;
                 }
 
@@ -63,18 +64,10 @@ impl Task for ApplyFilePermissions {
 
                 ctx.log
                     .debug(&format!("chmod {} {}", entry.mode, target.display()));
-                count += 1;
+                stats.changed += 1;
             }
 
-            if ctx.dry_run {
-                ctx.log
-                    .info(&format!("{count} would change, {already_ok} already ok"));
-                return Ok(TaskResult::DryRun);
-            }
-
-            ctx.log
-                .info(&format!("{count} changed, {already_ok} already ok"));
-            Ok(TaskResult::Ok)
+            Ok(stats.finish(ctx))
         }
 
         #[cfg(not(unix))]

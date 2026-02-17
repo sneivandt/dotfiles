@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::{Context, Task, TaskResult};
+use super::{Context, Task, TaskResult, TaskStats};
 use crate::exec;
 
 /// Apply Windows registry settings.
@@ -19,10 +19,14 @@ impl Task for ApplyRegistry {
         let entries = &ctx.config.registry;
 
         // Batch-check all values in a single PowerShell process
+        ctx.log.debug(&format!(
+            "batch-checking {} registry entries",
+            entries.len()
+        ));
         let current_values = batch_check_registry(entries);
 
+        let mut stats = TaskStats::new();
         let mut to_set: Vec<usize> = Vec::new();
-        let mut already_ok = 0u32;
 
         for (i, entry) in entries.iter().enumerate() {
             let is_correct = current_values
@@ -30,14 +34,20 @@ impl Task for ApplyRegistry {
                 .is_some_and(|v| value_matches(v, &entry.value_data));
 
             if is_correct {
-                if ctx.dry_run {
-                    ctx.log.debug(&format!(
-                        "ok: {}\\{} = {} (already set)",
-                        entry.key_path, entry.value_name, entry.value_data
-                    ));
-                }
-                already_ok += 1;
+                ctx.log.debug(&format!(
+                    "ok: {}\\{} = {} (already set)",
+                    entry.key_path, entry.value_name, entry.value_data
+                ));
+                stats.already_ok += 1;
             } else {
+                let current_display = current_values
+                    .get(i)
+                    .map(|v| v.as_str())
+                    .unwrap_or("(not found)");
+                ctx.log.debug(&format!(
+                    "change needed: {}\\{} current={} desired={}",
+                    entry.key_path, entry.value_name, current_display, entry.value_data
+                ));
                 if ctx.dry_run {
                     ctx.log.dry_run(&format!(
                         "would set registry: {}\\{} = {}",
@@ -49,15 +59,14 @@ impl Task for ApplyRegistry {
         }
 
         if ctx.dry_run {
-            ctx.log.info(&format!(
-                "{} would change, {already_ok} already ok",
-                to_set.len()
-            ));
-            return Ok(TaskResult::DryRun);
+            stats.changed = to_set.len() as u32;
+            return Ok(stats.finish(ctx));
         }
 
         // Batch-set all changed values in a single PowerShell process
         if !to_set.is_empty() {
+            ctx.log
+                .debug(&format!("batch-setting {} registry entries", to_set.len()));
             let failed = batch_set_registry(entries, &to_set);
             if !failed.is_empty() {
                 for idx in &failed {
@@ -67,14 +76,18 @@ impl Task for ApplyRegistry {
                         entry.key_path, entry.value_name
                     ));
                 }
+                ctx.log.debug(&format!(
+                    "{} of {} registry writes failed",
+                    failed.len(),
+                    to_set.len()
+                ));
+            } else {
+                ctx.log.debug("all registry writes succeeded");
             }
         }
 
-        ctx.log.info(&format!(
-            "{} changed, {already_ok} already ok",
-            to_set.len()
-        ));
-        Ok(TaskResult::Ok)
+        stats.changed = to_set.len() as u32;
+        Ok(stats.finish(ctx))
     }
 }
 

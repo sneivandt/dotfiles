@@ -83,15 +83,20 @@ impl Task for SparseCheckout {
         let root = ctx.root();
 
         // Enable sparse checkout
+        ctx.log.debug("initializing sparse checkout (cone mode)");
         exec::run_in(root, "git", &["sparse-checkout", "init", "--cone"])?;
 
         // Build the sparse checkout patterns
         if ctx.config.manifest.excluded_files.is_empty() {
+            ctx.log
+                .debug("manifest has no excluded files, nothing to configure");
             ctx.log.info("no files to exclude from sparse checkout");
             return Ok(TaskResult::Ok);
         }
 
         // Disable cone mode to use full pattern matching
+        ctx.log
+            .debug("switching to non-cone mode for pattern matching");
         exec::run_in(root, "git", &["sparse-checkout", "init", "--no-cone"])?;
 
         // Write patterns: include everything except excluded files
@@ -101,6 +106,11 @@ impl Task for SparseCheckout {
         }
 
         let patterns_str = patterns.join("\n");
+        ctx.log.debug(&format!(
+            "sparse checkout patterns: {} inclusions, {} exclusions",
+            1,
+            ctx.config.manifest.excluded_files.len()
+        ));
 
         // Check if sparse-checkout patterns are already up to date
         let info_dir = root.join(".git/info");
@@ -108,12 +118,17 @@ impl Task for SparseCheckout {
         if sparse_file.exists() {
             let current = std::fs::read_to_string(&sparse_file).unwrap_or_default();
             if current.trim() == patterns_str.trim() {
+                ctx.log.debug("sparse checkout patterns already up to date");
                 ctx.log.info(&format!(
                     "already configured ({} files excluded)",
                     ctx.config.manifest.excluded_files.len()
                 ));
                 return Ok(TaskResult::Ok);
             }
+            ctx.log.debug("sparse checkout patterns differ, updating");
+        } else {
+            ctx.log
+                .debug("sparse checkout file does not exist, creating");
         }
 
         // Write directly to sparse-checkout file
@@ -121,6 +136,8 @@ impl Task for SparseCheckout {
             std::fs::create_dir_all(&info_dir)?;
         }
         std::fs::write(&sparse_file, &patterns_str)?;
+        ctx.log
+            .debug("wrote sparse-checkout file, running read-tree");
         exec::run_in(root, "git", &["read-tree", "-mu", "HEAD"])?;
 
         ctx.log.info(&format!(

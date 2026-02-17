@@ -36,39 +36,44 @@ pub fn load(path: &Path, excluded_categories: &[String]) -> Result<Manifest> {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::ini::parse_sections_from_str;
+    use super::*;
+    use crate::config::test_helpers::write_temp_ini;
 
     #[test]
     fn or_exclusion_logic() {
-        let content =
-            "[base]\nfile1\n\n[arch]\nfile2\n\n[windows]\nfile3\n\n[arch,desktop]\nfile4\n";
-        let sections = parse_sections_from_str(content).unwrap();
-
-        // Excluding 'windows' should exclude file3
-        let excluded = ["windows".to_string()];
-        let mut excluded_files = Vec::new();
-
-        for section in &sections {
-            let should_exclude = section.categories.iter().any(|cat| excluded.contains(cat));
-            if should_exclude {
-                excluded_files.extend(section.items.iter().cloned());
-            }
-        }
-
-        assert_eq!(excluded_files, vec!["file3"]);
+        let (_dir, path) = write_temp_ini(
+            "[base]\nfile1\n\n[arch]\nfile2\n\n[windows]\nfile3\n\n[arch,desktop]\nfile4\n",
+        );
+        // Excluding 'windows' should exclude only file3
+        let manifest = load(&path, &["windows".to_string()]).unwrap();
+        assert_eq!(manifest.excluded_files, vec!["file3"]);
     }
 
     #[test]
     fn or_logic_multi_category() {
-        let content = "[arch,desktop]\nfile1\n";
-        let sections = parse_sections_from_str(content).unwrap();
-
+        let (_dir, path) = write_temp_ini("[arch,desktop]\nfile1\n");
         // Excluding just 'arch' should still exclude the section (OR logic)
-        let excluded = ["arch".to_string()];
-        let should_exclude = sections[0]
-            .categories
-            .iter()
-            .any(|cat| excluded.contains(cat));
-        assert!(should_exclude);
+        let manifest = load(&path, &["arch".to_string()]).unwrap();
+        assert_eq!(manifest.excluded_files, vec!["file1"]);
+    }
+
+    #[test]
+    fn load_missing_file_returns_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = load(&dir.path().join("nope.ini"), &["windows".to_string()]).unwrap();
+        assert!(
+            manifest.excluded_files.is_empty(),
+            "missing file should produce empty manifest"
+        );
+    }
+
+    #[test]
+    fn excludes_nothing_when_no_categories_match() {
+        let (_dir, path) = write_temp_ini("[base]\nfile1\n\n[arch]\nfile2\n");
+        let manifest = load(&path, &["windows".to_string()]).unwrap();
+        assert!(
+            manifest.excluded_files.is_empty(),
+            "no categories matched — nothing should be excluded"
+        );
     }
 }

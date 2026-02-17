@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result};
 use std::path::Path;
 
-use super::{Context, Task, TaskResult};
+use super::{Context, Task, TaskResult, TaskStats};
 
 /// Create symlinks from symlinks/ to $HOME.
 pub struct InstallSymlinks;
@@ -16,9 +16,7 @@ impl Task for InstallSymlinks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let mut count = 0u32;
-        let mut skipped = 0u32;
-        let mut already_ok = 0u32;
+        let mut stats = TaskStats::new();
 
         for symlink in &ctx.config.symlinks {
             let source = ctx.symlinks_dir().join(&symlink.source);
@@ -27,7 +25,7 @@ impl Task for InstallSymlinks {
             if !source.exists() {
                 ctx.log
                     .debug(&format!("source missing, skipping: {}", symlink.source));
-                skipped += 1;
+                stats.skipped += 1;
                 continue;
             }
 
@@ -40,7 +38,7 @@ impl Task for InstallSymlinks {
                 if is_correct {
                     ctx.log
                         .debug(&format!("ok: {} (already linked)", target.display()));
-                    already_ok += 1;
+                    stats.already_ok += 1;
                 } else if target.is_dir()
                     && target
                         .symlink_metadata()
@@ -51,14 +49,14 @@ impl Task for InstallSymlinks {
                         "target is a directory, would skip: {}",
                         target.display()
                     ));
-                    skipped += 1;
+                    stats.skipped += 1;
                 } else {
                     ctx.log.dry_run(&format!(
                         "would link {} -> {}",
                         target.display(),
                         source.display()
                     ));
-                    count += 1;
+                    stats.changed += 1;
                 }
                 continue;
             }
@@ -71,7 +69,7 @@ impl Task for InstallSymlinks {
 
             // Skip if already correct
             if is_correct {
-                already_ok += 1;
+                stats.already_ok += 1;
                 continue;
             }
 
@@ -86,7 +84,7 @@ impl Task for InstallSymlinks {
                         "target is a directory, skipping: {}",
                         target.display()
                     ));
-                    skipped += 1;
+                    stats.skipped += 1;
                     continue;
                 }
                 remove_symlink(&target)
@@ -101,20 +99,10 @@ impl Task for InstallSymlinks {
                 target.display(),
                 source.display()
             ));
-            count += 1;
+            stats.changed += 1;
         }
 
-        if ctx.dry_run {
-            ctx.log.info(&format!(
-                "{count} would change, {already_ok} already ok, {skipped} skipped"
-            ));
-            return Ok(TaskResult::DryRun);
-        }
-
-        ctx.log.info(&format!(
-            "{count} changed, {already_ok} already ok, {skipped} skipped"
-        ));
-        Ok(TaskResult::Ok)
+        Ok(stats.finish(ctx))
     }
 }
 
@@ -131,7 +119,7 @@ impl Task for UninstallSymlinks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let mut count = 0u32;
+        let mut stats = TaskStats::new();
 
         for symlink in &ctx.config.symlinks {
             let target = compute_target(&ctx.home, &symlink.source);
@@ -144,22 +132,16 @@ impl Task for UninstallSymlinks {
                 if ctx.dry_run {
                     ctx.log
                         .dry_run(&format!("remove symlink: {}", target.display()));
-                    count += 1;
+                    stats.changed += 1;
                     continue;
                 }
                 remove_symlink(&target)?;
                 ctx.log.debug(&format!("removed: {}", target.display()));
-                count += 1;
+                stats.changed += 1;
             }
         }
 
-        if ctx.dry_run {
-            ctx.log.info(&format!("{count} would remove"));
-            return Ok(TaskResult::DryRun);
-        }
-
-        ctx.log.info(&format!("{count} symlinks removed"));
-        Ok(TaskResult::Ok)
+        Ok(stats.finish(ctx))
     }
 }
 

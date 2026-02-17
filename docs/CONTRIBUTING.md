@@ -16,7 +16,6 @@ Thank you for your interest in contributing! This document provides guidelines f
    ```
 
 **Before making changes**, familiarize yourself with:
-- [Documentation Structure](DOCUMENTATION.md) - Understanding instructions, skills, and docs
 - [Architecture Documentation](ARCHITECTURE.md) - Understanding the system design
 - [Profile System](PROFILES.md) - How profiles work
 - [Configuration Reference](CONFIGURATION.md) - Configuration file formats
@@ -24,14 +23,22 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 **Agent Skills**: For technical coding patterns, GitHub Copilot uses skills in `.github/skills/`. See `.github/copilot-instructions.md` for the complete list.
 
+## Prerequisites
+
+Install the Rust toolchain via [rustup](https://rustup.rs/):
+
+- **Linux / macOS**: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- **Windows**: `winget install Rustlang.Rustup`
+
+After installation, ensure `cargo` is on your PATH (open a new terminal if needed). The project targets the **stable** toolchain.
+
 ## Development Workflow
 
 ### Before Making Changes
 
 1. Review the project guidelines in `.github/copilot-instructions.md`
 2. Understand the profile system (base, arch, arch-desktop, desktop, windows)
-3. Ensure Rust toolchain is installed (`rustup`)
-4. Run existing tests:
+3. Run existing tests:
    ```bash
    cd cli && cargo test
    ```
@@ -136,20 +143,9 @@ The shell wrappers (`dotfiles.sh`, `dotfiles.ps1`) are thin entry points that do
 
 ### INI Configuration Format
 
-All `conf/*.ini` files use standard INI format:
-
-```ini
-# Comments start with #
-[section-name]
-entry-one
-entry-two
-```
-
-**Important distinctions**:
-- **Profile names** in `profiles.ini`: Use hyphens (e.g., `[arch-desktop]`)
-- **Section names** in other INI files: Use comma-separated categories (e.g., `[arch,desktop]`)
-  - Comma-separated means ALL categories must be active (logical AND)
-- **Exception**: `registry.ini` uses `key = value` format
+See [Configuration Reference](CONFIGURATION.md) and the `ini-configuration` skill for INI format details. Key points:
+- Section names use comma-separated categories (logical AND): `[arch,desktop]`
+- Exception: `registry.ini` uses `key = value` entries; `profiles.ini` uses hyphenated names
 
 ## Testing
 
@@ -253,26 +249,12 @@ chore(ci): update shellcheck version
 
 ## Code Style
 
-### Rust (Core Engine)
+See the `rust-patterns` and `shell-patterns` skills in `.github/skills/` for detailed coding conventions. Summary:
 
-- Run `cargo fmt` before committing
-- Follow standard Rust conventions and idioms
-- Use `anyhow::Result` with `.context()` for error handling
-- Implement `Task` trait for new installation tasks
-- Place unit tests in inline `#[cfg(test)]` modules
-- Document complex logic with comments
-
-### Shell Wrappers
-
-- `dotfiles.sh`: POSIX shell, 2-space indentation, minimal logic
-- `dotfiles.ps1`: PowerShell, 4-space indentation, minimal logic
-
-### Configuration Files
-
-- Use consistent section naming
-- Comment complex or non-obvious entries
-- Keep sections alphabetically sorted when practical
-- One entry per line
+- **Rust**: `cargo fmt`, `cargo clippy -- -D warnings`, `anyhow::Result` with `.context()`
+- **Shell**: POSIX `#!/bin/sh`, 2-space indent, minimal logic in wrappers
+- **PowerShell**: 4-space indent, minimal logic in `dotfiles.ps1`
+- **Config files**: One entry per line, comment non-obvious entries
 
 ## Documentation Updates
 

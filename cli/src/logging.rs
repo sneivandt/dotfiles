@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{self, Write};
+use std::io::Write;
 use std::path::PathBuf;
 
 /// Log level for output messages.
@@ -225,56 +225,46 @@ impl Logger {
             self.write_to_file("INF", &format!("log: {}", path.display()));
         }
     }
-
-    /// Prompt the user to select from a list of options. Returns the selected index.
-    #[allow(dead_code)]
-    pub fn prompt_select(&self, prompt: &str, options: &[&str]) -> io::Result<usize> {
-        println!("\n{prompt}");
-        for (i, option) in options.iter().enumerate() {
-            println!("  \x1b[1m{}\x1b[0m) {option}", i + 1);
-        }
-        print!("\nSelect [1-{}]: ", options.len());
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-
-        let choice: usize = input
-            .trim()
-            .parse()
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid selection"))?;
-
-        if choice == 0 || choice > options.len() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "selection out of range",
-            ));
-        }
-
-        Ok(choice - 1)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Create a Logger that writes to an isolated temp directory, avoiding
+    /// parallel-test races on the shared `~/.cache/dotfiles/install.log` file.
+    fn isolated_logger(verbose: bool) -> (Logger, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().expect("failed to create temp dir");
+        // SAFETY: Each test gets its own unique temp dir, so concurrent set_var
+        // calls use different values and the var is removed immediately after
+        // Logger::new() reads it. The window is minimal and each test's Logger
+        // writes to its own isolated path regardless of env var races.
+        unsafe {
+            std::env::set_var("XDG_CACHE_HOME", tmp.path());
+        }
+        let log = Logger::new(verbose);
+        unsafe {
+            std::env::remove_var("XDG_CACHE_HOME");
+        }
+        (log, tmp)
+    }
+
     #[test]
     fn logger_new() {
-        let log = Logger::new(false);
-        assert!(!log.verbose);
-        assert!(log.tasks.borrow().is_empty());
+        let (log, _tmp) = isolated_logger(false);
+        assert!(!log.verbose, "expected verbose=false");
+        assert!(log.tasks.borrow().is_empty(), "expected empty task list");
     }
 
     #[test]
     fn logger_verbose() {
-        let log = Logger::new(true);
-        assert!(log.verbose);
+        let (log, _tmp) = isolated_logger(true);
+        assert!(log.verbose, "expected verbose=true");
     }
 
     #[test]
     fn record_task_ok() {
-        let log = Logger::new(false);
+        let (log, _tmp) = isolated_logger(false);
         log.record_task("symlinks", TaskStatus::Ok, None);
         let tasks = log.tasks.borrow();
         assert_eq!(tasks.len(), 1);
@@ -284,7 +274,7 @@ mod tests {
 
     #[test]
     fn record_task_with_message() {
-        let log = Logger::new(false);
+        let (log, _tmp) = isolated_logger(false);
         log.record_task("packages", TaskStatus::Skipped, Some("not on arch"));
         let tasks = log.tasks.borrow();
         assert_eq!(tasks[0].message, Some("not on arch".to_string()));
@@ -292,7 +282,7 @@ mod tests {
 
     #[test]
     fn record_multiple_tasks() {
-        let log = Logger::new(false);
+        let (log, _tmp) = isolated_logger(false);
         log.record_task("a", TaskStatus::Ok, None);
         log.record_task("b", TaskStatus::Failed, Some("error"));
         log.record_task("c", TaskStatus::DryRun, None);
@@ -311,24 +301,21 @@ mod tests {
 
     #[test]
     fn log_file_is_created() {
-        let log = Logger::new(false);
-        if let Some(path) = log.log_path() {
-            assert!(path.exists(), "log file should be created on Logger::new");
-        }
+        let (log, _tmp) = isolated_logger(false);
+        let path = log.log_path().expect("log path should exist");
+        assert!(path.exists(), "log file should be created on Logger::new");
     }
 
     #[test]
     fn debug_always_written_to_file() {
-        let log = Logger::new(false); // verbose=false
-        // Write a unique marker so we can find it even with parallel tests
+        let (log, _tmp) = isolated_logger(false); // verbose=false
         let marker = format!("debug-marker-{}", std::process::id());
         log.debug(&marker);
-        if let Some(path) = log.log_path() {
-            let contents = fs::read_to_string(path).unwrap();
-            assert!(
-                contents.contains(&marker),
-                "debug messages should always appear in the log file"
-            );
-        }
+        let path = log.log_path().expect("log path should exist");
+        let contents = fs::read_to_string(path).unwrap();
+        assert!(
+            contents.contains(&marker),
+            "debug messages should always appear in the log file"
+        );
     }
 }

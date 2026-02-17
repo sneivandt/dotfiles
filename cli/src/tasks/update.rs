@@ -21,10 +21,13 @@ impl Task for UpdateRepository {
             return Ok(TaskResult::DryRun);
         }
 
+        ctx.log
+            .debug(&format!("pulling from {}", ctx.root().display()));
         let result = exec::run_in(ctx.root(), "git", &["pull", "--ff-only"]);
         match result {
             Ok(r) => {
                 let msg = r.stdout.trim().to_string();
+                ctx.log.debug(&format!("git pull output: {msg}"));
                 if msg.contains("Already up to date") {
                     ctx.log.info("already up to date");
                 } else {

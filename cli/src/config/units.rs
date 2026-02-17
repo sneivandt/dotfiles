@@ -20,13 +20,7 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Unit>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn write_temp_ini(content: &str) -> (tempfile::TempDir, std::path::PathBuf) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("test.ini");
-        std::fs::write(&path, content).unwrap();
-        (dir, path)
-    }
+    use crate::config::test_helpers::write_temp_ini;
 
     #[test]
     fn load_base_units() {
@@ -42,6 +36,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nonexistent.ini");
         let units = load(&path, &["base".to_string()]).unwrap();
-        assert!(units.is_empty());
+        assert!(units.is_empty(), "missing file should produce empty list");
     }
 }

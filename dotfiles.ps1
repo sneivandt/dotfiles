@@ -41,7 +41,7 @@ $ErrorActionPreference = 'Stop'
 $DotfilesRoot = $PSScriptRoot
 $Repo = "sneivandt/dotfiles"
 $BinDir = Join-Path $DotfilesRoot "bin"
-$CacheFile = Join-Path $DotfilesRoot ".dotfiles-version-cache"
+$CacheFile = Join-Path $BinDir ".dotfiles-version-cache"
 $CacheMaxAge = 3600
 
 # Build CLI arguments from declared parameters

@@ -15,7 +15,7 @@ export DOTFILES_ROOT
 REPO="sneivandt/dotfiles"
 BIN_DIR="$DOTFILES_ROOT/bin"
 BINARY="$BIN_DIR/dotfiles"
-CACHE_FILE="$DOTFILES_ROOT/.dotfiles-version-cache"
+CACHE_FILE="$BIN_DIR/.dotfiles-version-cache"
 CACHE_MAX_AGE=3600  # seconds
 
 # --------------------------------------------------------------------------- #

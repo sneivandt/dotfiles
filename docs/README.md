@@ -24,7 +24,6 @@ This directory contains comprehensive documentation for the dotfiles project.
 - **[Customization](CUSTOMIZATION.md)** - Adding files, packages, and profiles
 - **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
 - **[Security](SECURITY.md)** - Security policy and best practices
-- **[Documentation Structure](DOCUMENTATION.md)** - How documentation is organized (instructions, skills, docs)
 
 ## Documentation Organization
 
@@ -36,7 +35,7 @@ The documentation is organized to support different audiences and use cases:
 4. **Developer Resources**: Contributing, testing, and architecture documentation
 5. **Reference**: Troubleshooting, customization, and security information
 
-**For information about how documentation is structured in this project** (instructions vs skills vs docs), see **[Documentation Structure](DOCUMENTATION.md)**.
+For information about where documentation types live (copilot instructions vs skills vs docs), see **`.github/copilot-instructions.md`**.
 
 ## Contributing to Documentation
 

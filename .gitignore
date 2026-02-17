@@ -32,7 +32,6 @@ cli/target/
 
 # Binary distribution
 bin/
-.dotfiles-version-cache
 
 # Logs
 *.log

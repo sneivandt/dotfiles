@@ -20,12 +20,15 @@ impl Task for EnableDeveloperMode {
         let name = "AllowDevelopmentWithoutDevLicense";
 
         // Check current state
+        ctx.log.debug(&format!("checking registry: {key}\\{name}"));
         let check_script = format!(
             "try {{ $v = (Get-ItemProperty -Path '{key}' -Name '{name}' -ErrorAction Stop).'{name}'; Write-Output $v }} catch {{ Write-Output '::NOT_FOUND::' }}"
         );
         let current = exec::run_unchecked("powershell", &["-Command", &check_script])
             .map(|r| r.stdout.trim().to_string())
             .unwrap_or_default();
+
+        ctx.log.debug(&format!("current value: {current:?}"));
 
         if current == "1" {
             ctx.log.debug("ok: developer mode already enabled");
@@ -39,12 +42,14 @@ impl Task for EnableDeveloperMode {
             return Ok(TaskResult::DryRun);
         }
 
+        ctx.log.debug("setting developer mode registry key");
         let set_script = format!(
             "if (!(Test-Path '{key}')) {{ New-Item -Path '{key}' -Force | Out-Null }}; \
              Set-ItemProperty -Path '{key}' -Name '{name}' -Value 1 -Type DWord"
         );
         let result = exec::run_unchecked("powershell", &["-Command", &set_script])?;
         if result.success {
+            ctx.log.debug("registry key set successfully");
             ctx.log.info("enabled");
         } else {
             ctx.log.warn(&format!(

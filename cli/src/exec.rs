@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn run_echo() {
         let result = echo_result("hello").unwrap();
-        assert!(result.success);
+        assert!(result.success, "echo command should succeed");
         assert_eq!(result.stdout.trim(), "hello");
     }
 
@@ -118,7 +118,7 @@ mod tests {
         let result = run("cmd", &["/C", "exit", "1"]);
         #[cfg(not(windows))]
         let result = run("false", &[]);
-        assert!(result.is_err());
+        assert!(result.is_err(), "non-zero exit should produce an error");
     }
 
     #[test]
@@ -127,21 +127,24 @@ mod tests {
         let result = run_unchecked("cmd", &["/C", "exit", "1"]).unwrap();
         #[cfg(not(windows))]
         let result = run_unchecked("false", &[]).unwrap();
-        assert!(!result.success);
+        assert!(!result.success, "non-zero exit should set success=false");
     }
 
     #[test]
     fn which_finds_known_program() {
         // `cmd` always exists on Windows; `echo` is a real binary on Unix.
         #[cfg(windows)]
-        assert!(which("cmd"));
+        assert!(which("cmd"), "cmd should be found on Windows");
         #[cfg(not(windows))]
-        assert!(which("echo"));
+        assert!(which("echo"), "echo should be found on Unix");
     }
 
     #[test]
     fn which_missing_program() {
-        assert!(!which("this-program-does-not-exist-12345"));
+        assert!(
+            !which("this-program-does-not-exist-12345"),
+            "non-existent program should not be found"
+        );
     }
 
     #[test]
@@ -151,6 +154,6 @@ mod tests {
         let result = run_in(&dir, "cmd", &["/C", "echo", "hello"]).unwrap();
         #[cfg(not(windows))]
         let result = run_in(&dir, "echo", &["hello"]).unwrap();
-        assert!(result.success);
+        assert!(result.success, "echo in temp dir should succeed");
     }
 }

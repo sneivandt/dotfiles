@@ -27,7 +27,7 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
         config.symlinks.len()
     ));
 
-    let ctx = Context::new(&config, &platform, log, global.dry_run, false)?;
+    let ctx = Context::new(&config, &platform, log, global.dry_run)?;
 
     // Build the task list
     let all_tasks: Vec<Box<dyn Task>> = vec![
@@ -40,10 +40,10 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
         Box::new(tasks::packages::InstallParu),
         Box::new(tasks::packages::InstallAurPackages),
         Box::new(tasks::symlinks::InstallSymlinks),
-        Box::new(tasks::vscode::InstallVsCodeExtensions),
-        Box::new(tasks::copilot_skills::InstallCopilotSkills),
         Box::new(tasks::chmod::ApplyFilePermissions),
         Box::new(tasks::shell::ConfigureShell),
+        Box::new(tasks::vscode::InstallVsCodeExtensions),
+        Box::new(tasks::copilot_skills::InstallCopilotSkills),
         Box::new(tasks::systemd::ConfigureSystemd),
         Box::new(tasks::registry::ApplyRegistry),
     ];

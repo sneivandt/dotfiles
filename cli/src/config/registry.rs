@@ -1,6 +1,8 @@
 use anyhow::Result;
 use std::path::Path;
 
+use super::ini;
+
 /// A Windows registry entry.
 #[derive(Debug, Clone)]
 pub struct RegistryEntry {
@@ -12,79 +14,26 @@ pub struct RegistryEntry {
     pub value_data: String,
 }
 
-/// Load registry settings from registry.ini, filtered by active categories.
+/// Load registry settings from registry.ini.
 ///
-/// Registry.ini uses key-value format where sections are registry paths
-/// and entries may have inline comments (after #).
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<RegistryEntry>> {
-    let content = if path.exists() {
-        std::fs::read_to_string(path)?
-    } else {
-        return Ok(Vec::new());
-    };
+/// Section headers are registry key paths (e.g., `[HKCU:\Console]`).
+/// Each key-value entry becomes a `RegistryEntry`. Inline comments are
+/// stripped by the common KV parser.
+pub fn load(path: &Path) -> Result<Vec<RegistryEntry>> {
+    let sections = ini::parse_kv_sections(path)?;
 
     let mut entries = Vec::new();
-    let mut current_path: Option<String> = None;
-    let mut current_categories = Vec::new();
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            let inner = &trimmed[1..trimmed.len() - 1];
-
-            // Check if this is a registry path (contains : or \) vs category header
-            if inner.contains(':') || inner.contains('\\') {
-                // This is a registry path, check categories
-                current_path = Some(inner.to_string());
-                // Registry paths don't have category tags in the current format
-                // They're always under the active profile
-                current_categories = vec!["base".to_string()];
-            } else {
-                // Category header
-                current_categories = inner.split(',').map(|s| s.trim().to_lowercase()).collect();
-                current_path = None;
-            }
-            continue;
-        }
-
-        // Check if current categories match active
-        let matches = current_categories
-            .iter()
-            .all(|c| active_categories.contains(c));
-        if !matches {
-            continue;
-        }
-
-        if let Some(ref path_str) = current_path {
-            // Parse key = value, stripping inline comments
-            if let Some((key, value)) = trimmed.split_once('=') {
-                let value = strip_inline_comment(value.trim());
-                entries.push(RegistryEntry {
-                    key_path: path_str.clone(),
-                    value_name: key.trim().to_string(),
-                    value_data: value,
-                });
-            }
+    for section in &sections {
+        for (name, value) in &section.entries {
+            entries.push(RegistryEntry {
+                key_path: section.header.clone(),
+                value_name: name.clone(),
+                value_data: value.clone(),
+            });
         }
     }
 
     Ok(entries)
-}
-
-/// Strip inline comments (# preceded by whitespace) from a value.
-fn strip_inline_comment(value: &str) -> String {
-    // Find # preceded by whitespace that isn't inside the value
-    if let Some(idx) = value.find(" #") {
-        value[..idx].trim().to_string()
-    } else if let Some(idx) = value.find("\t#") {
-        value[..idx].trim().to_string()
-    } else {
-        value.to_string()
-    }
 }
 
 #[cfg(test)]
@@ -92,18 +41,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn strip_inline_comment_simple() {
-        assert_eq!(strip_inline_comment("value # comment"), "value");
+    fn load_registry_from_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.ini");
+        std::fs::write(
+            &path,
+            "# comment\n[HKCU:\\Console]\nFontSize = 14 # size\nCursorSize = 100\n",
+        )
+        .unwrap();
+
+        let entries = load(&path).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].key_path, "HKCU:\\Console");
+        assert_eq!(entries[0].value_name, "FontSize");
+        assert_eq!(entries[0].value_data, "14");
+        assert_eq!(entries[1].value_name, "CursorSize");
+        assert_eq!(entries[1].value_data, "100");
     }
 
     #[test]
-    fn strip_inline_comment_no_comment() {
-        assert_eq!(strip_inline_comment("value"), "value");
-    }
-
-    #[test]
-    fn strip_inline_comment_hash_in_value() {
-        // A # without preceding space is part of the value
-        assert_eq!(strip_inline_comment("color#FF0000"), "color#FF0000");
+    fn load_missing_file_returns_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let entries = load(&dir.path().join("nope.ini")).unwrap();
+        assert!(entries.is_empty());
     }
 }

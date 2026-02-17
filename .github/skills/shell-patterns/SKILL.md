@@ -43,7 +43,7 @@ All arguments except `--build` are forwarded to the Rust binary unchanged.
 ### Binary Auto-Update
 
 The wrapper checks for updates with a 1-hour cache:
-- Reads cached version from `.dotfiles-version-cache`
+- Reads cached version from `bin/.dotfiles-version-cache`
 - Compares with GitHub Releases API
 - Downloads and verifies SHA256 checksum if outdated
 - Falls back to existing binary if GitHub is unreachable

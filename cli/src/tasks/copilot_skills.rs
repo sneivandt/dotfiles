@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result};
 use std::path::Path;
 
-use super::{Context, Task, TaskResult};
+use super::{Context, Task, TaskResult, TaskStats};
 use crate::exec;
 
 /// Install GitHub Copilot skills.
@@ -18,9 +18,10 @@ impl Task for InstallCopilotSkills {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let skills_dir = ctx.home.join(".copilot/skills");
+        ctx.log
+            .debug(&format!("skills directory: {}", skills_dir.display()));
 
-        let mut changed = 0u32;
-        let mut already_ok = 0u32;
+        let mut stats = TaskStats::new();
 
         for skill in &ctx.config.copilot_skills {
             // Derive a directory name from the URL (last path segment)
@@ -35,14 +36,14 @@ impl Task for InstallCopilotSkills {
             if dest.exists() {
                 ctx.log
                     .debug(&format!("ok: {} (already installed)", skill.url));
-                already_ok += 1;
+                stats.already_ok += 1;
                 continue;
             }
 
             if ctx.dry_run {
                 ctx.log
                     .dry_run(&format!("would install skill: {}", skill.url));
-                changed += 1;
+                stats.changed += 1;
                 continue;
             }
 
@@ -53,7 +54,7 @@ impl Task for InstallCopilotSkills {
             match download_github_folder(&skill.url, &dest) {
                 Ok(()) => {
                     ctx.log.debug(&format!("installed skill: {}", skill.url));
-                    changed += 1;
+                    stats.changed += 1;
                 }
                 Err(e) => {
                     ctx.log
@@ -62,15 +63,7 @@ impl Task for InstallCopilotSkills {
             }
         }
 
-        if ctx.dry_run {
-            ctx.log
-                .info(&format!("{changed} would change, {already_ok} already ok"));
-            return Ok(TaskResult::DryRun);
-        }
-
-        ctx.log
-            .info(&format!("{changed} changed, {already_ok} already ok"));
-        Ok(TaskResult::Ok)
+        Ok(stats.finish(ctx))
     }
 }
 

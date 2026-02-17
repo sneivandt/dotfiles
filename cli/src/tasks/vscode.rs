@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::{Context, Task, TaskResult};
+use super::{Context, Task, TaskResult, TaskStats};
 use crate::exec;
 
 /// Install VS Code extensions.
@@ -19,54 +19,51 @@ impl Task for InstallVsCodeExtensions {
         // Find the VS Code CLI binary
         let code_cmd = find_code_command();
         let Some(cmd) = code_cmd else {
+            ctx.log
+                .debug("neither code-insiders nor code found in PATH");
             return Ok(TaskResult::Skipped("VS Code CLI not found".to_string()));
         };
 
-        let mut count = 0u32;
-        let mut skipped = 0u32;
+        ctx.log.debug(&format!("using VS Code CLI: {cmd}"));
 
-        if ctx.dry_run {
-            let installed = run_code_cmd(&cmd, &["--list-extensions"])
-                .map(|r| r.stdout.to_lowercase())
-                .unwrap_or_default();
+        let mut stats = TaskStats::new();
 
-            for ext in &ctx.config.vscode_extensions {
-                if installed.contains(&ext.id.to_lowercase()) {
-                    ctx.log
-                        .debug(&format!("ok: {} (already installed)", ext.id));
-                    skipped += 1;
-                } else {
-                    ctx.log
-                        .dry_run(&format!("would install extension: {}", ext.id));
-                    count += 1;
-                }
-            }
-            ctx.log
-                .info(&format!("{count} would change, {skipped} already ok"));
-            return Ok(TaskResult::DryRun);
-        }
-
+        ctx.log.debug("listing installed extensions");
         let installed = run_code_cmd(&cmd, &["--list-extensions"])
             .map(|r| r.stdout.to_lowercase())
             .unwrap_or_default();
+        ctx.log.debug(&format!(
+            "found {} installed extensions",
+            installed.lines().count()
+        ));
 
         for ext in &ctx.config.vscode_extensions {
             if installed.contains(&ext.id.to_lowercase()) {
-                skipped += 1;
+                ctx.log
+                    .debug(&format!("ok: {} (already installed)", ext.id));
+                stats.already_ok += 1;
                 continue;
             }
+
+            if ctx.dry_run {
+                ctx.log
+                    .dry_run(&format!("would install extension: {}", ext.id));
+                stats.changed += 1;
+                continue;
+            }
+
+            ctx.log.debug(&format!("installing extension: {}", ext.id));
             let result = run_code_cmd(&cmd, &["--install-extension", &ext.id, "--force"])?;
             if result.success {
-                count += 1;
+                ctx.log.debug(&format!("installed extension: {}", ext.id));
+                stats.changed += 1;
             } else {
                 ctx.log
                     .warn(&format!("failed to install extension: {}", ext.id));
             }
         }
 
-        ctx.log
-            .info(&format!("{count} changed, {skipped} already ok"));
-        Ok(TaskResult::Ok)
+        Ok(stats.finish(ctx))
     }
 }
 

@@ -9,6 +9,20 @@ pub mod symlinks;
 pub mod units;
 pub mod vscode;
 
+#[cfg(test)]
+pub mod test_helpers {
+    use std::path::PathBuf;
+
+    /// Write content to a temp INI file and return the temp dir + path.
+    /// The `TempDir` must be kept alive for the file to persist during the test.
+    pub fn write_temp_ini(content: &str) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let path = dir.path().join("test.ini");
+        std::fs::write(&path, content).expect("failed to write temp ini");
+        (dir, path)
+    }
+}
+
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
@@ -45,8 +59,7 @@ impl Config {
             .context("loading symlinks.ini")?;
 
         let registry = if platform.is_windows() {
-            registry::load(&conf.join("registry.ini"), active_categories)
-                .context("loading registry.ini")?
+            registry::load(&conf.join("registry.ini")).context("loading registry.ini")?
         } else {
             Vec::new()
         };

@@ -10,11 +10,15 @@ pub struct Section {
     pub items: Vec<String>,
 }
 
-/// A key-value entry within a section (for registry.ini style configs).
-#[allow(dead_code)]
+/// A key-value section where headers are data keys (e.g., registry paths).
+///
+/// Unlike `Section`, headers preserve original case since they carry
+/// semantic meaning (e.g., `[HKCU:\Console]` is a registry path, not a category).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KvSection {
-    pub categories: Vec<String>,
+    /// The raw section header (e.g., `"HKCU:\\Console"`).
+    pub header: String,
+    /// Key-value entries within this section.
     pub entries: Vec<(String, String)>,
 }
 
@@ -72,21 +76,22 @@ pub fn parse_sections_from_str(content: &str) -> Result<Vec<Section>> {
     Ok(sections)
 }
 
-/// Parse an INI file into sections with key-value entries.
+/// Parse an INI file into key-value sections where headers are data keys.
+///
+/// Headers preserve original case (no lowercasing). Inline comments
+/// (` #` or `\t#`) are stripped from values.
 ///
 /// Format:
 /// ```ini
-/// [category]
-/// key = value
+/// [HKCU:\Console]
+/// WindowSize = 0x00200078  # comment stripped
 /// ```
-#[allow(dead_code)]
 pub fn parse_kv_sections(path: &Path) -> Result<Vec<KvSection>> {
     let content = read_file(path)?;
     parse_kv_sections_from_str(&content)
 }
 
 /// Parse key-value INI content from a string.
-#[allow(dead_code)]
 pub fn parse_kv_sections_from_str(content: &str) -> Result<Vec<KvSection>> {
     let mut sections = Vec::new();
     let mut current: Option<KvSection> = None;
@@ -98,12 +103,12 @@ pub fn parse_kv_sections_from_str(content: &str) -> Result<Vec<KvSection>> {
             continue;
         }
 
-        if let Some(header) = parse_section_header(trimmed) {
+        if let Some(header) = parse_raw_header(trimmed) {
             if let Some(section) = current.take() {
                 sections.push(section);
             }
             current = Some(KvSection {
-                categories: header,
+                header,
                 entries: Vec::new(),
             });
         } else if let Some(ref mut section) = current {
@@ -147,24 +152,6 @@ pub fn filter_sections_and(sections: &[Section], active_categories: &[String]) -
         .collect()
 }
 
-/// Filter key-value sections by active categories using AND logic.
-#[allow(dead_code)]
-#[must_use]
-pub fn filter_kv_sections_and(
-    sections: &[KvSection],
-    active_categories: &[String],
-) -> Vec<KvSection> {
-    sections
-        .iter()
-        .filter(|s| {
-            s.categories
-                .iter()
-                .all(|cat| active_categories.contains(cat))
-        })
-        .cloned()
-        .collect()
-}
-
 /// Filter sections by excluded categories using OR logic (for manifest):
 /// A section is excluded if ANY of its categories are in the excluded set.
 #[allow(dead_code)]
@@ -184,7 +171,7 @@ pub fn filter_sections_or_exclude(
         .collect()
 }
 
-/// Parse a `[header,tags]` line into category tags.
+/// Parse a `[header,tags]` line into lowercased category tags.
 fn parse_section_header(line: &str) -> Option<Vec<String>> {
     let inner = line.trim().strip_prefix('[')?.strip_suffix(']')?;
     let categories = inner
@@ -195,13 +182,37 @@ fn parse_section_header(line: &str) -> Option<Vec<String>> {
     Some(categories)
 }
 
-/// Parse a `key = value` line.
+/// Parse a `[header]` line preserving original case (for KV sections).
+fn parse_raw_header(line: &str) -> Option<String> {
+    let inner = line.trim().strip_prefix('[')?.strip_suffix(']')?;
+    let trimmed = inner.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+/// Parse a `key = value` line, stripping inline comments from the value.
 fn parse_kv_line(line: &str) -> Option<(String, String)> {
     let parts: Vec<&str> = line.splitn(2, '=').collect();
     if parts.len() == 2 {
-        Some((parts[0].trim().to_string(), parts[1].trim().to_string()))
+        Some((
+            parts[0].trim().to_string(),
+            strip_inline_comment(parts[1].trim()),
+        ))
     } else {
         None
+    }
+}
+
+/// Strip inline comments (`#` preceded by whitespace) from a value.
+fn strip_inline_comment(value: &str) -> String {
+    if let Some(idx) = value.find(" #") {
+        value[..idx].trim().to_string()
+    } else if let Some(idx) = value.find("\t#") {
+        value[..idx].trim().to_string()
+    } else {
+        value.to_string()
     }
 }
 
@@ -272,14 +283,18 @@ mod tests {
     #[test]
     fn parse_item_outside_section_fails() {
         let content = "orphan_item\n";
-        assert!(parse_sections_from_str(content).is_err());
+        assert!(
+            parse_sections_from_str(content).is_err(),
+            "items outside a section should produce an error"
+        );
     }
 
     #[test]
     fn parse_kv_simple() {
-        let content = "[base]\nkey1 = value1\nkey2 = value2\n";
+        let content = "[section]\nkey1 = value1\nkey2 = value2\n";
         let sections = parse_kv_sections_from_str(content).unwrap();
         assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].header, "section");
         assert_eq!(
             sections[0].entries,
             vec![
@@ -291,9 +306,34 @@ mod tests {
 
     #[test]
     fn parse_kv_with_equals_in_value() {
-        let content = "[base]\nkey = val=ue\n";
+        let content = "[section]\nkey = val=ue\n";
         let sections = parse_kv_sections_from_str(content).unwrap();
         assert_eq!(sections[0].entries[0].1, "val=ue");
+    }
+
+    #[test]
+    fn parse_kv_preserves_header_case() {
+        let content = "[HKCU:\\Console]\nFontSize = 14\n";
+        let sections = parse_kv_sections_from_str(content).unwrap();
+        assert_eq!(sections[0].header, "HKCU:\\Console");
+    }
+
+    #[test]
+    fn parse_kv_strips_inline_comments() {
+        let content = "[section]\nkey = value # comment\n";
+        let sections = parse_kv_sections_from_str(content).unwrap();
+        assert_eq!(sections[0].entries[0].1, "value");
+    }
+
+    #[test]
+    fn strip_inline_comment_no_comment() {
+        assert_eq!(strip_inline_comment("value"), "value");
+    }
+
+    #[test]
+    fn strip_inline_comment_hash_in_value() {
+        // A # without preceding space is part of the value
+        assert_eq!(strip_inline_comment("color#FF0000"), "color#FF0000");
     }
 
     #[test]
@@ -375,13 +415,19 @@ mod tests {
     #[test]
     fn empty_file_returns_empty() {
         let sections = parse_sections_from_str("").unwrap();
-        assert!(sections.is_empty());
+        assert!(
+            sections.is_empty(),
+            "empty input should produce no sections"
+        );
     }
 
     #[test]
     fn comment_only_file_returns_empty() {
         let sections = parse_sections_from_str("# just a comment\n").unwrap();
-        assert!(sections.is_empty());
+        assert!(
+            sections.is_empty(),
+            "comment-only input should produce no sections"
+        );
     }
 
     #[test]
@@ -402,6 +448,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let items =
             load_filtered_items(&dir.path().join("nope.ini"), &["base".to_string()]).unwrap();
-        assert!(items.is_empty());
+        assert!(items.is_empty(), "missing file should produce empty list");
     }
 }

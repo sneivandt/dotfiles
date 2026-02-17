@@ -87,8 +87,10 @@ mod tests {
     #[test]
     fn platform_detect_returns_valid() {
         let p = Platform::detect();
-        // On any system this should succeed
-        assert!(p.is_linux() || p.is_windows());
+        assert!(
+            p.is_linux() || p.is_windows(),
+            "detected platform should be linux or windows"
+        );
     }
 
     #[test]

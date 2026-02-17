@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::{Context, Task, TaskResult};
+use super::{Context, Task, TaskResult, TaskStats};
 
 /// Install git hooks from hooks/ into .git/hooks/.
 pub struct GitHooks;
@@ -19,16 +19,15 @@ impl Task for GitHooks {
         let hooks_dst = ctx.root().join(".git/hooks");
 
         if !hooks_dst.exists() {
+            ctx.log.debug("creating .git/hooks directory");
             std::fs::create_dir_all(&hooks_dst)?;
         }
 
-        let mut count = 0u32;
-        let mut skipped = 0u32;
+        let mut stats = TaskStats::new();
         for entry in std::fs::read_dir(&hooks_src)? {
             let entry = entry?;
             let path = entry.path();
 
-            // Skip non-files
             if !path.is_file() {
                 continue;
             }
@@ -45,20 +44,20 @@ impl Task for GitHooks {
                             "ok: {} (already installed)",
                             filename.to_string_lossy()
                         ));
-                        skipped += 1;
+                        stats.already_ok += 1;
                     } else {
                         ctx.log.dry_run(&format!(
                             "would update hook: {}",
                             filename.to_string_lossy()
                         ));
-                        count += 1;
+                        stats.changed += 1;
                     }
                 } else {
                     ctx.log.dry_run(&format!(
                         "would install hook: {}",
                         filename.to_string_lossy()
                     ));
-                    count += 1;
+                    stats.changed += 1;
                 }
                 continue;
             }
@@ -68,9 +67,17 @@ impl Task for GitHooks {
                 let src_content = std::fs::read(&path)?;
                 let dst_content = std::fs::read(&dst)?;
                 if src_content == dst_content {
-                    skipped += 1;
+                    ctx.log.debug(&format!(
+                        "ok: {} (already installed)",
+                        filename.to_string_lossy()
+                    ));
+                    stats.already_ok += 1;
                     continue;
                 }
+                ctx.log.debug(&format!(
+                    "updating hook: {} (content differs)",
+                    filename.to_string_lossy()
+                ));
                 // Remove first to avoid Windows file-locking errors (os error 32)
                 std::fs::remove_file(&dst)?;
             }
@@ -88,18 +95,10 @@ impl Task for GitHooks {
 
             ctx.log
                 .debug(&format!("installed hook: {}", filename.to_string_lossy()));
-            count += 1;
+            stats.changed += 1;
         }
 
-        if ctx.dry_run {
-            ctx.log
-                .info(&format!("{count} would change, {skipped} already ok"));
-            return Ok(TaskResult::DryRun);
-        }
-
-        ctx.log
-            .info(&format!("{count} changed, {skipped} already ok"));
-        Ok(TaskResult::Ok)
+        Ok(stats.finish(ctx))
     }
 }
 
@@ -119,8 +118,7 @@ impl Task for UninstallHooks {
         let hooks_src = ctx.hooks_dir();
         let hooks_dst = ctx.root().join(".git/hooks");
 
-        let mut count = 0u32;
-        let mut skipped = 0u32;
+        let mut stats = TaskStats::new();
         for entry in std::fs::read_dir(&hooks_src)? {
             let entry = entry?;
             let path = entry.path();
@@ -133,30 +131,27 @@ impl Task for UninstallHooks {
             let dst = hooks_dst.join(&filename);
 
             if !dst.exists() {
-                skipped += 1;
+                ctx.log.debug(&format!(
+                    "skip: {} (not installed)",
+                    filename.to_string_lossy()
+                ));
+                stats.skipped += 1;
                 continue;
             }
 
             if ctx.dry_run {
                 ctx.log
                     .dry_run(&format!("remove hook: {}", filename.to_string_lossy()));
-                count += 1;
+                stats.changed += 1;
                 continue;
             }
 
             std::fs::remove_file(&dst)?;
             ctx.log
                 .debug(&format!("removed hook: {}", filename.to_string_lossy()));
-            count += 1;
+            stats.changed += 1;
         }
 
-        if ctx.dry_run {
-            ctx.log
-                .info(&format!("{count} would change, {skipped} already gone"));
-            return Ok(TaskResult::DryRun);
-        }
-
-        ctx.log.info(&format!("{count} hooks removed"));
-        Ok(TaskResult::Ok)
+        Ok(stats.finish(ctx))
     }
 }

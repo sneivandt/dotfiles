@@ -394,7 +394,7 @@ The project includes automated Docker image publishing:
 
 ```yaml
 # .github/workflows/docker-image.yml
-name: Publish Docker image
+name: Publish Docker
 
 on:
   push:

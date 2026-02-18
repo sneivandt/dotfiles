@@ -33,8 +33,25 @@ impl Task for ConfigureShell {
             return Ok(TaskResult::DryRun);
         }
 
-        exec::run("chsh", &["-s", zsh_path])?;
-        ctx.log.info("default shell changed to zsh");
-        Ok(TaskResult::Ok)
+        // Try to change shell, but don't fail if chsh requires authentication (e.g., in CI)
+        match exec::run("chsh", &["-s", zsh_path]) {
+            Ok(_) => {
+                ctx.log.info("default shell changed to zsh");
+                Ok(TaskResult::Ok)
+            }
+            Err(e) => {
+                let err_msg = e.to_string();
+                // Check if failure is due to authentication (common in CI environments)
+                if err_msg.contains("PAM:") || err_msg.contains("Authentication") {
+                    ctx.log
+                        .warn("cannot change shell without authentication (skipping in CI)");
+                    Ok(TaskResult::Skipped(
+                        "chsh requires authentication".to_string(),
+                    ))
+                } else {
+                    Err(e)
+                }
+            }
+        }
     }
 }

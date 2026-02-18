@@ -102,17 +102,14 @@ fn default_definitions() -> Vec<ProfileDef> {
 /// Returns an error if the profile is not found or the profiles.ini file cannot be parsed.
 pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profile> {
     let defs = load_definitions(&conf_dir.join("profiles.ini"))?;
-    let def = defs
-        .iter()
-        .find(|d| d.name == name)
-        .ok_or_else(|| {
-            let available = defs
-                .iter()
-                .map(|d| d.name.as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
-            anyhow::anyhow!("unknown profile: {name} (available: {available})")
-        })?;
+    let def = defs.iter().find(|d| d.name == name).ok_or_else(|| {
+        let available = defs
+            .iter()
+            .map(|d| d.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        anyhow::anyhow!("unknown profile: {name} (available: {available})")
+    })?;
 
     // Start with the profile's own include/exclude
     let mut active: Vec<String> = vec!["base".to_string()];

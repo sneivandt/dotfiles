@@ -142,7 +142,7 @@ mod tests {
     fn resolve_root_error_when_not_in_repo() {
         // Use a path that definitely doesn't have conf/symlinks
         let temp_dir = std::env::temp_dir();
-        
+
         let global = GlobalOpts {
             root: None,
             profile: None,
@@ -154,12 +154,12 @@ mod tests {
         std::env::set_current_dir(&temp_dir).ok();
 
         let result = resolve_root(&global);
-        
+
         // Restore directory
         if let Some(dir) = original_dir {
             std::env::set_current_dir(dir).ok();
         }
-        
+
         // Only check error if DOTFILES_ROOT env var is not set
         if std::env::var("DOTFILES_ROOT").is_err() {
             assert!(result.is_err());
@@ -169,4 +169,3 @@ mod tests {
         }
     }
 }
-

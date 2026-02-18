@@ -42,14 +42,21 @@ impl CommandSetup {
     }
 }
 
-/// Execute every task in order, print the summary, and bail if any task failed.
+/// Execute every task in dependency order, print the summary, and bail if any task failed.
+///
+/// Tasks are automatically sorted based on their declared dependencies using
+/// topological sort to ensure dependencies run before dependent tasks.
 ///
 /// # Errors
 ///
-/// Returns an error if one or more tasks recorded a failure.
+/// Returns an error if one or more tasks recorded a failure, or if there is
+/// a dependency cycle or missing dependency in the task graph.
 pub fn run_tasks_to_completion(tasks: &[&dyn Task], ctx: &Context, log: &Logger) -> Result<()> {
-    for task in tasks {
-        tasks::execute(*task, ctx);
+    // Sort tasks by dependencies
+    let sorted_tasks = tasks::sort_by_dependencies(tasks)?;
+
+    for task in sorted_tasks {
+        tasks::execute(task, ctx);
     }
 
     log.print_summary();

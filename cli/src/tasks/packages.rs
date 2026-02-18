@@ -87,6 +87,10 @@ impl Task for InstallAurPackages {
             && ctx.config.packages.iter().any(|p| p.is_aur)
     }
 
+    fn dependencies(&self) -> Vec<&str> {
+        vec!["Install paru"]
+    }
+
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let packages: Vec<_> = ctx.config.packages.iter().filter(|p| p.is_aur).collect();
 

@@ -14,6 +14,10 @@ impl Task for ApplyFilePermissions {
         ctx.platform.is_linux() && !ctx.config.chmod.is_empty()
     }
 
+    fn dependencies(&self) -> Vec<&str> {
+        vec!["Install symlinks"]
+    }
+
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         #[cfg(unix)]
         {

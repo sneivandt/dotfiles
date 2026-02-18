@@ -136,6 +136,14 @@ pub trait Task {
 
     /// Execute the task.
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
+
+    /// Names of tasks that must complete before this task can run.
+    ///
+    /// Dependencies are specified by task name (case-sensitive).
+    /// Default implementation returns no dependencies.
+    fn dependencies(&self) -> Vec<&str> {
+        Vec::new()
+    }
 }
 
 /// Execute a task, recording the result in the logger.
@@ -167,5 +175,203 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
             ctx.log
                 .record_task(task.name(), TaskStatus::Failed, Some(&format!("{e:#}")));
         }
+    }
+}
+
+/// Sort tasks by dependencies using topological sort.
+///
+/// # Errors
+///
+/// Returns an error if a dependency cycle is detected or if a dependency
+/// references a non-existent task.
+pub fn sort_by_dependencies<'a>(tasks: &'a [&'a dyn Task]) -> Result<Vec<&'a dyn Task>> {
+    use std::collections::{HashMap, HashSet, VecDeque};
+
+    // Build a name-to-task map for quick lookup
+    let mut name_map: HashMap<&str, &'a dyn Task> = HashMap::new();
+    for task in tasks {
+        name_map.insert(task.name(), *task);
+    }
+
+    // Validate dependencies and build adjacency list
+    let mut graph: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut in_degree: HashMap<&str, usize> = HashMap::new();
+
+    for task in tasks {
+        let name = task.name();
+        graph.entry(name).or_default();
+        in_degree.entry(name).or_insert(0);
+
+        for dep in task.dependencies() {
+            if !name_map.contains_key(dep) {
+                anyhow::bail!("task '{}' depends on non-existent task '{}'", name, dep);
+            }
+            graph.entry(dep).or_default().push(name);
+            *in_degree.entry(name).or_insert(0) += 1;
+        }
+    }
+
+    // Kahn's algorithm for topological sort
+    let mut queue: VecDeque<&str> = in_degree
+        .iter()
+        .filter(|&(_, &degree)| degree == 0)
+        .map(|(&name, _)| name)
+        .collect();
+
+    let mut sorted = Vec::new();
+    let mut visited = HashSet::new();
+
+    while let Some(current) = queue.pop_front() {
+        visited.insert(current);
+        sorted.push(*name_map.get(current).unwrap());
+
+        if let Some(neighbors) = graph.get(current) {
+            for &neighbor in neighbors {
+                let degree = in_degree.get_mut(neighbor).unwrap();
+                *degree -= 1;
+                if *degree == 0 {
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+    }
+
+    if sorted.len() != tasks.len() {
+        anyhow::bail!("dependency cycle detected in task dependencies");
+    }
+
+    Ok(sorted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestTask {
+        name: &'static str,
+        deps: Vec<&'static str>,
+    }
+
+    impl Task for TestTask {
+        fn name(&self) -> &str {
+            self.name
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+
+        fn dependencies(&self) -> Vec<&str> {
+            self.deps.clone()
+        }
+    }
+
+    #[test]
+    fn sort_tasks_no_dependencies() {
+        let task_a = TestTask {
+            name: "A",
+            deps: vec![],
+        };
+        let task_b = TestTask {
+            name: "B",
+            deps: vec![],
+        };
+
+        let tasks: Vec<&dyn Task> = vec![&task_a, &task_b];
+        let sorted = sort_by_dependencies(&tasks).unwrap();
+
+        assert_eq!(sorted.len(), 2);
+        // Order doesn't matter when no dependencies
+    }
+
+    #[test]
+    fn sort_tasks_linear_dependency() {
+        let task_a = TestTask {
+            name: "A",
+            deps: vec![],
+        };
+        let task_b = TestTask {
+            name: "B",
+            deps: vec!["A"],
+        };
+        let task_c = TestTask {
+            name: "C",
+            deps: vec!["B"],
+        };
+
+        // Submit in wrong order
+        let tasks: Vec<&dyn Task> = vec![&task_c, &task_a, &task_b];
+        let sorted = sort_by_dependencies(&tasks).unwrap();
+
+        assert_eq!(sorted.len(), 3);
+        assert_eq!(sorted[0].name(), "A");
+        assert_eq!(sorted[1].name(), "B");
+        assert_eq!(sorted[2].name(), "C");
+    }
+
+    #[test]
+    fn sort_tasks_diamond_dependency() {
+        let task_a = TestTask {
+            name: "A",
+            deps: vec![],
+        };
+        let task_b = TestTask {
+            name: "B",
+            deps: vec!["A"],
+        };
+        let task_c = TestTask {
+            name: "C",
+            deps: vec!["A"],
+        };
+        let task_d = TestTask {
+            name: "D",
+            deps: vec!["B", "C"],
+        };
+
+        let tasks: Vec<&dyn Task> = vec![&task_d, &task_c, &task_b, &task_a];
+        let sorted = sort_by_dependencies(&tasks).unwrap();
+
+        assert_eq!(sorted.len(), 4);
+        assert_eq!(sorted[0].name(), "A");
+        // B and C can be in any order
+        assert!(sorted[3].name() == "D");
+    }
+
+    #[test]
+    fn sort_tasks_cycle_detection() {
+        let task_a = TestTask {
+            name: "A",
+            deps: vec!["B"],
+        };
+        let task_b = TestTask {
+            name: "B",
+            deps: vec!["A"],
+        };
+
+        let tasks: Vec<&dyn Task> = vec![&task_a, &task_b];
+        let result = sort_by_dependencies(&tasks);
+
+        assert!(result.is_err());
+        let err_msg = result.err().unwrap().to_string();
+        assert!(err_msg.contains("dependency cycle"));
+    }
+
+    #[test]
+    fn sort_tasks_missing_dependency() {
+        let task_a = TestTask {
+            name: "A",
+            deps: vec!["NonExistent"],
+        };
+
+        let tasks: Vec<&dyn Task> = vec![&task_a];
+        let result = sort_by_dependencies(&tasks);
+
+        assert!(result.is_err());
+        let err_msg = result.err().unwrap().to_string();
+        assert!(err_msg.contains("non-existent"));
     }
 }

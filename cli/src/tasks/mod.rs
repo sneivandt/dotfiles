@@ -377,4 +377,55 @@ mod tests {
         let err_msg = result.err().unwrap().to_string();
         assert!(err_msg.contains("non-existent"));
     }
+
+    #[test]
+    fn sort_validates_real_task_dependencies() {
+        // This test ensures that if we add dependencies between actual tasks,
+        // they reference valid task names and don't create cycles.
+        
+        use crate::tasks::*;
+        
+        let tasks: Vec<Box<dyn Task>> = vec![
+            Box::new(packages::InstallPackages),
+            Box::new(packages::InstallParu),
+            Box::new(packages::InstallAurPackages),
+            Box::new(symlinks::InstallSymlinks),
+            Box::new(chmod::ApplyFilePermissions),
+            Box::new(sparse_checkout::SparseCheckout),
+            Box::new(update::UpdateRepository),
+        ];
+        
+        let task_refs: Vec<&dyn Task> = tasks.iter().map(std::convert::AsRef::as_ref).collect();
+        
+        // This should not panic or error - validates no cycles and all deps exist
+        let result = sort_by_dependencies(&task_refs);
+        assert!(result.is_ok(), "Task dependency graph should be valid");
+        
+        let sorted = result.unwrap();
+        assert_eq!(sorted.len(), tasks.len());
+        
+        // Verify specific ordering constraints
+        let names: Vec<&str> = sorted.iter().map(|t| t.name()).collect();
+        
+        // InstallParu must come before InstallAurPackages
+        let paru_idx = names.iter().position(|&n| n == "Install paru");
+        let aur_idx = names.iter().position(|&n| n == "Install AUR packages");
+        if let (Some(paru), Some(aur)) = (paru_idx, aur_idx) {
+            assert!(paru < aur, "Install paru must come before Install AUR packages");
+        }
+        
+        // InstallSymlinks must come before ApplyFilePermissions
+        let symlinks_idx = names.iter().position(|&n| n == "Install symlinks");
+        let chmod_idx = names.iter().position(|&n| n == "Apply file permissions");
+        if let (Some(sym), Some(chmod)) = (symlinks_idx, chmod_idx) {
+            assert!(sym < chmod, "Install symlinks must come before Apply file permissions");
+        }
+        
+        // SparseCheckout must come before UpdateRepository
+        let sparse_idx = names.iter().position(|&n| n == "Configure sparse checkout");
+        let update_idx = names.iter().position(|&n| n == "Update repository");
+        if let (Some(sparse), Some(update)) = (sparse_idx, update_idx) {
+            assert!(sparse < update, "Configure sparse checkout must come before Update repository");
+        }
+    }
 }

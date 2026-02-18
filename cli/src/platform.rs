@@ -124,11 +124,11 @@ impl Platform {
 
     /// Returns a display-friendly description of the platform.
     #[must_use]
-    pub fn description(&self) -> String {
+    pub const fn description(&self) -> &'static str {
         match (&self.os, self.is_arch_linux()) {
-            (Os::Linux, true) => "Arch Linux".to_string(),
-            (Os::Linux, false) => "Linux".to_string(),
-            (Os::Windows, _) => "Windows".to_string(),
+            (Os::Linux, true) => "Arch Linux",
+            (Os::Linux, false) => "Linux",
+            (Os::Windows, _) => "Windows",
         }
     }
 

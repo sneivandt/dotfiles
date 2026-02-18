@@ -47,23 +47,23 @@ pub trait ConfigValidator {
 }
 
 /// Validator for symlink configurations.
-pub struct SymlinkValidator {
-    symlinks: Vec<super::symlinks::Symlink>,
+pub struct SymlinkValidator<'a> {
+    symlinks: &'a [super::symlinks::Symlink],
 }
 
-impl SymlinkValidator {
+impl<'a> SymlinkValidator<'a> {
     #[must_use]
-    pub const fn new(symlinks: Vec<super::symlinks::Symlink>) -> Self {
+    pub const fn new(symlinks: &'a [super::symlinks::Symlink]) -> Self {
         Self { symlinks }
     }
 }
 
-impl ConfigValidator for SymlinkValidator {
+impl ConfigValidator for SymlinkValidator<'_> {
     fn validate(&self, root: &Path, _platform: &Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
         let symlinks_dir = root.join("symlinks");
 
-        for symlink in &self.symlinks {
+        for symlink in self.symlinks {
             let source_path = symlinks_dir.join(&symlink.source);
 
             // Check if source file exists
@@ -94,22 +94,22 @@ impl ConfigValidator for SymlinkValidator {
 }
 
 /// Validator for package configurations.
-pub struct PackageValidator {
-    packages: Vec<super::packages::Package>,
+pub struct PackageValidator<'a> {
+    packages: &'a [super::packages::Package],
 }
 
-impl PackageValidator {
+impl<'a> PackageValidator<'a> {
     #[must_use]
-    pub const fn new(packages: Vec<super::packages::Package>) -> Self {
+    pub const fn new(packages: &'a [super::packages::Package]) -> Self {
         Self { packages }
     }
 }
 
-impl ConfigValidator for PackageValidator {
+impl ConfigValidator for PackageValidator<'_> {
     fn validate(&self, _root: &Path, platform: &Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
-        for package in &self.packages {
+        for package in self.packages {
             // Warn about AUR packages on non-Arch platforms
             if package.is_aur && !platform.is_arch_linux() {
                 warnings.push(ValidationWarning::new(
@@ -138,18 +138,18 @@ impl ConfigValidator for PackageValidator {
 }
 
 /// Validator for registry configurations.
-pub struct RegistryValidator {
-    entries: Vec<super::registry::RegistryEntry>,
+pub struct RegistryValidator<'a> {
+    entries: &'a [super::registry::RegistryEntry],
 }
 
-impl RegistryValidator {
+impl<'a> RegistryValidator<'a> {
     #[must_use]
-    pub const fn new(entries: Vec<super::registry::RegistryEntry>) -> Self {
+    pub const fn new(entries: &'a [super::registry::RegistryEntry]) -> Self {
         Self { entries }
     }
 }
 
-impl ConfigValidator for RegistryValidator {
+impl ConfigValidator for RegistryValidator<'_> {
     fn validate(&self, _root: &Path, platform: &Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
@@ -162,7 +162,7 @@ impl ConfigValidator for RegistryValidator {
             ));
         }
 
-        for entry in &self.entries {
+        for entry in self.entries {
             // Check for empty key paths
             if entry.key_path.trim().is_empty() {
                 warnings.push(ValidationWarning::new(
@@ -204,18 +204,18 @@ impl ConfigValidator for RegistryValidator {
 }
 
 /// Validator for chmod configurations.
-pub struct ChmodValidator {
-    entries: Vec<super::chmod::ChmodEntry>,
+pub struct ChmodValidator<'a> {
+    entries: &'a [super::chmod::ChmodEntry],
 }
 
-impl ChmodValidator {
+impl<'a> ChmodValidator<'a> {
     #[must_use]
-    pub const fn new(entries: Vec<super::chmod::ChmodEntry>) -> Self {
+    pub const fn new(entries: &'a [super::chmod::ChmodEntry]) -> Self {
         Self { entries }
     }
 }
 
-impl ConfigValidator for ChmodValidator {
+impl ConfigValidator for ChmodValidator<'_> {
     fn validate(&self, _root: &Path, platform: &Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
@@ -228,7 +228,7 @@ impl ConfigValidator for ChmodValidator {
             ));
         }
 
-        for entry in &self.entries {
+        for entry in self.entries {
             // Validate mode is octal (3 or 4 digits)
             if !entry.mode.chars().all(|c| c.is_ascii_digit()) {
                 warnings.push(ValidationWarning::new(
@@ -281,18 +281,18 @@ impl ConfigValidator for ChmodValidator {
 }
 
 /// Validator for systemd unit configurations.
-pub struct SystemdUnitValidator {
-    units: Vec<super::systemd_units::SystemdUnit>,
+pub struct SystemdUnitValidator<'a> {
+    units: &'a [super::systemd_units::SystemdUnit],
 }
 
-impl SystemdUnitValidator {
+impl<'a> SystemdUnitValidator<'a> {
     #[must_use]
-    pub const fn new(units: Vec<super::systemd_units::SystemdUnit>) -> Self {
+    pub const fn new(units: &'a [super::systemd_units::SystemdUnit]) -> Self {
         Self { units }
     }
 }
 
-impl ConfigValidator for SystemdUnitValidator {
+impl ConfigValidator for SystemdUnitValidator<'_> {
     fn validate(&self, _root: &Path, platform: &Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
@@ -305,7 +305,7 @@ impl ConfigValidator for SystemdUnitValidator {
             ));
         }
 
-        for unit in &self.units {
+        for unit in self.units {
             // Check for empty unit names
             if unit.name.trim().is_empty() {
                 warnings.push(ValidationWarning::new(
@@ -342,22 +342,22 @@ impl ConfigValidator for SystemdUnitValidator {
 }
 
 /// Validator for VS Code extension configurations.
-pub struct VsCodeExtensionValidator {
-    extensions: Vec<super::vscode_extensions::VsCodeExtension>,
+pub struct VsCodeExtensionValidator<'a> {
+    extensions: &'a [super::vscode_extensions::VsCodeExtension],
 }
 
-impl VsCodeExtensionValidator {
+impl<'a> VsCodeExtensionValidator<'a> {
     #[must_use]
-    pub const fn new(extensions: Vec<super::vscode_extensions::VsCodeExtension>) -> Self {
+    pub const fn new(extensions: &'a [super::vscode_extensions::VsCodeExtension]) -> Self {
         Self { extensions }
     }
 }
 
-impl ConfigValidator for VsCodeExtensionValidator {
+impl ConfigValidator for VsCodeExtensionValidator<'_> {
     fn validate(&self, _root: &Path, _platform: &Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
-        for extension in &self.extensions {
+        for extension in self.extensions {
             // Check for empty extension IDs
             if extension.id.trim().is_empty() {
                 warnings.push(ValidationWarning::new(
@@ -386,22 +386,22 @@ impl ConfigValidator for VsCodeExtensionValidator {
 }
 
 /// Validator for Copilot skill configurations.
-pub struct CopilotSkillValidator {
-    skills: Vec<super::copilot_skills::CopilotSkill>,
+pub struct CopilotSkillValidator<'a> {
+    skills: &'a [super::copilot_skills::CopilotSkill],
 }
 
-impl CopilotSkillValidator {
+impl<'a> CopilotSkillValidator<'a> {
     #[must_use]
-    pub const fn new(skills: Vec<super::copilot_skills::CopilotSkill>) -> Self {
+    pub const fn new(skills: &'a [super::copilot_skills::CopilotSkill]) -> Self {
         Self { skills }
     }
 }
 
-impl ConfigValidator for CopilotSkillValidator {
+impl ConfigValidator for CopilotSkillValidator<'_> {
     fn validate(&self, _root: &Path, _platform: &Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
-        for skill in &self.skills {
+        for skill in self.skills {
             // Check for empty skill URLs
             if skill.url.trim().is_empty() {
                 warnings.push(ValidationWarning::new(
@@ -433,15 +433,13 @@ impl ConfigValidator for CopilotSkillValidator {
 #[must_use]
 pub fn validate_all(config: &super::Config, platform: &Platform) -> Vec<ValidationWarning> {
     let validators: Vec<Box<dyn ConfigValidator>> = vec![
-        Box::new(SymlinkValidator::new(config.symlinks.clone())),
-        Box::new(PackageValidator::new(config.packages.clone())),
-        Box::new(RegistryValidator::new(config.registry.clone())),
-        Box::new(ChmodValidator::new(config.chmod.clone())),
-        Box::new(SystemdUnitValidator::new(config.units.clone())),
-        Box::new(VsCodeExtensionValidator::new(
-            config.vscode_extensions.clone(),
-        )),
-        Box::new(CopilotSkillValidator::new(config.copilot_skills.clone())),
+        Box::new(SymlinkValidator::new(&config.symlinks)),
+        Box::new(PackageValidator::new(&config.packages)),
+        Box::new(RegistryValidator::new(&config.registry)),
+        Box::new(ChmodValidator::new(&config.chmod)),
+        Box::new(SystemdUnitValidator::new(&config.units)),
+        Box::new(VsCodeExtensionValidator::new(&config.vscode_extensions)),
+        Box::new(CopilotSkillValidator::new(&config.copilot_skills)),
     ];
 
     let mut all_warnings = Vec::new();
@@ -465,7 +463,7 @@ mod tests {
             source: "nonexistent.txt".to_string(),
         }];
 
-        let validator = SymlinkValidator::new(symlinks);
+        let validator = SymlinkValidator::new(&symlinks);
         let warnings = validator.validate(temp_dir.path(), &Platform::new(Os::Linux, false));
 
         assert_eq!(warnings.len(), 1);
@@ -479,7 +477,7 @@ mod tests {
         }];
 
         let temp_dir = tempfile::tempdir().unwrap();
-        let validator = SymlinkValidator::new(symlinks);
+        let validator = SymlinkValidator::new(&symlinks);
         let warnings = validator.validate(temp_dir.path(), &Platform::new(Os::Linux, false));
 
         // Expect 2 warnings: non-existent file AND absolute path
@@ -505,7 +503,7 @@ mod tests {
 
         let platform = Platform::new(Os::Linux, false);
 
-        let validator = PackageValidator::new(packages);
+        let validator = PackageValidator::new(&packages);
         let warnings = validator.validate(Path::new("/tmp"), &platform);
 
         assert_eq!(warnings.len(), 1);
@@ -519,7 +517,7 @@ mod tests {
             path: ".ssh/config".to_string(),
         }];
 
-        let validator = ChmodValidator::new(entries);
+        let validator = ChmodValidator::new(&entries);
         let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Linux, false));
 
         assert_eq!(warnings.len(), 1);
@@ -533,7 +531,7 @@ mod tests {
             path: ".ssh/config".to_string(),
         }];
 
-        let validator = ChmodValidator::new(entries);
+        let validator = ChmodValidator::new(&entries);
         let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Linux, false));
 
         assert_eq!(warnings.len(), 1);
@@ -550,7 +548,7 @@ mod tests {
 
         let platform = Platform::new(Os::Linux, true);
 
-        let validator = RegistryValidator::new(entries);
+        let validator = RegistryValidator::new(&entries);
         let warnings = validator.validate(Path::new("/tmp"), &platform);
 
         assert_eq!(warnings.len(), 1);
@@ -565,7 +563,7 @@ mod tests {
             value_data: "Value".to_string(),
         }];
 
-        let validator = RegistryValidator::new(entries);
+        let validator = RegistryValidator::new(&entries);
         let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Windows, false));
 
         assert_eq!(warnings.len(), 1);
@@ -587,7 +585,7 @@ mod tests {
             },
         ];
 
-        let validator = RegistryValidator::new(entries);
+        let validator = RegistryValidator::new(&entries);
         let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Windows, false));
 
         // Should not have warnings about invalid hives
@@ -603,7 +601,7 @@ mod tests {
             name: "myunit".to_string(),
         }];
 
-        let validator = SystemdUnitValidator::new(units);
+        let validator = SystemdUnitValidator::new(&units);
         let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Linux, false));
 
         assert_eq!(warnings.len(), 1);
@@ -616,7 +614,7 @@ mod tests {
             id: "invalid_no_publisher".to_string(),
         }];
 
-        let validator = VsCodeExtensionValidator::new(extensions);
+        let validator = VsCodeExtensionValidator::new(&extensions);
         let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Linux, false));
 
         assert_eq!(warnings.len(), 1);

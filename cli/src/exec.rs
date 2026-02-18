@@ -14,8 +14,8 @@ pub struct ExecResult {
 impl From<Output> for ExecResult {
     fn from(output: Output) -> Self {
         Self {
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             success: output.status.success(),
             code: output.status.code(),
         }
@@ -58,6 +58,10 @@ pub fn run_in(dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
 }
 
 /// Run a command in a specific directory with extra environment variables.
+///
+/// # Errors
+///
+/// Returns an error if the command cannot be executed or exits with non-zero status.
 pub fn run_in_with_env(
     dir: &Path,
     program: &str,

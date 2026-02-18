@@ -193,6 +193,24 @@ fn run_psscriptanalyzer(root: &Path, log: &Logger) -> Result<u32> {
     }
 }
 
+/// Recursively discover files in a directory tree that match a predicate.
+fn discover_files<F>(dir: &Path, predicate: F, out: &mut Vec<PathBuf>)
+where
+    F: Fn(&Path) -> bool + Copy,
+{
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            discover_files(&path, predicate, out);
+        } else if path.is_file() && predicate(&path) {
+            out.push(path);
+        }
+    }
+}
+
 /// Recursively discover shell scripts in a directory.
 ///
 /// A file is considered a shell script if it has a `.sh` extension
@@ -200,43 +218,29 @@ fn run_psscriptanalyzer(root: &Path, log: &Logger) -> Result<u32> {
 /// Files with `.zsh` extension or zsh shebangs are excluded (shellcheck
 /// doesn't support zsh syntax).
 fn discover_shell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            discover_shell_scripts(&path, out);
-        } else if path.is_file() {
-            // Skip zsh files — shellcheck can't parse them
+    discover_files(
+        dir,
+        |path| {
             if path.extension().is_some_and(|e| e == "zsh") {
-                continue;
+                return false;
             }
-            let dominated = path.extension().is_some_and(|e| e == "sh")
-                || (is_shell_shebang(&path) && !is_zsh_shebang(&path));
-            if dominated {
-                out.push(path);
-            }
-        }
-    }
+            path.extension().is_some_and(|e| e == "sh")
+                || (is_shell_shebang(path) && !is_zsh_shebang(path))
+        },
+        out,
+    );
 }
 
-/// Recursively discover `PowerShell` scripts (.ps1, .psm1) in a directory.
+/// Recursively discover `PowerShell` scripts (.ps1, .psm1, .psd1) in a directory.
 fn discover_powershell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            discover_powershell_scripts(&path, out);
-        } else if path.is_file()
-            && let Some(ext) = path.extension()
-            && (ext == "ps1" || ext == "psm1" || ext == "psd1")
-        {
-            out.push(path);
-        }
-    }
+    discover_files(
+        dir,
+        |path| {
+            path.extension()
+                .is_some_and(|e| e == "ps1" || e == "psm1" || e == "psd1")
+        },
+        out,
+    );
 }
 
 /// Check if a file has a shell shebang (#!/...sh).
@@ -335,5 +339,24 @@ mod tests {
         discover_shell_scripts(dir.path(), &mut found);
         // zsh scripts are excluded (shellcheck doesn't support them)
         assert_eq!(found.len(), 2);
+    }
+
+    #[test]
+    fn discover_files_with_custom_predicate() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "hello").unwrap();
+        std::fs::write(dir.path().join("b.txt"), "world").unwrap();
+        std::fs::write(dir.path().join("c.md"), "# doc").unwrap();
+        let sub = dir.path().join("sub");
+        std::fs::create_dir(&sub).unwrap();
+        std::fs::write(sub.join("d.txt"), "nested").unwrap();
+
+        let mut found = Vec::new();
+        discover_files(
+            dir.path(),
+            |p| p.extension().is_some_and(|e| e == "txt"),
+            &mut found,
+        );
+        assert_eq!(found.len(), 3, "should find .txt files recursively");
     }
 }

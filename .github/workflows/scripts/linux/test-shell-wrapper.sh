@@ -290,12 +290,11 @@ fi
 EOF
   
   chmod +x "$tmpdir/test-error.sh"
-  output=$("$tmpdir/test-error.sh" 2>&1 && echo "FAIL" || echo "PASS")
-  
-  if [ "$output" = "PASS" ]; then
-    log_verbose "✓ Error handling exits with proper code"
-  else
-    printf "%sERROR: Error handling test failed%s\n" "${RED}" "${NC}" >&2
+  # Run script and check exit code separately to avoid mixing stdout/stderr
+  if "$tmpdir/test-error.sh" >/dev/null 2>&1; then
+    printf "%sERROR: Script should have failed but succeeded%s\n" "${RED}" "${NC}" >&2
     return 1
+  else
+    log_verbose "✓ Error handling exits with proper code"
   fi
 )}

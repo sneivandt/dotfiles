@@ -137,7 +137,7 @@ This links the entire directory.
    config/systemd/user/my-service.service
    ```
 
-3. **Add to units.ini to enable it**:
+3. **Add to systemd-units.ini to enable it**:
    ```ini
    [base]
    my-service.service
@@ -178,14 +178,14 @@ WantedBy=timers.target
 EOF
 ```
 
-Add both to `conf/symlinks.ini` and add the timer to `conf/units.ini`:
+Add both to `conf/symlinks.ini` and add the timer to `conf/systemd-units.ini`:
 ```ini
 # symlinks.ini
 [base]
 config/systemd/user/my-task.service
 config/systemd/user/my-task.timer
 
-# units.ini
+# systemd-units.ini
 [base]
 my-task.timer
 ```

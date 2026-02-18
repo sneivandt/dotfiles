@@ -189,7 +189,7 @@ The installation process handles different components based on your profile:
 7. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`
 8. **Set Permissions** - Applies file permissions from `conf/chmod.ini`
 9. **Configure Shell** - Sets default shell
-10. **Enable Systemd Units** - Enables and starts user units from `conf/units.ini`
+10. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.ini`
 11. **Configure Git** - Applies git configuration
 
 ### Windows Installation Steps

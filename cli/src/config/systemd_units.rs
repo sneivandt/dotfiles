@@ -5,19 +5,19 @@ use super::ini;
 
 /// A systemd user unit to enable.
 #[derive(Debug, Clone)]
-pub struct Unit {
+pub struct SystemdUnit {
     pub name: String,
 }
 
-/// Load systemd units from units.ini, filtered by active categories.
+/// Load systemd units from systemd-units.ini, filtered by active categories.
 ///
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Unit>> {
+pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<SystemdUnit>> {
     Ok(ini::load_filtered_items(path, active_categories)?
         .into_iter()
-        .map(|name| Unit { name })
+        .map(|name| SystemdUnit { name })
         .collect())
 }
 

@@ -97,7 +97,7 @@ Configuration is defined in `conf/*.ini` files using standard INI format:
 - **`manifest.ini`** - File-to-category mappings for sparse checkout
 - **`symlinks.ini`** - Files to symlink to `$HOME`
 - **`packages.ini`** - System packages to install
-- **`units.ini`** - Systemd units to enable
+- **`systemd-units.ini`** - Systemd units to enable
 - **`vscode-extensions.ini`** - VS Code extensions
 - **`copilot-skills.ini`** - GitHub Copilot CLI skills
 - **`registry.ini`** - Windows registry settings

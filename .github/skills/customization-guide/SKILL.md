@@ -18,8 +18,8 @@ Patterns for extending the dotfiles system. Task logic is in `cli/src/tasks/*.rs
 |------|----------|---------------|-------------|
 | Symlinks | `symlinks.ini` | `config::symlinks` | `tasks::symlinks` |
 | Packages | `packages.ini` | `config::packages` | `tasks::packages` |
-| Systemd | `units.ini` | `config::units` | `tasks::systemd` |
-| VS Code | `vscode-extensions.ini` | `config::vscode` | `tasks::vscode` |
+| Systemd | `systemd-units.ini` | `config::systemd_units` | `tasks::systemd_units` |
+| VS Code | `vscode-extensions.ini` | `config::vscode_extensions` | `tasks::vscode_extensions` |
 | Registry | `registry.ini` | `config::registry` | `tasks::registry` |
 | Chmod | `chmod.ini` | `config::chmod` | `tasks::chmod` |
 | Copilot Skills | `copilot-skills.ini` | `config::copilot_skills` | `tasks::copilot_skills` |
@@ -50,7 +50,7 @@ The config loader tags AUR packages from `[*,aur]` sections. See `package-manage
 
 ## Adding Systemd Units
 
-Create unit in `symlinks/config/systemd/user/`, add to `conf/symlinks.ini` and `conf/units.ini`.
+Create unit in `symlinks/config/systemd/user/`, add to `conf/symlinks.ini` and `conf/systemd-units.ini`.
 
 ## Adding VS Code Extensions
 

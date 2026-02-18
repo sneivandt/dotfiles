@@ -15,7 +15,7 @@ pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Logger) -> Result<(
 
     let tasks: Vec<Box<dyn Task>> = vec![
         Box::new(tasks::symlinks::UninstallSymlinks),
-        Box::new(tasks::hooks::UninstallHooks),
+        Box::new(tasks::hooks::UninstallGitHooks),
     ];
 
     log.stage("Uninstalling");

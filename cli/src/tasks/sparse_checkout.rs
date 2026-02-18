@@ -58,9 +58,9 @@ fn remove_path(path: &Path) -> std::io::Result<()> {
 }
 
 /// Configure git sparse checkout based on the profile manifest.
-pub struct SparseCheckout;
+pub struct ConfigureSparseCheckout;
 
-impl Task for SparseCheckout {
+impl Task for ConfigureSparseCheckout {
     fn name(&self) -> &'static str {
         "Configure sparse checkout"
     }

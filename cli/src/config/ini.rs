@@ -240,7 +240,7 @@ fn read_file(path: &Path) -> Result<String> {
 /// Load a flat list of items from an INI file, filtered by active categories (AND logic).
 ///
 /// This is a convenience for config files where each item is a single string
-/// (e.g., fonts, units, vscode extensions, copilot skills, symlinks).
+/// (e.g., fonts, systemd-units, vscode extensions, copilot skills, symlinks).
 ///
 /// # Errors
 ///

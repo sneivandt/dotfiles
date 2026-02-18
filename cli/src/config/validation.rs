@@ -279,25 +279,25 @@ impl ConfigValidator for ChmodValidator {
 }
 
 /// Validator for systemd unit configurations.
-pub struct UnitsValidator {
-    units: Vec<super::units::Unit>,
+pub struct SystemdUnitValidator {
+    units: Vec<super::systemd_units::SystemdUnit>,
 }
 
-impl UnitsValidator {
+impl SystemdUnitValidator {
     #[must_use]
-    pub const fn new(units: Vec<super::units::Unit>) -> Self {
+    pub const fn new(units: Vec<super::systemd_units::SystemdUnit>) -> Self {
         Self { units }
     }
 }
 
-impl ConfigValidator for UnitsValidator {
+impl ConfigValidator for SystemdUnitValidator {
     fn validate(&self, _root: &Path, platform: &Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
         // Warn if units are defined on non-systemd platform
         if !self.units.is_empty() && !platform.supports_systemd() {
             warnings.push(ValidationWarning::new(
-                "units.ini",
+                "systemd-units.ini",
                 "systemd units",
                 "systemd units defined but platform does not support systemd",
             ));
@@ -307,7 +307,7 @@ impl ConfigValidator for UnitsValidator {
             // Check for empty unit names
             if unit.name.trim().is_empty() {
                 warnings.push(ValidationWarning::new(
-                    "units.ini",
+                    "systemd-units.ini",
                     &unit.name,
                     "unit name is empty",
                 ));
@@ -324,7 +324,7 @@ impl ConfigValidator for UnitsValidator {
                 && !unit.name.ends_with(".mount")
             {
                 warnings.push(ValidationWarning::new(
-                    "units.ini",
+                    "systemd-units.ini",
                     &unit.name,
                     "unit name should end with a valid systemd extension (.service, .timer, .socket, etc.)",
                 ));
@@ -335,23 +335,23 @@ impl ConfigValidator for UnitsValidator {
     }
 
     fn name(&self) -> &'static str {
-        "units"
+        "systemd-units"
     }
 }
 
 /// Validator for VS Code extension configurations.
-pub struct VsCodeValidator {
-    extensions: Vec<super::vscode::VsCodeExtension>,
+pub struct VsCodeExtensionValidator {
+    extensions: Vec<super::vscode_extensions::VsCodeExtension>,
 }
 
-impl VsCodeValidator {
+impl VsCodeExtensionValidator {
     #[must_use]
-    pub const fn new(extensions: Vec<super::vscode::VsCodeExtension>) -> Self {
+    pub const fn new(extensions: Vec<super::vscode_extensions::VsCodeExtension>) -> Self {
         Self { extensions }
     }
 }
 
-impl ConfigValidator for VsCodeValidator {
+impl ConfigValidator for VsCodeExtensionValidator {
     fn validate(&self, _root: &Path, _platform: &Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
@@ -384,18 +384,18 @@ impl ConfigValidator for VsCodeValidator {
 }
 
 /// Validator for Copilot skill configurations.
-pub struct CopilotSkillsValidator {
+pub struct CopilotSkillValidator {
     skills: Vec<super::copilot_skills::CopilotSkill>,
 }
 
-impl CopilotSkillsValidator {
+impl CopilotSkillValidator {
     #[must_use]
     pub const fn new(skills: Vec<super::copilot_skills::CopilotSkill>) -> Self {
         Self { skills }
     }
 }
 
-impl ConfigValidator for CopilotSkillsValidator {
+impl ConfigValidator for CopilotSkillValidator {
     fn validate(&self, _root: &Path, _platform: &Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
@@ -435,9 +435,11 @@ pub fn validate_all(config: &super::Config, platform: &Platform) -> Vec<Validati
         Box::new(PackageValidator::new(config.packages.clone())),
         Box::new(RegistryValidator::new(config.registry.clone())),
         Box::new(ChmodValidator::new(config.chmod.clone())),
-        Box::new(UnitsValidator::new(config.units.clone())),
-        Box::new(VsCodeValidator::new(config.vscode_extensions.clone())),
-        Box::new(CopilotSkillsValidator::new(config.copilot_skills.clone())),
+        Box::new(SystemdUnitValidator::new(config.units.clone())),
+        Box::new(VsCodeExtensionValidator::new(
+            config.vscode_extensions.clone(),
+        )),
+        Box::new(CopilotSkillValidator::new(config.copilot_skills.clone())),
     ];
 
     let mut all_warnings = Vec::new();
@@ -570,11 +572,11 @@ mod tests {
 
     #[test]
     fn units_validator_detects_invalid_extension() {
-        let units = vec![super::super::units::Unit {
+        let units = vec![super::super::systemd_units::SystemdUnit {
             name: "myunit".to_string(),
         }];
 
-        let validator = UnitsValidator::new(units);
+        let validator = SystemdUnitValidator::new(units);
         let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Linux, false));
 
         assert_eq!(warnings.len(), 1);
@@ -583,11 +585,11 @@ mod tests {
 
     #[test]
     fn vscode_validator_detects_invalid_format() {
-        let extensions = vec![super::super::vscode::VsCodeExtension {
+        let extensions = vec![super::super::vscode_extensions::VsCodeExtension {
             id: "invalid_no_publisher".to_string(),
         }];
 
-        let validator = VsCodeValidator::new(extensions);
+        let validator = VsCodeExtensionValidator::new(extensions);
         let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Linux, false));
 
         assert_eq!(warnings.len(), 1);

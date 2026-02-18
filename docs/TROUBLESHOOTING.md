@@ -210,7 +210,7 @@ winget install <PackageId>
 ### Systemd Unit Issues
 
 #### Unit not enabled
-**Symptoms**: Systemd unit from `units.ini` isn't running.
+**Symptoms**: Systemd unit from `systemd-units.ini` isn't running.
 
 **Solution**:
 ```bash

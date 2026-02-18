@@ -74,14 +74,14 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 └──────────────────────────────────────┘
        │
        ▼
-┌──────────────────────────────────────┐
-│            conf/ (INI files)         │
-│  packages.ini  symlinks.ini          │
-│  profiles.ini  manifest.ini          │
-│  units.ini     vscode-extensions.ini │
-│  registry.ini  copilot-skills.ini    │
-│  chmod.ini                           │
-└──────────────────────────────────────┘
+┌───────────────────────────────────────────┐
+│            conf/ (INI files)              │
+│  packages.ini      symlinks.ini           │
+│  profiles.ini      manifest.ini           │
+│  systemd-units.ini vscode-extensions.ini  │
+│  registry.ini      copilot-skills.ini     │
+│  chmod.ini                                │
+└───────────────────────────────────────────┘
 ```
 
 ## Component Architecture
@@ -149,7 +149,7 @@ Install options:
 | `ini.rs` | (all) | Generic INI parser |
 | `packages.rs` | `packages.ini` | System packages (pacman, AUR, winget) |
 | `symlinks.rs` | `symlinks.ini` | Symlink mappings |
-| `units.rs` | `units.ini` | Systemd units (Linux only) |
+| `systemd_units.rs` | `systemd-units.ini` | Systemd units (Linux only) |
 | `chmod.rs` | `chmod.ini` | File permissions |
 | `vscode.rs` | `vscode-extensions.ini` | VS Code extensions |
 | `copilot_skills.rs` | `copilot-skills.ini` | GitHub Copilot CLI skills |

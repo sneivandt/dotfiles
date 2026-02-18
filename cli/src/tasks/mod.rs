@@ -8,9 +8,9 @@ pub mod registry;
 pub mod shell;
 pub mod sparse_checkout;
 pub mod symlinks;
-pub mod systemd;
+pub mod systemd_units;
 pub mod update;
-pub mod vscode;
+pub mod vscode_extensions;
 
 use anyhow::Result;
 use std::path::Path;

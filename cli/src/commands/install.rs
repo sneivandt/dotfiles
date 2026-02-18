@@ -25,20 +25,20 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
     // Build the task list
     let all_tasks: Vec<Box<dyn Task>> = vec![
         Box::new(tasks::developer_mode::EnableDeveloperMode),
-        Box::new(tasks::sparse_checkout::SparseCheckout),
+        Box::new(tasks::sparse_checkout::ConfigureSparseCheckout),
         Box::new(tasks::update::UpdateRepository),
-        Box::new(tasks::hooks::GitHooks),
         Box::new(tasks::git_config::ConfigureGit),
+        Box::new(tasks::hooks::InstallGitHooks),
         Box::new(tasks::packages::InstallPackages),
         Box::new(tasks::packages::InstallParu),
         Box::new(tasks::packages::InstallAurPackages),
         Box::new(tasks::symlinks::InstallSymlinks),
         Box::new(tasks::chmod::ApplyFilePermissions),
         Box::new(tasks::shell::ConfigureShell),
-        Box::new(tasks::vscode::InstallVsCodeExtensions),
-        Box::new(tasks::copilot_skills::InstallCopilotSkills),
-        Box::new(tasks::systemd::ConfigureSystemd),
+        Box::new(tasks::systemd_units::ConfigureSystemd),
         Box::new(tasks::registry::ApplyRegistry),
+        Box::new(tasks::vscode_extensions::InstallVsCodeExtensions),
+        Box::new(tasks::copilot_skills::InstallCopilotSkills),
     ];
 
     // Filter by --skip and --only

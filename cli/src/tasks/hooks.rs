@@ -17,9 +17,9 @@ fn files_match(src: &std::path::Path, dst: &std::path::Path) -> Result<bool> {
 }
 
 /// Install git hooks from hooks/ into .git/hooks/.
-pub struct GitHooks;
+pub struct InstallGitHooks;
 
-impl Task for GitHooks {
+impl Task for InstallGitHooks {
     fn name(&self) -> &'static str {
         "Install git hooks"
     }
@@ -122,9 +122,9 @@ impl Task for GitHooks {
 }
 
 /// Remove git hooks that were installed from hooks/.
-pub struct UninstallHooks;
+pub struct UninstallGitHooks;
 
-impl Task for UninstallHooks {
+impl Task for UninstallGitHooks {
     fn name(&self) -> &'static str {
         "Remove git hooks"
     }

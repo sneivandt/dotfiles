@@ -70,7 +70,7 @@ pub fn load(path: &Path, active: &[String]) -> Result<Vec<T>> {
 | `manifest.ini` | list | Sparse checkout (OR-exclude) |
 | `symlinks.ini` | list | Profile-filtered |
 | `packages.ini` | list | `[*,aur]` tags AUR packages |
-| `units.ini` | list | Systemd units |
+| `systemd-units.ini` | list | Systemd units |
 | `chmod.ini` | list | `<mode> <path>` format |
 | `vscode-extensions.ini` | list | `[extensions]` (special) |
 | `registry.ini` | key=value | Registry paths as headers |

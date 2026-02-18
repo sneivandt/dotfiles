@@ -140,7 +140,7 @@ alacritty
 
 ---
 
-### `units.ini`
+### `systemd-units.ini`
 **Purpose**: Lists systemd user units to enable and start.
 
 **Format**: Sections represent profiles; entries are unit filenames.

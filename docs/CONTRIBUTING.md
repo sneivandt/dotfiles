@@ -74,7 +74,7 @@ cargo test --manifest-path cli/Cargo.toml
    my-new-package
    ```
 
-3. **Systemd Units**: Add to `conf/units.ini`:
+3. **Systemd Units**: Add to `conf/systemd-units.ini`:
    ```ini
    [arch,desktop]
    my-service.service

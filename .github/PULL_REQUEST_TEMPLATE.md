@@ -36,7 +36,7 @@
 <!-- If you've modified INI files, list the changes -->
 - [ ] Updated `conf/packages.ini`
 - [ ] Updated `conf/symlinks.ini`
-- [ ] Updated `conf/units.ini`
+- [ ] Updated `conf/systemd-units.ini`
 - [ ] Updated `conf/manifest.ini`
 - [ ] Updated `conf/profiles.ini`
 - [ ] Other: <!-- specify -->

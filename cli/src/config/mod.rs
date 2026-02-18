@@ -6,9 +6,9 @@ pub mod packages;
 pub mod profiles;
 pub mod registry;
 pub mod symlinks;
-pub mod units;
+pub mod systemd_units;
 pub mod validation;
-pub mod vscode;
+pub mod vscode_extensions;
 
 #[cfg(test)]
 pub mod test_helpers {
@@ -38,9 +38,9 @@ pub struct Config {
     pub packages: Vec<packages::Package>,
     pub symlinks: Vec<symlinks::Symlink>,
     pub registry: Vec<registry::RegistryEntry>,
-    pub units: Vec<units::Unit>,
+    pub units: Vec<systemd_units::SystemdUnit>,
     pub chmod: Vec<chmod::ChmodEntry>,
-    pub vscode_extensions: Vec<vscode::VsCodeExtension>,
+    pub vscode_extensions: Vec<vscode_extensions::VsCodeExtension>,
     pub copilot_skills: Vec<copilot_skills::CopilotSkill>,
     pub manifest: manifest::Manifest,
 }
@@ -70,7 +70,8 @@ impl Config {
         };
 
         let units = if platform.supports_systemd() {
-            units::load(&conf.join("units.ini"), active_categories).context("loading units.ini")?
+            systemd_units::load(&conf.join("systemd-units.ini"), active_categories)
+                .context("loading systemd-units.ini")?
         } else {
             Vec::new()
         };
@@ -79,7 +80,7 @@ impl Config {
             chmod::load(&conf.join("chmod.ini"), active_categories).context("loading chmod.ini")?;
 
         let vscode_extensions =
-            vscode::load(&conf.join("vscode-extensions.ini"), active_categories)
+            vscode_extensions::load(&conf.join("vscode-extensions.ini"), active_categories)
                 .context("loading vscode-extensions.ini")?;
 
         let copilot_skills =

@@ -19,7 +19,7 @@ impl SystemdUnitResource {
 
     /// Create from a config entry.
     #[must_use]
-    pub fn from_entry(entry: &crate::config::units::Unit) -> Self {
+    pub fn from_entry(entry: &crate::config::systemd_units::SystemdUnit) -> Self {
         Self::new(entry.name.clone())
     }
 }
@@ -62,7 +62,7 @@ mod tests {
 
     #[test]
     fn from_entry_copies_name() {
-        let entry = crate::config::units::Unit {
+        let entry = crate::config::systemd_units::SystemdUnit {
             name: "dunst.service".to_string(),
         };
         let resource = SystemdUnitResource::from_entry(&entry);

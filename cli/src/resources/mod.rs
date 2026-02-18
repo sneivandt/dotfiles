@@ -1,7 +1,11 @@
 pub mod chmod;
 pub mod copilot_skill;
+pub mod developer_mode;
+pub mod git_config;
+pub mod hook;
 pub mod package;
 pub mod registry;
+pub mod shell;
 pub mod symlink;
 pub mod systemd_unit;
 pub mod vscode_extension;

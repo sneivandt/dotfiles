@@ -137,6 +137,7 @@ impl Platform {
     #[must_use]
     pub fn excludes_category(&self, category: &str) -> bool {
         match category {
+            "linux" => self.os != Os::Linux,
             "windows" => self.os != Os::Windows,
             "arch" => !self.is_arch_linux(),
             _ => false,
@@ -195,6 +196,18 @@ mod tests {
     fn platform_new_arch() {
         let p = Platform::new(Os::Linux, true);
         assert!(p.is_arch);
+    }
+
+    #[test]
+    fn excludes_category_linux_on_linux() {
+        let p = Platform::new(Os::Linux, false);
+        assert!(!p.excludes_category("linux"));
+    }
+
+    #[test]
+    fn excludes_category_linux_on_windows() {
+        let p = Platform::new(Os::Windows, false);
+        assert!(p.excludes_category("linux"));
     }
 
     #[test]

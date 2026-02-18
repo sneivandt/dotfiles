@@ -14,18 +14,18 @@ Profiles control which files are checked out and which config sections are proce
 
 ## Available Profiles
 
-- **`base`**: Minimal core shell config (excludes arch, desktop, windows)
-- **`arch`**: Arch Linux headless (excludes desktop, windows)
-- **`arch-desktop`**: Arch Linux desktop (excludes windows)
-- **`desktop`**: Generic Linux desktop (excludes arch, windows)
-- **`windows`**: Windows environment (excludes arch)
+- **`base`**: Minimal core config without desktop apps (excludes desktop)
+- **`desktop`**: Full config with desktop apps (includes desktop)
+
+Platform categories (`linux`, `windows`, `arch`) are auto-detected — users only choose between `base` and `desktop`.
 
 ## How Profiles Work
 
 1. **Profile resolution**: `profiles::resolve()` computes `active_categories` and `excluded_categories`
-2. **Platform overrides**: `Platform::excludes_category()` auto-excludes incompatible categories (e.g., `arch` on non-Arch, `windows` on Linux)
-3. **Config filtering**: `ini::filter_sections_and()` includes sections where ALL categories are active
-4. **Sparse checkout**: `manifest.ini` uses OR-exclude logic to filter repository files
+2. **Platform auto-detection**: `Platform::excludes_category()` auto-adds/excludes platform categories (`linux`, `windows`, `arch`)
+3. **Always-active**: `base` is always in `active_categories`
+4. **Config filtering**: `ini::filter_sections_and()` includes sections where ALL categories are active
+5. **Sparse checkout**: `manifest.ini` uses OR-exclude logic to filter repository files
 
 ## Profile Selection Priority
 
@@ -55,13 +55,14 @@ pub struct Profile {
 }
 ```
 
-`active_categories` always includes `"base"`. Platform overrides ensure incompatible categories are excluded regardless of profile definition.
+`active_categories` always includes `"base"`. Platform categories (`linux`, `windows`, `arch`) are auto-added or auto-excluded based on `Platform::excludes_category()`. Users only choose the role (`base` or `desktop`).
 
 ## Section Naming Convention
 
 - **Profile names** (in `profiles.ini`): Use hyphens — `[arch-desktop]`
 - **Config sections** (all other INI files): Comma-separated — `[arch,desktop]`
   - AND logic: all categories must be in `active_categories`
+- **Platform categories** (`linux`, `windows`, `arch`): Auto-detected, use in config sections for platform-specific items (e.g., `[linux]` for chmod entries)
 
 ## Adding a New Profile
 
@@ -69,7 +70,7 @@ Add to `conf/profiles.ini`:
 ```ini
 [my-profile]
 include=mycategory
-exclude=windows,desktop
+exclude=
 ```
 
 Add the name to `PROFILE_NAMES` constant in `cli/src/config/profiles.rs`.
@@ -77,14 +78,14 @@ Add the name to `PROFILE_NAMES` constant in `cli/src/config/profiles.rs`.
 ## Usage
 
 ```bash
-./dotfiles.sh install -p arch-desktop -d
+./dotfiles.sh install -p desktop -d
 ./dotfiles.sh install -p base
 ```
 
 ## Rules
 
 - Platform detection always overrides profile config for safety
-- Profile names use hyphens; config sections use commas
-- `active_categories` always contains `"base"`
+- Profile names are `base` or `desktop`; config section categories use commas
+- `active_categories` always contains `"base"` plus auto-detected platform categories
 - Use `filter_sections_and()` for config filtering (AND logic)
 - Use `filter_sections_or_exclude()` for manifest filtering (OR logic)

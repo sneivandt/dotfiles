@@ -98,6 +98,65 @@ pub fn which(program: &str) -> bool {
     check.is_ok_and(|o| o.status.success())
 }
 
+/// Trait for executing system commands, enabling test injection.
+///
+/// Implement this trait to provide mock executors for unit tests.
+/// The [`SystemExecutor`] implementation delegates to the real free functions.
+#[allow(dead_code)] // run_in and run_in_with_env are included for completeness
+pub trait Executor {
+    /// Execute a command, bailing on non-zero exit.
+    fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
+
+    /// Execute a command in a specific directory.
+    fn run_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult>;
+
+    /// Execute a command in a specific directory with extra environment variables.
+    fn run_in_with_env(
+        &self,
+        dir: &Path,
+        program: &str,
+        args: &[&str],
+        env: &[(&str, &str)],
+    ) -> Result<ExecResult>;
+
+    /// Execute a command, allowing non-zero exit.
+    fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
+
+    /// Check if a program is available on PATH.
+    fn which(&self, program: &str) -> bool;
+}
+
+/// The real system executor that delegates to process spawning.
+pub struct SystemExecutor;
+
+impl Executor for SystemExecutor {
+    fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+        run(program, args)
+    }
+
+    fn run_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
+        run_in(dir, program, args)
+    }
+
+    fn run_in_with_env(
+        &self,
+        dir: &Path,
+        program: &str,
+        args: &[&str],
+        env: &[(&str, &str)],
+    ) -> Result<ExecResult> {
+        run_in_with_env(dir, program, args, env)
+    }
+
+    fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+        run_unchecked(program, args)
+    }
+
+    fn which(&self, program: &str) -> bool {
+        which(program)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use crate::cli::{GlobalOpts, InstallOpts};
+use crate::exec;
 use crate::logging::Logger;
 use crate::tasks::{self, Context, Task};
 
@@ -20,7 +21,13 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
         setup.config.symlinks.len()
     ));
 
-    let ctx = Context::new(&setup.config, &setup.platform, log, global.dry_run)?;
+    let ctx = Context::new(
+        &setup.config,
+        &setup.platform,
+        log,
+        global.dry_run,
+        &exec::SystemExecutor,
+    )?;
 
     // Build the task list
     let all_tasks: Vec<Box<dyn Task>> = vec![

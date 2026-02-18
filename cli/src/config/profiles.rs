@@ -21,7 +21,7 @@ struct ProfileDef {
 }
 
 /// All known profile names.
-pub const PROFILE_NAMES: &[&str] = &["base", "arch", "desktop", "arch-desktop", "windows"];
+pub const PROFILE_NAMES: &[&str] = &["base", "desktop"];
 
 /// Load profile definitions from profiles.ini.
 fn load_definitions(path: &Path) -> Result<Vec<ProfileDef>> {
@@ -84,31 +84,12 @@ fn default_definitions() -> Vec<ProfileDef> {
         ProfileDef {
             name: "base".to_string(),
             include: vec![],
-            exclude: vec![
-                "windows".to_string(),
-                "arch".to_string(),
-                "desktop".to_string(),
-            ],
+            exclude: vec!["desktop".to_string()],
         },
         ProfileDef {
             name: "desktop".to_string(),
             include: vec!["desktop".to_string()],
-            exclude: vec!["windows".to_string(), "arch".to_string()],
-        },
-        ProfileDef {
-            name: "arch".to_string(),
-            include: vec!["arch".to_string()],
-            exclude: vec!["windows".to_string(), "desktop".to_string()],
-        },
-        ProfileDef {
-            name: "arch-desktop".to_string(),
-            include: vec!["arch".to_string(), "desktop".to_string()],
-            exclude: vec!["windows".to_string()],
-        },
-        ProfileDef {
-            name: "windows".to_string(),
-            include: vec!["windows".to_string(), "desktop".to_string()],
-            exclude: vec!["arch".to_string()],
+            exclude: vec![],
         },
     ]
 }
@@ -132,13 +113,13 @@ pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profi
 
     let mut excluded = def.exclude.clone();
 
-    // Platform auto-detection overrides
-    if platform.excludes_category("windows") && !excluded.contains(&"windows".to_string()) {
-        excluded.push("windows".to_string());
-    }
-    if platform.excludes_category("arch") && !excluded.contains(&"arch".to_string()) {
-        excluded.push("arch".to_string());
-        active.retain(|c| c != "arch");
+    // Auto-add platform-detected categories
+    for category in &["linux", "windows", "arch"] {
+        if !platform.excludes_category(category) {
+            active.push((*category).to_string());
+        } else if !excluded.contains(&category.to_string()) {
+            excluded.push((*category).to_string());
+        }
     }
 
     // Remove any active categories that are also excluded
@@ -193,19 +174,8 @@ pub fn persist(root: &Path, name: &str) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if user input cannot be read.
-pub fn prompt_interactive(platform: &Platform) -> Result<String> {
-    let options: Vec<&str> = PROFILE_NAMES
-        .iter()
-        .filter(|&&name| {
-            // Filter out incompatible profiles
-            match name {
-                "windows" => platform.is_windows(),
-                "arch" | "arch-desktop" => !platform.excludes_category("arch"),
-                _ => true,
-            }
-        })
-        .copied()
-        .collect();
+pub fn prompt_interactive(_platform: &Platform) -> Result<String> {
+    let options: Vec<&str> = PROFILE_NAMES.to_vec();
 
     if options.is_empty() {
         bail!("no compatible profiles found for this platform");
@@ -285,13 +255,10 @@ mod tests {
     #[test]
     fn default_definitions_has_all_profiles() {
         let defs = default_definitions();
-        assert_eq!(defs.len(), 5);
+        assert_eq!(defs.len(), 2);
         let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
         assert!(names.contains(&"base"));
-        assert!(names.contains(&"arch"));
         assert!(names.contains(&"desktop"));
-        assert!(names.contains(&"arch-desktop"));
-        assert!(names.contains(&"windows"));
     }
 
     #[test]
@@ -300,37 +267,71 @@ mod tests {
         let profile = resolve("base", &dir, &linux_platform()).unwrap();
         assert_eq!(profile.name, "base");
         assert!(profile.active_categories.contains(&"base".to_string()));
+        assert!(profile.active_categories.contains(&"linux".to_string()));
+        assert!(!profile.active_categories.contains(&"desktop".to_string()));
         assert!(profile.excluded_categories.contains(&"windows".to_string()));
         assert!(profile.excluded_categories.contains(&"arch".to_string()));
         assert!(profile.excluded_categories.contains(&"desktop".to_string()));
     }
 
     #[test]
-    fn resolve_arch_desktop_on_arch() {
+    fn resolve_desktop_on_linux() {
         let dir = std::env::temp_dir();
-        let profile = resolve("arch-desktop", &dir, &arch_platform()).unwrap();
-        assert!(profile.active_categories.contains(&"arch".to_string()));
+        let profile = resolve("desktop", &dir, &linux_platform()).unwrap();
+        assert!(profile.active_categories.contains(&"base".to_string()));
+        assert!(profile.active_categories.contains(&"linux".to_string()));
         assert!(profile.active_categories.contains(&"desktop".to_string()));
+        assert!(!profile.active_categories.contains(&"arch".to_string()));
+        assert!(profile.excluded_categories.contains(&"windows".to_string()));
+        assert!(profile.excluded_categories.contains(&"arch".to_string()));
+    }
+
+    #[test]
+    fn resolve_desktop_on_arch() {
+        let dir = std::env::temp_dir();
+        let profile = resolve("desktop", &dir, &arch_platform()).unwrap();
+        assert!(profile.active_categories.contains(&"base".to_string()));
+        assert!(profile.active_categories.contains(&"linux".to_string()));
+        assert!(profile.active_categories.contains(&"desktop".to_string()));
+        assert!(profile.active_categories.contains(&"arch".to_string()));
         assert!(profile.excluded_categories.contains(&"windows".to_string()));
         assert!(!profile.excluded_categories.contains(&"arch".to_string()));
     }
 
     #[test]
-    fn resolve_arch_on_non_arch_linux() {
+    fn resolve_base_on_arch() {
         let dir = std::env::temp_dir();
-        let profile = resolve("arch", &dir, &linux_platform()).unwrap();
-        // arch should be auto-excluded on non-arch linux
-        assert!(!profile.active_categories.contains(&"arch".to_string()));
-        assert!(profile.excluded_categories.contains(&"arch".to_string()));
+        let profile = resolve("base", &dir, &arch_platform()).unwrap();
+        assert!(profile.active_categories.contains(&"base".to_string()));
+        assert!(profile.active_categories.contains(&"linux".to_string()));
+        assert!(profile.active_categories.contains(&"arch".to_string()));
+        assert!(!profile.active_categories.contains(&"desktop".to_string()));
+        assert!(profile.excluded_categories.contains(&"windows".to_string()));
+        assert!(profile.excluded_categories.contains(&"desktop".to_string()));
     }
 
     #[test]
-    fn resolve_windows_on_windows() {
+    fn resolve_base_on_windows() {
         let dir = std::env::temp_dir();
-        let profile = resolve("windows", &dir, &windows_platform()).unwrap();
+        let profile = resolve("base", &dir, &windows_platform()).unwrap();
+        assert!(profile.active_categories.contains(&"base".to_string()));
+        assert!(profile.active_categories.contains(&"windows".to_string()));
+        assert!(!profile.active_categories.contains(&"linux".to_string()));
+        assert!(!profile.active_categories.contains(&"desktop".to_string()));
+        assert!(profile.excluded_categories.contains(&"linux".to_string()));
+        assert!(profile.excluded_categories.contains(&"desktop".to_string()));
+    }
+
+    #[test]
+    fn resolve_desktop_on_windows() {
+        let dir = std::env::temp_dir();
+        let profile = resolve("desktop", &dir, &windows_platform()).unwrap();
+        assert!(profile.active_categories.contains(&"base".to_string()));
         assert!(profile.active_categories.contains(&"windows".to_string()));
         assert!(profile.active_categories.contains(&"desktop".to_string()));
-        assert!(!profile.excluded_categories.contains(&"windows".to_string()));
+        assert!(!profile.active_categories.contains(&"linux".to_string()));
+        assert!(profile.excluded_categories.contains(&"linux".to_string()));
+        assert!(profile.excluded_categories.contains(&"arch".to_string()));
     }
 
     #[test]
@@ -341,6 +342,6 @@ mod tests {
 
     #[test]
     fn profile_names_constant() {
-        assert_eq!(PROFILE_NAMES.len(), 5);
+        assert_eq!(PROFILE_NAMES.len(), 2);
     }
 }

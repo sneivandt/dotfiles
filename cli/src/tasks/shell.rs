@@ -1,7 +1,7 @@
 use anyhow::Result;
 
-use super::{Context, Task, TaskResult};
-use crate::exec;
+use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
+use crate::resources::shell::DefaultShellResource;
 
 /// Configure the default shell to zsh.
 pub struct ConfigureShell;
@@ -14,29 +14,20 @@ impl Task for ConfigureShell {
     fn should_run(&self, ctx: &Context) -> bool {
         // Skip in CI environments where chsh requires authentication
         let is_ci = std::env::var("CI").is_ok();
-        ctx.platform.is_linux() && exec::which("zsh") && !is_ci
+        ctx.platform.is_linux() && ctx.executor.which("zsh") && !is_ci
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        // Check current shell
-        let current_shell = std::env::var("SHELL").unwrap_or_default();
-        ctx.log.debug(&format!("current shell: {current_shell:?}"));
-        if current_shell.ends_with("/zsh") {
-            ctx.log.info("zsh is already default");
-            return Ok(TaskResult::Ok);
-        }
-
-        let zsh_path = exec::run("which", &["zsh"])?;
-        let zsh_path = zsh_path.stdout.trim();
-        ctx.log.debug(&format!("zsh binary: {zsh_path}"));
-
-        if ctx.dry_run {
-            ctx.log.dry_run(&format!("chsh -s {zsh_path}"));
-            return Ok(TaskResult::DryRun);
-        }
-
-        exec::run("chsh", &["-s", zsh_path])?;
-        ctx.log.info("default shell changed to zsh");
-        Ok(TaskResult::Ok)
+        let resource = DefaultShellResource::new("zsh".to_string(), ctx.executor);
+        process_resources(
+            ctx,
+            std::iter::once(resource),
+            &ProcessOpts {
+                verb: "configure",
+                fix_incorrect: true,
+                fix_missing: true,
+                bail_on_error: true,
+            },
+        )
     }
 }

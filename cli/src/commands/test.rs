@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::cli::{GlobalOpts, TestOpts};
 use crate::exec;
 use crate::logging::Logger;
+use crate::tasks::{Context, Task, TaskResult};
 
 /// Run the test/validation command.
 ///
@@ -12,166 +13,233 @@ use crate::logging::Logger;
 /// Returns an error if profile resolution, configuration validation, or script checks fail.
 pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Logger) -> Result<()> {
     let setup = super::CommandSetup::init(global, log)?;
-    let root = &setup.config.root;
+    let executor = exec::SystemExecutor;
+    let ctx = Context::new(
+        &setup.config,
+        &setup.platform,
+        log,
+        global.dry_run,
+        &executor,
+    )?;
 
-    // Validate symlink sources exist
-    let symlinks_dir = root.join("symlinks");
-    let mut errors = 0u32;
-
-    for symlink in &setup.config.symlinks {
-        let source = symlinks_dir.join(&symlink.source);
-        if !source.exists() {
-            log.error(&format!("symlink source missing: {}", source.display()));
-            errors += 1;
-        }
-    }
-
-    // Validate hooks directory
-    let hooks_dir = root.join("hooks");
-    if !hooks_dir.exists() {
-        log.warn("hooks directory missing");
-    }
-
-    // Validate conf directory
-    let conf = root.join("conf");
-    let required_configs = [
-        "profiles.ini",
-        "symlinks.ini",
-        "packages.ini",
-        "manifest.ini",
+    let tasks: Vec<Box<dyn Task>> = vec![
+        Box::new(ValidateSymlinkSources),
+        Box::new(ValidateConfigFiles),
+        Box::new(RunShellcheck),
+        Box::new(RunPSScriptAnalyzer),
     ];
-    for config_file in &required_configs {
-        if !conf.join(config_file).exists() {
-            log.error(&format!("missing config: conf/{config_file}"));
-            errors += 1;
-        }
-    }
 
-    // Static analysis: shellcheck
-    errors += run_shellcheck(root, log)?;
-
-    // Static analysis: PSScriptAnalyzer (when pwsh is available)
-    errors += run_psscriptanalyzer(root, log)?;
-
-    log.stage("Validation complete");
-    if errors > 0 {
-        anyhow::bail!("{errors} validation errors found");
-    }
-
-    log.info("all checks passed");
-    Ok(())
+    let task_refs: Vec<&dyn Task> = tasks.iter().map(std::convert::AsRef::as_ref).collect();
+    super::run_tasks_to_completion(&task_refs, &ctx, log)
 }
 
-/// Discover and shellcheck all shell scripts in the repository.
-fn run_shellcheck(root: &Path, log: &Logger) -> Result<u32> {
-    if !exec::which("shellcheck") {
-        log.warn("shellcheck not installed, skipping");
-        return Ok(0);
+// ---------------------------------------------------------------------------
+// Validation tasks
+// ---------------------------------------------------------------------------
+
+/// Validate that all symlink source files exist on disk.
+struct ValidateSymlinkSources;
+
+impl Task for ValidateSymlinkSources {
+    fn name(&self) -> &'static str {
+        "Validate symlink sources"
     }
 
-    log.stage("Running shellcheck");
+    fn should_run(&self, ctx: &Context) -> bool {
+        !ctx.config.symlinks.is_empty()
+    }
 
-    let mut scripts: Vec<PathBuf> = Vec::new();
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let symlinks_dir = ctx.symlinks_dir();
+        let mut missing = 0u32;
 
-    // Known entry-point scripts
-    for name in ["dotfiles.sh", "install.sh"] {
-        let path = root.join(name);
+        for symlink in &ctx.config.symlinks {
+            let source = symlinks_dir.join(&symlink.source);
+            if !source.exists() {
+                ctx.log
+                    .error(&format!("symlink source missing: {}", source.display()));
+                missing += 1;
+            }
+        }
+
+        if missing > 0 {
+            anyhow::bail!("{missing} symlink source(s) missing");
+        }
+
+        ctx.log.info(&format!(
+            "all {} symlink sources exist",
+            ctx.config.symlinks.len()
+        ));
+        Ok(TaskResult::Ok)
+    }
+}
+
+/// Validate that required configuration files exist.
+struct ValidateConfigFiles;
+
+impl Task for ValidateConfigFiles {
+    fn name(&self) -> &'static str {
+        "Validate config files"
+    }
+
+    fn should_run(&self, _ctx: &Context) -> bool {
+        true
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let conf = ctx.root().join("conf");
+        let required = [
+            "profiles.ini",
+            "symlinks.ini",
+            "packages.ini",
+            "manifest.ini",
+        ];
+
+        let mut errors = 0u32;
+        for config_file in &required {
+            if !conf.join(config_file).exists() {
+                ctx.log
+                    .error(&format!("missing config: conf/{config_file}"));
+                errors += 1;
+            }
+        }
+
+        let hooks_dir = ctx.root().join("hooks");
+        if !hooks_dir.exists() {
+            ctx.log.warn("hooks directory missing");
+        }
+
+        if errors > 0 {
+            anyhow::bail!("{errors} required config file(s) missing");
+        }
+        Ok(TaskResult::Ok)
+    }
+}
+
+/// Run shellcheck on all shell scripts in the repository.
+struct RunShellcheck;
+
+impl Task for RunShellcheck {
+    fn name(&self) -> &'static str {
+        "Shellcheck"
+    }
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        ctx.executor.which("shellcheck")
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let root = ctx.root();
+        let mut scripts: Vec<PathBuf> = Vec::new();
+
+        for name in ["dotfiles.sh", "install.sh"] {
+            let path = root.join(name);
+            if path.exists() {
+                scripts.push(path);
+            }
+        }
+
+        for dir in ["symlinks", "hooks", ".github"] {
+            let dir_path = root.join(dir);
+            if dir_path.exists() {
+                discover_shell_scripts(&dir_path, &mut scripts);
+            }
+        }
+
+        if scripts.is_empty() {
+            ctx.log.info("no shell scripts found");
+            return Ok(TaskResult::Ok);
+        }
+
+        ctx.log
+            .info(&format!("checking {} shell scripts", scripts.len()));
+
+        let mut args: Vec<&str> = vec!["--severity=warning"];
+        let paths: Vec<String> = scripts
+            .iter()
+            .filter_map(|p| p.to_str().map(String::from))
+            .collect();
+        args.extend(paths.iter().map(std::string::String::as_str));
+
+        let result = ctx.executor.run_unchecked("shellcheck", &args)?;
+        if result.success {
+            ctx.log.info("shellcheck passed");
+            Ok(TaskResult::Ok)
+        } else {
+            if !result.stdout.is_empty() {
+                eprintln!("{}", result.stdout);
+            }
+            if !result.stderr.is_empty() {
+                eprintln!("{}", result.stderr);
+            }
+            anyhow::bail!("shellcheck found issues");
+        }
+    }
+}
+
+/// Run `PSScriptAnalyzer` on `PowerShell` scripts.
+struct RunPSScriptAnalyzer;
+
+impl Task for RunPSScriptAnalyzer {
+    fn name(&self) -> &'static str {
+        "PSScriptAnalyzer"
+    }
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        ctx.executor.which("pwsh")
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let root = ctx.root();
+        let mut ps_files: Vec<PathBuf> = Vec::new();
+
+        for dir in ["symlinks", "hooks"] {
+            let dir_path = root.join(dir);
+            if dir_path.exists() {
+                discover_powershell_scripts(&dir_path, &mut ps_files);
+            }
+        }
+
+        let path = root.join("dotfiles.ps1");
         if path.exists() {
-            scripts.push(path);
+            ps_files.push(path);
         }
-    }
 
-    // Walk directories for shell scripts
-    for dir in ["symlinks", "hooks", ".github"] {
-        let dir_path = root.join(dir);
-        if dir_path.exists() {
-            discover_shell_scripts(&dir_path, &mut scripts);
+        if ps_files.is_empty() {
+            ctx.log.info("no PowerShell scripts found");
+            return Ok(TaskResult::Ok);
         }
-    }
 
-    if scripts.is_empty() {
-        log.info("no shell scripts found");
-        return Ok(0);
-    }
+        ctx.log
+            .info(&format!("checking {} PowerShell scripts", ps_files.len()));
 
-    log.info(&format!("checking {} shell scripts", scripts.len()));
+        let file_list: Vec<&str> = ps_files.iter().filter_map(|p| p.to_str()).collect();
+        let paths_arg = file_list.join("','");
 
-    // Only report warnings and errors (not info/style)
-    let mut args: Vec<&str> = vec!["--severity=warning"];
-    let paths: Vec<String> = scripts
-        .iter()
-        .filter_map(|p| p.to_str().map(String::from))
-        .collect();
-    args.extend(paths.iter().map(std::string::String::as_str));
-    let result = exec::run_unchecked("shellcheck", &args)?;
-    if result.success {
-        log.info("shellcheck passed");
-        Ok(0)
-    } else {
-        log.error("shellcheck found issues:");
-        // Print stdout/stderr so user sees the actual findings
-        if !result.stdout.is_empty() {
-            eprintln!("{}", result.stdout);
+        let script = format!(
+            "if (!(Get-Module -ListAvailable PSScriptAnalyzer)) \
+             {{ Write-Host 'PSScriptAnalyzer not installed, skipping'; exit 0 }}; \
+             $results = @('{paths_arg}') | ForEach-Object \
+             {{ Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error }}; \
+             if ($results.Count -gt 0) {{ $results | Format-Table -AutoSize; exit 1 }} \
+             else {{ exit 0 }}"
+        );
+
+        let result = ctx
+            .executor
+            .run_unchecked("pwsh", &["-NoProfile", "-Command", &script])?;
+        if result.success {
+            ctx.log.info("PSScriptAnalyzer passed");
+            Ok(TaskResult::Ok)
+        } else {
+            if !result.stdout.is_empty() {
+                eprintln!("{}", result.stdout);
+            }
+            if !result.stderr.is_empty() {
+                eprintln!("{}", result.stderr);
+            }
+            anyhow::bail!("PSScriptAnalyzer found issues");
         }
-        if !result.stderr.is_empty() {
-            eprintln!("{}", result.stderr);
-        }
-        Ok(1)
-    }
-}
-
-/// Run `PSScriptAnalyzer` on `PowerShell` files when pwsh is available.
-fn run_psscriptanalyzer(root: &Path, log: &Logger) -> Result<u32> {
-    if !exec::which("pwsh") {
-        log.info("pwsh not installed, skipping PSScriptAnalyzer");
-        return Ok(0);
-    }
-
-    log.stage("Running PSScriptAnalyzer");
-
-    // Discover .ps1 and .psm1 files
-    let mut ps_files: Vec<PathBuf> = Vec::new();
-    for dir in ["symlinks", "hooks"] {
-        let dir_path = root.join(dir);
-        if dir_path.exists() {
-            discover_powershell_scripts(&dir_path, &mut ps_files);
-        }
-    }
-    // Check entry-point scripts
-    let path = root.join("dotfiles.ps1");
-    if path.exists() {
-        ps_files.push(path);
-    }
-
-    if ps_files.is_empty() {
-        log.info("no PowerShell scripts found");
-        return Ok(0);
-    }
-
-    log.info(&format!("checking {} PowerShell scripts", ps_files.len()));
-
-    let file_list: Vec<&str> = ps_files.iter().filter_map(|p| p.to_str()).collect();
-    let paths_arg = file_list.join("','");
-
-    let script = format!(
-        "if (!(Get-Module -ListAvailable PSScriptAnalyzer)) {{ Write-Host 'PSScriptAnalyzer not installed, skipping'; exit 0 }}; \
-         $results = @('{paths_arg}') | ForEach-Object {{ Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error }}; \
-         if ($results.Count -gt 0) {{ $results | Format-Table -AutoSize; exit 1 }} else {{ exit 0 }}"
-    );
-
-    let result = exec::run_unchecked("pwsh", &["-NoProfile", "-Command", &script])?;
-    if result.success {
-        log.info("PSScriptAnalyzer passed");
-        Ok(0)
-    } else {
-        log.error("PSScriptAnalyzer found issues:");
-        if !result.stdout.is_empty() {
-            eprintln!("{}", result.stdout);
-        }
-        if !result.stderr.is_empty() {
-            eprintln!("{}", result.stderr);
-        }
-        Ok(1)
     }
 }
 

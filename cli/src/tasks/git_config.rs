@@ -1,7 +1,14 @@
 use anyhow::Result;
 
-use super::{Context, Task, TaskResult, TaskStats};
-use crate::exec;
+use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
+use crate::resources::git_config::GitConfigResource;
+
+/// Windows-specific git configuration settings.
+const GIT_SETTINGS: &[(&str, &str)] = &[
+    ("core.autocrlf", "false"),
+    ("core.symlinks", "true"),
+    ("credential.helper", "manager"),
+];
 
 /// Configure git settings (Windows-specific git config).
 pub struct ConfigureGit;
@@ -12,37 +19,22 @@ impl Task for ConfigureGit {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_windows() && exec::which("git")
+        ctx.platform.is_windows() && ctx.executor.which("git")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let settings: &[(&str, &str)] = &[
-            ("core.autocrlf", "false"),
-            ("core.symlinks", "true"),
-            ("credential.helper", "manager"),
-        ];
-
-        let mut stats = TaskStats::new();
-
-        for &(key, desired) in settings {
-            let current = exec::run_unchecked("git", &["config", "--global", "--get", key])
-                .map(|r| r.stdout.trim().to_string())
-                .unwrap_or_default();
-
-            if current == desired {
-                ctx.log
-                    .debug(&format!("ok: {key} = {desired} (already set)"));
-                stats.already_ok += 1;
-            } else {
-                if ctx.dry_run {
-                    ctx.log.dry_run(&format!("would set {key} = {desired}"));
-                } else {
-                    exec::run("git", &["config", "--global", key, desired])?;
-                }
-                stats.changed += 1;
-            }
-        }
-
-        Ok(stats.finish(ctx))
+        let resources = GIT_SETTINGS.iter().map(|(key, value)| {
+            GitConfigResource::new((*key).to_string(), (*value).to_string(), ctx.executor)
+        });
+        process_resources(
+            ctx,
+            resources,
+            &ProcessOpts {
+                verb: "set git config",
+                fix_incorrect: true,
+                fix_missing: true,
+                bail_on_error: true,
+            },
+        )
     }
 }

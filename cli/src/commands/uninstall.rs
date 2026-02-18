@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use crate::cli::{GlobalOpts, UninstallOpts};
+use crate::exec;
 use crate::logging::Logger;
 use crate::tasks::{self, Context, Task};
 
@@ -11,7 +12,13 @@ use crate::tasks::{self, Context, Task};
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Logger) -> Result<()> {
     let setup = super::CommandSetup::init(global, log)?;
-    let ctx = Context::new(&setup.config, &setup.platform, log, global.dry_run)?;
+    let ctx = Context::new(
+        &setup.config,
+        &setup.platform,
+        log,
+        global.dry_run,
+        &exec::SystemExecutor,
+    )?;
 
     let tasks: Vec<Box<dyn Task>> = vec![
         Box::new(tasks::symlinks::UninstallSymlinks),

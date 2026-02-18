@@ -16,6 +16,7 @@ use anyhow::Result;
 use std::path::Path;
 
 use crate::config::Config;
+use crate::exec::Executor;
 use crate::logging::{Logger, TaskStatus};
 use crate::platform::Platform;
 use crate::resources::{Resource, ResourceChange, ResourceState};
@@ -27,6 +28,7 @@ pub struct Context<'a> {
     pub log: &'a Logger,
     pub dry_run: bool,
     pub home: std::path::PathBuf,
+    pub executor: &'a dyn Executor,
 }
 
 impl<'a> Context<'a> {
@@ -35,6 +37,7 @@ impl<'a> Context<'a> {
         platform: &'a Platform,
         log: &'a Logger,
         dry_run: bool,
+        executor: &'a dyn Executor,
     ) -> Result<Self> {
         let home = if cfg!(target_os = "windows") {
             std::env::var("USERPROFILE")
@@ -53,6 +56,7 @@ impl<'a> Context<'a> {
             log,
             dry_run,
             home: std::path::PathBuf::from(home),
+            executor,
         })
     }
 

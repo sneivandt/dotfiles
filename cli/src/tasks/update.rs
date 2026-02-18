@@ -15,6 +15,10 @@ impl Task for UpdateRepository {
         ctx.root().join(".git").exists()
     }
 
+    fn dependencies(&self) -> Vec<&str> {
+        vec!["Configure sparse checkout"]
+    }
+
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if ctx.dry_run {
             // Compare local HEAD with upstream tracking branch

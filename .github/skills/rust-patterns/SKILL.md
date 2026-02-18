@@ -68,6 +68,67 @@ impl Task for MyTask {
 
 Register in `commands/install.rs`: `Box::new(tasks::my_module::MyTask)`.
 
+## Task Helper Abstractions
+
+For tasks that process a batch of config items (packages, symlinks, extensions, etc.), use the `ConfigBatchProcessor` helper:
+
+```rust
+use super::helpers::ConfigBatchProcessor;
+
+pub struct MyTask;
+impl Task for MyTask {
+    fn name(&self) -> &str { "My task" }
+    fn should_run(&self, ctx: &Context) -> bool {
+        !ctx.config.items.is_empty()
+    }
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let mut processor = ConfigBatchProcessor::new();
+        
+        for item in &ctx.config.items {
+            if is_already_in_desired_state(item) {
+                ctx.log.debug(&format!("ok: {} (already ok)", item));
+                processor.stats.already_ok += 1;
+            } else if ctx.dry_run {
+                ctx.log.dry_run(&format!("would process: {}", item));
+                processor.stats.changed += 1;
+            } else {
+                process_item(item)?;
+                ctx.log.debug(&format!("processed: {}", item));
+                processor.stats.changed += 1;
+            }
+        }
+        
+        Ok(processor.finish(ctx))
+    }
+}
+```
+
+The `ConfigBatchProcessor` provides:
+- Automatic stats tracking (`changed`, `already_ok`, `skipped`)
+- Consistent summary logging via `finish(ctx)`
+- Correct `TaskResult` based on dry-run mode
+
+Additional logging helpers available in `tasks/helpers`:
+- `log_already_ok(ctx, item)` — item already in desired state
+- `log_would_change(ctx, item, action)` — dry-run mode change
+- `log_changed(ctx, item, action)` — actual change made
+- `log_skipped(ctx, item, reason)` — item skipped
+
+## Profile Resolution
+
+For commands that need profile resolution without full config loading, use `CommandSetup::resolve_profile()`:
+
+```rust
+let profile = CommandSetup::resolve_profile(
+    cli_profile.as_deref(),
+    &root,
+    &platform,
+    log
+)?;
+```
+
+This abstracts the profile resolution logic (CLI arg → git config → interactive prompt) separately from config loading.
+
 ## Context Struct
 
 ```rust

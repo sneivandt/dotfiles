@@ -73,12 +73,15 @@ fn download_github_folder(url: &str, dest: &Path) -> Result<()> {
         .context("URL must contain /blob/ or /tree/")?;
 
     // Ensure we have enough parts before blob_idx
-    anyhow::ensure!(blob_idx >= 2, "invalid GitHub URL format: too few parts before blob/tree");
-    
+    anyhow::ensure!(
+        blob_idx >= 2,
+        "invalid GitHub URL format: too few parts before blob/tree"
+    );
+
     let owner = parts.get(blob_idx - 2).context("missing owner in URL")?;
     let repo = parts.get(blob_idx - 1).context("missing repo in URL")?;
     let branch = parts.get(blob_idx + 1).context("missing branch in URL")?;
-    
+
     // Use safe slicing instead of unchecked indexing
     let subpath = parts
         .get(blob_idx + 2..)

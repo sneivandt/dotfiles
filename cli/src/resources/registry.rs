@@ -88,7 +88,7 @@ pub fn batch_check_values(
         // Validate paths to prevent injection attacks
         validate_registry_path(&res.key_path)?;
         validate_registry_path(&res.value_name)?;
-        
+
         let key = res.key_path.replace('\'', "''");
         let name = res.value_name.replace('\'', "''");
         if i > 0 {
@@ -169,7 +169,7 @@ impl Resource for RegistryResource {
 fn check_registry_value(key_path: &str, value_name: &str) -> Result<Option<String>> {
     validate_registry_path(key_path)?;
     validate_registry_path(value_name)?;
-    
+
     let sentinel = "::NOT_FOUND::";
     let key = key_path.replace('\'', "''");
     let name = value_name.replace('\'', "''");
@@ -198,7 +198,7 @@ fn check_registry_value(key_path: &str, value_name: &str) -> Result<Option<Strin
 fn set_registry_value(key_path: &str, value_name: &str, value_data: &str) -> Result<()> {
     validate_registry_path(key_path)?;
     validate_registry_path(value_name)?;
-    
+
     let key = key_path.replace('\'', "''");
     let name = value_name.replace('\'', "''");
     let (ps_value, ps_type) = format_registry_value(value_data);

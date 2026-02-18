@@ -335,7 +335,7 @@ jobs:
 
   # Integration test: Windows dry-run
   integration-windows:
-    name: Integration - windows
+    name: Integration - base (Windows)
     runs-on: windows-latest
     needs: [build-windows]
     steps:
@@ -350,7 +350,7 @@ jobs:
 
       - name: Test dry-run install
         run: |
-          .\bin\dotfiles.exe --root . -p windows -d install
+          .\bin\dotfiles.exe --root . -p base -d install
 
   # Test Docker build
   test-docker:

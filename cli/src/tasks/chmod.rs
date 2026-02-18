@@ -84,8 +84,7 @@ impl Task for ApplyFilePermissions {
 fn apply_recursive(path: &std::path::Path, mode: u32) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
-    let perms = std::fs::Permissions::from_mode(mode);
-    std::fs::set_permissions(path, perms.clone())?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
 
     if path.is_dir() {
         for entry in std::fs::read_dir(path)? {
@@ -94,7 +93,7 @@ fn apply_recursive(path: &std::path::Path, mode: u32) -> Result<()> {
             if entry_path.is_dir() {
                 apply_recursive(&entry_path, mode)?;
             } else {
-                std::fs::set_permissions(&entry_path, perms.clone())?;
+                std::fs::set_permissions(&entry_path, std::fs::Permissions::from_mode(mode))?;
             }
         }
     }

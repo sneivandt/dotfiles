@@ -47,11 +47,9 @@ fn load_definitions(path: &Path) -> Result<Vec<ProfileDef>> {
             if let Some(name) = current_name.take() {
                 defs.push(ProfileDef {
                     name,
-                    include: current_include.clone(),
-                    exclude: current_exclude.clone(),
+                    include: std::mem::take(&mut current_include),
+                    exclude: std::mem::take(&mut current_exclude),
                 });
-                current_include.clear();
-                current_exclude.clear();
             }
             current_name = Some(trimmed[1..trimmed.len() - 1].to_string());
         } else if let Some((key, value)) = trimmed.split_once('=') {
@@ -126,7 +124,7 @@ pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profi
 
     // Start with the profile's own include/exclude
     let mut active: Vec<String> = vec!["base".to_string()];
-    active.extend(def.include.clone());
+    active.extend(def.include.iter().cloned());
 
     let mut excluded = def.exclude.clone();
 

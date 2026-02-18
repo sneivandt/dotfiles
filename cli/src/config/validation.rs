@@ -2,6 +2,9 @@ use std::path::Path;
 
 use crate::platform::Platform;
 
+/// Valid Windows registry hives for validation.
+const VALID_REGISTRY_HIVES: &[&str] = &["HKCU:", "HKLM:", "HKCR:", "HKU:", "HKCC:"];
+
 /// A validation warning detected during configuration loading.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationWarning {
@@ -179,11 +182,10 @@ impl ConfigValidator for RegistryValidator {
             }
 
             // Validate registry key format (should start with HKCU:, HKLM:, etc.)
-            if !entry.key_path.starts_with("HKCU:")
-                && !entry.key_path.starts_with("HKLM:")
-                && !entry.key_path.starts_with("HKCR:")
-                && !entry.key_path.starts_with("HKU:")
-                && !entry.key_path.starts_with("HKCC:")
+            let path_upper = entry.key_path.to_uppercase();
+            if !VALID_REGISTRY_HIVES
+                .iter()
+                .any(|hive| path_upper.starts_with(hive))
             {
                 warnings.push(ValidationWarning::new(
                     "registry.ini",
@@ -568,6 +570,31 @@ mod tests {
 
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("valid hive"));
+    }
+
+    #[test]
+    fn registry_validator_accepts_case_insensitive_hive() {
+        let entries = vec![
+            super::super::registry::RegistryEntry {
+                key_path: "hkcu:\\Console".to_string(),
+                value_name: "FontSize".to_string(),
+                value_data: "14".to_string(),
+            },
+            super::super::registry::RegistryEntry {
+                key_path: "HkLm:\\Software".to_string(),
+                value_name: "Test".to_string(),
+                value_data: "Value".to_string(),
+            },
+        ];
+
+        let validator = RegistryValidator::new(entries);
+        let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Windows, false));
+
+        // Should not have warnings about invalid hives
+        assert!(
+            !warnings.iter().any(|w| w.message.contains("valid hive")),
+            "Should accept case-insensitive hive names"
+        );
     }
 
     #[test]

@@ -42,10 +42,16 @@ fn is_broken_symlink_into(path: &Path, dir: &Path) -> bool {
         Ok(m) if m.is_symlink() => {}
         _ => return false,
     }
-    match std::fs::read_link(path) {
-        Ok(target) if target.starts_with(dir) => !target.exists(),
-        _ => false,
-    }
+    std::fs::read_link(path).is_ok_and(|target| {
+        // Resolve relative symlink targets relative to the symlink's directory
+        let resolved_target = if target.is_absolute() {
+            target
+        } else {
+            path.parent()
+                .map_or_else(|| target.clone(), |parent| parent.join(&target))
+        };
+        resolved_target.starts_with(dir) && !resolved_target.exists()
+    })
 }
 
 fn remove_path(path: &Path) -> std::io::Result<()> {

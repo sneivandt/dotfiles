@@ -2,6 +2,20 @@ use anyhow::Result;
 
 use super::{Context, Task, TaskResult, TaskStats};
 
+/// Hook file permissions on Unix (rwxr-xr-x).
+#[cfg(unix)]
+const HOOK_EXECUTABLE_MODE: u32 = 0o755;
+
+/// Check if two files have identical content.
+fn files_match(src: &std::path::Path, dst: &std::path::Path) -> Result<bool> {
+    if !dst.exists() {
+        return Ok(false);
+    }
+    let src_content = std::fs::read(src)?;
+    let dst_content = std::fs::read(dst)?;
+    Ok(src_content == dst_content)
+}
+
 /// Install git hooks from hooks/ into .git/hooks/.
 pub struct GitHooks;
 
@@ -36,22 +50,18 @@ impl Task for GitHooks {
             let dst = hooks_dst.join(&filename);
 
             if ctx.dry_run {
-                if dst.exists() {
-                    let src_content = std::fs::read(&path)?;
-                    let dst_content = std::fs::read(&dst)?;
-                    if src_content == dst_content {
-                        ctx.log.debug(&format!(
-                            "ok: {} (already installed)",
-                            filename.to_string_lossy()
-                        ));
-                        stats.already_ok += 1;
-                    } else {
-                        ctx.log.dry_run(&format!(
-                            "would update hook: {}",
-                            filename.to_string_lossy()
-                        ));
-                        stats.changed += 1;
-                    }
+                if files_match(&path, &dst)? {
+                    ctx.log.debug(&format!(
+                        "ok: {} (already installed)",
+                        filename.to_string_lossy()
+                    ));
+                    stats.already_ok += 1;
+                } else if dst.exists() {
+                    ctx.log.dry_run(&format!(
+                        "would update hook: {}",
+                        filename.to_string_lossy()
+                    ));
+                    stats.changed += 1;
                 } else {
                     ctx.log.dry_run(&format!(
                         "would install hook: {}",
@@ -72,17 +82,17 @@ impl Task for GitHooks {
             }
 
             // Skip if already up to date
+            if files_match(&path, &dst)? {
+                ctx.log.debug(&format!(
+                    "ok: {} (already installed)",
+                    filename.to_string_lossy()
+                ));
+                stats.already_ok += 1;
+                continue;
+            }
+
+            // Update if content differs
             if dst.exists() {
-                let src_content = std::fs::read(&path)?;
-                let dst_content = std::fs::read(&dst)?;
-                if src_content == dst_content {
-                    ctx.log.debug(&format!(
-                        "ok: {} (already installed)",
-                        filename.to_string_lossy()
-                    ));
-                    stats.already_ok += 1;
-                    continue;
-                }
                 ctx.log.debug(&format!(
                     "updating hook: {} (content differs)",
                     filename.to_string_lossy()
@@ -98,7 +108,7 @@ impl Task for GitHooks {
             {
                 use std::os::unix::fs::PermissionsExt;
                 let mut perms = std::fs::metadata(&dst)?.permissions();
-                perms.set_mode(0o755);
+                perms.set_mode(HOOK_EXECUTABLE_MODE);
                 std::fs::set_permissions(&dst, perms)?;
             }
 

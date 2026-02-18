@@ -101,20 +101,24 @@ mod tests {
     #[test]
     fn parse_install_skip_tasks() {
         let cli = Cli::parse_from(["dotfiles", "install", "--skip", "packages,fonts"]);
+        assert!(
+            matches!(&cli.command, Command::Install(_)),
+            "Expected Install command"
+        );
         if let Command::Install(opts) = cli.command {
             assert_eq!(opts.skip, vec!["packages", "fonts"]);
-        } else {
-            panic!("Expected Install command");
         }
     }
 
     #[test]
     fn parse_install_only_tasks() {
         let cli = Cli::parse_from(["dotfiles", "install", "--only", "symlinks"]);
+        assert!(
+            matches!(&cli.command, Command::Install(_)),
+            "Expected Install command"
+        );
         if let Command::Install(opts) = cli.command {
             assert_eq!(opts.only, vec!["symlinks"]);
-        } else {
-            panic!("Expected Install command");
         }
     }
 

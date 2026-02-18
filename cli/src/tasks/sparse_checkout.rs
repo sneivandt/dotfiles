@@ -4,6 +4,9 @@ use std::path::Path;
 use super::{Context, Task, TaskResult};
 use crate::exec;
 
+/// Default sparse checkout pattern that includes all files at root level.
+const DEFAULT_SPARSE_PATTERN: &str = "/*";
+
 /// Remove broken symlinks in `~/.config/git/` that point into the dotfiles
 /// repo's `symlinks/` directory.  These become dangling when sparse-checkout
 /// excludes `symlinks/`, which then prevents git from running at all because
@@ -75,7 +78,7 @@ impl Task for SparseCheckout {
             }
 
             // Check if sparse-checkout patterns are already up to date
-            let mut patterns = vec!["/*".to_string()];
+            let mut patterns = vec![DEFAULT_SPARSE_PATTERN.to_string()];
             for file in &ctx.config.manifest.excluded_files {
                 patterns.push(format!("!/{file}"));
             }
@@ -122,7 +125,7 @@ impl Task for SparseCheckout {
         exec::run_in(root, "git", &["sparse-checkout", "init", "--no-cone"])?;
 
         // Write patterns: include everything except excluded files
-        let mut patterns = vec!["/*".to_string()];
+        let mut patterns = vec![DEFAULT_SPARSE_PATTERN.to_string()];
         for file in &ctx.config.manifest.excluded_files {
             patterns.push(format!("!/{file}"));
         }

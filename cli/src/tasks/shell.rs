@@ -12,7 +12,9 @@ impl Task for ConfigureShell {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_linux() && exec::which("zsh")
+        // Skip in CI environments where chsh requires authentication
+        let is_ci = std::env::var("CI").is_ok();
+        ctx.platform.is_linux() && exec::which("zsh") && !is_ci
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

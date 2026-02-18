@@ -14,7 +14,7 @@ impl Task for ApplyRegistry {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_windows() && !ctx.config.registry.is_empty()
+        ctx.platform.has_registry() && !ctx.config.registry.is_empty()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

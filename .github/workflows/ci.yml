@@ -388,6 +388,105 @@ jobs:
       - name: Run pre-commit hook tests
         run: ./.github/workflows/scripts/linux/test-git-hooks.sh
 
+  # Test shell wrapper functionality on Linux
+  test-shell-wrapper-linux:
+    name: Test Shell Wrapper (Linux)
+    runs-on: ubuntu-latest
+    needs: [build-linux]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: dotfiles-linux
+          path: bin/
+
+      - name: Make binary executable
+        run: chmod +x bin/dotfiles
+
+      - name: Run shell wrapper tests
+        run: |
+          DIR="$(pwd)"
+          BINARY_PATH="$(pwd)/bin/dotfiles"
+          export DIR BINARY_PATH
+          cd .github/workflows/scripts/linux
+          . ./test-shell-wrapper.sh
+          test_wrapper_build_mode
+          test_wrapper_version_cache
+          test_wrapper_uses_local_binary
+          test_wrapper_checksum_verification
+          test_wrapper_offline_fallback
+          test_wrapper_forwarded_args
+          test_wrapper_root_detection
+          test_wrapper_error_handling
+
+  # Test shell wrapper functionality on Windows
+  test-shell-wrapper-windows:
+    name: Test Shell Wrapper (Windows)
+    runs-on: windows-latest
+    needs: [build-windows]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: dotfiles-windows
+          path: bin/
+
+      - name: Run PowerShell wrapper tests
+        shell: pwsh
+        run: |
+          $env:BINARY_PATH = Join-Path $PWD "bin\dotfiles.exe"
+          & .github/workflows/scripts/windows/Test-ShellWrapper.ps1
+
+  # Test downloading and running binary from artifact (simulates release flow)
+  test-artifact-download-flow:
+    name: Test Artifact Download Flow
+    runs-on: ubuntu-latest
+    needs: [build-linux]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download Linux binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dotfiles-linux
+          path: downloaded/
+
+      - name: Verify downloaded binary is executable
+        run: |
+          chmod +x downloaded/dotfiles
+          if [ ! -x "downloaded/dotfiles" ]; then
+            echo "ERROR: Downloaded binary is not executable"
+            exit 1
+          fi
+
+      - name: Test binary runs version command
+        run: |
+          output=$(downloaded/dotfiles version)
+          echo "Version output: $output"
+          if ! echo "$output" | grep -q "dotfiles"; then
+            echo "ERROR: Binary version command failed"
+            exit 1
+          fi
+
+      - name: Test binary runs with --help
+        run: |
+          downloaded/dotfiles --help
+
+      - name: Test binary runs dry-run install
+        run: |
+          downloaded/dotfiles --root . -p base -d install
+
+      - name: Test binary runs test command
+        run: |
+          downloaded/dotfiles --root . -p base test
+
   # Summary job
   ci-success:
     name: CI Success
@@ -407,6 +506,9 @@ jobs:
       - integration-windows
       - test-docker
       - test-git-hooks
+      - test-shell-wrapper-linux
+      - test-shell-wrapper-windows
+      - test-artifact-download-flow
     steps:
       - name: Mark CI as successful
         run: echo "All CI jobs passed"

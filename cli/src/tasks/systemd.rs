@@ -12,7 +12,7 @@ impl Task for ConfigureSystemd {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_linux() && !ctx.config.units.is_empty() && exec::which("systemctl")
+        ctx.platform.supports_systemd() && !ctx.config.units.is_empty() && exec::which("systemctl")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

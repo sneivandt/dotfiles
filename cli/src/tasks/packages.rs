@@ -82,9 +82,7 @@ impl Task for InstallAurPackages {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_linux()
-            && ctx.platform.is_arch
-            && ctx.config.packages.iter().any(|p| p.is_aur)
+        ctx.platform.supports_aur() && ctx.config.packages.iter().any(|p| p.is_aur)
     }
 
     fn dependencies(&self) -> Vec<&str> {
@@ -140,7 +138,7 @@ impl Task for InstallParu {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_linux() && ctx.platform.is_arch
+        ctx.platform.uses_pacman()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

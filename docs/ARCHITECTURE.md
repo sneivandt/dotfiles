@@ -193,7 +193,37 @@ The `execute()` function runs a task, recording the result (`Ok`, `Skipped`, `Dr
 
 #### Platform Detection (`platform.rs`)
 
-The `Platform` struct detects the OS at compile time (`cfg!(target_os)`) and checks for Arch Linux at runtime (`/etc/arch-release`). It exposes helpers like `is_linux()`, `is_windows()`, `is_arch`, and `excludes_category()` which tasks use to decide whether to run.
+The `Platform` struct detects the OS at compile time (`cfg!(target_os)`) and checks for Arch Linux at runtime (`/etc/arch-release`).
+
+**Basic Platform Queries:**
+- `is_linux()` — returns true if running on Linux
+- `is_windows()` — returns true if running on Windows
+- `is_arch` — public field, true if running on Arch Linux
+
+**Capability-Based Methods** (more expressive platform checks):
+- `supports_chmod()` — returns true if platform supports POSIX file permissions
+- `supports_systemd()` — returns true if platform uses systemd
+- `has_registry()` — returns true if platform uses Windows Registry
+- `is_arch_linux()` — returns true if running on Arch Linux
+- `uses_pacman()` — returns true if platform uses pacman package manager
+- `supports_aur()` — returns true if platform supports AUR packages
+
+**Display Methods:**
+- `description()` — returns "Arch Linux", "Linux", or "Windows"
+- `to_string()` / `Display` — same as `description()`
+
+**Profile Integration:**
+- `excludes_category(category)` — returns true if the given category is incompatible with this platform
+
+Tasks use these methods in their `should_run()` implementation to determine platform compatibility. For example:
+
+```rust
+fn should_run(&self, ctx: &Context) -> bool {
+    ctx.platform.supports_systemd() && !ctx.config.units.is_empty()
+}
+```
+
+This is more expressive than `ctx.platform.is_linux()` because it clearly states *why* the platform matters (systemd support) rather than just checking the OS type.
 
 #### Logging (`logging.rs`)
 

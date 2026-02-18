@@ -50,7 +50,8 @@ pub struct MyTask;
 impl Task for MyTask {
     fn name(&self) -> &str { "My task" }
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_linux() && !ctx.config.items.is_empty()
+        // Prefer capability-based checks over direct OS checks for expressiveness
+        ctx.platform.supports_systemd() && !ctx.config.items.is_empty()
     }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         for item in &ctx.config.items {
@@ -67,6 +68,32 @@ impl Task for MyTask {
 ```
 
 Register in `commands/install.rs`: `Box::new(tasks::my_module::MyTask)`.
+
+## Platform Detection
+
+Use capability-based methods when possible for more expressive code:
+
+**Capability Methods** (preferred):
+- `platform.supports_chmod()` — POSIX file permissions support
+- `platform.supports_systemd()` — systemd support
+- `platform.has_registry()` — Windows Registry support
+- `platform.supports_aur()` — AUR package support
+- `platform.uses_pacman()` — pacman package manager
+
+**Direct OS Checks** (when capabilities don't apply):
+- `platform.is_linux()` — Linux OS
+- `platform.is_windows()` — Windows OS
+- `platform.is_arch_linux()` — Arch Linux specifically
+
+**Why use capability methods?** They make the *reason* for the platform check explicit:
+
+```rust
+// Less expressive - why does Linux matter?
+ctx.platform.is_linux() && !ctx.config.units.is_empty()
+
+// More expressive - clearly about systemd support
+ctx.platform.supports_systemd() && !ctx.config.units.is_empty()
+```
 
 ## Context Struct
 

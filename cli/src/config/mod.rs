@@ -62,13 +62,13 @@ impl Config {
         let symlinks = symlinks::load(&conf.join("symlinks.ini"), active_categories)
             .context("loading symlinks.ini")?;
 
-        let registry = if platform.is_windows() {
+        let registry = if platform.has_registry() {
             registry::load(&conf.join("registry.ini")).context("loading registry.ini")?
         } else {
             Vec::new()
         };
 
-        let units = if platform.is_linux() {
+        let units = if platform.supports_systemd() {
             units::load(&conf.join("units.ini"), active_categories).context("loading units.ini")?
         } else {
             Vec::new()

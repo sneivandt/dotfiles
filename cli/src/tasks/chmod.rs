@@ -11,7 +11,7 @@ impl Task for ApplyFilePermissions {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_linux() && !ctx.config.chmod.is_empty()
+        ctx.platform.supports_chmod() && !ctx.config.chmod.is_empty()
     }
 
     fn dependencies(&self) -> Vec<&str> {

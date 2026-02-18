@@ -102,13 +102,13 @@ fn batch_check_registry(entries: &[crate::config::registry::RegistryEntry]) -> V
         let key = entry.key_path.replace('\'', "''");
         let name = entry.value_name.replace('\'', "''");
         if i > 0 {
-            let _ = writeln!(script, "Write-Output '{separator}'");
+            writeln!(script, "Write-Output '{separator}'").ok(); // Script building failures are impossible with String
         }
-        let _ = writeln!(
+        writeln!(
             script,
             "$v = (Get-ItemProperty -Path '{key}' -Name '{name}' -ErrorAction SilentlyContinue).'{name}'\n\
              if ($null -eq $v) {{ Write-Output '{sentinel}' }} else {{ Write-Output $v }}"
-        );
+        ).ok(); // Script building failures are impossible with String
     }
 
     let result = match exec::run_unchecked("powershell", &["-NoProfile", "-Command", &script]) {
@@ -135,12 +135,13 @@ fn batch_set_registry(
         let name = entry.value_name.replace('\'', "''");
         let (ps_value, ps_type) = format_registry_value(&entry.value_data);
 
-        let _ = writeln!(
+        writeln!(
             script,
             "try {{ if (!(Test-Path '{key}')) {{ New-Item -Path '{key}' -Force | Out-Null }}; \
              Set-ItemProperty -Path '{key}' -Name '{name}' -Value {ps_value} -Type {ps_type} }} \
              catch {{ Write-Error \"FAIL:{i}\" }}"
-        );
+        )
+        .ok(); // Script building failures are impossible with String
     }
 
     let Ok(result) = exec::run_unchecked("powershell", &["-NoProfile", "-Command", &script]) else {

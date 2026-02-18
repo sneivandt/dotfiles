@@ -14,6 +14,10 @@ pub struct Manifest {
 ///
 /// A file section is excluded if ANY of its category tags match the excluded set.
 /// This is the opposite of other config files which use AND inclusion logic.
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, excluded_categories: &[String]) -> Result<Manifest> {
     let sections = ini::parse_sections(path)?;
 

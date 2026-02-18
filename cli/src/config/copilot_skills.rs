@@ -10,6 +10,10 @@ pub struct CopilotSkill {
 }
 
 /// Load Copilot skills from copilot-skills.ini, filtered by active categories.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<CopilotSkill>> {
     Ok(ini::load_filtered_items(path, active_categories)?
         .into_iter()

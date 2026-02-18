@@ -31,12 +31,20 @@ pub struct KvSection {
 /// item2
 /// # comment
 /// ```
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read or contains items outside sections.
 pub fn parse_sections(path: &Path) -> Result<Vec<Section>> {
     let content = read_file(path)?;
     parse_sections_from_str(&content)
 }
 
 /// Parse INI content from a string (for testing).
+///
+/// # Errors
+///
+/// Returns an error if the content contains items outside sections.
 pub fn parse_sections_from_str(content: &str) -> Result<Vec<Section>> {
     let mut sections = Vec::new();
     let mut current: Option<Section> = None;
@@ -86,12 +94,20 @@ pub fn parse_sections_from_str(content: &str) -> Result<Vec<Section>> {
 /// [HKCU:\Console]
 /// WindowSize = 0x00200078  # comment stripped
 /// ```
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read or parsed.
 pub fn parse_kv_sections(path: &Path) -> Result<Vec<KvSection>> {
     let content = read_file(path)?;
     parse_kv_sections_from_str(&content)
 }
 
 /// Parse key-value INI content from a string.
+///
+/// # Errors
+///
+/// Returns an error if the content cannot be parsed.
 pub fn parse_kv_sections_from_str(content: &str) -> Result<Vec<KvSection>> {
     let mut sections = Vec::new();
     let mut current: Option<KvSection> = None;
@@ -225,6 +241,10 @@ fn read_file(path: &Path) -> Result<String> {
 ///
 /// This is a convenience for config files where each item is a single string
 /// (e.g., fonts, units, vscode extensions, copilot skills, symlinks).
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be parsed.
 pub fn load_filtered_items(path: &Path, active_categories: &[String]) -> Result<Vec<String>> {
     let sections = parse_sections(path)?;
     let filtered = filter_sections_and(&sections, active_categories);

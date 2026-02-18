@@ -19,6 +19,10 @@ pub struct RegistryEntry {
 /// Section headers are registry key paths (e.g., `[HKCU:\Console]`).
 /// Each key-value entry becomes a `RegistryEntry`. Inline comments are
 /// stripped by the common KV parser.
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path) -> Result<Vec<RegistryEntry>> {
     let sections = ini::parse_kv_sections(path)?;
 

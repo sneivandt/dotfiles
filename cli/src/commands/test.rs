@@ -9,6 +9,10 @@ use crate::logging::Logger;
 use crate::platform::Platform;
 
 /// Run the test/validation command.
+///
+/// # Errors
+///
+/// Returns an error if profile resolution, configuration validation, or script checks fail.
 pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Logger) -> Result<()> {
     let platform = Platform::detect();
     let root = super::install::resolve_root(global)?;

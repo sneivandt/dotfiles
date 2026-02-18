@@ -115,6 +115,10 @@ fn default_definitions() -> Vec<ProfileDef> {
 
 /// Resolve a profile by name: compute the active and excluded categories,
 /// applying platform auto-detection overrides.
+///
+/// # Errors
+///
+/// Returns an error if the profile is not found or the profiles.ini file cannot be parsed.
 pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profile> {
     let defs = load_definitions(&conf_dir.join("profiles.ini"))?;
     let def = defs
@@ -172,6 +176,10 @@ pub fn read_persisted(root: &Path) -> Option<String> {
 }
 
 /// Persist the profile selection to git config.
+///
+/// # Errors
+///
+/// Returns an error if the git command fails.
 pub fn persist(root: &Path, name: &str) -> Result<()> {
     std::process::Command::new("git")
         .args(["config", "--local", "dotfiles.profile", name])
@@ -181,6 +189,10 @@ pub fn persist(root: &Path, name: &str) -> Result<()> {
 }
 
 /// Interactively prompt the user to select a profile.
+///
+/// # Errors
+///
+/// Returns an error if user input cannot be read.
 pub fn prompt_interactive(platform: &Platform) -> Result<String> {
     let options: Vec<&str> = PROFILE_NAMES
         .iter()

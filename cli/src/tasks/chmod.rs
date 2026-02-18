@@ -72,7 +72,7 @@ impl Task for ApplyFilePermissions {
 
         #[cfg(not(unix))]
         {
-            let _ = ctx;
+            let _ctx = ctx; // Suppress unused parameter warning
             Ok(TaskResult::Skipped(
                 "chmod not supported on this platform".to_string(),
             ))

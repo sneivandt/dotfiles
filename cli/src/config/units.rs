@@ -10,6 +10,10 @@ pub struct Unit {
 }
 
 /// Load systemd units from units.ini, filtered by active categories.
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Unit>> {
     Ok(ini::load_filtered_items(path, active_categories)?
         .into_iter()

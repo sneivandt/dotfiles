@@ -8,6 +8,10 @@ use crate::platform::Platform;
 use crate::tasks::{self, Context, Task};
 
 /// Run the install command.
+///
+/// # Errors
+///
+/// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> {
     let platform = Platform::detect();
     let root = resolve_root(global)?;
@@ -76,6 +80,11 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
     Ok(())
 }
 
+/// Resolve the dotfiles root directory from CLI arguments or auto-detection.
+///
+/// # Errors
+///
+/// Returns an error if the root directory cannot be determined or doesn't exist.
 pub fn resolve_root(global: &GlobalOpts) -> Result<std::path::PathBuf> {
     if let Some(ref root) = global.root {
         return Ok(root.clone());

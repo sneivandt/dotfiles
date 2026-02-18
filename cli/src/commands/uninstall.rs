@@ -8,6 +8,10 @@ use crate::platform::Platform;
 use crate::tasks::{self, Context, Task};
 
 /// Run the uninstall command.
+///
+/// # Errors
+///
+/// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Logger) -> Result<()> {
     let platform = Platform::detect();
     let root = super::install::resolve_root(global)?;

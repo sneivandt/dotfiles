@@ -16,6 +16,10 @@ pub struct ChmodEntry {
 /// Load chmod entries from chmod.ini, filtered by active categories.
 ///
 /// Format: `<mode> <relative-path>`
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<ChmodEntry>> {
     let sections = ini::parse_sections(path)?;
     let filtered = ini::filter_sections_and(&sections, active_categories);

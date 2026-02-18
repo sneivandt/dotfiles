@@ -11,6 +11,10 @@ pub struct Symlink {
 }
 
 /// Load symlinks from symlinks.ini, filtered by active categories (AND logic).
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Symlink>> {
     Ok(ini::load_filtered_items(path, active_categories)?
         .into_iter()

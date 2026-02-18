@@ -140,7 +140,8 @@ fn batch_set_registry(
             "try {{ if (!(Test-Path '{key}')) {{ New-Item -Path '{key}' -Force | Out-Null }}; \
              Set-ItemProperty -Path '{key}' -Name '{name}' -Value {ps_value} -Type {ps_type} }} \
              catch {{ Write-Error \"FAIL:{i}\" }}"
-        ).ok(); // Script building failures are impossible with String
+        )
+        .ok(); // Script building failures are impossible with String
     }
 
     let Ok(result) = exec::run_unchecked("powershell", &["-NoProfile", "-Command", &script]) else {

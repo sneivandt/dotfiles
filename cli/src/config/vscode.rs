@@ -10,6 +10,10 @@ pub struct VsCodeExtension {
 }
 
 /// Load VS Code extensions from vscode-extensions.ini, filtered by active categories.
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<VsCodeExtension>> {
     Ok(ini::load_filtered_items(path, active_categories)?
         .into_iter()

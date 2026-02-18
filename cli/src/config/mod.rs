@@ -46,6 +46,10 @@ pub struct Config {
 
 impl Config {
     /// Load all configuration for the given profile from the conf/ directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any configuration file cannot be parsed.
     pub fn load(root: &Path, profile: &profiles::Profile, platform: &Platform) -> Result<Self> {
         let conf = root.join("conf");
 

@@ -14,6 +14,10 @@ pub struct Package {
 ///
 /// The "aur" tag is a package-type marker (not a profile category) and is
 /// excluded from AND-logic filtering. It is only used to set `is_aur`.
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Package>> {
     let sections = ini::parse_sections(path)?;
 

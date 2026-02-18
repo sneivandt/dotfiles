@@ -36,6 +36,10 @@ fn execute_checked(mut cmd: Command, label: &str) -> Result<ExecResult> {
 }
 
 /// Run a command and return its output. Fails if the command exits non-zero.
+///
+/// # Errors
+///
+/// Returns an error if the command cannot be executed or exits with non-zero status.
 pub fn run(program: &str, args: &[&str]) -> Result<ExecResult> {
     let mut cmd = Command::new(program);
     cmd.args(args);
@@ -43,6 +47,10 @@ pub fn run(program: &str, args: &[&str]) -> Result<ExecResult> {
 }
 
 /// Run a command in a specific directory.
+///
+/// # Errors
+///
+/// Returns an error if the command cannot be executed or exits with non-zero status.
 pub fn run_in(dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
     let mut cmd = Command::new(program);
     cmd.args(args).current_dir(dir);
@@ -65,6 +73,10 @@ pub fn run_in_with_env(
 }
 
 /// Run a command, allowing failure (returns result without bailing).
+///
+/// # Errors
+///
+/// Returns an error only if the command cannot be executed (not for non-zero exit).
 pub fn run_unchecked(program: &str, args: &[&str]) -> Result<ExecResult> {
     let output = Command::new(program)
         .args(args)

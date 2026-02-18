@@ -6,6 +6,16 @@ use anyhow::{Context as _, Result};
 use super::{Resource, ResourceChange, ResourceState};
 use crate::exec;
 
+/// Validates that a registry key path doesn't contain characters that could
+/// cause issues in `PowerShell` commands (newlines, backticks, etc.).
+fn validate_registry_path(path: &str) -> Result<()> {
+    anyhow::ensure!(
+        !path.contains('\n') && !path.contains('\r') && !path.contains('`'),
+        "registry path contains invalid characters: {path}"
+    );
+    Ok(())
+}
+
 /// A Windows registry resource that can be checked and applied.
 #[derive(Debug, Clone)]
 pub struct RegistryResource {
@@ -75,6 +85,10 @@ pub fn batch_check_values(
     // separate lines, delimited by a separator token so we can parse them.
     let mut script = String::from("$ErrorActionPreference='SilentlyContinue'\n");
     for (i, res) in resources.iter().enumerate() {
+        // Validate paths to prevent injection attacks
+        validate_registry_path(&res.key_path)?;
+        validate_registry_path(&res.value_name)?;
+        
         let key = res.key_path.replace('\'', "''");
         let name = res.value_name.replace('\'', "''");
         if i > 0 {
@@ -153,6 +167,9 @@ impl Resource for RegistryResource {
 /// Check a single registry value using `PowerShell`.
 /// Returns `Some(value)` if found, `None` if not found or on error.
 fn check_registry_value(key_path: &str, value_name: &str) -> Result<Option<String>> {
+    validate_registry_path(key_path)?;
+    validate_registry_path(value_name)?;
+    
     let sentinel = "::NOT_FOUND::";
     let key = key_path.replace('\'', "''");
     let name = value_name.replace('\'', "''");
@@ -179,6 +196,9 @@ fn check_registry_value(key_path: &str, value_name: &str) -> Result<Option<Strin
 
 /// Set a registry value using `PowerShell`.
 fn set_registry_value(key_path: &str, value_name: &str, value_data: &str) -> Result<()> {
+    validate_registry_path(key_path)?;
+    validate_registry_path(value_name)?;
+    
     let key = key_path.replace('\'', "''");
     let name = value_name.replace('\'', "''");
     let (ps_value, ps_type) = format_registry_value(value_data);

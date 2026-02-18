@@ -32,13 +32,31 @@ impl CommandSetup {
         let root = install::resolve_root(global)?;
 
         log.stage("Resolving profile");
-        let profile = profiles::resolve_from_args(global.profile.as_deref(), &root, &platform)?;
-        log.info(&format!("profile: {}", profile.name));
+        let profile = Self::resolve_profile(global.profile.as_deref(), &root, &platform, log)?;
 
         log.stage("Loading configuration");
         let config = Config::load(&root, &profile, &platform)?;
 
         Ok(Self { platform, config })
+    }
+
+    /// Resolve the profile from CLI arg, git config, or interactive prompt.
+    ///
+    /// This is a separate method to allow reuse across different commands
+    /// that need profile resolution without full config loading.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the profile cannot be resolved or is invalid.
+    pub fn resolve_profile(
+        cli_profile: Option<&str>,
+        root: &std::path::Path,
+        platform: &Platform,
+        log: &Logger,
+    ) -> Result<profiles::Profile> {
+        let profile = profiles::resolve_from_args(cli_profile, root, platform)?;
+        log.info(&format!("profile: {}", profile.name));
+        Ok(profile)
     }
 }
 

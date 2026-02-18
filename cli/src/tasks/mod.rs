@@ -2,6 +2,7 @@ pub mod chmod;
 pub mod copilot_skills;
 pub mod developer_mode;
 pub mod git_config;
+pub mod helpers;
 pub mod hooks;
 pub mod packages;
 pub mod registry;

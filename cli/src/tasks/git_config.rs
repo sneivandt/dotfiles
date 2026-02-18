@@ -1,6 +1,7 @@
 use anyhow::Result;
 
-use super::{Context, Task, TaskResult, TaskStats};
+use super::helpers::ConfigBatchProcessor;
+use super::{Context, Task, TaskResult};
 use crate::exec;
 
 /// Configure git settings (Windows-specific git config).
@@ -22,7 +23,7 @@ impl Task for ConfigureGit {
             ("credential.helper", "manager"),
         ];
 
-        let mut stats = TaskStats::new();
+        let mut processor = ConfigBatchProcessor::new();
 
         for &(key, desired) in settings {
             let current = exec::run_unchecked("git", &["config", "--global", "--get", key])
@@ -32,17 +33,17 @@ impl Task for ConfigureGit {
             if current == desired {
                 ctx.log
                     .debug(&format!("ok: {key} = {desired} (already set)"));
-                stats.already_ok += 1;
+                processor.stats.already_ok += 1;
             } else {
                 if ctx.dry_run {
                     ctx.log.dry_run(&format!("would set {key} = {desired}"));
                 } else {
                     exec::run("git", &["config", "--global", key, desired])?;
                 }
-                stats.changed += 1;
+                processor.stats.changed += 1;
             }
         }
 
-        Ok(stats.finish(ctx))
+        Ok(processor.finish(ctx))
     }
 }

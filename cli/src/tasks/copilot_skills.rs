@@ -1,7 +1,8 @@
 use anyhow::{Context as _, Result};
 use std::path::Path;
 
-use super::{Context, Task, TaskResult, TaskStats};
+use super::helpers::ConfigBatchProcessor;
+use super::{Context, Task, TaskResult};
 use crate::exec;
 
 /// Install GitHub Copilot skills.
@@ -21,7 +22,7 @@ impl Task for InstallCopilotSkills {
         ctx.log
             .debug(&format!("skills directory: {}", skills_dir.display()));
 
-        let mut stats = TaskStats::new();
+        let mut processor = ConfigBatchProcessor::new();
 
         for skill in &ctx.config.copilot_skills {
             // Derive a directory name from the URL (last path segment)
@@ -36,14 +37,14 @@ impl Task for InstallCopilotSkills {
             if dest.exists() {
                 ctx.log
                     .debug(&format!("ok: {} (already installed)", skill.url));
-                stats.already_ok += 1;
+                processor.stats.already_ok += 1;
                 continue;
             }
 
             if ctx.dry_run {
                 ctx.log
                     .dry_run(&format!("would install skill: {}", skill.url));
-                stats.changed += 1;
+                processor.stats.changed += 1;
                 continue;
             }
 
@@ -54,7 +55,7 @@ impl Task for InstallCopilotSkills {
             match download_github_folder(&skill.url, &dest) {
                 Ok(()) => {
                     ctx.log.debug(&format!("installed skill: {}", skill.url));
-                    stats.changed += 1;
+                    processor.stats.changed += 1;
                 }
                 Err(e) => {
                     ctx.log
@@ -63,7 +64,7 @@ impl Task for InstallCopilotSkills {
             }
         }
 
-        Ok(stats.finish(ctx))
+        Ok(processor.finish(ctx))
     }
 }
 

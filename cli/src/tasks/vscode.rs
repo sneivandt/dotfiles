@@ -1,6 +1,7 @@
 use anyhow::Result;
 
-use super::{Context, Task, TaskResult, TaskStats};
+use super::helpers::ConfigBatchProcessor;
+use super::{Context, Task, TaskResult};
 use crate::exec;
 
 /// Install VS Code extensions.
@@ -26,7 +27,7 @@ impl Task for InstallVsCodeExtensions {
 
         ctx.log.debug(&format!("using VS Code CLI: {cmd}"));
 
-        let mut stats = TaskStats::new();
+        let mut processor = ConfigBatchProcessor::new();
 
         ctx.log.debug("listing installed extensions");
         let installed = run_code_cmd(&cmd, &["--list-extensions"])
@@ -41,14 +42,14 @@ impl Task for InstallVsCodeExtensions {
             if installed.contains(&ext.id.to_lowercase()) {
                 ctx.log
                     .debug(&format!("ok: {} (already installed)", ext.id));
-                stats.already_ok += 1;
+                processor.stats.already_ok += 1;
                 continue;
             }
 
             if ctx.dry_run {
                 ctx.log
                     .dry_run(&format!("would install extension: {}", ext.id));
-                stats.changed += 1;
+                processor.stats.changed += 1;
                 continue;
             }
 
@@ -56,14 +57,14 @@ impl Task for InstallVsCodeExtensions {
             let result = run_code_cmd(&cmd, &["--install-extension", &ext.id, "--force"])?;
             if result.success {
                 ctx.log.debug(&format!("installed extension: {}", ext.id));
-                stats.changed += 1;
+                processor.stats.changed += 1;
             } else {
                 ctx.log
                     .warn(&format!("failed to install extension: {}", ext.id));
             }
         }
 
-        Ok(stats.finish(ctx))
+        Ok(processor.finish(ctx))
     }
 }
 

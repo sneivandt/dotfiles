@@ -105,7 +105,12 @@ pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profi
     let def = defs
         .iter()
         .find(|d| d.name == name)
-        .ok_or_else(|| anyhow::anyhow!("unknown profile: {name}"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "unknown profile: {name} (available: {})",
+                PROFILE_NAMES.join(", ")
+            )
+        })?;
 
     // Start with the profile's own include/exclude
     let mut active: Vec<String> = vec!["base".to_string()];

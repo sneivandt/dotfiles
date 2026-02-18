@@ -119,3 +119,54 @@ pub fn resolve_root(global: &GlobalOpts) -> Result<std::path::PathBuf> {
 
     anyhow::bail!("cannot determine dotfiles root. Use --root or set DOTFILES_ROOT env var");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn resolve_root_uses_explicit_root() {
+        let global = GlobalOpts {
+            root: Some(PathBuf::from("/explicit/path")),
+            profile: None,
+            dry_run: false,
+        };
+
+        let result = resolve_root(&global);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), PathBuf::from("/explicit/path"));
+    }
+
+    #[test]
+    fn resolve_root_error_when_not_in_repo() {
+        // Use a path that definitely doesn't have conf/symlinks
+        let temp_dir = std::env::temp_dir();
+        
+        let global = GlobalOpts {
+            root: None,
+            profile: None,
+            dry_run: false,
+        };
+
+        // Save and restore current directory
+        let original_dir = std::env::current_dir().ok();
+        std::env::set_current_dir(&temp_dir).ok();
+
+        let result = resolve_root(&global);
+        
+        // Restore directory
+        if let Some(dir) = original_dir {
+            std::env::set_current_dir(dir).ok();
+        }
+        
+        // Only check error if DOTFILES_ROOT env var is not set
+        if std::env::var("DOTFILES_ROOT").is_err() {
+            assert!(result.is_err());
+            if let Err(e) = result {
+                assert!(e.to_string().contains("cannot determine dotfiles root"));
+            }
+        }
+    }
+}
+

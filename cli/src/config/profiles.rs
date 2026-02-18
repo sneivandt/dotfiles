@@ -106,10 +106,12 @@ pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profi
         .iter()
         .find(|d| d.name == name)
         .ok_or_else(|| {
-            anyhow::anyhow!(
-                "unknown profile: {name} (available: {})",
-                PROFILE_NAMES.join(", ")
-            )
+            let available = defs
+                .iter()
+                .map(|d| d.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            anyhow::anyhow!("unknown profile: {name} (available: {available})")
         })?;
 
     // Start with the profile's own include/exclude
@@ -154,7 +156,7 @@ pub fn read_persisted(root: &Path) -> Option<String> {
 
     if output.status.success() {
         let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !name.is_empty() && PROFILE_NAMES.contains(&name.as_str()) {
+        if !name.is_empty() {
             return Some(name);
         }
     }
@@ -224,15 +226,11 @@ pub fn resolve_from_args(
         prompt_interactive(platform)?
     };
 
-    if !PROFILE_NAMES.contains(&name.as_str()) {
-        bail!(
-            "unknown profile '{}'. Valid profiles: {}",
-            name,
-            PROFILE_NAMES.join(", ")
-        );
-    }
-
+    // Let resolve() validate the profile name against loaded definitions
     let profile = resolve(&name, &conf_dir, platform)?;
+
+    // Persist for next time
+    persist(root, &name)?;
 
     // Persist for next time
     persist(root, &name)?;

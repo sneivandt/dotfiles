@@ -174,6 +174,40 @@ pub fn process_resource_states<R: Resource>(
     Ok(stats.finish(ctx))
 }
 
+/// Process resources for removal.
+///
+/// Only resources in [`ResourceState::Correct`] are removed (they are "ours").
+/// Resources that are `Missing`, `Incorrect`, or `Invalid` are skipped.
+pub fn process_resources_remove<R: Resource>(
+    ctx: &Context,
+    resources: impl IntoIterator<Item = R>,
+    verb: &str,
+) -> Result<TaskResult> {
+    let mut stats = TaskStats::new();
+    for resource in resources {
+        let current = resource.current_state()?;
+        match current {
+            ResourceState::Correct => {
+                if ctx.dry_run {
+                    ctx.log
+                        .dry_run(&format!("would {verb}: {}", resource.description()));
+                    stats.changed += 1;
+                    continue;
+                }
+                resource.remove()?;
+                ctx.log
+                    .debug(&format!("{verb}: {}", resource.description()));
+                stats.changed += 1;
+            }
+            _ => {
+                // Not ours or doesn't exist — skip silently
+                stats.already_ok += 1;
+            }
+        }
+    }
+    Ok(stats.finish(ctx))
+}
+
 /// Process a single resource given its current state.
 fn process_single<R: Resource>(
     ctx: &Context,

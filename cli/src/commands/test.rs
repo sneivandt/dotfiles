@@ -2,11 +2,8 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 use crate::cli::{GlobalOpts, TestOpts};
-use crate::config::Config;
-use crate::config::profiles;
 use crate::exec;
 use crate::logging::Logger;
-use crate::platform::Platform;
 
 /// Run the test/validation command.
 ///
@@ -14,29 +11,14 @@ use crate::platform::Platform;
 ///
 /// Returns an error if profile resolution, configuration validation, or script checks fail.
 pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Logger) -> Result<()> {
-    let platform = Platform::detect();
-    let root = super::install::resolve_root(global)?;
-
-    log.stage("Resolving profile");
-    let persisted = profiles::read_persisted(&root);
-    let profile_name = global
-        .profile
-        .as_deref()
-        .or(persisted.as_deref())
-        .unwrap_or("base");
-
-    let conf_dir = root.join("conf");
-    let profile = profiles::resolve(profile_name, &conf_dir, &platform)?;
-    log.info(&format!("profile: {}", profile.name));
-
-    log.stage("Validating configuration");
-    let config = Config::load(&root, &profile, &platform)?;
+    let setup = super::CommandSetup::init(global, log)?;
+    let root = &setup.config.root;
 
     // Validate symlink sources exist
     let symlinks_dir = root.join("symlinks");
     let mut errors = 0u32;
 
-    for symlink in &config.symlinks {
+    for symlink in &setup.config.symlinks {
         let source = symlinks_dir.join(&symlink.source);
         if !source.exists() {
             log.error(&format!("symlink source missing: {}", source.display()));
@@ -66,10 +48,10 @@ pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Logger) -> Result<()> {
     }
 
     // Static analysis: shellcheck
-    errors += run_shellcheck(&root, log)?;
+    errors += run_shellcheck(root, log)?;
 
     // Static analysis: PSScriptAnalyzer (when pwsh is available)
-    errors += run_psscriptanalyzer(&root, log)?;
+    errors += run_psscriptanalyzer(root, log)?;
 
     log.stage("Validation complete");
     if errors > 0 {

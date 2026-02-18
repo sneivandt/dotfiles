@@ -95,4 +95,5 @@ After creating, add the skill to `.github/copilot-instructions.md` and validate 
 - Skills should be self-contained and concise (aim for under 100 lines; longer is acceptable for complex topics)
 - Examples must use actual project patterns (Task trait, Context, exec helpers)
 - Cross-reference related skills where appropriate
+- **Write in terms of the current state** — never describe something as "new", "changed", or "different from before"; document what exists, not how it evolved
 - Validate with `./dotfiles.sh test` before committing

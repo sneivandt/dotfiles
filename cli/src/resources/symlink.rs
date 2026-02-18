@@ -89,6 +89,16 @@ impl Resource for SymlinkResource {
 
         Ok(ResourceChange::Applied)
     }
+
+    fn remove(&self) -> Result<ResourceChange> {
+        if self.target.symlink_metadata().is_ok() {
+            remove_symlink(&self.target)
+                .with_context(|| format!("remove symlink: {}", self.target.display()))?;
+            Ok(ResourceChange::Applied)
+        } else {
+            Ok(ResourceChange::AlreadyCorrect)
+        }
+    }
 }
 
 /// Compare two paths for equality, handling UNC prefix normalization on Windows.
@@ -145,23 +155,67 @@ fn create_symlink(target: &Path, link: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Remove a symlink or file.
+/// Remove a symlink, handling platform differences.
+///
+/// On Windows, directory symlinks must be removed with `remove_dir` (not `remove_file`).
+/// Rust's `symlink_metadata().is_dir()` returns `false` for symlinks, so we check
+/// the raw `FILE_ATTRIBUTE_DIRECTORY` flag to detect directory symlinks.
+/// If `remove_dir` still fails with OS error 5 (access denied), we fall back
+/// to `cmd /c rmdir` which runs in a separate process.
 fn remove_symlink(path: &Path) -> Result<()> {
-    #[cfg(unix)]
-    {
+    let meta = std::fs::symlink_metadata(path)?;
+    if is_dir_like(&meta) {
+        match std::fs::remove_dir(path) {
+            Ok(()) => {}
+            #[cfg(windows)]
+            Err(e) if e.raw_os_error() == Some(5) => {
+                remove_dir_fallback(path)?;
+            }
+            Err(e) => return Err(e.into()),
+        }
+    } else {
         std::fs::remove_file(path)?;
     }
+    Ok(())
+}
 
+/// Check if metadata represents a directory-like entry.
+/// On Windows, `symlink_metadata().is_dir()` returns `false` for directory symlinks,
+/// so we check the raw `FILE_ATTRIBUTE_DIRECTORY` bit instead.
+fn is_dir_like(meta: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
-        // On Windows, use remove_dir_all for directory symlinks, remove_file for file symlinks
-        if path.symlink_metadata()?.is_dir() {
-            std::fs::remove_dir_all(path)?;
-        } else {
-            std::fs::remove_file(path)?;
-        }
+        use std::os::windows::fs::MetadataExt;
+        meta.file_attributes() & 0x10 != 0 // FILE_ATTRIBUTE_DIRECTORY
     }
+    #[cfg(not(windows))]
+    {
+        meta.is_dir()
+    }
+}
 
+/// Fallback directory removal on Windows using `cmd /c rmdir`.
+/// This spawns a separate process that doesn't hold any handles from the
+/// current process, which can resolve "Access is denied" errors.
+#[cfg(windows)]
+fn remove_dir_fallback(path: &Path) -> Result<()> {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    use std::os::windows::process::CommandExt;
+    let output = std::process::Command::new("cmd")
+        .arg("/c")
+        .arg("rmdir")
+        .arg("/q")
+        .arg(path)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .context("failed to run rmdir")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "remove directory/symlink '{}': {}",
+            path.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
     Ok(())
 }
 

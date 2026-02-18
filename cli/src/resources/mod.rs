@@ -66,6 +66,14 @@ pub trait Resource {
     /// This method is only called when NOT in dry-run mode and when
     /// `needs_change()` returns `true`.
     fn apply(&self) -> Result<ResourceChange>;
+
+    /// Remove the resource, undoing a previous `apply()`.
+    ///
+    /// Default implementation returns an error — override in resources
+    /// that support removal.
+    fn remove(&self) -> Result<ResourceChange> {
+        anyhow::bail!("remove not supported for {}", self.description())
+    }
 }
 
 #[cfg(test)]

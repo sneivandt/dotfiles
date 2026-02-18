@@ -5,7 +5,7 @@ description: >
   Use when creating or modifying Rust code in cli/src/.
 metadata:
   author: sneivandt
-  version: "1.0"
+  version: "2.0"
 ---
 
 # Rust Patterns
@@ -30,7 +30,7 @@ cli/src/
 │   ├── mod.rs     # Resource trait, ResourceState, ResourceChange
 │   └── *.rs       # Per-type resources (symlink, registry, chmod, etc.)
 ├── tasks/         # Task implementations
-│   ├── mod.rs     # Task trait, Context struct, execute()
+│   ├── mod.rs     # Task trait, Context, ProcessOpts, process_resources()
 │   └── *.rs       # One file per task
 └── commands/      # install.rs, uninstall.rs, test.rs
 ```
@@ -46,31 +46,72 @@ pub trait Task {
 pub enum TaskResult { Ok, Skipped(String), DryRun }
 ```
 
-### New Task Template
+### New Resource-Based Task Template (preferred)
+
+Most tasks process a list of `Resource` implementors. Use the generic
+`process_resources()` or `process_resource_states()` helpers instead of
+writing the state-match loop by hand:
 
 ```rust
+use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
+use crate::resources::my_resource::MyResource;
+
 pub struct MyTask;
 impl Task for MyTask {
     fn name(&self) -> &str { "My task" }
     fn should_run(&self, ctx: &Context) -> bool {
-        // Prefer capability-based checks over direct OS checks for expressiveness
         ctx.platform.supports_systemd() && !ctx.config.items.is_empty()
     }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        for item in &ctx.config.items {
-            if ctx.dry_run {
-                ctx.log.dry_run(&format!("would process {}", item));
-                continue;
-            }
-            ctx.log.debug(&format!("processing {}", item));
-        }
-        if ctx.dry_run { return Ok(TaskResult::DryRun); }
-        Ok(TaskResult::Ok)
+        let resources = ctx.config.items.iter().map(MyResource::from_entry);
+        process_resources(ctx, resources, &ProcessOpts {
+            verb: "install",
+            fix_incorrect: true,
+            fix_missing: true,
+            bail_on_error: false,
+        })
     }
 }
 ```
 
+For tasks that batch-query state up front (packages, VS Code extensions,
+registry), build `(Resource, ResourceState)` pairs and use
+`process_resource_states()` instead.
+
 Register in `commands/install.rs`: `Box::new(tasks::my_module::MyTask)`.
+
+### ProcessOpts Fields
+
+| Field | Purpose |
+|---|---|
+| `verb` | Verb for log messages ("install", "link", "chmod") |
+| `fix_incorrect` | Apply when state is `Incorrect` (else skip) |
+| `fix_missing` | Apply when state is `Missing` (else skip) |
+| `bail_on_error` | `true`: propagate `apply()` errors. `false`: warn and count as skipped |
+
+### Non-Resource Task Template
+
+For tasks that don't use the `Resource` trait (e.g., git config, shell
+setup), write the check→dry-run→mutate loop manually:
+
+```rust
+pub struct MyCustomTask;
+impl Task for MyCustomTask {
+    fn name(&self) -> &str { "My custom task" }
+    fn should_run(&self, ctx: &Context) -> bool { true }
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        if already_correct() {
+            return Ok(TaskResult::Ok);
+        }
+        if ctx.dry_run {
+            ctx.log.dry_run("would do something");
+            return Ok(TaskResult::DryRun);
+        }
+        do_something()?;
+        Ok(TaskResult::Ok)
+    }
+}
+```
 
 ## Platform Detection
 
@@ -136,12 +177,24 @@ pub enum ResourceState { Missing, Correct, Incorrect { current: String }, Invali
 pub enum ResourceChange { Applied, AlreadyCorrect, Skipped { reason: String } }
 ```
 
-Tasks use `Resource` implementors (e.g., `SymlinkResource`, `RegistryResource`) to check state and apply changes rather than doing it inline. New declarative resources go in `resources/*.rs`.
+Tasks use `Resource` implementors (e.g., `SymlinkResource`, `RegistryResource`) to check state and apply changes. New declarative resources go in `resources/*.rs`.
+
+### Generic Resource Loop
+
+`tasks/mod.rs` provides two helpers that handle the full check→dry-run→apply
+loop so individual tasks don't repeat it:
+
+- **`process_resources(ctx, resources, opts)`** — calls `current_state()` per resource.
+- **`process_resource_states(ctx, resource_states, opts)`** — takes pre-computed `(Resource, ResourceState)` pairs for batch-checked resources.
+
+Both accept a `ProcessOpts` struct that controls which states are fixable and
+whether errors bail or warn. Use these for **all** new resource-based tasks.
 
 ## Rules
 
 - All task logic in `cli/src/tasks/*.rs` — never in shell scripts
 - Every task: `name`, `should_run`, `run`; check `ctx.dry_run` before side effects
+- **Use `process_resources()` / `process_resource_states()`** for resource-based tasks — do not duplicate the state-match loop
 - Use `Resource` trait for declarative state checks where applicable
 - Guard tools with `exec::which()`; return `TaskResult::Skipped(reason)` when not applicable
 - Add `#[cfg(test)] mod tests` to every module; use `Platform::new()` in tests

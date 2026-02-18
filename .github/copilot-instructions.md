@@ -18,7 +18,7 @@ This project manages dotfiles and system configuration using a profile-based spa
 |---|---|---|
 | Rust engine | `cli/` | Cargo project — config parsing, symlinks, file ops, orchestration |
 | Shell wrappers | `dotfiles.sh` / `dotfiles.ps1` | Download or `cargo build` the binary, then exec it |
-| Configuration | `conf/` | INI files (unchanged from previous design) |
+| Configuration | `conf/` | Declarative INI config files |
 | Symlinks | `symlinks/` | Managed by the Rust engine |
 | Skills | `.github/skills/` | Agent-specific coding patterns |
 | Docs | `docs/` | Human-readable guides and reference |

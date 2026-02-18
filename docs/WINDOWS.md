@@ -196,7 +196,7 @@ Examples:
 
 This allows the same configuration repository to work across both Windows and Linux while respecting platform conventions.
 
-**Note:** Windows symlinks now share the same configuration file as Linux (`conf/symlinks.ini`) but use the `[windows]` section.
+**Note:** Windows symlinks use the same configuration file as Linux (`conf/symlinks.ini`) but use the `[windows]` section.
 
 To add a new link:
 1. Place the source file under `symlinks/<path>` (create directories as needed).

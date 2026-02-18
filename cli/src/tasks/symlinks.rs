@@ -1,9 +1,8 @@
 use anyhow::Result;
 use std::path::Path;
 
-use super::{Context, ProcessOpts, Task, TaskResult, TaskStats, process_resources};
+use super::{Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove};
 use crate::resources::symlink::SymlinkResource;
-use crate::resources::{Resource, ResourceState};
 
 /// Create symlinks from symlinks/ to $HOME.
 pub struct InstallSymlinks;
@@ -50,34 +49,13 @@ impl Task for UninstallSymlinks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let mut stats = TaskStats::new();
-
-        for symlink in &ctx.config.symlinks {
-            let target = compute_target(&ctx.home, &symlink.source);
-            let source = ctx.symlinks_dir().join(&symlink.source);
-
-            let resource = SymlinkResource::new(source, target.clone());
-
-            // Only remove if it's a symlink pointing to our source
-            if resource.current_state()? == ResourceState::Correct {
-                // It's correctly pointing to our source, remove it
-                if ctx.dry_run {
-                    ctx.log
-                        .dry_run(&format!("would remove symlink: {}", target.display()));
-                    stats.changed += 1;
-                    continue;
-                }
-
-                // Use the resource's internal remove logic via SymlinkResource
-                // For now, we need to manually remove since Resource trait doesn't have uninstall
-                remove_symlink(&target)?;
-                ctx.log.debug(&format!("removed: {}", target.display()));
-                stats.changed += 1;
-            }
-            // Not our symlink or doesn't exist, skip
-        }
-
-        Ok(stats.finish(ctx))
+        let resources = ctx.config.symlinks.iter().map(|s| {
+            SymlinkResource::new(
+                ctx.symlinks_dir().join(&s.source),
+                compute_target(&ctx.home, &s.source),
+            )
+        });
+        process_resources_remove(ctx, resources, "remove")
     }
 }
 
@@ -95,71 +73,6 @@ fn compute_target(home: &Path, source: &str) -> std::path::PathBuf {
     } else {
         home.join(format!(".{source}"))
     }
-}
-
-/// Remove a symlink, handling platform differences.
-///
-/// On Windows, directory symlinks must be removed with `remove_dir` (not `remove_file`).
-/// Rust's `symlink_metadata().is_dir()` returns `false` for symlinks, so we check
-/// the raw `FILE_ATTRIBUTE_DIRECTORY` flag to detect directory symlinks.
-/// If `remove_dir` still fails with OS error 5 (access denied), we fall back
-/// to `cmd /c rmdir` which runs in a separate process.
-fn remove_symlink(path: &Path) -> Result<()> {
-    let meta = std::fs::symlink_metadata(path)?;
-    if is_dir_like(&meta) {
-        match std::fs::remove_dir(path) {
-            Ok(()) => {}
-            #[cfg(windows)]
-            Err(e) if e.raw_os_error() == Some(5) => {
-                remove_dir_fallback(path)?;
-            }
-            Err(e) => return Err(e.into()),
-        }
-    } else {
-        std::fs::remove_file(path)?;
-    }
-    Ok(())
-}
-
-/// Check if metadata represents a directory-like entry.
-/// On Windows, `symlink_metadata().is_dir()` returns `false` for directory symlinks,
-/// so we check the raw `FILE_ATTRIBUTE_DIRECTORY` bit instead.
-fn is_dir_like(meta: &std::fs::Metadata) -> bool {
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        meta.file_attributes() & 0x10 != 0 // FILE_ATTRIBUTE_DIRECTORY
-    }
-    #[cfg(not(windows))]
-    {
-        meta.is_dir()
-    }
-}
-
-/// Fallback directory removal on Windows using `cmd /c rmdir`.
-/// This spawns a separate process that doesn't hold any handles from the
-/// current process, which can resolve "Access is denied" errors.
-#[cfg(windows)]
-fn remove_dir_fallback(path: &Path) -> Result<()> {
-    use anyhow::Context as _;
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let output = std::process::Command::new("cmd")
-        .arg("/c")
-        .arg("rmdir")
-        .arg("/q")
-        .arg(path)
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .context("failed to run rmdir")?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "remove directory/symlink '{}': {}",
-            path.display(),
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
-    }
-    Ok(())
 }
 
 #[cfg(test)]

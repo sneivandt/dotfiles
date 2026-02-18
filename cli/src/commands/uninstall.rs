@@ -1,10 +1,7 @@
 use anyhow::Result;
 
 use crate::cli::{GlobalOpts, UninstallOpts};
-use crate::config::Config;
-use crate::config::profiles;
 use crate::logging::Logger;
-use crate::platform::Platform;
 use crate::tasks::{self, Context, Task};
 
 /// Run the uninstall command.
@@ -13,17 +10,8 @@ use crate::tasks::{self, Context, Task};
 ///
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Logger) -> Result<()> {
-    let platform = Platform::detect();
-    let root = super::install::resolve_root(global)?;
-
-    log.stage("Resolving profile");
-    let profile = profiles::resolve_from_args(global.profile.as_deref(), &root, &platform)?;
-    log.info(&format!("profile: {}", profile.name));
-
-    log.stage("Loading configuration");
-    let config = Config::load(&root, &profile, &platform)?;
-
-    let ctx = Context::new(&config, &platform, log, global.dry_run)?;
+    let setup = super::CommandSetup::init(global, log)?;
+    let ctx = Context::new(&setup.config, &setup.platform, log, global.dry_run)?;
 
     let tasks: Vec<Box<dyn Task>> = vec![
         Box::new(tasks::symlinks::UninstallSymlinks),
@@ -31,14 +19,6 @@ pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Logger) -> Result<(
     ];
 
     log.stage("Uninstalling");
-    for task in &tasks {
-        tasks::execute(task.as_ref(), &ctx);
-    }
-
-    log.print_summary();
-
-    if log.has_failures() {
-        anyhow::bail!("one or more tasks failed");
-    }
-    Ok(())
+    let task_refs: Vec<&dyn Task> = tasks.iter().map(std::convert::AsRef::as_ref).collect();
+    super::run_tasks_to_completion(&task_refs, &ctx, log)
 }

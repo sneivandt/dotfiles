@@ -1,10 +1,7 @@
 use anyhow::Result;
 
 use crate::cli::{GlobalOpts, InstallOpts};
-use crate::config::Config;
-use crate::config::profiles;
 use crate::logging::Logger;
-use crate::platform::Platform;
 use crate::tasks::{self, Context, Task};
 
 /// Run the install command.
@@ -13,25 +10,17 @@ use crate::tasks::{self, Context, Task};
 ///
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> {
-    let platform = Platform::detect();
-    let root = resolve_root(global)?;
-
     let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     log.info(&format!("dotfiles {version}"));
 
-    log.stage("Resolving profile");
-    let profile = profiles::resolve_from_args(global.profile.as_deref(), &root, &platform)?;
-    log.info(&format!("profile: {}", profile.name));
-
-    log.stage("Loading configuration");
-    let config = Config::load(&root, &profile, &platform)?;
+    let setup = super::CommandSetup::init(global, log)?;
     log.info(&format!(
         "loaded {} packages, {} symlinks",
-        config.packages.len(),
-        config.symlinks.len()
+        setup.config.packages.len(),
+        setup.config.symlinks.len()
     ));
 
-    let ctx = Context::new(&config, &platform, log, global.dry_run)?;
+    let ctx = Context::new(&setup.config, &setup.platform, log, global.dry_run)?;
 
     // Build the task list
     let all_tasks: Vec<Box<dyn Task>> = vec![
@@ -68,16 +57,7 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
         .map(std::convert::AsRef::as_ref)
         .collect();
 
-    for task in tasks_to_run {
-        tasks::execute(task, &ctx);
-    }
-
-    log.print_summary();
-
-    if log.has_failures() {
-        anyhow::bail!("one or more tasks failed");
-    }
-    Ok(())
+    super::run_tasks_to_completion(&tasks_to_run, &ctx, log)
 }
 
 /// Resolve the dotfiles root directory from CLI arguments or auto-detection.

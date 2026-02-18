@@ -52,8 +52,8 @@ cd cli && cargo fmt --check && cargo clippy -- -D warnings && cargo test
 
 ### Security
 
-- Run `code_review` and `codeql_checker` tools before finalising
 - Never commit secrets, credentials, or sensitive data
+- Review git hooks patterns in `.github/skills/git-hooks-patterns/`
 - Fix any security issues found
 
 ## Documentation Structure

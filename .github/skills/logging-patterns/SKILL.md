@@ -27,7 +27,9 @@ impl Logger {
 
 All messages (including `debug`) are always written to a persistent log file at
 `$XDG_CACHE_HOME/dotfiles/install.log` (default `~/.cache/dotfiles/install.log`)
-with timestamps and ANSI codes stripped. The log file path is shown in the summary.
+with timestamps and ANSI codes stripped. The `debug` method only prints to the terminal
+when `verbose=true`, but **always** writes to the log file regardless of the verbose flag.
+The log file path is shown in the summary.
 
 | Method | Use For |
 |--------|---------|

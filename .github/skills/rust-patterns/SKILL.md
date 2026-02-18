@@ -73,7 +73,7 @@ Register in `commands/install.rs`: `Box::new(tasks::my_module::MyTask)`.
 ```rust
 pub struct Context<'a> {
     pub config: &'a Config, pub platform: &'a Platform, pub log: &'a Logger,
-    pub dry_run: bool, pub verbose: bool, pub home: PathBuf,
+    pub dry_run: bool, pub home: PathBuf,
 }
 ```
 
@@ -81,7 +81,7 @@ Helpers: `ctx.root()`, `ctx.symlinks_dir()`, `ctx.hooks_dir()`.
 
 ## Exec Helpers
 
-`exec::run()` (fails on non-zero), `exec::run_in()` (in dir), `exec::run_unchecked()` (allows failure), `exec::which()` (PATH check), `exec::run_guarded()` (dry-run aware).
+`exec::run()` (fails on non-zero), `exec::run_in()` (in dir), `exec::run_in_with_env()` (in dir with env vars), `exec::run_unchecked()` (allows failure), `exec::which()` (PATH check).
 
 ## Config Loader Pattern
 

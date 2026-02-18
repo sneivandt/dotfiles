@@ -95,6 +95,7 @@ pub struct TaskStats {
 }
 
 impl TaskStats {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -114,6 +115,7 @@ impl TaskStats {
     }
 
     /// Log the summary and return the appropriate `TaskResult`.
+    #[must_use]
     pub fn finish(self, ctx: &Context) -> TaskResult {
         ctx.log.info(&self.summary(ctx.dry_run));
         if ctx.dry_run {

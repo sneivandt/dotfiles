@@ -153,11 +153,8 @@ fn paths_equal(a: &Path, b: &Path) -> bool {
 
 fn strip_win_prefix(p: &Path) -> std::path::PathBuf {
     let s = p.to_string_lossy();
-    if let Some(rest) = s.strip_prefix(r"\\?\") {
-        std::path::PathBuf::from(rest)
-    } else {
-        p.to_path_buf()
-    }
+    s.strip_prefix(r"\\?\")
+        .map_or_else(|| p.to_path_buf(), std::path::PathBuf::from)
 }
 
 /// Compute the target path in $HOME for a symlink source.

@@ -12,8 +12,7 @@ impl Task for InstallPackages {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        let non_aur: Vec<_> = ctx.config.packages.iter().filter(|p| !p.is_aur).collect();
-        !non_aur.is_empty()
+        ctx.config.packages.iter().any(|p| !p.is_aur)
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use anyhow::Result;
 
 use super::{Context, Task, TaskResult, TaskStats};
@@ -40,10 +42,7 @@ impl Task for ApplyRegistry {
                 ));
                 stats.already_ok += 1;
             } else {
-                let current_display = current_values
-                    .get(i)
-                    .map(|v| v.as_str())
-                    .unwrap_or("(not found)");
+                let current_display = current_values.get(i).map_or("(not found)", String::as_str);
                 ctx.log.debug(&format!(
                     "change needed: {}\\{} current={} desired={}",
                     entry.key_path, entry.value_name, current_display, entry.value_data
@@ -68,7 +67,9 @@ impl Task for ApplyRegistry {
             ctx.log
                 .debug(&format!("batch-setting {} registry entries", to_set.len()));
             let failed = batch_set_registry(entries, &to_set);
-            if !failed.is_empty() {
+            if failed.is_empty() {
+                ctx.log.debug("all registry writes succeeded");
+            } else {
                 for idx in &failed {
                     let entry = &entries[*idx];
                     ctx.log.warn(&format!(
@@ -81,8 +82,6 @@ impl Task for ApplyRegistry {
                     failed.len(),
                     to_set.len()
                 ));
-            } else {
-                ctx.log.debug("all registry writes succeeded");
             }
         }
 
@@ -103,12 +102,13 @@ fn batch_check_registry(entries: &[crate::config::registry::RegistryEntry]) -> V
         let key = entry.key_path.replace('\'', "''");
         let name = entry.value_name.replace('\'', "''");
         if i > 0 {
-            script.push_str(&format!("Write-Output '{separator}'\n"));
+            let _ = writeln!(script, "Write-Output '{separator}'");
         }
-        script.push_str(&format!(
+        let _ = writeln!(
+            script,
             "$v = (Get-ItemProperty -Path '{key}' -Name '{name}' -ErrorAction SilentlyContinue).'{name}'\n\
-             if ($null -eq $v) {{ Write-Output '{sentinel}' }} else {{ Write-Output $v }}\n"
-        ));
+             if ($null -eq $v) {{ Write-Output '{sentinel}' }} else {{ Write-Output $v }}"
+        );
     }
 
     let result = match exec::run_unchecked("powershell", &["-NoProfile", "-Command", &script]) {
@@ -135,16 +135,16 @@ fn batch_set_registry(
         let name = entry.value_name.replace('\'', "''");
         let (ps_value, ps_type) = format_registry_value(&entry.value_data);
 
-        script.push_str(&format!(
+        let _ = writeln!(
+            script,
             "try {{ if (!(Test-Path '{key}')) {{ New-Item -Path '{key}' -Force | Out-Null }}; \
              Set-ItemProperty -Path '{key}' -Name '{name}' -Value {ps_value} -Type {ps_type} }} \
-             catch {{ Write-Error \"FAIL:{i}\" }}\n"
-        ));
+             catch {{ Write-Error \"FAIL:{i}\" }}"
+        );
     }
 
-    let result = match exec::run_unchecked("powershell", &["-NoProfile", "-Command", &script]) {
-        Ok(r) => r,
-        Err(_) => return indices.to_vec(),
+    let Ok(result) = exec::run_unchecked("powershell", &["-NoProfile", "-Command", &script]) else {
+        return indices.to_vec();
     };
 
     // Parse failures from stderr

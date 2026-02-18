@@ -14,9 +14,8 @@ fn remove_broken_git_symlinks(ctx: &Context) {
         return;
     }
     let symlinks_dir = ctx.symlinks_dir();
-    let entries = match std::fs::read_dir(&git_config_dir) {
-        Ok(e) => e,
-        Err(_) => return,
+    let Ok(entries) = std::fs::read_dir(&git_config_dir) else {
+        return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
@@ -70,6 +69,29 @@ impl Task for SparseCheckout {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if ctx.dry_run {
+            if ctx.config.manifest.excluded_files.is_empty() {
+                ctx.log.info("no files to exclude from sparse checkout");
+                return Ok(TaskResult::Ok);
+            }
+
+            // Check if sparse-checkout patterns are already up to date
+            let mut patterns = vec!["/*".to_string()];
+            for file in &ctx.config.manifest.excluded_files {
+                patterns.push(format!("!/{file}"));
+            }
+            let patterns_str = patterns.join("\n");
+            let sparse_file = ctx.root().join(".git/info/sparse-checkout");
+            if sparse_file.exists() {
+                let current = std::fs::read_to_string(&sparse_file).unwrap_or_default();
+                if current.trim() == patterns_str.trim() {
+                    ctx.log.info(&format!(
+                        "already configured ({} files excluded)",
+                        ctx.config.manifest.excluded_files.len()
+                    ));
+                    return Ok(TaskResult::Ok);
+                }
+            }
+
             ctx.log.dry_run("configure git sparse checkout");
             for file in &ctx.config.manifest.excluded_files {
                 ctx.log.dry_run(&format!("  exclude: {file}"));
@@ -136,6 +158,30 @@ impl Task for SparseCheckout {
             std::fs::create_dir_all(&info_dir)?;
         }
         std::fs::write(&sparse_file, &patterns_str)?;
+
+        // Reset excluded files to HEAD so read-tree doesn't fail with
+        // "not uptodate. Cannot merge." when the working tree is dirty.
+        let mut checkout_args = vec!["checkout", "HEAD", "--"];
+        let excluded: Vec<&str> = ctx
+            .config
+            .manifest
+            .excluded_files
+            .iter()
+            .filter(|f| root.join(f).exists())
+            .map(String::as_str)
+            .collect();
+        if !excluded.is_empty() {
+            checkout_args.extend(&excluded);
+            ctx.log.debug(&format!(
+                "resetting {} excluded files to HEAD before read-tree",
+                excluded.len()
+            ));
+            // Best-effort: if checkout fails (e.g. file not in HEAD), proceed anyway
+            if let Err(e) = exec::run_in(root, "git", &checkout_args) {
+                ctx.log.debug(&format!("git checkout reset failed: {e}"));
+            }
+        }
+
         ctx.log
             .debug("wrote sparse-checkout file, running read-tree");
         exec::run_in(root, "git", &["read-tree", "-mu", "HEAD"])?;

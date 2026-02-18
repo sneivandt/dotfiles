@@ -10,7 +10,7 @@ mod platform;
 mod tasks;
 
 fn main() -> Result<()> {
-    let _ = enable_ansi_support::enable_ansi_support();
+    enable_ansi_support::enable_ansi_support().ok(); // best-effort; no-op on non-Windows
     let args = cli::Cli::parse();
     let log = logging::Logger::new(args.verbose);
 

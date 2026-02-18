@@ -22,6 +22,13 @@ assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
 
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cast_possible_truncation = "allow"
+missing_errors_doc = "allow"
+module_name_repetitions = "allow"
+
 [profile.release]
 strip = true
 lto = true

@@ -10,8 +10,8 @@ pub enum Os {
 impl fmt::Display for Os {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Os::Linux => write!(f, "linux"),
-            Os::Windows => write!(f, "windows"),
+            Self::Linux => write!(f, "linux"),
+            Self::Windows => write!(f, "windows"),
         }
     }
 }
@@ -60,7 +60,7 @@ impl Platform {
         }
     }
 
-    fn detect_os() -> Os {
+    const fn detect_os() -> Os {
         if cfg!(target_os = "linux") {
             Os::Linux
         } else if cfg!(target_os = "windows") {

@@ -62,6 +62,15 @@ impl Task for GitHooks {
                 continue;
             }
 
+            // Remove stale/broken symlinks before comparing or copying
+            if !dst.exists() && dst.symlink_metadata().is_ok() {
+                ctx.log.debug(&format!(
+                    "removing broken symlink: {}",
+                    filename.to_string_lossy()
+                ));
+                std::fs::remove_file(&dst)?;
+            }
+
             // Skip if already up to date
             if dst.exists() {
                 let src_content = std::fs::read(&path)?;

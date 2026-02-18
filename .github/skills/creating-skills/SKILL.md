@@ -57,7 +57,7 @@ Create a skill when the topic is complex, repeated across files, or has common p
 4. **Rules**: Clear dos and don'ts
 5. **Cross-references**: Links to related skills
 
-Keep skills **under 100 lines**, concise, and focused on patterns agents need for code generation.
+Keep skills **concise and focused** on patterns agents need for code generation. Most skills should be under 100 lines; complex topics (e.g., sparse checkout) may be longer when the detail is necessary.
 
 ## Creating a New Skill
 
@@ -92,7 +92,7 @@ After creating, add the skill to `.github/copilot-instructions.md` and validate 
 
 - Every skill must have valid YAML frontmatter
 - Directory name must match the `name` field
-- Skills should be self-contained and under 100 lines
+- Skills should be self-contained and concise (aim for under 100 lines; longer is acceptable for complex topics)
 - Examples must use actual project patterns (Task trait, Context, exec helpers)
 - Cross-reference related skills where appropriate
 - Validate with `./dotfiles.sh test` before committing

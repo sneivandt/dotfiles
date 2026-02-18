@@ -32,5 +32,9 @@ pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Logger) -> Result<(
     }
 
     log.print_summary();
+
+    if log.has_failures() {
+        anyhow::bail!("one or more tasks failed");
+    }
     Ok(())
 }

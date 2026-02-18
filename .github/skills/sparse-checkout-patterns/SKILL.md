@@ -164,19 +164,9 @@ The system automatically enforces compatibility overrides:
 - Always exclude `windows` category (regardless of profile)
 - Non-Arch Linux: Always exclude `arch` category
 
-**Implementation:**
-```bash
-# In configure_sparse_checkout()
-if [ "$IS_ARCH" -eq 0 ]; then
-  # Not on Arch - always exclude arch
-  exclude_categories="$exclude_categories,arch"
-fi
+**Implementation** (in `cli/src/tasks/sparse_checkout.rs`):
 
-# Windows always excluded on Linux
-exclude_categories="$exclude_categories,windows"
-```
-
-This prevents incompatible operations even if someone manually selects an incompatible profile.
+The Rust engine calls `Platform::excludes_category()` to determine which categories are incompatible with the current OS. These overrides are applied before generating sparse checkout patterns, preventing incompatible files from appearing even with a manually-selected profile.
 
 ## Category Naming Conventions
 
@@ -229,13 +219,13 @@ config/alacritty/
 
 ```bash
 # Apply changes
-./dotfiles.sh -I --profile base
+./dotfiles.sh install --profile base
 
 # Verify file is excluded
 ls symlinks/config/alacritty/  # Should not exist with base profile
 
 # Test with appropriate profile
-./dotfiles.sh -I --profile desktop
+./dotfiles.sh install --profile desktop
 ls symlinks/config/alacritty/  # Should exist with desktop profile
 ```
 
@@ -245,11 +235,11 @@ Test that the file behaves correctly across different profiles:
 
 ```bash
 # Test exclusion
-./dotfiles.sh -I --profile base --dry-run
+./dotfiles.sh install --profile base --dry-run
 git sparse-checkout list | grep alacritty  # Should show exclusion
 
 # Test inclusion
-./dotfiles.sh -I --profile desktop --dry-run
+./dotfiles.sh install --profile desktop --dry-run
 git sparse-checkout list | grep alacritty  # Should not show exclusion
 ```
 

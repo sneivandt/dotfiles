@@ -59,7 +59,7 @@ Every task's `run()` must check existing state before acting:
 ```rust
 fn run(&self, ctx: &Context) -> Result<TaskResult> {
     if link_path.exists() && link_path.read_link()? == target {
-        return Ok(TaskResult::Skipped); // Already correct
+        return Ok(TaskResult::Skipped("already correct".into())); // Already correct
     }
     if ctx.dry_run {
         return Ok(TaskResult::DryRun);
@@ -71,7 +71,7 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 
 ### Pattern Order
 
-1. Check if already in desired state → `TaskResult::Skipped`
+1. Check if already in desired state → `TaskResult::Skipped(reason)`
 2. Check dry-run flag → `TaskResult::DryRun`
 3. Perform the mutation → `TaskResult::Ok`
 

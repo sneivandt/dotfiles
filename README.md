@@ -30,7 +30,7 @@ cd dotfiles
 ```powershell
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-.\dotfiles.ps1 install
+.\dotfiles.ps1 install -p windows
 ```
 
 ### Docker

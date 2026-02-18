@@ -17,6 +17,15 @@ impl Task for UpdateRepository {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if ctx.dry_run {
+            // Compare local HEAD with upstream tracking branch
+            if let (Some(head), Some(upstream)) = (
+                exec::run_in(ctx.root(), "git", &["rev-parse", "HEAD"]).ok(),
+                exec::run_in(ctx.root(), "git", &["rev-parse", "@{u}"]).ok(),
+            ) && head.stdout.trim() == upstream.stdout.trim()
+            {
+                ctx.log.info("already up to date");
+                return Ok(TaskResult::Ok);
+            }
             ctx.log.dry_run("git pull");
             return Ok(TaskResult::DryRun);
         }

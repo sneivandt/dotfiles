@@ -4,7 +4,7 @@ use std::path::Path;
 /// A parsed section from an INI file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Section {
-    /// Category tags for this section (e.g., ["arch", "desktop"]).
+    /// Category tags for this section (e.g., `["arch", "desktop"]`).
     pub categories: Vec<String>,
     /// Items (non-empty, non-comment lines) in this section.
     pub items: Vec<String>,
@@ -207,13 +207,10 @@ fn parse_kv_line(line: &str) -> Option<(String, String)> {
 
 /// Strip inline comments (`#` preceded by whitespace) from a value.
 fn strip_inline_comment(value: &str) -> String {
-    if let Some(idx) = value.find(" #") {
-        value[..idx].trim().to_string()
-    } else if let Some(idx) = value.find("\t#") {
-        value[..idx].trim().to_string()
-    } else {
-        value.to_string()
-    }
+    value
+        .find(" #")
+        .or_else(|| value.find("\t#"))
+        .map_or_else(|| value.to_string(), |idx| value[..idx].trim().to_string())
 }
 
 fn read_file(path: &Path) -> Result<String> {
@@ -225,6 +222,7 @@ fn read_file(path: &Path) -> Result<String> {
 }
 
 /// Load a flat list of items from an INI file, filtered by active categories (AND logic).
+///
 /// This is a convenience for config files where each item is a single string
 /// (e.g., fonts, units, vscode extensions, copilot skills, symlinks).
 pub fn load_filtered_items(path: &Path, active_categories: &[String]) -> Result<Vec<String>> {

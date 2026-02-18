@@ -44,13 +44,14 @@ pub struct Logger {
 
 /// Return the log file path under `$XDG_CACHE_HOME/dotfiles/` (or `~/.cache/dotfiles/`).
 fn log_file_path() -> Option<PathBuf> {
-    let cache_dir = std::env::var("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
+    let cache_dir = std::env::var("XDG_CACHE_HOME").map_or_else(
+        |_| {
             dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(".cache")
-        });
+        },
+        PathBuf::from,
+    );
     let dir = cache_dir.join("dotfiles");
     fs::create_dir_all(&dir).ok()?;
     Some(dir.join("install.log"))
@@ -160,6 +161,14 @@ impl Logger {
         });
     }
 
+    /// Return `true` if any recorded task has failed.
+    pub fn has_failures(&self) -> bool {
+        self.tasks
+            .borrow()
+            .iter()
+            .any(|t| t.status == TaskStatus::Failed)
+    }
+
     /// Print the summary of all recorded tasks.
     pub fn print_summary(&self) {
         let tasks = self.tasks.borrow();
@@ -200,10 +209,10 @@ impl Logger {
                 }
             };
 
-            let suffix = match &task.message {
-                Some(msg) => format!(" ({msg})"),
-                None => String::new(),
-            };
+            let suffix = task
+                .message
+                .as_ref()
+                .map_or_else(String::new, |msg| format!(" ({msg})"));
 
             let line = format!("{icon} {}{suffix}", task.name);
             println!("  {color}{line}\x1b[0m");
@@ -228,6 +237,7 @@ impl Logger {
 }
 
 #[cfg(test)]
+#[allow(unsafe_code)] // set_var/remove_var require unsafe since Rust 1.83
 mod tests {
     use super::*;
 
@@ -287,6 +297,16 @@ mod tests {
         log.record_task("b", TaskStatus::Failed, Some("error"));
         log.record_task("c", TaskStatus::DryRun, None);
         assert_eq!(log.tasks.borrow().len(), 3);
+    }
+
+    #[test]
+    fn has_failures_detects_failed_task() {
+        let (log, _tmp) = isolated_logger(false);
+        assert!(!log.has_failures());
+        log.record_task("a", TaskStatus::Ok, None);
+        assert!(!log.has_failures());
+        log.record_task("b", TaskStatus::Failed, Some("error"));
+        assert!(log.has_failures());
     }
 
     #[test]

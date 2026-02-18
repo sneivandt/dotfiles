@@ -184,8 +184,13 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 ///
 /// Returns an error if a dependency cycle is detected or if a dependency
 /// references a non-existent task.
+///
+/// # Panics
+///
+/// Should not panic. Internal unwrap calls are safe because all task names
+/// are pre-validated during graph construction.
 pub fn sort_by_dependencies<'a>(tasks: &'a [&'a dyn Task]) -> Result<Vec<&'a dyn Task>> {
-    use std::collections::{HashMap, HashSet, VecDeque};
+    use std::collections::{HashMap, VecDeque};
 
     // Build a name-to-task map for quick lookup
     let mut name_map: HashMap<&str, &'a dyn Task> = HashMap::new();
@@ -204,7 +209,7 @@ pub fn sort_by_dependencies<'a>(tasks: &'a [&'a dyn Task]) -> Result<Vec<&'a dyn
 
         for dep in task.dependencies() {
             if !name_map.contains_key(dep) {
-                anyhow::bail!("task '{}' depends on non-existent task '{}'", name, dep);
+                anyhow::bail!("task '{name}' depends on non-existent task '{dep}'");
             }
             graph.entry(dep).or_default().push(name);
             *in_degree.entry(name).or_insert(0) += 1;
@@ -219,10 +224,8 @@ pub fn sort_by_dependencies<'a>(tasks: &'a [&'a dyn Task]) -> Result<Vec<&'a dyn
         .collect();
 
     let mut sorted = Vec::new();
-    let mut visited = HashSet::new();
 
     while let Some(current) = queue.pop_front() {
-        visited.insert(current);
         sorted.push(*name_map.get(current).unwrap());
 
         if let Some(neighbors) = graph.get(current) {

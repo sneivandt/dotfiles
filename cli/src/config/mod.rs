@@ -16,6 +16,11 @@ pub mod test_helpers {
 
     /// Write content to a temp INI file and return the temp dir + path.
     /// The `TempDir` must be kept alive for the file to persist during the test.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the temp directory or file cannot be created.
+    #[must_use]
     pub fn write_temp_ini(content: &str) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let path = dir.path().join("test.ini");

@@ -311,10 +311,10 @@ mod tests {
     #[test]
     fn discovers_ps1_files() {
         let dir = tempfile::tempdir().unwrap();
-        let ps1 = dir.path().join("test.ps1");
-        let psm1 = dir.path().join("module.psm1");
-        std::fs::write(&ps1, "Write-Host 'hi'").unwrap();
-        std::fs::write(&psm1, "function Test {}").unwrap();
+        let script_path = dir.path().join("test.ps1");
+        let module_path = dir.path().join("module.psm1");
+        std::fs::write(&script_path, "Write-Host 'hi'").unwrap();
+        std::fs::write(&module_path, "function Test {}").unwrap();
         std::fs::write(dir.path().join("readme.md"), "# Hello").unwrap();
 
         let mut found = Vec::new();

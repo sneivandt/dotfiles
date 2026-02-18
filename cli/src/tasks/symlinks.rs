@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::path::Path;
 
-use super::{Context, Task, TaskResult, TaskStats};
+use super::{Context, ProcessOpts, Task, TaskResult, TaskStats, process_resources};
 use crate::resources::symlink::SymlinkResource;
 use crate::resources::{Resource, ResourceState};
 
@@ -18,57 +18,22 @@ impl Task for InstallSymlinks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let mut stats = TaskStats::new();
-
-        for symlink in &ctx.config.symlinks {
-            let source = ctx.symlinks_dir().join(&symlink.source);
-            let target = compute_target(&ctx.home, &symlink.source);
-
-            let resource = SymlinkResource::new(source, target.clone());
-
-            // Check current state
-            let resource_state = resource.current_state()?;
-            match resource_state {
-                ResourceState::Invalid { reason } => {
-                    ctx.log
-                        .debug(&format!("skipping {}: {reason}", symlink.source));
-                    stats.skipped += 1;
-                    continue;
-                }
-                ResourceState::Correct => {
-                    ctx.log
-                        .debug(&format!("ok: {} (already linked)", target.display()));
-                    stats.already_ok += 1;
-                    continue;
-                }
-                ResourceState::Incorrect { current } => {
-                    if ctx.dry_run {
-                        ctx.log.dry_run(&format!(
-                            "would link {} -> {} (currently {current})",
-                            target.display(),
-                            resource.description().split(" -> ").nth(1).unwrap_or(""),
-                        ));
-                        stats.changed += 1;
-                        continue;
-                    }
-                }
-                ResourceState::Missing => {
-                    if ctx.dry_run {
-                        ctx.log
-                            .dry_run(&format!("would link {}", resource.description()));
-                        stats.changed += 1;
-                        continue;
-                    }
-                }
-            }
-
-            // Apply the change
-            resource.apply()?;
-            ctx.log.debug(&format!("linked {}", resource.description()));
-            stats.changed += 1;
-        }
-
-        Ok(stats.finish(ctx))
+        let resources = ctx.config.symlinks.iter().map(|s| {
+            SymlinkResource::new(
+                ctx.symlinks_dir().join(&s.source),
+                compute_target(&ctx.home, &s.source),
+            )
+        });
+        process_resources(
+            ctx,
+            resources,
+            &ProcessOpts {
+                verb: "link",
+                fix_incorrect: true,
+                fix_missing: true,
+                bail_on_error: true,
+            },
+        )
     }
 }
 

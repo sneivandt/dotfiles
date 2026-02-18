@@ -117,22 +117,19 @@ Sparse checkout patterns are generated in this format:
 ### Git Commands
 
 ```bash
-# Initialize sparse checkout in no-cone mode (pattern-based, not directory-based)
+# Initialize sparse checkout in cone mode first, then switch to no-cone
+git sparse-checkout init --cone
 git sparse-checkout init --no-cone
-
-# Apply patterns from stdin
-git sparse-checkout set --no-cone --stdin < patterns.txt
 
 # View current patterns
 git sparse-checkout list
 
-# Force working directory to match sparse checkout rules
-rm -rf symlinks/
-git reset --hard HEAD
+# Apply patterns by writing to .git/info/sparse-checkout, then:
+git read-tree -mu HEAD
 ```
 
-**Why `reset --hard`?**
-Unlike `git checkout`, `git reset --hard` respects sparse checkout configuration and properly removes excluded files.
+**Why `read-tree -mu HEAD`?**
+The implementation writes patterns directly to `.git/info/sparse-checkout` and then uses `git read-tree -mu HEAD` to update the working directory. Before `read-tree`, it runs `git checkout HEAD -- <excluded-files>` to reset any dirty excluded files so `read-tree` doesn't fail with "not uptodate" errors.
 
 ## Profile Integration
 

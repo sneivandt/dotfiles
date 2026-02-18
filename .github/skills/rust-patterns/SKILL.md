@@ -26,6 +26,9 @@ cli/src/
 │   ├── ini.rs     # Section/KvSection parsers, filter_sections_and()
 │   ├── profiles.rs
 │   └── *.rs       # Per-type loaders (packages, symlinks, etc.)
+├── resources/     # Declarative resource abstraction
+│   ├── mod.rs     # Resource trait, ResourceState, ResourceChange
+│   └── *.rs       # Per-type resources (symlink, registry, chmod, etc.)
 ├── tasks/         # Task implementations
 │   ├── mod.rs     # Task trait, Context struct, execute()
 │   └── *.rs       # One file per task
@@ -118,9 +121,27 @@ Each `config/*.rs` module: `ini::parse_sections(path)` → `ini::filter_sections
 
 Use `anyhow::Result`, `?`, `.context("msg")?`, `bail!("msg")`. No `unwrap()` in non-test code.
 
+## Resource Abstraction
+
+The `resources/` module provides a declarative layer for checking and applying system state:
+
+```rust
+pub trait Resource {
+    fn description(&self) -> String;
+    fn current_state(&self) -> Result<ResourceState>;
+    fn needs_change(&self) -> Result<bool>;
+    fn apply(&self) -> Result<ResourceChange>;
+}
+pub enum ResourceState { Missing, Correct, Incorrect { current: String }, Invalid { reason: String } }
+pub enum ResourceChange { Applied, AlreadyCorrect, Skipped { reason: String } }
+```
+
+Tasks use `Resource` implementors (e.g., `SymlinkResource`, `RegistryResource`) to check state and apply changes rather than doing it inline. New declarative resources go in `resources/*.rs`.
+
 ## Rules
 
 - All task logic in `cli/src/tasks/*.rs` — never in shell scripts
 - Every task: `name`, `should_run`, `run`; check `ctx.dry_run` before side effects
+- Use `Resource` trait for declarative state checks where applicable
 - Guard tools with `exec::which()`; return `TaskResult::Skipped(reason)` when not applicable
 - Add `#[cfg(test)] mod tests` to every module; use `Platform::new()` in tests

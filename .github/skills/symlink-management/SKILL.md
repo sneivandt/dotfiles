@@ -30,17 +30,22 @@ Source files in `symlinks/` have **no leading dots**.
 
 `compute_target()` in `tasks/symlinks.rs`:
 - Most paths: `$HOME/.<entry>` (dot prepended)
-- `Documents/` paths: `$HOME/Documents/...` (no dot)
+- `Documents/` or `documents/` paths: `$HOME/Documents/...` (no dot)
 - `AppData/` paths: `$HOME/AppData/...` (no dot)
 
 ```rust
 fn compute_target(home: &Path, source: &str) -> PathBuf {
-    if source.starts_with("Documents/") || source.starts_with("AppData/") { home.join(source) }
-    else { home.join(format!(".{source}")) }
+    if source.starts_with("Documents/") || source.starts_with("documents/") || source.starts_with("AppData/") {
+        home.join(source)
+    } else {
+        home.join(format!(".{source}"))
+    }
 }
 ```
 
 ## Task Implementation
+
+The task uses the `SymlinkResource` from the `resources` module for declarative state management:
 
 ```rust
 pub struct InstallSymlinks;
@@ -48,19 +53,27 @@ impl Task for InstallSymlinks {
     fn name(&self) -> &str { "Install symlinks" }
     fn should_run(&self, ctx: &Context) -> bool { !ctx.config.symlinks.is_empty() }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let mut stats = TaskStats::new();
         for symlink in &ctx.config.symlinks {
             let source = ctx.symlinks_dir().join(&symlink.source);
             let target = compute_target(&ctx.home, &symlink.source);
-            if !source.exists() { continue; } // Sparse checkout filtered
-            if ctx.dry_run { ctx.log.dry_run(&format!("link {}", target.display())); continue; }
-            // Create parent dirs, remove conflicts, create symlink
+            let resource = SymlinkResource::new(source, target);
+            match resource.current_state()? {
+                ResourceState::Invalid { reason } => { stats.skipped += 1; continue; }
+                ResourceState::Correct => { stats.already_ok += 1; continue; }
+                ResourceState::Incorrect { .. } | ResourceState::Missing => {
+                    if ctx.dry_run { stats.changed += 1; continue; }
+                }
+            }
+            resource.apply()?;
+            stats.changed += 1;
         }
-        Ok(TaskResult::Ok)
+        Ok(stats.finish(ctx))
     }
 }
 ```
 
-Platform-specific creation via `#[cfg(unix)]` / `#[cfg(windows)]`.
+Platform-specific symlink creation is handled inside `SymlinkResource::apply()`.
 
 ## Adding Symlinks
 

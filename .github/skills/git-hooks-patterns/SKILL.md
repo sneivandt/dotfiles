@@ -15,26 +15,26 @@ The project uses git hooks for pre-commit security scanning. Hook installation i
 ## Overview
 
 - **Pre-commit scanning**: Detect sensitive information before commits
-- **Automatic installation**: `tasks::hooks::GitHooks` creates symlinks during install
+- **Automatic installation**: `tasks::hooks::InstallGitHooks` copies hooks during install
 - **Pattern-based detection**: Configurable patterns in `hooks/sensitive-patterns.ini`
 - **Bypassable**: `git commit --no-verify` for false positives
 
-Hooks live in `hooks/` and are symlinked to `.git/hooks/` by the Rust engine.
+Hooks live in `hooks/` and are copied to `.git/hooks/` by the Rust engine.
 
 ## Hook Installation Task
 
-The `GitHooks` task in `cli/src/tasks/hooks.rs`:
+The `InstallGitHooks` task in `cli/src/tasks/hooks.rs`:
 
 ```rust
-pub struct GitHooks;
+pub struct InstallGitHooks;
 
-impl Task for GitHooks {
-    fn name(&self) -> &str { "Git hooks" }
+impl Task for InstallGitHooks {
+    fn name(&self) -> &str { "Install git hooks" }
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.hooks_dir().exists()
+        ctx.hooks_dir().exists() && ctx.root().join(".git").exists()
     }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        // Symlinks hooks/ files into .git/hooks/
+        // Copies hooks/ files into .git/hooks/ (with content comparison)
     }
 }
 ```
@@ -80,7 +80,7 @@ git commit --no-verify  # Use for false positives only
 ## Rules
 
 - The pre-commit hook uses POSIX shell (`#!/bin/sh`)
-- Hooks are installed as symlinks (changes apply immediately)
+- Hooks are installed as copies (re-run install to update after changes)
 - Never commit real credentials
 - Test patterns before committing
-- The hook installation task uses `ctx.hooks_dir()` for source path
+- The hook installation task checks both `ctx.hooks_dir()` and `.git` existence

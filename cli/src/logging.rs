@@ -115,7 +115,7 @@ impl Logger {
 
     /// Return the log file path, if available.
     #[cfg(test)]
-    pub fn log_path(&self) -> Option<&PathBuf> {
+    pub const fn log_path(&self) -> Option<&PathBuf> {
         self.log_file.as_ref()
     }
 

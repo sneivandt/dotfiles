@@ -71,7 +71,8 @@ impl Platform {
 
     /// Create a platform with explicit values (for testing).
     #[cfg(test)]
-    pub fn new(os: Os, is_arch: bool) -> Self {
+    #[must_use]
+    pub const fn new(os: Os, is_arch: bool) -> Self {
         Self { os, is_arch }
     }
 

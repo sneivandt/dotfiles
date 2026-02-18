@@ -1,9 +1,8 @@
 use anyhow::Result;
 
-use super::{Context, Task, TaskResult, TaskStats};
+use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states};
 use crate::exec;
 use crate::resources::package::{PackageManager, PackageResource, get_installed_packages};
-use crate::resources::{Resource, ResourceChange, ResourceState};
 
 /// Default number of parallel jobs for makepkg if nproc detection fails.
 const DEFAULT_NPROC: &str = "4";
@@ -18,67 +17,28 @@ fn process_packages(
     packages: &[&crate::config::packages::Package],
     manager: PackageManager,
 ) -> Result<TaskResult> {
-    let mut stats = TaskStats::new();
-
-    // Single command to get all installed packages
     ctx.log.debug(&format!(
         "batch-checking {} packages with a single query",
         packages.len()
     ));
     let installed = get_installed_packages(manager)?;
 
-    for pkg in packages {
+    let resource_states = packages.iter().map(|pkg| {
         let resource = PackageResource::new(pkg.name.clone(), manager);
-        let resource_state = resource.state_from_installed(&installed);
+        let state = resource.state_from_installed(&installed);
+        (resource, state)
+    });
 
-        match resource_state {
-            ResourceState::Correct => {
-                ctx.log.debug(&format!(
-                    "ok: {} (already installed)",
-                    resource.description()
-                ));
-                stats.already_ok += 1;
-            }
-            ResourceState::Missing | ResourceState::Incorrect { .. } => {
-                if ctx.dry_run {
-                    ctx.log
-                        .dry_run(&format!("would install: {}", resource.description()));
-                    stats.changed += 1;
-                    continue;
-                }
-
-                match resource.apply() {
-                    Ok(ResourceChange::Applied) => {
-                        ctx.log
-                            .debug(&format!("installed: {}", resource.description()));
-                        stats.changed += 1;
-                    }
-                    Ok(ResourceChange::Skipped { reason }) => {
-                        ctx.log
-                            .warn(&format!("skipped {}: {reason}", resource.description()));
-                        stats.skipped += 1;
-                    }
-                    Ok(ResourceChange::AlreadyCorrect) => {
-                        stats.already_ok += 1;
-                    }
-                    Err(e) => {
-                        ctx.log.warn(&format!(
-                            "failed to install {}: {e}",
-                            resource.description()
-                        ));
-                        stats.skipped += 1;
-                    }
-                }
-            }
-            ResourceState::Invalid { reason } => {
-                ctx.log
-                    .debug(&format!("skipping {}: {reason}", resource.description()));
-                stats.skipped += 1;
-            }
-        }
-    }
-
-    Ok(stats.finish(ctx))
+    process_resource_states(
+        ctx,
+        resource_states,
+        &ProcessOpts {
+            verb: "install",
+            fix_incorrect: true,
+            fix_missing: true,
+            bail_on_error: false,
+        },
+    )
 }
 
 /// Install system packages via pacman or winget.
@@ -229,6 +189,7 @@ impl Task for InstallParu {
 mod tests {
     use super::*;
 
+    use crate::resources::Resource;
     use crate::resources::package::PackageResource;
 
     #[test]

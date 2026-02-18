@@ -18,6 +18,7 @@ use std::path::Path;
 use crate::config::Config;
 use crate::logging::{Logger, TaskStatus};
 use crate::platform::Platform;
+use crate::resources::{Resource, ResourceChange, ResourceState};
 
 /// Shared context for task execution.
 pub struct Context<'a> {
@@ -124,6 +125,145 @@ impl TaskStats {
             TaskResult::Ok
         }
     }
+}
+
+/// Configuration for the generic resource processing loop.
+///
+/// Controls how each [`ResourceState`] variant is handled.
+pub struct ProcessOpts<'a> {
+    /// Verb for log messages (e.g., "install", "link", "chmod").
+    pub verb: &'a str,
+    /// Treat `Incorrect` as fixable (apply the change). If `false`, skip it.
+    pub fix_incorrect: bool,
+    /// Treat `Missing` as fixable (apply the change). If `false`, skip it.
+    pub fix_missing: bool,
+    /// Propagate errors from `apply()` (bail). If `false`, warn and count as skipped.
+    pub bail_on_error: bool,
+}
+
+/// Process resources by checking each one's current state and applying as needed.
+///
+/// For tasks where each resource can independently determine its own state via
+/// `resource.current_state()`.
+pub fn process_resources<R: Resource>(
+    ctx: &Context,
+    resources: impl IntoIterator<Item = R>,
+    opts: &ProcessOpts,
+) -> Result<TaskResult> {
+    let mut stats = TaskStats::new();
+    for resource in resources {
+        let current = resource.current_state()?;
+        process_single(ctx, &resource, current, opts, &mut stats)?;
+    }
+    Ok(stats.finish(ctx))
+}
+
+/// Process resources with pre-computed states.
+///
+/// For tasks that batch-query state (e.g., registry, packages, VS Code extensions)
+/// and then iterate with cached results.
+pub fn process_resource_states<R: Resource>(
+    ctx: &Context,
+    resource_states: impl IntoIterator<Item = (R, ResourceState)>,
+    opts: &ProcessOpts,
+) -> Result<TaskResult> {
+    let mut stats = TaskStats::new();
+    for (resource, current) in resource_states {
+        process_single(ctx, &resource, current, opts, &mut stats)?;
+    }
+    Ok(stats.finish(ctx))
+}
+
+/// Process a single resource given its current state.
+fn process_single<R: Resource>(
+    ctx: &Context,
+    resource: &R,
+    resource_state: ResourceState,
+    opts: &ProcessOpts,
+    counters: &mut TaskStats,
+) -> Result<()> {
+    match resource_state {
+        ResourceState::Correct => {
+            ctx.log.debug(&format!("ok: {}", resource.description()));
+            counters.already_ok += 1;
+        }
+        ResourceState::Invalid { reason } => {
+            ctx.log
+                .debug(&format!("skipping {}: {reason}", resource.description()));
+            counters.skipped += 1;
+        }
+        ResourceState::Missing if !opts.fix_missing => {
+            counters.skipped += 1;
+        }
+        ResourceState::Incorrect { .. } if !opts.fix_incorrect => {
+            ctx.log.debug(&format!(
+                "skipping {} (unexpected state)",
+                resource.description()
+            ));
+            counters.skipped += 1;
+        }
+        resource_state @ (ResourceState::Missing | ResourceState::Incorrect { .. }) => {
+            if ctx.dry_run {
+                let msg = if let ResourceState::Incorrect { ref current } = resource_state {
+                    format!(
+                        "would {} {} (currently {current})",
+                        opts.verb,
+                        resource.description()
+                    )
+                } else {
+                    format!("would {}: {}", opts.verb, resource.description())
+                };
+                ctx.log.dry_run(&msg);
+                counters.changed += 1;
+                return Ok(());
+            }
+            apply_resource(ctx, resource, opts, counters)?;
+        }
+    }
+    Ok(())
+}
+
+/// Apply a single resource change, handling errors per [`ProcessOpts`].
+fn apply_resource<R: Resource>(
+    ctx: &Context,
+    resource: &R,
+    opts: &ProcessOpts,
+    counters: &mut TaskStats,
+) -> Result<()> {
+    if opts.bail_on_error {
+        resource.apply()?;
+        ctx.log
+            .debug(&format!("{}: {}", opts.verb, resource.description()));
+        counters.changed += 1;
+    } else {
+        match resource.apply() {
+            Ok(ResourceChange::Applied) => {
+                ctx.log
+                    .debug(&format!("{}: {}", opts.verb, resource.description()));
+                counters.changed += 1;
+            }
+            Ok(ResourceChange::Skipped { reason }) => {
+                ctx.log.warn(&format!(
+                    "failed to {} {}: {reason}",
+                    opts.verb,
+                    resource.description()
+                ));
+                counters.skipped += 1;
+            }
+            Ok(ResourceChange::AlreadyCorrect) => {
+                counters.already_ok += 1;
+            }
+            Err(e) => {
+                ctx.log.warn(&format!(
+                    "failed to {} {}: {e}",
+                    opts.verb,
+                    resource.description()
+                ));
+                counters.skipped += 1;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// A named, executable task.

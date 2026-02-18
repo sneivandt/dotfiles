@@ -2,6 +2,8 @@ use anyhow::Result;
 
 use super::{Context, Task, TaskResult, TaskStats};
 use crate::exec;
+use crate::resources::systemd_unit::SystemdUnitResource;
+use crate::resources::{Resource, ResourceChange, ResourceState};
 
 /// Enable and start systemd user units.
 pub struct ConfigureSystemd;
@@ -17,41 +19,66 @@ impl Task for ConfigureSystemd {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let mut stats = TaskStats::new();
+        let mut daemon_reloaded = false;
 
         for unit in &ctx.config.units {
-            let result = exec::run_unchecked("systemctl", &["--user", "is-enabled", &unit.name])?;
-            if result.success {
-                ctx.log
-                    .debug(&format!("ok: {} (already enabled)", unit.name));
-                stats.already_ok += 1;
-                continue;
-            }
+            let resource = SystemdUnitResource::from_entry(unit);
 
-            if ctx.dry_run {
-                ctx.log.dry_run(&format!("would enable: {}", unit.name));
-                stats.changed += 1;
-                continue;
-            }
+            match resource.current_state()? {
+                ResourceState::Correct => {
+                    ctx.log
+                        .debug(&format!("ok: {} (already enabled)", resource.description()));
+                    stats.already_ok += 1;
+                }
+                ResourceState::Missing => {
+                    if ctx.dry_run {
+                        ctx.log
+                            .dry_run(&format!("would enable: {}", resource.description()));
+                        stats.changed += 1;
+                        continue;
+                    }
 
-            // Reload daemon before first enable
-            if stats.changed == 0
-                && let Err(e) = exec::run("systemctl", &["--user", "daemon-reload"])
-            {
-                ctx.log.debug(&format!("daemon-reload failed: {e}"));
-            }
+                    // Reload daemon before first enable
+                    if !daemon_reloaded {
+                        if let Err(e) = exec::run("systemctl", &["--user", "daemon-reload"]) {
+                            ctx.log.debug(&format!("daemon-reload failed: {e}"));
+                        }
+                        daemon_reloaded = true;
+                    }
 
-            let result =
-                exec::run_unchecked("systemctl", &["--user", "enable", "--now", &unit.name])?;
-
-            if result.success {
-                stats.changed += 1;
-                ctx.log.debug(&format!("enabled: {}", unit.name));
-            } else {
-                ctx.log.warn(&format!(
-                    "failed to enable {}: {}",
-                    unit.name,
-                    result.stderr.trim()
-                ));
+                    match resource.apply() {
+                        Ok(ResourceChange::Applied) => {
+                            ctx.log
+                                .debug(&format!("enabled: {}", resource.description()));
+                            stats.changed += 1;
+                        }
+                        Ok(ResourceChange::Skipped { reason }) => {
+                            ctx.log.warn(&format!(
+                                "failed to enable {}: {reason}",
+                                resource.description()
+                            ));
+                        }
+                        Ok(ResourceChange::AlreadyCorrect) => {
+                            stats.already_ok += 1;
+                        }
+                        Err(e) => {
+                            ctx.log
+                                .warn(&format!("failed to enable {}: {e}", resource.description()));
+                        }
+                    }
+                }
+                ResourceState::Incorrect { current } => {
+                    ctx.log.debug(&format!(
+                        "unit {} unexpected state: {current}",
+                        resource.description()
+                    ));
+                    stats.skipped += 1;
+                }
+                ResourceState::Invalid { reason } => {
+                    ctx.log
+                        .debug(&format!("skipping {}: {reason}", resource.description()));
+                    stats.skipped += 1;
+                }
             }
         }
 

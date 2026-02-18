@@ -1,7 +1,10 @@
 use anyhow::Result;
 
 use super::{Context, Task, TaskResult, TaskStats};
-use crate::exec;
+use crate::resources::vscode_extension::{
+    VsCodeExtensionResource, find_code_command, get_installed_extensions,
+};
+use crate::resources::{Resource, ResourceChange, ResourceState};
 
 /// Install VS Code extensions.
 pub struct InstallVsCodeExtensions;
@@ -17,8 +20,7 @@ impl Task for InstallVsCodeExtensions {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         // Find the VS Code CLI binary
-        let code_cmd = find_code_command();
-        let Some(cmd) = code_cmd else {
+        let Some(cmd) = find_code_command() else {
             ctx.log
                 .debug("neither code-insiders nor code found in PATH");
             return Ok(TaskResult::Skipped("VS Code CLI not found".to_string()));
@@ -26,67 +28,77 @@ impl Task for InstallVsCodeExtensions {
 
         ctx.log.debug(&format!("using VS Code CLI: {cmd}"));
 
+        // Single invocation to list all installed extensions
+        ctx.log.debug(&format!(
+            "batch-checking {} extensions with a single query",
+            ctx.config.vscode_extensions.len()
+        ));
+        let installed = get_installed_extensions(&cmd)?;
+
         let mut stats = TaskStats::new();
 
-        ctx.log.debug("listing installed extensions");
-        let installed = run_code_cmd(&cmd, &["--list-extensions"])
-            .map(|r| r.stdout.to_lowercase())
-            .unwrap_or_default();
-        ctx.log.debug(&format!(
-            "found {} installed extensions",
-            installed.lines().count()
-        ));
-
         for ext in &ctx.config.vscode_extensions {
-            if installed.contains(&ext.id.to_lowercase()) {
-                ctx.log
-                    .debug(&format!("ok: {} (already installed)", ext.id));
-                stats.already_ok += 1;
-                continue;
-            }
+            let resource = VsCodeExtensionResource::new(ext.id.clone(), cmd.clone());
+            let resource_state = resource.state_from_installed(&installed);
 
-            if ctx.dry_run {
-                ctx.log
-                    .dry_run(&format!("would install extension: {}", ext.id));
-                stats.changed += 1;
-                continue;
-            }
+            match resource_state {
+                ResourceState::Correct => {
+                    ctx.log.debug(&format!(
+                        "ok: {} (already installed)",
+                        resource.description()
+                    ));
+                    stats.already_ok += 1;
+                }
+                ResourceState::Missing => {
+                    if ctx.dry_run {
+                        ctx.log.dry_run(&format!(
+                            "would install extension: {}",
+                            resource.description()
+                        ));
+                        stats.changed += 1;
+                        continue;
+                    }
 
-            ctx.log.debug(&format!("installing extension: {}", ext.id));
-            let result = run_code_cmd(&cmd, &["--install-extension", &ext.id, "--force"])?;
-            if result.success {
-                ctx.log.debug(&format!("installed extension: {}", ext.id));
-                stats.changed += 1;
-            } else {
-                ctx.log
-                    .warn(&format!("failed to install extension: {}", ext.id));
+                    ctx.log
+                        .debug(&format!("installing extension: {}", resource.description()));
+                    match resource.apply() {
+                        Ok(ResourceChange::Applied) => {
+                            ctx.log
+                                .debug(&format!("installed extension: {}", resource.description()));
+                            stats.changed += 1;
+                        }
+                        Ok(ResourceChange::Skipped { reason }) => {
+                            ctx.log.warn(&format!(
+                                "failed to install extension {}: {reason}",
+                                resource.description()
+                            ));
+                        }
+                        Ok(ResourceChange::AlreadyCorrect) => {
+                            stats.already_ok += 1;
+                        }
+                        Err(e) => {
+                            ctx.log.warn(&format!(
+                                "failed to install extension {}: {e}",
+                                resource.description()
+                            ));
+                        }
+                    }
+                }
+                ResourceState::Incorrect { current } => {
+                    ctx.log.debug(&format!(
+                        "extension {} unexpected state: {current}",
+                        resource.description()
+                    ));
+                    stats.skipped += 1;
+                }
+                ResourceState::Invalid { reason } => {
+                    ctx.log
+                        .debug(&format!("skipping {}: {reason}", resource.description()));
+                    stats.skipped += 1;
+                }
             }
         }
 
         Ok(stats.finish(ctx))
-    }
-}
-
-fn find_code_command() -> Option<String> {
-    for cmd in &["code-insiders", "code"] {
-        if exec::which(cmd) {
-            return Some((*cmd).to_string());
-        }
-    }
-    None
-}
-
-/// Run a VS Code CLI command. On Windows, `.cmd` wrappers need `cmd.exe /C`.
-fn run_code_cmd(cmd: &str, args: &[&str]) -> anyhow::Result<exec::ExecResult> {
-    #[cfg(target_os = "windows")]
-    {
-        let mut full_args = vec!["/C", cmd];
-        full_args.extend(args);
-        exec::run_unchecked("cmd", &full_args)
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        exec::run_unchecked(cmd, args)
     }
 }

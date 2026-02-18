@@ -73,7 +73,7 @@ impl ConfigValidator for SymlinkValidator {
             }
 
             // Check for absolute paths (should be relative)
-            if Path::new(&symlink.source).is_absolute() {
+            if Path::new(&symlink.source).is_absolute() || symlink.source.starts_with('/') {
                 warnings.push(ValidationWarning::new(
                     "symlinks.ini",
                     &symlink.source,

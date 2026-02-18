@@ -1,6 +1,10 @@
 pub mod chmod;
+pub mod copilot_skill;
+pub mod package;
 pub mod registry;
 pub mod symlink;
+pub mod systemd_unit;
+pub mod vscode_extension;
 
 use anyhow::Result;
 

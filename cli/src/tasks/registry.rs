@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use super::{Context, Task, TaskResult, TaskStats};
-use crate::resources::registry::RegistryResource;
+use crate::resources::registry::{RegistryResource, batch_check_values};
 use crate::resources::{Resource, ResourceState};
 
 /// Apply Windows registry settings.
@@ -19,11 +19,27 @@ impl Task for ApplyRegistry {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let mut stats = TaskStats::new();
 
-        for entry in &ctx.config.registry {
-            let resource = RegistryResource::from_entry(entry);
+        // Build all resources up front
+        let resources: Vec<RegistryResource> = ctx
+            .config
+            .registry
+            .iter()
+            .map(RegistryResource::from_entry)
+            .collect();
 
-            // Check current state
-            let resource_state = resource.current_state()?;
+        ctx.log.debug(&format!(
+            "batch-checking {} registry values in a single PowerShell call",
+            resources.len()
+        ));
+
+        // Single PowerShell invocation to check every value at once
+        let cached = batch_check_values(&resources)?;
+
+        for resource in &resources {
+            let cache_key = format!("{}\\{}", resource.key_path, resource.value_name);
+            let current_value = cached.get(&cache_key).and_then(|v| v.as_deref());
+            let resource_state = resource.state_from_cached(current_value);
+
             match resource_state {
                 ResourceState::Correct => {
                     ctx.log

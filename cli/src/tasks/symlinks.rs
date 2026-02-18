@@ -1,7 +1,9 @@
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use std::path::Path;
 
 use super::{Context, Task, TaskResult, TaskStats};
+use crate::resources::symlink::SymlinkResource;
+use crate::resources::{Resource, ResourceState};
 
 /// Create symlinks from symlinks/ to $HOME.
 pub struct InstallSymlinks;
@@ -22,83 +24,47 @@ impl Task for InstallSymlinks {
             let source = ctx.symlinks_dir().join(&symlink.source);
             let target = compute_target(&ctx.home, &symlink.source);
 
-            if !source.exists() {
-                ctx.log
-                    .debug(&format!("source missing, skipping: {}", symlink.source));
-                stats.skipped += 1;
-                continue;
-            }
+            let resource = SymlinkResource::new(source, target.clone());
 
-            // Check if symlink already points to the correct source
-            let is_correct = std::fs::read_link(&target)
-                .map(|existing| paths_equal(&existing, &source))
-                .unwrap_or(false);
-
-            if ctx.dry_run {
-                if is_correct {
+            // Check current state
+            let resource_state = resource.current_state()?;
+            match resource_state {
+                ResourceState::Invalid { reason } => {
                     ctx.log
-                        .debug(&format!("ok: {} (already linked)", target.display()));
-                    stats.already_ok += 1;
-                } else if target.is_dir()
-                    && target
-                        .symlink_metadata()
-                        .map(|m| !m.is_symlink())
-                        .unwrap_or(false)
-                {
-                    ctx.log.debug(&format!(
-                        "target is a directory, would skip: {}",
-                        target.display()
-                    ));
-                    stats.skipped += 1;
-                } else {
-                    ctx.log.dry_run(&format!(
-                        "would link {} -> {}",
-                        target.display(),
-                        source.display()
-                    ));
-                    stats.changed += 1;
-                }
-                continue;
-            }
-
-            // Ensure parent directory exists
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent)
-                    .with_context(|| format!("create parent: {}", parent.display()))?;
-            }
-
-            // Skip if already correct
-            if is_correct {
-                stats.already_ok += 1;
-                continue;
-            }
-
-            // Remove existing target if it's a symlink or file
-            if target.exists() || target.symlink_metadata().is_ok() {
-                let is_real_dir = target
-                    .symlink_metadata()
-                    .map(|m| m.is_dir() && !m.is_symlink())
-                    .unwrap_or(false);
-                if is_real_dir {
-                    ctx.log.debug(&format!(
-                        "target is a directory, skipping: {}",
-                        target.display()
-                    ));
+                        .debug(&format!("skipping {}: {reason}", symlink.source));
                     stats.skipped += 1;
                     continue;
                 }
-                remove_symlink(&target)
-                    .with_context(|| format!("remove existing: {}", target.display()))?;
+                ResourceState::Correct => {
+                    ctx.log
+                        .debug(&format!("ok: {} (already linked)", target.display()));
+                    stats.already_ok += 1;
+                    continue;
+                }
+                ResourceState::Incorrect { current } => {
+                    if ctx.dry_run {
+                        ctx.log.dry_run(&format!(
+                            "would link {} -> {} (currently {current})",
+                            target.display(),
+                            resource.description().split(" -> ").nth(1).unwrap_or(""),
+                        ));
+                        stats.changed += 1;
+                        continue;
+                    }
+                }
+                ResourceState::Missing => {
+                    if ctx.dry_run {
+                        ctx.log
+                            .dry_run(&format!("would link {}", resource.description()));
+                        stats.changed += 1;
+                        continue;
+                    }
+                }
             }
 
-            create_symlink(&source, &target)
-                .with_context(|| format!("create link: {}", target.display()))?;
-
-            ctx.log.debug(&format!(
-                "linked {} -> {}",
-                target.display(),
-                source.display()
-            ));
+            // Apply the change
+            resource.apply()?;
+            ctx.log.debug(&format!("linked {}", resource.description()));
             stats.changed += 1;
         }
 
@@ -125,36 +91,29 @@ impl Task for UninstallSymlinks {
             let target = compute_target(&ctx.home, &symlink.source);
             let source = ctx.symlinks_dir().join(&symlink.source);
 
+            let resource = SymlinkResource::new(source, target.clone());
+
             // Only remove if it's a symlink pointing to our source
-            if let Ok(link_target) = std::fs::read_link(&target)
-                && paths_equal(&link_target, &source)
-            {
+            if resource.current_state()? == ResourceState::Correct {
+                // It's correctly pointing to our source, remove it
                 if ctx.dry_run {
                     ctx.log
-                        .dry_run(&format!("remove symlink: {}", target.display()));
+                        .dry_run(&format!("would remove symlink: {}", target.display()));
                     stats.changed += 1;
                     continue;
                 }
+
+                // Use the resource's internal remove logic via SymlinkResource
+                // For now, we need to manually remove since Resource trait doesn't have uninstall
                 remove_symlink(&target)?;
                 ctx.log.debug(&format!("removed: {}", target.display()));
                 stats.changed += 1;
             }
+            // Not our symlink or doesn't exist, skip
         }
 
         Ok(stats.finish(ctx))
     }
-}
-
-/// Compare two paths, normalising the `\\?\` prefix that Windows
-/// `read_link` prepends to extended-length paths.
-fn paths_equal(a: &Path, b: &Path) -> bool {
-    strip_win_prefix(a) == strip_win_prefix(b)
-}
-
-fn strip_win_prefix(p: &Path) -> std::path::PathBuf {
-    let s = p.to_string_lossy();
-    s.strip_prefix(r"\\?\")
-        .map_or_else(|| p.to_path_buf(), std::path::PathBuf::from)
 }
 
 /// Compute the target path in $HOME for a symlink source.
@@ -217,6 +176,7 @@ fn is_dir_like(meta: &std::fs::Metadata) -> bool {
 /// current process, which can resolve "Access is denied" errors.
 #[cfg(windows)]
 fn remove_dir_fallback(path: &Path) -> Result<()> {
+    use anyhow::Context as _;
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let output = std::process::Command::new("cmd")
@@ -233,75 +193,6 @@ fn remove_dir_fallback(path: &Path) -> Result<()> {
             path.display(),
             String::from_utf8_lossy(&output.stderr).trim()
         );
-    }
-    Ok(())
-}
-
-/// Create a symlink (platform-specific).
-///
-/// On Windows, if symlink creation fails with "Access is denied" (OS error 5),
-/// falls back to junctions for directories and hard links for files.
-fn create_symlink(source: &Path, target: &Path) -> Result<()> {
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(source, target)?;
-    }
-
-    #[cfg(windows)]
-    {
-        let result = if source.is_dir() {
-            std::os::windows::fs::symlink_dir(source, target)
-        } else {
-            std::os::windows::fs::symlink_file(source, target)
-        };
-        match result {
-            Ok(()) => {}
-            Err(e) if e.raw_os_error() == Some(5) => {
-                create_symlink_fallback(source, target)?;
-            }
-            Err(e) => return Err(e.into()),
-        }
-    }
-
-    Ok(())
-}
-
-/// Fallback for Windows when symlinks are not permitted.
-/// Uses junctions for directories and hard links for files.
-#[cfg(windows)]
-fn create_symlink_fallback(source: &Path, target: &Path) -> Result<()> {
-    if source.is_dir() {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let output = std::process::Command::new("cmd")
-            .arg("/c")
-            .arg(format!(
-                "mklink /J \"{}\" \"{}\"",
-                target.display(),
-                source.display()
-            ))
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .context("failed to run mklink /J")?;
-        if !output.status.success() {
-            anyhow::bail!(
-                "Cannot create symlink or junction for '{}'.\n\
-                 Enable Developer Mode (Settings > System > For developers) \
-                 or run as Administrator.\n\
-                 mklink error: {}",
-                target.display(),
-                String::from_utf8_lossy(&output.stderr).trim()
-            );
-        }
-    } else {
-        std::fs::hard_link(source, target).with_context(|| {
-            format!(
-                "Cannot create symlink or hard link for '{}'.\n\
-                 Enable Developer Mode (Settings > System > For developers) \
-                 or run as Administrator.",
-                target.display()
-            )
-        })?;
     }
     Ok(())
 }
@@ -350,33 +241,5 @@ mod tests {
         let home = PathBuf::from("/home/user");
         let target = compute_target(&home, "ssh/config");
         assert_eq!(target, PathBuf::from("/home/user/.ssh/config"));
-    }
-
-    #[test]
-    fn paths_equal_plain() {
-        let a = PathBuf::from("C:\\Code\\dotfiles\\symlinks\\bashrc");
-        let b = PathBuf::from("C:\\Code\\dotfiles\\symlinks\\bashrc");
-        assert!(paths_equal(&a, &b));
-    }
-
-    #[test]
-    fn paths_equal_with_unc_prefix() {
-        let a = PathBuf::from(r"\\?\C:\Code\dotfiles\symlinks\bashrc");
-        let b = PathBuf::from(r"C:\Code\dotfiles\symlinks\bashrc");
-        assert!(paths_equal(&a, &b));
-    }
-
-    #[test]
-    fn paths_equal_both_unc() {
-        let a = PathBuf::from(r"\\?\C:\Code\dotfiles\symlinks\bashrc");
-        let b = PathBuf::from(r"\\?\C:\Code\dotfiles\symlinks\bashrc");
-        assert!(paths_equal(&a, &b));
-    }
-
-    #[test]
-    fn paths_not_equal_different() {
-        let a = PathBuf::from(r"\\?\C:\Code\dotfiles\symlinks\bashrc");
-        let b = PathBuf::from(r"C:\Code\dotfiles\symlinks\zshrc");
-        assert!(!paths_equal(&a, &b));
     }
 }

@@ -19,6 +19,7 @@ pub enum ResourceState {
 
 /// Result of applying a resource change.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)] // Some variants used in tests or future implementations
 pub enum ResourceChange {
     /// Resource was created or updated.
     Applied,
@@ -43,6 +44,7 @@ pub trait Resource {
     fn current_state(&self) -> Result<ResourceState>;
 
     /// Determine if the resource needs to be changed.
+    #[allow(dead_code)] // Used in tests and may be useful in future
     fn needs_change(&self) -> Result<bool> {
         Ok(matches!(
             self.current_state()?,

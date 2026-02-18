@@ -7,6 +7,7 @@ pub mod profiles;
 pub mod registry;
 pub mod symlinks;
 pub mod units;
+pub mod validation;
 pub mod vscode;
 
 #[cfg(test)]
@@ -100,5 +101,16 @@ impl Config {
             copilot_skills,
             manifest,
         })
+    }
+
+    /// Validate the configuration and return any warnings.
+    ///
+    /// This method checks for common configuration issues such as:
+    /// - Missing source files for symlinks
+    /// - Invalid values (e.g., invalid octal modes for chmod)
+    /// - Platform incompatibilities
+    #[must_use]
+    pub fn validate(&self, platform: &Platform) -> Vec<validation::ValidationWarning> {
+        validation::validate_all(self, platform)
     }
 }

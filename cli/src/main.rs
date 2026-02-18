@@ -7,6 +7,7 @@ mod config;
 mod exec;
 mod logging;
 mod platform;
+mod resources;
 mod tasks;
 
 fn main() -> Result<()> {

@@ -38,6 +38,21 @@ impl CommandSetup {
         log.stage("Loading configuration");
         let config = Config::load(&root, &profile, &platform)?;
 
+        // Validate configuration and display warnings
+        let warnings = config.validate(&platform);
+        if !warnings.is_empty() {
+            log.warn(&format!(
+                "found {} configuration warning(s):",
+                warnings.len()
+            ));
+            for warning in &warnings {
+                log.warn(&format!(
+                    "  {} [{}]: {}",
+                    warning.source, warning.item, warning.message
+                ));
+            }
+        }
+
         Ok(Self { platform, config })
     }
 }

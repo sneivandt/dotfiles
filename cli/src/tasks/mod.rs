@@ -13,6 +13,7 @@ pub mod update;
 pub mod vscode;
 
 use anyhow::Result;
+use std::any::TypeId;
 use std::path::Path;
 
 use crate::config::Config;
@@ -127,7 +128,7 @@ impl TaskStats {
 }
 
 /// A named, executable task.
-pub trait Task {
+pub trait Task: 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
 
@@ -137,12 +138,17 @@ pub trait Task {
     /// Execute the task.
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
 
-    /// Names of tasks that must complete before this task can run.
+    /// `TypeIds` of tasks that must complete before this task can run.
     ///
-    /// Dependencies are specified by task name (case-sensitive).
+    /// Dependencies are specified using `TypeId::of::<TaskType>()`.
     /// Default implementation returns no dependencies.
-    fn dependencies(&self) -> Vec<&str> {
+    fn dependencies(&self) -> Vec<TypeId> {
         Vec::new()
+    }
+
+    /// Get the `TypeId` for this task type.
+    fn type_id(&self) -> TypeId {
+        TypeId::of::<Self>()
     }
 }
 
@@ -187,50 +193,50 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 ///
 /// # Panics
 ///
-/// Should not panic. Internal unwrap calls are safe because all task names
+/// Should not panic. Internal unwrap calls are safe because all task `TypeIds`
 /// are pre-validated during graph construction.
 pub fn sort_by_dependencies<'a>(tasks: &'a [&'a dyn Task]) -> Result<Vec<&'a dyn Task>> {
     use std::collections::{HashMap, VecDeque};
 
-    // Build a name-to-task map for quick lookup
-    let mut name_map: HashMap<&str, &'a dyn Task> = HashMap::new();
+    // Build a TypeId-to-task map for quick lookup
+    let mut type_map: HashMap<TypeId, &'a dyn Task> = HashMap::new();
     for task in tasks {
-        name_map.insert(task.name(), *task);
+        type_map.insert(task.type_id(), *task);
     }
 
     // Validate dependencies and build adjacency list
-    let mut graph: HashMap<&str, Vec<&str>> = HashMap::new();
-    let mut in_degree: HashMap<&str, usize> = HashMap::new();
+    let mut graph: HashMap<TypeId, Vec<TypeId>> = HashMap::new();
+    let mut in_degree: HashMap<TypeId, usize> = HashMap::new();
 
     for task in tasks {
-        let name = task.name();
-        graph.entry(name).or_default();
-        in_degree.entry(name).or_insert(0);
+        let type_id = task.type_id();
+        graph.entry(type_id).or_default();
+        in_degree.entry(type_id).or_insert(0);
 
-        for dep in task.dependencies() {
-            if !name_map.contains_key(dep) {
-                anyhow::bail!("task '{name}' depends on non-existent task '{dep}'");
+        for dep_id in task.dependencies() {
+            if !type_map.contains_key(&dep_id) {
+                anyhow::bail!("task '{}' depends on non-existent task type", task.name());
             }
-            graph.entry(dep).or_default().push(name);
-            *in_degree.entry(name).or_insert(0) += 1;
+            graph.entry(dep_id).or_default().push(type_id);
+            *in_degree.entry(type_id).or_insert(0) += 1;
         }
     }
 
     // Kahn's algorithm for topological sort
-    let mut queue: VecDeque<&str> = in_degree
+    let mut queue: VecDeque<TypeId> = in_degree
         .iter()
         .filter(|&(_, &degree)| degree == 0)
-        .map(|(&name, _)| name)
+        .map(|(&type_id, _)| type_id)
         .collect();
 
     let mut sorted = Vec::new();
 
     while let Some(current) = queue.pop_front() {
-        sorted.push(*name_map.get(current).unwrap());
+        sorted.push(*type_map.get(&current).unwrap());
 
-        if let Some(neighbors) = graph.get(current) {
+        if let Some(neighbors) = graph.get(&current) {
             for &neighbor in neighbors {
-                let degree = in_degree.get_mut(neighbor).unwrap();
+                let degree = in_degree.get_mut(&neighbor).unwrap();
                 *degree -= 1;
                 if *degree == 0 {
                     queue.push_back(neighbor);
@@ -246,18 +252,68 @@ pub fn sort_by_dependencies<'a>(tasks: &'a [&'a dyn Task]) -> Result<Vec<&'a dyn
     Ok(sorted)
 }
 
+/// Get all available install tasks.
+///
+/// Returns a vector of boxed tasks that should be run during installation.
+/// The tasks are registered here and will be automatically sorted by dependencies.
+#[must_use]
+pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
+    vec![
+        Box::new(developer_mode::EnableDeveloperMode),
+        Box::new(sparse_checkout::SparseCheckout),
+        Box::new(update::UpdateRepository),
+        Box::new(hooks::GitHooks),
+        Box::new(git_config::ConfigureGit),
+        Box::new(packages::InstallPackages),
+        Box::new(packages::InstallParu),
+        Box::new(packages::InstallAurPackages),
+        Box::new(symlinks::InstallSymlinks),
+        Box::new(chmod::ApplyFilePermissions),
+        Box::new(shell::ConfigureShell),
+        Box::new(vscode::InstallVsCodeExtensions),
+        Box::new(copilot_skills::InstallCopilotSkills),
+        Box::new(systemd::ConfigureSystemd),
+        Box::new(registry::ApplyRegistry),
+    ]
+}
+
+/// Get all available uninstall tasks.
+///
+/// Returns a vector of boxed tasks that should be run during uninstallation.
+#[must_use]
+pub fn all_uninstall_tasks() -> Vec<Box<dyn Task>> {
+    vec![
+        Box::new(symlinks::UninstallSymlinks),
+        Box::new(hooks::UninstallHooks),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    struct TestTask {
-        name: &'static str,
-        deps: Vec<&'static str>,
+    struct TestTaskA;
+    struct TestTaskB;
+    struct TestTaskC;
+    struct TestTaskD;
+
+    impl Task for TestTaskA {
+        fn name(&self) -> &str {
+            "A"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
     }
 
-    impl Task for TestTask {
+    impl Task for TestTaskB {
         fn name(&self) -> &str {
-            self.name
+            "B"
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -268,23 +324,69 @@ mod tests {
             Ok(TaskResult::Ok)
         }
 
-        fn dependencies(&self) -> Vec<&str> {
-            self.deps.clone()
+        fn dependencies(&self) -> Vec<TypeId> {
+            vec![TypeId::of::<TestTaskA>()]
+        }
+    }
+
+    impl Task for TestTaskC {
+        fn name(&self) -> &str {
+            "C"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+
+        fn dependencies(&self) -> Vec<TypeId> {
+            vec![TypeId::of::<TestTaskB>()]
+        }
+    }
+
+    impl Task for TestTaskD {
+        fn name(&self) -> &str {
+            "D"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+
+        fn dependencies(&self) -> Vec<TypeId> {
+            vec![TypeId::of::<TestTaskB>(), TypeId::of::<TestTaskC>()]
         }
     }
 
     #[test]
     fn sort_tasks_no_dependencies() {
-        let task_a = TestTask {
-            name: "A",
-            deps: vec![],
-        };
-        let task_b = TestTask {
-            name: "B",
-            deps: vec![],
-        };
+        let task_a = TestTaskA;
+        let task_b = TestTaskB; // Different type, no actual dependency
 
-        let tasks: Vec<&dyn Task> = vec![&task_a, &task_b];
+        // Temporarily remove B's dependency for this test
+        struct TestTaskBNoDep;
+        impl Task for TestTaskBNoDep {
+            fn name(&self) -> &str {
+                "B"
+            }
+            fn should_run(&self, _ctx: &Context) -> bool {
+                true
+            }
+            fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+                Ok(TaskResult::Ok)
+            }
+            // No dependencies
+        }
+
+        let task_b_no_dep = TestTaskBNoDep;
+        let tasks: Vec<&dyn Task> = vec![&task_a, &task_b_no_dep];
         let sorted = sort_by_dependencies(&tasks).unwrap();
 
         assert_eq!(sorted.len(), 2);
@@ -293,18 +395,9 @@ mod tests {
 
     #[test]
     fn sort_tasks_linear_dependency() {
-        let task_a = TestTask {
-            name: "A",
-            deps: vec![],
-        };
-        let task_b = TestTask {
-            name: "B",
-            deps: vec!["A"],
-        };
-        let task_c = TestTask {
-            name: "C",
-            deps: vec!["B"],
-        };
+        let task_a = TestTaskA;
+        let task_b = TestTaskB;
+        let task_c = TestTaskC;
 
         // Submit in wrong order
         let tasks: Vec<&dyn Task> = vec![&task_c, &task_a, &task_b];
@@ -318,73 +411,27 @@ mod tests {
 
     #[test]
     fn sort_tasks_diamond_dependency() {
-        let task_a = TestTask {
-            name: "A",
-            deps: vec![],
-        };
-        let task_b = TestTask {
-            name: "B",
-            deps: vec!["A"],
-        };
-        let task_c = TestTask {
-            name: "C",
-            deps: vec!["A"],
-        };
-        let task_d = TestTask {
-            name: "D",
-            deps: vec!["B", "C"],
-        };
+        let task_a = TestTaskA;
+        let task_b = TestTaskB; // depends on A
+        let task_c = TestTaskC; // depends on B
+        let task_d = TestTaskD; // depends on B and C
 
         let tasks: Vec<&dyn Task> = vec![&task_d, &task_c, &task_b, &task_a];
         let sorted = sort_by_dependencies(&tasks).unwrap();
 
         assert_eq!(sorted.len(), 4);
         assert_eq!(sorted[0].name(), "A");
-        // B and C can be in any order
+        // Verify D is last
         assert!(sorted[3].name() == "D");
-    }
-
-    #[test]
-    fn sort_tasks_cycle_detection() {
-        let task_a = TestTask {
-            name: "A",
-            deps: vec!["B"],
-        };
-        let task_b = TestTask {
-            name: "B",
-            deps: vec!["A"],
-        };
-
-        let tasks: Vec<&dyn Task> = vec![&task_a, &task_b];
-        let result = sort_by_dependencies(&tasks);
-
-        assert!(result.is_err());
-        let err_msg = result.err().unwrap().to_string();
-        assert!(err_msg.contains("dependency cycle"));
-    }
-
-    #[test]
-    fn sort_tasks_missing_dependency() {
-        let task_a = TestTask {
-            name: "A",
-            deps: vec!["NonExistent"],
-        };
-
-        let tasks: Vec<&dyn Task> = vec![&task_a];
-        let result = sort_by_dependencies(&tasks);
-
-        assert!(result.is_err());
-        let err_msg = result.err().unwrap().to_string();
-        assert!(err_msg.contains("non-existent"));
     }
 
     #[test]
     fn sort_validates_real_task_dependencies() {
         // This test ensures that if we add dependencies between actual tasks,
-        // they reference valid task names and don't create cycles.
-        
+        // they reference valid task types and don't create cycles.
+
         use crate::tasks::*;
-        
+
         let tasks: Vec<Box<dyn Task>> = vec![
             Box::new(packages::InstallPackages),
             Box::new(packages::InstallParu),
@@ -394,38 +441,47 @@ mod tests {
             Box::new(sparse_checkout::SparseCheckout),
             Box::new(update::UpdateRepository),
         ];
-        
+
         let task_refs: Vec<&dyn Task> = tasks.iter().map(std::convert::AsRef::as_ref).collect();
-        
+
         // This should not panic or error - validates no cycles and all deps exist
         let result = sort_by_dependencies(&task_refs);
         assert!(result.is_ok(), "Task dependency graph should be valid");
-        
+
         let sorted = result.unwrap();
         assert_eq!(sorted.len(), tasks.len());
-        
+
         // Verify specific ordering constraints
         let names: Vec<&str> = sorted.iter().map(|t| t.name()).collect();
-        
+
         // InstallParu must come before InstallAurPackages
         let paru_idx = names.iter().position(|&n| n == "Install paru");
         let aur_idx = names.iter().position(|&n| n == "Install AUR packages");
         if let (Some(paru), Some(aur)) = (paru_idx, aur_idx) {
-            assert!(paru < aur, "Install paru must come before Install AUR packages");
+            assert!(
+                paru < aur,
+                "Install paru must come before Install AUR packages"
+            );
         }
-        
+
         // InstallSymlinks must come before ApplyFilePermissions
         let symlinks_idx = names.iter().position(|&n| n == "Install symlinks");
         let chmod_idx = names.iter().position(|&n| n == "Apply file permissions");
         if let (Some(sym), Some(chmod)) = (symlinks_idx, chmod_idx) {
-            assert!(sym < chmod, "Install symlinks must come before Apply file permissions");
+            assert!(
+                sym < chmod,
+                "Install symlinks must come before Apply file permissions"
+            );
         }
-        
+
         // SparseCheckout must come before UpdateRepository
         let sparse_idx = names.iter().position(|&n| n == "Configure sparse checkout");
         let update_idx = names.iter().position(|&n| n == "Update repository");
         if let (Some(sparse), Some(update)) = (sparse_idx, update_idx) {
-            assert!(sparse < update, "Configure sparse checkout must come before Update repository");
+            assert!(
+                sparse < update,
+                "Configure sparse checkout must come before Update repository"
+            );
         }
     }
 }

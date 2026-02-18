@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 
 use super::{Context, Task, TaskResult, TaskStats};
 use crate::exec;
@@ -13,6 +14,10 @@ impl Task for ConfigureGit {
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.is_windows() && exec::which("git")
+    }
+
+    fn dependencies(&self) -> Vec<TypeId> {
+        vec![TypeId::of::<super::developer_mode::EnableDeveloperMode>()]
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

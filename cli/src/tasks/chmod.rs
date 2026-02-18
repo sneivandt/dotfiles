@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 
 use super::{Context, Task, TaskResult};
 
@@ -14,8 +15,8 @@ impl Task for ApplyFilePermissions {
         ctx.platform.supports_chmod() && !ctx.config.chmod.is_empty()
     }
 
-    fn dependencies(&self) -> Vec<&str> {
-        vec!["Install symlinks"]
+    fn dependencies(&self) -> Vec<TypeId> {
+        vec![TypeId::of::<super::symlinks::InstallSymlinks>()]
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

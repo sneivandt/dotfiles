@@ -13,10 +13,8 @@ pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Logger) -> Result<(
     let setup = super::CommandSetup::init(global, log)?;
     let ctx = Context::new(&setup.config, &setup.platform, log, global.dry_run)?;
 
-    let tasks: Vec<Box<dyn Task>> = vec![
-        Box::new(tasks::symlinks::UninstallSymlinks),
-        Box::new(tasks::hooks::UninstallHooks),
-    ];
+    // Get all uninstall tasks from the registry
+    let tasks = tasks::all_uninstall_tasks();
 
     log.stage("Uninstalling");
     let task_refs: Vec<&dyn Task> = tasks.iter().map(std::convert::AsRef::as_ref).collect();

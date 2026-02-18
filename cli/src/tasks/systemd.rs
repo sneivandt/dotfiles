@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 
 use super::{Context, Task, TaskResult, TaskStats};
 use crate::exec;
@@ -13,6 +14,10 @@ impl Task for ConfigureSystemd {
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_systemd() && !ctx.config.units.is_empty() && exec::which("systemctl")
+    }
+
+    fn dependencies(&self) -> Vec<TypeId> {
+        vec![TypeId::of::<super::symlinks::InstallSymlinks>()]
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

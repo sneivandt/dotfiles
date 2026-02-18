@@ -22,24 +22,8 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
 
     let ctx = Context::new(&setup.config, &setup.platform, log, global.dry_run)?;
 
-    // Build the task list
-    let all_tasks: Vec<Box<dyn Task>> = vec![
-        Box::new(tasks::developer_mode::EnableDeveloperMode),
-        Box::new(tasks::sparse_checkout::SparseCheckout),
-        Box::new(tasks::update::UpdateRepository),
-        Box::new(tasks::hooks::GitHooks),
-        Box::new(tasks::git_config::ConfigureGit),
-        Box::new(tasks::packages::InstallPackages),
-        Box::new(tasks::packages::InstallParu),
-        Box::new(tasks::packages::InstallAurPackages),
-        Box::new(tasks::symlinks::InstallSymlinks),
-        Box::new(tasks::chmod::ApplyFilePermissions),
-        Box::new(tasks::shell::ConfigureShell),
-        Box::new(tasks::vscode::InstallVsCodeExtensions),
-        Box::new(tasks::copilot_skills::InstallCopilotSkills),
-        Box::new(tasks::systemd::ConfigureSystemd),
-        Box::new(tasks::registry::ApplyRegistry),
-    ];
+    // Get all install tasks from the registry
+    let all_tasks = tasks::all_install_tasks();
 
     // Filter by --skip and --only
     let tasks_to_run: Vec<&dyn Task> = all_tasks

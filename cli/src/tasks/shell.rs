@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 
 use super::{Context, Task, TaskResult};
 use crate::exec;
@@ -15,6 +16,10 @@ impl Task for ConfigureShell {
         // Skip in CI environments where chsh requires authentication
         let is_ci = std::env::var("CI").is_ok();
         ctx.platform.is_linux() && exec::which("zsh") && !is_ci
+    }
+
+    fn dependencies(&self) -> Vec<TypeId> {
+        vec![TypeId::of::<super::packages::InstallPackages>()]
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

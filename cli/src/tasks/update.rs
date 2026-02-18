@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 
 use super::{Context, Task, TaskResult};
 use crate::exec;
@@ -15,8 +16,8 @@ impl Task for UpdateRepository {
         ctx.root().join(".git").exists()
     }
 
-    fn dependencies(&self) -> Vec<&str> {
-        vec!["Configure sparse checkout"]
+    fn dependencies(&self) -> Vec<TypeId> {
+        vec![TypeId::of::<super::sparse_checkout::SparseCheckout>()]
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

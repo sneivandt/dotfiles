@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 
 use super::{Context, Task, TaskResult, TaskStats};
 use crate::exec;
@@ -85,8 +86,8 @@ impl Task for InstallAurPackages {
         ctx.platform.supports_aur() && ctx.config.packages.iter().any(|p| p.is_aur)
     }
 
-    fn dependencies(&self) -> Vec<&str> {
-        vec!["Install paru"]
+    fn dependencies(&self) -> Vec<TypeId> {
+        vec![TypeId::of::<InstallParu>()]
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

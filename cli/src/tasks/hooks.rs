@@ -2,6 +2,10 @@ use anyhow::Result;
 
 use super::{Context, Task, TaskResult, TaskStats};
 
+/// Hook file permissions on Unix (rwxr-xr-x).
+#[cfg(unix)]
+const HOOK_EXECUTABLE_MODE: u32 = 0o755;
+
 /// Install git hooks from hooks/ into .git/hooks/.
 pub struct GitHooks;
 
@@ -98,7 +102,7 @@ impl Task for GitHooks {
             {
                 use std::os::unix::fs::PermissionsExt;
                 let mut perms = std::fs::metadata(&dst)?.permissions();
-                perms.set_mode(0o755);
+                perms.set_mode(HOOK_EXECUTABLE_MODE);
                 std::fs::set_permissions(&dst, perms)?;
             }
 

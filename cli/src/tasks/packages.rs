@@ -3,6 +3,9 @@ use anyhow::Result;
 use super::{Context, Task, TaskResult, TaskStats};
 use crate::exec;
 
+/// Default number of parallel jobs for makepkg if nproc detection fails.
+const DEFAULT_NPROC: &str = "4";
+
 /// Install system packages via pacman or winget.
 pub struct InstallPackages;
 
@@ -154,8 +157,10 @@ impl Task for InstallParu {
         )?;
 
         // Build with parallel compilation
-        let nproc = exec::run("nproc", &[])
-            .map_or_else(|_| "4".to_string(), |r| r.stdout.trim().to_string());
+        let nproc = exec::run("nproc", &[]).map_or_else(
+            |_| DEFAULT_NPROC.to_string(),
+            |r| r.stdout.trim().to_string(),
+        );
 
         let makeflags = format!("-j{nproc}");
         ctx.log

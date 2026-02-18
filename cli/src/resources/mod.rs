@@ -1,3 +1,5 @@
+pub mod chmod;
+pub mod registry;
 pub mod symlink;
 
 use anyhow::Result;

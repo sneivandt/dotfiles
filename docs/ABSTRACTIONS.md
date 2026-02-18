@@ -150,6 +150,11 @@ Every resource follows this lifecycle:
 
 ### Using the Resource Abstraction
 
+The Resource trait has been implemented for three resource types:
+- **SymlinkResource** - File system symbolic links
+- **RegistryResource** - Windows registry entries  
+- **ChmodResource** - Unix file permissions
+
 #### Example: Working with a Symlink Resource
 
 ```rust
@@ -180,6 +185,55 @@ if resource.needs_change()? {
         ResourceChange::AlreadyCorrect => println!("Already correct"),
         ResourceChange::Skipped { reason } => println!("Skipped: {}", reason),
     }
+}
+```
+
+#### Example: Working with a Registry Resource (Windows)
+
+```rust
+use crate::resources::registry::RegistryResource;
+
+// Create from config entry
+let entry = &ctx.config.registry[0];
+let resource = RegistryResource::from_entry(entry);
+
+// Or create directly
+let resource = RegistryResource::new(
+    "HKCU:\\Console".to_string(),
+    "FontSize".to_string(),
+    "14".to_string(),
+);
+
+// Check and apply
+if resource.needs_change()? {
+    resource.apply()?;
+}
+```
+
+#### Example: Working with a Chmod Resource (Unix)
+
+```rust
+use crate::resources::chmod::ChmodResource;
+
+// Create from config entry
+let entry = &ctx.config.chmod[0];
+let resource = ChmodResource::from_entry(entry, &ctx.home);
+
+// Or create directly
+let resource = ChmodResource::new(
+    PathBuf::from("/home/user/.ssh/config"),
+    "600".to_string(),
+);
+
+// Check and apply
+match resource.current_state()? {
+    ResourceState::Correct => println!("Permissions already correct"),
+    ResourceState::Incorrect { current } => {
+        println!("Current: {}, applying change...", current);
+        resource.apply()?;
+    }
+    ResourceState::Invalid { reason } => println!("Cannot apply: {}", reason),
+    _ => {}
 }
 ```
 

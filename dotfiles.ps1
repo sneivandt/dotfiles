@@ -44,6 +44,22 @@ $BinDir = Join-Path $DotfilesRoot "bin"
 $CacheFile = Join-Path $BinDir ".dotfiles-version-cache"
 $CacheMaxAge = 3600
 
+# When running in an elevated window, pause before closing so the user can see output
+function Wait-IfElevated
+{
+    if ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
+    {
+        $principal = New-Object Security.Principal.WindowsPrincipal(
+            [Security.Principal.WindowsIdentity]::GetCurrent()
+        )
+        if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
+        {
+            Write-Output ""
+            Read-Host "Press Enter to close"
+        }
+    }
+}
+
 # Build CLI arguments from declared parameters
 $CliArgs = @()
 if ($ProfileName) { $CliArgs += '--profile'; $CliArgs += $ProfileName }
@@ -87,7 +103,7 @@ if (-not $DryRun -and ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Wi
             $psExe = 'powershell'
         }
 
-        $scriptArgs = @('-NoLogo', '-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
+        $scriptArgs = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
         if ($Build) { $scriptArgs += '-Build' }
         if ($ProfileName) { $scriptArgs += '-ProfileName'; $scriptArgs += $ProfileName }
         if ($DryRun) { $scriptArgs += '-DryRun' }
@@ -134,7 +150,9 @@ if ($Build)
         cargo build --release
         $BuildBinary = Join-Path $DotfilesRoot (Join-Path "cli" (Join-Path "target" (Join-Path "release" $BinaryName)))
         & $BuildBinary --root $DotfilesRoot @CliArgs
-        exit $LASTEXITCODE
+        $ec = $LASTEXITCODE
+        Wait-IfElevated
+        exit $ec
     }
     finally
     {
@@ -251,7 +269,9 @@ $localVersion = Get-LocalVersion
 if (($localVersion -ne "none") -and (Test-CacheFresh))
 {
     & $Binary --root $DotfilesRoot @CliArgs
-    exit $LASTEXITCODE
+    $ec = $LASTEXITCODE
+    Wait-IfElevated
+    exit $ec
 }
 
 $latest = Get-LatestVersion
@@ -261,7 +281,9 @@ if ([string]::IsNullOrEmpty($latest))
     {
         Write-Output "Using cached dotfiles $localVersion (offline)"
         & $Binary --root $DotfilesRoot @CliArgs
-        exit $LASTEXITCODE
+        $ec = $LASTEXITCODE
+        Wait-IfElevated
+        exit $ec
     }
     Write-Error "Cannot determine latest version and no local binary found. Use -Build to build from source."
     exit 1
@@ -277,4 +299,6 @@ if (($localVersion -eq "none") -or ($cached -ne $latest))
 
 Write-CacheFile -Version $latest
 & $Binary --root $DotfilesRoot @CliArgs
-exit $LASTEXITCODE
+$ec = $LASTEXITCODE
+Wait-IfElevated
+exit $ec

@@ -57,7 +57,7 @@ impl Task for UninstallSymlinks {
                 compute_target(&ctx.home, &s.source),
             )
         });
-        process_resources_remove(ctx, resources, "remove")
+        process_resources_remove(ctx, resources, "materialize")
     }
 }
 

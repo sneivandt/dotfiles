@@ -91,14 +91,89 @@ impl Resource for SymlinkResource {
     }
 
     fn remove(&self) -> Result<ResourceChange> {
-        if self.target.symlink_metadata().is_ok() {
-            remove_symlink(&self.target)
-                .with_context(|| format!("remove symlink: {}", self.target.display()))?;
-            Ok(ResourceChange::Applied)
+        // Copy source content into place, then remove the symlink, so the user
+        // retains the file/directory after uninstall instead of losing it.
+        copy_into_place(&self.source, &self.target).with_context(|| {
+            format!(
+                "materialize {} -> {}",
+                self.target.display(),
+                self.source.display()
+            )
+        })?;
+        Ok(ResourceChange::Applied)
+    }
+}
+
+/// Copy `source` into `target`, replacing the symlink that currently lives at
+/// `target`.  Files are staged to a sibling temp path first so that the window
+/// where `target` is absent is as small as possible.  Directories are handled
+/// recursively; any symlinks *within* the source tree are followed (their
+/// content is copied, not the link itself).
+fn copy_into_place(source: &Path, target: &Path) -> Result<()> {
+    if source.is_dir() {
+        copy_dir_into_place(source, target)
+    } else {
+        copy_file_into_place(source, target)
+    }
+}
+
+/// Copy a regular file: stage to a temp sibling, remove the symlink, rename
+/// the temp file into place.
+fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
+    // Use a sibling temp name to keep the rename on the same filesystem.
+    let tmp = target.with_extension("dotfiles_tmp");
+    std::fs::copy(source, &tmp)
+        .with_context(|| format!("copy {} to {}", source.display(), tmp.display()))?;
+    remove_symlink(target).with_context(|| format!("remove symlink: {}", target.display()))?;
+    std::fs::rename(&tmp, target)
+        .with_context(|| format!("rename {} to {}", tmp.display(), target.display()))?;
+    Ok(())
+}
+
+/// Copy a directory: stage into a sibling temp directory, remove the
+/// symlink/junction, then rename the temp directory into place.  Falls back to
+/// a plain copy+delete when the rename crosses a filesystem boundary (EXDEV).
+fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let stem = target.file_name().map_or_else(
+        || "dotfiles_tmp".to_string(),
+        |n| format!("{}_dotfiles_tmp", n.to_string_lossy()),
+    );
+    let tmp = parent.join(&stem);
+
+    copy_dir_recursive(source, &tmp)
+        .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;
+    remove_symlink(target)
+        .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
+
+    // Prefer atomic rename; fall back to copy+delete on cross-filesystem move.
+    if let Err(_rename_err) = std::fs::rename(&tmp, target) {
+        copy_dir_recursive(&tmp, target)
+            .with_context(|| format!("cross-fs copy {} to {}", tmp.display(), target.display()))?;
+        std::fs::remove_dir_all(&tmp)
+            .with_context(|| format!("remove tmp dir: {}", tmp.display()))?;
+    }
+    Ok(())
+}
+
+/// Recursively copy `src` into `dst`, following symlinks (so their content is
+/// materialised rather than the link itself).
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    std::fs::create_dir_all(dst).with_context(|| format!("create dir: {}", dst.display()))?;
+    for entry in std::fs::read_dir(src).with_context(|| format!("read dir: {}", src.display()))? {
+        let entry = entry.with_context(|| format!("read entry in {}", src.display()))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        // Use is_dir() (follows symlinks) so directory symlinks are recursed.
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
         } else {
-            Ok(ResourceChange::AlreadyCorrect)
+            std::fs::copy(&src_path, &dst_path).with_context(|| {
+                format!("copy {} to {}", src_path.display(), dst_path.display())
+            })?;
         }
     }
+    Ok(())
 }
 
 /// Compare two paths for equality, handling UNC prefix normalization on Windows.
@@ -272,6 +347,7 @@ mod tests {
         assert_eq!(state, ResourceState::Missing);
     }
 
+    #[cfg(unix)]
     #[test]
     fn symlink_resource_correct_when_link_points_to_source() {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -286,6 +362,7 @@ mod tests {
         assert_eq!(state, ResourceState::Correct);
     }
 
+    #[cfg(unix)]
     #[test]
     fn symlink_resource_incorrect_when_link_points_to_wrong_source() {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -315,5 +392,68 @@ mod tests {
 
         let state = resource.current_state().unwrap();
         assert!(matches!(state, ResourceState::Incorrect { .. }));
+    }
+
+    /// After `remove()` the target must be a regular file containing the
+    /// original source content, not a symlink.
+    #[test]
+    fn remove_file_symlink_materializes_content() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("target.txt");
+        std::fs::write(&source, b"hello dotfiles").unwrap();
+
+        let resource = SymlinkResource::new(source.clone(), target.clone());
+        resource.apply().unwrap();
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Correct
+        ));
+
+        resource.remove().unwrap();
+
+        // Must be a regular file, not a symlink.
+        let meta = std::fs::symlink_metadata(&target).unwrap();
+        assert!(
+            !meta.is_symlink(),
+            "target should not be a symlink after materialize"
+        );
+        assert!(meta.is_file(), "target should be a regular file");
+        assert_eq!(std::fs::read(&target).unwrap(), b"hello dotfiles");
+    }
+
+    /// After `remove()` on a directory symlink the target must be a real
+    /// directory containing copies of all source files.
+    #[test]
+    fn remove_dir_symlink_materializes_directory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source_dir = temp_dir.path().join("src_dir");
+        let target_dir = temp_dir.path().join("target_dir");
+        std::fs::create_dir(&source_dir).unwrap();
+        std::fs::write(source_dir.join("a.txt"), b"aaa").unwrap();
+        std::fs::create_dir(source_dir.join("sub")).unwrap();
+        std::fs::write(source_dir.join("sub").join("b.txt"), b"bbb").unwrap();
+
+        let resource = SymlinkResource::new(source_dir.clone(), target_dir.clone());
+        resource.apply().unwrap();
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Correct
+        ));
+
+        resource.remove().unwrap();
+
+        // Must be a real directory, not a symlink.
+        let meta = std::fs::symlink_metadata(&target_dir).unwrap();
+        assert!(
+            !meta.is_symlink(),
+            "target should not be a symlink after materialize"
+        );
+        assert!(meta.is_dir(), "target should be a real directory");
+        assert_eq!(std::fs::read(target_dir.join("a.txt")).unwrap(), b"aaa");
+        assert_eq!(
+            std::fs::read(target_dir.join("sub").join("b.txt")).unwrap(),
+            b"bbb"
+        );
     }
 }

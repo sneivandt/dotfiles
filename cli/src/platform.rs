@@ -78,14 +78,14 @@ impl Platform {
 
     /// Returns whether this platform is Linux.
     #[must_use]
-    pub fn is_linux(&self) -> bool {
-        self.os == Os::Linux
+    pub const fn is_linux(&self) -> bool {
+        matches!(self.os, Os::Linux)
     }
 
     /// Returns whether this platform is Windows.
     #[must_use]
-    pub fn is_windows(&self) -> bool {
-        self.os == Os::Windows
+    pub const fn is_windows(&self) -> bool {
+        matches!(self.os, Os::Windows)
     }
 
     /// Returns whether this platform supports POSIX file permissions (chmod).

@@ -189,6 +189,16 @@ impl Logger {
             .any(|t| t.status == TaskStatus::Failed)
     }
 
+    /// Count the number of failed tasks.
+    #[must_use]
+    pub fn failure_count(&self) -> usize {
+        self.tasks
+            .borrow()
+            .iter()
+            .filter(|t| t.status == TaskStatus::Failed)
+            .count()
+    }
+
     /// Print the summary of all recorded tasks.
     pub fn print_summary(&self) {
         let tasks = self.tasks.borrow();

@@ -83,9 +83,13 @@ impl CommandSetup {
 /// # Errors
 ///
 /// Returns an error if one or more tasks recorded a failure.
-pub fn run_tasks_to_completion(tasks: &[&dyn Task], ctx: &Context, log: &Logger) -> Result<()> {
+pub fn run_tasks_to_completion<'a>(
+    tasks: impl IntoIterator<Item = &'a dyn Task>,
+    ctx: &Context,
+    log: &Logger,
+) -> Result<()> {
     for task in tasks {
-        tasks::execute(*task, ctx);
+        tasks::execute(task, ctx);
     }
 
     log.print_summary();

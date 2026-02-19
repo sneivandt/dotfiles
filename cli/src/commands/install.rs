@@ -44,22 +44,23 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
     ];
 
     // Filter by --skip and --only
-    let tasks_to_run: Vec<&dyn Task> = all_tasks
-        .iter()
-        .filter(|t| {
-            let name = t.name().to_lowercase();
-            if !opts.only.is_empty() {
-                return opts.only.iter().any(|o| name.contains(&o.to_lowercase()));
-            }
-            if !opts.skip.is_empty() {
-                return !opts.skip.iter().any(|s| name.contains(&s.to_lowercase()));
-            }
-            true
-        })
-        .map(AsRef::as_ref)
-        .collect();
-
-    super::run_tasks_to_completion(&tasks_to_run, &ctx, log)
+    super::run_tasks_to_completion(
+        all_tasks
+            .iter()
+            .filter(|t| {
+                let name = t.name().to_lowercase();
+                if !opts.only.is_empty() {
+                    return opts.only.iter().any(|o| name.contains(&o.to_lowercase()));
+                }
+                if !opts.skip.is_empty() {
+                    return !opts.skip.iter().any(|s| name.contains(&s.to_lowercase()));
+                }
+                true
+            })
+            .map(Box::as_ref),
+        &ctx,
+        log,
+    )
 }
 
 /// Resolve the dotfiles root directory from CLI arguments or auto-detection.

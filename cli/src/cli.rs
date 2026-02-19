@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 
+/// Top-level CLI entry point for the dotfiles management engine.
 #[derive(Parser, Debug)]
 #[command(
     name = "dotfiles",
@@ -18,6 +19,7 @@ pub struct Cli {
     pub global: GlobalOpts,
 }
 
+/// Options shared across all subcommands.
 #[derive(Parser, Debug, Clone)]
 pub struct GlobalOpts {
     /// Profile to use (base, arch, desktop, arch-desktop, windows)
@@ -33,6 +35,7 @@ pub struct GlobalOpts {
     pub root: Option<std::path::PathBuf>,
 }
 
+/// Available subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// Install dotfiles and configure system
@@ -45,6 +48,7 @@ pub enum Command {
     Version,
 }
 
+/// Options for the `install` subcommand.
 #[derive(Parser, Debug, Clone)]
 pub struct InstallOpts {
     /// Skip specific tasks
@@ -56,9 +60,11 @@ pub struct InstallOpts {
     pub only: Vec<String>,
 }
 
+/// Options for the `uninstall` subcommand.
 #[derive(Parser, Debug, Clone)]
 pub struct UninstallOpts {}
 
+/// Options for the `test` subcommand.
 #[derive(Parser, Debug, Clone)]
 pub struct TestOpts {}
 

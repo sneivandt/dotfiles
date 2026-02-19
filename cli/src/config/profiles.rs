@@ -213,7 +213,10 @@ pub fn prompt_interactive(_platform: &Platform) -> Result<String> {
         bail!("selection out of range");
     }
 
-    Ok(options[choice - 1].to_string())
+    options
+        .get(choice - 1)
+        .map(ToString::to_string)
+        .context("selection out of range")
 }
 
 /// Resolve the profile from CLI arg, git config, or interactive prompt.

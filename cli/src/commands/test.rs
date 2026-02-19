@@ -331,7 +331,7 @@ fn read_first_line(path: &Path) -> Vec<u8> {
         .get(..n)
         .and_then(|slice| slice.iter().position(|&b| b == b'\n'))
         .unwrap_or(n);
-    buf[..end].to_vec()
+    buf.get(..end).unwrap_or_default().to_vec()
 }
 
 /// Print command output (stdout and stderr) to stderr.

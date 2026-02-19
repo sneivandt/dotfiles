@@ -46,12 +46,10 @@ pub enum ResourceChange {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// // All resources follow the same pattern:
-/// // 1. Check current state: resource.current_state()?
-/// // 2. Apply if needed: resource.apply()?
-/// // 3. Remove if supported: resource.remove()?
-/// ```
+/// All resources follow the same pattern:
+/// 1. Check current state: `resource.current_state()?`
+/// 2. Apply if needed: `resource.apply()?`
+/// 3. Remove if supported: `resource.remove()?`
 pub trait Resource {
     /// Human-readable description of this resource.
     fn description(&self) -> String;

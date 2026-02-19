@@ -22,23 +22,15 @@ CACHE_MAX_AGE=3600  # seconds
 # Parse --build flag (remove it from args forwarded to binary)
 # --------------------------------------------------------------------------- #
 BUILD_MODE=false
+ARGS=""
 for arg in "$@"; do
-  if [ "$arg" = "--build" ]; then
-    BUILD_MODE=true
-    break
-  fi
+  case "$arg" in
+    --build) BUILD_MODE=true ;;
+    *) ARGS="$ARGS $(printf "'%s'" "$(printf '%s' "$arg" | sed "s/'/'\\\\''/g")")"
+       ;;
+  esac
 done
-
-# Rebuild args without --build
-set_args() {
-  FORWARD_ARGS=""
-  for arg in "$@"; do
-    if [ "$arg" != "--build" ]; then
-      FORWARD_ARGS="$FORWARD_ARGS \"$arg\""
-    fi
-  done
-}
-set_args "$@"
+eval set -- $ARGS
 
 # --------------------------------------------------------------------------- #
 # Build mode: build from source and run
@@ -50,7 +42,7 @@ if [ "$BUILD_MODE" = true ]; then
   fi
   cd "$DOTFILES_ROOT/cli"
   cargo build --release
-  eval exec "$DOTFILES_ROOT/cli/target/release/dotfiles" --root "$DOTFILES_ROOT" "$FORWARD_ARGS"
+  exec "$DOTFILES_ROOT/cli/target/release/dotfiles" --root "$DOTFILES_ROOT" "$@"
 fi
 
 # --------------------------------------------------------------------------- #
@@ -99,10 +91,20 @@ get_latest_version() {
   fi
 }
 
+# Detect CPU architecture
+detect_arch() {
+  case "$(uname -m)" in
+    aarch64|arm64) echo "aarch64" ;;
+    *)             echo "x86_64"  ;;
+  esac
+}
+
 # Download the binary for the given version tag
 download_binary() {
   version="$1"
-  url="https://github.com/$REPO/releases/download/$version/dotfiles-linux-x86_64"
+  arch=$(detect_arch)
+  asset="dotfiles-linux-$arch"
+  url="https://github.com/$REPO/releases/download/$version/$asset"
 
   mkdir -p "$BIN_DIR"
 
@@ -122,9 +124,10 @@ download_binary() {
   checksum_url="https://github.com/$REPO/releases/download/$version/checksums.sha256"
   if command -v sha256sum >/dev/null 2>&1; then
     tmpfile=$(mktemp)
+    trap 'rm -f "$tmpfile"' EXIT
     if curl -fsSL -o "$tmpfile" "$checksum_url" 2>/dev/null || \
        wget -qO "$tmpfile" "$checksum_url" 2>/dev/null; then
-      expected=$(grep "dotfiles-linux-x86_64" "$tmpfile" | awk '{print $1}')
+      expected=$(grep "$asset" "$tmpfile" | awk '{print $1}')
       actual=$(sha256sum "$BINARY" | awk '{print $1}')
       if [ -n "$expected" ] && [ "$expected" != "$actual" ]; then
         echo "ERROR: Checksum verification failed!" >&2
@@ -134,6 +137,9 @@ download_binary() {
       fi
     fi
     rm -f "$tmpfile"
+    trap - EXIT
+  else
+    echo "WARNING: sha256sum not found, skipping checksum verification" >&2
   fi
 }
 
@@ -177,4 +183,4 @@ ensure_binary() {
 }
 
 ensure_binary
-eval exec "$BINARY" --root "$DOTFILES_ROOT" "$FORWARD_ARGS"
+exec "$BINARY" --root "$DOTFILES_ROOT" "$@"

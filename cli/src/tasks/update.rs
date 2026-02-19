@@ -17,6 +17,14 @@ impl Task for UpdateRepository {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        // Refuse to pull if there are staged changes that could be lost
+        if let Ok(diff) = exec::run_in(ctx.root(), "git", &["diff", "--cached", "--name-only"])
+            && !diff.stdout.trim().is_empty()
+        {
+            ctx.log.warn("staged changes detected, skipping update");
+            return Ok(TaskResult::Skipped("staged changes present".to_string()));
+        }
+
         if ctx.dry_run {
             // Compare local HEAD with upstream tracking branch
             if let (Some(head), Some(upstream)) = (

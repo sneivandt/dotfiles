@@ -198,7 +198,7 @@ function Get-Binary
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    Write-Information "Downloading dotfiles $Version..."
+    Write-Host "Downloading dotfiles $Version..."
     Invoke-WebRequest -Uri $url -OutFile $Binary -UseBasicParsing
 
     # Verify checksum
@@ -206,8 +206,7 @@ function Get-Binary
     try
     {
         $checksums = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing).Content
-        $checksumMatch = [System.IO.Path]::GetFileNameWithoutExtension($AssetName)
-        $expected = ($checksums -split "`n" | Where-Object { $_ -match $checksumMatch }) -replace '\s+.*', ''
+        $expected = ($checksums -split "`n" | Where-Object { $_ -match [regex]::Escape($AssetName) }) -replace '\s+.*', ''
         $actual = (Get-FileHash -Path $Binary -Algorithm SHA256).Hash.ToLower()
         if ($expected -and ($expected -ne $actual))
         {

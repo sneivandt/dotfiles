@@ -120,8 +120,11 @@ pub enum TaskResult {
 /// Provides consistent summary logging across all tasks.
 #[derive(Debug, Default)]
 pub struct TaskStats {
+    /// Number of items changed or applied.
     pub changed: u32,
+    /// Number of items already in the correct state.
     pub already_ok: u32,
+    /// Number of items skipped due to errors or inapplicability.
     pub skipped: u32,
 }
 

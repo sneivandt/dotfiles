@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result};
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states};
-use crate::exec;
+use crate::config::packages::Package;
 use crate::resources::package::{PackageManager, PackageResource, get_installed_packages};
 
 /// Default number of parallel jobs for makepkg if nproc detection fails.
@@ -14,7 +14,7 @@ const DEFAULT_NPROC: &str = "4";
 /// than spawning a per-package query.
 fn process_packages(
     ctx: &Context,
-    packages: &[&crate::config::packages::Package],
+    packages: &[&Package],
     manager: PackageManager,
 ) -> Result<TaskResult> {
     ctx.log.debug(&format!(
@@ -66,13 +66,13 @@ impl Task for InstallPackages {
 
         let manager = if ctx.platform.is_linux() {
             ctx.log.debug("using pacman package manager");
-            if !exec::which("pacman") {
+            if !ctx.executor.which("pacman") {
                 return Ok(TaskResult::Skipped("pacman not found".to_string()));
             }
             PackageManager::Pacman
         } else {
             ctx.log.debug("using winget package manager");
-            if !exec::which("winget") {
+            if !ctx.executor.which("winget") {
                 return Ok(TaskResult::Skipped("winget not found".to_string()));
             }
             PackageManager::Winget
@@ -102,7 +102,7 @@ impl Task for InstallAurPackages {
             return Ok(TaskResult::Skipped("no AUR packages".to_string()));
         }
 
-        if !exec::which("paru") {
+        if !ctx.executor.which("paru") {
             ctx.log
                 .debug("paru not found in PATH, skipping AUR packages");
             return Ok(TaskResult::Skipped("paru not installed".to_string()));
@@ -129,7 +129,7 @@ impl Task for InstallParu {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if exec::which("paru") {
+        if ctx.executor.which("paru") {
             ctx.log.debug("paru already in PATH");
             ctx.log.info("paru already installed");
             return Ok(TaskResult::Ok);
@@ -154,7 +154,7 @@ impl Task for InstallParu {
 /// Check that required tools are available for building paru.
 fn check_prerequisites(ctx: &Context) -> Result<()> {
     for dep in &["git", "makepkg", "sudo"] {
-        if !exec::which(dep) {
+        if !ctx.executor.which(dep) {
             anyhow::bail!("missing prerequisite: {dep}");
         }
         ctx.log.debug(&format!("prerequisite ok: {dep}"));
@@ -175,21 +175,22 @@ fn prepare_build_directory(ctx: &Context) -> Result<std::path::PathBuf> {
 /// Clone the paru-bin AUR package.
 fn clone_paru_from_aur(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
     ctx.log.debug("cloning paru-bin from AUR");
-    exec::run(
-        "git",
-        &[
-            "clone",
-            "https://aur.archlinux.org/paru-bin.git",
-            &tmp.to_string_lossy(),
-        ],
-    )
-    .context("cloning paru-bin from AUR")?;
+    ctx.executor
+        .run(
+            "git",
+            &[
+                "clone",
+                "https://aur.archlinux.org/paru-bin.git",
+                &tmp.to_string_lossy(),
+            ],
+        )
+        .context("cloning paru-bin from AUR")?;
     Ok(())
 }
 
 /// Build paru using makepkg with parallel compilation.
 fn build_paru(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
-    let nproc = exec::run("nproc", &[]).map_or_else(
+    let nproc = ctx.executor.run("nproc", &[]).map_or_else(
         |_| DEFAULT_NPROC.to_string(),
         |r| r.stdout.trim().to_string(),
     );
@@ -197,13 +198,14 @@ fn build_paru(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
     let makeflags = format!("-j{nproc}");
     ctx.log
         .debug(&format!("building with MAKEFLAGS={makeflags}"));
-    exec::run_in_with_env(
-        tmp,
-        "makepkg",
-        &["-si", "--noconfirm"],
-        &[("MAKEFLAGS", &makeflags)],
-    )
-    .context("building paru with makepkg")?;
+    ctx.executor
+        .run_in_with_env(
+            tmp,
+            "makepkg",
+            &["-si", "--noconfirm"],
+            &[("MAKEFLAGS", &makeflags)],
+        )
+        .context("building paru with makepkg")?;
     Ok(())
 }
 

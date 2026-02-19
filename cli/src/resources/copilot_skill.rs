@@ -52,10 +52,11 @@ impl Resource for CopilotSkillResource {
     fn apply(&self) -> Result<ResourceChange> {
         // Ensure parent directory exists
         if let Some(parent) = self.dest.parent() {
-            std::fs::create_dir_all(parent)?;
+            std::fs::create_dir_all(parent).context("creating skills parent directory")?;
         }
 
-        download_github_folder(&self.url, &self.dest)?;
+        download_github_folder(&self.url, &self.dest)
+            .with_context(|| format!("downloading skill from {}", self.url))?;
         Ok(ResourceChange::Applied)
     }
 }
@@ -96,7 +97,7 @@ fn download_github_folder(url: &str, dest: &Path) -> Result<()> {
     let tmp = std::env::temp_dir().join(format!("dotfiles-skill-{dir_name}"));
 
     if tmp.exists() {
-        std::fs::remove_dir_all(&tmp)?;
+        std::fs::remove_dir_all(&tmp).context("removing previous skill temp dir")?;
     }
 
     // Shallow clone with no checkout
@@ -135,9 +136,12 @@ fn download_github_folder(url: &str, dest: &Path) -> Result<()> {
 
 /// Recursively copy a directory tree.
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
-    std::fs::create_dir_all(dest)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
+    std::fs::create_dir_all(dest)
+        .with_context(|| format!("creating directory {}", dest.display()))?;
+    for entry in
+        std::fs::read_dir(src).with_context(|| format!("reading directory {}", src.display()))?
+    {
+        let entry = entry.with_context(|| format!("reading entry in {}", src.display()))?;
         let src_path = entry.path();
         let dest_path = dest.join(entry.file_name());
         if src_path.is_dir() {
@@ -147,7 +151,9 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
             }
             copy_dir_recursive(&src_path, &dest_path)?;
         } else {
-            std::fs::copy(&src_path, &dest_path)?;
+            std::fs::copy(&src_path, &dest_path).with_context(|| {
+                format!("copying {} to {}", src_path.display(), dest_path.display())
+            })?;
         }
     }
     Ok(())

@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{Context as _, Result, bail};
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -26,7 +26,7 @@ pub const PROFILE_NAMES: &[&str] = &["base", "desktop"];
 /// Load profile definitions from profiles.ini.
 fn load_definitions(path: &Path) -> Result<Vec<ProfileDef>> {
     let content = if path.exists() {
-        std::fs::read_to_string(path)?
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?
     } else {
         return Ok(default_definitions());
     };
@@ -121,7 +121,7 @@ pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profi
     for category in &["linux", "windows", "arch"] {
         if !platform.excludes_category(category) {
             active.push((*category).to_string());
-        } else if !excluded.contains(&category.to_string()) {
+        } else if !excluded.iter().any(|c| c == category) {
             excluded.push((*category).to_string());
         }
     }
@@ -169,7 +169,8 @@ pub fn persist(root: &Path, name: &str) -> Result<()> {
     std::process::Command::new("git")
         .args(["config", "--local", "dotfiles.profile", name])
         .current_dir(root)
-        .output()?;
+        .output()
+        .context("persisting profile to git config")?;
     Ok(())
 }
 
@@ -190,10 +191,12 @@ pub fn prompt_interactive(_platform: &Platform) -> Result<String> {
         println!("  \x1b[1m{}\x1b[0m) {name}", i + 1);
     }
     print!("\nProfile [1-{}]: ", options.len());
-    io::stdout().flush()?;
+    io::stdout().flush().context("flushing stdout")?;
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
+    io::stdin()
+        .read_line(&mut input)
+        .context("reading profile selection")?;
 
     let choice: usize = input
         .trim()
@@ -225,9 +228,6 @@ pub fn resolve_from_args(
 
     // Let resolve() validate the profile name against loaded definitions
     let profile = resolve(&name, &conf_dir, platform)?;
-
-    // Persist for next time
-    persist(root, &name)?;
 
     // Persist for next time
     persist(root, &name)?;

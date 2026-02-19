@@ -82,9 +82,12 @@ impl Resource for HookFileResource {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(&self.target)?.permissions();
+            let mut perms = std::fs::metadata(&self.target)
+                .with_context(|| format!("reading hook metadata: {}", self.target.display()))?
+                .permissions();
             perms.set_mode(0o755);
-            std::fs::set_permissions(&self.target, perms)?;
+            std::fs::set_permissions(&self.target, perms)
+                .with_context(|| format!("setting hook permissions: {}", self.target.display()))?;
         }
 
         Ok(ResourceChange::Applied)

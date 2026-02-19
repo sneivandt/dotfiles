@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{Context as _, Result, bail};
 use std::path::Path;
 
 /// A parsed section from an INI file.
@@ -170,7 +170,7 @@ pub fn filter_sections_and(sections: &[Section], active_categories: &[String]) -
 
 /// Filter sections by excluded categories using OR logic (for manifest):
 /// A section is excluded if ANY of its categories are in the excluded set.
-#[allow(dead_code)]
+#[cfg(test)]
 #[must_use]
 pub fn filter_sections_or_exclude(
     sections: &[Section],
@@ -233,8 +233,7 @@ fn read_file(path: &Path) -> Result<String> {
     if !path.exists() {
         return Ok(String::new());
     }
-    std::fs::read_to_string(path)
-        .map_err(|e| anyhow::anyhow!("failed to read {}: {e}", path.display()))
+    std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))
 }
 
 /// Load a flat list of items from an INI file, filtered by active categories (AND logic).

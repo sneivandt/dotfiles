@@ -100,16 +100,20 @@ impl Resource for ChmodResource {
 fn apply_recursive(path: &std::path::Path, mode: u32) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+        .with_context(|| format!("set permissions on {}", path.display()))?;
 
     if path.is_dir() {
-        for entry in std::fs::read_dir(path)? {
-            let entry = entry?;
+        for entry in std::fs::read_dir(path)
+            .with_context(|| format!("reading directory {}", path.display()))?
+        {
+            let entry = entry.with_context(|| format!("reading entry in {}", path.display()))?;
             let entry_path = entry.path();
             if entry_path.is_dir() {
                 apply_recursive(&entry_path, mode)?;
             } else {
-                std::fs::set_permissions(&entry_path, std::fs::Permissions::from_mode(mode))?;
+                std::fs::set_permissions(&entry_path, std::fs::Permissions::from_mode(mode))
+                    .with_context(|| format!("set permissions on {}", entry_path.display()))?;
             }
         }
     }

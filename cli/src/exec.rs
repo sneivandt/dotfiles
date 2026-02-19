@@ -106,7 +106,7 @@ pub fn which(program: &str) -> bool {
 ///
 /// Implement this trait to provide mock executors for unit tests.
 /// The [`SystemExecutor`] implementation delegates to the real free functions.
-#[allow(dead_code)] // run_in and run_in_with_env are included for completeness
+#[allow(dead_code)] // run_in and run_in_with_env complete the trait contract
 pub trait Executor {
     /// Execute a command, bailing on non-zero exit.
     fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult>;

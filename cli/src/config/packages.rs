@@ -23,7 +23,7 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Package>> {
 
     let mut packages = Vec::new();
     for section in &sections {
-        let is_aur = section.categories.contains(&"aur".to_string());
+        let is_aur = section.categories.iter().any(|c| c == "aur");
         // Filter on profile categories only (ignore "aur" marker)
         let dominated = section
             .categories

@@ -208,11 +208,7 @@ fn set_registry_value(key_path: &str, value_name: &str, value_data: &str) -> Res
          Set-ItemProperty -Path '{key}' -Name '{name}' -Value {ps_value} -Type {ps_type}"
     );
 
-    let result = exec::run("powershell", &["-NoProfile", "-Command", &script])?;
-
-    if !result.success {
-        anyhow::bail!("PowerShell command failed: {}", result.stderr);
-    }
+    let _result = exec::run("powershell", &["-NoProfile", "-Command", &script])?;
 
     Ok(())
 }

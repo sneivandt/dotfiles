@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use std::path::Path;
 
 use super::{Context, Task, TaskResult};
@@ -6,6 +6,25 @@ use crate::exec;
 
 /// Default sparse checkout pattern that includes all files at root level.
 const DEFAULT_SPARSE_PATTERN: &str = "/*";
+
+/// Build the sparse checkout pattern string from excluded files.
+fn build_patterns(excluded_files: &[String]) -> String {
+    let mut patterns = vec![DEFAULT_SPARSE_PATTERN.to_string()];
+    for file in excluded_files {
+        patterns.push(format!("!/{file}"));
+    }
+    patterns.join("\n")
+}
+
+/// Check if the sparse-checkout file is already up to date with the given patterns.
+fn is_up_to_date(sparse_file: &Path, patterns_str: &str) -> bool {
+    if !sparse_file.exists() {
+        return false;
+    }
+    std::fs::read_to_string(sparse_file)
+        .map(|current| current.trim() == patterns_str.trim())
+        .unwrap_or(false)
+}
 
 /// Remove broken symlinks in `~/.config/git/` that point into the dotfiles
 /// repo's `symlinks/` directory.  These become dangling when sparse-checkout
@@ -77,30 +96,24 @@ impl Task for ConfigureSparseCheckout {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        if ctx.config.manifest.excluded_files.is_empty() {
+            ctx.log.info("no files to exclude from sparse checkout");
+            return Ok(TaskResult::Ok);
+        }
+
+        let patterns_str = build_patterns(&ctx.config.manifest.excluded_files);
+        let sparse_file = ctx.root().join(".git/info/sparse-checkout");
+
+        // Check if patterns are already up to date (shared by dry-run and real paths)
+        if is_up_to_date(&sparse_file, &patterns_str) {
+            ctx.log.info(&format!(
+                "already configured ({} files excluded)",
+                ctx.config.manifest.excluded_files.len()
+            ));
+            return Ok(TaskResult::Ok);
+        }
+
         if ctx.dry_run {
-            if ctx.config.manifest.excluded_files.is_empty() {
-                ctx.log.info("no files to exclude from sparse checkout");
-                return Ok(TaskResult::Ok);
-            }
-
-            // Check if sparse-checkout patterns are already up to date
-            let mut patterns = vec![DEFAULT_SPARSE_PATTERN.to_string()];
-            for file in &ctx.config.manifest.excluded_files {
-                patterns.push(format!("!/{file}"));
-            }
-            let patterns_str = patterns.join("\n");
-            let sparse_file = ctx.root().join(".git/info/sparse-checkout");
-            if sparse_file.exists() {
-                let current = std::fs::read_to_string(&sparse_file).unwrap_or_default();
-                if current.trim() == patterns_str.trim() {
-                    ctx.log.info(&format!(
-                        "already configured ({} files excluded)",
-                        ctx.config.manifest.excluded_files.len()
-                    ));
-                    return Ok(TaskResult::Ok);
-                }
-            }
-
             ctx.log.dry_run("configure git sparse checkout");
             for file in &ctx.config.manifest.excluded_files {
                 ctx.log.dry_run(&format!("  exclude: {file}"));
@@ -117,56 +130,22 @@ impl Task for ConfigureSparseCheckout {
         ctx.log.debug("initializing sparse checkout (cone mode)");
         exec::run_in(root, "git", &["sparse-checkout", "init", "--cone"])?;
 
-        // Build the sparse checkout patterns
-        if ctx.config.manifest.excluded_files.is_empty() {
-            ctx.log
-                .debug("manifest has no excluded files, nothing to configure");
-            ctx.log.info("no files to exclude from sparse checkout");
-            return Ok(TaskResult::Ok);
-        }
-
         // Disable cone mode to use full pattern matching
         ctx.log
             .debug("switching to non-cone mode for pattern matching");
         exec::run_in(root, "git", &["sparse-checkout", "init", "--no-cone"])?;
 
-        // Write patterns: include everything except excluded files
-        let mut patterns = vec![DEFAULT_SPARSE_PATTERN.to_string()];
-        for file in &ctx.config.manifest.excluded_files {
-            patterns.push(format!("!/{file}"));
-        }
-
-        let patterns_str = patterns.join("\n");
         ctx.log.debug(&format!(
-            "sparse checkout patterns: {} inclusions, {} exclusions",
-            1,
+            "sparse checkout patterns: 1 inclusion, {} exclusions",
             ctx.config.manifest.excluded_files.len()
         ));
 
-        // Check if sparse-checkout patterns are already up to date
-        let info_dir = root.join(".git/info");
-        let sparse_file = info_dir.join("sparse-checkout");
-        if sparse_file.exists() {
-            let current = std::fs::read_to_string(&sparse_file).unwrap_or_default();
-            if current.trim() == patterns_str.trim() {
-                ctx.log.debug("sparse checkout patterns already up to date");
-                ctx.log.info(&format!(
-                    "already configured ({} files excluded)",
-                    ctx.config.manifest.excluded_files.len()
-                ));
-                return Ok(TaskResult::Ok);
-            }
-            ctx.log.debug("sparse checkout patterns differ, updating");
-        } else {
-            ctx.log
-                .debug("sparse checkout file does not exist, creating");
-        }
-
         // Write directly to sparse-checkout file
+        let info_dir = root.join(".git/info");
         if !info_dir.exists() {
-            std::fs::create_dir_all(&info_dir)?;
+            std::fs::create_dir_all(&info_dir).context("creating .git/info directory")?;
         }
-        std::fs::write(&sparse_file, &patterns_str)?;
+        std::fs::write(&sparse_file, &patterns_str).context("writing sparse-checkout file")?;
 
         // Reset excluded files to HEAD so read-tree doesn't fail with
         // "not uptodate. Cannot merge." when the working tree is dirty.

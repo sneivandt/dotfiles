@@ -163,7 +163,8 @@ fn create_symlink(target: &Path, link: &Path) -> Result<()> {
 /// If `remove_dir` still fails with OS error 5 (access denied), we fall back
 /// to `cmd /c rmdir` which runs in a separate process.
 fn remove_symlink(path: &Path) -> Result<()> {
-    let meta = std::fs::symlink_metadata(path)?;
+    let meta = std::fs::symlink_metadata(path)
+        .with_context(|| format!("reading metadata: {}", path.display()))?;
     if is_dir_like(&meta) {
         match std::fs::remove_dir(path) {
             Ok(()) => {}
@@ -174,7 +175,7 @@ fn remove_symlink(path: &Path) -> Result<()> {
             Err(e) => return Err(e.into()),
         }
     } else {
-        std::fs::remove_file(path)?;
+        std::fs::remove_file(path).with_context(|| format!("removing file: {}", path.display()))?;
     }
     Ok(())
 }

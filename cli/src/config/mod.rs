@@ -38,6 +38,7 @@ use crate::platform::Platform;
 #[derive(Debug)]
 pub struct Config {
     pub root: PathBuf,
+    /// The resolved profile (retained for debug output via `Debug` impl).
     #[allow(dead_code)]
     pub profile: profiles::Profile,
     pub packages: Vec<packages::Package>,

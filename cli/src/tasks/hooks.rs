@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove};
 use crate::resources::hook::HookFileResource;
@@ -9,8 +9,10 @@ fn discover_hooks(ctx: &Context) -> Result<Vec<HookFileResource>> {
     let hooks_dst = ctx.root().join(".git/hooks");
 
     let mut resources = Vec::new();
-    for entry in std::fs::read_dir(&hooks_src)? {
-        let entry = entry?;
+    for entry in std::fs::read_dir(&hooks_src)
+        .with_context(|| format!("reading hooks directory: {}", hooks_src.display()))?
+    {
+        let entry = entry.with_context(|| format!("reading entry in {}", hooks_src.display()))?;
         let path = entry.path();
         if path.is_file() {
             resources.push(HookFileResource::new(

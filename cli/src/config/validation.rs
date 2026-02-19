@@ -42,7 +42,7 @@ pub trait ConfigValidator {
     fn validate(&self, root: &Path, platform: &Platform) -> Vec<ValidationWarning>;
 
     /// Return a human-readable name for this validator (e.g., "symlinks", "packages").
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Part of trait contract; implementors define it
     fn name(&self) -> &'static str;
 }
 

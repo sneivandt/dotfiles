@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use crate::cli::{GlobalOpts, InstallOpts};
 use crate::exec;
@@ -99,7 +99,7 @@ pub fn resolve_root(global: &GlobalOpts) -> Result<std::path::PathBuf> {
     }
 
     // Last resort: current directory
-    let cwd = std::env::current_dir()?;
+    let cwd = std::env::current_dir().context("determining current directory")?;
     if cwd.join("conf").exists() {
         return Ok(cwd);
     }

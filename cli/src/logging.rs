@@ -2,17 +2,6 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 
-/// Log level for output messages.
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Level {
-    Debug,
-    Info,
-    Stage,
-    Warn,
-    Error,
-}
-
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]
 pub struct TaskEntry {

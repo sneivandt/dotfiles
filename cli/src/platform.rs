@@ -9,8 +9,8 @@ pub enum Os {
 
 impl Os {
     /// Returns a human-readable name for the OS.
+    #[cfg(test)]
     #[must_use]
-    #[allow(dead_code)]
     pub const fn name(self) -> &'static str {
         match self {
             Self::Linux => "Linux",

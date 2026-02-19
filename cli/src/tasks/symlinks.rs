@@ -5,6 +5,7 @@ use super::{Context, ProcessOpts, Task, TaskResult, process_resources, process_r
 use crate::resources::symlink::SymlinkResource;
 
 /// Create symlinks from symlinks/ to $HOME.
+#[derive(Debug)]
 pub struct InstallSymlinks;
 
 impl Task for InstallSymlinks {
@@ -37,6 +38,7 @@ impl Task for InstallSymlinks {
 }
 
 /// Remove installed symlinks.
+#[derive(Debug)]
 pub struct UninstallSymlinks;
 
 impl Task for UninstallSymlinks {

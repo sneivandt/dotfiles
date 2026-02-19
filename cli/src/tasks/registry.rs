@@ -4,6 +4,7 @@ use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states};
 use crate::resources::registry::{RegistryResource, batch_check_values};
 
 /// Apply Windows registry settings.
+#[derive(Debug)]
 pub struct ApplyRegistry;
 
 impl Task for ApplyRegistry {

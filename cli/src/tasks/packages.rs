@@ -42,6 +42,7 @@ fn process_packages(
 }
 
 /// Install system packages via pacman or winget.
+#[derive(Debug)]
 pub struct InstallPackages;
 
 impl Task for InstallPackages {
@@ -82,6 +83,7 @@ impl Task for InstallPackages {
 }
 
 /// Install AUR packages via paru.
+#[derive(Debug)]
 pub struct InstallAurPackages;
 
 impl Task for InstallAurPackages {
@@ -114,6 +116,7 @@ impl Task for InstallAurPackages {
 }
 
 /// Install paru AUR helper.
+#[derive(Debug)]
 pub struct InstallParu;
 
 impl Task for InstallParu {

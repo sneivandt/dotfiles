@@ -5,6 +5,7 @@ use crate::exec;
 use crate::resources::systemd_unit::SystemdUnitResource;
 
 /// Enable and start systemd user units.
+#[derive(Debug)]
 pub struct ConfigureSystemd;
 
 impl Task for ConfigureSystemd {

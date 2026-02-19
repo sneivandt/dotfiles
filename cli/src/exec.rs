@@ -155,6 +155,7 @@ pub trait Executor {
 }
 
 /// The real system executor that delegates to process spawning.
+#[derive(Debug)]
 pub struct SystemExecutor;
 
 impl Executor for SystemExecutor {

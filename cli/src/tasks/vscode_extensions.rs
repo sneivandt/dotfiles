@@ -6,6 +6,7 @@ use crate::resources::vscode_extension::{
 };
 
 /// Install VS Code extensions.
+#[derive(Debug)]
 pub struct InstallVsCodeExtensions;
 
 impl Task for InstallVsCodeExtensions {

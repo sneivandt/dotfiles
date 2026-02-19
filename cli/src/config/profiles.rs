@@ -217,6 +217,11 @@ pub fn prompt_interactive(_platform: &Platform) -> Result<String> {
 }
 
 /// Resolve the profile from CLI arg, git config, or interactive prompt.
+///
+/// # Errors
+///
+/// Returns an error if the profile name is invalid, profile definitions cannot
+/// be loaded from profiles.ini, or if interactive prompting fails.
 pub fn resolve_from_args(
     cli_profile: Option<&str>,
     root: &Path,

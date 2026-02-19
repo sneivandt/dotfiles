@@ -38,6 +38,12 @@ pub struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
+    /// Creates a new context for task execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HOME (or USERPROFILE on Windows) environment variable
+    /// is not set.
     pub fn new(
         config: &'a Config,
         platform: &'a Platform,
@@ -155,6 +161,12 @@ pub struct ProcessOpts<'a> {
 ///
 /// For tasks where each resource can independently determine its own state via
 /// `resource.current_state()`.
+///
+/// # Errors
+///
+/// Returns an error if any resource fails to check its state or apply changes,
+/// depending on the `bail_on_error` setting in `opts`. If `bail_on_error` is `false`,
+/// errors are logged as warnings instead.
 pub fn process_resources<R: Resource>(
     ctx: &Context,
     resources: impl IntoIterator<Item = R>,
@@ -172,6 +184,12 @@ pub fn process_resources<R: Resource>(
 ///
 /// For tasks that batch-query state (e.g., registry, packages, VS Code extensions)
 /// and then iterate with cached results.
+///
+/// # Errors
+///
+/// Returns an error if any resource fails to apply changes, depending on the
+/// `bail_on_error` setting in `opts`. If `bail_on_error` is `false`, errors are
+/// logged as warnings instead.
 pub fn process_resource_states<R: Resource>(
     ctx: &Context,
     resource_states: impl IntoIterator<Item = (R, ResourceState)>,
@@ -188,6 +206,11 @@ pub fn process_resource_states<R: Resource>(
 ///
 /// Only resources in [`ResourceState::Correct`] are removed (they are "ours").
 /// Resources that are `Missing`, `Incorrect`, or `Invalid` are skipped.
+///
+/// # Errors
+///
+/// Returns an error if a resource fails to check its current state or fails
+/// during the removal process.
 pub fn process_resources_remove<R: Resource>(
     ctx: &Context,
     resources: impl IntoIterator<Item = R>,
@@ -319,6 +342,11 @@ pub trait Task {
     fn should_run(&self, ctx: &Context) -> bool;
 
     /// Execute the task.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the task fails to execute, such as when system commands
+    /// fail, file operations are not permitted, or configuration is invalid.
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
 }
 

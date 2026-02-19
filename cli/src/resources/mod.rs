@@ -48,9 +48,19 @@ pub trait Resource {
     fn description(&self) -> String;
 
     /// Check the current state of the resource.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the resource state cannot be determined due to I/O failures,
+    /// permission issues, or other system errors.
     fn current_state(&self) -> Result<ResourceState>;
 
     /// Determine if the resource needs to be changed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the current state cannot be determined (propagates errors from
+    /// `current_state()`).
     #[allow(dead_code)] // Part of trait contract; used in tests
     fn needs_change(&self) -> Result<bool> {
         Ok(matches!(
@@ -68,12 +78,22 @@ pub trait Resource {
     ///
     /// This method is only called when NOT in dry-run mode and when
     /// `needs_change()` returns `true`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the resource cannot be applied due to I/O failures,
+    /// permission issues, invalid paths, or other system errors.
     fn apply(&self) -> Result<ResourceChange>;
 
     /// Remove the resource, undoing a previous `apply()`.
     ///
     /// Default implementation returns an error — override in resources
     /// that support removal.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the resource cannot be removed, or if removal is not supported
+    /// for this resource type.
     fn remove(&self) -> Result<ResourceChange> {
         anyhow::bail!("remove not supported for {}", self.description())
     }

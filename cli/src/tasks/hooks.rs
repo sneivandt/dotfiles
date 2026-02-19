@@ -71,3 +71,43 @@ impl Task for UninstallGitHooks {
         process_resources_remove(ctx, resources, "remove hook")
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::platform::{Os, Platform};
+    use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
+    use std::path::PathBuf;
+
+    #[test]
+    fn install_should_run_false_when_hooks_dir_missing() {
+        let config = empty_config(PathBuf::from("/nonexistent/repo"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        // Neither hooks/ nor .git/ exists under /nonexistent/repo
+        assert!(!InstallGitHooks.should_run(&ctx));
+    }
+
+    #[test]
+    fn install_should_run_true_when_both_dirs_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("hooks")).unwrap();
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+        let config = empty_config(dir.path().to_path_buf());
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(InstallGitHooks.should_run(&ctx));
+    }
+
+    #[test]
+    fn uninstall_should_run_false_when_git_hooks_missing() {
+        let config = empty_config(PathBuf::from("/nonexistent/repo"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!UninstallGitHooks.should_run(&ctx));
+    }
+}

@@ -50,3 +50,34 @@ impl Task for InstallVsCodeExtensions {
         )
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::config::vscode_extensions::VsCodeExtension;
+    use crate::platform::{Os, Platform};
+    use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
+    use std::path::PathBuf;
+
+    #[test]
+    fn should_run_false_when_no_extensions_configured() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!InstallVsCodeExtensions.should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_true_when_extensions_configured() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.vscode_extensions.push(VsCodeExtension {
+            id: "github.copilot".to_string(),
+        });
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(InstallVsCodeExtensions.should_run(&ctx));
+    }
+}

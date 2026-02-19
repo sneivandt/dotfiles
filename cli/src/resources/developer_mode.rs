@@ -90,4 +90,126 @@ mod tests {
         assert!(desc.contains("AllowDevelopmentWithoutDevLicense"));
         assert!(desc.contains("AppModelUnlock"));
     }
+
+    // ------------------------------------------------------------------
+    // MockExecutor
+    // ------------------------------------------------------------------
+
+    #[derive(Debug)]
+    struct MockExecutor {
+        responses: std::cell::RefCell<std::collections::VecDeque<(bool, String)>>,
+    }
+
+    impl MockExecutor {
+        fn with_output(success: bool, stdout: &str) -> Self {
+            Self {
+                responses: std::cell::RefCell::new(std::collections::VecDeque::from([(
+                    success,
+                    stdout.to_string(),
+                )])),
+            }
+        }
+
+        fn next(&self) -> (bool, String) {
+            self.responses
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or_else(|| (false, "unexpected call".to_string()))
+        }
+    }
+
+    impl crate::exec::Executor for MockExecutor {
+        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
+            anyhow::bail!("not expected")
+        }
+
+        fn run_in(
+            &self,
+            _: &std::path::Path,
+            _: &str,
+            _: &[&str],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            anyhow::bail!("not expected")
+        }
+
+        fn run_in_with_env(
+            &self,
+            _: &std::path::Path,
+            _: &str,
+            _: &[&str],
+            _: &[(&str, &str)],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            anyhow::bail!("not expected")
+        }
+
+        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
+            let (success, stdout) = self.next();
+            Ok(crate::exec::ExecResult {
+                stdout,
+                stderr: String::new(),
+                success,
+                code: Some(i32::from(!success)),
+            })
+        }
+
+        fn which(&self, _: &str) -> bool {
+            false
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // current_state
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn current_state_correct_when_value_is_one() {
+        let executor = MockExecutor::with_output(true, "1\n");
+        let resource = DeveloperModeResource::new(&executor);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[test]
+    fn current_state_missing_when_output_is_sentinel() {
+        let executor = MockExecutor::with_output(true, "::NOT_FOUND::\n");
+        let resource = DeveloperModeResource::new(&executor);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+    }
+
+    #[test]
+    fn current_state_missing_when_output_is_empty() {
+        let executor = MockExecutor::with_output(true, "");
+        let resource = DeveloperModeResource::new(&executor);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+    }
+
+    #[test]
+    fn current_state_incorrect_when_value_is_zero() {
+        let executor = MockExecutor::with_output(true, "0\n");
+        let resource = DeveloperModeResource::new(&executor);
+        assert!(
+            matches!(resource.current_state().unwrap(), ResourceState::Incorrect { ref current } if current == "0"),
+            "expected Incorrect(0)"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // apply
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn apply_returns_applied_when_command_succeeds() {
+        let executor = MockExecutor::with_output(true, "");
+        let resource = DeveloperModeResource::new(&executor);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    }
+
+    #[test]
+    fn apply_returns_skipped_when_command_fails() {
+        let executor = MockExecutor::with_output(false, "");
+        let resource = DeveloperModeResource::new(&executor);
+        assert!(
+            matches!(resource.apply().unwrap(), ResourceChange::Skipped { .. }),
+            "expected Skipped when apply fails"
+        );
+    }
 }

@@ -38,3 +38,34 @@ impl Task for InstallCopilotSkills {
         )
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::config::copilot_skills::CopilotSkill;
+    use crate::platform::{Os, Platform};
+    use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
+    use std::path::PathBuf;
+
+    #[test]
+    fn should_run_false_when_no_skills_configured() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!InstallCopilotSkills.should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_true_when_skills_configured() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.copilot_skills.push(CopilotSkill {
+            url: "https://github.com/example/skill".to_string(),
+        });
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(InstallCopilotSkills.should_run(&ctx));
+    }
+}

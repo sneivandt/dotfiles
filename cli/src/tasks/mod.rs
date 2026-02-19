@@ -414,6 +414,136 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
     }
 }
 
+/// Shared helpers for task unit tests.
+///
+/// Provides common mock types and factory functions so each task test module
+/// does not have to duplicate boilerplate.
+#[cfg(test)]
+pub(crate) mod test_helpers {
+    use crate::config::Config;
+    use crate::config::manifest::Manifest;
+    use crate::config::profiles::Profile;
+    use crate::exec::{ExecResult, Executor};
+    use crate::logging::Logger;
+    use crate::platform::Platform;
+    use std::path::{Path, PathBuf};
+
+    use super::Context;
+
+    /// Minimal executor that panics if any real command is issued.
+    ///
+    /// `which()` always returns `false`, which causes tasks that guard on tool
+    /// availability to report *not applicable*.  Use [`WhichExecutor`] when you
+    /// need `which()` to return `true`.
+    #[derive(Debug)]
+    pub struct NoOpExecutor;
+
+    impl Executor for NoOpExecutor {
+        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+            panic!("unexpected executor call in test")
+        }
+
+        fn run_in(&self, _: &Path, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+            panic!("unexpected executor call in test")
+        }
+
+        fn run_in_with_env(
+            &self,
+            _: &Path,
+            _: &str,
+            _: &[&str],
+            _: &[(&str, &str)],
+        ) -> anyhow::Result<ExecResult> {
+            panic!("unexpected executor call in test")
+        }
+
+        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+            panic!("unexpected executor call in test")
+        }
+
+        fn which(&self, _: &str) -> bool {
+            false
+        }
+    }
+
+    /// Executor that returns a fixed value for `which()` and panics for real calls.
+    #[derive(Debug)]
+    pub struct WhichExecutor {
+        /// Value returned by `which()` regardless of program name.
+        pub which_result: bool,
+    }
+
+    impl Executor for WhichExecutor {
+        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+            panic!("unexpected executor call in test")
+        }
+
+        fn run_in(&self, _: &Path, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+            panic!("unexpected executor call in test")
+        }
+
+        fn run_in_with_env(
+            &self,
+            _: &Path,
+            _: &str,
+            _: &[&str],
+            _: &[(&str, &str)],
+        ) -> anyhow::Result<ExecResult> {
+            panic!("unexpected executor call in test")
+        }
+
+        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+            panic!("unexpected executor call in test")
+        }
+
+        fn which(&self, _: &str) -> bool {
+            self.which_result
+        }
+    }
+
+    /// Build a [`Config`] with all lists empty and `root` set to `root`.
+    #[allow(clippy::expect_used)]
+    pub fn empty_config(root: PathBuf) -> Config {
+        Config {
+            root,
+            profile: Profile {
+                name: "test".to_string(),
+                active_categories: vec!["base".to_string()],
+                excluded_categories: vec![],
+            },
+            packages: vec![],
+            symlinks: vec![],
+            registry: vec![],
+            units: vec![],
+            chmod: vec![],
+            vscode_extensions: vec![],
+            copilot_skills: vec![],
+            manifest: Manifest {
+                excluded_files: vec![],
+            },
+        }
+    }
+
+    /// Build a [`Context`] from the given config, platform and executor.
+    ///
+    /// The logger is leaked intentionally: test contexts are short-lived and
+    /// leaking is harmless in a test binary.
+    pub fn make_context<'a>(
+        config: &'a Config,
+        platform: &'a Platform,
+        executor: &'a dyn Executor,
+    ) -> Context<'a> {
+        Context {
+            config,
+            platform,
+            log: Box::leak(Box::new(Logger::new(false, "test"))),
+            dry_run: false,
+            home: PathBuf::from("/home/test"),
+            executor,
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {

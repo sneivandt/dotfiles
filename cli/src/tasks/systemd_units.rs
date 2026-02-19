@@ -43,3 +43,58 @@ impl Task for ConfigureSystemd {
         )
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::config::systemd_units::SystemdUnit;
+    use crate::platform::{Os, Platform};
+    use crate::tasks::test_helpers::{NoOpExecutor, WhichExecutor, empty_config, make_context};
+    use std::path::PathBuf;
+
+    #[test]
+    fn should_run_false_on_windows() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.units.push(SystemdUnit {
+            name: "dunst.service".to_string(),
+        });
+        let platform = Platform::new(Os::Windows, false);
+        let executor = WhichExecutor { which_result: true };
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!ConfigureSystemd.should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_false_when_units_empty() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = WhichExecutor { which_result: true };
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!ConfigureSystemd.should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_false_when_systemctl_not_found() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.units.push(SystemdUnit {
+            name: "dunst.service".to_string(),
+        });
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor; // which() returns false
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!ConfigureSystemd.should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_true_on_linux_with_units_and_systemctl() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.units.push(SystemdUnit {
+            name: "dunst.service".to_string(),
+        });
+        let platform = Platform::new(Os::Linux, false);
+        let executor = WhichExecutor { which_result: true };
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(ConfigureSystemd.should_run(&ctx));
+    }
+}

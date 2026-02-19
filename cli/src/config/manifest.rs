@@ -39,6 +39,7 @@ pub fn load(path: &Path, excluded_categories: &[String]) -> Result<Manifest> {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use crate::config::test_helpers::write_temp_ini;

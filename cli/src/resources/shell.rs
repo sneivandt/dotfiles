@@ -60,6 +60,7 @@ impl Resource for DefaultShellResource<'_> {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

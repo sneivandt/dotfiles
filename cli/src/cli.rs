@@ -63,6 +63,7 @@ pub struct UninstallOpts {}
 pub struct TestOpts {}
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use clap::CommandFactory;

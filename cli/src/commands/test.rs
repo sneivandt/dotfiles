@@ -345,6 +345,7 @@ fn print_exec_output(result: &crate::exec::ExecResult) {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use std::io::Write;
@@ -358,7 +359,7 @@ mod tests {
         let mut found = Vec::new();
         discover_shell_scripts(dir.path(), &mut found);
         assert_eq!(found.len(), 1);
-        assert_eq!(found.get(0).expect("found 0 should exist"), &script);
+        assert_eq!(found.first().expect("found 0 should exist"), &script);
     }
 
     #[test]

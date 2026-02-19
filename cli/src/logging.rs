@@ -270,6 +270,7 @@ impl Logger {
 
 #[cfg(test)]
 #[allow(unsafe_code)] // set_var/remove_var require unsafe since Rust 1.83
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

@@ -213,6 +213,7 @@ fn cleanup_build_directory(tmp: &std::path::Path) {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

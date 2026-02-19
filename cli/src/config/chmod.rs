@@ -41,6 +41,7 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<ChmodEntry>
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use crate::config::test_helpers::write_temp_ini;

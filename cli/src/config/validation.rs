@@ -463,6 +463,7 @@ pub fn validate_all(config: &super::Config, platform: &Platform) -> Vec<Validati
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use crate::platform::Os;

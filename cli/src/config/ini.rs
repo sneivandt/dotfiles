@@ -265,6 +265,7 @@ pub fn load_filtered_items(path: &Path, active_categories: &[String]) -> Result<
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -274,11 +275,11 @@ mod tests {
         let sections = parse_sections_from_str(content).expect("test data should parse");
         assert_eq!(sections.len(), 1);
         assert_eq!(
-            sections.get(0).expect("section 0 should exist").categories,
+            sections.first().expect("section 0 should exist").categories,
             vec!["base"]
         );
         assert_eq!(
-            sections.get(0).expect("section 0 should exist").items,
+            sections.first().expect("section 0 should exist").items,
             vec!["item1", "item2"]
         );
     }
@@ -289,7 +290,7 @@ mod tests {
         let sections = parse_sections_from_str(content).expect("test data should parse");
         assert_eq!(sections.len(), 2);
         assert_eq!(
-            sections.get(0).expect("section 0 should exist").items,
+            sections.first().expect("section 0 should exist").items,
             vec!["item1"]
         );
         assert_eq!(
@@ -307,7 +308,7 @@ mod tests {
         let content = "[arch,desktop]\nitem1\n";
         let sections = parse_sections_from_str(content).expect("test data should parse");
         assert_eq!(
-            sections.get(0).expect("section 0 should exist").categories,
+            sections.first().expect("section 0 should exist").categories,
             vec!["arch", "desktop"]
         );
     }
@@ -317,7 +318,7 @@ mod tests {
         let content = "[base]\n# comment\nitem1\n";
         let sections = parse_sections_from_str(content).expect("test data should parse");
         assert_eq!(
-            sections.get(0).expect("section 0 should exist").items,
+            sections.first().expect("section 0 should exist").items,
             vec!["item1"]
         );
     }
@@ -327,7 +328,7 @@ mod tests {
         let content = "[base]\n\n\nitem1\n\n";
         let sections = parse_sections_from_str(content).expect("test data should parse");
         assert_eq!(
-            sections.get(0).expect("section 0 should exist").items,
+            sections.first().expect("section 0 should exist").items,
             vec!["item1"]
         );
     }
@@ -347,11 +348,11 @@ mod tests {
         let sections = parse_kv_sections_from_str(content).expect("test data should parse");
         assert_eq!(sections.len(), 1);
         assert_eq!(
-            sections.get(0).expect("section 0 should exist").header,
+            sections.first().expect("section 0 should exist").header,
             "section"
         );
         assert_eq!(
-            sections.get(0).expect("section 0 should exist").entries,
+            sections.first().expect("section 0 should exist").entries,
             vec![
                 ("key1".to_string(), "value1".to_string()),
                 ("key2".to_string(), "value2".to_string()),
@@ -365,10 +366,10 @@ mod tests {
         let sections = parse_kv_sections_from_str(content).expect("test data should parse");
         assert_eq!(
             sections
-                .get(0)
+                .first()
                 .expect("section 0 should exist")
                 .entries
-                .get(0)
+                .first()
                 .expect("entry 0 should exist")
                 .1,
             "val=ue"
@@ -380,7 +381,7 @@ mod tests {
         let content = "[HKCU:\\Console]\nFontSize = 14\n";
         let sections = parse_kv_sections_from_str(content).expect("test data should parse");
         assert_eq!(
-            sections.get(0).expect("section 0 should exist").header,
+            sections.first().expect("section 0 should exist").header,
             "HKCU:\\Console"
         );
     }
@@ -391,10 +392,10 @@ mod tests {
         let sections = parse_kv_sections_from_str(content).expect("test data should parse");
         assert_eq!(
             sections
-                .get(0)
+                .first()
                 .expect("section 0 should exist")
                 .entries
-                .get(0)
+                .first()
                 .expect("entry 0 should exist")
                 .1,
             "value"
@@ -433,7 +434,7 @@ mod tests {
         let filtered = filter_sections_and(&sections, &active);
         assert_eq!(filtered.len(), 2);
         assert_eq!(
-            filtered.get(0).expect("filtered 0 should exist").items,
+            filtered.first().expect("filtered 0 should exist").items,
             vec!["a"]
         );
         assert_eq!(
@@ -464,7 +465,7 @@ mod tests {
         let filtered = filter_sections_or_exclude(&sections, &excluded);
         assert_eq!(filtered.len(), 2);
         assert_eq!(
-            filtered.get(0).expect("filtered 0 should exist").items,
+            filtered.first().expect("filtered 0 should exist").items,
             vec!["a"]
         );
         assert_eq!(
@@ -491,7 +492,7 @@ mod tests {
         let content = "[Base]\nitem1\n";
         let sections = parse_sections_from_str(content).expect("test data should parse");
         assert_eq!(
-            sections.get(0).expect("section 0 should exist").categories,
+            sections.first().expect("section 0 should exist").categories,
             vec!["base"]
         );
     }
@@ -501,7 +502,7 @@ mod tests {
         let content = "[ arch , desktop ]\nitem1\n";
         let sections = parse_sections_from_str(content).expect("test data should parse");
         assert_eq!(
-            sections.get(0).expect("section 0 should exist").categories,
+            sections.first().expect("section 0 should exist").categories,
             vec!["arch", "desktop"]
         );
     }

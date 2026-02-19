@@ -262,6 +262,7 @@ fn format_registry_value(data: &str) -> (String, &'static str) {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

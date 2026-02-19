@@ -60,10 +60,8 @@ impl Resource for VsCodeExtensionResource {
     fn current_state(&self) -> Result<ResourceState> {
         let result = run_code_cmd(&self.code_cmd, &["--list-extensions"])?;
         let installed = result.stdout.to_lowercase();
-        if installed
-            .lines()
-            .any(|l| l.trim() == self.id.to_lowercase())
-        {
+        let id_lower = self.id.to_lowercase();
+        if installed.lines().any(|l| l.trim() == id_lower) {
             Ok(ResourceState::Correct)
         } else {
             Ok(ResourceState::Missing)
@@ -90,7 +88,7 @@ impl Resource for VsCodeExtensionResource {
 pub fn find_code_command() -> Option<String> {
     for cmd in &["code-insiders", "code"] {
         if exec::which(cmd) {
-            return Some((*cmd).to_string());
+            return Some(cmd.to_string());
         }
     }
     None

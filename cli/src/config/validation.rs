@@ -294,6 +294,10 @@ impl<'a> SystemdUnitValidator<'a> {
 
 impl ConfigValidator for SystemdUnitValidator<'_> {
     fn validate(&self, _root: &Path, platform: &Platform) -> Vec<ValidationWarning> {
+        const VALID_UNIT_EXTENSIONS: &[&str] = &[
+            ".service", ".timer", ".socket", ".target", ".path", ".mount",
+        ];
+
         let mut warnings = Vec::new();
 
         // Warn if units are defined on non-systemd platform
@@ -318,12 +322,9 @@ impl ConfigValidator for SystemdUnitValidator<'_> {
             // Validate unit name has proper extension
             // Note: systemd unit extensions are case-sensitive on Linux
             #[allow(clippy::case_sensitive_file_extension_comparisons)]
-            if !unit.name.ends_with(".service")
-                && !unit.name.ends_with(".timer")
-                && !unit.name.ends_with(".socket")
-                && !unit.name.ends_with(".target")
-                && !unit.name.ends_with(".path")
-                && !unit.name.ends_with(".mount")
+            if !VALID_UNIT_EXTENSIONS
+                .iter()
+                .any(|ext| unit.name.ends_with(ext))
             {
                 warnings.push(ValidationWarning::new(
                     "systemd-units.ini",

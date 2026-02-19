@@ -24,7 +24,7 @@ impl Task for ConfigureGit {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let resources = GIT_SETTINGS.iter().map(|(key, value)| {
-            GitConfigResource::new((*key).to_string(), (*value).to_string(), ctx.executor)
+            GitConfigResource::new(key.to_string(), value.to_string(), ctx.executor)
         });
         process_resources(
             ctx,

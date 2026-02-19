@@ -25,12 +25,12 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Package>> {
     for section in &sections {
         let is_aur = section.categories.iter().any(|c| c == "aur");
         // Filter on profile categories only (ignore "aur" marker)
-        let dominated = section
+        let matches_profile = section
             .categories
             .iter()
             .filter(|c| c.as_str() != "aur")
             .all(|cat| active_categories.contains(cat));
-        if !dominated {
+        if !matches_profile {
             continue;
         }
         for item in &section.items {

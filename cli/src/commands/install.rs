@@ -61,7 +61,7 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
             }
             true
         })
-        .map(std::convert::AsRef::as_ref)
+        .map(AsRef::as_ref)
         .collect();
 
     super::run_tasks_to_completion(&tasks_to_run, &ctx, log)
@@ -93,7 +93,8 @@ pub fn resolve_root(global: &GlobalOpts) -> Result<std::path::PathBuf> {
         ];
         for candidate in &candidates {
             if candidate.join("conf").exists() && candidate.join("symlinks").exists() {
-                return Ok(std::fs::canonicalize(candidate)?);
+                return std::fs::canonicalize(candidate)
+                    .context("canonicalizing dotfiles root path");
             }
         }
     }

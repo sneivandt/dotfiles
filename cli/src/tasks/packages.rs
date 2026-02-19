@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states};
 use crate::exec;
@@ -148,7 +148,7 @@ impl Task for InstallParu {
         let tmp = std::env::temp_dir().join("paru-build");
         if tmp.exists() {
             ctx.log.debug("removing previous paru build directory");
-            std::fs::remove_dir_all(&tmp)?;
+            std::fs::remove_dir_all(&tmp).context("removing previous paru build directory")?;
         }
 
         ctx.log.debug("cloning paru-bin from AUR");
@@ -159,7 +159,8 @@ impl Task for InstallParu {
                 "https://aur.archlinux.org/paru-bin.git",
                 &tmp.to_string_lossy(),
             ],
-        )?;
+        )
+        .context("cloning paru-bin from AUR")?;
 
         // Build with parallel compilation
         let nproc = exec::run("nproc", &[]).map_or_else(
@@ -175,7 +176,8 @@ impl Task for InstallParu {
             "makepkg",
             &["-si", "--noconfirm"],
             &[("MAKEFLAGS", &makeflags)],
-        )?;
+        )
+        .context("building paru with makepkg")?;
 
         // Cleanup (ignore errors - best effort)
         std::fs::remove_dir_all(&tmp).ok();

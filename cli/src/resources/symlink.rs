@@ -121,7 +121,13 @@ fn paths_equal(a: &Path, b: &Path) -> bool {
 fn create_symlink(target: &Path, link: &Path) -> Result<()> {
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink(target, link)?;
+        std::os::unix::fs::symlink(target, link).with_context(|| {
+            format!(
+                "creating symlink {} -> {}",
+                link.display(),
+                target.display()
+            )
+        })?;
     }
 
     #[cfg(windows)]

@@ -27,13 +27,12 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<ChmodEntry>
     let mut entries = Vec::new();
     for section in &filtered {
         for item in &section.items {
-            let parts: Vec<&str> = item.splitn(2, ' ').collect();
-            if parts.len() != 2 {
+            let Some((mode, path)) = item.split_once(' ') else {
                 bail!("invalid chmod entry: {item}");
-            }
+            };
             entries.push(ChmodEntry {
-                mode: parts[0].to_string(),
-                path: parts[1].to_string(),
+                mode: mode.to_string(),
+                path: path.to_string(),
             });
         }
     }

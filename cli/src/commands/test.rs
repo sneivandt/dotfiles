@@ -29,7 +29,7 @@ pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Logger) -> Result<()> {
         Box::new(RunPSScriptAnalyzer),
     ];
 
-    let task_refs: Vec<&dyn Task> = tasks.iter().map(std::convert::AsRef::as_ref).collect();
+    let task_refs: Vec<&dyn Task> = tasks.iter().map(AsRef::as_ref).collect();
     super::run_tasks_to_completion(&task_refs, &ctx, log)
 }
 
@@ -155,11 +155,11 @@ impl Task for RunShellcheck {
             .info(&format!("checking {} shell scripts", scripts.len()));
 
         let mut args: Vec<&str> = vec!["--severity=warning"];
-        let paths: Vec<String> = scripts
+        let paths: Vec<_> = scripts
             .iter()
             .filter_map(|p| p.to_str().map(String::from))
             .collect();
-        args.extend(paths.iter().map(std::string::String::as_str));
+        args.extend(paths.iter().map(String::as_str));
 
         let result = ctx.executor.run_unchecked("shellcheck", &args)?;
         if result.success {

@@ -210,15 +210,8 @@ fn parse_raw_header(line: &str) -> Option<String> {
 
 /// Parse a `key = value` line, stripping inline comments from the value.
 fn parse_kv_line(line: &str) -> Option<(String, String)> {
-    let parts: Vec<&str> = line.splitn(2, '=').collect();
-    if parts.len() == 2 {
-        Some((
-            parts[0].trim().to_string(),
-            strip_inline_comment(parts[1].trim()),
-        ))
-    } else {
-        None
-    }
+    let (key, value) = line.split_once('=')?;
+    Some((key.trim().to_string(), strip_inline_comment(value.trim())))
 }
 
 /// Strip inline comments (`#` preceded by whitespace) from a value.

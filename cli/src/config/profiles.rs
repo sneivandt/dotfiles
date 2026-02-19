@@ -120,9 +120,9 @@ pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profi
     // Auto-add platform-detected categories
     for category in &["linux", "windows", "arch"] {
         if !platform.excludes_category(category) {
-            active.push((*category).to_string());
+            active.push(category.to_string());
         } else if !excluded.iter().any(|c| c == category) {
-            excluded.push((*category).to_string());
+            excluded.push(category.to_string());
         }
     }
 
@@ -166,11 +166,17 @@ pub fn read_persisted(root: &Path) -> Option<String> {
 ///
 /// Returns an error if the git command fails.
 pub fn persist(root: &Path, name: &str) -> Result<()> {
-    std::process::Command::new("git")
+    let output = std::process::Command::new("git")
         .args(["config", "--local", "dotfiles.profile", name])
         .current_dir(root)
         .output()
         .context("persisting profile to git config")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git config failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
     Ok(())
 }
 

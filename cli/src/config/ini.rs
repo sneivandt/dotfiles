@@ -107,7 +107,9 @@ pub fn parse_kv_sections(path: &Path) -> Result<Vec<KvSection>> {
 ///
 /// # Errors
 ///
-/// Returns an error if the content cannot be parsed.
+/// Returns an error if:
+/// - A key-value pair is malformed (missing `=` or invalid format)
+/// - An entry appears outside of a section header
 pub fn parse_kv_sections_from_str(content: &str) -> Result<Vec<KvSection>> {
     let mut sections = Vec::new();
     let mut current: Option<KvSection> = None;
@@ -246,7 +248,9 @@ fn read_file(path: &Path) -> Result<String> {
 ///
 /// # Errors
 ///
-/// Returns an error if the file exists but cannot be parsed.
+/// Returns an error if:
+/// - The file exists but cannot be read
+/// - An item appears outside of a section header
 pub fn load_filtered_items(path: &Path, active_categories: &[String]) -> Result<Vec<String>> {
     let sections = parse_sections(path)?;
     let filtered = filter_sections_and(&sections, active_categories);

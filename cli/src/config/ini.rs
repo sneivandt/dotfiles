@@ -228,14 +228,10 @@ fn parse_kv_line(line: &str) -> Option<(String, String)> {
 
 /// Strip inline comments (`#` preceded by whitespace) from a value.
 fn strip_inline_comment(value: &str) -> String {
-    value.find(" #").or_else(|| value.find("\t#")).map_or_else(
-        || value.to_string(),
-        |idx| {
-            value
-                .get(..idx)
-                .map_or_else(|| value.to_string(), |s| s.trim().to_string())
-        },
-    )
+    value
+        .find(" #")
+        .or_else(|| value.find("\t#"))
+        .map_or_else(|| value.to_string(), |idx| value[..idx].trim().to_string())
 }
 
 fn read_file(path: &Path) -> Result<String> {

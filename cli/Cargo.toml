@@ -12,14 +12,10 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
-chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
-dirs = "6"
 enable-ansi-support = "0.2"
 
 [dev-dependencies]
-assert_cmd = "2"
-predicates = "3"
 tempfile = "3"
 
 [lints.clippy]

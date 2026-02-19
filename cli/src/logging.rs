@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]
@@ -36,8 +37,9 @@ pub struct Logger {
 fn log_file_path() -> Option<PathBuf> {
     let cache_dir = std::env::var("XDG_CACHE_HOME").map_or_else(
         |_| {
-            dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
+            std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .map_or_else(|_| PathBuf::from("."), PathBuf::from)
                 .join(".cache")
         },
         PathBuf::from,
@@ -45,6 +47,49 @@ fn log_file_path() -> Option<PathBuf> {
     let dir = cache_dir.join("dotfiles");
     fs::create_dir_all(&dir).ok()?;
     Some(dir.join("install.log"))
+}
+
+/// Convert days since the Unix epoch to `(year, month, day)` in the proleptic
+/// Gregorian calendar.  Algorithm from Howard Hinnant's *date algorithms*.
+const fn days_to_ymd(days: u64) -> (u64, u64, u64) {
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+/// Format the current UTC time as `YYYY-MM-DD HH:MM:SS`.
+fn format_utc_datetime() -> String {
+    let secs = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let (y, mo, d) = days_to_ymd(secs / 86400);
+    let day_secs = secs % 86400;
+    let h = day_secs / 3600;
+    let mi = (day_secs % 3600) / 60;
+    let s = day_secs % 60;
+    format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{s:02}")
+}
+
+/// Format the current UTC time as `HH:MM:SS`.
+fn format_utc_time() -> String {
+    let secs = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let day_secs = secs % 86400;
+    let h = day_secs / 3600;
+    let m = (day_secs % 3600) / 60;
+    let s = day_secs % 60;
+    format!("{h:02}:{m:02}:{s:02}")
 }
 
 /// Strip ANSI escape sequences from a string.
@@ -91,7 +136,7 @@ impl Logger {
                 "==========================================\n\
                  Dotfiles {version} {}\n\
                  ==========================================\n",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                format_utc_datetime(),
             );
             // Truncate and write header (new run = fresh log)
             fs::write(path, header).ok(); // Intentionally ignore: logging failure is non-fatal
@@ -113,7 +158,7 @@ impl Logger {
         if let Some(ref path) = self.log_file
             && let Ok(mut f) = fs::OpenOptions::new().append(true).open(path)
         {
-            let ts = chrono::Local::now().format("%H:%M:%S");
+            let ts = format_utc_time();
             let clean = strip_ansi(msg);
             let line = match level {
                 "STG" => format!("[{ts}] ==> {clean}"),

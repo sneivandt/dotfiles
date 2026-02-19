@@ -203,6 +203,32 @@ impl ConfigValidator for RegistryValidator<'_> {
     }
 }
 
+/// Validates an octal mode string (e.g., "644", "0755").
+///
+/// Returns `Some(error_message)` if the mode is invalid, or `None` if valid.
+fn validate_octal_mode(mode: &str) -> Option<String> {
+    if !mode.chars().all(|c| c.is_ascii_digit()) {
+        return Some(format!(
+            "invalid octal mode '{}': must contain only digits",
+            mode
+        ));
+    }
+
+    if mode.len() < 3 || mode.len() > 4 {
+        return Some(format!(
+            "invalid mode length '{}': must be 3 or 4 digits",
+            mode
+        ));
+    }
+
+    // Check each digit is valid octal (0-7)
+    if let Some(c) = mode.chars().find(|&c| c > '7') {
+        return Some(format!("invalid octal digit '{}' in mode '{}'", c, mode));
+    }
+
+    None
+}
+
 /// Validator for chmod configurations.
 pub struct ChmodValidator<'a> {
     entries: &'a [super::chmod::ChmodEntry],
@@ -230,36 +256,8 @@ impl ConfigValidator for ChmodValidator<'_> {
 
         for entry in self.entries {
             // Validate mode is octal (3 or 4 digits)
-            if !entry.mode.chars().all(|c| c.is_ascii_digit()) {
-                warnings.push(ValidationWarning::new(
-                    "chmod.ini",
-                    &entry.path,
-                    format!(
-                        "invalid octal mode '{}': must contain only digits",
-                        entry.mode
-                    ),
-                ));
-            } else if entry.mode.len() < 3 || entry.mode.len() > 4 {
-                warnings.push(ValidationWarning::new(
-                    "chmod.ini",
-                    &entry.path,
-                    format!(
-                        "invalid mode length '{}': must be 3 or 4 digits",
-                        entry.mode
-                    ),
-                ));
-            } else {
-                // Check each digit is valid octal (0-7)
-                for c in entry.mode.chars() {
-                    if c > '7' {
-                        warnings.push(ValidationWarning::new(
-                            "chmod.ini",
-                            &entry.path,
-                            format!("invalid octal digit '{}' in mode '{}'", c, entry.mode),
-                        ));
-                        break;
-                    }
-                }
+            if let Some(error) = validate_octal_mode(&entry.mode) {
+                warnings.push(ValidationWarning::new("chmod.ini", &entry.path, error));
             }
 
             // Check for absolute paths (should be relative to $HOME)
@@ -620,5 +618,44 @@ mod tests {
 
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("publisher.name"));
+    }
+
+    #[test]
+    fn validate_octal_mode_accepts_valid_modes() {
+        assert_eq!(validate_octal_mode("644"), None);
+        assert_eq!(validate_octal_mode("755"), None);
+        assert_eq!(validate_octal_mode("0644"), None);
+        assert_eq!(validate_octal_mode("0755"), None);
+        assert_eq!(validate_octal_mode("600"), None);
+        assert_eq!(validate_octal_mode("777"), None);
+    }
+
+    #[test]
+    fn validate_octal_mode_rejects_non_digits() {
+        let result = validate_octal_mode("abc");
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("must contain only digits"));
+    }
+
+    #[test]
+    fn validate_octal_mode_rejects_invalid_length() {
+        let result = validate_octal_mode("12");
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("must be 3 or 4 digits"));
+
+        let result = validate_octal_mode("12345");
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("must be 3 or 4 digits"));
+    }
+
+    #[test]
+    fn validate_octal_mode_rejects_invalid_octal_digits() {
+        let result = validate_octal_mode("888");
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("invalid octal digit '8'"));
+
+        let result = validate_octal_mode("799");
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("invalid octal digit '9'"));
     }
 }

@@ -111,7 +111,7 @@ pub fn which(program: &str) -> bool {
 /// Implement this trait to provide mock executors for unit tests.
 /// The [`SystemExecutor`] implementation delegates to the real free functions.
 #[allow(dead_code)] // run_in and run_in_with_env complete the trait contract
-pub trait Executor {
+pub trait Executor: std::fmt::Debug {
     /// Execute a command, bailing on non-zero exit.
     ///
     /// # Errors

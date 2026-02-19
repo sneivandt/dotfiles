@@ -4,6 +4,7 @@ use super::{Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
 
 /// A git config entry resource that can be checked and applied.
+#[derive(Debug)]
 pub struct GitConfigResource<'a> {
     /// Config key (e.g., "core.autocrlf").
     pub key: String,
@@ -11,16 +12,6 @@ pub struct GitConfigResource<'a> {
     pub desired_value: String,
     /// Executor for running git commands.
     executor: &'a dyn Executor,
-}
-
-impl std::fmt::Debug for GitConfigResource<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GitConfigResource")
-            .field("key", &self.key)
-            .field("desired_value", &self.desired_value)
-            .field("executor", &"<dyn Executor>")
-            .finish()
-    }
 }
 
 impl<'a> GitConfigResource<'a> {

@@ -7,6 +7,7 @@ use anyhow::Result;
 use crate::cli::GlobalOpts;
 use crate::config::Config;
 use crate::config::profiles;
+use crate::exec::Executor;
 use crate::logging::Logger;
 use crate::platform::Platform;
 use crate::tasks::{self, Context, Task};
@@ -28,12 +29,13 @@ impl CommandSetup {
     ///
     /// Returns an error if the root directory cannot be determined, the profile
     /// cannot be resolved, or any configuration file fails to parse.
-    pub fn init(global: &GlobalOpts, log: &Logger) -> Result<Self> {
+    pub fn init(global: &GlobalOpts, log: &Logger, executor: &dyn Executor) -> Result<Self> {
         let platform = Platform::detect();
         let root = install::resolve_root(global)?;
 
         log.stage("Resolving profile");
-        let profile = profiles::resolve_from_args(global.profile.as_deref(), &root, &platform)?;
+        let profile =
+            profiles::resolve_from_args(global.profile.as_deref(), &root, &platform, executor)?;
         log.info(&format!("profile: {}", profile.name));
 
         log.stage("Loading configuration");

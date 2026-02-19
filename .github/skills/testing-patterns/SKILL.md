@@ -58,6 +58,28 @@ fn target_for_config() {
 }
 ```
 
+**Resources** — construct with `SystemExecutor` for unit tests that don't
+need mocking. Resources that shell out take `&dyn Executor`:
+```rust
+#[test]
+fn description_includes_manager() {
+    let executor = crate::exec::SystemExecutor;
+    let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+    assert_eq!(resource.description(), "git (pacman)");
+}
+
+#[test]
+fn from_entry_copies_name() {
+    let executor = crate::exec::SystemExecutor;
+    let entry = SystemdUnit { name: "dunst.service".to_string() };
+    let resource = SystemdUnitResource::from_entry(&entry, &executor);
+    assert_eq!(resource.name, "dunst.service");
+}
+```
+
+Resources that only do filesystem operations (e.g., `SymlinkResource`) do not
+need an executor.
+
 **CLI** — test parsing with `Cli::parse_from()`:
 ```rust
 #[test]
@@ -87,4 +109,5 @@ GitHub Actions: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt -- --che
 
 1. Every new module must include `#[cfg(test)] mod tests`
 2. Test pure functions; use `Platform::new()` and string parsers to avoid I/O
-3. Run `cargo clippy` and `cargo fmt` before committing
+3. Use `SystemExecutor` when constructing resources in tests that only check descriptions or static state
+4. Run `cargo clippy` and `cargo fmt` before committing

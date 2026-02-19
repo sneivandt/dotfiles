@@ -61,36 +61,38 @@ Runs only on Arch with `paru` installed. Uses `paru -S --needed --noconfirm`.
 
 ## Implementation Patterns
 
-### Linux (pacman)
+### Resource-Based Package Installation
+
+Packages use `PackageResource` which takes an executor for running package manager commands:
+
 ```rust
-fn install_pacman(ctx: &Context, packages: &[&Package]) -> Result<TaskResult> {
-    if !exec::which("pacman") {
-        return Ok(TaskResult::Skipped("pacman not found".to_string()));
-    }
-    let names: Vec<&str> = packages.iter().map(|p| p.name.as_str()).collect();
-    if ctx.dry_run {
-        ctx.log.dry_run(&format!("sudo pacman -S --needed --noconfirm {}", names.join(" ")));
-        return Ok(TaskResult::DryRun);
-    }
-    exec::run("sudo", &["pacman", "-S", "--needed", "--noconfirm", ...])?;
-    Ok(TaskResult::Ok)
-}
+let installed = get_installed_packages(manager, ctx.executor)?;
+let resource_states = packages.iter().map(|pkg| {
+    let resource = PackageResource::new(pkg.name.clone(), manager, ctx.executor);
+    let state = resource.state_from_installed(&installed);
+    (resource, state)
+});
+process_resource_states(ctx, resource_states, &opts)?;
 ```
 
-### Windows (winget)
-Iterates packages individually with `winget install --id <id> --exact`. Uses `exec::run_unchecked` since winget returns non-zero for already-installed packages.
+### Batch State Checking
+
+For efficiency, all installed packages are queried once via `get_installed_packages(manager, executor)`,
+then each resource checks membership via `state_from_installed(&installed)` (a `HashSet` lookup).
+This avoids running one command per package.
 
 ## Key Patterns
 
-- **Batch install**: Collect all package names and pass to a single pacman call
+- **Batch state check**: Query all installed packages once, then check each via `HashSet` lookup
+- **Executor injection**: `PackageResource` and `get_installed_packages()` take `&dyn Executor`
 - **Idempotent**: `--needed` flag skips already-installed packages
-- **Guard with `exec::which`**: Skip gracefully if package manager not found
+- **Guard with `executor.which()`**: Skip gracefully if package manager not found
 - **No sudo for paru**: paru manages elevation internally
 - **`run_unchecked` for winget**: Allows handling non-zero exits without failing the task
 
 ## Rules
 
-1. Always check `exec::which("pacman")` / `exec::which("winget")` before calling
+1. Always check `ctx.executor.which("pacman")` / `ctx.executor.which("winget")` before calling
 2. Use `--needed --noconfirm` for pacman to ensure idempotency
 3. AUR packages must be in `[*,aur]` sections to be tagged correctly
 4. Use exact package IDs on Windows (case-sensitive)

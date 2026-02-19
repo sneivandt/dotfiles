@@ -16,10 +16,7 @@ pub struct SystemdUnit {
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<SystemdUnit>> {
-    Ok(ini::load_filtered_items(path, active_categories)?
-        .into_iter()
-        .map(|name| SystemdUnit { name })
-        .collect())
+    ini::load_filtered_as(path, active_categories, |name| SystemdUnit { name })
 }
 
 #[cfg(test)]

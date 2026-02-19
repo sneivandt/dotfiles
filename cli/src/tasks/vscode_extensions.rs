@@ -19,7 +19,7 @@ impl Task for InstallVsCodeExtensions {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let Some(cmd) = find_code_command() else {
+        let Some(cmd) = find_code_command(ctx.executor) else {
             ctx.log
                 .debug("neither code-insiders nor code found in PATH");
             return Ok(TaskResult::Skipped("VS Code CLI not found".to_string()));
@@ -30,10 +30,10 @@ impl Task for InstallVsCodeExtensions {
             "batch-checking {} extensions with a single query",
             ctx.config.vscode_extensions.len()
         ));
-        let installed = get_installed_extensions(&cmd)?;
+        let installed = get_installed_extensions(&cmd, ctx.executor)?;
 
         let resource_states = ctx.config.vscode_extensions.iter().map(|ext| {
-            let resource = VsCodeExtensionResource::new(ext.id.clone(), cmd.clone());
+            let resource = VsCodeExtensionResource::new(ext.id.clone(), cmd.clone(), ctx.executor);
             let state = resource.state_from_installed(&installed);
             (resource, state)
         });

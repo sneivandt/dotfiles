@@ -3,22 +3,28 @@ use std::collections::HashSet;
 use anyhow::Result;
 
 use super::{Resource, ResourceChange, ResourceState};
-use crate::exec;
+use crate::exec::{self, Executor};
 
 /// A VS Code extension resource that can be checked and installed.
-#[derive(Debug, Clone)]
-pub struct VsCodeExtensionResource {
+#[derive(Debug)]
+pub struct VsCodeExtensionResource<'a> {
     /// Extension identifier (e.g. "github.copilot-chat").
     pub id: String,
     /// VS Code CLI command to use (e.g. "code-insiders" or "code").
     pub code_cmd: String,
+    /// Executor for running VS Code CLI commands.
+    executor: &'a dyn Executor,
 }
 
-impl VsCodeExtensionResource {
+impl<'a> VsCodeExtensionResource<'a> {
     /// Create a new VS Code extension resource.
     #[must_use]
-    pub const fn new(id: String, code_cmd: String) -> Self {
-        Self { id, code_cmd }
+    pub const fn new(id: String, code_cmd: String, executor: &'a dyn Executor) -> Self {
+        Self {
+            id,
+            code_cmd,
+            executor,
+        }
     }
 
     /// Determine the resource state from a pre-fetched set of installed extension IDs.
@@ -43,8 +49,11 @@ impl VsCodeExtensionResource {
 ///
 /// Returns an error if the VS Code command fails to execute, cannot be found,
 /// or exits with a non-zero status code.
-pub fn get_installed_extensions(code_cmd: &str) -> Result<HashSet<String>> {
-    let result = run_code_cmd(code_cmd, &["--list-extensions"])?;
+pub fn get_installed_extensions(
+    code_cmd: &str,
+    executor: &dyn Executor,
+) -> Result<HashSet<String>> {
+    let result = run_code_cmd(code_cmd, &["--list-extensions"], executor)?;
     let mut set = HashSet::new();
     if result.success {
         for line in result.stdout.lines() {
@@ -57,13 +66,13 @@ pub fn get_installed_extensions(code_cmd: &str) -> Result<HashSet<String>> {
     Ok(set)
 }
 
-impl Resource for VsCodeExtensionResource {
+impl Resource for VsCodeExtensionResource<'_> {
     fn description(&self) -> String {
         self.id.clone()
     }
 
     fn current_state(&self) -> Result<ResourceState> {
-        let result = run_code_cmd(&self.code_cmd, &["--list-extensions"])?;
+        let result = run_code_cmd(&self.code_cmd, &["--list-extensions"], self.executor)?;
         let installed = result.stdout.to_lowercase();
         let id_lower = self.id.to_lowercase();
         if installed.lines().any(|l| l.trim() == id_lower) {
@@ -77,6 +86,7 @@ impl Resource for VsCodeExtensionResource {
         let result = run_code_cmd(
             &self.code_cmd,
             &["--install-extension", &self.id, "--force"],
+            self.executor,
         )?;
         if result.success {
             Ok(ResourceChange::Applied)
@@ -90,9 +100,9 @@ impl Resource for VsCodeExtensionResource {
 
 /// Find the VS Code CLI command, preferring code-insiders.
 #[must_use]
-pub fn find_code_command() -> Option<String> {
+pub fn find_code_command(executor: &dyn Executor) -> Option<String> {
     for cmd in &["code-insiders", "code"] {
-        if exec::which(cmd) {
+        if executor.which(cmd) {
             return Some(cmd.to_string());
         }
     }
@@ -104,17 +114,17 @@ pub fn find_code_command() -> Option<String> {
 /// # Errors
 ///
 /// Returns an error if the command execution fails or if the command cannot be found.
-fn run_code_cmd(cmd: &str, args: &[&str]) -> Result<exec::ExecResult> {
+fn run_code_cmd(cmd: &str, args: &[&str], executor: &dyn Executor) -> Result<exec::ExecResult> {
     #[cfg(target_os = "windows")]
     {
         let mut full_args = vec!["/C", cmd];
         full_args.extend(args);
-        exec::run_unchecked("cmd", &full_args)
+        executor.run_unchecked("cmd", &full_args)
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        exec::run_unchecked(cmd, args)
+        executor.run_unchecked(cmd, args)
     }
 }
 
@@ -125,15 +135,23 @@ mod tests {
 
     #[test]
     fn description_returns_extension_id() {
-        let resource =
-            VsCodeExtensionResource::new("github.copilot-chat".to_string(), "code".to_string());
+        let executor = crate::exec::SystemExecutor;
+        let resource = VsCodeExtensionResource::new(
+            "github.copilot-chat".to_string(),
+            "code".to_string(),
+            &executor,
+        );
         assert_eq!(resource.description(), "github.copilot-chat");
     }
 
     #[test]
     fn state_from_installed_correct() {
-        let resource =
-            VsCodeExtensionResource::new("github.copilot-chat".to_string(), "code".to_string());
+        let executor = crate::exec::SystemExecutor;
+        let resource = VsCodeExtensionResource::new(
+            "github.copilot-chat".to_string(),
+            "code".to_string(),
+            &executor,
+        );
         let mut installed = HashSet::new();
         installed.insert("github.copilot-chat".to_string());
         assert_eq!(
@@ -144,8 +162,12 @@ mod tests {
 
     #[test]
     fn state_from_installed_case_insensitive() {
-        let resource =
-            VsCodeExtensionResource::new("GitHub.Copilot-Chat".to_string(), "code".to_string());
+        let executor = crate::exec::SystemExecutor;
+        let resource = VsCodeExtensionResource::new(
+            "GitHub.Copilot-Chat".to_string(),
+            "code".to_string(),
+            &executor,
+        );
         let mut installed = HashSet::new();
         installed.insert("github.copilot-chat".to_string()); // lowercase in set
         assert_eq!(
@@ -156,8 +178,12 @@ mod tests {
 
     #[test]
     fn state_from_installed_missing() {
-        let resource =
-            VsCodeExtensionResource::new("github.copilot-chat".to_string(), "code".to_string());
+        let executor = crate::exec::SystemExecutor;
+        let resource = VsCodeExtensionResource::new(
+            "github.copilot-chat".to_string(),
+            "code".to_string(),
+            &executor,
+        );
         let installed = HashSet::new();
         assert_eq!(
             resource.state_from_installed(&installed),

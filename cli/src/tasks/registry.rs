@@ -21,7 +21,7 @@ impl Task for ApplyRegistry {
             .config
             .registry
             .iter()
-            .map(RegistryResource::from_entry)
+            .map(|entry| RegistryResource::from_entry(entry, ctx.executor))
             .collect();
 
         ctx.log.debug(&format!(
@@ -29,7 +29,7 @@ impl Task for ApplyRegistry {
             resources.len()
         ));
 
-        let cached = batch_check_values(&resources)?;
+        let cached = batch_check_values(&resources, ctx.executor)?;
 
         let resource_states = resources.into_iter().map(|r| {
             let key = format!("{}\\{}", r.key_path, r.value_name);

@@ -260,6 +260,27 @@ pub fn load_filtered_items(path: &Path, active_categories: &[String]) -> Result<
         .collect())
 }
 
+/// Load items from an INI file, filtered by active categories (AND logic),
+/// and map each string into a typed value via a constructor function.
+///
+/// This is a convenience for config files where each item is a single-field
+/// struct (e.g., symlinks, systemd-units, vscode extensions, copilot skills).
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be read, or if an item
+/// appears outside of a section header.
+pub fn load_filtered_as<T>(
+    path: &Path,
+    active_categories: &[String],
+    constructor: fn(String) -> T,
+) -> Result<Vec<T>> {
+    Ok(load_filtered_items(path, active_categories)?
+        .into_iter()
+        .map(constructor)
+        .collect())
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {

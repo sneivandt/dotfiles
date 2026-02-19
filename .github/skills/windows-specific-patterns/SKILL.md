@@ -49,9 +49,18 @@ EnableAutoTray = 0
 
 The registry task in `cli/src/tasks/registry.rs`:
 1. Parses `conf/registry.ini` into path → key/value maps
-2. For each entry, compares the current registry value with the desired value
-3. Skips entries that already match (idempotent)
-4. In dry-run mode, logs what would change without writing
+2. Batch-checks all current values via `batch_check_values(&resources, ctx.executor)`
+3. Compares each entry’s current value with the desired value
+4. Skips entries that already match (idempotent)
+5. In dry-run mode, logs what would change without writing
+
+`RegistryResource` takes `&dyn Executor` for running PowerShell commands:
+```rust
+let resources: Vec<_> = ctx.config.registry.iter()
+    .map(|entry| RegistryResource::from_entry(entry, ctx.executor))
+    .collect();
+let cached = batch_check_values(&resources, ctx.executor)?;
+```
 
 ## Symlink Differences on Windows
 

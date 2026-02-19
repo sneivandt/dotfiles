@@ -2,6 +2,7 @@ use anyhow::{Context as _, Result, bail};
 use std::io::{self, Write};
 use std::path::Path;
 
+use crate::exec::Executor;
 use crate::platform::Platform;
 
 /// A resolved profile with its active and excluded categories.
@@ -147,20 +148,12 @@ pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profi
 
 /// Try to read the persisted profile from git config.
 #[must_use]
-pub fn read_persisted(root: &Path) -> Option<String> {
-    let output = std::process::Command::new("git")
-        .args(["config", "--local", "dotfiles.profile"])
-        .current_dir(root)
-        .output()
+pub fn read_persisted(root: &Path, executor: &dyn Executor) -> Option<String> {
+    let result = executor
+        .run_in(root, "git", &["config", "--local", "dotfiles.profile"])
         .ok()?;
-
-    if output.status.success() {
-        let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !name.is_empty() {
-            return Some(name);
-        }
-    }
-    None
+    let name = result.stdout.trim().to_string();
+    if name.is_empty() { None } else { Some(name) }
 }
 
 /// Persist the profile selection to git config.
@@ -168,18 +161,14 @@ pub fn read_persisted(root: &Path) -> Option<String> {
 /// # Errors
 ///
 /// Returns an error if the git command fails.
-pub fn persist(root: &Path, name: &str) -> Result<()> {
-    let output = std::process::Command::new("git")
-        .args(["config", "--local", "dotfiles.profile", name])
-        .current_dir(root)
-        .output()
+pub fn persist(root: &Path, name: &str, executor: &dyn Executor) -> Result<()> {
+    executor
+        .run_in(
+            root,
+            "git",
+            &["config", "--local", "dotfiles.profile", name],
+        )
         .context("persisting profile to git config")?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "git config failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
-    }
     Ok(())
 }
 
@@ -232,12 +221,13 @@ pub fn resolve_from_args(
     cli_profile: Option<&str>,
     root: &Path,
     platform: &Platform,
+    executor: &dyn Executor,
 ) -> Result<Profile> {
     let conf_dir = root.join("conf");
 
     let name = if let Some(name) = cli_profile {
         name.to_string()
-    } else if let Some(name) = read_persisted(root) {
+    } else if let Some(name) = read_persisted(root, executor) {
         name
     } else {
         prompt_interactive(platform)?
@@ -250,7 +240,7 @@ pub fn resolve_from_args(
     // Note: dry_run is not available here, so we always persist. The profile
     // selection itself is not a destructive operation — it only records the
     // user's choice for subsequent runs.
-    persist(root, &name)?;
+    persist(root, &name, executor)?;
 
     Ok(profile)
 }

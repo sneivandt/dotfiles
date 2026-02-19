@@ -4,7 +4,7 @@ use std::fmt::Write;
 use anyhow::{Context as _, Result};
 
 use super::{Resource, ResourceChange, ResourceState};
-use crate::exec;
+use crate::exec::Executor;
 
 /// Sentinel value used when a registry key/value does not exist.
 const NOT_FOUND_SENTINEL: &str = "::NOT_FOUND::";
@@ -23,34 +23,46 @@ fn validate_registry_path(path: &str) -> Result<()> {
 }
 
 /// A Windows registry resource that can be checked and applied.
-#[derive(Debug, Clone)]
-pub struct RegistryResource {
+#[derive(Debug)]
+pub struct RegistryResource<'a> {
     /// Registry key path (e.g., "HKCU:\Console").
     pub key_path: String,
     /// Value name.
     pub value_name: String,
     /// Value data (as string).
     pub value_data: String,
+    /// Executor for running `PowerShell` commands.
+    executor: &'a dyn Executor,
 }
 
-impl RegistryResource {
+impl<'a> RegistryResource<'a> {
     /// Create a new registry resource.
     #[must_use]
-    pub const fn new(key_path: String, value_name: String, value_data: String) -> Self {
+    pub const fn new(
+        key_path: String,
+        value_name: String,
+        value_data: String,
+        executor: &'a dyn Executor,
+    ) -> Self {
         Self {
             key_path,
             value_name,
             value_data,
+            executor,
         }
     }
 
     /// Create from a config entry.
     #[must_use]
-    pub fn from_entry(entry: &crate::config::registry::RegistryEntry) -> Self {
+    pub fn from_entry(
+        entry: &crate::config::registry::RegistryEntry,
+        executor: &'a dyn Executor,
+    ) -> Self {
         Self::new(
             entry.key_path.clone(),
             entry.value_name.clone(),
             entry.value_data.clone(),
+            executor,
         )
     }
 
@@ -85,6 +97,7 @@ impl RegistryResource {
 /// the output cannot be parsed correctly.
 pub fn batch_check_values(
     resources: &[RegistryResource],
+    executor: &dyn Executor,
 ) -> Result<HashMap<String, Option<String>>> {
     if resources.is_empty() {
         return Ok(HashMap::new());
@@ -110,7 +123,7 @@ pub fn batch_check_values(
         );
     }
 
-    let result = exec::run_unchecked("powershell", &["-NoProfile", "-Command", &script])?;
+    let result = executor.run_unchecked("powershell", &["-NoProfile", "-Command", &script])?;
 
     let mut map = HashMap::with_capacity(resources.len());
 
@@ -141,7 +154,7 @@ pub fn batch_check_values(
     Ok(map)
 }
 
-impl Resource for RegistryResource {
+impl Resource for RegistryResource<'_> {
     fn description(&self) -> String {
         format!(
             "{}\\{} = {}",
@@ -151,7 +164,7 @@ impl Resource for RegistryResource {
 
     fn current_state(&self) -> Result<ResourceState> {
         // Check current registry value
-        let current_value = check_registry_value(&self.key_path, &self.value_name)?;
+        let current_value = check_registry_value(&self.key_path, &self.value_name, self.executor)?;
 
         current_value.map_or_else(
             || Ok(ResourceState::Missing),
@@ -166,8 +179,13 @@ impl Resource for RegistryResource {
     }
 
     fn apply(&self) -> Result<ResourceChange> {
-        set_registry_value(&self.key_path, &self.value_name, &self.value_data)
-            .with_context(|| format!("set registry: {}\\{}", self.key_path, self.value_name))?;
+        set_registry_value(
+            &self.key_path,
+            &self.value_name,
+            &self.value_data,
+            self.executor,
+        )
+        .with_context(|| format!("set registry: {}\\{}", self.key_path, self.value_name))?;
 
         Ok(ResourceChange::Applied)
     }
@@ -175,7 +193,11 @@ impl Resource for RegistryResource {
 
 /// Check a single registry value using `PowerShell`.
 /// Returns `Some(value)` if found, `None` if not found or on error.
-fn check_registry_value(key_path: &str, value_name: &str) -> Result<Option<String>> {
+fn check_registry_value(
+    key_path: &str,
+    value_name: &str,
+    executor: &dyn Executor,
+) -> Result<Option<String>> {
     validate_registry_path(key_path)?;
     validate_registry_path(value_name)?;
 
@@ -188,7 +210,7 @@ fn check_registry_value(key_path: &str, value_name: &str) -> Result<Option<Strin
          if ($null -eq $v) {{ Write-Output '{NOT_FOUND_SENTINEL}' }} else {{ Write-Output $v }}"
     );
 
-    let result = exec::run_unchecked("powershell", &["-NoProfile", "-Command", &script])?;
+    let result = executor.run_unchecked("powershell", &["-NoProfile", "-Command", &script])?;
 
     if !result.success {
         return Ok(None);
@@ -203,7 +225,12 @@ fn check_registry_value(key_path: &str, value_name: &str) -> Result<Option<Strin
 }
 
 /// Set a registry value using `PowerShell`.
-fn set_registry_value(key_path: &str, value_name: &str, value_data: &str) -> Result<()> {
+fn set_registry_value(
+    key_path: &str,
+    value_name: &str,
+    value_data: &str,
+    executor: &dyn Executor,
+) -> Result<()> {
     validate_registry_path(key_path)?;
     validate_registry_path(value_name)?;
 
@@ -216,7 +243,7 @@ fn set_registry_value(key_path: &str, value_name: &str, value_data: &str) -> Res
          Set-ItemProperty -Path '{key}' -Name '{name}' -Value {ps_value} -Type {ps_type}"
     );
 
-    let _result = exec::run("powershell", &["-NoProfile", "-Command", &script])?;
+    let _result = executor.run("powershell", &["-NoProfile", "-Command", &script])?;
 
     Ok(())
 }
@@ -268,10 +295,12 @@ mod tests {
 
     #[test]
     fn registry_resource_description() {
+        let executor = crate::exec::SystemExecutor;
         let resource = RegistryResource::new(
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "14".to_string(),
+            &executor,
         );
         assert_eq!(resource.description(), "HKCU:\\Console\\FontSize = 14");
     }
@@ -319,13 +348,14 @@ mod tests {
 
     #[test]
     fn from_entry_creates_resource() {
+        let executor = crate::exec::SystemExecutor;
         let entry = crate::config::registry::RegistryEntry {
             key_path: "HKCU:\\Test".to_string(),
             value_name: "TestValue".to_string(),
             value_data: "123".to_string(),
         };
 
-        let resource = RegistryResource::from_entry(&entry);
+        let resource = RegistryResource::from_entry(&entry, &executor);
         assert_eq!(resource.key_path, "HKCU:\\Test");
         assert_eq!(resource.value_name, "TestValue");
         assert_eq!(resource.value_data, "123");
@@ -333,10 +363,12 @@ mod tests {
 
     #[test]
     fn state_from_cached_correct() {
+        let executor = crate::exec::SystemExecutor;
         let resource = RegistryResource::new(
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "14".to_string(),
+            &executor,
         );
         let state = resource.state_from_cached(Some("14"));
         assert_eq!(state, ResourceState::Correct);
@@ -344,10 +376,12 @@ mod tests {
 
     #[test]
     fn state_from_cached_incorrect() {
+        let executor = crate::exec::SystemExecutor;
         let resource = RegistryResource::new(
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "14".to_string(),
+            &executor,
         );
         let state = resource.state_from_cached(Some("20"));
         assert!(matches!(state, ResourceState::Incorrect { .. }));
@@ -355,10 +389,12 @@ mod tests {
 
     #[test]
     fn state_from_cached_missing() {
+        let executor = crate::exec::SystemExecutor;
         let resource = RegistryResource::new(
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "14".to_string(),
+            &executor,
         );
         let state = resource.state_from_cached(None);
         assert_eq!(state, ResourceState::Missing);
@@ -366,10 +402,12 @@ mod tests {
 
     #[test]
     fn state_from_cached_hex_match() {
+        let executor = crate::exec::SystemExecutor;
         let resource = RegistryResource::new(
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "0x0E".to_string(),
+            &executor,
         );
         // 0x0E = 14 decimal
         let state = resource.state_from_cached(Some("14"));
@@ -378,7 +416,8 @@ mod tests {
 
     #[test]
     fn batch_check_values_empty() {
-        let result = batch_check_values(&[]).unwrap();
+        let executor = crate::exec::SystemExecutor;
+        let result = batch_check_values(&[], &executor).unwrap();
         assert!(result.is_empty());
     }
 }

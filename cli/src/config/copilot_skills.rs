@@ -16,10 +16,7 @@ pub struct CopilotSkill {
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<CopilotSkill>> {
-    Ok(ini::load_filtered_items(path, active_categories)?
-        .into_iter()
-        .map(|url| CopilotSkill { url })
-        .collect())
+    ini::load_filtered_as(path, active_categories, |url| CopilotSkill { url })
 }
 
 #[cfg(test)]

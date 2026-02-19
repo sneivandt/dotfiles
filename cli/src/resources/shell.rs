@@ -4,20 +4,12 @@ use super::{Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
 
 /// A resource for configuring the default login shell.
+#[derive(Debug)]
 pub struct DefaultShellResource<'a> {
     /// Target shell name (e.g., "zsh").
     target_shell: String,
     /// Executor for running system commands.
     executor: &'a dyn Executor,
-}
-
-impl std::fmt::Debug for DefaultShellResource<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DefaultShellResource")
-            .field("target_shell", &self.target_shell)
-            .field("executor", &"<dyn Executor>")
-            .finish()
-    }
 }
 
 impl<'a> DefaultShellResource<'a> {

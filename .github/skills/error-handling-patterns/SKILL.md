@@ -60,7 +60,8 @@ correct check→dry-run→apply order automatically:
 
 ```rust
 fn run(&self, ctx: &Context) -> Result<TaskResult> {
-    let resources = ctx.config.items.iter().map(MyResource::from_entry);
+    let resources = ctx.config.items.iter()
+        .map(|entry| MyResource::from_entry(entry, ctx.executor));
     process_resources(ctx, resources, &ProcessOpts {
         verb: "install",
         fix_incorrect: true,

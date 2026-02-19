@@ -11,13 +11,14 @@ use crate::tasks::{self, Context, Task};
 ///
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Logger) -> Result<()> {
-    let setup = super::CommandSetup::init(global, log)?;
+    let executor = exec::SystemExecutor;
+    let setup = super::CommandSetup::init(global, log, &executor)?;
     let ctx = Context::new(
         &setup.config,
         &setup.platform,
         log,
         global.dry_run,
-        &exec::SystemExecutor,
+        &executor,
     )?;
 
     let tasks: Vec<Box<dyn Task>> = vec![

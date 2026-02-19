@@ -16,10 +16,7 @@ pub struct VsCodeExtension {
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<VsCodeExtension>> {
-    Ok(ini::load_filtered_items(path, active_categories)?
-        .into_iter()
-        .map(|id| VsCodeExtension { id })
-        .collect())
+    ini::load_filtered_as(path, active_categories, |id| VsCodeExtension { id })
 }
 
 #[cfg(test)]

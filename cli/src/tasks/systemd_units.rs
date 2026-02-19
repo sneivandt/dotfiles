@@ -26,7 +26,11 @@ impl Task for ConfigureSystemd {
             ctx.log.debug(&format!("daemon-reload failed: {e}"));
         }
 
-        let resources = ctx.config.units.iter().map(SystemdUnitResource::from_entry);
+        let resources = ctx
+            .config
+            .units
+            .iter()
+            .map(|entry| SystemdUnitResource::from_entry(entry, ctx.executor));
         process_resources(
             ctx,
             resources,

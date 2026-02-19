@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use anyhow::Result;
 
 use super::{Resource, ResourceChange, ResourceState};
-use crate::exec;
+use crate::exec::Executor;
 
 /// Supported package managers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,19 +27,25 @@ impl std::fmt::Display for PackageManager {
 }
 
 /// A system package resource that can be checked and installed.
-#[derive(Debug, Clone)]
-pub struct PackageResource {
+#[derive(Debug)]
+pub struct PackageResource<'a> {
     /// Package name (or winget ID).
     pub name: String,
     /// Package manager to use.
     pub manager: PackageManager,
+    /// Executor for running package manager commands.
+    executor: &'a dyn Executor,
 }
 
-impl PackageResource {
+impl<'a> PackageResource<'a> {
     /// Create a new package resource.
     #[must_use]
-    pub const fn new(name: String, manager: PackageManager) -> Self {
-        Self { name, manager }
+    pub const fn new(name: String, manager: PackageManager, executor: &'a dyn Executor) -> Self {
+        Self {
+            name,
+            manager,
+            executor,
+        }
     }
 
     /// Determine the resource state from a pre-fetched set of installed package names.
@@ -67,12 +73,15 @@ impl PackageResource {
 ///
 /// Returns an error if the package manager command fails to execute or if
 /// the output cannot be parsed.
-pub fn get_installed_packages(manager: PackageManager) -> Result<HashSet<String>> {
+pub fn get_installed_packages(
+    manager: PackageManager,
+    executor: &dyn Executor,
+) -> Result<HashSet<String>> {
     match manager {
         PackageManager::Pacman | PackageManager::Paru => {
             // `pacman -Q` lists all explicitly & dependency-installed packages,
             // one per line: "name version"
-            let result = exec::run_unchecked("pacman", &["-Q"])?;
+            let result = executor.run_unchecked("pacman", &["-Q"])?;
             let mut set = HashSet::new();
             if result.success {
                 for line in result.stdout.lines() {
@@ -89,7 +98,7 @@ pub fn get_installed_packages(manager: PackageManager) -> Result<HashSet<String>
             // reverse-domain names (e.g. `Git.Git`, `Microsoft.PowerShell`) so
             // collisions with version numbers or other tokens are not a concern
             // when doing exact-match lookups via `state_from_installed`.
-            let result = exec::run_unchecked(
+            let result = executor.run_unchecked(
                 "winget",
                 &[
                     "list",
@@ -110,7 +119,7 @@ pub fn get_installed_packages(manager: PackageManager) -> Result<HashSet<String>
     }
 }
 
-impl Resource for PackageResource {
+impl Resource for PackageResource<'_> {
     fn description(&self) -> String {
         format!("{} ({})", self.name, self.manager)
     }
@@ -118,7 +127,7 @@ impl Resource for PackageResource {
     fn current_state(&self) -> Result<ResourceState> {
         match self.manager {
             PackageManager::Pacman | PackageManager::Paru => {
-                let result = exec::run_unchecked("pacman", &["-Q", &self.name])?;
+                let result = self.executor.run_unchecked("pacman", &["-Q", &self.name])?;
                 if result.success {
                     Ok(ResourceState::Correct)
                 } else {
@@ -126,7 +135,7 @@ impl Resource for PackageResource {
                 }
             }
             PackageManager::Winget => {
-                let result = exec::run_unchecked(
+                let result = self.executor.run_unchecked(
                     "winget",
                     &[
                         "list",
@@ -148,18 +157,19 @@ impl Resource for PackageResource {
     fn apply(&self) -> Result<ResourceChange> {
         match self.manager {
             PackageManager::Pacman => {
-                exec::run(
+                self.executor.run(
                     "sudo",
                     &["pacman", "-S", "--needed", "--noconfirm", &self.name],
                 )?;
                 Ok(ResourceChange::Applied)
             }
             PackageManager::Paru => {
-                exec::run("paru", &["-S", "--needed", "--noconfirm", &self.name])?;
+                self.executor
+                    .run("paru", &["-S", "--needed", "--noconfirm", &self.name])?;
                 Ok(ResourceChange::Applied)
             }
             PackageManager::Winget => {
-                let result = exec::run_unchecked(
+                let result = self.executor.run_unchecked(
                     "winget",
                     &[
                         "install",
@@ -198,19 +208,23 @@ mod tests {
 
     #[test]
     fn description_includes_manager() {
-        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman);
+        let executor = crate::exec::SystemExecutor;
+        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
         assert_eq!(resource.description(), "git (pacman)");
 
-        let resource = PackageResource::new("paru-bin".to_string(), PackageManager::Paru);
+        let resource =
+            PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &executor);
         assert_eq!(resource.description(), "paru-bin (paru)");
 
-        let resource = PackageResource::new("Git.Git".to_string(), PackageManager::Winget);
+        let resource =
+            PackageResource::new("Git.Git".to_string(), PackageManager::Winget, &executor);
         assert_eq!(resource.description(), "Git.Git (winget)");
     }
 
     #[test]
     fn state_from_installed_correct() {
-        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman);
+        let executor = crate::exec::SystemExecutor;
+        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
         let mut installed = HashSet::new();
         installed.insert("git".to_string());
         installed.insert("vim".to_string());
@@ -222,7 +236,8 @@ mod tests {
 
     #[test]
     fn state_from_installed_missing() {
-        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman);
+        let executor = crate::exec::SystemExecutor;
+        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
         let installed = HashSet::new();
         assert_eq!(
             resource.state_from_installed(&installed),

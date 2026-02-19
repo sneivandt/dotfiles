@@ -62,6 +62,26 @@ pub fn load(path: &Path, active: &[String]) -> Result<Vec<T>> {
 }
 ```
 
+### Convenience Functions
+
+For config files where each item is a single string or single-field struct,
+use the `ini.rs` convenience helpers instead of writing the boilerplate above:
+
+```rust
+// Load a flat list of strings (e.g., URLs, unit names)
+let items: Vec<String> = ini::load_filtered_items(path, active_categories)?;
+
+// Load and map each string into a typed value via a constructor
+let units: Vec<SystemdUnit> = ini::load_filtered_as(
+    path,
+    active_categories,
+    |name| SystemdUnit { name },
+)?;
+```
+
+Use the full `parse_sections` + `filter_sections_and` pattern only when the
+loader needs custom per-item logic (e.g., `packages.ini` tagging AUR packages).
+
 ## Configuration Files
 
 | File | Format | Notes |

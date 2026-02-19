@@ -12,8 +12,8 @@ use crate::tasks::{Context, Task, TaskResult};
 ///
 /// Returns an error if profile resolution, configuration validation, or script checks fail.
 pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Logger) -> Result<()> {
-    let setup = super::CommandSetup::init(global, log)?;
     let executor = exec::SystemExecutor;
+    let setup = super::CommandSetup::init(global, log, &executor)?;
     let ctx = Context::new(
         &setup.config,
         &setup.platform,

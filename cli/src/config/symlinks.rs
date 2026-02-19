@@ -16,10 +16,7 @@ pub struct Symlink {
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Symlink>> {
-    Ok(ini::load_filtered_items(path, active_categories)?
-        .into_iter()
-        .map(|source| Symlink { source })
-        .collect())
+    ini::load_filtered_as(path, active_categories, |source| Symlink { source })
 }
 
 #[cfg(test)]

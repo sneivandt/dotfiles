@@ -14,14 +14,15 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
     let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     log.info(&format!("dotfiles {version}"));
 
-    let setup = super::CommandSetup::init(global, log)?;
+    let executor = exec::SystemExecutor;
+    let setup = super::CommandSetup::init(global, log, &executor)?;
 
     let ctx = Context::new(
         &setup.config,
         &setup.platform,
         log,
         global.dry_run,
-        &exec::SystemExecutor,
+        &executor,
     )?;
 
     // Build the task list

@@ -2,22 +2,28 @@ use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
 use super::{Resource, ResourceChange, ResourceState};
-use crate::exec;
+use crate::exec::Executor;
 
 /// A GitHub Copilot skill resource that can be checked and installed.
-#[derive(Debug, Clone)]
-pub struct CopilotSkillResource {
+#[derive(Debug)]
+pub struct CopilotSkillResource<'a> {
     /// Source URL (GitHub blob/tree URL).
     pub url: String,
     /// Destination directory under `~/.copilot/skills/`.
     pub dest: PathBuf,
+    /// Executor for running git commands.
+    executor: &'a dyn Executor,
 }
 
-impl CopilotSkillResource {
+impl<'a> CopilotSkillResource<'a> {
     /// Create a new Copilot skill resource.
     #[must_use]
-    pub const fn new(url: String, dest: PathBuf) -> Self {
-        Self { url, dest }
+    pub const fn new(url: String, dest: PathBuf, executor: &'a dyn Executor) -> Self {
+        Self {
+            url,
+            dest,
+            executor,
+        }
     }
 
     /// Create from a config entry and skills directory.
@@ -25,6 +31,7 @@ impl CopilotSkillResource {
     pub fn from_entry(
         entry: &crate::config::copilot_skills::CopilotSkill,
         skills_dir: &Path,
+        executor: &'a dyn Executor,
     ) -> Self {
         let dir_name = entry
             .url
@@ -32,11 +39,11 @@ impl CopilotSkillResource {
             .rsplit('/')
             .next()
             .unwrap_or(&entry.url);
-        Self::new(entry.url.clone(), skills_dir.join(dir_name))
+        Self::new(entry.url.clone(), skills_dir.join(dir_name), executor)
     }
 }
 
-impl Resource for CopilotSkillResource {
+impl Resource for CopilotSkillResource<'_> {
     fn description(&self) -> String {
         self.url.clone()
     }
@@ -55,7 +62,7 @@ impl Resource for CopilotSkillResource {
             std::fs::create_dir_all(parent).context("creating skills parent directory")?;
         }
 
-        download_github_folder(&self.url, &self.dest)
+        download_github_folder(&self.url, &self.dest, self.executor)
             .with_context(|| format!("downloading skill from {}", self.url))?;
         Ok(ResourceChange::Applied)
     }
@@ -66,7 +73,7 @@ impl Resource for CopilotSkillResource {
 /// Parses URLs like:
 ///   `https://github.com/{owner}/{repo}/blob/{branch}/{path}`
 /// and clones only the target folder.
-fn download_github_folder(url: &str, dest: &Path) -> Result<()> {
+fn download_github_folder(url: &str, dest: &Path, executor: &dyn Executor) -> Result<()> {
     let parts: Vec<&str> = url.trim_end_matches('/').split('/').collect();
     let blob_idx = parts
         .iter()
@@ -107,7 +114,7 @@ fn download_github_folder(url: &str, dest: &Path) -> Result<()> {
     }
 
     // Shallow clone with no checkout
-    exec::run(
+    executor.run(
         "git",
         &[
             "clone",
@@ -123,9 +130,9 @@ fn download_github_folder(url: &str, dest: &Path) -> Result<()> {
     )?;
 
     // Sparse checkout just the target path
-    exec::run_in(&tmp, "git", &["sparse-checkout", "init", "--cone"])?;
-    exec::run_in(&tmp, "git", &["sparse-checkout", "set", &subpath])?;
-    exec::run_in(&tmp, "git", &["checkout"])?;
+    executor.run_in(&tmp, "git", &["sparse-checkout", "init", "--cone"])?;
+    executor.run_in(&tmp, "git", &["sparse-checkout", "set", &subpath])?;
+    executor.run_in(&tmp, "git", &["checkout"])?;
 
     // Copy result to destination
     let src = tmp.join(&subpath);
@@ -210,9 +217,11 @@ mod tests {
 
     #[test]
     fn description_returns_url() {
+        let executor = crate::exec::SystemExecutor;
         let resource = CopilotSkillResource::new(
             "https://github.com/example/skills/tree/main/my-skill".to_string(),
             PathBuf::from("/home/user/.copilot/skills/my-skill"),
+            &executor,
         );
         assert_eq!(
             resource.description(),
@@ -222,9 +231,11 @@ mod tests {
 
     #[test]
     fn missing_when_dest_does_not_exist() {
+        let executor = crate::exec::SystemExecutor;
         let resource = CopilotSkillResource::new(
             "https://github.com/example/skills/tree/main/my-skill".to_string(),
             PathBuf::from("/nonexistent/path/my-skill"),
+            &executor,
         );
         assert!(matches!(
             resource.current_state().unwrap(),
@@ -238,9 +249,11 @@ mod tests {
         let dest = dir.path().join("my-skill");
         std::fs::create_dir(&dest).unwrap();
 
+        let executor = crate::exec::SystemExecutor;
         let resource = CopilotSkillResource::new(
             "https://github.com/example/skills/tree/main/my-skill".to_string(),
             dest,
+            &executor,
         );
         assert!(matches!(
             resource.current_state().unwrap(),
@@ -250,11 +263,12 @@ mod tests {
 
     #[test]
     fn from_entry_derives_dir_name() {
+        let executor = crate::exec::SystemExecutor;
         let entry = crate::config::copilot_skills::CopilotSkill {
             url: "https://github.com/example/skills/tree/main/my-skill".to_string(),
         };
         let skills_dir = PathBuf::from("/home/user/.copilot/skills");
-        let resource = CopilotSkillResource::from_entry(&entry, &skills_dir);
+        let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, &executor);
         assert_eq!(
             resource.dest,
             PathBuf::from("/home/user/.copilot/skills/my-skill")

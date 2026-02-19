@@ -105,7 +105,7 @@ impl<'a> Context<'a> {
 }
 
 /// Result of a single task execution.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TaskResult {
     /// Task completed successfully.
     Ok,
@@ -317,10 +317,23 @@ fn apply_resource<R: Resource>(
     counters: &mut TaskStats,
 ) -> Result<()> {
     if opts.bail_on_error {
-        resource.apply()?;
-        ctx.log
-            .debug(&format!("{}: {}", opts.verb, resource.description()));
-        counters.changed += 1;
+        match resource.apply()? {
+            ResourceChange::Applied => {
+                ctx.log
+                    .debug(&format!("{}: {}", opts.verb, resource.description()));
+                counters.changed += 1;
+            }
+            ResourceChange::AlreadyCorrect => {
+                counters.already_ok += 1;
+            }
+            ResourceChange::Skipped { reason } => {
+                anyhow::bail!(
+                    "failed to {} {}: {reason}",
+                    opts.verb,
+                    resource.description()
+                );
+            }
+        }
     } else {
         match resource.apply() {
             Ok(ResourceChange::Applied) => {
@@ -398,5 +411,685 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
             ctx.log
                 .record_task(task.name(), TaskStatus::Failed, Some(&format!("{e:#}")));
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::config::profiles::Profile;
+    use crate::exec::{ExecResult, Executor};
+    use crate::platform::{Os, Platform};
+    use std::path::PathBuf;
+
+    // -----------------------------------------------------------------------
+    // Test doubles
+    // -----------------------------------------------------------------------
+
+    /// A configurable mock resource for testing the processing pipeline.
+    struct MockResource {
+        state: ResourceState,
+        apply_result: Result<ResourceChange, String>,
+        remove_result: Result<ResourceChange, String>,
+        desc: String,
+    }
+
+    impl MockResource {
+        fn new(state: ResourceState) -> Self {
+            Self {
+                state,
+                apply_result: Ok(ResourceChange::Applied),
+                remove_result: Ok(ResourceChange::Applied),
+                desc: "mock resource".to_string(),
+            }
+        }
+
+        fn with_apply(mut self, result: Result<ResourceChange, String>) -> Self {
+            self.apply_result = result;
+            self
+        }
+
+        fn with_remove(mut self, result: Result<ResourceChange, String>) -> Self {
+            self.remove_result = result;
+            self
+        }
+
+        #[allow(dead_code)]
+        fn with_desc(mut self, desc: &str) -> Self {
+            self.desc = desc.to_string();
+            self
+        }
+    }
+
+    impl Resource for MockResource {
+        fn description(&self) -> String {
+            self.desc.clone()
+        }
+
+        fn current_state(&self) -> Result<ResourceState> {
+            Ok(self.state.clone())
+        }
+
+        fn apply(&self) -> Result<ResourceChange> {
+            self.apply_result
+                .clone()
+                .map_err(|s| anyhow::anyhow!("{s}"))
+        }
+
+        fn remove(&self) -> Result<ResourceChange> {
+            self.remove_result
+                .clone()
+                .map_err(|s| anyhow::anyhow!("{s}"))
+        }
+    }
+
+    /// Minimal executor that panics if actually called (tests don't need it).
+    #[derive(Debug)]
+    struct NoOpExecutor;
+
+    impl Executor for NoOpExecutor {
+        fn run(&self, _program: &str, _args: &[&str]) -> Result<ExecResult> {
+            panic!("unexpected executor call in test");
+        }
+        fn run_in(&self, _dir: &Path, _program: &str, _args: &[&str]) -> Result<ExecResult> {
+            panic!("unexpected executor call in test");
+        }
+        fn run_in_with_env(
+            &self,
+            _dir: &Path,
+            _program: &str,
+            _args: &[&str],
+            _env: &[(&str, &str)],
+        ) -> Result<ExecResult> {
+            panic!("unexpected executor call in test");
+        }
+        fn run_unchecked(&self, _program: &str, _args: &[&str]) -> Result<ExecResult> {
+            panic!("unexpected executor call in test");
+        }
+        fn which(&self, _program: &str) -> bool {
+            false
+        }
+    }
+
+    /// A mock task for testing `execute()`.
+    struct MockTask {
+        name: &'static str,
+        should_run: bool,
+        result: Result<TaskResult, String>,
+    }
+
+    impl Task for MockTask {
+        fn name(&self) -> &str {
+            self.name
+        }
+        fn should_run(&self, _ctx: &Context) -> bool {
+            self.should_run
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.result.clone().map_err(|s| anyhow::anyhow!("{s}"))
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    fn empty_config(root: PathBuf) -> Config {
+        Config {
+            root,
+            profile: Profile {
+                name: "test".to_string(),
+                active_categories: vec!["base".to_string()],
+                excluded_categories: vec![],
+            },
+            packages: vec![],
+            symlinks: vec![],
+            registry: vec![],
+            units: vec![],
+            chmod: vec![],
+            vscode_extensions: vec![],
+            copilot_skills: vec![],
+            manifest: crate::config::manifest::Manifest {
+                excluded_files: vec![],
+            },
+        }
+    }
+
+    fn test_context(config: &Config) -> Context<'_> {
+        let platform = Box::leak(Box::new(Platform::new(Os::Linux, false)));
+        let log = Box::leak(Box::new(Logger::new(false, "test")));
+        let executor = Box::leak(Box::new(NoOpExecutor));
+        Context {
+            config,
+            platform,
+            log,
+            dry_run: false,
+            home: PathBuf::from("/home/test"),
+            executor,
+        }
+    }
+
+    fn dry_run_context(config: &Config) -> Context<'_> {
+        let mut ctx = test_context(config);
+        ctx.dry_run = true;
+        ctx
+    }
+
+    fn default_opts() -> ProcessOpts<'static> {
+        ProcessOpts {
+            verb: "install",
+            fix_incorrect: true,
+            fix_missing: true,
+            bail_on_error: false,
+        }
+    }
+
+    fn bail_opts() -> ProcessOpts<'static> {
+        ProcessOpts {
+            verb: "install",
+            fix_incorrect: true,
+            fix_missing: true,
+            bail_on_error: true,
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // TaskStats
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn stats_summary_changed_only() {
+        let stats = TaskStats {
+            changed: 3,
+            already_ok: 0,
+            skipped: 0,
+        };
+        assert_eq!(stats.summary(false), "3 changed, 0 already ok");
+    }
+
+    #[test]
+    fn stats_summary_dry_run() {
+        let stats = TaskStats {
+            changed: 2,
+            already_ok: 5,
+            skipped: 0,
+        };
+        assert_eq!(stats.summary(true), "2 would change, 5 already ok");
+    }
+
+    #[test]
+    fn stats_summary_with_skipped() {
+        let stats = TaskStats {
+            changed: 1,
+            already_ok: 2,
+            skipped: 3,
+        };
+        assert_eq!(stats.summary(false), "1 changed, 2 already ok, 3 skipped");
+    }
+
+    #[test]
+    fn stats_finish_returns_dry_run_result() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = dry_run_context(&config);
+        let stats = TaskStats::new();
+        let result = stats.finish(&ctx);
+        assert!(matches!(result, TaskResult::DryRun));
+    }
+
+    #[test]
+    fn stats_finish_returns_ok_result() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let stats = TaskStats::new();
+        let result = stats.finish(&ctx);
+        assert!(matches!(result, TaskResult::Ok));
+    }
+
+    // -----------------------------------------------------------------------
+    // process_single
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn process_single_correct_increments_already_ok() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource = MockResource::new(ResourceState::Correct);
+        let opts = default_opts();
+        let mut stats = TaskStats::new();
+
+        process_single(&ctx, &resource, ResourceState::Correct, &opts, &mut stats).unwrap();
+
+        assert_eq!(stats.already_ok, 1);
+        assert_eq!(stats.changed, 0);
+        assert_eq!(stats.skipped, 0);
+    }
+
+    #[test]
+    fn process_single_invalid_increments_skipped() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource = MockResource::new(ResourceState::Invalid {
+            reason: "test".to_string(),
+        });
+        let opts = default_opts();
+        let mut stats = TaskStats::new();
+
+        process_single(
+            &ctx,
+            &resource,
+            ResourceState::Invalid {
+                reason: "test".to_string(),
+            },
+            &opts,
+            &mut stats,
+        )
+        .unwrap();
+
+        assert_eq!(stats.skipped, 1);
+        assert_eq!(stats.changed, 0);
+    }
+
+    #[test]
+    fn process_single_missing_skips_when_fix_missing_false() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource = MockResource::new(ResourceState::Missing);
+        let opts = ProcessOpts {
+            fix_missing: false,
+            ..default_opts()
+        };
+        let mut stats = TaskStats::new();
+
+        process_single(&ctx, &resource, ResourceState::Missing, &opts, &mut stats).unwrap();
+
+        assert_eq!(stats.skipped, 1);
+        assert_eq!(stats.changed, 0);
+    }
+
+    #[test]
+    fn process_single_incorrect_skips_when_fix_incorrect_false() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource = MockResource::new(ResourceState::Incorrect {
+            current: "wrong".to_string(),
+        });
+        let opts = ProcessOpts {
+            fix_incorrect: false,
+            ..default_opts()
+        };
+        let mut stats = TaskStats::new();
+
+        process_single(
+            &ctx,
+            &resource,
+            ResourceState::Incorrect {
+                current: "wrong".to_string(),
+            },
+            &opts,
+            &mut stats,
+        )
+        .unwrap();
+
+        assert_eq!(stats.skipped, 1);
+        assert_eq!(stats.changed, 0);
+    }
+
+    #[test]
+    fn process_single_missing_applies_and_increments_changed() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource = MockResource::new(ResourceState::Missing);
+        let opts = default_opts();
+        let mut stats = TaskStats::new();
+
+        process_single(&ctx, &resource, ResourceState::Missing, &opts, &mut stats).unwrap();
+
+        assert_eq!(stats.changed, 1);
+        assert_eq!(stats.already_ok, 0);
+    }
+
+    #[test]
+    fn process_single_incorrect_applies_and_increments_changed() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource = MockResource::new(ResourceState::Incorrect {
+            current: "wrong".to_string(),
+        });
+        let opts = default_opts();
+        let mut stats = TaskStats::new();
+
+        process_single(
+            &ctx,
+            &resource,
+            ResourceState::Incorrect {
+                current: "wrong".to_string(),
+            },
+            &opts,
+            &mut stats,
+        )
+        .unwrap();
+
+        assert_eq!(stats.changed, 1);
+    }
+
+    #[test]
+    fn process_single_dry_run_missing_increments_changed_without_apply() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = dry_run_context(&config);
+        // Apply would error if called — but dry-run should skip it
+        let resource =
+            MockResource::new(ResourceState::Missing).with_apply(Err("should not call".into()));
+        let opts = default_opts();
+        let mut stats = TaskStats::new();
+
+        process_single(&ctx, &resource, ResourceState::Missing, &opts, &mut stats).unwrap();
+
+        assert_eq!(stats.changed, 1);
+    }
+
+    #[test]
+    fn process_single_dry_run_incorrect_increments_changed() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = dry_run_context(&config);
+        let resource = MockResource::new(ResourceState::Incorrect {
+            current: "old-value".to_string(),
+        });
+        let opts = default_opts();
+        let mut stats = TaskStats::new();
+
+        process_single(
+            &ctx,
+            &resource,
+            ResourceState::Incorrect {
+                current: "old-value".to_string(),
+            },
+            &opts,
+            &mut stats,
+        )
+        .unwrap();
+
+        assert_eq!(stats.changed, 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // apply_resource
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn apply_resource_applied_increments_changed() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource = MockResource::new(ResourceState::Missing);
+        let opts = default_opts();
+        let mut stats = TaskStats::new();
+
+        apply_resource(&ctx, &resource, &opts, &mut stats).unwrap();
+
+        assert_eq!(stats.changed, 1);
+    }
+
+    #[test]
+    fn apply_resource_already_correct_increments_already_ok() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource = MockResource::new(ResourceState::Missing)
+            .with_apply(Ok(ResourceChange::AlreadyCorrect));
+        let opts = default_opts();
+        let mut stats = TaskStats::new();
+
+        apply_resource(&ctx, &resource, &opts, &mut stats).unwrap();
+
+        assert_eq!(stats.already_ok, 1);
+        assert_eq!(stats.changed, 0);
+    }
+
+    #[test]
+    fn apply_resource_skipped_no_bail_increments_skipped() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource =
+            MockResource::new(ResourceState::Missing).with_apply(Ok(ResourceChange::Skipped {
+                reason: "not supported".to_string(),
+            }));
+        let opts = default_opts();
+        let mut stats = TaskStats::new();
+
+        apply_resource(&ctx, &resource, &opts, &mut stats).unwrap();
+
+        assert_eq!(stats.skipped, 1);
+        assert_eq!(stats.changed, 0);
+    }
+
+    #[test]
+    fn apply_resource_error_no_bail_increments_skipped() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource =
+            MockResource::new(ResourceState::Missing).with_apply(Err("boom".to_string()));
+        let opts = default_opts();
+        let mut stats = TaskStats::new();
+
+        apply_resource(&ctx, &resource, &opts, &mut stats).unwrap();
+
+        assert_eq!(stats.skipped, 1);
+        assert_eq!(stats.changed, 0);
+    }
+
+    #[test]
+    fn apply_resource_bail_on_applied() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource = MockResource::new(ResourceState::Missing);
+        let opts = bail_opts();
+        let mut stats = TaskStats::new();
+
+        apply_resource(&ctx, &resource, &opts, &mut stats).unwrap();
+
+        assert_eq!(stats.changed, 1);
+    }
+
+    #[test]
+    fn apply_resource_bail_on_already_correct() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource = MockResource::new(ResourceState::Missing)
+            .with_apply(Ok(ResourceChange::AlreadyCorrect));
+        let opts = bail_opts();
+        let mut stats = TaskStats::new();
+
+        apply_resource(&ctx, &resource, &opts, &mut stats).unwrap();
+
+        assert_eq!(stats.already_ok, 1);
+    }
+
+    #[test]
+    fn apply_resource_bail_on_skipped_returns_error() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource =
+            MockResource::new(ResourceState::Missing).with_apply(Ok(ResourceChange::Skipped {
+                reason: "denied".to_string(),
+            }));
+        let opts = bail_opts();
+        let mut stats = TaskStats::new();
+
+        let err = apply_resource(&ctx, &resource, &opts, &mut stats);
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("denied"));
+    }
+
+    #[test]
+    fn apply_resource_bail_on_error_propagates() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource =
+            MockResource::new(ResourceState::Missing).with_apply(Err("critical".to_string()));
+        let opts = bail_opts();
+        let mut stats = TaskStats::new();
+
+        let err = apply_resource(&ctx, &resource, &opts, &mut stats);
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("critical"));
+    }
+
+    // -----------------------------------------------------------------------
+    // process_resources
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn process_resources_mixed_states() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resources = vec![
+            MockResource::new(ResourceState::Correct),
+            MockResource::new(ResourceState::Missing),
+            MockResource::new(ResourceState::Invalid {
+                reason: "bad".to_string(),
+            }),
+        ];
+        let opts = default_opts();
+
+        let result = process_resources(&ctx, resources, &opts).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+    }
+
+    #[test]
+    fn process_resources_empty_list() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resources: Vec<MockResource> = vec![];
+        let opts = default_opts();
+
+        let result = process_resources(&ctx, resources, &opts).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+    }
+
+    // -----------------------------------------------------------------------
+    // process_resource_states
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn process_resource_states_applies_precomputed() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resource_states = vec![
+            (
+                MockResource::new(ResourceState::Missing),
+                ResourceState::Missing,
+            ),
+            (
+                MockResource::new(ResourceState::Correct),
+                ResourceState::Correct,
+            ),
+        ];
+        let opts = default_opts();
+
+        let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+    }
+
+    // -----------------------------------------------------------------------
+    // process_resources_remove
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn process_resources_remove_removes_correct_resources() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let resources = vec![
+            MockResource::new(ResourceState::Correct),
+            MockResource::new(ResourceState::Missing),
+        ];
+
+        let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+    }
+
+    #[test]
+    fn process_resources_remove_dry_run() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = dry_run_context(&config);
+        // Remove should NOT be called in dry-run
+        let resources = vec![
+            MockResource::new(ResourceState::Correct).with_remove(Err("should not call".into())),
+        ];
+
+        let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
+        assert!(matches!(result, TaskResult::DryRun));
+    }
+
+    // -----------------------------------------------------------------------
+    // execute
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn execute_skips_non_applicable_task() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let task = MockTask {
+            name: "test-task",
+            should_run: false,
+            result: Ok(TaskResult::Ok),
+        };
+
+        execute(&task, &ctx);
+        assert_eq!(ctx.log.failure_count(), 0);
+    }
+
+    #[test]
+    fn execute_records_ok_task() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let task = MockTask {
+            name: "ok-task",
+            should_run: true,
+            result: Ok(TaskResult::Ok),
+        };
+
+        execute(&task, &ctx);
+        assert_eq!(ctx.log.failure_count(), 0);
+    }
+
+    #[test]
+    fn execute_records_failed_task() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let task = MockTask {
+            name: "fail-task",
+            should_run: true,
+            result: Err("kaboom".to_string()),
+        };
+
+        execute(&task, &ctx);
+        assert_eq!(ctx.log.failure_count(), 1);
+    }
+
+    #[test]
+    fn execute_records_skipped_task() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let task = MockTask {
+            name: "skip-task",
+            should_run: true,
+            result: Ok(TaskResult::Skipped("not needed".to_string())),
+        };
+
+        execute(&task, &ctx);
+        assert_eq!(ctx.log.failure_count(), 0);
+    }
+
+    #[test]
+    fn execute_records_dry_run_task() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = test_context(&config);
+        let task = MockTask {
+            name: "dry-task",
+            should_run: true,
+            result: Ok(TaskResult::DryRun),
+        };
+
+        execute(&task, &ctx);
+        assert_eq!(ctx.log.failure_count(), 0);
     }
 }

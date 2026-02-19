@@ -25,7 +25,7 @@ impl Task for InstallCopilotSkills {
             .config
             .copilot_skills
             .iter()
-            .map(|skill| CopilotSkillResource::from_entry(skill, &skills_dir));
+            .map(|skill| CopilotSkillResource::from_entry(skill, &skills_dir, ctx.executor));
         process_resources(
             ctx,
             resources,

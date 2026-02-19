@@ -21,10 +21,10 @@ fn process_packages(
         "batch-checking {} packages with a single query",
         packages.len()
     ));
-    let installed = get_installed_packages(manager)?;
+    let installed = get_installed_packages(manager, ctx.executor)?;
 
     let resource_states = packages.iter().map(|pkg| {
-        let resource = PackageResource::new(pkg.name.clone(), manager);
+        let resource = PackageResource::new(pkg.name.clone(), manager, ctx.executor);
         let state = resource.state_from_installed(&installed);
         (resource, state)
     });
@@ -224,13 +224,16 @@ mod tests {
 
     #[test]
     fn package_resource_description() {
-        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman);
+        let executor = crate::exec::SystemExecutor;
+        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
         assert_eq!(resource.description(), "git (pacman)");
 
-        let resource = PackageResource::new("paru-bin".to_string(), PackageManager::Paru);
+        let resource =
+            PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &executor);
         assert_eq!(resource.description(), "paru-bin (paru)");
 
-        let resource = PackageResource::new("Git.Git".to_string(), PackageManager::Winget);
+        let resource =
+            PackageResource::new("Git.Git".to_string(), PackageManager::Winget, &executor);
         assert_eq!(resource.description(), "Git.Git (winget)");
     }
 }

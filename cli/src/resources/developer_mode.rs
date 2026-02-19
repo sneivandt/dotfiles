@@ -15,17 +15,10 @@ const NOT_FOUND_SENTINEL: &str = "::NOT_FOUND::";
 /// A resource for enabling Windows Developer Mode.
 ///
 /// Developer Mode allows symlink creation without administrator privileges.
+#[derive(Debug)]
 pub struct DeveloperModeResource<'a> {
     /// Executor for running `PowerShell` commands.
     executor: &'a dyn Executor,
-}
-
-impl std::fmt::Debug for DeveloperModeResource<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DeveloperModeResource")
-            .field("executor", &"<dyn Executor>")
-            .finish()
-    }
 }
 
 impl<'a> DeveloperModeResource<'a> {

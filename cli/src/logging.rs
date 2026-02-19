@@ -104,13 +104,25 @@ impl Logger {
     }
 
     /// Append a line to the persistent log file.
+    ///
+    /// The file format mirrors the console hierarchy: stage headers get an `==>`
+    /// prefix, info lines are indented, and other levels use bracketed labels
+    /// (`[error]`, `[warn]`, `[debug]`, `[dry run]`) for easy scanning.
     fn write_to_file(&self, level: &str, msg: &str) {
         if let Some(ref path) = self.log_file
             && let Ok(mut f) = fs::OpenOptions::new().append(true).open(path)
         {
-            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+            let ts = chrono::Local::now().format("%H:%M:%S");
             let clean = strip_ansi(msg);
-            writeln!(f, "{ts} {level} {clean}").ok(); // Intentionally ignore: logging failure is non-fatal
+            let line = match level {
+                "STG" => format!("[{ts}] ==> {clean}"),
+                "ERR" => format!("[{ts}]     [error] {clean}"),
+                "WRN" => format!("[{ts}]     [warn] {clean}"),
+                "DBG" => format!("[{ts}]     [debug] {clean}"),
+                "DRY" => format!("[{ts}]     [dry run] {clean}"),
+                _ => format!("[{ts}]     {clean}"),
+            };
+            writeln!(f, "{line}").ok(); // Intentionally ignore: logging failure is non-fatal
         }
     }
 

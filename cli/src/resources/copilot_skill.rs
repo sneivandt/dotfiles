@@ -75,17 +75,23 @@ fn download_github_folder(url: &str, dest: &Path) -> Result<()> {
 
     // Ensure we have enough parts before blob_idx
     anyhow::ensure!(
-        blob_idx >= 2,
+        blob_idx >= OWNER_OFFSET,
         "invalid GitHub URL format: too few parts before blob/tree"
     );
 
-    let owner = parts.get(blob_idx - 2).context("missing owner in URL")?;
-    let repo = parts.get(blob_idx - 1).context("missing repo in URL")?;
-    let branch = parts.get(blob_idx + 1).context("missing branch in URL")?;
+    let owner = parts
+        .get(blob_idx - OWNER_OFFSET)
+        .context("missing owner in URL")?;
+    let repo = parts
+        .get(blob_idx - REPO_OFFSET)
+        .context("missing repo in URL")?;
+    let branch = parts
+        .get(blob_idx + BRANCH_OFFSET)
+        .context("missing branch in URL")?;
 
     // Use safe slicing instead of unchecked indexing
     let subpath = parts
-        .get(blob_idx + 2..)
+        .get(blob_idx + PATH_OFFSET..)
         .map(|slice| slice.join("/"))
         .unwrap_or_default();
 
@@ -124,22 +130,50 @@ fn download_github_folder(url: &str, dest: &Path) -> Result<()> {
     // Copy result to destination
     let src = tmp.join(&subpath);
     if !src.exists() {
-        std::fs::remove_dir_all(&tmp).ok(); // Cleanup on error (best effort)
+        // Best effort cleanup - log warning if it fails
+        if let Err(e) = std::fs::remove_dir_all(&tmp) {
+            eprintln!(
+                "warning: failed to cleanup temp dir {}: {}",
+                tmp.display(),
+                e
+            );
+        }
         anyhow::bail!("path '{subpath}' not found in repository");
     }
 
     copy_dir_recursive(&src, dest)?;
 
-    std::fs::remove_dir_all(&tmp).ok(); // Cleanup (best effort)
+    // Best effort cleanup - log warning if it fails
+    if let Err(e) = std::fs::remove_dir_all(&tmp) {
+        eprintln!(
+            "warning: failed to cleanup temp dir {}: {}",
+            tmp.display(),
+            e
+        );
+    }
     Ok(())
 }
 
+/// FNV-1a 64-bit hash constants.
+/// See: <https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function>
+const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x0100_0000_01b3;
+
+/// GitHub URL structure constants for parsing.
+/// Expected format: `https://github.com/{owner}/{repo}/blob/{branch}/{path}`
+const OWNER_OFFSET: usize = 2; // Steps back from blob/tree to owner
+const REPO_OFFSET: usize = 1; // Steps back from blob/tree to repo
+const BRANCH_OFFSET: usize = 1; // Steps forward from blob/tree to branch
+const PATH_OFFSET: usize = 2; // Steps forward from blob/tree to subpath
+
 /// Simple non-cryptographic hash for generating unique temp directory names.
+///
+/// Uses FNV-1a algorithm for fast, collision-resistant hashing of skill URLs.
 fn simple_hash(s: &str) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut hash = FNV_OFFSET_BASIS;
     for byte in s.bytes() {
         hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x0100_0000_01b3);
+        hash = hash.wrapping_mul(FNV_PRIME);
     }
     hash
 }

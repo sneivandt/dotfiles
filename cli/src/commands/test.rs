@@ -314,7 +314,7 @@ fn parse_shebang_interpreter(path: &Path) -> Option<Vec<u8>> {
     let shebang = &first_line[2..];
     shebang
         .split(|&b| b == b' ' || b == b'/' || b == b'\t')
-        .rfind(|s| !s.is_empty() && *s != b"usr" && *s != b"bin" && *s != b"env")
+        .find(|s| !s.is_empty() && *s != b"usr" && *s != b"bin" && *s != b"env")
         .map(<[u8]>::to_vec)
 }
 
@@ -453,6 +453,25 @@ mod tests {
         let mut found = Vec::new();
         discover_shell_scripts(dir.path(), &mut found);
         assert_eq!(found.len(), 3);
+    }
+
+    #[test]
+    fn shebang_with_arguments() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Shebangs with arguments should still correctly identify the interpreter
+        for (name, shebang) in [
+            ("a", "#!/bin/sh -e\n"),
+            ("b", "#!/bin/bash -x\n"),
+            ("c", "#!/usr/bin/env bash -e\n"),
+        ] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, shebang).unwrap();
+        }
+
+        let mut found = Vec::new();
+        discover_shell_scripts(dir.path(), &mut found);
+        assert_eq!(found.len(), 3, "should detect shell scripts with arguments");
     }
 
     #[test]

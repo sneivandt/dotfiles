@@ -181,6 +181,7 @@ impl Logger {
     }
 
     /// Return `true` if any recorded task has failed.
+    #[must_use]
     pub fn has_failures(&self) -> bool {
         self.tasks
             .borrow()

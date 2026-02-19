@@ -17,6 +17,7 @@ pub struct ValidationWarning {
 }
 
 impl ValidationWarning {
+    #[must_use]
     pub fn new(
         source: impl Into<String>,
         item: impl Into<String>,

@@ -274,4 +274,24 @@ mod tests {
             PathBuf::from("/home/user/.copilot/skills/my-skill")
         );
     }
+
+    #[test]
+    fn simple_hash_is_deterministic() {
+        let url = "https://github.com/example/skills/tree/main/my-skill";
+        assert_eq!(simple_hash(url), simple_hash(url));
+    }
+
+    #[test]
+    fn simple_hash_differs_for_different_inputs() {
+        let url1 = "https://github.com/owner1/repo/tree/main/skill-a";
+        let url2 = "https://github.com/owner2/repo/tree/main/skill-b";
+        assert_ne!(simple_hash(url1), simple_hash(url2));
+    }
+
+    #[test]
+    fn simple_hash_empty_string() {
+        // Should not panic; returns the FNV offset basis for empty input
+        let h = simple_hash("");
+        assert_eq!(h, FNV_OFFSET_BASIS);
+    }
 }

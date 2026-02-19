@@ -436,4 +436,33 @@ mod tests {
             "debug messages should always appear in the log file"
         );
     }
+
+    #[test]
+    fn days_to_ymd_unix_epoch() {
+        // Day 0 = January 1, 1970
+        assert_eq!(days_to_ymd(0), (1970, 1, 1));
+    }
+
+    #[test]
+    fn days_to_ymd_day_one() {
+        // Day 1 = January 2, 1970
+        assert_eq!(days_to_ymd(1), (1970, 1, 2));
+    }
+
+    #[test]
+    fn days_to_ymd_start_of_1971() {
+        // Day 365 = January 1, 1971 (1970 is not a leap year)
+        assert_eq!(days_to_ymd(365), (1971, 1, 1));
+    }
+
+    #[test]
+    fn failure_count_returns_correct_count() {
+        let (log, _tmp) = isolated_logger(false);
+        assert_eq!(log.failure_count(), 0);
+        log.record_task("a", TaskStatus::Ok, None);
+        log.record_task("b", TaskStatus::Failed, Some("error 1"));
+        log.record_task("c", TaskStatus::Failed, Some("error 2"));
+        log.record_task("d", TaskStatus::Skipped, None);
+        assert_eq!(log.failure_count(), 2);
+    }
 }

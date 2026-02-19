@@ -88,4 +88,14 @@ mod tests {
             "expected Incorrect(/bin/bash), got {state:?}"
         );
     }
+
+    #[test]
+    fn current_state_missing_when_shell_not_set() {
+        let executor = crate::exec::SystemExecutor;
+        let resource = DefaultShellResource::new("zsh".to_string(), &executor);
+        // SAFETY: test-only env var manipulation; tests run in separate processes.
+        unsafe { std::env::remove_var("SHELL") };
+        let state = resource.current_state().unwrap();
+        assert_eq!(state, ResourceState::Missing);
+    }
 }

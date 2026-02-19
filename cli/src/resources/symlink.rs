@@ -271,4 +271,49 @@ mod tests {
         let state = resource.current_state().unwrap();
         assert_eq!(state, ResourceState::Missing);
     }
+
+    #[test]
+    fn symlink_resource_correct_when_link_points_to_source() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source = temp_dir.path().join("source");
+        let target = temp_dir.path().join("target");
+        std::fs::write(&source, "test").unwrap();
+        std::os::unix::fs::symlink(&source, &target).unwrap();
+
+        let resource = SymlinkResource::new(source, target);
+
+        let state = resource.current_state().unwrap();
+        assert_eq!(state, ResourceState::Correct);
+    }
+
+    #[test]
+    fn symlink_resource_incorrect_when_link_points_to_wrong_source() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source = temp_dir.path().join("source");
+        let other = temp_dir.path().join("other");
+        let target = temp_dir.path().join("target");
+        std::fs::write(&source, "test").unwrap();
+        std::fs::write(&other, "other").unwrap();
+        // link target → other (not source)
+        std::os::unix::fs::symlink(&other, &target).unwrap();
+
+        let resource = SymlinkResource::new(source, target);
+
+        let state = resource.current_state().unwrap();
+        assert!(matches!(state, ResourceState::Incorrect { .. }));
+    }
+
+    #[test]
+    fn symlink_resource_incorrect_when_target_is_regular_file() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source = temp_dir.path().join("source");
+        let target = temp_dir.path().join("target");
+        std::fs::write(&source, "content").unwrap();
+        std::fs::write(&target, "other content").unwrap(); // regular file, not a symlink
+
+        let resource = SymlinkResource::new(source, target);
+
+        let state = resource.current_state().unwrap();
+        assert!(matches!(state, ResourceState::Incorrect { .. }));
+    }
 }

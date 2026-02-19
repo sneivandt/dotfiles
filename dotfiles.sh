@@ -30,7 +30,7 @@ for arg in "$@"; do
        ;;
   esac
 done
-eval set -- $ARGS
+eval set -- "$ARGS"
 
 # --------------------------------------------------------------------------- #
 # Build mode: build from source and run

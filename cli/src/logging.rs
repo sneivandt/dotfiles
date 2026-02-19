@@ -230,10 +230,7 @@ impl Logger {
     #[must_use]
     #[allow(dead_code)] // Used in tests and part of public API
     pub fn has_failures(&self) -> bool {
-        self.tasks
-            .borrow()
-            .iter()
-            .any(|t| t.status == TaskStatus::Failed)
+        self.failure_count() > 0
     }
 
     /// Count the number of failed tasks.

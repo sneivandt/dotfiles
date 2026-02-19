@@ -26,18 +26,20 @@ pub struct RegistryEntry {
 pub fn load(path: &Path) -> Result<Vec<RegistryEntry>> {
     let sections = ini::parse_kv_sections(path)?;
 
-    let mut entries = Vec::new();
-    for section in &sections {
-        for (name, value) in &section.entries {
-            entries.push(RegistryEntry {
-                key_path: section.header.clone(),
-                value_name: name.clone(),
-                value_data: value.clone(),
-            });
-        }
-    }
-
-    Ok(entries)
+    Ok(sections
+        .into_iter()
+        .flat_map(|section| {
+            let key_path = section.header;
+            section
+                .entries
+                .into_iter()
+                .map(move |(name, value)| RegistryEntry {
+                    key_path: key_path.clone(),
+                    value_name: name,
+                    value_data: value,
+                })
+        })
+        .collect())
 }
 
 #[cfg(test)]

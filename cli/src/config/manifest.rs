@@ -21,19 +21,15 @@ pub struct Manifest {
 pub fn load(path: &Path, excluded_categories: &[String]) -> Result<Manifest> {
     let sections = ini::parse_sections(path)?;
 
-    let mut excluded_files = Vec::new();
-
-    for section in &sections {
-        // OR logic: exclude if ANY category matches excluded set
-        let should_exclude = section
-            .categories
-            .iter()
-            .any(|cat| excluded_categories.contains(cat));
-
-        if should_exclude {
-            excluded_files.extend(section.items.iter().cloned());
-        }
-    }
+    let excluded_files = sections
+        .iter()
+        .filter(|s| {
+            s.categories
+                .iter()
+                .any(|cat| excluded_categories.contains(cat))
+        })
+        .flat_map(|s| s.items.iter().cloned())
+        .collect();
 
     Ok(Manifest { excluded_files })
 }

@@ -6,7 +6,9 @@ use super::ini;
 /// A package to install.
 #[derive(Debug, Clone)]
 pub struct Package {
+    /// Package name or identifier (e.g., "git", "Git.Git" for winget).
     pub name: String,
+    /// Whether this is an AUR (Arch User Repository) package.
     pub is_aur: bool,
 }
 
@@ -21,27 +23,22 @@ pub struct Package {
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Package>> {
     let sections = ini::parse_sections(path)?;
 
-    let mut packages = Vec::new();
-    for section in &sections {
-        let is_aur = section.categories.iter().any(|c| c == "aur");
-        // Filter on profile categories only (ignore "aur" marker)
-        let matches_profile = section
-            .categories
-            .iter()
-            .filter(|c| c.as_str() != "aur")
-            .all(|cat| active_categories.contains(cat));
-        if !matches_profile {
-            continue;
-        }
-        for item in &section.items {
-            packages.push(Package {
+    Ok(sections
+        .iter()
+        .filter(|s| {
+            s.categories
+                .iter()
+                .filter(|c| c.as_str() != "aur")
+                .all(|cat| active_categories.contains(cat))
+        })
+        .flat_map(|s| {
+            let is_aur = s.categories.iter().any(|c| c == "aur");
+            s.items.iter().map(move |item| Package {
                 name: item.clone(),
                 is_aur,
-            });
-        }
-    }
-
-    Ok(packages)
+            })
+        })
+        .collect())
 }
 
 #[cfg(test)]

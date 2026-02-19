@@ -37,17 +37,26 @@ use crate::platform::Platform;
 /// All loaded configuration for a resolved profile.
 #[derive(Debug)]
 pub struct Config {
+    /// Root directory of the dotfiles repository.
     pub root: PathBuf,
     /// The resolved profile (retained for debug output via `Debug` impl).
     #[allow(dead_code)]
     pub profile: profiles::Profile,
+    /// Packages to install via system package managers.
     pub packages: Vec<packages::Package>,
+    /// Symlinks to create in the user's home directory.
     pub symlinks: Vec<symlinks::Symlink>,
+    /// Windows registry entries to configure.
     pub registry: Vec<registry::RegistryEntry>,
+    /// Systemd user units to enable.
     pub units: Vec<systemd_units::SystemdUnit>,
+    /// File permissions to apply (chmod).
     pub chmod: Vec<chmod::ChmodEntry>,
+    /// VS Code extensions to install.
     pub vscode_extensions: Vec<vscode_extensions::VsCodeExtension>,
+    /// GitHub Copilot skills to clone.
     pub copilot_skills: Vec<copilot_skills::CopilotSkill>,
+    /// Sparse checkout manifest for file exclusions.
     pub manifest: manifest::Manifest,
 }
 

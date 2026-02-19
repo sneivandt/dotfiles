@@ -12,13 +12,13 @@
 .PARAMETER Build
     Build and run from source instead of using the published binary.
 .PARAMETER ProfileName
-    Profile to use (base, arch, desktop, arch-desktop, windows).
+    Profile to use (base, desktop).
 .PARAMETER DryRun
     Preview changes without applying them.
 .EXAMPLE
-    PS> .\dotfiles.ps1 install -p windows -d
+    PS> .\dotfiles.ps1 install -p base -d
 .EXAMPLE
-    PS> .\dotfiles.ps1 -Build install -p arch
+    PS> .\dotfiles.ps1 -Build install -p desktop
 #>
 
 [CmdletBinding()]
@@ -29,7 +29,7 @@ param (
 
     [switch]$Build,
 
-    [ValidateSet('base', 'arch', 'desktop', 'arch-desktop', 'windows')]
+    [ValidateSet('base', 'desktop')]
     [Alias('p')]
     [string]$ProfileName,
 

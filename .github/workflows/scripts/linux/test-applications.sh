@@ -167,3 +167,15 @@ test_git_behavior()
   git commit -m "Test commit" >/dev/null 2>&1 || { printf "%sWARNING: commit failed%s\n" "${YELLOW}" "${NC}" >&2; return 0; }
   log_verbose "✓ Commit created successfully"
 )}
+
+# Execute tests when run directly: sh test-applications.sh <app> <test1> [test2...]
+case "$0" in
+  *test-applications.sh)
+    if [ $# -ge 2 ]; then
+      _app="$1"; shift
+      for _t in "$@"; do
+        "test_${_app}_${_t}"
+      done
+    fi
+    ;;
+esac

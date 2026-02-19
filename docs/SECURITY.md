@@ -48,7 +48,7 @@ The installation scripts in this repository execute with user privileges and per
    - Check `conf/*.ini` files for packages and settings
    - Use `-d` (dry-run) mode to preview changes:
      ```bash
-     ./dotfiles.sh install -p arch-desktop -d
+     ./dotfiles.sh install -p desktop -d
      ```
    - Run static analysis tests:
      ```bash

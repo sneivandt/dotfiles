@@ -34,7 +34,7 @@ Parsed by `ini::parse_kv_sections()` → `Vec<KvSection>` with `entries: Vec<(St
 
 ## Section Naming
 
-- **Profile names** (`profiles.ini`): hyphens — `[arch-desktop]`
+- **Profile names** (`profiles.ini`): e.g., `[base]`, `[desktop]`
 - **Config sections** (all others): comma-separated — `[arch,desktop]`
   - AND logic: all categories must be active
 

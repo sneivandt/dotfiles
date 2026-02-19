@@ -12,7 +12,7 @@ Common issues and their solutions when working with the dotfiles system.
 **Solution**:
 ```bash
 # Manually save profile
-git config --local dotfiles.profile arch-desktop
+git config --local dotfiles.profile desktop
 
 # Verify it's saved
 git config --local --get dotfiles.profile
@@ -53,12 +53,12 @@ git checkout HEAD -- .
 #### Desktop files missing on Arch Linux
 **Symptoms**: No desktop configuration files even though you're on Arch.
 
-**Solution**: Use the `arch-desktop` profile, not `arch`:
+**Solution**: Use the `desktop` profile to include desktop files (platform categories like `arch` are auto-detected):
 ```bash
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 ```
 
-The `arch` profile is for headless servers and excludes desktop files.
+The `base` profile excludes desktop files and is intended for headless/minimal setups.
 
 #### Sparse checkout not working
 **Symptoms**: All files present regardless of profile.
@@ -146,14 +146,14 @@ rm ~/.<path>
 1. **Wrong section in packages.ini**:
    ```bash
    # Verify package is in correct section
-   # For arch-desktop profile, package should be in [arch] or [arch,desktop]
+   # On Arch with desktop profile, package should be in [arch] or [arch,desktop]
    grep -B2 "package-name" conf/packages.ini
    ```
 
 2. **Profile excludes the category**:
    ```bash
    # Check profile definition
-   grep -A2 "\[arch-desktop\]" conf/profiles.ini
+   grep -A2 "\[desktop\]" conf/profiles.ini
 
    # Verify section isn't excluded
    ./dotfiles.sh install -v | grep "Skipping section"
@@ -184,7 +184,7 @@ rm ~/.<path>
 which paru
 
 # Install paru if missing
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 
 # Try installing package manually to see error
 paru -S <package-name>
@@ -395,8 +395,8 @@ git pull
 # Reapply changes
 git stash pop
 
-# Or let the binary handle it automatically
-.\dotfiles.ps1 install -p windows  # Handles stashing automatically
+# Or re-run the install (uses git pull --ff-only)
+.\dotfiles.ps1 install -p desktop
 ```
 
 ### Merge conflicts
@@ -422,11 +422,11 @@ git pull
 
 **Solution**:
 ```powershell
-# Configure git to treat symlinks as text files
-git config core.symlinks false
+# Ensure Developer Mode is enabled, then configure git for symlinks
+git config core.symlinks true
 
-# Or let script configure it automatically
-.\dotfiles.ps1 install -p windows
+# Or let script configure it automatically (enables Developer Mode + git config)
+.\dotfiles.ps1 install -p base
 ```
 
 ## Test Failures
@@ -467,37 +467,37 @@ shellcheck dotfiles.sh install.sh
 #### Minimal setup but need more
 **Solution**: Switch to a more complete profile:
 ```bash
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 ```
 
-### Arch Profile
+### Arch Linux
 
 #### Desktop files missing
-**Solution**: Use `arch-desktop` instead:
+**Solution**: Use the `desktop` profile (the `arch` category is auto-detected):
 ```bash
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 ```
 
 #### Not on Arch but want to test
 **Solution**: Use `-d` (dry-run) to preview what would happen:
 ```bash
-./dotfiles.sh install -p arch -d
+./dotfiles.sh install -p base -d
 ```
 Note: OS detection overrides will still exclude incompatible tasks on non-Arch systems.
 
 ### Desktop Profile
 
 #### Missing OS-specific packages
-**Solution**: Desktop profile intentionally excludes OS-specific packages. Use OS-specific profile:
+**Solution**: Desktop profile includes desktop tools. OS-specific packages (e.g., Arch or Windows) are included automatically based on platform detection:
 ```bash
-# For Arch Linux
-./dotfiles.sh install -p arch-desktop
+# On Arch Linux — arch packages are auto-included
+./dotfiles.sh install -p desktop
 ```
 
-### Windows Profile
+### Windows
 
 #### Cannot select profile
-**Explanation**: Windows always uses the "windows" profile. Profile selection is not available on Windows.
+**Explanation**: On Windows, platform categories (`windows`) are auto-detected. Use `-p base` or `-p desktop` to control whether desktop tools are included.
 
 ## Dry-Run Mode Issues
 

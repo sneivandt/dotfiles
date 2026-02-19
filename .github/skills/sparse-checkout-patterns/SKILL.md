@@ -24,7 +24,7 @@ The sparse checkout system allows a single repository to support multiple enviro
 
 ## How It Works
 
-1. **Profile Selection**: User selects a profile (e.g., `arch-desktop`, `base`, `windows`)
+1. **Profile Selection**: User selects a profile (e.g., `desktop`, `base`)
 2. **Category Mapping**: Profile maps to exclude categories via `conf/profiles.ini`
 3. **File Exclusion**: `conf/manifest.ini` lists which files belong to each exclude category
 4. **Git Configuration**: Sparse checkout patterns are generated and applied via Git
@@ -141,17 +141,13 @@ Defines which categories each profile excludes:
 
 ```ini
 [base]
-exclude = windows,arch,desktop
+exclude = desktop
 
-[arch]
-exclude = windows,desktop
-
-[arch-desktop]
-exclude = windows
-
-[windows]
-exclude = arch,desktop
+[desktop]
+exclude =
 ```
+
+Platform categories (`linux`, `windows`, `arch`) are auto-detected, not defined in profiles.
 
 ### Auto-Detection Overrides
 

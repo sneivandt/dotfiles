@@ -65,7 +65,7 @@ This checks:
 Preview changes without making modifications:
 
 ```bash
-./dotfiles.sh --build install -p arch-desktop -d
+./dotfiles.sh --build install -p desktop -d
 # Shows what would be done without making changes
 # Verbose mode is automatically enabled
 ```
@@ -81,11 +81,8 @@ Test different profiles to ensure sparse checkout and configuration work correct
 # Test desktop profile
 ./dotfiles.sh --build install -p desktop -d
 
-# Test arch-desktop profile
-./dotfiles.sh --build install -p arch-desktop -d
-
-# Test windows profile (on Windows)
-.\dotfiles.ps1 -Build install -p windows -d
+# Test desktop profile (on Windows)
+.\dotfiles.ps1 -Build install -p desktop -d
 ```
 
 ## Continuous Integration
@@ -94,18 +91,19 @@ Test different profiles to ensure sparse checkout and configuration work correct
 
 Runs automatically on pull requests with the following jobs:
 
-| Job | Command | Purpose |
+| Job | Matrix | Purpose |
 |---|---|---|
-| `rust-fmt` | `cargo fmt --check` | Code formatting |
-| `rust-clippy` | `cargo clippy -- -D warnings` | Lint checks |
-| `rust-test` | `cargo test` | Unit and integration tests |
-| `build-linux` | `cargo build --release` | Linux binary build + smoke test |
-| `build-windows` | `cargo build --release` | Windows binary build + smoke test |
-| `script-lint` | `shellcheck dotfiles.sh install.sh` | Shell wrapper linting |
-| `integration-linux` | Dry-run install | Per-profile integration (base, desktop) |
-| `integration-windows` | Dry-run install | Windows profile integration |
-| `test-docker` | `docker build` | Docker image build + smoke test |
-| `test-git-hooks` | Hook test script | Pre-commit hook validation |
+| `rust` | fmt, clippy, test | Rust formatting, linting, and unit/integration tests |
+| `lint` | ShellCheck, PSScriptAnalyzer | Static analysis for shell and PowerShell scripts |
+| `validate-config` | 6 config checks | INI syntax, file references, category consistency |
+| `build` | Linux, Windows | Release binary build + smoke test |
+| `integration` | base/Linux, desktop/Linux, base/Windows | Dry-run install and validation per profile |
+| `test-applications` | git, zsh, vim, nvim | Application-specific behavior tests |
+| `test-paru` | — | AUR helper bootstrap validation (Arch container) |
+| `test-docker` | — | Docker image build + smoke test |
+| `test-git-hooks` | — | Pre-commit sensitive data detection |
+| `test-shell-wrapper-linux` | — | Linux wrapper script validation |
+| `test-shell-wrapper-windows` | — | Windows wrapper script validation |
 
 ### Release Pipeline (`.github/workflows/release.yml`)
 
@@ -161,8 +159,8 @@ When contributing changes:
 
 4. **Test affected profiles:**
    - If modifying base configuration, test `base` profile
-   - If modifying Arch-specific items, test `arch` and `arch-desktop` profiles
-   - If modifying Windows items, test `windows` profile
+   - If modifying desktop items, test `desktop` profile
+   - Platform categories (arch, windows) are auto-detected and tested in CI
    - See [Profile System](PROFILES.md) for profile details
 
 5. **Verify no trailing whitespace** in all files

@@ -123,6 +123,7 @@ Use capability-based methods when possible for more expressive code:
 - `platform.has_registry()` — Windows Registry support
 - `platform.supports_aur()` — AUR package support
 - `platform.uses_pacman()` — pacman package manager
+- `platform.excludes_category(cat)` — whether a category should be excluded on this platform
 
 **Direct OS Checks** (when capabilities don't apply):
 - `platform.is_linux()` — Linux OS

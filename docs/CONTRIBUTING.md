@@ -37,7 +37,7 @@ After installation, ensure `cargo` is on your PATH (open a new terminal if neede
 ### Before Making Changes
 
 1. Review the project guidelines in `.github/copilot-instructions.md`
-2. Understand the profile system (base, arch, arch-desktop, desktop, windows)
+2. Understand the profile system (base, desktop) and auto-detected platform categories (linux, windows, arch)
 3. Run existing tests:
    ```bash
    cd cli && cargo test
@@ -160,17 +160,16 @@ See [Configuration Reference](CONFIGURATION.md) and the `ini-configuration` skil
 
 2. **Dry-Run Testing**:
    ```bash
-   ./dotfiles.sh --build install -p arch-desktop -d
+   ./dotfiles.sh --build install -p desktop -d
    ```
    Verify the binary detects your changes correctly
 
 3. **Profile-Specific Testing**:
-   Test with all relevant profiles:
-   - `base` - Minimal
-   - `arch` - Arch Linux headless
-   - `arch-desktop` - Arch Linux desktop
-   - `desktop` - Generic Linux desktop
-   - `windows` - Windows (if applicable)
+   Test with relevant profiles:
+   - `base` - Minimal (no desktop tools)
+   - `desktop` - Full configuration (includes desktop tools)
+
+   Platform categories (`linux`, `windows`, `arch`) are auto-detected and don't need to be specified.
 
 ### CI Testing
 

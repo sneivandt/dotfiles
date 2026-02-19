@@ -13,10 +13,7 @@ _dotfiles_get_profiles() {
 
   local -A profile_desc
   profile_desc[base]="Minimal core shell configuration"
-  profile_desc[arch]="Arch Linux headless"
-  profile_desc[arch-desktop]="Arch Linux desktop"
-  profile_desc[desktop]="Generic Linux desktop"
-  profile_desc[windows]="Windows environment"
+  profile_desc[desktop]="Full configuration including desktop tools"
 
   if [[ -f "$profile_file" ]]; then
     while IFS= read -r line; do
@@ -29,10 +26,7 @@ _dotfiles_get_profiles() {
   else
     profiles=(
       "base:Minimal core shell configuration"
-      "arch:Arch Linux headless"
-      "arch-desktop:Arch Linux desktop"
-      "desktop:Generic Linux desktop"
-      "windows:Windows environment"
+      "desktop:Full configuration including desktop tools"
     )
   fi
 

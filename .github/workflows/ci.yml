@@ -10,213 +10,174 @@ permissions:
   contents: read
 
 jobs:
-  # Rust formatting check
-  rust-fmt:
-    name: Rust Format
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Check formatting
-        run: cargo fmt --check --manifest-path cli/Cargo.toml
-
-  # Rust linting
-  rust-clippy:
-    name: Rust Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('cli/Cargo.lock') }}
-
-      - name: Run clippy
-        run: cargo clippy --manifest-path cli/Cargo.toml -- -D warnings
-
-  # Rust tests
-  rust-test:
-    name: Rust Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('cli/Cargo.lock') }}
-
-      - name: Run tests
-        run: cargo test --manifest-path cli/Cargo.toml
-
-  # Build Linux binary
-  build-linux:
-    name: Build Linux
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('cli/Cargo.lock') }}
-
-      - name: Build release binary
-        run: cargo build --release --manifest-path cli/Cargo.toml
-
-      - name: Verify binary runs
-        run: ./cli/target/release/dotfiles version
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: dotfiles-linux
-          path: cli/target/release/dotfiles
-          retention-days: 1
-
-  # Build Windows binary
-  build-windows:
-    name: Build Windows
-    runs-on: windows-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('cli/Cargo.lock') }}
-
-      - name: Build release binary
-        run: cargo build --release --manifest-path cli/Cargo.toml
-
-      - name: Verify binary runs
-        run: .\cli\target\release\dotfiles.exe version
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: dotfiles-windows
-          path: cli/target/release/dotfiles.exe
-          retention-days: 1
-
-  # Configuration validation and INI file syntax checks
-  validate-config:
-    name: Validate Config - ${{ matrix.name }}
+  # ── Rust Code Quality ─────────────────────────────────
+  rust:
+    name: "Rust: ${{ matrix.name }}"
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - test: config_validation
-            name: Configuration Consistency
-          - test: symlinks_validation
-            name: Symlinks References
-          - test: chmod_validation
-            name: File Permissions
-          - test: ini_syntax
-            name: INI Syntax
-          - test: category_consistency
-            name: Category Consistency
-          - test: empty_sections
-            name: Empty Sections Check
+          - name: Check Formatting
+            command: cargo fmt --check --manifest-path cli/Cargo.toml
+            cache_key: fmt
+          - name: Lint with Clippy
+            command: cargo clippy --manifest-path cli/Cargo.toml -- -D warnings
+            cache_key: clippy
+          - name: Run Tests
+            command: cargo test --manifest-path cli/Cargo.toml
+            cache_key: test
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-${{ matrix.cache_key }}-${{ hashFiles('cli/Cargo.lock') }}
+      - run: ${{ matrix.command }}
 
-      - name: Run ${{ matrix.name }}
-        run: |
-          DIR="$(pwd)"
-          export DIR
-          cd .github/workflows/scripts/linux
-          . ./test-config.sh
-          test_${{ matrix.test }}
-
-  # Static analysis - shellcheck and PSScriptAnalyzer
-  static-analysis:
-    name: Static Analysis - ${{ matrix.tool }}
+  # ── Script Linting ────────────────────────────────────
+  lint:
+    name: "Lint: ${{ matrix.name }}"
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - tool: shellcheck
-            install_cmd: sudo apt-get update && sudo apt-get install -y shellcheck
+          - name: ShellCheck
+            setup: sudo apt-get update && sudo apt-get install -y shellcheck
             test_function: test_shellcheck
-          - tool: PSScriptAnalyzer
-            install_cmd: |
-              sudo apt-get update
-              sudo apt-get install -y wget apt-transport-https software-properties-common
-              wget -q "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
-              sudo dpkg -i packages-microsoft-prod.deb
-              sudo apt-get update
-              sudo apt-get install -y powershell
-            pwsh_install: true
+          - name: PSScriptAnalyzer
+            setup: pwsh -NoProfile -Command "Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser"
             test_function: test_psscriptanalyzer
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install ${{ matrix.tool }}
-        run: ${{ matrix.install_cmd }}
-
-      - name: Install PSScriptAnalyzer module
-        if: matrix.pwsh_install
-        shell: pwsh
-        run: Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
-
-      - name: Run ${{ matrix.tool }}
+      - uses: actions/checkout@v4
+      - name: Install ${{ matrix.name }}
+        run: ${{ matrix.setup }}
+      - name: Run ${{ matrix.name }}
         run: |
-          DIR="$(pwd)"
-          export DIR
+          export DIR="$(pwd)"
           cd .github/workflows/scripts/linux
-          . ./test-static-analysis.sh
-          ${{ matrix.test_function }}
+          sh test-static-analysis.sh ${{ matrix.test_function }}
 
-  # Application tests
-  test-applications:
-    name: Test Application - ${{ matrix.application }}
+  # ── Configuration Validation ──────────────────────────
+  validate-config:
+    name: "Config: ${{ matrix.name }}"
     runs-on: ubuntu-latest
-    needs: [build-linux]
     strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Manifest File References
+            test: config_validation
+          - name: Symlink File References
+            test: symlinks_validation
+          - name: File Permission References
+            test: chmod_validation
+          - name: INI File Syntax
+            test: ini_syntax
+          - name: Category Consistency
+            test: category_consistency
+          - name: No Empty Sections
+            test: empty_sections
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate ${{ matrix.name }}
+        run: |
+          export DIR="$(pwd)"
+          cd .github/workflows/scripts/linux
+          sh test-config.sh ${{ matrix.test }}
+
+  # ── Build ─────────────────────────────────────────────
+  build:
+    name: "Build: ${{ matrix.os_name }} Binary"
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os_name: Linux
+            artifact: dotfiles-linux
+            binary_name: dotfiles
+          - runner: windows-latest
+            os_name: Windows
+            artifact: dotfiles-windows
+            binary_name: dotfiles.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('cli/Cargo.lock') }}
+      - name: Build release binary
+        run: cargo build --release --manifest-path cli/Cargo.toml
+      - name: Verify binary
+        shell: bash
+        run: ./cli/target/release/${{ matrix.binary_name }} version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: cli/target/release/${{ matrix.binary_name }}
+          retention-days: 1
+
+  # ── Integration Tests ─────────────────────────────────
+  integration:
+    name: "Integration: ${{ matrix.profile }} on ${{ matrix.os_name }}"
+    runs-on: ${{ matrix.runner }}
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os_name: Linux
+            artifact: dotfiles-linux
+            binary_name: dotfiles
+            profile: base
+          - runner: ubuntu-latest
+            os_name: Linux
+            artifact: dotfiles-linux
+            binary_name: dotfiles
+            profile: desktop
+          - runner: windows-latest
+            os_name: Windows
+            artifact: dotfiles-windows
+            binary_name: dotfiles.exe
+            profile: base
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: bin/
+      - name: Make binary executable
+        if: runner.os == 'Linux'
+        run: chmod +x bin/${{ matrix.binary_name }}
+      - name: Dry-run install
+        shell: bash
+        run: ./bin/${{ matrix.binary_name }} --root . -p ${{ matrix.profile }} -d install
+      - name: Run validation
+        if: runner.os == 'Linux'
+        shell: bash
+        run: ./bin/${{ matrix.binary_name }} --root . -p ${{ matrix.profile }} test
+
+  # ── Application Tests ─────────────────────────────────
+  test-applications:
+    name: "App: ${{ matrix.application }}"
+    runs-on: ubuntu-latest
+    needs: [build]
+    strategy:
+      fail-fast: false
       matrix:
         include:
           - application: git
@@ -232,283 +193,118 @@ jobs:
             packages: neovim
             tests: opens plugins
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Install ${{ matrix.packages }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ${{ matrix.packages }}
-
-      - name: Download binary
-        uses: actions/download-artifact@v4
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.packages }}
+      - uses: actions/download-artifact@v4
         with:
           name: dotfiles-linux
           path: bin/
-
-      - name: Install base profile
+      - name: Install dotfiles with base profile
         run: |
           chmod +x bin/dotfiles
           ./bin/dotfiles --root . -p base install -v
-
-      - name: Run ${{ matrix.application }} tests
+      - name: Test ${{ matrix.application }}
         run: |
-          DIR="$(pwd)"
-          export DIR
+          export DIR="$(pwd)"
           cd .github/workflows/scripts/linux
-          . ./test-applications.sh
-          for test in ${{ matrix.tests }}; do
-            test_${{ matrix.application }}_${test}
-          done
+          sh test-applications.sh ${{ matrix.application }} ${{ matrix.tests }}
 
-  # Test paru (AUR helper) installation and functionality
+  # ── Specialized Tests ─────────────────────────────────
   test-paru:
-    name: Test Paru Installation
+    name: "Arch Linux: Paru AUR Helper"
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install prerequisites in Arch container
+      - uses: actions/checkout@v4
+      - name: Install prerequisites
         run: |
-          # Use -Sy instead of -Syu to skip full system upgrade for speed
-          # This is safe in CI as we use a fresh container each run
+          # -Sy (not -Syu) skips full upgrade; safe in ephemeral CI containers
           pacman -Sy --noconfirm
           pacman -S --noconfirm base-devel git cargo sudo
-
-      - name: Create test user (paru cannot run as root)
+      - name: Create non-root test user
         run: |
           useradd -m -G wheel testuser
           echo "testuser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           chown -R testuser:testuser .
-
       - name: Run paru tests
         run: |
           REPO_DIR=$(pwd)
-          chmod +x ./.github/workflows/scripts/linux/test-paru.sh
+          chmod +x .github/workflows/scripts/linux/test-paru.sh
           su - testuser -c "cd \"$REPO_DIR\" && ./.github/workflows/scripts/linux/test-paru.sh \"$REPO_DIR\""
 
-  # Script linting (thin wrappers)
-  script-lint:
-    name: Script Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
-
-      - name: Run shellcheck
-        run: shellcheck dotfiles.sh install.sh
-
-  # Integration test: dry-run install for each Linux profile
-  integration-linux:
-    name: Integration - ${{ matrix.profile }}
-    runs-on: ubuntu-latest
-    needs: [build-linux]
-    strategy:
-      matrix:
-        profile: [base, desktop]
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Download binary
-        uses: actions/download-artifact@v4
-        with:
-          name: dotfiles-linux
-          path: bin/
-
-      - name: Make binary executable
-        run: chmod +x bin/dotfiles
-
-      - name: Test dry-run install
-        run: |
-          ./bin/dotfiles --root . -p ${{ matrix.profile }} -d install
-
-      - name: Test validation
-        run: |
-          ./bin/dotfiles --root . -p ${{ matrix.profile }} test
-
-  # Integration test: Windows dry-run
-  integration-windows:
-    name: Integration - base (Windows)
-    runs-on: windows-latest
-    needs: [build-windows]
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Download binary
-        uses: actions/download-artifact@v4
-        with:
-          name: dotfiles-windows
-          path: bin/
-
-      - name: Test dry-run install
-        run: |
-          .\bin\dotfiles.exe --root . -p base -d install
-
-  # Test Docker build
   test-docker:
-    name: Test Docker Build
+    name: "Docker: Build Image and Smoke Test"
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: docker build -t dotfiles-test .
-
-      - name: Run container smoke test
+      - uses: actions/checkout@v4
+      - name: Build and test Docker image
         run: |
+          docker build -t dotfiles-test .
           docker run --rm dotfiles-test sh -c "command -v zsh && echo 'Smoke test passed'"
 
-  # Test git hooks
   test-git-hooks:
-    name: Test Git Hooks
+    name: "Security: Pre-commit Sensitive Data Detection"
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Configure git
+      - uses: actions/checkout@v4
+      - name: Install and test pre-commit hook
         run: |
           git config user.name "CI Test"
           git config user.email "ci@test.local"
-
-      - name: Install git hooks
-        run: |
           ln -sf "$(pwd)/hooks/pre-commit" .git/hooks/pre-commit
           chmod +x .git/hooks/pre-commit
+          .github/workflows/scripts/linux/test-git-hooks.sh
 
-      - name: Run pre-commit hook tests
-        run: ./.github/workflows/scripts/linux/test-git-hooks.sh
-
-  # Test shell wrapper functionality on Linux
   test-shell-wrapper-linux:
-    name: Test Shell Wrapper (Linux)
+    name: "Shell Wrapper: Linux (dotfiles.sh)"
     runs-on: ubuntu-latest
-    needs: [build-linux]
+    needs: [build]
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Download binary
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
           name: dotfiles-linux
           path: bin/
-
-      - name: Make binary executable
-        run: chmod +x bin/dotfiles
-
       - name: Run shell wrapper tests
         run: |
-          DIR="$(pwd)"
-          BINARY_PATH="$(pwd)/bin/dotfiles"
-          export DIR BINARY_PATH
+          chmod +x bin/dotfiles
+          export DIR="$(pwd)" BINARY_PATH="$(pwd)/bin/dotfiles"
           cd .github/workflows/scripts/linux
-          . ./test-shell-wrapper.sh
-          test_wrapper_build_mode
-          test_wrapper_version_cache
-          test_wrapper_uses_local_binary
-          test_wrapper_checksum_verification
-          test_wrapper_offline_fallback
-          test_wrapper_forwarded_args
-          test_wrapper_root_detection
-          test_wrapper_error_handling
+          sh test-shell-wrapper.sh
 
-  # Test shell wrapper functionality on Windows
   test-shell-wrapper-windows:
-    name: Test Shell Wrapper (Windows)
+    name: "Shell Wrapper: Windows (dotfiles.ps1)"
     runs-on: windows-latest
-    needs: [build-windows]
+    needs: [build]
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Download binary
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
           name: dotfiles-windows
           path: bin/
-
       - name: Run PowerShell wrapper tests
         shell: pwsh
         run: |
           $env:BINARY_PATH = Join-Path $PWD "bin\dotfiles.exe"
           & .github/workflows/scripts/windows/Test-ShellWrapper.ps1
 
-  # Test downloading and running binary from artifact (simulates release flow)
-  test-artifact-download-flow:
-    name: Test Artifact Download Flow
-    runs-on: ubuntu-latest
-    needs: [build-linux]
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Download Linux binary artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: dotfiles-linux
-          path: downloaded/
-
-      - name: Verify downloaded binary is executable
-        run: |
-          chmod +x downloaded/dotfiles
-          if [ ! -x "downloaded/dotfiles" ]; then
-            echo "ERROR: Downloaded binary is not executable"
-            exit 1
-          fi
-
-      - name: Test binary runs version command
-        run: |
-          output=$(downloaded/dotfiles version)
-          echo "Version output: $output"
-          if ! echo "$output" | grep -q "dotfiles"; then
-            echo "ERROR: Binary version command failed"
-            exit 1
-          fi
-
-      - name: Test binary runs with --help
-        run: |
-          downloaded/dotfiles --help
-
-      - name: Test binary runs dry-run install
-        run: |
-          downloaded/dotfiles --root . -p base -d install
-
-      - name: Test binary runs test command
-        run: |
-          downloaded/dotfiles --root . -p base test
-
-  # Summary job
+  # ── CI Gate ───────────────────────────────────────────
   ci-success:
-    name: CI Success
+    name: "All CI Checks Passed"
     runs-on: ubuntu-latest
     needs:
-      - rust-fmt
-      - rust-clippy
-      - rust-test
-      - build-linux
-      - build-windows
-      - script-lint
-      - static-analysis
+      - rust
+      - lint
       - validate-config
+      - build
+      - integration
       - test-applications
       - test-paru
-      - integration-linux
-      - integration-windows
       - test-docker
       - test-git-hooks
       - test-shell-wrapper-linux
       - test-shell-wrapper-windows
-      - test-artifact-download-flow
     steps:
-      - name: Mark CI as successful
-        run: echo "All CI jobs passed"
+      - run: echo "All CI jobs passed"

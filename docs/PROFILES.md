@@ -4,13 +4,22 @@ The profile system allows a single dotfiles repository to serve multiple environ
 
 ## Available Profiles
 
+Profiles are defined in `conf/profiles.ini` and control the `desktop` role category. Platform categories (`linux`, `windows`, `arch`) are auto-detected and cannot be selected manually.
+
 | Profile | Description | Use Case |
 |---------|-------------|----------|
-| `base` | Minimal core shell configuration | Shared shell configs without OS-specific or desktop files |
-| `arch` | Arch Linux headless | Server or headless Arch Linux system |
-| `arch-desktop` | Arch Linux with desktop environment | Full Arch Linux workstation with GUI |
-| `desktop` | Generic Linux desktop | Desktop tools on non-Arch Linux distributions |
-| `windows` | Windows environment | Windows system (profile selection not available on Windows) |
+| `base` | Minimal core shell configuration (excludes `desktop`) | Shared shell configs without desktop-specific files |
+| `desktop` | Full configuration including desktop tools (includes `desktop`) | Workstation with GUI, VS Code, fonts, etc. |
+
+### Auto-Detected Platform Categories
+
+These categories are determined automatically based on the running OS and are always applied — they are not profiles you select:
+
+| Category | When Active | Effect |
+|----------|-------------|--------|
+| `linux` | Running on Linux | Includes Linux-specific packages, shell config, systemd units |
+| `windows` | Running on Windows | Includes Windows packages, registry settings, git config |
+| `arch` | Running on Arch Linux | Includes pacman/AUR packages, Arch-specific config |
 
 ## How Profiles Work
 
@@ -20,14 +29,14 @@ The profile system operates through several coordinated mechanisms:
 
 Profiles can be selected in three ways, in order of priority:
 
-1. **Explicit CLI argument**: `-p, --profile arch-desktop` (highest priority)
+1. **Explicit CLI argument**: `-p, --profile desktop` (highest priority)
 2. **Persisted profile**: Automatically read from `.git/config`
 3. **Interactive prompt**: If no profile is set, you'll be prompted to select one
 
 **Example - First time setup:**
 ```bash
 ./dotfiles.sh install
-# Prompts: "Select profile (1-5): "
+# Prompts: "Select profile (1-2): "
 # Selection is saved to .git/config for future runs
 ```
 
@@ -94,7 +103,7 @@ Selected profiles are saved to `.git/config` for seamless reuse:
 
 ```bash
 # Save profile
-git config --local dotfiles.profile arch-desktop
+git config --local dotfiles.profile desktop
 
 # Read saved profile
 git config --local --get dotfiles.profile
@@ -109,28 +118,18 @@ Profiles are defined in `conf/profiles.ini`:
 ```ini
 [base]
 include=
-exclude=windows,desktop,arch
-
-[arch]
-include=arch
-exclude=windows,desktop
-
-[arch-desktop]
-include=arch,desktop
-exclude=windows
+exclude=desktop
 
 [desktop]
 include=desktop
-exclude=windows,arch
-
-[windows]
-include=windows
-exclude=arch,desktop
+exclude=
 ```
+
+Platform categories (`linux`, `windows`, `arch`) are not defined in profiles.ini — they are auto-detected at runtime based on the operating system.
 
 ### Profile Syntax
 
-- **Profile names**: Use hyphens (e.g., `[arch-desktop]`)
+- **Profile names**: Section headers in `profiles.ini` (e.g., `[base]`, `[desktop]`)
 - **include**: Comma-separated list of categories to include
 - **exclude**: Comma-separated list of categories to exclude
 
@@ -139,14 +138,14 @@ exclude=arch,desktop
 When you switch profiles, the sparse checkout automatically adjusts:
 
 ```bash
-# Switch from arch-desktop to base
+# Switch from desktop to base
 ./dotfiles.sh install -p base
 # Desktop-specific files are automatically removed from workspace
 # Symlinks to desktop files are removed
 # Your selection is saved for future runs
 
-# Switch back to arch-desktop
-./dotfiles.sh install -p arch-desktop
+# Switch back to desktop
+./dotfiles.sh install -p desktop
 # Desktop files are checked out again
 # Desktop symlinks are created
 ```
@@ -158,8 +157,8 @@ You can create custom profiles for specific needs:
 1. **Edit `conf/profiles.ini`:**
    ```ini
    [my-custom]
-   include=arch
-   exclude=windows,desktop
+   include=mycategory
+   exclude=
    ```
 
 2. **Use your profile:**
@@ -177,9 +176,10 @@ Categories are logical groups used throughout the configuration system:
 
 | Category | Purpose | Used In |
 |----------|---------|---------|
-| `windows` | Windows-specific configuration | Windows systems only |
-| `arch` | Arch Linux-specific configuration | Arch Linux systems |
-| `desktop` | Desktop/GUI configuration | Systems with GUI |
+| `linux` | Linux-specific configuration | Linux systems (auto-detected) |
+| `windows` | Windows-specific configuration | Windows systems (auto-detected) |
+| `arch` | Arch Linux-specific configuration | Arch Linux systems (auto-detected) |
+| `desktop` | Desktop/GUI configuration | Systems using `desktop` profile |
 
 Custom categories can be created by:
 1. Adding them to profile definitions in `conf/profiles.ini`
@@ -213,7 +213,7 @@ cd dotfiles
 ```bash
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 # Full desktop environment with Arch packages
 ```
 
@@ -229,7 +229,7 @@ cd dotfiles
 ```powershell
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-.\dotfiles.ps1 install -p windows
+.\dotfiles.ps1 install -p desktop
 # Windows profile is automatically used
 ```
 
@@ -248,9 +248,9 @@ git sparse-checkout list
 ```
 
 ### Desktop files missing on Arch
-Use the `arch-desktop` profile, not `arch`:
+Use the `desktop` profile (the `arch` category is auto-detected):
 ```bash
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 ```
 
 ### Package installation failing

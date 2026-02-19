@@ -13,11 +13,10 @@
 - [ ] CI/CD changes
 
 ## Affected Profiles
-<!-- Check all profiles that are affected by these changes -->
+<!-- Check all profiles/categories that are affected by these changes -->
 - [ ] `base` (core shell configuration)
-- [ ] `arch` (Arch Linux headless)
-- [ ] `arch-desktop` (Arch Linux desktop)
-- [ ] `windows` (Windows environment)
+- [ ] `desktop` (desktop tools and GUI configuration)
+- [ ] Platform-specific: `arch`, `windows`, `linux` (auto-detected categories)
 - [ ] Profile-agnostic (utilities, CI, documentation)
 
 ## Testing Performed
@@ -30,7 +29,7 @@
 
 **Test environment:**
 - OS: <!-- e.g., Arch Linux, Ubuntu, Windows 11 -->
-- Profile tested: <!-- e.g., arch-desktop -->
+- Profile tested: <!-- e.g., desktop -->
 
 ## Configuration Changes
 <!-- If you've modified INI files, list the changes -->

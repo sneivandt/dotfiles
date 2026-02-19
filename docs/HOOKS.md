@@ -77,7 +77,7 @@ Hooks are automatically installed when you run the dotfiles installation:
 
 **Windows:**
 ```powershell
-.\dotfiles.ps1 install -p windows
+.\dotfiles.ps1 install -p desktop
 ```
 
 The binary creates a symlink from `.git/hooks/pre-commit` to `hooks/pre-commit`, so any updates to the hook in the repository are automatically reflected without reinstalling.

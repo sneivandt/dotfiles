@@ -78,7 +78,7 @@ For everything else (tasks, config, logging), edit the Rust code in `cli/src/`.
 
 ## Rules
 
-- Wrapper scripts must stay under ~150 lines
+- Keep wrapper scripts as short as practical (dotfiles.sh ~180 lines, dotfiles.ps1 ~300 lines)
 - Never add task logic to shell scripts — use `cli/src/tasks/*.rs`
 - The `--root` flag is always passed to the binary by the wrapper
 - Wrapper forwards all other arguments unchanged via `exec`

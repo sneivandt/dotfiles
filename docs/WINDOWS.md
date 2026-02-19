@@ -23,16 +23,16 @@ Open an elevated PowerShell session (either PowerShell Core or Windows PowerShel
 ```powershell
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-.\dotfiles.ps1 install -p windows
+.\dotfiles.ps1 install -p desktop
 
 # Dry-run mode (preview changes without modification, no admin required)
-.\dotfiles.ps1 install -p windows -d
+.\dotfiles.ps1 install -p desktop -d
 
 # With verbose output
-.\dotfiles.ps1 install -p windows -v
+.\dotfiles.ps1 install -p desktop -v
 
 # Build and run from source (development)
-.\dotfiles.ps1 -Build install -p windows
+.\dotfiles.ps1 -Build install -p desktop
 ```
 
 Re‑run the script at any time; operations are skipped when already satisfied (extensions installed, registry values unchanged, symlinks existing).
@@ -43,76 +43,57 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 
 | Step | Task | Description | Idempotency Cue |
 |------|------|-------------|-----------------|
-| 1 | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
-| 2 | Update Repository | Updates the repository from remote. | Skips if already up to date. |
-| 3 | Git Hooks | Installs repository git hooks. | Skips if hooks already installed. |
-| 4 | Packages | Installs missing packages from `conf/packages.ini` using winget. | Skips already-installed packages. |
-| 5 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.ini`. | Only creates links whose targets do not already exist. |
-| 6 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.ini`. | Checks against `code --list-extensions`. |
-| 7 | Copilot Skills | Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`. | Skips if skill files already exist. |
+| 1 | Developer Mode | Enables Windows developer mode (required for symlink creation). | Skips if already enabled. |
+| 2 | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
+| 3 | Update Repository | Updates the repository from remote (`git pull --ff-only`). | Skips if already up to date. |
+| 4 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
+| 5 | Git Hooks | Installs repository git hooks. | Skips if hooks already installed. |
+| 6 | Packages | Installs missing packages from `conf/packages.ini` using winget. | Skips already-installed packages. |
+| 7 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.ini`. | Only creates links whose targets do not already exist. |
 | 8 | Registry | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
-| 9 | Git Config | Configures git settings (e.g., `core.symlinks=false`). | Skips if already configured. |
+| 9 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.ini`. | Checks against `code --list-extensions`. |
+| 10 | Copilot Skills | Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`. | Skips if skill files already exist. |
 
 Tasks that don't apply to Windows (systemd, shell, chmod, paru) are automatically skipped via platform detection.
 
 ## Git Configuration
 
-The repository contains symlinks (e.g., `symlinks/config/nvim` → `../vim`) that are tracked in Git. On Windows, creating actual symlinks during Git operations requires either Developer Mode enabled or Administrator privileges.
+The repository contains symlinks (e.g., `symlinks/config/nvim` → `../vim`) that are tracked in Git. On Windows, creating actual symlinks during Git operations requires Developer Mode enabled or Administrator privileges.
 
-To avoid permission errors during `git pull` and `git checkout`, the script **automatically configures** Git to treat symlinks as regular text files:
+The binary **automatically configures** Git to enable symlink support, since Developer Mode is enabled as a prior task:
 
 ```powershell
-git config --local core.symlinks false
+git config core.symlinks true
+git config core.autocrlf false
+git config credential.helper manager
 ```
 
 This configuration:
-- Prevents `error: unable to create symlink: Permission denied` during Git operations
-- Stores symlink targets as plain text files in the working directory
+- Enables proper symlink creation in the working directory
+- Requires Developer Mode (enabled automatically by the first installation task)
 - Is applied automatically on first run (idempotent—won't change if already set)
-- Does not affect the actual Windows symlink creation by the binary (which creates proper symlinks in your user profile)
 
-**Manual Configuration:** If you encounter symlink errors before running the script (e.g., during initial `git clone` or `git pull`), run:
+**Manual Workaround:** If you encounter symlink permission errors before running the script (e.g., during initial `git clone`), you can temporarily disable symlinks:
 ```powershell
 git config core.symlinks false
 ```
 
 ## Automatic Repository Updates
 
-The installation process includes an automatic repository update task that safely updates the dotfiles repository from the remote:
+The installation process includes an automatic repository update task that updates the dotfiles repository from the remote using a fast-forward-only merge:
 
-### How It Works
-
-1. **Detects Changes**: Checks for any staged, unstaged, or untracked files in the working tree
-2. **Stashes Automatically**: If changes are found, creates a timestamped stash before updating
-3. **Fetches and Merges**: Fetches from origin and merges updates from the remote branch
-4. **Re-applies Changes**: Automatically re-applies the stash after a successful update
-5. **Clear Error Messages**: Provides detailed guidance if manual intervention is needed
+```
+git pull --ff-only
+```
 
 ### Behavior
 
-- **Clean working tree**: Updates proceed normally with no stashing
-- **Dirty working tree**: Changes are automatically stashed, repository is updated, then changes are re-applied
-- **Merge conflicts**: If conflicts occur during merge or stash re-application, the operation is aborted and you receive clear instructions on how to resolve manually
-- **Already up to date**: Skips update if local HEAD matches remote HEAD
+- **Clean, fast-forwardable**: Update proceeds normally
+- **Already up to date**: Skips silently
+- **Non-fast-forwardable**: The pull fails and the task reports an error — manual resolution is required
+- **Dirty working tree**: Git will refuse the pull if there are conflicting changes
 
-### Manual Resolution
-
-If automatic stash re-application fails due to conflicts, you'll see a message like:
-
-```
-WARNING: Successfully updated dotfiles, but failed to re-apply your stashed changes
-due to conflicts. Your changes are preserved in stash: dotfiles-auto-stash-2024-02-08_12-30-45
-
-To resolve this manually:
-    1. Review the conflicts: git status
-    2. Manually apply the stash and resolve conflicts:
-       git stash apply stash^{/dotfiles-auto-stash-2024-02-08_12-30-45}
-    3. Resolve any conflicts in the affected files
-    4. Once resolved, drop the stash:
-       git stash drop stash^{/dotfiles-auto-stash-2024-02-08_12-30-45}
-```
-
-This ensures your local changes are never lost while keeping the update process safe and automatic.
+If the update fails, resolve the situation manually (e.g., commit or stash local changes, then re-run).
 
 ## Package Management
 
@@ -145,7 +126,7 @@ To add packages:
 1. Add the winget package ID to the `[windows]` section in `conf/packages.ini`
 2. Re-run `./dotfiles.ps1`
 
-**Note:** Package installation respects the profile system. Only packages in sections not excluded by the "windows" profile will be installed.
+**Note:** Package installation respects the profile system. Only packages in sections matching your active categories (including auto-detected `windows`) will be installed.
 
 ## Registry Customization
 
@@ -237,7 +218,7 @@ The dotfiles repository is automatically updated during installation. The binary
 Simply re-run the installer:
 
 ```powershell
-.\dotfiles.ps1 install -p windows
+.\dotfiles.ps1 install -p desktop
 ```
 
 The binary automatically:
@@ -253,7 +234,7 @@ If you prefer to update manually:
 
 ```powershell
 git pull
-.\dotfiles.ps1 install -p windows
+.\dotfiles.ps1 install -p desktop
 ```
 
 Note: Manual `git pull` may require stashing your changes first if the working tree is dirty.

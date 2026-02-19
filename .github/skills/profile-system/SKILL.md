@@ -59,7 +59,7 @@ pub struct Profile {
 
 ## Section Naming Convention
 
-- **Profile names** (in `profiles.ini`): Use hyphens — `[arch-desktop]`
+- **Profile names** (in `profiles.ini`): e.g., `[base]`, `[desktop]`
 - **Config sections** (all other INI files): Comma-separated — `[arch,desktop]`
   - AND logic: all categories must be in `active_categories`
 - **Platform categories** (`linux`, `windows`, `arch`): Auto-detected, use in config sections for platform-specific items (e.g., `[linux]` for chmod entries)

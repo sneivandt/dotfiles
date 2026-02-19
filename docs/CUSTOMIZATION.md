@@ -109,7 +109,7 @@ This links the entire directory.
 
 3. **Install**:
    ```powershell
-   .\dotfiles.ps1 install -p windows
+   .\dotfiles.ps1 install -p desktop
    ```
 
 ## Adding Systemd Units
@@ -236,7 +236,7 @@ GitHub Copilot CLI can be extended with custom skills that provide additional co
    ```
    Or on Windows:
    ```powershell
-   .\dotfiles.ps1 install -p windows
+   .\dotfiles.ps1 install -p desktop
    ```
 
 **Notes**:
@@ -265,7 +265,7 @@ GitHub Copilot CLI can be extended with custom skills that provide additional co
 
 3. **Apply**:
    ```powershell
-   .\dotfiles.ps1 install -p windows
+   .\dotfiles.ps1 install -p desktop
    ```
 
 ## Adding File Permissions
@@ -299,8 +299,8 @@ To set specific permissions on symlinked files:
 1. **Define profile in conf/profiles.ini**:
    ```ini
    [my-server]
-   include=arch
-   exclude=windows,desktop
+   include=
+   exclude=desktop
    ```
 
 2. **Add profile-specific packages**:
@@ -333,7 +333,7 @@ For a profile that needs specific combinations:
 # profiles.ini
 [web-dev]
 include=desktop
-exclude=windows,arch
+exclude=
 ```
 
 Use multi-category sections for fine-grained control:
@@ -359,7 +359,7 @@ Categories allow grouping configuration for specific use cases.
    # profiles.ini
    [my-profile]
    include=my-category
-   exclude=windows
+   exclude=
    ```
 
 2. **Use in configuration sections**:
@@ -533,7 +533,7 @@ neovim
 EOF
 
 # 4. Install
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 ```
 
 ### Example: Custom Development Profile
@@ -543,8 +543,8 @@ EOF
 cat >> conf/profiles.ini << 'EOF'
 
 [dev]
-include=arch,desktop
-exclude=windows
+include=desktop
+exclude=
 EOF
 
 # 2. Add development packages

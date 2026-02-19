@@ -18,7 +18,7 @@ The project uses a single Rust binary on both platforms. The `dotfiles.ps1` wrap
 
 Key differences from Linux:
 - **Registry Configuration**: Managed via `conf/registry.ini` (no Linux equivalent)
-- **Fixed Profile**: Windows always uses the `windows` profile — no interactive selection
+- **Fixed Profile**: Windows uses `base` or `desktop` profiles — the `windows` category is auto-detected
 - **Symlinks**: Require Developer Mode or admin privileges
 - **No systemd/chmod**: Unit and file-mode tasks skip on Windows
 
@@ -86,8 +86,8 @@ fn is_dir_like(path: &Path) -> bool {
 | Service management | `systemctl` | N/A (skipped) |
 | File permissions | `chmod.ini` | N/A (skipped) |
 | Registry | N/A | `registry.ini` |
-| Profile | User-selected | Fixed `windows` |
-| Sparse checkout | Profile-filtered | Fixed `windows` exclusions |
+| Profile | User-selected (`base`/`desktop`) | User-selected (`base`/`desktop`) |
+| Sparse checkout | Profile-filtered | Profile-filtered |
 
 ## Shell Wrapper (`dotfiles.ps1`)
 

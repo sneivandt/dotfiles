@@ -30,7 +30,7 @@ cd dotfiles
 ```powershell
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-.\dotfiles.ps1 install -p windows
+.\dotfiles.ps1 install -p desktop
 ```
 
 ### Docker
@@ -52,7 +52,7 @@ Binary updates are automatic: on first run, the entry script downloads the binar
 
 ```bash
 # Install with profile
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 
 # Preview changes (dry-run)
 ./dotfiles.sh install -d
@@ -82,10 +82,9 @@ Profiles control which files are included and which components are installed:
 | Profile | Description |
 |---------|-------------|
 | `base` | Minimal core shell configuration |
-| `arch` | Arch Linux headless (server) |
-| `arch-desktop` | Arch Linux with desktop environment |
-| `desktop` | Generic Linux desktop (non-Arch) |
-| `windows` | Windows system |
+| `desktop` | Full configuration including desktop tools |
+
+Platform categories (`linux`, `windows`, `arch`) are auto-detected based on the running OS.
 
 See the [Profile System Guide](docs/PROFILES.md) for details.
 

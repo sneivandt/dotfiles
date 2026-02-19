@@ -192,7 +192,7 @@ USER dotfiles
 WORKDIR /home/dotfiles
 RUN git clone https://github.com/sneivandt/dotfiles.git && \
     cd dotfiles && \
-    ./dotfiles.sh install -p arch-desktop
+    ./dotfiles.sh install -p desktop
 
 WORKDIR /home/dotfiles
 CMD ["/bin/zsh"]
@@ -240,7 +240,7 @@ CMD ["/bin/bash"]
 Use build arguments for flexibility:
 
 ```dockerfile
-ARG PROFILE=arch-desktop
+ARG PROFILE=desktop
 ARG DOTFILES_REPO=https://github.com/sneivandt/dotfiles.git
 
 FROM archlinux:latest
@@ -459,7 +459,7 @@ vim main.go
 
 ```bash
 # Test multiple profiles
-for profile in base arch desktop arch-desktop; do
+for profile in base desktop; do
   echo "Testing $profile..."
   docker buildx build \
     --build-arg PROFILE=$profile \

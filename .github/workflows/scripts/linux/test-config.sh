@@ -192,3 +192,10 @@ test_empty_sections()
   done
   [ "$errors" -eq 0 ] || return 1
 )}
+
+# Execute a specific test when run directly: sh test-config.sh <test_name>
+case "$0" in
+  *test-config.sh)
+    [ $# -ge 1 ] && "test_$1"
+    ;;
+esac

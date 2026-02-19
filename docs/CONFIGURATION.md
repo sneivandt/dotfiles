@@ -26,7 +26,7 @@ more-entries
 ```
 
 **Key rules:**
-- **Profile names** (in profiles.ini only) can use hyphens: `[arch-desktop]`
+- **Profile names** (in profiles.ini only): `[base]`, `[desktop]`
 - **Section names** (in all other .ini files) use comma-separated categories: `[arch,desktop]`
   - This indicates the section requires ALL listed categories to be active (AND logic)
   - Example: `[arch,desktop]` is only processed when both `arch` AND `desktop` are not excluded
@@ -37,13 +37,12 @@ more-entries
 
 ## Available Profiles
 
-Profiles are defined in `profiles.ini`:
+Profiles are defined in `profiles.ini` and control the `desktop` role category:
 
-- **`base`**: Minimal core shell configuration (cross-platform)
-- **`arch`**: Arch Linux headless (includes Arch packages, excludes desktop)
-- **`arch-desktop`**: Arch Linux desktop (includes desktop tools, window manager, fonts)
-- **`desktop`**: Generic Linux desktop (includes desktop tools like VS Code and IntelliJ IDEA, excludes OS-specific packages)
-- **`windows`**: Windows environment (PowerShell, registry settings, desktop tools like VS Code and IntelliJ IDEA)
+- **`base`**: Minimal core shell configuration (excludes `desktop`)
+- **`desktop`**: Full configuration including desktop tools (includes `desktop`)
+
+Platform categories (`linux`, `windows`, `arch`) are auto-detected based on the running OS and always applied automatically — they are not user-selectable profiles.
 
 ## Configuration Files
 
@@ -54,15 +53,16 @@ Profiles are defined in `profiles.ini`:
 
 **Example**:
 ```ini
-[arch-desktop]
-include=arch,desktop
-exclude=windows
+[desktop]
+include=desktop
+exclude=
 ```
 
 **Categories**:
-- `windows`: Windows-specific configuration
-- `arch`: Arch Linux-specific configuration
-- `desktop`: Desktop/GUI configuration (cross-platform)
+- `linux`: Linux-specific configuration (auto-detected)
+- `windows`: Windows-specific configuration (auto-detected)
+- `arch`: Arch Linux-specific configuration (auto-detected)
+- `desktop`: Desktop/GUI configuration (controlled by profile selection)
 
 ---
 
@@ -254,8 +254,8 @@ my-new-package
 1. Define in `profiles.ini`:
    ```ini
    [my-profile]
-   include=arch
-   exclude=windows,desktop
+   include=mycategory
+   exclude=desktop
    ```
 2. Add sections to other config files as needed
 3. Use with `-p my-profile`
@@ -266,12 +266,12 @@ Configuration files are automatically processed based on the selected profile:
 
 **Linux**:
 ```bash
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 ```
 
 **Windows**:
 ```powershell
-.\dotfiles.ps1 install -p windows
+.\dotfiles.ps1 install -p desktop
 ```
 
 All items defined in matching profile sections are automatically installed.
@@ -286,7 +286,7 @@ A minimal setup with core shell configuration:
 # profiles.ini
 [base]
 include=
-exclude=windows,desktop,arch
+exclude=desktop
 
 # symlinks.ini
 [base]
@@ -302,15 +302,15 @@ vim
 
 ### Example: Desktop Profile with Multiple Categories
 
-Configuration requiring multiple categories:
+Configuration requiring multiple categories (on an Arch Linux system with the `desktop` profile selected):
 
 ```ini
 # profiles.ini
-[arch-desktop]
-include=arch,desktop
-exclude=windows
+[desktop]
+include=desktop
+exclude=
 
-# packages.ini
+# packages.ini — arch and desktop categories are both active
 [arch]
 base-devel
 pacman-contrib

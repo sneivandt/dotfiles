@@ -177,19 +177,22 @@ A shared `Context` struct carries the loaded `Config`, `Platform`, `Logger`, and
 
 The `execute()` function runs a task, recording the result (`Ok`, `Skipped`, `DryRun`, `Failed`) in the logger.
 
-**Implemented tasks** (`cli/src/tasks/`):
+**Implemented tasks** (`cli/src/tasks/`, in execution order):
+- `developer_mode` — Enable Windows developer mode (required for symlinks)
 - `sparse_checkout` — Configure git sparse checkout
-- `update` — Update repository
+- `update` — Update repository (`git pull --ff-only`)
+- `git_config` — Configure git settings (Windows: autocrlf, symlinks, credential helper)
 - `hooks` — Install git hooks
-- `packages` — Install system packages (pacman, paru, AUR)
+- `packages` — Install system packages (pacman or winget)
+- `paru` — Bootstrap paru AUR helper (Arch Linux only)
+- `aur_packages` — Install AUR packages via paru (Arch Linux only)
 - `symlinks` — Create symlinks
-- `vscode` — Install VS Code extensions
-- `copilot_skills` — Download Copilot CLI skills
 - `chmod` — Apply file permissions
 - `shell` — Configure default shell
 - `systemd` — Enable systemd units
 - `registry` — Apply Windows registry settings
-- `git_config` — Configure git settings
+- `vscode` — Install VS Code extensions
+- `copilot_skills` — Download Copilot CLI skills
 
 #### Platform Detection (`platform.rs`)
 
@@ -246,7 +249,7 @@ entry-two
 ```
 
 **Profile name distinction**:
-- `profiles.ini`: Profile names use hyphens: `[arch-desktop]`
+- `profiles.ini`: Profile names: `[base]`, `[desktop]`
 - Other files: Section names use comma-separated categories: `[arch,desktop]`
 
 **Exception**: `registry.ini` uses `key = value` format.
@@ -307,16 +310,13 @@ GitHub Actions CI (`.github/workflows/ci.yml`) runs on pull requests:
 
 | Job | What it checks |
 |---|---|
-| `rust-fmt` | `cargo fmt --check` |
-| `rust-clippy` | `cargo clippy -- -D warnings` |
-| `rust-test` | `cargo test` |
-| `build-linux` | Release build + binary smoke test |
-| `build-windows` | Release build + binary smoke test |
-| `script-lint` | shellcheck on `dotfiles.sh` and `install.sh` |
-| `integration-linux` | Dry-run install for `base` and `desktop` profiles |
-| `integration-windows` | Dry-run install for `windows` profile |
+| `rust` | Formatting, Clippy linting, and unit/integration tests (matrix) |
+| `lint` | ShellCheck and PSScriptAnalyzer (matrix) |
+| `build` | Release build + smoke test on Linux and Windows (matrix) |
+| `integration` | Dry-run install per profile and platform (matrix) |
+| `test-applications` | Git, zsh, vim, nvim behavior (matrix) |
 | `test-docker` | Docker image build + smoke test |
-| `test-git-hooks` | Pre-commit hook tests |
+| `test-git-hooks` | Pre-commit sensitive data detection |
 
 ### Release Pipeline
 

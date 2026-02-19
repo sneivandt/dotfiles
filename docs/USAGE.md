@@ -10,7 +10,7 @@ Comprehensive guide to using the dotfiles installation and management system.
 ```bash
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 ```
 
 **Interactive profile selection (first time):**
@@ -32,7 +32,7 @@ cd dotfiles
 ```powershell
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-.\dotfiles.ps1 install -p windows
+.\dotfiles.ps1 install -p desktop
 ```
 
 ## Command Line Options
@@ -54,7 +54,7 @@ dotfiles.sh [--build] version
 - **`test`** - Run configuration validation
 - **`version`** - Print version information
 - **`--build`** - Build and run from source (requires `cargo`)
-- **`-p, --profile PROFILE`** - Use specific profile (base, arch, arch-desktop, desktop, windows)
+- **`-p, --profile PROFILE`** - Use specific profile (base, desktop)
 - **`-v, --verbose`** - Enable verbose logging
 - **`-d, --dry-run`** - Preview changes without modifying system (auto-enables verbose)
 - **`--skip TASKS`** - Skip specific tasks (comma-separated)
@@ -65,7 +65,7 @@ dotfiles.sh [--build] version
 
 **Synopsis:**
 ```powershell
-.\dotfiles.ps1 [-Build] install -p windows [-d] [-v]
+.\dotfiles.ps1 [-Build] install -p desktop [-d] [-v]
 .\dotfiles.ps1 [-Build] uninstall [-d]
 .\dotfiles.ps1 [-Build] test
 .\dotfiles.ps1 [-Build] version
@@ -93,14 +93,14 @@ cd dotfiles
 ```bash
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 ```
 
 **Windows:**
 ```powershell
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-.\dotfiles.ps1 install -p windows
+.\dotfiles.ps1 install -p desktop
 ```
 
 ### Updating Dotfiles
@@ -116,21 +116,21 @@ git pull
 ```powershell
 cd ~\dotfiles
 git pull
-.\dotfiles.ps1 install -p windows
+.\dotfiles.ps1 install -p desktop
 ```
 
 ### Previewing Changes
 
 **Before running installation:**
 ```bash
-./dotfiles.sh install -p arch-desktop -d
+./dotfiles.sh install -p desktop -d
 # Shows what would be done without making changes
 # Verbose mode is automatically enabled
 ```
 
 **Windows:**
 ```powershell
-.\dotfiles.ps1 install -p windows -d
+.\dotfiles.ps1 install -p desktop -d
 ```
 
 ### Switching Profiles
@@ -181,28 +181,31 @@ The installation process handles different components based on your profile:
 ### Linux Installation Steps
 
 1. **Configure Sparse Checkout** - Excludes files based on profile
-2. **Update Repository** - Pulls latest changes
-3. **Install Git Hooks** - Symlinks repository git hooks
-4. **Install Packages** - Installs packages from `conf/packages.ini` using pacman/paru
-5. **Create Symlinks** - Links files from `symlinks/` to `$HOME`
-6. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.ini`
-7. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`
-8. **Set Permissions** - Applies file permissions from `conf/chmod.ini`
-9. **Configure Shell** - Sets default shell
-10. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.ini`
-11. **Configure Git** - Applies git configuration
+2. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
+3. **Configure Git** - Applies git configuration
+4. **Install Git Hooks** - Symlinks repository git hooks
+5. **Install Packages** - Installs packages from `conf/packages.ini` using pacman
+6. **Install Paru** - Bootstraps paru AUR helper (Arch Linux only)
+7. **Install AUR Packages** - Installs AUR packages via paru (Arch Linux only)
+8. **Create Symlinks** - Links files from `symlinks/` to `$HOME`
+9. **Set Permissions** - Applies file permissions from `conf/chmod.ini`
+10. **Configure Shell** - Sets default shell
+11. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.ini`
+12. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.ini`
+13. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`
 
 ### Windows Installation Steps
 
-1. **Configure Sparse Checkout** - Excludes files based on profile
-2. **Update Repository** - Pulls latest changes
-3. **Install Git Hooks** - Symlinks repository git hooks
-4. **Install Packages** - Installs packages using winget
-5. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
-6. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.ini`
-7. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`
+1. **Enable Developer Mode** - Enables Windows developer mode (required for symlinks)
+2. **Configure Sparse Checkout** - Excludes files based on profile
+3. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
+4. **Configure Git** - Sets `core.symlinks=true`, `core.autocrlf=false`, credential helper
+5. **Install Git Hooks** - Symlinks repository git hooks
+6. **Install Packages** - Installs packages using winget
+7. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
 8. **Apply Registry Settings** - Configures registry from `conf/registry.ini`
-9. **Configure Git** - Sets `core.symlinks=false` for compatibility
+9. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.ini`
+10. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`
 
 ## Verbose Mode
 
@@ -312,7 +315,7 @@ All operations are idempotent - safe to run multiple times:
 
 ```bash
 # First run
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 # Installs packages, creates symlinks, etc.
 
 # Second run
@@ -334,12 +337,12 @@ Your profile selection is automatically saved:
 
 ```bash
 # First run with explicit profile
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 # Profile is saved to .git/config
 
 # Subsequent runs
 ./dotfiles.sh install
-# Uses arch-desktop automatically, no need to specify
+# Uses saved profile automatically, no need to specify
 ```
 
 **Manual profile management:**
@@ -357,15 +360,15 @@ git config --local dotfiles.profile base
 ```bash
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-./dotfiles.sh install -p arch
-# Core configs + Arch packages, no desktop
+./dotfiles.sh install -p base
+# Core configs + Arch packages (auto-detected), no desktop
 ```
 
 ### Full Desktop Workstation (Arch Linux)
 ```bash
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-./dotfiles.sh install -p arch-desktop
+./dotfiles.sh install -p desktop
 # Everything including desktop environment
 ```
 
@@ -381,7 +384,7 @@ cd dotfiles
 ```powershell
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-.\dotfiles.ps1 install -p windows
+.\dotfiles.ps1 install -p desktop
 # Windows configurations, registry, desktop tools
 ```
 

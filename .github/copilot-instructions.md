@@ -7,7 +7,7 @@ Core guidance for AI code assistants working on this dotfiles project.
 This project manages dotfiles and system configuration using a profile-based sparse checkout approach for Linux and Windows. A **Rust binary** in `cli/` is the engine; the shell wrappers (`dotfiles.sh`, `dotfiles.ps1`) only bootstrap and invoke it.
 
 **Core Principles**:
-- **Profile-Based**: Profiles (base, arch, arch-desktop, desktop, windows) control sparse checkout and configuration
+- **Profile-Based**: Profiles (base, desktop) control sparse checkout and configuration; platform categories (linux, windows, arch) are auto-detected
 - **Idempotent**: Every run converges to the declared state without side effects
 - **Cross-Platform**: Single Rust binary; thin POSIX shell and PowerShell wrappers
 - **Declarative**: Configuration lives in `conf/` INI files, parsed natively by the Rust engine

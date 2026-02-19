@@ -25,12 +25,12 @@ function Write-TestFail {
 
 function Test-BuildMode {
     Write-TestStage "Testing dotfiles.ps1 -Build mode"
-    
+
     if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
         Write-Host "Skipping: cargo not installed" -ForegroundColor Yellow
         return $true
     }
-    
+
     try {
         $output = & "$PSScriptRoot\..\..\..\..\dotfiles.ps1" -Build -Action version 2>&1
         if ($output -match 'dotfiles') {
@@ -52,12 +52,12 @@ function Test-BuildMode {
 
 function Test-CacheFreshness {
     Write-TestStage "Testing cache freshness logic"
-    
+
     $tmpDir = New-Item -ItemType Directory -Path (Join-Path $env:TEMP ([System.IO.Path]::GetRandomFileName()))
     try {
         $cacheFile = Join-Path $tmpDir ".dotfiles-version-cache"
         $cacheMaxAge = 3600
-        
+
         # Test 1: No cache file - should not be fresh
         $lines = @()
         if (Test-Path $cacheFile) {
@@ -69,35 +69,35 @@ function Test-CacheFreshness {
             Write-TestFail "Empty cache incorrectly reported as fresh"
             return $false
         }
-        
+
         # Test 2: Fresh cache
         @('v0.1.0', [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) | Set-Content $cacheFile
         $lines = Get-Content $cacheFile
         $cachedTs = [int]$lines[1]
         $now = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
         $isFresh = (($now - $cachedTs) -lt $cacheMaxAge)
-        
+
         if ($isFresh) {
             Write-TestPass "Fresh cache correctly detected"
         } else {
             Write-TestFail "Fresh cache not detected"
             return $false
         }
-        
+
         # Test 3: Stale cache
         @('v0.1.0', 0) | Set-Content $cacheFile
         $lines = Get-Content $cacheFile
         $cachedTs = [int]$lines[1]
         $now = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
         $isFresh = (($now - $cachedTs) -lt $cacheMaxAge)
-        
+
         if (-not $isFresh) {
             Write-TestPass "Stale cache correctly detected"
         } else {
             Write-TestFail "Stale cache incorrectly reported as fresh"
             return $false
         }
-        
+
         return $true
     } finally {
         Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
@@ -110,12 +110,12 @@ function Test-CacheFreshness {
 
 function Test-VersionDetection {
     Write-TestStage "Testing version detection"
-    
+
     if (-not $env:BINARY_PATH -or -not (Test-Path $env:BINARY_PATH)) {
         Write-Host "Skipping: BINARY_PATH not set or binary not found" -ForegroundColor Yellow
         return $true
     }
-    
+
     try {
         $output = & $env:BINARY_PATH version 2>&1
         if ($output -match 'dotfiles\s+(.+)') {
@@ -138,23 +138,23 @@ function Test-VersionDetection {
 
 function Test-ChecksumVerification {
     Write-TestStage "Testing checksum verification logic"
-    
+
     $tmpDir = New-Item -ItemType Directory -Path (Join-Path $env:TEMP ([System.IO.Path]::GetRandomFileName()))
     try {
         # Create test binary
         "fake binary content" | Set-Content (Join-Path $tmpDir "dotfiles.exe")
-        
+
         # Create checksums file
         @'
 abc123  dotfiles-linux-x86_64
 def456  dotfiles-windows-x86_64.exe
 '@ | Set-Content (Join-Path $tmpDir "checksums.sha256")
-        
+
         # Test checksum extraction
         $checksums = Get-Content (Join-Path $tmpDir "checksums.sha256")
         $checksumMatch = "dotfiles-windows"
         $expected = ($checksums -split "`n" | Where-Object { $_ -match $checksumMatch }) -replace '\s+.*', ''
-        
+
         if ($expected -eq "def456") {
             Write-TestPass "Checksum extraction works correctly"
             return $true
@@ -173,11 +173,11 @@ def456  dotfiles-windows-x86_64.exe
 
 function Test-OfflineFallback {
     Write-TestStage "Testing offline fallback behavior"
-    
+
     # Simulate offline scenario
     $latestVersion = ""  # Empty simulates offline
     $localVersion = "v0.1.0"
-    
+
     if ([string]::IsNullOrEmpty($latestVersion) -and ($localVersion -ne "none")) {
         Write-TestPass "Offline fallback logic works with cached binary"
         return $true
@@ -193,12 +193,12 @@ function Test-OfflineFallback {
 
 function Test-ArgumentForwarding {
     Write-TestStage "Testing argument forwarding"
-    
+
     if (-not $env:BINARY_PATH -or -not (Test-Path $env:BINARY_PATH)) {
         Write-Host "Skipping: BINARY_PATH not set or binary not found" -ForegroundColor Yellow
         return $true
     }
-    
+
     try {
         $output = & $env:BINARY_PATH --help 2>&1
         if ($output) {
@@ -220,9 +220,9 @@ function Test-ArgumentForwarding {
 
 function Test-PlatformDetection {
     Write-TestStage "Testing platform detection"
-    
+
     $isWindowsPlatform = ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
-    
+
     if ($isWindowsPlatform) {
         $expectedBinary = "dotfiles.exe"
         $expectedAsset = "dotfiles-windows-x86_64.exe"
@@ -230,7 +230,7 @@ function Test-PlatformDetection {
         $expectedBinary = "dotfiles"
         $expectedAsset = "dotfiles-linux-x86_64"
     }
-    
+
     Write-TestPass "Platform detection: Binary=$expectedBinary, Asset=$expectedAsset"
     return $true
 }
@@ -241,10 +241,10 @@ function Test-PlatformDetection {
 
 function Test-ErrorHandling {
     Write-TestStage "Testing error handling"
-    
+
     # Test that missing cargo in build mode produces error
     $testResult = $true
-    
+
     # Simulate missing cargo scenario
     $originalPath = $env:PATH
     try {
@@ -263,7 +263,7 @@ function Test-ErrorHandling {
 
 function Invoke-AllTests {
     $results = @()
-    
+
     $results += Test-BuildMode
     $results += Test-CacheFreshness
     $results += Test-VersionDetection
@@ -272,13 +272,13 @@ function Invoke-AllTests {
     $results += Test-ArgumentForwarding
     $results += Test-PlatformDetection
     $results += Test-ErrorHandling
-    
+
     $passed = ($results | Where-Object { $_ -eq $true }).Count
     $total = $results.Count
-    
+
     Write-Host "`n═══════════════════════════════════════" -ForegroundColor Cyan
     Write-Host "Results: $passed/$total tests passed" -ForegroundColor $(if ($passed -eq $total) { 'Green' } else { 'Red' })
-    
+
     if ($passed -eq $total) {
         exit 0
     } else {

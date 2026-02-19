@@ -74,3 +74,10 @@ EOF
   # shellcheck disable=SC2086  # intentional word splitting
   shellcheck $scripts
 )}
+
+# Execute a specific test when run directly: sh test-static-analysis.sh <function_name>
+case "$0" in
+  *test-static-analysis.sh)
+    [ $# -ge 1 ] && "$1"
+    ;;
+esac

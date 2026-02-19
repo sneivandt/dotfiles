@@ -8,7 +8,7 @@ set -o nounset
 # Expected:     DIR (repository root)
 # -----------------------------------------------------------------------------
 
-# shellcheck disable=SC2154,SC3054
+# shellcheck disable=SC3054
 # When sourced with `.`, use BASH_SOURCE if available (bash); otherwise use pwd
 if [ -n "${BASH_SOURCE:-}" ]; then
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -62,6 +62,11 @@ impl PackageResource {
 /// installed. This runs a **single** command regardless of how many packages
 /// need to be checked — compared to one command per package when using
 /// `PackageResource::current_state()` directly.
+///
+/// # Errors
+///
+/// Returns an error if the package manager command fails to execute or if
+/// the output cannot be parsed.
 pub fn get_installed_packages(manager: PackageManager) -> Result<HashSet<String>> {
     match manager {
         PackageManager::Pacman | PackageManager::Paru => {

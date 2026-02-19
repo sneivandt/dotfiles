@@ -71,6 +71,12 @@ impl RegistryResource {
 /// Returns a map from `"key_path\value_name"` to the current value string
 /// (`None` when the key or value does not exist). This is **dramatically**
 /// faster than spawning one process per registry entry.
+///
+/// # Errors
+///
+/// Returns an error if registry paths contain invalid characters (preventing
+/// `PowerShell` injection), if the `PowerShell` command fails to execute, or if
+/// the output cannot be parsed correctly.
 pub fn batch_check_values(
     resources: &[RegistryResource],
 ) -> Result<HashMap<String, Option<String>>> {

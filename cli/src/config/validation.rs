@@ -209,21 +209,19 @@ impl ConfigValidator for RegistryValidator<'_> {
 fn validate_octal_mode(mode: &str) -> Option<String> {
     if !mode.chars().all(|c| c.is_ascii_digit()) {
         return Some(format!(
-            "invalid octal mode '{}': must contain only digits",
-            mode
+            "invalid octal mode '{mode}': must contain only digits"
         ));
     }
 
     if mode.len() < 3 || mode.len() > 4 {
         return Some(format!(
-            "invalid mode length '{}': must be 3 or 4 digits",
-            mode
+            "invalid mode length '{mode}': must be 3 or 4 digits"
         ));
     }
 
     // Check each digit is valid octal (0-7)
     if let Some(c) = mode.chars().find(|&c| c > '7') {
-        return Some(format!("invalid octal digit '{}' in mode '{}'", c, mode));
+        return Some(format!("invalid octal digit '{c}' in mode '{mode}'"));
     }
 
     None

@@ -113,12 +113,27 @@ pub fn which(program: &str) -> bool {
 #[allow(dead_code)] // run_in and run_in_with_env complete the trait contract
 pub trait Executor {
     /// Execute a command, bailing on non-zero exit.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the command fails to execute, cannot be found,
+    /// or exits with a non-zero status code.
     fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
 
     /// Execute a command in a specific directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the command fails to execute, the directory does not exist,
+    /// or the command exits with a non-zero status code.
     fn run_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult>;
 
     /// Execute a command in a specific directory with extra environment variables.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the command fails to execute, the directory does not exist,
+    /// or the command exits with a non-zero status code.
     fn run_in_with_env(
         &self,
         dir: &Path,
@@ -128,6 +143,11 @@ pub trait Executor {
     ) -> Result<ExecResult>;
 
     /// Execute a command, allowing non-zero exit.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the command fails to execute or cannot be found,
+    /// but does NOT fail on non-zero exit codes (which are captured in the result).
     fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
 
     /// Check if a program is available on PATH.

@@ -38,6 +38,11 @@ impl VsCodeExtensionResource {
 /// Query the full set of installed VS Code extension IDs in a single command.
 ///
 /// Returns a `HashSet` of **lower-cased** extension IDs.
+///
+/// # Errors
+///
+/// Returns an error if the VS Code command fails to execute, cannot be found,
+/// or exits with a non-zero status code.
 pub fn get_installed_extensions(code_cmd: &str) -> Result<HashSet<String>> {
     let result = run_code_cmd(code_cmd, &["--list-extensions"])?;
     let mut set = HashSet::new();

@@ -46,7 +46,7 @@ pub enum ResourceChange {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// // All resources follow the same pattern:
 /// // 1. Check current state: resource.current_state()?
 /// // 2. Apply if needed: resource.apply()?

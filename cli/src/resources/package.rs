@@ -244,4 +244,197 @@ mod tests {
             ResourceState::Missing
         );
     }
+
+    // ------------------------------------------------------------------
+    // MockExecutor for behavior tests
+    // ------------------------------------------------------------------
+
+    #[derive(Debug)]
+    struct MockExecutor {
+        responses: std::cell::RefCell<std::collections::VecDeque<(bool, String)>>,
+    }
+
+    impl MockExecutor {
+        fn ok(stdout: &str) -> Self {
+            Self {
+                responses: std::cell::RefCell::new(std::collections::VecDeque::from([(
+                    true,
+                    stdout.to_string(),
+                )])),
+            }
+        }
+
+        fn fail() -> Self {
+            Self {
+                responses: std::cell::RefCell::new(std::collections::VecDeque::from([(
+                    false,
+                    String::new(),
+                )])),
+            }
+        }
+
+        fn next(&self) -> (bool, String) {
+            self.responses
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or((false, "unexpected call".to_string()))
+        }
+    }
+
+    impl crate::exec::Executor for MockExecutor {
+        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
+            let (success, stdout) = self.next();
+            if success {
+                Ok(crate::exec::ExecResult {
+                    stdout,
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                anyhow::bail!("mock command failed")
+            }
+        }
+
+        fn run_in(
+            &self,
+            _: &std::path::Path,
+            _: &str,
+            _: &[&str],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            let (success, stdout) = self.next();
+            if success {
+                Ok(crate::exec::ExecResult {
+                    stdout,
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                anyhow::bail!("mock command failed")
+            }
+        }
+
+        fn run_in_with_env(
+            &self,
+            _: &std::path::Path,
+            _: &str,
+            _: &[&str],
+            _: &[(&str, &str)],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            let (success, stdout) = self.next();
+            if success {
+                Ok(crate::exec::ExecResult {
+                    stdout,
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                anyhow::bail!("mock command failed")
+            }
+        }
+
+        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
+            let (success, stdout) = self.next();
+            Ok(crate::exec::ExecResult {
+                stdout,
+                stderr: String::new(),
+                success,
+                code: Some(if success { 0 } else { 1 }),
+            })
+        }
+
+        fn which(&self, _: &str) -> bool {
+            false
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // get_installed_packages
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn get_installed_pacman_parses_name_version_lines() {
+        let executor = MockExecutor::ok("git 2.39.0\nvim 9.0.0\nbase-devel 1.0\n");
+        let installed = get_installed_packages(PackageManager::Pacman, &executor).unwrap();
+        assert!(installed.contains("git"));
+        assert!(installed.contains("vim"));
+        assert!(installed.contains("base-devel"));
+        assert!(
+            !installed.contains("2.39.0"),
+            "version number should not be in set"
+        );
+    }
+
+    #[test]
+    fn get_installed_pacman_empty_on_failure() {
+        let executor = MockExecutor::fail();
+        let installed = get_installed_packages(PackageManager::Pacman, &executor).unwrap();
+        assert!(installed.is_empty());
+    }
+
+    #[test]
+    fn get_installed_winget_parses_id_tokens() {
+        let executor = MockExecutor::ok(
+            "Name          Id                    Version\nGit           Git.Git               2.39.0\nPowerShell    Microsoft.PowerShell  7.3\n",
+        );
+        let installed = get_installed_packages(PackageManager::Winget, &executor).unwrap();
+        assert!(installed.contains("Git.Git"));
+        assert!(installed.contains("Microsoft.PowerShell"));
+    }
+
+    // ------------------------------------------------------------------
+    // PackageResource::current_state
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn current_state_pacman_correct_when_query_succeeds() {
+        let executor = MockExecutor::ok("git 2.39.0\n");
+        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[test]
+    fn current_state_pacman_missing_when_query_fails() {
+        let executor = MockExecutor::fail();
+        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+    }
+
+    #[test]
+    fn current_state_winget_correct_when_id_in_output() {
+        let executor = MockExecutor::ok("Git.Git  2.39.0\n");
+        let resource =
+            PackageResource::new("Git.Git".to_string(), PackageManager::Winget, &executor);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[test]
+    fn current_state_winget_missing_when_not_in_output() {
+        // success=true but ID not present in stdout
+        let executor = MockExecutor::ok("No packages found.\n");
+        let resource =
+            PackageResource::new("Git.Git".to_string(), PackageManager::Winget, &executor);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+    }
+
+    // ------------------------------------------------------------------
+    // PackageResource::apply
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn apply_pacman_returns_applied_on_success() {
+        let executor = MockExecutor::ok("");
+        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    }
+
+    #[test]
+    fn apply_paru_returns_applied_on_success() {
+        let executor = MockExecutor::ok("");
+        let resource =
+            PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &executor);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    }
 }

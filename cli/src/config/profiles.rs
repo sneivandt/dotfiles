@@ -355,4 +355,156 @@ mod tests {
     fn profile_names_constant() {
         assert_eq!(PROFILE_NAMES.len(), 2);
     }
+
+    // ------------------------------------------------------------------
+    // MockExecutor
+    // ------------------------------------------------------------------
+
+    #[derive(Debug)]
+    struct MockExecutor {
+        responses: std::cell::RefCell<std::collections::VecDeque<(bool, String)>>,
+    }
+
+    impl MockExecutor {
+        fn ok(stdout: &str) -> Self {
+            Self {
+                responses: std::cell::RefCell::new(std::collections::VecDeque::from([(
+                    true,
+                    stdout.to_string(),
+                )])),
+            }
+        }
+
+        fn fail() -> Self {
+            Self {
+                responses: std::cell::RefCell::new(std::collections::VecDeque::from([(
+                    false,
+                    String::new(),
+                )])),
+            }
+        }
+
+        fn next(&self) -> (bool, String) {
+            self.responses
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or((false, "unexpected call".to_string()))
+        }
+    }
+
+    impl crate::exec::Executor for MockExecutor {
+        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
+            let (success, stdout) = self.next();
+            if success {
+                Ok(crate::exec::ExecResult {
+                    stdout,
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                anyhow::bail!("mock command failed")
+            }
+        }
+
+        fn run_in(
+            &self,
+            _: &std::path::Path,
+            _: &str,
+            _: &[&str],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            let (success, stdout) = self.next();
+            if success {
+                Ok(crate::exec::ExecResult {
+                    stdout,
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                anyhow::bail!("mock command failed")
+            }
+        }
+
+        fn run_in_with_env(
+            &self,
+            _: &std::path::Path,
+            _: &str,
+            _: &[&str],
+            _: &[(&str, &str)],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            let (success, stdout) = self.next();
+            if success {
+                Ok(crate::exec::ExecResult {
+                    stdout,
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                anyhow::bail!("mock command failed")
+            }
+        }
+
+        fn run_unchecked(
+            &self,
+            _: &str,
+            _: &[&str],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            let (success, stdout) = self.next();
+            Ok(crate::exec::ExecResult {
+                stdout,
+                stderr: String::new(),
+                success,
+                code: Some(if success { 0 } else { 1 }),
+            })
+        }
+
+        fn which(&self, _: &str) -> bool {
+            false
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // read_persisted
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn read_persisted_returns_profile_name() {
+        let executor = MockExecutor::ok("desktop\n");
+        let dir = std::env::temp_dir();
+        assert_eq!(read_persisted(&dir, &executor), Some("desktop".to_string()));
+    }
+
+    #[test]
+    fn read_persisted_returns_none_when_git_fails() {
+        let executor = MockExecutor::fail();
+        let dir = std::env::temp_dir();
+        assert_eq!(read_persisted(&dir, &executor), None);
+    }
+
+    #[test]
+    fn read_persisted_returns_none_when_output_empty() {
+        let executor = MockExecutor::ok("");
+        let dir = std::env::temp_dir();
+        assert_eq!(read_persisted(&dir, &executor), None);
+    }
+
+    // ------------------------------------------------------------------
+    // persist
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn persist_succeeds_when_git_config_succeeds() {
+        let executor = MockExecutor::ok("");
+        let dir = std::env::temp_dir();
+        persist(&dir, "base", &executor).unwrap();
+    }
+
+    #[test]
+    fn persist_propagates_error_when_git_fails() {
+        let executor = MockExecutor::fail();
+        let dir = std::env::temp_dir();
+        assert!(persist(&dir, "base", &executor).is_err());
+    }
 }

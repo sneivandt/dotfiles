@@ -67,4 +67,161 @@ mod tests {
             GitConfigResource::new("core.autocrlf".to_string(), "false".to_string(), &executor);
         assert_eq!(resource.description(), "core.autocrlf = false");
     }
+
+    // ------------------------------------------------------------------
+    // MockExecutor
+    // ------------------------------------------------------------------
+
+    #[derive(Debug)]
+    struct MockExecutor {
+        responses: std::cell::RefCell<std::collections::VecDeque<(bool, String)>>,
+    }
+
+    impl MockExecutor {
+        fn ok(stdout: &str) -> Self {
+            Self {
+                responses: std::cell::RefCell::new(std::collections::VecDeque::from([(
+                    true,
+                    stdout.to_string(),
+                )])),
+            }
+        }
+
+        fn fail() -> Self {
+            Self {
+                responses: std::cell::RefCell::new(std::collections::VecDeque::from([(
+                    false,
+                    String::new(),
+                )])),
+            }
+        }
+
+        fn next(&self) -> (bool, String) {
+            self.responses
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or((false, "unexpected call".to_string()))
+        }
+    }
+
+    impl crate::exec::Executor for MockExecutor {
+        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
+            let (success, stdout) = self.next();
+            if success {
+                Ok(crate::exec::ExecResult {
+                    stdout,
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                anyhow::bail!("mock command failed")
+            }
+        }
+
+        fn run_in(
+            &self,
+            _: &std::path::Path,
+            _: &str,
+            _: &[&str],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            let (success, stdout) = self.next();
+            if success {
+                Ok(crate::exec::ExecResult {
+                    stdout,
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                anyhow::bail!("mock command failed")
+            }
+        }
+
+        fn run_in_with_env(
+            &self,
+            _: &std::path::Path,
+            _: &str,
+            _: &[&str],
+            _: &[(&str, &str)],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            let (success, stdout) = self.next();
+            if success {
+                Ok(crate::exec::ExecResult {
+                    stdout,
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                anyhow::bail!("mock command failed")
+            }
+        }
+
+        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
+            let (success, stdout) = self.next();
+            Ok(crate::exec::ExecResult {
+                stdout,
+                stderr: String::new(),
+                success,
+                code: Some(if success { 0 } else { 1 }),
+            })
+        }
+
+        fn which(&self, _: &str) -> bool {
+            false
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // current_state
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn current_state_correct_when_value_matches() {
+        let executor = MockExecutor::ok("false\n");
+        let resource =
+            GitConfigResource::new("core.autocrlf".to_string(), "false".to_string(), &executor);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[test]
+    fn current_state_missing_when_command_fails() {
+        let executor = MockExecutor::fail();
+        let resource =
+            GitConfigResource::new("core.autocrlf".to_string(), "false".to_string(), &executor);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+    }
+
+    #[test]
+    fn current_state_missing_when_output_empty() {
+        let executor = MockExecutor::ok("");
+        let resource =
+            GitConfigResource::new("core.autocrlf".to_string(), "false".to_string(), &executor);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+    }
+
+    #[test]
+    fn current_state_incorrect_when_value_differs() {
+        let executor = MockExecutor::ok("true\n");
+        let resource =
+            GitConfigResource::new("core.autocrlf".to_string(), "false".to_string(), &executor);
+        let state = resource.current_state().unwrap();
+        assert!(
+            matches!(state, ResourceState::Incorrect { ref current } if current == "true"),
+            "expected Incorrect(true), got {state:?}"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // apply
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn apply_returns_applied_on_success() {
+        let executor = MockExecutor::ok("");
+        let resource =
+            GitConfigResource::new("core.autocrlf".to_string(), "false".to_string(), &executor);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    }
 }

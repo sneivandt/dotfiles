@@ -29,8 +29,7 @@ pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Logger) -> Result<()> {
         Box::new(RunPSScriptAnalyzer),
     ];
 
-    let task_refs: Vec<&dyn Task> = tasks.iter().map(AsRef::as_ref).collect();
-    super::run_tasks_to_completion(&task_refs, &ctx, log)
+    super::run_tasks_to_completion(tasks.iter().map(Box::as_ref), &ctx, log)
 }
 
 // ---------------------------------------------------------------------------

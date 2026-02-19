@@ -1,7 +1,6 @@
 use anyhow::Result;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
-use crate::exec;
 use crate::resources::systemd_unit::SystemdUnitResource;
 
 /// Enable and start systemd user units.
@@ -14,13 +13,15 @@ impl Task for ConfigureSystemd {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.supports_systemd() && !ctx.config.units.is_empty() && exec::which("systemctl")
+        ctx.platform.supports_systemd()
+            && !ctx.config.units.is_empty()
+            && ctx.executor.which("systemctl")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         // Reload systemd daemon once before processing (idempotent and fast)
         if !ctx.dry_run
-            && let Err(e) = exec::run("systemctl", &["--user", "daemon-reload"])
+            && let Err(e) = ctx.executor.run("systemctl", &["--user", "daemon-reload"])
         {
             ctx.log.debug(&format!("daemon-reload failed: {e}"));
         }

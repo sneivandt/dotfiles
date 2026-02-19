@@ -33,7 +33,7 @@ fn execute_checked(mut cmd: Command, label: &str) -> Result<ExecResult> {
         .with_context(|| format!("failed to execute: {label}"))?;
     let result = ExecResult::from(output);
     if !result.success {
-        let code = result.code.map_or(-1, |c| c);
+        let code = result.code.unwrap_or(-1);
         bail!("{label} failed (exit {code}): {}", result.stderr.trim());
     }
     Ok(result)

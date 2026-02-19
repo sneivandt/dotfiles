@@ -1,5 +1,3 @@
-#![deny(unsafe_code)]
-
 pub mod cli;
 pub mod commands;
 pub mod config;

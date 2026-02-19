@@ -7,8 +7,11 @@ use crate::platform::Platform;
 /// A resolved profile with its active and excluded categories.
 #[derive(Debug, Clone)]
 pub struct Profile {
+    /// The profile name (e.g., "base", "desktop").
     pub name: String,
+    /// Categories that are active for this profile (e.g., `["base", "linux"]`).
     pub active_categories: Vec<String>,
+    /// Categories that are excluded for this profile (e.g., `["windows", "desktop"]`).
     pub excluded_categories: Vec<String>,
 }
 

@@ -198,7 +198,7 @@ function Get-Binary
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    Write-Host "Downloading dotfiles $Version..."
+    Write-Output "Downloading dotfiles $Version..."
     Invoke-WebRequest -Uri $url -OutFile $Binary -UseBasicParsing
 
     # Verify checksum

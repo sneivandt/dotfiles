@@ -23,11 +23,17 @@ use crate::resources::{Resource, ResourceChange, ResourceState};
 
 /// Shared context for task execution.
 pub struct Context<'a> {
+    /// Configuration loaded from INI files.
     pub config: &'a Config,
+    /// Detected platform information.
     pub platform: &'a Platform,
+    /// Logger for output and task recording.
     pub log: &'a Logger,
+    /// Whether to perform a dry run (preview changes without applying).
     pub dry_run: bool,
+    /// User's home directory path.
     pub home: std::path::PathBuf,
+    /// Command executor (for testing or real system calls).
     pub executor: &'a dyn Executor,
 }
 

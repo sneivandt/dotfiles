@@ -76,11 +76,13 @@ impl Platform {
         Self { os, is_arch }
     }
 
+    /// Returns whether this platform is Linux.
     #[must_use]
     pub fn is_linux(&self) -> bool {
         self.os == Os::Linux
     }
 
+    /// Returns whether this platform is Windows.
     #[must_use]
     pub fn is_windows(&self) -> bool {
         self.os == Os::Windows

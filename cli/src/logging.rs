@@ -132,26 +132,31 @@ impl Logger {
         self.log_file.as_ref()
     }
 
+    /// Log an error message to stderr and the log file.
     pub fn error(&self, msg: &str) {
         eprintln!("\x1b[31mERROR\x1b[0m {msg}");
         self.write_to_file("ERR", msg);
     }
 
+    /// Log a warning message to stderr and the log file.
     pub fn warn(&self, msg: &str) {
         eprintln!("\x1b[33mWARN\x1b[0m  {msg}");
         self.write_to_file("WRN", msg);
     }
 
+    /// Log a stage header (major section) to stdout and the log file.
     pub fn stage(&self, msg: &str) {
         println!("\x1b[1;34m==>\x1b[0m \x1b[1m{msg}\x1b[0m");
         self.write_to_file("STG", msg);
     }
 
+    /// Log an informational message to stdout and the log file.
     pub fn info(&self, msg: &str) {
         println!("  {msg}");
         self.write_to_file("INF", msg);
     }
 
+    /// Log a debug message to stdout (if verbose) and always to the log file.
     pub fn debug(&self, msg: &str) {
         if self.verbose {
             println!("  \x1b[2m{msg}\x1b[0m");
@@ -160,6 +165,7 @@ impl Logger {
         self.write_to_file("DBG", msg);
     }
 
+    /// Log a dry-run action message to stdout and the log file.
     pub fn dry_run(&self, msg: &str) {
         println!("  \x1b[33m[DRY RUN]\x1b[0m {msg}");
         self.write_to_file("DRY", msg);

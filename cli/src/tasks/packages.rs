@@ -137,54 +137,76 @@ impl Task for InstallParu {
             return Ok(TaskResult::DryRun);
         }
 
-        // Check prerequisites
-        for dep in &["git", "makepkg", "sudo"] {
-            if !exec::which(dep) {
-                anyhow::bail!("missing prerequisite: {dep}");
-            }
-            ctx.log.debug(&format!("prerequisite ok: {dep}"));
-        }
-
-        let tmp = std::env::temp_dir().join("paru-build");
-        if tmp.exists() {
-            ctx.log.debug("removing previous paru build directory");
-            std::fs::remove_dir_all(&tmp).context("removing previous paru build directory")?;
-        }
-
-        ctx.log.debug("cloning paru-bin from AUR");
-        exec::run(
-            "git",
-            &[
-                "clone",
-                "https://aur.archlinux.org/paru-bin.git",
-                &tmp.to_string_lossy(),
-            ],
-        )
-        .context("cloning paru-bin from AUR")?;
-
-        // Build with parallel compilation
-        let nproc = exec::run("nproc", &[]).map_or_else(
-            |_| DEFAULT_NPROC.to_string(),
-            |r| r.stdout.trim().to_string(),
-        );
-
-        let makeflags = format!("-j{nproc}");
-        ctx.log
-            .debug(&format!("building with MAKEFLAGS={makeflags}"));
-        exec::run_in_with_env(
-            &tmp,
-            "makepkg",
-            &["-si", "--noconfirm"],
-            &[("MAKEFLAGS", &makeflags)],
-        )
-        .context("building paru with makepkg")?;
-
-        // Cleanup (ignore errors - best effort)
-        std::fs::remove_dir_all(&tmp).ok();
+        check_prerequisites(ctx)?;
+        let tmp = prepare_build_directory(ctx)?;
+        clone_paru_from_aur(ctx, &tmp)?;
+        build_paru(ctx, &tmp)?;
+        cleanup_build_directory(&tmp);
 
         ctx.log.info("paru installed successfully");
         Ok(TaskResult::Ok)
     }
+}
+
+/// Check that required tools are available for building paru.
+fn check_prerequisites(ctx: &Context) -> Result<()> {
+    for dep in &["git", "makepkg", "sudo"] {
+        if !exec::which(dep) {
+            anyhow::bail!("missing prerequisite: {dep}");
+        }
+        ctx.log.debug(&format!("prerequisite ok: {dep}"));
+    }
+    Ok(())
+}
+
+/// Prepare a clean build directory for paru.
+fn prepare_build_directory(ctx: &Context) -> Result<std::path::PathBuf> {
+    let tmp = std::env::temp_dir().join("paru-build");
+    if tmp.exists() {
+        ctx.log.debug("removing previous paru build directory");
+        std::fs::remove_dir_all(&tmp).context("removing previous paru build directory")?;
+    }
+    Ok(tmp)
+}
+
+/// Clone the paru-bin AUR package.
+fn clone_paru_from_aur(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
+    ctx.log.debug("cloning paru-bin from AUR");
+    exec::run(
+        "git",
+        &[
+            "clone",
+            "https://aur.archlinux.org/paru-bin.git",
+            &tmp.to_string_lossy(),
+        ],
+    )
+    .context("cloning paru-bin from AUR")?;
+    Ok(())
+}
+
+/// Build paru using makepkg with parallel compilation.
+fn build_paru(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
+    let nproc = exec::run("nproc", &[]).map_or_else(
+        |_| DEFAULT_NPROC.to_string(),
+        |r| r.stdout.trim().to_string(),
+    );
+
+    let makeflags = format!("-j{nproc}");
+    ctx.log
+        .debug(&format!("building with MAKEFLAGS={makeflags}"));
+    exec::run_in_with_env(
+        tmp,
+        "makepkg",
+        &["-si", "--noconfirm"],
+        &[("MAKEFLAGS", &makeflags)],
+    )
+    .context("building paru with makepkg")?;
+    Ok(())
+}
+
+/// Remove the build directory (best effort, ignores errors).
+fn cleanup_build_directory(tmp: &std::path::Path) {
+    std::fs::remove_dir_all(tmp).ok();
 }
 
 #[cfg(test)]

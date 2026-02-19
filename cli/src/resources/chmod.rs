@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use super::{Resource, ResourceChange, ResourceState};
 
 /// Unix file permission mask (all permission bits).
+#[cfg(unix)]
 const MODE_BITS_MASK: u32 = 0o7777;
 
 /// A file permission resource that can be checked and applied (Unix only).

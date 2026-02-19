@@ -181,3 +181,106 @@ impl Task for ConfigureSparseCheckout {
         Ok(TaskResult::Ok)
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::platform::{Os, Platform};
+    use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
+    use std::path::PathBuf;
+
+    // -----------------------------------------------------------------------
+    // build_patterns
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn build_patterns_no_exclusions() {
+        let patterns = build_patterns(&[]);
+        assert_eq!(patterns, "/*");
+    }
+
+    #[test]
+    fn build_patterns_single_exclusion() {
+        let patterns = build_patterns(&["symlinks".to_string()]);
+        assert_eq!(patterns, "/*\n!/symlinks");
+    }
+
+    #[test]
+    fn build_patterns_multiple_exclusions() {
+        let patterns = build_patterns(&["symlinks".to_string(), "conf".to_string()]);
+        assert_eq!(patterns, "/*\n!/symlinks\n!/conf");
+    }
+
+    // -----------------------------------------------------------------------
+    // is_up_to_date
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn is_up_to_date_false_when_file_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sparse-checkout");
+        assert!(!is_up_to_date(&path, "/*\n!/symlinks"));
+    }
+
+    #[test]
+    fn is_up_to_date_true_when_content_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sparse-checkout");
+        let patterns = "/*\n!/symlinks";
+        std::fs::write(&path, patterns).unwrap();
+        assert!(is_up_to_date(&path, patterns));
+    }
+
+    #[test]
+    fn is_up_to_date_true_ignores_trailing_whitespace() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sparse-checkout");
+        std::fs::write(&path, "/*\n!/symlinks\n").unwrap();
+        assert!(is_up_to_date(&path, "/*\n!/symlinks"));
+    }
+
+    #[test]
+    fn is_up_to_date_false_when_content_differs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sparse-checkout");
+        std::fs::write(&path, "/*").unwrap();
+        assert!(!is_up_to_date(&path, "/*\n!/symlinks"));
+    }
+
+    // -----------------------------------------------------------------------
+    // should_run
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn should_run_false_when_git_dir_missing() {
+        let config = empty_config(PathBuf::from("/nonexistent/repo"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!ConfigureSparseCheckout.should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_true_when_git_dir_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+        let config = empty_config(dir.path().to_path_buf());
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(ConfigureSparseCheckout.should_run(&ctx));
+    }
+
+    // -----------------------------------------------------------------------
+    // is_broken_symlink_into
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn is_broken_symlink_into_false_for_regular_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("regular");
+        std::fs::write(&file, "content").unwrap();
+        assert!(!is_broken_symlink_into(&file, dir.path()));
+    }
+}

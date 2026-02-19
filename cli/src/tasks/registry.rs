@@ -50,3 +50,45 @@ impl Task for ApplyRegistry {
         )
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::config::registry::RegistryEntry;
+    use crate::platform::{Os, Platform};
+    use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
+    use std::path::PathBuf;
+
+    #[test]
+    fn should_run_false_on_linux() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!ApplyRegistry.should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_false_on_windows_when_registry_empty() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Windows, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!ApplyRegistry.should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_true_on_windows_with_registry_entries() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.registry.push(RegistryEntry {
+            key_path: r"HKCU:\Console".to_string(),
+            value_name: "QuickEdit".to_string(),
+            value_data: "1".to_string(),
+        });
+        let platform = Platform::new(Os::Windows, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(ApplyRegistry.should_run(&ctx));
+    }
+}

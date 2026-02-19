@@ -39,3 +39,39 @@ impl Task for ConfigureGit {
         )
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::platform::{Os, Platform};
+    use crate::tasks::test_helpers::{NoOpExecutor, WhichExecutor, empty_config, make_context};
+    use std::path::PathBuf;
+
+    #[test]
+    fn should_run_false_on_linux() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = WhichExecutor { which_result: true };
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!ConfigureGit.should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_false_when_git_not_found() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Windows, false);
+        let executor = NoOpExecutor; // which() returns false
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!ConfigureGit.should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_true_on_windows_with_git() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Windows, false);
+        let executor = WhichExecutor { which_result: true };
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(ConfigureGit.should_run(&ctx));
+    }
+}

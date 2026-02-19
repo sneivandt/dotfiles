@@ -52,6 +52,7 @@ impl Resource for DefaultShellResource<'_> {
 }
 
 #[cfg(test)]
+#[allow(unsafe_code)] // set_var/remove_var require unsafe since Rust 1.83
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
@@ -61,5 +62,30 @@ mod tests {
         let executor = crate::exec::SystemExecutor;
         let resource = DefaultShellResource::new("zsh".to_string(), &executor);
         assert_eq!(resource.description(), "default shell → zsh");
+    }
+
+    #[test]
+    fn current_state_correct_when_shell_matches() {
+        let executor = crate::exec::SystemExecutor;
+        let resource = DefaultShellResource::new("zsh".to_string(), &executor);
+        // SAFETY: test-only env var manipulation; tests run in separate processes.
+        unsafe { std::env::set_var("SHELL", "/usr/bin/zsh") };
+        let state = resource.current_state().unwrap();
+        unsafe { std::env::remove_var("SHELL") };
+        assert_eq!(state, ResourceState::Correct);
+    }
+
+    #[test]
+    fn current_state_incorrect_when_different_shell_set() {
+        let executor = crate::exec::SystemExecutor;
+        let resource = DefaultShellResource::new("zsh".to_string(), &executor);
+        // SAFETY: test-only env var manipulation; tests run in separate processes.
+        unsafe { std::env::set_var("SHELL", "/bin/bash") };
+        let state = resource.current_state().unwrap();
+        unsafe { std::env::remove_var("SHELL") };
+        assert!(
+            matches!(state, ResourceState::Incorrect { ref current } if current == "/bin/bash"),
+            "expected Incorrect(/bin/bash), got {state:?}"
+        );
     }
 }

@@ -110,4 +110,16 @@ mod tests {
         let ctx = make_context(&config, &platform, &executor);
         assert!(!UninstallGitHooks.should_run(&ctx));
     }
+
+    #[test]
+    fn uninstall_should_run_true_when_both_dirs_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("hooks")).unwrap();
+        std::fs::create_dir_all(dir.path().join(".git/hooks")).unwrap();
+        let config = empty_config(dir.path().to_path_buf());
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(UninstallGitHooks.should_run(&ctx));
+    }
 }

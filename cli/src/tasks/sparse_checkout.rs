@@ -283,4 +283,27 @@ mod tests {
         std::fs::write(&file, "content").unwrap();
         assert!(!is_broken_symlink_into(&file, dir.path()));
     }
+
+    #[test]
+    fn is_broken_symlink_into_false_for_valid_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let link = dir.path().join("link");
+        std::fs::write(&target, "content").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        // Valid symlink (target exists) → not broken
+        assert!(!is_broken_symlink_into(&link, dir.path()));
+    }
+
+    #[test]
+    fn is_broken_symlink_into_true_for_dangling_symlink_into_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let symlinks_dir = dir.path().join("symlinks");
+        std::fs::create_dir(&symlinks_dir).unwrap();
+        let link = dir.path().join("link");
+        // Point into symlinks_dir at a path that does not exist
+        let nonexistent = symlinks_dir.join("missing");
+        std::os::unix::fs::symlink(&nonexistent, &link).unwrap();
+        assert!(is_broken_symlink_into(&link, &symlinks_dir));
+    }
 }

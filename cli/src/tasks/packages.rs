@@ -219,8 +219,12 @@ fn cleanup_build_directory(tmp: &std::path::Path) {
 mod tests {
     use super::*;
 
+    use crate::config::packages::Package;
+    use crate::platform::{Os, Platform};
     use crate::resources::Resource;
     use crate::resources::package::PackageResource;
+    use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
+    use std::path::PathBuf;
 
     #[test]
     fn package_resource_description() {
@@ -235,5 +239,118 @@ mod tests {
         let resource =
             PackageResource::new("Git.Git".to_string(), PackageManager::Winget, &executor);
         assert_eq!(resource.description(), "Git.Git (winget)");
+    }
+
+    // -----------------------------------------------------------------------
+    // InstallPackages::should_run
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn install_packages_should_run_false_when_no_packages() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!InstallPackages.should_run(&ctx));
+    }
+
+    #[test]
+    fn install_packages_should_run_false_when_only_aur_packages() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.packages.push(Package {
+            name: "paru-bin".to_string(),
+            is_aur: true,
+        });
+        let platform = Platform::new(Os::Linux, true);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!InstallPackages.should_run(&ctx));
+    }
+
+    #[test]
+    fn install_packages_should_run_true_when_non_aur_packages_present() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.packages.push(Package {
+            name: "git".to_string(),
+            is_aur: false,
+        });
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(InstallPackages.should_run(&ctx));
+    }
+
+    // -----------------------------------------------------------------------
+    // InstallAurPackages::should_run
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn install_aur_packages_should_run_false_on_non_arch() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.packages.push(Package {
+            name: "paru-bin".to_string(),
+            is_aur: true,
+        });
+        let platform = Platform::new(Os::Linux, false); // not arch
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!InstallAurPackages.should_run(&ctx));
+    }
+
+    #[test]
+    fn install_aur_packages_should_run_false_when_no_aur_packages() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.packages.push(Package {
+            name: "git".to_string(),
+            is_aur: false,
+        });
+        let platform = Platform::new(Os::Linux, true); // arch
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!InstallAurPackages.should_run(&ctx));
+    }
+
+    #[test]
+    fn install_aur_packages_should_run_true_on_arch_with_aur_packages() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.packages.push(Package {
+            name: "paru-bin".to_string(),
+            is_aur: true,
+        });
+        let platform = Platform::new(Os::Linux, true); // arch
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(InstallAurPackages.should_run(&ctx));
+    }
+
+    // -----------------------------------------------------------------------
+    // InstallParu::should_run
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn install_paru_should_run_false_on_non_arch_linux() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!InstallParu.should_run(&ctx));
+    }
+
+    #[test]
+    fn install_paru_should_run_false_on_windows() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Windows, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!InstallParu.should_run(&ctx));
+    }
+
+    #[test]
+    fn install_paru_should_run_true_on_arch_linux() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Linux, true); // arch
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(InstallParu.should_run(&ctx));
     }
 }

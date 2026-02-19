@@ -453,13 +453,10 @@ pub fn validate_all(config: &super::Config, platform: &Platform) -> Vec<Validati
         Box::new(CopilotSkillValidator::new(&config.copilot_skills)),
     ];
 
-    let mut all_warnings = Vec::new();
-    for validator in validators {
-        let warnings = validator.validate(&config.root, platform);
-        all_warnings.extend(warnings);
-    }
-
-    all_warnings
+    validators
+        .into_iter()
+        .flat_map(|v| v.validate(&config.root, platform))
+        .collect()
 }
 
 #[cfg(test)]

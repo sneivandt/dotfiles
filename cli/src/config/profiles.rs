@@ -45,7 +45,7 @@ fn load_definitions(path: &Path) -> Result<Vec<ProfileDef>> {
             continue;
         }
 
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+        if let Some(inner) = trimmed.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
             // Save previous profile
             if let Some(name) = current_name.take() {
                 defs.push(ProfileDef {
@@ -54,7 +54,7 @@ fn load_definitions(path: &Path) -> Result<Vec<ProfileDef>> {
                     exclude: std::mem::take(&mut current_exclude),
                 });
             }
-            current_name = Some(trimmed[1..trimmed.len() - 1].to_string());
+            current_name = Some(inner.to_string());
         } else if let Some((key, value)) = trimmed.split_once('=') {
             let key = key.trim();
             let vals: Vec<String> = value

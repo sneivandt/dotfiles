@@ -5,9 +5,13 @@ use std::process::{Command, Output};
 /// Result of a command execution.
 #[derive(Debug)]
 pub struct ExecResult {
+    /// Standard output as UTF-8 string.
     pub stdout: String,
+    /// Standard error as UTF-8 string.
     pub stderr: String,
+    /// Whether the command exited successfully (status code 0).
     pub success: bool,
+    /// Exit code if available, or None if terminated by signal.
     pub code: Option<i32>,
 }
 

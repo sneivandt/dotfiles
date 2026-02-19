@@ -16,6 +16,16 @@ pub enum PackageManager {
     Winget,
 }
 
+impl std::fmt::Display for PackageManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pacman => write!(f, "pacman"),
+            Self::Paru => write!(f, "paru"),
+            Self::Winget => write!(f, "winget"),
+        }
+    }
+}
+
 /// A system package resource that can be checked and installed.
 #[derive(Debug, Clone)]
 pub struct PackageResource {
@@ -97,12 +107,7 @@ pub fn get_installed_packages(manager: PackageManager) -> Result<HashSet<String>
 
 impl Resource for PackageResource {
     fn description(&self) -> String {
-        let mgr = match self.manager {
-            PackageManager::Pacman => "pacman",
-            PackageManager::Paru => "paru",
-            PackageManager::Winget => "winget",
-        };
-        format!("{} ({})", self.name, mgr)
+        format!("{} ({})", self.name, self.manager)
     }
 
     fn current_state(&self) -> Result<ResourceState> {

@@ -43,6 +43,15 @@ pub enum ResourceChange {
 /// - Registry entries (Windows registry)
 /// - File permissions (chmod on Unix)
 /// - Other declarative resources
+///
+/// # Examples
+///
+/// ```
+/// // All resources follow the same pattern:
+/// // 1. Check current state: resource.current_state()?
+/// // 2. Apply if needed: resource.apply()?
+/// // 3. Remove if supported: resource.remove()?
+/// ```
 pub trait Resource {
     /// Human-readable description of this resource.
     fn description(&self) -> String;

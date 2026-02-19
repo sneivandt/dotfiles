@@ -6,18 +6,26 @@ use std::time::SystemTime;
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]
 pub struct TaskEntry {
+    /// Human-readable task name.
     pub name: String,
+    /// Final status of the task.
     pub status: TaskStatus,
+    /// Optional detail message (e.g., skip reason or error description).
     pub message: Option<String>,
 }
 
 /// Status of a completed task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskStatus {
+    /// Task completed successfully.
     Ok,
+    /// Task was skipped because it does not apply to the current platform or profile.
     NotApplicable,
+    /// Task was explicitly skipped (e.g., tool not found, config empty).
     Skipped,
+    /// Task ran in dry-run mode; no changes were applied.
     DryRun,
+    /// Task encountered an error and could not complete.
     Failed,
 }
 
@@ -124,6 +132,7 @@ fn strip_ansi(s: &str) -> String {
 }
 
 impl Logger {
+    /// Create a new logger, writing a fresh header to the log file.
     #[must_use]
     pub fn new(verbose: bool, command: &str) -> Self {
         let log_file = log_file_path(command);

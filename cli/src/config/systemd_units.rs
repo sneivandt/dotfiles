@@ -6,6 +6,7 @@ use super::ini;
 /// A systemd user unit to enable.
 #[derive(Debug, Clone)]
 pub struct SystemdUnit {
+    /// Unit name including extension (e.g., `"clean-home-tmp.timer"`).
     pub name: String,
 }
 

@@ -6,6 +6,7 @@ use super::ini;
 /// A GitHub Copilot skill URL.
 #[derive(Debug, Clone)]
 pub struct CopilotSkill {
+    /// GitHub blob or tree URL pointing to the skill directory.
     pub url: String,
 }
 

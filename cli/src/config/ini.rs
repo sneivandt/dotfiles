@@ -155,6 +155,13 @@ pub fn parse_kv_sections_from_str(content: &str) -> Result<Vec<KvSection>> {
 
 /// Filter sections by active categories using AND logic:
 /// A section is included only if ALL of its categories are in the active set.
+///
+/// # Examples
+///
+/// ```
+/// // A section tagged [arch,desktop] requires both "arch" AND "desktop"
+/// // to be in the active set to be included.
+/// ```
 #[must_use]
 pub fn filter_sections_and(sections: &[Section], active_categories: &[String]) -> Vec<Section> {
     sections
@@ -209,6 +216,13 @@ fn parse_raw_header(line: &str) -> Option<String> {
 }
 
 /// Parse a `key = value` line, stripping inline comments from the value.
+///
+/// # Examples
+///
+/// ```
+/// // "FontSize = 14 # comment" -> ("FontSize", "14")
+/// // "CursorSize = 100" -> ("CursorSize", "100")
+/// ```
 fn parse_kv_line(line: &str) -> Option<(String, String)> {
     let (key, value) = line.split_once('=')?;
     Some((key.trim().to_string(), strip_inline_comment(value.trim())))

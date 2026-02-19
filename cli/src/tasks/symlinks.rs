@@ -65,10 +65,8 @@ impl Task for UninstallSymlinks {
 /// Sources like "config/git/config" map to "$HOME/.config/git/config".
 /// Sources under "Documents/" or "`AppData`/" map to "$HOME/..." (no dot prefix).
 fn compute_target(home: &Path, source: &str) -> std::path::PathBuf {
-    if source.starts_with("Documents/")
-        || source.starts_with("documents/")
-        || source.starts_with("AppData/")
-    {
+    let lower = source.to_ascii_lowercase();
+    if lower.starts_with("documents/") || lower.starts_with("appdata/") {
         home.join(source)
     } else {
         home.join(format!(".{source}"))
@@ -111,6 +109,16 @@ mod tests {
         assert_eq!(
             target,
             PathBuf::from("C:/Users/user/AppData/Roaming/Code/User/settings.json")
+        );
+    }
+
+    #[test]
+    fn target_for_appdata_lowercase() {
+        let home = PathBuf::from("C:/Users/user");
+        let target = compute_target(&home, "appdata/Local/something");
+        assert_eq!(
+            target,
+            PathBuf::from("C:/Users/user/appdata/Local/something")
         );
     }
 

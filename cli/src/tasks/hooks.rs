@@ -14,7 +14,8 @@ fn discover_hooks(ctx: &Context) -> Result<Vec<HookFileResource>> {
     {
         let entry = entry.with_context(|| format!("reading entry in {}", hooks_src.display()))?;
         let path = entry.path();
-        if path.is_file() {
+        // Only install executable hook files; skip data files like .ini
+        if path.is_file() && path.extension().is_none() {
             resources.push(HookFileResource::new(
                 path,
                 hooks_dst.join(entry.file_name()),

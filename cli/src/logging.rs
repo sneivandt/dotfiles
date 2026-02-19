@@ -47,17 +47,29 @@ fn log_file_path() -> Option<PathBuf> {
 }
 
 /// Strip ANSI escape sequences from a string.
+///
+/// Handles SGR sequences (ending in `m`) and other CSI sequences (ending
+/// in any letter in the `@`..`~` range), so cursor movement, erase, etc.
+/// are also stripped without consuming unrelated text.
 fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
         if c == '\x1b' {
-            // Skip until 'm' (end of SGR sequence)
-            for inner in chars.by_ref() {
-                if inner == 'm' {
-                    break;
+            // Skip CSI sequences: ESC followed by `[` then parameters ending
+            // in a letter in the range 0x40..0x7E (@A-Z[\]^_`a-z{|}~).
+            // Also handle non-CSI escapes (e.g., ESC + single char).
+            if let Some(next) = chars.next()
+                && next == '['
+            {
+                // CSI sequence: consume until a final byte in '@'..='~'
+                for inner in chars.by_ref() {
+                    if ('@'..='~').contains(&inner) {
+                        break;
+                    }
                 }
             }
+            // else: two-char escape (e.g., ESC M) — already consumed
         } else {
             out.push(c);
         }
@@ -306,6 +318,20 @@ mod tests {
             strip_ansi("\x1b[1;34m==>\x1b[0m \x1b[1mstage\x1b[0m"),
             "==> stage"
         );
+    }
+
+    #[test]
+    fn strip_ansi_handles_csi_sequences() {
+        // Cursor movement (ends in 'H')
+        assert_eq!(strip_ansi("\x1b[2;5Htext"), "text");
+        // Erase display (ends in 'J')
+        assert_eq!(strip_ansi("\x1b[2Jhello"), "hello");
+        // Erase line (ends in 'K')
+        assert_eq!(strip_ansi("\x1b[Kworld"), "world");
+        // Mixed: SGR + cursor + text
+        assert_eq!(strip_ansi("\x1b[31m\x1b[2JERROR\x1b[0m"), "ERROR");
+        // Non-CSI two-char escape: ESC + char consumes exactly one extra char
+        assert_eq!(strip_ansi("\x1bMtext"), "text");
     }
 
     #[test]

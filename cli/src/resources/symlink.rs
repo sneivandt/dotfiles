@@ -144,17 +144,17 @@ fn create_symlink(target: &Path, link: &Path) -> Result<()> {
 
         if result.is_err() {
             // Fall back to mklink via cmd.exe (requires admin or dev mode)
-            let flag = if is_dir { "/J" } else { "/H" };
-            exec::run(
-                "cmd",
-                &[
-                    "/c",
-                    "mklink",
-                    flag,
-                    &link.to_string_lossy(),
-                    &target.to_string_lossy(),
-                ],
-            )?;
+            // Use /J (junction) for directories, no flag (symlink) for files.
+            // Note: /H creates a hard link which has different semantics.
+            let link_str = link.to_string_lossy();
+            let target_str = target.to_string_lossy();
+            let mut args: Vec<&str> = vec!["/c", "mklink"];
+            if is_dir {
+                args.push("/J");
+            }
+            args.push(&link_str);
+            args.push(&target_str);
+            exec::run("cmd", &args)?;
         }
     }
 

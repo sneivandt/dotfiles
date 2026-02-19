@@ -69,10 +69,11 @@ pub fn get_installed_packages(manager: PackageManager) -> Result<HashSet<String>
             Ok(set)
         }
         PackageManager::Winget => {
-            // `winget list` outputs a table. Each installed package has its ID
-            // somewhere in the line. We look for exact matches of known IDs
-            // in the task runner, but here we capture all the output so the
-            // caller can search it.
+            // `winget list` outputs a formatted table — each line may contain
+            // the package ID as a whitespace-delimited token.  Winget IDs are
+            // reverse-domain names (e.g. `Git.Git`, `Microsoft.PowerShell`) so
+            // collisions with version numbers or other tokens are not a concern
+            // when doing exact-match lookups via `state_from_installed`.
             let result = exec::run_unchecked(
                 "winget",
                 &[
@@ -83,11 +84,7 @@ pub fn get_installed_packages(manager: PackageManager) -> Result<HashSet<String>
             )?;
             let mut set = HashSet::new();
             if result.success {
-                // winget outputs a formatted table — each line may contain
-                // the package ID as a whitespace-delimited token.
                 for line in result.stdout.lines() {
-                    // Collect every whitespace-delimited token so callers can
-                    // do exact-match lookups by winget ID.
                     for token in line.split_whitespace() {
                         set.insert(token.to_string());
                     }
@@ -159,6 +156,8 @@ impl Resource for PackageResource {
                         "--id",
                         &self.name,
                         "--exact",
+                        "--source",
+                        "winget",
                         "--accept-source-agreements",
                         "--accept-package-agreements",
                     ],
@@ -166,8 +165,15 @@ impl Resource for PackageResource {
                 if result.success {
                     Ok(ResourceChange::Applied)
                 } else {
+                    // winget writes most diagnostics to stdout, not stderr.
+                    // Combine both streams so the user sees useful output.
+                    let detail = if result.stderr.trim().is_empty() {
+                        result.stdout.trim().to_string()
+                    } else {
+                        format!("{}\n{}", result.stdout.trim(), result.stderr.trim())
+                    };
                     Ok(ResourceChange::Skipped {
-                        reason: format!("winget install failed: {}", result.stderr.trim()),
+                        reason: format!("winget install failed: {detail}"),
                     })
                 }
             }

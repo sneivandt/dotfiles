@@ -91,10 +91,10 @@ fn download_github_folder(url: &str, dest: &Path) -> Result<()> {
 
     let repo_url = format!("https://github.com/{owner}/{repo}.git");
 
-    let dir_name = dest
-        .file_name()
-        .map_or_else(|| "skill".to_string(), |n| n.to_string_lossy().to_string());
-    let tmp = std::env::temp_dir().join(format!("dotfiles-skill-{dir_name}"));
+    // Use a hash of the full URL to avoid temp directory collisions when
+    // skills from different repos share the same directory name.
+    let url_hash = simple_hash(url);
+    let tmp = std::env::temp_dir().join(format!("dotfiles-skill-{url_hash:016x}"));
 
     if tmp.exists() {
         std::fs::remove_dir_all(&tmp).context("removing previous skill temp dir")?;
@@ -132,6 +132,16 @@ fn download_github_folder(url: &str, dest: &Path) -> Result<()> {
 
     std::fs::remove_dir_all(&tmp).ok(); // Cleanup (best effort)
     Ok(())
+}
+
+/// Simple non-cryptographic hash for generating unique temp directory names.
+fn simple_hash(s: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in s.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    hash
 }
 
 /// Recursively copy a directory tree.

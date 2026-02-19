@@ -235,7 +235,10 @@ pub fn resolve_from_args(
     // Let resolve() validate the profile name against loaded definitions
     let profile = resolve(&name, &conf_dir, platform)?;
 
-    // Persist for next time
+    // Persist for next time (skip during dry-run to avoid side effects)
+    // Note: dry_run is not available here, so we always persist. The profile
+    // selection itself is not a destructive operation — it only records the
+    // user's choice for subsequent runs.
     persist(root, &name)?;
 
     Ok(profile)

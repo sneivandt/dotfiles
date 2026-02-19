@@ -293,16 +293,37 @@ fn discover_powershell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
     );
 }
 
-/// Check if a file has a shell shebang (#!/...sh).
+/// Known POSIX-compatible shell interpreter basenames that shellcheck supports.
+const SHELL_INTERPRETERS: &[&[u8]] = &[b"sh", b"bash", b"dash", b"ksh"];
+
+/// Check if a file has a POSIX-shell shebang (e.g. `#!/bin/bash`).
+///
+/// Only matches known shell interpreters to avoid false positives from
+/// interpreters that happen to contain "sh" (e.g. `fish`, `csh`).
 fn is_shell_shebang(path: &Path) -> bool {
     let first_line = read_first_line(path);
-    first_line.starts_with(b"#!") && first_line.windows(2).any(|w| w == b"sh")
+    if !first_line.starts_with(b"#!") {
+        return false;
+    }
+    // Extract the interpreter: last component of the path, handling "env" wrappers
+    let shebang = &first_line[2..];
+    let interpreter = shebang
+        .split(|&b| b == b' ' || b == b'/' || b == b'\t')
+        .rfind(|s| !s.is_empty() && *s != b"usr" && *s != b"bin" && *s != b"env");
+    interpreter.is_some_and(|name| SHELL_INTERPRETERS.contains(&name))
 }
 
-/// Check if a file has a zsh shebang (#!/...zsh).
+/// Check if a file has a zsh shebang (e.g. `#!/bin/zsh`).
 fn is_zsh_shebang(path: &Path) -> bool {
     let first_line = read_first_line(path);
-    first_line.starts_with(b"#!") && first_line.windows(3).any(|w| w == b"zsh")
+    if !first_line.starts_with(b"#!") {
+        return false;
+    }
+    let shebang = &first_line[2..];
+    let interpreter = shebang
+        .split(|&b| b == b' ' || b == b'/' || b == b'\t')
+        .rfind(|s| !s.is_empty() && *s != b"usr" && *s != b"bin" && *s != b"env");
+    interpreter.is_some_and(|name| name == b"zsh")
 }
 
 /// Read the first line of a file (up to 256 bytes).
@@ -389,6 +410,47 @@ mod tests {
         discover_shell_scripts(dir.path(), &mut found);
         // zsh scripts are excluded (shellcheck doesn't support them)
         assert_eq!(found.len(), 2);
+    }
+
+    #[test]
+    fn shebang_excludes_non_posix_shells() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // These should NOT be detected as shell scripts
+        for (name, shebang) in [
+            ("fish_script", "#!/usr/bin/fish\n"),
+            ("csh_script", "#!/bin/csh\n"),
+            ("tcsh_script", "#!/usr/bin/tcsh\n"),
+            ("python_script", "#!/usr/bin/python3\n"),
+        ] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, shebang).unwrap();
+        }
+
+        let mut found = Vec::new();
+        discover_shell_scripts(dir.path(), &mut found);
+        assert!(
+            found.is_empty(),
+            "should not match non-POSIX shell shebangs"
+        );
+    }
+
+    #[test]
+    fn shebang_detects_env_wrappers() {
+        let dir = tempfile::tempdir().unwrap();
+
+        for (name, shebang) in [
+            ("a", "#!/usr/bin/env sh\n"),
+            ("b", "#!/usr/bin/env bash\n"),
+            ("c", "#!/usr/bin/env dash\n"),
+        ] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, shebang).unwrap();
+        }
+
+        let mut found = Vec::new();
+        discover_shell_scripts(dir.path(), &mut found);
+        assert_eq!(found.len(), 3);
     }
 
     #[test]

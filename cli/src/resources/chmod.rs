@@ -100,7 +100,12 @@ impl Resource for ChmodResource {
 fn apply_recursive(path: &std::path::Path, mode: u32) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+    // For directories, ensure the execute bit is set for each permission
+    // triplet that has read access, so directories remain traversable.
+    let dir_mode = ensure_dir_execute_bits(mode);
+
+    let effective_mode = if path.is_dir() { dir_mode } else { mode };
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(effective_mode))
         .with_context(|| format!("set permissions on {}", path.display()))?;
 
     if path.is_dir() {
@@ -119,6 +124,25 @@ fn apply_recursive(path: &std::path::Path, mode: u32) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Add execute bits to a mode for each permission triplet that has read access.
+/// This mirrors the conventional behaviour of `chmod -R`: files get the
+/// specified mode, while directories get execute bits so they remain
+/// traversable (e.g., mode 600 → dir mode 700).
+#[cfg(unix)]
+const fn ensure_dir_execute_bits(mode: u32) -> u32 {
+    let mut m = mode;
+    if m & 0o400 != 0 {
+        m |= 0o100;
+    }
+    if m & 0o040 != 0 {
+        m |= 0o010;
+    }
+    if m & 0o004 != 0 {
+        m |= 0o001;
+    }
+    m
 }
 
 #[cfg(test)]
@@ -222,5 +246,20 @@ mod tests {
             resource.target,
             std::path::PathBuf::from("/home/user/.ssh/config")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_dir_execute_bits_adds_x_for_read() {
+        // 600 (rw-------) → 700 (rwx------) for directories
+        assert_eq!(ensure_dir_execute_bits(0o600), 0o700);
+        // 644 (rw-r--r--) → 755 (rwxr-xr-x)
+        assert_eq!(ensure_dir_execute_bits(0o644), 0o755);
+        // 640 (rw-r-----) → 750 (rwxr-x---)
+        assert_eq!(ensure_dir_execute_bits(0o640), 0o750);
+        // 755 stays 755
+        assert_eq!(ensure_dir_execute_bits(0o755), 0o755);
+        // 000 stays 000
+        assert_eq!(ensure_dir_execute_bits(0o000), 0o000);
     }
 }

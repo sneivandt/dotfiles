@@ -126,13 +126,11 @@ impl Task for ConfigureSparseCheckout {
 
         let root = ctx.root();
 
-        // Enable sparse checkout
-        ctx.log.debug("initializing sparse checkout (cone mode)");
-        exec::run_in(root, "git", &["sparse-checkout", "init", "--cone"])?;
-
-        // Disable cone mode to use full pattern matching
+        // Enable sparse checkout with non-cone mode for full pattern matching.
+        // Non-cone mode supports negation patterns (e.g., !/<file>) which are
+        // needed to selectively exclude files.
         ctx.log
-            .debug("switching to non-cone mode for pattern matching");
+            .debug("initializing sparse checkout (non-cone mode)");
         exec::run_in(root, "git", &["sparse-checkout", "init", "--no-cone"])?;
 
         ctx.log.debug(&format!(

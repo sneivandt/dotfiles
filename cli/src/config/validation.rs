@@ -5,6 +5,12 @@ use crate::platform::Platform;
 /// Valid Windows registry hives for validation.
 const VALID_REGISTRY_HIVES: &[&str] = &["HKCU:", "HKLM:", "HKCR:", "HKU:", "HKCC:"];
 
+/// Minimum length for octal mode strings.
+const OCTAL_MODE_MIN_LEN: usize = 3;
+
+/// Maximum length for octal mode strings.
+const OCTAL_MODE_MAX_LEN: usize = 4;
+
 /// A validation warning detected during configuration loading.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationWarning {
@@ -214,9 +220,9 @@ fn validate_octal_mode(mode: &str) -> Option<String> {
         ));
     }
 
-    if mode.len() < 3 || mode.len() > 4 {
+    if mode.len() < OCTAL_MODE_MIN_LEN || mode.len() > OCTAL_MODE_MAX_LEN {
         return Some(format!(
-            "invalid mode length '{mode}': must be 3 or 4 digits"
+            "invalid mode length '{mode}': must be {OCTAL_MODE_MIN_LEN} or {OCTAL_MODE_MAX_LEN} digits"
         ));
     }
 

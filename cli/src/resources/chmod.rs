@@ -3,6 +3,9 @@ use std::path::PathBuf;
 
 use super::{Resource, ResourceChange, ResourceState};
 
+/// Unix file permission mask (all permission bits).
+const MODE_BITS_MASK: u32 = 0o7777;
+
 /// A file permission resource that can be checked and applied (Unix only).
 #[derive(Debug, Clone)]
 pub struct ChmodResource {
@@ -48,7 +51,8 @@ impl Resource for ChmodResource {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let current_mode = std::fs::metadata(&self.target)?.permissions().mode() & 0o7777;
+            let current_mode =
+                std::fs::metadata(&self.target)?.permissions().mode() & MODE_BITS_MASK;
 
             if current_mode == desired_mode {
                 Ok(ResourceState::Correct)
@@ -227,7 +231,7 @@ mod tests {
         assert_eq!(result, ResourceChange::Applied);
 
         // Verify the change
-        let current_mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o7777;
+        let current_mode = std::fs::metadata(&file).unwrap().permissions().mode() & MODE_BITS_MASK;
         assert_eq!(current_mode, 0o600);
     }
 

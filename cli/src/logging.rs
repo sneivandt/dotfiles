@@ -182,11 +182,22 @@ impl Logger {
 
     /// Return `true` if any recorded task has failed.
     #[must_use]
+    #[allow(dead_code)] // Used in tests and part of public API
     pub fn has_failures(&self) -> bool {
         self.tasks
             .borrow()
             .iter()
             .any(|t| t.status == TaskStatus::Failed)
+    }
+
+    /// Count the number of failed tasks.
+    #[must_use]
+    pub fn failure_count(&self) -> usize {
+        self.tasks
+            .borrow()
+            .iter()
+            .filter(|t| t.status == TaskStatus::Failed)
+            .count()
     }
 
     /// Print the summary of all recorded tasks.

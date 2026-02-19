@@ -166,12 +166,7 @@ impl Task for RunShellcheck {
             ctx.log.info("shellcheck passed");
             Ok(TaskResult::Ok)
         } else {
-            if !result.stdout.is_empty() {
-                eprintln!("{}", result.stdout);
-            }
-            if !result.stderr.is_empty() {
-                eprintln!("{}", result.stderr);
-            }
+            print_exec_output(&result);
             anyhow::bail!("shellcheck found issues");
         }
     }
@@ -232,12 +227,7 @@ impl Task for RunPSScriptAnalyzer {
             ctx.log.info("PSScriptAnalyzer passed");
             Ok(TaskResult::Ok)
         } else {
-            if !result.stdout.is_empty() {
-                eprintln!("{}", result.stdout);
-            }
-            if !result.stderr.is_empty() {
-                eprintln!("{}", result.stderr);
-            }
+            print_exec_output(&result);
             anyhow::bail!("PSScriptAnalyzer found issues");
         }
     }
@@ -301,29 +291,31 @@ const SHELL_INTERPRETERS: &[&[u8]] = &[b"sh", b"bash", b"dash", b"ksh"];
 /// Only matches known shell interpreters to avoid false positives from
 /// interpreters that happen to contain "sh" (e.g. `fish`, `csh`).
 fn is_shell_shebang(path: &Path) -> bool {
-    let first_line = read_first_line(path);
-    if !first_line.starts_with(b"#!") {
-        return false;
-    }
-    // Extract the interpreter: last component of the path, handling "env" wrappers
-    let shebang = &first_line[2..];
-    let interpreter = shebang
-        .split(|&b| b == b' ' || b == b'/' || b == b'\t')
-        .rfind(|s| !s.is_empty() && *s != b"usr" && *s != b"bin" && *s != b"env");
-    interpreter.is_some_and(|name| SHELL_INTERPRETERS.contains(&name))
+    parse_shebang_interpreter(path)
+        .is_some_and(|name| SHELL_INTERPRETERS.contains(&name.as_slice()))
 }
 
 /// Check if a file has a zsh shebang (e.g. `#!/bin/zsh`).
 fn is_zsh_shebang(path: &Path) -> bool {
+    parse_shebang_interpreter(path).is_some_and(|name| name == b"zsh")
+}
+
+/// Parse shebang line to extract the interpreter name.
+///
+/// Returns the interpreter name from a shebang line, handling:
+/// - Direct paths: `#!/bin/bash` → `bash`
+/// - Env wrappers: `#!/usr/bin/env bash` → `bash`
+/// - With arguments: `#!/bin/sh -e` → `sh`
+fn parse_shebang_interpreter(path: &Path) -> Option<Vec<u8>> {
     let first_line = read_first_line(path);
     if !first_line.starts_with(b"#!") {
-        return false;
+        return None;
     }
     let shebang = &first_line[2..];
-    let interpreter = shebang
+    shebang
         .split(|&b| b == b' ' || b == b'/' || b == b'\t')
-        .rfind(|s| !s.is_empty() && *s != b"usr" && *s != b"bin" && *s != b"env");
-    interpreter.is_some_and(|name| name == b"zsh")
+        .find(|s| !s.is_empty() && *s != b"usr" && *s != b"bin" && *s != b"env")
+        .map(<[u8]>::to_vec)
 }
 
 /// Read the first line of a file (up to 256 bytes).
@@ -337,6 +329,16 @@ fn read_first_line(path: &Path) -> Vec<u8> {
     let n = file.read(&mut buf).unwrap_or(0);
     let end = buf[..n].iter().position(|&b| b == b'\n').unwrap_or(n);
     buf[..end].to_vec()
+}
+
+/// Print command output (stdout and stderr) to stderr.
+fn print_exec_output(result: &crate::exec::ExecResult) {
+    if !result.stdout.is_empty() {
+        eprintln!("{}", result.stdout);
+    }
+    if !result.stderr.is_empty() {
+        eprintln!("{}", result.stderr);
+    }
 }
 
 #[cfg(test)]
@@ -451,6 +453,25 @@ mod tests {
         let mut found = Vec::new();
         discover_shell_scripts(dir.path(), &mut found);
         assert_eq!(found.len(), 3);
+    }
+
+    #[test]
+    fn shebang_with_arguments() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Shebangs with arguments should still correctly identify the interpreter
+        for (name, shebang) in [
+            ("a", "#!/bin/sh -e\n"),
+            ("b", "#!/bin/bash -x\n"),
+            ("c", "#!/usr/bin/env bash -e\n"),
+        ] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, shebang).unwrap();
+        }
+
+        let mut found = Vec::new();
+        discover_shell_scripts(dir.path(), &mut found);
+        assert_eq!(found.len(), 3, "should detect shell scripts with arguments");
     }
 
     #[test]

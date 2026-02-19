@@ -69,8 +69,9 @@ pub fn run_tasks_to_completion(tasks: &[&dyn Task], ctx: &Context, log: &Logger)
 
     log.print_summary();
 
-    if log.has_failures() {
-        anyhow::bail!("one or more tasks failed");
+    let count = log.failure_count();
+    if count > 0 {
+        anyhow::bail!("{count} task(s) failed");
     }
     Ok(())
 }

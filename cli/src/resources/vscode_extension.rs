@@ -100,6 +100,10 @@ pub fn find_code_command() -> Option<String> {
 }
 
 /// Run a VS Code CLI command. On Windows, `.cmd` wrappers need `cmd.exe /C`.
+///
+/// # Errors
+///
+/// Returns an error if the command execution fails or if the command cannot be found.
 fn run_code_cmd(cmd: &str, args: &[&str]) -> Result<exec::ExecResult> {
     #[cfg(target_os = "windows")]
     {

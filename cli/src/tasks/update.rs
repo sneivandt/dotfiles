@@ -17,9 +17,18 @@ impl Task for UpdateRepository {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        // Pass HOME so git finds the correct global config when running elevated
+        // on Windows (elevated token can have a different home path).
+        let home_str = ctx.home.to_string_lossy().to_string();
+        let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
+
         // Refuse to pull if there are staged changes that could be lost
-        if let Ok(diff) = exec::run_in(ctx.root(), "git", &["diff", "--cached", "--name-only"])
-            && !diff.stdout.trim().is_empty()
+        if let Ok(diff) = exec::run_in_with_env(
+            ctx.root(),
+            "git",
+            &["diff", "--cached", "--name-only"],
+            git_env,
+        ) && !diff.stdout.trim().is_empty()
         {
             ctx.log.warn("staged changes detected, skipping update");
             return Ok(TaskResult::Skipped("staged changes present".to_string()));
@@ -28,8 +37,8 @@ impl Task for UpdateRepository {
         if ctx.dry_run {
             // Compare local HEAD with upstream tracking branch
             if let (Some(head), Some(upstream)) = (
-                exec::run_in(ctx.root(), "git", &["rev-parse", "HEAD"]).ok(),
-                exec::run_in(ctx.root(), "git", &["rev-parse", "@{u}"]).ok(),
+                exec::run_in_with_env(ctx.root(), "git", &["rev-parse", "HEAD"], git_env).ok(),
+                exec::run_in_with_env(ctx.root(), "git", &["rev-parse", "@{u}"], git_env).ok(),
             ) && head.stdout.trim() == upstream.stdout.trim()
             {
                 ctx.log.info("already up to date");
@@ -41,7 +50,7 @@ impl Task for UpdateRepository {
 
         ctx.log
             .debug(&format!("pulling from {}", ctx.root().display()));
-        let result = exec::run_in(ctx.root(), "git", &["pull", "--ff-only"]);
+        let result = exec::run_in_with_env(ctx.root(), "git", &["pull", "--ff-only"], git_env);
         match result {
             Ok(r) => {
                 let msg = r.stdout.trim().to_string();

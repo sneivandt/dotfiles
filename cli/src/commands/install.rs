@@ -15,7 +15,7 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
     log.info(&format!("dotfiles {version}"));
 
     let executor = exec::SystemExecutor;
-    let setup = super::CommandSetup::init(global, log, &executor)?;
+    let setup = super::CommandSetup::init(global, log)?;
 
     let ctx = Context::new(
         &setup.config,

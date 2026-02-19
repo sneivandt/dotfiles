@@ -2,7 +2,6 @@ use anyhow::{Context as _, Result, bail};
 use std::io::{self, Write};
 use std::path::Path;
 
-use crate::exec::Executor;
 use crate::platform::Platform;
 
 /// A resolved profile with its active and excluded categories.
@@ -146,30 +145,108 @@ pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profi
     })
 }
 
-/// Try to read the persisted profile from git config.
+/// Try to read the persisted profile directly from .git/config.
 #[must_use]
-pub fn read_persisted(root: &Path, executor: &dyn Executor) -> Option<String> {
-    let result = executor
-        .run_in(root, "git", &["config", "--local", "dotfiles.profile"])
-        .ok()?;
-    let name = result.stdout.trim().to_string();
-    if name.is_empty() { None } else { Some(name) }
+pub fn read_persisted(root: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(root.join(".git").join("config")).ok()?;
+    let mut in_dotfiles = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_dotfiles = trimmed == "[dotfiles]";
+            continue;
+        }
+        if in_dotfiles
+            && let Some(rest) = trimmed.strip_prefix("profile")
+            && let Some(value) = rest.trim_start().strip_prefix('=')
+        {
+            let v = value.trim().to_string();
+            if !v.is_empty() {
+                return Some(v);
+            }
+        }
+    }
+    None
 }
 
-/// Persist the profile selection to git config.
+/// Persist the profile selection directly to .git/config.
 ///
 /// # Errors
 ///
-/// Returns an error if the git command fails.
-pub fn persist(root: &Path, name: &str, executor: &dyn Executor) -> Result<()> {
-    executor
-        .run_in(
-            root,
-            "git",
-            &["config", "--local", "dotfiles.profile", name],
-        )
+/// Returns an error if the config file cannot be read or written.
+pub fn persist(root: &Path, name: &str) -> Result<()> {
+    let path = root.join(".git").join("config");
+    let content = if path.exists() {
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?
+    } else {
+        String::new()
+    };
+    let new_content = set_git_config_value(&content, "dotfiles", "profile", name);
+    std::fs::write(&path, new_content)
+        .with_context(|| format!("writing {}", path.display()))
         .context("persisting profile to git config")?;
     Ok(())
+}
+
+/// Update or insert `key = value` within `[section]` in a git config string.
+fn set_git_config_value(content: &str, section: &str, key: &str, value: &str) -> String {
+    let section_header = format!("[{section}]");
+    let new_line = format!("\t{key} = {value}");
+
+    let lines: Vec<&str> = content.lines().collect();
+    let mut out: Vec<String> = Vec::with_capacity(lines.len() + 2);
+    let mut in_section = false;
+    let mut key_written = false;
+    let mut section_seen = false;
+
+    for line in &lines {
+        let trimmed = line.trim();
+        let entering_new_section = trimmed.starts_with('[');
+
+        if entering_new_section && in_section && !key_written {
+            out.push(new_line.clone());
+            key_written = true;
+        }
+
+        if entering_new_section {
+            in_section = trimmed == section_header;
+            if in_section {
+                section_seen = true;
+            }
+            out.push(line.to_string());
+            continue;
+        }
+
+        if in_section
+            && !key_written
+            && let Some(after_key) = trimmed.strip_prefix(key)
+            && after_key.trim_start().starts_with('=')
+        {
+            out.push(new_line.clone());
+            key_written = true;
+            continue;
+        }
+
+        out.push(line.to_string());
+    }
+
+    if in_section && !key_written {
+        out.push(new_line.clone());
+    }
+
+    if !section_seen {
+        if !out.is_empty() {
+            out.push(String::new());
+        }
+        out.push(section_header);
+        out.push(new_line);
+    }
+
+    let mut result = out.join("\n");
+    if !result.ends_with('\n') {
+        result.push('\n');
+    }
+    result
 }
 
 /// Interactively prompt the user to select a profile.
@@ -221,13 +298,12 @@ pub fn resolve_from_args(
     cli_profile: Option<&str>,
     root: &Path,
     platform: &Platform,
-    executor: &dyn Executor,
 ) -> Result<Profile> {
     let conf_dir = root.join("conf");
 
     let name = if let Some(name) = cli_profile {
         name.to_string()
-    } else if let Some(name) = read_persisted(root, executor) {
+    } else if let Some(name) = read_persisted(root) {
         name
     } else {
         prompt_interactive(platform)?
@@ -240,7 +316,7 @@ pub fn resolve_from_args(
     // Note: dry_run is not available here, so we always persist. The profile
     // selection itself is not a destructive operation — it only records the
     // user's choice for subsequent runs.
-    persist(root, &name, executor)?;
+    persist(root, &name)?;
 
     Ok(profile)
 }
@@ -357,133 +433,32 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // MockExecutor
-    // ------------------------------------------------------------------
-
-    #[derive(Debug)]
-    struct MockExecutor {
-        responses: std::cell::RefCell<std::collections::VecDeque<(bool, String)>>,
-    }
-
-    impl MockExecutor {
-        fn ok(stdout: &str) -> Self {
-            Self {
-                responses: std::cell::RefCell::new(std::collections::VecDeque::from([(
-                    true,
-                    stdout.to_string(),
-                )])),
-            }
-        }
-
-        fn fail() -> Self {
-            Self {
-                responses: std::cell::RefCell::new(std::collections::VecDeque::from([(
-                    false,
-                    String::new(),
-                )])),
-            }
-        }
-
-        fn next(&self) -> (bool, String) {
-            self.responses
-                .borrow_mut()
-                .pop_front()
-                .unwrap_or_else(|| (false, "unexpected call".to_string()))
-        }
-    }
-
-    impl crate::exec::Executor for MockExecutor {
-        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
-            let (success, stdout) = self.next();
-            if success {
-                Ok(crate::exec::ExecResult {
-                    stdout,
-                    stderr: String::new(),
-                    success: true,
-                    code: Some(0),
-                })
-            } else {
-                anyhow::bail!("mock command failed")
-            }
-        }
-
-        fn run_in(
-            &self,
-            _: &std::path::Path,
-            _: &str,
-            _: &[&str],
-        ) -> anyhow::Result<crate::exec::ExecResult> {
-            let (success, stdout) = self.next();
-            if success {
-                Ok(crate::exec::ExecResult {
-                    stdout,
-                    stderr: String::new(),
-                    success: true,
-                    code: Some(0),
-                })
-            } else {
-                anyhow::bail!("mock command failed")
-            }
-        }
-
-        fn run_in_with_env(
-            &self,
-            _: &std::path::Path,
-            _: &str,
-            _: &[&str],
-            _: &[(&str, &str)],
-        ) -> anyhow::Result<crate::exec::ExecResult> {
-            let (success, stdout) = self.next();
-            if success {
-                Ok(crate::exec::ExecResult {
-                    stdout,
-                    stderr: String::new(),
-                    success: true,
-                    code: Some(0),
-                })
-            } else {
-                anyhow::bail!("mock command failed")
-            }
-        }
-
-        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
-            let (success, stdout) = self.next();
-            Ok(crate::exec::ExecResult {
-                stdout,
-                stderr: String::new(),
-                success,
-                code: Some(i32::from(!success)),
-            })
-        }
-
-        fn which(&self, _: &str) -> bool {
-            false
-        }
-    }
-
-    // ------------------------------------------------------------------
     // read_persisted
     // ------------------------------------------------------------------
 
     #[test]
     fn read_persisted_returns_profile_name() {
-        let executor = MockExecutor::ok("desktop\n");
-        let dir = std::env::temp_dir();
-        assert_eq!(read_persisted(&dir, &executor), Some("desktop".to_string()));
+        let dir = tempfile::tempdir().expect("tempdir");
+        let git_dir = dir.path().join(".git");
+        std::fs::create_dir_all(&git_dir).expect("create .git");
+        std::fs::write(git_dir.join("config"), "[dotfiles]\n\tprofile = desktop\n")
+            .expect("write config");
+        assert_eq!(read_persisted(dir.path()), Some("desktop".to_string()));
     }
 
     #[test]
-    fn read_persisted_returns_none_when_git_fails() {
-        let executor = MockExecutor::fail();
-        let dir = std::env::temp_dir();
-        assert_eq!(read_persisted(&dir, &executor), None);
+    fn read_persisted_returns_none_when_no_git_config() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        assert_eq!(read_persisted(dir.path()), None);
     }
 
     #[test]
-    fn read_persisted_returns_none_when_output_empty() {
-        let executor = MockExecutor::ok("");
-        let dir = std::env::temp_dir();
-        assert_eq!(read_persisted(&dir, &executor), None);
+    fn read_persisted_returns_none_when_profile_empty() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let git_dir = dir.path().join(".git");
+        std::fs::create_dir_all(&git_dir).expect("create .git");
+        std::fs::write(git_dir.join("config"), "[dotfiles]\n\tprofile = \n").expect("write config");
+        assert_eq!(read_persisted(dir.path()), None);
     }
 
     // ------------------------------------------------------------------
@@ -491,16 +466,23 @@ mod tests {
     // ------------------------------------------------------------------
 
     #[test]
-    fn persist_succeeds_when_git_config_succeeds() {
-        let executor = MockExecutor::ok("");
-        let dir = std::env::temp_dir();
-        persist(&dir, "base", &executor).unwrap();
+    fn persist_creates_section_and_key() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let git_dir = dir.path().join(".git");
+        std::fs::create_dir_all(&git_dir).expect("create .git");
+        std::fs::write(git_dir.join("config"), "[core]\n\tbare = false\n").expect("write config");
+        persist(dir.path(), "base").expect("persist");
+        assert_eq!(read_persisted(dir.path()), Some("base".to_string()));
     }
 
     #[test]
-    fn persist_propagates_error_when_git_fails() {
-        let executor = MockExecutor::fail();
-        let dir = std::env::temp_dir();
-        assert!(persist(&dir, "base", &executor).is_err());
+    fn persist_updates_existing_key() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let git_dir = dir.path().join(".git");
+        std::fs::create_dir_all(&git_dir).expect("create .git");
+        std::fs::write(git_dir.join("config"), "[dotfiles]\n\tprofile = base\n")
+            .expect("write config");
+        persist(dir.path(), "desktop").expect("persist");
+        assert_eq!(read_persisted(dir.path()), Some("desktop".to_string()));
     }
 }

@@ -12,7 +12,7 @@ use crate::tasks::{self, Context, Task};
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Logger) -> Result<()> {
     let executor = exec::SystemExecutor;
-    let setup = super::CommandSetup::init(global, log, &executor)?;
+    let setup = super::CommandSetup::init(global, log)?;
     let ctx = Context::new(
         &setup.config,
         &setup.platform,

@@ -281,11 +281,7 @@ mod tests {
             }
         }
 
-        fn run_unchecked(
-            &self,
-            _: &str,
-            _: &[&str],
-        ) -> anyhow::Result<crate::exec::ExecResult> {
+        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
             let (success, stdout) = self.next();
             Ok(crate::exec::ExecResult {
                 stdout,

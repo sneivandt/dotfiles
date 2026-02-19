@@ -13,7 +13,13 @@ mod tasks;
 fn main() -> Result<()> {
     enable_ansi_support::enable_ansi_support().ok(); // best-effort; no-op on non-Windows
     let args = cli::Cli::parse();
-    let log = logging::Logger::new(args.verbose);
+    let command_name = match &args.command {
+        cli::Command::Install(_) => "install",
+        cli::Command::Uninstall(_) => "uninstall",
+        cli::Command::Test(_) => "test",
+        cli::Command::Version => "version",
+    };
+    let log = logging::Logger::new(args.verbose, command_name);
 
     match args.command {
         cli::Command::Install(opts) => commands::install::run(&args.global, &opts, &log),

@@ -24,7 +24,7 @@ pub enum TaskStatus {
 /// Structured logger with dry-run awareness and summary collection.
 ///
 /// All messages are always written to a persistent log file at
-/// `$XDG_CACHE_HOME/dotfiles/install.log` (default `~/.cache/dotfiles/install.log`)
+/// `$XDG_CACHE_HOME/dotfiles/<command>.log` (default `~/.cache/dotfiles/<command>.log`)
 /// with timestamps and ANSI codes stripped, regardless of the verbose flag.
 #[derive(Debug)]
 pub struct Logger {
@@ -34,7 +34,7 @@ pub struct Logger {
 }
 
 /// Return the log file path under `$XDG_CACHE_HOME/dotfiles/` (or `~/.cache/dotfiles/`).
-fn log_file_path() -> Option<PathBuf> {
+fn log_file_path(command: &str) -> Option<PathBuf> {
     let cache_dir = std::env::var("XDG_CACHE_HOME").map_or_else(
         |_| {
             std::env::var("HOME")
@@ -46,7 +46,7 @@ fn log_file_path() -> Option<PathBuf> {
     );
     let dir = cache_dir.join("dotfiles");
     fs::create_dir_all(&dir).ok()?;
-    Some(dir.join("install.log"))
+    Some(dir.join(format!("{command}.log")))
 }
 
 /// Convert days since the Unix epoch to `(year, month, day)` in the proleptic
@@ -125,8 +125,8 @@ fn strip_ansi(s: &str) -> String {
 
 impl Logger {
     #[must_use]
-    pub fn new(verbose: bool) -> Self {
-        let log_file = log_file_path();
+    pub fn new(verbose: bool, command: &str) -> Self {
+        let log_file = log_file_path(command);
 
         // Write header to log file
         if let Some(ref path) = log_file {
@@ -330,7 +330,7 @@ mod tests {
         unsafe {
             std::env::set_var("XDG_CACHE_HOME", tmp.path());
         }
-        let log = Logger::new(verbose);
+        let log = Logger::new(verbose, "test");
         unsafe {
             std::env::remove_var("XDG_CACHE_HOME");
         }

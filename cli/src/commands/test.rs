@@ -97,7 +97,10 @@ impl Task for ValidateConfigFiles {
 
         let mut errors = 0u32;
         for config_file in &required {
-            if !conf.join(config_file).exists() {
+            let path = conf.join(config_file);
+            if path.exists() {
+                ctx.log.debug(&format!("found conf/{config_file}"));
+            } else {
                 ctx.log
                     .error(&format!("missing config: conf/{config_file}"));
                 errors += 1;
@@ -105,13 +108,19 @@ impl Task for ValidateConfigFiles {
         }
 
         let hooks_dir = ctx.root().join("hooks");
-        if !hooks_dir.exists() {
+        if hooks_dir.exists() {
+            ctx.log.debug("found hooks directory");
+        } else {
             ctx.log.warn("hooks directory missing");
         }
 
         if errors > 0 {
             anyhow::bail!("{errors} required config file(s) missing");
         }
+        ctx.log.info(&format!(
+            "all {} required config files present",
+            required.len()
+        ));
         Ok(TaskResult::Ok)
     }
 }

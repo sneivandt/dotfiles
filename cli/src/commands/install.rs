@@ -15,11 +15,6 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
     log.info(&format!("dotfiles {version}"));
 
     let setup = super::CommandSetup::init(global, log)?;
-    log.info(&format!(
-        "loaded {} packages, {} symlinks",
-        setup.config.packages.len(),
-        setup.config.symlinks.len()
-    ));
 
     let ctx = Context::new(
         &setup.config,

@@ -39,6 +39,26 @@ impl CommandSetup {
         log.stage("Loading configuration");
         let config = Config::load(&root, &profile, &platform)?;
 
+        log.debug(&format!("{} packages", config.packages.len()));
+        log.debug(&format!("{} symlinks", config.symlinks.len()));
+        log.debug(&format!("{} registry entries", config.registry.len()));
+        log.debug(&format!("{} systemd units", config.units.len()));
+        log.debug(&format!("{} chmod entries", config.chmod.len()));
+        log.debug(&format!(
+            "{} vscode extensions",
+            config.vscode_extensions.len()
+        ));
+        log.debug(&format!("{} copilot skills", config.copilot_skills.len()));
+        log.debug(&format!(
+            "{} manifest exclusions",
+            config.manifest.excluded_files.len()
+        ));
+        log.info(&format!(
+            "loaded {} packages, {} symlinks",
+            config.packages.len(),
+            config.symlinks.len()
+        ));
+
         // Validate configuration and display warnings
         let warnings = config.validate(&platform);
         if !warnings.is_empty() {

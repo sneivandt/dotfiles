@@ -6,6 +6,12 @@ use anyhow::{Context as _, Result};
 use super::{Resource, ResourceChange, ResourceState};
 use crate::exec;
 
+/// Sentinel value used when a registry key/value does not exist.
+const NOT_FOUND_SENTINEL: &str = "::NOT_FOUND::";
+
+/// Separator token used to delimit multiple registry values in batch output.
+const BATCH_SEPARATOR: &str = "::SEP::";
+
 /// Validates that a registry key path doesn't contain characters that could
 /// cause issues in `PowerShell` commands (newlines, backticks, etc.).
 fn validate_registry_path(path: &str) -> Result<()> {
@@ -84,9 +90,6 @@ pub fn batch_check_values(
         return Ok(HashMap::new());
     }
 
-    let sentinel = "::NOT_FOUND::";
-    let separator = "::SEP::";
-
     // Build a single script that checks every value and prints results on
     // separate lines, delimited by a separator token so we can parse them.
     let mut script = String::from("$ErrorActionPreference='SilentlyContinue'\n");
@@ -98,12 +101,12 @@ pub fn batch_check_values(
         let key = res.key_path.replace('\'', "''");
         let name = res.value_name.replace('\'', "''");
         if i > 0 {
-            let _ = writeln!(script, "Write-Output '{separator}'");
+            let _ = writeln!(script, "Write-Output '{BATCH_SEPARATOR}'");
         }
         let _ = write!(
             script,
             "$v = (Get-ItemProperty -Path '{key}' -Name '{name}' -ErrorAction SilentlyContinue).'{name}'\n\
-             if ($null -eq $v) {{ Write-Output '{sentinel}' }} else {{ Write-Output $v }}\n"
+             if ($null -eq $v) {{ Write-Output '{NOT_FOUND_SENTINEL}' }} else {{ Write-Output $v }}\n"
         );
     }
 
@@ -121,12 +124,12 @@ pub fn batch_check_values(
     }
 
     // Split output by the separator token
-    let chunks: Vec<&str> = result.stdout.split(separator).collect();
+    let chunks: Vec<&str> = result.stdout.split(BATCH_SEPARATOR).collect();
     for (i, res) in resources.iter().enumerate() {
         let map_key = format!("{}\\{}", res.key_path, res.value_name);
         let value = chunks.get(i).and_then(|chunk| {
             let trimmed = chunk.trim();
-            if trimmed == sentinel {
+            if trimmed == NOT_FOUND_SENTINEL {
                 None
             } else {
                 Some(trimmed.to_string())
@@ -176,14 +179,13 @@ fn check_registry_value(key_path: &str, value_name: &str) -> Result<Option<Strin
     validate_registry_path(key_path)?;
     validate_registry_path(value_name)?;
 
-    let sentinel = "::NOT_FOUND::";
     let key = key_path.replace('\'', "''");
     let name = value_name.replace('\'', "''");
 
     let script = format!(
         "$ErrorActionPreference='SilentlyContinue'\n\
          $v = (Get-ItemProperty -Path '{key}' -Name '{name}' -ErrorAction SilentlyContinue).'{name}'\n\
-         if ($null -eq $v) {{ Write-Output '{sentinel}' }} else {{ Write-Output $v }}"
+         if ($null -eq $v) {{ Write-Output '{NOT_FOUND_SENTINEL}' }} else {{ Write-Output $v }}"
     );
 
     let result = exec::run_unchecked("powershell", &["-NoProfile", "-Command", &script])?;
@@ -193,7 +195,7 @@ fn check_registry_value(key_path: &str, value_name: &str) -> Result<Option<Strin
     }
 
     let output = result.stdout.trim();
-    if output == sentinel {
+    if output == NOT_FOUND_SENTINEL {
         Ok(None)
     } else {
         Ok(Some(output.to_string()))

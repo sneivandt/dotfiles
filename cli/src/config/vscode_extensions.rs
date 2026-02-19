@@ -6,6 +6,7 @@ use super::ini;
 /// A VS Code extension to install.
 #[derive(Debug, Clone)]
 pub struct VsCodeExtension {
+    /// Extension identifier in `publisher.name` format (e.g., `"github.copilot-chat"`).
     pub id: String,
 }
 

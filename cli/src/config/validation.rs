@@ -11,6 +11,11 @@ const OCTAL_MODE_MIN_LEN: usize = 3;
 /// Maximum length for octal mode strings.
 const OCTAL_MODE_MAX_LEN: usize = 4;
 
+/// Valid systemd unit file extensions.
+const VALID_UNIT_EXTENSIONS: &[&str] = &[
+    ".service", ".timer", ".socket", ".target", ".path", ".mount",
+];
+
 /// A validation warning detected during configuration loading.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationWarning {
@@ -303,10 +308,6 @@ impl<'a> SystemdUnitValidator<'a> {
 
 impl ConfigValidator for SystemdUnitValidator<'_> {
     fn validate(&self, _root: &Path, platform: &Platform) -> Vec<ValidationWarning> {
-        const VALID_UNIT_EXTENSIONS: &[&str] = &[
-            ".service", ".timer", ".socket", ".target", ".path", ".mount",
-        ];
-
         let mut warnings = Vec::new();
 
         // Warn if units are defined on non-systemd platform

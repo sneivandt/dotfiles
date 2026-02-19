@@ -23,7 +23,7 @@ struct ProfileDef {
     exclude: Vec<String>,
 }
 
-/// All known profile names.
+/// All known profile names available for selection.
 pub const PROFILE_NAMES: &[&str] = &["base", "desktop"];
 
 /// Load profile definitions from profiles.ini.

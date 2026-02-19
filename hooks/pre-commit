@@ -1,7 +1,7 @@
 #!/bin/sh
 #
-# Pre-commit hook that scans for sensitive information like credentials,
-# API keys, private keys, secrets, PII, and other data that should not be committed.
+# Pre-commit hook orchestrator. Delegates to individual check scripts kept
+# alongside this file in the hooks/ directory.
 #
 # This hook is specific to the dotfiles repository and is installed
 # by the dotfiles installation script.
@@ -11,109 +11,12 @@
 set -o errexit
 set -o nounset
 
-# Color codes for output
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Locate the hooks/ directory in the repository. The hook file is copied into
+# .git/hooks/ by the installer, so we cannot rely on $0 to find the source
+# directory. Use the git repo root instead.
+HOOKS_DIR="$(git rev-parse --show-toplevel)/hooks"
 
-# Get the directory where this hook's actual file is located (follow symlink)
-# The hook is symlinked from .git/hooks/pre-commit to hooks/pre-commit
-if [ -L "$0" ]; then
-  # Follow the symlink to get the real file location
-  HOOK_FILE=$(readlink "$0")
-  # If relative path, make it absolute from $0's directory
-  case "$HOOK_FILE" in
-    /*) ;; # Already absolute
-    *) HOOK_FILE="$(cd "$(dirname "$0")" && cd "$(dirname "$HOOK_FILE")" && pwd)/$(basename "$HOOK_FILE")" ;;
-  esac
-else
-  HOOK_FILE="$0"
-fi
-
-PATTERNS_FILE="$(dirname "$HOOK_FILE")/sensitive-patterns.ini"
-
-# Check if patterns file exists
-if [ ! -f "$PATTERNS_FILE" ]; then
-  printf "${RED}ERROR: Patterns file not found: %s${NC}\n" "$PATTERNS_FILE"
-  printf '%sCannot perform credential scanning without patterns file.%s\n' "$YELLOW" "$NC"
-  exit 1
-fi
-
-# Read patterns from file
-PATTERNS=$(cat "$PATTERNS_FILE")
-
-# Get list of staged files
-if git rev-parse --verify HEAD >/dev/null 2>&1; then
-  against=HEAD
-else
-  # Initial commit: diff against an empty tree object
-  against=$(git hash-object -t tree /dev/null)
-fi
-
-# Track if any secrets were found
-found_secrets=0
-
-# Get list of staged files to a temporary file to avoid subshell issues
-# Use null-delimited list converted to newlines to handle filenames with spaces
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
-git diff --cached --name-only --diff-filter=ACM -z "$against" | tr '\0' '\n' > "$tmpfile"
-
-# Check each staged file
-while IFS= read -r file; do
-  # Skip empty lines
-  [ -z "$file" ] && continue
-
-  # Skip deleted files
-  if [ ! -f "$file" ]; then
-    continue
-  fi
-
-  # Get the diff for this file (only added lines with line numbers)
-  diff=$(git diff --cached --unified=0 "$against" -- "$file" | grep '^+' | grep -v '^+++' || true)
-
-  if [ -z "$diff" ]; then
-    continue
-  fi
-
-  # Check each pattern
-  while IFS= read -r pattern; do
-    # Skip empty lines, comments, and section headers
-    case "$pattern" in
-      ''|'#'*|'['*']') continue ;;
-    esac
-
-    # Case-insensitive grep for the pattern with line numbers
-    # Use -- to prevent patterns starting with - from being interpreted as options
-    matches=$(grep -niE -- "$pattern" "$file" 2>/dev/null || true)
-
-    if [ -n "$matches" ]; then
-      # Check if any of these matches are in the staged diff
-      if echo "$diff" | grep -qiE -- "$pattern"; then
-        if [ "$found_secrets" -eq 0 ]; then
-          printf '%sERROR: Potential sensitive information detected!%s\n' "$RED" "$NC"
-          printf '%s======================================================%s\n\n' "$RED" "$NC"
-          found_secrets=1
-        fi
-
-        printf "${YELLOW}In file: %s${NC}\n" "$file"
-        printf "${YELLOW}Pattern matched: %s${NC}\n" "$pattern"
-        printf "${YELLOW}Lines:%s${NC}\n\n" "$(echo "$matches" | cut -d: -f1 | tr '\n' ',' | sed 's/,$//' | sed 's/,/, /g')"
-      fi
-    fi
-  done <<PATTERNS_EOF
-$PATTERNS
-PATTERNS_EOF
-done < "$tmpfile"
-
-# If secrets were found, prevent the commit
-if [ "$found_secrets" -eq 1 ]; then
-  printf '%s======================================================%s\n' "$RED" "$NC"
-  printf '%sCommit aborted to prevent leaking sensitive data.%s\n' "$RED" "$NC"
-  printf '%sPlease review and remove any sensitive information.%s\n' "$YELLOW" "$NC"
-  printf '%sIf this is a false positive, use:%s\n' "$YELLOW" "$NC"
-  printf "  git commit --no-verify\n\n"
-  exit 1
-fi
+sh "$HOOKS_DIR/check-sensitive.sh"
+sh "$HOOKS_DIR/check-rust.sh"
 
 exit 0

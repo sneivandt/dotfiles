@@ -100,7 +100,7 @@ mod tests {
             self.responses
                 .borrow_mut()
                 .pop_front()
-                .unwrap_or((false, "unexpected call".to_string()))
+                .unwrap_or_else(|| (false, "unexpected call".to_string()))
         }
     }
 
@@ -164,7 +164,7 @@ mod tests {
                 stdout,
                 stderr: String::new(),
                 success,
-                code: Some(if success { 0 } else { 1 }),
+                code: Some(i32::from(!success)),
             })
         }
 

@@ -316,7 +316,7 @@ GitHub Actions CI (`.github/workflows/ci.yml`) runs on pull requests:
 | `integration` | Dry-run install per profile and platform (matrix) |
 | `test-applications` | Git, zsh, vim, nvim behavior (matrix) |
 | `test-docker` | Docker image build + smoke test |
-| `test-git-hooks` | Pre-commit sensitive data detection |
+| `test-git-hooks` | Pre-commit sensitive data detection and Rust formatting/clippy linting |
 
 ### Release Pipeline
 
@@ -371,11 +371,17 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 ### Git Hooks
 
-Pre-commit hook scans for sensitive data:
+The pre-commit hook runs two checks via dedicated scripts in `hooks/`:
+
+`check-sensitive.sh` scans staged files for sensitive data:
 - API keys, tokens, passwords
 - Private keys
 - Cloud provider credentials
 - Generic high-entropy secrets
+
+`check-rust.sh` runs two checks when any `.rs` files are staged:
+- `cargo fmt --check` — format verification
+- `cargo clippy -- -D warnings` — lint enforcement (same policy as CI)
 
 ### Binary Verification
 

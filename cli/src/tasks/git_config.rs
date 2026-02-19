@@ -11,6 +11,7 @@ const GIT_SETTINGS: &[(&str, &str)] = &[
 ];
 
 /// Configure git settings (Windows-specific git config).
+#[derive(Debug)]
 pub struct ConfigureGit;
 
 impl Task for ConfigureGit {

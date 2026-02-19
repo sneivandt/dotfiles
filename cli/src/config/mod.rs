@@ -21,6 +21,7 @@ pub mod test_helpers {
     ///
     /// Panics if the temp directory or file cannot be created.
     #[must_use]
+    #[allow(clippy::expect_used)]
     pub fn write_temp_ini(content: &str) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let path = dir.path().join("test.ini");

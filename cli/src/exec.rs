@@ -155,6 +155,7 @@ pub trait Executor {
 }
 
 /// The real system executor that delegates to process spawning.
+#[derive(Debug)]
 pub struct SystemExecutor;
 
 impl Executor for SystemExecutor {
@@ -186,6 +187,7 @@ impl Executor for SystemExecutor {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

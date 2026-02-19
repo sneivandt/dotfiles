@@ -11,6 +11,15 @@ pub struct DefaultShellResource<'a> {
     executor: &'a dyn Executor,
 }
 
+impl std::fmt::Debug for DefaultShellResource<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DefaultShellResource")
+            .field("target_shell", &self.target_shell)
+            .field("executor", &"<dyn Executor>")
+            .finish()
+    }
+}
+
 impl<'a> DefaultShellResource<'a> {
     /// Create a new default shell resource.
     #[must_use]
@@ -51,6 +60,7 @@ impl Resource for DefaultShellResource<'_> {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

@@ -37,6 +37,19 @@ pub struct Context<'a> {
     pub executor: &'a dyn Executor,
 }
 
+impl std::fmt::Debug for Context<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Context")
+            .field("config", &"<Config>")
+            .field("platform", &self.platform)
+            .field("log", &"<Logger>")
+            .field("dry_run", &self.dry_run)
+            .field("home", &self.home)
+            .field("executor", &"<dyn Executor>")
+            .finish()
+    }
+}
+
 impl<'a> Context<'a> {
     /// Creates a new context for task execution.
     ///
@@ -92,6 +105,7 @@ impl<'a> Context<'a> {
 }
 
 /// Result of a single task execution.
+#[derive(Debug)]
 pub enum TaskResult {
     /// Task completed successfully.
     Ok,
@@ -104,7 +118,7 @@ pub enum TaskResult {
 /// Counters for batch tasks that process many items.
 ///
 /// Provides consistent summary logging across all tasks.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct TaskStats {
     pub changed: u32,
     pub already_ok: u32,
@@ -146,6 +160,7 @@ impl TaskStats {
 /// Configuration for the generic resource processing loop.
 ///
 /// Controls how each [`ResourceState`] variant is handled.
+#[derive(Debug)]
 pub struct ProcessOpts<'a> {
     /// Verb for log messages (e.g., "install", "link", "chmod").
     pub verb: &'a str,

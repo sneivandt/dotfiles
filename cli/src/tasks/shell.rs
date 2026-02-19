@@ -4,6 +4,7 @@ use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
 use crate::resources::shell::DefaultShellResource;
 
 /// Configure the default shell to zsh.
+#[derive(Debug)]
 pub struct ConfigureShell;
 
 impl Task for ConfigureShell {

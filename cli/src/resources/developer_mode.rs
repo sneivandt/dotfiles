@@ -20,6 +20,14 @@ pub struct DeveloperModeResource<'a> {
     executor: &'a dyn Executor,
 }
 
+impl std::fmt::Debug for DeveloperModeResource<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeveloperModeResource")
+            .field("executor", &"<dyn Executor>")
+            .finish()
+    }
+}
+
 impl<'a> DeveloperModeResource<'a> {
     /// Create a new developer mode resource.
     #[must_use]
@@ -77,6 +85,7 @@ impl Resource for DeveloperModeResource<'_> {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

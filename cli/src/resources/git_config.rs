@@ -13,6 +13,16 @@ pub struct GitConfigResource<'a> {
     executor: &'a dyn Executor,
 }
 
+impl std::fmt::Debug for GitConfigResource<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GitConfigResource")
+            .field("key", &self.key)
+            .field("desired_value", &self.desired_value)
+            .field("executor", &"<dyn Executor>")
+            .finish()
+    }
+}
+
 impl<'a> GitConfigResource<'a> {
     /// Create a new git config resource.
     #[must_use]
@@ -55,6 +65,7 @@ impl Resource for GitConfigResource<'_> {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

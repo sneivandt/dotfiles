@@ -42,6 +42,7 @@ fn process_packages(
 }
 
 /// Install system packages via pacman or winget.
+#[derive(Debug)]
 pub struct InstallPackages;
 
 impl Task for InstallPackages {
@@ -82,6 +83,7 @@ impl Task for InstallPackages {
 }
 
 /// Install AUR packages via paru.
+#[derive(Debug)]
 pub struct InstallAurPackages;
 
 impl Task for InstallAurPackages {
@@ -114,6 +116,7 @@ impl Task for InstallAurPackages {
 }
 
 /// Install paru AUR helper.
+#[derive(Debug)]
 pub struct InstallParu;
 
 impl Task for InstallParu {
@@ -210,6 +213,7 @@ fn cleanup_build_directory(tmp: &std::path::Path) {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

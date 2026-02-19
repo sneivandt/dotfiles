@@ -15,6 +15,7 @@ use crate::tasks::{self, Context, Task};
 ///
 /// Encapsulates platform detection, profile resolution, and configuration
 /// loading so that each command does not have to repeat the boilerplate.
+#[derive(Debug)]
 pub struct CommandSetup {
     pub platform: Platform,
     pub config: Config,

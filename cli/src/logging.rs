@@ -25,6 +25,7 @@ pub enum TaskStatus {
 /// All messages are always written to a persistent log file at
 /// `$XDG_CACHE_HOME/dotfiles/install.log` (default `~/.cache/dotfiles/install.log`)
 /// with timestamps and ANSI codes stripped, regardless of the verbose flag.
+#[derive(Debug)]
 pub struct Logger {
     verbose: bool,
     tasks: std::cell::RefCell<Vec<TaskEntry>>,
@@ -269,6 +270,7 @@ impl Logger {
 
 #[cfg(test)]
 #[allow(unsafe_code)] // set_var/remove_var require unsafe since Rust 1.83
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

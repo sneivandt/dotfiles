@@ -54,6 +54,7 @@ pub trait ConfigValidator {
 }
 
 /// Validator for symlink configurations.
+#[derive(Debug)]
 pub struct SymlinkValidator<'a> {
     symlinks: &'a [super::symlinks::Symlink],
 }
@@ -101,6 +102,7 @@ impl ConfigValidator for SymlinkValidator<'_> {
 }
 
 /// Validator for package configurations.
+#[derive(Debug)]
 pub struct PackageValidator<'a> {
     packages: &'a [super::packages::Package],
 }
@@ -145,6 +147,7 @@ impl ConfigValidator for PackageValidator<'_> {
 }
 
 /// Validator for registry configurations.
+#[derive(Debug)]
 pub struct RegistryValidator<'a> {
     entries: &'a [super::registry::RegistryEntry],
 }
@@ -235,6 +238,7 @@ fn validate_octal_mode(mode: &str) -> Option<String> {
 }
 
 /// Validator for chmod configurations.
+#[derive(Debug)]
 pub struct ChmodValidator<'a> {
     entries: &'a [super::chmod::ChmodEntry],
 }
@@ -284,6 +288,7 @@ impl ConfigValidator for ChmodValidator<'_> {
 }
 
 /// Validator for systemd unit configurations.
+#[derive(Debug)]
 pub struct SystemdUnitValidator<'a> {
     units: &'a [super::systemd_units::SystemdUnit],
 }
@@ -346,6 +351,7 @@ impl ConfigValidator for SystemdUnitValidator<'_> {
 }
 
 /// Validator for VS Code extension configurations.
+#[derive(Debug)]
 pub struct VsCodeExtensionValidator<'a> {
     extensions: &'a [super::vscode_extensions::VsCodeExtension],
 }
@@ -390,6 +396,7 @@ impl ConfigValidator for VsCodeExtensionValidator<'_> {
 }
 
 /// Validator for Copilot skill configurations.
+#[derive(Debug)]
 pub struct CopilotSkillValidator<'a> {
     skills: &'a [super::copilot_skills::CopilotSkill],
 }
@@ -456,6 +463,7 @@ pub fn validate_all(config: &super::Config, platform: &Platform) -> Vec<Validati
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use crate::platform::Os;

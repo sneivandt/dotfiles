@@ -150,6 +150,7 @@ const fn ensure_dir_execute_bits(mode: u32) -> u32 {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

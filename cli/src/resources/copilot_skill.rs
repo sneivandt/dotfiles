@@ -204,6 +204,7 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

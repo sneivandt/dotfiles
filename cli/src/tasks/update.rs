@@ -4,6 +4,7 @@ use super::{Context, Task, TaskResult};
 use crate::exec;
 
 /// Pull latest changes from the remote repository.
+#[derive(Debug)]
 pub struct UpdateRepository;
 
 impl Task for UpdateRepository {

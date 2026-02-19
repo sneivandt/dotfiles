@@ -4,6 +4,7 @@ use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
 use crate::resources::copilot_skill::CopilotSkillResource;
 
 /// Install GitHub Copilot skills.
+#[derive(Debug)]
 pub struct InstallCopilotSkills;
 
 impl Task for InstallCopilotSkills {

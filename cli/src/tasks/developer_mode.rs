@@ -4,6 +4,7 @@ use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
 use crate::resources::developer_mode::DeveloperModeResource;
 
 /// Enable Windows Developer Mode (allows symlink creation without admin).
+#[derive(Debug)]
 pub struct EnableDeveloperMode;
 
 impl Task for EnableDeveloperMode {

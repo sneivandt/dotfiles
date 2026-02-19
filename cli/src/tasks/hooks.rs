@@ -26,6 +26,7 @@ fn discover_hooks(ctx: &Context) -> Result<Vec<HookFileResource>> {
 }
 
 /// Install git hooks from hooks/ into .git/hooks/.
+#[derive(Debug)]
 pub struct InstallGitHooks;
 
 impl Task for InstallGitHooks {
@@ -53,6 +54,7 @@ impl Task for InstallGitHooks {
 }
 
 /// Remove git hooks that were installed from hooks/.
+#[derive(Debug)]
 pub struct UninstallGitHooks;
 
 impl Task for UninstallGitHooks {

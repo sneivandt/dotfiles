@@ -261,47 +261,72 @@ pub fn load_filtered_items(path: &Path, active_categories: &[String]) -> Result<
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
     #[test]
     fn parse_simple_section() {
         let content = "[base]\nitem1\nitem2\n";
-        let sections = parse_sections_from_str(content).unwrap();
+        let sections = parse_sections_from_str(content).expect("test data should parse");
         assert_eq!(sections.len(), 1);
-        assert_eq!(sections[0].categories, vec!["base"]);
-        assert_eq!(sections[0].items, vec!["item1", "item2"]);
+        assert_eq!(
+            sections.first().expect("section 0 should exist").categories,
+            vec!["base"]
+        );
+        assert_eq!(
+            sections.first().expect("section 0 should exist").items,
+            vec!["item1", "item2"]
+        );
     }
 
     #[test]
     fn parse_multiple_sections() {
         let content = "[base]\nitem1\n\n[arch]\nitem2\nitem3\n";
-        let sections = parse_sections_from_str(content).unwrap();
+        let sections = parse_sections_from_str(content).expect("test data should parse");
         assert_eq!(sections.len(), 2);
-        assert_eq!(sections[0].items, vec!["item1"]);
-        assert_eq!(sections[1].categories, vec!["arch"]);
-        assert_eq!(sections[1].items, vec!["item2", "item3"]);
+        assert_eq!(
+            sections.first().expect("section 0 should exist").items,
+            vec!["item1"]
+        );
+        assert_eq!(
+            sections.get(1).expect("section 1 should exist").categories,
+            vec!["arch"]
+        );
+        assert_eq!(
+            sections.get(1).expect("section 1 should exist").items,
+            vec!["item2", "item3"]
+        );
     }
 
     #[test]
     fn parse_multi_category_section() {
         let content = "[arch,desktop]\nitem1\n";
-        let sections = parse_sections_from_str(content).unwrap();
-        assert_eq!(sections[0].categories, vec!["arch", "desktop"]);
+        let sections = parse_sections_from_str(content).expect("test data should parse");
+        assert_eq!(
+            sections.first().expect("section 0 should exist").categories,
+            vec!["arch", "desktop"]
+        );
     }
 
     #[test]
     fn parse_comments_ignored() {
         let content = "[base]\n# comment\nitem1\n";
-        let sections = parse_sections_from_str(content).unwrap();
-        assert_eq!(sections[0].items, vec!["item1"]);
+        let sections = parse_sections_from_str(content).expect("test data should parse");
+        assert_eq!(
+            sections.first().expect("section 0 should exist").items,
+            vec!["item1"]
+        );
     }
 
     #[test]
     fn parse_empty_lines_ignored() {
         let content = "[base]\n\n\nitem1\n\n";
-        let sections = parse_sections_from_str(content).unwrap();
-        assert_eq!(sections[0].items, vec!["item1"]);
+        let sections = parse_sections_from_str(content).expect("test data should parse");
+        assert_eq!(
+            sections.first().expect("section 0 should exist").items,
+            vec!["item1"]
+        );
     }
 
     #[test]
@@ -316,11 +341,14 @@ mod tests {
     #[test]
     fn parse_kv_simple() {
         let content = "[section]\nkey1 = value1\nkey2 = value2\n";
-        let sections = parse_kv_sections_from_str(content).unwrap();
+        let sections = parse_kv_sections_from_str(content).expect("test data should parse");
         assert_eq!(sections.len(), 1);
-        assert_eq!(sections[0].header, "section");
         assert_eq!(
-            sections[0].entries,
+            sections.first().expect("section 0 should exist").header,
+            "section"
+        );
+        assert_eq!(
+            sections.first().expect("section 0 should exist").entries,
             vec![
                 ("key1".to_string(), "value1".to_string()),
                 ("key2".to_string(), "value2".to_string()),
@@ -331,22 +359,43 @@ mod tests {
     #[test]
     fn parse_kv_with_equals_in_value() {
         let content = "[section]\nkey = val=ue\n";
-        let sections = parse_kv_sections_from_str(content).unwrap();
-        assert_eq!(sections[0].entries[0].1, "val=ue");
+        let sections = parse_kv_sections_from_str(content).expect("test data should parse");
+        assert_eq!(
+            sections
+                .first()
+                .expect("section 0 should exist")
+                .entries
+                .first()
+                .expect("entry 0 should exist")
+                .1,
+            "val=ue"
+        );
     }
 
     #[test]
     fn parse_kv_preserves_header_case() {
         let content = "[HKCU:\\Console]\nFontSize = 14\n";
-        let sections = parse_kv_sections_from_str(content).unwrap();
-        assert_eq!(sections[0].header, "HKCU:\\Console");
+        let sections = parse_kv_sections_from_str(content).expect("test data should parse");
+        assert_eq!(
+            sections.first().expect("section 0 should exist").header,
+            "HKCU:\\Console"
+        );
     }
 
     #[test]
     fn parse_kv_strips_inline_comments() {
         let content = "[section]\nkey = value # comment\n";
-        let sections = parse_kv_sections_from_str(content).unwrap();
-        assert_eq!(sections[0].entries[0].1, "value");
+        let sections = parse_kv_sections_from_str(content).expect("test data should parse");
+        assert_eq!(
+            sections
+                .first()
+                .expect("section 0 should exist")
+                .entries
+                .first()
+                .expect("entry 0 should exist")
+                .1,
+            "value"
+        );
     }
 
     #[test]
@@ -380,8 +429,14 @@ mod tests {
         let active = vec!["base".to_string(), "arch".to_string()];
         let filtered = filter_sections_and(&sections, &active);
         assert_eq!(filtered.len(), 2);
-        assert_eq!(filtered[0].items, vec!["a"]);
-        assert_eq!(filtered[1].items, vec!["c"]);
+        assert_eq!(
+            filtered.first().expect("filtered 0 should exist").items,
+            vec!["a"]
+        );
+        assert_eq!(
+            filtered.get(1).expect("filtered 1 should exist").items,
+            vec!["c"]
+        );
     }
 
     #[test]
@@ -405,8 +460,14 @@ mod tests {
         let excluded = vec!["windows".to_string()];
         let filtered = filter_sections_or_exclude(&sections, &excluded);
         assert_eq!(filtered.len(), 2);
-        assert_eq!(filtered[0].items, vec!["a"]);
-        assert_eq!(filtered[1].items, vec!["b"]);
+        assert_eq!(
+            filtered.first().expect("filtered 0 should exist").items,
+            vec!["a"]
+        );
+        assert_eq!(
+            filtered.get(1).expect("filtered 1 should exist").items,
+            vec!["b"]
+        );
     }
 
     #[test]
@@ -425,20 +486,26 @@ mod tests {
     #[test]
     fn parse_category_case_insensitive() {
         let content = "[Base]\nitem1\n";
-        let sections = parse_sections_from_str(content).unwrap();
-        assert_eq!(sections[0].categories, vec!["base"]);
+        let sections = parse_sections_from_str(content).expect("test data should parse");
+        assert_eq!(
+            sections.first().expect("section 0 should exist").categories,
+            vec!["base"]
+        );
     }
 
     #[test]
     fn parse_category_whitespace_trimmed() {
         let content = "[ arch , desktop ]\nitem1\n";
-        let sections = parse_sections_from_str(content).unwrap();
-        assert_eq!(sections[0].categories, vec!["arch", "desktop"]);
+        let sections = parse_sections_from_str(content).expect("test data should parse");
+        assert_eq!(
+            sections.first().expect("section 0 should exist").categories,
+            vec!["arch", "desktop"]
+        );
     }
 
     #[test]
     fn empty_file_returns_empty() {
-        let sections = parse_sections_from_str("").unwrap();
+        let sections = parse_sections_from_str("").expect("empty input should parse");
         assert!(
             sections.is_empty(),
             "empty input should produce no sections"
@@ -447,7 +514,8 @@ mod tests {
 
     #[test]
     fn comment_only_file_returns_empty() {
-        let sections = parse_sections_from_str("# just a comment\n").unwrap();
+        let sections =
+            parse_sections_from_str("# just a comment\n").expect("comment-only input should parse");
         assert!(
             sections.is_empty(),
             "comment-only input should produce no sections"
@@ -456,22 +524,23 @@ mod tests {
 
     #[test]
     fn load_filtered_items_from_file() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir should create");
         let path = dir.path().join("test.ini");
-        std::fs::write(&path, "[base]\nfoo\nbar\n\n[arch]\nbaz\n").unwrap();
+        std::fs::write(&path, "[base]\nfoo\nbar\n\n[arch]\nbaz\n").expect("write should succeed");
 
-        let items = load_filtered_items(&path, &["base".to_string()]).unwrap();
+        let items = load_filtered_items(&path, &["base".to_string()]).expect("load should succeed");
         assert_eq!(items, vec!["foo", "bar"]);
 
-        let items = load_filtered_items(&path, &["base".to_string(), "arch".to_string()]).unwrap();
+        let items = load_filtered_items(&path, &["base".to_string(), "arch".to_string()])
+            .expect("load should succeed");
         assert_eq!(items, vec!["foo", "bar", "baz"]);
     }
 
     #[test]
     fn load_filtered_items_missing_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let items =
-            load_filtered_items(&dir.path().join("nope.ini"), &["base".to_string()]).unwrap();
+        let dir = tempfile::tempdir().expect("tempdir should create");
+        let items = load_filtered_items(&dir.path().join("nope.ini"), &["base".to_string()])
+            .expect("missing file should return empty");
         assert!(items.is_empty(), "missing file should produce empty list");
     }
 }

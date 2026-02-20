@@ -485,4 +485,51 @@ mod tests {
         persist(dir.path(), "desktop").expect("persist");
         assert_eq!(read_persisted(dir.path()), Some("desktop".to_string()));
     }
+
+    // ------------------------------------------------------------------
+    // set_git_config_value
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn set_git_config_value_creates_section_in_empty_content() {
+        let result = set_git_config_value("", "dotfiles", "profile", "base");
+        assert!(result.contains("[dotfiles]"), "missing section header");
+        assert!(result.contains("profile = base"), "missing key=value");
+    }
+
+    #[test]
+    fn set_git_config_value_appends_key_to_existing_section() {
+        // Section exists but key is absent — the key should be appended inside it.
+        let content = "[dotfiles]\n\tother = value\n";
+        let result = set_git_config_value(content, "dotfiles", "profile", "desktop");
+        assert!(result.contains("profile = desktop"), "key not inserted");
+        assert!(
+            result.contains("other = value"),
+            "existing key must be preserved"
+        );
+    }
+
+    #[test]
+    fn set_git_config_value_updates_existing_key() {
+        let content = "[dotfiles]\n\tprofile = base\n";
+        let result = set_git_config_value(content, "dotfiles", "profile", "desktop");
+        assert!(result.contains("profile = desktop"), "key not updated");
+        // The old value must not remain.
+        assert!(
+            !result.contains("profile = base"),
+            "old value should be replaced"
+        );
+    }
+
+    #[test]
+    fn set_git_config_value_preserves_other_sections() {
+        let content = "[core]\n\tbare = false\n[remote \"origin\"]\n\turl = git@github.com\n";
+        let result = set_git_config_value(content, "dotfiles", "profile", "base");
+        assert!(result.contains("[core]"), "core section must be preserved");
+        assert!(
+            result.contains("bare = false"),
+            "core key must be preserved"
+        );
+        assert!(result.contains("[dotfiles]"), "new section must be added");
+    }
 }

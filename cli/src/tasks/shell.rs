@@ -34,12 +34,17 @@ impl Task for ConfigureShell {
 }
 
 #[cfg(test)]
+#[allow(unsafe_code)] // set_var/remove_var require unsafe since Rust 1.83
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use crate::platform::{Os, Platform};
     use crate::tasks::test_helpers::{NoOpExecutor, WhichExecutor, empty_config, make_context};
     use std::path::PathBuf;
+
+    /// Mutex to serialize tests that mutate the `CI` environment variable.
+    static CI_MUTEX: std::sync::LazyLock<std::sync::Mutex<()>> =
+        std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
 
     #[test]
     fn should_run_false_on_windows() {
@@ -57,5 +62,35 @@ mod tests {
         let executor = NoOpExecutor; // which() returns false
         let ctx = make_context(&config, &platform, &executor);
         assert!(!ConfigureShell.should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_false_when_ci_env_set() {
+        let _guard = CI_MUTEX.lock().expect("mutex poisoned");
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = WhichExecutor { which_result: true }; // zsh found
+        let ctx = make_context(&config, &platform, &executor);
+        // SAFETY: test-only env var mutation; serialized via CI_MUTEX.
+        unsafe { std::env::set_var("CI", "true") };
+        let result = ConfigureShell.should_run(&ctx);
+        unsafe { std::env::remove_var("CI") };
+        assert!(!result, "should not configure shell in CI");
+    }
+
+    #[test]
+    fn should_run_true_on_linux_with_zsh_outside_ci() {
+        let _guard = CI_MUTEX.lock().expect("mutex poisoned");
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = WhichExecutor { which_result: true };
+        let ctx = make_context(&config, &platform, &executor);
+        // SAFETY: test-only env var mutation; serialized via CI_MUTEX.
+        unsafe { std::env::remove_var("CI") };
+        let result = ConfigureShell.should_run(&ctx);
+        assert!(
+            result,
+            "should configure shell on Linux when zsh is available and not in CI"
+        );
     }
 }

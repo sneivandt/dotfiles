@@ -79,7 +79,14 @@ fn compute_target(home: &Path, source: &str) -> std::path::PathBuf {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::config::symlinks::Symlink;
+    use crate::platform::{Os, Platform};
+    use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
     use std::path::PathBuf;
+
+    // ------------------------------------------------------------------
+    // compute_target
+    // ------------------------------------------------------------------
 
     #[test]
     fn target_for_bashrc() {
@@ -130,5 +137,55 @@ mod tests {
         let home = PathBuf::from("/home/user");
         let target = compute_target(&home, "ssh/config");
         assert_eq!(target, PathBuf::from("/home/user/.ssh/config"));
+    }
+
+    // ------------------------------------------------------------------
+    // InstallSymlinks::should_run
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn install_should_run_false_when_no_symlinks_configured() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!InstallSymlinks.should_run(&ctx));
+    }
+
+    #[test]
+    fn install_should_run_true_when_symlinks_configured() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.symlinks.push(Symlink {
+            source: "bashrc".to_string(),
+        });
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(InstallSymlinks.should_run(&ctx));
+    }
+
+    // ------------------------------------------------------------------
+    // UninstallSymlinks::should_run
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn uninstall_should_run_false_when_no_symlinks_configured() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(!UninstallSymlinks.should_run(&ctx));
+    }
+
+    #[test]
+    fn uninstall_should_run_true_when_symlinks_configured() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.symlinks.push(Symlink {
+            source: "bashrc".to_string(),
+        });
+        let platform = Platform::new(Os::Linux, false);
+        let executor = NoOpExecutor;
+        let ctx = make_context(&config, &platform, &executor);
+        assert!(UninstallSymlinks.should_run(&ctx));
     }
 }

@@ -4,7 +4,15 @@ use std::any::TypeId;
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove};
 use crate::resources::hook::HookFileResource;
 
-/// Discover hook file resources from the hooks/ directory.
+/// Discover hook file resources from the `hooks/` directory.
+///
+/// Returns one [`HookFileResource`] per file that has no extension (i.e.
+/// conventional hook scripts such as `pre-commit`, `commit-msg`), pairing
+/// each source file with its destination path under `.git/hooks/`.
+///
+/// # Errors
+///
+/// Returns an error if the `hooks/` directory cannot be read.
 fn discover_hooks(ctx: &Context) -> Result<Vec<HookFileResource>> {
     let hooks_src = ctx.hooks_dir();
     let hooks_dst = ctx.root().join(".git/hooks");

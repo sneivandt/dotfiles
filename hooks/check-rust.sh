@@ -35,7 +35,7 @@ if git diff --cached --name-only --diff-filter=ACM "$against" | grep -q '\.rs$';
   fi
 
   printf "Running cargo clippy...\n"
-  if ! cargo clippy --manifest-path "$MANIFEST" -- -D warnings 2>&1; then
+  if ! cargo clippy --manifest-path "$MANIFEST" --all-targets -- -D warnings 2>&1; then
     printf '\n%s======================================================%s\n' "$RED" "$NC"
     printf '%sCommit aborted: cargo clippy reported warnings.%s\n' "$RED" "$NC"
     printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"

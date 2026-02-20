@@ -51,7 +51,7 @@ cargo build --manifest-path cli/Cargo.toml
 
 # Run all checks (same as CI)
 cargo fmt  --check --manifest-path cli/Cargo.toml
-cargo clippy --manifest-path cli/Cargo.toml -- -D warnings
+cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path cli/Cargo.toml
 
 # Run end-to-end with --build flag (builds from source)
@@ -154,7 +154,7 @@ See [Configuration Reference](CONFIGURATION.md) and the `ini-configuration` skil
 1. **Rust Checks**:
    ```bash
    cargo fmt  --check --manifest-path cli/Cargo.toml
-   cargo clippy --manifest-path cli/Cargo.toml -- -D warnings
+   cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
    cargo test --manifest-path cli/Cargo.toml
    ```
 
@@ -264,7 +264,6 @@ When adding features or changing behavior:
    - [USAGE.md](USAGE.md) - For installation and usage changes
    - [PROFILES.md](PROFILES.md) - For profile system changes
    - [CONFIGURATION.md](CONFIGURATION.md) - For configuration file changes
-   - [CUSTOMIZATION.md](CUSTOMIZATION.md) - For customization features
    - [WINDOWS.md](WINDOWS.md) - For Windows-specific changes
    - [ARCHITECTURE.md](ARCHITECTURE.md) - For implementation changes
    - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - For common issues

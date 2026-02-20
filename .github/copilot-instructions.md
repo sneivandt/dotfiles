@@ -32,7 +32,7 @@ See `docs/ARCHITECTURE.md` for the full system design.
 ### Before Making Changes
 
 - Check `.github/skills/` for detailed technical patterns and conventions
-- Refer to `docs/CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/CUSTOMIZATION.md`, and `docs/TROUBLESHOOTING.md` for context
+- Refer to `docs/CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, and `docs/TROUBLESHOOTING.md` for context
 
 ### Code Quality
 
@@ -40,7 +40,7 @@ See `docs/ARCHITECTURE.md` for the full system design.
 
 **Testing** — always run before committing:
 ```bash
-cd cli && cargo fmt --check && cargo clippy -- -D warnings && cargo test
+cd cli && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
 **Integration tests** run alongside unit tests via `cargo test` and exercise config parsing, symlinking, and dry-run behaviour.

@@ -358,7 +358,6 @@ spotify
 
 - [Usage Guide](USAGE.md) - How to use configuration files
 - [Profile System](PROFILES.md) - Understanding profile filtering
-- [Customization Guide](CUSTOMIZATION.md) - Adding new configuration
 - [Architecture](ARCHITECTURE.md) - How configuration is processed
 - `cli/src/config/ini.rs` - INI parser implementation
 - `cli/src/config/` - Configuration loader modules

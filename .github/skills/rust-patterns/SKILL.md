@@ -1,8 +1,9 @@
 ---
 name: rust-patterns
 description: >
-  Rust coding patterns and conventions for the dotfiles core engine.
-  Use when creating or modifying Rust code in cli/src/.
+  Rust implementation patterns for the dotfiles core engine: Task trait, Resource
+  trait, Executor, Context, Platform, and ProcessOpts. Use when creating or modifying
+  Rust code in cli/src/. For doc comment conventions, see the rust-docs skill.
 metadata:
   author: sneivandt
   version: "2.0"
@@ -329,149 +330,6 @@ must implement `Send`; because `Executor: Sync`, all resources holding `&dyn Exe
 satisfy this automatically. Tests set `parallel: false` in their `Context` to keep
 execution deterministic.
 
-## Rustdoc Comments
-
-All public items (modules, structs, enums, traits, functions) require documentation comments using `///` syntax.
-
-### Standard Documentation Sections
-
-Use these headers in the specified order when applicable:
-
-1. **Main description** (first, no header) — brief summary of purpose and behavior
-2. **`# Examples`** — code examples demonstrating usage
-3. **`# Errors`** — required for all functions returning `Result<T>` — document failure conditions
-4. **`# Panics`** — document any panic conditions (use sparingly; prefer `Result`)
-5. **`# Safety`** — required for `unsafe` functions — document safety invariants
-
-### Examples in Documentation
-
-Code blocks in doc comments are automatically tested by `cargo test` unless annotated:
-
-```rust
-/// Parse configuration from file.
-///
-/// # Examples
-///
-/// ```
-/// use my_crate::parse_config;
-/// let config = parse_config("path/to/file");
-/// ```
-pub fn parse_config(path: &str) -> Config { /* ... */ }
-```
-
-**Code block annotations:**
-
-- No annotation: Rust code, compiled and tested as doctests
-- ````ignore` — conceptual examples with comments/pseudo-code that shouldn't be compiled
-- ````ini` / ````bash` / ````text` — non-Rust code (INI configs, shell examples, plain text)
-
-**When to use `ignore`:**
-
-```rust
-/// Filter sections using AND logic.
-///
-/// # Examples
-///
-/// ```ignore
-/// // A section tagged [arch,desktop] requires both "arch" AND "desktop"
-/// // to be in the active set to be included.
-/// ```
-pub fn filter_sections_and(sections: &[Section], active: &[String]) -> Vec<Section> { /* ... */ }
-```
-
-Use `ignore` for comment-only or pseudo-code examples that demonstrate concepts without executable code.
-
-### Errors Section
-
-All public functions returning `Result<T>` **must** document error conditions:
-
-```rust
-/// Load configuration from INI file.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be read or contains invalid syntax.
-pub fn load_config(path: &Path) -> Result<Config> { /* ... */ }
-```
-
-Be specific about error conditions: I/O failures, permission issues, validation errors, etc.
-
-### Must Use Attribute
-
-Use `#[must_use]` on functions where ignoring the return value is likely a bug:
-
-```rust
-/// Returns whether this platform supports systemd.
-#[must_use]
-pub const fn supports_systemd(&self) -> bool {
-    self.os == Os::Linux
-}
-```
-
-Common cases:
-- Boolean queries (`is_*`, `has_*`, `supports_*`)
-- Constructors that return `Self`
-- Pure functions (no side effects)
-- Functions that clone/transform data
-
-### Struct and Enum Documentation
-
-Document all public fields:
-
-```rust
-/// Result of a command execution.
-#[derive(Debug)]
-pub struct ExecResult {
-    /// Standard output as UTF-8 string.
-    pub stdout: String,
-    /// Standard error as UTF-8 string.
-    pub stderr: String,
-    /// Whether the command exited successfully (status code 0).
-    pub success: bool,
-}
-```
-
-Enum variants with data should document their fields:
-
-```rust
-/// State of a resource (file, registry entry, etc.).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResourceState {
-    /// Resource does not exist or is not present.
-    Missing,
-    /// Resource exists and matches the desired state.
-    Correct,
-    /// Resource exists but does not match the desired state.
-    Incorrect { current: String },
-}
-```
-
-### Trait Documentation
-
-Traits should document:
-- Overall purpose and usage patterns
-- Implementor responsibilities
-- Example implementations or usage
-
-```rust
-/// Unified interface for resources that can be checked and applied.
-///
-/// This abstraction provides consistent handling for symlinks, registry
-/// entries, file permissions, and other declarative resources.
-///
-/// # Examples
-///
-/// ```ignore
-/// // All resources follow the same pattern:
-/// // 1. Check current state: resource.current_state()?
-/// // 2. Apply if needed: resource.apply()?
-/// ```
-pub trait Resource {
-    fn description(&self) -> String;
-    // ...
-}
-```
-
 ## Rules
 
 - All task logic in `cli/src/tasks/*.rs` — never in shell scripts
@@ -481,5 +339,4 @@ pub trait Resource {
 - Guard tools with `executor.which()`; return `TaskResult::Skipped(reason)` when not applicable
 - Pass `ctx.executor` to resource constructors and batch query functions — never call `exec::*` free functions directly from tasks or resources
 - Add `#[cfg(test)] mod tests` to every module; use `Platform::new()` in tests
-- **Document all public items** with `///` comments; include `# Errors` section for `Result` returns
-- Use `#[must_use]` on constructors, queries, and pure functions
+- See the **rust-docs** skill for documentation conventions (`///`, `# Errors`, `#[must_use]`)

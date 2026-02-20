@@ -66,6 +66,7 @@ pub struct SymlinkValidator<'a> {
 }
 
 impl<'a> SymlinkValidator<'a> {
+    /// Create a new symlink validator over the given slice of configured symlinks.
     #[must_use]
     pub const fn new(symlinks: &'a [super::symlinks::Symlink]) -> Self {
         Self { symlinks }
@@ -114,6 +115,7 @@ pub struct PackageValidator<'a> {
 }
 
 impl<'a> PackageValidator<'a> {
+    /// Create a new package validator over the given slice of configured packages.
     #[must_use]
     pub const fn new(packages: &'a [super::packages::Package]) -> Self {
         Self { packages }
@@ -159,6 +161,7 @@ pub struct RegistryValidator<'a> {
 }
 
 impl<'a> RegistryValidator<'a> {
+    /// Create a new registry validator over the given slice of configured entries.
     #[must_use]
     pub const fn new(entries: &'a [super::registry::RegistryEntry]) -> Self {
         Self { entries }
@@ -250,6 +253,7 @@ pub struct ChmodValidator<'a> {
 }
 
 impl<'a> ChmodValidator<'a> {
+    /// Create a new chmod validator over the given slice of configured entries.
     #[must_use]
     pub const fn new(entries: &'a [super::chmod::ChmodEntry]) -> Self {
         Self { entries }
@@ -300,6 +304,7 @@ pub struct SystemdUnitValidator<'a> {
 }
 
 impl<'a> SystemdUnitValidator<'a> {
+    /// Create a new systemd unit validator over the given slice of configured units.
     #[must_use]
     pub const fn new(units: &'a [super::systemd_units::SystemdUnit]) -> Self {
         Self { units }
@@ -359,6 +364,7 @@ pub struct VsCodeExtensionValidator<'a> {
 }
 
 impl<'a> VsCodeExtensionValidator<'a> {
+    /// Create a new VS Code extension validator over the given slice of configured extensions.
     #[must_use]
     pub const fn new(extensions: &'a [super::vscode_extensions::VsCodeExtension]) -> Self {
         Self { extensions }
@@ -404,6 +410,7 @@ pub struct CopilotSkillValidator<'a> {
 }
 
 impl<'a> CopilotSkillValidator<'a> {
+    /// Create a new Copilot skill validator over the given slice of configured skills.
     #[must_use]
     pub const fn new(skills: &'a [super::copilot_skills::CopilotSkill]) -> Self {
         Self { skills }

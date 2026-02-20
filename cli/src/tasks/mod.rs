@@ -552,7 +552,7 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 /// Provides common mock types and factory functions so each task test module
 /// does not have to duplicate boilerplate.
 #[cfg(test)]
-pub(crate) mod test_helpers {
+pub mod test_helpers {
     use crate::config::Config;
     use crate::config::manifest::Manifest;
     use crate::config::profiles::Profile;
@@ -635,6 +635,7 @@ pub(crate) mod test_helpers {
     }
 
     /// Build a [`Config`] with all lists empty and `root` set to `root`.
+    #[must_use]
     #[allow(clippy::expect_used)]
     pub fn empty_config(root: PathBuf) -> Config {
         Config {

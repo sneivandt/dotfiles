@@ -121,7 +121,7 @@ Replicate the full CI validation locally:
 cargo fmt --check --manifest-path cli/Cargo.toml
 
 # Linting
-cargo clippy --manifest-path cli/Cargo.toml -- -D warnings
+cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
 
 # Tests
 cargo test --manifest-path cli/Cargo.toml
@@ -149,7 +149,7 @@ When contributing changes:
 2. **Run all lints:**
    ```bash
    cargo fmt --check --manifest-path cli/Cargo.toml
-   cargo clippy --manifest-path cli/Cargo.toml -- -D warnings
+   cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
    ```
 
 3. **Test with dry-run:**

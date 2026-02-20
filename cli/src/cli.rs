@@ -8,6 +8,7 @@ use clap::{Parser, Subcommand};
     version
 )]
 pub struct Cli {
+    /// Subcommand to execute.
     #[command(subcommand)]
     pub command: Command,
 
@@ -15,6 +16,7 @@ pub struct Cli {
     #[arg(short, long, global = true)]
     pub verbose: bool,
 
+    /// Options shared across all subcommands.
     #[command(flatten)]
     pub global: GlobalOpts,
 }
@@ -34,7 +36,7 @@ pub struct GlobalOpts {
     #[arg(long, global = true)]
     pub root: Option<std::path::PathBuf>,
 
-    /// Disable parallel task execution (parallel is enabled by default)
+    /// Whether parallel task execution is enabled (disabled by `--no-parallel`).
     #[arg(long = "no-parallel", global = true, action = clap::ArgAction::SetFalse)]
     pub parallel: bool,
 }
@@ -55,11 +57,11 @@ pub enum Command {
 /// Options for the `install` subcommand.
 #[derive(Parser, Debug, Clone)]
 pub struct InstallOpts {
-    /// Skip specific tasks
+    /// Task names to skip (comma-separated, case-insensitive substring match).
     #[arg(long, value_delimiter = ',')]
     pub skip: Vec<String>,
 
-    /// Run only specific tasks
+    /// Run only these task names (comma-separated, case-insensitive substring match).
     #[arg(long, value_delimiter = ',')]
     pub only: Vec<String>,
 }

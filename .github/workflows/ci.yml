@@ -22,7 +22,7 @@ jobs:
             command: cargo fmt --check --manifest-path cli/Cargo.toml
             cache_key: fmt
           - name: Lint with Clippy
-            command: cargo clippy --manifest-path cli/Cargo.toml -- -D warnings
+            command: cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
             cache_key: clippy
           - name: Run Tests
             command: cargo test --manifest-path cli/Cargo.toml

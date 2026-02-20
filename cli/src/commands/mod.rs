@@ -21,7 +21,9 @@ use crate::tasks::{self, Context, Task};
 /// loading so that each command does not have to repeat the boilerplate.
 #[derive(Debug)]
 pub struct CommandSetup {
+    /// Detected platform (OS and Arch Linux flag).
     pub platform: Platform,
+    /// Loaded and validated configuration for the resolved profile.
     pub config: Config,
 }
 
@@ -96,6 +98,7 @@ struct TaskGraph {
 }
 
 impl TaskGraph {
+    /// Create a new, empty task graph with no completed tasks.
     fn new() -> Self {
         Self {
             completed: Mutex::new(HashSet::new()),
@@ -339,7 +342,7 @@ mod tests {
     // Missing dep
     struct MissingDepTask;
     impl Task for MissingDepTask {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "missing-dep"
         }
         fn dependencies(&self) -> &[TypeId] {

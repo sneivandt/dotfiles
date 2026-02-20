@@ -111,7 +111,7 @@ pub trait Resource {
 /// Provides a configurable [`MockExecutor`] so individual resource test
 /// modules do not have to duplicate the boilerplate.
 #[cfg(test)]
-pub(crate) mod test_helpers {
+pub mod test_helpers {
     use crate::exec::{ExecResult, Executor};
     use std::collections::VecDeque;
     use std::path::Path;
@@ -129,21 +129,25 @@ pub(crate) mod test_helpers {
 
     impl MockExecutor {
         /// Create a mock with a single successful response.
+        #[must_use]
         pub fn ok(stdout: &str) -> Self {
             Self::with_responses(vec![(true, stdout.to_string())])
         }
 
         /// Create a mock with a single failed response (empty stdout).
+        #[must_use]
         pub fn fail() -> Self {
             Self::with_responses(vec![(false, String::new())])
         }
 
         /// Create a mock with an explicit success flag and stdout value.
+        #[must_use]
         pub fn with_output(success: bool, stdout: &str) -> Self {
             Self::with_responses(vec![(success, stdout.to_string())])
         }
 
         /// Create a mock from an ordered list of `(success, stdout)` pairs.
+        #[must_use]
         pub fn with_responses(responses: Vec<(bool, String)>) -> Self {
             Self {
                 responses: Mutex::new(responses.into()),

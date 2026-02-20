@@ -263,5 +263,4 @@ Check that the package is defined in a section matching your active profile:
 ## See Also
 
 - [Configuration Reference](CONFIGURATION.md) - Details on configuration file formats
-- [Customization Guide](CUSTOMIZATION.md) - Adding files, packages, and profiles
 - [Usage Guide](USAGE.md) - Detailed usage examples

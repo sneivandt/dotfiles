@@ -397,6 +397,7 @@ mod tests {
     /// After `remove()` the target must be a regular file containing the
     /// original source content, not a symlink.
     #[test]
+    #[allow(clippy::redundant_clone)]
     fn remove_file_symlink_materializes_content() {
         let temp_dir = tempfile::tempdir().unwrap();
         let source = temp_dir.path().join("source.txt");
@@ -425,6 +426,7 @@ mod tests {
     /// After `remove()` on a directory symlink the target must be a real
     /// directory containing copies of all source files.
     #[test]
+    #[allow(clippy::redundant_clone)]
     fn remove_dir_symlink_materializes_directory() {
         let temp_dir = tempfile::tempdir().unwrap();
         let source_dir = temp_dir.path().join("src_dir");

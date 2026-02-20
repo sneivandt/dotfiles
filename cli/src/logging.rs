@@ -483,7 +483,7 @@ impl Logger {
             "{total} tasks: {ok} ok, {not_applicable} n/a, {skipped} skipped, {dry_run} dry-run, {failed} failed"
         );
         println!(
-            "  {total} tasks: \x1b[32m{ok} ok\x1b[0m, {not_applicable} n/a, \x1b[33m{skipped} skipped\x1b[0m, {dry_run} dry-run, \x1b[31m{failed} failed\x1b[0m"
+            "  {total} tasks: \x1b[32m{ok} ok\x1b[0m, \x1b[2m{not_applicable} n/a\x1b[0m, \x1b[33m{skipped} skipped\x1b[0m, {dry_run} dry-run, \x1b[31m{failed} failed\x1b[0m"
         );
         self.write_to_file("INF", &totals);
 
@@ -503,8 +503,11 @@ impl Logger {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if *shown {
-            // Move cursor up one line and erase it.
-            print!("\x1b[1A\x1b[2K");
+            // Restore the saved cursor position (set just before the progress
+            // line was printed) and erase from there to end of screen.  This
+            // correctly removes the line even when it wraps across multiple
+            // terminal rows.
+            print!("\x1b8\x1b[J");
             std::io::stdout().flush().ok();
             *shown = false;
         }
@@ -514,7 +517,11 @@ impl Logger {
     ///
     /// Must be called while holding `flush_lock`.
     fn draw_progress(&self, names: &str) {
-        println!("  \x1b[2m▹ {names}\x1b[0m");
+        // Save the cursor position immediately before the progress line so that
+        // clear_progress can restore it precisely regardless of terminal width
+        // or whether the line wraps to multiple rows.
+        println!("\x1b7  \x1b[2m▹ {names}\x1b[0m");
+        std::io::stdout().flush().ok();
         let mut shown = self
             .progress_shown
             .lock()
@@ -621,14 +628,17 @@ mod tests {
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].name, "symlinks");
         assert_eq!(tasks[0].status, TaskStatus::Ok);
+        drop(tasks);
     }
 
     #[test]
     fn record_task_with_message() {
         let (log, _tmp) = isolated_logger(false);
         log.record_task("packages", TaskStatus::Skipped, Some("not on arch"));
-        let tasks = log.tasks.lock().unwrap();
-        assert_eq!(tasks[0].message, Some("not on arch".to_string()));
+        assert_eq!(
+            log.tasks.lock().unwrap()[0].message,
+            Some("not on arch".to_string())
+        );
     }
 
     #[test]

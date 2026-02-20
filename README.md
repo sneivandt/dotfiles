@@ -153,7 +153,6 @@ Published image: [`sneivandt/dotfiles`](https://hub.docker.com/r/sneivandt/dotfi
 - **[Usage Guide](docs/USAGE.md)** - Installation and usage instructions
 - **[Profile System](docs/PROFILES.md)** - Understanding and using profiles
 - **[Configuration Reference](docs/CONFIGURATION.md)** - Configuration file formats
-- **[Customization Guide](docs/CUSTOMIZATION.md)** - Adding files, packages, and profiles
 - **[Architecture](docs/ARCHITECTURE.md)** - Rust engine design and structure
 - **[Contributing](docs/CONTRIBUTING.md)** - Development workflow and guidelines
 - **[Testing](docs/TESTING.md)** - Testing procedures and CI

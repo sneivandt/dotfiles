@@ -23,7 +23,9 @@ struct ProfileDef {
     exclude: Vec<String>,
 }
 
-/// All known profile names available for selection.
+/// All known profile names available for selection via [`prompt_interactive`].
+///
+/// These must match the section headers in `conf/profiles.ini`.
 pub const PROFILE_NAMES: &[&str] = &["base", "desktop"];
 
 /// Load profile definitions from profiles.ini.

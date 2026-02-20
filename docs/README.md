@@ -21,7 +21,6 @@ This directory contains comprehensive documentation for the dotfiles project.
 - **[Git Hooks](HOOKS.md)** - Repository git hooks
 
 ### Reference
-- **[Customization](CUSTOMIZATION.md)** - Adding files, packages, and profiles
 - **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
 - **[Security](SECURITY.md)** - Security policy and best practices
 

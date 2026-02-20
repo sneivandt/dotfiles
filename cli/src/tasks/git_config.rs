@@ -53,7 +53,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
         let executor = WhichExecutor { which_result: true };
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!ConfigureGit.should_run(&ctx));
     }
 
@@ -62,7 +62,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Windows, false);
         let executor = NoOpExecutor; // which() returns false
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!ConfigureGit.should_run(&ctx));
     }
 
@@ -71,7 +71,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Windows, false);
         let executor = WhichExecutor { which_result: true };
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(ConfigureGit.should_run(&ctx));
     }
 }

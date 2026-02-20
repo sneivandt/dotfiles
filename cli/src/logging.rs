@@ -30,6 +30,165 @@ pub enum TaskStatus {
     Failed,
 }
 
+/// Abstraction over logging backends.
+///
+/// Both [`Logger`] (direct output) and [`BufferedLog`] (deferred output for
+/// parallel tasks) implement this trait, allowing task code to log without
+/// knowing whether output is immediate or buffered.
+pub trait Log: Send + Sync {
+    /// Log a stage header (major section).
+    fn stage(&self, msg: &str);
+    /// Log an informational message.
+    fn info(&self, msg: &str);
+    /// Log a debug message (may be suppressed on console).
+    fn debug(&self, msg: &str);
+    /// Log a warning message.
+    fn warn(&self, msg: &str);
+    /// Log an error message.
+    fn error(&self, msg: &str);
+    /// Log a dry-run action message.
+    fn dry_run(&self, msg: &str);
+    /// Record a task result for the summary.
+    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>);
+}
+
+/// A single buffered log entry, replayed when flushed.
+#[derive(Debug, Clone)]
+enum LogEntry {
+    Stage(String),
+    Info(String),
+    Debug(String),
+    Warn(String),
+    Error(String),
+    DryRun(String),
+}
+
+/// Buffered logger for parallel task execution.
+///
+/// Captures display output (stage, info, debug, etc.) in memory so that
+/// parallel tasks do not interleave their console output.  The captured
+/// entries are replayed in order when [`flush`](BufferedLog::flush) is called.
+///
+/// [`record_task`](Log::record_task) is forwarded directly to the underlying
+/// [`Logger`] because the summary collection is already thread-safe.
+#[derive(Debug)]
+pub struct BufferedLog<'a> {
+    inner: &'a Logger,
+    entries: Mutex<Vec<LogEntry>>,
+}
+
+impl<'a> BufferedLog<'a> {
+    /// Create a new buffered logger backed by the given [`Logger`].
+    #[must_use]
+    pub const fn new(inner: &'a Logger) -> Self {
+        Self {
+            inner,
+            entries: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Replay all buffered entries to the backing [`Logger`].
+    #[cfg(test)]
+    pub fn flush(&self) {
+        let entries = match self.entries.lock() {
+            Ok(guard) => guard.clone(),
+            Err(_) => return,
+        };
+        for entry in &entries {
+            match entry {
+                LogEntry::Stage(msg) => self.inner.stage(msg),
+                LogEntry::Info(msg) => self.inner.info(msg),
+                LogEntry::Debug(msg) => self.inner.debug(msg),
+                LogEntry::Warn(msg) => self.inner.warn(msg),
+                LogEntry::Error(msg) => self.inner.error(msg),
+                LogEntry::DryRun(msg) => self.inner.dry_run(msg),
+            }
+        }
+    }
+
+    /// Flush all buffered entries and remove the task from the active set.
+    ///
+    /// Acquires the flush lock on the backing [`Logger`] to prevent
+    /// interleaved console output when multiple tasks complete concurrently.
+    /// After replaying the buffered entries, updates the active task display.
+    pub fn flush_and_complete(&self, task_name: &str) {
+        let _guard = self
+            .inner
+            .flush_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.inner.clear_progress();
+        let entries = match self.entries.lock() {
+            Ok(guard) => guard.clone(),
+            Err(_) => return,
+        };
+        for entry in &entries {
+            match entry {
+                LogEntry::Stage(msg) => self.inner.stage(msg),
+                LogEntry::Info(msg) => self.inner.info(msg),
+                LogEntry::Debug(msg) => self.inner.debug(msg),
+                LogEntry::Warn(msg) => self.inner.warn(msg),
+                LogEntry::Error(msg) => self.inner.error(msg),
+                LogEntry::DryRun(msg) => self.inner.dry_run(msg),
+            }
+        }
+        let remaining = self.inner.active_tasks.lock().map_or(None, |mut active| {
+            active.retain(|n| n != task_name);
+            if active.is_empty() {
+                None
+            } else {
+                Some(active.join(", "))
+            }
+        });
+        if let Some(names) = remaining {
+            self.inner.draw_progress(&names);
+        }
+    }
+}
+
+impl Log for BufferedLog<'_> {
+    fn stage(&self, msg: &str) {
+        if let Ok(mut guard) = self.entries.lock() {
+            guard.push(LogEntry::Stage(msg.to_string()));
+        }
+    }
+
+    fn info(&self, msg: &str) {
+        if let Ok(mut guard) = self.entries.lock() {
+            guard.push(LogEntry::Info(msg.to_string()));
+        }
+    }
+
+    fn debug(&self, msg: &str) {
+        if let Ok(mut guard) = self.entries.lock() {
+            guard.push(LogEntry::Debug(msg.to_string()));
+        }
+    }
+
+    fn warn(&self, msg: &str) {
+        if let Ok(mut guard) = self.entries.lock() {
+            guard.push(LogEntry::Warn(msg.to_string()));
+        }
+    }
+
+    fn error(&self, msg: &str) {
+        if let Ok(mut guard) = self.entries.lock() {
+            guard.push(LogEntry::Error(msg.to_string()));
+        }
+    }
+
+    fn dry_run(&self, msg: &str) {
+        if let Ok(mut guard) = self.entries.lock() {
+            guard.push(LogEntry::DryRun(msg.to_string()));
+        }
+    }
+
+    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
+        // Forward directly — the Logger's task list is already Mutex-protected.
+        self.inner.record_task(name, status, message);
+    }
+}
+
 /// Structured logger with dry-run awareness and summary collection.
 ///
 /// All messages are always written to a persistent log file at
@@ -40,6 +199,12 @@ pub struct Logger {
     verbose: bool,
     tasks: Mutex<Vec<TaskEntry>>,
     log_file: Option<PathBuf>,
+    /// Serializes console output from parallel task flushes.
+    flush_lock: Mutex<()>,
+    /// Names of tasks currently executing in parallel.
+    active_tasks: Mutex<Vec<String>>,
+    /// Whether a progress line is currently displayed on the console.
+    progress_shown: Mutex<bool>,
 }
 
 /// Return the log file path under `$XDG_CACHE_HOME/dotfiles/` (or `~/.cache/dotfiles/`).
@@ -156,6 +321,9 @@ impl Logger {
             verbose,
             tasks: Mutex::new(Vec::new()),
             log_file,
+            flush_lock: Mutex::new(()),
+            active_tasks: Mutex::new(Vec::new()),
+            progress_shown: Mutex::new(false),
         }
     }
 
@@ -324,6 +492,85 @@ impl Logger {
             self.write_to_file("INF", &format!("log: {}", path.display()));
         }
     }
+
+    /// Erase the in-progress status line from the console.
+    ///
+    /// No-op if no progress line is currently shown.
+    /// Must be called while holding `flush_lock`.
+    fn clear_progress(&self) {
+        let mut shown = self
+            .progress_shown
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *shown {
+            // Move cursor up one line and erase it.
+            print!("\x1b[1A\x1b[2K");
+            std::io::stdout().flush().ok();
+            *shown = false;
+        }
+    }
+
+    /// Print an in-progress status line to the console and mark it as shown.
+    ///
+    /// Must be called while holding `flush_lock`.
+    fn draw_progress(&self, names: &str) {
+        println!("  \x1b[2m▹ {names}\x1b[0m");
+        let mut shown = self
+            .progress_shown
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *shown = true;
+    }
+
+    /// Record that a parallel task has started.
+    ///
+    /// Acquires the flush lock, erases any previous progress line, adds the
+    /// task to the active set, and redraws the status line.
+    pub fn notify_task_start(&self, name: &str) {
+        let _guard = self
+            .flush_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.clear_progress();
+        let names = self.active_tasks.lock().map_or_else(
+            |_| name.to_string(),
+            |mut active| {
+                active.push(name.to_string());
+                active.join(", ")
+            },
+        );
+        self.draw_progress(&names);
+    }
+}
+
+impl Log for Logger {
+    fn stage(&self, msg: &str) {
+        self.stage(msg);
+    }
+
+    fn info(&self, msg: &str) {
+        self.info(msg);
+    }
+
+    fn debug(&self, msg: &str) {
+        self.debug(msg);
+    }
+
+    fn warn(&self, msg: &str) {
+        self.warn(msg);
+    }
+
+    fn error(&self, msg: &str) {
+        self.error(msg);
+    }
+
+    fn dry_run(&self, msg: &str) {
+        self.dry_run(msg);
+    }
+
+    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
+        self.record_task(name, status, message);
+    }
 }
 
 #[cfg(test)]
@@ -474,5 +721,69 @@ mod tests {
         log.record_task("c", TaskStatus::Failed, Some("error 2"));
         log.record_task("d", TaskStatus::Skipped, None);
         assert_eq!(log.failure_count(), 2);
+    }
+
+    // -----------------------------------------------------------------------
+    // BufferedLog
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn buffered_log_record_task_forwards_to_logger() {
+        let (log, _tmp) = isolated_logger(false);
+        let buf = BufferedLog::new(&log);
+        buf.record_task("task-a", TaskStatus::Ok, None);
+        // record_task is forwarded immediately — visible on the Logger
+        assert_eq!(log.tasks.lock().unwrap().len(), 1);
+        assert_eq!(log.tasks.lock().unwrap()[0].name, "task-a");
+    }
+
+    #[test]
+    fn buffered_log_flush_replays_to_file() {
+        let (log, _tmp) = isolated_logger(false);
+        let buf = BufferedLog::new(&log);
+        let marker = format!("buf-marker-{}", std::process::id());
+        buf.info(&marker);
+        // Before flush, the marker should NOT be in the file yet
+        let path = log.log_path().expect("log path");
+        let before = fs::read_to_string(path).unwrap();
+        assert!(
+            !before.contains(&marker),
+            "buffered output should not be written before flush"
+        );
+        buf.flush();
+        let after = fs::read_to_string(path).unwrap();
+        assert!(
+            after.contains(&marker),
+            "buffered output should appear after flush"
+        );
+    }
+
+    #[test]
+    fn buffered_log_preserves_entry_order() {
+        let (log, _tmp) = isolated_logger(true); // verbose so debug appears
+        let buf = BufferedLog::new(&log);
+        buf.stage("stage-1");
+        buf.info("info-1");
+        buf.debug("debug-1");
+        buf.warn("warn-1");
+        buf.flush();
+        let path = log.log_path().expect("log path");
+        let contents = fs::read_to_string(path).unwrap();
+        let stage_pos = contents.find("stage-1").expect("stage-1 in log");
+        let info_pos = contents.find("info-1").expect("info-1 in log");
+        let debug_pos = contents.find("debug-1").expect("debug-1 in log");
+        let warn_pos = contents.find("warn-1").expect("warn-1 in log");
+        assert!(stage_pos < info_pos, "stage before info");
+        assert!(info_pos < debug_pos, "info before debug");
+        assert!(debug_pos < warn_pos, "debug before warn");
+    }
+
+    #[test]
+    fn log_trait_delegates_to_logger() {
+        let (log, _tmp) = isolated_logger(false);
+        // Use the Log trait methods via the trait object
+        let log_ref: &dyn Log = &log;
+        log_ref.record_task("via-trait", TaskStatus::Ok, None);
+        assert_eq!(log.tasks.lock().unwrap().len(), 1);
     }
 }

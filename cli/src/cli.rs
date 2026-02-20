@@ -34,7 +34,7 @@ pub struct GlobalOpts {
     #[arg(long, global = true)]
     pub root: Option<std::path::PathBuf>,
 
-    /// Disable parallel execution of operations within tasks (parallel is enabled by default)
+    /// Disable parallel task execution (parallel is enabled by default)
     #[arg(long = "no-parallel", global = true, action = clap::ArgAction::SetFalse)]
     pub parallel: bool,
 }

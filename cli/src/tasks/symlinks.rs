@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 use std::path::Path;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove};
@@ -13,14 +14,24 @@ impl Task for InstallSymlinks {
         "Install symlinks"
     }
 
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[
+            TypeId::of::<super::reload_config::ReloadConfig>(),
+            TypeId::of::<super::developer_mode::EnableDeveloperMode>(),
+        ];
+        DEPS
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
-        !ctx.config.symlinks.is_empty()
+        !ctx.config_read().symlinks.is_empty()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resources = ctx.config.symlinks.iter().map(|s| {
+        let symlinks: Vec<_> = ctx.config_read().symlinks.clone();
+        let symlinks_dir = ctx.symlinks_dir();
+        let resources = symlinks.iter().map(|s| {
             SymlinkResource::new(
-                ctx.symlinks_dir().join(&s.source),
+                symlinks_dir.join(&s.source),
                 compute_target(&ctx.home, &s.source),
             )
         });
@@ -47,13 +58,15 @@ impl Task for UninstallSymlinks {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        !ctx.config.symlinks.is_empty()
+        !ctx.config_read().symlinks.is_empty()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resources = ctx.config.symlinks.iter().map(|s| {
+        let symlinks: Vec<_> = ctx.config_read().symlinks.clone();
+        let symlinks_dir = ctx.symlinks_dir();
+        let resources = symlinks.iter().map(|s| {
             SymlinkResource::new(
-                ctx.symlinks_dir().join(&s.source),
+                symlinks_dir.join(&s.source),
                 compute_target(&ctx.home, &s.source),
             )
         });
@@ -148,7 +161,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!InstallSymlinks.should_run(&ctx));
     }
 
@@ -160,7 +173,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(InstallSymlinks.should_run(&ctx));
     }
 
@@ -173,7 +186,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!UninstallSymlinks.should_run(&ctx));
     }
 
@@ -185,7 +198,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(UninstallSymlinks.should_run(&ctx));
     }
 }

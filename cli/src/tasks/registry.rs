@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states};
 use crate::resources::registry::{RegistryResource, batch_check_values};
@@ -12,14 +13,18 @@ impl Task for ApplyRegistry {
         "Apply registry settings"
     }
 
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[TypeId::of::<super::reload_config::ReloadConfig>()];
+        DEPS
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.has_registry() && !ctx.config.registry.is_empty()
+        ctx.platform.has_registry() && !ctx.config_read().registry.is_empty()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resources: Vec<RegistryResource> = ctx
-            .config
-            .registry
+        let registry_entries: Vec<_> = ctx.config_read().registry.clone();
+        let resources: Vec<RegistryResource> = registry_entries
             .iter()
             .map(|entry| RegistryResource::from_entry(entry, ctx.executor))
             .collect();
@@ -65,7 +70,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!ApplyRegistry.should_run(&ctx));
     }
 
@@ -74,7 +79,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Windows, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!ApplyRegistry.should_run(&ctx));
     }
 
@@ -88,7 +93,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Windows, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(ApplyRegistry.should_run(&ctx));
     }
 }

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
 use crate::resources::systemd_unit::SystemdUnitResource;
@@ -12,9 +13,14 @@ impl Task for ConfigureSystemd {
         "Configure systemd units"
     }
 
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[TypeId::of::<super::symlinks::InstallSymlinks>()];
+        DEPS
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_systemd()
-            && !ctx.config.units.is_empty()
+            && !ctx.config_read().units.is_empty()
             && ctx.executor.which("systemctl")
     }
 
@@ -26,9 +32,8 @@ impl Task for ConfigureSystemd {
             ctx.log.debug(&format!("daemon-reload failed: {e}"));
         }
 
-        let resources = ctx
-            .config
-            .units
+        let units: Vec<_> = ctx.config_read().units.clone();
+        let resources = units
             .iter()
             .map(|entry| SystemdUnitResource::from_entry(entry, ctx.executor));
         process_resources(
@@ -61,7 +66,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Windows, false);
         let executor = WhichExecutor { which_result: true };
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!ConfigureSystemd.should_run(&ctx));
     }
 
@@ -70,7 +75,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
         let executor = WhichExecutor { which_result: true };
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!ConfigureSystemd.should_run(&ctx));
     }
 
@@ -82,7 +87,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor; // which() returns false
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!ConfigureSystemd.should_run(&ctx));
     }
 
@@ -94,7 +99,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Linux, false);
         let executor = WhichExecutor { which_result: true };
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(ConfigureSystemd.should_run(&ctx));
     }
 }

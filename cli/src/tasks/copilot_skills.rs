@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
 use crate::resources::copilot_skill::CopilotSkillResource;
@@ -12,18 +13,22 @@ impl Task for InstallCopilotSkills {
         "Install Copilot skills"
     }
 
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[TypeId::of::<super::symlinks::InstallSymlinks>()];
+        DEPS
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
-        !ctx.config.copilot_skills.is_empty()
+        !ctx.config_read().copilot_skills.is_empty()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let skills: Vec<_> = ctx.config_read().copilot_skills.clone();
         let skills_dir = ctx.home.join(".copilot/skills");
         ctx.log
             .debug(&format!("skills directory: {}", skills_dir.display()));
 
-        let resources = ctx
-            .config
-            .copilot_skills
+        let resources = skills
             .iter()
             .map(|skill| CopilotSkillResource::from_entry(skill, &skills_dir, ctx.executor));
         process_resources(
@@ -53,7 +58,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!InstallCopilotSkills.should_run(&ctx));
     }
 
@@ -65,7 +70,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(InstallCopilotSkills.should_run(&ctx));
     }
 }

@@ -38,13 +38,43 @@ cli/src/
 ## The Task Trait
 
 ```rust
-pub trait Task {
+pub trait Task: Send + Sync + 'static {
     fn name(&self) -> &str;
+    fn task_id(&self) -> TypeId { TypeId::of::<Self>() }
+    fn dependencies(&self) -> &[TypeId] { &[] }
     fn should_run(&self, ctx: &Context) -> bool;
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
 }
 pub enum TaskResult { Ok, Skipped(String), DryRun }
 ```
+
+### Task Dependencies
+
+Tasks declare dependencies via `dependencies()`, returning `TypeId`s of other
+task structs. The scheduler runs tasks as soon as all their dependencies
+complete — there are no fixed "levels" or ordering beyond the dependency
+graph.
+
+```rust
+use std::any::TypeId;
+
+impl Task for InstallSymlinks {
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[
+            TypeId::of::<UpdateRepository>(),
+            TypeId::of::<EnableDeveloperMode>(),
+        ];
+        DEPS
+    }
+    // ...
+}
+```
+
+**Rules for dependencies:**
+- Use `const DEPS` for the slice (required for `TypeId::of` in const context)
+- Only reference concrete task structs (`TypeId::of::<TaskStruct>()`)
+- Missing dependencies (filtered by `--skip`/`--only`) are silently ignored
+- Cycles are detected at runtime; the scheduler falls back to sequential execution
 
 ### New Resource-Based Task Template (preferred)
 
@@ -167,6 +197,10 @@ pub struct Context<'a> {
 
 Helpers: `ctx.root()`, `ctx.symlinks_dir()`, `ctx.hooks_dir()`.
 Tasks use `ctx.executor` when constructing resources or calling batch query functions.
+
+The `parallel` flag controls both task-level parallelism (dependency-graph
+scheduling) and resource-level parallelism (Rayon `par_iter` within tasks).
+When `false`, tasks run sequentially in list order.
 
 ## Executor Trait
 

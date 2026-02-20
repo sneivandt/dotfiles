@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 
 use super::{Context, Task, TaskResult};
 
@@ -9,6 +10,11 @@ pub struct UpdateRepository;
 impl Task for UpdateRepository {
     fn name(&self) -> &'static str {
         "Update repository"
+    }
+
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[TypeId::of::<super::sparse_checkout::ConfigureSparseCheckout>()];
+        DEPS
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -23,7 +29,7 @@ impl Task for UpdateRepository {
 
         // Refuse to pull if there are staged changes that could be lost
         if let Ok(diff) = ctx.executor.run_in_with_env(
-            ctx.root(),
+            &ctx.root(),
             "git",
             &["diff", "--cached", "--name-only"],
             git_env,
@@ -37,10 +43,10 @@ impl Task for UpdateRepository {
             // Compare local HEAD with upstream tracking branch
             if let (Some(head), Some(upstream)) = (
                 ctx.executor
-                    .run_in_with_env(ctx.root(), "git", &["rev-parse", "HEAD"], git_env)
+                    .run_in_with_env(&ctx.root(), "git", &["rev-parse", "HEAD"], git_env)
                     .ok(),
                 ctx.executor
-                    .run_in_with_env(ctx.root(), "git", &["rev-parse", "@{u}"], git_env)
+                    .run_in_with_env(&ctx.root(), "git", &["rev-parse", "@{u}"], git_env)
                     .ok(),
             ) && head.stdout.trim() == upstream.stdout.trim()
             {
@@ -55,7 +61,7 @@ impl Task for UpdateRepository {
             .debug(&format!("pulling from {}", ctx.root().display()));
         let result =
             ctx.executor
-                .run_in_with_env(ctx.root(), "git", &["pull", "--ff-only"], git_env);
+                .run_in_with_env(&ctx.root(), "git", &["pull", "--ff-only"], git_env);
         match result {
             Ok(r) => {
                 let msg = r.stdout.trim().to_string();
@@ -88,7 +94,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/nonexistent/repo"));
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!UpdateRepository.should_run(&ctx));
     }
 
@@ -99,7 +105,7 @@ mod tests {
         let config = empty_config(dir.path().to_path_buf());
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(UpdateRepository.should_run(&ctx));
     }
 }

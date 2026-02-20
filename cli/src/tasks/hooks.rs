@@ -1,4 +1,5 @@
 use anyhow::{Context as _, Result};
+use std::any::TypeId;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove};
 use crate::resources::hook::HookFileResource;
@@ -32,6 +33,11 @@ pub struct InstallGitHooks;
 impl Task for InstallGitHooks {
     fn name(&self) -> &'static str {
         "Install git hooks"
+    }
+
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[TypeId::of::<super::reload_config::ReloadConfig>()];
+        DEPS
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -85,7 +91,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/nonexistent/repo"));
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         // Neither hooks/ nor .git/ exists under /nonexistent/repo
         assert!(!InstallGitHooks.should_run(&ctx));
     }
@@ -98,7 +104,7 @@ mod tests {
         let config = empty_config(dir.path().to_path_buf());
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(InstallGitHooks.should_run(&ctx));
     }
 
@@ -107,7 +113,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/nonexistent/repo"));
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!UninstallGitHooks.should_run(&ctx));
     }
 
@@ -119,7 +125,7 @@ mod tests {
         let config = empty_config(dir.path().to_path_buf());
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(UninstallGitHooks.should_run(&ctx));
     }
 }

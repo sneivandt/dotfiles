@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states};
 use crate::resources::vscode_extension::{
@@ -14,8 +15,13 @@ impl Task for InstallVsCodeExtensions {
         "Install VS Code extensions"
     }
 
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[TypeId::of::<super::reload_config::ReloadConfig>()];
+        DEPS
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
-        !ctx.config.vscode_extensions.is_empty()
+        !ctx.config_read().vscode_extensions.is_empty()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -26,17 +32,22 @@ impl Task for InstallVsCodeExtensions {
         };
 
         ctx.log.debug(&format!("using VS Code CLI: {cmd}"));
+        let extensions: Vec<_> = ctx.config_read().vscode_extensions.clone();
         ctx.log.debug(&format!(
             "batch-checking {} extensions with a single query",
-            ctx.config.vscode_extensions.len()
+            extensions.len()
         ));
         let installed = get_installed_extensions(&cmd, ctx.executor)?;
 
-        let resource_states = ctx.config.vscode_extensions.iter().map(|ext| {
-            let resource = VsCodeExtensionResource::new(ext.id.clone(), cmd.clone(), ctx.executor);
-            let state = resource.state_from_installed(&installed);
-            (resource, state)
-        });
+        let resource_states: Vec<_> = extensions
+            .iter()
+            .map(|ext| {
+                let resource =
+                    VsCodeExtensionResource::new(ext.id.clone(), cmd.clone(), ctx.executor);
+                let state = resource.state_from_installed(&installed);
+                (resource, state)
+            })
+            .collect();
 
         process_resource_states(
             ctx,
@@ -65,7 +76,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!InstallVsCodeExtensions.should_run(&ctx));
     }
 
@@ -77,7 +88,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(InstallVsCodeExtensions.should_run(&ctx));
     }
 }

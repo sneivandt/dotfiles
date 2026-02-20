@@ -3,7 +3,7 @@ use anyhow::{Context as _, Result};
 use crate::cli::{GlobalOpts, InstallOpts};
 use crate::exec;
 use crate::logging::Logger;
-use crate::tasks::{self, Context, Task};
+use crate::tasks::{self, Context};
 
 /// Run the install command.
 ///
@@ -18,7 +18,7 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
     let setup = super::CommandSetup::init(global, log)?;
 
     let ctx = Context::new(
-        &setup.config,
+        std::sync::Arc::new(std::sync::RwLock::new(setup.config)),
         &setup.platform,
         log,
         global.dry_run,
@@ -26,26 +26,8 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
         global.parallel,
     )?;
 
-    // Build the task list
-    let all_tasks: Vec<Box<dyn Task>> = vec![
-        Box::new(tasks::developer_mode::EnableDeveloperMode),
-        Box::new(tasks::sparse_checkout::ConfigureSparseCheckout),
-        Box::new(tasks::update::UpdateRepository),
-        Box::new(tasks::git_config::ConfigureGit),
-        Box::new(tasks::hooks::InstallGitHooks),
-        Box::new(tasks::packages::InstallPackages),
-        Box::new(tasks::packages::InstallParu),
-        Box::new(tasks::packages::InstallAurPackages),
-        Box::new(tasks::symlinks::InstallSymlinks),
-        Box::new(tasks::chmod::ApplyFilePermissions),
-        Box::new(tasks::shell::ConfigureShell),
-        Box::new(tasks::systemd_units::ConfigureSystemd),
-        Box::new(tasks::registry::ApplyRegistry),
-        Box::new(tasks::vscode_extensions::InstallVsCodeExtensions),
-        Box::new(tasks::copilot_skills::InstallCopilotSkills),
-    ];
-
     // Filter by --skip and --only
+    let all_tasks = tasks::all_install_tasks();
     super::run_tasks_to_completion(
         all_tasks
             .iter()

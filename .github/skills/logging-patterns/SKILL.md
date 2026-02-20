@@ -85,3 +85,22 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 3. Check `ctx.dry_run` before side effects; use `ctx.log.dry_run()` for preview
 4. Return `TaskResult::DryRun` in dry-run mode
 5. Task recording is automatic via `tasks::execute()` — don't call `record_task` in tasks
+
+## Parallel Task Logging
+
+When parallel execution is enabled, each task receives a `BufferedLog` that
+captures output in memory while the task runs.
+
+- **On task start**: `Logger::notify_task_start(name)` adds the task name to
+  the active set and prints a dim status line (`▹ task1, task2, ...`)
+- **On task complete**: `BufferedLog::flush_and_complete(name)` atomically
+  replays all buffered entries (stage, info, debug, etc.) to the real Logger,
+  removes the task from the active set, and prints the updated status line
+- **Flush lock**: A `Mutex<()>` on Logger serializes flushes so output from
+  different tasks never interleaves
+- **Task recording**: `record_task()` is forwarded immediately to the Logger
+  (not buffered), since it's already thread-safe via its own Mutex
+
+Tasks do **not** need to be aware of buffering — they log via `ctx.log` as
+normal, and the `Log` trait dispatches to either `Logger` (sequential) or
+`BufferedLog` (parallel) transparently.

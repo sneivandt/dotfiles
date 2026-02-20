@@ -14,7 +14,7 @@ pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Logger) -> Result<(
     let executor = exec::SystemExecutor;
     let setup = super::CommandSetup::init(global, log)?;
     let ctx = Context::new(
-        &setup.config,
+        std::sync::Arc::new(std::sync::RwLock::new(setup.config)),
         &setup.platform,
         log,
         global.dry_run,

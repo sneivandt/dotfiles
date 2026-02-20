@@ -38,7 +38,10 @@ if [ "$BUILD_MODE" = true ]; then
 fi
 ```
 
-All arguments except `--build` are forwarded to the Rust binary unchanged.
+All arguments except `--build` are validated against an allowlist of recognised
+options (`-p`, `-d`, `-v`, subcommands) and forwarded to the Rust binary.
+Unrecognised flags (e.g. `--skip`, `--only`, `--no-parallel`) are rejected with
+an error — users who need them must invoke the binary directly.
 
 ### Binary Auto-Update
 
@@ -81,4 +84,5 @@ For everything else (tasks, config, logging), edit the Rust code in `cli/src/`.
 - Keep wrapper scripts as short as practical (dotfiles.sh ~180 lines, dotfiles.ps1 ~300 lines)
 - Never add task logic to shell scripts — use `cli/src/tasks/*.rs`
 - The `--root` flag is always passed to the binary by the wrapper
-- Wrapper forwards all other arguments unchanged via `exec`
+- Wrapper validates arguments against an allowlist — only `-p`, `-d`, `-v`, and subcommands are forwarded
+- Developer flags (`--skip`, `--only`, `--no-parallel`) require direct binary invocation

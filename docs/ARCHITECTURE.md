@@ -133,6 +133,10 @@ Install options:
   --only TASK,...   Run only specific tasks
 ```
 
+The wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`) expose only `-p`, `-d`, `-v`,
+and `--build`. Flags like `--skip`, `--only`, `--root`, and `--no-parallel` are
+available only when invoking the binary directly.
+
 #### Commands (`commands/`)
 
 - **`install.rs`** — Resolves profile, loads `Config`, builds the task list, filters by `--skip`/`--only`, and executes each task via `tasks::execute()`
@@ -365,7 +369,8 @@ parallel by default using the [Rayon](https://docs.rs/rayon) work-stealing threa
 - The `Logger` uses `Mutex<Vec<TaskEntry>>` internally for thread-safe task recording
 
 **To disable** (e.g. for debugging interleaved output), pass `--no-parallel`
-directly to the binary — this flag is not exposed by the wrapper scripts.
+directly to the binary — this flag is not exposed by the wrapper scripts
+(see [Advanced Binary Options](USAGE.md#advanced-binary-options)).
 
 `process_resources_remove()` (used by uninstall tasks) is always sequential because
 removal operations are rare and order may matter.

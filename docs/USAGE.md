@@ -41,7 +41,7 @@ cd dotfiles
 
 **Synopsis:**
 ```
-dotfiles.sh [--build] install   [-p PROFILE] [-d] [-v] [--skip TASKS] [--only TASKS]
+dotfiles.sh [--build] install   [-p PROFILE] [-d] [-v]
 dotfiles.sh [--build] uninstall [-p PROFILE] [-d] [-v]
 dotfiles.sh [--build] test      [-p PROFILE] [-v]
 dotfiles.sh [--build] version
@@ -57,9 +57,6 @@ dotfiles.sh [--build] version
 - **`-p, --profile PROFILE`** - Use specific profile (base, desktop)
 - **`-v, --verbose`** - Enable verbose logging
 - **`-d, --dry-run`** - Preview changes without modifying system (auto-enables verbose)
-- **`--skip TASKS`** - Skip specific tasks (comma-separated)
-- **`--only TASKS`** - Run only specific tasks (comma-separated)
-- **`--root DIR`** - Override dotfiles root directory
 
 ### Windows (`dotfiles.ps1`)
 
@@ -74,7 +71,9 @@ dotfiles.sh [--build] version
 **Parameters:**
 
 - **`-Build`** - Build and run from source (requires `cargo`)
-- All other options are the same as Linux (forwarded to the binary)
+- **`-p PROFILE`** - Use specific profile (base, desktop)
+- **`-d`** - Preview changes without applying (dry-run)
+- **`-Verbose`** - Enable verbose logging
 
 ## Common Workflows
 
@@ -245,12 +244,7 @@ when many items need to be processed.
 **Parallel execution is safe** — each resource is checked and applied independently,
 and the results accumulator uses a mutex for thread-safe counting.
 
-**To disable parallel execution**, pass `--no-parallel` directly to the binary
-(this flag is not exposed by the wrapper scripts):
-
-```bash
-./bin/dotfiles install --no-parallel
-```
+To disable parallel execution, see [Advanced Binary Options](#advanced-binary-options).
 
 ## Dry-Run Mode
 
@@ -422,6 +416,23 @@ cd dotfiles
 ./dotfiles.sh --build install -p base -d
 # Builds the Rust binary from source, then runs it
 ```
+
+## Advanced Binary Options
+
+The following flags are available when invoking the binary directly (`bin/dotfiles`)
+and are intended for development and debugging. They are **not** exposed by the
+wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`).
+
+```bash
+./bin/dotfiles --root /path/to/dotfiles install --skip packages,fonts
+./bin/dotfiles --root /path/to/dotfiles install --only symlinks
+./bin/dotfiles --root /path/to/dotfiles --no-parallel install
+```
+
+- **`--skip TASKS`** - Skip specific tasks (comma-separated)
+- **`--only TASKS`** - Run only specific tasks (comma-separated)
+- **`--root DIR`** - Override dotfiles root directory (set automatically by wrapper scripts)
+- **`--no-parallel`** - Disable parallel execution of resource operations
 
 ## See Also
 

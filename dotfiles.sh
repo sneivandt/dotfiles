@@ -7,7 +7,9 @@ set -o nounset
 # Default: downloads the latest published binary from GitHub Releases.
 # --build: builds the Rust binary from source (requires cargo).
 #
-# All arguments (except --build) are forwarded to the dotfiles binary.
+# Only recognised options are forwarded to the dotfiles binary.
+# Developer flags (--skip, --only, --root, --no-parallel) require
+# invoking the binary directly.
 
 DOTFILES_ROOT="$(dirname "$(readlink -f "$0")")"
 export DOTFILES_ROOT
@@ -19,18 +21,62 @@ CACHE_FILE="$BIN_DIR/.dotfiles-version-cache"
 CACHE_MAX_AGE=3600  # seconds
 
 # --------------------------------------------------------------------------- #
-# Parse --build flag (remove it from args forwarded to binary)
+# Usage
+# --------------------------------------------------------------------------- #
+usage() {
+  echo "Usage: dotfiles.sh [--build] <command> [options]"
+  echo ""
+  echo "Commands:"
+  echo "  install     Install dotfiles and configure system"
+  echo "  uninstall   Remove installed dotfiles"
+  echo "  test        Run configuration validation"
+  echo "  version     Print version information"
+  echo ""
+  echo "Options:"
+  echo "  --build           Build and run from source (requires cargo)"
+  echo "  -p, --profile P   Use specific profile (base, desktop)"
+  echo "  -d, --dry-run     Preview changes without applying"
+  echo "  -v, --verbose     Enable verbose logging"
+  echo "  -h, --help        Show this help message"
+  exit 0
+}
+
+# --------------------------------------------------------------------------- #
+# Parse arguments — only recognised options are accepted
 # --------------------------------------------------------------------------- #
 BUILD_MODE=false
-ARGS=""
+CLI_ARGS=""
+EXPECT_VALUE=""
+
 for arg in "$@"; do
+  if [ -n "$EXPECT_VALUE" ]; then
+    CLI_ARGS="$CLI_ARGS $(printf "'%s'" "$(printf '%s' "$arg" | sed "s/'/'\\\\''/g")")"
+    EXPECT_VALUE=""
+    continue
+  fi
   case "$arg" in
-    --build) BUILD_MODE=true ;;
-    *) ARGS="$ARGS $(printf "'%s'" "$(printf '%s' "$arg" | sed "s/'/'\\\\''/g")")"
-       ;;
+    --build)                BUILD_MODE=true ;;
+    -h|--help)              usage ;;
+    -p|--profile)           CLI_ARGS="$CLI_ARGS '$arg'"; EXPECT_VALUE=1 ;;
+    -d|--dry-run)           CLI_ARGS="$CLI_ARGS '$arg'" ;;
+    -v|--verbose)           CLI_ARGS="$CLI_ARGS '$arg'" ;;
+    install|uninstall|test|version)
+                            CLI_ARGS="$CLI_ARGS '$arg'" ;;
+    -*)                     echo "ERROR: Unknown option: $arg" >&2
+                            echo "Run 'dotfiles.sh --help' for usage." >&2
+                            exit 1 ;;
+    *)                      echo "ERROR: Unknown argument: $arg" >&2
+                            echo "Run 'dotfiles.sh --help' for usage." >&2
+                            exit 1 ;;
   esac
 done
-eval set -- "$ARGS"
+
+if [ -n "$EXPECT_VALUE" ]; then
+  echo "ERROR: Option requires a value: --profile" >&2
+  exit 1
+fi
+
+eval set -- "$CLI_ARGS"
 
 # --------------------------------------------------------------------------- #
 # Build mode: build from source and run

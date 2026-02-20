@@ -37,6 +37,7 @@ pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Logger) -> Result<()> {
 // ---------------------------------------------------------------------------
 
 /// Validate that all symlink source files exist on disk.
+#[derive(Debug)]
 struct ValidateSymlinkSources;
 
 impl Task for ValidateSymlinkSources {
@@ -74,6 +75,7 @@ impl Task for ValidateSymlinkSources {
 }
 
 /// Validate that required configuration files exist.
+#[derive(Debug)]
 struct ValidateConfigFiles;
 
 impl Task for ValidateConfigFiles {
@@ -125,6 +127,7 @@ impl Task for ValidateConfigFiles {
 }
 
 /// Run shellcheck on all shell scripts in the repository.
+#[derive(Debug)]
 struct RunShellcheck;
 
 impl Task for RunShellcheck {
@@ -181,6 +184,7 @@ impl Task for RunShellcheck {
 }
 
 /// Run `PSScriptAnalyzer` on `PowerShell` scripts.
+#[derive(Debug)]
 struct RunPSScriptAnalyzer;
 
 impl Task for RunPSScriptAnalyzer {

@@ -1,0 +1,119 @@
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, RwLock};
+
+use anyhow::Result;
+
+use crate::config::Config;
+use crate::exec::Executor;
+use crate::logging::Log;
+use crate::platform::Platform;
+
+/// Shared context for task execution.
+pub struct Context<'a> {
+    /// Configuration loaded from INI files.
+    ///
+    /// Wrapped in `Arc<RwLock<_>>` so that `ReloadConfig` can atomically
+    /// replace the config after a `git pull` while all other tasks see the
+    /// updated values.  Use [`Context::config_read`] for read access.
+    pub config: Arc<RwLock<Config>>,
+    /// Detected platform information.
+    pub platform: &'a Platform,
+    /// Logger for output and task recording.
+    pub log: &'a dyn Log,
+    /// Whether to perform a dry run (preview changes without applying).
+    pub dry_run: bool,
+    /// User's home directory path.
+    pub home: std::path::PathBuf,
+    /// Command executor (for testing or real system calls).
+    pub executor: &'a dyn Executor,
+    /// Whether to process resources in parallel using Rayon.
+    pub parallel: bool,
+    /// Set to `true` by `UpdateRepository` when the repo was actually updated.
+    ///
+    /// Wrapped in `Arc` so the flag is shared across per-task contexts in
+    /// the parallel scheduler.  Checked by `ReloadConfig` to skip
+    /// unnecessary reloads.
+    pub repo_updated: Arc<AtomicBool>,
+}
+
+impl std::fmt::Debug for Context<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Context")
+            .field("config", &"<Config>")
+            .field("platform", &self.platform)
+            .field("log", &"<dyn Log>")
+            .field("dry_run", &self.dry_run)
+            .field("home", &self.home)
+            .field("executor", &"<dyn Executor>")
+            .field("parallel", &self.parallel)
+            .field("repo_updated", &self.repo_updated)
+            .finish()
+    }
+}
+
+impl<'a> Context<'a> {
+    /// Creates a new context for task execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HOME (or USERPROFILE on Windows) environment variable
+    /// is not set.
+    pub fn new(
+        config: Arc<RwLock<Config>>,
+        platform: &'a Platform,
+        log: &'a dyn Log,
+        dry_run: bool,
+        executor: &'a dyn Executor,
+        parallel: bool,
+    ) -> Result<Self> {
+        let home = if cfg!(target_os = "windows") {
+            std::env::var("USERPROFILE")
+                .or_else(|_| std::env::var("HOME"))
+                .map_err(|_| {
+                    anyhow::anyhow!("neither USERPROFILE nor HOME environment variable is set")
+                })?
+        } else {
+            std::env::var("HOME")
+                .map_err(|_| anyhow::anyhow!("HOME environment variable is not set"))?
+        };
+
+        Ok(Self {
+            config,
+            platform,
+            log,
+            dry_run,
+            home: std::path::PathBuf::from(home),
+            executor,
+            parallel,
+            repo_updated: Arc::new(AtomicBool::new(false)),
+        })
+    }
+
+    /// Acquire a shared read lock on the configuration.
+    ///
+    /// Recovers from a poisoned lock (which can only occur if a previous task
+    /// panicked) by consuming the poison and returning the inner value.
+    pub fn config_read(&self) -> std::sync::RwLockReadGuard<'_, Config> {
+        self.config
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Root directory of the dotfiles repository.
+    #[must_use]
+    pub fn root(&self) -> std::path::PathBuf {
+        self.config_read().root.clone()
+    }
+
+    /// Symlinks source directory.
+    #[must_use]
+    pub fn symlinks_dir(&self) -> std::path::PathBuf {
+        self.config_read().root.join("symlinks")
+    }
+
+    /// Hooks source directory.
+    #[must_use]
+    pub fn hooks_dir(&self) -> std::path::PathBuf {
+        self.config_read().root.join("hooks")
+    }
+}

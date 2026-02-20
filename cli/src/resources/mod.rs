@@ -152,7 +152,7 @@ pub(crate) mod test_helpers {
 
         fn next(&self) -> (bool, String) {
             self.responses.lock().map_or_else(
-                |_| (false, "unexpected call".to_string()),
+                |_| (false, "mutex poisoned".to_string()),
                 |mut guard| {
                     guard
                         .pop_front()

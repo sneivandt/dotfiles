@@ -388,13 +388,9 @@ fn apply_resource<R: Resource>(
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::logging::Logger;
-    use crate::platform::{Os, Platform};
     use crate::resources::{Resource, ResourceChange, ResourceState};
-    use crate::tasks::test_helpers::{NoOpExecutor, empty_config};
+    use crate::tasks::test_helpers::{empty_config, make_static_context};
     use std::path::PathBuf;
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
 
     // -----------------------------------------------------------------------
     // Test doubles
@@ -461,24 +457,15 @@ mod tests {
     // Helpers
     // -----------------------------------------------------------------------
 
-    fn test_context(config: crate::config::Config) -> (Context<'static>, &'static Logger) {
-        let platform = Box::leak(Box::new(Platform::new(Os::Linux, false)));
-        let log: &'static Logger = Box::leak(Box::new(Logger::new(false, "test")));
-        let executor = Box::leak(Box::new(NoOpExecutor));
-        let ctx = Context {
-            config: std::sync::Arc::new(std::sync::RwLock::new(config)),
-            platform,
-            log,
-            dry_run: false,
-            home: PathBuf::from("/home/test"),
-            executor,
-            parallel: false,
-            repo_updated: Arc::new(AtomicBool::new(false)),
-        };
-        (ctx, log)
+    fn test_context(
+        config: crate::config::Config,
+    ) -> (Context<'static>, &'static crate::logging::Logger) {
+        make_static_context(config)
     }
 
-    fn dry_run_context(config: crate::config::Config) -> (Context<'static>, &'static Logger) {
+    fn dry_run_context(
+        config: crate::config::Config,
+    ) -> (Context<'static>, &'static crate::logging::Logger) {
         let (mut ctx, log) = test_context(config);
         ctx.dry_run = true;
         (ctx, log)

@@ -123,7 +123,7 @@ pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profi
     let mut excluded = def.exclude.clone();
 
     // Auto-add platform-detected categories
-    for category in &["linux", "windows", "arch"] {
+    for category in ["linux", "windows", "arch"] {
         if !platform.excludes_category(category) {
             active.push(category.to_string());
         } else if !excluded.iter().any(|c| c == category) {

@@ -101,7 +101,7 @@ impl Resource for VsCodeExtensionResource<'_> {
 /// Find the VS Code CLI command, preferring code-insiders.
 #[must_use]
 pub fn find_code_command(executor: &dyn Executor) -> Option<String> {
-    for cmd in &["code-insiders", "code"] {
+    for cmd in ["code-insiders", "code"] {
         if executor.which(cmd) {
             return Some(cmd.to_string());
         }

@@ -2,6 +2,19 @@ use anyhow::{Context as _, Result, bail};
 use std::path::Path;
 
 /// A parsed section from an INI file.
+///
+/// # Examples
+///
+/// ```
+/// use dotfiles_cli::config::ini::Section;
+///
+/// let section = Section {
+///     categories: vec!["base".to_string()],
+///     items: vec!["git".to_string(), "vim".to_string()],
+/// };
+/// assert_eq!(section.categories, ["base"]);
+/// assert_eq!(section.items.len(), 2);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Section {
     /// Category tags for this section (e.g., `["arch", "desktop"]`).
@@ -14,6 +27,19 @@ pub struct Section {
 ///
 /// Unlike `Section`, headers preserve original case since they carry
 /// semantic meaning (e.g., `[HKCU:\Console]` is a registry path, not a category).
+///
+/// # Examples
+///
+/// ```
+/// use dotfiles_cli::config::ini::KvSection;
+///
+/// let section = KvSection {
+///     header: "HKCU:\\Console".to_string(),
+///     entries: vec![("FontSize".to_string(), "14".to_string())],
+/// };
+/// assert_eq!(section.header, "HKCU:\\Console");
+/// assert_eq!(section.entries[0].0, "FontSize");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KvSection {
     /// The raw section header (e.g., `"HKCU:\\Console"`).
@@ -41,6 +67,26 @@ pub fn parse_sections(path: &Path) -> Result<Vec<Section>> {
 }
 
 /// Parse INI content from a string (for testing).
+///
+/// # Examples
+///
+/// ```
+/// use dotfiles_cli::config::ini::parse_sections_from_str;
+///
+/// let sections = parse_sections_from_str("[base]\ngit\nvim\n").unwrap();
+/// assert_eq!(sections.len(), 1);
+/// assert_eq!(sections[0].categories, ["base"]);
+/// assert_eq!(sections[0].items, ["git", "vim"]);
+/// ```
+///
+/// Multi-category sections use comma-separated tags:
+///
+/// ```
+/// use dotfiles_cli::config::ini::parse_sections_from_str;
+///
+/// let sections = parse_sections_from_str("[arch,desktop]\npicom\n").unwrap();
+/// assert_eq!(sections[0].categories, ["arch", "desktop"]);
+/// ```
 ///
 /// # Errors
 ///
@@ -105,6 +151,29 @@ pub fn parse_kv_sections(path: &Path) -> Result<Vec<KvSection>> {
 
 /// Parse key-value INI content from a string.
 ///
+/// # Examples
+///
+/// ```
+/// use dotfiles_cli::config::ini::parse_kv_sections_from_str;
+///
+/// let sections = parse_kv_sections_from_str(
+///     "[HKCU:\\Console]\nFontSize = 14\nCursorSize = 100\n"
+/// ).unwrap();
+/// assert_eq!(sections[0].header, "HKCU:\\Console");
+/// assert_eq!(sections[0].entries[0], ("FontSize".to_string(), "14".to_string()));
+/// ```
+///
+/// Inline comments (` #` or `\t#`) are stripped from values:
+///
+/// ```
+/// use dotfiles_cli::config::ini::parse_kv_sections_from_str;
+///
+/// let sections = parse_kv_sections_from_str(
+///     "[section]\nkey = value # comment\n"
+/// ).unwrap();
+/// assert_eq!(sections[0].entries[0].1, "value");
+/// ```
+///
 /// # Errors
 ///
 /// Returns an error if:
@@ -161,9 +230,29 @@ pub fn parse_kv_sections_from_str(content: &str) -> Result<Vec<KvSection>> {
 /// # Examples
 ///
 /// A section tagged `[arch,desktop]` requires both "arch" AND "desktop"
-/// to be in the active set to be included.
+/// to be in the active set to be included:
+///
+/// ```
+/// use dotfiles_cli::config::ini::{Section, filter_sections_and};
+///
+/// let sections = vec![
+///     Section { categories: vec!["base".into()], items: vec!["git".into()] },
+///     Section { categories: vec!["arch".into(), "desktop".into()], items: vec!["picom".into()] },
+///     Section { categories: vec!["arch".into()], items: vec!["paru".into()] },
+/// ];
+///
+/// // Only "base" and "arch" are active — the [arch,desktop] section is excluded
+/// let active = vec!["base".into(), "arch".into()];
+/// let filtered = filter_sections_and(&sections, &active);
+/// assert_eq!(filtered.len(), 2);
+/// assert_eq!(filtered[0].items, ["git"]);
+/// assert_eq!(filtered[1].items, ["paru"]);
+/// ```
 #[must_use]
-pub fn filter_sections_and(sections: &[Section], active_categories: &[String]) -> Vec<Section> {
+pub fn filter_sections_and<'a>(
+    sections: &'a [Section],
+    active_categories: &[String],
+) -> Vec<&'a Section> {
     sections
         .iter()
         .filter(|s| {
@@ -171,7 +260,6 @@ pub fn filter_sections_and(sections: &[Section], active_categories: &[String]) -
                 .iter()
                 .all(|cat| active_categories.contains(cat))
         })
-        .cloned()
         .collect()
 }
 
@@ -179,10 +267,10 @@ pub fn filter_sections_and(sections: &[Section], active_categories: &[String]) -
 /// A section is excluded if ANY of its categories are in the excluded set.
 #[cfg(test)]
 #[must_use]
-pub fn filter_sections_or_exclude(
-    sections: &[Section],
+pub fn filter_sections_or_exclude<'a>(
+    sections: &'a [Section],
     excluded_categories: &[String],
-) -> Vec<Section> {
+) -> Vec<&'a Section> {
     sections
         .iter()
         .filter(|s| {
@@ -190,7 +278,6 @@ pub fn filter_sections_or_exclude(
                 .iter()
                 .any(|cat| excluded_categories.contains(cat))
         })
-        .cloned()
         .collect()
 }
 
@@ -223,15 +310,18 @@ fn parse_raw_header(line: &str) -> Option<String> {
 /// - `"CursorSize = 100"` → `("CursorSize", "100")`
 fn parse_kv_line(line: &str) -> Option<(String, String)> {
     let (key, value) = line.split_once('=')?;
-    Some((key.trim().to_string(), strip_inline_comment(value.trim())))
+    Some((
+        key.trim().to_string(),
+        strip_inline_comment(value.trim()).to_string(),
+    ))
 }
 
 /// Strip inline comments (`#` preceded by whitespace) from a value.
-fn strip_inline_comment(value: &str) -> String {
+fn strip_inline_comment(value: &str) -> &str {
     value
         .find(" #")
         .or_else(|| value.find("\t#"))
-        .map_or_else(|| value.to_string(), |idx| value[..idx].trim().to_string())
+        .map_or(value, |idx| value[..idx].trim_end())
 }
 
 fn read_file(path: &Path) -> Result<String> {
@@ -253,10 +343,14 @@ fn read_file(path: &Path) -> Result<String> {
 /// - An item appears outside of a section header
 pub fn load_filtered_items(path: &Path, active_categories: &[String]) -> Result<Vec<String>> {
     let sections = parse_sections(path)?;
-    let filtered = filter_sections_and(&sections, active_categories);
-    Ok(filtered
-        .iter()
-        .flat_map(|s| s.items.iter().cloned())
+    Ok(sections
+        .into_iter()
+        .filter(|s| {
+            s.categories
+                .iter()
+                .all(|cat| active_categories.contains(cat))
+        })
+        .flat_map(|s| s.items)
         .collect())
 }
 

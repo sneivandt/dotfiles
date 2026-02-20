@@ -13,6 +13,20 @@ pub mod vscode_extension;
 use anyhow::Result;
 
 /// State of a resource (file, registry entry, etc.).
+///
+/// # Examples
+///
+/// ```
+/// use dotfiles_cli::resources::ResourceState;
+///
+/// let missing = ResourceState::Missing;
+/// let correct = ResourceState::Correct;
+/// let wrong = ResourceState::Incorrect { current: "/other/path".into() };
+/// let skip = ResourceState::Invalid { reason: "target is a directory".into() };
+///
+/// assert_ne!(missing, correct);
+/// assert_eq!(correct, ResourceState::Correct);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResourceState {
     /// Resource does not exist or is not present.
@@ -26,6 +40,19 @@ pub enum ResourceState {
 }
 
 /// Result of applying a resource change.
+///
+/// # Examples
+///
+/// ```
+/// use dotfiles_cli::resources::ResourceChange;
+///
+/// let applied = ResourceChange::Applied;
+/// let noop = ResourceChange::AlreadyCorrect;
+/// let skipped = ResourceChange::Skipped { reason: "source missing".into() };
+///
+/// assert_eq!(applied, ResourceChange::Applied);
+/// assert_ne!(applied, noop);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResourceChange {
     /// Resource was created or updated.
@@ -46,10 +73,13 @@ pub enum ResourceChange {
 ///
 /// # Examples
 ///
-/// All resources follow the same pattern:
-/// 1. Check current state: `resource.current_state()?`
-/// 2. Apply if needed: `resource.apply()?`
-/// 3. Remove if supported: `resource.remove()?`
+/// ```ignore
+/// // All resources follow the same check-then-apply pattern:
+/// let state = resource.current_state()?;
+/// if resource.needs_change()? {
+///     resource.apply()?;
+/// }
+/// ```
 pub trait Resource {
     /// Human-readable description of this resource.
     fn description(&self) -> String;

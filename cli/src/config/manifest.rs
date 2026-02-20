@@ -22,13 +22,13 @@ pub fn load(path: &Path, excluded_categories: &[String]) -> Result<Manifest> {
     let sections = ini::parse_sections(path)?;
 
     let excluded_files = sections
-        .iter()
+        .into_iter()
         .filter(|s| {
             s.categories
                 .iter()
                 .any(|cat| excluded_categories.contains(cat))
         })
-        .flat_map(|s| s.items.iter().cloned())
+        .flat_map(|s| s.items)
         .collect();
 
     Ok(Manifest { excluded_files })

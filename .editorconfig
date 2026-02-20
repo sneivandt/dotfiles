@@ -14,7 +14,7 @@ indent_size = 4
 [*.toml]
 indent_size = 4
 
-[*.{ps1,psm1}]
+[*.{ps1,psm1,psd1,psxml}]
 indent_style = space
 indent_size = 4
 
@@ -46,7 +46,3 @@ indent_size = 2
 
 [{.gitignore,.gitattributes}]
 indent_size = 2
-
-[*.{psd1,psxml}]
-indent_style = space
-indent_size = 4

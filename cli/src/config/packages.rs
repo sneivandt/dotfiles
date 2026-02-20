@@ -24,7 +24,7 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Package>> {
     let sections = ini::parse_sections(path)?;
 
     Ok(sections
-        .iter()
+        .into_iter()
         .filter(|s| {
             s.categories
                 .iter()
@@ -33,10 +33,9 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Package>> {
         })
         .flat_map(|s| {
             let is_aur = s.categories.iter().any(|c| c == "aur");
-            s.items.iter().map(move |item| Package {
-                name: item.clone(),
-                is_aur,
-            })
+            s.items
+                .into_iter()
+                .map(move |item| Package { name: item, is_aur })
         })
         .collect())
 }

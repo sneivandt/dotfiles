@@ -1,68 +1,134 @@
 use std::collections::HashMap;
-use std::fmt::Write;
 
-use anyhow::{Context as _, Result};
+#[cfg(windows)]
+use anyhow::Context as _;
+use anyhow::Result;
 
 use super::{Resource, ResourceChange, ResourceState};
-use crate::exec::Executor;
 
-/// Sentinel value used when a registry key/value does not exist.
-const NOT_FOUND_SENTINEL: &str = "::NOT_FOUND::";
+/// Native Windows registry access via the `winreg` crate.
+#[cfg(windows)]
+mod native {
+    use anyhow::{Context as _, Result, bail};
+    use winreg::RegKey;
+    use winreg::enums::{HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::enums::{REG_DWORD, REG_EXPAND_SZ, REG_SZ};
 
-/// Separator token used to delimit multiple registry values in batch output.
-const BATCH_SEPARATOR: &str = "::SEP::";
+    /// Parse a `PowerShell`-style registry path into a root key and subkey.
+    fn parse_path(key_path: &str) -> Result<(RegKey, &str)> {
+        let (root_str, subkey) = key_path
+            .split_once(r":\")
+            .ok_or_else(|| anyhow::anyhow!("invalid registry path: {key_path}"))?;
+        let root = match root_str {
+            "HKCU" => RegKey::predef(HKEY_CURRENT_USER),
+            "HKLM" => RegKey::predef(HKEY_LOCAL_MACHINE),
+            "HKCR" => RegKey::predef(HKEY_CLASSES_ROOT),
+            _ => bail!("unsupported registry root: {root_str}"),
+        };
+        Ok((root, subkey))
+    }
 
-/// Validates that a registry key path doesn't contain characters that could
-/// cause issues in `PowerShell` commands (newlines, backticks, etc.).
-fn validate_registry_path(path: &str) -> Result<()> {
-    anyhow::ensure!(
-        !path.contains('\n') && !path.contains('\r') && !path.contains('`'),
-        "registry path contains invalid characters: {path}"
-    );
-    Ok(())
+    /// Read a registry value and return it as a string.
+    pub fn read_value(key_path: &str, value_name: &str) -> Result<Option<String>> {
+        let (root, subkey) = parse_path(key_path)?;
+        let key = match root.open_subkey(subkey) {
+            Ok(k) => k,
+            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(anyhow::Error::from(e).context(format!("opening {key_path}"))),
+        };
+        match key.get_raw_value(value_name) {
+            Ok(val) => Ok(Some(raw_value_to_string(&val))),
+            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => {
+                Err(anyhow::Error::from(e).context(format!("reading {key_path}\\{value_name}")))
+            }
+        }
+    }
+
+    /// Write a registry value, creating the key if it does not exist.
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn write_value(key_path: &str, value_name: &str, value_data: &str) -> Result<()> {
+        let (root, subkey) = parse_path(key_path)?;
+        let (key, _) = root
+            .create_subkey(subkey)
+            .with_context(|| format!("creating {key_path}"))?;
+        // Hex integer → DWORD
+        if let Some(hex) = value_data
+            .strip_prefix("0x")
+            .or_else(|| value_data.strip_prefix("0X"))
+            && let Ok(n) = u64::from_str_radix(hex, 16)
+        {
+            key.set_value(value_name, &(n as u32))
+                .with_context(|| format!("setting {key_path}\\{value_name}"))?;
+            return Ok(());
+        }
+        // Decimal integer → DWORD
+        if let Ok(n) = value_data.parse::<u32>() {
+            key.set_value(value_name, &n)
+                .with_context(|| format!("setting {key_path}\\{value_name}"))?;
+            return Ok(());
+        }
+        // String → REG_SZ
+        key.set_value(value_name, &value_data)
+            .with_context(|| format!("setting {key_path}\\{value_name}"))?;
+        Ok(())
+    }
+
+    /// Convert a raw registry value to a string representation.
+    #[allow(clippy::indexing_slicing)] // chunks_exact guarantees exact sizes
+    fn raw_value_to_string(val: &winreg::RegValue) -> String {
+        match val.vtype {
+            REG_DWORD if val.bytes.len() >= 4 => {
+                u32::from_le_bytes([val.bytes[0], val.bytes[1], val.bytes[2], val.bytes[3]])
+                    .to_string()
+            }
+            REG_SZ | REG_EXPAND_SZ => {
+                let wide: Vec<u16> = val
+                    .bytes
+                    .chunks_exact(2)
+                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                    .collect();
+                String::from_utf16_lossy(&wide)
+                    .trim_end_matches('\0')
+                    .to_string()
+            }
+            _ => format!("{:?}", val.bytes),
+        }
+    }
 }
 
 /// A Windows registry resource that can be checked and applied.
+///
+/// Uses the `winreg` crate for native registry access on Windows.
 #[derive(Debug)]
-pub struct RegistryResource<'a> {
+#[cfg_attr(not(windows), allow(dead_code))]
+pub struct RegistryResource {
     /// Registry key path (e.g., "HKCU:\Console").
     pub key_path: String,
     /// Value name.
     pub value_name: String,
     /// Value data (as string).
     pub value_data: String,
-    /// Executor for running `PowerShell` commands.
-    executor: &'a dyn Executor,
 }
 
-impl<'a> RegistryResource<'a> {
+impl RegistryResource {
     /// Create a new registry resource.
     #[must_use]
-    pub const fn new(
-        key_path: String,
-        value_name: String,
-        value_data: String,
-        executor: &'a dyn Executor,
-    ) -> Self {
+    pub const fn new(key_path: String, value_name: String, value_data: String) -> Self {
         Self {
             key_path,
             value_name,
             value_data,
-            executor,
         }
     }
 
     /// Create from a config entry.
     #[must_use]
-    pub fn from_entry(
-        entry: &crate::config::registry::RegistryEntry,
-        executor: &'a dyn Executor,
-    ) -> Self {
+    pub fn from_entry(entry: &crate::config::registry::RegistryEntry) -> Self {
         Self::new(
             entry.key_path.clone(),
             entry.value_name.clone(),
             entry.value_data.clone(),
-            executor,
         )
     }
 
@@ -84,77 +150,38 @@ impl<'a> RegistryResource<'a> {
     }
 }
 
-/// Batch-check all registry values in a single `PowerShell` invocation.
+/// Batch-check all registry values.
 ///
-/// Returns a map from `"key_path\value_name"` to the current value string
-/// (`None` when the key or value does not exist). This is **dramatically**
-/// faster than spawning one process per registry entry.
+/// On Windows, reads each value directly via the `winreg` crate. Returns a map
+/// from `"key_path\value_name"` to the current value string (`None` when the
+/// key or value does not exist).
 ///
 /// # Errors
 ///
-/// Returns an error if registry paths contain invalid characters (preventing
-/// `PowerShell` injection), if the `PowerShell` command fails to execute, or if
-/// the output cannot be parsed correctly.
+/// Returns an error if a registry value cannot be read.
+#[cfg(windows)]
 pub fn batch_check_values(
     resources: &[RegistryResource],
-    executor: &dyn Executor,
 ) -> Result<HashMap<String, Option<String>>> {
-    if resources.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    // Build a single script that checks every value and prints results on
-    // separate lines, delimited by a separator token so we can parse them.
-    let mut script = String::from("$ErrorActionPreference='SilentlyContinue'\n");
-    for (i, res) in resources.iter().enumerate() {
-        // Validate paths to prevent injection attacks
-        validate_registry_path(&res.key_path)?;
-        validate_registry_path(&res.value_name)?;
-
-        let key = res.key_path.replace('\'', "''");
-        let name = res.value_name.replace('\'', "''");
-        if i > 0 {
-            let _ = writeln!(script, "Write-Output '{BATCH_SEPARATOR}'");
-        }
-        let _ = write!(
-            script,
-            "$v = (Get-ItemProperty -Path '{key}' -Name '{name}' -ErrorAction SilentlyContinue).'{name}'\n\
-             if ($null -eq $v) {{ Write-Output '{NOT_FOUND_SENTINEL}' }} else {{ Write-Output $v }}\n"
-        );
-    }
-
-    let result = executor.run_unchecked("powershell", &["-NoProfile", "-Command", &script])?;
-
     let mut map = HashMap::with_capacity(resources.len());
-
-    if !result.success {
-        // If the whole script failed, treat every value as unknown/missing
-        for res in resources {
-            let key = format!("{}\\{}", res.key_path, res.value_name);
-            map.insert(key, None);
-        }
-        return Ok(map);
+    for res in resources {
+        let key = format!("{}\\{}", res.key_path, res.value_name);
+        let value = native::read_value(&res.key_path, &res.value_name)?;
+        map.insert(key, value);
     }
-
-    // Split output by the separator token
-    let chunks: Vec<&str> = result.stdout.split(BATCH_SEPARATOR).collect();
-    for (i, res) in resources.iter().enumerate() {
-        let map_key = format!("{}\\{}", res.key_path, res.value_name);
-        let value = chunks.get(i).and_then(|chunk| {
-            let trimmed = chunk.trim();
-            if trimmed == NOT_FOUND_SENTINEL {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        });
-        map.insert(map_key, value);
-    }
-
     Ok(map)
 }
 
-impl Resource for RegistryResource<'_> {
+/// Stub for non-Windows platforms (registry operations are Windows-only).
+#[cfg(not(windows))]
+#[allow(clippy::unnecessary_wraps)]
+pub fn batch_check_values(
+    _resources: &[RegistryResource],
+) -> Result<HashMap<String, Option<String>>> {
+    Ok(HashMap::new())
+}
+
+impl Resource for RegistryResource {
     fn description(&self) -> String {
         format!(
             "{}\\{} = {}",
@@ -163,92 +190,42 @@ impl Resource for RegistryResource<'_> {
     }
 
     fn current_state(&self) -> Result<ResourceState> {
-        // Check current registry value
-        let current_value = check_registry_value(&self.key_path, &self.value_name, self.executor)?;
-
-        current_value.map_or_else(
-            || Ok(ResourceState::Missing),
-            |current| {
-                if value_matches(&current, &self.value_data) {
-                    Ok(ResourceState::Correct)
-                } else {
-                    Ok(ResourceState::Incorrect { current })
-                }
-            },
-        )
+        #[cfg(windows)]
+        {
+            let current_value = native::read_value(&self.key_path, &self.value_name)?;
+            current_value.map_or_else(
+                || Ok(ResourceState::Missing),
+                |current| {
+                    if value_matches(&current, &self.value_data) {
+                        Ok(ResourceState::Correct)
+                    } else {
+                        Ok(ResourceState::Incorrect { current })
+                    }
+                },
+            )
+        }
+        #[cfg(not(windows))]
+        {
+            Ok(ResourceState::Missing)
+        }
     }
 
     fn apply(&self) -> Result<ResourceChange> {
-        set_registry_value(
-            &self.key_path,
-            &self.value_name,
-            &self.value_data,
-            self.executor,
-        )
-        .with_context(|| format!("set registry: {}\\{}", self.key_path, self.value_name))?;
-
-        Ok(ResourceChange::Applied)
+        #[cfg(windows)]
+        {
+            native::write_value(&self.key_path, &self.value_name, &self.value_data)
+                .with_context(|| format!("set registry: {}\\{}", self.key_path, self.value_name))?;
+            Ok(ResourceChange::Applied)
+        }
+        #[cfg(not(windows))]
+        {
+            anyhow::bail!("registry operations are only supported on Windows")
+        }
     }
-}
-
-/// Check a single registry value using `PowerShell`.
-/// Returns `Some(value)` if found, `None` if not found or on error.
-fn check_registry_value(
-    key_path: &str,
-    value_name: &str,
-    executor: &dyn Executor,
-) -> Result<Option<String>> {
-    validate_registry_path(key_path)?;
-    validate_registry_path(value_name)?;
-
-    let key = key_path.replace('\'', "''");
-    let name = value_name.replace('\'', "''");
-
-    let script = format!(
-        "$ErrorActionPreference='SilentlyContinue'\n\
-         $v = (Get-ItemProperty -Path '{key}' -Name '{name}' -ErrorAction SilentlyContinue).'{name}'\n\
-         if ($null -eq $v) {{ Write-Output '{NOT_FOUND_SENTINEL}' }} else {{ Write-Output $v }}"
-    );
-
-    let result = executor.run_unchecked("powershell", &["-NoProfile", "-Command", &script])?;
-
-    if !result.success {
-        return Ok(None);
-    }
-
-    let output = result.stdout.trim();
-    if output == NOT_FOUND_SENTINEL {
-        Ok(None)
-    } else {
-        Ok(Some(output.to_string()))
-    }
-}
-
-/// Set a registry value using `PowerShell`.
-fn set_registry_value(
-    key_path: &str,
-    value_name: &str,
-    value_data: &str,
-    executor: &dyn Executor,
-) -> Result<()> {
-    validate_registry_path(key_path)?;
-    validate_registry_path(value_name)?;
-
-    let key = key_path.replace('\'', "''");
-    let name = value_name.replace('\'', "''");
-    let (ps_value, ps_type) = format_registry_value(value_data);
-
-    let script = format!(
-        "if (!(Test-Path '{key}')) {{ New-Item -Path '{key}' -Force | Out-Null }}\n\
-         Set-ItemProperty -Path '{key}' -Name '{name}' -Value {ps_value} -Type {ps_type}"
-    );
-
-    let _result = executor.run("powershell", &["-NoProfile", "-Command", &script])?;
-
-    Ok(())
 }
 
 /// Compare registry values, handling numeric values specially.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn value_matches(current: &str, expected_data: &str) -> bool {
     // Handle hex values
     if let Some(hex) = expected_data
@@ -268,26 +245,6 @@ fn value_matches(current: &str, expected_data: &str) -> bool {
     current == expected_data
 }
 
-/// Format a value string for `PowerShell` `Set-ItemProperty`.
-/// Returns (`value_expression`, `type_name`).
-fn format_registry_value(data: &str) -> (String, &'static str) {
-    // Hex integer: 0x...
-    if let Some(hex) = data.strip_prefix("0x").or_else(|| data.strip_prefix("0X"))
-        && let Ok(n) = u64::from_str_radix(hex, 16)
-    {
-        return (n.to_string(), "DWord");
-    }
-
-    // Plain integer
-    if data.parse::<i64>().is_ok() {
-        return (data.to_string(), "DWord");
-    }
-
-    // String value - needs quoting and escaping
-    let escaped = data.replace('\'', "''");
-    (format!("'{escaped}'"), "String")
-}
-
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
@@ -295,12 +252,10 @@ mod tests {
 
     #[test]
     fn registry_resource_description() {
-        let executor = crate::exec::SystemExecutor;
         let resource = RegistryResource::new(
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "14".to_string(),
-            &executor,
         );
         assert_eq!(resource.description(), "HKCU:\\Console\\FontSize = 14");
     }
@@ -319,43 +274,14 @@ mod tests {
     }
 
     #[test]
-    fn format_decimal_integer() {
-        let (value, type_name) = format_registry_value("14");
-        assert_eq!(value, "14");
-        assert_eq!(type_name, "DWord");
-    }
-
-    #[test]
-    fn format_hex_integer() {
-        let (value, type_name) = format_registry_value("0x0E");
-        assert_eq!(value, "14"); // Hex 0x0E = decimal 14
-        assert_eq!(type_name, "DWord");
-    }
-
-    #[test]
-    fn format_string_value() {
-        let (value, type_name) = format_registry_value("test value");
-        assert_eq!(value, "'test value'");
-        assert_eq!(type_name, "String");
-    }
-
-    #[test]
-    fn format_string_with_quotes() {
-        let (value, type_name) = format_registry_value("test's value");
-        assert_eq!(value, "'test''s value'");
-        assert_eq!(type_name, "String");
-    }
-
-    #[test]
     fn from_entry_creates_resource() {
-        let executor = crate::exec::SystemExecutor;
         let entry = crate::config::registry::RegistryEntry {
             key_path: "HKCU:\\Test".to_string(),
             value_name: "TestValue".to_string(),
             value_data: "123".to_string(),
         };
 
-        let resource = RegistryResource::from_entry(&entry, &executor);
+        let resource = RegistryResource::from_entry(&entry);
         assert_eq!(resource.key_path, "HKCU:\\Test");
         assert_eq!(resource.value_name, "TestValue");
         assert_eq!(resource.value_data, "123");
@@ -363,12 +289,10 @@ mod tests {
 
     #[test]
     fn state_from_cached_correct() {
-        let executor = crate::exec::SystemExecutor;
         let resource = RegistryResource::new(
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "14".to_string(),
-            &executor,
         );
         let state = resource.state_from_cached(Some("14"));
         assert_eq!(state, ResourceState::Correct);
@@ -376,12 +300,10 @@ mod tests {
 
     #[test]
     fn state_from_cached_incorrect() {
-        let executor = crate::exec::SystemExecutor;
         let resource = RegistryResource::new(
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "14".to_string(),
-            &executor,
         );
         let state = resource.state_from_cached(Some("20"));
         assert!(matches!(state, ResourceState::Incorrect { .. }));
@@ -389,12 +311,10 @@ mod tests {
 
     #[test]
     fn state_from_cached_missing() {
-        let executor = crate::exec::SystemExecutor;
         let resource = RegistryResource::new(
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "14".to_string(),
-            &executor,
         );
         let state = resource.state_from_cached(None);
         assert_eq!(state, ResourceState::Missing);
@@ -402,12 +322,10 @@ mod tests {
 
     #[test]
     fn state_from_cached_hex_match() {
-        let executor = crate::exec::SystemExecutor;
         let resource = RegistryResource::new(
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "0x0E".to_string(),
-            &executor,
         );
         // 0x0E = 14 decimal
         let state = resource.state_from_cached(Some("14"));
@@ -416,8 +334,7 @@ mod tests {
 
     #[test]
     fn batch_check_values_empty() {
-        let executor = crate::exec::SystemExecutor;
-        let result = batch_check_values(&[], &executor).unwrap();
+        let result = batch_check_values(&[]).unwrap();
         assert!(result.is_empty());
     }
 }

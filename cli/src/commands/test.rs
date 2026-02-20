@@ -180,7 +180,7 @@ impl Task for RunShellcheck {
             ctx.log.info("shellcheck passed");
             Ok(TaskResult::Ok)
         } else {
-            print_exec_output(&result);
+            log_exec_output(ctx.log, &result);
             anyhow::bail!("shellcheck found issues");
         }
     }
@@ -242,7 +242,7 @@ impl Task for RunPSScriptAnalyzer {
             ctx.log.info("PSScriptAnalyzer passed");
             Ok(TaskResult::Ok)
         } else {
-            print_exec_output(&result);
+            log_exec_output(ctx.log, &result);
             anyhow::bail!("PSScriptAnalyzer found issues");
         }
     }
@@ -349,13 +349,10 @@ fn read_first_line(path: &Path) -> Vec<u8> {
     buf.get(..end).unwrap_or_default().to_vec()
 }
 
-/// Print command output (stdout and stderr) to stderr.
-fn print_exec_output(result: &crate::exec::ExecResult) {
-    if !result.stdout.is_empty() {
-        eprintln!("{}", result.stdout);
-    }
-    if !result.stderr.is_empty() {
-        eprintln!("{}", result.stderr);
+/// Log command output (stdout and stderr) through the logger.
+fn log_exec_output(log: &dyn crate::logging::Log, result: &crate::exec::ExecResult) {
+    for line in result.stdout.lines().chain(result.stderr.lines()) {
+        log.error(line);
     }
 }
 

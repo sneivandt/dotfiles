@@ -18,22 +18,18 @@ System packages are declared in `conf/packages.ini`, loaded by `cli/src/config/p
 [arch]
 git
 neovim
+aur:powershell-bin
 
 [arch,desktop]
 alacritty
-
-[arch,aur]
-powershell-bin
-
-[arch,desktop,aur]
-visual-studio-code-insiders-bin
+aur:visual-studio-code-insiders-bin
 
 [windows]
 Git.Git
 Microsoft.PowerShell
 ```
 
-The config loader tags packages from `[*,aur]` sections with `is_aur = true`.
+The config loader strips the `aur:` prefix and tags those packages with `is_aur = true`.
 
 ## Task Structure
 
@@ -94,6 +90,6 @@ This avoids running one command per package.
 
 1. Always check `ctx.executor.which("pacman")` / `ctx.executor.which("winget")` before calling
 2. Use `--needed --noconfirm` for pacman to ensure idempotency
-3. AUR packages must be in `[*,aur]` sections to be tagged correctly
+3. AUR packages must be prefixed with `aur:` to be tagged correctly
 4. Use exact package IDs on Windows (case-sensitive)
 5. Return `TaskResult::Skipped` with reason when package manager is missing

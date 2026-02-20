@@ -2,6 +2,7 @@
 name = "dotfiles-cli"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.91"
 description = "Cross-platform dotfiles management engine"
 license = "MIT"
 publish = false
@@ -14,10 +15,15 @@ path = "src/main.rs"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 enable-ansi-support = "0.2"
+git2 = "0.20.4"
 rayon = "1.10"
+which = "8.0.0"
 
 [dev-dependencies]
 tempfile = "3"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
 
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }

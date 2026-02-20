@@ -155,7 +155,7 @@ available only when invoking the binary directly.
 | `symlinks.rs` | `symlinks.ini` | Symlink mappings |
 | `systemd_units.rs` | `systemd-units.ini` | Systemd units (Linux only) |
 | `chmod.rs` | `chmod.ini` | File permissions |
-| `vscode.rs` | `vscode-extensions.ini` | VS Code extensions |
+| `vscode_extensions.rs` | `vscode-extensions.ini` | VS Code extensions |
 | `copilot_skills.rs` | `copilot-skills.ini` | GitHub Copilot CLI skills |
 | `registry.rs` | `registry.ini` | Windows registry entries |
 | `manifest.rs` | `manifest.ini` | Sparse checkout file mappings |
@@ -304,7 +304,7 @@ Task failures are caught by `tasks::execute()` and recorded as `TaskStatus::Fail
 
 - **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/ini.rs`)
 
-The project uses `assert_cmd` and `predicates` as dev-dependencies for CLI-level testing.
+The project uses `tempfile` as a dev-dependency for tests that need temporary directories.
 
 ### Configuration Validation
 
@@ -341,7 +341,7 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 1. Create a new file in `cli/src/tasks/` implementing the `Task` trait
 2. Add the module to `cli/src/tasks/mod.rs`
-3. Add the task to the task list in `commands/install.rs`
+3. Add the task to `all_install_tasks()` in `cli/src/tasks/mod.rs`
 
 ### Adding New Configuration Types
 
@@ -363,13 +363,16 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 Tasks are executed in parallel using a dependency-graph scheduler.  Each task
 declares its dependencies via `Task::dependencies()` (returning `TypeId`s of
-prerequisite task structs).  The scheduler uses [Rayon](https://docs.rs/rayon)
-to spawn all tasks and a `Condvar`-based `TaskGraph` to block each task until
-its dependencies are marked complete.
+prerequisite task structs).  The scheduler uses `std::thread::scope` to spawn
+one OS thread per task and a `Condvar`-based `TaskGraph` to block each task
+until its dependencies are marked complete.  OS threads are used deliberately
+— blocking on a `Condvar` inside a Rayon worker would exhaust Rayon's
+fixed-size thread pool and deadlock when the pool is smaller than the number
+of tasks with unsatisfied dependencies (common on 2-vCPU CI runners).
 
 **How it works:**
 
-- Each task is spawned into the Rayon thread pool immediately
+- Each task is spawned into an OS thread via `std::thread::scope`
 - `TaskGraph::wait_for_deps()` blocks the task until all declared dependencies
   have called `TaskGraph::mark_complete()`
 - Tasks with no dependencies (or whose dependencies were filtered out) start

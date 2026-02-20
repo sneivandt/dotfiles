@@ -121,8 +121,8 @@ config/xmonad/xmonad.hs
 - **Windows**: Uses `winget`
 
 **Format**: Sections represent profiles; entries are package names.
-- Sections with `aur` tag are handled by `paru` (e.g., `[arch,aur]`)
-- Arch Linux sections without the `aur` tag (e.g., `[arch]`, `[arch,desktop]`) are handled by the standard package manager (`pacman`)
+- AUR packages are prefixed with `aur:` and handled by `paru`
+- Arch Linux sections (e.g., `[arch]`, `[arch,desktop]`) are handled by the standard package manager (`pacman`)
 - Windows sections (e.g., `[windows]`) are handled by `winget`
 
 **Example**:
@@ -130,12 +130,11 @@ config/xmonad/xmonad.hs
 [arch]
 git
 base-devel
-
-[arch,aur]
-powershell-bin
+aur:powershell-bin
 
 [arch,desktop]
 alacritty
+aur:spotify
 ```
 
 ---
@@ -143,16 +142,16 @@ alacritty
 ### `systemd-units.ini`
 **Purpose**: Lists systemd user units to enable and start.
 
-**Format**: Sections represent profiles; entries are unit filenames.
+**Format**: Sections represent categories; entries are unit filenames.
 
 **Example**:
 ```ini
-[base]
+[linux]
 clean-home-tmp.timer
 
-[desktop]
-picom.service
+[arch,desktop]
 dunst.service
+picom.service
 ```
 
 **Note**: Unit files should exist in `symlinks/config/systemd/user/` and be symlinked before enabling.
@@ -162,15 +161,15 @@ dunst.service
 ### `chmod.ini`
 **Purpose**: Specifies file permissions to apply.
 
-**Format**: Sections represent profiles; entries are `<mode> <path-relative-to-home>`.
+**Format**: Sections represent categories; entries are `<mode> <path-relative-to-home>`.
 
 **Example**:
 ```ini
-[base]
+[linux]
 600 ssh/config
 755 config/zsh
 
-[desktop]
+[arch,desktop]
 755 config/volume/init-volume.sh
 ```
 
@@ -179,14 +178,17 @@ dunst.service
 ### `vscode-extensions.ini`
 **Purpose**: Lists VS Code extensions to install.
 
-**Format**: Single `[extensions]` section with extension IDs in `publisher.name` format.
+**Format**: Sections represent categories; entries are extension IDs in `publisher.name` format.
 
 **Example**:
 ```ini
-[extensions]
+[desktop]
 github.copilot
 ms-python.python
 rust-lang.rust-analyzer
+
+[windows]
+ms-vscode-remote.remote-wsl
 ```
 
 ---
@@ -338,20 +340,14 @@ Install packages only when specific categories are active:
 # Always installed on Arch
 git
 base-devel
-
-[arch,aur]
-# AUR packages on Arch (paru is installed automatically)
-powershell-bin
+aur:powershell-bin
 
 [arch,desktop]
 # Only on Arch with desktop
 alacritty
 dunst
-
-[arch,desktop,aur]
-# AUR desktop packages on Arch
-chromium-widevine
-spotify
+aur:chromium-widevine
+aur:spotify
 ```
 
 ## See Also

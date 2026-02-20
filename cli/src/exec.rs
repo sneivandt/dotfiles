@@ -97,13 +97,16 @@ pub fn run_unchecked(program: &str, args: &[&str]) -> Result<ExecResult> {
 /// Check if a program is available on PATH.
 #[must_use]
 pub fn which(program: &str) -> bool {
-    #[cfg(target_os = "windows")]
-    let check = Command::new("where").arg(program).output();
+    which::which(program).is_ok()
+}
 
-    #[cfg(not(target_os = "windows"))]
-    let check = Command::new("which").arg(program).output();
-
-    check.is_ok_and(|o| o.status.success())
+/// Resolve the full path of a program on PATH.
+///
+/// # Errors
+///
+/// Returns an error if the program cannot be found on PATH.
+pub fn which_path(program: &str) -> Result<std::path::PathBuf> {
+    which::which(program).with_context(|| format!("{program} not found on PATH"))
 }
 
 /// Trait for executing system commands, enabling test injection.

@@ -240,11 +240,15 @@ let setup = CommandSetup::init(global, log, &executor)?;
 let ctx = Context::new(&setup.config, &setup.platform, log, global.dry_run, &executor, global.parallel)?;
 ```
 
-Free-standing query functions also take the executor:
+Some free-standing query functions also take the executor:
 ```rust
 let installed = get_installed_packages(manager, ctx.executor)?;
 let extensions = get_installed_extensions(&cmd, ctx.executor)?;
-let cached = batch_check_values(&resources, ctx.executor)?;
+```
+
+Others use native crates and need no executor:
+```rust
+let cached = batch_check_values(&resources)?;
 ```
 
 ## Config Loader Pattern
@@ -308,8 +312,9 @@ impl Resource for MyResource<'_> {
 }
 ```
 
-Resources that do only filesystem operations (e.g., `SymlinkResource`, `ChmodResource`)
-do not need an executor and have no lifetime parameter.
+Resources that use native crates or only filesystem operations (e.g., `SymlinkResource`,
+`ChmodResource`, `GitConfigResource`, `RegistryResource`) do not need an executor
+and have no lifetime parameter.
 
 ### Generic Resource Loop
 

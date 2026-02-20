@@ -1,57 +1,67 @@
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use super::{Resource, ResourceChange, ResourceState};
-use crate::exec::Executor;
 
 /// A git config entry resource that can be checked and applied.
+///
+/// Uses the `git2` crate to read and write global git configuration natively,
+/// without shelling out to `git config`.
 #[derive(Debug)]
-pub struct GitConfigResource<'a> {
+pub struct GitConfigResource {
     /// Config key (e.g., "core.autocrlf").
     pub key: String,
     /// Desired value (e.g., "false").
     pub desired_value: String,
-    /// Executor for running git commands.
-    executor: &'a dyn Executor,
 }
 
-impl<'a> GitConfigResource<'a> {
+impl GitConfigResource {
     /// Create a new git config resource.
     #[must_use]
-    pub fn new(key: String, desired_value: String, executor: &'a dyn Executor) -> Self {
-        Self {
-            key,
-            desired_value,
-            executor,
+    pub const fn new(key: String, desired_value: String) -> Self {
+        Self { key, desired_value }
+    }
+
+    /// Check resource state against a pre-opened config snapshot.
+    ///
+    /// This enables unit testing without touching the real global git config.
+    fn state_from_config(&self, config: &git2::Config) -> Result<ResourceState> {
+        match config.get_string(&self.key) {
+            Ok(ref current) if current == &self.desired_value => Ok(ResourceState::Correct),
+            Ok(current) => Ok(ResourceState::Incorrect { current }),
+            Err(e) if e.code() == git2::ErrorCode::NotFound => Ok(ResourceState::Missing),
+            Err(e) => {
+                Err(anyhow::Error::from(e).context(format!("reading git config {}", self.key)))
+            }
         }
+    }
+
+    /// Apply config change to a mutable config handle.
+    ///
+    /// This enables unit testing without touching the real global git config.
+    fn apply_to_config(&self, config: &mut git2::Config) -> Result<ResourceChange> {
+        config
+            .set_str(&self.key, &self.desired_value)
+            .with_context(|| format!("setting {} = {}", self.key, self.desired_value))?;
+        Ok(ResourceChange::Applied)
     }
 }
 
-impl Resource for GitConfigResource<'_> {
+impl Resource for GitConfigResource {
     fn description(&self) -> String {
         format!("{} = {}", self.key, self.desired_value)
     }
 
     fn current_state(&self) -> Result<ResourceState> {
-        let result = self
-            .executor
-            .run_unchecked("git", &["config", "--global", "--get", &self.key])?;
-        let current = result.stdout.trim().to_string();
-
-        if !result.success || current.is_empty() {
-            Ok(ResourceState::Missing)
-        } else if current == self.desired_value {
-            Ok(ResourceState::Correct)
-        } else {
-            Ok(ResourceState::Incorrect { current })
-        }
+        let config = git2::Config::open_default().context("opening git config")?;
+        self.state_from_config(&config)
     }
 
     fn apply(&self) -> Result<ResourceChange> {
-        self.executor.run(
-            "git",
-            &["config", "--global", &self.key, &self.desired_value],
-        )?;
-        Ok(ResourceChange::Applied)
+        let config = git2::Config::open_default().context("opening git config")?;
+        let mut global = config
+            .open_level(git2::ConfigLevel::Global)
+            .context("opening global git config")?;
+        self.apply_to_config(&mut global)
     }
 }
 
@@ -59,50 +69,53 @@ impl Resource for GitConfigResource<'_> {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::resources::test_helpers::MockExecutor;
 
     #[test]
     fn description_format() {
-        let executor = crate::exec::SystemExecutor;
-        let resource =
-            GitConfigResource::new("core.autocrlf".to_string(), "false".to_string(), &executor);
+        let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
         assert_eq!(resource.description(), "core.autocrlf = false");
     }
 
     // ------------------------------------------------------------------
-    // current_state
+    // state_from_config
     // ------------------------------------------------------------------
 
     #[test]
-    fn current_state_correct_when_value_matches() {
-        let executor = MockExecutor::ok("false\n");
-        let resource =
-            GitConfigResource::new("core.autocrlf".to_string(), "false".to_string(), &executor);
-        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    fn state_correct_when_value_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let mut config = git2::Config::open(&path).unwrap();
+        config.set_str("core.autocrlf", "false").unwrap();
+
+        let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
+        assert_eq!(
+            resource.state_from_config(&config).unwrap(),
+            ResourceState::Correct
+        );
     }
 
     #[test]
-    fn current_state_missing_when_command_fails() {
-        let executor = MockExecutor::fail();
-        let resource =
-            GitConfigResource::new("core.autocrlf".to_string(), "false".to_string(), &executor);
-        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+    fn state_missing_when_key_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let config = git2::Config::open(&path).unwrap();
+
+        let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
+        assert_eq!(
+            resource.state_from_config(&config).unwrap(),
+            ResourceState::Missing
+        );
     }
 
     #[test]
-    fn current_state_missing_when_output_empty() {
-        let executor = MockExecutor::ok("");
-        let resource =
-            GitConfigResource::new("core.autocrlf".to_string(), "false".to_string(), &executor);
-        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
-    }
+    fn state_incorrect_when_value_differs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let mut config = git2::Config::open(&path).unwrap();
+        config.set_str("core.autocrlf", "true").unwrap();
 
-    #[test]
-    fn current_state_incorrect_when_value_differs() {
-        let executor = MockExecutor::ok("true\n");
-        let resource =
-            GitConfigResource::new("core.autocrlf".to_string(), "false".to_string(), &executor);
-        let state = resource.current_state().unwrap();
+        let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
+        let state = resource.state_from_config(&config).unwrap();
         assert!(
             matches!(state, ResourceState::Incorrect { ref current } if current == "true"),
             "expected Incorrect(true), got {state:?}"
@@ -110,14 +123,22 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // apply
+    // apply_to_config
     // ------------------------------------------------------------------
 
     #[test]
-    fn apply_returns_applied_on_success() {
-        let executor = MockExecutor::ok("");
-        let resource =
-            GitConfigResource::new("core.autocrlf".to_string(), "false".to_string(), &executor);
-        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    fn apply_sets_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let mut config = git2::Config::open(&path).unwrap();
+
+        let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
+        assert_eq!(
+            resource.apply_to_config(&mut config).unwrap(),
+            ResourceChange::Applied
+        );
+
+        let val = config.get_string("core.autocrlf").unwrap();
+        assert_eq!(val, "false");
     }
 }

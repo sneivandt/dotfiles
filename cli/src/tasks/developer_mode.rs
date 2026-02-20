@@ -17,7 +17,7 @@ impl Task for EnableDeveloperMode {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resource = DeveloperModeResource::new(ctx.executor);
+        let resource = DeveloperModeResource::new();
         process_resources(
             ctx,
             std::iter::once(resource),

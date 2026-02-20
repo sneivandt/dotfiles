@@ -28,6 +28,12 @@ impl Task for ReloadConfig {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        if !ctx.repo_updated.load(std::sync::atomic::Ordering::Acquire) {
+            ctx.log
+                .debug("repository was not updated, skipping config reload");
+            return Ok(TaskResult::Skipped("repository not updated".to_string()));
+        }
+
         // Load the new config while holding only a read lock, so there is no
         // window where the lock is held for writing across I/O.
         let new_config = {

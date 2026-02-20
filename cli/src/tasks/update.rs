@@ -69,6 +69,8 @@ impl Task for UpdateRepository {
                 if msg.contains("Already up to date") {
                     ctx.log.info("already up to date");
                 } else {
+                    ctx.repo_updated
+                        .store(true, std::sync::atomic::Ordering::Release);
                     ctx.log.info("repository updated");
                 }
                 Ok(TaskResult::Ok)

@@ -14,28 +14,31 @@ pub struct Package {
 
 /// Load packages from packages.ini, filtered by active categories.
 ///
-/// The "aur" tag is a package-type marker (not a profile category) and is
-/// excluded from AND-logic filtering. It is only used to set `is_aur`.
+/// Packages prefixed with `aur:` are tagged with `is_aur = true` and the
+/// prefix is stripped from the package name.
 ///
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Package>> {
     let sections = ini::parse_sections(path)?;
+    let filtered = ini::filter_sections_and(&sections, active_categories);
 
-    Ok(sections
+    Ok(filtered
         .into_iter()
-        .filter(|s| {
-            s.categories
-                .iter()
-                .filter(|c| c.as_str() != "aur")
-                .all(|cat| active_categories.contains(cat))
-        })
         .flat_map(|s| {
-            let is_aur = s.categories.iter().any(|c| c == "aur");
-            s.items
-                .into_iter()
-                .map(move |item| Package { name: item, is_aur })
+            s.items.iter().map(|item| {
+                item.strip_prefix("aur:").map_or_else(
+                    || Package {
+                        name: item.clone(),
+                        is_aur: false,
+                    },
+                    |name| Package {
+                        name: name.to_string(),
+                        is_aur: true,
+                    },
+                )
+            })
         })
         .collect())
 }
@@ -49,7 +52,7 @@ mod tests {
     #[test]
     fn load_filters_by_category() {
         let (_dir, path) =
-            write_temp_ini("[arch]\ngit\nvim\n\n[arch,aur]\nparu-bin\n\n[windows]\nwinget-pkg\n");
+            write_temp_ini("[arch]\ngit\nvim\naur:paru-bin\n\n[windows]\nwinget-pkg\n");
         let packages = load(&path, &["base".to_string(), "arch".to_string()]).unwrap();
         assert_eq!(packages.len(), 3);
         assert!(!packages[0].is_aur);
@@ -60,8 +63,7 @@ mod tests {
 
     #[test]
     fn aur_packages_detected() {
-        let (_dir, path) = write_temp_ini("[arch,aur]\nparu-bin\nyay\n");
-        // "aur" is a package-type marker, not a profile category
+        let (_dir, path) = write_temp_ini("[arch]\naur:paru-bin\naur:yay\n");
         let packages = load(&path, &["base".to_string(), "arch".to_string()]).unwrap();
         assert_eq!(packages.len(), 2);
         assert!(packages[0].is_aur);

@@ -24,7 +24,7 @@ pub struct Cli {
 /// Options shared across all subcommands.
 #[derive(Parser, Debug, Clone)]
 pub struct GlobalOpts {
-    /// Profile to use (base, arch, desktop, arch-desktop, windows)
+    /// Profile to use (base, desktop)
     #[arg(short, long, global = true)]
     pub profile: Option<String>,
 

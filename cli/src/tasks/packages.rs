@@ -148,7 +148,11 @@ impl Task for InstallParu {
         if ctx.executor.which("paru") {
             ctx.log.debug("paru already in PATH");
             ctx.log.info("paru already installed");
-            return Ok(TaskResult::Ok);
+            return Ok(if ctx.dry_run {
+                TaskResult::DryRun
+            } else {
+                TaskResult::Ok
+            });
         }
 
         if ctx.dry_run {
@@ -206,10 +210,8 @@ fn clone_paru_from_aur(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
 
 /// Build paru using makepkg with parallel compilation.
 fn build_paru(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
-    let nproc = ctx.executor.run("nproc", &[]).map_or_else(
-        |_| DEFAULT_NPROC.to_string(),
-        |r| r.stdout.trim().to_string(),
-    );
+    let nproc = std::thread::available_parallelism()
+        .map_or_else(|_| DEFAULT_NPROC.to_string(), |n| n.get().to_string());
 
     let makeflags = format!("-j{nproc}");
     ctx.log

@@ -20,13 +20,13 @@ impl Task for ConfigureGit {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_windows() && ctx.executor.which("git")
+        ctx.platform.is_windows()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resources = GIT_SETTINGS.iter().map(|(key, value)| {
-            GitConfigResource::new(key.to_string(), value.to_string(), ctx.executor)
-        });
+        let resources = GIT_SETTINGS
+            .iter()
+            .map(|(key, value)| GitConfigResource::new(key.to_string(), value.to_string()));
         process_resources(
             ctx,
             resources,
@@ -45,32 +45,23 @@ impl Task for ConfigureGit {
 mod tests {
     use super::*;
     use crate::platform::{Os, Platform};
-    use crate::tasks::test_helpers::{NoOpExecutor, WhichExecutor, empty_config, make_context};
+    use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
     use std::path::PathBuf;
 
     #[test]
     fn should_run_false_on_linux() {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
-        let executor = WhichExecutor { which_result: true };
+        let executor = NoOpExecutor;
         let ctx = make_context(config, &platform, &executor);
         assert!(!ConfigureGit.should_run(&ctx));
     }
 
     #[test]
-    fn should_run_false_when_git_not_found() {
+    fn should_run_true_on_windows() {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Windows, false);
-        let executor = NoOpExecutor; // which() returns false
-        let ctx = make_context(config, &platform, &executor);
-        assert!(!ConfigureGit.should_run(&ctx));
-    }
-
-    #[test]
-    fn should_run_true_on_windows_with_git() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Platform::new(Os::Windows, false);
-        let executor = WhichExecutor { which_result: true };
+        let executor = NoOpExecutor;
         let ctx = make_context(config, &platform, &executor);
         assert!(ConfigureGit.should_run(&ctx));
     }

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     PowerShell entry point for dotfiles management engine.
 .DESCRIPTION
@@ -43,6 +43,9 @@ $Repo = "sneivandt/dotfiles"
 $BinDir = Join-Path $DotfilesRoot "bin"
 $CacheFile = Join-Path $BinDir ".dotfiles-version-cache"
 $CacheMaxAge = 3600
+$TransferTimeout = 120  # seconds — total transfer timeout
+$RetryCount = 3         # number of download attempts
+$RetryDelay = 2         # seconds between retries
 
 # When running in an elevated window, pause before closing so the user can see output
 function Wait-IfElevated
@@ -178,11 +181,22 @@ function Get-LatestVersion
 {
     try
     {
-        $response = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 10
+        $response = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec $TransferTimeout
         return $response.tag_name
+    }
+    catch [System.Net.WebException]
+    {
+        Write-Verbose "Network error checking latest version: $($_.Exception.Message)"
+        return ""
+    }
+    catch [System.Threading.Tasks.TaskCanceledException]
+    {
+        Write-Verbose "Timed out checking latest version"
+        return ""
     }
     catch
     {
+        Write-Verbose "Could not check latest version: $($_.Exception.Message)"
         return ""
     }
 }
@@ -199,13 +213,46 @@ function Get-Binary
     }
 
     Write-Output "Downloading dotfiles $Version..."
-    Invoke-WebRequest -Uri $url -OutFile $Binary -UseBasicParsing
+    $downloaded = $false
+    for ($attempt = 1; $attempt -le $RetryCount; $attempt++)
+    {
+        if ($attempt -gt 1)
+        {
+            Write-Output "Retry $attempt/$RetryCount after ${RetryDelay}s..."
+            Start-Sleep -Seconds $RetryDelay
+        }
+        try
+        {
+            Invoke-WebRequest -Uri $url -OutFile $Binary -UseBasicParsing -TimeoutSec $TransferTimeout
+            $downloaded = $true
+            break
+        }
+        catch [System.Net.WebException]
+        {
+            Write-Verbose "Download attempt $attempt failed (network): $($_.Exception.Message)"
+        }
+        catch [System.Threading.Tasks.TaskCanceledException]
+        {
+            Write-Verbose "Download attempt $attempt timed out"
+        }
+        catch
+        {
+            Write-Verbose "Download attempt $attempt failed: $($_.Exception.Message)"
+        }
+    }
+
+    if (-not $downloaded)
+    {
+        if (Test-Path $Binary) { Remove-Item $Binary -Force }
+        Write-Error "Failed to download dotfiles $Version after $RetryCount attempts. Check your internet connection or use -Build to build from source."
+        exit 1
+    }
 
     # Verify checksum
     $checksumUrl = "https://github.com/$Repo/releases/download/$Version/checksums.sha256"
     try
     {
-        $checksums = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing).Content
+        $checksums = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing -TimeoutSec $TransferTimeout).Content
         $expected = ($checksums -split "`n" | Where-Object { $_ -match [regex]::Escape($AssetName) }) -replace '\s+.*', ''
         $actual = (Get-FileHash -Path $Binary -Algorithm SHA256).Hash.ToLower()
         if ($expected -and ($expected -ne $actual))

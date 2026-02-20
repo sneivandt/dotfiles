@@ -18,7 +18,11 @@ REPO="sneivandt/dotfiles"
 BIN_DIR="$DOTFILES_ROOT/bin"
 BINARY="$BIN_DIR/dotfiles"
 CACHE_FILE="$BIN_DIR/.dotfiles-version-cache"
-CACHE_MAX_AGE=3600  # seconds
+CACHE_MAX_AGE=3600   # seconds
+CONNECT_TIMEOUT=10   # seconds — TCP connect timeout
+TRANSFER_TIMEOUT=120 # seconds — total transfer timeout
+RETRY_COUNT=3        # number of download attempts
+RETRY_DELAY=2        # seconds between retries
 
 # --------------------------------------------------------------------------- #
 # Usage
@@ -127,10 +131,12 @@ get_cached_version() {
 # Get the latest release tag from GitHub
 get_latest_version() {
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+    curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
+      "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
       | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
   elif command -v wget >/dev/null 2>&1; then
-    wget -qO- "https://api.github.com/repos/$REPO/releases/latest" \
+    wget -qO- --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
+      "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
       | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
   else
     echo ""
@@ -145,6 +151,36 @@ detect_arch() {
   esac
 }
 
+# Download a URL to a file with retries
+# Usage: download_with_retry <url> <output_file>
+download_with_retry() {
+  _dwr_url="$1"
+  _dwr_out="$2"
+  _dwr_attempt=1
+  while [ "$_dwr_attempt" -le "$RETRY_COUNT" ]; do
+    if [ "$_dwr_attempt" -gt 1 ]; then
+      echo "Retry $_dwr_attempt/$RETRY_COUNT after ${RETRY_DELAY}s..." >&2
+      sleep "$RETRY_DELAY"
+    fi
+    if command -v curl >/dev/null 2>&1; then
+      if curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
+           -o "$_dwr_out" "$_dwr_url" 2>/dev/null; then
+        return 0
+      fi
+    elif command -v wget >/dev/null 2>&1; then
+      if wget -qO "$_dwr_out" --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
+           "$_dwr_url" 2>/dev/null; then
+        return 0
+      fi
+    else
+      echo "ERROR: curl or wget required to download binary." >&2
+      exit 1
+    fi
+    _dwr_attempt=$((_dwr_attempt + 1))
+  done
+  return 1
+}
+
 # Download the binary for the given version tag
 download_binary() {
   version="$1"
@@ -155,12 +191,10 @@ download_binary() {
   mkdir -p "$BIN_DIR"
 
   echo "Downloading dotfiles $version..."
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL -o "$BINARY" "$url"
-  elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$BINARY" "$url"
-  else
-    echo "ERROR: curl or wget required to download binary." >&2
+  if ! download_with_retry "$url" "$BINARY"; then
+    echo "ERROR: Failed to download dotfiles $version after $RETRY_COUNT attempts." >&2
+    echo "Check your internet connection or use --build to build from source." >&2
+    rm -f "$BINARY"
     exit 1
   fi
 
@@ -171,8 +205,7 @@ download_binary() {
   if command -v sha256sum >/dev/null 2>&1; then
     tmpfile=$(mktemp)
     trap 'rm -f "$tmpfile"' EXIT
-    if curl -fsSL -o "$tmpfile" "$checksum_url" 2>/dev/null || \
-       wget -qO "$tmpfile" "$checksum_url" 2>/dev/null; then
+    if download_with_retry "$checksum_url" "$tmpfile"; then
       expected=$(grep "$asset" "$tmpfile" | awk '{print $1}')
       actual=$(sha256sum "$BINARY" | awk '{print $1}')
       if [ -n "$expected" ] && [ "$expected" != "$actual" ]; then

@@ -451,7 +451,7 @@ impl Logger {
                 }
                 TaskStatus::DryRun => {
                     dry_run += 1;
-                    ("~", "\x1b[33m")
+                    ("~", "\x1b[37m")
                 }
                 TaskStatus::Failed => {
                     failed += 1;
@@ -475,7 +475,7 @@ impl Logger {
             "{total} tasks: {ok} ok, {not_applicable} n/a, {skipped} skipped, {dry_run} dry-run, {failed} failed"
         );
         println!(
-            "  {total} tasks: \x1b[32m{ok} ok\x1b[0m, \x1b[2m{not_applicable} n/a\x1b[0m, \x1b[33m{skipped} skipped\x1b[0m, {dry_run} dry-run, \x1b[31m{failed} failed\x1b[0m"
+            "  {total} tasks: \x1b[32m{ok} ok\x1b[0m, \x1b[2m{not_applicable} n/a\x1b[0m, \x1b[33m{skipped} skipped\x1b[0m, \x1b[37m{dry_run} dry-run\x1b[0m, \x1b[31m{failed} failed\x1b[0m"
         );
         self.write_to_file("INF", &totals);
 

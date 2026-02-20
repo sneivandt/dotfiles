@@ -44,9 +44,11 @@ impl Resource for DefaultShellResource<'_> {
     }
 
     fn apply(&self) -> Result<ResourceChange> {
-        let result = self.executor.run("which", &[&self.target_shell])?;
-        let shell_path = result.stdout.trim();
-        self.executor.run("chsh", &["-s", shell_path])?;
+        let shell_path = crate::exec::which_path(&self.target_shell)?;
+        let shell_str = shell_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("non-UTF-8 shell path: {}", shell_path.display()))?;
+        self.executor.run("chsh", &["-s", shell_str])?;
         Ok(ResourceChange::Applied)
     }
 }

@@ -89,7 +89,7 @@ loader needs custom per-item logic (e.g., `packages.ini` tagging AUR packages).
 | `profiles.ini` | key=value | Profile definitions |
 | `manifest.ini` | list | Sparse checkout (OR-exclude) |
 | `symlinks.ini` | list | Profile-filtered |
-| `packages.ini` | list | `[*,aur]` tags AUR packages |
+| `packages.ini` | list | `aur:` prefix tags AUR packages |
 | `systemd-units.ini` | list | Systemd units |
 | `chmod.ini` | list | `<mode> <path>` format |
 | `vscode-extensions.ini` | list | `[extensions]` (special) |

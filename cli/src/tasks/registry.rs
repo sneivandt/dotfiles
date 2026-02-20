@@ -26,15 +26,15 @@ impl Task for ApplyRegistry {
         let registry_entries: Vec<_> = ctx.config_read().registry.clone();
         let resources: Vec<RegistryResource> = registry_entries
             .iter()
-            .map(|entry| RegistryResource::from_entry(entry, ctx.executor))
+            .map(RegistryResource::from_entry)
             .collect();
 
         ctx.log.debug(&format!(
-            "batch-checking {} registry values in a single PowerShell call",
+            "batch-checking {} registry values",
             resources.len()
         ));
 
-        let cached = batch_check_values(&resources, ctx.executor)?;
+        let cached = batch_check_values(&resources)?;
 
         let resource_states = resources.into_iter().map(|r| {
             let key = format!("{}\\{}", r.key_path, r.value_name);

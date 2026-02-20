@@ -14,6 +14,7 @@ pub mod update;
 pub mod vscode_extensions;
 
 use std::any::TypeId;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, RwLock};
 
 use anyhow::Result;
@@ -44,6 +45,12 @@ pub struct Context<'a> {
     pub executor: &'a dyn Executor,
     /// Whether to process resources in parallel using Rayon.
     pub parallel: bool,
+    /// Set to `true` by `UpdateRepository` when the repo was actually updated.
+    ///
+    /// Wrapped in `Arc` so the flag is shared across per-task contexts in
+    /// the parallel scheduler.  Checked by `ReloadConfig` to skip
+    /// unnecessary reloads.
+    pub repo_updated: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for Context<'_> {
@@ -56,6 +63,7 @@ impl std::fmt::Debug for Context<'_> {
             .field("home", &self.home)
             .field("executor", &"<dyn Executor>")
             .field("parallel", &self.parallel)
+            .field("repo_updated", &self.repo_updated)
             .finish()
     }
 }
@@ -94,6 +102,7 @@ impl<'a> Context<'a> {
             home: std::path::PathBuf::from(home),
             executor,
             parallel,
+            repo_updated: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -619,13 +628,16 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 /// does not have to duplicate boilerplate.
 #[cfg(test)]
 pub mod test_helpers {
+    use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
     use crate::config::Config;
     use crate::config::manifest::Manifest;
     use crate::config::profiles::Profile;
     use crate::exec::{ExecResult, Executor};
     use crate::logging::Logger;
     use crate::platform::Platform;
-    use std::path::{Path, PathBuf};
 
     use super::Context;
 
@@ -741,6 +753,7 @@ pub mod test_helpers {
             home: PathBuf::from("/home/test"),
             executor,
             parallel: false,
+            repo_updated: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -850,6 +863,7 @@ mod tests {
             home: PathBuf::from("/home/test"),
             executor,
             parallel: false,
+            repo_updated: Arc::new(AtomicBool::new(false)),
         };
         (ctx, log)
     }

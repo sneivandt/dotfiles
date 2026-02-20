@@ -106,7 +106,7 @@ cargo test --manifest-path cli/Cargo.toml
    }
    ```
 2. Add the module to `cli/src/tasks/mod.rs`
-3. Add the task to the task list in `cli/src/commands/install.rs`
+3. Add the task to `all_install_tasks()` in `cli/src/tasks/mod.rs`
 
 #### Adding New Configuration Types
 

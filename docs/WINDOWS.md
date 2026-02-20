@@ -221,10 +221,7 @@ Simply re-run the installer:
 .\dotfiles.ps1 install -p desktop
 ```
 
-The binary automatically:
-- Stashes any local changes
-- Fetches and merges updates from remote
-- Re-applies your local changes
+The binary automatically fetches and merges updates from remote using `git pull --ff-only`.
 
 See the [Automatic Repository Updates](#automatic-repository-updates) section for details on conflict handling.
 
@@ -237,7 +234,7 @@ git pull
 .\dotfiles.ps1 install -p desktop
 ```
 
-Note: Manual `git pull` may require stashing your changes first if the working tree is dirty.
+Note: If the working tree has conflicting changes, commit or resolve them before pulling.
 
 ## Logging and Summary
 

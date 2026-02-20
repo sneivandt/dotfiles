@@ -170,12 +170,6 @@ pub mod test_helpers {
             Self::with_responses(vec![(false, String::new())])
         }
 
-        /// Create a mock with an explicit success flag and stdout value.
-        #[must_use]
-        pub fn with_output(success: bool, stdout: &str) -> Self {
-            Self::with_responses(vec![(success, stdout.to_string())])
-        }
-
         /// Create a mock from an ordered list of `(success, stdout)` pairs.
         #[must_use]
         pub fn with_responses(responses: Vec<(bool, String)>) -> Self {

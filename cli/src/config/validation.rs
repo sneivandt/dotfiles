@@ -212,6 +212,19 @@ impl ConfigValidator for RegistryValidator<'_> {
                     "registry key path should start with a valid hive (HKCU:, HKLM:, etc.)",
                 ));
             }
+
+            // Warn about non-HKCU hives (project policy: only HKCU modifications)
+            if !path_upper.starts_with("HKCU:")
+                && VALID_REGISTRY_HIVES
+                    .iter()
+                    .any(|hive| path_upper.starts_with(hive))
+            {
+                warnings.push(ValidationWarning::new(
+                    "registry.ini",
+                    &entry.key_path,
+                    "registry key uses a non-HKCU hive; this project only modifies user-scope (HKCU) keys",
+                ));
+            }
         }
 
         warnings

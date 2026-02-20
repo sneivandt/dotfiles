@@ -278,6 +278,7 @@ fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Logger) {
                     home: ctx.home.clone(),
                     executor: ctx.executor,
                     parallel: ctx.parallel,
+                    repo_updated: Arc::clone(&ctx.repo_updated),
                 };
                 tasks::execute(task, &task_ctx);
 

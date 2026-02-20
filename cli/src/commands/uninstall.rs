@@ -27,6 +27,5 @@ pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Logger) -> Result<(
         Box::new(tasks::hooks::UninstallGitHooks),
     ];
 
-    log.stage("Uninstalling");
     super::run_tasks_to_completion(tasks.iter().map(Box::as_ref), &ctx, log)
 }

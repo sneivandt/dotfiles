@@ -33,6 +33,10 @@ pub struct GlobalOpts {
     /// Override dotfiles root directory
     #[arg(long, global = true)]
     pub root: Option<std::path::PathBuf>,
+
+    /// Enable parallel execution of operations within tasks
+    #[arg(long, global = true, default_value = "false")]
+    pub parallel: bool,
 }
 
 /// Available subcommands.

@@ -113,9 +113,9 @@ pub trait Resource {
 #[cfg(test)]
 pub(crate) mod test_helpers {
     use crate::exec::{ExecResult, Executor};
-    use std::cell::RefCell;
     use std::collections::VecDeque;
     use std::path::Path;
+    use std::sync::Mutex;
 
     /// A configurable mock executor for resource unit tests.
     ///
@@ -124,7 +124,7 @@ pub(crate) mod test_helpers {
     /// (`success = false`, stdout = `"unexpected call"`).
     #[derive(Debug)]
     pub struct MockExecutor {
-        responses: RefCell<VecDeque<(bool, String)>>,
+        responses: Mutex<VecDeque<(bool, String)>>,
     }
 
     impl MockExecutor {
@@ -146,15 +146,19 @@ pub(crate) mod test_helpers {
         /// Create a mock from an ordered list of `(success, stdout)` pairs.
         pub fn with_responses(responses: Vec<(bool, String)>) -> Self {
             Self {
-                responses: RefCell::new(responses.into()),
+                responses: Mutex::new(responses.into()),
             }
         }
 
         fn next(&self) -> (bool, String) {
-            self.responses
-                .borrow_mut()
-                .pop_front()
-                .unwrap_or_else(|| (false, "unexpected call".to_string()))
+            self.responses.lock().map_or_else(
+                |_| (false, "unexpected call".to_string()),
+                |mut guard| {
+                    guard
+                        .pop_front()
+                        .unwrap_or_else(|| (false, "unexpected call".to_string()))
+                },
+            )
         }
     }
 

@@ -14,6 +14,7 @@ pub mod vscode_extensions;
 
 use anyhow::Result;
 use std::path::Path;
+use std::sync::Mutex;
 
 use crate::config::Config;
 use crate::exec::Executor;
@@ -35,6 +36,8 @@ pub struct Context<'a> {
     pub home: std::path::PathBuf,
     /// Command executor (for testing or real system calls).
     pub executor: &'a dyn Executor,
+    /// Whether to process resources in parallel using Rayon.
+    pub parallel: bool,
 }
 
 impl std::fmt::Debug for Context<'_> {
@@ -46,6 +49,7 @@ impl std::fmt::Debug for Context<'_> {
             .field("dry_run", &self.dry_run)
             .field("home", &self.home)
             .field("executor", &"<dyn Executor>")
+            .field("parallel", &self.parallel)
             .finish()
     }
 }
@@ -63,6 +67,7 @@ impl<'a> Context<'a> {
         log: &'a Logger,
         dry_run: bool,
         executor: &'a dyn Executor,
+        parallel: bool,
     ) -> Result<Self> {
         let home = if cfg!(target_os = "windows") {
             std::env::var("USERPROFILE")
@@ -82,6 +87,7 @@ impl<'a> Context<'a> {
             dry_run,
             home: std::path::PathBuf::from(home),
             executor,
+            parallel,
         })
     }
 
@@ -186,17 +192,26 @@ pub struct ProcessOpts<'a> {
 /// Returns an error if any resource fails to check its state or apply changes,
 /// depending on the `bail_on_error` setting in `opts`. If `bail_on_error` is `false`,
 /// errors are logged as warnings instead.
-pub fn process_resources<R: Resource>(
+pub fn process_resources<R: Resource + Send>(
     ctx: &Context,
     resources: impl IntoIterator<Item = R>,
     opts: &ProcessOpts,
 ) -> Result<TaskResult> {
-    let mut stats = TaskStats::new();
-    for resource in resources {
-        let current = resource.current_state()?;
-        process_single(ctx, &resource, current, opts, &mut stats)?;
+    let resources: Vec<R> = resources.into_iter().collect();
+    if ctx.parallel && resources.len() > 1 {
+        ctx.log.debug(&format!(
+            "processing {} resources in parallel",
+            resources.len()
+        ));
+        process_resources_parallel(ctx, resources, opts)
+    } else {
+        let mut stats = TaskStats::new();
+        for resource in resources {
+            let current = resource.current_state()?;
+            process_single(ctx, &resource, current, opts, &mut stats)?;
+        }
+        Ok(stats.finish(ctx))
     }
-    Ok(stats.finish(ctx))
 }
 
 /// Process resources with pre-computed states.
@@ -209,16 +224,68 @@ pub fn process_resources<R: Resource>(
 /// Returns an error if any resource fails to apply changes, depending on the
 /// `bail_on_error` setting in `opts`. If `bail_on_error` is `false`, errors are
 /// logged as warnings instead.
-pub fn process_resource_states<R: Resource>(
+pub fn process_resource_states<R: Resource + Send>(
     ctx: &Context,
     resource_states: impl IntoIterator<Item = (R, ResourceState)>,
     opts: &ProcessOpts,
 ) -> Result<TaskResult> {
-    let mut stats = TaskStats::new();
-    for (resource, current) in resource_states {
-        process_single(ctx, &resource, current, opts, &mut stats)?;
+    let resource_states: Vec<(R, ResourceState)> = resource_states.into_iter().collect();
+    if ctx.parallel && resource_states.len() > 1 {
+        ctx.log.debug(&format!(
+            "processing {} resources in parallel",
+            resource_states.len()
+        ));
+        process_resource_states_parallel(ctx, resource_states, opts)
+    } else {
+        let mut stats = TaskStats::new();
+        for (resource, current) in resource_states {
+            process_single(ctx, &resource, current, opts, &mut stats)?;
+        }
+        Ok(stats.finish(ctx))
     }
-    Ok(stats.finish(ctx))
+}
+
+/// Process resources in parallel using Rayon.
+fn process_resources_parallel<R: Resource + Send>(
+    ctx: &Context,
+    resources: Vec<R>,
+    opts: &ProcessOpts,
+) -> Result<TaskResult> {
+    use rayon::prelude::*;
+    let stats = Mutex::new(TaskStats::new());
+    resources.into_par_iter().try_for_each(|resource: R| {
+        let current = resource.current_state()?;
+        let mut stats_guard = stats
+            .lock()
+            .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))?;
+        process_single(ctx, &resource, current, opts, &mut stats_guard)
+    })?;
+    Ok(stats
+        .into_inner()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .finish(ctx))
+}
+
+/// Process resources with pre-computed states in parallel using Rayon.
+fn process_resource_states_parallel<R: Resource + Send>(
+    ctx: &Context,
+    resource_states: Vec<(R, ResourceState)>,
+    opts: &ProcessOpts,
+) -> Result<TaskResult> {
+    use rayon::prelude::*;
+    let stats = Mutex::new(TaskStats::new());
+    resource_states
+        .into_par_iter()
+        .try_for_each(|(resource, state): (R, ResourceState)| {
+            let mut stats_guard = stats
+                .lock()
+                .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))?;
+            process_single(ctx, &resource, state, opts, &mut stats_guard)
+        })?;
+    Ok(stats
+        .into_inner()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .finish(ctx))
 }
 
 /// Process resources for removal.
@@ -540,6 +607,7 @@ pub(crate) mod test_helpers {
             dry_run: false,
             home: PathBuf::from("/home/test"),
             executor,
+            parallel: false,
         }
     }
 }
@@ -697,6 +765,7 @@ mod tests {
             dry_run: false,
             home: PathBuf::from("/home/test"),
             executor,
+            parallel: false,
         }
     }
 

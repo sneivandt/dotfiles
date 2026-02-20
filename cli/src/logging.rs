@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::SystemTime;
 
 /// Task execution result for summary reporting.
@@ -37,7 +38,7 @@ pub enum TaskStatus {
 #[derive(Debug)]
 pub struct Logger {
     verbose: bool,
-    tasks: std::cell::RefCell<Vec<TaskEntry>>,
+    tasks: Mutex<Vec<TaskEntry>>,
     log_file: Option<PathBuf>,
 }
 
@@ -153,7 +154,7 @@ impl Logger {
 
         Self {
             verbose,
-            tasks: std::cell::RefCell::new(Vec::new()),
+            tasks: Mutex::new(Vec::new()),
             log_file,
         }
     }
@@ -228,11 +229,13 @@ impl Logger {
 
     /// Record a task result for the summary.
     pub fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
-        self.tasks.borrow_mut().push(TaskEntry {
-            name: name.to_string(),
-            status,
-            message: message.map(String::from),
-        });
+        if let Ok(mut guard) = self.tasks.lock() {
+            guard.push(TaskEntry {
+                name: name.to_string(),
+                status,
+                message: message.map(String::from),
+            });
+        }
     }
 
     /// Return `true` if any recorded task has failed.
@@ -245,16 +248,20 @@ impl Logger {
     /// Count the number of failed tasks.
     #[must_use]
     pub fn failure_count(&self) -> usize {
-        self.tasks
-            .borrow()
-            .iter()
-            .filter(|t| t.status == TaskStatus::Failed)
-            .count()
+        self.tasks.lock().map_or(0, |guard| {
+            guard
+                .iter()
+                .filter(|t| t.status == TaskStatus::Failed)
+                .count()
+        })
     }
 
     /// Print the summary of all recorded tasks.
     pub fn print_summary(&self) {
-        let tasks = self.tasks.borrow();
+        let tasks = match self.tasks.lock() {
+            Ok(guard) => guard.clone(),
+            Err(_) => return,
+        };
         if tasks.is_empty() {
             return;
         }
@@ -268,7 +275,7 @@ impl Logger {
         let mut dry_run = 0u32;
         let mut failed = 0u32;
 
-        for task in tasks.iter() {
+        for task in &tasks {
             let (icon, color) = match task.status {
                 TaskStatus::Ok => {
                     ok += 1;
@@ -347,7 +354,10 @@ mod tests {
     fn logger_new() {
         let (log, _tmp) = isolated_logger(false);
         assert!(!log.verbose, "expected verbose=false");
-        assert!(log.tasks.borrow().is_empty(), "expected empty task list");
+        assert!(
+            log.tasks.lock().unwrap().is_empty(),
+            "expected empty task list"
+        );
     }
 
     #[test]
@@ -360,7 +370,7 @@ mod tests {
     fn record_task_ok() {
         let (log, _tmp) = isolated_logger(false);
         log.record_task("symlinks", TaskStatus::Ok, None);
-        let tasks = log.tasks.borrow();
+        let tasks = log.tasks.lock().unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].name, "symlinks");
         assert_eq!(tasks[0].status, TaskStatus::Ok);
@@ -370,7 +380,7 @@ mod tests {
     fn record_task_with_message() {
         let (log, _tmp) = isolated_logger(false);
         log.record_task("packages", TaskStatus::Skipped, Some("not on arch"));
-        let tasks = log.tasks.borrow();
+        let tasks = log.tasks.lock().unwrap();
         assert_eq!(tasks[0].message, Some("not on arch".to_string()));
     }
 
@@ -380,7 +390,7 @@ mod tests {
         log.record_task("a", TaskStatus::Ok, None);
         log.record_task("b", TaskStatus::Failed, Some("error"));
         log.record_task("c", TaskStatus::DryRun, None);
-        assert_eq!(log.tasks.borrow().len(), 3);
+        assert_eq!(log.tasks.lock().unwrap().len(), 3);
     }
 
     #[test]

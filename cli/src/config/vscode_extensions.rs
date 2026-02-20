@@ -34,6 +34,15 @@ mod tests {
     }
 
     #[test]
+    fn inactive_category_excluded() {
+        let (_dir, path) =
+            write_temp_ini("[base]\ngithub.copilot\n\n[desktop]\ngithub.copilot-chat\n");
+        let extensions = load(&path, &["base".to_string()]).unwrap();
+        assert_eq!(extensions.len(), 1, "desktop section should not be loaded");
+        assert_eq!(extensions[0].id, "github.copilot");
+    }
+
+    #[test]
     fn load_missing_file_returns_empty() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nonexistent.ini");

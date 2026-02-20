@@ -57,6 +57,11 @@ impl Resource for DefaultShellResource<'_> {
 mod tests {
     use super::*;
 
+    /// Mutex to serialize tests that mutate the `SHELL` environment variable.
+    /// Without this, tests running in parallel threads race on the same env var.
+    static SHELL_MUTEX: std::sync::LazyLock<std::sync::Mutex<()>> =
+        std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
+
     #[test]
     fn description_includes_shell_name() {
         let executor = crate::exec::SystemExecutor;
@@ -66,9 +71,10 @@ mod tests {
 
     #[test]
     fn current_state_correct_when_shell_matches() {
+        let _guard = SHELL_MUTEX.lock().expect("mutex poisoned");
         let executor = crate::exec::SystemExecutor;
         let resource = DefaultShellResource::new("zsh".to_string(), &executor);
-        // SAFETY: test-only env var manipulation; tests run in separate processes.
+        // SAFETY: test-only env var manipulation; serialized via SHELL_MUTEX.
         unsafe { std::env::set_var("SHELL", "/usr/bin/zsh") };
         let state = resource.current_state().unwrap();
         unsafe { std::env::remove_var("SHELL") };
@@ -77,9 +83,10 @@ mod tests {
 
     #[test]
     fn current_state_incorrect_when_different_shell_set() {
+        let _guard = SHELL_MUTEX.lock().expect("mutex poisoned");
         let executor = crate::exec::SystemExecutor;
         let resource = DefaultShellResource::new("zsh".to_string(), &executor);
-        // SAFETY: test-only env var manipulation; tests run in separate processes.
+        // SAFETY: test-only env var manipulation; serialized via SHELL_MUTEX.
         unsafe { std::env::set_var("SHELL", "/bin/bash") };
         let state = resource.current_state().unwrap();
         unsafe { std::env::remove_var("SHELL") };
@@ -91,9 +98,10 @@ mod tests {
 
     #[test]
     fn current_state_missing_when_shell_not_set() {
+        let _guard = SHELL_MUTEX.lock().expect("mutex poisoned");
         let executor = crate::exec::SystemExecutor;
         let resource = DefaultShellResource::new("zsh".to_string(), &executor);
-        // SAFETY: test-only env var manipulation; tests run in separate processes.
+        // SAFETY: test-only env var manipulation; serialized via SHELL_MUTEX.
         unsafe { std::env::remove_var("SHELL") };
         let state = resource.current_state().unwrap();
         assert_eq!(state, ResourceState::Missing);

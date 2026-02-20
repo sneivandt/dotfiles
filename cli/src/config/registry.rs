@@ -67,6 +67,33 @@ mod tests {
     }
 
     #[test]
+    fn load_multiple_sections() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.ini");
+        std::fs::write(
+            &path,
+            "[HKCU:\\Console]\nFontSize = 14\n\n[HKCU:\\Explorer]\nShowHidden = 1\n",
+        )
+        .unwrap();
+
+        let entries = load(&path).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].key_path, "HKCU:\\Console");
+        assert_eq!(entries[0].value_name, "FontSize");
+        assert_eq!(entries[1].key_path, "HKCU:\\Explorer");
+        assert_eq!(entries[1].value_name, "ShowHidden");
+    }
+
+    #[test]
+    fn load_empty_file_returns_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.ini");
+        std::fs::write(&path, "").unwrap();
+        let entries = load(&path).unwrap();
+        assert!(entries.is_empty(), "empty file should produce empty list");
+    }
+
+    #[test]
     fn load_missing_file_returns_empty() {
         let dir = tempfile::tempdir().unwrap();
         let entries = load(&dir.path().join("nope.ini")).unwrap();

@@ -36,6 +36,16 @@ mod tests {
     }
 
     #[test]
+    fn inactive_category_excluded() {
+        let (_dir, path) = write_temp_ini(
+            "[base]\nhttps://github.com/example/base-skill\n\n[desktop]\nhttps://github.com/example/desktop-skill\n",
+        );
+        let skills = load(&path, &["base".to_string()]).unwrap();
+        assert_eq!(skills.len(), 1, "desktop section should not be loaded");
+        assert!(skills[0].url.contains("base-skill"));
+    }
+
+    #[test]
     fn load_missing_file_returns_empty() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nonexistent.ini");

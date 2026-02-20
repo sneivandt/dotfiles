@@ -173,7 +173,7 @@ impl Task for InstallParu {
 
 /// Check that required tools are available for building paru.
 fn check_prerequisites(ctx: &Context) -> Result<()> {
-    for dep in &["git", "makepkg", "sudo"] {
+    for dep in ["git", "makepkg", "sudo"] {
         if !ctx.executor.which(dep) {
             anyhow::bail!("missing prerequisite: {dep}");
         }

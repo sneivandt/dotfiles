@@ -215,6 +215,14 @@ fn log_file_path(command: &str) -> Option<PathBuf> {
     Some(dir.join(format!("{command}.log")))
 }
 
+/// Return the current UTC time as seconds since the Unix epoch.
+fn current_utc_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 /// Convert days since the Unix epoch to `(year, month, day)` in the proleptic
 /// Gregorian calendar.  Algorithm from Howard Hinnant's *date algorithms*.
 const fn days_to_ymd(days: u64) -> (u64, u64, u64) {
@@ -233,10 +241,7 @@ const fn days_to_ymd(days: u64) -> (u64, u64, u64) {
 
 /// Format the current UTC time as `YYYY-MM-DD HH:MM:SS`.
 fn format_utc_datetime() -> String {
-    let secs = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let secs = current_utc_secs();
     let (y, mo, d) = days_to_ymd(secs / 86400);
     let day_secs = secs % 86400;
     let h = day_secs / 3600;
@@ -247,10 +252,7 @@ fn format_utc_datetime() -> String {
 
 /// Format the current UTC time as `HH:MM:SS`.
 fn format_utc_time() -> String {
-    let secs = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let secs = current_utc_secs();
     let day_secs = secs % 86400;
     let h = day_secs / 3600;
     let m = (day_secs % 3600) / 60;

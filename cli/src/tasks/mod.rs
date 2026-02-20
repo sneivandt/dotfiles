@@ -272,18 +272,39 @@ pub mod test_helpers {
             repo_updated: Arc::new(AtomicBool::new(false)),
         }
     }
+
+    /// Build a `'static` [`Context`] with a default Linux platform and
+    /// [`NoOpExecutor`], also returning the [`Logger`] so tests can inspect
+    /// recorded task state.
+    ///
+    /// All allocations are intentionally leaked — test binaries are short-lived
+    /// and leaking is harmless.
+    #[must_use]
+    pub fn make_static_context(config: Config) -> (Context<'static>, &'static Logger) {
+        use crate::platform::Os;
+        let platform: &'static Platform = Box::leak(Box::new(Platform::new(Os::Linux, false)));
+        let log: &'static Logger = Box::leak(Box::new(Logger::new(false, "test")));
+        let executor: &'static NoOpExecutor = Box::leak(Box::new(NoOpExecutor));
+        let ctx = Context {
+            config: std::sync::Arc::new(std::sync::RwLock::new(config)),
+            platform,
+            log,
+            dry_run: false,
+            home: PathBuf::from("/home/test"),
+            executor,
+            parallel: false,
+            repo_updated: Arc::new(AtomicBool::new(false)),
+        };
+        (ctx, log)
+    }
 }
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::logging::Logger;
-    use crate::platform::{Os, Platform};
     use std::path::PathBuf;
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
-    use test_helpers::{NoOpExecutor, empty_config};
+    use test_helpers::{empty_config, make_static_context};
 
     /// A mock task for testing `execute()`.
     struct MockTask {
@@ -304,27 +325,10 @@ mod tests {
         }
     }
 
-    fn test_context(config: crate::config::Config) -> (Context<'static>, &'static Logger) {
-        let platform = Box::leak(Box::new(Platform::new(Os::Linux, false)));
-        let log: &'static Logger = Box::leak(Box::new(Logger::new(false, "test")));
-        let executor = Box::leak(Box::new(NoOpExecutor));
-        let ctx = Context {
-            config: std::sync::Arc::new(std::sync::RwLock::new(config)),
-            platform,
-            log,
-            dry_run: false,
-            home: PathBuf::from("/home/test"),
-            executor,
-            parallel: false,
-            repo_updated: Arc::new(AtomicBool::new(false)),
-        };
-        (ctx, log)
-    }
-
     #[test]
     fn execute_skips_non_applicable_task() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let (ctx, log) = test_context(config);
+        let (ctx, log) = make_static_context(config);
         let task = MockTask {
             name: "test-task",
             should_run: false,
@@ -338,7 +342,7 @@ mod tests {
     #[test]
     fn execute_records_ok_task() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let (ctx, log) = test_context(config);
+        let (ctx, log) = make_static_context(config);
         let task = MockTask {
             name: "ok-task",
             should_run: true,
@@ -352,7 +356,7 @@ mod tests {
     #[test]
     fn execute_records_failed_task() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let (ctx, log) = test_context(config);
+        let (ctx, log) = make_static_context(config);
         let task = MockTask {
             name: "fail-task",
             should_run: true,
@@ -366,7 +370,7 @@ mod tests {
     #[test]
     fn execute_records_skipped_task() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let (ctx, log) = test_context(config);
+        let (ctx, log) = make_static_context(config);
         let task = MockTask {
             name: "skip-task",
             should_run: true,
@@ -380,7 +384,7 @@ mod tests {
     #[test]
     fn execute_records_dry_run_task() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let (ctx, log) = test_context(config);
+        let (ctx, log) = make_static_context(config);
         let task = MockTask {
             name: "dry-task",
             should_run: true,

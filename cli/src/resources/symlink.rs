@@ -147,7 +147,7 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
         .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
 
     // Prefer atomic rename; fall back to copy+delete on cross-filesystem move.
-    if let Err(_rename_err) = std::fs::rename(&tmp, target) {
+    if std::fs::rename(&tmp, target).is_err() {
         copy_dir_recursive(&tmp, target)
             .with_context(|| format!("cross-fs copy {} to {}", tmp.display(), target.display()))?;
         std::fs::remove_dir_all(&tmp)

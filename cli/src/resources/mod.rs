@@ -106,6 +106,123 @@ pub trait Resource {
     }
 }
 
+/// Shared test helpers for resource unit tests.
+///
+/// Provides a configurable [`MockExecutor`] so individual resource test
+/// modules do not have to duplicate the boilerplate.
+#[cfg(test)]
+pub(crate) mod test_helpers {
+    use crate::exec::{ExecResult, Executor};
+    use std::cell::RefCell;
+    use std::collections::VecDeque;
+    use std::path::Path;
+
+    /// A configurable mock executor for resource unit tests.
+    ///
+    /// Maintains a queue of `(success, stdout)` responses consumed in FIFO
+    /// order.  When the queue is empty any call returns a failed response
+    /// (`success = false`, stdout = `"unexpected call"`).
+    #[derive(Debug)]
+    pub struct MockExecutor {
+        responses: RefCell<VecDeque<(bool, String)>>,
+    }
+
+    impl MockExecutor {
+        /// Create a mock with a single successful response.
+        pub fn ok(stdout: &str) -> Self {
+            Self::with_responses(vec![(true, stdout.to_string())])
+        }
+
+        /// Create a mock with a single failed response (empty stdout).
+        pub fn fail() -> Self {
+            Self::with_responses(vec![(false, String::new())])
+        }
+
+        /// Create a mock with an explicit success flag and stdout value.
+        pub fn with_output(success: bool, stdout: &str) -> Self {
+            Self::with_responses(vec![(success, stdout.to_string())])
+        }
+
+        /// Create a mock from an ordered list of `(success, stdout)` pairs.
+        pub fn with_responses(responses: Vec<(bool, String)>) -> Self {
+            Self {
+                responses: RefCell::new(responses.into()),
+            }
+        }
+
+        fn next(&self) -> (bool, String) {
+            self.responses
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or_else(|| (false, "unexpected call".to_string()))
+        }
+    }
+
+    impl Executor for MockExecutor {
+        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+            let (success, stdout) = self.next();
+            if success {
+                Ok(ExecResult {
+                    stdout,
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                anyhow::bail!("mock command failed")
+            }
+        }
+
+        fn run_in(&self, _: &Path, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+            let (success, stdout) = self.next();
+            if success {
+                Ok(ExecResult {
+                    stdout,
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                anyhow::bail!("mock command failed")
+            }
+        }
+
+        fn run_in_with_env(
+            &self,
+            _: &Path,
+            _: &str,
+            _: &[&str],
+            _: &[(&str, &str)],
+        ) -> anyhow::Result<ExecResult> {
+            let (success, stdout) = self.next();
+            if success {
+                Ok(ExecResult {
+                    stdout,
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                anyhow::bail!("mock command failed")
+            }
+        }
+
+        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+            let (success, stdout) = self.next();
+            Ok(ExecResult {
+                stdout,
+                stderr: String::new(),
+                success,
+                code: Some(i32::from(!success)),
+            })
+        }
+
+        fn which(&self, _: &str) -> bool {
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {

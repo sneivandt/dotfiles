@@ -81,6 +81,7 @@ impl Resource for DeveloperModeResource<'_> {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::resources::test_helpers::MockExecutor;
 
     #[test]
     fn description_contains_key_and_value() {
@@ -89,72 +90,6 @@ mod tests {
         let desc = resource.description();
         assert!(desc.contains("AllowDevelopmentWithoutDevLicense"));
         assert!(desc.contains("AppModelUnlock"));
-    }
-
-    // ------------------------------------------------------------------
-    // MockExecutor
-    // ------------------------------------------------------------------
-
-    #[derive(Debug)]
-    struct MockExecutor {
-        responses: std::cell::RefCell<std::collections::VecDeque<(bool, String)>>,
-    }
-
-    impl MockExecutor {
-        fn with_output(success: bool, stdout: &str) -> Self {
-            Self {
-                responses: std::cell::RefCell::new(std::collections::VecDeque::from([(
-                    success,
-                    stdout.to_string(),
-                )])),
-            }
-        }
-
-        fn next(&self) -> (bool, String) {
-            self.responses
-                .borrow_mut()
-                .pop_front()
-                .unwrap_or_else(|| (false, "unexpected call".to_string()))
-        }
-    }
-
-    impl crate::exec::Executor for MockExecutor {
-        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
-            anyhow::bail!("not expected")
-        }
-
-        fn run_in(
-            &self,
-            _: &std::path::Path,
-            _: &str,
-            _: &[&str],
-        ) -> anyhow::Result<crate::exec::ExecResult> {
-            anyhow::bail!("not expected")
-        }
-
-        fn run_in_with_env(
-            &self,
-            _: &std::path::Path,
-            _: &str,
-            _: &[&str],
-            _: &[(&str, &str)],
-        ) -> anyhow::Result<crate::exec::ExecResult> {
-            anyhow::bail!("not expected")
-        }
-
-        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
-            let (success, stdout) = self.next();
-            Ok(crate::exec::ExecResult {
-                stdout,
-                stderr: String::new(),
-                success,
-                code: Some(i32::from(!success)),
-            })
-        }
-
-        fn which(&self, _: &str) -> bool {
-            false
-        }
     }
 
     // ------------------------------------------------------------------

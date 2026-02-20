@@ -205,6 +205,7 @@ impl Resource for PackageResource<'_> {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::resources::test_helpers::MockExecutor;
 
     #[test]
     fn description_includes_manager() {
@@ -243,111 +244,6 @@ mod tests {
             resource.state_from_installed(&installed),
             ResourceState::Missing
         );
-    }
-
-    // ------------------------------------------------------------------
-    // MockExecutor for behavior tests
-    // ------------------------------------------------------------------
-
-    #[derive(Debug)]
-    struct MockExecutor {
-        responses: std::cell::RefCell<std::collections::VecDeque<(bool, String)>>,
-    }
-
-    impl MockExecutor {
-        fn ok(stdout: &str) -> Self {
-            Self {
-                responses: std::cell::RefCell::new(std::collections::VecDeque::from([(
-                    true,
-                    stdout.to_string(),
-                )])),
-            }
-        }
-
-        fn fail() -> Self {
-            Self {
-                responses: std::cell::RefCell::new(std::collections::VecDeque::from([(
-                    false,
-                    String::new(),
-                )])),
-            }
-        }
-
-        fn next(&self) -> (bool, String) {
-            self.responses
-                .borrow_mut()
-                .pop_front()
-                .unwrap_or_else(|| (false, "unexpected call".to_string()))
-        }
-    }
-
-    impl crate::exec::Executor for MockExecutor {
-        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
-            let (success, stdout) = self.next();
-            if success {
-                Ok(crate::exec::ExecResult {
-                    stdout,
-                    stderr: String::new(),
-                    success: true,
-                    code: Some(0),
-                })
-            } else {
-                anyhow::bail!("mock command failed")
-            }
-        }
-
-        fn run_in(
-            &self,
-            _: &std::path::Path,
-            _: &str,
-            _: &[&str],
-        ) -> anyhow::Result<crate::exec::ExecResult> {
-            let (success, stdout) = self.next();
-            if success {
-                Ok(crate::exec::ExecResult {
-                    stdout,
-                    stderr: String::new(),
-                    success: true,
-                    code: Some(0),
-                })
-            } else {
-                anyhow::bail!("mock command failed")
-            }
-        }
-
-        fn run_in_with_env(
-            &self,
-            _: &std::path::Path,
-            _: &str,
-            _: &[&str],
-            _: &[(&str, &str)],
-        ) -> anyhow::Result<crate::exec::ExecResult> {
-            let (success, stdout) = self.next();
-            if success {
-                Ok(crate::exec::ExecResult {
-                    stdout,
-                    stderr: String::new(),
-                    success: true,
-                    code: Some(0),
-                })
-            } else {
-                anyhow::bail!("mock command failed")
-            }
-        }
-
-        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
-            let (success, stdout) = self.next();
-            Ok(crate::exec::ExecResult {
-                stdout,
-                stderr: String::new(),
-                success,
-                code: Some(i32::from(!success)),
-            })
-        }
-
-        fn which(&self, _: &str) -> bool {
-            false
-        }
     }
 
     // ------------------------------------------------------------------

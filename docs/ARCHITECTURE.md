@@ -364,11 +364,8 @@ parallel by default using the [Rayon](https://docs.rs/rayon) work-stealing threa
   to share across threads
 - The `Logger` uses `Mutex<Vec<TaskEntry>>` internally for thread-safe task recording
 
-**To disable** (e.g. for debugging interleaved output):
-
-```bash
-./dotfiles.sh install --no-parallel
-```
+**To disable** (e.g. for debugging interleaved output), pass `--no-parallel`
+directly to the binary — this flag is not exposed by the wrapper scripts.
 
 `process_resources_remove()` (used by uninstall tasks) is always sequential because
 removal operations are rare and order may matter.

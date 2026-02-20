@@ -60,6 +60,7 @@ dotfiles.sh [--build] version
 - **`--skip TASKS`** - Skip specific tasks (comma-separated)
 - **`--only TASKS`** - Run only specific tasks (comma-separated)
 - **`--root DIR`** - Override dotfiles root directory
+- **`--no-parallel`** - Disable parallel resource processing (parallel is on by default)
 
 ### Windows (`dotfiles.ps1`)
 
@@ -229,6 +230,33 @@ Enable verbose logging to see detailed operation information:
    Skipping base-devel: already installed
    Installing alacritty...
    Package installed: alacritty
+```
+
+## Parallel Execution
+
+Resource operations (symlinks, packages, registry entries, etc.) run in parallel
+by default using Rayon's thread pool. This significantly speeds up installation
+when many items need to be processed.
+
+**To disable parallel execution:**
+
+```bash
+./dotfiles.sh install --no-parallel
+```
+
+**When parallel execution runs:**
+- Multiple symlinks are created concurrently
+- Package state checks overlap
+- Registry entries are applied in parallel
+
+**Parallel execution is safe** — each resource is checked and applied independently,
+and the results accumulator uses a mutex for thread-safe counting.
+
+**Note:** The wrapper scripts (`dotfiles.sh`, `dotfiles.ps1`) do not expose
+`--no-parallel` as a named parameter. Pass it directly if you need sequential mode:
+
+```bash
+./dotfiles.sh install --no-parallel
 ```
 
 ## Dry-Run Mode

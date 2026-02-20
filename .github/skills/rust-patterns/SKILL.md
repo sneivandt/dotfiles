@@ -161,6 +161,7 @@ pub struct Context<'a> {
     pub dry_run: bool,
     pub home: PathBuf,
     pub executor: &'a dyn Executor,
+    pub parallel: bool,  // true by default; set false with --no-parallel
 }
 ```
 
@@ -173,7 +174,7 @@ All command execution goes through the `Executor` trait (`exec.rs`), which enabl
 dependency injection and test mocking:
 
 ```rust
-pub trait Executor: std::fmt::Debug {
+pub trait Executor: std::fmt::Debug + Sync {
     fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
     fn run_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult>;
     fn run_in_with_env(&self, dir: &Path, program: &str, args: &[&str], env: &[(&str, &str)]) -> Result<ExecResult>;
@@ -181,6 +182,8 @@ pub trait Executor: std::fmt::Debug {
     fn which(&self, program: &str) -> bool;
 }
 ```
+
+The `Sync` supertrait is required because resources hold `&'a dyn Executor` and are processed in parallel; `&T: Send` only holds when `T: Sync`.
 
 `SystemExecutor` is the production implementation that delegates to real
 process spawning. Free functions (`exec::run()`, `exec::run_unchecked()`, etc.)
@@ -199,7 +202,7 @@ The executor flows top-down through the system:
 // In commands/install.rs
 let executor = exec::SystemExecutor;
 let setup = CommandSetup::init(global, log, &executor)?;
-let ctx = Context::new(&setup.config, &setup.platform, log, global.dry_run, &executor)?;
+let ctx = Context::new(&setup.config, &setup.platform, log, global.dry_run, &executor, global.parallel)?;
 ```
 
 Free-standing query functions also take the executor:
@@ -285,6 +288,12 @@ loop so individual tasks don't repeat it:
 Both `process_resources` and `process_resource_states` accept a `ProcessOpts` struct
 that controls which states are fixable and whether errors bail or warn.
 Use these helpers for **all** new resource-based tasks.
+
+**Parallel execution:** When `ctx.parallel` is `true` and there is more than one
+resource, both helpers automatically dispatch to Rayon's parallel iterator. Resources
+must implement `Send`; because `Executor: Sync`, all resources holding `&dyn Executor`
+satisfy this automatically. Tests set `parallel: false` in their `Context` to keep
+execution deterministic.
 
 ## Rustdoc Comments
 

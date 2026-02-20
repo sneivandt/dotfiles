@@ -118,7 +118,7 @@ mod tests {
             root: Some(PathBuf::from("/explicit/path")),
             profile: None,
             dry_run: false,
-            parallel: false,
+            parallel: true,
         };
 
         let result = resolve_root(&global);
@@ -135,7 +135,7 @@ mod tests {
             root: None,
             profile: None,
             dry_run: false,
-            parallel: false,
+            parallel: true,
         };
 
         // Save and restore current directory

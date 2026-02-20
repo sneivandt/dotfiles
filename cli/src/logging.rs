@@ -94,16 +94,7 @@ impl<'a> BufferedLog<'a> {
             Ok(guard) => guard.clone(),
             Err(_) => return,
         };
-        for entry in &entries {
-            match entry {
-                LogEntry::Stage(msg) => self.inner.stage(msg),
-                LogEntry::Info(msg) => self.inner.info(msg),
-                LogEntry::Debug(msg) => self.inner.debug(msg),
-                LogEntry::Warn(msg) => self.inner.warn(msg),
-                LogEntry::Error(msg) => self.inner.error(msg),
-                LogEntry::DryRun(msg) => self.inner.dry_run(msg),
-            }
-        }
+        self.replay_entries(&entries);
     }
 
     /// Flush all buffered entries and remove the task from the active set.
@@ -122,7 +113,19 @@ impl<'a> BufferedLog<'a> {
             Ok(guard) => guard.clone(),
             Err(_) => return,
         };
-        for entry in &entries {
+        self.replay_entries(&entries);
+        let remaining = self.inner.active_tasks.lock().ok().and_then(|mut active| {
+            active.retain(|n| n != task_name);
+            (!active.is_empty()).then(|| active.join(", "))
+        });
+        if let Some(names) = remaining {
+            self.inner.draw_progress(&names);
+        }
+    }
+
+    /// Replay a slice of buffered entries to the backing [`Logger`].
+    fn replay_entries(&self, entries: &[LogEntry]) {
+        for entry in entries {
             match entry {
                 LogEntry::Stage(msg) => self.inner.stage(msg),
                 LogEntry::Info(msg) => self.inner.info(msg),
@@ -131,17 +134,6 @@ impl<'a> BufferedLog<'a> {
                 LogEntry::Error(msg) => self.inner.error(msg),
                 LogEntry::DryRun(msg) => self.inner.dry_run(msg),
             }
-        }
-        let remaining = self.inner.active_tasks.lock().map_or(None, |mut active| {
-            active.retain(|n| n != task_name);
-            if active.is_empty() {
-                None
-            } else {
-                Some(active.join(", "))
-            }
-        });
-        if let Some(names) = remaining {
-            self.inner.draw_progress(&names);
         }
     }
 }

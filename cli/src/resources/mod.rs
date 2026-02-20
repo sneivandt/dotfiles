@@ -164,10 +164,8 @@ pub mod test_helpers {
                 },
             )
         }
-    }
 
-    impl Executor for MockExecutor {
-        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+        fn next_result(&self) -> anyhow::Result<ExecResult> {
             let (success, stdout) = self.next();
             if success {
                 Ok(ExecResult {
@@ -180,19 +178,15 @@ pub mod test_helpers {
                 anyhow::bail!("mock command failed")
             }
         }
+    }
+
+    impl Executor for MockExecutor {
+        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+            self.next_result()
+        }
 
         fn run_in(&self, _: &Path, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
-            let (success, stdout) = self.next();
-            if success {
-                Ok(ExecResult {
-                    stdout,
-                    stderr: String::new(),
-                    success: true,
-                    code: Some(0),
-                })
-            } else {
-                anyhow::bail!("mock command failed")
-            }
+            self.next_result()
         }
 
         fn run_in_with_env(
@@ -202,17 +196,7 @@ pub mod test_helpers {
             _: &[&str],
             _: &[(&str, &str)],
         ) -> anyhow::Result<ExecResult> {
-            let (success, stdout) = self.next();
-            if success {
-                Ok(ExecResult {
-                    stdout,
-                    stderr: String::new(),
-                    success: true,
-                    code: Some(0),
-                })
-            } else {
-                anyhow::bail!("mock command failed")
-            }
+            self.next_result()
         }
 
         fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {

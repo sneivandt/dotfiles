@@ -683,11 +683,10 @@ pub mod test_helpers {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::config::profiles::Profile;
-    use crate::exec::{ExecResult, Executor};
     use crate::logging::Logger;
     use crate::platform::{Os, Platform};
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
+    use test_helpers::{NoOpExecutor, empty_config};
 
     // -----------------------------------------------------------------------
     // Test doubles
@@ -750,34 +749,6 @@ mod tests {
         }
     }
 
-    /// Minimal executor that panics if actually called (tests don't need it).
-    #[derive(Debug)]
-    struct NoOpExecutor;
-
-    impl Executor for NoOpExecutor {
-        fn run(&self, _program: &str, _args: &[&str]) -> Result<ExecResult> {
-            panic!("unexpected executor call in test");
-        }
-        fn run_in(&self, _dir: &Path, _program: &str, _args: &[&str]) -> Result<ExecResult> {
-            panic!("unexpected executor call in test");
-        }
-        fn run_in_with_env(
-            &self,
-            _dir: &Path,
-            _program: &str,
-            _args: &[&str],
-            _env: &[(&str, &str)],
-        ) -> Result<ExecResult> {
-            panic!("unexpected executor call in test");
-        }
-        fn run_unchecked(&self, _program: &str, _args: &[&str]) -> Result<ExecResult> {
-            panic!("unexpected executor call in test");
-        }
-        fn which(&self, _program: &str) -> bool {
-            false
-        }
-    }
-
     /// A mock task for testing `execute()`.
     struct MockTask {
         name: &'static str,
@@ -800,27 +771,6 @@ mod tests {
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
-
-    fn empty_config(root: PathBuf) -> Config {
-        Config {
-            root,
-            profile: Profile {
-                name: "test".to_string(),
-                active_categories: vec!["base".to_string()],
-                excluded_categories: vec![],
-            },
-            packages: vec![],
-            symlinks: vec![],
-            registry: vec![],
-            units: vec![],
-            chmod: vec![],
-            vscode_extensions: vec![],
-            copilot_skills: vec![],
-            manifest: crate::config::manifest::Manifest {
-                excluded_files: vec![],
-            },
-        }
-    }
 
     fn test_context(config: Config) -> (Context<'static>, &'static Logger) {
         let platform = Box::leak(Box::new(Platform::new(Os::Linux, false)));

@@ -171,6 +171,23 @@ jobs:
         shell: bash
         run: ./bin/${{ matrix.binary_name }} --root . -p ${{ matrix.profile }} test
 
+  test-install-uninstall:
+    name: "Integration: Install/Uninstall round-trip"
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dotfiles-linux
+          path: bin/
+      - name: Run install/uninstall round-trip test
+        run: |
+          chmod +x bin/dotfiles
+          export DIR="$(pwd)" BINARY_PATH="$(pwd)/bin/dotfiles"
+          cd .github/workflows/scripts/linux
+          sh test-uninstall.sh
+
   # ── Application Tests ─────────────────────────────────
   test-applications:
     name: "App: ${{ matrix.application }}"
@@ -300,6 +317,7 @@ jobs:
       - validate-config
       - build
       - integration
+      - test-install-uninstall
       - test-applications
       - test-paru
       - test-docker

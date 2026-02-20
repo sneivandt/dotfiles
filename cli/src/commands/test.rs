@@ -15,7 +15,7 @@ pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Logger) -> Result<()> {
     let executor = exec::SystemExecutor;
     let setup = super::CommandSetup::init(global, log)?;
     let ctx = Context::new(
-        &setup.config,
+        std::sync::Arc::new(std::sync::RwLock::new(setup.config)),
         &setup.platform,
         log,
         global.dry_run,
@@ -47,14 +47,18 @@ impl Task for ValidateSymlinkSources {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        !ctx.config.symlinks.is_empty()
+        !ctx.config_read().symlinks.is_empty()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let config = ctx.config_read();
+        let symlinks = config.symlinks.clone();
+        drop(config);
+
         let symlinks_dir = ctx.symlinks_dir();
         let mut missing = 0u32;
 
-        for symlink in &ctx.config.symlinks {
+        for symlink in &symlinks {
             let source = symlinks_dir.join(&symlink.source);
             if !source.exists() {
                 ctx.log
@@ -67,10 +71,8 @@ impl Task for ValidateSymlinkSources {
             anyhow::bail!("{missing} symlink source(s) missing");
         }
 
-        ctx.log.info(&format!(
-            "all {} symlink sources exist",
-            ctx.config.symlinks.len()
-        ));
+        ctx.log
+            .info(&format!("all {} symlink sources exist", symlinks.len()));
         Ok(TaskResult::Ok)
     }
 }

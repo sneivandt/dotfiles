@@ -1,4 +1,5 @@
 use anyhow::{Context as _, Result};
+use std::any::TypeId;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states};
 use crate::config::packages::Package;
@@ -50,12 +51,18 @@ impl Task for InstallPackages {
         "Install packages"
     }
 
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[TypeId::of::<super::reload_config::ReloadConfig>()];
+        DEPS
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.config.packages.iter().any(|p| !p.is_aur)
+        ctx.config_read().packages.iter().any(|p| !p.is_aur)
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let packages: Vec<_> = ctx.config.packages.iter().filter(|p| !p.is_aur).collect();
+        let all_packages: Vec<Package> = ctx.config_read().packages.clone();
+        let packages: Vec<&Package> = all_packages.iter().filter(|p| !p.is_aur).collect();
 
         if packages.is_empty() {
             return Ok(TaskResult::Skipped("no packages to install".to_string()));
@@ -91,12 +98,21 @@ impl Task for InstallAurPackages {
         "Install AUR packages"
     }
 
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[
+            TypeId::of::<InstallParu>(),
+            TypeId::of::<super::reload_config::ReloadConfig>(),
+        ];
+        DEPS
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.supports_aur() && ctx.config.packages.iter().any(|p| p.is_aur)
+        ctx.platform.supports_aur() && ctx.config_read().packages.iter().any(|p| p.is_aur)
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let packages: Vec<_> = ctx.config.packages.iter().filter(|p| p.is_aur).collect();
+        let all_packages: Vec<Package> = ctx.config_read().packages.clone();
+        let packages: Vec<&Package> = all_packages.iter().filter(|p| p.is_aur).collect();
 
         if packages.is_empty() {
             return Ok(TaskResult::Skipped("no AUR packages".to_string()));
@@ -255,7 +271,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!InstallPackages.should_run(&ctx));
     }
 
@@ -268,7 +284,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Linux, true);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!InstallPackages.should_run(&ctx));
     }
 
@@ -281,7 +297,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(InstallPackages.should_run(&ctx));
     }
 
@@ -298,7 +314,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Linux, false); // not arch
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!InstallAurPackages.should_run(&ctx));
     }
 
@@ -311,7 +327,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Linux, true); // arch
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!InstallAurPackages.should_run(&ctx));
     }
 
@@ -324,7 +340,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Linux, true); // arch
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(InstallAurPackages.should_run(&ctx));
     }
 
@@ -337,7 +353,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!InstallParu.should_run(&ctx));
     }
 
@@ -346,7 +362,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Windows, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!InstallParu.should_run(&ctx));
     }
 
@@ -355,7 +371,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, true); // arch
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(InstallParu.should_run(&ctx));
     }
 }

@@ -5,6 +5,7 @@ pub mod git_config;
 pub mod hooks;
 pub mod packages;
 pub mod registry;
+pub mod reload_config;
 pub mod shell;
 pub mod sparse_checkout;
 pub mod symlinks;
@@ -12,24 +13,29 @@ pub mod systemd_units;
 pub mod update;
 pub mod vscode_extensions;
 
+use std::any::TypeId;
+use std::sync::{Arc, Mutex, RwLock};
+
 use anyhow::Result;
-use std::path::Path;
-use std::sync::Mutex;
 
 use crate::config::Config;
 use crate::exec::Executor;
-use crate::logging::{Logger, TaskStatus};
+use crate::logging::{Log, TaskStatus};
 use crate::platform::Platform;
 use crate::resources::{Resource, ResourceChange, ResourceState};
 
 /// Shared context for task execution.
 pub struct Context<'a> {
     /// Configuration loaded from INI files.
-    pub config: &'a Config,
+    ///
+    /// Wrapped in `Arc<RwLock<_>>` so that `ReloadConfig` can atomically
+    /// replace the config after a `git pull` while all other tasks see the
+    /// updated values.  Use [`Context::config_read`] for read access.
+    pub config: Arc<RwLock<Config>>,
     /// Detected platform information.
     pub platform: &'a Platform,
     /// Logger for output and task recording.
-    pub log: &'a Logger,
+    pub log: &'a dyn Log,
     /// Whether to perform a dry run (preview changes without applying).
     pub dry_run: bool,
     /// User's home directory path.
@@ -45,7 +51,7 @@ impl std::fmt::Debug for Context<'_> {
         f.debug_struct("Context")
             .field("config", &"<Config>")
             .field("platform", &self.platform)
-            .field("log", &"<Logger>")
+            .field("log", &"<dyn Log>")
             .field("dry_run", &self.dry_run)
             .field("home", &self.home)
             .field("executor", &"<dyn Executor>")
@@ -62,9 +68,9 @@ impl<'a> Context<'a> {
     /// Returns an error if the HOME (or USERPROFILE on Windows) environment variable
     /// is not set.
     pub fn new(
-        config: &'a Config,
+        config: Arc<RwLock<Config>>,
         platform: &'a Platform,
-        log: &'a Logger,
+        log: &'a dyn Log,
         dry_run: bool,
         executor: &'a dyn Executor,
         parallel: bool,
@@ -91,22 +97,32 @@ impl<'a> Context<'a> {
         })
     }
 
+    /// Acquire a shared read lock on the configuration.
+    ///
+    /// Recovers from a poisoned lock (which can only occur if a previous task
+    /// panicked) by consuming the poison and returning the inner value.
+    pub fn config_read(&self) -> std::sync::RwLockReadGuard<'_, Config> {
+        self.config
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     /// Root directory of the dotfiles repository.
     #[must_use]
-    pub fn root(&self) -> &Path {
-        &self.config.root
+    pub fn root(&self) -> std::path::PathBuf {
+        self.config_read().root.clone()
     }
 
     /// Symlinks source directory.
     #[must_use]
     pub fn symlinks_dir(&self) -> std::path::PathBuf {
-        self.config.root.join("symlinks")
+        self.config_read().root.join("symlinks")
     }
 
     /// Hooks source directory.
     #[must_use]
     pub fn hooks_dir(&self) -> std::path::PathBuf {
-        self.config.root.join("hooks")
+        self.config_read().root.join("hooks")
     }
 }
 
@@ -433,9 +449,33 @@ fn apply_resource<R: Resource>(
 }
 
 /// A named, executable task.
-pub trait Task {
+///
+/// The `'static` bound is required so that each task struct has a stable
+/// [`TypeId`] which the scheduler uses to match dependency declarations
+/// (see [`Task::task_id`] and [`Task::dependencies`]).
+pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
+
+    /// The concrete `TypeId` of this task, used as a dependency identifier.
+    ///
+    /// The default implementation uses `TypeId::of::<Self>()` which is correct
+    /// for all concrete (non-generic) task structs.
+    fn task_id(&self) -> TypeId {
+        TypeId::of::<Self>()
+    }
+
+    /// Tasks that must complete before this task starts.
+    ///
+    /// Return `TypeId`s of the concrete task structs that this task depends on.
+    /// The scheduler uses this information to build a dependency graph and
+    /// execute independent tasks in parallel.  The default implementation
+    /// returns an empty slice (no dependencies).
+    ///
+    /// Use `TypeId::of::<TaskStruct>()` to reference a dependency.
+    fn dependencies(&self) -> &[TypeId] {
+        &[]
+    }
 
     /// Whether this task should run on the current platform/profile.
     fn should_run(&self, ctx: &Context) -> bool;
@@ -447,6 +487,32 @@ pub trait Task {
     /// Returns an error if the task fails to execute, such as when system commands
     /// fail, file operations are not permitted, or configuration is invalid.
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
+}
+
+/// The complete set of tasks run by the install command.
+///
+/// Order within the list is arbitrary — the scheduler derives execution order
+/// from each task's [`Task::dependencies`] declaration.
+#[must_use]
+pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
+    vec![
+        Box::new(developer_mode::EnableDeveloperMode),
+        Box::new(sparse_checkout::ConfigureSparseCheckout),
+        Box::new(update::UpdateRepository),
+        Box::new(git_config::ConfigureGit),
+        Box::new(hooks::InstallGitHooks),
+        Box::new(packages::InstallPackages),
+        Box::new(packages::InstallParu),
+        Box::new(packages::InstallAurPackages),
+        Box::new(symlinks::InstallSymlinks),
+        Box::new(chmod::ApplyFilePermissions),
+        Box::new(shell::ConfigureShell),
+        Box::new(systemd_units::ConfigureSystemd),
+        Box::new(registry::ApplyRegistry),
+        Box::new(vscode_extensions::InstallVsCodeExtensions),
+        Box::new(copilot_skills::InstallCopilotSkills),
+        Box::new(reload_config::ReloadConfig),
+    ]
 }
 
 /// Execute a task, recording the result in the logger.
@@ -596,12 +662,12 @@ pub(crate) mod test_helpers {
     /// The logger is leaked intentionally: test contexts are short-lived and
     /// leaking is harmless in a test binary.
     pub fn make_context<'a>(
-        config: &'a Config,
+        config: Config,
         platform: &'a Platform,
         executor: &'a dyn Executor,
     ) -> Context<'a> {
         Context {
-            config,
+            config: std::sync::Arc::new(std::sync::RwLock::new(config)),
             platform,
             log: Box::leak(Box::new(Logger::new(false, "test"))),
             dry_run: false,
@@ -618,8 +684,9 @@ mod tests {
     use super::*;
     use crate::config::profiles::Profile;
     use crate::exec::{ExecResult, Executor};
+    use crate::logging::Logger;
     use crate::platform::{Os, Platform};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     // -----------------------------------------------------------------------
     // Test doubles
@@ -754,25 +821,26 @@ mod tests {
         }
     }
 
-    fn test_context(config: &Config) -> Context<'_> {
+    fn test_context(config: Config) -> (Context<'static>, &'static Logger) {
         let platform = Box::leak(Box::new(Platform::new(Os::Linux, false)));
-        let log = Box::leak(Box::new(Logger::new(false, "test")));
+        let log: &'static Logger = Box::leak(Box::new(Logger::new(false, "test")));
         let executor = Box::leak(Box::new(NoOpExecutor));
-        Context {
-            config,
+        let ctx = Context {
+            config: std::sync::Arc::new(std::sync::RwLock::new(config)),
             platform,
             log,
             dry_run: false,
             home: PathBuf::from("/home/test"),
             executor,
             parallel: false,
-        }
+        };
+        (ctx, log)
     }
 
-    fn dry_run_context(config: &Config) -> Context<'_> {
-        let mut ctx = test_context(config);
+    fn dry_run_context(config: Config) -> (Context<'static>, &'static Logger) {
+        let (mut ctx, log) = test_context(config);
         ctx.dry_run = true;
-        ctx
+        (ctx, log)
     }
 
     fn default_opts() -> ProcessOpts<'static> {
@@ -830,7 +898,7 @@ mod tests {
     #[test]
     fn stats_finish_returns_dry_run_result() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = dry_run_context(&config);
+        let (ctx, _log) = dry_run_context(config);
         let stats = TaskStats::new();
         let result = stats.finish(&ctx);
         assert!(matches!(result, TaskResult::DryRun));
@@ -839,7 +907,7 @@ mod tests {
     #[test]
     fn stats_finish_returns_ok_result() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let stats = TaskStats::new();
         let result = stats.finish(&ctx);
         assert!(matches!(result, TaskResult::Ok));
@@ -852,7 +920,7 @@ mod tests {
     #[test]
     fn process_single_correct_increments_already_ok() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Correct);
         let opts = default_opts();
         let mut stats = TaskStats::new();
@@ -867,7 +935,7 @@ mod tests {
     #[test]
     fn process_single_invalid_increments_skipped() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Invalid {
             reason: "test".to_string(),
         });
@@ -892,7 +960,7 @@ mod tests {
     #[test]
     fn process_single_missing_skips_when_fix_missing_false() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Missing);
         let opts = ProcessOpts {
             fix_missing: false,
@@ -909,7 +977,7 @@ mod tests {
     #[test]
     fn process_single_incorrect_skips_when_fix_incorrect_false() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Incorrect {
             current: "wrong".to_string(),
         });
@@ -937,7 +1005,7 @@ mod tests {
     #[test]
     fn process_single_missing_applies_and_increments_changed() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Missing);
         let opts = default_opts();
         let mut stats = TaskStats::new();
@@ -951,7 +1019,7 @@ mod tests {
     #[test]
     fn process_single_incorrect_applies_and_increments_changed() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Incorrect {
             current: "wrong".to_string(),
         });
@@ -975,7 +1043,7 @@ mod tests {
     #[test]
     fn process_single_dry_run_missing_increments_changed_without_apply() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = dry_run_context(&config);
+        let (ctx, _log) = dry_run_context(config);
         // Apply would error if called — but dry-run should skip it
         let resource =
             MockResource::new(ResourceState::Missing).with_apply(Err("should not call".into()));
@@ -990,7 +1058,7 @@ mod tests {
     #[test]
     fn process_single_dry_run_incorrect_increments_changed() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = dry_run_context(&config);
+        let (ctx, _log) = dry_run_context(config);
         let resource = MockResource::new(ResourceState::Incorrect {
             current: "old-value".to_string(),
         });
@@ -1018,7 +1086,7 @@ mod tests {
     #[test]
     fn apply_resource_applied_increments_changed() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Missing);
         let opts = default_opts();
         let mut stats = TaskStats::new();
@@ -1031,7 +1099,7 @@ mod tests {
     #[test]
     fn apply_resource_already_correct_increments_already_ok() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Missing)
             .with_apply(Ok(ResourceChange::AlreadyCorrect));
         let opts = default_opts();
@@ -1046,7 +1114,7 @@ mod tests {
     #[test]
     fn apply_resource_skipped_no_bail_increments_skipped() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource =
             MockResource::new(ResourceState::Missing).with_apply(Ok(ResourceChange::Skipped {
                 reason: "not supported".to_string(),
@@ -1063,7 +1131,7 @@ mod tests {
     #[test]
     fn apply_resource_error_no_bail_increments_skipped() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource =
             MockResource::new(ResourceState::Missing).with_apply(Err("boom".to_string()));
         let opts = default_opts();
@@ -1078,7 +1146,7 @@ mod tests {
     #[test]
     fn apply_resource_bail_on_applied() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Missing);
         let opts = bail_opts();
         let mut stats = TaskStats::new();
@@ -1091,7 +1159,7 @@ mod tests {
     #[test]
     fn apply_resource_bail_on_already_correct() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Missing)
             .with_apply(Ok(ResourceChange::AlreadyCorrect));
         let opts = bail_opts();
@@ -1105,7 +1173,7 @@ mod tests {
     #[test]
     fn apply_resource_bail_on_skipped_returns_error() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource =
             MockResource::new(ResourceState::Missing).with_apply(Ok(ResourceChange::Skipped {
                 reason: "denied".to_string(),
@@ -1121,7 +1189,7 @@ mod tests {
     #[test]
     fn apply_resource_bail_on_error_propagates() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource =
             MockResource::new(ResourceState::Missing).with_apply(Err("critical".to_string()));
         let opts = bail_opts();
@@ -1139,7 +1207,7 @@ mod tests {
     #[test]
     fn process_resources_mixed_states() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resources = vec![
             MockResource::new(ResourceState::Correct),
             MockResource::new(ResourceState::Missing),
@@ -1156,7 +1224,7 @@ mod tests {
     #[test]
     fn process_resources_empty_list() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resources: Vec<MockResource> = vec![];
         let opts = default_opts();
 
@@ -1171,7 +1239,7 @@ mod tests {
     #[test]
     fn process_resource_states_applies_precomputed() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resource_states = vec![
             (
                 MockResource::new(ResourceState::Missing),
@@ -1195,7 +1263,7 @@ mod tests {
     #[test]
     fn process_resources_remove_removes_correct_resources() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, _log) = test_context(config);
         let resources = vec![
             MockResource::new(ResourceState::Correct),
             MockResource::new(ResourceState::Missing),
@@ -1208,7 +1276,7 @@ mod tests {
     #[test]
     fn process_resources_remove_dry_run() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = dry_run_context(&config);
+        let (ctx, _log) = dry_run_context(config);
         // Remove should NOT be called in dry-run
         let resources = vec![
             MockResource::new(ResourceState::Correct).with_remove(Err("should not call".into())),
@@ -1225,7 +1293,7 @@ mod tests {
     #[test]
     fn execute_skips_non_applicable_task() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, log) = test_context(config);
         let task = MockTask {
             name: "test-task",
             should_run: false,
@@ -1233,13 +1301,13 @@ mod tests {
         };
 
         execute(&task, &ctx);
-        assert_eq!(ctx.log.failure_count(), 0);
+        assert_eq!(log.failure_count(), 0);
     }
 
     #[test]
     fn execute_records_ok_task() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, log) = test_context(config);
         let task = MockTask {
             name: "ok-task",
             should_run: true,
@@ -1247,13 +1315,13 @@ mod tests {
         };
 
         execute(&task, &ctx);
-        assert_eq!(ctx.log.failure_count(), 0);
+        assert_eq!(log.failure_count(), 0);
     }
 
     #[test]
     fn execute_records_failed_task() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, log) = test_context(config);
         let task = MockTask {
             name: "fail-task",
             should_run: true,
@@ -1261,13 +1329,13 @@ mod tests {
         };
 
         execute(&task, &ctx);
-        assert_eq!(ctx.log.failure_count(), 1);
+        assert_eq!(log.failure_count(), 1);
     }
 
     #[test]
     fn execute_records_skipped_task() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, log) = test_context(config);
         let task = MockTask {
             name: "skip-task",
             should_run: true,
@@ -1275,13 +1343,13 @@ mod tests {
         };
 
         execute(&task, &ctx);
-        assert_eq!(ctx.log.failure_count(), 0);
+        assert_eq!(log.failure_count(), 0);
     }
 
     #[test]
     fn execute_records_dry_run_task() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = test_context(&config);
+        let (ctx, log) = test_context(config);
         let task = MockTask {
             name: "dry-task",
             should_run: true,
@@ -1289,6 +1357,6 @@ mod tests {
         };
 
         execute(&task, &ctx);
-        assert_eq!(ctx.log.failure_count(), 0);
+        assert_eq!(log.failure_count(), 0);
     }
 }

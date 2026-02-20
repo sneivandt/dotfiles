@@ -96,26 +96,28 @@ impl Task for ConfigureSparseCheckout {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if ctx.config.manifest.excluded_files.is_empty() {
+        let excluded_files: Vec<String> = ctx.config_read().manifest.excluded_files.clone();
+
+        if excluded_files.is_empty() {
             ctx.log.info("no files to exclude from sparse checkout");
             return Ok(TaskResult::Ok);
         }
 
-        let patterns_str = build_patterns(&ctx.config.manifest.excluded_files);
+        let patterns_str = build_patterns(&excluded_files);
         let sparse_file = ctx.root().join(".git/info/sparse-checkout");
 
         // Check if patterns are already up to date (shared by dry-run and real paths)
         if is_up_to_date(&sparse_file, &patterns_str) {
             ctx.log.info(&format!(
                 "already configured ({} files excluded)",
-                ctx.config.manifest.excluded_files.len()
+                excluded_files.len()
             ));
             return Ok(TaskResult::Ok);
         }
 
         if ctx.dry_run {
             ctx.log.dry_run("configure git sparse checkout");
-            for file in &ctx.config.manifest.excluded_files {
+            for file in &excluded_files {
                 ctx.log.dry_run(&format!("  exclude: {file}"));
             }
             return Ok(TaskResult::DryRun);
@@ -132,11 +134,11 @@ impl Task for ConfigureSparseCheckout {
         ctx.log
             .debug("initializing sparse checkout (non-cone mode)");
         ctx.executor
-            .run_in(root, "git", &["sparse-checkout", "init", "--no-cone"])?;
+            .run_in(&root, "git", &["sparse-checkout", "init", "--no-cone"])?;
 
         ctx.log.debug(&format!(
             "sparse checkout patterns: 1 inclusion, {} exclusions",
-            ctx.config.manifest.excluded_files.len()
+            excluded_files.len()
         ));
 
         // Write directly to sparse-checkout file
@@ -149,10 +151,7 @@ impl Task for ConfigureSparseCheckout {
         // Reset excluded files to HEAD so read-tree doesn't fail with
         // "not uptodate. Cannot merge." when the working tree is dirty.
         let mut checkout_args = vec!["checkout", "HEAD", "--"];
-        let excluded: Vec<&str> = ctx
-            .config
-            .manifest
-            .excluded_files
+        let excluded: Vec<&str> = excluded_files
             .iter()
             .filter(|f| root.join(f).exists())
             .map(String::as_str)
@@ -164,7 +163,7 @@ impl Task for ConfigureSparseCheckout {
                 excluded.len()
             ));
             // Best-effort: if checkout fails (e.g. file not in HEAD), proceed anyway
-            if let Err(e) = ctx.executor.run_in(root, "git", &checkout_args) {
+            if let Err(e) = ctx.executor.run_in(&root, "git", &checkout_args) {
                 ctx.log.debug(&format!("git checkout reset failed: {e}"));
             }
         }
@@ -172,11 +171,11 @@ impl Task for ConfigureSparseCheckout {
         ctx.log
             .debug("wrote sparse-checkout file, running read-tree");
         ctx.executor
-            .run_in(root, "git", &["read-tree", "-mu", "HEAD"])?;
+            .run_in(&root, "git", &["read-tree", "-mu", "HEAD"])?;
 
         ctx.log.info(&format!(
             "excluded {} files from checkout",
-            ctx.config.manifest.excluded_files.len()
+            excluded_files.len()
         ));
 
         Ok(TaskResult::Ok)
@@ -258,7 +257,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/nonexistent/repo"));
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!ConfigureSparseCheckout.should_run(&ctx));
     }
 
@@ -269,7 +268,7 @@ mod tests {
         let config = empty_config(dir.path().to_path_buf());
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(ConfigureSparseCheckout.should_run(&ctx));
     }
 

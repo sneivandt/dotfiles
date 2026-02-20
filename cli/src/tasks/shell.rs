@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
 use crate::resources::shell::DefaultShellResource;
@@ -10,6 +11,11 @@ pub struct ConfigureShell;
 impl Task for ConfigureShell {
     fn name(&self) -> &'static str {
         "Configure default shell"
+    }
+
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[TypeId::of::<super::packages::InstallPackages>()];
+        DEPS
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -51,7 +57,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Windows, false);
         let executor = WhichExecutor { which_result: true };
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!ConfigureShell.should_run(&ctx));
     }
 
@@ -60,7 +66,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor; // which() returns false
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!ConfigureShell.should_run(&ctx));
     }
 
@@ -70,7 +76,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
         let executor = WhichExecutor { which_result: true }; // zsh found
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         // SAFETY: test-only env var mutation; serialized via CI_MUTEX.
         unsafe { std::env::set_var("CI", "true") };
         let result = ConfigureShell.should_run(&ctx);
@@ -84,7 +90,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
         let executor = WhichExecutor { which_result: true };
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         // SAFETY: test-only env var mutation; serialized via CI_MUTEX.
         unsafe { std::env::remove_var("CI") };
         let result = ConfigureShell.should_run(&ctx);

@@ -165,9 +165,15 @@ available only when invoking the binary directly.
 Each task implements the `Task` trait:
 
 ```rust
-pub trait Task {
+pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
+
+    /// Stable TypeId for dependency matching.
+    fn task_id(&self) -> TypeId { TypeId::of::<Self>() }
+
+    /// TypeIds of tasks that must complete before this one starts.
+    fn dependencies(&self) -> &[TypeId] { &[] }
 
     /// Whether this task should run on the current platform/profile.
     fn should_run(&self, ctx: &Context) -> bool;
@@ -181,7 +187,7 @@ A shared `Context` struct carries the loaded `Config`, `Platform`, `Logger`, and
 
 The `execute()` function runs a task, recording the result (`Ok`, `Skipped`, `DryRun`, `Failed`) in the logger.
 
-**Implemented tasks** (`cli/src/tasks/`, in execution order):
+**Implemented tasks** (`cli/src/tasks/`, executed as soon as dependencies allow):
 - `developer_mode` — Enable Windows developer mode (required for symlinks)
 - `sparse_checkout` — Configure git sparse checkout
 - `update` — Update repository (`git pull --ff-only`)
@@ -353,12 +359,35 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 ## Performance Considerations
 
-### Parallel Resource Processing
+### Parallel Task Execution
 
-Resource operations (symlinks, packages, registry entries, etc.) are processed in
-parallel by default using the [Rayon](https://docs.rs/rayon) work-stealing thread pool.
+Tasks are executed in parallel using a dependency-graph scheduler.  Each task
+declares its dependencies via `Task::dependencies()` (returning `TypeId`s of
+prerequisite task structs).  The scheduler uses [Rayon](https://docs.rs/rayon)
+to spawn all tasks and a `Condvar`-based `TaskGraph` to block each task until
+its dependencies are marked complete.
 
 **How it works:**
+
+- Each task is spawned into the Rayon thread pool immediately
+- `TaskGraph::wait_for_deps()` blocks the task until all declared dependencies
+  have called `TaskGraph::mark_complete()`
+- Tasks with no dependencies (or whose dependencies were filtered out) start
+  immediately
+- Each task's console output is captured in a per-task `BufferedLog`; when the
+  task completes, the buffer is flushed atomically under a `flush_lock` so
+  output from different tasks never interleaves
+- A dim status line (`▹ task1, task2, ...`) shows which tasks are currently
+  running, updated on every task start and completion
+- Cycle detection (Kahn's algorithm) runs before scheduling; if a cycle is
+  found, the scheduler falls back to sequential execution with a warning
+- Dependencies that reference `TypeId`s not present in the task list (e.g.
+  filtered out by `--skip`/`--only`) are silently ignored
+
+### Parallel Resource Processing
+
+Within each task, resource operations (symlinks, packages, registry entries,
+etc.) are also processed in parallel using Rayon's `into_par_iter()`.
 
 - `process_resources()` and `process_resource_states()` in `tasks/mod.rs` dispatch
   to Rayon's `into_par_iter()` when `ctx.parallel` is `true` and there is more than
@@ -368,9 +397,10 @@ parallel by default using the [Rayon](https://docs.rs/rayon) work-stealing threa
   to share across threads
 - The `Logger` uses `Mutex<Vec<TaskEntry>>` internally for thread-safe task recording
 
-**To disable** (e.g. for debugging interleaved output), pass `--no-parallel`
-directly to the binary — this flag is not exposed by the wrapper scripts
-(see [Advanced Binary Options](USAGE.md#advanced-binary-options)).
+**To disable** both task-level and resource-level parallelism (e.g. for
+debugging), pass `--no-parallel` directly to the binary — this flag is not
+exposed by the wrapper scripts (see
+[Advanced Binary Options](USAGE.md#advanced-binary-options)).
 
 `process_resources_remove()` (used by uninstall tasks) is always sequential because
 removal operations are rare and order may matter.

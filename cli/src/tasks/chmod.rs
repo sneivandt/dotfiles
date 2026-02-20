@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::any::TypeId;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
 use crate::resources::chmod::ChmodResource;
@@ -12,14 +13,18 @@ impl Task for ApplyFilePermissions {
         "Apply file permissions"
     }
 
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[TypeId::of::<super::symlinks::InstallSymlinks>()];
+        DEPS
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.supports_chmod() && !ctx.config.chmod.is_empty()
+        ctx.platform.supports_chmod() && !ctx.config_read().chmod.is_empty()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resources = ctx
-            .config
-            .chmod
+        let entries: Vec<_> = ctx.config_read().chmod.clone();
+        let resources = entries
             .iter()
             .map(|entry| ChmodResource::from_entry(entry, &ctx.home));
         process_resources(
@@ -49,7 +54,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Windows, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!ApplyFilePermissions.should_run(&ctx));
     }
 
@@ -58,7 +63,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(!ApplyFilePermissions.should_run(&ctx));
     }
 
@@ -71,7 +76,7 @@ mod tests {
         });
         let platform = Platform::new(Os::Linux, false);
         let executor = NoOpExecutor;
-        let ctx = make_context(&config, &platform, &executor);
+        let ctx = make_context(config, &platform, &executor);
         assert!(ApplyFilePermissions.should_run(&ctx));
     }
 }

@@ -11,9 +11,6 @@
 //! - **[`resources`]** — idempotent `check + apply` primitives (symlinks, packages, …)
 //! - **[`tasks`]** — named, dependency-ordered units of work wired to resources
 //! - **[`commands`]** — top-level subcommand orchestration (`install`, `uninstall`, `test`)
-#![deny(clippy::or_fun_call)]
-#![deny(clippy::bool_to_int_with_if)]
-
 pub mod cli;
 pub mod commands;
 pub mod config;

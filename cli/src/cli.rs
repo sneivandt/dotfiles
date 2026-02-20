@@ -33,6 +33,10 @@ pub struct GlobalOpts {
     /// Override dotfiles root directory
     #[arg(long, global = true)]
     pub root: Option<std::path::PathBuf>,
+
+    /// Disable parallel execution of operations within tasks (parallel is enabled by default)
+    #[arg(long = "no-parallel", global = true, action = clap::ArgAction::SetFalse)]
+    pub parallel: bool,
 }
 
 /// Available subcommands.
@@ -159,6 +163,21 @@ mod tests {
         assert_eq!(
             cli.global.root,
             Some(std::path::PathBuf::from("/tmp/dotfiles"))
+        );
+    }
+
+    #[test]
+    fn parallel_is_enabled_by_default() {
+        let cli = Cli::parse_from(["dotfiles", "install"]);
+        assert!(cli.global.parallel, "parallel should be true by default");
+    }
+
+    #[test]
+    fn no_parallel_disables_parallel() {
+        let cli = Cli::parse_from(["dotfiles", "--no-parallel", "install"]);
+        assert!(
+            !cli.global.parallel,
+            "--no-parallel should set parallel to false"
         );
     }
 }

@@ -231,6 +231,27 @@ Enable verbose logging to see detailed operation information:
    Package installed: alacritty
 ```
 
+## Parallel Execution
+
+Resource operations (symlinks, packages, registry entries, etc.) run in parallel
+by default using Rayon's thread pool. This significantly speeds up installation
+when many items need to be processed.
+
+**When parallel execution runs:**
+- Multiple symlinks are created concurrently
+- Package state checks overlap
+- Registry entries are applied in parallel
+
+**Parallel execution is safe** — each resource is checked and applied independently,
+and the results accumulator uses a mutex for thread-safe counting.
+
+**To disable parallel execution**, pass `--no-parallel` directly to the binary
+(this flag is not exposed by the wrapper scripts):
+
+```bash
+./bin/dotfiles install --no-parallel
+```
+
 ## Dry-Run Mode
 
 Preview what would be done without making changes:

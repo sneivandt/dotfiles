@@ -20,6 +20,7 @@ pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Logger) -> Result<()> {
         log,
         global.dry_run,
         &executor,
+        global.parallel,
     )?;
 
     let tasks: Vec<Box<dyn Task>> = vec![

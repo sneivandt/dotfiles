@@ -23,6 +23,7 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> 
         log,
         global.dry_run,
         &executor,
+        global.parallel,
     )?;
 
     // Build the task list
@@ -117,6 +118,7 @@ mod tests {
             root: Some(PathBuf::from("/explicit/path")),
             profile: None,
             dry_run: false,
+            parallel: true,
         };
 
         let result = resolve_root(&global);
@@ -133,6 +135,7 @@ mod tests {
             root: None,
             profile: None,
             dry_run: false,
+            parallel: true,
         };
 
         // Save and restore current directory

@@ -120,7 +120,7 @@ Parses CLI arguments via `cli::Cli`, creates a `Logger`, and dispatches to the m
 Defines the command structure using clap derive:
 
 ```
-dotfiles [-v] [-p PROFILE] [-d] [--root DIR] <COMMAND>
+dotfiles [-v] [-p PROFILE] [-d] [--no-parallel] [--root DIR] <COMMAND>
 
 Commands:
   install     Install dotfiles and configure system
@@ -173,7 +173,7 @@ pub trait Task {
 }
 ```
 
-A shared `Context` struct carries the loaded `Config`, `Platform`, `Logger`, and flags (`dry_run`, `verbose`, `home` path).
+A shared `Context` struct carries the loaded `Config`, `Platform`, `Logger`, and flags (`dry_run`, `parallel`, `home` path).
 
 The `execute()` function runs a task, recording the result (`Ok`, `Skipped`, `DryRun`, `Failed`) in the logger.
 
@@ -348,6 +348,27 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 3. Map files in `conf/manifest.ini`
 
 ## Performance Considerations
+
+### Parallel Resource Processing
+
+Resource operations (symlinks, packages, registry entries, etc.) are processed in
+parallel by default using the [Rayon](https://docs.rs/rayon) work-stealing thread pool.
+
+**How it works:**
+
+- `process_resources()` and `process_resource_states()` in `tasks/mod.rs` dispatch
+  to Rayon's `into_par_iter()` when `ctx.parallel` is `true` and there is more than
+  one resource to process
+- A `Mutex<TaskStats>` accumulates changed/skipped counters across threads
+- The `Executor` trait requires `Sync` so resources holding `&dyn Executor` are safe
+  to share across threads
+- The `Logger` uses `Mutex<Vec<TaskEntry>>` internally for thread-safe task recording
+
+**To disable** (e.g. for debugging interleaved output), pass `--no-parallel`
+directly to the binary — this flag is not exposed by the wrapper scripts.
+
+`process_resources_remove()` (used by uninstall tasks) is always sequential because
+removal operations are rare and order may matter.
 
 ### Binary Distribution
 

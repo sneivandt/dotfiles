@@ -2,7 +2,6 @@ use anyhow::{Context as _, Result};
 use std::path::Path;
 
 use super::{Context, Task, TaskResult};
-use crate::exec;
 
 /// Default sparse checkout pattern that includes all files at root level.
 const DEFAULT_SPARSE_PATTERN: &str = "/*";
@@ -132,7 +131,8 @@ impl Task for ConfigureSparseCheckout {
         // needed to selectively exclude files.
         ctx.log
             .debug("initializing sparse checkout (non-cone mode)");
-        exec::run_in(root, "git", &["sparse-checkout", "init", "--no-cone"])?;
+        ctx.executor
+            .run_in(root, "git", &["sparse-checkout", "init", "--no-cone"])?;
 
         ctx.log.debug(&format!(
             "sparse checkout patterns: 1 inclusion, {} exclusions",
@@ -164,14 +164,15 @@ impl Task for ConfigureSparseCheckout {
                 excluded.len()
             ));
             // Best-effort: if checkout fails (e.g. file not in HEAD), proceed anyway
-            if let Err(e) = exec::run_in(root, "git", &checkout_args) {
+            if let Err(e) = ctx.executor.run_in(root, "git", &checkout_args) {
                 ctx.log.debug(&format!("git checkout reset failed: {e}"));
             }
         }
 
         ctx.log
             .debug("wrote sparse-checkout file, running read-tree");
-        exec::run_in(root, "git", &["read-tree", "-mu", "HEAD"])?;
+        ctx.executor
+            .run_in(root, "git", &["read-tree", "-mu", "HEAD"])?;
 
         ctx.log.info(&format!(
             "excluded {} files from checkout",

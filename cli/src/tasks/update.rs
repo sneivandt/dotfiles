@@ -1,7 +1,6 @@
 use anyhow::Result;
 
 use super::{Context, Task, TaskResult};
-use crate::exec;
 
 /// Pull latest changes from the remote repository.
 #[derive(Debug)]
@@ -23,7 +22,7 @@ impl Task for UpdateRepository {
         let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
 
         // Refuse to pull if there are staged changes that could be lost
-        if let Ok(diff) = exec::run_in_with_env(
+        if let Ok(diff) = ctx.executor.run_in_with_env(
             ctx.root(),
             "git",
             &["diff", "--cached", "--name-only"],
@@ -37,8 +36,12 @@ impl Task for UpdateRepository {
         if ctx.dry_run {
             // Compare local HEAD with upstream tracking branch
             if let (Some(head), Some(upstream)) = (
-                exec::run_in_with_env(ctx.root(), "git", &["rev-parse", "HEAD"], git_env).ok(),
-                exec::run_in_with_env(ctx.root(), "git", &["rev-parse", "@{u}"], git_env).ok(),
+                ctx.executor
+                    .run_in_with_env(ctx.root(), "git", &["rev-parse", "HEAD"], git_env)
+                    .ok(),
+                ctx.executor
+                    .run_in_with_env(ctx.root(), "git", &["rev-parse", "@{u}"], git_env)
+                    .ok(),
             ) && head.stdout.trim() == upstream.stdout.trim()
             {
                 ctx.log.info("already up to date");
@@ -50,7 +53,9 @@ impl Task for UpdateRepository {
 
         ctx.log
             .debug(&format!("pulling from {}", ctx.root().display()));
-        let result = exec::run_in_with_env(ctx.root(), "git", &["pull", "--ff-only"], git_env);
+        let result =
+            ctx.executor
+                .run_in_with_env(ctx.root(), "git", &["pull", "--ff-only"], git_env);
         match result {
             Ok(r) => {
                 let msg = r.stdout.trim().to_string();

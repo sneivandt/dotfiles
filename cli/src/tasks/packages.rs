@@ -209,9 +209,14 @@ fn build_paru(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-/// Remove the build directory (best effort, ignores errors).
+/// Remove the build directory (best effort, logs a warning on failure).
 fn cleanup_build_directory(tmp: &std::path::Path) {
-    std::fs::remove_dir_all(tmp).ok();
+    if let Err(e) = std::fs::remove_dir_all(tmp) {
+        eprintln!(
+            "warning: failed to remove paru build directory {}: {e}",
+            tmp.display()
+        );
+    }
 }
 
 #[cfg(test)]

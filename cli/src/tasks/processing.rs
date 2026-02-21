@@ -423,12 +423,6 @@ mod tests {
             self.remove_result = result;
             self
         }
-
-        #[allow(dead_code)]
-        fn with_desc(mut self, desc: &str) -> Self {
-            self.desc = desc.to_string();
-            self
-        }
     }
 
     impl Resource for MockResource {

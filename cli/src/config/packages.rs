@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::path::Path;
 
+use super::category_matcher::MatchMode;
 use super::ini;
 
 /// A package to install.
@@ -22,22 +23,19 @@ pub struct Package {
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Package>> {
     let sections = ini::parse_sections(path)?;
-    let filtered = ini::filter_sections_and(&sections, active_categories);
+    let filtered = ini::filter_sections(&sections, active_categories, MatchMode::All);
 
     Ok(filtered
         .into_iter()
         .flat_map(|s| {
-            s.items.iter().map(|item| {
-                item.strip_prefix("aur:").map_or_else(
-                    || Package {
-                        name: item.clone(),
-                        is_aur: false,
-                    },
-                    |name| Package {
-                        name: name.to_string(),
-                        is_aur: true,
-                    },
-                )
+            s.items.into_iter().map(|item| {
+                let (name, is_aur) = item
+                    .strip_prefix("aur:")
+                    .map_or((item.as_str(), false), |n| (n, true));
+                Package {
+                    name: name.to_string(),
+                    is_aur,
+                }
             })
         })
         .collect())

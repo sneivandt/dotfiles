@@ -253,18 +253,15 @@ pub mod test_helpers {
     }
 
     /// Build a [`Context`] from the given config, platform and executor.
-    ///
-    /// The logger is leaked intentionally: test contexts are short-lived and
-    /// leaking is harmless in a test binary.
-    pub fn make_context<'a>(
+    pub fn make_context(
         config: Config,
-        platform: &'a Platform,
-        executor: &'a dyn Executor,
-    ) -> Context<'a> {
+        platform: Arc<Platform>,
+        executor: Arc<dyn Executor>,
+    ) -> Context {
         Context {
             config: std::sync::Arc::new(std::sync::RwLock::new(config)),
             platform,
-            log: Box::leak(Box::new(Logger::new(false, "test"))),
+            log: Arc::new(Logger::new(false, "test")),
             dry_run: false,
             home: PathBuf::from("/home/test"),
             executor,
@@ -273,22 +270,19 @@ pub mod test_helpers {
         }
     }
 
-    /// Build a `'static` [`Context`] with a default Linux platform and
+    /// Build a [`Context`] with a default Linux platform and
     /// [`NoOpExecutor`], also returning the [`Logger`] so tests can inspect
     /// recorded task state.
-    ///
-    /// All allocations are intentionally leaked — test binaries are short-lived
-    /// and leaking is harmless.
     #[must_use]
-    pub fn make_static_context(config: Config) -> (Context<'static>, &'static Logger) {
+    pub fn make_static_context(config: Config) -> (Context, Arc<Logger>) {
         use crate::platform::Os;
-        let platform: &'static Platform = Box::leak(Box::new(Platform::new(Os::Linux, false)));
-        let log: &'static Logger = Box::leak(Box::new(Logger::new(false, "test")));
-        let executor: &'static NoOpExecutor = Box::leak(Box::new(NoOpExecutor));
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let log = Arc::new(Logger::new(false, "test"));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
         let ctx = Context {
             config: std::sync::Arc::new(std::sync::RwLock::new(config)),
             platform,
-            log,
+            log: Arc::clone(&log) as Arc<dyn crate::logging::Log>,
             dry_run: false,
             home: PathBuf::from("/home/test"),
             executor,

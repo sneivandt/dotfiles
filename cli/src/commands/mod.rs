@@ -207,7 +207,7 @@ fn has_cycle(tasks: &[&dyn Task]) -> bool {
 pub fn run_tasks_to_completion<'a>(
     tasks: impl IntoIterator<Item = &'a dyn Task>,
     ctx: &Context,
-    log: &Logger,
+    log: &Arc<Logger>,
 ) -> Result<()> {
     let tasks: Vec<&dyn Task> = tasks.into_iter().collect();
 
@@ -244,7 +244,7 @@ pub fn run_tasks_to_completion<'a>(
 /// the number of tasks with unsatisfied dependencies (common on 2-vCPU CI
 /// runners).  Output is buffered per-task and flushed to the console
 /// immediately on completion.
-fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Logger) {
+fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>) {
     let present: HashSet<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
     let resolved_deps: Vec<Vec<TypeId>> = tasks
         .iter()
@@ -268,14 +268,14 @@ fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Logger) {
 
                 log.notify_task_start(task.name());
 
-                let buf = BufferedLog::new(log);
+                let buf = Arc::new(BufferedLog::new(Arc::clone(log)));
                 let task_ctx = Context {
                     config: Arc::clone(&ctx.config),
-                    platform: ctx.platform,
-                    log: &buf,
+                    platform: Arc::clone(&ctx.platform),
+                    log: buf.clone() as Arc<dyn Log>,
                     dry_run: ctx.dry_run,
                     home: ctx.home.clone(),
-                    executor: ctx.executor,
+                    executor: Arc::clone(&ctx.executor),
                     parallel: ctx.parallel,
                     repo_updated: Arc::clone(&ctx.repo_updated),
                 };

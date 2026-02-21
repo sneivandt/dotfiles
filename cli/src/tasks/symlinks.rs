@@ -93,9 +93,11 @@ fn compute_target(home: &Path, source: &str) -> std::path::PathBuf {
 mod tests {
     use super::*;
     use crate::config::symlinks::Symlink;
+    use crate::exec::Executor;
     use crate::platform::{Os, Platform};
     use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     // ------------------------------------------------------------------
     // compute_target
@@ -159,9 +161,9 @@ mod tests {
     #[test]
     fn install_should_run_false_when_no_symlinks_configured() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Platform::new(Os::Linux, false);
-        let executor = NoOpExecutor;
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
+        let ctx = make_context(config, platform, executor);
         assert!(!InstallSymlinks.should_run(&ctx));
     }
 
@@ -171,9 +173,9 @@ mod tests {
         config.symlinks.push(Symlink {
             source: "bashrc".to_string(),
         });
-        let platform = Platform::new(Os::Linux, false);
-        let executor = NoOpExecutor;
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
+        let ctx = make_context(config, platform, executor);
         assert!(InstallSymlinks.should_run(&ctx));
     }
 
@@ -184,9 +186,9 @@ mod tests {
     #[test]
     fn uninstall_should_run_false_when_no_symlinks_configured() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Platform::new(Os::Linux, false);
-        let executor = NoOpExecutor;
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
+        let ctx = make_context(config, platform, executor);
         assert!(!UninstallSymlinks.should_run(&ctx));
     }
 
@@ -196,9 +198,9 @@ mod tests {
         config.symlinks.push(Symlink {
             source: "bashrc".to_string(),
         });
-        let platform = Platform::new(Os::Linux, false);
-        let executor = NoOpExecutor;
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
+        let ctx = make_context(config, platform, executor);
         assert!(UninstallSymlinks.should_run(&ctx));
     }
 }

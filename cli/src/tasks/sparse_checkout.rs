@@ -186,9 +186,11 @@ impl Task for ConfigureSparseCheckout {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::exec::Executor;
     use crate::platform::{Os, Platform};
     use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     // -----------------------------------------------------------------------
     // build_patterns
@@ -255,9 +257,9 @@ mod tests {
     #[test]
     fn should_run_false_when_git_dir_missing() {
         let config = empty_config(PathBuf::from("/nonexistent/repo"));
-        let platform = Platform::new(Os::Linux, false);
-        let executor = NoOpExecutor;
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
+        let ctx = make_context(config, platform, executor);
         assert!(!ConfigureSparseCheckout.should_run(&ctx));
     }
 
@@ -266,9 +268,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join(".git")).unwrap();
         let config = empty_config(dir.path().to_path_buf());
-        let platform = Platform::new(Os::Linux, false);
-        let executor = NoOpExecutor;
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
+        let ctx = make_context(config, platform, executor);
         assert!(ConfigureSparseCheckout.should_run(&ctx));
     }
 

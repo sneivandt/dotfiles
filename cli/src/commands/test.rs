@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::cli::{GlobalOpts, TestOpts};
 use crate::exec;
@@ -11,15 +12,15 @@ use crate::tasks::{Context, Task, TaskResult};
 /// # Errors
 ///
 /// Returns an error if profile resolution, configuration validation, or script checks fail.
-pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Logger) -> Result<()> {
-    let executor = exec::SystemExecutor;
-    let setup = super::CommandSetup::init(global, log)?;
+pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Arc<Logger>) -> Result<()> {
+    let executor: Arc<dyn crate::exec::Executor> = Arc::new(exec::SystemExecutor);
+    let setup = super::CommandSetup::init(global, &**log)?;
     let ctx = Context::new(
         std::sync::Arc::new(std::sync::RwLock::new(setup.config)),
-        &setup.platform,
-        log,
+        Arc::new(setup.platform),
+        Arc::clone(log) as Arc<dyn crate::logging::Log>,
         global.dry_run,
-        &executor,
+        Arc::clone(&executor),
         global.parallel,
     )?;
 
@@ -176,7 +177,7 @@ impl Task for RunShellcheck {
             ctx.log.info("shellcheck passed");
             Ok(TaskResult::Ok)
         } else {
-            log_exec_output(ctx.log, &result);
+            log_exec_output(&*ctx.log, &result);
             anyhow::bail!("shellcheck found issues");
         }
     }
@@ -238,7 +239,7 @@ impl Task for RunPSScriptAnalyzer {
             ctx.log.info("PSScriptAnalyzer passed");
             Ok(TaskResult::Ok)
         } else {
-            log_exec_output(ctx.log, &result);
+            log_exec_output(&*ctx.log, &result);
             anyhow::bail!("PSScriptAnalyzer found issues");
         }
     }

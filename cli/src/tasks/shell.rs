@@ -25,7 +25,7 @@ impl Task for ConfigureShell {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resource = DefaultShellResource::new("zsh".to_string(), ctx.executor);
+        let resource = DefaultShellResource::new("zsh".to_string(), &*ctx.executor);
         process_resources(
             ctx,
             std::iter::once(resource),
@@ -44,9 +44,11 @@ impl Task for ConfigureShell {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::exec::Executor;
     use crate::platform::{Os, Platform};
     use crate::tasks::test_helpers::{NoOpExecutor, WhichExecutor, empty_config, make_context};
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     /// Mutex to serialize tests that mutate the `CI` environment variable.
     static CI_MUTEX: std::sync::LazyLock<std::sync::Mutex<()>> =
@@ -55,18 +57,18 @@ mod tests {
     #[test]
     fn should_run_false_on_windows() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Platform::new(Os::Windows, false);
-        let executor = WhichExecutor { which_result: true };
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Windows, false));
+        let executor: Arc<dyn Executor> = Arc::new(WhichExecutor { which_result: true });
+        let ctx = make_context(config, platform, executor);
         assert!(!ConfigureShell.should_run(&ctx));
     }
 
     #[test]
     fn should_run_false_when_zsh_not_found() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Platform::new(Os::Linux, false);
-        let executor = NoOpExecutor; // which() returns false
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor); // which() returns false
+        let ctx = make_context(config, platform, executor);
         assert!(!ConfigureShell.should_run(&ctx));
     }
 
@@ -74,9 +76,9 @@ mod tests {
     fn should_run_false_when_ci_env_set() {
         let _guard = CI_MUTEX.lock().expect("mutex poisoned");
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Platform::new(Os::Linux, false);
-        let executor = WhichExecutor { which_result: true }; // zsh found
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(WhichExecutor { which_result: true }); // zsh found
+        let ctx = make_context(config, platform, executor);
         // SAFETY: test-only env var mutation; serialized via CI_MUTEX.
         unsafe { std::env::set_var("CI", "true") };
         let result = ConfigureShell.should_run(&ctx);
@@ -88,9 +90,9 @@ mod tests {
     fn should_run_true_on_linux_with_zsh_outside_ci() {
         let _guard = CI_MUTEX.lock().expect("mutex poisoned");
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Platform::new(Os::Linux, false);
-        let executor = WhichExecutor { which_result: true };
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(WhichExecutor { which_result: true });
+        let ctx = make_context(config, platform, executor);
         // SAFETY: test-only env var mutation; serialized via CI_MUTEX.
         unsafe { std::env::remove_var("CI") };
         let result = ConfigureShell.should_run(&ctx);

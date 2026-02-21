@@ -35,7 +35,7 @@ impl Task for ConfigureSystemd {
         let units: Vec<_> = ctx.config_read().units.clone();
         let resources = units
             .iter()
-            .map(|entry| SystemdUnitResource::from_entry(entry, ctx.executor));
+            .map(|entry| SystemdUnitResource::from_entry(entry, &*ctx.executor));
         process_resources(
             ctx,
             resources,
@@ -54,9 +54,11 @@ impl Task for ConfigureSystemd {
 mod tests {
     use super::*;
     use crate::config::systemd_units::SystemdUnit;
+    use crate::exec::Executor;
     use crate::platform::{Os, Platform};
     use crate::tasks::test_helpers::{NoOpExecutor, WhichExecutor, empty_config, make_context};
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn should_run_false_on_windows() {
@@ -64,18 +66,18 @@ mod tests {
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
         });
-        let platform = Platform::new(Os::Windows, false);
-        let executor = WhichExecutor { which_result: true };
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Windows, false));
+        let executor: Arc<dyn Executor> = Arc::new(WhichExecutor { which_result: true });
+        let ctx = make_context(config, platform, executor);
         assert!(!ConfigureSystemd.should_run(&ctx));
     }
 
     #[test]
     fn should_run_false_when_units_empty() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Platform::new(Os::Linux, false);
-        let executor = WhichExecutor { which_result: true };
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(WhichExecutor { which_result: true });
+        let ctx = make_context(config, platform, executor);
         assert!(!ConfigureSystemd.should_run(&ctx));
     }
 
@@ -85,9 +87,9 @@ mod tests {
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
         });
-        let platform = Platform::new(Os::Linux, false);
-        let executor = NoOpExecutor; // which() returns false
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor); // which() returns false
+        let ctx = make_context(config, platform, executor);
         assert!(!ConfigureSystemd.should_run(&ctx));
     }
 
@@ -97,9 +99,9 @@ mod tests {
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
         });
-        let platform = Platform::new(Os::Linux, false);
-        let executor = WhichExecutor { which_result: true };
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(WhichExecutor { which_result: true });
+        let ctx = make_context(config, platform, executor);
         assert!(ConfigureSystemd.should_run(&ctx));
     }
 }

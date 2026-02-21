@@ -1,7 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 /// Task execution result for summary reporting.
@@ -72,15 +72,15 @@ enum LogEntry {
 /// [`record_task`](Log::record_task) is forwarded directly to the underlying
 /// [`Logger`] because the summary collection is already thread-safe.
 #[derive(Debug)]
-pub struct BufferedLog<'a> {
-    inner: &'a Logger,
+pub struct BufferedLog {
+    inner: Arc<Logger>,
     entries: Mutex<Vec<LogEntry>>,
 }
 
-impl<'a> BufferedLog<'a> {
+impl BufferedLog {
     /// Create a new buffered logger backed by the given [`Logger`].
     #[must_use]
-    pub const fn new(inner: &'a Logger) -> Self {
+    pub const fn new(inner: Arc<Logger>) -> Self {
         Self {
             inner,
             entries: Mutex::new(Vec::new()),
@@ -138,7 +138,7 @@ impl<'a> BufferedLog<'a> {
     }
 }
 
-impl Log for BufferedLog<'_> {
+impl Log for BufferedLog {
     fn stage(&self, msg: &str) {
         if let Ok(mut guard) = self.entries.lock() {
             guard.push(LogEntry::Stage(msg.to_string()));
@@ -734,7 +734,8 @@ mod tests {
     #[test]
     fn buffered_log_record_task_forwards_to_logger() {
         let (log, _tmp) = isolated_logger(false);
-        let buf = BufferedLog::new(&log);
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
         buf.record_task("task-a", TaskStatus::Ok, None);
         // record_task is forwarded immediately — visible on the Logger
         assert_eq!(log.tasks.lock().unwrap().len(), 1);
@@ -744,7 +745,8 @@ mod tests {
     #[test]
     fn buffered_log_flush_replays_to_file() {
         let (log, _tmp) = isolated_logger(false);
-        let buf = BufferedLog::new(&log);
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
         let marker = format!("buf-marker-{}", std::process::id());
         buf.info(&marker);
         // Before flush, the marker should NOT be in the file yet
@@ -765,7 +767,8 @@ mod tests {
     #[test]
     fn buffered_log_preserves_entry_order() {
         let (log, _tmp) = isolated_logger(true); // verbose so debug appears
-        let buf = BufferedLog::new(&log);
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
         buf.stage("stage-1");
         buf.info("info-1");
         buf.debug("debug-1");

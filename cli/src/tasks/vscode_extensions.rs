@@ -25,7 +25,7 @@ impl Task for InstallVsCodeExtensions {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let Some(cmd) = find_code_command(ctx.executor) else {
+        let Some(cmd) = find_code_command(&*ctx.executor) else {
             ctx.log
                 .debug("neither code-insiders nor code found in PATH");
             return Ok(TaskResult::Skipped("VS Code CLI not found".to_string()));
@@ -37,13 +37,13 @@ impl Task for InstallVsCodeExtensions {
             "batch-checking {} extensions with a single query",
             extensions.len()
         ));
-        let installed = get_installed_extensions(&cmd, ctx.executor)?;
+        let installed = get_installed_extensions(&cmd, &*ctx.executor)?;
 
         process_resource_states(
             ctx,
             extensions.iter().map(|ext| {
                 let resource =
-                    VsCodeExtensionResource::new(ext.id.clone(), cmd.clone(), ctx.executor);
+                    VsCodeExtensionResource::new(ext.id.clone(), cmd.clone(), &*ctx.executor);
                 let state = resource.state_from_installed(&installed);
                 (resource, state)
             }),
@@ -62,16 +62,18 @@ impl Task for InstallVsCodeExtensions {
 mod tests {
     use super::*;
     use crate::config::vscode_extensions::VsCodeExtension;
+    use crate::exec::Executor;
     use crate::platform::{Os, Platform};
     use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn should_run_false_when_no_extensions_configured() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Platform::new(Os::Linux, false);
-        let executor = NoOpExecutor;
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
+        let ctx = make_context(config, platform, executor);
         assert!(!InstallVsCodeExtensions.should_run(&ctx));
     }
 
@@ -81,9 +83,9 @@ mod tests {
         config.vscode_extensions.push(VsCodeExtension {
             id: "github.copilot".to_string(),
         });
-        let platform = Platform::new(Os::Linux, false);
-        let executor = NoOpExecutor;
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
+        let ctx = make_context(config, platform, executor);
         assert!(InstallVsCodeExtensions.should_run(&ctx));
     }
 }

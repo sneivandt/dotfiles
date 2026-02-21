@@ -1,4 +1,5 @@
 use anyhow::{Context as _, Result};
+use std::sync::Arc;
 
 use crate::cli::{GlobalOpts, InstallOpts};
 use crate::exec;
@@ -10,19 +11,19 @@ use crate::tasks::{self, Context};
 /// # Errors
 ///
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
-pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Logger) -> Result<()> {
+pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Arc<Logger>) -> Result<()> {
     let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     log.info(&format!("dotfiles {version}"));
 
-    let executor = exec::SystemExecutor;
-    let setup = super::CommandSetup::init(global, log)?;
+    let executor: Arc<dyn crate::exec::Executor> = Arc::new(exec::SystemExecutor);
+    let setup = super::CommandSetup::init(global, &**log)?;
 
     let ctx = Context::new(
         std::sync::Arc::new(std::sync::RwLock::new(setup.config)),
-        &setup.platform,
-        log,
+        Arc::new(setup.platform),
+        Arc::clone(log) as Arc<dyn crate::logging::Log>,
         global.dry_run,
-        &executor,
+        Arc::clone(&executor),
         global.parallel,
     )?;
 

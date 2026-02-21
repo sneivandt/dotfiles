@@ -38,7 +38,7 @@ impl Task for ReloadConfig {
         // window where the lock is held for writing across I/O.
         let new_config = {
             let old = ctx.config_read();
-            crate::config::Config::load(&old.root, &old.profile, ctx.platform)
+            crate::config::Config::load(&old.root, &old.profile, &ctx.platform)
                 .context("reloading configuration after repository update")?
         };
 
@@ -66,16 +66,18 @@ impl Task for ReloadConfig {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::exec::Executor;
     use crate::platform::{Os, Platform};
     use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn should_run_always() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Platform::new(Os::Linux, false);
-        let executor = NoOpExecutor;
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
+        let ctx = make_context(config, platform, executor);
         assert!(ReloadConfig.should_run(&ctx));
     }
 }

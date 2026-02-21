@@ -9,7 +9,7 @@ use crate::logging::Log;
 use crate::platform::Platform;
 
 /// Shared context for task execution.
-pub struct Context<'a> {
+pub struct Context {
     /// Configuration loaded from INI files.
     ///
     /// Wrapped in `Arc<RwLock<_>>` so that `ReloadConfig` can atomically
@@ -17,15 +17,15 @@ pub struct Context<'a> {
     /// updated values.  Use [`Context::config_read`] for read access.
     pub config: Arc<RwLock<Config>>,
     /// Detected platform information.
-    pub platform: &'a Platform,
+    pub platform: Arc<Platform>,
     /// Logger for output and task recording.
-    pub log: &'a dyn Log,
+    pub log: Arc<dyn Log>,
     /// Whether to perform a dry run (preview changes without applying).
     pub dry_run: bool,
     /// User's home directory path.
     pub home: std::path::PathBuf,
     /// Command executor (for testing or real system calls).
-    pub executor: &'a dyn Executor,
+    pub executor: Arc<dyn Executor>,
     /// Whether to process resources in parallel using Rayon.
     pub parallel: bool,
     /// Set to `true` by `UpdateRepository` when the repo was actually updated.
@@ -36,7 +36,7 @@ pub struct Context<'a> {
     pub repo_updated: Arc<AtomicBool>,
 }
 
-impl std::fmt::Debug for Context<'_> {
+impl std::fmt::Debug for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Context")
             .field("config", &"<Config>")
@@ -51,7 +51,7 @@ impl std::fmt::Debug for Context<'_> {
     }
 }
 
-impl<'a> Context<'a> {
+impl Context {
     /// Creates a new context for task execution.
     ///
     /// # Errors
@@ -60,10 +60,10 @@ impl<'a> Context<'a> {
     /// is not set.
     pub fn new(
         config: Arc<RwLock<Config>>,
-        platform: &'a Platform,
-        log: &'a dyn Log,
+        platform: Arc<Platform>,
+        log: Arc<dyn Log>,
         dry_run: bool,
-        executor: &'a dyn Executor,
+        executor: Arc<dyn Executor>,
         parallel: bool,
     ) -> Result<Self> {
         let home = if cfg!(target_os = "windows") {

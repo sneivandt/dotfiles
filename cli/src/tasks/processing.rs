@@ -459,13 +459,13 @@ mod tests {
 
     fn test_context(
         config: crate::config::Config,
-    ) -> (Context<'static>, &'static crate::logging::Logger) {
+    ) -> (Context, std::sync::Arc<crate::logging::Logger>) {
         make_static_context(config)
     }
 
     fn dry_run_context(
         config: crate::config::Config,
-    ) -> (Context<'static>, &'static crate::logging::Logger) {
+    ) -> (Context, std::sync::Arc<crate::logging::Logger>) {
         let (mut ctx, log) = test_context(config);
         ctx.dry_run = true;
         (ctx, log)

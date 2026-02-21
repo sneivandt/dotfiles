@@ -30,7 +30,7 @@ impl Task for InstallCopilotSkills {
 
         let resources = skills
             .iter()
-            .map(|skill| CopilotSkillResource::from_entry(skill, &skills_dir, ctx.executor));
+            .map(|skill| CopilotSkillResource::from_entry(skill, &skills_dir, &*ctx.executor));
         process_resources(
             ctx,
             resources,
@@ -49,16 +49,18 @@ impl Task for InstallCopilotSkills {
 mod tests {
     use super::*;
     use crate::config::copilot_skills::CopilotSkill;
+    use crate::exec::Executor;
     use crate::platform::{Os, Platform};
     use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn should_run_false_when_no_skills_configured() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Platform::new(Os::Linux, false);
-        let executor = NoOpExecutor;
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
+        let ctx = make_context(config, platform, executor);
         assert!(!InstallCopilotSkills.should_run(&ctx));
     }
 
@@ -68,9 +70,9 @@ mod tests {
         config.copilot_skills.push(CopilotSkill {
             url: "https://github.com/example/skill".to_string(),
         });
-        let platform = Platform::new(Os::Linux, false);
-        let executor = NoOpExecutor;
-        let ctx = make_context(config, &platform, &executor);
+        let platform = Arc::new(Platform::new(Os::Linux, false));
+        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
+        let ctx = make_context(config, platform, executor);
         assert!(InstallCopilotSkills.should_run(&ctx));
     }
 }

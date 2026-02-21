@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::sync::Arc;
 
 use crate::cli::{GlobalOpts, UninstallOpts};
 use crate::exec;
@@ -10,15 +11,15 @@ use crate::tasks::{self, Context};
 /// # Errors
 ///
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
-pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Logger) -> Result<()> {
-    let executor = exec::SystemExecutor;
-    let setup = super::CommandSetup::init(global, log)?;
+pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Arc<Logger>) -> Result<()> {
+    let executor: Arc<dyn crate::exec::Executor> = Arc::new(exec::SystemExecutor);
+    let setup = super::CommandSetup::init(global, &**log)?;
     let ctx = Context::new(
         std::sync::Arc::new(std::sync::RwLock::new(setup.config)),
-        &setup.platform,
-        log,
+        Arc::new(setup.platform),
+        Arc::clone(log) as Arc<dyn crate::logging::Log>,
         global.dry_run,
-        &executor,
+        Arc::clone(&executor),
         global.parallel,
     )?;
 

@@ -53,10 +53,6 @@ impl ValidationWarning {
 pub trait ConfigValidator {
     /// Validate the configuration and return any warnings found.
     fn validate(&self, root: &Path, platform: &Platform) -> Vec<ValidationWarning>;
-
-    /// Return a human-readable name for this validator (e.g., "symlinks", "packages").
-    #[allow(dead_code)] // Part of trait contract; implementors define it
-    fn name(&self) -> &'static str;
 }
 
 /// Validator for symlink configurations.
@@ -102,10 +98,6 @@ impl ConfigValidator for SymlinkValidator<'_> {
 
         warnings
     }
-
-    fn name(&self) -> &'static str {
-        "symlinks"
-    }
 }
 
 /// Validator for package configurations.
@@ -147,10 +139,6 @@ impl ConfigValidator for PackageValidator<'_> {
         }
 
         warnings
-    }
-
-    fn name(&self) -> &'static str {
-        "packages"
     }
 }
 
@@ -229,10 +217,6 @@ impl ConfigValidator for RegistryValidator<'_> {
 
         warnings
     }
-
-    fn name(&self) -> &'static str {
-        "registry"
-    }
 }
 
 /// Validates an octal mode string (e.g., "644", "0755").
@@ -304,10 +288,6 @@ impl ConfigValidator for ChmodValidator<'_> {
 
         warnings
     }
-
-    fn name(&self) -> &'static str {
-        "chmod"
-    }
 }
 
 /// Validator for systemd unit configurations.
@@ -364,10 +344,6 @@ impl ConfigValidator for SystemdUnitValidator<'_> {
 
         warnings
     }
-
-    fn name(&self) -> &'static str {
-        "systemd-units"
-    }
 }
 
 /// Validator for VS Code extension configurations.
@@ -410,10 +386,6 @@ impl ConfigValidator for VsCodeExtensionValidator<'_> {
 
         warnings
     }
-
-    fn name(&self) -> &'static str {
-        "vscode-extensions"
-    }
 }
 
 /// Validator for Copilot skill configurations.
@@ -455,10 +427,6 @@ impl ConfigValidator for CopilotSkillValidator<'_> {
         }
 
         warnings
-    }
-
-    fn name(&self) -> &'static str {
-        "copilot-skills"
     }
 }
 

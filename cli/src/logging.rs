@@ -255,9 +255,9 @@ fn format_utc_time() -> String {
     let secs = current_utc_secs();
     let day_secs = secs % 86400;
     let h = day_secs / 3600;
-    let m = (day_secs % 3600) / 60;
+    let mi = (day_secs % 3600) / 60;
     let s = day_secs % 60;
-    format!("{h:02}:{m:02}:{s:02}")
+    format!("{h:02}:{mi:02}:{s:02}")
 }
 
 /// Strip ANSI escape sequences from a string.

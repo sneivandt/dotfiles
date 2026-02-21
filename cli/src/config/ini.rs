@@ -261,54 +261,6 @@ pub fn filter_sections(
         .collect()
 }
 
-/// Filter sections by active categories using AND logic:
-/// A section is included only if ALL of its categories are in the active set.
-///
-/// This is a convenience wrapper around [`filter_sections`] with [`MatchMode::All`],
-/// retained for backward compatibility with code that previously called it directly.
-/// New code should prefer [`filter_sections`] with an explicit [`MatchMode`].
-///
-/// # Examples
-///
-/// A section tagged `[arch,desktop]` requires both "arch" AND "desktop"
-/// to be in the active set to be included:
-///
-/// ```
-/// use dotfiles_cli::config::ini::{Section, filter_sections_and};
-///
-/// let sections = vec![
-///     Section { categories: vec!["base".into()], items: vec!["git".into()] },
-///     Section { categories: vec!["arch".into(), "desktop".into()], items: vec!["picom".into()] },
-///     Section { categories: vec!["arch".into()], items: vec!["paru".into()] },
-/// ];
-///
-/// // Only "base" and "arch" are active — the [arch,desktop] section is excluded
-/// let active = vec!["base".into(), "arch".into()];
-/// let filtered = filter_sections_and(&sections, &active);
-/// assert_eq!(filtered.len(), 2);
-/// assert_eq!(filtered[0].items, ["git"]);
-/// assert_eq!(filtered[1].items, ["paru"]);
-/// ```
-#[must_use]
-#[allow(dead_code)] // public API kept for backward compatibility; prefer filter_sections with MatchMode::All
-pub fn filter_sections_and(sections: &[Section], active_categories: &[String]) -> Vec<Section> {
-    filter_sections(sections, active_categories, MatchMode::All)
-}
-
-/// Filter sections by excluded categories using OR logic (for manifest):
-/// A section is excluded if ANY of its categories are in the excluded set.
-#[cfg(test)]
-#[must_use]
-pub fn filter_sections_or_exclude<'a>(
-    sections: &'a [Section],
-    excluded_categories: &[String],
-) -> Vec<&'a Section> {
-    sections
-        .iter()
-        .filter(|s| !category_matcher::matches(&s.categories, excluded_categories, MatchMode::Any))
-        .collect()
-}
-
 /// Parse a `[header,tags]` line into lowercased category tags.
 fn parse_section_header(line: &str) -> Option<Vec<String>> {
     let inner = line.trim().strip_prefix('[')?.strip_suffix(']')?;
@@ -359,33 +311,25 @@ fn read_file(path: &Path) -> Result<String> {
     std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))
 }
 
-/// Load a flat list of items from an INI file, filtered by active categories (AND logic).
-///
-/// This is a utility function for config files where each item is a single string.
-/// Config loaders now call [`filter_sections`] with explicit [`MatchMode`] instead, but
-/// this function remains available as a convenience for simple flat-list loading from
-/// a file path.
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - The file exists but cannot be read
-/// - An item appears outside of a section header
-#[allow(dead_code)] // utility retained for tests and potential future callers
-pub fn load_filtered_items(path: &Path, active_categories: &[String]) -> Result<Vec<String>> {
-    let sections = parse_sections(path)?;
-    Ok(
-        filter_sections(&sections, active_categories, MatchMode::All)
-            .into_iter()
-            .flat_map(|s| s.items)
-            .collect(),
-    )
-}
-
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    /// OR-exclusion filter: include sections unless ANY of their categories
+    /// are in the excluded set.  Only needed by these tests (the production
+    /// equivalent lives in `manifest::load`).
+    fn filter_sections_or_exclude<'a>(
+        sections: &'a [Section],
+        excluded_categories: &[String],
+    ) -> Vec<&'a Section> {
+        sections
+            .iter()
+            .filter(|s| {
+                !category_matcher::matches(&s.categories, excluded_categories, MatchMode::Any)
+            })
+            .collect()
+    }
 
     #[test]
     fn parse_simple_section() {
@@ -549,7 +493,7 @@ mod tests {
         ];
 
         let active = vec!["base".to_string(), "arch".to_string()];
-        let filtered = filter_sections_and(&sections, &active);
+        let filtered = filter_sections(&sections, &active, MatchMode::All);
         assert_eq!(filtered.len(), 2);
         assert_eq!(
             filtered.first().expect("filtered 0 should exist").items,
@@ -642,27 +586,5 @@ mod tests {
             sections.is_empty(),
             "comment-only input should produce no sections"
         );
-    }
-
-    #[test]
-    fn load_filtered_items_from_file() {
-        let dir = tempfile::tempdir().expect("tempdir should create");
-        let path = dir.path().join("test.ini");
-        std::fs::write(&path, "[base]\nfoo\nbar\n\n[arch]\nbaz\n").expect("write should succeed");
-
-        let items = load_filtered_items(&path, &["base".to_string()]).expect("load should succeed");
-        assert_eq!(items, vec!["foo", "bar"]);
-
-        let items = load_filtered_items(&path, &["base".to_string(), "arch".to_string()])
-            .expect("load should succeed");
-        assert_eq!(items, vec!["foo", "bar", "baz"]);
-    }
-
-    #[test]
-    fn load_filtered_items_missing_file() {
-        let dir = tempfile::tempdir().expect("tempdir should create");
-        let items = load_filtered_items(&dir.path().join("nope.ini"), &["base".to_string()])
-            .expect("missing file should return empty");
-        assert!(items.is_empty(), "missing file should produce empty list");
     }
 }

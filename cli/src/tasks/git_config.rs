@@ -44,27 +44,20 @@ impl Task for ConfigureGit {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::exec::Executor;
-    use crate::platform::{Os, Platform};
-    use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
+    use crate::tasks::test_helpers::{empty_config, make_linux_context, make_windows_context};
     use std::path::PathBuf;
-    use std::sync::Arc;
 
     #[test]
     fn should_run_false_on_linux() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Arc::new(Platform::new(Os::Linux, false));
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_linux_context(config);
         assert!(!ConfigureGit.should_run(&ctx));
     }
 
     #[test]
     fn should_run_true_on_windows() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Arc::new(Platform::new(Os::Windows, false));
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_windows_context(config);
         assert!(ConfigureGit.should_run(&ctx));
     }
 }

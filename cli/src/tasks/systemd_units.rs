@@ -56,7 +56,9 @@ mod tests {
     use crate::config::systemd_units::SystemdUnit;
     use crate::exec::Executor;
     use crate::platform::{Os, Platform};
-    use crate::tasks::test_helpers::{NoOpExecutor, WhichExecutor, empty_config, make_context};
+    use crate::tasks::test_helpers::{
+        WhichExecutor, empty_config, make_context, make_linux_context,
+    };
     use std::path::PathBuf;
     use std::sync::Arc;
 
@@ -87,9 +89,7 @@ mod tests {
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
         });
-        let platform = Arc::new(Platform::new(Os::Linux, false));
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor); // which() returns false
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_linux_context(config); // which() returns false
         assert!(!ConfigureSystemd.should_run(&ctx));
     }
 

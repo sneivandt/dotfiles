@@ -49,18 +49,13 @@ impl Task for InstallCopilotSkills {
 mod tests {
     use super::*;
     use crate::config::copilot_skills::CopilotSkill;
-    use crate::exec::Executor;
-    use crate::platform::{Os, Platform};
-    use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
+    use crate::tasks::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
-    use std::sync::Arc;
 
     #[test]
     fn should_run_false_when_no_skills_configured() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Arc::new(Platform::new(Os::Linux, false));
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_linux_context(config);
         assert!(!InstallCopilotSkills.should_run(&ctx));
     }
 
@@ -70,9 +65,7 @@ mod tests {
         config.copilot_skills.push(CopilotSkill {
             url: "https://github.com/example/skill".to_string(),
         });
-        let platform = Arc::new(Platform::new(Os::Linux, false));
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_linux_context(config);
         assert!(InstallCopilotSkills.should_run(&ctx));
     }
 }

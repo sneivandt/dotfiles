@@ -169,11 +169,7 @@ impl Task for RunShellcheck {
             .info(&format!("checking {} shell scripts", scripts.len()));
 
         let mut args: Vec<&str> = vec!["--severity=warning"];
-        let paths: Vec<_> = scripts
-            .iter()
-            .filter_map(|p| p.to_str().map(String::from))
-            .collect();
-        args.extend(paths.iter().map(String::as_str));
+        args.extend(scripts.iter().filter_map(|p| p.to_str()));
 
         let result = ctx.executor.run_unchecked("shellcheck", &args)?;
         if result.success {
@@ -268,10 +264,11 @@ where
 
 /// Recursively discover shell scripts in a directory.
 ///
-/// A file is considered a shell script if it has a `.sh` extension
-/// or its first line starts with `#!/` and contains `sh`.
-/// Files with `.zsh` extension or zsh shebangs are excluded (shellcheck
-/// doesn't support zsh syntax).
+/// A file is considered a shell script if it has a `.sh` extension or its
+/// first line contains a shebang for a known POSIX-compatible interpreter
+/// (see [`SHELL_INTERPRETERS`]).  Files with a `.zsh` extension are always
+/// excluded; zsh shebangs are implicitly excluded because `zsh` is not in
+/// `SHELL_INTERPRETERS` (shellcheck does not support zsh syntax).
 fn discover_shell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
     discover_files(
         dir,
@@ -279,8 +276,7 @@ fn discover_shell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
             if path.extension().is_some_and(|e| e == "zsh") {
                 return false;
             }
-            path.extension().is_some_and(|e| e == "sh")
-                || (is_shell_shebang(path) && !is_zsh_shebang(path))
+            path.extension().is_some_and(|e| e == "sh") || is_shell_shebang(path)
         },
         out,
     );
@@ -308,11 +304,6 @@ const SHELL_INTERPRETERS: &[&[u8]] = &[b"sh", b"bash", b"dash", b"ksh"];
 fn is_shell_shebang(path: &Path) -> bool {
     parse_shebang_interpreter(path)
         .is_some_and(|name| SHELL_INTERPRETERS.contains(&name.as_slice()))
-}
-
-/// Check if a file has a zsh shebang (e.g. `#!/bin/zsh`).
-fn is_zsh_shebang(path: &Path) -> bool {
-    parse_shebang_interpreter(path).is_some_and(|name| name == b"zsh")
 }
 
 /// Parse shebang line to extract the interpreter name.

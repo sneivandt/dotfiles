@@ -243,13 +243,12 @@ mod tests {
     use super::*;
 
     use crate::config::packages::Package;
-    use crate::exec::Executor;
-    use crate::platform::{Os, Platform};
     use crate::resources::Resource;
     use crate::resources::package::PackageResource;
-    use crate::tasks::test_helpers::{NoOpExecutor, empty_config, make_context};
+    use crate::tasks::test_helpers::{
+        empty_config, make_arch_context, make_linux_context, make_windows_context,
+    };
     use std::path::PathBuf;
-    use std::sync::Arc;
 
     #[test]
     fn package_resource_description() {
@@ -273,9 +272,7 @@ mod tests {
     #[test]
     fn install_packages_should_run_false_when_no_packages() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Arc::new(Platform::new(Os::Linux, false));
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_linux_context(config);
         assert!(!InstallPackages.should_run(&ctx));
     }
 
@@ -286,9 +283,7 @@ mod tests {
             name: "paru-bin".to_string(),
             is_aur: true,
         });
-        let platform = Arc::new(Platform::new(Os::Linux, true));
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_arch_context(config);
         assert!(!InstallPackages.should_run(&ctx));
     }
 
@@ -299,9 +294,7 @@ mod tests {
             name: "git".to_string(),
             is_aur: false,
         });
-        let platform = Arc::new(Platform::new(Os::Linux, false));
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_linux_context(config);
         assert!(InstallPackages.should_run(&ctx));
     }
 
@@ -316,9 +309,7 @@ mod tests {
             name: "paru-bin".to_string(),
             is_aur: true,
         });
-        let platform = Arc::new(Platform::new(Os::Linux, false)); // not arch
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_linux_context(config); // not arch
         assert!(!InstallAurPackages.should_run(&ctx));
     }
 
@@ -329,9 +320,7 @@ mod tests {
             name: "git".to_string(),
             is_aur: false,
         });
-        let platform = Arc::new(Platform::new(Os::Linux, true)); // arch
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_arch_context(config);
         assert!(!InstallAurPackages.should_run(&ctx));
     }
 
@@ -342,9 +331,7 @@ mod tests {
             name: "paru-bin".to_string(),
             is_aur: true,
         });
-        let platform = Arc::new(Platform::new(Os::Linux, true)); // arch
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_arch_context(config);
         assert!(InstallAurPackages.should_run(&ctx));
     }
 
@@ -355,27 +342,21 @@ mod tests {
     #[test]
     fn install_paru_should_run_false_on_non_arch_linux() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Arc::new(Platform::new(Os::Linux, false));
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_linux_context(config);
         assert!(!InstallParu.should_run(&ctx));
     }
 
     #[test]
     fn install_paru_should_run_false_on_windows() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Arc::new(Platform::new(Os::Windows, false));
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_windows_context(config);
         assert!(!InstallParu.should_run(&ctx));
     }
 
     #[test]
     fn install_paru_should_run_true_on_arch_linux() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Arc::new(Platform::new(Os::Linux, true)); // arch
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_arch_context(config);
         assert!(InstallParu.should_run(&ctx));
     }
 }

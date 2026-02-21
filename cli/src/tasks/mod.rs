@@ -270,6 +270,45 @@ pub mod test_helpers {
         }
     }
 
+    /// Build a [`Context`] with a Linux non-arch platform and [`NoOpExecutor`].
+    ///
+    /// Convenience shorthand for tests that only need a plain Linux context.
+    #[must_use]
+    pub fn make_linux_context(config: Config) -> Context {
+        use crate::platform::Os;
+        make_context(
+            config,
+            Arc::new(Platform::new(Os::Linux, false)),
+            Arc::new(NoOpExecutor),
+        )
+    }
+
+    /// Build a [`Context`] with a Windows platform and [`NoOpExecutor`].
+    ///
+    /// Convenience shorthand for tests that only need a plain Windows context.
+    #[must_use]
+    pub fn make_windows_context(config: Config) -> Context {
+        use crate::platform::Os;
+        make_context(
+            config,
+            Arc::new(Platform::new(Os::Windows, false)),
+            Arc::new(NoOpExecutor),
+        )
+    }
+
+    /// Build a [`Context`] with an Arch Linux platform and [`NoOpExecutor`].
+    ///
+    /// Convenience shorthand for tests that target Arch-specific behaviour.
+    #[must_use]
+    pub fn make_arch_context(config: Config) -> Context {
+        use crate::platform::Os;
+        make_context(
+            config,
+            Arc::new(Platform::new(Os::Linux, true)),
+            Arc::new(NoOpExecutor),
+        )
+    }
+
     /// Build a [`Context`] with a default Linux platform and
     /// [`NoOpExecutor`], also returning the [`Logger`] so tests can inspect
     /// recorded task state.

@@ -46,7 +46,9 @@ mod tests {
     use super::*;
     use crate::exec::Executor;
     use crate::platform::{Os, Platform};
-    use crate::tasks::test_helpers::{NoOpExecutor, WhichExecutor, empty_config, make_context};
+    use crate::tasks::test_helpers::{
+        WhichExecutor, empty_config, make_context, make_linux_context,
+    };
     use std::path::PathBuf;
     use std::sync::Arc;
 
@@ -66,9 +68,7 @@ mod tests {
     #[test]
     fn should_run_false_when_zsh_not_found() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Arc::new(Platform::new(Os::Linux, false));
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor); // which() returns false
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_linux_context(config); // which() returns false
         assert!(!ConfigureShell.should_run(&ctx));
     }
 

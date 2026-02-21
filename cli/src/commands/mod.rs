@@ -89,7 +89,7 @@ impl CommandSetup {
 /// Tasks call [`wait_for_deps`](TaskGraph::wait_for_deps) before starting and
 /// [`mark_complete`](TaskGraph::mark_complete) when finished.  The [`Condvar`]
 /// wakes all waiting tasks whenever a new completion is recorded.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct TaskGraph {
     /// Set of completed task [`TypeId`]s.
     completed: Mutex<HashSet<TypeId>>,
@@ -100,10 +100,7 @@ struct TaskGraph {
 impl TaskGraph {
     /// Create a new, empty task graph with no completed tasks.
     fn new() -> Self {
-        Self {
-            completed: Mutex::new(HashSet::new()),
-            condvar: Condvar::new(),
-        }
+        Self::default()
     }
 
     /// Block until every [`TypeId`] in `deps` has been marked complete.

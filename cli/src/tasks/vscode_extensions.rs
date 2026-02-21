@@ -39,19 +39,14 @@ impl Task for InstallVsCodeExtensions {
         ));
         let installed = get_installed_extensions(&cmd, ctx.executor)?;
 
-        let resource_states: Vec<_> = extensions
-            .iter()
-            .map(|ext| {
+        process_resource_states(
+            ctx,
+            extensions.iter().map(|ext| {
                 let resource =
                     VsCodeExtensionResource::new(ext.id.clone(), cmd.clone(), ctx.executor);
                 let state = resource.state_from_installed(&installed);
                 (resource, state)
-            })
-            .collect();
-
-        process_resource_states(
-            ctx,
-            resource_states,
+            }),
             &ProcessOpts {
                 verb: "install extension",
                 fix_incorrect: false,

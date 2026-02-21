@@ -140,7 +140,6 @@ impl TaskGraph {
 ///
 /// Returns `true` if the graph contains at least one cycle.
 fn has_cycle(tasks: &[&dyn Task]) -> bool {
-    let present: HashSet<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
     let type_to_idx: HashMap<TypeId, usize> = tasks
         .iter()
         .enumerate()
@@ -152,7 +151,7 @@ fn has_cycle(tasks: &[&dyn Task]) -> bool {
         .map(|t| {
             t.dependencies()
                 .iter()
-                .filter(|d| present.contains(d))
+                .filter(|d| type_to_idx.contains_key(d))
                 .count()
         })
         .collect();

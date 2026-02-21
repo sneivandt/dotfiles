@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::path::Path;
 
+use super::category_matcher::{self, MatchMode};
 use super::ini;
 
 /// Sparse checkout manifest — files to exclude by category.
@@ -23,11 +24,7 @@ pub fn load(path: &Path, excluded_categories: &[String]) -> Result<Manifest> {
 
     let excluded_files = sections
         .into_iter()
-        .filter(|s| {
-            s.categories
-                .iter()
-                .any(|cat| excluded_categories.contains(cat))
-        })
+        .filter(|s| category_matcher::matches(&s.categories, excluded_categories, MatchMode::Any))
         .flat_map(|s| s.items)
         .collect();
 

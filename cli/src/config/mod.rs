@@ -1,3 +1,4 @@
+pub mod category_matcher;
 pub mod chmod;
 pub mod copilot_skills;
 pub mod ini;

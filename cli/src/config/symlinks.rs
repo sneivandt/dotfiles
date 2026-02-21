@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::path::Path;
 
+use super::category_matcher::MatchMode;
 use super::ini;
 
 /// A symlink to create: source (in symlinks/) → target (in $HOME).
@@ -16,7 +17,14 @@ pub struct Symlink {
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Symlink>> {
-    ini::load_filtered_as(path, active_categories, |source| Symlink { source })
+    let sections = ini::parse_sections(path)?;
+    Ok(
+        ini::filter_sections(&sections, active_categories, MatchMode::All)
+            .into_iter()
+            .flat_map(|s| s.items)
+            .map(|source| Symlink { source })
+            .collect(),
+    )
 }
 
 #[cfg(test)]

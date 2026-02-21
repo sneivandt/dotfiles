@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::path::Path;
 
+use super::category_matcher::MatchMode;
 use super::ini;
 
 /// A systemd user unit to enable.
@@ -16,7 +17,14 @@ pub struct SystemdUnit {
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<SystemdUnit>> {
-    ini::load_filtered_as(path, active_categories, |name| SystemdUnit { name })
+    let sections = ini::parse_sections(path)?;
+    Ok(
+        ini::filter_sections(&sections, active_categories, MatchMode::All)
+            .into_iter()
+            .flat_map(|s| s.items)
+            .map(|name| SystemdUnit { name })
+            .collect(),
+    )
 }
 
 #[cfg(test)]

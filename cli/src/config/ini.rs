@@ -1,6 +1,8 @@
 use anyhow::{Context as _, Result, bail};
 use std::path::Path;
 
+use super::category_matcher::{self, MatchMode};
+
 /// A parsed section from an INI file.
 ///
 /// # Examples
@@ -224,8 +226,47 @@ pub fn parse_kv_sections_from_str(content: &str) -> Result<Vec<KvSection>> {
     Ok(sections)
 }
 
+/// Filter sections using the specified match mode.
+///
+/// Returns owned clones of the sections that match the given categories
+/// under the chosen logic.
+///
+/// # Examples
+///
+/// ```
+/// use dotfiles_cli::config::ini::{Section, filter_sections};
+/// use dotfiles_cli::config::category_matcher::MatchMode;
+///
+/// let sections = vec![
+///     Section { categories: vec!["arch".into(), "desktop".into()], items: vec!["picom".into()] },
+/// ];
+/// let active = vec!["arch".into()];
+///
+/// // All mode requires both "arch" AND "desktop"
+/// assert_eq!(filter_sections(&sections, &active, MatchMode::All).len(), 0);
+///
+/// // Any mode requires just "arch" OR "desktop"
+/// assert_eq!(filter_sections(&sections, &active, MatchMode::Any).len(), 1);
+/// ```
+#[must_use]
+pub fn filter_sections(
+    sections: &[Section],
+    active_categories: &[String],
+    mode: MatchMode,
+) -> Vec<Section> {
+    sections
+        .iter()
+        .filter(|s| category_matcher::matches(&s.categories, active_categories, mode))
+        .cloned()
+        .collect()
+}
+
 /// Filter sections by active categories using AND logic:
 /// A section is included only if ALL of its categories are in the active set.
+///
+/// This is a convenience wrapper around [`filter_sections`] with [`MatchMode::All`],
+/// retained for backward compatibility with code that previously called it directly.
+/// New code should prefer [`filter_sections`] with an explicit [`MatchMode`].
 ///
 /// # Examples
 ///
@@ -249,18 +290,9 @@ pub fn parse_kv_sections_from_str(content: &str) -> Result<Vec<KvSection>> {
 /// assert_eq!(filtered[1].items, ["paru"]);
 /// ```
 #[must_use]
-pub fn filter_sections_and<'a>(
-    sections: &'a [Section],
-    active_categories: &[String],
-) -> Vec<&'a Section> {
-    sections
-        .iter()
-        .filter(|s| {
-            s.categories
-                .iter()
-                .all(|cat| active_categories.contains(cat))
-        })
-        .collect()
+#[allow(dead_code)] // public API kept for backward compatibility; prefer filter_sections with MatchMode::All
+pub fn filter_sections_and(sections: &[Section], active_categories: &[String]) -> Vec<Section> {
+    filter_sections(sections, active_categories, MatchMode::All)
 }
 
 /// Filter sections by excluded categories using OR logic (for manifest):
@@ -273,11 +305,7 @@ pub fn filter_sections_or_exclude<'a>(
 ) -> Vec<&'a Section> {
     sections
         .iter()
-        .filter(|s| {
-            !s.categories
-                .iter()
-                .any(|cat| excluded_categories.contains(cat))
-        })
+        .filter(|s| !category_matcher::matches(&s.categories, excluded_categories, MatchMode::Any))
         .collect()
 }
 
@@ -333,46 +361,25 @@ fn read_file(path: &Path) -> Result<String> {
 
 /// Load a flat list of items from an INI file, filtered by active categories (AND logic).
 ///
-/// This is a convenience for config files where each item is a single string
-/// (e.g., fonts, systemd-units, vscode extensions, copilot skills, symlinks).
+/// This is a utility function for config files where each item is a single string.
+/// Config loaders now call [`filter_sections`] with explicit [`MatchMode`] instead, but
+/// this function remains available as a convenience for simple flat-list loading from
+/// a file path.
 ///
 /// # Errors
 ///
 /// Returns an error if:
 /// - The file exists but cannot be read
 /// - An item appears outside of a section header
+#[allow(dead_code)] // utility retained for tests and potential future callers
 pub fn load_filtered_items(path: &Path, active_categories: &[String]) -> Result<Vec<String>> {
     let sections = parse_sections(path)?;
-    Ok(sections
-        .into_iter()
-        .filter(|s| {
-            s.categories
-                .iter()
-                .all(|cat| active_categories.contains(cat))
-        })
-        .flat_map(|s| s.items)
-        .collect())
-}
-
-/// Load items from an INI file, filtered by active categories (AND logic),
-/// and map each string into a typed value via a constructor function.
-///
-/// This is a convenience for config files where each item is a single-field
-/// struct (e.g., symlinks, systemd-units, vscode extensions, copilot skills).
-///
-/// # Errors
-///
-/// Returns an error if the file exists but cannot be read, or if an item
-/// appears outside of a section header.
-pub fn load_filtered_as<T>(
-    path: &Path,
-    active_categories: &[String],
-    constructor: fn(String) -> T,
-) -> Result<Vec<T>> {
-    Ok(load_filtered_items(path, active_categories)?
-        .into_iter()
-        .map(constructor)
-        .collect())
+    Ok(
+        filter_sections(&sections, active_categories, MatchMode::All)
+            .into_iter()
+            .flat_map(|s| s.items)
+            .collect(),
+    )
 }
 
 #[cfg(test)]

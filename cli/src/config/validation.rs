@@ -55,18 +55,28 @@ pub trait ConfigValidator {
     fn validate(&self, root: &Path, platform: &Platform) -> Vec<ValidationWarning>;
 }
 
-/// Validator for symlink configurations.
-#[derive(Debug)]
-pub struct SymlinkValidator<'a> {
-    symlinks: &'a [super::symlinks::Symlink],
+/// Define a validator struct that wraps a slice reference and provides a `new` constructor.
+macro_rules! define_validator {
+    ($(#[$meta:meta])* $name:ident { $field:ident : $ty:ty }) => {
+        $(#[$meta])*
+        #[derive(Debug)]
+        pub struct $name<'a> {
+            $field: &'a [$ty],
+        }
+
+        impl<'a> $name<'a> {
+            /// Create a new validator over the given slice.
+            #[must_use]
+            pub const fn new($field: &'a [$ty]) -> Self {
+                Self { $field }
+            }
+        }
+    };
 }
 
-impl<'a> SymlinkValidator<'a> {
-    /// Create a new symlink validator over the given slice of configured symlinks.
-    #[must_use]
-    pub const fn new(symlinks: &'a [super::symlinks::Symlink]) -> Self {
-        Self { symlinks }
-    }
+define_validator! {
+    /// Validator for symlink configurations.
+    SymlinkValidator { symlinks: super::symlinks::Symlink }
 }
 
 impl ConfigValidator for SymlinkValidator<'_> {
@@ -100,18 +110,9 @@ impl ConfigValidator for SymlinkValidator<'_> {
     }
 }
 
-/// Validator for package configurations.
-#[derive(Debug)]
-pub struct PackageValidator<'a> {
-    packages: &'a [super::packages::Package],
-}
-
-impl<'a> PackageValidator<'a> {
-    /// Create a new package validator over the given slice of configured packages.
-    #[must_use]
-    pub const fn new(packages: &'a [super::packages::Package]) -> Self {
-        Self { packages }
-    }
+define_validator! {
+    /// Validator for package configurations.
+    PackageValidator { packages: super::packages::Package }
 }
 
 impl ConfigValidator for PackageValidator<'_> {
@@ -142,18 +143,9 @@ impl ConfigValidator for PackageValidator<'_> {
     }
 }
 
-/// Validator for registry configurations.
-#[derive(Debug)]
-pub struct RegistryValidator<'a> {
-    entries: &'a [super::registry::RegistryEntry],
-}
-
-impl<'a> RegistryValidator<'a> {
-    /// Create a new registry validator over the given slice of configured entries.
-    #[must_use]
-    pub const fn new(entries: &'a [super::registry::RegistryEntry]) -> Self {
-        Self { entries }
-    }
+define_validator! {
+    /// Validator for registry configurations.
+    RegistryValidator { entries: super::registry::RegistryEntry }
 }
 
 impl ConfigValidator for RegistryValidator<'_> {
@@ -243,18 +235,9 @@ fn validate_octal_mode(mode: &str) -> Option<String> {
     None
 }
 
-/// Validator for chmod configurations.
-#[derive(Debug)]
-pub struct ChmodValidator<'a> {
-    entries: &'a [super::chmod::ChmodEntry],
-}
-
-impl<'a> ChmodValidator<'a> {
-    /// Create a new chmod validator over the given slice of configured entries.
-    #[must_use]
-    pub const fn new(entries: &'a [super::chmod::ChmodEntry]) -> Self {
-        Self { entries }
-    }
+define_validator! {
+    /// Validator for chmod configurations.
+    ChmodValidator { entries: super::chmod::ChmodEntry }
 }
 
 impl ConfigValidator for ChmodValidator<'_> {
@@ -290,18 +273,9 @@ impl ConfigValidator for ChmodValidator<'_> {
     }
 }
 
-/// Validator for systemd unit configurations.
-#[derive(Debug)]
-pub struct SystemdUnitValidator<'a> {
-    units: &'a [super::systemd_units::SystemdUnit],
-}
-
-impl<'a> SystemdUnitValidator<'a> {
-    /// Create a new systemd unit validator over the given slice of configured units.
-    #[must_use]
-    pub const fn new(units: &'a [super::systemd_units::SystemdUnit]) -> Self {
-        Self { units }
-    }
+define_validator! {
+    /// Validator for systemd unit configurations.
+    SystemdUnitValidator { units: super::systemd_units::SystemdUnit }
 }
 
 impl ConfigValidator for SystemdUnitValidator<'_> {
@@ -346,18 +320,9 @@ impl ConfigValidator for SystemdUnitValidator<'_> {
     }
 }
 
-/// Validator for VS Code extension configurations.
-#[derive(Debug)]
-pub struct VsCodeExtensionValidator<'a> {
-    extensions: &'a [super::vscode_extensions::VsCodeExtension],
-}
-
-impl<'a> VsCodeExtensionValidator<'a> {
-    /// Create a new VS Code extension validator over the given slice of configured extensions.
-    #[must_use]
-    pub const fn new(extensions: &'a [super::vscode_extensions::VsCodeExtension]) -> Self {
-        Self { extensions }
-    }
+define_validator! {
+    /// Validator for VS Code extension configurations.
+    VsCodeExtensionValidator { extensions: super::vscode_extensions::VsCodeExtension }
 }
 
 impl ConfigValidator for VsCodeExtensionValidator<'_> {
@@ -388,18 +353,9 @@ impl ConfigValidator for VsCodeExtensionValidator<'_> {
     }
 }
 
-/// Validator for Copilot skill configurations.
-#[derive(Debug)]
-pub struct CopilotSkillValidator<'a> {
-    skills: &'a [super::copilot_skills::CopilotSkill],
-}
-
-impl<'a> CopilotSkillValidator<'a> {
-    /// Create a new Copilot skill validator over the given slice of configured skills.
-    #[must_use]
-    pub const fn new(skills: &'a [super::copilot_skills::CopilotSkill]) -> Self {
-        Self { skills }
-    }
+define_validator! {
+    /// Validator for Copilot skill configurations.
+    CopilotSkillValidator { skills: super::copilot_skills::CopilotSkill }
 }
 
 impl ConfigValidator for CopilotSkillValidator<'_> {

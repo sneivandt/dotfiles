@@ -10,16 +10,19 @@ pub struct CopilotSkill {
     pub url: String,
 }
 
+impl From<String> for CopilotSkill {
+    fn from(url: String) -> Self {
+        Self { url }
+    }
+}
+
 /// Load Copilot skills from copilot-skills.ini, filtered by active categories.
 ///
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<CopilotSkill>> {
-    Ok(ini::load_flat_items(path, active_categories)?
-        .into_iter()
-        .map(|url| CopilotSkill { url })
-        .collect())
+    ini::load_flat(path, active_categories)
 }
 
 #[cfg(test)]

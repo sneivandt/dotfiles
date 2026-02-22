@@ -10,16 +10,19 @@ pub struct SystemdUnit {
     pub name: String,
 }
 
+impl From<String> for SystemdUnit {
+    fn from(name: String) -> Self {
+        Self { name }
+    }
+}
+
 /// Load systemd units from systemd-units.ini, filtered by active categories.
 ///
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<SystemdUnit>> {
-    Ok(ini::load_flat_items(path, active_categories)?
-        .into_iter()
-        .map(|name| SystemdUnit { name })
-        .collect())
+    ini::load_flat(path, active_categories)
 }
 
 #[cfg(test)]

@@ -2,7 +2,10 @@ use super::define_flat_config;
 
 define_flat_config! {
     /// A systemd user unit to enable.
-    SystemdUnit { name }
+    SystemdUnit {
+        /// Unit name including extension (e.g., `"clean-home-tmp.timer"`).
+        name
+    }
 }
 
 #[cfg(test)]

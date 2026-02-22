@@ -2,7 +2,10 @@ use super::define_flat_config;
 
 define_flat_config! {
     /// A VS Code extension to install.
-    VsCodeExtension { id }
+    VsCodeExtension {
+        /// Extension identifier in `publisher.name` format (e.g., `"github.copilot-chat"`).
+        id
+    }
 }
 
 #[cfg(test)]

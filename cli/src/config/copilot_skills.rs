@@ -2,7 +2,10 @@ use super::define_flat_config;
 
 define_flat_config! {
     /// A GitHub Copilot skill URL.
-    CopilotSkill { url }
+    CopilotSkill {
+        /// GitHub blob or tree URL pointing to the skill directory.
+        url
+    }
 }
 
 #[cfg(test)]

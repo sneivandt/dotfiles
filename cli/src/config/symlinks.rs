@@ -2,7 +2,10 @@ use super::define_flat_config;
 
 define_flat_config! {
     /// A symlink to create: source (in symlinks/) → target (in $HOME).
-    Symlink { source }
+    Symlink {
+        /// Relative path under symlinks/ directory.
+        source
+    }
 }
 
 #[cfg(test)]

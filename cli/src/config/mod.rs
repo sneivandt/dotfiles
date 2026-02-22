@@ -20,7 +20,10 @@ pub mod vscode_extensions;
 /// ```ignore
 /// define_flat_config! {
 ///     /// A symlink to create.
-///     Symlink { source }
+///     Symlink {
+///         /// Relative path under symlinks/ directory.
+///         source
+///     }
 /// }
 /// // expands to:
 /// //   #[derive(Debug, Clone)]
@@ -30,12 +33,15 @@ pub mod vscode_extensions;
 macro_rules! define_flat_config {
     (
         $(#[$meta:meta])*
-        $name:ident { $field:ident }
+        $name:ident {
+            $(#[$field_meta:meta])*
+            $field:ident
+        }
     ) => {
         $(#[$meta])*
         #[derive(Debug, Clone)]
         pub struct $name {
-            /// Value loaded from the INI file.
+            $(#[$field_meta])*
             pub $field: String,
         }
 

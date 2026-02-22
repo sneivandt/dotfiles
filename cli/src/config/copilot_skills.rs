@@ -1,13 +1,10 @@
-/// A GitHub Copilot skill URL.
-#[derive(Debug, Clone)]
-pub struct CopilotSkill {
-    /// GitHub blob or tree URL pointing to the skill directory.
-    pub url: String,
-}
+use super::define_flat_config;
 
-impl From<String> for CopilotSkill {
-    fn from(url: String) -> Self {
-        Self { url }
+define_flat_config! {
+    /// A GitHub Copilot skill URL.
+    CopilotSkill {
+        /// GitHub blob or tree URL pointing to the skill directory.
+        url
     }
 }
 

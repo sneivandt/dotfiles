@@ -1,13 +1,10 @@
-/// A systemd user unit to enable.
-#[derive(Debug, Clone)]
-pub struct SystemdUnit {
-    /// Unit name including extension (e.g., `"clean-home-tmp.timer"`).
-    pub name: String,
-}
+use super::define_flat_config;
 
-impl From<String> for SystemdUnit {
-    fn from(name: String) -> Self {
-        Self { name }
+define_flat_config! {
+    /// A systemd user unit to enable.
+    SystemdUnit {
+        /// Unit name including extension (e.g., `"clean-home-tmp.timer"`).
+        name
     }
 }
 

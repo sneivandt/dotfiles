@@ -248,10 +248,25 @@ pub mod test_helpers {
         os: crate::platform::Os,
         is_arch: bool,
     ) -> Context {
+        make_platform_context_with_which(config, os, is_arch, false)
+    }
+
+    /// Build a [`Context`] with the specified OS/arch and a [`WhichExecutor`]
+    /// that returns the given `which_result`.
+    ///
+    /// Use this when a task's `should_run` or `run` method gates on tool
+    /// availability via `ctx.executor.which(...)`.
+    #[must_use]
+    pub fn make_platform_context_with_which(
+        config: Config,
+        os: crate::platform::Os,
+        is_arch: bool,
+        which_result: bool,
+    ) -> Context {
         make_context(
             config,
             Arc::new(Platform::new(os, is_arch)),
-            Arc::new(WhichExecutor::default()),
+            Arc::new(WhichExecutor { which_result }),
         )
     }
 

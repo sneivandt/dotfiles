@@ -1,13 +1,10 @@
-/// A symlink to create: source (in symlinks/) → target (in $HOME).
-#[derive(Debug, Clone)]
-pub struct Symlink {
-    /// Relative path under symlinks/ directory.
-    pub source: String,
-}
+use super::define_flat_config;
 
-impl From<String> for Symlink {
-    fn from(source: String) -> Self {
-        Self { source }
+define_flat_config! {
+    /// A symlink to create: source (in symlinks/) → target (in $HOME).
+    Symlink {
+        /// Relative path under symlinks/ directory.
+        source
     }
 }
 

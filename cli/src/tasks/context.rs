@@ -116,4 +116,23 @@ impl Context {
     pub fn hooks_dir(&self) -> std::path::PathBuf {
         self.config_read().root.join("hooks")
     }
+
+    /// Create a copy of this context with a different logger.
+    ///
+    /// All other fields are cloned by reference (via `Arc`). This is used by
+    /// the parallel scheduler to give each task its own buffered logger while
+    /// sharing the rest of the context.
+    #[must_use]
+    pub fn with_log(&self, log: Arc<dyn Log>) -> Self {
+        Self {
+            config: Arc::clone(&self.config),
+            platform: Arc::clone(&self.platform),
+            log,
+            dry_run: self.dry_run,
+            home: self.home.clone(),
+            executor: Arc::clone(&self.executor),
+            parallel: self.parallel,
+            repo_updated: Arc::clone(&self.repo_updated),
+        }
+    }
 }

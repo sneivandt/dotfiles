@@ -300,17 +300,8 @@ pub mod test_helpers {
     #[must_use]
     pub fn make_static_context(config: Config) -> (Context, Arc<Logger>) {
         let log = Arc::new(Logger::new(false, "test"));
-        let executor: Arc<dyn Executor> = Arc::new(WhichExecutor::default());
-        let ctx = Context {
-            config: std::sync::Arc::new(std::sync::RwLock::new(config)),
-            platform: Arc::new(Platform::new(crate::platform::Os::Linux, false)),
-            log: Arc::clone(&log) as Arc<dyn crate::logging::Log>,
-            dry_run: false,
-            home: PathBuf::from("/home/test"),
-            executor,
-            parallel: false,
-            repo_updated: Arc::new(AtomicBool::new(false)),
-        };
+        let ctx =
+            make_linux_context(config).with_log(Arc::clone(&log) as Arc<dyn crate::logging::Log>);
         (ctx, log)
     }
 }

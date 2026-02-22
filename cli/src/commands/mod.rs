@@ -286,16 +286,7 @@ fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>) {
                 log.notify_task_start(task.name());
 
                 let buf = Arc::new(BufferedLog::new(Arc::clone(log)));
-                let task_ctx = Context {
-                    config: Arc::clone(&ctx.config),
-                    platform: Arc::clone(&ctx.platform),
-                    log: buf.clone() as Arc<dyn Log>,
-                    dry_run: ctx.dry_run,
-                    home: ctx.home.clone(),
-                    executor: Arc::clone(&ctx.executor),
-                    parallel: ctx.parallel,
-                    repo_updated: Arc::clone(&ctx.repo_updated),
-                };
+                let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
                 tasks::execute(task, &task_ctx);
 
                 buf.flush_and_complete(task.name());

@@ -1,7 +1,6 @@
 use anyhow::{Result, bail};
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
 use super::ini;
 
 /// A file permission directive.
@@ -22,23 +21,18 @@ pub struct ChmodEntry {
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<ChmodEntry>> {
-    let sections = ini::parse_sections(path)?;
-    let filtered = ini::filter_sections(&sections, active_categories, MatchMode::All);
-
-    let mut entries = Vec::new();
-    for section in filtered {
-        for item in section.items {
+    ini::load_flat_items(path, active_categories)?
+        .into_iter()
+        .map(|item| {
             let Some((mode, path)) = item.split_once(' ') else {
                 bail!("invalid chmod entry: {item}");
             };
-            entries.push(ChmodEntry {
+            Ok(ChmodEntry {
                 mode: mode.to_string(),
                 path: path.to_string(),
-            });
-        }
-    }
-
-    Ok(entries)
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

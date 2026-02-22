@@ -95,9 +95,8 @@ impl Config {
         let packages = packages::load(&conf.join("packages.ini"), active_categories)
             .context("loading packages.ini")?;
 
-        let symlinks: Vec<symlinks::Symlink> =
-            ini::load_flat(&conf.join("symlinks.ini"), active_categories)
-                .context("loading symlinks.ini")?;
+        let symlinks = ini::load_flat(&conf.join("symlinks.ini"), active_categories)
+            .context("loading symlinks.ini")?;
 
         let registry = if platform.has_registry() {
             registry::load(&conf.join("registry.ini")).context("loading registry.ini")?
@@ -105,7 +104,7 @@ impl Config {
             Vec::new()
         };
 
-        let units: Vec<systemd_units::SystemdUnit> = if platform.supports_systemd() {
+        let units = if platform.supports_systemd() {
             ini::load_flat(&conf.join("systemd-units.ini"), active_categories)
                 .context("loading systemd-units.ini")?
         } else {
@@ -115,13 +114,12 @@ impl Config {
         let chmod_entries =
             chmod::load(&conf.join("chmod.ini"), active_categories).context("loading chmod.ini")?;
 
-        let vscode_extensions: Vec<vscode_extensions::VsCodeExtension> =
+        let vscode_extensions =
             ini::load_flat(&conf.join("vscode-extensions.ini"), active_categories)
                 .context("loading vscode-extensions.ini")?;
 
-        let copilot_skills: Vec<copilot_skills::CopilotSkill> =
-            ini::load_flat(&conf.join("copilot-skills.ini"), active_categories)
-                .context("loading copilot-skills.ini")?;
+        let copilot_skills = ini::load_flat(&conf.join("copilot-skills.ini"), active_categories)
+            .context("loading copilot-skills.ini")?;
 
         let manifest = manifest::load(&conf.join("manifest.ini"), excluded_categories)
             .context("loading manifest.ini")?;

@@ -148,7 +148,7 @@ fn download_github_folder(url: &str, dest: &Path, executor: &dyn Executor) -> Re
         anyhow::bail!("path '{subpath}' not found in repository");
     }
 
-    copy_dir_recursive(&src, dest)?;
+    super::fs::copy_dir_recursive(&src, dest, true)?;
 
     // Best effort cleanup - log warning if it fails
     if let Err(e) = std::fs::remove_dir_all(&tmp) {
@@ -183,31 +183,6 @@ fn simple_hash(s: &str) -> u64 {
         hash = hash.wrapping_mul(FNV_PRIME);
     }
     hash
-}
-
-/// Recursively copy a directory tree.
-fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
-    std::fs::create_dir_all(dest)
-        .with_context(|| format!("creating directory {}", dest.display()))?;
-    for entry in
-        std::fs::read_dir(src).with_context(|| format!("reading directory {}", src.display()))?
-    {
-        let entry = entry.with_context(|| format!("reading entry in {}", src.display()))?;
-        let src_path = entry.path();
-        let dest_path = dest.join(entry.file_name());
-        if src_path.is_dir() {
-            // Skip .git directories
-            if entry.file_name() == ".git" {
-                continue;
-            }
-            copy_dir_recursive(&src_path, &dest_path)?;
-        } else {
-            std::fs::copy(&src_path, &dest_path).with_context(|| {
-                format!("copying {} to {}", src_path.display(), dest_path.display())
-            })?;
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

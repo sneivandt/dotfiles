@@ -44,13 +44,11 @@ impl Task for ConfigureShell {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::exec::Executor;
-    use crate::platform::{Os, Platform};
+    use crate::platform::Os;
     use crate::tasks::test_helpers::{
-        WhichExecutor, empty_config, make_context, make_linux_context,
+        empty_config, make_linux_context, make_platform_context_with_which,
     };
     use std::path::PathBuf;
-    use std::sync::Arc;
 
     /// Mutex to serialize tests that mutate the `CI` environment variable.
     static CI_MUTEX: std::sync::LazyLock<std::sync::Mutex<()>> =
@@ -59,9 +57,7 @@ mod tests {
     #[test]
     fn should_run_false_on_windows() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Arc::new(Platform::new(Os::Windows, false));
-        let executor: Arc<dyn Executor> = Arc::new(WhichExecutor { which_result: true });
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_platform_context_with_which(config, Os::Windows, false, true);
         assert!(!ConfigureShell.should_run(&ctx));
     }
 
@@ -76,9 +72,7 @@ mod tests {
     fn should_run_false_when_ci_env_set() {
         let _guard = CI_MUTEX.lock().expect("mutex poisoned");
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Arc::new(Platform::new(Os::Linux, false));
-        let executor: Arc<dyn Executor> = Arc::new(WhichExecutor { which_result: true }); // zsh found
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_platform_context_with_which(config, Os::Linux, false, true);
         // SAFETY: test-only env var mutation; serialized via CI_MUTEX.
         unsafe { std::env::set_var("CI", "true") };
         let result = ConfigureShell.should_run(&ctx);
@@ -90,9 +84,7 @@ mod tests {
     fn should_run_true_on_linux_with_zsh_outside_ci() {
         let _guard = CI_MUTEX.lock().expect("mutex poisoned");
         let config = empty_config(PathBuf::from("/tmp"));
-        let platform = Arc::new(Platform::new(Os::Linux, false));
-        let executor: Arc<dyn Executor> = Arc::new(WhichExecutor { which_result: true });
-        let ctx = make_context(config, platform, executor);
+        let ctx = make_platform_context_with_which(config, Os::Linux, false, true);
         // SAFETY: test-only env var mutation; serialized via CI_MUTEX.
         unsafe { std::env::remove_var("CI") };
         let result = ConfigureShell.should_run(&ctx);

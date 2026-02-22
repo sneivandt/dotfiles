@@ -45,7 +45,7 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Package>> {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::config::test_helpers::write_temp_ini;
+    use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_ini};
 
     #[test]
     fn load_filters_by_category() {
@@ -70,12 +70,6 @@ mod tests {
 
     #[test]
     fn load_missing_file_returns_empty() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("nonexistent.ini");
-        let packages = load(&path, &["base".to_string()]).unwrap();
-        assert!(
-            packages.is_empty(),
-            "missing file should produce empty list"
-        );
+        assert_load_missing_returns_empty(load);
     }
 }

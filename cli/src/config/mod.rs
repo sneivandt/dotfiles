@@ -29,6 +29,24 @@ pub mod test_helpers {
         std::fs::write(&path, content).expect("failed to write temp ini");
         (dir, path)
     }
+
+    /// Assert that a config loader returns an empty list for a missing file.
+    ///
+    /// Eliminates the repeated pattern of creating a temp dir, pointing at a
+    /// nonexistent file, calling the loader, and asserting the result is empty.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the temp directory cannot be created or the loader fails.
+    #[allow(clippy::expect_used)]
+    pub fn assert_load_missing_returns_empty<T>(
+        loader: impl Fn(&std::path::Path, &[String]) -> anyhow::Result<Vec<T>>,
+    ) {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let path = dir.path().join("nonexistent.ini");
+        let result = loader(&path, &["base".to_string()]).expect("loader should not fail");
+        assert!(result.is_empty(), "missing file should produce empty list");
+    }
 }
 
 use anyhow::{Context, Result};
@@ -77,7 +95,7 @@ impl Config {
         let packages = packages::load(&conf.join("packages.ini"), active_categories)
             .context("loading packages.ini")?;
 
-        let symlinks = symlinks::load(&conf.join("symlinks.ini"), active_categories)
+        let symlinks = ini::load_flat(&conf.join("symlinks.ini"), active_categories)
             .context("loading symlinks.ini")?;
 
         let registry = if platform.has_registry() {
@@ -87,7 +105,7 @@ impl Config {
         };
 
         let units = if platform.supports_systemd() {
-            systemd_units::load(&conf.join("systemd-units.ini"), active_categories)
+            ini::load_flat(&conf.join("systemd-units.ini"), active_categories)
                 .context("loading systemd-units.ini")?
         } else {
             Vec::new()
@@ -97,12 +115,11 @@ impl Config {
             chmod::load(&conf.join("chmod.ini"), active_categories).context("loading chmod.ini")?;
 
         let vscode_extensions =
-            vscode_extensions::load(&conf.join("vscode-extensions.ini"), active_categories)
+            ini::load_flat(&conf.join("vscode-extensions.ini"), active_categories)
                 .context("loading vscode-extensions.ini")?;
 
-        let copilot_skills =
-            copilot_skills::load(&conf.join("copilot-skills.ini"), active_categories)
-                .context("loading copilot-skills.ini")?;
+        let copilot_skills = ini::load_flat(&conf.join("copilot-skills.ini"), active_categories)
+            .context("loading copilot-skills.ini")?;
 
         let manifest = manifest::load(&conf.join("manifest.ini"), excluded_categories)
             .context("loading manifest.ini")?;

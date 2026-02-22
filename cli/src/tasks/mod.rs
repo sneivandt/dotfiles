@@ -238,17 +238,29 @@ pub mod test_helpers {
         }
     }
 
+    /// Build a [`Context`] with the specified OS/arch and default [`WhichExecutor`].
+    ///
+    /// Replaces the per-platform helpers (`make_linux_context`, etc.) with a
+    /// single generic factory, reducing near-identical code.
+    #[must_use]
+    pub fn make_platform_context(
+        config: Config,
+        os: crate::platform::Os,
+        is_arch: bool,
+    ) -> Context {
+        make_context(
+            config,
+            Arc::new(Platform::new(os, is_arch)),
+            Arc::new(WhichExecutor::default()),
+        )
+    }
+
     /// Build a [`Context`] with a Linux non-arch platform and default [`WhichExecutor`].
     ///
     /// Convenience shorthand for tests that only need a plain Linux context.
     #[must_use]
     pub fn make_linux_context(config: Config) -> Context {
-        use crate::platform::Os;
-        make_context(
-            config,
-            Arc::new(Platform::new(Os::Linux, false)),
-            Arc::new(WhichExecutor::default()),
-        )
+        make_platform_context(config, crate::platform::Os::Linux, false)
     }
 
     /// Build a [`Context`] with a Windows platform and default [`WhichExecutor`].
@@ -256,12 +268,7 @@ pub mod test_helpers {
     /// Convenience shorthand for tests that only need a plain Windows context.
     #[must_use]
     pub fn make_windows_context(config: Config) -> Context {
-        use crate::platform::Os;
-        make_context(
-            config,
-            Arc::new(Platform::new(Os::Windows, false)),
-            Arc::new(WhichExecutor::default()),
-        )
+        make_platform_context(config, crate::platform::Os::Windows, false)
     }
 
     /// Build a [`Context`] with an Arch Linux platform and default [`WhichExecutor`].
@@ -269,12 +276,7 @@ pub mod test_helpers {
     /// Convenience shorthand for tests that target Arch-specific behaviour.
     #[must_use]
     pub fn make_arch_context(config: Config) -> Context {
-        use crate::platform::Os;
-        make_context(
-            config,
-            Arc::new(Platform::new(Os::Linux, true)),
-            Arc::new(WhichExecutor::default()),
-        )
+        make_platform_context(config, crate::platform::Os::Linux, true)
     }
 
     /// Build a [`Context`] with a default Linux platform and
@@ -282,13 +284,11 @@ pub mod test_helpers {
     /// inspect recorded task state.
     #[must_use]
     pub fn make_static_context(config: Config) -> (Context, Arc<Logger>) {
-        use crate::platform::Os;
-        let platform = Arc::new(Platform::new(Os::Linux, false));
         let log = Arc::new(Logger::new(false, "test"));
         let executor: Arc<dyn Executor> = Arc::new(WhichExecutor::default());
         let ctx = Context {
             config: std::sync::Arc::new(std::sync::RwLock::new(config)),
-            platform,
+            platform: Arc::new(Platform::new(crate::platform::Os::Linux, false)),
             log: Arc::clone(&log) as Arc<dyn crate::logging::Log>,
             dry_run: false,
             home: PathBuf::from("/home/test"),

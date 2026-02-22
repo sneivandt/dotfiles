@@ -1,14 +1,8 @@
-/// A VS Code extension to install.
-#[derive(Debug, Clone)]
-pub struct VsCodeExtension {
-    /// Extension identifier in `publisher.name` format (e.g., `"github.copilot-chat"`).
-    pub id: String,
-}
+use super::define_flat_config;
 
-impl From<String> for VsCodeExtension {
-    fn from(id: String) -> Self {
-        Self { id }
-    }
+define_flat_config! {
+    /// A VS Code extension to install.
+    VsCodeExtension { id }
 }
 
 #[cfg(test)]

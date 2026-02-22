@@ -5,6 +5,21 @@ use std::path::Path;
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove};
 use crate::resources::symlink::SymlinkResource;
 
+/// Build [`SymlinkResource`] instances from the loaded config.
+fn build_resources(ctx: &Context) -> Vec<SymlinkResource> {
+    let symlinks = ctx.config_read().symlinks.clone();
+    let symlinks_dir = ctx.symlinks_dir();
+    symlinks
+        .iter()
+        .map(|s| {
+            SymlinkResource::new(
+                symlinks_dir.join(&s.source),
+                compute_target(&ctx.home, &s.source),
+            )
+        })
+        .collect()
+}
+
 /// Create symlinks from symlinks/ to $HOME.
 #[derive(Debug)]
 pub struct InstallSymlinks;
@@ -27,17 +42,9 @@ impl Task for InstallSymlinks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let symlinks: Vec<_> = ctx.config_read().symlinks.clone();
-        let symlinks_dir = ctx.symlinks_dir();
-        let resources = symlinks.iter().map(|s| {
-            SymlinkResource::new(
-                symlinks_dir.join(&s.source),
-                compute_target(&ctx.home, &s.source),
-            )
-        });
         process_resources(
             ctx,
-            resources,
+            build_resources(ctx),
             &ProcessOpts {
                 verb: "link",
                 fix_incorrect: true,
@@ -62,15 +69,7 @@ impl Task for UninstallSymlinks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let symlinks: Vec<_> = ctx.config_read().symlinks.clone();
-        let symlinks_dir = ctx.symlinks_dir();
-        let resources = symlinks.iter().map(|s| {
-            SymlinkResource::new(
-                symlinks_dir.join(&s.source),
-                compute_target(&ctx.home, &s.source),
-            )
-        });
-        process_resources_remove(ctx, resources, "materialize")
+        process_resources_remove(ctx, build_resources(ctx), "materialize")
     }
 }
 

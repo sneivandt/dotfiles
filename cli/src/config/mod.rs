@@ -11,6 +11,44 @@ pub mod systemd_units;
 pub mod validation;
 pub mod vscode_extensions;
 
+/// Define a simple config struct with a single `String` field and a
+/// `From<String>` conversion, used by config types loaded via
+/// [`ini::load_flat`].
+///
+/// # Examples
+///
+/// ```ignore
+/// define_flat_config! {
+///     /// A symlink to create.
+///     Symlink { source }
+/// }
+/// // expands to:
+/// //   #[derive(Debug, Clone)]
+/// //   pub struct Symlink { pub source: String }
+/// //   impl From<String> for Symlink { ... }
+/// ```
+macro_rules! define_flat_config {
+    (
+        $(#[$meta:meta])*
+        $name:ident { $field:ident }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone)]
+        pub struct $name {
+            /// Value loaded from the INI file.
+            pub $field: String,
+        }
+
+        impl From<String> for $name {
+            fn from($field: String) -> Self {
+                Self { $field }
+            }
+        }
+    };
+}
+
+pub(crate) use define_flat_config;
+
 #[cfg(test)]
 pub mod test_helpers {
     use std::path::PathBuf;

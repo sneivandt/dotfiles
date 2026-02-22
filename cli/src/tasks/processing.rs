@@ -203,19 +203,10 @@ fn process_resources_parallel<R: Resource + Send>(
     resources: Vec<R>,
     opts: &ProcessOpts,
 ) -> Result<TaskResult> {
-    use rayon::prelude::*;
-    let stats = Mutex::new(TaskStats::new());
-    resources.into_par_iter().try_for_each(|resource: R| {
-        let current = resource.current_state()?;
-        let mut stats_guard = stats
-            .lock()
-            .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))?;
-        process_single(ctx, &resource, current, opts, &mut stats_guard)
-    })?;
-    Ok(stats
-        .into_inner()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .finish(ctx))
+    run_parallel(ctx, resources, opts, |resource| {
+        let state = resource.current_state()?;
+        Ok((resource, state))
+    })
 }
 
 /// Process resources with pre-computed states in parallel using Rayon.
@@ -224,16 +215,28 @@ fn process_resource_states_parallel<R: Resource + Send>(
     resource_states: Vec<(R, ResourceState)>,
     opts: &ProcessOpts,
 ) -> Result<TaskResult> {
+    run_parallel(ctx, resource_states, opts, Ok)
+}
+
+/// Generic parallel processing helper using Rayon.
+///
+/// Accepts a vector of items and a closure that extracts a `(Resource, ResourceState)`
+/// pair from each item. The closure runs in parallel; stats are synchronized via a mutex.
+fn run_parallel<T: Send, R: Resource + Send>(
+    ctx: &Context,
+    items: Vec<T>,
+    opts: &ProcessOpts,
+    get_resource_state: impl Fn(T) -> Result<(R, ResourceState)> + Sync,
+) -> Result<TaskResult> {
     use rayon::prelude::*;
     let stats = Mutex::new(TaskStats::new());
-    resource_states
-        .into_par_iter()
-        .try_for_each(|(resource, state): (R, ResourceState)| {
-            let mut stats_guard = stats
-                .lock()
-                .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))?;
-            process_single(ctx, &resource, state, opts, &mut stats_guard)
-        })?;
+    items.into_par_iter().try_for_each(|item| {
+        let (resource, current) = get_resource_state(item)?;
+        let mut stats_guard = stats
+            .lock()
+            .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))?;
+        process_single(ctx, &resource, current, opts, &mut stats_guard)
+    })?;
     Ok(stats
         .into_inner()
         .unwrap_or_else(std::sync::PoisonError::into_inner)

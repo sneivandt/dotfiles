@@ -157,44 +157,12 @@ pub mod test_helpers {
 
     use super::Context;
 
-    /// Minimal executor that panics if any real command is issued.
+    /// Stub executor that panics if any real command is issued.
     ///
-    /// `which()` always returns `false`, which causes tasks that guard on tool
-    /// availability to report *not applicable*.  Use [`WhichExecutor`] when you
-    /// need `which()` to return `true`.
-    #[derive(Debug)]
-    pub struct NoOpExecutor;
-
-    impl Executor for NoOpExecutor {
-        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
-            panic!("unexpected executor call in test")
-        }
-
-        fn run_in(&self, _: &Path, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
-            panic!("unexpected executor call in test")
-        }
-
-        fn run_in_with_env(
-            &self,
-            _: &Path,
-            _: &str,
-            _: &[&str],
-            _: &[(&str, &str)],
-        ) -> anyhow::Result<ExecResult> {
-            panic!("unexpected executor call in test")
-        }
-
-        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
-            panic!("unexpected executor call in test")
-        }
-
-        fn which(&self, _: &str) -> bool {
-            false
-        }
-    }
-
-    /// Executor that returns a fixed value for `which()` and panics for real calls.
-    #[derive(Debug)]
+    /// `which()` returns the configured `which_result` value (default: `false`),
+    /// which causes tasks that guard on tool availability to report
+    /// *not applicable* unless explicitly overridden.
+    #[derive(Debug, Default)]
     pub struct WhichExecutor {
         /// Value returned by `which()` regardless of program name.
         pub which_result: bool,
@@ -270,7 +238,7 @@ pub mod test_helpers {
         }
     }
 
-    /// Build a [`Context`] with a Linux non-arch platform and [`NoOpExecutor`].
+    /// Build a [`Context`] with a Linux non-arch platform and default [`WhichExecutor`].
     ///
     /// Convenience shorthand for tests that only need a plain Linux context.
     #[must_use]
@@ -279,11 +247,11 @@ pub mod test_helpers {
         make_context(
             config,
             Arc::new(Platform::new(Os::Linux, false)),
-            Arc::new(NoOpExecutor),
+            Arc::new(WhichExecutor::default()),
         )
     }
 
-    /// Build a [`Context`] with a Windows platform and [`NoOpExecutor`].
+    /// Build a [`Context`] with a Windows platform and default [`WhichExecutor`].
     ///
     /// Convenience shorthand for tests that only need a plain Windows context.
     #[must_use]
@@ -292,11 +260,11 @@ pub mod test_helpers {
         make_context(
             config,
             Arc::new(Platform::new(Os::Windows, false)),
-            Arc::new(NoOpExecutor),
+            Arc::new(WhichExecutor::default()),
         )
     }
 
-    /// Build a [`Context`] with an Arch Linux platform and [`NoOpExecutor`].
+    /// Build a [`Context`] with an Arch Linux platform and default [`WhichExecutor`].
     ///
     /// Convenience shorthand for tests that target Arch-specific behaviour.
     #[must_use]
@@ -305,19 +273,19 @@ pub mod test_helpers {
         make_context(
             config,
             Arc::new(Platform::new(Os::Linux, true)),
-            Arc::new(NoOpExecutor),
+            Arc::new(WhichExecutor::default()),
         )
     }
 
     /// Build a [`Context`] with a default Linux platform and
-    /// [`NoOpExecutor`], also returning the [`Logger`] so tests can inspect
-    /// recorded task state.
+    /// default [`WhichExecutor`], also returning the [`Logger`] so tests can
+    /// inspect recorded task state.
     #[must_use]
     pub fn make_static_context(config: Config) -> (Context, Arc<Logger>) {
         use crate::platform::Os;
         let platform = Arc::new(Platform::new(Os::Linux, false));
         let log = Arc::new(Logger::new(false, "test"));
-        let executor: Arc<dyn Executor> = Arc::new(NoOpExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(WhichExecutor::default());
         let ctx = Context {
             config: std::sync::Arc::new(std::sync::RwLock::new(config)),
             platform,

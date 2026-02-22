@@ -261,6 +261,29 @@ pub fn filter_sections(
         .collect()
 }
 
+/// Load items from a categorized INI file.
+///
+/// Convenience wrapper that combines [`parse_sections`], [`filter_sections`],
+/// and flattens all matched items into a single `Vec<String>`.
+///
+/// This eliminates the repeated pattern of:
+/// ```text
+/// parse_sections → filter_sections → flat_map items
+/// ```
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read or parsed.
+pub fn load_flat_items(path: &Path, active_categories: &[String]) -> Result<Vec<String>> {
+    let sections = parse_sections(path)?;
+    Ok(
+        filter_sections(&sections, active_categories, MatchMode::All)
+            .into_iter()
+            .flat_map(|s| s.items)
+            .collect(),
+    )
+}
+
 /// Parse a `[header,tags]` line into lowercased category tags.
 fn parse_section_header(line: &str) -> Option<Vec<String>> {
     let inner = line.trim().strip_prefix('[')?.strip_suffix(']')?;

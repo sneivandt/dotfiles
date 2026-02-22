@@ -1,7 +1,6 @@
 use anyhow::Result;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
 use super::ini;
 
 /// A GitHub Copilot skill URL.
@@ -17,14 +16,10 @@ pub struct CopilotSkill {
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<CopilotSkill>> {
-    let sections = ini::parse_sections(path)?;
-    Ok(
-        ini::filter_sections(&sections, active_categories, MatchMode::All)
-            .into_iter()
-            .flat_map(|s| s.items)
-            .map(|url| CopilotSkill { url })
-            .collect(),
-    )
+    Ok(ini::load_flat_items(path, active_categories)?
+        .into_iter()
+        .map(|url| CopilotSkill { url })
+        .collect())
 }
 
 #[cfg(test)]

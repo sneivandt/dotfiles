@@ -2,9 +2,8 @@ use anyhow::Result;
 use std::sync::Arc;
 
 use crate::cli::{GlobalOpts, UninstallOpts};
-use crate::exec;
 use crate::logging::Logger;
-use crate::tasks::{self, Context};
+use crate::tasks;
 
 /// Run the uninstall command.
 ///
@@ -12,16 +11,8 @@ use crate::tasks::{self, Context};
 ///
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Arc<Logger>) -> Result<()> {
-    let executor: Arc<dyn crate::exec::Executor> = Arc::new(exec::SystemExecutor);
     let setup = super::CommandSetup::init(global, &**log)?;
-    let ctx = Context::new(
-        std::sync::Arc::new(std::sync::RwLock::new(setup.config)),
-        Arc::new(setup.platform),
-        Arc::clone(log) as Arc<dyn crate::logging::Log>,
-        global.dry_run,
-        Arc::clone(&executor),
-        global.parallel,
-    )?;
+    let ctx = setup.into_context(global, log)?;
 
     let tasks = tasks::all_uninstall_tasks();
 

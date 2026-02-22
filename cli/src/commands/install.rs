@@ -2,9 +2,8 @@ use anyhow::{Context as _, Result};
 use std::sync::Arc;
 
 use crate::cli::{GlobalOpts, InstallOpts};
-use crate::exec;
 use crate::logging::Logger;
-use crate::tasks::{self, Context};
+use crate::tasks;
 
 /// Run the install command.
 ///
@@ -15,17 +14,8 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Arc<Logger>) -> Result
     let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     log.info(&format!("dotfiles {version}"));
 
-    let executor: Arc<dyn crate::exec::Executor> = Arc::new(exec::SystemExecutor);
     let setup = super::CommandSetup::init(global, &**log)?;
-
-    let ctx = Context::new(
-        std::sync::Arc::new(std::sync::RwLock::new(setup.config)),
-        Arc::new(setup.platform),
-        Arc::clone(log) as Arc<dyn crate::logging::Log>,
-        global.dry_run,
-        Arc::clone(&executor),
-        global.parallel,
-    )?;
+    let ctx = setup.into_context(global, log)?;
 
     // Filter by --skip and --only
     let all_tasks = tasks::all_install_tasks();

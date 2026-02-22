@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::cli::{GlobalOpts, TestOpts};
-use crate::exec;
 use crate::logging::Logger;
 use crate::tasks::{Context, Task, TaskResult};
 
@@ -13,16 +12,8 @@ use crate::tasks::{Context, Task, TaskResult};
 ///
 /// Returns an error if profile resolution, configuration validation, or script checks fail.
 pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Arc<Logger>) -> Result<()> {
-    let executor: Arc<dyn crate::exec::Executor> = Arc::new(exec::SystemExecutor);
     let setup = super::CommandSetup::init(global, &**log)?;
-    let ctx = Context::new(
-        std::sync::Arc::new(std::sync::RwLock::new(setup.config)),
-        Arc::new(setup.platform),
-        Arc::clone(log) as Arc<dyn crate::logging::Log>,
-        global.dry_run,
-        Arc::clone(&executor),
-        global.parallel,
-    )?;
+    let ctx = setup.into_context(global, log)?;
 
     let tasks: Vec<Box<dyn Task>> = vec![
         Box::new(ValidateSymlinkSources),

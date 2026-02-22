@@ -45,20 +45,20 @@ impl CommandSetup {
         log.stage("Loading configuration");
         let config = Config::load(&root, &profile, &platform)?;
 
-        log.debug(&format!("{} packages", config.packages.len()));
-        log.debug(&format!("{} symlinks", config.symlinks.len()));
-        log.debug(&format!("{} registry entries", config.registry.len()));
-        log.debug(&format!("{} systemd units", config.units.len()));
-        log.debug(&format!("{} chmod entries", config.chmod.len()));
-        log.debug(&format!(
-            "{} vscode extensions",
-            config.vscode_extensions.len()
-        ));
-        log.debug(&format!("{} copilot skills", config.copilot_skills.len()));
-        log.debug(&format!(
-            "{} manifest exclusions",
-            config.manifest.excluded_files.len()
-        ));
+        macro_rules! debug_count {
+            ($field:expr, $label:expr) => {
+                log.debug(&format!("{} {}", $field.len(), $label));
+            };
+        }
+
+        debug_count!(config.packages, "packages");
+        debug_count!(config.symlinks, "symlinks");
+        debug_count!(config.registry, "registry entries");
+        debug_count!(config.units, "systemd units");
+        debug_count!(config.chmod, "chmod entries");
+        debug_count!(config.vscode_extensions, "vscode extensions");
+        debug_count!(config.copilot_skills, "copilot skills");
+        debug_count!(config.manifest.excluded_files, "manifest exclusions");
         log.info(&format!(
             "loaded {} packages, {} symlinks",
             config.packages.len(),
@@ -81,6 +81,26 @@ impl CommandSetup {
         }
 
         Ok(Self { platform, config })
+    }
+
+    /// Convert setup state into a task execution [`Context`].
+    ///
+    /// This eliminates the repeated `Context::new(...)` boilerplate
+    /// across `install`, `uninstall`, and `test` commands.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HOME environment variable is not set.
+    pub fn into_context(self, global: &GlobalOpts, log: &Arc<Logger>) -> Result<Context> {
+        let executor: Arc<dyn crate::exec::Executor> = Arc::new(crate::exec::SystemExecutor);
+        Context::new(
+            Arc::new(std::sync::RwLock::new(self.config)),
+            Arc::new(self.platform),
+            Arc::clone(log) as Arc<dyn Log>,
+            global.dry_run,
+            executor,
+            global.parallel,
+        )
     }
 }
 

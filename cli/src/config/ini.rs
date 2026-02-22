@@ -284,6 +284,21 @@ pub fn load_flat_items(path: &Path, active_categories: &[String]) -> Result<Vec<
     )
 }
 
+/// Load items from a categorized INI file, converting each item via [`From<String>`].
+///
+/// Convenience wrapper around [`load_flat_items`] for config types whose
+/// `load()` function is simply `load_flat_items` + `map`.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read or parsed.
+pub fn load_flat<T: From<String>>(path: &Path, active_categories: &[String]) -> Result<Vec<T>> {
+    Ok(load_flat_items(path, active_categories)?
+        .into_iter()
+        .map(T::from)
+        .collect())
+}
+
 /// Parse a `[header,tags]` line into lowercased category tags.
 fn parse_section_header(line: &str) -> Option<Vec<String>> {
     let inner = line.trim().strip_prefix('[')?.strip_suffix(']')?;

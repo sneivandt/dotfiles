@@ -10,16 +10,19 @@ pub struct Symlink {
     pub source: String,
 }
 
+impl From<String> for Symlink {
+    fn from(source: String) -> Self {
+        Self { source }
+    }
+}
+
 /// Load symlinks from symlinks.ini, filtered by active categories (AND logic).
 ///
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Symlink>> {
-    Ok(ini::load_flat_items(path, active_categories)?
-        .into_iter()
-        .map(|source| Symlink { source })
-        .collect())
+    ini::load_flat(path, active_categories)
 }
 
 #[cfg(test)]

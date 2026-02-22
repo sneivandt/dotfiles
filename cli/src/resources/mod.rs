@@ -1,6 +1,7 @@
 pub mod chmod;
 pub mod copilot_skill;
 pub mod developer_mode;
+pub mod fs;
 pub mod git_config;
 pub mod hook;
 pub mod package;

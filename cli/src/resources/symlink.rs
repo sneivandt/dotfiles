@@ -141,37 +141,17 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
     );
     let tmp = parent.join(&stem);
 
-    copy_dir_recursive(source, &tmp)
+    super::fs::copy_dir_recursive(source, &tmp, false)
         .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;
     remove_symlink(target)
         .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
 
     // Prefer atomic rename; fall back to copy+delete on cross-filesystem move.
     if std::fs::rename(&tmp, target).is_err() {
-        copy_dir_recursive(&tmp, target)
+        super::fs::copy_dir_recursive(&tmp, target, false)
             .with_context(|| format!("cross-fs copy {} to {}", tmp.display(), target.display()))?;
         std::fs::remove_dir_all(&tmp)
             .with_context(|| format!("remove tmp dir: {}", tmp.display()))?;
-    }
-    Ok(())
-}
-
-/// Recursively copy `src` into `dst`, following symlinks (so their content is
-/// materialised rather than the link itself).
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
-    std::fs::create_dir_all(dst).with_context(|| format!("create dir: {}", dst.display()))?;
-    for entry in std::fs::read_dir(src).with_context(|| format!("read dir: {}", src.display()))? {
-        let entry = entry.with_context(|| format!("read entry in {}", src.display()))?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        // Use is_dir() (follows symlinks) so directory symlinks are recursed.
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else {
-            std::fs::copy(&src_path, &dst_path).with_context(|| {
-                format!("copy {} to {}", src_path.display(), dst_path.display())
-            })?;
-        }
     }
     Ok(())
 }

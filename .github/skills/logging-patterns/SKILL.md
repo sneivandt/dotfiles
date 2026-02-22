@@ -14,15 +14,16 @@ All logging is via `Logger` in `cli/src/logging.rs`, passed to tasks through `Co
 
 ## Logger API
 
+`ctx.log` is an `Arc<dyn Log>` — both `Logger` (sequential) and `BufferedLog`
+(parallel) implement the `Log` trait. All logging goes through these methods:
+
 ```rust
-impl Logger {
-    pub fn stage(&self, msg: &str);     // Bold blue "==>" header
-    pub fn info(&self, msg: &str);      // Indented message
-    pub fn debug(&self, msg: &str);     // Only when verbose=true on terminal
-    pub fn warn(&self, msg: &str);      // Yellow to stderr
-    pub fn error(&self, msg: &str);     // Red to stderr
-    pub fn dry_run(&self, msg: &str);   // Yellow "[DRY RUN]" prefix
-}
+ctx.log.stage(msg);    // Bold blue "==>" header
+ctx.log.info(msg);     // Indented message
+ctx.log.debug(msg);    // Only when verbose=true on terminal
+ctx.log.warn(msg);     // Yellow to stderr
+ctx.log.error(msg);    // Red to stderr
+ctx.log.dry_run(msg);  // Yellow "[DRY RUN]" prefix
 ```
 
 All messages (including `debug`) are always written to a persistent log file at
@@ -45,7 +46,7 @@ The log file path is shown in the summary.
 ```rust
 pub fn execute(task: &dyn Task, ctx: &Context) {
     if !task.should_run(ctx) {
-        ctx.log.record_task(task.name(), TaskStatus::Skipped, Some("not applicable"));
+        ctx.log.record_task(task.name(), TaskStatus::NotApplicable, None);
         return;
     }
     ctx.log.stage(task.name());
@@ -62,8 +63,9 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 
 ```rust
 fn run(&self, ctx: &Context) -> Result<TaskResult> {
+    let items = ctx.config_read().items.clone();
     let mut count = 0u32;
-    for item in &ctx.config.items {
+    for item in &items {
         if ctx.dry_run {
             ctx.log.dry_run(&format!("would process {}", item.name));
             count += 1;

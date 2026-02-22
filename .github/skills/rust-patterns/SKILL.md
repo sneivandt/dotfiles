@@ -24,7 +24,7 @@ cli/src/
 ├── logging.rs     # Logger with leveled output + task summary
 ├── config/        # INI parsing and config loading
 │   ├── mod.rs     # Config struct (aggregates all types)
-│   ├── ini.rs     # Section/KvSection parsers, filter_sections_and()
+│   ├── ini.rs     # Section/KvSection parsers, filter_sections()
 │   ├── profiles.rs
 │   └── *.rs       # Per-type loaders (packages, symlinks, etc.)
 ├── resources/     # Declarative resource abstraction
@@ -91,11 +91,12 @@ pub struct MyTask;
 impl Task for MyTask {
     fn name(&self) -> &str { "My task" }
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.supports_systemd() && !ctx.config.items.is_empty()
+        ctx.platform.supports_systemd() && !ctx.config_read().items.is_empty()
     }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resources = ctx.config.items.iter()
-            .map(|entry| MyResource::from_entry(entry, ctx.executor));
+        let items = ctx.config_read().items.clone();
+        let resources = items.iter()
+            .map(|entry| MyResource::from_entry(entry, &*ctx.executor));
         process_resources(ctx, resources, &ProcessOpts {
             verb: "install",
             fix_incorrect: true,
@@ -110,14 +111,16 @@ For tasks that batch-query state up front (packages, VS Code extensions,
 registry), build `(Resource, ResourceState)` pairs and use
 `process_resource_states()` instead.
 
-Register in `commands/install.rs`: `Box::new(tasks::my_module::MyTask)`.
+Register in `tasks/mod.rs` by adding `Box::new(tasks::my_module::MyTask)` to
+`all_install_tasks()`.
 
 For **uninstall** tasks, use `process_resources_remove()`:
 
 ```rust
 fn run(&self, ctx: &Context) -> Result<TaskResult> {
-    let resources = ctx.config.items.iter()
-        .map(|entry| MyResource::from_entry(entry, ctx.executor));
+    let items = ctx.config_read().items.clone();
+    let resources = items.iter()
+        .map(|entry| MyResource::from_entry(entry, &*ctx.executor));
     process_resources_remove(ctx, resources, "remove")
 }
 ```
@@ -176,32 +179,40 @@ Use capability-based methods when possible for more expressive code:
 
 ```rust
 // Less expressive - why does Linux matter?
-ctx.platform.is_linux() && !ctx.config.units.is_empty()
+ctx.platform.is_linux() && !ctx.config_read().units.is_empty()
 
 // More expressive - clearly about systemd support
-ctx.platform.supports_systemd() && !ctx.config.units.is_empty()
+ctx.platform.supports_systemd() && !ctx.config_read().units.is_empty()
 ```
 
 ## Context Struct
 
 ```rust
-pub struct Context<'a> {
-    pub config: &'a Config,
-    pub platform: &'a Platform,
-    pub log: &'a Logger,
+pub struct Context {
+    pub config: Arc<RwLock<Config>>,  // locked; use ctx.config_read()
+    pub platform: Arc<Platform>,
+    pub log: Arc<dyn Log>,
     pub dry_run: bool,
     pub home: PathBuf,
-    pub executor: &'a dyn Executor,
-    pub parallel: bool,  // true by default; set false with --no-parallel
+    pub executor: Arc<dyn Executor>,
+    pub parallel: bool,
 }
 ```
 
 Helpers: `ctx.root()`, `ctx.symlinks_dir()`, `ctx.hooks_dir()`.
-Tasks use `ctx.executor` when constructing resources or calling batch query functions.
+
+Config access uses an `RwLock` so the `ReloadConfig` task can atomically swap
+the config after a git pull. Use `ctx.config_read()` to get a read guard; clone
+the data out before a long-running operation so the lock is not held across
+`await` points or parallel sections:
+
+```rust
+let items = ctx.config_read().items.clone();
+```
 
 The `parallel` flag controls both task-level parallelism (dependency-graph
-scheduling) and resource-level parallelism (Rayon `par_iter` within tasks).
-When `false`, tasks run sequentially in list order.
+scheduling via OS threads) and resource-level parallelism (Rayon `par_iter`
+within tasks). When `false`, tasks run sequentially in list order.
 
 ## Executor Trait
 
@@ -209,7 +220,7 @@ All command execution goes through the `Executor` trait (`exec.rs`), which enabl
 dependency injection and test mocking:
 
 ```rust
-pub trait Executor: std::fmt::Debug + Sync {
+pub trait Executor: std::fmt::Debug + Send + Sync {
     fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
     fn run_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult>;
     fn run_in_with_env(&self, dir: &Path, program: &str, args: &[&str], env: &[(&str, &str)]) -> Result<ExecResult>;
@@ -218,7 +229,9 @@ pub trait Executor: std::fmt::Debug + Sync {
 }
 ```
 
-The `Sync` supertrait is required because resources hold `&'a dyn Executor` and are processed in parallel; `&T: Send` only holds when `T: Sync`.
+The `Send + Sync` supertraits are required because the executor is shared via
+`Arc<dyn Executor>` across tasks and resources that may run in parallel;
+`Arc<T>: Send + Sync` requires `T: Send + Sync`.
 
 `SystemExecutor` is the production implementation that delegates to real
 process spawning. Free functions (`exec::run()`, `exec::run_unchecked()`, etc.)
@@ -228,22 +241,36 @@ still exist but are only called by `SystemExecutor` internally.
 
 The executor flows top-down through the system:
 
-1. **Commands** create `SystemExecutor` and pass it to `CommandSetup::init()` and `Context::new()`
-2. **Context** stores `executor: &'a dyn Executor`
-3. **Tasks** pass `ctx.executor` to resource constructors and batch query functions
+1. **Commands** wrap `SystemExecutor` in `Arc<dyn Executor>` and pass it to `Context::new()`
+2. **Context** stores `executor: Arc<dyn Executor>`
+3. **Tasks** pass `&*ctx.executor` to resource constructors and batch query functions
 4. **Resources** store `executor: &'a dyn Executor` and call `self.executor.run()` etc.
 
 ```rust
 // In commands/install.rs
-let executor = exec::SystemExecutor;
-let setup = CommandSetup::init(global, log, &executor)?;
-let ctx = Context::new(&setup.config, &setup.platform, log, global.dry_run, &executor, global.parallel)?;
+let executor: Arc<dyn crate::exec::Executor> = Arc::new(exec::SystemExecutor);
+let setup = super::CommandSetup::init(global, log)?;
+let ctx = Context::new(
+    Arc::new(RwLock::new(setup.config)),
+    Arc::new(setup.platform),
+    Arc::clone(log) as Arc<dyn Log>,
+    global.dry_run,
+    Arc::clone(&executor),
+    global.parallel,
+)?;
+```
+
+Resources borrow the executor for the duration of the task. Pass `&*ctx.executor`
+(deref coercion) when constructing resources:
+
+```rust
+let resource = PackageResource::new(name, manager, &*ctx.executor);
 ```
 
 Some free-standing query functions also take the executor:
 ```rust
-let installed = get_installed_packages(manager, ctx.executor)?;
-let extensions = get_installed_extensions(&cmd, ctx.executor)?;
+let installed = get_installed_packages(manager, &*ctx.executor)?;
+let extensions = get_installed_extensions(&cmd, &*ctx.executor)?;
 ```
 
 Others use native crates and need no executor:
@@ -253,7 +280,9 @@ let cached = batch_check_values(&resources)?;
 
 ## Config Loader Pattern
 
-Each `config/*.rs` module: `ini::parse_sections(path)` → `ini::filter_sections_and()` → parse items.
+Each `config/*.rs` module: `ini::parse_sections(path)` → `ini::filter_sections(sections, categories, MatchMode::All)` → parse items.
+
+For simple flat lists, use the convenience wrapper `ini::load_flat_items(path, active_categories)` which combines all three steps.
 
 ## Error Handling
 
@@ -330,7 +359,9 @@ that controls which states are fixable and whether errors bail or warn.
 Use these helpers for **all** new resource-based tasks.
 
 **Parallel execution:** When `ctx.parallel` is `true` and there is more than one
-resource, both helpers automatically dispatch to Rayon's parallel iterator. Resources
+resource, both helpers automatically dispatch to Rayon's parallel iterator.
+Task-level parallelism uses OS threads (via `std::thread::scope`) so blocking
+on `Condvar` does not exhaust the Rayon thread pool. Resources
 must implement `Send`; because `Executor: Sync`, all resources holding `&dyn Executor`
 satisfy this automatically. Tests set `parallel: false` in their `Context` to keep
 execution deterministic.
@@ -342,6 +373,6 @@ execution deterministic.
 - **Use `process_resources()` / `process_resource_states()`** for resource-based tasks — do not duplicate the state-match loop
 - Use `Resource` trait for declarative state checks where applicable
 - Guard tools with `executor.which()`; return `TaskResult::Skipped(reason)` when not applicable
-- Pass `ctx.executor` to resource constructors and batch query functions — never call `exec::*` free functions directly from tasks or resources
+- Pass `&*ctx.executor` (deref coercion) to resource constructors and batch query functions — never call `exec::*` free functions directly from tasks or resources
 - Add `#[cfg(test)] mod tests` to every module; use `Platform::new()` in tests
 - See the **rust-docs** skill for documentation conventions (`///`, `# Errors`, `#[must_use]`)

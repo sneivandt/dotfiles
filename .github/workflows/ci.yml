@@ -332,6 +332,7 @@ jobs:
   ci-success:
     name: "All CI Checks Passed"
     runs-on: ubuntu-latest
+    if: always()
     needs:
       - rust
       - lint
@@ -347,4 +348,10 @@ jobs:
       - test-shell-wrapper-linux
       - test-shell-wrapper-windows
     steps:
-      - run: echo "All CI jobs passed"
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" || "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more CI jobs failed or were cancelled"
+            exit 1
+          fi
+          echo "All CI jobs passed"

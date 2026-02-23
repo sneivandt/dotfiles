@@ -215,7 +215,10 @@ mod tests {
 
     /// Create a temporary directory tree with the minimal conf/ files required
     /// by `Config::load` and return the `TempDir` (keep alive) + profile.
-    fn setup_load(overrides: &[(&str, &str)]) -> (tempfile::TempDir, profiles::Profile, Platform) {
+    fn setup_load(
+        platform: Platform,
+        overrides: &[(&str, &str)],
+    ) -> (tempfile::TempDir, profiles::Profile, Platform) {
         let dir = tempfile::tempdir().expect("create temp dir");
         let conf = dir.path().join("conf");
         std::fs::create_dir_all(&conf).expect("create conf dir");
@@ -242,13 +245,20 @@ mod tests {
             active_categories: vec!["base".to_string()],
             excluded_categories: vec!["desktop".to_string()],
         };
-        let platform = Platform::new(Os::Linux, false);
         (dir, profile, platform)
+    }
+
+    fn linux() -> Platform {
+        Platform::new(Os::Linux, false)
+    }
+
+    fn windows() -> Platform {
+        Platform::new(Os::Windows, false)
     }
 
     #[test]
     fn load_with_empty_config_files() {
-        let (dir, profile, platform) = setup_load(&[]);
+        let (dir, profile, platform) = setup_load(linux(), &[]);
         let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
         assert!(config.packages.is_empty());
         assert!(config.symlinks.is_empty());
@@ -261,7 +271,8 @@ mod tests {
 
     #[test]
     fn load_populates_symlinks() {
-        let (dir, profile, platform) = setup_load(&[("symlinks.ini", "[base]\n.bashrc\n.vimrc\n")]);
+        let (dir, profile, platform) =
+            setup_load(linux(), &[("symlinks.ini", "[base]\n.bashrc\n.vimrc\n")]);
         let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
         assert_eq!(config.symlinks.len(), 2);
         assert_eq!(config.symlinks[0].source, ".bashrc");
@@ -270,21 +281,23 @@ mod tests {
 
     #[test]
     fn load_populates_packages() {
-        let (dir, profile, platform) = setup_load(&[("packages.ini", "[base]\ngit\ncurl\n")]);
+        let (dir, profile, platform) =
+            setup_load(linux(), &[("packages.ini", "[base]\ngit\ncurl\n")]);
         let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
         assert_eq!(config.packages.len(), 2);
     }
 
     #[test]
     fn load_stores_root_path() {
-        let (dir, profile, platform) = setup_load(&[]);
+        let (dir, profile, platform) = setup_load(linux(), &[]);
         let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
         assert_eq!(config.root, dir.path());
     }
 
     #[test]
     fn load_skips_registry_on_linux() {
-        let (dir, profile, platform) = setup_load(&[("registry.ini", "[HKCU\\Test]\nKey=Value\n")]);
+        let (dir, profile, platform) =
+            setup_load(linux(), &[("registry.ini", "[HKCU\\Test]\nKey=Value\n")]);
         let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
         assert!(config.registry.is_empty(), "registry skipped on linux");
     }
@@ -292,34 +305,14 @@ mod tests {
     #[test]
     fn load_populates_systemd_units_on_linux() {
         let (dir, profile, platform) =
-            setup_load(&[("systemd-units.ini", "[base]\nssh.service\n")]);
+            setup_load(linux(), &[("systemd-units.ini", "[base]\nssh.service\n")]);
         let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
         assert_eq!(config.units.len(), 1);
     }
 
     #[test]
     fn load_skips_systemd_units_on_windows() {
-        let profile = profiles::Profile {
-            name: "base".to_string(),
-            active_categories: vec!["base".to_string()],
-            excluded_categories: vec!["desktop".to_string()],
-        };
-        let platform = Platform::new(Os::Windows, false);
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let conf = dir.path().join("conf");
-        std::fs::create_dir_all(&conf).expect("create conf dir");
-        for file in &[
-            "packages.ini",
-            "symlinks.ini",
-            "registry.ini",
-            "systemd-units.ini",
-            "chmod.ini",
-            "vscode-extensions.ini",
-            "copilot-skills.ini",
-            "manifest.ini",
-        ] {
-            std::fs::write(conf.join(file), "").expect("write empty ini");
-        }
+        let (dir, profile, platform) = setup_load(windows(), &[]);
         let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
         assert!(config.units.is_empty(), "systemd units skipped on windows");
     }

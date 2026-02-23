@@ -128,5 +128,6 @@ if [ ! -x "$BINARY" ]; then
 fi
 
 # Delegate version checking, downloading, and cache management to Rust.
+# If bootstrap returns non-zero, set -o errexit aborts the script.
 "$BINARY" --root "$DOTFILES_ROOT" bootstrap --repo "$REPO"
 exec "$BINARY" --root "$DOTFILES_ROOT" "$@"

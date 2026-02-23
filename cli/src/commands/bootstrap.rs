@@ -287,7 +287,11 @@ fn download_binary(
 fn tmp_path(binary: &Path) -> PathBuf {
     let mut p = binary.to_path_buf();
     let name = binary.file_name().map_or_else(
-        || std::ffi::OsString::from("dotfiles.new"),
+        || {
+            let mut s = std::ffi::OsString::from(binary_name());
+            s.push(".new");
+            s
+        },
         |n| {
             let mut s = n.to_os_string();
             s.push(".new");
@@ -416,6 +420,7 @@ pub fn compute_sha256(path: &Path) -> Result<String> {
     let result = hasher.finalize();
     let mut hex = String::with_capacity(64);
     for b in &result {
+        // write! to a String is infallible; unwrap_or(()) makes that explicit.
         write!(hex, "{b:02x}").unwrap_or(());
     }
     Ok(hex)

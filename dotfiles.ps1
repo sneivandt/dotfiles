@@ -185,6 +185,7 @@ if (-not (Test-Path $Binary))
 # Delegate version checking, downloading, and cache management to Rust.
 # On Windows, bootstrap may stage a .new binary that we rename here after it exits.
 & $Binary --root $DotfilesRoot bootstrap --repo $Repo
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $NewBinary = "$Binary.new"
 if (Test-Path $NewBinary)
 {

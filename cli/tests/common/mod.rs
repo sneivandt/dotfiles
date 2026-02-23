@@ -84,6 +84,18 @@ impl IntegrationTestContext {
             profiles::resolve(profile_name, &conf_dir, &platform).expect("resolve profile");
         Config::load(self.root.path(), &profile, &platform).expect("load config")
     }
+
+    /// Load configuration for the given profile using the provided platform.
+    ///
+    /// Use this variant in tests that need to control platform-specific behaviour
+    /// (e.g. registry loading on Windows, AUR warnings on non-Arch Linux) without
+    /// depending on the host OS the test suite runs on.
+    pub fn load_config_for_platform(&self, profile_name: &str, platform: &Platform) -> Config {
+        let conf_dir = self.root.path().join("conf");
+        let profile =
+            profiles::resolve(profile_name, &conf_dir, platform).expect("resolve profile");
+        Config::load(self.root.path(), &profile, platform).expect("load config")
+    }
 }
 
 /// Fluent builder for [`IntegrationTestContext`].

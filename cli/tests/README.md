@@ -97,6 +97,32 @@ fn my_test() {
 }
 ```
 
+### Using fixture files
+
+The `fixtures/` directory contains reusable INI config files that tests load
+via `include_str!()`. Use them with `TestContextBuilder::with_config_file` to
+avoid duplicating inline strings:
+
+```rust
+#[test]
+fn test_with_base_fixture() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("symlinks.ini", include_str!("fixtures/base_profile.ini"))
+        .with_symlink_source("bashrc")
+        .build();
+
+    let config = ctx.load_config("base");
+    assert_eq!(config.symlinks.len(), 1);
+}
+```
+
+Available fixtures:
+
+| File | Contents | Used by |
+|---|---|---|
+| `fixtures/base_profile.ini` | `[base]` section with a single `bashrc` symlink | symlink validation tests |
+| `fixtures/desktop_profile.ini` | `[base]` + `[desktop]` sections with one symlink each | desktop profile loading test |
+
 ### Using `TestContextBuilder`
 
 `TestContextBuilder` lets you override individual config files before building

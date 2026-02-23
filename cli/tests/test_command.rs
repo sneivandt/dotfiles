@@ -36,6 +36,27 @@ fn config_loads_with_desktop_profile() {
     assert!(config.symlinks.is_empty(), "expected no symlinks");
 }
 
+/// Loading config with the desktop profile fixture yields symlinks from both
+/// the `[base]` and `[desktop]` sections.
+///
+/// Uses the [`desktop_profile.ini`](fixtures/desktop_profile.ini) fixture with
+/// both source files created on disk.
+#[test]
+fn config_loads_with_desktop_fixture() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("symlinks.ini", include_str!("fixtures/desktop_profile.ini"))
+        .with_symlink_source("bashrc")
+        .with_symlink_source("config/Code/User/settings.json")
+        .build();
+
+    let config = ctx.load_config("desktop");
+    assert_eq!(
+        config.symlinks.len(),
+        2,
+        "desktop fixture should yield 2 symlinks (base + desktop sections)"
+    );
+}
+
 /// Config loading must succeed even when optional config files are absent.
 #[test]
 fn config_loads_with_missing_optional_files() {
@@ -81,10 +102,13 @@ fn config_validate_no_warnings_for_minimal_config() {
 
 /// A symlink entry pointing to a non-existent source file must produce a
 /// validation warning from `symlinks.ini`.
+///
+/// Uses the [`base_profile.ini`](fixtures/base_profile.ini) fixture, whose
+/// `bashrc` source is intentionally not created on disk.
 #[test]
 fn config_validate_warns_on_missing_symlink_source() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("symlinks.ini", "[base]\nmissing-source-file\n")
+        .with_config_file("symlinks.ini", include_str!("fixtures/base_profile.ini"))
         .build();
 
     let config = ctx.load_config("base");
@@ -108,11 +132,14 @@ fn config_validate_warns_on_missing_symlink_source() {
 }
 
 /// A symlink entry whose source file *exists* must not produce a warning.
+///
+/// Uses the [`base_profile.ini`](fixtures/base_profile.ini) fixture with the
+/// `bashrc` source file created on disk.
 #[test]
 fn config_validate_no_warning_when_symlink_source_exists() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("symlinks.ini", "[base]\nexisting-file\n")
-        .with_symlink_source("existing-file")
+        .with_config_file("symlinks.ini", include_str!("fixtures/base_profile.ini"))
+        .with_symlink_source("bashrc")
         .build();
 
     let config = ctx.load_config("base");

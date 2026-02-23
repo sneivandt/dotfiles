@@ -138,41 +138,46 @@ impl BufferedLog {
     }
 }
 
+/// Implement the display methods of [`Log`] by delegating to inherent methods
+/// of the same name on the implementing type.
+///
+/// The `record_task` method is **not** included because its signature differs
+/// from the `fn(&self, &str)` pattern shared by the display methods.
+macro_rules! forward_log_methods {
+    ($($method:ident),+ $(,)?) => {
+        $(
+            fn $method(&self, msg: &str) {
+                self.$method(msg);
+            }
+        )+
+    };
+}
+
+/// Implement the display methods of [`Log`] by buffering each message into
+/// `self.entries` as the corresponding [`LogEntry`] variant.
+///
+/// The `record_task` method is **not** included because it forwards to
+/// `self.inner` instead of buffering.
+macro_rules! buffer_log_methods {
+    ($($method:ident => $variant:ident),+ $(,)?) => {
+        $(
+            fn $method(&self, msg: &str) {
+                if let Ok(mut guard) = self.entries.lock() {
+                    guard.push(LogEntry::$variant(msg.to_string()));
+                }
+            }
+        )+
+    };
+}
+
 impl Log for BufferedLog {
-    fn stage(&self, msg: &str) {
-        if let Ok(mut guard) = self.entries.lock() {
-            guard.push(LogEntry::Stage(msg.to_string()));
-        }
-    }
-
-    fn info(&self, msg: &str) {
-        if let Ok(mut guard) = self.entries.lock() {
-            guard.push(LogEntry::Info(msg.to_string()));
-        }
-    }
-
-    fn debug(&self, msg: &str) {
-        if let Ok(mut guard) = self.entries.lock() {
-            guard.push(LogEntry::Debug(msg.to_string()));
-        }
-    }
-
-    fn warn(&self, msg: &str) {
-        if let Ok(mut guard) = self.entries.lock() {
-            guard.push(LogEntry::Warn(msg.to_string()));
-        }
-    }
-
-    fn error(&self, msg: &str) {
-        if let Ok(mut guard) = self.entries.lock() {
-            guard.push(LogEntry::Error(msg.to_string()));
-        }
-    }
-
-    fn dry_run(&self, msg: &str) {
-        if let Ok(mut guard) = self.entries.lock() {
-            guard.push(LogEntry::DryRun(msg.to_string()));
-        }
+    buffer_log_methods! {
+        stage => Stage,
+        info  => Info,
+        debug => Debug,
+        warn  => Warn,
+        error => Error,
+        dry_run => DryRun,
     }
 
     fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
@@ -545,29 +550,7 @@ impl Logger {
 }
 
 impl Log for Logger {
-    fn stage(&self, msg: &str) {
-        self.stage(msg);
-    }
-
-    fn info(&self, msg: &str) {
-        self.info(msg);
-    }
-
-    fn debug(&self, msg: &str) {
-        self.debug(msg);
-    }
-
-    fn warn(&self, msg: &str) {
-        self.warn(msg);
-    }
-
-    fn error(&self, msg: &str) {
-        self.error(msg);
-    }
-
-    fn dry_run(&self, msg: &str) {
-        self.dry_run(msg);
-    }
+    forward_log_methods!(stage, info, debug, warn, error, dry_run);
 
     fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
         self.record_task(name, status, message);

@@ -10,6 +10,9 @@ use crate::operations::{FileSystemOps, SystemFileSystemOps};
 use crate::platform::Platform;
 
 /// Shared context for task execution.
+///
+/// All fields are wrapped in `Arc` (or are `Copy`/`Clone`), so cloning a
+/// `Context` is cheap — it only increments reference counts.
 pub struct Context {
     /// Configuration loaded from INI files.
     ///
@@ -37,6 +40,22 @@ pub struct Context {
     pub repo_updated: Arc<AtomicBool>,
     /// Filesystem operation abstraction (injectable for testing).
     pub fs_ops: Arc<dyn FileSystemOps>,
+}
+
+impl Clone for Context {
+    fn clone(&self) -> Self {
+        Self {
+            config: Arc::clone(&self.config),
+            platform: Arc::clone(&self.platform),
+            log: Arc::clone(&self.log),
+            dry_run: self.dry_run,
+            home: self.home.clone(),
+            executor: Arc::clone(&self.executor),
+            parallel: self.parallel,
+            repo_updated: Arc::clone(&self.repo_updated),
+            fs_ops: Arc::clone(&self.fs_ops),
+        }
+    }
 }
 
 impl std::fmt::Debug for Context {
@@ -130,15 +149,8 @@ impl Context {
     #[must_use]
     pub fn with_log(&self, log: Arc<dyn Log>) -> Self {
         Self {
-            config: Arc::clone(&self.config),
-            platform: Arc::clone(&self.platform),
             log,
-            dry_run: self.dry_run,
-            home: self.home.clone(),
-            executor: Arc::clone(&self.executor),
-            parallel: self.parallel,
-            repo_updated: Arc::clone(&self.repo_updated),
-            fs_ops: Arc::clone(&self.fs_ops),
+            ..self.clone()
         }
     }
 
@@ -150,15 +162,8 @@ impl Context {
     #[must_use]
     pub fn with_fs_ops(&self, fs_ops: Arc<dyn FileSystemOps>) -> Self {
         Self {
-            config: Arc::clone(&self.config),
-            platform: Arc::clone(&self.platform),
-            log: Arc::clone(&self.log),
-            dry_run: self.dry_run,
-            home: self.home.clone(),
-            executor: Arc::clone(&self.executor),
-            parallel: self.parallel,
-            repo_updated: Arc::clone(&self.repo_updated),
             fs_ops,
+            ..self.clone()
         }
     }
 }

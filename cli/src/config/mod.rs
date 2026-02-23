@@ -103,8 +103,7 @@ use crate::platform::Platform;
 pub struct Config {
     /// Root directory of the dotfiles repository.
     pub root: PathBuf,
-    /// The resolved profile (retained for debug output via `Debug` impl).
-    #[allow(dead_code)]
+    /// The resolved profile, used to reload configuration after repository updates.
     pub profile: profiles::Profile,
     /// Packages to install via system package managers.
     pub packages: Vec<packages::Package>,

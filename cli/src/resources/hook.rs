@@ -62,17 +62,8 @@ impl Resource for HookFileResource {
     }
 
     fn apply(&self) -> Result<ResourceChange> {
-        // Ensure parent directory exists
-        if let Some(parent) = self.target.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("create parent: {}", parent.display()))?;
-        }
-
-        // Remove existing target (broken symlink or outdated file)
-        if self.target.exists() || self.target.symlink_metadata().is_ok() {
-            std::fs::remove_file(&self.target)
-                .with_context(|| format!("remove existing: {}", self.target.display()))?;
-        }
+        super::fs::ensure_parent_dir(&self.target)?;
+        super::fs::remove_existing(&self.target)?;
 
         // Copy file
         std::fs::copy(&self.source, &self.target)

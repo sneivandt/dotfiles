@@ -36,16 +36,7 @@ impl Task for ConfigureSystemd {
         let resources = units
             .iter()
             .map(|entry| SystemdUnitResource::from_entry(entry, &*ctx.executor));
-        process_resources(
-            ctx,
-            resources,
-            &ProcessOpts {
-                verb: "enable",
-                fix_incorrect: false,
-                fix_missing: true,
-                bail_on_error: false,
-            },
-        )
+        process_resources(ctx, resources, &ProcessOpts::install_missing("enable"))
     }
 }
 

@@ -249,6 +249,34 @@ mod tests {
     }
 
     #[test]
+    fn which_path_finds_known_program() {
+        #[cfg(windows)]
+        let result = which_path("cmd");
+        #[cfg(not(windows))]
+        let result = which_path("echo");
+        assert!(result.is_ok(), "which_path should find a known program");
+        let path = result.unwrap();
+        assert!(
+            path.is_absolute(),
+            "which_path should return an absolute path"
+        );
+    }
+
+    #[test]
+    fn which_path_fails_for_missing_program() {
+        let result = which_path("this-program-does-not-exist-12345");
+        assert!(
+            result.is_err(),
+            "which_path should fail for a missing program"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("not found on PATH"),
+            "error message should mention 'not found on PATH'"
+        );
+    }
+
+    #[test]
     fn run_in_tempdir() {
         let dir = std::env::temp_dir();
         #[cfg(windows)]

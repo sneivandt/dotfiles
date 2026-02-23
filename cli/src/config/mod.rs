@@ -124,6 +124,15 @@ pub struct Config {
     pub manifest: manifest::Manifest,
 }
 
+/// Convert an [`anyhow::Error`] into a [`ConfigError::InvalidSyntax`] for
+/// the given INI file name.
+fn syntax_err(file: &str) -> impl FnOnce(anyhow::Error) -> ConfigError + '_ {
+    move |e| ConfigError::InvalidSyntax {
+        file: file.to_string(),
+        message: e.to_string(),
+    }
+}
+
 impl Config {
     /// Load all configuration for the given profile from the conf/ directory.
     ///
@@ -140,71 +149,37 @@ impl Config {
         let active_categories = &profile.active_categories;
         let excluded_categories = &profile.excluded_categories;
 
-        let packages =
-            packages::load(&conf.join("packages.ini"), active_categories).map_err(|e| {
-                ConfigError::InvalidSyntax {
-                    file: "packages.ini".to_string(),
-                    message: e.to_string(),
-                }
-            })?;
+        let packages = packages::load(&conf.join("packages.ini"), active_categories)
+            .map_err(syntax_err("packages.ini"))?;
 
-        let symlinks =
-            ini::load_flat(&conf.join("symlinks.ini"), active_categories).map_err(|e| {
-                ConfigError::InvalidSyntax {
-                    file: "symlinks.ini".to_string(),
-                    message: e.to_string(),
-                }
-            })?;
+        let symlinks = ini::load_flat(&conf.join("symlinks.ini"), active_categories)
+            .map_err(syntax_err("symlinks.ini"))?;
 
         let registry = if platform.has_registry() {
-            registry::load(&conf.join("registry.ini")).map_err(|e| ConfigError::InvalidSyntax {
-                file: "registry.ini".to_string(),
-                message: e.to_string(),
-            })?
+            registry::load(&conf.join("registry.ini")).map_err(syntax_err("registry.ini"))?
         } else {
             Vec::new()
         };
 
         let units = if platform.supports_systemd() {
-            ini::load_flat(&conf.join("systemd-units.ini"), active_categories).map_err(|e| {
-                ConfigError::InvalidSyntax {
-                    file: "systemd-units.ini".to_string(),
-                    message: e.to_string(),
-                }
-            })?
+            ini::load_flat(&conf.join("systemd-units.ini"), active_categories)
+                .map_err(syntax_err("systemd-units.ini"))?
         } else {
             Vec::new()
         };
 
-        let chmod_entries =
-            chmod::load(&conf.join("chmod.ini"), active_categories).map_err(|e| {
-                ConfigError::InvalidSyntax {
-                    file: "chmod.ini".to_string(),
-                    message: e.to_string(),
-                }
-            })?;
+        let chmod_entries = chmod::load(&conf.join("chmod.ini"), active_categories)
+            .map_err(syntax_err("chmod.ini"))?;
 
         let vscode_extensions =
-            ini::load_flat(&conf.join("vscode-extensions.ini"), active_categories).map_err(
-                |e| ConfigError::InvalidSyntax {
-                    file: "vscode-extensions.ini".to_string(),
-                    message: e.to_string(),
-                },
-            )?;
+            ini::load_flat(&conf.join("vscode-extensions.ini"), active_categories)
+                .map_err(syntax_err("vscode-extensions.ini"))?;
 
         let copilot_skills = ini::load_flat(&conf.join("copilot-skills.ini"), active_categories)
-            .map_err(|e| ConfigError::InvalidSyntax {
-                file: "copilot-skills.ini".to_string(),
-                message: e.to_string(),
-            })?;
+            .map_err(syntax_err("copilot-skills.ini"))?;
 
-        let manifest =
-            manifest::load(&conf.join("manifest.ini"), excluded_categories).map_err(|e| {
-                ConfigError::InvalidSyntax {
-                    file: "manifest.ini".to_string(),
-                    message: e.to_string(),
-                }
-            })?;
+        let manifest = manifest::load(&conf.join("manifest.ini"), excluded_categories)
+            .map_err(syntax_err("manifest.ini"))?;
 
         Ok(Self {
             root: root.to_path_buf(),
@@ -229,5 +204,116 @@ impl Config {
     #[must_use]
     pub fn validate(&self, platform: &Platform) -> Vec<validation::ValidationWarning> {
         validation::validate_all(self, platform)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::platform::{Os, Platform};
+
+    /// Create a temporary directory tree with the minimal conf/ files required
+    /// by `Config::load` and return the `TempDir` (keep alive) + profile.
+    fn setup_load(
+        platform: Platform,
+        overrides: &[(&str, &str)],
+    ) -> (tempfile::TempDir, profiles::Profile, Platform) {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let conf = dir.path().join("conf");
+        std::fs::create_dir_all(&conf).expect("create conf dir");
+
+        for file in &[
+            "packages.ini",
+            "symlinks.ini",
+            "registry.ini",
+            "systemd-units.ini",
+            "chmod.ini",
+            "vscode-extensions.ini",
+            "copilot-skills.ini",
+            "manifest.ini",
+        ] {
+            std::fs::write(conf.join(file), "").expect("write empty ini");
+        }
+
+        for (name, content) in overrides {
+            std::fs::write(conf.join(name), content).expect("write override ini");
+        }
+
+        let profile = profiles::Profile {
+            name: "base".to_string(),
+            active_categories: vec!["base".to_string()],
+            excluded_categories: vec!["desktop".to_string()],
+        };
+        (dir, profile, platform)
+    }
+
+    fn linux() -> Platform {
+        Platform::new(Os::Linux, false)
+    }
+
+    fn windows() -> Platform {
+        Platform::new(Os::Windows, false)
+    }
+
+    #[test]
+    fn load_with_empty_config_files() {
+        let (dir, profile, platform) = setup_load(linux(), &[]);
+        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        assert!(config.packages.is_empty());
+        assert!(config.symlinks.is_empty());
+        assert!(config.registry.is_empty());
+        assert!(config.units.is_empty());
+        assert!(config.chmod.is_empty());
+        assert!(config.vscode_extensions.is_empty());
+        assert!(config.copilot_skills.is_empty());
+    }
+
+    #[test]
+    fn load_populates_symlinks() {
+        let (dir, profile, platform) =
+            setup_load(linux(), &[("symlinks.ini", "[base]\n.bashrc\n.vimrc\n")]);
+        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        assert_eq!(config.symlinks.len(), 2);
+        assert_eq!(config.symlinks[0].source, ".bashrc");
+        assert_eq!(config.symlinks[1].source, ".vimrc");
+    }
+
+    #[test]
+    fn load_populates_packages() {
+        let (dir, profile, platform) =
+            setup_load(linux(), &[("packages.ini", "[base]\ngit\ncurl\n")]);
+        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        assert_eq!(config.packages.len(), 2);
+    }
+
+    #[test]
+    fn load_stores_root_path() {
+        let (dir, profile, platform) = setup_load(linux(), &[]);
+        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        assert_eq!(config.root, dir.path());
+    }
+
+    #[test]
+    fn load_skips_registry_on_linux() {
+        let (dir, profile, platform) =
+            setup_load(linux(), &[("registry.ini", "[HKCU\\Test]\nKey=Value\n")]);
+        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        assert!(config.registry.is_empty(), "registry skipped on linux");
+    }
+
+    #[test]
+    fn load_populates_systemd_units_on_linux() {
+        let (dir, profile, platform) =
+            setup_load(linux(), &[("systemd-units.ini", "[base]\nssh.service\n")]);
+        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        assert_eq!(config.units.len(), 1);
+    }
+
+    #[test]
+    fn load_skips_systemd_units_on_windows() {
+        let (dir, profile, platform) = setup_load(windows(), &[]);
+        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        assert!(config.units.is_empty(), "systemd units skipped on windows");
     }
 }

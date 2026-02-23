@@ -29,8 +29,16 @@ if ($Build) {
 if (-not (Test-Path $Binary)) {
     New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     $Latest = (Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 120).tag_name
-    Invoke-WebRequest "https://github.com/$Repo/releases/download/$Latest/$AssetName" `
-        -OutFile $Binary -UseBasicParsing -TimeoutSec 120
+    $Base = "https://github.com/$Repo/releases/download/$Latest"
+    Invoke-WebRequest "$Base/$AssetName" -OutFile $Binary -UseBasicParsing -TimeoutSec 120
+    $Checksums = try { (Invoke-WebRequest "$Base/checksums.sha256" -UseBasicParsing -TimeoutSec 120).Content } catch { $null }
+    if ($Checksums) {
+        $Expected = ($Checksums -split "`n" | Where-Object { $_ -match $AssetName }) -replace '\s+.*'
+        if ($Expected) {
+            $Actual = (Get-FileHash $Binary -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($Expected -ne $Actual) { Remove-Item $Binary -Force; throw "Checksum mismatch" }
+        }
+    }
     if ($IsLinux -or $IsMacOS) { chmod +x $Binary }
 }
 

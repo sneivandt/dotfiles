@@ -202,8 +202,6 @@ pub struct Context {
     pub home: PathBuf,
     pub executor: Arc<dyn Executor>,
     pub parallel: bool,
-    pub repo_updated: Arc<AtomicBool>,       // set by UpdateRepository, read by ReloadConfig
-    pub fs_ops: Arc<dyn FileSystemOps>,      // filesystem abstraction; inject MockFileSystemOps in tests
 }
 ```
 
@@ -218,15 +216,27 @@ the data out before a long-running operation so the lock is not held across
 let items = ctx.config_read().items.clone();
 ```
 
-`repo_updated` is an `Arc<AtomicBool>` shared across per-task contexts in the
-parallel scheduler. `UpdateRepository` sets it to `true` when it actually pulls
-new commits; `ReloadConfig` reads it to decide whether a reload is needed.
+### Task-Specific Dependency Injection
 
-`fs_ops` is an `Arc<dyn FileSystemOps>` that wraps filesystem operations
-(`exists`, `is_file`, `read_dir`). The production implementation is
-`SystemFileSystemOps`. In tests, inject `MockFileSystemOps` via
-`ctx.with_fs_ops(Arc::new(mock))` so tasks can be exercised without touching
-the real filesystem.
+Some tasks require dependencies that are not shared across all tasks and are
+therefore injected via constructors rather than stored on `Context`:
+
+- **`repo_updated: Arc<AtomicBool>`** — shared between `UpdateRepository` and
+  `ReloadConfig`. `UpdateRepository` sets it to `true` when it pulls new
+  commits; `ReloadConfig` reads it to decide whether a reload is needed. Both
+  receive the same `Arc` from `all_install_tasks()`.
+
+- **`fs_ops: Arc<dyn FileSystemOps>`** — held by `InstallGitHooks` and
+  `UninstallGitHooks`. The production implementation is `SystemFileSystemOps`.
+  In tests, use the `with_fs_ops` constructor to inject `MockFileSystemOps`
+  without touching the real filesystem:
+
+```rust
+let task = InstallGitHooks::with_fs_ops(Arc::new(MockFileSystemOps::new()
+    .with_existing("/repo/hooks")
+    .with_existing("/repo/.git")
+));
+```
 
 ## Executor Trait
 

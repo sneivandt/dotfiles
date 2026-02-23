@@ -54,13 +54,10 @@ management via the generic `process_resources()` helper:
 pub struct InstallSymlinks;
 impl Task for InstallSymlinks {
     fn name(&self) -> &str { "Install symlinks" }
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[
-            TypeId::of::<super::reload_config::ReloadConfig>(),
-            TypeId::of::<super::developer_mode::EnableDeveloperMode>(),
-        ];
-        DEPS
-    }
+    task_deps![
+        super::reload_config::ReloadConfig,
+        super::developer_mode::EnableDeveloperMode,
+    ];
     fn should_run(&self, ctx: &Context) -> bool { !ctx.config_read().symlinks.is_empty() }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         process_resources(ctx, build_resources(ctx), &ProcessOpts::apply_all("link"))

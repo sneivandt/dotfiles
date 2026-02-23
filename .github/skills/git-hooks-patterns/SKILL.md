@@ -23,36 +23,43 @@ Hooks live in `hooks/` and are copied to `.git/hooks/` by the Rust engine.
 
 ## Hook Installation Task
 
-The `InstallGitHooks` task in `cli/src/tasks/hooks.rs`:
+The `InstallGitHooks` task in `cli/src/tasks/hooks.rs` holds its own
+`fs_ops` field for injectable filesystem access:
 
 ```rust
 #[derive(Debug)]
-pub struct InstallGitHooks;
+pub struct InstallGitHooks {
+    fs_ops: Arc<dyn FileSystemOps>,
+}
+
+impl InstallGitHooks {
+    pub fn new() -> Self { Self { fs_ops: Arc::new(SystemFileSystemOps) } }
+
+    #[cfg(test)]
+    pub fn with_fs_ops(fs_ops: Arc<dyn FileSystemOps>) -> Self { Self { fs_ops } }
+}
 
 impl Task for InstallGitHooks {
-    fn name(&self) -> &str { "Install git hooks" }
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[TypeId::of::<super::reload_config::ReloadConfig>()];
-        DEPS
-    }
+    fn name(&self) -> &'static str { "Install git hooks" }
+    task_deps![super::reload_config::ReloadConfig];
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.fs_ops.exists(&ctx.hooks_dir()) && ctx.fs_ops.exists(&ctx.root().join(".git"))
+        self.fs_ops.exists(&ctx.hooks_dir()) && self.fs_ops.exists(&ctx.root().join(".git"))
     }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resources = discover_hooks(ctx)?;
+        let resources = discover_hooks(ctx, &*self.fs_ops)?;
         process_resources(ctx, resources, &ProcessOpts::apply_all("install hook"))
     }
 }
 ```
 
-`should_run` uses `ctx.fs_ops.exists()` (the `FileSystemOps` abstraction) rather than
+`should_run` uses `self.fs_ops.exists()` (the `FileSystemOps` abstraction) rather than
 calling `.exists()` directly on the path. This allows tests to inject a
-`MockFileSystemOps` via `ctx.with_fs_ops(Arc::new(mock))` without touching the real
-filesystem.
+`MockFileSystemOps` via `InstallGitHooks::with_fs_ops(Arc::new(mock))` without touching
+the real filesystem.
 
-`discover_hooks()` reads the `hooks/` directory via `ctx.fs_ops.read_dir()` and returns
-one `HookFileResource` per file that has no extension (conventional hook scripts such
-as `pre-commit`, `commit-msg`).
+`discover_hooks()` takes `ctx` and a `&dyn FileSystemOps` argument and reads the
+`hooks/` directory via `fs_ops.read_dir()`, returning one `HookFileResource` per file
+that has no extension (conventional hook scripts such as `pre-commit`, `commit-msg`).
 
 ## Sensitive Data Detection
 
@@ -98,4 +105,4 @@ git commit --no-verify  # Use for false positives only
 - Hooks are installed as copies (re-run install to update after changes)
 - Never commit real credentials
 - Test patterns before committing
-- The hook installation task uses `ctx.fs_ops.exists()` to check directory existence (not `.exists()` directly), enabling MockFileSystemOps injection in tests
+- The hook installation task uses `self.fs_ops.exists()` to check directory existence (not `.exists()` directly), enabling `MockFileSystemOps` injection via `InstallGitHooks::with_fs_ops()` in tests

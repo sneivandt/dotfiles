@@ -1,7 +1,6 @@
 use anyhow::Result;
-use std::any::TypeId;
 
-use super::{Context, Task, TaskResult};
+use super::{Context, Task, TaskResult, task_deps};
 
 /// Pull latest changes from the remote repository.
 #[derive(Debug)]
@@ -12,10 +11,7 @@ impl Task for UpdateRepository {
         "Update repository"
     }
 
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[TypeId::of::<super::sparse_checkout::ConfigureSparseCheckout>()];
-        DEPS
-    }
+    task_deps![super::sparse_checkout::ConfigureSparseCheckout];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.root().join(".git").exists()

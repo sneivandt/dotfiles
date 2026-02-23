@@ -63,6 +63,20 @@ enum LogEntry {
     DryRun(String),
 }
 
+impl LogEntry {
+    /// Replay this entry to the given logger.
+    fn replay(&self, logger: &Logger) {
+        match self {
+            Self::Stage(msg) => logger.stage(msg),
+            Self::Info(msg) => logger.info(msg),
+            Self::Debug(msg) => logger.debug(msg),
+            Self::Warn(msg) => logger.warn(msg),
+            Self::Error(msg) => logger.error(msg),
+            Self::DryRun(msg) => logger.dry_run(msg),
+        }
+    }
+}
+
 /// Buffered logger for parallel task execution.
 ///
 /// Captures display output (stage, info, debug, etc.) in memory so that
@@ -126,14 +140,7 @@ impl BufferedLog {
     /// Replay a slice of buffered entries to the backing [`Logger`].
     fn replay_entries(&self, entries: &[LogEntry]) {
         for entry in entries {
-            match entry {
-                LogEntry::Stage(msg) => self.inner.stage(msg),
-                LogEntry::Info(msg) => self.inner.info(msg),
-                LogEntry::Debug(msg) => self.inner.debug(msg),
-                LogEntry::Warn(msg) => self.inner.warn(msg),
-                LogEntry::Error(msg) => self.inner.error(msg),
-                LogEntry::DryRun(msg) => self.inner.dry_run(msg),
-            }
+            entry.replay(&self.inner);
         }
     }
 }

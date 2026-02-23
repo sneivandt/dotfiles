@@ -122,6 +122,33 @@ impl TaskStats {
 /// Configuration for the generic resource processing loop.
 ///
 /// Controls how each [`ResourceState`] variant is handled.
+///
+/// Use the named constructors [`apply_all`](Self::apply_all) and
+/// [`install_missing`](Self::install_missing) for common presets, with
+/// optional modifiers like [`no_bail`](Self::no_bail) and
+/// [`skip_missing`](Self::skip_missing).
+///
+/// # Examples
+///
+/// ```
+/// use dotfiles_cli::tasks::ProcessOpts;
+///
+/// // Fix everything, bail on errors (strict):
+/// let opts = ProcessOpts::apply_all("link");
+/// assert!(opts.fix_incorrect && opts.fix_missing && opts.bail_on_error);
+///
+/// // Fix everything, warn on errors (lenient):
+/// let opts = ProcessOpts::apply_all("install").no_bail();
+/// assert!(opts.fix_incorrect && opts.fix_missing && !opts.bail_on_error);
+///
+/// // Install only missing resources (lenient):
+/// let opts = ProcessOpts::install_missing("enable");
+/// assert!(!opts.fix_incorrect && opts.fix_missing && !opts.bail_on_error);
+///
+/// // Fix existing only, bail on errors:
+/// let opts = ProcessOpts::apply_all("chmod").skip_missing();
+/// assert!(opts.fix_incorrect && !opts.fix_missing && opts.bail_on_error);
+/// ```
 #[derive(Debug)]
 pub struct ProcessOpts<'a> {
     /// Verb for log messages (e.g., "install", "link", "chmod").
@@ -132,6 +159,50 @@ pub struct ProcessOpts<'a> {
     pub fix_missing: bool,
     /// Propagate errors from `apply()` (bail). If `false`, warn and count as skipped.
     pub bail_on_error: bool,
+}
+
+impl<'a> ProcessOpts<'a> {
+    /// Fix both missing and incorrect resources, bailing on errors.
+    ///
+    /// This is the strict default — suitable for resources where every
+    /// failure must be surfaced (e.g. symlinks, hooks, git config).
+    #[must_use]
+    pub const fn apply_all(verb: &'a str) -> Self {
+        Self {
+            verb,
+            fix_incorrect: true,
+            fix_missing: true,
+            bail_on_error: true,
+        }
+    }
+
+    /// Install only missing resources, warning on errors instead of bailing.
+    ///
+    /// Suitable for resources that should not be overwritten when already
+    /// present (e.g. VS Code extensions, systemd units, Copilot skills).
+    #[must_use]
+    pub const fn install_missing(verb: &'a str) -> Self {
+        Self {
+            verb,
+            fix_incorrect: false,
+            fix_missing: true,
+            bail_on_error: false,
+        }
+    }
+
+    /// Warn on errors instead of bailing.
+    #[must_use]
+    pub const fn no_bail(mut self) -> Self {
+        self.bail_on_error = false;
+        self
+    }
+
+    /// Skip missing resources (only fix incorrect ones).
+    #[must_use]
+    pub const fn skip_missing(mut self) -> Self {
+        self.fix_missing = false;
+        self
+    }
 }
 
 /// Process resources by checking each one's current state and applying as needed.
@@ -469,21 +540,11 @@ mod tests {
     }
 
     fn default_opts() -> ProcessOpts<'static> {
-        ProcessOpts {
-            verb: "install",
-            fix_incorrect: true,
-            fix_missing: true,
-            bail_on_error: false,
-        }
+        ProcessOpts::apply_all("install").no_bail()
     }
 
     fn bail_opts() -> ProcessOpts<'static> {
-        ProcessOpts {
-            verb: "install",
-            fix_incorrect: true,
-            fix_missing: true,
-            bail_on_error: true,
-        }
+        ProcessOpts::apply_all("install")
     }
 
     // -----------------------------------------------------------------------

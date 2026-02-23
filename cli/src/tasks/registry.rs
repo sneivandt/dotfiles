@@ -46,12 +46,7 @@ impl Task for ApplyRegistry {
         process_resource_states(
             ctx,
             resource_states,
-            &ProcessOpts {
-                verb: "set registry",
-                fix_incorrect: true,
-                fix_missing: true,
-                bail_on_error: false,
-            },
+            &ProcessOpts::apply_all("set registry").no_bail(),
         )
     }
 }

@@ -29,12 +29,7 @@ impl Task for ConfigureShell {
         process_resources(
             ctx,
             std::iter::once(resource),
-            &ProcessOpts {
-                verb: "configure",
-                fix_incorrect: true,
-                fix_missing: true,
-                bail_on_error: true,
-            },
+            &ProcessOpts::apply_all("configure"),
         )
     }
 }

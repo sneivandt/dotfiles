@@ -427,10 +427,85 @@ pub fn compute_sha256(path: &Path) -> Result<String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::unimplemented
+)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use std::io::Write;
+
+    // -----------------------------------------------------------------------
+    // Mock executor
+    // -----------------------------------------------------------------------
+
+    /// Minimal executor that returns pre-configured responses, used to test
+    /// functions that call curl/wget without making real network requests.
+    #[derive(Debug, Default)]
+    struct MockExecutor {
+        /// Maps program name to whether it is available on PATH.
+        which_results: HashMap<String, bool>,
+        /// Maps program name to (`stdout`, `success`) returned by `run_unchecked`.
+        run_results: HashMap<String, (String, bool)>,
+    }
+
+    impl MockExecutor {
+        fn with_curl(mut self, stdout: &str, success: bool) -> Self {
+            self.which_results.insert("curl".to_owned(), true);
+            self.run_results
+                .insert("curl".to_owned(), (stdout.to_owned(), success));
+            self
+        }
+
+        fn with_wget(mut self, stdout: &str, success: bool) -> Self {
+            self.which_results.insert("wget".to_owned(), true);
+            self.run_results
+                .insert("wget".to_owned(), (stdout.to_owned(), success));
+            self
+        }
+    }
+
+    impl crate::exec::Executor for MockExecutor {
+        fn run(&self, program: &str, _: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
+            anyhow::bail!("MockExecutor::run not implemented ({program})")
+        }
+        fn run_in(
+            &self,
+            _: &std::path::Path,
+            program: &str,
+            _: &[&str],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            anyhow::bail!("MockExecutor::run_in not implemented ({program})")
+        }
+        fn run_in_with_env(
+            &self,
+            _: &std::path::Path,
+            program: &str,
+            _: &[&str],
+            _: &[(&str, &str)],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            anyhow::bail!("MockExecutor::run_in_with_env not implemented ({program})")
+        }
+        fn run_unchecked(
+            &self,
+            program: &str,
+            _args: &[&str],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            let (stdout, success) = self.run_results.get(program).cloned().unwrap_or_default();
+            Ok(crate::exec::ExecResult {
+                stdout,
+                stderr: String::new(),
+                success,
+                code: Some(i32::from(!success)),
+            })
+        }
+        fn which(&self, program: &str) -> bool {
+            self.which_results.get(program).copied().unwrap_or(false)
+        }
+    }
 
     // -----------------------------------------------------------------------
     // parse_tag_name
@@ -463,6 +538,26 @@ mod tests {
         assert_eq!(parse_tag_name(""), None);
     }
 
+    #[test]
+    fn parse_tag_name_null_value() {
+        // `tag_name` present but set to JSON null (no surrounding quotes).
+        let json = r#"{"id":1,"tag_name":null,"name":"Release"}"#;
+        assert_eq!(parse_tag_name(json), None);
+    }
+
+    #[test]
+    fn parse_tag_name_pre_release_tag() {
+        let json = r#"{"tag_name":"v2.0.0-beta.1"}"#;
+        assert_eq!(parse_tag_name(json), Some("v2.0.0-beta.1".to_owned()));
+    }
+
+    #[test]
+    fn parse_tag_name_multiline_realistic() {
+        // Matches a realistic GitHub API response snippet.
+        let json = "{\n  \"id\": 123,\n  \"tag_name\": \"v0.2.0\",\n  \"draft\": false\n}";
+        assert_eq!(parse_tag_name(json), Some("v0.2.0".to_owned()));
+    }
+
     // -----------------------------------------------------------------------
     // is_cache_fresh / get_cached_version / update_cache
     // -----------------------------------------------------------------------
@@ -480,6 +575,41 @@ mod tests {
         let cache = dir.path().join(".dotfiles-version-cache");
         std::fs::write(&cache, "v0.1.0\n0\n").expect("write");
         assert!(!is_cache_fresh(&cache).expect("is_cache_fresh"));
+    }
+
+    #[test]
+    fn cache_stale_when_no_timestamp_line() {
+        // File has only the version line, no timestamp.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cache = dir.path().join(".dotfiles-version-cache");
+        std::fs::write(&cache, "v1.0.0\n").expect("write");
+        assert!(!is_cache_fresh(&cache).expect("is_cache_fresh"));
+    }
+
+    #[test]
+    fn cache_stale_when_old_timestamp() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cache = dir.path().join(".dotfiles-version-cache");
+        let old_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .saturating_sub(CACHE_MAX_AGE + 60);
+        std::fs::write(&cache, format!("v1.0.0\n{old_ts}\n")).expect("write");
+        assert!(!is_cache_fresh(&cache).expect("is_cache_fresh"));
+    }
+
+    #[test]
+    fn cache_fresh_when_recent_timestamp() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cache = dir.path().join(".dotfiles-version-cache");
+        let recent_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .saturating_sub(60); // 1 minute ago
+        std::fs::write(&cache, format!("v1.0.0\n{recent_ts}\n")).expect("write");
+        assert!(is_cache_fresh(&cache).expect("is_cache_fresh"));
     }
 
     #[test]
@@ -509,6 +639,204 @@ mod tests {
             get_cached_version(&cache).expect("get_cached_version"),
             None
         );
+    }
+
+    #[test]
+    fn get_cached_version_empty_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cache = dir.path().join(".dotfiles-version-cache");
+        std::fs::write(&cache, "").expect("write");
+        assert_eq!(
+            get_cached_version(&cache).expect("get_cached_version"),
+            None
+        );
+    }
+
+    #[test]
+    fn update_cache_creates_parent_dirs() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cache = dir.path().join("deeply/nested/cache");
+        update_cache(&cache, "v1.0.0").expect("update_cache");
+        assert!(cache.exists(), "cache file should be created");
+        assert_eq!(
+            get_cached_version(&cache).expect("get_cached_version"),
+            Some("v1.0.0".to_owned())
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // fetch_latest_version (via MockExecutor)
+    // -----------------------------------------------------------------------
+
+    const RELEASE_JSON: &str = r#"{"id":1,"tag_name":"v0.1.99","name":"Release v0.1.99"}"#;
+
+    #[test]
+    fn fetch_version_uses_curl() {
+        let executor = MockExecutor::default().with_curl(RELEASE_JSON, true);
+        let version = fetch_latest_version("owner/repo", &executor);
+        assert_eq!(version, "v0.1.99");
+    }
+
+    #[test]
+    fn fetch_version_falls_back_to_wget() {
+        let executor = MockExecutor::default().with_wget(RELEASE_JSON, true);
+        let version = fetch_latest_version("owner/repo", &executor);
+        assert_eq!(version, "v0.1.99");
+    }
+
+    #[test]
+    fn fetch_version_empty_when_no_tool() {
+        let executor = MockExecutor::default();
+        let version = fetch_latest_version("owner/repo", &executor);
+        assert!(version.is_empty());
+    }
+
+    #[test]
+    fn fetch_version_empty_on_curl_failure() {
+        let executor = MockExecutor::default().with_curl("error", false);
+        let version = fetch_latest_version("owner/repo", &executor);
+        assert!(version.is_empty());
+    }
+
+    #[test]
+    fn fetch_version_empty_on_invalid_response() {
+        let executor = MockExecutor::default().with_curl("not json at all", true);
+        let version = fetch_latest_version("owner/repo", &executor);
+        assert!(version.is_empty());
+    }
+
+    #[test]
+    fn fetch_version_prefers_curl_over_wget() {
+        // Both curl (with correct tag) and wget (with different tag) are available.
+        let executor = MockExecutor::default()
+            .with_curl(RELEASE_JSON, true)
+            .with_wget(r#"{"tag_name":"v0.0.1"}"#, true);
+        let version = fetch_latest_version("owner/repo", &executor);
+        assert_eq!(version, "v0.1.99", "should prefer curl response");
+    }
+
+    // -----------------------------------------------------------------------
+    // verify_checksum (via MockExecutor)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn verify_checksum_passes_with_matching_hash() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let binary = dir.path().join("dotfiles");
+        std::fs::write(&binary, b"fake binary data").expect("write");
+        let hash = compute_sha256(&binary).expect("compute_sha256");
+        let asset = "dotfiles-linux-x86_64";
+        let checksums_content = format!("{hash}  {asset}\n");
+        let executor = MockExecutor::default().with_curl(&checksums_content, true);
+        verify_checksum("owner/repo", "v1.0.0", asset, &binary, &executor)
+            .expect("checksum should pass with matching hash");
+        assert!(
+            binary.exists(),
+            "binary should remain after passing verification"
+        );
+    }
+
+    #[test]
+    fn verify_checksum_fails_with_wrong_hash() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let binary = dir.path().join("dotfiles");
+        std::fs::write(&binary, b"fake binary data").expect("write");
+        let asset = "dotfiles-linux-x86_64";
+        let wrong_hash = "a".repeat(64);
+        let checksums_content = format!("{wrong_hash}  {asset}\n");
+        let executor = MockExecutor::default().with_curl(&checksums_content, true);
+        let result = verify_checksum("owner/repo", "v1.0.0", asset, &binary, &executor);
+        assert!(
+            result.is_err(),
+            "should return an error when hash mismatches"
+        );
+        assert!(
+            !binary.exists(),
+            "binary should be removed after failed checksum"
+        );
+    }
+
+    #[test]
+    fn verify_checksum_skips_when_asset_not_in_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let binary = dir.path().join("dotfiles");
+        std::fs::write(&binary, b"fake binary data").expect("write");
+        let asset = "dotfiles-linux-x86_64";
+        // Checksums file mentions a different asset.
+        let checksums_content = "aabbcc  dotfiles-linux-aarch64\n";
+        let executor = MockExecutor::default().with_curl(checksums_content, true);
+        verify_checksum("owner/repo", "v1.0.0", asset, &binary, &executor)
+            .expect("should silently skip when asset not found in checksums");
+        assert!(binary.exists(), "binary should be untouched");
+    }
+
+    #[test]
+    fn verify_checksum_skips_when_download_fails() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let binary = dir.path().join("dotfiles");
+        std::fs::write(&binary, b"fake binary data").expect("write");
+        let asset = "dotfiles-linux-x86_64";
+        let executor = MockExecutor::default().with_curl("404 not found", false);
+        verify_checksum("owner/repo", "v1.0.0", asset, &binary, &executor)
+            .expect("should silently skip when checksums download fails");
+        assert!(binary.exists(), "binary should be untouched");
+    }
+
+    #[test]
+    fn verify_checksum_skips_when_no_tool() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let binary = dir.path().join("dotfiles");
+        std::fs::write(&binary, b"fake binary data").expect("write");
+        let asset = "dotfiles-linux-x86_64";
+        let executor = MockExecutor::default(); // no curl, no wget
+        verify_checksum("owner/repo", "v1.0.0", asset, &binary, &executor)
+            .expect("should silently skip when no download tool available");
+        assert!(binary.exists(), "binary should be untouched");
+    }
+
+    // -----------------------------------------------------------------------
+    // tmp_path
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn tmp_path_appends_new_suffix() {
+        let binary = PathBuf::from("/some/dir/dotfiles");
+        let tmp = tmp_path(&binary);
+        assert_eq!(tmp.file_name().unwrap().to_str().unwrap(), "dotfiles.new");
+        assert_eq!(tmp.parent(), binary.parent());
+    }
+
+    #[test]
+    fn tmp_path_preserves_exe_extension() {
+        // On Windows the binary is dotfiles.exe; .new should be appended after.
+        let binary = PathBuf::from("/some/dir/dotfiles.exe");
+        let tmp = tmp_path(&binary);
+        assert_eq!(
+            tmp.file_name().unwrap().to_str().unwrap(),
+            "dotfiles.exe.new"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // install_binary
+    // -----------------------------------------------------------------------
+
+    #[test]
+    #[cfg(unix)]
+    fn install_binary_renames_and_sets_executable() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let tmp = dir.path().join("dotfiles.new");
+        let binary = dir.path().join("dotfiles");
+        std::fs::write(&tmp, b"fake binary content").expect("write tmp");
+        install_binary(&tmp, &binary).expect("install_binary");
+        assert!(binary.exists(), "binary should exist after install");
+        assert!(!tmp.exists(), "tmp file should be gone after rename");
+        let mode = std::fs::metadata(&binary)
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert!(mode & 0o100 != 0, "binary should have executable bit set");
     }
 
     // -----------------------------------------------------------------------
@@ -542,6 +870,19 @@ mod tests {
         );
     }
 
+    #[test]
+    fn sha256_produces_64_hex_chars() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("data");
+        std::fs::write(&file, b"some content").expect("write");
+        let hash = compute_sha256(&file).expect("compute_sha256");
+        assert_eq!(hash.len(), 64, "SHA-256 hex digest should be 64 characters");
+        assert!(
+            hash.chars().all(|c| c.is_ascii_hexdigit()),
+            "digest should contain only hex characters"
+        );
+    }
+
     // -----------------------------------------------------------------------
     // asset_name / binary_name helpers
     // -----------------------------------------------------------------------
@@ -554,5 +895,23 @@ mod tests {
     #[test]
     fn binary_name_is_nonempty() {
         assert!(!binary_name().is_empty());
+    }
+
+    #[test]
+    fn asset_name_contains_arch() {
+        let name = asset_name();
+        assert!(
+            name.contains("x86_64") || name.contains("aarch64"),
+            "asset name should contain architecture: {name}"
+        );
+    }
+
+    #[test]
+    fn asset_name_contains_platform() {
+        let name = asset_name();
+        assert!(
+            name.contains("linux") || name.contains("windows"),
+            "asset name should contain platform: {name}"
+        );
     }
 }

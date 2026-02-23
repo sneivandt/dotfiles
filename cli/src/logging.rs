@@ -67,7 +67,7 @@ enum LogEntry {
 ///
 /// Captures display output (stage, info, debug, etc.) in memory so that
 /// parallel tasks do not interleave their console output.  The captured
-/// entries are replayed in order when [`flush`](BufferedLog::flush) is called.
+/// entries are replayed in order when `flush_and_complete` is called.
 ///
 /// [`record_task`](Log::record_task) is forwarded directly to the underlying
 /// [`Logger`] because the summary collection is already thread-safe.

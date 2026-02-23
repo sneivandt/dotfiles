@@ -1,4 +1,9 @@
-#![allow(clippy::expect_used, clippy::unwrap_used, clippy::wildcard_imports)]
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::wildcard_imports,
+    clippy::indexing_slicing
+)]
 //! Integration tests for the `uninstall` command.
 //!
 //! These tests verify the structure and naming of the uninstall task list
@@ -9,6 +14,7 @@ mod common;
 use std::any::TypeId;
 use std::collections::HashSet;
 
+use dotfiles_cli::platform::{Os, Platform};
 use dotfiles_cli::tasks;
 
 // ---------------------------------------------------------------------------
@@ -144,6 +150,106 @@ fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
 
     let tasks = tasks::all_uninstall_tasks();
     for task in &tasks {
+        let _ = task.should_run(&task_ctx);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dependency graph: no cycles
+// ---------------------------------------------------------------------------
+
+/// The uninstall task dependency graph must not contain any cycles.
+#[test]
+fn uninstall_tasks_form_acyclic_dependency_graph() {
+    use std::collections::HashMap;
+
+    let tasks = tasks::all_uninstall_tasks();
+    let type_to_idx: HashMap<TypeId, usize> = tasks
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (t.task_id(), i))
+        .collect();
+
+    let mut in_degree: Vec<usize> = tasks
+        .iter()
+        .map(|t| {
+            t.dependencies()
+                .iter()
+                .filter(|d| type_to_idx.contains_key(d))
+                .count()
+        })
+        .collect();
+
+    let mut reverse_deps: Vec<Vec<usize>> = vec![Vec::new(); tasks.len()];
+    for (i, t) in tasks.iter().enumerate() {
+        for dep in t.dependencies() {
+            if let Some(&dep_idx) = type_to_idx.get(dep) {
+                reverse_deps[dep_idx].push(i);
+            }
+        }
+    }
+
+    let mut queue: Vec<usize> = in_degree
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &d)| if d == 0 { Some(i) } else { None })
+        .collect();
+    let mut processed = 0usize;
+
+    while let Some(idx) = queue.pop() {
+        processed += 1;
+        for &dep in &reverse_deps[idx] {
+            in_degree[dep] -= 1;
+            if in_degree[dep] == 0 {
+                queue.push(dep);
+            }
+        }
+    }
+
+    assert_eq!(
+        processed,
+        tasks.len(),
+        "uninstall task dependency graph contains a cycle"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Dry-run: task list with a Windows platform
+// ---------------------------------------------------------------------------
+
+/// `should_run` must not panic for any uninstall task when given a Windows platform.
+#[test]
+fn uninstall_tasks_should_run_with_windows_platform() {
+    use std::sync::Arc;
+
+    let ctx_builder = common::TestContextBuilder::new();
+    let ctx = ctx_builder.build();
+
+    let platform = Platform {
+        os: Os::Windows,
+        is_arch: false,
+    };
+    let config = ctx.load_config_for_platform("base", &platform);
+
+    let executor: Arc<dyn dotfiles_cli::exec::Executor> =
+        Arc::new(dotfiles_cli::exec::SystemExecutor);
+    let log: Arc<dotfiles_cli::logging::Logger> = Arc::new(dotfiles_cli::logging::Logger::new(
+        false,
+        "test-uninstall-windows",
+    ));
+
+    let task_ctx = dotfiles_cli::tasks::Context::new(
+        Arc::new(std::sync::RwLock::new(config)),
+        Arc::new(platform),
+        Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
+        true, // dry_run
+        executor,
+        false, // parallel
+    )
+    .expect("create context");
+
+    let all_tasks = tasks::all_uninstall_tasks();
+    for task in &all_tasks {
         let _ = task.should_run(&task_ctx);
     }
 }

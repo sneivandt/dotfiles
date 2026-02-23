@@ -1,49 +1,24 @@
 ﻿<#
 .SYNOPSIS
-    PowerShell entry point for dotfiles management engine.
+    Minimal entry point for the dotfiles management engine.
 .DESCRIPTION
-    Thin wrapper that downloads (or builds with -Build) the dotfiles Rust binary
-    and forwards all arguments to it. Works on both Windows and Linux (pwsh).
-
-    Default: downloads the latest published binary from GitHub Releases and
-             delegates version management to the Rust bootstrap command.
-    -Build:  builds the Rust binary from source (requires cargo).
-.PARAMETER Action
-    Subcommand to run: install, uninstall, test, or version.
-.PARAMETER Build
-    Build and run from source instead of using the published binary.
-.PARAMETER ProfileName
-    Profile to use (base, desktop).
-.PARAMETER DryRun
-    Preview changes without applying them.
+    Handles -Build (cargo must exist before the binary does), Windows UAC
+    elevation, and a one-time initial download.  Everything else — argument
+    parsing, version management, help text — is handled by the Rust binary.
 .EXAMPLE
-    PS> .\dotfiles.ps1 install -p base -d
+    PS> .\dotfiles.ps1 install --profile base --dry-run
 .EXAMPLE
-    PS> .\dotfiles.ps1 -Build install -p desktop
+    PS> .\dotfiles.ps1 -Build install
 #>
 
-[CmdletBinding()]
-param (
-    [Parameter(Position = 0)]
-    [ValidateSet('install', 'uninstall', 'test', 'version')]
-    [string]$Action,
-
-    [switch]$Build,
-
-    [ValidateSet('base', 'desktop')]
-    [Alias('p')]
-    [string]$ProfileName,
-
-    [Alias('d')]
-    [switch]$DryRun
-)
+param([switch]$Build)
 
 $ErrorActionPreference = 'Stop'
 $DotfilesRoot = $PSScriptRoot
 $Repo = "sneivandt/dotfiles"
 $BinDir = Join-Path $DotfilesRoot "bin"
 
-# When running in an elevated window, pause before closing so the user can see output
+# When running in an elevated window, pause before closing so the user can see output.
 function Wait-IfElevated
 {
     if ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
@@ -59,13 +34,6 @@ function Wait-IfElevated
     }
 }
 
-# Build CLI arguments from declared parameters
-$CliArgs = @()
-if ($ProfileName) { $CliArgs += '--profile'; $CliArgs += $ProfileName }
-if ($DryRun) { $CliArgs += '--dry-run' }
-if ($VerbosePreference -ne 'SilentlyContinue') { $CliArgs += '--verbose' }
-if ($Action) { $CliArgs += $Action }
-
 # Platform detection
 if ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
 {
@@ -80,35 +48,20 @@ else
 }
 $Binary = Join-Path $BinDir $BinaryName
 
-# Auto-elevate to administrator on Windows when not in dry-run mode
-if (-not $DryRun -and ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT')))
+# Auto-elevate on Windows (skip when --dry-run / -d is present in the forwarded args).
+$IsDryRun = $args -contains '--dry-run' -or $args -contains '-d'
+if (-not $IsDryRun -and ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT')))
 {
-    $currentPrincipal = New-Object Security.Principal.WindowsPrincipal(
+    $principal = New-Object Security.Principal.WindowsPrincipal(
         [Security.Principal.WindowsIdentity]::GetCurrent()
     )
-    $isAdmin = $currentPrincipal.IsInRole(
-        [Security.Principal.WindowsBuiltInRole]::Administrator
-    )
-    if (-not $isAdmin)
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
     {
         Write-Output "Not running as administrator. Requesting elevation..."
-
-        if ($PSVersionTable.PSEdition -eq 'Core')
-        {
-            $psExe = 'pwsh'
-        }
-        else
-        {
-            $psExe = 'powershell'
-        }
-
+        $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
         $scriptArgs = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
         if ($Build) { $scriptArgs += '-Build' }
-        if ($ProfileName) { $scriptArgs += '-ProfileName'; $scriptArgs += $ProfileName }
-        if ($DryRun) { $scriptArgs += '-DryRun' }
-        if ($PSBoundParameters.ContainsKey('Verbose')) { $scriptArgs += '-Verbose' }
-        if ($Action) { $scriptArgs += $Action }
-
+        $scriptArgs += $args
         try
         {
             $process = Start-Process -FilePath $psExe -ArgumentList $scriptArgs -Verb RunAs -PassThru
@@ -119,7 +72,7 @@ if (-not $DryRun -and ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Wi
         {
             if ($_.Exception.NativeErrorCode -eq 1223)
             {
-                Write-Error "UAC elevation was cancelled. Administrator privileges are required. Use -d (dry-run) to preview changes."
+                Write-Error "UAC elevation was cancelled. Use --dry-run to preview changes."
             }
             else
             {
@@ -135,7 +88,7 @@ if (-not $DryRun -and ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Wi
     }
 }
 
-# Build mode: build from source
+# -Build must be handled here: cargo is needed before the binary exists.
 if ($Build)
 {
     if (-not (Get-Command cargo -ErrorAction SilentlyContinue))
@@ -148,7 +101,7 @@ if ($Build)
     {
         cargo build --release
         $BuildBinary = Join-Path $DotfilesRoot (Join-Path "cli" (Join-Path "target" (Join-Path "release" $BinaryName)))
-        & $BuildBinary --root $DotfilesRoot @CliArgs
+        & $BuildBinary --root $DotfilesRoot @args
         $ec = $LASTEXITCODE
         Wait-IfElevated
         exit $ec
@@ -159,17 +112,14 @@ if ($Build)
     }
 }
 
-# Production mode: initial bootstrap then delegate version management to Rust.
+# First-time setup: minimal one-shot download when no binary exists yet.
+# Subsequent version checks and updates are handled by `dotfiles bootstrap`.
 if (-not (Test-Path $Binary))
 {
-    if (-not (Test-Path $BinDir))
-    {
-        New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
-    }
+    if (-not (Test-Path $BinDir)) { New-Item -ItemType Directory -Path $BinDir -Force | Out-Null }
     try
     {
-        $latestResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 120
-        $latest = $latestResponse.tag_name
+        $latest = (Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 120).tag_name
     }
     catch
     {
@@ -177,23 +127,19 @@ if (-not (Test-Path $Binary))
         exit 1
     }
     Write-Output "Downloading dotfiles $latest..."
-    $url = "https://github.com/$Repo/releases/download/$latest/$AssetName"
-    Invoke-WebRequest -Uri $url -OutFile $Binary -UseBasicParsing -TimeoutSec 120
+    Invoke-WebRequest -Uri "https://github.com/$Repo/releases/download/$latest/$AssetName" `
+        -OutFile $Binary -UseBasicParsing -TimeoutSec 120
     if ($IsLinux -or $IsMacOS) { chmod +x $Binary }
 }
 
-# Delegate version checking, downloading, and cache management to Rust.
+# Delegate version management to Rust.
 # On Windows, bootstrap may stage a .new binary that we rename here after it exits.
 & $Binary --root $DotfilesRoot bootstrap --repo $Repo
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $NewBinary = "$Binary.new"
-if (Test-Path $NewBinary)
-{
-    Remove-Item $Binary -Force
-    Rename-Item $NewBinary $Binary
-}
+if (Test-Path $NewBinary) { Remove-Item $Binary -Force; Rename-Item $NewBinary $Binary }
 
-& $Binary --root $DotfilesRoot @CliArgs
+& $Binary --root $DotfilesRoot @args
 $ec = $LASTEXITCODE
 Wait-IfElevated
 exit $ec

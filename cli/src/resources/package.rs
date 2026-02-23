@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::OnceLock;
 
 use anyhow::Result;
 
@@ -116,6 +117,115 @@ pub fn get_installed_packages(
             }
             Ok(set)
         }
+    }
+}
+
+/// Install a batch of packages in a single command, grouped by package manager.
+///
+/// Groups the given resources by their [`PackageManager`] and runs one
+/// installation command per group.  For Pacman packages the command is
+/// `sudo pacman -S --needed --noconfirm <names…>`; for Paru packages it is
+/// `paru -S --needed --noconfirm <names…>`.  Winget packages are installed
+/// individually (winget does not support multi-package installs in one call).
+///
+/// # Errors
+///
+/// Returns an error if any package manager command fails.  Already-installed
+/// packages are handled gracefully by `--needed` so they do not cause errors.
+pub fn batch_install_packages(
+    resources: &[&PackageResource<'_>],
+    executor: &dyn Executor,
+) -> Result<()> {
+    let pacman_pkgs: Vec<&str> = resources
+        .iter()
+        .filter(|r| r.manager == PackageManager::Pacman)
+        .map(|r| r.name.as_str())
+        .collect();
+
+    let paru_pkgs: Vec<&str> = resources
+        .iter()
+        .filter(|r| r.manager == PackageManager::Paru)
+        .map(|r| r.name.as_str())
+        .collect();
+
+    if !pacman_pkgs.is_empty() {
+        let mut args = vec!["pacman", "-S", "--needed", "--noconfirm"];
+        args.extend(pacman_pkgs);
+        executor.run("sudo", &args)?;
+    }
+
+    if !paru_pkgs.is_empty() {
+        let mut args = vec!["-S", "--needed", "--noconfirm"];
+        args.extend(paru_pkgs);
+        executor.run("paru", &args)?;
+    }
+
+    // Winget does not support batch installs; delegate to individual apply()
+    for resource in resources
+        .iter()
+        .filter(|r| r.manager == PackageManager::Winget)
+    {
+        resource.apply()?;
+    }
+
+    Ok(())
+}
+
+/// Lazily-initialized cache of installed packages per package manager.
+///
+/// Populate with [`PackageCache::get_or_load`] to avoid repeated calls to
+/// the package manager when checking many packages.
+///
+/// # Examples
+///
+/// ```ignore
+/// let cache = PackageCache::new();
+/// let installed = cache.get_or_load(PackageManager::Pacman, executor)?;
+/// let state = resource.state_from_installed(installed);
+/// ```
+#[derive(Debug, Default)]
+pub struct PackageCache {
+    pacman_packages: OnceLock<HashSet<String>>,
+    winget_packages: OnceLock<HashSet<String>>,
+}
+
+impl PackageCache {
+    /// Create an empty cache with no pre-fetched data.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Return the installed-package set for `manager`, fetching it on first use.
+    ///
+    /// Subsequent calls for the same manager type return the cached result
+    /// without invoking the package manager again.  Pacman and Paru share the
+    /// same cache entry because both are queried via `pacman -Q`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the package manager command fails on the first call.
+    pub fn get_or_load(
+        &self,
+        manager: PackageManager,
+        executor: &dyn Executor,
+    ) -> Result<&HashSet<String>> {
+        let cell = match manager {
+            PackageManager::Pacman | PackageManager::Paru => &self.pacman_packages,
+            PackageManager::Winget => &self.winget_packages,
+        };
+        if cell.get().is_none() {
+            let packages = get_installed_packages(manager, executor)?;
+            // Ignore a race where another thread beat us to the initialization.
+            let _ = cell.set(packages);
+        }
+        // The cell is guaranteed to be initialized at this point: either we just
+        // set it above, or a concurrent caller already did so.
+        cell.get().ok_or_else(|| {
+            anyhow::anyhow!(
+                "BUG: package cache cell for {manager:?} should be initialized after get_or_load"
+            )
+        })
     }
 }
 
@@ -332,5 +442,90 @@ mod tests {
         let resource =
             PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &executor);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    }
+
+    // ------------------------------------------------------------------
+    // batch_install_packages
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn batch_install_pacman_groups_into_single_command() {
+        // One successful response for the batched pacman call
+        let executor = MockExecutor::ok("");
+        let r1 = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        let r2 = PackageResource::new("vim".to_string(), PackageManager::Pacman, &executor);
+        batch_install_packages(&[&r1, &r2], &executor).unwrap();
+    }
+
+    #[test]
+    fn batch_install_paru_groups_into_single_command() {
+        let executor = MockExecutor::ok("");
+        let r1 = PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &executor);
+        let r2 = PackageResource::new("yay".to_string(), PackageManager::Paru, &executor);
+        batch_install_packages(&[&r1, &r2], &executor).unwrap();
+    }
+
+    #[test]
+    fn batch_install_mixed_managers_sends_separate_commands() {
+        // pacman command + paru command => two successes needed
+        let executor = MockExecutor::with_responses(vec![
+            (true, String::new()), // pacman batch
+            (true, String::new()), // paru batch
+        ]);
+        let r1 = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        let r2 = PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &executor);
+        batch_install_packages(&[&r1, &r2], &executor).unwrap();
+    }
+
+    #[test]
+    fn batch_install_empty_list_is_noop() {
+        let executor = MockExecutor::fail(); // should never be called
+        batch_install_packages(&[], &executor).unwrap();
+    }
+
+    #[test]
+    fn batch_install_propagates_pacman_error() {
+        let executor = MockExecutor::fail();
+        let r1 = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        assert!(batch_install_packages(&[&r1], &executor).is_err());
+    }
+
+    // ------------------------------------------------------------------
+    // PackageCache
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn package_cache_fetches_and_caches() {
+        // Two OnceLock cells (pacman, winget); only one fetch per manager
+        let executor = MockExecutor::ok("git 2.39.0\nvim 9.0.0\n");
+        let cache = PackageCache::new();
+
+        let installed = cache
+            .get_or_load(PackageManager::Pacman, &executor)
+            .unwrap();
+        assert!(installed.contains("git"));
+        assert!(installed.contains("vim"));
+
+        // Second call should hit the cache — MockExecutor queue is empty,
+        // so a fresh command would return "unexpected call" (failure).
+        let cached = cache
+            .get_or_load(PackageManager::Pacman, &executor)
+            .unwrap();
+        assert!(cached.contains("git"));
+    }
+
+    #[test]
+    fn package_cache_paru_shares_pacman_cache() {
+        let executor = MockExecutor::ok("git 2.39.0\n");
+        let cache = PackageCache::new();
+
+        // Load via Pacman first
+        cache
+            .get_or_load(PackageManager::Pacman, &executor)
+            .unwrap();
+
+        // Querying via Paru must reuse the same cell (no second command)
+        let cached = cache.get_or_load(PackageManager::Paru, &executor).unwrap();
+        assert!(cached.contains("git"));
     }
 }

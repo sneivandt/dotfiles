@@ -2,6 +2,7 @@ use anyhow::{Context as _, Result, bail};
 use std::io::{self, Write};
 use std::path::Path;
 
+use crate::error::ConfigError;
 use crate::platform::Platform;
 
 /// A resolved profile with its active and excluded categories.
@@ -29,9 +30,12 @@ struct ProfileDef {
 pub const PROFILE_NAMES: &[&str] = &["base", "desktop"];
 
 /// Load profile definitions from profiles.ini.
-fn load_definitions(path: &Path) -> Result<Vec<ProfileDef>> {
+fn load_definitions(path: &Path) -> Result<Vec<ProfileDef>, ConfigError> {
     let content = if path.exists() {
-        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?
+        std::fs::read_to_string(path).map_err(|e| ConfigError::Io {
+            path: path.display().to_string(),
+            source: e,
+        })?
     } else {
         return Ok(default_definitions());
     };
@@ -105,16 +109,12 @@ fn default_definitions() -> Vec<ProfileDef> {
 /// # Errors
 ///
 /// Returns an error if the profile is not found or the profiles.ini file cannot be parsed.
-pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profile> {
+pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profile, ConfigError> {
     let defs = load_definitions(&conf_dir.join("profiles.ini"))?;
-    let def = defs.iter().find(|d| d.name == name).ok_or_else(|| {
-        let available = defs
-            .iter()
-            .map(|d| d.name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-        anyhow::anyhow!("unknown profile: {name} (available: {available})")
-    })?;
+    let def = defs
+        .iter()
+        .find(|d| d.name == name)
+        .ok_or_else(|| ConfigError::InvalidProfile(name.to_string()))?;
 
     // Start with the profile's own include/exclude
     let mut active: Vec<String> = vec!["base".to_string()];

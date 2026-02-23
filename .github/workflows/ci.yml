@@ -154,6 +154,11 @@ jobs:
             artifact: dotfiles-windows
             binary_name: dotfiles.exe
             profile: base
+          - runner: windows-latest
+            os_name: Windows
+            artifact: dotfiles-windows
+            binary_name: dotfiles.exe
+            profile: desktop
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -167,7 +172,6 @@ jobs:
         shell: bash
         run: ./bin/${{ matrix.binary_name }} --root . -p ${{ matrix.profile }} -d install
       - name: Run validation
-        if: runner.os == 'Linux'
         shell: bash
         run: ./bin/${{ matrix.binary_name }} --root . -p ${{ matrix.profile }} test
 
@@ -187,6 +191,23 @@ jobs:
           export DIR="$(pwd)" BINARY_PATH="$(pwd)/bin/dotfiles"
           cd .github/workflows/scripts/linux
           sh test-uninstall.sh
+
+  test-install-uninstall-windows:
+    name: "Integration: Install/Uninstall round-trip (Windows)"
+    runs-on: windows-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dotfiles-windows
+          path: bin/
+      - name: Run install/uninstall round-trip test
+        shell: pwsh
+        run: |
+          $env:BINARY_PATH = Join-Path $PWD "bin\dotfiles.exe"
+          $env:DIR = $PWD.Path
+          & .github/workflows/scripts/windows/Test-InstallUninstall.ps1
 
   # ── Application Tests ─────────────────────────────────
   test-applications:
@@ -318,6 +339,7 @@ jobs:
       - build
       - integration
       - test-install-uninstall
+      - test-install-uninstall-windows
       - test-applications
       - test-paru
       - test-docker

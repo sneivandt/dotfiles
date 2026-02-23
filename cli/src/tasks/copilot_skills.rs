@@ -34,12 +34,7 @@ impl Task for InstallCopilotSkills {
         process_resources(
             ctx,
             resources,
-            &ProcessOpts {
-                verb: "install skill",
-                fix_incorrect: false,
-                fix_missing: true,
-                bail_on_error: false,
-            },
+            &ProcessOpts::install_missing("install skill"),
         )
     }
 }

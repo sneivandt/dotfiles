@@ -162,3 +162,74 @@ impl Context {
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::logging::Logger;
+    use crate::operations::MockFileSystemOps;
+    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use std::path::PathBuf;
+
+    #[test]
+    fn root_returns_config_root() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        assert_eq!(ctx.root(), PathBuf::from("/dotfiles"));
+    }
+
+    #[test]
+    fn symlinks_dir_returns_root_joined_symlinks() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        assert_eq!(ctx.symlinks_dir(), PathBuf::from("/dotfiles/symlinks"));
+    }
+
+    #[test]
+    fn hooks_dir_returns_root_joined_hooks() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        assert_eq!(ctx.hooks_dir(), PathBuf::from("/dotfiles/hooks"));
+    }
+
+    #[test]
+    fn with_log_preserves_other_fields() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        let new_log: Arc<dyn Log> = Arc::new(Logger::new(false, "new"));
+        let ctx2 = ctx.with_log(new_log);
+        assert_eq!(ctx2.root(), ctx.root());
+        assert_eq!(ctx2.dry_run, ctx.dry_run);
+        assert_eq!(ctx2.home, ctx.home);
+        assert_eq!(ctx2.parallel, ctx.parallel);
+    }
+
+    #[test]
+    fn with_fs_ops_replaces_fs_ops() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        let mock = Arc::new(MockFileSystemOps::new());
+        let ctx2 = ctx.with_fs_ops(mock);
+        assert_eq!(ctx2.root(), ctx.root());
+        assert_eq!(ctx2.dry_run, ctx.dry_run);
+    }
+
+    #[test]
+    fn config_read_returns_config() {
+        let config = empty_config(PathBuf::from("/my/root"));
+        let ctx = make_linux_context(config);
+        let root = ctx.config_read().root.clone();
+        assert_eq!(root, PathBuf::from("/my/root"));
+    }
+
+    #[test]
+    fn debug_format_includes_key_fields() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        let debug = format!("{ctx:?}");
+        assert!(debug.contains("Context"));
+        assert!(debug.contains("dry_run"));
+        assert!(debug.contains("home"));
+    }
+}

@@ -123,49 +123,55 @@ pub fn get_installed_packages(
 /// Install a batch of packages in a single command, grouped by package manager.
 ///
 /// Groups the given resources by their [`PackageManager`] and runs one
-/// installation command per group.  For Pacman packages the command is
+/// installation command per group, using each resource's own executor.
+/// For Pacman packages the command is
 /// `sudo pacman -S --needed --noconfirm <names…>`; for Paru packages it is
 /// `paru -S --needed --noconfirm <names…>`.  Winget packages are installed
-/// individually (winget does not support multi-package installs in one call).
+/// individually (winget does not support multi-package installs in one call);
+/// a `Skipped` result from any Winget install is treated as an error.
 ///
 /// # Errors
 ///
-/// Returns an error if any package manager command fails.  Already-installed
-/// packages are handled gracefully by `--needed` so they do not cause errors.
-pub fn batch_install_packages(
-    resources: &[&PackageResource<'_>],
-    executor: &dyn Executor,
-) -> Result<()> {
-    let pacman_pkgs: Vec<&str> = resources
+/// Returns an error if any package manager command fails, or if a Winget
+/// install is skipped (i.e. the installer reported failure).
+pub fn batch_install_packages(resources: &[&PackageResource<'_>]) -> Result<()> {
+    if let Some(first) = resources
         .iter()
-        .filter(|r| r.manager == PackageManager::Pacman)
-        .map(|r| r.name.as_str())
-        .collect();
-
-    let paru_pkgs: Vec<&str> = resources
-        .iter()
-        .filter(|r| r.manager == PackageManager::Paru)
-        .map(|r| r.name.as_str())
-        .collect();
-
-    if !pacman_pkgs.is_empty() {
+        .find(|r| r.manager == PackageManager::Pacman)
+    {
         let mut args = vec!["pacman", "-S", "--needed", "--noconfirm"];
-        args.extend(pacman_pkgs);
-        executor.run("sudo", &args)?;
+        args.extend(
+            resources
+                .iter()
+                .filter(|r| r.manager == PackageManager::Pacman)
+                .map(|r| r.name.as_str()),
+        );
+        first.executor.run("sudo", &args)?;
     }
 
-    if !paru_pkgs.is_empty() {
+    if let Some(first) = resources.iter().find(|r| r.manager == PackageManager::Paru) {
         let mut args = vec!["-S", "--needed", "--noconfirm"];
-        args.extend(paru_pkgs);
-        executor.run("paru", &args)?;
+        args.extend(
+            resources
+                .iter()
+                .filter(|r| r.manager == PackageManager::Paru)
+                .map(|r| r.name.as_str()),
+        );
+        first.executor.run("paru", &args)?;
     }
 
     // Winget does not support batch installs; delegate to individual apply()
+    // and propagate skipped installations as errors.
+    // Note: PackageResource::apply() for Winget only returns Skipped when the
+    // process exits non-zero, so Skipped always indicates an install failure.
     for resource in resources
         .iter()
         .filter(|r| r.manager == PackageManager::Winget)
     {
-        resource.apply()?;
+        let change = resource.apply()?;
+        if let ResourceChange::Skipped { reason } = change {
+            anyhow::bail!("winget install failed for '{}': {reason}", resource.name);
+        }
     }
 
     Ok(())
@@ -180,7 +186,7 @@ pub fn batch_install_packages(
 ///
 /// ```ignore
 /// let cache = PackageCache::new();
-/// let installed = cache.get_or_load(PackageManager::Pacman, executor)?;
+/// let installed = cache.get_or_load(PackageManager::Pacman, &executor)?;
 /// let state = resource.state_from_installed(installed);
 /// ```
 #[derive(Debug, Default)]
@@ -445,49 +451,164 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
+    // batch_install_packages — RecordingExecutor
+    // ------------------------------------------------------------------
+
+    /// A test executor that records every `run()` invocation as
+    /// `(program, args)` pairs so tests can assert exact command lines.
+    #[derive(Debug, Default)]
+    struct RecordingExecutor {
+        calls: std::sync::Mutex<Vec<(String, Vec<String>)>>,
+    }
+
+    impl RecordingExecutor {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn recorded_calls(&self) -> Vec<(String, Vec<String>)> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    impl crate::exec::Executor for RecordingExecutor {
+        fn run(&self, program: &str, args: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
+            self.calls.lock().unwrap().push((
+                program.to_string(),
+                args.iter().map(|s| (*s).to_string()).collect(),
+            ));
+            Ok(crate::exec::ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        }
+
+        fn run_in(
+            &self,
+            _: &std::path::Path,
+            program: &str,
+            args: &[&str],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            self.run(program, args)
+        }
+
+        fn run_in_with_env(
+            &self,
+            _: &std::path::Path,
+            program: &str,
+            args: &[&str],
+            _: &[(&str, &str)],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            self.run(program, args)
+        }
+
+        fn run_unchecked(
+            &self,
+            program: &str,
+            args: &[&str],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
+            self.run(program, args)
+        }
+
+        fn which(&self, _: &str) -> bool {
+            false
+        }
+    }
+
+    // ------------------------------------------------------------------
     // batch_install_packages
     // ------------------------------------------------------------------
 
     #[test]
     fn batch_install_pacman_groups_into_single_command() {
-        // One successful response for the batched pacman call
-        let executor = MockExecutor::ok("");
+        let executor = RecordingExecutor::new();
         let r1 = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
         let r2 = PackageResource::new("vim".to_string(), PackageManager::Pacman, &executor);
-        batch_install_packages(&[&r1, &r2], &executor).unwrap();
+        batch_install_packages(&[&r1, &r2]).unwrap();
+
+        let calls = executor.recorded_calls();
+        assert_eq!(
+            calls.len(),
+            1,
+            "exactly one command for two pacman packages"
+        );
+        let (prog, args) = &calls[0];
+        assert_eq!(prog, "sudo");
+        assert_eq!(args[0], "pacman");
+        assert_eq!(args[1], "-S");
+        assert_eq!(args[2], "--needed");
+        assert_eq!(args[3], "--noconfirm");
+        assert!(args.contains(&"git".to_string()), "git must be in args");
+        assert!(args.contains(&"vim".to_string()), "vim must be in args");
     }
 
     #[test]
     fn batch_install_paru_groups_into_single_command() {
-        let executor = MockExecutor::ok("");
+        let executor = RecordingExecutor::new();
         let r1 = PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &executor);
         let r2 = PackageResource::new("yay".to_string(), PackageManager::Paru, &executor);
-        batch_install_packages(&[&r1, &r2], &executor).unwrap();
+        batch_install_packages(&[&r1, &r2]).unwrap();
+
+        let calls = executor.recorded_calls();
+        assert_eq!(calls.len(), 1, "exactly one command for two paru packages");
+        let (prog, args) = &calls[0];
+        assert_eq!(prog, "paru");
+        assert_eq!(args[0], "-S");
+        assert_eq!(args[1], "--needed");
+        assert_eq!(args[2], "--noconfirm");
+        assert!(args.contains(&"paru-bin".to_string()));
+        assert!(args.contains(&"yay".to_string()));
     }
 
     #[test]
     fn batch_install_mixed_managers_sends_separate_commands() {
-        // pacman command + paru command => two successes needed
-        let executor = MockExecutor::with_responses(vec![
-            (true, String::new()), // pacman batch
-            (true, String::new()), // paru batch
-        ]);
-        let r1 = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
-        let r2 = PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &executor);
-        batch_install_packages(&[&r1, &r2], &executor).unwrap();
+        let pacman_exec = RecordingExecutor::new();
+        let paru_exec = RecordingExecutor::new();
+        let r1 = PackageResource::new("git".to_string(), PackageManager::Pacman, &pacman_exec);
+        let r2 = PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &paru_exec);
+        batch_install_packages(&[&r1, &r2]).unwrap();
+
+        // Pacman batch uses pacman_exec
+        let pacman_calls = pacman_exec.recorded_calls();
+        assert_eq!(pacman_calls.len(), 1);
+        assert_eq!(pacman_calls[0].0, "sudo");
+        assert!(pacman_calls[0].1.contains(&"git".to_string()));
+
+        // Paru batch uses paru_exec
+        let paru_calls = paru_exec.recorded_calls();
+        assert_eq!(paru_calls.len(), 1);
+        assert_eq!(paru_calls[0].0, "paru");
+        assert!(paru_calls[0].1.contains(&"paru-bin".to_string()));
     }
 
     #[test]
     fn batch_install_empty_list_is_noop() {
-        let executor = MockExecutor::fail(); // should never be called
-        batch_install_packages(&[], &executor).unwrap();
+        let resources: &[&PackageResource<'_>] = &[];
+        batch_install_packages(resources).unwrap();
     }
 
     #[test]
     fn batch_install_propagates_pacman_error() {
         let executor = MockExecutor::fail();
         let r1 = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
-        assert!(batch_install_packages(&[&r1], &executor).is_err());
+        assert!(batch_install_packages(&[&r1]).is_err());
+    }
+
+    #[test]
+    fn batch_install_winget_skipped_returns_error() {
+        // MockExecutor::fail() makes run_unchecked return success=false.
+        // PackageResource::apply() for Winget checks result.success and returns
+        // ResourceChange::Skipped on failure — batch_install_packages must
+        // convert that into an error.
+        let executor = MockExecutor::fail();
+        let r1 = PackageResource::new("Git.Git".to_string(), PackageManager::Winget, &executor);
+        let err = batch_install_packages(&[&r1]).unwrap_err();
+        assert!(
+            err.to_string().contains("winget install failed"),
+            "expected 'winget install failed' in: {err}"
+        );
     }
 
     // ------------------------------------------------------------------

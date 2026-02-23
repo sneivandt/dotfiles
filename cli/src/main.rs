@@ -5,6 +5,7 @@ mod commands;
 mod config;
 mod exec;
 mod logging;
+mod operations;
 mod platform;
 mod resources;
 mod tasks;

@@ -409,50 +409,45 @@ fn apply_resource<R: Resource>(
     opts: &ProcessOpts,
     counters: &mut TaskStats,
 ) -> Result<()> {
-    if opts.bail_on_error {
-        match resource.apply()? {
-            ResourceChange::Applied => {
-                ctx.log
-                    .debug(&format!("{}: {}", opts.verb, resource.description()));
-                counters.changed += 1;
+    let change = match resource.apply() {
+        Ok(change) => change,
+        Err(e) => {
+            if opts.bail_on_error {
+                return Err(e);
             }
-            ResourceChange::AlreadyCorrect => {
-                counters.already_ok += 1;
-            }
-            ResourceChange::Skipped { reason } => {
+            ctx.log.warn(&format!(
+                "failed to {} {}: {e}",
+                opts.verb,
+                resource.description()
+            ));
+            counters.skipped += 1;
+            return Ok(());
+        }
+    };
+
+    match change {
+        ResourceChange::Applied => {
+            ctx.log
+                .debug(&format!("{}: {}", opts.verb, resource.description()));
+            counters.changed += 1;
+        }
+        ResourceChange::AlreadyCorrect => {
+            counters.already_ok += 1;
+        }
+        ResourceChange::Skipped { reason } => {
+            if opts.bail_on_error {
                 anyhow::bail!(
                     "failed to {} {}: {reason}",
                     opts.verb,
                     resource.description()
                 );
             }
-        }
-    } else {
-        match resource.apply() {
-            Ok(ResourceChange::Applied) => {
-                ctx.log
-                    .debug(&format!("{}: {}", opts.verb, resource.description()));
-                counters.changed += 1;
-            }
-            Ok(ResourceChange::Skipped { reason }) => {
-                ctx.log.warn(&format!(
-                    "failed to {} {}: {reason}",
-                    opts.verb,
-                    resource.description()
-                ));
-                counters.skipped += 1;
-            }
-            Ok(ResourceChange::AlreadyCorrect) => {
-                counters.already_ok += 1;
-            }
-            Err(e) => {
-                ctx.log.warn(&format!(
-                    "failed to {} {}: {e}",
-                    opts.verb,
-                    resource.description()
-                ));
-                counters.skipped += 1;
-            }
+            ctx.log.warn(&format!(
+                "failed to {} {}: {reason}",
+                opts.verb,
+                resource.description()
+            ));
+            counters.skipped += 1;
         }
     }
     Ok(())

@@ -389,20 +389,17 @@ impl ConfigValidator for CopilotSkillValidator<'_> {
 /// Validate all configuration and return collected warnings.
 #[must_use]
 pub fn validate_all(config: &super::Config, platform: &Platform) -> Vec<ValidationWarning> {
-    let validators: Vec<Box<dyn ConfigValidator>> = vec![
-        Box::new(SymlinkValidator::new(&config.symlinks)),
-        Box::new(PackageValidator::new(&config.packages)),
-        Box::new(RegistryValidator::new(&config.registry)),
-        Box::new(ChmodValidator::new(&config.chmod)),
-        Box::new(SystemdUnitValidator::new(&config.units)),
-        Box::new(VsCodeExtensionValidator::new(&config.vscode_extensions)),
-        Box::new(CopilotSkillValidator::new(&config.copilot_skills)),
-    ];
-
-    validators
-        .into_iter()
-        .flat_map(|v| v.validate(&config.root, platform))
-        .collect()
+    let root = &config.root;
+    let mut warnings = Vec::new();
+    warnings.extend(SymlinkValidator::new(&config.symlinks).validate(root, platform));
+    warnings.extend(PackageValidator::new(&config.packages).validate(root, platform));
+    warnings.extend(RegistryValidator::new(&config.registry).validate(root, platform));
+    warnings.extend(ChmodValidator::new(&config.chmod).validate(root, platform));
+    warnings.extend(SystemdUnitValidator::new(&config.units).validate(root, platform));
+    warnings
+        .extend(VsCodeExtensionValidator::new(&config.vscode_extensions).validate(root, platform));
+    warnings.extend(CopilotSkillValidator::new(&config.copilot_skills).validate(root, platform));
+    warnings
 }
 
 #[cfg(test)]
@@ -613,5 +610,76 @@ mod tests {
         let result = validate_octal_mode("799");
         assert!(result.is_some());
         assert!(result.unwrap().contains("invalid octal digit '9'"));
+    }
+
+    // -----------------------------------------------------------------------
+    // validate_all
+    // -----------------------------------------------------------------------
+
+    /// Build a minimal `Config` for `validate_all` tests.
+    fn make_config_for_validate_all(root: std::path::PathBuf) -> super::super::Config {
+        use crate::config::manifest::Manifest;
+        use crate::config::profiles::Profile;
+        super::super::Config {
+            root,
+            profile: Profile {
+                name: "test".to_string(),
+                active_categories: vec!["base".to_string()],
+                excluded_categories: vec![],
+            },
+            packages: vec![],
+            symlinks: vec![],
+            registry: vec![],
+            units: vec![],
+            chmod: vec![],
+            vscode_extensions: vec![],
+            copilot_skills: vec![],
+            manifest: Manifest {
+                excluded_files: vec![],
+            },
+        }
+    }
+
+    #[test]
+    fn validate_all_returns_empty_for_clean_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = make_config_for_validate_all(dir.path().to_path_buf());
+        let platform = Platform::new(Os::Linux, false);
+        let warnings = super::validate_all(&config, &platform);
+        assert!(
+            warnings.is_empty(),
+            "clean config should produce no warnings"
+        );
+    }
+
+    #[test]
+    fn validate_all_collects_warnings_from_multiple_validators() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = make_config_for_validate_all(dir.path().to_path_buf());
+
+        // Trigger a warning from PackageValidator (AUR on non-Arch)
+        config.packages.push(super::super::packages::Package {
+            name: "paru".to_string(),
+            is_aur: true,
+        });
+        // Trigger a warning from VsCodeExtensionValidator (bad format)
+        config
+            .vscode_extensions
+            .push(super::super::vscode_extensions::VsCodeExtension {
+                id: "invalid_no_publisher".to_string(),
+            });
+
+        let platform = Platform::new(Os::Linux, false);
+        let warnings = super::validate_all(&config, &platform);
+
+        assert!(warnings.len() >= 2, "expected at least 2 warnings");
+        assert!(
+            warnings.iter().any(|w| w.source == "packages.ini"),
+            "expected a packages.ini warning"
+        );
+        assert!(
+            warnings.iter().any(|w| w.source == "vscode-extensions.ini"),
+            "expected a vscode-extensions.ini warning"
+        );
     }
 }

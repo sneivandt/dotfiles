@@ -1,15 +1,5 @@
 use clap::Parser;
-
-mod cli;
-mod commands;
-mod config;
-mod error;
-mod exec;
-mod logging;
-mod operations;
-mod platform;
-mod resources;
-mod tasks;
+use dotfiles_cli::{cli, commands, logging};
 
 fn main() {
     enable_ansi_support::enable_ansi_support().ok(); // best-effort; no-op on non-Windows

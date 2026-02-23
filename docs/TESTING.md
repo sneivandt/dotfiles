@@ -60,6 +60,60 @@ Integration tests use helpers from `cli/tests/common/mod.rs`:
 - `IntegrationTestContext::new()` — sets up a temp-dir-backed repo clone
 - `TestContextBuilder` — builder for custom repo layouts
 
+##### Writing New Integration Tests
+
+Use `IntegrationTestContext` for tests that need an isolated repository:
+
+```rust
+mod common;
+
+#[test]
+fn my_test() {
+    let ctx = common::IntegrationTestContext::new();
+    let config = ctx.load_config("base");
+    // ... assertions ...
+}
+```
+
+`TestContextBuilder` lets you override individual config files and create
+source files before building the context:
+
+```rust
+#[test]
+fn test_with_custom_symlinks() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("symlinks.ini", "[base]\nbashrc\n")
+        .with_symlink_source("bashrc")   // creates the source file on disk
+        .build();
+
+    let config = ctx.load_config("base");
+    assert_eq!(config.symlinks.len(), 1);
+}
+```
+
+##### Fixture Files
+
+Reusable INI config files live in `cli/tests/fixtures/`. Use them with
+`TestContextBuilder::with_config_file` to avoid duplicating inline strings:
+
+```rust
+#[test]
+fn test_with_base_fixture() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("symlinks.ini", include_str!("fixtures/base_profile.ini"))
+        .with_symlink_source("bashrc")
+        .build();
+
+    let config = ctx.load_config("base");
+    assert_eq!(config.symlinks.len(), 1);
+}
+```
+
+| File | Contents | Used by |
+|---|---|---|
+| `fixtures/base_profile.ini` | `[base]` section with a single `bashrc` symlink | symlink validation tests |
+| `fixtures/desktop_profile.ini` | `[base]` + `[desktop]` sections with one symlink each | desktop profile loading test |
+
 #### 3. Snapshot Tests
 
 Task list tests use the `insta` crate for snapshot assertions. Snapshot files live in
@@ -226,3 +280,10 @@ When contributing changes:
 - Ensure the binary builds: `cargo build --release --manifest-path cli/Cargo.toml`
 - Check that `conf/` files are valid
 - Run the failing profile manually with `-d` (dry-run) and `-v` (verbose)
+- Add `RUST_BACKTRACE=1` before `cargo test` for full stack traces on failures
+- `IntegrationTestContext` uses `tempfile::TempDir`, which is automatically
+  cleaned up when dropped. Log the temp directory path if you need to inspect
+  it during debugging.
+- Snapshot mismatches show a diff: the left side is the stored snapshot, the
+  right side is the actual output. If the change is expected, update the
+  snapshot as described above.

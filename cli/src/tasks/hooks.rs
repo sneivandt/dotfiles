@@ -1,7 +1,8 @@
 use anyhow::{Context as _, Result};
-use std::any::TypeId;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove};
+use super::{
+    Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove, task_deps,
+};
 use crate::resources::hook::HookFileResource;
 
 /// Discover hook file resources from the `hooks/` directory.
@@ -44,10 +45,7 @@ impl Task for InstallGitHooks {
         "Install git hooks"
     }
 
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[TypeId::of::<super::reload_config::ReloadConfig>()];
-        DEPS
-    }
+    task_deps![super::reload_config::ReloadConfig];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.fs_ops.exists(&ctx.hooks_dir()) && ctx.fs_ops.exists(&ctx.root().join(".git"))

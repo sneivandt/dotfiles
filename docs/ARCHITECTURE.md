@@ -365,8 +365,9 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 ### Parallel Task Execution
 
 Tasks are executed in parallel using a dependency-graph scheduler.  Each task
-declares its dependencies via `Task::dependencies()` (returning `TypeId`s of
-prerequisite task structs).  The scheduler uses `std::thread::scope` to spawn
+declares its dependencies using the `task_deps!` macro (exported from
+`tasks/mod.rs`), which implements `Task::dependencies()` returning `TypeId`s of
+prerequisite task structs.  The scheduler uses `std::thread::scope` to spawn
 one OS thread per task and a `Condvar`-based `TaskGraph` to block each task
 until its dependencies are marked complete.  OS threads are used deliberately
 — blocking on a `Condvar` inside a Rayon worker would exhaust Rayon's

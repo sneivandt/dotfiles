@@ -86,18 +86,19 @@ need an executor.
 make_linux_context(config)           // Linux context
 make_arch_context(config)            // Arch Linux context
 make_windows_context(config)         // Windows context
-make_platform_context(config, platform) // custom platform
+make_platform_context(config, os, is_arch) // custom OS/arch combo
 make_platform_context_with_which(config, os, is_arch, which_result) // control which()
 
 // Config helper
 empty_config(root_path)              // Config with all empty vecs
 
-// With filesystem injection (for tasks using ctx.fs_ops)
-ctx.with_fs_ops(Arc::new(MockFileSystemOps::new()
+// Filesystem injection (for tasks that hold their own fs_ops field)
+// Use the task's own with_fs_ops constructor, not a Context method:
+let task = InstallGitHooks::with_fs_ops(Arc::new(MockFileSystemOps::new()
     .with_existing("/path")          // path returns true for exists()
     .with_file("/path/file")         // path returns true for is_file()
     .with_dir_entries("/dir", vec![..])  // read_dir returns given paths
-))
+));
 ```
 
 **CLI** — test parsing with `Cli::parse_from()`:

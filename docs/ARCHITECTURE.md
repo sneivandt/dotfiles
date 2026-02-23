@@ -183,7 +183,7 @@ pub trait Task: Send + Sync + 'static {
 }
 ```
 
-A shared `Context` struct carries the loaded `Config`, `Platform`, `Logger`, flags (`dry_run`, `parallel`, `home` path), a `repo_updated` `AtomicBool` (shared between the `UpdateRepository` and `ReloadConfig` tasks), and a `fs_ops` filesystem abstraction (injectable in tests via `MockFileSystemOps`).
+A shared `Context` struct carries the loaded `Config`, `Platform`, `Logger`, and flags (`dry_run`, `parallel`, `home` path). Task-specific dependencies are injected via constructors: `UpdateRepository` and `ReloadConfig` share an `Arc<AtomicBool>` (`repo_updated`) to coordinate config reloading, and hook tasks (`InstallGitHooks`, `UninstallGitHooks`) hold an `Arc<dyn FileSystemOps>` for testable filesystem access.
 
 The `execute()` function runs a task, recording the result (`Ok`, `Skipped`, `DryRun`, `Failed`) in the logger.
 

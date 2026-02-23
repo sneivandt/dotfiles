@@ -108,7 +108,7 @@ Hooks are automatically installed when you run the dotfiles installation:
 .\dotfiles.ps1 install -p desktop
 ```
 
-The binary creates a symlink from `.git/hooks/pre-commit` to `hooks/pre-commit`, so any updates to the hook in the repository are automatically reflected without reinstalling.
+The binary copies hook files from `hooks/` into `.git/hooks/`. Re-run the install command after modifying hooks to update the installed copies.
 
 ## Cross-Platform Compatibility
 

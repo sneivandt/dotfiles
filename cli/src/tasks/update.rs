@@ -87,8 +87,12 @@ impl Task for UpdateRepository {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use crate::platform::{Os, Platform};
+    use crate::resources::test_helpers::MockExecutor;
+    use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
     use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::Ordering;
 
     #[test]
     fn should_run_false_when_git_dir_missing() {
@@ -104,5 +108,74 @@ mod tests {
         let config = empty_config(dir.path().to_path_buf());
         let ctx = make_linux_context(config);
         assert!(UpdateRepository.should_run(&ctx));
+    }
+
+    // -----------------------------------------------------------------------
+    // run()
+    // -----------------------------------------------------------------------
+
+    /// Build a context that uses a [`MockExecutor`] so we can control git responses.
+    fn make_update_context(config: crate::config::Config, executor: MockExecutor) -> Context {
+        make_context(
+            config,
+            Arc::new(Platform::new(Os::Linux, false)),
+            Arc::new(executor),
+        )
+    }
+
+    #[test]
+    fn run_skips_when_staged_changes_detected() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        // First call (diff --cached) returns non-empty stdout → staged changes
+        let executor = MockExecutor::ok("dirty_file.txt");
+        let ctx = make_update_context(config, executor);
+
+        let result = UpdateRepository.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("staged changes")));
+    }
+
+    #[test]
+    fn run_returns_ok_and_does_not_mark_updated_when_already_up_to_date() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        // First call (diff): empty stdout → no staged changes
+        // Second call (pull): "Already up to date."
+        let executor = MockExecutor::with_responses(vec![
+            (true, String::new()),
+            (true, "Already up to date.".to_string()),
+        ]);
+        let ctx = make_update_context(config, executor);
+
+        let result = UpdateRepository.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+        assert!(!ctx.repo_updated.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn run_returns_ok_and_marks_updated_when_pull_fetches_new_commits() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        // First call (diff): empty stdout → no staged changes
+        // Second call (pull): update output → repo was updated
+        let executor = MockExecutor::with_responses(vec![
+            (true, String::new()),
+            (true, "Updating abc1234..def5678\nFast-forward".to_string()),
+        ]);
+        let ctx = make_update_context(config, executor);
+
+        let result = UpdateRepository.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+        assert!(ctx.repo_updated.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn run_returns_skipped_when_pull_fails() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        // First call (diff): empty stdout → no staged changes
+        // Second call (pull): fails
+        let executor =
+            MockExecutor::with_responses(vec![(true, String::new()), (false, String::new())]);
+        let ctx = make_update_context(config, executor);
+
+        let result = UpdateRepository.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("git pull failed")));
     }
 }

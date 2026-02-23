@@ -21,12 +21,7 @@ impl Task for EnableDeveloperMode {
         process_resources(
             ctx,
             std::iter::once(resource),
-            &ProcessOpts {
-                verb: "enable",
-                fix_incorrect: true,
-                fix_missing: true,
-                bail_on_error: false,
-            },
+            &ProcessOpts::apply_all("enable").no_bail(),
         )
     }
 }

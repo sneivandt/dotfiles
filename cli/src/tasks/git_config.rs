@@ -27,16 +27,7 @@ impl Task for ConfigureGit {
         let resources = GIT_SETTINGS
             .iter()
             .map(|(key, value)| GitConfigResource::new(key.to_string(), value.to_string()));
-        process_resources(
-            ctx,
-            resources,
-            &ProcessOpts {
-                verb: "set git config",
-                fix_incorrect: true,
-                fix_missing: true,
-                bail_on_error: true,
-            },
-        )
+        process_resources(ctx, resources, &ProcessOpts::apply_all("set git config"))
     }
 }
 

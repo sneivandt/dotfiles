@@ -71,11 +71,7 @@ impl Resource for SymlinkResource {
     }
 
     fn apply(&self) -> Result<ResourceChange> {
-        // Ensure parent directory exists
-        if let Some(parent) = self.target.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("create parent: {}", parent.display()))?;
-        }
+        super::fs::ensure_parent_dir(&self.target)?;
 
         // Remove existing target if it's a symlink or file
         if self.target.exists() || self.target.symlink_metadata().is_ok() {

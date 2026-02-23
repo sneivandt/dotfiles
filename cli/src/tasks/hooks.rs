@@ -55,16 +55,7 @@ impl Task for InstallGitHooks {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let resources = discover_hooks(ctx)?;
-        process_resources(
-            ctx,
-            resources,
-            &ProcessOpts {
-                verb: "install hook",
-                fix_incorrect: true,
-                fix_missing: true,
-                bail_on_error: true,
-            },
-        )
+        process_resources(ctx, resources, &ProcessOpts::apply_all("install hook"))
     }
 }
 

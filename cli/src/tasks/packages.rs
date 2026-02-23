@@ -33,12 +33,7 @@ fn process_packages(
     process_resource_states(
         ctx,
         resource_states,
-        &ProcessOpts {
-            verb: "install",
-            fix_incorrect: true,
-            fix_missing: true,
-            bail_on_error: false,
-        },
+        &ProcessOpts::apply_all("install").no_bail(),
     )
 }
 

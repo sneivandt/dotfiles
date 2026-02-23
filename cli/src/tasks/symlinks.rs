@@ -42,16 +42,7 @@ impl Task for InstallSymlinks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        process_resources(
-            ctx,
-            build_resources(ctx),
-            &ProcessOpts {
-                verb: "link",
-                fix_incorrect: true,
-                fix_missing: true,
-                bail_on_error: true,
-            },
-        )
+        process_resources(ctx, build_resources(ctx), &ProcessOpts::apply_all("link"))
     }
 }
 

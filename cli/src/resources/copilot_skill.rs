@@ -57,10 +57,7 @@ impl Resource for CopilotSkillResource<'_> {
     }
 
     fn apply(&self) -> Result<ResourceChange> {
-        // Ensure parent directory exists
-        if let Some(parent) = self.dest.parent() {
-            std::fs::create_dir_all(parent).context("creating skills parent directory")?;
-        }
+        super::fs::ensure_parent_dir(&self.dest)?;
 
         download_github_folder(&self.url, &self.dest, self.executor)
             .with_context(|| format!("downloading skill from {}", self.url))?;

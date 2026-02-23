@@ -47,12 +47,7 @@ impl Task for InstallVsCodeExtensions {
                 let state = resource.state_from_installed(&installed);
                 (resource, state)
             }),
-            &ProcessOpts {
-                verb: "install extension",
-                fix_incorrect: false,
-                fix_missing: true,
-                bail_on_error: false,
-            },
+            &ProcessOpts::install_missing("install extension"),
         )
     }
 }

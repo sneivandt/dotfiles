@@ -68,11 +68,57 @@ mod tests {
     use super::*;
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
+    use std::sync::atomic::Ordering;
 
     #[test]
     fn should_run_always() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
         assert!(ReloadConfig.should_run(&ctx));
+    }
+
+    #[test]
+    fn run_skips_when_repo_not_updated() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = make_linux_context(config);
+        // repo_updated defaults to false
+        assert!(!ctx.repo_updated.load(Ordering::Acquire));
+        let result = ReloadConfig.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Skipped(_)));
+    }
+
+    #[test]
+    fn run_reloads_config_when_repo_updated() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("conf");
+        std::fs::create_dir_all(&conf).unwrap();
+        std::fs::write(
+            conf.join("profiles.ini"),
+            "[base]\ninclude=\nexclude=desktop\n",
+        )
+        .unwrap();
+        for file in &[
+            "symlinks.ini",
+            "packages.ini",
+            "manifest.ini",
+            "chmod.ini",
+            "systemd-units.ini",
+            "vscode-extensions.ini",
+            "copilot-skills.ini",
+            "registry.ini",
+        ] {
+            std::fs::write(conf.join(file), "").unwrap();
+        }
+
+        let mut config = empty_config(dir.path().to_path_buf());
+        config.profile = crate::config::profiles::Profile {
+            name: "base".to_string(),
+            active_categories: vec!["base".to_string()],
+            excluded_categories: vec![],
+        };
+        let ctx = make_linux_context(config);
+        ctx.repo_updated.store(true, Ordering::Release);
+        let result = ReloadConfig.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
     }
 }

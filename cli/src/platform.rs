@@ -49,7 +49,9 @@ impl fmt::Display for Os {
 /// Platform information for the current system.
 #[derive(Debug, Clone)]
 pub struct Platform {
+    /// Detected operating system.
     pub os: Os,
+    /// Whether the platform is Arch Linux.
     pub is_arch: bool,
 }
 

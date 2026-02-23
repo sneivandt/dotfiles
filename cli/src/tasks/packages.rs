@@ -228,10 +228,12 @@ mod tests {
     use super::*;
 
     use crate::config::packages::Package;
+    use crate::platform::Os;
     use crate::resources::Resource;
     use crate::resources::package::PackageResource;
     use crate::tasks::test_helpers::{
-        empty_config, make_arch_context, make_linux_context, make_windows_context,
+        empty_config, make_arch_context, make_linux_context, make_platform_context_with_which,
+        make_windows_context,
     };
     use std::path::PathBuf;
 
@@ -343,5 +345,82 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_arch_context(config);
         assert!(InstallParu.should_run(&ctx));
+    }
+
+    // -----------------------------------------------------------------------
+    // run() — early-exit paths that do not require a real package manager
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn install_packages_run_skips_when_pacman_not_found() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.packages.push(Package {
+            name: "git".to_string(),
+            is_aur: false,
+        });
+        // which_result=false ⇒ pacman not found
+        let ctx = make_platform_context_with_which(config, Os::Linux, false, false);
+        let result = InstallPackages.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Skipped(ref s) if s.contains("pacman not found")),
+            "expected 'pacman not found' skip, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn install_packages_run_skips_when_winget_not_found() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.packages.push(Package {
+            name: "Git.Git".to_string(),
+            is_aur: false,
+        });
+        // which_result=false ⇒ winget not found
+        let ctx = make_platform_context_with_which(config, Os::Windows, false, false);
+        let result = InstallPackages.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Skipped(ref s) if s.contains("winget not found")),
+            "expected 'winget not found' skip, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn install_paru_run_returns_ok_when_already_installed() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        // which_result=true ⇒ paru found in PATH
+        let ctx = make_platform_context_with_which(config, Os::Linux, true, true);
+        let result = InstallParu.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Ok),
+            "expected Ok when paru already installed, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn install_paru_run_returns_dry_run_when_already_installed_in_dry_run() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        // which_result=true ⇒ paru found in PATH
+        let mut ctx = make_platform_context_with_which(config, Os::Linux, true, true);
+        ctx.dry_run = true;
+        let result = InstallParu.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::DryRun),
+            "expected DryRun when paru already installed in dry-run mode, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn install_aur_packages_run_skips_when_paru_not_found() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.packages.push(Package {
+            name: "paru-bin".to_string(),
+            is_aur: true,
+        });
+        // which_result=false ⇒ paru not found
+        let ctx = make_platform_context_with_which(config, Os::Linux, true, false);
+        let result = InstallAurPackages.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Skipped(ref s) if s.contains("paru not installed")),
+            "expected 'paru not installed' skip, got {result:?}"
+        );
     }
 }

@@ -15,6 +15,7 @@ mod common;
 use std::any::TypeId;
 use std::collections::HashSet;
 
+use dotfiles_cli::platform::{Os, Platform};
 use dotfiles_cli::tasks;
 
 // ---------------------------------------------------------------------------
@@ -339,4 +340,122 @@ fn install_task_list_contains_configure_git() {
         names.contains(&"Configure git"),
         "expected 'Configure git' in install task list, got: {names:?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Dry-run: task list with a Windows platform
+// ---------------------------------------------------------------------------
+
+/// `should_run` must not panic for any install task when given a Windows platform.
+///
+/// This exercises the platform-guarding logic in tasks like `ConfigureSystemd`,
+/// `ApplyRegistry`, and `ApplyFilePermissions` without needing a real Windows OS.
+#[test]
+fn install_tasks_should_run_with_windows_platform() {
+    use std::sync::Arc;
+
+    let ctx_builder = common::TestContextBuilder::new();
+    let ctx = ctx_builder.build();
+
+    let platform = Platform {
+        os: Os::Windows,
+        is_arch: false,
+    };
+    let config = ctx.load_config_for_platform("base", &platform);
+
+    let executor: Arc<dyn dotfiles_cli::exec::Executor> =
+        Arc::new(dotfiles_cli::exec::SystemExecutor);
+    let log: Arc<dotfiles_cli::logging::Logger> =
+        Arc::new(dotfiles_cli::logging::Logger::new(false, "test-windows"));
+
+    let task_ctx = dotfiles_cli::tasks::Context::new(
+        Arc::new(std::sync::RwLock::new(config)),
+        Arc::new(platform),
+        Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
+        true, // dry_run
+        executor,
+        false, // parallel
+    )
+    .expect("create context");
+
+    let all_tasks = tasks::all_install_tasks();
+    for task in &all_tasks {
+        let _ = task.should_run(&task_ctx);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// --skip filter: multiple keywords
+// ---------------------------------------------------------------------------
+
+/// When multiple keywords are provided, tasks matching any one of them must
+/// be excluded.
+#[test]
+fn skip_with_multiple_keywords_excludes_all_matching() {
+    let all_tasks = tasks::all_install_tasks();
+    let skip_keywords = ["packages", "registry"];
+
+    let filtered: Vec<&str> = all_tasks
+        .iter()
+        .filter(|t| {
+            let name = t.name().to_lowercase();
+            !skip_keywords.iter().any(|kw| name.contains(kw))
+        })
+        .map(|t| t.name())
+        .collect();
+
+    for name in &filtered {
+        let lower = name.to_lowercase();
+        for kw in &skip_keywords {
+            assert!(
+                !lower.contains(kw),
+                "task '{name}' should have been excluded by --skip {kw}",
+            );
+        }
+    }
+    assert!(
+        filtered.len() < all_tasks.len(),
+        "--skip with multiple keywords should remove at least one task"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// --only filter: multiple keywords
+// ---------------------------------------------------------------------------
+
+/// When multiple keywords are provided, tasks matching any one of them must
+/// all be included (union, not intersection).
+#[test]
+fn only_with_multiple_keywords_includes_all_matching() {
+    let all_tasks = tasks::all_install_tasks();
+    let only_keywords = ["symlinks", "git"];
+
+    let filtered: Vec<&str> = all_tasks
+        .iter()
+        .filter(|t| {
+            let name = t.name().to_lowercase();
+            only_keywords.iter().any(|kw| name.contains(kw))
+        })
+        .map(|t| t.name())
+        .collect();
+
+    // Must include tasks matching each keyword
+    assert!(
+        filtered
+            .iter()
+            .any(|n| n.to_lowercase().contains("symlinks")),
+        "--only with 'symlinks' should include at least one symlink task"
+    );
+    assert!(
+        filtered.iter().any(|n| n.to_lowercase().contains("git")),
+        "--only with 'git' should include at least one git task"
+    );
+    // All included tasks must match at least one keyword
+    for name in &filtered {
+        let lower = name.to_lowercase();
+        assert!(
+            only_keywords.iter().any(|kw| lower.contains(kw)),
+            "task '{name}' should not have been included"
+        );
+    }
 }

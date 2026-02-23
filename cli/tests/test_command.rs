@@ -470,6 +470,207 @@ fn config_validate_warns_on_absolute_symlink_source() {
 }
 
 // ---------------------------------------------------------------------------
+// Config loading: vscode extensions, copilot skills, and chmod
+// ---------------------------------------------------------------------------
+
+/// VS Code extensions listed in vscode-extensions.ini must be loaded into
+/// `config.vscode_extensions`.
+#[test]
+fn config_loads_vscode_extensions_correctly() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file(
+            "vscode-extensions.ini",
+            "[base]\nms-vscode.cpptools\nrust-lang.rust-analyzer\n",
+        )
+        .build();
+
+    let config = ctx.load_config("base");
+    assert_eq!(
+        config.vscode_extensions.len(),
+        2,
+        "expected 2 VS Code extensions, got {}",
+        config.vscode_extensions.len()
+    );
+    assert_eq!(config.vscode_extensions[0].id, "ms-vscode.cpptools");
+    assert_eq!(config.vscode_extensions[1].id, "rust-lang.rust-analyzer");
+}
+
+/// Copilot skill URLs listed in copilot-skills.ini must be loaded into
+/// `config.copilot_skills`.
+#[test]
+fn config_loads_copilot_skills_correctly() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file(
+            "copilot-skills.ini",
+            "[base]\nhttps://github.com/example/skill-a\nhttps://github.com/example/skill-b\n",
+        )
+        .build();
+
+    let config = ctx.load_config("base");
+    assert_eq!(
+        config.copilot_skills.len(),
+        2,
+        "expected 2 Copilot skills, got {}",
+        config.copilot_skills.len()
+    );
+    assert_eq!(
+        config.copilot_skills[0].url,
+        "https://github.com/example/skill-a"
+    );
+    assert_eq!(
+        config.copilot_skills[1].url,
+        "https://github.com/example/skill-b"
+    );
+}
+
+/// Chmod entries listed in chmod.ini must be loaded into `config.chmod`.
+#[test]
+fn config_loads_chmod_entries_correctly() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("chmod.ini", "[base]\n600 .ssh/config\n700 .ssh\n")
+        .build();
+
+    let platform = Platform {
+        os: Os::Linux,
+        is_arch: false,
+    };
+    let config = ctx.load_config_for_platform("base", &platform);
+    assert_eq!(
+        config.chmod.len(),
+        2,
+        "expected 2 chmod entries, got {}",
+        config.chmod.len()
+    );
+    assert_eq!(config.chmod[0].mode, "600");
+    assert_eq!(config.chmod[0].path, ".ssh/config");
+    assert_eq!(config.chmod[1].mode, "700");
+    assert_eq!(config.chmod[1].path, ".ssh");
+}
+
+// ---------------------------------------------------------------------------
+// Config loading: registry entries (Windows-only)
+// ---------------------------------------------------------------------------
+
+/// Registry entries in registry.ini must be loaded into `config.registry`
+/// when the platform is Windows.
+#[test]
+fn config_loads_registry_entries_on_windows() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("registry.ini", "[HKCU:\\Console]\nFontSize = 14\n")
+        .build();
+
+    let platform = Platform {
+        os: Os::Windows,
+        is_arch: false,
+    };
+    let config = ctx.load_config_for_platform("base", &platform);
+    assert_eq!(
+        config.registry.len(),
+        1,
+        "expected 1 registry entry on Windows, got {}",
+        config.registry.len()
+    );
+    assert_eq!(config.registry[0].key_path, "HKCU:\\Console");
+    assert_eq!(config.registry[0].value_name, "FontSize");
+    assert_eq!(config.registry[0].value_data, "14");
+}
+
+/// Registry entries in registry.ini must be skipped when the platform is Linux.
+#[test]
+fn config_does_not_load_registry_on_linux() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("registry.ini", "[HKCU:\\Console]\nFontSize = 14\n")
+        .build();
+
+    let platform = Platform {
+        os: Os::Linux,
+        is_arch: false,
+    };
+    let config = ctx.load_config_for_platform("base", &platform);
+    assert!(
+        config.registry.is_empty(),
+        "expected no registry entries on Linux"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Validation: registry entries
+// ---------------------------------------------------------------------------
+
+/// A valid HKCU registry entry must not produce a validation warning on Windows.
+#[test]
+fn config_validate_no_warning_for_valid_registry_on_windows() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("registry.ini", "[HKCU:\\Console]\nFontSize = 14\n")
+        .build();
+
+    let platform = Platform {
+        os: Os::Windows,
+        is_arch: false,
+    };
+    let config = ctx.load_config_for_platform("base", &platform);
+    let warnings = config.validate(&platform);
+
+    let registry_warnings: Vec<_> = warnings
+        .iter()
+        .filter(|w| w.source == "registry.ini")
+        .collect();
+    assert!(
+        registry_warnings.is_empty(),
+        "valid HKCU registry entry should produce no warnings, got: {registry_warnings:?}"
+    );
+}
+
+/// A registry entry using a non-HKCU hive must produce a validation warning on Windows.
+#[test]
+fn config_validate_warns_on_non_hkcu_registry_hive() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("registry.ini", "[HKLM:\\Software\\Test]\nSetting = value\n")
+        .build();
+
+    let platform = Platform {
+        os: Os::Windows,
+        is_arch: false,
+    };
+    let config = ctx.load_config_for_platform("base", &platform);
+    let warnings = config.validate(&platform);
+
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.source == "registry.ini" && w.message.contains("non-HKCU")),
+        "expected a registry.ini warning for non-HKCU hive, got: {warnings:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Validation: chmod entries on non-Unix platforms
+// ---------------------------------------------------------------------------
+
+/// Chmod entries must produce a validation warning on Windows because the
+/// platform does not support POSIX file permissions.
+#[test]
+fn config_validate_warns_on_chmod_entries_on_windows() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("chmod.ini", "[base]\n600 .ssh/config\n")
+        .build();
+
+    let platform = Platform {
+        os: Os::Windows,
+        is_arch: false,
+    };
+    let config = ctx.load_config_for_platform("base", &platform);
+    let warnings = config.validate(&platform);
+
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.source == "chmod.ini" && w.message.contains("does not support chmod")),
+        "expected a chmod.ini warning for Windows platform, got: {warnings:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Validation: multiple sources accumulate warnings
 // ---------------------------------------------------------------------------
 

@@ -266,4 +266,54 @@ mod tests {
         let h = simple_hash("");
         assert_eq!(h, FNV_OFFSET_BASIS);
     }
+
+    #[test]
+    fn from_entry_trims_trailing_slash_in_url() {
+        let executor = crate::exec::SystemExecutor;
+        let entry = crate::config::copilot_skills::CopilotSkill {
+            url: "https://github.com/example/skills/tree/main/my-skill/".to_string(),
+        };
+        let skills_dir = PathBuf::from("/home/user/.copilot/skills");
+        let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, &executor);
+        // The trailing slash should be stripped so the dir name is "my-skill", not "".
+        assert_eq!(
+            resource.dest,
+            PathBuf::from("/home/user/.copilot/skills/my-skill")
+        );
+    }
+
+    #[test]
+    fn from_entry_uses_full_string_when_no_slash_in_url() {
+        let executor = crate::exec::SystemExecutor;
+        let entry = crate::config::copilot_skills::CopilotSkill {
+            url: "simple-name".to_string(),
+        };
+        let skills_dir = PathBuf::from("/home/user/.copilot/skills");
+        let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, &executor);
+        assert_eq!(
+            resource.dest,
+            PathBuf::from("/home/user/.copilot/skills/simple-name")
+        );
+    }
+
+    #[test]
+    fn apply_returns_error_for_url_without_blob_or_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("skill");
+        // MockExecutor would panic if called; but URL parsing fails before any
+        // executor call so this tests the validation path only.
+        let executor = crate::resources::test_helpers::MockExecutor::ok("");
+        let resource = CopilotSkillResource::new(
+            "https://github.com/owner/repo/main/path".to_string(),
+            dest,
+            &executor,
+        );
+        let err = resource.apply().unwrap_err();
+        // The error is wrapped by `with_context`, so check the full chain.
+        let chain = format!("{err:#}");
+        assert!(
+            chain.contains("/blob/ or /tree/"),
+            "expected URL format error, got: {chain}"
+        );
+    }
 }

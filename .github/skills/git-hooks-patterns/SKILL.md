@@ -26,18 +26,33 @@ Hooks live in `hooks/` and are copied to `.git/hooks/` by the Rust engine.
 The `InstallGitHooks` task in `cli/src/tasks/hooks.rs`:
 
 ```rust
+#[derive(Debug)]
 pub struct InstallGitHooks;
 
 impl Task for InstallGitHooks {
     fn name(&self) -> &str { "Install git hooks" }
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[TypeId::of::<super::reload_config::ReloadConfig>()];
+        DEPS
+    }
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.hooks_dir().exists() && ctx.root().join(".git").exists()
+        ctx.fs_ops.exists(&ctx.hooks_dir()) && ctx.fs_ops.exists(&ctx.root().join(".git"))
     }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        // Copies hooks/ files into .git/hooks/ (with content comparison)
+        let resources = discover_hooks(ctx)?;
+        process_resources(ctx, resources, &ProcessOpts::apply_all("install hook"))
     }
 }
 ```
+
+`should_run` uses `ctx.fs_ops.exists()` (the `FileSystemOps` abstraction) rather than
+calling `.exists()` directly on the path. This allows tests to inject a
+`MockFileSystemOps` via `ctx.with_fs_ops(Arc::new(mock))` without touching the real
+filesystem.
+
+`discover_hooks()` reads the `hooks/` directory via `ctx.fs_ops.read_dir()` and returns
+one `HookFileResource` per file that has no extension (conventional hook scripts such
+as `pre-commit`, `commit-msg`).
 
 ## Sensitive Data Detection
 
@@ -83,4 +98,4 @@ git commit --no-verify  # Use for false positives only
 - Hooks are installed as copies (re-run install to update after changes)
 - Never commit real credentials
 - Test patterns before committing
-- The hook installation task checks both `ctx.hooks_dir()` and `.git` existence
+- The hook installation task uses `ctx.fs_ops.exists()` to check directory existence (not `.exists()` directly), enabling MockFileSystemOps injection in tests

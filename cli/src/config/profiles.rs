@@ -111,10 +111,15 @@ fn default_definitions() -> Vec<ProfileDef> {
 /// Returns an error if the profile is not found or the profiles.ini file cannot be parsed.
 pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profile, ConfigError> {
     let defs = load_definitions(&conf_dir.join("profiles.ini"))?;
+    let available = defs
+        .iter()
+        .map(|d| d.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
     let def = defs
         .iter()
         .find(|d| d.name == name)
-        .ok_or_else(|| ConfigError::InvalidProfile(name.to_string()))?;
+        .ok_or_else(|| ConfigError::InvalidProfile(format!("{name} (available: {available})")))?;
 
     // Start with the profile's own include/exclude
     let mut active: Vec<String> = vec!["base".to_string()];
@@ -426,7 +431,16 @@ mod tests {
     #[test]
     fn resolve_unknown_profile_fails() {
         let dir = std::env::temp_dir();
-        assert!(resolve("nonexistent", &dir, &linux_platform()).is_err());
+        let err = resolve("nonexistent", &dir, &linux_platform()).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("nonexistent"),
+            "error should name the bad profile"
+        );
+        assert!(
+            msg.contains("available"),
+            "error should list available profiles"
+        );
     }
 
     #[test]

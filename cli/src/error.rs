@@ -48,7 +48,9 @@ pub enum DotfilesError {
 #[derive(Error, Debug)]
 pub enum ConfigError {
     /// The requested profile name is not defined in `profiles.ini`.
-    #[error("Invalid profile '{0}': must be one of base, desktop")]
+    ///
+    /// Valid profiles are defined in [`crate::config::profiles::PROFILE_NAMES`].
+    #[error("Invalid profile '{0}'")]
     InvalidProfile(String),
 
     /// A required INI section is absent from the config file.
@@ -146,10 +148,7 @@ mod tests {
     #[test]
     fn config_error_invalid_profile_display() {
         let e = ConfigError::InvalidProfile("unknown".to_string());
-        assert_eq!(
-            e.to_string(),
-            "Invalid profile 'unknown': must be one of base, desktop"
-        );
+        assert_eq!(e.to_string(), "Invalid profile 'unknown'");
     }
 
     #[test]

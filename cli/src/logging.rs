@@ -63,6 +63,52 @@ enum LogEntry {
     DryRun(String),
 }
 
+impl LogEntry {
+    /// Replay this entry to the given logger.
+    fn replay(&self, logger: &Logger) {
+        match self {
+            Self::Stage(msg) => logger.stage(msg),
+            Self::Info(msg) => logger.info(msg),
+            Self::Debug(msg) => logger.debug(msg),
+            Self::Warn(msg) => logger.warn(msg),
+            Self::Error(msg) => logger.error(msg),
+            Self::DryRun(msg) => logger.dry_run(msg),
+        }
+    }
+}
+
+/// Implement the display methods of [`Log`] by delegating to inherent methods
+/// of the same name on the implementing type.
+///
+/// The `record_task` method is **not** included because its signature differs
+/// from the `fn(&self, &str)` pattern shared by the display methods.
+macro_rules! forward_log_methods {
+    ($($method:ident),+ $(,)?) => {
+        $(
+            fn $method(&self, msg: &str) {
+                self.$method(msg);
+            }
+        )+
+    };
+}
+
+/// Implement the display methods of [`Log`] by buffering each message into
+/// `self.entries` as the corresponding [`LogEntry`] variant.
+///
+/// The `record_task` method is **not** included because it forwards to
+/// `self.inner` instead of buffering.
+macro_rules! buffer_log_methods {
+    ($($method:ident => $variant:ident),+ $(,)?) => {
+        $(
+            fn $method(&self, msg: &str) {
+                if let Ok(mut guard) = self.entries.lock() {
+                    guard.push(LogEntry::$variant(msg.to_string()));
+                }
+            }
+        )+
+    };
+}
+
 /// Buffered logger for parallel task execution.
 ///
 /// Captures display output (stage, info, debug, etc.) in memory so that
@@ -126,53 +172,19 @@ impl BufferedLog {
     /// Replay a slice of buffered entries to the backing [`Logger`].
     fn replay_entries(&self, entries: &[LogEntry]) {
         for entry in entries {
-            match entry {
-                LogEntry::Stage(msg) => self.inner.stage(msg),
-                LogEntry::Info(msg) => self.inner.info(msg),
-                LogEntry::Debug(msg) => self.inner.debug(msg),
-                LogEntry::Warn(msg) => self.inner.warn(msg),
-                LogEntry::Error(msg) => self.inner.error(msg),
-                LogEntry::DryRun(msg) => self.inner.dry_run(msg),
-            }
+            entry.replay(&self.inner);
         }
     }
 }
 
 impl Log for BufferedLog {
-    fn stage(&self, msg: &str) {
-        if let Ok(mut guard) = self.entries.lock() {
-            guard.push(LogEntry::Stage(msg.to_string()));
-        }
-    }
-
-    fn info(&self, msg: &str) {
-        if let Ok(mut guard) = self.entries.lock() {
-            guard.push(LogEntry::Info(msg.to_string()));
-        }
-    }
-
-    fn debug(&self, msg: &str) {
-        if let Ok(mut guard) = self.entries.lock() {
-            guard.push(LogEntry::Debug(msg.to_string()));
-        }
-    }
-
-    fn warn(&self, msg: &str) {
-        if let Ok(mut guard) = self.entries.lock() {
-            guard.push(LogEntry::Warn(msg.to_string()));
-        }
-    }
-
-    fn error(&self, msg: &str) {
-        if let Ok(mut guard) = self.entries.lock() {
-            guard.push(LogEntry::Error(msg.to_string()));
-        }
-    }
-
-    fn dry_run(&self, msg: &str) {
-        if let Ok(mut guard) = self.entries.lock() {
-            guard.push(LogEntry::DryRun(msg.to_string()));
-        }
+    buffer_log_methods! {
+        stage => Stage,
+        info  => Info,
+        debug => Debug,
+        warn  => Warn,
+        error => Error,
+        dry_run => DryRun,
     }
 
     fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
@@ -545,29 +557,7 @@ impl Logger {
 }
 
 impl Log for Logger {
-    fn stage(&self, msg: &str) {
-        self.stage(msg);
-    }
-
-    fn info(&self, msg: &str) {
-        self.info(msg);
-    }
-
-    fn debug(&self, msg: &str) {
-        self.debug(msg);
-    }
-
-    fn warn(&self, msg: &str) {
-        self.warn(msg);
-    }
-
-    fn error(&self, msg: &str) {
-        self.error(msg);
-    }
-
-    fn dry_run(&self, msg: &str) {
-        self.dry_run(msg);
-    }
+    forward_log_methods!(stage, info, debug, warn, error, dry_run);
 
     fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
         self.record_task(name, status, message);

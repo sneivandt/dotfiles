@@ -15,6 +15,37 @@ pub mod systemd_units;
 pub mod update;
 pub mod vscode_extensions;
 
+/// Implement [`Task::dependencies`] by expanding to the required
+/// `fn dependencies(&self) -> &[TypeId]` method body.
+///
+/// The `const DEPS` intermediate is required because [`std::any::TypeId::of`]
+/// is a `const fn` — placing it in a `const` ensures the slice has a
+/// `'static` lifetime as required by the return type.
+///
+/// # Examples
+///
+/// ```ignore
+/// task_deps![super::reload_config::ReloadConfig, super::symlinks::InstallSymlinks]
+/// // expands to:
+/// //   fn dependencies(&self) -> &[std::any::TypeId] {
+/// //       const DEPS: &[std::any::TypeId] = &[
+/// //           std::any::TypeId::of::<super::reload_config::ReloadConfig>(),
+/// //           std::any::TypeId::of::<super::symlinks::InstallSymlinks>(),
+/// //       ];
+/// //       DEPS
+/// //   }
+/// ```
+macro_rules! task_deps {
+    [$($dep:ty),+ $(,)?] => {
+        fn dependencies(&self) -> &[std::any::TypeId] {
+            const DEPS: &[std::any::TypeId] = &[$(std::any::TypeId::of::<$dep>()),+];
+            DEPS
+        }
+    };
+}
+
+pub(crate) use task_deps;
+
 // Re-export public items so downstream `use super::` and `use crate::tasks::`
 // continue to work unchanged.
 pub use context::Context;

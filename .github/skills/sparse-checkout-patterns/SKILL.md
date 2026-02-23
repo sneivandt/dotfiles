@@ -337,7 +337,6 @@ When working with sparse checkout and manifest:
 
 - **`profile-system`** skill - Understanding profiles and selection
 - **`ini-configuration`** skill - INI file format and parsing
-- **`customization-guide`** skill - Adding new configuration items
 - **`docs/PROFILES.md`** - User-facing profile documentation
 - **`docs/ARCHITECTURE.md`** - System architecture overview
 

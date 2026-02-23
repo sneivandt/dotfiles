@@ -40,11 +40,14 @@ Three tasks handle package installation:
 impl Task for InstallPackages {
     fn name(&self) -> &str { "Install packages" }
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.config.packages.iter().any(|p| !p.is_aur)
+        ctx.config_read().packages.iter().any(|p| !p.is_aur)
     }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if ctx.platform.is_linux() { install_pacman(ctx, &packages) }
-        else { install_winget(ctx, &packages) }
+        let all_packages = ctx.config_read().packages.clone();
+        let packages: Vec<&Package> = all_packages.iter().filter(|p| !p.is_aur).collect();
+        let manager = if ctx.platform.is_linux() { PackageManager::Pacman }
+                      else { PackageManager::Winget };
+        process_packages(ctx, &packages, manager)
     }
 }
 ```
@@ -59,16 +62,17 @@ Runs only on Arch with `paru` installed. Uses `paru -S --needed --noconfirm`.
 
 ### Resource-Based Package Installation
 
-Packages use `PackageResource` which takes an executor for running package manager commands:
+All package managers use a shared `process_packages()` helper that batch-queries
+installed packages once and then processes each package via `process_resource_states()`:
 
 ```rust
-let installed = get_installed_packages(manager, ctx.executor)?;
+let installed = get_installed_packages(manager, &*ctx.executor)?;
 let resource_states = packages.iter().map(|pkg| {
-    let resource = PackageResource::new(pkg.name.clone(), manager, ctx.executor);
+    let resource = PackageResource::new(pkg.name.clone(), manager, &*ctx.executor);
     let state = resource.state_from_installed(&installed);
     (resource, state)
 });
-process_resource_states(ctx, resource_states, &opts)?;
+process_resource_states(ctx, resource_states, &ProcessOpts::apply_all("install").no_bail())
 ```
 
 ### Batch State Checking

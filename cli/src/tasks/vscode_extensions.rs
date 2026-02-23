@@ -1,7 +1,6 @@
 use anyhow::Result;
-use std::any::TypeId;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states};
+use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states, task_deps};
 use crate::resources::vscode_extension::{
     VsCodeExtensionResource, find_code_command, get_installed_extensions,
 };
@@ -15,10 +14,7 @@ impl Task for InstallVsCodeExtensions {
         "Install VS Code extensions"
     }
 
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[TypeId::of::<super::reload_config::ReloadConfig>()];
-        DEPS
-    }
+    task_deps![super::reload_config::ReloadConfig];
 
     fn should_run(&self, ctx: &Context) -> bool {
         !ctx.config_read().vscode_extensions.is_empty()
@@ -75,5 +71,21 @@ mod tests {
         });
         let ctx = make_linux_context(config);
         assert!(InstallVsCodeExtensions.should_run(&ctx));
+    }
+
+    #[test]
+    fn run_skips_when_vscode_cli_not_found() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.vscode_extensions.push(VsCodeExtension {
+            id: "github.copilot".to_string(),
+        });
+        // Default make_linux_context uses WhichExecutor with which_result=false,
+        // so find_code_command returns None for both "code-insiders" and "code".
+        let ctx = make_linux_context(config);
+        let result = InstallVsCodeExtensions.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Skipped(ref s) if s.contains("VS Code CLI not found")),
+            "expected 'VS Code CLI not found' skip, got {result:?}"
+        );
     }
 }

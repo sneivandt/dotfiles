@@ -298,4 +298,20 @@ mod tests {
         };
         assert!(!resource.needs_change().unwrap());
     }
+
+    #[test]
+    fn default_remove_returns_error() {
+        let resource = TestResource {
+            state: ResourceState::Correct,
+        };
+        let err = resource.remove().unwrap_err();
+        assert!(
+            err.to_string().contains("remove not supported"),
+            "expected 'remove not supported' in: {err}"
+        );
+        assert!(
+            err.to_string().contains("test resource"),
+            "expected resource description in: {err}"
+        );
+    }
 }

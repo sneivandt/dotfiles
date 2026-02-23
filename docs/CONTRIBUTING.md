@@ -90,13 +90,14 @@ cargo test --manifest-path cli/Cargo.toml
 
 1. Create a new file in `cli/src/tasks/` implementing the `Task` trait:
    ```rust
+   #[derive(Debug)]
    pub struct MyNewTask;
 
    impl Task for MyNewTask {
        fn name(&self) -> &str { "My New Task" }
 
        fn should_run(&self, ctx: &Context) -> bool {
-           ctx.platform.is_linux()
+           ctx.platform.supports_systemd()  // use capability methods when possible
        }
 
        fn run(&self, ctx: &Context) -> Result<TaskResult> {

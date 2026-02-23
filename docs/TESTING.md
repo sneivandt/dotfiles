@@ -27,6 +27,7 @@ Unit tests live alongside the code they test in `cli/src/`. Examples:
 - `platform.rs` — Platform detection and category exclusion logic
 - `cli.rs` — CLI argument parsing and command structure
 - `config/ini.rs` — INI file parsing
+- `tasks/*.rs` — Task `should_run` logic and helper functions
 
 ```rust
 #[cfg(test)]
@@ -40,7 +41,38 @@ mod tests {
 }
 ```
 
-#### 2. Configuration Validation
+Task tests use context builder helpers from `tasks/mod.rs` (available in `#[cfg(test)]` scope):
+- `make_linux_context(config)`, `make_arch_context(config)`, `make_windows_context(config)`
+- `make_platform_context(config, platform)`, `make_platform_context_with_which(...)`
+- `empty_config(root)` — creates a `Config` with all empty vecs
+
+For tasks that use `ctx.fs_ops` (e.g., `InstallGitHooks`), inject a `MockFileSystemOps`
+via `ctx.with_fs_ops(Arc::new(...))` to avoid touching the real filesystem.
+
+#### 2. Integration Tests (`cli/tests/`)
+
+Separate test binaries in `cli/tests/` test the full command output:
+- `install_command.rs` — verifies the install task list
+- `uninstall_command.rs` — verifies the uninstall task list
+- `test_command.rs` — verifies config validation
+
+Integration tests use helpers from `cli/tests/common/mod.rs`:
+- `IntegrationTestContext::new()` — sets up a temp-dir-backed repo clone
+- `TestContextBuilder` — builder for custom repo layouts
+
+#### 3. Snapshot Tests
+
+Task list tests use the `insta` crate for snapshot assertions. Snapshot files live in
+`cli/tests/snapshots/`. Update them when task lists change:
+
+```bash
+INSTA_UPDATE=unseen cargo test  # auto-accept new/changed snapshots
+cargo insta review              # interactive review
+```
+
+Always commit `.snap` files together with the code changes that cause them.
+
+#### 4. Configuration Validation
 
 The `test` subcommand validates all configuration files at runtime:
 

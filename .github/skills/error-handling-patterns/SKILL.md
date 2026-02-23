@@ -60,14 +60,10 @@ correct check→dry-run→apply order automatically:
 
 ```rust
 fn run(&self, ctx: &Context) -> Result<TaskResult> {
-    let resources = ctx.config.items.iter()
-        .map(|entry| MyResource::from_entry(entry, ctx.executor));
-    process_resources(ctx, resources, &ProcessOpts {
-        verb: "install",
-        fix_incorrect: true,
-        fix_missing: true,
-        bail_on_error: false,
-    })
+    let items = ctx.config_read().items.clone();
+    let resources = items.iter()
+        .map(|entry| MyResource::from_entry(entry, &*ctx.executor));
+    process_resources(ctx, resources, &ProcessOpts::apply_all("install").no_bail())
 }
 ```
 

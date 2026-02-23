@@ -80,6 +80,26 @@ fn from_entry_copies_name() {
 Resources that only do filesystem operations (e.g., `SymlinkResource`) do not
 need an executor.
 
+**Tasks** — use helpers from `cli/src/tasks/mod.rs` (in `#[cfg(test)]` scope):
+```rust
+// Context helpers
+make_linux_context(config)           // Linux context
+make_arch_context(config)            // Arch Linux context
+make_windows_context(config)         // Windows context
+make_platform_context(config, platform) // custom platform
+make_platform_context_with_which(config, os, is_arch, which_result) // control which()
+
+// Config helper
+empty_config(root_path)              // Config with all empty vecs
+
+// With filesystem injection (for tasks using ctx.fs_ops)
+ctx.with_fs_ops(Arc::new(MockFileSystemOps::new()
+    .with_existing("/path")          // path returns true for exists()
+    .with_file("/path/file")         // path returns true for is_file()
+    .with_dir_entries("/dir", vec![..])  // read_dir returns given paths
+))
+```
+
 **CLI** — test parsing with `Cli::parse_from()`:
 ```rust
 #[test]
@@ -89,7 +109,7 @@ fn parse_dry_run() {
 }
 ```
 
-**Platform** — use `Platform::new()` to control detection:
+**Platform** — use `Platform::new()` to control detection (test-only API, `#[cfg(test)]`):
 ```rust
 #[test]
 fn excludes_windows_on_linux() {
@@ -99,7 +119,21 @@ fn excludes_windows_on_linux() {
 
 ## Integration Tests
 
-Dev-dependencies include `assert_cmd` and `predicates` for CLI-level testing.
+The `cli/tests/` directory contains integration test binaries:
+- `install_command.rs` — verifies install task list via snapshot
+- `uninstall_command.rs` — verifies uninstall task list via snapshot
+- `test_command.rs` — verifies config validation
+
+Integration tests use helpers from `cli/tests/common/mod.rs`:
+- `IntegrationTestContext::new()` — sets up a temp-dir-backed repo clone
+- `TestContextBuilder` — builder for custom repo layouts
+
+Snapshot tests use the `insta` crate. Update snapshots with:
+```bash
+INSTA_UPDATE=unseen cargo test  # auto-accept new snapshots
+cargo insta review              # interactive review
+```
+Commit `.snap` files alongside code changes.
 
 ## CI/CD
 

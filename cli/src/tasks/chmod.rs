@@ -1,7 +1,6 @@
 use anyhow::Result;
-use std::any::TypeId;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
+use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};
 use crate::resources::chmod::ChmodResource;
 
 /// Apply file permissions from chmod.ini.
@@ -13,10 +12,7 @@ impl Task for ApplyFilePermissions {
         "Apply file permissions"
     }
 
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[TypeId::of::<super::symlinks::InstallSymlinks>()];
-        DEPS
-    }
+    task_deps![super::symlinks::InstallSymlinks];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_chmod() && !ctx.config_read().chmod.is_empty()

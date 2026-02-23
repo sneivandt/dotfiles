@@ -10,6 +10,7 @@ use crate::operations::{FileSystemOps, SystemFileSystemOps};
 use crate::platform::Platform;
 
 /// Shared context for task execution.
+#[derive(Clone)]
 pub struct Context {
     /// Configuration loaded from INI files.
     ///
@@ -130,15 +131,8 @@ impl Context {
     #[must_use]
     pub fn with_log(&self, log: Arc<dyn Log>) -> Self {
         Self {
-            config: Arc::clone(&self.config),
-            platform: Arc::clone(&self.platform),
             log,
-            dry_run: self.dry_run,
-            home: self.home.clone(),
-            executor: Arc::clone(&self.executor),
-            parallel: self.parallel,
-            repo_updated: Arc::clone(&self.repo_updated),
-            fs_ops: Arc::clone(&self.fs_ops),
+            ..self.clone()
         }
     }
 
@@ -150,15 +144,93 @@ impl Context {
     #[must_use]
     pub fn with_fs_ops(&self, fs_ops: Arc<dyn FileSystemOps>) -> Self {
         Self {
-            config: Arc::clone(&self.config),
-            platform: Arc::clone(&self.platform),
-            log: Arc::clone(&self.log),
-            dry_run: self.dry_run,
-            home: self.home.clone(),
-            executor: Arc::clone(&self.executor),
-            parallel: self.parallel,
-            repo_updated: Arc::clone(&self.repo_updated),
             fs_ops,
+            ..self.clone()
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::logging::Logger;
+    use crate::operations::MockFileSystemOps;
+    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use std::path::PathBuf;
+
+    #[test]
+    fn root_returns_config_root() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        assert_eq!(ctx.root(), PathBuf::from("/dotfiles"));
+    }
+
+    #[test]
+    fn symlinks_dir_returns_root_joined_symlinks() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        assert_eq!(ctx.symlinks_dir(), PathBuf::from("/dotfiles/symlinks"));
+    }
+
+    #[test]
+    fn hooks_dir_returns_root_joined_hooks() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        assert_eq!(ctx.hooks_dir(), PathBuf::from("/dotfiles/hooks"));
+    }
+
+    #[test]
+    fn with_log_preserves_other_fields() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        let new_log: Arc<dyn Log> = Arc::new(Logger::new(false, "new"));
+        let ctx2 = ctx.with_log(new_log);
+        assert_eq!(ctx2.root(), ctx.root());
+        assert_eq!(ctx2.dry_run, ctx.dry_run);
+        assert_eq!(ctx2.home, ctx.home);
+        assert_eq!(ctx2.parallel, ctx.parallel);
+    }
+
+    #[test]
+    fn with_fs_ops_replaces_fs_ops() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        let mock = Arc::new(MockFileSystemOps::new());
+        let ctx2 = ctx.with_fs_ops(mock);
+        assert_eq!(ctx2.root(), ctx.root());
+        assert_eq!(ctx2.dry_run, ctx.dry_run);
+    }
+
+    #[test]
+    fn config_read_returns_config() {
+        let config = empty_config(PathBuf::from("/my/root"));
+        let ctx = make_linux_context(config);
+        let root = ctx.config_read().root.clone();
+        assert_eq!(root, PathBuf::from("/my/root"));
+    }
+
+    #[test]
+    fn debug_format_includes_key_fields() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        let debug = format!("{ctx:?}");
+        assert!(debug.contains("Context"));
+        assert!(debug.contains("dry_run"));
+        assert!(debug.contains("home"));
+    }
+
+    #[test]
+    fn clone_shares_arc_fields() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        let ctx2 = ctx.clone();
+        assert_eq!(ctx2.root(), ctx.root());
+        assert_eq!(ctx2.dry_run, ctx.dry_run);
+        assert_eq!(ctx2.home, ctx.home);
+        assert_eq!(ctx2.parallel, ctx.parallel);
+        assert!(Arc::ptr_eq(&ctx.config, &ctx2.config));
+        assert!(Arc::ptr_eq(&ctx.platform, &ctx2.platform));
+        assert!(Arc::ptr_eq(&ctx.repo_updated, &ctx2.repo_updated));
     }
 }

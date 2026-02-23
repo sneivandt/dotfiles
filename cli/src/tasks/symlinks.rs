@@ -1,8 +1,9 @@
 use anyhow::Result;
-use std::any::TypeId;
 use std::path::Path;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove};
+use super::{
+    Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove, task_deps,
+};
 use crate::resources::symlink::SymlinkResource;
 
 /// Build [`SymlinkResource`] instances from the loaded config.
@@ -29,13 +30,10 @@ impl Task for InstallSymlinks {
         "Install symlinks"
     }
 
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[
-            TypeId::of::<super::reload_config::ReloadConfig>(),
-            TypeId::of::<super::developer_mode::EnableDeveloperMode>(),
-        ];
-        DEPS
-    }
+    task_deps![
+        super::reload_config::ReloadConfig,
+        super::developer_mode::EnableDeveloperMode
+    ];
 
     fn should_run(&self, ctx: &Context) -> bool {
         !ctx.config_read().symlinks.is_empty()

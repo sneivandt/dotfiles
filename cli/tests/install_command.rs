@@ -1,4 +1,9 @@
-#![allow(clippy::expect_used, clippy::unwrap_used, clippy::wildcard_imports)]
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::wildcard_imports,
+    clippy::indexing_slicing
+)]
 //! Integration tests for the `install` command.
 //!
 //! These tests exercise the full task list produced by [`all_install_tasks`],
@@ -234,4 +239,104 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
     for task in &tasks {
         let _ = task.should_run(&task_ctx);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Dependency graph: no cycles
+// ---------------------------------------------------------------------------
+
+/// The install task dependency graph must not contain any cycles.
+///
+/// A cyclic dependency would cause the parallel scheduler to deadlock.  This
+/// test validates the real task set as a regression guard independent of the
+/// scheduler unit tests.
+#[test]
+fn install_tasks_form_acyclic_dependency_graph() {
+    use std::collections::HashMap;
+
+    let tasks = tasks::all_install_tasks();
+    let type_to_idx: HashMap<TypeId, usize> = tasks
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (t.task_id(), i))
+        .collect();
+
+    let mut in_degree: Vec<usize> = tasks
+        .iter()
+        .map(|t| {
+            t.dependencies()
+                .iter()
+                .filter(|d| type_to_idx.contains_key(d))
+                .count()
+        })
+        .collect();
+
+    let mut reverse_deps: Vec<Vec<usize>> = vec![Vec::new(); tasks.len()];
+    for (i, t) in tasks.iter().enumerate() {
+        for dep in t.dependencies() {
+            if let Some(&dep_idx) = type_to_idx.get(dep) {
+                reverse_deps[dep_idx].push(i);
+            }
+        }
+    }
+
+    let mut queue: Vec<usize> = in_degree
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &d)| if d == 0 { Some(i) } else { None })
+        .collect();
+    let mut processed = 0usize;
+
+    while let Some(idx) = queue.pop() {
+        processed += 1;
+        for &dep in &reverse_deps[idx] {
+            in_degree[dep] -= 1;
+            if in_degree[dep] == 0 {
+                queue.push(dep);
+            }
+        }
+    }
+
+    assert_eq!(
+        processed,
+        tasks.len(),
+        "install task dependency graph contains a cycle"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Expected task presence
+// ---------------------------------------------------------------------------
+
+/// The install task list must contain "Install symlinks".
+#[test]
+fn install_task_list_contains_install_symlinks() {
+    let tasks = tasks::all_install_tasks();
+    let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
+    assert!(
+        names.contains(&"Install symlinks"),
+        "expected 'Install symlinks' in install task list, got: {names:?}"
+    );
+}
+
+/// The install task list must contain "Install git hooks".
+#[test]
+fn install_task_list_contains_install_git_hooks() {
+    let tasks = tasks::all_install_tasks();
+    let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
+    assert!(
+        names.contains(&"Install git hooks"),
+        "expected 'Install git hooks' in install task list, got: {names:?}"
+    );
+}
+
+/// The install task list must contain "Configure git".
+#[test]
+fn install_task_list_contains_configure_git() {
+    let tasks = tasks::all_install_tasks();
+    let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
+    assert!(
+        names.contains(&"Configure git"),
+        "expected 'Configure git' in install task list, got: {names:?}"
+    );
 }

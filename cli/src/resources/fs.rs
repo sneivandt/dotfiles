@@ -43,6 +43,11 @@ pub fn remove_existing(path: &Path) -> Result<()> {
 /// [`Path::is_dir`] (which follows symlinks) so directory symlinks are
 /// recursed into and their contents materialised rather than copying the
 /// link itself.
+///
+/// # Errors
+///
+/// Returns an error if the destination directory cannot be created, a source
+/// entry cannot be read, or a file cannot be copied.
 pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> {
     std::fs::create_dir_all(dst)
         .with_context(|| format!("creating directory {}", dst.display()))?;

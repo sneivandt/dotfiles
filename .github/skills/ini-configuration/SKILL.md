@@ -38,26 +38,25 @@ Parsed by `ini::parse_kv_sections()` → `Vec<KvSection>` with `entries: Vec<(St
 - **Config sections** (all others): comma-separated — `[arch,desktop]`
   - AND logic: all categories must be active
 
-## Profile Filtering
+## Section Filtering
 
 ```rust
-// Include sections where ALL categories are active
-pub fn filter_sections_and(sections: &[Section], active: &[String]) -> Vec<Section> {
-    sections.iter()
-        .filter(|s| s.categories.iter().all(|c| active.contains(c)))
-        .cloned().collect()
-}
-// Exclude sections where ANY category is excluded (for manifest)
-pub fn filter_sections_or_exclude(sections: &[Section], excluded: &[String]) -> Vec<Section>
+use crate::config::category_matcher::MatchMode;
+
+// Include sections where ALL categories are active (AND logic — most config files)
+let filtered = ini::filter_sections(&sections, active_categories, MatchMode::All);
+
+// Include sections where ANY category matches (OR logic — manifest.ini exclusions)
+let filtered = ini::filter_sections(&sections, excluded_categories, MatchMode::Any);
 ```
 
 ## Config Loader Pattern
 
 Each type in `cli/src/config/` follows:
 ```rust
-pub fn load(path: &Path, active: &[String]) -> Result<Vec<T>> {
+pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<T>> {
     let sections = ini::parse_sections(path)?;
-    let filtered = ini::filter_sections_and(&sections, active);
+    let filtered = ini::filter_sections(&sections, active_categories, MatchMode::All);
     // Parse items from filtered sections
 }
 ```
@@ -69,17 +68,16 @@ use the `ini.rs` convenience helpers instead of writing the boilerplate above:
 
 ```rust
 // Load a flat list of strings (e.g., URLs, unit names)
-let items: Vec<String> = ini::load_filtered_items(path, active_categories)?;
+let items: Vec<String> = ini::load_flat_items(path, active_categories)?;
 
-// Load and map each string into a typed value via a constructor
-let units: Vec<SystemdUnit> = ini::load_filtered_as(
-    path,
-    active_categories,
-    |name| SystemdUnit { name },
-)?;
+// Load and convert each string via From<String> (for single-field config structs)
+let units: Vec<SystemdUnit> = ini::load_flat(path, active_categories)?;
 ```
 
-Use the full `parse_sections` + `filter_sections_and` pattern only when the
+`load_flat::<T>()` requires `T: From<String>`. Use the `define_flat_config!` macro to
+generate the `From<String>` impl for simple single-field config types.
+
+Use the full `parse_sections` + `filter_sections` pattern only when the
 loader needs custom per-item logic (e.g., `packages.ini` tagging AUR packages).
 
 ## Configuration Files
@@ -87,12 +85,12 @@ loader needs custom per-item logic (e.g., `packages.ini` tagging AUR packages).
 | File | Format | Notes |
 |------|--------|-------|
 | `profiles.ini` | key=value | Profile definitions |
-| `manifest.ini` | list | Sparse checkout (OR-exclude) |
+| `manifest.ini` | list | Sparse checkout (OR-exclude via `MatchMode::Any`) |
 | `symlinks.ini` | list | Profile-filtered |
 | `packages.ini` | list | `aur:` prefix tags AUR packages |
 | `systemd-units.ini` | list | Systemd units |
 | `chmod.ini` | list | `<mode> <path>` format |
-| `vscode-extensions.ini` | list | `[extensions]` (special) |
+| `vscode-extensions.ini` | list | Profile-filtered |
 | `registry.ini` | key=value | Registry paths as headers |
 | `copilot-skills.ini` | list | Skill URLs |
 

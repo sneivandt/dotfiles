@@ -1,4 +1,3 @@
-use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
 
 use anyhow::Result;
@@ -6,7 +5,6 @@ use anyhow::Result;
 use crate::config::Config;
 use crate::exec::Executor;
 use crate::logging::Log;
-use crate::operations::{FileSystemOps, SystemFileSystemOps};
 use crate::platform::Platform;
 
 /// Shared context for task execution.
@@ -30,14 +28,6 @@ pub struct Context {
     pub executor: Arc<dyn Executor>,
     /// Whether to process resources in parallel using Rayon.
     pub parallel: bool,
-    /// Set to `true` by `UpdateRepository` when the repo was actually updated.
-    ///
-    /// Wrapped in `Arc` so the flag is shared across per-task contexts in
-    /// the parallel scheduler.  Checked by `ReloadConfig` to skip
-    /// unnecessary reloads.
-    pub repo_updated: Arc<AtomicBool>,
-    /// Filesystem operation abstraction (injectable for testing).
-    pub fs_ops: Arc<dyn FileSystemOps>,
 }
 
 impl std::fmt::Debug for Context {
@@ -50,8 +40,6 @@ impl std::fmt::Debug for Context {
             .field("home", &self.home)
             .field("executor", &"<dyn Executor>")
             .field("parallel", &self.parallel)
-            .field("repo_updated", &self.repo_updated)
-            .field("fs_ops", &"<dyn FileSystemOps>")
             .finish()
     }
 }
@@ -90,8 +78,6 @@ impl Context {
             home: std::path::PathBuf::from(home),
             executor,
             parallel,
-            repo_updated: Arc::new(AtomicBool::new(false)),
-            fs_ops: Arc::new(SystemFileSystemOps),
         })
     }
 
@@ -135,19 +121,6 @@ impl Context {
             ..self.clone()
         }
     }
-
-    /// Create a copy of this context with a different [`FileSystemOps`] implementation.
-    ///
-    /// Used in tests to inject a [`MockFileSystemOps`](crate::operations::MockFileSystemOps)
-    /// so that tasks can be exercised without touching the real filesystem.
-    #[cfg(test)]
-    #[must_use]
-    pub fn with_fs_ops(&self, fs_ops: Arc<dyn FileSystemOps>) -> Self {
-        Self {
-            fs_ops,
-            ..self.clone()
-        }
-    }
 }
 
 #[cfg(test)]
@@ -155,7 +128,6 @@ impl Context {
 mod tests {
     use super::*;
     use crate::logging::Logger;
-    use crate::operations::MockFileSystemOps;
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 
@@ -193,16 +165,6 @@ mod tests {
     }
 
     #[test]
-    fn with_fs_ops_replaces_fs_ops() {
-        let config = empty_config(PathBuf::from("/dotfiles"));
-        let ctx = make_linux_context(config);
-        let mock = Arc::new(MockFileSystemOps::new());
-        let ctx2 = ctx.with_fs_ops(mock);
-        assert_eq!(ctx2.root(), ctx.root());
-        assert_eq!(ctx2.dry_run, ctx.dry_run);
-    }
-
-    #[test]
     fn config_read_returns_config() {
         let config = empty_config(PathBuf::from("/my/root"));
         let ctx = make_linux_context(config);
@@ -231,6 +193,5 @@ mod tests {
         assert_eq!(ctx2.parallel, ctx.parallel);
         assert!(Arc::ptr_eq(&ctx.config, &ctx2.config));
         assert!(Arc::ptr_eq(&ctx.platform, &ctx2.platform));
-        assert!(Arc::ptr_eq(&ctx.repo_updated, &ctx2.repo_updated));
     }
 }

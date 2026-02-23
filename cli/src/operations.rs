@@ -50,8 +50,8 @@ impl FileSystemOps for SystemFileSystemOps {
 /// Mock [`FileSystemOps`] for unit tests.
 ///
 /// Pre-configure existing paths, regular files, and directory listings using
-/// the builder-style methods, then pass `Arc::new(mock)` to
-/// [`Context::with_fs_ops`](crate::tasks::Context::with_fs_ops).
+/// the builder-style methods, then pass `Arc::new(mock)` to task constructors
+/// that accept a [`FileSystemOps`] (e.g., `InstallGitHooks::with_fs_ops`).
 ///
 /// # Example
 ///

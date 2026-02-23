@@ -1,10 +1,27 @@
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+
 use anyhow::Result;
 
 use super::{Context, Task, TaskResult, task_deps};
 
 /// Pull latest changes from the remote repository.
 #[derive(Debug)]
-pub struct UpdateRepository;
+pub struct UpdateRepository {
+    /// Set to `true` when the repository is actually updated by this task.
+    ///
+    /// Shared with [`super::reload_config::ReloadConfig`] so that task can
+    /// skip the reload when the repository was already up to date.
+    pub(super) repo_updated: Arc<AtomicBool>,
+}
+
+impl UpdateRepository {
+    /// Create a new task, sharing `repo_updated` with `ReloadConfig`.
+    #[must_use]
+    pub const fn new(repo_updated: Arc<AtomicBool>) -> Self {
+        Self { repo_updated }
+    }
+}
 
 impl Task for UpdateRepository {
     fn name(&self) -> &'static str {
@@ -65,7 +82,7 @@ impl Task for UpdateRepository {
                 if msg.contains("Already up to date") {
                     ctx.log.info("already up to date");
                 } else {
-                    ctx.repo_updated
+                    self.repo_updated
                         .store(true, std::sync::atomic::Ordering::Release);
                     ctx.log.info("repository updated");
                 }
@@ -87,14 +104,14 @@ mod tests {
     use crate::resources::test_helpers::MockExecutor;
     use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
     use std::path::PathBuf;
-    use std::sync::Arc;
     use std::sync::atomic::Ordering;
 
     #[test]
     fn should_run_false_when_git_dir_missing() {
         let config = empty_config(PathBuf::from("/nonexistent/repo"));
         let ctx = make_linux_context(config);
-        assert!(!UpdateRepository.should_run(&ctx));
+        let task = UpdateRepository::new(Arc::new(AtomicBool::new(false)));
+        assert!(!task.should_run(&ctx));
     }
 
     #[test]
@@ -103,7 +120,8 @@ mod tests {
         std::fs::create_dir(dir.path().join(".git")).unwrap();
         let config = empty_config(dir.path().to_path_buf());
         let ctx = make_linux_context(config);
-        assert!(UpdateRepository.should_run(&ctx));
+        let task = UpdateRepository::new(Arc::new(AtomicBool::new(false)));
+        assert!(task.should_run(&ctx));
     }
 
     // -----------------------------------------------------------------------
@@ -125,8 +143,10 @@ mod tests {
         // First call (diff --cached) returns non-empty stdout → staged changes
         let executor = MockExecutor::ok("dirty_file.txt");
         let ctx = make_update_context(config, executor);
+        let repo_updated = Arc::new(AtomicBool::new(false));
+        let task = UpdateRepository::new(Arc::clone(&repo_updated));
 
-        let result = UpdateRepository.run(&ctx).unwrap();
+        let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("staged changes")));
     }
 
@@ -140,10 +160,12 @@ mod tests {
             (true, "Already up to date.".to_string()),
         ]);
         let ctx = make_update_context(config, executor);
+        let repo_updated = Arc::new(AtomicBool::new(false));
+        let task = UpdateRepository::new(Arc::clone(&repo_updated));
 
-        let result = UpdateRepository.run(&ctx).unwrap();
+        let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Ok));
-        assert!(!ctx.repo_updated.load(Ordering::Acquire));
+        assert!(!repo_updated.load(Ordering::Acquire));
     }
 
     #[test]
@@ -156,10 +178,12 @@ mod tests {
             (true, "Updating abc1234..def5678\nFast-forward".to_string()),
         ]);
         let ctx = make_update_context(config, executor);
+        let repo_updated = Arc::new(AtomicBool::new(false));
+        let task = UpdateRepository::new(Arc::clone(&repo_updated));
 
-        let result = UpdateRepository.run(&ctx).unwrap();
+        let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Ok));
-        assert!(ctx.repo_updated.load(Ordering::Acquire));
+        assert!(repo_updated.load(Ordering::Acquire));
     }
 
     #[test]
@@ -170,8 +194,10 @@ mod tests {
         let executor =
             MockExecutor::with_responses(vec![(true, String::new()), (false, String::new())]);
         let ctx = make_update_context(config, executor);
+        let repo_updated = Arc::new(AtomicBool::new(false));
+        let task = UpdateRepository::new(Arc::clone(&repo_updated));
 
-        let result = UpdateRepository.run(&ctx).unwrap();
+        let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("git pull failed")));
     }
 }

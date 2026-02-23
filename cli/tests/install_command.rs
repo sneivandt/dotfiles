@@ -204,13 +204,9 @@ fn only_filter_with_no_match_returns_empty() {
 // Dry-run: task list from a minimal repository
 // ---------------------------------------------------------------------------
 
-/// Loading a minimal repository and filtering the install task list by the
-/// tasks that *should* run on the current platform must not panic.
-///
-/// This exercises the `should_run` gate for every install task in a
-/// controlled, isolated environment.
+/// `should_run` must not panic for any install task when given a minimal config.
 #[test]
-fn install_tasks_should_run_does_not_panic_with_empty_config() {
+fn install_tasks_should_run_does_not_panic_with_minimal_config() {
     use std::sync::Arc;
 
     let ctx_builder = common::TestContextBuilder::new();

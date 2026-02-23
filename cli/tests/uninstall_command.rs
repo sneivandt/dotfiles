@@ -117,9 +117,9 @@ fn uninstall_task_list_contains_remove_git_hooks() {
 // Dry-run: task list from a minimal repository
 // ---------------------------------------------------------------------------
 
-/// `should_run` must not panic for any uninstall task when given an empty config.
+/// `should_run` must not panic for any uninstall task when given a minimal config.
 #[test]
-fn uninstall_tasks_should_run_does_not_panic_with_empty_config() {
+fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
     use std::sync::Arc;
 
     let ctx_builder = common::TestContextBuilder::new();

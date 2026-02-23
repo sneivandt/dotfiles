@@ -62,9 +62,9 @@ fn config_loads_with_missing_optional_files() {
 // Validation: no warnings for valid config
 // ---------------------------------------------------------------------------
 
-/// An empty valid config must produce zero validation warnings.
+/// A minimal valid config must produce zero validation warnings.
 #[test]
-fn config_validate_no_warnings_for_empty_config() {
+fn config_validate_no_warnings_for_minimal_config() {
     let ctx = common::IntegrationTestContext::new();
     let config = ctx.load_config("base");
     let platform = Platform::detect();

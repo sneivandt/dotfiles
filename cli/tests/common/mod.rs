@@ -56,7 +56,8 @@ pub fn setup_minimal_repo(root: &Path) {
 
 /// An isolated test repository backed by a [`tempfile::TempDir`].
 ///
-/// The directory is deleted automatically when the context is dropped.
+/// The directory is automatically deleted when dropped (via the underlying
+/// [`tempfile::TempDir`]).
 pub struct IntegrationTestContext {
     /// Temporary directory containing the test dotfiles repository.
     pub root: tempfile::TempDir,

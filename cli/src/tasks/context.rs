@@ -10,6 +10,7 @@ use crate::operations::{FileSystemOps, SystemFileSystemOps};
 use crate::platform::Platform;
 
 /// Shared context for task execution.
+#[derive(Clone)]
 pub struct Context {
     /// Configuration loaded from INI files.
     ///
@@ -130,15 +131,8 @@ impl Context {
     #[must_use]
     pub fn with_log(&self, log: Arc<dyn Log>) -> Self {
         Self {
-            config: Arc::clone(&self.config),
-            platform: Arc::clone(&self.platform),
             log,
-            dry_run: self.dry_run,
-            home: self.home.clone(),
-            executor: Arc::clone(&self.executor),
-            parallel: self.parallel,
-            repo_updated: Arc::clone(&self.repo_updated),
-            fs_ops: Arc::clone(&self.fs_ops),
+            ..self.clone()
         }
     }
 
@@ -150,15 +144,8 @@ impl Context {
     #[must_use]
     pub fn with_fs_ops(&self, fs_ops: Arc<dyn FileSystemOps>) -> Self {
         Self {
-            config: Arc::clone(&self.config),
-            platform: Arc::clone(&self.platform),
-            log: Arc::clone(&self.log),
-            dry_run: self.dry_run,
-            home: self.home.clone(),
-            executor: Arc::clone(&self.executor),
-            parallel: self.parallel,
-            repo_updated: Arc::clone(&self.repo_updated),
             fs_ops,
+            ..self.clone()
         }
     }
 }
@@ -231,5 +218,19 @@ mod tests {
         assert!(debug.contains("Context"));
         assert!(debug.contains("dry_run"));
         assert!(debug.contains("home"));
+    }
+
+    #[test]
+    fn clone_shares_arc_fields() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        let ctx2 = ctx.clone();
+        assert_eq!(ctx2.root(), ctx.root());
+        assert_eq!(ctx2.dry_run, ctx.dry_run);
+        assert_eq!(ctx2.home, ctx.home);
+        assert_eq!(ctx2.parallel, ctx.parallel);
+        assert!(Arc::ptr_eq(&ctx.config, &ctx2.config));
+        assert!(Arc::ptr_eq(&ctx.platform, &ctx2.platform));
+        assert!(Arc::ptr_eq(&ctx.repo_updated, &ctx2.repo_updated));
     }
 }

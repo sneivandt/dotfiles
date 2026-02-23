@@ -1,0 +1,20 @@
+---
+source: tests/install_command.rs
+expression: "task_names.join(\"\\n\")"
+---
+Enable developer mode
+Configure sparse checkout
+Update repository
+Configure git
+Install git hooks
+Install packages
+Install paru
+Install AUR packages
+Install symlinks
+Apply file permissions
+Configure default shell
+Configure systemd units
+Apply registry settings
+Install VS Code extensions
+Install Copilot skills
+Reload configuration

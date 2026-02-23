@@ -1,0 +1,6 @@
+---
+source: tests/uninstall_command.rs
+expression: "task_names.join(\"\\n\")"
+---
+Remove symlinks
+Remove git hooks

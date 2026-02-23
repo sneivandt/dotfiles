@@ -1,7 +1,6 @@
 use anyhow::Result;
-use std::any::TypeId;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states};
+use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states, task_deps};
 use crate::resources::registry::{RegistryResource, batch_check_values};
 
 /// Apply Windows registry settings.
@@ -13,10 +12,7 @@ impl Task for ApplyRegistry {
         "Apply registry settings"
     }
 
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[TypeId::of::<super::reload_config::ReloadConfig>()];
-        DEPS
-    }
+    task_deps![super::reload_config::ReloadConfig];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.has_registry() && !ctx.config_read().registry.is_empty()

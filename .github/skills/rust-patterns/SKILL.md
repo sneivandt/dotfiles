@@ -56,24 +56,25 @@ task structs. The scheduler runs tasks as soon as all their dependencies
 complete — there are no fixed "levels" or ordering beyond the dependency
 graph.
 
+Use the `task_deps!` macro to implement `fn dependencies()` — it eliminates
+the manual `const DEPS` boilerplate:
+
 ```rust
-use std::any::TypeId;
+use super::{Context, Task, TaskResult, task_deps};
 
 impl Task for InstallSymlinks {
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[
-            TypeId::of::<UpdateRepository>(),
-            TypeId::of::<EnableDeveloperMode>(),
-        ];
-        DEPS
-    }
+    task_deps![super::update::UpdateRepository, super::developer_mode::EnableDeveloperMode];
     // ...
 }
 ```
 
+Import `task_deps` from `super::` alongside the other task helpers.  The macro
+expands to the `fn dependencies(&self) -> &[std::any::TypeId]` method body, so
+it must appear inside `impl Task for …`.
+
 **Rules for dependencies:**
-- Use `const DEPS` for the slice (required for `TypeId::of` in const context)
-- Only reference concrete task structs (`TypeId::of::<TaskStruct>()`)
+- Use `task_deps![…]` to declare dependencies — do not write `const DEPS` by hand
+- Only reference concrete task structs
 - Missing dependencies (filtered by `--skip`/`--only`) are silently ignored
 - Cycles are detected at runtime; the scheduler falls back to sequential execution
 
@@ -84,12 +85,13 @@ Most tasks process a list of `Resource` implementors. Use the generic
 writing the state-match loop by hand:
 
 ```rust
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
+use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};
 use crate::resources::my_resource::MyResource;
 
 pub struct MyTask;
 impl Task for MyTask {
     fn name(&self) -> &str { "My task" }
+    task_deps![super::some_dependency::SomeDependency]; // omit if no dependencies
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_systemd() && !ctx.config_read().items.is_empty()
     }
@@ -378,6 +380,7 @@ execution deterministic.
 
 - All task logic in `cli/src/tasks/*.rs` — never in shell scripts
 - Every task: `name`, `should_run`, `run`; check `ctx.dry_run` before side effects
+- **Use `task_deps![…]`** inside `impl Task` to declare dependencies — never write `const DEPS` by hand
 - **Use `process_resources()` / `process_resource_states()`** for resource-based tasks — do not duplicate the state-match loop
 - Use `Resource` trait for declarative state checks where applicable
 - Guard tools with `executor.which()`; return `TaskResult::Skipped(reason)` when not applicable

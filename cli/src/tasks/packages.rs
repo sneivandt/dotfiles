@@ -1,7 +1,6 @@
 use anyhow::{Context as _, Result};
-use std::any::TypeId;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states};
+use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states, task_deps};
 use crate::config::packages::Package;
 use crate::resources::package::{PackageManager, PackageResource, get_installed_packages};
 
@@ -46,10 +45,7 @@ impl Task for InstallPackages {
         "Install packages"
     }
 
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[TypeId::of::<super::reload_config::ReloadConfig>()];
-        DEPS
-    }
+    task_deps![super::reload_config::ReloadConfig];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.config_read().packages.iter().any(|p| !p.is_aur)
@@ -93,13 +89,7 @@ impl Task for InstallAurPackages {
         "Install AUR packages"
     }
 
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[
-            TypeId::of::<InstallParu>(),
-            TypeId::of::<super::reload_config::ReloadConfig>(),
-        ];
-        DEPS
-    }
+    task_deps![InstallParu, super::reload_config::ReloadConfig];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_aur() && ctx.config_read().packages.iter().any(|p| p.is_aur)

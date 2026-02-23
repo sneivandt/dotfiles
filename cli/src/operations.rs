@@ -2,7 +2,7 @@
 //!
 //! Provides the [`FileSystemOps`] trait so that tasks can be unit-tested
 //! without touching the real filesystem.  Production code uses
-//! [`SystemFileSystemOps`]; tests use [`MockFileSystemOps`].
+//! [`SystemFileSystemOps`]; tests use `MockFileSystemOps`.
 
 use anyhow::Result;
 use std::path::{Path, PathBuf};

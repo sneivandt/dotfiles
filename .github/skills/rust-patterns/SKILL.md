@@ -97,12 +97,7 @@ impl Task for MyTask {
         let items = ctx.config_read().items.clone();
         let resources = items.iter()
             .map(|entry| MyResource::from_entry(entry, &*ctx.executor));
-        process_resources(ctx, resources, &ProcessOpts {
-            verb: "install",
-            fix_incorrect: true,
-            fix_missing: true,
-            bail_on_error: false,
-        })
+        process_resources(ctx, resources, &ProcessOpts::apply_all("install"))
     }
 }
 ```
@@ -133,6 +128,15 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 | `fix_incorrect` | Apply when state is `Incorrect` (else skip) |
 | `fix_missing` | Apply when state is `Missing` (else skip) |
 | `bail_on_error` | `true`: propagate `apply()` errors. `false`: warn and count as skipped |
+
+Use named constructors and modifier methods instead of building the struct directly:
+
+```rust
+ProcessOpts::apply_all("link")            // fix Missing+Incorrect, bail on errors (strict)
+ProcessOpts::apply_all("install").no_bail() // fix Missing+Incorrect, warn on errors (lenient)
+ProcessOpts::install_missing("enable")    // only fix Missing, warn on errors
+ProcessOpts::apply_all("chmod").skip_missing() // only fix Incorrect, bail on errors
+```
 
 ### Non-Resource Task Template
 
@@ -189,13 +193,15 @@ ctx.platform.supports_systemd() && !ctx.config_read().units.is_empty()
 
 ```rust
 pub struct Context {
-    pub config: Arc<RwLock<Config>>,  // locked; use ctx.config_read()
+    pub config: Arc<RwLock<Config>>,         // locked; use ctx.config_read()
     pub platform: Arc<Platform>,
     pub log: Arc<dyn Log>,
     pub dry_run: bool,
     pub home: PathBuf,
     pub executor: Arc<dyn Executor>,
     pub parallel: bool,
+    pub repo_updated: Arc<AtomicBool>,       // set by UpdateRepository, read by ReloadConfig
+    pub fs_ops: Arc<dyn FileSystemOps>,      // filesystem abstraction; inject MockFileSystemOps in tests
 }
 ```
 
@@ -210,9 +216,15 @@ the data out before a long-running operation so the lock is not held across
 let items = ctx.config_read().items.clone();
 ```
 
-The `parallel` flag controls both task-level parallelism (dependency-graph
-scheduling via OS threads) and resource-level parallelism (Rayon `par_iter`
-within tasks). When `false`, tasks run sequentially in list order.
+`repo_updated` is an `Arc<AtomicBool>` shared across per-task contexts in the
+parallel scheduler. `UpdateRepository` sets it to `true` when it actually pulls
+new commits; `ReloadConfig` reads it to decide whether a reload is needed.
+
+`fs_ops` is an `Arc<dyn FileSystemOps>` that wraps filesystem operations
+(`exists`, `is_file`, `read_dir`). The production implementation is
+`SystemFileSystemOps`. In tests, inject `MockFileSystemOps` via
+`ctx.with_fs_ops(Arc::new(mock))` so tasks can be exercised without touching
+the real filesystem.
 
 ## Executor Trait
 
@@ -241,24 +253,18 @@ still exist but are only called by `SystemExecutor` internally.
 
 The executor flows top-down through the system:
 
-1. **Commands** wrap `SystemExecutor` in `Arc<dyn Executor>` and pass it to `Context::new()`
+1. **Commands** create a `Context` via `CommandSetup::init()` + `setup.into_context()`
 2. **Context** stores `executor: Arc<dyn Executor>`
 3. **Tasks** pass `&*ctx.executor` to resource constructors and batch query functions
 4. **Resources** store `executor: &'a dyn Executor` and call `self.executor.run()` etc.
 
 ```rust
 // In commands/install.rs
-let executor: Arc<dyn crate::exec::Executor> = Arc::new(exec::SystemExecutor);
-let setup = super::CommandSetup::init(global, log)?;
-let ctx = Context::new(
-    Arc::new(RwLock::new(setup.config)),
-    Arc::new(setup.platform),
-    Arc::clone(log) as Arc<dyn Log>,
-    global.dry_run,
-    Arc::clone(&executor),
-    global.parallel,
-)?;
+let setup = super::CommandSetup::init(global, &**log)?;
+let ctx = setup.into_context(global, log)?;
 ```
+
+`CommandSetup::into_context()` creates the executor internally and constructs the `Context`.
 
 Resources borrow the executor for the duration of the task. Pass `&*ctx.executor`
 (deref coercion) when constructing resources:
@@ -348,13 +354,15 @@ and have no lifetime parameter.
 ### Generic Resource Loop
 
 `tasks/mod.rs` provides two helpers that handle the full check→dry-run→apply
-loop so individual tasks don't repeat it:
+loop so individual tasks don't repeat it (implemented in `tasks/processing.rs`,
+re-exported from `tasks/mod.rs`):
 
 - **`process_resources(ctx, resources, opts)`** — calls `current_state()` per resource.
 - **`process_resource_states(ctx, resource_states, opts)`** — takes pre-computed `(Resource, ResourceState)` pairs for batch-checked resources.
 - **`process_resources_remove(ctx, resources, verb)`** — for uninstall: removes resources in `Correct` state, skips others.
 
-Both `process_resources` and `process_resource_states` accept a `ProcessOpts` struct
+Both `process_resources` and `process_resource_states` are implemented in `tasks/processing.rs`
+and re-exported from `tasks/mod.rs`. They accept a `ProcessOpts` value
 that controls which states are fixable and whether errors bail or warn.
 Use these helpers for **all** new resource-based tasks.
 

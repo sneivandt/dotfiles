@@ -27,9 +27,10 @@ ctx.log.dry_run(msg);  // Yellow "[DRY RUN]" prefix
 ```
 
 All messages (including `debug`) are always written to a persistent log file at
-`$XDG_CACHE_HOME/dotfiles/install.log` (default `~/.cache/dotfiles/install.log`)
-with timestamps and ANSI codes stripped. The `debug` method only prints to the terminal
-when `verbose=true`, but **always** writes to the log file regardless of the verbose flag.
+`$XDG_CACHE_HOME/dotfiles/<command>.log` (default `~/.cache/dotfiles/<command>.log`,
+e.g. `install.log`, `uninstall.log`, `test.log`) with timestamps and ANSI codes
+stripped. The `debug` method only prints to the terminal when `verbose=true`,
+but **always** writes to the log file regardless of the verbose flag.
 The log file path is shown in the summary.
 
 | Method | Use For |
@@ -46,6 +47,7 @@ The log file path is shown in the summary.
 ```rust
 pub fn execute(task: &dyn Task, ctx: &Context) {
     if !task.should_run(ctx) {
+        ctx.log.debug(&format!("skipping task: {} (not applicable)", task.name()));
         ctx.log.record_task(task.name(), TaskStatus::NotApplicable, None);
         return;
     }

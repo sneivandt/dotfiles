@@ -56,7 +56,7 @@ The registry task in `cli/src/tasks/registry.rs`:
 
 `RegistryResource` uses the `winreg` crate for native registry access (no executor needed):
 ```rust
-let resources: Vec<_> = ctx.config.registry.iter()
+let resources: Vec<_> = ctx.config_read().registry.iter()
     .map(RegistryResource::from_entry)
     .collect();
 let cached = batch_check_values(&resources)?;

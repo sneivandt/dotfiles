@@ -93,9 +93,9 @@ pub mod test_helpers {
     }
 }
 
-use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
+use crate::error::ConfigError;
 use crate::platform::Platform;
 
 /// All loaded configuration for a resolved profile.
@@ -130,43 +130,81 @@ impl Config {
     /// # Errors
     ///
     /// Returns an error if any configuration file cannot be parsed.
-    pub fn load(root: &Path, profile: &profiles::Profile, platform: &Platform) -> Result<Self> {
+    pub fn load(
+        root: &Path,
+        profile: &profiles::Profile,
+        platform: &Platform,
+    ) -> Result<Self, ConfigError> {
         let conf = root.join("conf");
 
         let active_categories = &profile.active_categories;
         let excluded_categories = &profile.excluded_categories;
 
-        let packages = packages::load(&conf.join("packages.ini"), active_categories)
-            .context("loading packages.ini")?;
+        let packages =
+            packages::load(&conf.join("packages.ini"), active_categories).map_err(|e| {
+                ConfigError::InvalidSyntax {
+                    file: "packages.ini".to_string(),
+                    message: e.to_string(),
+                }
+            })?;
 
-        let symlinks = ini::load_flat(&conf.join("symlinks.ini"), active_categories)
-            .context("loading symlinks.ini")?;
+        let symlinks =
+            ini::load_flat(&conf.join("symlinks.ini"), active_categories).map_err(|e| {
+                ConfigError::InvalidSyntax {
+                    file: "symlinks.ini".to_string(),
+                    message: e.to_string(),
+                }
+            })?;
 
         let registry = if platform.has_registry() {
-            registry::load(&conf.join("registry.ini")).context("loading registry.ini")?
+            registry::load(&conf.join("registry.ini")).map_err(|e| ConfigError::InvalidSyntax {
+                file: "registry.ini".to_string(),
+                message: e.to_string(),
+            })?
         } else {
             Vec::new()
         };
 
         let units = if platform.supports_systemd() {
-            ini::load_flat(&conf.join("systemd-units.ini"), active_categories)
-                .context("loading systemd-units.ini")?
+            ini::load_flat(&conf.join("systemd-units.ini"), active_categories).map_err(|e| {
+                ConfigError::InvalidSyntax {
+                    file: "systemd-units.ini".to_string(),
+                    message: e.to_string(),
+                }
+            })?
         } else {
             Vec::new()
         };
 
         let chmod_entries =
-            chmod::load(&conf.join("chmod.ini"), active_categories).context("loading chmod.ini")?;
+            chmod::load(&conf.join("chmod.ini"), active_categories).map_err(|e| {
+                ConfigError::InvalidSyntax {
+                    file: "chmod.ini".to_string(),
+                    message: e.to_string(),
+                }
+            })?;
 
         let vscode_extensions =
-            ini::load_flat(&conf.join("vscode-extensions.ini"), active_categories)
-                .context("loading vscode-extensions.ini")?;
+            ini::load_flat(&conf.join("vscode-extensions.ini"), active_categories).map_err(
+                |e| ConfigError::InvalidSyntax {
+                    file: "vscode-extensions.ini".to_string(),
+                    message: e.to_string(),
+                },
+            )?;
 
         let copilot_skills = ini::load_flat(&conf.join("copilot-skills.ini"), active_categories)
-            .context("loading copilot-skills.ini")?;
+            .map_err(|e| ConfigError::InvalidSyntax {
+                file: "copilot-skills.ini".to_string(),
+                message: e.to_string(),
+            })?;
 
-        let manifest = manifest::load(&conf.join("manifest.ini"), excluded_categories)
-            .context("loading manifest.ini")?;
+        let manifest =
+            manifest::load(&conf.join("manifest.ini"), excluded_categories).map_err(|e| {
+                ConfigError::InvalidSyntax {
+                    file: "manifest.ini".to_string(),
+                    message: e.to_string(),
+                }
+            })?;
 
         Ok(Self {
             root: root.to_path_buf(),

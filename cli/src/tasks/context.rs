@@ -6,6 +6,7 @@ use anyhow::Result;
 use crate::config::Config;
 use crate::exec::Executor;
 use crate::logging::Log;
+use crate::operations::{FileSystemOps, SystemFileSystemOps};
 use crate::platform::Platform;
 
 /// Shared context for task execution.
@@ -34,6 +35,8 @@ pub struct Context {
     /// the parallel scheduler.  Checked by `ReloadConfig` to skip
     /// unnecessary reloads.
     pub repo_updated: Arc<AtomicBool>,
+    /// Filesystem operation abstraction (injectable for testing).
+    pub fs_ops: Arc<dyn FileSystemOps>,
 }
 
 impl std::fmt::Debug for Context {
@@ -47,6 +50,7 @@ impl std::fmt::Debug for Context {
             .field("executor", &"<dyn Executor>")
             .field("parallel", &self.parallel)
             .field("repo_updated", &self.repo_updated)
+            .field("fs_ops", &"<dyn FileSystemOps>")
             .finish()
     }
 }
@@ -86,6 +90,7 @@ impl Context {
             executor,
             parallel,
             repo_updated: Arc::new(AtomicBool::new(false)),
+            fs_ops: Arc::new(SystemFileSystemOps),
         })
     }
 
@@ -133,6 +138,27 @@ impl Context {
             executor: Arc::clone(&self.executor),
             parallel: self.parallel,
             repo_updated: Arc::clone(&self.repo_updated),
+            fs_ops: Arc::clone(&self.fs_ops),
+        }
+    }
+
+    /// Create a copy of this context with a different [`FileSystemOps`] implementation.
+    ///
+    /// Used in tests to inject a [`MockFileSystemOps`](crate::operations::MockFileSystemOps)
+    /// so that tasks can be exercised without touching the real filesystem.
+    #[cfg(test)]
+    #[must_use]
+    pub fn with_fs_ops(&self, fs_ops: Arc<dyn FileSystemOps>) -> Self {
+        Self {
+            config: Arc::clone(&self.config),
+            platform: Arc::clone(&self.platform),
+            log: Arc::clone(&self.log),
+            dry_run: self.dry_run,
+            home: self.home.clone(),
+            executor: Arc::clone(&self.executor),
+            parallel: self.parallel,
+            repo_updated: Arc::clone(&self.repo_updated),
+            fs_ops,
         }
     }
 }

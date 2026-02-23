@@ -14,8 +14,10 @@
 pub mod cli;
 pub mod commands;
 pub mod config;
+pub mod error;
 pub mod exec;
 pub mod logging;
+pub mod operations;
 pub mod platform;
 pub mod resources;
 pub mod tasks;

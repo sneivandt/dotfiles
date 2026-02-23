@@ -67,13 +67,13 @@ function Test-InstallUninstallBaseProfile {
         throw "DIR environment variable is not set"
     }
 
-    $home = $env:USERPROFILE
-    if (-not $home) { $home = $env:HOME }  # fallback for non-native Windows shells (e.g. Git Bash)
+    $homeDir = $env:USERPROFILE
+    if (-not $homeDir) { $homeDir = $env:HOME }  # fallback for non-native Windows shells (e.g. Git Bash)
 
     # Representative symlinks from the [base] section of symlinks.ini
-    $gitConfig = Join-Path $home ".config\git\config"
+    $gitConfig = Join-Path $homeDir ".config\git\config"
     # Representative symlinks from the [windows] section of symlinks.ini
-    $psProfile = Join-Path $home "Documents\PowerShell\Microsoft.PowerShell_profile.ps1"
+    $psProfile = Join-Path $homeDir "Documents\PowerShell\Microsoft.PowerShell_profile.ps1"
 
     Write-Host "Running install..."
     & $env:BINARY_PATH --root $env:DIR -p base install

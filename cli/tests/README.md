@@ -119,8 +119,10 @@ fn test_with_custom_symlinks() {
 
 - Add `RUST_BACKTRACE=1` before `cargo test` for full stack traces on failures.
 - Use `cargo test <test_name>` to run a single test by name prefix.
-- The `IntegrationTestContext` prints the temp directory path on `Drop` in
-  debug builds — set `RUST_LOG=debug` to see it.
+- The `IntegrationTestContext` uses `tempfile::TempDir` for its temporary
+  directories, which are automatically cleaned up when dropped. If you need
+  to inspect a temp directory during debugging, add explicit logging of its
+  path in your test code.
 - Snapshot mismatches show a diff: the left side is the stored snapshot, the
   right side is the actual output. If the change is expected, update the
   snapshot as described above.

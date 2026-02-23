@@ -1,7 +1,6 @@
 use anyhow::Result;
-use std::any::TypeId;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states};
+use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states, task_deps};
 use crate::resources::vscode_extension::{
     VsCodeExtensionResource, find_code_command, get_installed_extensions,
 };
@@ -15,10 +14,7 @@ impl Task for InstallVsCodeExtensions {
         "Install VS Code extensions"
     }
 
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[TypeId::of::<super::reload_config::ReloadConfig>()];
-        DEPS
-    }
+    task_deps![super::reload_config::ReloadConfig];
 
     fn should_run(&self, ctx: &Context) -> bool {
         !ctx.config_read().vscode_extensions.is_empty()

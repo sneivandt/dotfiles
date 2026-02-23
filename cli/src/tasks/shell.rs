@@ -1,7 +1,6 @@
 use anyhow::Result;
-use std::any::TypeId;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
+use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};
 use crate::resources::shell::DefaultShellResource;
 
 /// Configure the default shell to zsh.
@@ -13,10 +12,7 @@ impl Task for ConfigureShell {
         "Configure default shell"
     }
 
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[TypeId::of::<super::packages::InstallPackages>()];
-        DEPS
-    }
+    task_deps![super::packages::InstallPackages];
 
     fn should_run(&self, ctx: &Context) -> bool {
         // Skip in CI environments where chsh requires authentication

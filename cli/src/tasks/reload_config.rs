@@ -1,7 +1,6 @@
 use anyhow::{Context as _, Result};
-use std::any::TypeId;
 
-use super::{Context, Task, TaskResult};
+use super::{Context, Task, TaskResult, task_deps};
 
 /// Re-parse all configuration files after `UpdateRepository` has pulled the
 /// latest changes.
@@ -18,10 +17,7 @@ impl Task for ReloadConfig {
         "Reload configuration"
     }
 
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[TypeId::of::<super::update::UpdateRepository>()];
-        DEPS
-    }
+    task_deps![super::update::UpdateRepository];
 
     fn should_run(&self, _ctx: &Context) -> bool {
         true

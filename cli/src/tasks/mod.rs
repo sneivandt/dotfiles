@@ -235,6 +235,7 @@ pub mod test_helpers {
             executor,
             parallel: false,
             repo_updated: Arc::new(AtomicBool::new(false)),
+            fs_ops: Arc::new(crate::operations::SystemFileSystemOps),
         }
     }
 

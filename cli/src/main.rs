@@ -6,6 +6,7 @@ mod config;
 mod error;
 mod exec;
 mod logging;
+mod operations;
 mod platform;
 mod resources;
 mod tasks;

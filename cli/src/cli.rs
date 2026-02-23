@@ -52,6 +52,8 @@ pub enum Command {
     Test(TestOpts),
     /// Print version information
     Version,
+    /// Check for and apply binary updates
+    Bootstrap(BootstrapOpts),
 }
 
 /// Options for the `install` subcommand.
@@ -73,6 +75,22 @@ pub struct UninstallOpts {}
 /// Options for the `test` subcommand.
 #[derive(Parser, Debug, Clone)]
 pub struct TestOpts {}
+
+/// Options for the `bootstrap` subcommand.
+#[derive(Parser, Debug, Clone)]
+pub struct BootstrapOpts {
+    /// GitHub repository (`owner/repo`) to fetch releases from.
+    #[arg(long, default_value = "sneivandt/dotfiles")]
+    pub repo: String,
+
+    /// Force re-download even if the version cache is still fresh.
+    #[arg(long)]
+    pub force: bool,
+
+    /// Skip downloading; useful in CI or offline environments.
+    #[arg(long)]
+    pub skip_download: bool,
+}
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]

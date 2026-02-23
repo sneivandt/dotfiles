@@ -5,7 +5,8 @@
     Thin wrapper that downloads (or builds with -Build) the dotfiles Rust binary
     and forwards all arguments to it. Works on both Windows and Linux (pwsh).
 
-    Default: downloads the latest published binary from GitHub Releases.
+    Default: downloads the latest published binary from GitHub Releases and
+             delegates version management to the Rust bootstrap command.
     -Build:  builds the Rust binary from source (requires cargo).
 .PARAMETER Action
     Subcommand to run: install, uninstall, test, or version.
@@ -41,11 +42,6 @@ $ErrorActionPreference = 'Stop'
 $DotfilesRoot = $PSScriptRoot
 $Repo = "sneivandt/dotfiles"
 $BinDir = Join-Path $DotfilesRoot "bin"
-$CacheFile = Join-Path $BinDir ".dotfiles-version-cache"
-$CacheMaxAge = 3600
-$TransferTimeout = 120  # seconds — total transfer timeout
-$RetryCount = 3         # number of download attempts
-$RetryDelay = 2         # seconds between retries
 
 # When running in an elevated window, pause before closing so the user can see output
 function Wait-IfElevated
@@ -163,187 +159,39 @@ if ($Build)
     }
 }
 
-# Production mode: ensure latest binary
-function Get-LocalVersion
+# Production mode: initial bootstrap then delegate version management to Rust.
+if (-not (Test-Path $Binary))
 {
-    if (Test-Path $Binary)
-    {
-        $output = & $Binary version 2>$null
-        if ($output -match 'dotfiles\s+(.+)')
-        {
-            return $Matches[1]
-        }
-    }
-    return "none"
-}
-
-function Get-LatestVersion
-{
-    try
-    {
-        $response = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec $TransferTimeout
-        return $response.tag_name
-    }
-    catch [System.Net.WebException]
-    {
-        Write-Verbose "Network error checking latest version: $($_.Exception.Message)"
-        return ""
-    }
-    catch [System.Threading.Tasks.TaskCanceledException]
-    {
-        Write-Verbose "Timed out checking latest version"
-        return ""
-    }
-    catch
-    {
-        Write-Verbose "Could not check latest version: $($_.Exception.Message)"
-        return ""
-    }
-}
-
-function Get-Binary
-{
-    param ([string]$Version)
-
-    $url = "https://github.com/$Repo/releases/download/$Version/$AssetName"
-
     if (-not (Test-Path $BinDir))
     {
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
-
-    Write-Output "Downloading dotfiles $Version..."
-    $downloaded = $false
-    for ($attempt = 1; $attempt -le $RetryCount; $attempt++)
-    {
-        if ($attempt -gt 1)
-        {
-            Write-Output "Retry $attempt/$RetryCount after ${RetryDelay}s..."
-            Start-Sleep -Seconds $RetryDelay
-        }
-        try
-        {
-            Invoke-WebRequest -Uri $url -OutFile $Binary -UseBasicParsing -TimeoutSec $TransferTimeout
-            $downloaded = $true
-            break
-        }
-        catch [System.Net.WebException]
-        {
-            Write-Verbose "Download attempt $attempt failed (network): $($_.Exception.Message)"
-        }
-        catch [System.Threading.Tasks.TaskCanceledException]
-        {
-            Write-Verbose "Download attempt $attempt timed out"
-        }
-        catch
-        {
-            Write-Verbose "Download attempt $attempt failed: $($_.Exception.Message)"
-        }
-    }
-
-    if (-not $downloaded)
-    {
-        if (Test-Path $Binary) { Remove-Item $Binary -Force }
-        Write-Error "Failed to download dotfiles $Version after $RetryCount attempts. Check your internet connection or use -Build to build from source."
-        exit 1
-    }
-
-    # Verify checksum
-    $checksumUrl = "https://github.com/$Repo/releases/download/$Version/checksums.sha256"
     try
     {
-        $checksums = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing -TimeoutSec $TransferTimeout).Content
-        $expected = ($checksums -split "`n" | Where-Object { $_ -match [regex]::Escape($AssetName) }) -replace '\s+.*', ''
-        $actual = (Get-FileHash -Path $Binary -Algorithm SHA256).Hash.ToLower()
-        if ($expected -and ($expected -ne $actual))
-        {
-            Remove-Item $Binary -Force
-            Write-Error "Checksum verification failed!"
-            exit 1
-        }
+        $latestResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 120
+        $latest = $latestResponse.tag_name
     }
     catch
     {
-        Write-Verbose "Could not verify checksum: $_"
+        Write-Error "Cannot reach GitHub for first-time setup. Use -Build to build from source."
+        exit 1
     }
-
-    # Make binary executable on Linux
-    if ($IsLinux -or $IsMacOS)
-    {
-        chmod +x $Binary
-    }
+    Write-Output "Downloading dotfiles $latest..."
+    $url = "https://github.com/$Repo/releases/download/$latest/$AssetName"
+    Invoke-WebRequest -Uri $url -OutFile $Binary -UseBasicParsing -TimeoutSec 120
+    if ($IsLinux -or $IsMacOS) { chmod +x $Binary }
 }
 
-function Write-CacheFile
+# Delegate version checking, downloading, and cache management to Rust.
+# On Windows, bootstrap may stage a .new binary that we rename here after it exits.
+& $Binary --root $DotfilesRoot bootstrap --repo $Repo
+$NewBinary = "$Binary.new"
+if (Test-Path $NewBinary)
 {
-    param ([string]$Version)
-    @($Version, [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) | Set-Content $CacheFile
+    Remove-Item $Binary -Force
+    Rename-Item $NewBinary $Binary
 }
 
-function Get-CachedVersion
-{
-    if (Test-Path $CacheFile)
-    {
-        $lines = Get-Content $CacheFile
-        if ($lines.Count -ge 1)
-        {
-            return $lines[0]
-        }
-    }
-    return ""
-}
-
-function Test-CacheFresh
-{
-    if (-not (Test-Path $CacheFile))
-    {
-        return $false
-    }
-    $lines = Get-Content $CacheFile
-    if ($lines.Count -lt 2)
-    {
-        return $false
-    }
-    $cachedTs = [int]$lines[1]
-    $now = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-    return (($now - $cachedTs) -lt $CacheMaxAge)
-}
-
-# Ensure binary is present and up to date
-$localVersion = Get-LocalVersion
-
-if (($localVersion -ne "none") -and (Test-CacheFresh))
-{
-    & $Binary --root $DotfilesRoot @CliArgs
-    $ec = $LASTEXITCODE
-    Wait-IfElevated
-    exit $ec
-}
-
-$latest = Get-LatestVersion
-if ([string]::IsNullOrEmpty($latest))
-{
-    if ($localVersion -ne "none")
-    {
-        Write-Output "Using cached dotfiles $localVersion (offline)"
-        & $Binary --root $DotfilesRoot @CliArgs
-        $ec = $LASTEXITCODE
-        Wait-IfElevated
-        exit $ec
-    }
-    Write-Error "Cannot determine latest version and no local binary found. Use -Build to build from source."
-    exit 1
-}
-
-# Compare cached release tag (not binary's self-reported version) to avoid
-# unnecessary re-downloads when git-describe output differs from release tag.
-$cached = Get-CachedVersion
-if (($localVersion -eq "none") -or ($cached -ne $latest))
-{
-    Get-Binary -Version $latest
-}
-
-Write-CacheFile -Version $latest
 & $Binary --root $DotfilesRoot @CliArgs
 $ec = $LASTEXITCODE
 Wait-IfElevated

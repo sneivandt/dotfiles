@@ -19,6 +19,7 @@ fn main() {
         cli::Command::Uninstall(_) => "uninstall",
         cli::Command::Test(_) => "test",
         cli::Command::Version => "version",
+        cli::Command::Bootstrap(_) => "bootstrap",
     };
     let log = std::sync::Arc::new(logging::Logger::new(args.verbose, command_name));
 
@@ -30,6 +31,10 @@ fn main() {
             let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
             println!("dotfiles {version}");
             return;
+        }
+        cli::Command::Bootstrap(opts) => {
+            let executor = exec::SystemExecutor;
+            commands::bootstrap::run(&args.global, &opts, &executor)
         }
     };
 

@@ -24,7 +24,7 @@ Platform categories (`linux`, `windows`, `arch`) are auto-detected — users onl
 1. **Profile resolution**: `profiles::resolve()` computes `active_categories` and `excluded_categories`
 2. **Platform auto-detection**: `Platform::excludes_category()` auto-adds/excludes platform categories (`linux`, `windows`, `arch`)
 3. **Always-active**: `base` is always in `active_categories`
-4. **Config filtering**: `ini::filter_sections_and()` includes sections where ALL categories are active
+4. **Config filtering**: `ini::filter_sections(&sections, active, MatchMode::All)` includes sections where ALL categories are active
 5. **Sparse checkout**: `manifest.ini` uses OR-exclude logic to filter repository files
 
 ## Profile Selection Priority
@@ -43,7 +43,10 @@ pub fn resolve_from_args(cli_profile: Option<&str>, root: &Path, platform: &Plat
 }
 ```
 
-The selected profile is persisted to `.git/config` via `git config --local dotfiles.profile`.
+The selected profile is persisted to `.git/config` by writing to it directly via
+file I/O (`profiles::persist()` uses a custom `set_git_config_value()` helper).
+Running `git config --local dotfiles.profile <name>` manually produces the same
+result.
 
 ## Profile Data Structure
 
@@ -87,5 +90,5 @@ Add the name to `PROFILE_NAMES` constant in `cli/src/config/profiles.rs`.
 - Platform detection always overrides profile config for safety
 - Profile names are `base` or `desktop`; config section categories use commas
 - `active_categories` always contains `"base"` plus auto-detected platform categories
-- Use `filter_sections_and()` for config filtering (AND logic)
-- Use `filter_sections_or_exclude()` for manifest filtering (OR logic)
+- Use `filter_sections(&sections, active, MatchMode::All)` for config filtering (AND logic)
+- Use `filter_sections(&sections, excluded, MatchMode::Any)` for manifest filtering (OR logic)

@@ -183,7 +183,7 @@ pub trait Task: Send + Sync + 'static {
 }
 ```
 
-A shared `Context` struct carries the loaded `Config`, `Platform`, `Logger`, and flags (`dry_run`, `parallel`, `home` path).
+A shared `Context` struct carries the loaded `Config`, `Platform`, `Logger`, flags (`dry_run`, `parallel`, `home` path), a `repo_updated` `AtomicBool` (shared between the `UpdateRepository` and `ReloadConfig` tasks), and a `fs_ops` filesystem abstraction (injectable in tests via `MockFileSystemOps`).
 
 The `execute()` function runs a task, recording the result (`Ok`, `Skipped`, `DryRun`, `Failed`) in the logger.
 
@@ -191,6 +191,7 @@ The `execute()` function runs a task, recording the result (`Ok`, `Skipped`, `Dr
 - `developer_mode` — Enable Windows developer mode (required for symlinks)
 - `sparse_checkout` — Configure git sparse checkout
 - `update` — Update repository (`git pull --ff-only`)
+- `reload_config` — Reload config from disk after `update` pulls new commits
 - `git_config` — Configure git settings (Windows: autocrlf, symlinks, credential helper)
 - `hooks` — Install git hooks
 - `packages` — Install system packages (pacman or winget)
@@ -232,7 +233,7 @@ Tasks use these methods in their `should_run()` implementation to determine plat
 
 ```rust
 fn should_run(&self, ctx: &Context) -> bool {
-    ctx.platform.supports_systemd() && !ctx.config.units.is_empty()
+    ctx.platform.supports_systemd() && !ctx.config_read().units.is_empty()
 }
 ```
 
@@ -302,7 +303,9 @@ Task failures are caught by `tasks::execute()` and recorded as `TaskStatus::Fail
 
 ### Rust Tests
 
-- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/ini.rs`)
+- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/ini.rs`, `tasks/*.rs`)
+- **Integration tests**: Separate test binaries in `cli/tests/` (`install_command.rs`, `uninstall_command.rs`, `test_command.rs`), using `IntegrationTestContext` and `TestContextBuilder` helpers from `cli/tests/common/mod.rs`
+- **Snapshot tests**: Task list snapshots via the `insta` crate (`cli/tests/snapshots/`). Update with `INSTA_UPDATE=unseen cargo test` or `cargo insta review`
 
 The project uses `tempfile` as a dev-dependency for tests that need temporary directories.
 
@@ -392,7 +395,7 @@ of tasks with unsatisfied dependencies (common on 2-vCPU CI runners).
 Within each task, resource operations (symlinks, packages, registry entries,
 etc.) are also processed in parallel using Rayon's `into_par_iter()`.
 
-- `process_resources()` and `process_resource_states()` in `tasks/mod.rs` dispatch
+- `process_resources()` and `process_resource_states()` in `tasks/processing.rs` dispatch
   to Rayon's `into_par_iter()` when `ctx.parallel` is `true` and there is more than
   one resource to process
 - A `Mutex<TaskStats>` accumulates changed/skipped counters across threads

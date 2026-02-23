@@ -30,12 +30,13 @@ Source files in `symlinks/` have **no leading dots**.
 
 `compute_target()` in `tasks/symlinks.rs`:
 - Most paths: `$HOME/.<entry>` (dot prepended)
-- `Documents/` or `documents/` paths: `$HOME/Documents/...` (no dot)
-- `AppData/` paths: `$HOME/AppData/...` (no dot)
+- Paths starting with `Documents/` (any case): `$HOME/Documents/...` (no dot)
+- Paths starting with `AppData/` (any case): `$HOME/AppData/...` (no dot)
 
 ```rust
 fn compute_target(home: &Path, source: &str) -> PathBuf {
-    if source.starts_with("Documents/") || source.starts_with("documents/") || source.starts_with("AppData/") {
+    let lower = source.to_ascii_lowercase();
+    if lower.starts_with("documents/") || lower.starts_with("appdata/") {
         home.join(source)
     } else {
         home.join(format!(".{source}"))
@@ -45,30 +46,24 @@ fn compute_target(home: &Path, source: &str) -> PathBuf {
 
 ## Task Implementation
 
-The task uses the `SymlinkResource` from the `resources` module for declarative state management:
+The task uses `SymlinkResource` from the `resources` module for declarative state
+management via the generic `process_resources()` helper:
 
 ```rust
+#[derive(Debug)]
 pub struct InstallSymlinks;
 impl Task for InstallSymlinks {
     fn name(&self) -> &str { "Install symlinks" }
-    fn should_run(&self, ctx: &Context) -> bool { !ctx.config.symlinks.is_empty() }
+    fn dependencies(&self) -> &[TypeId] {
+        const DEPS: &[TypeId] = &[
+            TypeId::of::<super::reload_config::ReloadConfig>(),
+            TypeId::of::<super::developer_mode::EnableDeveloperMode>(),
+        ];
+        DEPS
+    }
+    fn should_run(&self, ctx: &Context) -> bool { !ctx.config_read().symlinks.is_empty() }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let mut stats = TaskStats::new();
-        for symlink in &ctx.config.symlinks {
-            let source = ctx.symlinks_dir().join(&symlink.source);
-            let target = compute_target(&ctx.home, &symlink.source);
-            let resource = SymlinkResource::new(source, target);
-            match resource.current_state()? {
-                ResourceState::Invalid { reason } => { stats.skipped += 1; continue; }
-                ResourceState::Correct => { stats.already_ok += 1; continue; }
-                ResourceState::Incorrect { .. } | ResourceState::Missing => {
-                    if ctx.dry_run { stats.changed += 1; continue; }
-                }
-            }
-            resource.apply()?;
-            stats.changed += 1;
-        }
-        Ok(stats.finish(ctx))
+        process_resources(ctx, build_resources(ctx), &ProcessOpts::apply_all("link"))
     }
 }
 ```
@@ -90,10 +85,11 @@ Platform-specific symlink creation is handled inside `SymlinkResource::apply()`.
 
 ## Uninstall
 
-`UninstallSymlinks` only removes symlinks pointing to repo sources:
+`UninstallSymlinks` uses `process_resources_remove()` to remove symlinks pointing
+to repo sources:
 ```rust
-if let Ok(link_target) = std::fs::read_link(&target) && link_target == source {
-    std::fs::remove_file(&target)?;
+fn run(&self, ctx: &Context) -> Result<TaskResult> {
+    process_resources_remove(ctx, build_resources(ctx), "materialize")
 }
 ```
 

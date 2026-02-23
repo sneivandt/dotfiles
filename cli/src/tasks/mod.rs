@@ -107,7 +107,7 @@ pub trait Task: Send + Sync + 'static {
 pub fn all_uninstall_tasks() -> Vec<Box<dyn Task>> {
     vec![
         Box::new(symlinks::UninstallSymlinks),
-        Box::new(hooks::UninstallGitHooks),
+        Box::new(hooks::UninstallGitHooks::new()),
     ]
 }
 
@@ -117,12 +117,15 @@ pub fn all_uninstall_tasks() -> Vec<Box<dyn Task>> {
 /// from each task's [`Task::dependencies`] declaration.
 #[must_use]
 pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
+    let repo_updated = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     vec![
         Box::new(developer_mode::EnableDeveloperMode),
         Box::new(sparse_checkout::ConfigureSparseCheckout),
-        Box::new(update::UpdateRepository),
+        Box::new(update::UpdateRepository::new(std::sync::Arc::clone(
+            &repo_updated,
+        ))),
         Box::new(git_config::ConfigureGit),
-        Box::new(hooks::InstallGitHooks),
+        Box::new(hooks::InstallGitHooks::new()),
         Box::new(packages::InstallPackages),
         Box::new(packages::InstallParu),
         Box::new(packages::InstallAurPackages),
@@ -133,7 +136,7 @@ pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
         Box::new(registry::ApplyRegistry),
         Box::new(vscode_extensions::InstallVsCodeExtensions),
         Box::new(copilot_skills::InstallCopilotSkills),
-        Box::new(reload_config::ReloadConfig),
+        Box::new(reload_config::ReloadConfig::new(repo_updated)),
     ]
 }
 
@@ -177,7 +180,6 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 pub mod test_helpers {
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
 
     use crate::config::Config;
     use crate::config::manifest::Manifest;
@@ -265,8 +267,6 @@ pub mod test_helpers {
             home: PathBuf::from("/home/test"),
             executor,
             parallel: false,
-            repo_updated: Arc::new(AtomicBool::new(false)),
-            fs_ops: Arc::new(crate::operations::SystemFileSystemOps),
         }
     }
 

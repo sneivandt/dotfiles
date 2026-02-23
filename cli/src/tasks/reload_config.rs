@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+
 use anyhow::{Context as _, Result};
 
 use super::{Context, Task, TaskResult, task_deps};
@@ -10,7 +13,19 @@ use super::{Context, Task, TaskResult, task_deps};
 /// All tasks that read from `ctx.config_read()` must declare this task as a
 /// dependency so they always operate on post-pull configuration.
 #[derive(Debug)]
-pub struct ReloadConfig;
+pub struct ReloadConfig {
+    /// Shared flag set by [`super::update::UpdateRepository`] when new commits
+    /// were fetched.  When `false`, the reload is skipped.
+    pub(super) repo_updated: Arc<AtomicBool>,
+}
+
+impl ReloadConfig {
+    /// Create a new task, sharing `repo_updated` with `UpdateRepository`.
+    #[must_use]
+    pub const fn new(repo_updated: Arc<AtomicBool>) -> Self {
+        Self { repo_updated }
+    }
+}
 
 impl Task for ReloadConfig {
     fn name(&self) -> &'static str {
@@ -24,7 +39,7 @@ impl Task for ReloadConfig {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if !ctx.repo_updated.load(std::sync::atomic::Ordering::Acquire) {
+        if !self.repo_updated.load(std::sync::atomic::Ordering::Acquire) {
             ctx.log
                 .debug("repository was not updated, skipping config reload");
             return Ok(TaskResult::Skipped("repository not updated".to_string()));
@@ -70,16 +85,18 @@ mod tests {
     fn should_run_always() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        assert!(ReloadConfig.should_run(&ctx));
+        let task = ReloadConfig::new(Arc::new(AtomicBool::new(false)));
+        assert!(task.should_run(&ctx));
     }
 
     #[test]
     fn run_skips_when_repo_not_updated() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
+        let repo_updated = Arc::new(AtomicBool::new(false));
+        let task = ReloadConfig::new(Arc::clone(&repo_updated));
         // repo_updated defaults to false
-        assert!(!ctx.repo_updated.load(Ordering::Acquire));
-        let result = ReloadConfig.run(&ctx).unwrap();
+        let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Skipped(_)));
     }
 
@@ -113,8 +130,10 @@ mod tests {
             excluded_categories: vec![],
         };
         let ctx = make_linux_context(config);
-        ctx.repo_updated.store(true, Ordering::Release);
-        let result = ReloadConfig.run(&ctx).unwrap();
+        let repo_updated = Arc::new(AtomicBool::new(false));
+        repo_updated.store(true, Ordering::Release);
+        let task = ReloadConfig::new(Arc::clone(&repo_updated));
+        let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Ok));
     }
 }

@@ -149,37 +149,39 @@ impl Config {
         let active_categories = &profile.active_categories;
         let excluded_categories = &profile.excluded_categories;
 
-        let packages = packages::load(&conf.join("packages.ini"), active_categories)
-            .map_err(syntax_err("packages.ini"))?;
+        // Macro to build the path and attach the filename to any parse error,
+        // removing the duplication of writing each filename twice.
+        macro_rules! load_ini {
+            // Two-argument form: loaders that do not filter by category (e.g. registry).
+            ($file:literal, $loader:expr) => {
+                $loader(&conf.join($file)).map_err(syntax_err($file))?
+            };
+            // Three-argument form: loaders that accept a category slice for filtering.
+            ($file:literal, $loader:expr, $cats:expr) => {
+                $loader(&conf.join($file), $cats).map_err(syntax_err($file))?
+            };
+        }
 
-        let symlinks = ini::load_flat(&conf.join("symlinks.ini"), active_categories)
-            .map_err(syntax_err("symlinks.ini"))?;
+        let packages = load_ini!("packages.ini", packages::load, active_categories);
+        let symlinks = load_ini!("symlinks.ini", ini::load_flat, active_categories);
 
         let registry = if platform.has_registry() {
-            registry::load(&conf.join("registry.ini")).map_err(syntax_err("registry.ini"))?
+            load_ini!("registry.ini", registry::load)
         } else {
             Vec::new()
         };
 
         let units = if platform.supports_systemd() {
-            ini::load_flat(&conf.join("systemd-units.ini"), active_categories)
-                .map_err(syntax_err("systemd-units.ini"))?
+            load_ini!("systemd-units.ini", ini::load_flat, active_categories)
         } else {
             Vec::new()
         };
 
-        let chmod_entries = chmod::load(&conf.join("chmod.ini"), active_categories)
-            .map_err(syntax_err("chmod.ini"))?;
-
+        let chmod_entries = load_ini!("chmod.ini", chmod::load, active_categories);
         let vscode_extensions =
-            ini::load_flat(&conf.join("vscode-extensions.ini"), active_categories)
-                .map_err(syntax_err("vscode-extensions.ini"))?;
-
-        let copilot_skills = ini::load_flat(&conf.join("copilot-skills.ini"), active_categories)
-            .map_err(syntax_err("copilot-skills.ini"))?;
-
-        let manifest = manifest::load(&conf.join("manifest.ini"), excluded_categories)
-            .map_err(syntax_err("manifest.ini"))?;
+            load_ini!("vscode-extensions.ini", ini::load_flat, active_categories);
+        let copilot_skills = load_ini!("copilot-skills.ini", ini::load_flat, active_categories);
+        let manifest = load_ini!("manifest.ini", manifest::load, excluded_categories);
 
         Ok(Self {
             root: root.to_path_buf(),

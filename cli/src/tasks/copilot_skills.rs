@@ -1,7 +1,6 @@
 use anyhow::Result;
-use std::any::TypeId;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
+use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};
 use crate::resources::copilot_skill::CopilotSkillResource;
 
 /// Install GitHub Copilot skills.
@@ -13,10 +12,7 @@ impl Task for InstallCopilotSkills {
         "Install Copilot skills"
     }
 
-    fn dependencies(&self) -> &[TypeId] {
-        const DEPS: &[TypeId] = &[TypeId::of::<super::symlinks::InstallSymlinks>()];
-        DEPS
-    }
+    task_deps![super::symlinks::InstallSymlinks];
 
     fn should_run(&self, ctx: &Context) -> bool {
         !ctx.config_read().copilot_skills.is_empty()

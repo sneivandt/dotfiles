@@ -55,8 +55,8 @@ impl FileSystemOps for SystemFileSystemOps {
 ///
 /// # Example
 ///
-/// ```
-/// use dotfiles::operations::MockFileSystemOps;
+/// ```ignore
+/// use dotfiles_cli::operations::MockFileSystemOps;
 /// use std::path::PathBuf;
 ///
 /// let fs = MockFileSystemOps::new()

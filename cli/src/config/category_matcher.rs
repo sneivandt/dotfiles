@@ -12,12 +12,6 @@ pub enum MatchMode {
 
 /// Check if a section's categories match the active categories.
 ///
-/// # Arguments
-///
-/// * `section_categories` - Categories from the INI section header
-/// * `active_categories` - Currently active categories from the profile
-/// * `mode` - Whether to match all (AND) or any (OR)
-///
 /// # Examples
 ///
 /// ```

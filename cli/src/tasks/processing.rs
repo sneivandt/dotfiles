@@ -398,6 +398,7 @@ fn process_remove_parallel<R: Resource + Send>(
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .finish(ctx))
 }
+
 /// Process a single resource given its current state.
 fn process_single<R: Resource>(
     ctx: &Context,

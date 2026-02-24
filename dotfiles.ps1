@@ -150,8 +150,8 @@ if ($Build)
     Push-Location (Join-Path $DotfilesRoot "cli")
     try
     {
-        cargo build --release
-        $BuildBinary = Join-Path $DotfilesRoot (Join-Path "cli" (Join-Path "target" (Join-Path "release" $BinaryName)))
+        cargo build --profile dev-opt
+        $BuildBinary = Join-Path $DotfilesRoot (Join-Path "cli" (Join-Path "target" (Join-Path "dev-opt" $BinaryName)))
         & $BuildBinary --root $DotfilesRoot @CliArgs
         $ec = $LASTEXITCODE
         Wait-IfElevated

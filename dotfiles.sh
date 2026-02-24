@@ -91,8 +91,8 @@ if [ "$BUILD_MODE" = true ]; then
     exit 1
   fi
   cd "$DOTFILES_ROOT/cli"
-  cargo build --release
-  exec "$DOTFILES_ROOT/cli/target/release/dotfiles" --root "$DOTFILES_ROOT" "$@"
+  cargo build --profile dev-opt
+  exec "$DOTFILES_ROOT/cli/target/dev-opt/dotfiles" --root "$DOTFILES_ROOT" "$@"
 fi
 
 # --------------------------------------------------------------------------- #

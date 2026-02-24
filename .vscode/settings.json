@@ -32,7 +32,7 @@
         "sensitive-patterns.ini": "plaintext",
         "**/skills/*/SKILL.md": "markdown"
     },
-    // Formatting - enforce no trailing whitespace (critical for this repo)
+    // Formatting - enforce no trailing whitespace
     "files.trimTrailingWhitespace": true,
     // Editor settings
     "editor.renderWhitespace": "boundary",

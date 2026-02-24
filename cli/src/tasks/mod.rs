@@ -177,6 +177,7 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 /// Provides common mock types and factory functions so each task test module
 /// does not have to duplicate boilerplate.
 #[cfg(test)]
+#[allow(clippy::panic)]
 pub mod test_helpers {
     use std::path::{Path, PathBuf};
     use std::sync::Arc;

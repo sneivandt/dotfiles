@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::sync::OnceLock;
 
 use anyhow::Result;
 
@@ -175,64 +174,6 @@ pub fn batch_install_packages(resources: &[&PackageResource<'_>]) -> Result<()> 
     }
 
     Ok(())
-}
-
-/// Lazily-initialized cache of installed packages per package manager.
-///
-/// Populate with [`PackageCache::get_or_load`] to avoid repeated calls to
-/// the package manager when checking many packages.
-///
-/// # Examples
-///
-/// ```ignore
-/// let cache = PackageCache::new();
-/// let installed = cache.get_or_load(PackageManager::Pacman, &executor)?;
-/// let state = resource.state_from_installed(installed);
-/// ```
-#[derive(Debug, Default)]
-pub struct PackageCache {
-    pacman_packages: OnceLock<HashSet<String>>,
-    winget_packages: OnceLock<HashSet<String>>,
-}
-
-impl PackageCache {
-    /// Create an empty cache with no pre-fetched data.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Return the installed-package set for `manager`, fetching it on first use.
-    ///
-    /// Subsequent calls for the same manager type return the cached result
-    /// without invoking the package manager again.  Pacman and Paru share the
-    /// same cache entry because both are queried via `pacman -Q`.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the package manager command fails on the first call.
-    pub fn get_or_load(
-        &self,
-        manager: PackageManager,
-        executor: &dyn Executor,
-    ) -> Result<&HashSet<String>> {
-        let cell = match manager {
-            PackageManager::Pacman | PackageManager::Paru => &self.pacman_packages,
-            PackageManager::Winget => &self.winget_packages,
-        };
-        if cell.get().is_none() {
-            let packages = get_installed_packages(manager, executor)?;
-            // Ignore a race where another thread beat us to the initialization.
-            let _ = cell.set(packages);
-        }
-        // The cell is guaranteed to be initialized at this point: either we just
-        // set it above, or a concurrent caller already did so.
-        cell.get().ok_or_else(|| {
-            anyhow::anyhow!(
-                "BUG: package cache cell for {manager:?} should be initialized after get_or_load"
-            )
-        })
-    }
 }
 
 impl Resource for PackageResource<'_> {
@@ -609,44 +550,5 @@ mod tests {
             err.to_string().contains("winget install failed"),
             "expected 'winget install failed' in: {err}"
         );
-    }
-
-    // ------------------------------------------------------------------
-    // PackageCache
-    // ------------------------------------------------------------------
-
-    #[test]
-    fn package_cache_fetches_and_caches() {
-        // Two OnceLock cells (pacman, winget); only one fetch per manager
-        let executor = MockExecutor::ok("git 2.39.0\nvim 9.0.0\n");
-        let cache = PackageCache::new();
-
-        let installed = cache
-            .get_or_load(PackageManager::Pacman, &executor)
-            .unwrap();
-        assert!(installed.contains("git"));
-        assert!(installed.contains("vim"));
-
-        // Second call should hit the cache — MockExecutor queue is empty,
-        // so a fresh command would return "unexpected call" (failure).
-        let cached = cache
-            .get_or_load(PackageManager::Pacman, &executor)
-            .unwrap();
-        assert!(cached.contains("git"));
-    }
-
-    #[test]
-    fn package_cache_paru_shares_pacman_cache() {
-        let executor = MockExecutor::ok("git 2.39.0\n");
-        let cache = PackageCache::new();
-
-        // Load via Pacman first
-        cache
-            .get_or_load(PackageManager::Pacman, &executor)
-            .unwrap();
-
-        // Querying via Paru must reuse the same cell (no second command)
-        let cached = cache.get_or_load(PackageManager::Paru, &executor).unwrap();
-        assert!(cached.contains("git"));
     }
 }

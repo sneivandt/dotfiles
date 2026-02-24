@@ -134,26 +134,18 @@ fn download_github_folder(url: &str, dest: &Path, executor: &dyn Executor) -> Re
     // Copy result to destination
     let src = tmp.join(&subpath);
     if !src.exists() {
-        // Best effort cleanup - log warning if it fails
+        // Best effort cleanup
         if let Err(e) = std::fs::remove_dir_all(&tmp) {
-            eprintln!(
-                "warning: failed to cleanup temp dir {}: {}",
-                tmp.display(),
-                e
-            );
+            tracing::warn!("failed to cleanup temp dir {}: {e}", tmp.display());
         }
         anyhow::bail!("path '{subpath}' not found in repository");
     }
 
     super::fs::copy_dir_recursive(&src, dest, true)?;
 
-    // Best effort cleanup - log warning if it fails
+    // Best effort cleanup
     if let Err(e) = std::fs::remove_dir_all(&tmp) {
-        eprintln!(
-            "warning: failed to cleanup temp dir {}: {}",
-            tmp.display(),
-            e
-        );
+        tracing::warn!("failed to cleanup temp dir {}: {e}", tmp.display());
     }
     Ok(())
 }

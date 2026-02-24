@@ -20,25 +20,20 @@ jobs:
         include:
           - name: Check Formatting
             command: cargo fmt --check --manifest-path cli/Cargo.toml
-            cache_key: fmt
+            components: rustfmt
           - name: Lint with Clippy
             command: cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
-            cache_key: clippy
+            components: clippy
           - name: Run Tests
             command: cargo test --manifest-path cli/Cargo.toml
-            cache_key: test
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
-      - uses: actions/cache@v4
+          components: ${{ matrix.components }}
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-cargo-${{ matrix.cache_key }}-${{ hashFiles('cli/Cargo.lock') }}
+          workspaces: "cli -> target"
       - run: ${{ matrix.command }}
 
   # ── Script Linting ────────────────────────────────────
@@ -67,31 +62,20 @@ jobs:
 
   # ── Configuration Validation ──────────────────────────
   validate-config:
-    name: "Config: ${{ matrix.name }}"
+    name: "Config: Validate all"
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Manifest File References
-            test: config_validation
-          - name: Symlink File References
-            test: symlinks_validation
-          - name: File Permission References
-            test: chmod_validation
-          - name: INI File Syntax
-            test: ini_syntax
-          - name: Category Consistency
-            test: category_consistency
-          - name: No Empty Sections
-            test: empty_sections
     steps:
       - uses: actions/checkout@v4
-      - name: Validate ${{ matrix.name }}
+      - name: Validate all config
         run: |
           export DIR="$(pwd)"
           cd .github/workflows/scripts/linux
-          sh test-config.sh ${{ matrix.test }}
+          sh test-config.sh config_validation
+          sh test-config.sh symlinks_validation
+          sh test-config.sh chmod_validation
+          sh test-config.sh ini_syntax
+          sh test-config.sh category_consistency
+          sh test-config.sh empty_sections
 
   # ── Build ─────────────────────────────────────────────
   build:
@@ -119,6 +103,8 @@ jobs:
             ~/.cargo/git
             cli/target
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
       - name: Build release binary
         run: cargo build --release --manifest-path cli/Cargo.toml
       - name: Verify binary

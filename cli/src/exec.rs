@@ -154,6 +154,7 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
 
     /// Check if a program is available on PATH.
+    #[must_use]
     fn which(&self, program: &str) -> bool;
 }
 

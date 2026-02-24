@@ -3,7 +3,9 @@ use std::fmt;
 /// Detected operating system platform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Os {
+    /// Linux operating system.
     Linux,
+    /// Windows operating system.
     Windows,
 }
 

@@ -14,7 +14,7 @@ const DEFAULT_NPROC: &str = "4";
 /// than spawning a per-package query.
 fn process_packages(
     ctx: &Context,
-    packages: &[&Package],
+    packages: &[Package],
     manager: PackageManager,
 ) -> Result<TaskResult> {
     ctx.log.debug(&format!(
@@ -52,8 +52,13 @@ impl Task for InstallPackages {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let all_packages: Vec<Package> = ctx.config_read().packages.clone();
-        let packages: Vec<&Package> = all_packages.iter().filter(|p| !p.is_aur).collect();
+        let packages: Vec<Package> = ctx
+            .config_read()
+            .packages
+            .iter()
+            .filter(|p| !p.is_aur)
+            .cloned()
+            .collect();
 
         if packages.is_empty() {
             return Ok(TaskResult::Skipped("no packages to install".to_string()));
@@ -96,8 +101,13 @@ impl Task for InstallAurPackages {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let all_packages: Vec<Package> = ctx.config_read().packages.clone();
-        let packages: Vec<&Package> = all_packages.iter().filter(|p| p.is_aur).collect();
+        let packages: Vec<Package> = ctx
+            .config_read()
+            .packages
+            .iter()
+            .filter(|p| p.is_aur)
+            .cloned()
+            .collect();
 
         if packages.is_empty() {
             return Ok(TaskResult::Skipped("no AUR packages".to_string()));

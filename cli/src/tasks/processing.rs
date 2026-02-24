@@ -319,40 +319,85 @@ fn run_parallel<T: Send, R: Resource + Send>(
 /// Only resources in [`ResourceState::Correct`] are removed (they are "ours").
 /// Resources that are `Missing`, `Incorrect`, or `Invalid` are skipped.
 ///
+/// When `ctx.parallel` is `true` and there is more than one resource, removal
+/// runs in parallel using Rayon (matching the behaviour of [`process_resources`]
+/// and [`process_resource_states`]).
+///
 /// # Errors
 ///
 /// Returns an error if a resource fails to check its current state or fails
 /// during the removal process.
-pub fn process_resources_remove<R: Resource>(
+pub fn process_resources_remove<R: Resource + Send>(
     ctx: &Context,
     resources: impl IntoIterator<Item = R>,
     verb: &str,
 ) -> Result<TaskResult> {
-    let mut stats = TaskStats::new();
-    for resource in resources {
-        let current = resource.current_state()?;
-        match current {
-            ResourceState::Correct => {
-                if ctx.dry_run {
-                    ctx.log
-                        .dry_run(&format!("would {verb}: {}", resource.description()));
-                    stats.changed += 1;
-                    continue;
-                }
-                resource.remove()?;
-                ctx.log
-                    .debug(&format!("{verb}: {}", resource.description()));
-                stats.changed += 1;
-            }
-            _ => {
-                // Not ours or doesn't exist — skip silently
-                stats.already_ok += 1;
-            }
+    let resources: Vec<R> = resources.into_iter().collect();
+    if ctx.parallel && resources.len() > 1 {
+        ctx.log.debug(&format!(
+            "processing {} resources in parallel",
+            resources.len()
+        ));
+        process_remove_parallel(ctx, resources, verb)
+    } else {
+        let mut stats = TaskStats::new();
+        for resource in resources {
+            let current = resource.current_state()?;
+            remove_single(ctx, &resource, &current, verb, &mut stats)?;
         }
+        Ok(stats.finish(ctx))
     }
-    Ok(stats.finish(ctx))
 }
 
+/// Remove a single resource, updating `stats` accordingly.
+fn remove_single<R: Resource>(
+    ctx: &Context,
+    resource: &R,
+    current: &ResourceState,
+    verb: &str,
+    stats: &mut TaskStats,
+) -> Result<()> {
+    match current {
+        ResourceState::Correct => {
+            if ctx.dry_run {
+                ctx.log
+                    .dry_run(&format!("would {verb}: {}", resource.description()));
+                stats.changed += 1;
+                return Ok(());
+            }
+            resource.remove()?;
+            ctx.log
+                .debug(&format!("{verb}: {}", resource.description()));
+            stats.changed += 1;
+        }
+        _ => {
+            // Not ours or doesn't exist — skip silently
+            stats.already_ok += 1;
+        }
+    }
+    Ok(())
+}
+
+/// Remove resources in parallel using Rayon.
+fn process_remove_parallel<R: Resource + Send>(
+    ctx: &Context,
+    resources: Vec<R>,
+    verb: &str,
+) -> Result<TaskResult> {
+    use rayon::prelude::*;
+    let stats = Mutex::new(TaskStats::new());
+    resources.into_par_iter().try_for_each(|resource| {
+        let current = resource.current_state()?;
+        let mut stats_guard = stats
+            .lock()
+            .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))?;
+        remove_single(ctx, &resource, &current, verb, &mut stats_guard)
+    })?;
+    Ok(stats
+        .into_inner()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .finish(ctx))
+}
 /// Process a single resource given its current state.
 fn process_single<R: Resource>(
     ctx: &Context,

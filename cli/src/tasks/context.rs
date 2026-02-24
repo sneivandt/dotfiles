@@ -156,7 +156,7 @@ mod tests {
     fn with_log_preserves_other_fields() {
         let config = empty_config(PathBuf::from("/dotfiles"));
         let ctx = make_linux_context(config);
-        let new_log: Arc<dyn Log> = Arc::new(Logger::new(false, "new"));
+        let new_log: Arc<dyn Log> = Arc::new(Logger::new("new"));
         let ctx2 = ctx.with_log(new_log);
         assert_eq!(ctx2.root(), ctx.root());
         assert_eq!(ctx2.dry_run, ctx.dry_run);

@@ -223,7 +223,7 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
     let executor: Arc<dyn dotfiles_cli::exec::Executor> =
         Arc::new(dotfiles_cli::exec::SystemExecutor);
     let log: Arc<dotfiles_cli::logging::Logger> =
-        Arc::new(dotfiles_cli::logging::Logger::new(false, "test-install"));
+        Arc::new(dotfiles_cli::logging::Logger::new("test-install"));
 
     let task_ctx = dotfiles_cli::tasks::Context::new(
         Arc::new(std::sync::RwLock::new(config)),
@@ -366,7 +366,7 @@ fn install_tasks_should_run_with_windows_platform() {
     let executor: Arc<dyn dotfiles_cli::exec::Executor> =
         Arc::new(dotfiles_cli::exec::SystemExecutor);
     let log: Arc<dotfiles_cli::logging::Logger> =
-        Arc::new(dotfiles_cli::logging::Logger::new(false, "test-windows"));
+        Arc::new(dotfiles_cli::logging::Logger::new("test-windows"));
 
     let task_ctx = dotfiles_cli::tasks::Context::new(
         Arc::new(std::sync::RwLock::new(config)),

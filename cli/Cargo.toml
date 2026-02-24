@@ -53,6 +53,9 @@ missing_debug_implementations = "deny"
 [profile.dev-opt]
 inherits = "dev"
 opt-level = 1
+incremental = true
+codegen-units = 256
+debug = 0
 
 [profile.release]
 strip = true

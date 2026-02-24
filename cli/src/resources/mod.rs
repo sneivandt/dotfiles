@@ -160,9 +160,14 @@ pub mod test_helpers {
     /// Maintains a queue of `(success, stdout)` responses consumed in FIFO
     /// order.  When the queue is empty any call returns a failed response
     /// (`success = false`, stdout = `"unexpected call"`).
+    ///
+    /// Use [`with_which`](Self::with_which) to configure the value returned
+    /// by [`Executor::which`] (defaults to `false`).
     #[derive(Debug)]
     pub struct MockExecutor {
         responses: Mutex<VecDeque<(bool, String)>>,
+        /// Return value for every [`Executor::which`] call.
+        which_result: bool,
     }
 
     impl MockExecutor {
@@ -183,7 +188,15 @@ pub mod test_helpers {
         pub fn with_responses(responses: Vec<(bool, String)>) -> Self {
             Self {
                 responses: Mutex::new(responses.into()),
+                which_result: false,
             }
+        }
+
+        /// Set the value returned by every [`Executor::which`] call.
+        #[must_use]
+        pub fn with_which(mut self, result: bool) -> Self {
+            self.which_result = result;
+            self
         }
 
         fn next(&self) -> (bool, String) {
@@ -242,7 +255,7 @@ pub mod test_helpers {
         }
 
         fn which(&self, _: &str) -> bool {
-            false
+            self.which_result
         }
     }
 }

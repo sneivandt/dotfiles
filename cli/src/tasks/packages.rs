@@ -1,17 +1,25 @@
 use anyhow::{Context as _, Result};
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states, task_deps};
+use super::{
+    Context, ProcessOpts, Task, TaskResult, TaskStats, process_resource_states, task_deps,
+};
 use crate::config::packages::Package;
-use crate::resources::package::{PackageManager, PackageResource, get_installed_packages};
+use crate::resources::Resource as _;
+use crate::resources::package::{
+    PackageManager, PackageResource, batch_install_packages, get_installed_packages,
+};
 
 /// Default number of parallel jobs for makepkg if nproc detection fails.
 const DEFAULT_NPROC: &str = "4";
 
 /// Process a list of packages using batch-checked installed state.
 ///
-/// Queries all installed packages **once**, then iterates each package to
-/// determine whether it needs to be installed. This is dramatically faster
-/// than spawning a per-package query.
+/// Queries all installed packages **once**, then installs all missing packages:
+/// - **Pacman / Paru**: a single batch command (`pacman -S --needed …`) for all
+///   missing packages, letting the package manager resolve dependencies across
+///   the full set at once.
+/// - **Winget**: individual installs per package so that one failure does not
+///   prevent the remaining packages from being attempted.
 fn process_packages(
     ctx: &Context,
     packages: &[Package],
@@ -23,17 +31,63 @@ fn process_packages(
     ));
     let installed = get_installed_packages(manager, &*ctx.executor)?;
 
-    let resource_states = packages.iter().map(|pkg| {
-        let resource = PackageResource::new(pkg.name.clone(), manager, &*ctx.executor);
-        let state = resource.state_from_installed(&installed);
-        (resource, state)
-    });
+    // Winget does not support multi-package installs; fall back to the
+    // per-resource loop so a single failure does not abort the rest.
+    if manager == PackageManager::Winget {
+        let resource_states = packages.iter().map(|pkg| {
+            let resource = PackageResource::new(pkg.name.clone(), manager, &*ctx.executor);
+            let state = resource.state_from_installed(&installed);
+            (resource, state)
+        });
+        return process_resource_states(
+            ctx,
+            resource_states,
+            &ProcessOpts::apply_all("install").no_bail(),
+        );
+    }
 
-    process_resource_states(
-        ctx,
-        resource_states,
-        &ProcessOpts::apply_all("install").no_bail(),
-    )
+    // Pacman / Paru: collect missing packages and install them in one batch
+    // command, which is faster and resolves cross-package dependencies once.
+    let resources: Vec<PackageResource> = packages
+        .iter()
+        .map(|pkg| PackageResource::new(pkg.name.clone(), manager, &*ctx.executor))
+        .collect();
+
+    let mut stats = TaskStats::new();
+    let mut missing = Vec::new();
+
+    for r in &resources {
+        if installed.contains(&r.name) {
+            ctx.log.debug(&format!("ok: {}", r.description()));
+            stats.already_ok += 1;
+        } else {
+            missing.push(r);
+        }
+    }
+
+    if missing.is_empty() {
+        return Ok(stats.finish(ctx));
+    }
+
+    if ctx.dry_run {
+        for r in &missing {
+            ctx.log
+                .dry_run(&format!("would install: {}", r.description()));
+        }
+        stats.changed = missing.len() as u32;
+        return Ok(stats.finish(ctx));
+    }
+
+    ctx.log
+        .debug(&format!("batch-installing {} packages", missing.len()));
+    if let Err(e) = batch_install_packages(&missing) {
+        ctx.log.warn(&format!("batch install failed: {e:#}"));
+        stats.skipped = missing.len() as u32;
+    } else {
+        stats.changed = missing.len() as u32;
+    }
+
+    Ok(stats.finish(ctx))
 }
 
 /// Install system packages via pacman or winget.
@@ -427,6 +481,93 @@ mod tests {
         assert!(
             matches!(result, TaskResult::Skipped(ref s) if s.contains("paru not installed")),
             "expected 'paru not installed' skip, got {result:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // run() — batch install paths (pacman/paru)
+    // -----------------------------------------------------------------------
+
+    /// Build a context that uses a [`MockExecutor`] with `which=true`.
+    ///
+    /// This lets tests exercise the `process_packages` batch install path without
+    /// being short-circuited by the "tool not found" guard in `run()`.
+    fn make_package_context(
+        config: crate::config::Config,
+        os: Os,
+        is_arch: bool,
+        responses: Vec<(bool, String)>,
+    ) -> crate::tasks::Context {
+        use crate::platform::Platform;
+        use crate::resources::test_helpers::MockExecutor;
+        crate::tasks::test_helpers::make_context(
+            config,
+            std::sync::Arc::new(Platform::new(os, is_arch)),
+            std::sync::Arc::new(MockExecutor::with_responses(responses).with_which(true)),
+        )
+    }
+
+    #[test]
+    fn install_packages_batch_installs_missing_packages_on_arch() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.packages.push(Package {
+            name: "git".to_string(),
+            is_aur: false,
+        });
+        config.packages.push(Package {
+            name: "vim".to_string(),
+            is_aur: false,
+        });
+        // Response 1: pacman -Q → vim is installed, git is not
+        // Response 2: sudo pacman -S --needed --noconfirm git → success
+        let ctx = make_package_context(
+            config,
+            Os::Linux,
+            true, // Arch Linux
+            vec![(true, "vim 9.0\n".to_string()), (true, String::new())],
+        );
+        let result = InstallPackages.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Ok),
+            "expected Ok after batch install, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn install_packages_all_already_installed_returns_ok() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.packages.push(Package {
+            name: "git".to_string(),
+            is_aur: false,
+        });
+        // Response: pacman -Q → git is installed, no install command expected
+        let ctx = make_package_context(
+            config,
+            Os::Linux,
+            false, // plain Linux (also uses pacman path)
+            vec![(true, "git 2.40\n".to_string())],
+        );
+        let result = InstallPackages.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Ok),
+            "expected Ok when all packages already installed, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn install_packages_dry_run_reports_missing_packages() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.packages.push(Package {
+            name: "git".to_string(),
+            is_aur: false,
+        });
+        // Response: pacman -Q → nothing installed
+        let mut ctx = make_package_context(config, Os::Linux, true, vec![(true, String::new())]);
+        ctx.dry_run = true;
+        let result = InstallPackages.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::DryRun),
+            "expected DryRun, got {result:?}"
         );
     }
 }

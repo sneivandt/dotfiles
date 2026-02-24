@@ -1,1 +1,160 @@
-../../../../config/Code/User/settings.json
+{
+    "accessibility.signalOptions.volume": 0,
+    "accessibility.signals.lineHasError": {
+        "sound": "off"
+    },
+    "accessibility.signals.lineHasFoldedArea": {
+        "sound": "off"
+    },
+    "accessibility.signals.lineHasBreakpoint": {
+        "sound": "off"
+    },
+    "accessibility.signals.lineHasInlineSuggestion": {
+        "sound": "off"
+    },
+    "accessibility.signals.terminalQuickFix": {
+        "sound": "off"
+    },
+    "accessibility.signals.onDebugBreak": {
+        "sound": "off"
+    },
+    "accessibility.signals.noInlayHints": {
+        "sound": "off"
+    },
+    "accessibility.signals.progress": {
+        "sound": "off"
+    },
+    "accessibility.signals.taskCompleted": {
+        "sound": "off"
+    },
+    "accessibility.signals.taskFailed": {
+        "sound": "off"
+    },
+    "accessibility.signals.terminalCommandFailed": {
+        "sound": "off"
+    },
+    "accessibility.signals.notebookCellCompleted": {
+        "sound": "off"
+    },
+    "accessibility.signals.notebookCellFailed": {
+        "sound": "off"
+    },
+    "accessibility.signals.diffLineInserted": {
+        "sound": "off"
+    },
+    "accessibility.signals.diffLineDeleted": {
+        "sound": "off"
+    },
+    "accessibility.signals.diffLineModified": {
+        "sound": "off"
+    },
+    "accessibility.signals.terminalBell": {
+        "sound": "off"
+    },
+    "breadcrumbs.enabled": true,
+    "chat.agent.enabled": true,
+    "chat.agent.maxRequests": 50,
+    "cmake.configureOnOpen": false,
+    "cmake.ignoreCMakeListsMissing": true,
+    "C_Cpp.intelliSenseCachePath": "~/.cache/vscode-cpptools",
+    "cSpell.diagnosticLevel": "Hint",
+    "debug.inlineValues": "on",
+    "debug.toolBarLocation": "docked",
+    "diffEditor.experimental.showMoves": true,
+    "diffEditor.hideUnchangedRegions.contextLineCount": 10,
+    "diffEditor.hideUnchangedRegions.minimumLineCount": 10,
+    "diffEditor.hideUnchangedRegions.revealLineCount": 20,
+    "diffEditor.useInlineViewWhenSpaceIsLimited": true,
+    "docker.extension.enableComposeLanguageServer": false,
+    "dotnetAcquisitionExtension.enableTelemetry": false,
+    "editor.bracketPairColorization.enabled": true,
+    "editor.accessibilitySupport": "off",
+    "editor.fontFamily": "'Source Code Pro', 'Droid Sans Mono', 'Consolas', 'monospace'",
+    "editor.fontLigatures": true,
+    "editor.inlineSuggest.enabled": true,
+    "editor.minimap.enabled": false,
+    "editor.renderControlCharacters": true,
+    "editor.renderLineHighlight": "gutter",
+    "editor.renderWhitespace": "boundary",
+    "editor.stickyScroll.enabled": false,
+    "editor.stickyScroll.scrollWithEditor": false,
+    "editor.suggestSelection": "first",
+    "editor.wordWrap": "on",
+    "explorer.confirmDelete": false,
+    "explorer.confirmDragAndDrop": false,
+    "extensions.ignoreRecommendations": true,
+    "files.associations": {
+        "*.json": "jsonc",
+        "*vimrc": "vim",
+        "vimrc": "vim",
+        "nvimrc": "vim"
+    },
+    "files.autoSave": "onFocusChange",
+    "git.defaultCloneDirectory": "~/src",
+    "git.detectSubmodules": true,
+    "git.detectSubmodulesLimit": 100,
+    "git.showActionButton": {
+        "commit": false,
+        "publish": false,
+        "sync": false
+    },
+    "git.showCommitInput": false,
+    "github.copilot.chat.codesearch.enabled": true,
+    "github.copilot.chat.agent.thinkingTool": true,
+    "github.username": "sneivandt",
+    "go.toolsManagement.autoUpdate": true,
+    "liveshare.accessibility.soundsEnabled": false,
+    "liveshare.accessibility.soundVolume": 0,
+    "liveshare.autoShareServers": false,
+    "liveshare.autoShareTerminals": false,
+    "liveshare.codeLens": false,
+    "liveshare.guestApprovalRequired": true,
+    "liveshare.nameTagVisibility": "Always",
+    "liveshare.openSharedServers": false,
+    "liveshare.populateGitCoAuthors": "never",
+    "liveshare.presence": false,
+    "liveshare.showInStatusBar": "whileCollaborating",
+    "liveshare.showReadOnlyUsersInEditor": "always",
+    "notebook.cellToolbarLocation": {
+        "default": "right",
+        "jupyter-notebook": "right"
+    },
+    "notifications.excludeList": [
+        "git.missing",
+        "settingsSync.showSyncedNotification",
+        "update.showVisibleNewUpdate",
+        "vscode.extension-editing",
+        "workbench.statusbar.changedSettingsNotification"
+    ],
+    "powershell.integratedConsole.showOnStartup": false,
+    "powershell.sideBar.CommandExplorerVisibility": false,
+    "powershell.startAutomatically": false,
+    "redhat.telemetry.enabled": false,
+    "scm.showHistoryGraph": false,
+    "search.showLineNumbers": true,
+    "search.smartCase": true,
+    "search.useGlobalIgnoreFiles": true,
+    "telemetry.telemetryLevel": "off",
+    "terminal.integrated.defaultProfile.linux": "zsh",
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "terminal.integrated.enablePersistentSessions": false,
+    "terminal.integrated.enableVisualBell": false,
+    "terminal.integrated.gpuAcceleration": "on",
+    "terminal.integrated.initialHint": false,
+    "terminal.integrated.rightClickBehavior": "copyPaste",
+    "terminal.integrated.copyOnSelection": false,
+    "terminal.integrated.shellIntegration.decorationsEnabled": "never",
+    "terminal.integrated.shellIntegration.enabled": true,
+    "terminal.integrated.stickyScroll.enabled": false,
+    "terminal.integrated.tabs.showActions": "never",
+    "update.mode": "none",
+    "update.showReleaseNotes": false,
+    "window.openFoldersInNewWindow": "on",
+    "window.title": "${dirty}${activeEditorLong}${separator}${rootName}${separator}${appName}",
+    "workbench.colorTheme": "Visual Studio Dark",
+    "workbench.iconTheme": "vs-seti",
+    "workbench.startupEditor": "none",
+    "workbench.tips.enabled": false,
+    "workbench.tree.enableStickyScroll": false,
+    "chat.viewSessions.orientation": "stacked"
+}

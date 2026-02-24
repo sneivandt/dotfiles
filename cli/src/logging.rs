@@ -200,7 +200,6 @@ impl Log for BufferedLog {
 /// with timestamps and ANSI codes stripped, regardless of the verbose flag.
 #[derive(Debug)]
 pub struct Logger {
-    verbose: bool,
     tasks: Mutex<Vec<TaskEntry>>,
     log_file: Option<PathBuf>,
     /// Serializes console output from parallel task flushes.
@@ -304,55 +303,19 @@ fn strip_ansi(s: &str) -> String {
 }
 
 impl Logger {
-    /// Create a new logger, writing a fresh header to the log file.
+    /// Create a new logger.
+    ///
+    /// Stores the log file path for display in the run summary.  The log file
+    /// itself is created and initialised by [`init_subscriber`] via
+    /// [`FileLayer`]; this constructor does not write to the file.
     #[must_use]
-    pub fn new(verbose: bool, command: &str) -> Self {
-        let log_file = log_file_path(command);
-
-        // Write header to log file
-        if let Some(ref path) = log_file {
-            let version = option_env!("DOTFILES_VERSION")
-                .unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
-            let header = format!(
-                "==========================================\n\
-                 Dotfiles {version} {}\n\
-                 ==========================================\n",
-                format_utc_datetime(),
-            );
-            // Truncate and write header (new run = fresh log)
-            fs::write(path, header).ok(); // Intentionally ignore: logging failure is non-fatal
-        }
-
+    pub fn new(command: &str) -> Self {
         Self {
-            verbose,
             tasks: Mutex::new(Vec::new()),
-            log_file,
+            log_file: log_file_path(command),
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
             progress_shown: Mutex::new(false),
-        }
-    }
-
-    /// Append a line to the persistent log file.
-    ///
-    /// The file format mirrors the console hierarchy: stage headers get an `==>`
-    /// prefix, info lines are indented, and other levels use bracketed labels
-    /// (`[error]`, `[warn]`, `[debug]`, `[dry run]`) for easy scanning.
-    fn write_to_file(&self, level: &str, msg: &str) {
-        if let Some(ref path) = self.log_file
-            && let Ok(mut f) = fs::OpenOptions::new().append(true).open(path)
-        {
-            let ts = format_utc_time();
-            let clean = strip_ansi(msg);
-            let line = match level {
-                "STG" => format!("[{ts}] ==> {clean}"),
-                "ERR" => format!("[{ts}]     [error] {clean}"),
-                "WRN" => format!("[{ts}]     [warn] {clean}"),
-                "DBG" => format!("[{ts}]     [debug] {clean}"),
-                "DRY" => format!("[{ts}]     [dry run] {clean}"),
-                _ => format!("[{ts}]     {clean}"),
-            };
-            writeln!(f, "{line}").ok(); // Intentionally ignore: logging failure is non-fatal
         }
     }
 
@@ -362,43 +325,35 @@ impl Logger {
         self.log_file.as_ref()
     }
 
-    /// Log an error message to stderr and the log file.
+    /// Log an error message.
     pub fn error(&self, msg: &str) {
-        eprintln!("\x1b[31mERROR\x1b[0m {msg}");
-        self.write_to_file("ERR", msg);
+        tracing::error!("{msg}");
     }
 
-    /// Log a warning message to stderr and the log file.
+    /// Log a warning message.
     pub fn warn(&self, msg: &str) {
-        eprintln!("\x1b[33mWARN\x1b[0m  {msg}");
-        self.write_to_file("WRN", msg);
+        tracing::warn!("{msg}");
     }
 
-    /// Log a stage header (major section) to stdout and the log file.
+    /// Log a stage header (major section).
     pub fn stage(&self, msg: &str) {
-        println!("\x1b[1;34m==>\x1b[0m \x1b[1m{msg}\x1b[0m");
-        self.write_to_file("STG", msg);
+        tracing::info!(target: "dotfiles::stage", "{msg}");
     }
 
-    /// Log an informational message to stdout and the log file.
+    /// Log an informational message.
     pub fn info(&self, msg: &str) {
-        println!("  {msg}");
-        self.write_to_file("INF", msg);
+        tracing::info!("{msg}");
     }
 
-    /// Log a debug message to stdout (if verbose) and always to the log file.
+    /// Log a debug message (suppressed on console unless verbose; always
+    /// written to the log file via the [`FileLayer`]).
     pub fn debug(&self, msg: &str) {
-        if self.verbose {
-            println!("  \x1b[2m{msg}\x1b[0m");
-        }
-        // Always log debug to file, even when not verbose on terminal
-        self.write_to_file("DBG", msg);
+        tracing::debug!("{msg}");
     }
 
-    /// Log a dry-run action message to stdout and the log file.
+    /// Log a dry-run action message.
     pub fn dry_run(&self, msg: &str) {
-        println!("  \x1b[33m[DRY RUN]\x1b[0m {msg}");
-        self.write_to_file("DRY", msg);
+        tracing::info!(target: "dotfiles::dry_run", "{msg}");
     }
 
     /// Record a task result for the summary.
@@ -478,24 +433,19 @@ impl Logger {
                 .as_ref()
                 .map_or_else(String::new, |msg| format!(" ({msg})"));
 
-            let line = format!("{icon} {}{suffix}", task.name);
-            println!("  {color}{line}\x1b[0m");
-            self.write_to_file("INF", &line);
+            // Emit as a tracing event so the FileLayer writes it to the log
+            // file (with ANSI stripped) alongside the console output.
+            self.info(&format!("{color}{icon} {}{suffix}\x1b[0m", task.name));
         }
 
         println!();
         let total = ok + not_applicable + skipped + dry_run + failed;
-        let totals = format!(
-            "{total} tasks: {ok} ok, {not_applicable} n/a, {skipped} skipped, {dry_run} dry-run, {failed} failed"
-        );
-        println!(
-            "  {total} tasks: \x1b[32m{ok} ok\x1b[0m, \x1b[2m{not_applicable} n/a\x1b[0m, \x1b[33m{skipped} skipped\x1b[0m, \x1b[37m{dry_run} dry-run\x1b[0m, \x1b[31m{failed} failed\x1b[0m"
-        );
-        self.write_to_file("INF", &totals);
+        self.info(&format!(
+            "{total} tasks: \x1b[32m{ok} ok\x1b[0m, \x1b[2m{not_applicable} n/a\x1b[0m, \x1b[33m{skipped} skipped\x1b[0m, \x1b[37m{dry_run} dry-run\x1b[0m, \x1b[31m{failed} failed\x1b[0m"
+        ));
 
         if let Some(path) = &self.log_file {
-            println!("  \x1b[2mlog: {}\x1b[0m", path.display());
-            self.write_to_file("INF", &format!("log: {}", path.display()));
+            self.info(&format!("\x1b[2mlog: {}\x1b[0m", path.display()));
         }
     }
 
@@ -564,34 +514,210 @@ impl Log for Logger {
     }
 }
 
+/// Extracts the `message` field from a [`tracing::Event`].
+#[derive(Default)]
+struct MessageExtractor {
+    message: String,
+}
+
+impl tracing::field::Visit for MessageExtractor {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.message = format!("{value:?}");
+        }
+    }
+
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        if field.name() == "message" {
+            self.message = value.to_string();
+        }
+    }
+}
+
+/// A [`tracing_subscriber::Layer`] that appends all events to the persistent
+/// log file with timestamps and ANSI codes stripped.
+///
+/// Created by [`init_subscriber`] so that file output goes through the same
+/// tracing pipeline as console output.  Always captures events at `DEBUG`
+/// level and above regardless of the console verbosity setting.
+#[derive(Debug)]
+struct FileLayer {
+    file: Mutex<fs::File>,
+}
+
+impl FileLayer {
+    /// Open (or create) the log file for `command`, write a run header, and
+    /// return a new `FileLayer` ready to receive events.
+    ///
+    /// Returns `None` if the cache directory cannot be created or the file
+    /// cannot be opened.
+    fn new(command: &str) -> Option<Self> {
+        let path = log_file_path(command)?;
+        let version =
+            option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
+        let header = format!(
+            "==========================================\n\
+             Dotfiles {version} {}\n\
+             ==========================================\n",
+            format_utc_datetime(),
+        );
+        // Truncate to start a fresh log for this run, then re-open for append.
+        fs::write(&path, header).ok()?;
+        let file = fs::OpenOptions::new().append(true).open(&path).ok()?;
+        Some(Self {
+            file: Mutex::new(file),
+        })
+    }
+}
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FileLayer {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let metadata = event.metadata();
+        let level = *metadata.level();
+        let target = metadata.target();
+
+        let mut extractor = MessageExtractor::default();
+        event.record(&mut extractor);
+        let msg = strip_ansi(&extractor.message);
+        let ts = format_utc_time();
+
+        let line = match (level, target) {
+            (tracing::Level::INFO, "dotfiles::stage") => format!("[{ts}] ==> {msg}"),
+            (tracing::Level::INFO, "dotfiles::dry_run") => format!("[{ts}]     [dry run] {msg}"),
+            (tracing::Level::ERROR, _) => format!("[{ts}]     [error] {msg}"),
+            (tracing::Level::WARN, _) => format!("[{ts}]     [warn] {msg}"),
+            (tracing::Level::DEBUG, _) => format!("[{ts}]     [debug] {msg}"),
+            _ => format!("[{ts}]     {msg}"),
+        };
+
+        if let Ok(mut f) = self.file.lock() {
+            writeln!(f, "{line}").ok(); // Intentionally ignore: logging failure is non-fatal
+        }
+    }
+}
+
+/// A [`tracing_subscriber::fmt::FormatEvent`] that emits dotfiles-style
+/// console output.
+struct DotfilesFormatter;
+
+impl<S, N> tracing_subscriber::fmt::FormatEvent<S, N> for DotfilesFormatter
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+    N: for<'a> tracing_subscriber::fmt::FormatFields<'a> + 'static,
+{
+    fn format_event(
+        &self,
+        _ctx: &tracing_subscriber::fmt::FmtContext<'_, S, N>,
+        mut writer: tracing_subscriber::fmt::format::Writer<'_>,
+        event: &tracing::Event<'_>,
+    ) -> std::fmt::Result {
+        let metadata = event.metadata();
+        let level = *metadata.level();
+        let target = metadata.target();
+
+        let mut extractor = MessageExtractor::default();
+        event.record(&mut extractor);
+        let msg = &extractor.message;
+
+        match level {
+            tracing::Level::ERROR => writeln!(writer, "\x1b[31mERROR\x1b[0m {msg}"),
+            tracing::Level::WARN => writeln!(writer, "\x1b[33mWARN\x1b[0m  {msg}"),
+            tracing::Level::INFO if target == "dotfiles::stage" => {
+                writeln!(writer, "\x1b[1;34m==>\x1b[0m \x1b[1m{msg}\x1b[0m")
+            }
+            tracing::Level::INFO if target == "dotfiles::dry_run" => {
+                writeln!(writer, "  \x1b[33m[DRY RUN]\x1b[0m {msg}")
+            }
+            tracing::Level::INFO => writeln!(writer, "  {msg}"),
+            _ => writeln!(writer, "  \x1b[2m{msg}\x1b[0m"),
+        }
+    }
+}
+
+/// Initialise the global [`tracing`] subscriber.
+///
+/// Sets up a console subscriber that formats events to match the dotfiles
+/// output style and a file subscriber that writes all events (including
+/// `debug`) to `$XDG_CACHE_HOME/dotfiles/<command>.log`.
+/// Must be called once at program startup, before any logging.
+pub fn init_subscriber(verbose: bool, command: &str) {
+    use tracing_subscriber::fmt::writer::MakeWriterExt as _;
+    use tracing_subscriber::{
+        Layer as _, filter::LevelFilter, fmt, layer::SubscriberExt as _,
+        util::SubscriberInitExt as _,
+    };
+
+    let console_level = if verbose {
+        LevelFilter::DEBUG
+    } else {
+        LevelFilter::INFO
+    };
+
+    // Route WARN and ERROR to stderr; INFO and DEBUG to stdout.
+    let make_writer = std::io::stderr
+        .with_max_level(tracing::Level::WARN)
+        .and(std::io::stdout.with_min_level(tracing::Level::INFO));
+
+    let console_layer = fmt::layer()
+        .event_format(DotfilesFormatter)
+        .with_writer(make_writer)
+        .with_filter(console_level);
+
+    // The file layer always captures DEBUG and above, independent of the
+    // console verbosity setting.  Option<Layer> is supported by tracing-subscriber
+    // and simply becomes a no-op when None.
+    let file_layer = FileLayer::new(command).map(|l| l.with_filter(LevelFilter::DEBUG));
+
+    tracing_subscriber::registry()
+        .with(console_layer)
+        .with(file_layer)
+        .init();
+}
+
 #[cfg(test)]
 #[allow(unsafe_code)] // set_var/remove_var require unsafe since Rust 1.83
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
-    /// Create a Logger that writes to an isolated temp directory, avoiding
-    /// parallel-test races on the shared `~/.cache/dotfiles/install.log` file.
-    fn isolated_logger(verbose: bool) -> (Logger, tempfile::TempDir) {
+    /// Create a Logger backed by an isolated per-thread tracing subscriber
+    /// with a [`FileLayer`], so that tracing events emitted by logger methods
+    /// actually reach the log file during tests.
+    ///
+    /// Returns a [`tracing::dispatcher::DefaultGuard`] that must be kept alive
+    /// for the duration of the test — dropping it restores the previous
+    /// thread-local dispatcher.
+    fn isolated_logger() -> (Logger, tempfile::TempDir, tracing::dispatcher::DefaultGuard) {
+        use tracing_subscriber::{Layer as _, filter::LevelFilter, layer::SubscriberExt as _};
+
         let tmp = tempfile::tempdir().expect("failed to create temp dir");
         // SAFETY: Each test gets its own unique temp dir, so concurrent set_var
         // calls use different values and the var is removed immediately after
-        // Logger::new() reads it. The window is minimal and each test's Logger
-        // writes to its own isolated path regardless of env var races.
+        // FileLayer::new() and Logger::new() read it.  The window is minimal
+        // and each test writes to its own isolated path regardless of races.
         unsafe {
             std::env::set_var("XDG_CACHE_HOME", tmp.path());
         }
-        let log = Logger::new(verbose, "test");
+        let file_layer = FileLayer::new("test").expect("failed to create file layer");
+        let log = Logger::new("test");
         unsafe {
             std::env::remove_var("XDG_CACHE_HOME");
         }
-        (log, tmp)
+
+        let subscriber =
+            tracing_subscriber::registry().with(file_layer.with_filter(LevelFilter::DEBUG));
+        let guard = tracing::dispatcher::set_default(&tracing::Dispatch::new(subscriber));
+
+        (log, tmp, guard)
     }
 
     #[test]
     fn logger_new() {
-        let (log, _tmp) = isolated_logger(false);
-        assert!(!log.verbose, "expected verbose=false");
+        let (log, _tmp, _guard) = isolated_logger();
         assert!(
             log.tasks.lock().unwrap().is_empty(),
             "expected empty task list"
@@ -599,14 +725,8 @@ mod tests {
     }
 
     #[test]
-    fn logger_verbose() {
-        let (log, _tmp) = isolated_logger(true);
-        assert!(log.verbose, "expected verbose=true");
-    }
-
-    #[test]
     fn record_task_ok() {
-        let (log, _tmp) = isolated_logger(false);
+        let (log, _tmp, _guard) = isolated_logger();
         log.record_task("symlinks", TaskStatus::Ok, None);
         let tasks = log.tasks.lock().unwrap();
         assert_eq!(tasks.len(), 1);
@@ -617,7 +737,7 @@ mod tests {
 
     #[test]
     fn record_task_with_message() {
-        let (log, _tmp) = isolated_logger(false);
+        let (log, _tmp, _guard) = isolated_logger();
         log.record_task("packages", TaskStatus::Skipped, Some("not on arch"));
         assert_eq!(
             log.tasks.lock().unwrap()[0].message,
@@ -627,7 +747,7 @@ mod tests {
 
     #[test]
     fn record_multiple_tasks() {
-        let (log, _tmp) = isolated_logger(false);
+        let (log, _tmp, _guard) = isolated_logger();
         log.record_task("a", TaskStatus::Ok, None);
         log.record_task("b", TaskStatus::Failed, Some("error"));
         log.record_task("c", TaskStatus::DryRun, None);
@@ -636,7 +756,7 @@ mod tests {
 
     #[test]
     fn has_failures_detects_failed_task() {
-        let (log, _tmp) = isolated_logger(false);
+        let (log, _tmp, _guard) = isolated_logger();
         assert!(!log.has_failures());
         log.record_task("a", TaskStatus::Ok, None);
         assert!(!log.has_failures());
@@ -670,14 +790,14 @@ mod tests {
 
     #[test]
     fn log_file_is_created() {
-        let (log, _tmp) = isolated_logger(false);
+        let (log, _tmp, _guard) = isolated_logger();
         let path = log.log_path().expect("log path should exist");
         assert!(path.exists(), "log file should be created on Logger::new");
     }
 
     #[test]
     fn debug_always_written_to_file() {
-        let (log, _tmp) = isolated_logger(false); // verbose=false
+        let (log, _tmp, _guard) = isolated_logger();
         let marker = format!("debug-marker-{}", std::process::id());
         log.debug(&marker);
         let path = log.log_path().expect("log path should exist");
@@ -708,7 +828,7 @@ mod tests {
 
     #[test]
     fn failure_count_returns_correct_count() {
-        let (log, _tmp) = isolated_logger(false);
+        let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.failure_count(), 0);
         log.record_task("a", TaskStatus::Ok, None);
         log.record_task("b", TaskStatus::Failed, Some("error 1"));
@@ -723,7 +843,7 @@ mod tests {
 
     #[test]
     fn buffered_log_record_task_forwards_to_logger() {
-        let (log, _tmp) = isolated_logger(false);
+        let (log, _tmp, _guard) = isolated_logger();
         let log = Arc::new(log);
         let buf = BufferedLog::new(Arc::clone(&log));
         buf.record_task("task-a", TaskStatus::Ok, None);
@@ -734,7 +854,7 @@ mod tests {
 
     #[test]
     fn buffered_log_flush_replays_to_file() {
-        let (log, _tmp) = isolated_logger(false);
+        let (log, _tmp, _guard) = isolated_logger();
         let log = Arc::new(log);
         let buf = BufferedLog::new(Arc::clone(&log));
         let marker = format!("buf-marker-{}", std::process::id());
@@ -756,7 +876,7 @@ mod tests {
 
     #[test]
     fn buffered_log_preserves_entry_order() {
-        let (log, _tmp) = isolated_logger(true); // verbose so debug appears
+        let (log, _tmp, _guard) = isolated_logger();
         let log = Arc::new(log);
         let buf = BufferedLog::new(Arc::clone(&log));
         buf.stage("stage-1");
@@ -777,7 +897,7 @@ mod tests {
 
     #[test]
     fn log_trait_delegates_to_logger() {
-        let (log, _tmp) = isolated_logger(false);
+        let (log, _tmp, _guard) = isolated_logger();
         // Use the Log trait methods via the trait object
         let log_ref: &dyn Log = &log;
         log_ref.record_task("via-trait", TaskStatus::Ok, None);

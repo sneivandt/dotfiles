@@ -262,7 +262,7 @@ pub mod test_helpers {
         Context {
             config: std::sync::Arc::new(std::sync::RwLock::new(config)),
             platform,
-            log: Arc::new(Logger::new(false, "test")),
+            log: Arc::new(Logger::new("test")),
             dry_run: false,
             home: PathBuf::from("/home/test"),
             executor,
@@ -331,7 +331,7 @@ pub mod test_helpers {
     /// inspect recorded task state.
     #[must_use]
     pub fn make_static_context(config: Config) -> (Context, Arc<Logger>) {
-        let log = Arc::new(Logger::new(false, "test"));
+        let log = Arc::new(Logger::new("test"));
         let ctx =
             make_linux_context(config).with_log(Arc::clone(&log) as Arc<dyn crate::logging::Log>);
         (ctx, log)

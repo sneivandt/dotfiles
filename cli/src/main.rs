@@ -10,7 +10,8 @@ fn main() {
         cli::Command::Test(_) => "test",
         cli::Command::Version => "version",
     };
-    let log = std::sync::Arc::new(logging::Logger::new(args.verbose, command_name));
+    logging::init_subscriber(args.verbose, command_name);
+    let log = std::sync::Arc::new(logging::Logger::new(command_name));
 
     let result = match args.command {
         cli::Command::Install(opts) => commands::install::run(&args.global, &opts, &log),

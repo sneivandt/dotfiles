@@ -5,12 +5,30 @@ description: >
   Use when working with console output, task recording, or summary reporting.
 metadata:
   author: sneivandt
-  version: "2.0"
+  version: "3.0"
 ---
 
 # Logging Patterns
 
 All logging is via `Logger` in `cli/src/logging.rs`, passed to tasks through `Context`.
+`Logger` emits [`tracing`](https://docs.rs/tracing) events internally; a
+`DotfilesFormatter` subscriber (initialised in `main.rs`) formats them for the
+console.
+
+## Initialisation
+
+Call `logging::init_subscriber(verbose)` **once** at program startup (before
+creating the `Logger`) to register the global tracing subscriber:
+
+```rust
+// main.rs
+logging::init_subscriber(args.verbose);
+let log = Arc::new(logging::Logger::new(command_name));
+```
+
+The subscriber routes `WARN`/`ERROR` to stderr and `INFO`/`DEBUG` to stdout.
+When `verbose=false` the subscriber filters out `DEBUG` events on the terminal;
+debug messages are **always** written to the log file regardless.
 
 ## Logger API
 
@@ -29,7 +47,7 @@ ctx.log.dry_run(msg);  // Yellow "[DRY RUN]" prefix
 All messages (including `debug`) are always written to a persistent log file at
 `$XDG_CACHE_HOME/dotfiles/<command>.log` (default `~/.cache/dotfiles/<command>.log`,
 e.g. `install.log`, `uninstall.log`, `test.log`) with timestamps and ANSI codes
-stripped. The `debug` method only prints to the terminal when `verbose=true`,
+stripped.  The `debug` method only prints to the terminal when `verbose=true`,
 but **always** writes to the log file regardless of the verbose flag.
 The log file path is shown in the summary.
 

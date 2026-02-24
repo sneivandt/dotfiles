@@ -4,13 +4,13 @@ use dotfiles_cli::{cli, commands, logging};
 fn main() {
     enable_ansi_support::enable_ansi_support().ok(); // best-effort; no-op on non-Windows
     let args = cli::Cli::parse();
-    logging::init_subscriber(args.verbose);
     let command_name = match &args.command {
         cli::Command::Install(_) => "install",
         cli::Command::Uninstall(_) => "uninstall",
         cli::Command::Test(_) => "test",
         cli::Command::Version => "version",
     };
+    logging::init_subscriber(args.verbose, command_name);
     let log = std::sync::Arc::new(logging::Logger::new(command_name));
 
     let result = match args.command {

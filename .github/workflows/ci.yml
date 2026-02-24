@@ -12,29 +12,20 @@ permissions:
 jobs:
   # ── Rust Code Quality ─────────────────────────────────
   rust:
-    name: "Rust: ${{ matrix.name }}"
+    name: "Rust: Fmt, Clippy, Tests"
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Check Formatting
-            command: cargo fmt --check --manifest-path cli/Cargo.toml
-            components: rustfmt
-          - name: Lint with Clippy
-            command: cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
-            components: clippy
-          - name: Run Tests
-            command: cargo test --manifest-path cli/Cargo.toml
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: ${{ matrix.components }}
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "cli -> target"
-      - run: ${{ matrix.command }}
+          cache-on-failure: true
+      - run: cargo fmt --check --manifest-path cli/Cargo.toml
+      - run: cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path cli/Cargo.toml
 
   # ── Script Linting ────────────────────────────────────
   lint:
@@ -96,15 +87,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('cli/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-release-
+          workspaces: "cli -> target"
+          cache-on-failure: true
       - name: Build release binary
         run: cargo build --release --manifest-path cli/Cargo.toml
       - name: Verify binary
@@ -252,6 +238,14 @@ jobs:
           useradd -m -G wheel testuser
           echo "testuser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           chown -R testuser:testuser .
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /home/testuser/.cargo/registry
+            /home/testuser/.cargo/git
+          key: arch-cargo-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            arch-cargo-
       - name: Run paru tests
         run: |
           REPO_DIR=$(pwd)

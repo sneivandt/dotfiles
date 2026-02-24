@@ -684,6 +684,13 @@ pub fn init_subscriber(verbose: bool, command: &str) {
 mod tests {
     use super::*;
 
+    /// Serializes `XDG_CACHE_HOME` manipulation across parallel test threads.
+    ///
+    /// Tests that call `isolated_logger()` must hold this lock for the entire
+    /// duration of the env-var set/create/remove sequence to prevent one test
+    /// from reading another test's temporary directory.
+    static TEST_ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     /// Create a Logger backed by an isolated per-thread tracing subscriber
     /// with a [`FileLayer`], so that tracing events emitted by logger methods
     /// actually reach the log file during tests.
@@ -695,10 +702,13 @@ mod tests {
         use tracing_subscriber::{Layer as _, filter::LevelFilter, layer::SubscriberExt as _};
 
         let tmp = tempfile::tempdir().expect("failed to create temp dir");
-        // SAFETY: Each test gets its own unique temp dir, so concurrent set_var
-        // calls use different values and the var is removed immediately after
-        // FileLayer::new() and Logger::new() read it.  The window is minimal
-        // and each test writes to its own isolated path regardless of races.
+        // Acquire the mutex before touching the env var so that parallel test
+        // threads cannot read each other's XDG_CACHE_HOME values.
+        let env_lock = TEST_ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: Protected by TEST_ENV_MUTEX; the env var is restored to its
+        // original state before the lock is released.
         unsafe {
             std::env::set_var("XDG_CACHE_HOME", tmp.path());
         }
@@ -707,6 +717,7 @@ mod tests {
         unsafe {
             std::env::remove_var("XDG_CACHE_HOME");
         }
+        drop(env_lock);
 
         let subscriber =
             tracing_subscriber::registry().with(file_layer.with_filter(LevelFilter::DEBUG));

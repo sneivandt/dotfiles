@@ -50,6 +50,10 @@ dbg_macro = "deny"
 unsafe_code = "deny"
 missing_debug_implementations = "deny"
 
+[profile.dev-opt]
+inherits = "dev"
+opt-level = 1
+
 [profile.release]
 strip = true
 lto = true

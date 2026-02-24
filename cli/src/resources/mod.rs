@@ -136,7 +136,11 @@ pub trait Resource {
     /// Returns an error if the resource cannot be removed, or if removal is not supported
     /// for this resource type.
     fn remove(&self) -> Result<ResourceChange> {
-        anyhow::bail!("remove not supported for {}", self.description())
+        Err(ResourceError::UnsupportedOperation {
+            operation: "remove".to_string(),
+            resource: self.description(),
+        }
+        .into())
     }
 }
 
@@ -309,8 +313,8 @@ mod tests {
         };
         let err = resource.remove().unwrap_err();
         assert!(
-            err.to_string().contains("remove not supported"),
-            "expected 'remove not supported' in: {err}"
+            err.to_string().contains("not supported"),
+            "expected 'not supported' in: {err}"
         );
         assert!(
             err.to_string().contains("test resource"),

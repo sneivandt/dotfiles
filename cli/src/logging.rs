@@ -206,8 +206,11 @@ pub struct Logger {
     flush_lock: Mutex<()>,
     /// Names of tasks currently executing in parallel.
     active_tasks: Mutex<Vec<String>>,
-    /// Whether a progress line is currently displayed on the console.
-    progress_shown: Mutex<bool>,
+    /// Number of terminal rows currently occupied by the progress line.
+    ///
+    /// Zero means no progress line is displayed.  Values greater than one
+    /// occur when the task-name list wraps across multiple terminal rows.
+    progress_rows: Mutex<u16>,
 }
 
 /// Return the log file path under `$XDG_CACHE_HOME/dotfiles/` (or `~/.cache/dotfiles/`).
@@ -315,7 +318,7 @@ impl Logger {
             log_file: log_file_path(command),
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
-            progress_shown: Mutex::new(false),
+            progress_rows: Mutex::new(0),
         }
     }
 
@@ -454,18 +457,23 @@ impl Logger {
     /// No-op if no progress line is currently shown.
     /// Must be called while holding `flush_lock`.
     fn clear_progress(&self) {
-        let mut shown = self
-            .progress_shown
+        let mut guard = self
+            .progress_rows
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if *shown {
-            // Restore the saved cursor position (set just before the progress
-            // line was printed) and erase from there to end of screen.  This
-            // correctly removes the line even when it wraps across multiple
-            // terminal rows.
-            print!("\x1b8\x1b[J");
+        let rows = *guard;
+        if rows > 0 {
+            // Move up to the first row of the progress text, then go to the
+            // start of that line and erase to end of screen.  Relative cursor
+            // movement (ESC[A) is used instead of DEC save/restore (ESC 7 /
+            // ESC 8) so that the target position remains correct even when the
+            // terminal has scrolled since the line was drawn.
+            if rows > 1 {
+                print!("\x1b[{}A", rows - 1);
+            }
+            print!("\r\x1b[J");
             std::io::stdout().flush().ok();
-            *shown = false;
+            *guard = 0;
         }
     }
 
@@ -473,16 +481,28 @@ impl Logger {
     ///
     /// Must be called while holding `flush_lock`.
     fn draw_progress(&self, names: &str) {
-        // Save the cursor position immediately before the progress line so that
-        // clear_progress can restore it precisely regardless of terminal width
-        // or whether the line wraps to multiple rows.
-        println!("\x1b7  \x1b[2m▹ {names}\x1b[0m");
+        // The visible prefix is "  ▹ " (4 display columns: 2 spaces, ▹, space).
+        // Compute the number of terminal rows spanned so that clear_progress
+        // can move the cursor back to the first row precisely.
+        let visible_width = 4 + names.chars().count();
+        let cols = std::env::var("COLUMNS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or(80);
+        let rows = u16::try_from(visible_width.div_ceil(cols))
+            .unwrap_or(u16::MAX)
+            .max(1);
+        // Print without a trailing newline so the cursor stays on the progress
+        // line.  clear_progress uses relative movement to erase it, which
+        // works correctly even when the terminal scrolls.
+        print!("  \x1b[2m▹ {names}\x1b[0m");
         std::io::stdout().flush().ok();
-        let mut shown = self
-            .progress_shown
+        let mut guard = self
+            .progress_rows
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *shown = true;
+        *guard = rows;
     }
 
     /// Record that a parallel task has started.
@@ -797,6 +817,9 @@ mod tests {
         assert_eq!(strip_ansi("\x1b[31m\x1b[2JERROR\x1b[0m"), "ERROR");
         // Non-CSI two-char escape: ESC + char consumes exactly one extra char
         assert_eq!(strip_ansi("\x1bMtext"), "text");
+        // DEC save/restore cursor (ESC 7 / ESC 8) — two-char escapes
+        assert_eq!(strip_ansi("\x1b7text"), "text");
+        assert_eq!(strip_ansi("\x1b8text"), "text");
     }
 
     #[test]
@@ -913,5 +936,36 @@ mod tests {
         let log_ref: &dyn Log = &log;
         log_ref.record_task("via-trait", TaskStatus::Ok, None);
         assert_eq!(log.tasks.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn progress_rows_zero_initially() {
+        let (log, _tmp, _guard) = isolated_logger();
+        assert_eq!(*log.progress_rows.lock().unwrap(), 0);
+    }
+
+    #[test]
+    fn notify_task_start_sets_progress_rows() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let log = Arc::new(log);
+        log.notify_task_start("update");
+        assert!(
+            *log.progress_rows.lock().unwrap() > 0,
+            "progress_rows should be non-zero after notify_task_start"
+        );
+    }
+
+    #[test]
+    fn flush_and_complete_clears_progress_rows() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let log = Arc::new(log);
+        log.notify_task_start("update");
+        let buf = BufferedLog::new(Arc::clone(&log));
+        buf.flush_and_complete("update");
+        assert_eq!(
+            *log.progress_rows.lock().unwrap(),
+            0,
+            "progress_rows should be zero after all tasks complete"
+        );
     }
 }

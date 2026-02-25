@@ -1,3 +1,4 @@
+//! Chmod entry configuration loading.
 use anyhow::{Result, bail};
 use std::path::Path;
 

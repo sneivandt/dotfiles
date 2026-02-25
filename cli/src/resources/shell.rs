@@ -1,3 +1,4 @@
+//! Login shell configuration resource.
 use anyhow::Result;
 
 use super::{Resource, ResourceChange, ResourceState};

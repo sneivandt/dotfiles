@@ -22,7 +22,12 @@ pub enum ConfigError {
 
     /// The INI file contains a syntax error that prevents parsing.
     #[error("Invalid INI syntax in {file}: {message}")]
-    InvalidSyntax { file: String, message: String },
+    InvalidSyntax {
+        /// Name of the INI file with the syntax error.
+        file: String,
+        /// Description of the syntax error.
+        message: String,
+    },
 
     /// An I/O error occurred while reading a config file.
     #[error("IO error reading config file {path}: {source}")]

@@ -1,3 +1,4 @@
+//! Generic INI file parsing utilities.
 use anyhow::{Context as _, Result, bail};
 use std::path::Path;
 

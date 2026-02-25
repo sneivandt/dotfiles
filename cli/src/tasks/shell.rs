@@ -1,3 +1,4 @@
+//! Task: configure the login shell.
 use anyhow::Result;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};

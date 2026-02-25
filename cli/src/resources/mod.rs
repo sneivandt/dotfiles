@@ -1,3 +1,4 @@
+//! Idempotent resource primitives (check + apply pattern).
 pub mod chmod;
 pub mod copilot_skill;
 pub mod developer_mode;
@@ -38,9 +39,15 @@ pub enum ResourceState {
     /// Resource exists and matches the desired state.
     Correct,
     /// Resource exists but does not match the desired state.
-    Incorrect { current: String },
+    Incorrect {
+        /// The current value of the resource.
+        current: String,
+    },
     /// Resource cannot be applied (e.g., target is a directory that shouldn't be removed).
-    Invalid { reason: String },
+    Invalid {
+        /// Reason why the resource cannot be applied.
+        reason: String,
+    },
 }
 
 /// Result of applying a resource change.
@@ -64,7 +71,10 @@ pub enum ResourceChange {
     /// Resource was already correct (no change needed).
     AlreadyCorrect,
     /// Resource was skipped (e.g., missing source file, or target is a protected directory).
-    Skipped { reason: String },
+    Skipped {
+        /// Reason why the resource was skipped.
+        reason: String,
+    },
 }
 
 /// Unified interface for resources that can be checked and applied.

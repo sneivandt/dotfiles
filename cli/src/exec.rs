@@ -1,3 +1,4 @@
+//! Command execution abstractions.
 use anyhow::{Context, Result, bail};
 use std::path::Path;
 use std::process::{Command, Output};

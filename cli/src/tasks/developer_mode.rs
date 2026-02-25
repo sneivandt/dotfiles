@@ -1,3 +1,4 @@
+//! Task: enable Windows Developer Mode.
 use anyhow::Result;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources};

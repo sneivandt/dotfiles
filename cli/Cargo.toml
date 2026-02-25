@@ -33,7 +33,6 @@ winreg = "0.55"
 pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
 cast_possible_truncation = "allow"
-missing_errors_doc = "allow"
 module_name_repetitions = "allow"
 cargo = { level = "deny", priority = -1 }
 multiple_crate_versions = "allow"
@@ -49,6 +48,7 @@ dbg_macro = "deny"
 [lints.rust]
 unsafe_code = "deny"
 missing_debug_implementations = "deny"
+missing_docs = "deny"
 
 [profile.dev-opt]
 inherits = "dev"

@@ -1,3 +1,4 @@
+//! Task: configure systemd user units.
 use anyhow::Result;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};

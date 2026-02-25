@@ -1,3 +1,4 @@
+//! Install command implementation.
 use anyhow::{Context as _, Result};
 use std::sync::Arc;
 

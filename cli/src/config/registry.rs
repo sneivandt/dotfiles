@@ -1,3 +1,4 @@
+//! Windows registry entry configuration loading.
 use anyhow::Result;
 use std::path::Path;
 

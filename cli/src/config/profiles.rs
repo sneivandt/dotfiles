@@ -1,3 +1,4 @@
+//! Profile definition and resolution.
 use anyhow::{Context as _, Result, bail};
 use std::io::{self, Write};
 use std::path::Path;

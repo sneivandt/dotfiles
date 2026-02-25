@@ -1,3 +1,4 @@
+//! Configuration loading and validation for all INI config files.
 pub mod category_matcher;
 pub mod chmod;
 pub mod copilot_skills;
@@ -56,6 +57,7 @@ macro_rules! define_flat_config {
 pub(crate) use define_flat_config;
 
 #[cfg(test)]
+/// Test helpers for config module tests.
 pub mod test_helpers {
     use std::path::PathBuf;
 

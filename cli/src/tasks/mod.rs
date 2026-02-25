@@ -1,3 +1,4 @@
+//! Named, dependency-ordered tasks that orchestrate resource changes.
 pub mod chmod;
 mod context;
 pub mod copilot_skills;

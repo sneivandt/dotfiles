@@ -1,3 +1,4 @@
+//! Dotfiles management engine binary entry point.
 use clap::Parser;
 use dotfiles_cli::{cli, commands, logging};
 

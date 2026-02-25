@@ -1,3 +1,4 @@
+//! Task: update the dotfiles repository.
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 

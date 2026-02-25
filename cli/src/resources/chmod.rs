@@ -1,3 +1,4 @@
+//! File permission resource (chmod).
 use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 

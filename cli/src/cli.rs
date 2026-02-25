@@ -1,3 +1,4 @@
+//! CLI argument definitions and top-level argument parsing.
 use clap::{Parser, Subcommand};
 
 /// Top-level CLI entry point for the dotfiles management engine.

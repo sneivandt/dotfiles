@@ -1,3 +1,4 @@
+//! Uninstall command implementation.
 use anyhow::Result;
 use std::sync::Arc;
 

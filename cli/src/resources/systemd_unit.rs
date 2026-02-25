@@ -1,3 +1,4 @@
+//! Systemd user unit resource.
 use anyhow::Result;
 
 use super::{Resource, ResourceChange, ResourceState};

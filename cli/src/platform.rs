@@ -1,3 +1,4 @@
+//! Platform detection (OS and Arch Linux).
 use std::fmt;
 
 /// Detected operating system platform.

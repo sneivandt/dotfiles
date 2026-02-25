@@ -1,3 +1,4 @@
+//! Tasks: install and uninstall Git hooks.
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};

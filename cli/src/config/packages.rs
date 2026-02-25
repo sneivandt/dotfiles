@@ -1,3 +1,4 @@
+//! Package configuration loading.
 use anyhow::Result;
 use std::path::Path;
 

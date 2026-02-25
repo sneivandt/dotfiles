@@ -1,3 +1,4 @@
+//! VS Code extension configuration loading.
 use super::define_flat_config;
 
 define_flat_config! {

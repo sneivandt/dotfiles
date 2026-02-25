@@ -1,3 +1,4 @@
+//! Git configuration resource.
 use anyhow::{Context as _, Result};
 
 use super::{Resource, ResourceChange, ResourceState};

@@ -1,3 +1,4 @@
+//! Test command implementation (validates configuration).
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

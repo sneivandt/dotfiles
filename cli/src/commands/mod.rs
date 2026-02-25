@@ -1,3 +1,4 @@
+//! Top-level command handlers for install, uninstall, and test.
 pub mod install;
 pub mod test;
 pub mod uninstall;

@@ -1,3 +1,4 @@
+//! Configuration validation checks and warnings.
 use std::path::Path;
 
 use crate::platform::Platform;

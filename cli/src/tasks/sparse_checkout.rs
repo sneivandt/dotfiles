@@ -1,3 +1,4 @@
+//! Task: configure sparse checkout.
 use anyhow::{Context as _, Result};
 use std::path::Path;
 

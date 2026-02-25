@@ -1,3 +1,4 @@
+//! Package installation resource.
 use std::collections::HashSet;
 
 use anyhow::Result;

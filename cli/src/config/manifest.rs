@@ -1,3 +1,4 @@
+//! Sparse-checkout manifest configuration loading.
 use anyhow::Result;
 use std::path::Path;
 

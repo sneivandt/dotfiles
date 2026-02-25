@@ -1,3 +1,4 @@
+//! Windows registry entry resource.
 use std::collections::HashMap;
 
 #[cfg(windows)]
@@ -173,6 +174,10 @@ pub fn batch_check_values(
 }
 
 /// Stub for non-Windows platforms (registry operations are Windows-only).
+///
+/// # Errors
+///
+/// This function never returns an error on non-Windows platforms.
 #[cfg(not(windows))]
 #[allow(clippy::unnecessary_wraps)]
 pub fn batch_check_values(

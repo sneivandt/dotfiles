@@ -1,3 +1,4 @@
+//! Tasks: install system packages.
 use anyhow::{Context as _, Result};
 
 use super::{

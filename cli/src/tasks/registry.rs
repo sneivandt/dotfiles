@@ -1,3 +1,4 @@
+//! Task: apply Windows registry entries.
 use anyhow::Result;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states, task_deps};

@@ -1,3 +1,4 @@
+//! Git hook resource.
 use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 

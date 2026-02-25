@@ -1,3 +1,4 @@
+//! Tasks: install and uninstall symlinks.
 use anyhow::Result;
 use std::path::Path;
 

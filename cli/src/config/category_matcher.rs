@@ -1,3 +1,4 @@
+//! Category tag matching for profile-based filtering.
 /// Match mode for category filtering.
 ///
 /// Controls whether all or any of a section's categories must be active

@@ -1,3 +1,4 @@
+//! Task: install GitHub Copilot skills.
 use anyhow::Result;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};

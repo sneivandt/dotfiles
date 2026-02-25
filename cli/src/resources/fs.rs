@@ -1,3 +1,4 @@
+//! File-system resource helpers.
 use anyhow::{Context as _, Result};
 use std::path::Path;
 

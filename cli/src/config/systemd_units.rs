@@ -1,3 +1,4 @@
+//! Systemd unit configuration loading.
 use super::define_flat_config;
 
 define_flat_config! {

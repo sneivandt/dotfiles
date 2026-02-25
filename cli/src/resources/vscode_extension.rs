@@ -1,3 +1,4 @@
+//! VS Code extension resource.
 use std::collections::HashSet;
 
 use anyhow::Result;

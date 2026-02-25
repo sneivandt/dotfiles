@@ -1,3 +1,4 @@
+//! Task: reload configuration after repository update.
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 

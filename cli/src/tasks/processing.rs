@@ -119,6 +119,14 @@ impl TaskStats {
     }
 }
 
+impl std::ops::AddAssign for TaskStats {
+    fn add_assign(&mut self, other: Self) {
+        self.changed += other.changed;
+        self.already_ok += other.already_ok;
+        self.skipped += other.skipped;
+    }
+}
+
 /// Configuration for the generic resource processing loop.
 ///
 /// Controls how each [`ResourceState`] variant is handled.
@@ -231,7 +239,7 @@ pub fn process_resources<R: Resource + Send>(
         let mut stats = TaskStats::new();
         for resource in resources {
             let current = resource.current_state()?;
-            process_single(ctx, &resource, current, opts, &mut stats)?;
+            stats += process_single(ctx, &resource, current, opts)?;
         }
         Ok(stats.finish(ctx))
     }
@@ -262,7 +270,7 @@ pub fn process_resource_states<R: Resource + Send>(
     } else {
         let mut stats = TaskStats::new();
         for (resource, current) in resource_states {
-            process_single(ctx, &resource, current, opts, &mut stats)?;
+            stats += process_single(ctx, &resource, current, opts)?;
         }
         Ok(stats.finish(ctx))
     }
@@ -293,6 +301,10 @@ fn process_resource_states_parallel<R: Resource + Send>(
 ///
 /// Accepts a vector of items and a closure that extracts a `(Resource, ResourceState)`
 /// pair from each item. The closure runs in parallel; stats are synchronized via a mutex.
+///
+/// The per-item work (`get_resource_state` and `process_single`) runs **without** the
+/// stats lock held, so all resources can be applied concurrently. The lock is acquired
+/// only for the brief stats counter update after the work completes.
 fn run_parallel<T: Send, R: Resource + Send>(
     ctx: &Context,
     items: Vec<T>,
@@ -301,12 +313,13 @@ fn run_parallel<T: Send, R: Resource + Send>(
 ) -> Result<TaskResult> {
     use rayon::prelude::*;
     let stats = Mutex::new(TaskStats::new());
-    items.into_par_iter().try_for_each(|item| {
+    items.into_par_iter().try_for_each(|item| -> Result<()> {
         let (resource, current) = get_resource_state(item)?;
-        let mut stats_guard = stats
+        let delta = process_single(ctx, &resource, current, opts)?;
+        *stats
             .lock()
-            .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))?;
-        process_single(ctx, &resource, current, opts, &mut stats_guard)
+            .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))? += delta;
+        Ok(())
     })?;
     Ok(stats
         .into_inner()
@@ -343,42 +356,46 @@ pub fn process_resources_remove<R: Resource + Send>(
         let mut stats = TaskStats::new();
         for resource in resources {
             let current = resource.current_state()?;
-            remove_single(ctx, &resource, &current, verb, &mut stats)?;
+            stats += remove_single(ctx, &resource, &current, verb)?;
         }
         Ok(stats.finish(ctx))
     }
 }
 
-/// Remove a single resource, updating `stats` accordingly.
+/// Remove a single resource, returning a stats delta.
 fn remove_single<R: Resource>(
     ctx: &Context,
     resource: &R,
     current: &ResourceState,
     verb: &str,
-    stats: &mut TaskStats,
-) -> Result<()> {
+) -> Result<TaskStats> {
+    let mut delta = TaskStats::new();
     match current {
         ResourceState::Correct => {
             if ctx.dry_run {
                 ctx.log
                     .dry_run(&format!("would {verb}: {}", resource.description()));
-                stats.changed += 1;
-                return Ok(());
+                delta.changed += 1;
+                return Ok(delta);
             }
             resource.remove()?;
             ctx.log
                 .debug(&format!("{verb}: {}", resource.description()));
-            stats.changed += 1;
+            delta.changed += 1;
         }
         _ => {
             // Not ours or doesn't exist — skip silently
-            stats.already_ok += 1;
+            delta.already_ok += 1;
         }
     }
-    Ok(())
+    Ok(delta)
 }
 
 /// Remove resources in parallel using Rayon.
+///
+/// The per-resource work (`current_state` and `remove`) runs **without** the
+/// stats lock held, so all resources can be removed concurrently. The lock is
+/// acquired only for the brief stats counter update after the work completes.
 fn process_remove_parallel<R: Resource + Send>(
     ctx: &Context,
     resources: Vec<R>,
@@ -386,46 +403,49 @@ fn process_remove_parallel<R: Resource + Send>(
 ) -> Result<TaskResult> {
     use rayon::prelude::*;
     let stats = Mutex::new(TaskStats::new());
-    resources.into_par_iter().try_for_each(|resource| {
-        let current = resource.current_state()?;
-        let mut stats_guard = stats
-            .lock()
-            .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))?;
-        remove_single(ctx, &resource, &current, verb, &mut stats_guard)
-    })?;
+    resources
+        .into_par_iter()
+        .try_for_each(|resource| -> Result<()> {
+            let current = resource.current_state()?;
+            let delta = remove_single(ctx, &resource, &current, verb)?;
+            *stats
+                .lock()
+                .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))? += delta;
+            Ok(())
+        })?;
     Ok(stats
         .into_inner()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .finish(ctx))
 }
 
-/// Process a single resource given its current state.
+/// Process a single resource given its current state, returning a stats delta.
 fn process_single<R: Resource>(
     ctx: &Context,
     resource: &R,
     resource_state: ResourceState,
     opts: &ProcessOpts,
-    counters: &mut TaskStats,
-) -> Result<()> {
+) -> Result<TaskStats> {
+    let mut delta = TaskStats::new();
     match resource_state {
         ResourceState::Correct => {
             ctx.log.debug(&format!("ok: {}", resource.description()));
-            counters.already_ok += 1;
+            delta.already_ok += 1;
         }
         ResourceState::Invalid { reason } => {
             ctx.log
                 .debug(&format!("skipping {}: {reason}", resource.description()));
-            counters.skipped += 1;
+            delta.skipped += 1;
         }
         ResourceState::Missing if !opts.fix_missing => {
-            counters.skipped += 1;
+            delta.skipped += 1;
         }
         ResourceState::Incorrect { .. } if !opts.fix_incorrect => {
             ctx.log.debug(&format!(
                 "skipping {} (unexpected state)",
                 resource.description()
             ));
-            counters.skipped += 1;
+            delta.skipped += 1;
         }
         resource_state @ (ResourceState::Missing | ResourceState::Incorrect { .. }) => {
             if ctx.dry_run {
@@ -439,22 +459,22 @@ fn process_single<R: Resource>(
                     format!("would {}: {}", opts.verb, resource.description())
                 };
                 ctx.log.dry_run(&msg);
-                counters.changed += 1;
-                return Ok(());
+                delta.changed += 1;
+                return Ok(delta);
             }
-            apply_resource(ctx, resource, opts, counters)?;
+            delta += apply_resource(ctx, resource, opts)?;
         }
     }
-    Ok(())
+    Ok(delta)
 }
 
-/// Apply a single resource change, handling errors per [`ProcessOpts`].
+/// Apply a single resource change, returning a stats delta.
 fn apply_resource<R: Resource>(
     ctx: &Context,
     resource: &R,
     opts: &ProcessOpts,
-    counters: &mut TaskStats,
-) -> Result<()> {
+) -> Result<TaskStats> {
+    let mut delta = TaskStats::new();
     let change = match resource.apply() {
         Ok(change) => change,
         Err(e) => {
@@ -466,8 +486,8 @@ fn apply_resource<R: Resource>(
                 opts.verb,
                 resource.description()
             ));
-            counters.skipped += 1;
-            return Ok(());
+            delta.skipped += 1;
+            return Ok(delta);
         }
     };
 
@@ -475,10 +495,10 @@ fn apply_resource<R: Resource>(
         ResourceChange::Applied => {
             ctx.log
                 .debug(&format!("{}: {}", opts.verb, resource.description()));
-            counters.changed += 1;
+            delta.changed += 1;
         }
         ResourceChange::AlreadyCorrect => {
-            counters.already_ok += 1;
+            delta.already_ok += 1;
         }
         ResourceChange::Skipped { reason } => {
             if opts.bail_on_error {
@@ -493,10 +513,10 @@ fn apply_resource<R: Resource>(
                 opts.verb,
                 resource.description()
             ));
-            counters.skipped += 1;
+            delta.skipped += 1;
         }
     }
-    Ok(())
+    Ok(delta)
 }
 
 #[cfg(test)]
@@ -650,9 +670,8 @@ mod tests {
         let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Correct);
         let opts = default_opts();
-        let mut stats = TaskStats::new();
 
-        process_single(&ctx, &resource, ResourceState::Correct, &opts, &mut stats).unwrap();
+        let stats = process_single(&ctx, &resource, ResourceState::Correct, &opts).unwrap();
 
         assert_eq!(stats.already_ok, 1);
         assert_eq!(stats.changed, 0);
@@ -667,16 +686,14 @@ mod tests {
             reason: "test".to_string(),
         });
         let opts = default_opts();
-        let mut stats = TaskStats::new();
 
-        process_single(
+        let stats = process_single(
             &ctx,
             &resource,
             ResourceState::Invalid {
                 reason: "test".to_string(),
             },
             &opts,
-            &mut stats,
         )
         .unwrap();
 
@@ -693,9 +710,8 @@ mod tests {
             fix_missing: false,
             ..default_opts()
         };
-        let mut stats = TaskStats::new();
 
-        process_single(&ctx, &resource, ResourceState::Missing, &opts, &mut stats).unwrap();
+        let stats = process_single(&ctx, &resource, ResourceState::Missing, &opts).unwrap();
 
         assert_eq!(stats.skipped, 1);
         assert_eq!(stats.changed, 0);
@@ -712,16 +728,14 @@ mod tests {
             fix_incorrect: false,
             ..default_opts()
         };
-        let mut stats = TaskStats::new();
 
-        process_single(
+        let stats = process_single(
             &ctx,
             &resource,
             ResourceState::Incorrect {
                 current: "wrong".to_string(),
             },
             &opts,
-            &mut stats,
         )
         .unwrap();
 
@@ -735,9 +749,8 @@ mod tests {
         let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Missing);
         let opts = default_opts();
-        let mut stats = TaskStats::new();
 
-        process_single(&ctx, &resource, ResourceState::Missing, &opts, &mut stats).unwrap();
+        let stats = process_single(&ctx, &resource, ResourceState::Missing, &opts).unwrap();
 
         assert_eq!(stats.changed, 1);
         assert_eq!(stats.already_ok, 0);
@@ -751,16 +764,14 @@ mod tests {
             current: "wrong".to_string(),
         });
         let opts = default_opts();
-        let mut stats = TaskStats::new();
 
-        process_single(
+        let stats = process_single(
             &ctx,
             &resource,
             ResourceState::Incorrect {
                 current: "wrong".to_string(),
             },
             &opts,
-            &mut stats,
         )
         .unwrap();
 
@@ -775,9 +786,8 @@ mod tests {
         let resource =
             MockResource::new(ResourceState::Missing).with_apply(Err("should not call".into()));
         let opts = default_opts();
-        let mut stats = TaskStats::new();
 
-        process_single(&ctx, &resource, ResourceState::Missing, &opts, &mut stats).unwrap();
+        let stats = process_single(&ctx, &resource, ResourceState::Missing, &opts).unwrap();
 
         assert_eq!(stats.changed, 1);
     }
@@ -790,16 +800,14 @@ mod tests {
             current: "old-value".to_string(),
         });
         let opts = default_opts();
-        let mut stats = TaskStats::new();
 
-        process_single(
+        let stats = process_single(
             &ctx,
             &resource,
             ResourceState::Incorrect {
                 current: "old-value".to_string(),
             },
             &opts,
-            &mut stats,
         )
         .unwrap();
 
@@ -816,9 +824,8 @@ mod tests {
         let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Missing);
         let opts = default_opts();
-        let mut stats = TaskStats::new();
 
-        apply_resource(&ctx, &resource, &opts, &mut stats).unwrap();
+        let stats = apply_resource(&ctx, &resource, &opts).unwrap();
 
         assert_eq!(stats.changed, 1);
     }
@@ -830,9 +837,8 @@ mod tests {
         let resource = MockResource::new(ResourceState::Missing)
             .with_apply(Ok(ResourceChange::AlreadyCorrect));
         let opts = default_opts();
-        let mut stats = TaskStats::new();
 
-        apply_resource(&ctx, &resource, &opts, &mut stats).unwrap();
+        let stats = apply_resource(&ctx, &resource, &opts).unwrap();
 
         assert_eq!(stats.already_ok, 1);
         assert_eq!(stats.changed, 0);
@@ -847,9 +853,8 @@ mod tests {
                 reason: "not supported".to_string(),
             }));
         let opts = default_opts();
-        let mut stats = TaskStats::new();
 
-        apply_resource(&ctx, &resource, &opts, &mut stats).unwrap();
+        let stats = apply_resource(&ctx, &resource, &opts).unwrap();
 
         assert_eq!(stats.skipped, 1);
         assert_eq!(stats.changed, 0);
@@ -862,9 +867,8 @@ mod tests {
         let resource =
             MockResource::new(ResourceState::Missing).with_apply(Err("boom".to_string()));
         let opts = default_opts();
-        let mut stats = TaskStats::new();
 
-        apply_resource(&ctx, &resource, &opts, &mut stats).unwrap();
+        let stats = apply_resource(&ctx, &resource, &opts).unwrap();
 
         assert_eq!(stats.skipped, 1);
         assert_eq!(stats.changed, 0);
@@ -876,9 +880,8 @@ mod tests {
         let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Missing);
         let opts = bail_opts();
-        let mut stats = TaskStats::new();
 
-        apply_resource(&ctx, &resource, &opts, &mut stats).unwrap();
+        let stats = apply_resource(&ctx, &resource, &opts).unwrap();
 
         assert_eq!(stats.changed, 1);
     }
@@ -890,9 +893,8 @@ mod tests {
         let resource = MockResource::new(ResourceState::Missing)
             .with_apply(Ok(ResourceChange::AlreadyCorrect));
         let opts = bail_opts();
-        let mut stats = TaskStats::new();
 
-        apply_resource(&ctx, &resource, &opts, &mut stats).unwrap();
+        let stats = apply_resource(&ctx, &resource, &opts).unwrap();
 
         assert_eq!(stats.already_ok, 1);
     }
@@ -906,9 +908,8 @@ mod tests {
                 reason: "denied".to_string(),
             }));
         let opts = bail_opts();
-        let mut stats = TaskStats::new();
 
-        let err = apply_resource(&ctx, &resource, &opts, &mut stats);
+        let err = apply_resource(&ctx, &resource, &opts);
         assert!(err.is_err());
         assert!(err.unwrap_err().to_string().contains("denied"));
     }
@@ -920,9 +921,8 @@ mod tests {
         let resource =
             MockResource::new(ResourceState::Missing).with_apply(Err("critical".to_string()));
         let opts = bail_opts();
-        let mut stats = TaskStats::new();
 
-        let err = apply_resource(&ctx, &resource, &opts, &mut stats);
+        let err = apply_resource(&ctx, &resource, &opts);
         assert!(err.is_err());
         assert!(err.unwrap_err().to_string().contains("critical"));
     }

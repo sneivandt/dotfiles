@@ -1,3 +1,9 @@
+//! Build script for dotfiles-cli.
+//!
+//! Resolves the build version from the `DOTFILES_VERSION` environment variable
+//! or from `git describe`, and exposes it as the `DOTFILES_VERSION` compile-time
+//! environment variable.
+
 use std::process::Command;
 
 fn main() {

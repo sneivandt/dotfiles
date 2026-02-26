@@ -16,6 +16,44 @@ use crate::logging::{BufferedLog, Log, Logger};
 use crate::platform::Platform;
 use crate::tasks::{self, Context, Task};
 
+/// Shared orchestration helper that combines setup and task execution.
+///
+/// Collapses the repeated `CommandSetup::init` + `into_context` +
+/// `run_tasks_to_completion` boilerplate present in every command into a
+/// single, consistent entry point.
+#[derive(Debug)]
+pub struct CommandRunner {
+    ctx: Context,
+    log: Arc<Logger>,
+}
+
+impl CommandRunner {
+    /// Initialize by detecting the platform, resolving the profile, loading
+    /// configuration, and building the task execution context.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if setup fails (profile resolution, configuration
+    /// loading, or the HOME environment variable is not set).
+    pub fn new(global: &GlobalOpts, log: &Arc<Logger>) -> Result<Self> {
+        let setup = CommandSetup::init(global, &**log)?;
+        let ctx = setup.into_context(global, log)?;
+        Ok(Self {
+            ctx,
+            log: Arc::clone(log),
+        })
+    }
+
+    /// Execute the given tasks to completion using the stored context.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if one or more tasks fail.
+    pub fn run<'a>(&self, tasks: impl IntoIterator<Item = &'a dyn Task>) -> Result<()> {
+        run_tasks_to_completion(tasks, &self.ctx, &self.log)
+    }
+}
+
 /// Shared state produced by the common command setup sequence.
 ///
 /// Encapsulates platform detection, profile resolution, and configuration

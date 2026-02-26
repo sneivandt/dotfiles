@@ -13,17 +13,14 @@ use crate::tasks::{Context, Task, TaskResult};
 ///
 /// Returns an error if profile resolution, configuration validation, or script checks fail.
 pub fn run(global: &GlobalOpts, _opts: &TestOpts, log: &Arc<Logger>) -> Result<()> {
-    let setup = super::CommandSetup::init(global, &**log)?;
-    let ctx = setup.into_context(global, log)?;
-
+    let runner = super::CommandRunner::new(global, log)?;
     let tasks: Vec<Box<dyn Task>> = vec![
         Box::new(ValidateSymlinkSources),
         Box::new(ValidateConfigFiles),
         Box::new(RunShellcheck),
         Box::new(RunPSScriptAnalyzer),
     ];
-
-    super::run_tasks_to_completion(tasks.iter().map(Box::as_ref), &ctx, log)
+    runner.run(tasks.iter().map(Box::as_ref))
 }
 
 // ---------------------------------------------------------------------------

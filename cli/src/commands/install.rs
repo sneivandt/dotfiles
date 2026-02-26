@@ -15,12 +15,11 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Arc<Logger>) -> Result
     let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     log.info(&format!("dotfiles {version}"));
 
-    let setup = super::CommandSetup::init(global, &**log)?;
-    let ctx = setup.into_context(global, log)?;
+    let runner = super::CommandRunner::new(global, log)?;
 
     // Filter by --skip and --only
     let all_tasks = tasks::all_install_tasks();
-    super::run_tasks_to_completion(
+    runner.run(
         all_tasks
             .iter()
             .filter(|t| {
@@ -34,8 +33,6 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Arc<Logger>) -> Result
                 true
             })
             .map(Box::as_ref),
-        &ctx,
-        log,
     )
 }
 

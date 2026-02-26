@@ -12,12 +12,9 @@ use crate::tasks;
 ///
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Arc<Logger>) -> Result<()> {
-    let setup = super::CommandSetup::init(global, &**log)?;
-    let ctx = setup.into_context(global, log)?;
-
+    let runner = super::CommandRunner::new(global, log)?;
     let tasks = tasks::all_uninstall_tasks();
-
-    super::run_tasks_to_completion(tasks.iter().map(Box::as_ref), &ctx, log)
+    runner.run(tasks.iter().map(Box::as_ref))
 }
 
 #[cfg(test)]

@@ -247,6 +247,16 @@ Structured logger that:
 - Tracks operation counters
 - Prints a summary at the end of execution
 
+A **diagnostic log** is written alongside the main log to
+`$XDG_CACHE_HOME/dotfiles/<command>.diag.log`.  Unlike the main log (which
+replays buffered parallel output per-task), the diagnostic log captures every
+event immediately with microsecond-resolution wall-clock timestamps and thread
+identification, providing the true chronological view of parallel execution.
+Event tags cover the full lifecycle: logger messages (`STAGE`, `INFO`, `DEBUG`,
+`WARN`, `ERROR`, `DRYRUN`), task scheduling (`TASK_WAIT`, `TASK_START`,
+`TASK_DONE`, `TASK_SKIP`), and resource processing (`RES_CHECK`, `RES_APPLY`,
+`RES_RESULT`, `RES_REMOVE`).
+
 ### Configuration System
 
 #### INI File Format

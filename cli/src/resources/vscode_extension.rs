@@ -74,6 +74,9 @@ impl Resource for VsCodeExtensionResource<'_> {
 
     fn current_state(&self) -> Result<ResourceState> {
         let result = run_code_cmd(&self.code_cmd, &["--list-extensions"], self.executor)?;
+        if !result.success {
+            return Ok(ResourceState::Missing);
+        }
         let installed = result.stdout.to_lowercase();
         let id_lower = self.id.to_lowercase();
         if installed.lines().any(|l| l.trim() == id_lower) {

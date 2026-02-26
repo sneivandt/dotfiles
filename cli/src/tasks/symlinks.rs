@@ -59,7 +59,7 @@ impl Task for UninstallSymlinks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        process_resources_remove(ctx, build_resources(ctx), "materialize")
+        process_resources_remove(ctx, build_resources(ctx), "unlink")
     }
 }
 

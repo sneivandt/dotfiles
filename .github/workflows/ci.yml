@@ -252,7 +252,8 @@ jobs:
           chmod +x .github/workflows/scripts/linux/test-paru.sh
           pacman -Sy --noconfirm ca-certificates
           for i in {1..5}; do
-            su - testuser -c "cd \"$REPO_DIR\" && ./.github/workflows/scripts/linux/test-paru.sh \"$REPO_DIR\"" && break || sleep 5
+            su - testuser -c "cd \"$REPO_DIR\" && ./.github/workflows/scripts/linux/test-paru.sh \"$REPO_DIR\"" && break
+            [ $i -lt 5 ] && sleep 5 || exit 1
           done
 
   test-docker:

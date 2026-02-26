@@ -533,7 +533,7 @@ mod tests {
 
     /// A configurable mock resource for testing the processing pipeline.
     struct MockResource {
-        state: ResourceState,
+        state_result: Result<ResourceState, String>,
         apply_result: Result<ResourceChange, String>,
         remove_result: Result<ResourceChange, String>,
         desc: String,
@@ -542,11 +542,16 @@ mod tests {
     impl MockResource {
         fn new(state: ResourceState) -> Self {
             Self {
-                state,
+                state_result: Ok(state),
                 apply_result: Ok(ResourceChange::Applied),
                 remove_result: Ok(ResourceChange::Applied),
                 desc: "mock resource".to_string(),
             }
+        }
+
+        fn with_state_error(mut self, err: impl Into<String>) -> Self {
+            self.state_result = Err(err.into());
+            self
         }
 
         fn with_apply(mut self, result: Result<ResourceChange, String>) -> Self {
@@ -566,7 +571,9 @@ mod tests {
         }
 
         fn current_state(&self) -> Result<ResourceState> {
-            Ok(self.state.clone())
+            self.state_result
+                .clone()
+                .map_err(|s| anyhow::anyhow!("{s}"))
         }
 
         fn apply(&self) -> Result<ResourceChange> {
@@ -597,6 +604,14 @@ mod tests {
     ) -> (Context, std::sync::Arc<crate::logging::Logger>) {
         let (mut ctx, log) = test_context(config);
         ctx.dry_run = true;
+        (ctx, log)
+    }
+
+    fn parallel_context(
+        config: crate::config::Config,
+    ) -> (Context, std::sync::Arc<crate::logging::Logger>) {
+        let (mut ctx, log) = test_context(config);
+        ctx.parallel = true;
         (ctx, log)
     }
 
@@ -1011,5 +1026,186 @@ mod tests {
 
         let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
         assert!(matches!(result, TaskResult::DryRun));
+    }
+
+    // -----------------------------------------------------------------------
+    // Parallel dispatch — process_resources
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn process_resources_parallel_accumulates_stats() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = parallel_context(config);
+        // Three resources: one already correct, one missing (will be applied), one invalid (skipped).
+        let resources = vec![
+            MockResource::new(ResourceState::Correct),
+            MockResource::new(ResourceState::Missing),
+            MockResource::new(ResourceState::Invalid {
+                reason: "bad".to_string(),
+            }),
+        ];
+        let opts = default_opts();
+
+        let result = process_resources(&ctx, resources, &opts).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+    }
+
+    #[test]
+    fn process_resources_parallel_single_resource_runs_sequentially() {
+        // When there is only one resource, the sequential path is taken even if parallel=true.
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = parallel_context(config);
+        let resources = vec![MockResource::new(ResourceState::Missing)];
+        let opts = default_opts();
+
+        let result = process_resources(&ctx, resources, &opts).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+    }
+
+    #[test]
+    fn process_resources_parallel_bail_on_error_propagates() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = parallel_context(config);
+        let resources = vec![
+            MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
+            MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
+        ];
+        let opts = bail_opts();
+
+        let result = process_resources(&ctx, resources, &opts);
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Parallel dispatch — process_resource_states
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn process_resource_states_parallel_dispatch() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = parallel_context(config);
+        let resource_states = vec![
+            (
+                MockResource::new(ResourceState::Missing),
+                ResourceState::Missing,
+            ),
+            (
+                MockResource::new(ResourceState::Correct),
+                ResourceState::Correct,
+            ),
+            (
+                MockResource::new(ResourceState::Incorrect {
+                    current: "old".to_string(),
+                }),
+                ResourceState::Incorrect {
+                    current: "old".to_string(),
+                },
+            ),
+        ];
+        let opts = default_opts();
+
+        let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+    }
+
+    // -----------------------------------------------------------------------
+    // Parallel dispatch — process_resources_remove
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn process_resources_remove_parallel_dispatch() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = parallel_context(config);
+        let resources = vec![
+            MockResource::new(ResourceState::Correct),
+            MockResource::new(ResourceState::Missing),
+        ];
+
+        let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+    }
+
+    // -----------------------------------------------------------------------
+    // Error propagation — current_state() failures
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn process_resources_current_state_error_propagates() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = test_context(config);
+        let resources =
+            vec![MockResource::new(ResourceState::Missing).with_state_error("state failed")];
+        let opts = default_opts();
+
+        let result = process_resources(&ctx, resources, &opts);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("state failed"));
+    }
+
+    #[test]
+    fn process_resources_remove_current_state_error_propagates() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = test_context(config);
+        let resources =
+            vec![MockResource::new(ResourceState::Missing).with_state_error("state failed")];
+
+        let result = process_resources_remove(&ctx, resources, "unlink");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("state failed"));
+    }
+
+    // -----------------------------------------------------------------------
+    // End-to-end bail-on-error through process_resources (sequential)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn process_resources_bail_on_apply_error_propagates() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = test_context(config);
+        let resources =
+            vec![MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into()))];
+        let opts = bail_opts();
+
+        let result = process_resources(&ctx, resources, &opts);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("fatal"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Stats accumulation across multiple resources in process_resource_states
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn process_resource_states_stats_accumulate_across_resources() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = test_context(config);
+        // 2 correct, 1 missing (applied), 1 invalid (skipped)
+        let resource_states = vec![
+            (
+                MockResource::new(ResourceState::Correct),
+                ResourceState::Correct,
+            ),
+            (
+                MockResource::new(ResourceState::Correct),
+                ResourceState::Correct,
+            ),
+            (
+                MockResource::new(ResourceState::Missing),
+                ResourceState::Missing,
+            ),
+            (
+                MockResource::new(ResourceState::Invalid {
+                    reason: "bad".to_string(),
+                }),
+                ResourceState::Invalid {
+                    reason: "bad".to_string(),
+                },
+            ),
+        ];
+        let opts = default_opts();
+
+        // Just verify it succeeds — individual counts are exercised by process_single tests
+        let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
     }
 }

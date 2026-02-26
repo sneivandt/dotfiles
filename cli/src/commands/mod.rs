@@ -12,7 +12,7 @@ use anyhow::Result;
 use crate::cli::GlobalOpts;
 use crate::config::Config;
 use crate::config::profiles;
-use crate::logging::{BufferedLog, Log, Logger};
+use crate::logging::{self, BufferedLog, DiagEvent, Log, Logger};
 use crate::platform::Platform;
 use crate::tasks::{self, Context, Task};
 
@@ -275,20 +275,54 @@ fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>) {
         })
         .collect();
 
+    // Build TypeId → name map for diagnostic dep messages.
+    let id_to_name: HashMap<TypeId, &str> = tasks.iter().map(|t| (t.task_id(), t.name())).collect();
+
     let graph = TaskGraph::new();
 
     std::thread::scope(|s| {
         for (task, deps) in tasks.iter().zip(resolved_deps.iter()) {
             let task = *task;
             let graph = &graph;
+            let id_to_name = &id_to_name;
             s.spawn(move || {
+                logging::set_diag_thread_name(task.name());
+
+                if let Some(diag) = log.diagnostic() {
+                    if deps.is_empty() {
+                        diag.emit_task(DiagEvent::TaskWait, task.name(), "no deps, ready");
+                    } else {
+                        let dep_names: Vec<&str> = deps
+                            .iter()
+                            .filter_map(|d| id_to_name.get(d).copied())
+                            .collect();
+                        diag.emit_task(
+                            DiagEvent::TaskWait,
+                            task.name(),
+                            &format!("waiting for: {}", dep_names.join(", ")),
+                        );
+                    }
+                }
+
                 graph.wait_for_deps(deps);
+
+                if let Some(diag) = log.diagnostic() {
+                    diag.emit_task(
+                        DiagEvent::TaskStart,
+                        task.name(),
+                        "deps satisfied, executing",
+                    );
+                }
 
                 log.notify_task_start(task.name());
 
                 let buf = Arc::new(BufferedLog::new(Arc::clone(log)));
                 let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
                 tasks::execute(task, &task_ctx);
+
+                if let Some(diag) = log.diagnostic() {
+                    diag.emit_task(DiagEvent::TaskDone, task.name(), "");
+                }
 
                 buf.flush_and_complete(task.name());
                 graph.mark_complete(task.task_id());

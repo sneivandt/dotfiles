@@ -126,3 +126,69 @@ captures output in memory while the task runs.
 Tasks do **not** need to be aware of buffering — they log via `ctx.log` as
 normal, and the `Log` trait dispatches to either `Logger` (sequential) or
 `BufferedLog` (parallel) transparently.
+
+## Diagnostic Log
+
+A high-precision diagnostic log captures the **real-time** sequence of all
+events — including parallel execution — at microsecond resolution.  Unlike
+the main log file (which replays buffered output per-task), the diagnostic
+log writes every event **immediately** with the true wall-clock time.
+
+Written to `$XDG_CACHE_HOME/dotfiles/<command>.diag.log` (shown in the
+summary alongside the main log path).
+
+### Line Format
+
+```
++<elapsed_us> <wall_utc_us> [<thread>] <TAG>         <message>
+```
+
+Example:
+```
++       123 2026-02-25T10:30:00.000123Z [main]     STAGE        Resolving profile
++      5678 2026-02-25T10:30:00.005678Z [thread-2] TASK_WAIT    [Install symlinks] waiting for: Update repository
++     50123 2026-02-25T10:30:00.050123Z [thread-3] RES_CHECK    ~/.bashrc state=Missing
++     51456 2026-02-25T10:30:00.051456Z [thread-3] RES_APPLY    link ~/.bashrc
++     52789 2026-02-25T10:30:00.052789Z [thread-3] RES_RESULT   ~/.bashrc applied
+```
+
+### Event Tags
+
+| Tag | Origin | Meaning |
+|---|---|---|
+| `STAGE` | Logger/BufferedLog | Major section header |
+| `INFO` | Logger/BufferedLog | Informational message |
+| `DEBUG` | Logger/BufferedLog | Debug detail |
+| `WARN` | Logger/BufferedLog | Warning |
+| `ERROR` | Logger/BufferedLog | Error |
+| `DRYRUN` | Logger/BufferedLog | Dry-run preview |
+| `TASK_WAIT` | Parallel scheduler | Task spawned, waiting for deps |
+| `TASK_START` | Parallel scheduler | Deps satisfied, execution begins |
+| `TASK_DONE` | Parallel scheduler | Task finished |
+| `TASK_SKIP` | Task execute | Task skipped (not applicable) |
+| `RES_CHECK` | `process_single()` | Resource state checked |
+| `RES_APPLY` | `apply_resource()` | Resource mutation started |
+| `RES_RESULT` | `apply_resource()` | Resource mutation result |
+| `RES_REMOVE` | `remove_single()` | Resource removal |
+
+### Accessing the Diagnostic Log
+
+The `Log` trait exposes `diagnostic()` which returns `Option<&DiagnosticLog>`.
+Both `Logger` and `BufferedLog` implement this (BufferedLog delegates to its
+inner Logger).
+
+```rust
+if let Some(diag) = ctx.log.diagnostic() {
+    diag.emit(DiagEvent::ResourceCheck, "checking state");
+    diag.emit_task(DiagEvent::TaskStart, "my task", "starting");
+}
+```
+
+### Key Design Points
+
+- `BufferedLog` writes to the diagnostic log **immediately** (bypassing the
+  buffer) so parallel events have true timestamps
+- All display methods (`stage`, `info`, `debug`, etc.) emit to both the
+  tracing subscriber (for console + main log) and the diagnostic log
+- The diagnostic log file is created by `Logger::new()` alongside the main log
+- Thread names from `std::thread::current().name()` identify parallel threads

@@ -550,13 +550,48 @@ docker logs <container-id>
 - Verify sparse checkout in Dockerfile
 - Rebuild image
 
+## Using Diagnostic Logs
+
+The installer writes two log files per run:
+
+- **Main log** (`~/.cache/dotfiles/<command>.log`) — human-readable log with timestamps, matching what you see on the terminal (including debug messages even when not running verbose)
+- **Diagnostic log** (`~/.cache/dotfiles/<command>.diag.log`) — microsecond-precision chronological log of all events, including parallel execution
+
+Both paths are shown at the end of the installation summary.
+
+### When to use the diagnostic log
+
+The diagnostic log is useful for:
+- **Understanding parallel execution order** — events have true wall-clock timestamps and thread names, showing exactly which resources were processed concurrently
+- **Identifying slow operations** — compare elapsed microsecond timestamps to find bottlenecks
+- **Debugging task dependency issues** — `TASK_WAIT`, `TASK_START`, and `TASK_DONE` events show the scheduling timeline
+
+### Reading the diagnostic log
+
+Each line follows the format:
+```
++<elapsed_us> <wall_utc> [<thread>] <TAG> <message>
+```
+
+Examples:
+```bash
+# View the diagnostic log
+cat ~/.cache/dotfiles/install.diag.log
+
+# Find all resource apply events
+grep RES_APPLY ~/.cache/dotfiles/install.diag.log
+
+# Trace a specific task's lifecycle
+grep 'Install symlinks' ~/.cache/dotfiles/install.diag.log
+```
+
 ## Getting Help
 
 If you're still experiencing issues:
 
-1. **Check the log file**:
-   - Linux: `~/.cache/dotfiles/install.log`
-   - Windows: `%LOCALAPPDATA%\dotfiles\install.log`
+1. **Check the log files**:
+   - Linux: `~/.cache/dotfiles/install.log` and `~/.cache/dotfiles/install.diag.log`
+   - Windows: `%LOCALAPPDATA%\dotfiles\install.log` and `%LOCALAPPDATA%\dotfiles\install.diag.log`
 
 2. **Run with verbose mode**:
    ```bash

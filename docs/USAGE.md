@@ -288,6 +288,19 @@ All operations are logged to persistent log files:
 - Summary statistics
 - Error messages and warnings
 
+A **diagnostic log** is also written alongside the main log:
+
+**Linux:**
+- Location: `${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/install.diag.log`
+
+**Windows:**
+- Location: `%LOCALAPPDATA%\dotfiles\install.diag.log`
+
+The diagnostic log captures every event with microsecond-precision timestamps
+and thread identification, preserving the true chronological order of parallel
+execution.  See [Troubleshooting](TROUBLESHOOTING.md#using-diagnostic-logs) for
+details on reading the diagnostic log.
+
 ## Installation Summary
 
 After installation, a summary is displayed:
@@ -302,6 +315,7 @@ VS Code extensions installed: 5
 Copilot skills installed: 2
 Systemd units enabled: 2
 Log file: /home/user/.cache/dotfiles/install.log
+Diagnostic log: /home/user/.cache/dotfiles/install.diag.log
 ```
 
 **Windows example:**
@@ -313,6 +327,7 @@ VS Code extensions installed: 2
 Copilot skills installed: 2
 Registry keys set: 12
 Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
+Diagnostic log: C:\Users\YourName\AppData\Local\dotfiles\install.diag.log
 ```
 
 **Dry-run summary:**
@@ -322,6 +337,7 @@ Counters show "(would be)" suffix:
 Packages installed (would be): 15
 Symlinks created (would be): 8
 Log file: /home/user/.cache/dotfiles/install.log
+Diagnostic log: /home/user/.cache/dotfiles/install.diag.log
 ```
 
 ## Idempotency

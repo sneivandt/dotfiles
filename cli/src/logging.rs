@@ -1,9 +1,41 @@
 //! Logging infrastructure for structured console and file output.
+use std::cell::RefCell;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
+
+thread_local! {
+    /// Task name for the current thread, set by the parallel scheduler.
+    ///
+    /// `std::thread::scope` spawns unnamed threads, so
+    /// `std::thread::current().name()` returns `None`.  This thread-local
+    /// stores the task name so that [`DiagnosticLog::emit`] can identify
+    /// which task produced each event.
+    static DIAG_TASK_NAME: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Set the diagnostic task name for the current thread.
+///
+/// Called by the parallel scheduler when a thread starts working on a task.
+/// The name is used by [`DiagnosticLog::emit`] as a fallback when the OS
+/// thread has no name.
+pub fn set_diag_thread_name(name: &str) {
+    DIAG_TASK_NAME.with(|cell| {
+        *cell.borrow_mut() = Some(name.to_string());
+    });
+}
+
+/// Read the diagnostic task name for the current thread.
+pub(crate) fn diag_thread_name() -> String {
+    // Prefer the OS thread name ("main"), fall back to the task-local name.
+    let thread = std::thread::current();
+    if let Some(name) = thread.name() {
+        return name.to_string();
+    }
+    DIAG_TASK_NAME.with(|cell| cell.borrow().as_deref().unwrap_or("?").to_string())
+}
 
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]
@@ -51,6 +83,10 @@ pub trait Log: Send + Sync {
     fn dry_run(&self, msg: &str);
     /// Record a task result for the summary.
     fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>);
+    /// Access the high-precision diagnostic log, if available.
+    fn diagnostic(&self) -> Option<&DiagnosticLog> {
+        None
+    }
 }
 
 /// A single buffered log entry, replayed when flushed.
@@ -65,15 +101,18 @@ enum LogEntry {
 }
 
 impl LogEntry {
-    /// Replay this entry to the given logger.
-    fn replay(&self, logger: &Logger) {
+    /// Replay this entry to the console and log file via tracing.
+    ///
+    /// Does **not** write to the diagnostic log because the entry was
+    /// already recorded there in real-time when it was buffered.
+    fn replay(&self) {
         match self {
-            Self::Stage(msg) => logger.stage(msg),
-            Self::Info(msg) => logger.info(msg),
-            Self::Debug(msg) => logger.debug(msg),
-            Self::Warn(msg) => logger.warn(msg),
-            Self::Error(msg) => logger.error(msg),
-            Self::DryRun(msg) => logger.dry_run(msg),
+            Self::Stage(msg) => tracing::info!(target: "dotfiles::stage", "{msg}"),
+            Self::Info(msg) => tracing::info!("{msg}"),
+            Self::Debug(msg) => tracing::debug!("{msg}"),
+            Self::Warn(msg) => tracing::warn!("{msg}"),
+            Self::Error(msg) => tracing::error!("{msg}"),
+            Self::DryRun(msg) => tracing::info!(target: "dotfiles::dry_run", "{msg}"),
         }
     }
 }
@@ -96,12 +135,20 @@ macro_rules! forward_log_methods {
 /// Implement the display methods of [`Log`] by buffering each message into
 /// `self.entries` as the corresponding [`LogEntry`] variant.
 ///
+/// Each method also forwards the message to the diagnostic log in real-time
+/// (bypassing the buffer) so that the true chronological order of events
+/// during parallel execution is preserved.
+///
 /// The `record_task` method is **not** included because it forwards to
 /// `self.inner` instead of buffering.
 macro_rules! buffer_log_methods {
-    ($($method:ident => $variant:ident),+ $(,)?) => {
+    ($($method:ident => $variant:ident => $diag:ident),+ $(,)?) => {
         $(
             fn $method(&self, msg: &str) {
+                // Write to diagnostic log immediately (real-time timestamp).
+                if let Some(d) = &self.inner.diagnostic {
+                    d.emit(DiagEvent::$diag, msg);
+                }
                 if let Ok(mut guard) = self.entries.lock() {
                     guard.push(LogEntry::$variant(msg.to_string()));
                 }
@@ -141,7 +188,9 @@ impl BufferedLog {
             Ok(guard) => guard.clone(),
             Err(_) => return,
         };
-        self.replay_entries(&entries);
+        for entry in &entries {
+            entry.replay();
+        }
     }
 
     /// Flush all buffered entries and remove the task from the active set.
@@ -160,7 +209,9 @@ impl BufferedLog {
             Ok(guard) => guard.clone(),
             Err(_) => return,
         };
-        self.replay_entries(&entries);
+        for entry in &entries {
+            entry.replay();
+        }
         let remaining = self.inner.active_tasks.lock().ok().and_then(|mut active| {
             active.retain(|n| n != task_name);
             (!active.is_empty()).then(|| active.join(", "))
@@ -169,29 +220,171 @@ impl BufferedLog {
             self.inner.draw_progress(&names);
         }
     }
-
-    /// Replay a slice of buffered entries to the backing [`Logger`].
-    fn replay_entries(&self, entries: &[LogEntry]) {
-        for entry in entries {
-            entry.replay(&self.inner);
-        }
-    }
 }
 
 impl Log for BufferedLog {
     buffer_log_methods! {
-        stage => Stage,
-        info  => Info,
-        debug => Debug,
-        warn  => Warn,
-        error => Error,
-        dry_run => DryRun,
+        stage   => Stage   => Stage,
+        info    => Info    => Info,
+        debug   => Debug   => Debug,
+        warn    => Warn    => Warn,
+        error   => Error   => Error,
+        dry_run => DryRun  => DryRun,
     }
 
     fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
         // Forward directly — the Logger's task list is already Mutex-protected.
         self.inner.record_task(name, status, message);
     }
+
+    fn diagnostic(&self) -> Option<&DiagnosticLog> {
+        self.inner.diagnostic.as_ref()
+    }
+}
+
+/// High-precision diagnostic log for capturing the real-time sequence of events.
+///
+/// Unlike the main log file (which replays buffered output per-task and uses
+/// second-precision timestamps), the diagnostic log writes every event
+/// **immediately** with microsecond-precision elapsed time from program start,
+/// the originating thread name, and an event kind tag.  This makes it possible
+/// to reconstruct the true interleaved timeline of parallel execution.
+///
+/// Written to `$XDG_CACHE_HOME/dotfiles/<command>.diag.log`.
+#[derive(Debug)]
+pub struct DiagnosticLog {
+    file: Mutex<fs::File>,
+    #[cfg_attr(not(test), allow(dead_code))]
+    path: PathBuf,
+    start: Instant,
+}
+
+/// Event kinds for the diagnostic log.
+///
+/// Each variant maps to a short uppercase tag in the log output.
+#[derive(Debug, Clone, Copy)]
+pub enum DiagEvent {
+    /// Informational message from a task.
+    Info,
+    /// Debug-level message.
+    Debug,
+    /// Warning message.
+    Warn,
+    /// Error message.
+    Error,
+    /// Stage header (major section).
+    Stage,
+    /// Dry-run preview.
+    DryRun,
+    /// A task thread has been spawned and is waiting for dependencies.
+    TaskWait,
+    /// A task's dependencies are satisfied; execution begins.
+    TaskStart,
+    /// A task finished executing.
+    TaskDone,
+    /// A task was skipped (not applicable).
+    TaskSkip,
+    /// Resource state check.
+    ResourceCheck,
+    /// Resource apply (mutation).
+    ResourceApply,
+    /// Resource apply result.
+    ResourceResult,
+    /// Resource removal.
+    ResourceRemove,
+}
+
+impl DiagEvent {
+    /// Short tag for the log line.
+    const fn tag(self) -> &'static str {
+        match self {
+            Self::Info => "INFO",
+            Self::Debug => "DEBUG",
+            Self::Warn => "WARN",
+            Self::Error => "ERROR",
+            Self::Stage => "STAGE",
+            Self::DryRun => "DRYRUN",
+            Self::TaskWait => "TASK_WAIT",
+            Self::TaskStart => "TASK_START",
+            Self::TaskDone => "TASK_DONE",
+            Self::TaskSkip => "TASK_SKIP",
+            Self::ResourceCheck => "RES_CHECK",
+            Self::ResourceApply => "RES_APPLY",
+            Self::ResourceResult => "RES_RESULT",
+            Self::ResourceRemove => "RES_REMOVE",
+        }
+    }
+}
+
+impl DiagnosticLog {
+    /// Create a new diagnostic log file for the given command.
+    ///
+    /// Returns `None` if the cache directory cannot be created or the file
+    /// cannot be opened.
+    fn new(command: &str, start: Instant) -> Option<Self> {
+        let path = diag_log_file_path(command)?;
+        let version =
+            option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
+        let header = format!(
+            "# Diagnostic log — dotfiles {version} {}\n\
+             # Columns: elapsed_us | wall_utc | thread | event | message\n",
+            format_utc_datetime_us(),
+        );
+        fs::write(&path, header).ok()?;
+        let file = fs::OpenOptions::new().append(true).open(&path).ok()?;
+        Some(Self {
+            file: Mutex::new(file),
+            path,
+            start,
+        })
+    }
+
+    /// Emit a diagnostic event.
+    ///
+    /// Each line is: `+<elapsed_us> <wall_utc_us> [<thread>] <TAG> <message>`
+    ///
+    /// ANSI escape sequences are stripped from the message.  The thread
+    /// identifier comes from the OS thread name when available (e.g.
+    /// `"main"`), otherwise from the task name set via
+    /// [`set_diag_thread_name`].
+    pub fn emit(&self, event: DiagEvent, message: &str) {
+        let elapsed = self.start.elapsed();
+        let elapsed_us = elapsed.as_micros();
+        let wall = format_utc_datetime_us();
+        let thread_name = diag_thread_name();
+        let tag = event.tag();
+        let clean = strip_ansi(message);
+        let line = format!("+{elapsed_us:>12} {wall} [{thread_name}] {tag:<12} {clean}\n");
+        if let Ok(mut f) = self.file.lock() {
+            // Best-effort write — diagnostic logging is non-critical and must
+            // never disrupt normal execution (e.g. on a full disk).
+            f.write_all(line.as_bytes()).ok();
+        }
+    }
+
+    /// Emit a diagnostic event with an explicit task name context.
+    pub fn emit_task(&self, event: DiagEvent, task: &str, message: &str) {
+        if message.is_empty() {
+            self.emit(event, &format!("[{task}]"));
+        } else {
+            self.emit(event, &format!("[{task}] {message}"));
+        }
+    }
+}
+
+/// Return the diagnostic log file path under `$XDG_CACHE_HOME/dotfiles/`.
+fn diag_log_file_path(command: &str) -> Option<PathBuf> {
+    Some(dotfiles_cache_dir()?.join(format!("{command}.diag.log")))
+}
+
+/// Format the current UTC time as `YYYY-MM-DDTHH:MM:SS.ffffffZ` (microsecond precision).
+fn format_utc_datetime_us() -> String {
+    let dur = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    let (y, mo, d, h, mi, s) = secs_to_ymd_hms(dur.as_secs());
+    let us = dur.subsec_micros();
+    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}.{us:06}Z")
 }
 
 /// Structured logger with dry-run awareness and summary collection.
@@ -214,10 +407,12 @@ pub struct Logger {
     /// cursor arithmetic that can erase real output when the terminal width
     /// differs from the `COLUMNS` environment variable.
     progress_rows: Mutex<u16>,
+    /// High-precision diagnostic log; `None` when the cache dir is unavailable.
+    diagnostic: Option<DiagnosticLog>,
 }
 
-/// Return the log file path under `$XDG_CACHE_HOME/dotfiles/` (or `~/.cache/dotfiles/`).
-fn log_file_path(command: &str) -> Option<PathBuf> {
+/// Return the `$XDG_CACHE_HOME/dotfiles/` directory, creating it if needed.
+fn dotfiles_cache_dir() -> Option<PathBuf> {
     let cache_dir = std::env::var("XDG_CACHE_HOME").map_or_else(
         |_| {
             std::env::var("HOME")
@@ -229,7 +424,12 @@ fn log_file_path(command: &str) -> Option<PathBuf> {
     );
     let dir = cache_dir.join("dotfiles");
     fs::create_dir_all(&dir).ok()?;
-    Some(dir.join(format!("{command}.log")))
+    Some(dir)
+}
+
+/// Return the log file path under `$XDG_CACHE_HOME/dotfiles/` (or `~/.cache/dotfiles/`).
+fn log_file_path(command: &str) -> Option<PathBuf> {
+    Some(dotfiles_cache_dir()?.join(format!("{command}.log")))
 }
 
 /// Return the current UTC time as seconds since the Unix epoch.
@@ -256,24 +456,25 @@ const fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     (y, m, d)
 }
 
-/// Format the current UTC time as `YYYY-MM-DD HH:MM:SS`.
-fn format_utc_datetime() -> String {
-    let secs = current_utc_secs();
+/// Decompose seconds since the Unix epoch into `(year, month, day, hour, minute, second)`.
+const fn secs_to_ymd_hms(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
     let (y, mo, d) = days_to_ymd(secs / 86400);
     let day_secs = secs % 86400;
     let h = day_secs / 3600;
     let mi = (day_secs % 3600) / 60;
     let s = day_secs % 60;
+    (y, mo, d, h, mi, s)
+}
+
+/// Format the current UTC time as `YYYY-MM-DD HH:MM:SS`.
+fn format_utc_datetime() -> String {
+    let (y, mo, d, h, mi, s) = secs_to_ymd_hms(current_utc_secs());
     format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{s:02}")
 }
 
 /// Format the current UTC time as `HH:MM:SS`.
 fn format_utc_time() -> String {
-    let secs = current_utc_secs();
-    let day_secs = secs % 86400;
-    let h = day_secs / 3600;
-    let mi = (day_secs % 3600) / 60;
-    let s = day_secs % 60;
+    let (_, _, _, h, mi, s) = secs_to_ymd_hms(current_utc_secs());
     format!("{h:02}:{mi:02}:{s:02}")
 }
 
@@ -328,13 +529,20 @@ impl Logger {
     /// [`FileLayer`]; this constructor does not write to the file.
     #[must_use]
     pub fn new(command: &str) -> Self {
+        let start = Instant::now();
         Self {
             tasks: Mutex::new(Vec::new()),
             log_file: log_file_path(command),
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
             progress_rows: Mutex::new(0),
+            diagnostic: DiagnosticLog::new(command, start),
         }
+    }
+
+    /// Return the diagnostic log, if available.
+    pub const fn diagnostic(&self) -> Option<&DiagnosticLog> {
+        self.diagnostic.as_ref()
     }
 
     /// Return the log file path, if available.
@@ -345,32 +553,50 @@ impl Logger {
 
     /// Log an error message.
     pub fn error(&self, msg: &str) {
+        if let Some(d) = &self.diagnostic {
+            d.emit(DiagEvent::Error, msg);
+        }
         tracing::error!("{msg}");
     }
 
     /// Log a warning message.
     pub fn warn(&self, msg: &str) {
+        if let Some(d) = &self.diagnostic {
+            d.emit(DiagEvent::Warn, msg);
+        }
         tracing::warn!("{msg}");
     }
 
     /// Log a stage header (major section).
     pub fn stage(&self, msg: &str) {
+        if let Some(d) = &self.diagnostic {
+            d.emit(DiagEvent::Stage, msg);
+        }
         tracing::info!(target: "dotfiles::stage", "{msg}");
     }
 
     /// Log an informational message.
     pub fn info(&self, msg: &str) {
+        if let Some(d) = &self.diagnostic {
+            d.emit(DiagEvent::Info, msg);
+        }
         tracing::info!("{msg}");
     }
 
     /// Log a debug message (suppressed on console unless verbose; always
     /// written to the log file via the [`FileLayer`]).
     pub fn debug(&self, msg: &str) {
+        if let Some(d) = &self.diagnostic {
+            d.emit(DiagEvent::Debug, msg);
+        }
         tracing::debug!("{msg}");
     }
 
     /// Log a dry-run action message.
     pub fn dry_run(&self, msg: &str) {
+        if let Some(d) = &self.diagnostic {
+            d.emit(DiagEvent::DryRun, msg);
+        }
         tracing::info!(target: "dotfiles::dry_run", "{msg}");
     }
 
@@ -539,6 +765,10 @@ impl Log for Logger {
 
     fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
         self.record_task(name, status, message);
+    }
+
+    fn diagnostic(&self) -> Option<&DiagnosticLog> {
+        self.diagnostic.as_ref()
     }
 }
 
@@ -988,6 +1218,139 @@ mod tests {
             *log.progress_rows.lock().unwrap(),
             0,
             "progress_rows should be zero after all tasks complete"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // DiagnosticLog
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn diagnostic_log_is_created() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let diag = log
+            .diagnostic
+            .as_ref()
+            .expect("diagnostic log should exist");
+        assert!(diag.path.exists(), "diagnostic log file should be created");
+    }
+
+    #[test]
+    fn diagnostic_log_has_header() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let diag = log.diagnostic.as_ref().expect("diagnostic log");
+        let contents = fs::read_to_string(&diag.path).unwrap();
+        assert!(
+            contents.starts_with("# Diagnostic log"),
+            "diagnostic log should start with header"
+        );
+        assert!(
+            contents.contains("elapsed_us"),
+            "header should describe columns"
+        );
+    }
+
+    #[test]
+    fn diagnostic_emit_writes_event() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let diag = log.diagnostic.as_ref().expect("diagnostic log");
+        let marker = format!("diag-marker-{}", std::process::id());
+        diag.emit(DiagEvent::Info, &marker);
+        let contents = fs::read_to_string(&diag.path).unwrap();
+        assert!(
+            contents.contains(&marker),
+            "diagnostic event should appear in diag log"
+        );
+        assert!(
+            contents.contains("INFO"),
+            "diagnostic event should have INFO tag"
+        );
+    }
+
+    #[test]
+    fn diagnostic_emit_has_microsecond_precision() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let diag = log.diagnostic.as_ref().expect("diagnostic log");
+        diag.emit(DiagEvent::Stage, "precision-test");
+        let contents = fs::read_to_string(&diag.path).unwrap();
+        // Look for the wall-clock timestamp with microseconds: T...Z pattern
+        let has_us = contents
+            .lines()
+            .any(|l| l.contains("precision-test") && l.contains('T') && l.contains('Z'));
+        assert!(
+            has_us,
+            "diagnostic should contain microsecond wall-clock timestamp"
+        );
+    }
+
+    #[test]
+    fn diagnostic_emit_task_includes_task_name() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let diag = log.diagnostic.as_ref().expect("diagnostic log");
+        diag.emit_task(DiagEvent::TaskStart, "Install symlinks", "deps satisfied");
+        let contents = fs::read_to_string(&diag.path).unwrap();
+        assert!(
+            contents.contains("[Install symlinks]"),
+            "diagnostic task event should include task name in brackets"
+        );
+        assert!(
+            contents.contains("TASK_START"),
+            "diagnostic task event should have TASK_START tag"
+        );
+    }
+
+    #[test]
+    fn diagnostic_log_accessible_via_trait() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let log_ref: &dyn Log = &log;
+        assert!(
+            log_ref.diagnostic().is_some(),
+            "diagnostic() should be accessible via Log trait"
+        );
+    }
+
+    #[test]
+    fn buffered_log_writes_to_diagnostic_immediately() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
+        let marker = format!("buf-diag-{}", std::process::id());
+        buf.info(&marker);
+        // Diagnostic should have the entry immediately (before flush)
+        let diag = log.diagnostic.as_ref().expect("diagnostic log");
+        let contents = fs::read_to_string(&diag.path).unwrap();
+        assert!(
+            contents.contains(&marker),
+            "BufferedLog should write to diagnostic immediately, not after flush"
+        );
+    }
+
+    #[test]
+    fn diagnostic_resource_events_have_correct_tags() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let diag = log.diagnostic.as_ref().expect("diagnostic log");
+        diag.emit(DiagEvent::ResourceCheck, "~/.bashrc state=Missing");
+        diag.emit(DiagEvent::ResourceApply, "link ~/.bashrc");
+        diag.emit(DiagEvent::ResourceResult, "~/.bashrc applied");
+        let contents = fs::read_to_string(&diag.path).unwrap();
+        assert!(contents.contains("RES_CHECK"));
+        assert!(contents.contains("RES_APPLY"));
+        assert!(contents.contains("RES_RESULT"));
+    }
+
+    #[test]
+    fn diagnostic_events_are_chronologically_ordered() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let diag = log.diagnostic.as_ref().expect("diagnostic log");
+        diag.emit(DiagEvent::Stage, "first");
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        diag.emit(DiagEvent::Info, "second");
+        let contents = fs::read_to_string(&diag.path).unwrap();
+        let first_pos = contents.find("first").expect("first in log");
+        let second_pos = contents.find("second").expect("second in log");
+        assert!(
+            first_pos < second_pos,
+            "events should appear in chronological order"
         );
     }
 }

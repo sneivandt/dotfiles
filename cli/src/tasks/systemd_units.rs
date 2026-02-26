@@ -23,10 +23,12 @@ impl Task for ConfigureSystemd {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         // Reload systemd daemon once before processing (idempotent and fast)
-        if !ctx.dry_run
-            && let Err(e) = ctx.executor.run("systemctl", &["--user", "daemon-reload"])
-        {
-            ctx.log.debug(&format!("daemon-reload failed: {e}"));
+        if !ctx.dry_run {
+            ctx.log.debug("running systemctl --user daemon-reload");
+            match ctx.executor.run("systemctl", &["--user", "daemon-reload"]) {
+                Ok(_) => ctx.log.debug("daemon-reload succeeded"),
+                Err(e) => ctx.log.debug(&format!("daemon-reload failed: {e}")),
+            }
         }
 
         let units: Vec<_> = ctx.config_read().units.clone();

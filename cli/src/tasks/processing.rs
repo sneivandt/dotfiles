@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use anyhow::Result;
 
 use super::context::Context;
+use crate::logging::{DiagEvent, diag_thread_name, set_diag_thread_name};
 use crate::resources::{Resource, ResourceChange, ResourceState};
 
 /// Result of a single task execution.
@@ -312,8 +313,14 @@ fn run_parallel<T: Send, R: Resource + Send>(
     get_resource_state: impl Fn(T) -> Result<(R, ResourceState)> + Sync,
 ) -> Result<TaskResult> {
     use rayon::prelude::*;
+    let task_name = diag_thread_name();
     let stats = Mutex::new(TaskStats::new());
     items.into_par_iter().try_for_each(|item| -> Result<()> {
+        // Rayon reuses threads across work items, so re-set the name each
+        // iteration to ensure the diagnostic log attributes events correctly
+        // (a stale name from a previous or panicked item is harmless but
+        // misleading).
+        set_diag_thread_name(&task_name);
         let (resource, current) = get_resource_state(item)?;
         let delta = process_single(ctx, &resource, current, opts)?;
         *stats
@@ -369,18 +376,23 @@ fn remove_single<R: Resource>(
     current: &ResourceState,
     verb: &str,
 ) -> Result<TaskStats> {
+    let desc = resource.description();
     let mut delta = TaskStats::new();
     match current {
         ResourceState::Correct => {
             if ctx.dry_run {
-                ctx.log
-                    .dry_run(&format!("would {verb}: {}", resource.description()));
+                ctx.log.dry_run(&format!("would {verb}: {desc}"));
                 delta.changed += 1;
                 return Ok(delta);
             }
+            if let Some(diag) = ctx.log.diagnostic() {
+                diag.emit(DiagEvent::ResourceRemove, &format!("{verb} {desc}"));
+            }
             resource.remove()?;
-            ctx.log
-                .debug(&format!("{verb}: {}", resource.description()));
+            if let Some(diag) = ctx.log.diagnostic() {
+                diag.emit(DiagEvent::ResourceResult, &format!("{desc} removed"));
+            }
+            ctx.log.debug(&format!("{verb}: {desc}"));
             delta.changed += 1;
         }
         _ => {
@@ -402,10 +414,13 @@ fn process_remove_parallel<R: Resource + Send>(
     verb: &str,
 ) -> Result<TaskResult> {
     use rayon::prelude::*;
+    let task_name = diag_thread_name();
     let stats = Mutex::new(TaskStats::new());
     resources
         .into_par_iter()
         .try_for_each(|resource| -> Result<()> {
+            // See comment in run_parallel — re-set on each iteration.
+            set_diag_thread_name(&task_name);
             let current = resource.current_state()?;
             let delta = remove_single(ctx, &resource, &current, verb)?;
             *stats
@@ -426,37 +441,37 @@ fn process_single<R: Resource>(
     resource_state: ResourceState,
     opts: &ProcessOpts,
 ) -> Result<TaskStats> {
+    let desc = resource.description();
+    if let Some(diag) = ctx.log.diagnostic() {
+        diag.emit(
+            DiagEvent::ResourceCheck,
+            &format!("{desc} state={resource_state:?}"),
+        );
+    }
     let mut delta = TaskStats::new();
     match resource_state {
         ResourceState::Correct => {
-            ctx.log.debug(&format!("ok: {}", resource.description()));
+            ctx.log.debug(&format!("ok: {desc}"));
             delta.already_ok += 1;
         }
         ResourceState::Invalid { reason } => {
-            ctx.log
-                .debug(&format!("skipping {}: {reason}", resource.description()));
+            ctx.log.debug(&format!("skipping {desc}: {reason}"));
             delta.skipped += 1;
         }
         ResourceState::Missing if !opts.fix_missing => {
             delta.skipped += 1;
         }
         ResourceState::Incorrect { .. } if !opts.fix_incorrect => {
-            ctx.log.debug(&format!(
-                "skipping {} (unexpected state)",
-                resource.description()
-            ));
+            ctx.log
+                .debug(&format!("skipping {desc} (unexpected state)"));
             delta.skipped += 1;
         }
         resource_state @ (ResourceState::Missing | ResourceState::Incorrect { .. }) => {
             if ctx.dry_run {
                 let msg = if let ResourceState::Incorrect { ref current } = resource_state {
-                    format!(
-                        "would {} {} (currently {current})",
-                        opts.verb,
-                        resource.description()
-                    )
+                    format!("would {} {desc} (currently {current})", opts.verb)
                 } else {
-                    format!("would {}: {}", opts.verb, resource.description())
+                    format!("would {}: {desc}", opts.verb)
                 };
                 ctx.log.dry_run(&msg);
                 delta.changed += 1;
@@ -474,18 +489,22 @@ fn apply_resource<R: Resource>(
     resource: &R,
     opts: &ProcessOpts,
 ) -> Result<TaskStats> {
+    let desc = resource.description();
+    if let Some(diag) = ctx.log.diagnostic() {
+        diag.emit(DiagEvent::ResourceApply, &format!("{} {desc}", opts.verb));
+    }
     let mut delta = TaskStats::new();
     let change = match resource.apply() {
         Ok(change) => change,
         Err(e) => {
+            if let Some(diag) = ctx.log.diagnostic() {
+                diag.emit(DiagEvent::ResourceResult, &format!("{desc} error: {e}"));
+            }
             if opts.bail_on_error {
                 return Err(e);
             }
-            ctx.log.warn(&format!(
-                "failed to {} {}: {e}",
-                opts.verb,
-                resource.description()
-            ));
+            ctx.log
+                .warn(&format!("failed to {} {desc}: {e}", opts.verb));
             delta.skipped += 1;
             return Ok(delta);
         }
@@ -493,26 +512,33 @@ fn apply_resource<R: Resource>(
 
     match change {
         ResourceChange::Applied => {
-            ctx.log
-                .debug(&format!("{}: {}", opts.verb, resource.description()));
+            if let Some(diag) = ctx.log.diagnostic() {
+                diag.emit(DiagEvent::ResourceResult, &format!("{desc} applied"));
+            }
+            ctx.log.debug(&format!("{}: {desc}", opts.verb));
             delta.changed += 1;
         }
         ResourceChange::AlreadyCorrect => {
+            if let Some(diag) = ctx.log.diagnostic() {
+                diag.emit(
+                    DiagEvent::ResourceResult,
+                    &format!("{desc} already_correct"),
+                );
+            }
             delta.already_ok += 1;
         }
         ResourceChange::Skipped { reason } => {
-            if opts.bail_on_error {
-                anyhow::bail!(
-                    "failed to {} {}: {reason}",
-                    opts.verb,
-                    resource.description()
+            if let Some(diag) = ctx.log.diagnostic() {
+                diag.emit(
+                    DiagEvent::ResourceResult,
+                    &format!("{desc} skipped: {reason}"),
                 );
             }
-            ctx.log.warn(&format!(
-                "failed to {} {}: {reason}",
-                opts.verb,
-                resource.description()
-            ));
+            if opts.bail_on_error {
+                anyhow::bail!("failed to {} {desc}: {reason}", opts.verb);
+            }
+            ctx.log
+                .warn(&format!("failed to {} {desc}: {reason}", opts.verb));
             delta.skipped += 1;
         }
     }

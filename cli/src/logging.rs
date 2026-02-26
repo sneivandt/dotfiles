@@ -4,7 +4,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 
 thread_local! {
     /// Task name for the current thread, set by the parallel scheduler.
@@ -379,12 +379,9 @@ fn diag_log_file_path(command: &str) -> Option<PathBuf> {
 
 /// Format the current UTC time as `YYYY-MM-DDTHH:MM:SS.ffffffZ` (microsecond precision).
 fn format_utc_datetime_us() -> String {
-    let dur = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default();
-    let (y, mo, d, h, mi, s) = secs_to_ymd_hms(dur.as_secs());
-    let us = dur.subsec_micros();
-    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}.{us:06}Z")
+    chrono::Utc::now()
+        .format("%Y-%m-%dT%H:%M:%S%.6fZ")
+        .to_string()
 }
 
 /// Structured logger with dry-run awareness and summary collection.
@@ -432,50 +429,14 @@ fn log_file_path(command: &str) -> Option<PathBuf> {
     Some(dotfiles_cache_dir()?.join(format!("{command}.log")))
 }
 
-/// Return the current UTC time as seconds since the Unix epoch.
-fn current_utc_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
-/// Convert days since the Unix epoch to `(year, month, day)` in the proleptic
-/// Gregorian calendar.  Algorithm from Howard Hinnant's *date algorithms*.
-const fn days_to_ymd(days: u64) -> (u64, u64, u64) {
-    let z = days + 719_468;
-    let era = z / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
-}
-
-/// Decompose seconds since the Unix epoch into `(year, month, day, hour, minute, second)`.
-const fn secs_to_ymd_hms(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
-    let (y, mo, d) = days_to_ymd(secs / 86400);
-    let day_secs = secs % 86400;
-    let h = day_secs / 3600;
-    let mi = (day_secs % 3600) / 60;
-    let s = day_secs % 60;
-    (y, mo, d, h, mi, s)
-}
-
 /// Format the current UTC time as `YYYY-MM-DD HH:MM:SS`.
 fn format_utc_datetime() -> String {
-    let (y, mo, d, h, mi, s) = secs_to_ymd_hms(current_utc_secs());
-    format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{s:02}")
+    chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 /// Format the current UTC time as `HH:MM:SS`.
 fn format_utc_time() -> String {
-    let (_, _, _, h, mi, s) = secs_to_ymd_hms(current_utc_secs());
-    format!("{h:02}:{mi:02}:{s:02}")
+    chrono::Utc::now().format("%H:%M:%S").to_string()
 }
 
 /// Return the terminal width in columns.
@@ -1078,24 +1039,6 @@ mod tests {
             contents.contains(&marker),
             "debug messages should always appear in the log file"
         );
-    }
-
-    #[test]
-    fn days_to_ymd_unix_epoch() {
-        // Day 0 = January 1, 1970
-        assert_eq!(days_to_ymd(0), (1970, 1, 1));
-    }
-
-    #[test]
-    fn days_to_ymd_day_one() {
-        // Day 1 = January 2, 1970
-        assert_eq!(days_to_ymd(1), (1970, 1, 2));
-    }
-
-    #[test]
-    fn days_to_ymd_start_of_1971() {
-        // Day 365 = January 1, 1971 (1970 is not a leap year)
-        assert_eq!(days_to_ymd(365), (1971, 1, 1));
     }
 
     #[test]

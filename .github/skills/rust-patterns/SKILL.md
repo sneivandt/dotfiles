@@ -265,18 +265,18 @@ still exist but are only called by `SystemExecutor` internally.
 
 The executor flows top-down through the system:
 
-1. **Commands** create a `Context` via `CommandSetup::init()` + `setup.into_context()`
+1. **Commands** create a `Context` via `CommandRunner::new()`, which combines `CommandSetup::init()` + `setup.into_context()`
 2. **Context** stores `executor: Arc<dyn Executor>`
 3. **Tasks** pass `&*ctx.executor` to resource constructors and batch query functions
 4. **Resources** store `executor: &'a dyn Executor` and call `self.executor.run()` etc.
 
 ```rust
 // In commands/install.rs
-let setup = super::CommandSetup::init(global, &**log)?;
-let ctx = setup.into_context(global, log)?;
+let runner = super::CommandRunner::new(global, log)?;
+runner.run(tasks.iter().map(Box::as_ref))
 ```
 
-`CommandSetup::into_context()` creates the executor internally and constructs the `Context`.
+`CommandRunner::new()` calls `CommandSetup::init()` and `into_context()` internally, then stores the resulting `Context` and `Arc<Logger>`. `CommandRunner::run()` delegates to `run_tasks_to_completion()`.
 
 Resources borrow the executor for the duration of the task. Pass `&*ctx.executor`
 (deref coercion) when constructing resources:

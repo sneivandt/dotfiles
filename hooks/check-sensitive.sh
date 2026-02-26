@@ -67,7 +67,7 @@ while IFS= read -r file; do
 
         printf "${YELLOW}In file: %s${NC}\n" "$file"
         printf "${YELLOW}Pattern matched: %s${NC}\n" "$pattern"
-        printf "${YELLOW}Matched in staged changes${NC}\n\n"
+        printf '%sMatched in staged changes%s\n\n' "$YELLOW" "$NC"
     fi
   done <<PATTERNS_EOF
 $PATTERNS

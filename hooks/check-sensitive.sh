@@ -56,10 +56,9 @@ while IFS= read -r file; do
       ''|'#'*|'['*']') continue ;;
     esac
 
-    matches=$(grep -niE -- "$pattern" "$file" 2>/dev/null || true)
+    matches=$(echo "$diff" | grep -niE -- "$pattern" 2>/dev/null || true)
 
     if [ -n "$matches" ]; then
-      if echo "$diff" | grep -qiE -- "$pattern"; then
         if [ "$found_secrets" -eq 0 ]; then
           printf '%sERROR: Potential sensitive information detected!%s\n' "$RED" "$NC"
           printf '%s======================================================%s\n\n' "$RED" "$NC"
@@ -68,8 +67,7 @@ while IFS= read -r file; do
 
         printf "${YELLOW}In file: %s${NC}\n" "$file"
         printf "${YELLOW}Pattern matched: %s${NC}\n" "$pattern"
-        printf "${YELLOW}Lines:%s${NC}\n\n" "$(echo "$matches" | cut -d: -f1 | tr '\n' ',' | sed 's/,$//' | sed 's/,/, /g')"
-      fi
+        printf "${YELLOW}Matched in staged changes${NC}\n\n"
     fi
   done <<PATTERNS_EOF
 $PATTERNS

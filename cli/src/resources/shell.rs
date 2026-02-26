@@ -31,12 +31,17 @@ impl Resource for DefaultShellResource<'_> {
 
     fn current_state(&self) -> Result<ResourceState> {
         let current_shell = std::env::var("SHELL").unwrap_or_default();
-        let suffix = format!("/{}", self.target_shell);
 
-        if current_shell.ends_with(&suffix) {
+        if current_shell.is_empty() {
+            return Ok(ResourceState::Missing);
+        }
+
+        let current_name = std::path::Path::new(&current_shell)
+            .file_name()
+            .and_then(|n| n.to_str());
+
+        if current_name == Some(&self.target_shell) {
             Ok(ResourceState::Correct)
-        } else if current_shell.is_empty() {
-            Ok(ResourceState::Missing)
         } else {
             Ok(ResourceState::Incorrect {
                 current: current_shell,

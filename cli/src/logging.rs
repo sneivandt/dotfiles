@@ -207,10 +207,12 @@ pub struct Logger {
     flush_lock: Mutex<()>,
     /// Names of tasks currently executing in parallel.
     active_tasks: Mutex<Vec<String>>,
-    /// Number of terminal rows currently occupied by the progress line.
+    /// Whether a progress line is currently displayed (`0` = no, `1` = yes).
     ///
-    /// Zero means no progress line is displayed.  Values greater than one
-    /// occur when the task-name list wraps across multiple terminal rows.
+    /// The progress line is always truncated to fit within a single terminal
+    /// row, so the only valid values are `0` and `1`.  This avoids multi-row
+    /// cursor arithmetic that can erase real output when the terminal width
+    /// differs from the `COLUMNS` environment variable.
     progress_rows: Mutex<u16>,
 }
 
@@ -273,6 +275,18 @@ fn format_utc_time() -> String {
     let mi = (day_secs % 3600) / 60;
     let s = day_secs % 60;
     format!("{h:02}:{mi:02}:{s:02}")
+}
+
+/// Return the terminal width in columns.
+///
+/// Reads the `COLUMNS` environment variable, falling back to 80 if unset
+/// or unparseable.
+fn terminal_columns() -> usize {
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(80)
 }
 
 /// Strip ANSI escape sequences from a string.
@@ -462,17 +476,8 @@ impl Logger {
             .progress_rows
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let rows = *guard;
-        if rows > 0 {
-            // Move up to the first row of the progress text, then go to the
-            // start of that line and erase to end of screen.  Relative cursor
-            // movement (ESC[A) is used instead of DEC save/restore (ESC 7 /
-            // ESC 8) so that the target position remains correct even when the
-            // terminal has scrolled since the line was drawn.
-            if rows > 1 {
-                print!("\x1b[{}A", rows - 1);
-            }
-            print!("\r\x1b[J");
+        if *guard > 0 {
+            print!("\r\x1b[K");
             std::io::stdout().flush().ok();
             *guard = 0;
         }
@@ -480,30 +485,32 @@ impl Logger {
 
     /// Print an in-progress status line to the console and mark it as shown.
     ///
+    /// The task-name list is truncated to fit within a single terminal row so
+    /// that [`clear_progress`](Self::clear_progress) never needs cursor-up
+    /// movement (which is fragile when the terminal width is unknown).
+    ///
     /// Must be called while holding `flush_lock`.
     fn draw_progress(&self, names: &str) {
-        // The visible prefix is "  ▹ " (4 display columns: 2 spaces, ▹, space).
-        // Compute the number of terminal rows spanned so that clear_progress
-        // can move the cursor back to the first row precisely.
-        let visible_width = 4 + names.chars().count();
-        let cols = std::env::var("COLUMNS")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .filter(|&n| n > 0)
-            .unwrap_or(80);
-        let rows = u16::try_from(visible_width.div_ceil(cols))
-            .unwrap_or(u16::MAX)
-            .max(1);
-        // Print without a trailing newline so the cursor stays on the progress
-        // line.  clear_progress uses relative movement to erase it, which
-        // works correctly even when the terminal scrolls.
-        print!("  \x1b[2m▹ {names}\x1b[0m");
+        let cols = terminal_columns();
+        // Visible prefix is "  ▹ " — 4 display columns.
+        let prefix_width = 4;
+        let max_name_chars = cols.saturating_sub(prefix_width);
+        let display_names = if names.chars().count() > max_name_chars {
+            let truncated: String = names
+                .chars()
+                .take(max_name_chars.saturating_sub(1))
+                .collect();
+            format!("{truncated}…")
+        } else {
+            names.to_string()
+        };
+        print!("  \x1b[2m▹ {display_names}\x1b[0m");
         std::io::stdout().flush().ok();
         let mut guard = self
             .progress_rows
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *guard = rows;
+        *guard = 1;
     }
 
     /// Record that a parallel task has started.
@@ -950,9 +957,23 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
         let log = Arc::new(log);
         log.notify_task_start("update");
-        assert!(
-            *log.progress_rows.lock().unwrap() > 0,
-            "progress_rows should be non-zero after notify_task_start"
+        assert_eq!(
+            *log.progress_rows.lock().unwrap(),
+            1,
+            "progress_rows should be 1 after notify_task_start"
+        );
+    }
+
+    #[test]
+    fn draw_progress_caps_rows_to_one() {
+        let (log, _tmp, _guard) = isolated_logger();
+        // A name string much wider than any terminal should still yield 1 row.
+        let long_names = "a".repeat(500);
+        log.draw_progress(&long_names);
+        assert_eq!(
+            *log.progress_rows.lock().unwrap(),
+            1,
+            "progress_rows should always be 1 even for very long names"
         );
     }
 

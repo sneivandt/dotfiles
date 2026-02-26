@@ -139,7 +139,7 @@ available only when invoking the binary directly.
 
 #### Commands (`commands/`)
 
-- **`install.rs`** — Resolves profile, loads `Config`, builds the task list, filters by `--skip`/`--only`, and executes each task via `tasks::execute()`
+- **`install.rs`** — Uses `CommandRunner` to resolve the profile, load `Config`, build the task list, filter by `--skip`/`--only`, and execute each task via `tasks::execute()`
 - **`uninstall.rs`** — Removes managed symlinks
 - **`test.rs`** — Runs configuration validation
 

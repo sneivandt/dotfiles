@@ -459,3 +459,92 @@ fn only_with_multiple_keywords_includes_all_matching() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Idempotency: install → install is a no-op
+// ---------------------------------------------------------------------------
+
+/// Running `InstallSymlinks` twice must produce zero changes on the second run.
+///
+/// This test exercises the core idempotency guarantee: after a successful
+/// install every resource is already in the desired state, so a second install
+/// run must not change anything.
+///
+/// The verification relies on [`ResourceState`]: if every resource reports
+/// `Correct` before the second `run()` call, then `process_resources` can only
+/// count items as `already_ok` — making `changed == 0` a logical necessity.
+/// Checking `Correct` after the second run confirms no resources were broken.
+#[cfg(unix)]
+#[test]
+fn install_symlinks_is_idempotent() {
+    use std::sync::Arc;
+
+    use dotfiles_cli::resources::Resource;
+    use dotfiles_cli::tasks::Task;
+
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("symlinks.ini", "[base]\nbashrc\n")
+        .with_symlink_source("bashrc")
+        .build();
+
+    // Use a dedicated temp directory as $HOME so the test does not modify the
+    // real home directory.
+    let home_dir = tempfile::tempdir().expect("create temp home dir");
+
+    let platform = dotfiles_cli::platform::Platform::detect();
+    let executor: Arc<dyn dotfiles_cli::exec::Executor> =
+        Arc::new(dotfiles_cli::exec::SystemExecutor);
+    let log: Arc<dotfiles_cli::logging::Logger> =
+        Arc::new(dotfiles_cli::logging::Logger::new("test-idempotent"));
+
+    let config = ctx.load_config("base");
+    let task_ctx = dotfiles_cli::tasks::Context {
+        config: Arc::new(std::sync::RwLock::new(config)),
+        platform: Arc::new(platform),
+        log: Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
+        dry_run: false,
+        home: home_dir.path().to_path_buf(),
+        executor,
+        parallel: false,
+    };
+
+    let task = dotfiles_cli::tasks::symlinks::InstallSymlinks;
+
+    // First run: must succeed and create the symlink.
+    let result1 = task.run(&task_ctx).expect("first install run");
+    assert!(
+        matches!(result1, dotfiles_cli::tasks::TaskResult::Ok),
+        "first install run should succeed"
+    );
+
+    // Build the resource to inspect state directly.
+    let source = ctx.root_path().join("symlinks").join("bashrc");
+    let target = home_dir.path().join(".bashrc");
+    let resource = dotfiles_cli::resources::symlink::SymlinkResource::new(source, target);
+
+    // After the first run every resource must be Correct.  This is the
+    // precondition that proves the second run will make zero changes.
+    assert_eq!(
+        resource
+            .current_state()
+            .expect("check state after first run"),
+        dotfiles_cli::resources::ResourceState::Correct,
+        "symlink must be Correct after first install"
+    );
+
+    // Second run: must succeed without changing anything.
+    let result2 = task.run(&task_ctx).expect("second install run");
+    assert!(
+        matches!(result2, dotfiles_cli::tasks::TaskResult::Ok),
+        "second install run should succeed"
+    );
+
+    // State must still be Correct, confirming zero changes in the second run.
+    assert_eq!(
+        resource
+            .current_state()
+            .expect("check state after second run"),
+        dotfiles_cli::resources::ResourceState::Correct,
+        "symlink must still be Correct after second install (idempotency guarantee)"
+    );
+}

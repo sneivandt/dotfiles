@@ -37,9 +37,11 @@ do_install_paru() {
   log_stage "Installing paru (AUR helper)"
   tmp_dir="$(mktemp -d)"
   trap 'rm -rf "$tmp_dir"' EXIT
-  git clone https://aur.archlinux.org/paru-git.git "$tmp_dir"
+  retry_cmd 3 15 git clone --depth 1 https://aur.archlinux.org/paru-git.git "$tmp_dir"
   cd "$tmp_dir"
-  MAKEFLAGS="-j$(nproc)" makepkg -si --noconfirm
+  MAKEFLAGS="-j$(nproc)"
+  export MAKEFLAGS
+  retry_cmd 3 15 makepkg -si --noconfirm
 }
 
 # ---------------------------------------------------------------------------

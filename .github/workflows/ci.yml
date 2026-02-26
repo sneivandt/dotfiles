@@ -231,8 +231,8 @@ jobs:
       - name: Install prerequisites
         run: |
           # -Sy (not -Syu) skips full upgrade; safe in ephemeral CI containers
-          pacman -Sy --noconfirm
-          pacman -S --noconfirm base-devel git cargo sudo
+          for i in {1..5}; do pacman -Sy --noconfirm && break; [ $i -lt 5 ] && sleep $((i * 5)) || exit 1; done
+          for i in {1..5}; do pacman -S --noconfirm --needed base-devel git cargo sudo && break; [ $i -lt 5 ] && sleep $((i * 5)) || exit 1; done
       - name: Create non-root test user
         run: |
           useradd -m -G wheel testuser
@@ -250,10 +250,10 @@ jobs:
         run: |
           REPO_DIR=$(pwd)
           chmod +x .github/workflows/scripts/linux/test-paru.sh
-          pacman -Sy --noconfirm ca-certificates
+          for i in {1..5}; do pacman -Sy --noconfirm ca-certificates && break; [ $i -lt 5 ] && sleep $((i * 5)) || exit 1; done
           for i in {1..5}; do
             su - testuser -c "cd \"$REPO_DIR\" && ./.github/workflows/scripts/linux/test-paru.sh \"$REPO_DIR\"" && break
-            [ $i -lt 5 ] && sleep 5 || exit 1
+            [ $i -lt 5 ] && sleep $((i * 15)) || exit 1
           done
 
   test-docker:

@@ -1,0 +1,17 @@
+# Systemd user units to enable and start
+# Each section represents a profile
+
+[linux]
+units = [
+  "clean-home-tmp.timer",
+]
+
+[arch-desktop]
+units = [
+  "dunst.service",
+  "picom.service",
+  "redshift.service",
+  "volume.service",
+  "wallpaper.service",
+  "xautolock.service",
+]

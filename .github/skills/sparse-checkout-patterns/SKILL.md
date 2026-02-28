@@ -17,16 +17,16 @@ This skill documents the sparse checkout and manifest system that enables profil
 The sparse checkout system allows a single repository to support multiple environments (Linux headless, Linux desktop, Windows) by controlling which files are checked out based on the selected profile. This reduces disk usage and clutter by only checking out files relevant to the selected profile.
 
 **Key Components:**
-- **`conf/manifest.ini`**: Maps files to exclusion categories (windows, arch, desktop)
-- **`conf/profiles.ini`**: Defines which categories each profile excludes
+- **`conf/manifest.toml`**: Maps files to exclusion categories (windows, arch, desktop)
+- **`conf/profiles.toml`**: Defines which categories each profile excludes
 - **Sparse Checkout**: Git feature that controls which files appear in the working directory
 - **Profile System**: Automatic configuration based on environment needs
 
 ## How It Works
 
 1. **Profile Selection**: User selects a profile (e.g., `desktop`, `base`)
-2. **Category Mapping**: Profile maps to exclude categories via `conf/profiles.ini`
-3. **File Exclusion**: `conf/manifest.ini` lists which files belong to each exclude category
+2. **Category Mapping**: Profile maps to exclude categories via `conf/profiles.toml`
+3. **File Exclusion**: `conf/manifest.toml` lists which files belong to each exclude category
 4. **Git Configuration**: Sparse checkout patterns are generated and applied via Git
 5. **Working Directory Update**: Git removes excluded files from workspace (they remain in the repository)
 
@@ -34,55 +34,58 @@ The sparse checkout system allows a single repository to support multiple enviro
 
 ### Location and Purpose
 
-**File**: `conf/manifest.ini`
+**File**: `conf/manifest.toml`
 
 Maps files in `symlinks/` directory to exclusion categories. Files listed here will be excluded when their category is excluded by the active profile.
 
 ### Section Headers: OR Logic
 
-**IMPORTANT**: Unlike other configuration files, `manifest.ini` uses **OR logic** for comma-separated sections.
+**IMPORTANT**: Unlike other configuration files, `manifest.toml` uses **OR logic** for multi-category sections.
 
-```ini
+```toml
 [windows]
-AppData/
+paths = ["AppData/"]
 
 [arch]
-config/pacman.conf
+paths = ["config/pacman.conf"]
 
-[arch,desktop]
-config/xmonad/
+["arch.desktop"]
+paths = ["config/xmonad/"]
 ```
 
 **Logic Explanation:**
 - `[windows]` - Excluded if `windows` category is excluded
 - `[arch]` - Excluded if `arch` category is excluded
-- `[arch,desktop]` - Excluded if **EITHER** `arch` **OR** `desktop` is excluded (not both required)
+- `["arch.desktop"]` - Excluded if **EITHER** `arch` **OR** `desktop` is excluded (not both required)
 
 This ensures files shared by multiple categories are excluded when ANY category is excluded, preventing partial checkouts of related files.
 
 **Contrast with Other Config Files:**
-Most other configuration files (e.g., `packages.ini`, `symlinks.ini`) use **AND logic**:
-- `[arch,desktop]` - Section processed only if **BOTH** `arch` **AND** `desktop` are active
+Most other configuration files (e.g., `packages.toml`, `symlinks.toml`) use **AND logic**:
+- `["arch.desktop"]` - Section processed only if **BOTH** `arch` **AND** `desktop` are active
 
 ### Path Format
 
-Paths in `manifest.ini` are relative to the `symlinks/` directory:
+Paths in `manifest.toml` are relative to the `symlinks/` directory:
 
-```ini
+```toml
 # Directories must end with /
 [desktop]
-config/Code/
-vscode-remote/
+paths = [
+  "config/Code/",
+  "vscode-remote/",
+]
 
 # Individual files listed explicitly
-config/git/windows
+[windows]
+paths = ["config/git/windows"]
 ```
 
 When generating sparse checkout patterns, these paths are automatically prefixed with `symlinks/`.
 
 ### Base Profile Files
 
-Files in the `[base]` profile category **do not** need to be listed in `manifest.ini` because base files are **never excluded** - they're included in all profiles.
+Files in the `[base]` profile category **do not** need to be listed in `manifest.toml` because base files are **never excluded** - they're included in all profiles.
 
 **Only list files that should be excluded in certain profiles.**
 
@@ -95,7 +98,7 @@ Files in the `[base]` profile category **do not** need to be listed in `manifest
 This function:
 1. Resolves the profile to exclude categories
 2. Applies OS auto-detection overrides (e.g., always exclude `windows` on Linux)
-3. Reads excluded files from `manifest.ini` using `get_excluded_files()`
+3. Reads excluded files from `manifest.toml` using `get_excluded_files()`
 4. Generates sparse checkout patterns
 5. Applies patterns via `git sparse-checkout` commands
 
@@ -135,16 +138,16 @@ The implementation writes patterns directly to `.git/info/sparse-checkout` and t
 
 ### Profile-to-Category Mapping
 
-**File**: `conf/profiles.ini`
+**File**: `conf/profiles.toml`
 
 Defines which categories each profile excludes:
 
-```ini
+```toml
 [base]
-exclude = desktop
+excludes = ["desktop"]
 
 [desktop]
-exclude =
+excludes = []
 ```
 
 Platform categories (`linux`, `windows`, `arch`) are auto-detected, not defined in profiles.
@@ -192,20 +195,24 @@ Ask: "Which profiles should NOT have this file?"
 - PowerShell script → `[windows]` (exclude on Linux)
 - Arch package config → `[arch]` (exclude on non-Arch systems)
 - GUI tool config → `[desktop]` (exclude on headless systems)
-- Window manager config → `[arch,desktop]` (exclude unless both arch AND desktop)
+- Window manager config → `["arch.desktop"]` (exclude unless both arch AND desktop)
 
 ### Step 2: Add to Manifest
 
-Add the file path under the appropriate section in `conf/manifest.ini`:
+Add the file path under the appropriate section in `conf/manifest.toml`:
 
-```ini
+```toml
 [windows]
-# Add Windows-specific file
-config/powershell/profile.ps1
+paths = [
+  # Add Windows-specific file
+  "config/powershell/profile.ps1",
+]
 
 [desktop]
-# Add desktop-specific directory (must end with /)
-config/alacritty/
+paths = [
+  # Add desktop-specific directory (must end with /)
+  "config/alacritty/",
+]
 ```
 
 ### Step 3: Test Sparse Checkout
@@ -250,48 +257,58 @@ config/powershell/      # Windows PowerShell configuration
 
 ```ini
 [arch]
-config/pacman.conf      # Arch package manager
-config/paru/            # Arch AUR helper
+### Pattern: Exclude Arch-Specific System Files
+
+```toml
+[arch]
+paths = [
+  "config/pacman.conf",      # Arch package manager
+  "config/paru/",            # Arch AUR helper
+]
 ```
 
 ### Pattern: Exclude Desktop Environment Files
 
-```ini
+```toml
 [desktop]
-config/Code/            # VS Code settings
-config/rofi/            # Application launcher
+paths = [
+  "config/Code/",            # VS Code settings
+  "config/rofi/",            # Application launcher
+]
 ```
 
 ### Pattern: Exclude Arch Desktop-Specific
 
-```ini
-[arch,desktop]
-config/xmonad/          # Window manager (needs both Arch and desktop)
-config/dunst/           # Notification daemon
-xinitrc                 # X11 initialization
+```toml
+["arch.desktop"]
+paths = [
+  "config/xmonad/",          # Window manager (needs both Arch and desktop)
+  "config/dunst/",           # Notification daemon
+  "xinitrc",                 # X11 initialization
+]
 ```
 
 ## Relationship with Configuration Processing
 
 **Important Distinction:**
 
-1. **Sparse Checkout** (manifest.ini with OR logic)
+1. **Sparse Checkout** (manifest.toml with OR logic)
    - Controls which files exist in working directory
-   - Uses OR logic: `[arch,desktop]` = exclude if arch OR desktop excluded
+   - Uses OR logic: `["arch.desktop"]` = exclude if arch OR desktop excluded
 
-2. **Configuration Processing** (packages.ini, symlinks.ini with AND logic)
+2. **Configuration Processing** (packages.toml, symlinks.toml with AND logic)
    - Controls which items are installed/processed
-   - Uses AND logic: `[arch,desktop]` = process only if arch AND desktop active
+   - Uses AND logic: `["arch.desktop"]` = process only if arch AND desktop active
 
 **Example:**
-```ini
-# manifest.ini (OR logic)
-[arch,desktop]
-config/xmonad/          # Exclude if EITHER arch OR desktop excluded
+```toml
+# manifest.toml (OR logic)
+["arch.desktop"]
+paths = ["config/xmonad/"]  # Exclude if EITHER arch OR desktop excluded
 
-# packages.ini (AND logic)
-[arch,desktop]
-xmonad                  # Install only if BOTH arch AND desktop active
+# packages.toml (AND logic)
+["arch.desktop"]
+packages = ["xmonad"]       # Install only if BOTH arch AND desktop active
 ```
 
 This ensures files are available when their corresponding packages are installed.
@@ -302,7 +319,7 @@ This ensures files are available when their corresponding packages are installed
 
 1. **Check manifest syntax**: Ensure paths are relative to `symlinks/`
 2. **Check directory trailing slash**: Directories must end with `/`
-3. **Verify profile mapping**: Check `conf/profiles.ini` for correct excludes
+3. **Verify profile mapping**: Check `conf/profiles.toml` for correct excludes
 4. **Review auto-detection**: System may override profile (e.g., Linux always excludes windows)
 
 ### Files Disappearing Unexpectedly
@@ -323,26 +340,27 @@ This ensures files are available when their corresponding packages are installed
 
 When working with sparse checkout and manifest:
 
-1. **Always use OR logic** for manifest.ini sections (unlike other config files)
-2. **Include trailing slash** for directories in manifest.ini
-3. **Paths are relative** to `symlinks/` directory (prefix not included in manifest)
-4. **Base files don't need listing** - only list files that should be excluded
-5. **Test across profiles** after adding new manifest entries
-6. **Use multi-category sections** `[arch,desktop]` when file should be excluded if ANY category is excluded
-7. **Verify auto-detection** overrides - system enforces OS compatibility automatically
-8. **Clean working directory** required before applying sparse checkout (uncommitted changes cause errors)
-9. **Document category choices** when adding new files to manifest
+1. **Always use OR logic** for manifest.toml sections (unlike other config files)
+2. **Include trailing slash** for directories in manifest.toml
+3. **Use quoted dotted keys** for multi-category sections: `["arch.desktop"]`
+4. **Paths are relative** to `symlinks/` directory (prefix not included in manifest)
+5. **Base files don't need listing** - only list files that should be excluded
+6. **Test across profiles** after adding new manifest entries
+7. **Use multi-category sections** `["arch.desktop"]` when file should be excluded if ANY category is excluded
+8. **Verify auto-detection** overrides - system enforces OS compatibility automatically
+9. **Clean working directory** required before applying sparse checkout (uncommitted changes cause errors)
+10. **Document category choices** when adding new files to manifest
 
 ## Related Skills and Documentation
 
 - **`profile-system`** skill - Understanding profiles and selection
-- **`ini-configuration`** skill - INI file format and parsing
+- **`toml-configuration`** skill - TOML file format and deserialization
 - **`docs/PROFILES.md`** - User-facing profile documentation
 - **`docs/ARCHITECTURE.md`** - System architecture overview
 
 ## Key Files
 
-- **`conf/manifest.ini`** - File-to-category mappings
-- **`conf/profiles.ini`** - Profile-to-exclude-category mappings
+- **`conf/manifest.toml`** - File-to-category mappings
+- **`conf/profiles.toml`** - Profile-to-exclude-category mappings
 - **`cli/src/tasks/sparse_checkout.rs`** - Sparse checkout task implementation
 - **`.git/info/sparse-checkout`** - Git's sparse checkout configuration (generated)

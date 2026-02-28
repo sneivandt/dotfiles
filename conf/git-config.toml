@@ -1,0 +1,9 @@
+# Global git configuration settings
+# Applied via `git config --global` on the target platform
+
+[windows]
+settings = [
+  { key = "core.autocrlf",     value = "false"   },
+  { key = "core.symlinks",     value = "true"    },
+  { key = "credential.helper", value = "manager" },
+]

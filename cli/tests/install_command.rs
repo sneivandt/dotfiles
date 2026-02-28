@@ -483,7 +483,7 @@ fn install_symlinks_is_idempotent() {
     use dotfiles_cli::tasks::Task;
 
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("symlinks.ini", "[base]\nbashrc\n")
+        .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")
         .with_symlink_source("bashrc")
         .build();
 

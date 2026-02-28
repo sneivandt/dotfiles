@@ -26,7 +26,7 @@ cargo test --manifest-path cli/Cargo.toml -- test_name
 Unit tests live alongside the code they test in `cli/src/`. Examples:
 - `platform.rs` — Platform detection and category exclusion logic
 - `cli.rs` — CLI argument parsing and command structure
-- `config/ini.rs` — INI file parsing
+- `config/toml_loader.rs` — TOML file parsing
 - `tasks/*.rs` — Task `should_run` logic and helper functions
 
 ```rust
@@ -83,7 +83,7 @@ source files before building the context:
 #[test]
 fn test_with_custom_symlinks() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("symlinks.ini", "[base]\nbashrc\n")
+        .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")
         .with_symlink_source("bashrc")   // creates the source file on disk
         .build();
 
@@ -94,14 +94,14 @@ fn test_with_custom_symlinks() {
 
 ##### Fixture Files
 
-Reusable INI config files live in `cli/tests/fixtures/`. Use them with
+Reusable TOML config files live in `cli/tests/fixtures/`. Use them with
 `TestContextBuilder::with_config_file` to avoid duplicating inline strings:
 
 ```rust
 #[test]
 fn test_with_base_fixture() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("symlinks.ini", include_str!("fixtures/base_profile.ini"))
+        .with_config_file("symlinks.toml", include_str!("fixtures/base_profile.toml"))
         .with_symlink_source("bashrc")
         .build();
 
@@ -112,8 +112,8 @@ fn test_with_base_fixture() {
 
 | File | Contents | Used by |
 |---|---|---|
-| `fixtures/base_profile.ini` | `[base]` section with a single `bashrc` symlink | symlink validation tests |
-| `fixtures/desktop_profile.ini` | `[base]` + `[desktop]` sections with one symlink each | desktop profile loading test |
+| `fixtures/base_profile.toml` | `[base]` section with a single `bashrc` symlink | symlink validation tests |
+| `fixtures/desktop_profile.toml` | `[base]` + `[desktop]` sections with one symlink each | desktop profile loading test |
 
 #### 3. Snapshot Tests
 
@@ -140,7 +140,7 @@ The `test` subcommand validates all configuration files at runtime:
 ```
 
 This checks:
-- INI file syntax and structure
+- TOML file syntax and structure
 - Section format
 - Profile definitions
 - File references
@@ -182,7 +182,7 @@ Runs automatically on pull requests with the following jobs:
 |---|---|---|
 | `rust` | fmt, clippy, test | Rust formatting, linting, and unit/integration tests |
 | `lint` | ShellCheck, PSScriptAnalyzer | Static analysis for shell and PowerShell scripts |
-| `validate-config` | 6 config checks | INI syntax, file references, category consistency |
+| `validate-config` | 6 config checks | TOML syntax, file references, category consistency |
 | `build` | Linux, Windows | Release binary build + smoke test |
 | `integration` | base/Linux, desktop/Linux, base/Windows | Dry-run install and validation per profile |
 | `test-applications` | git, zsh, vim, nvim | Application-specific behavior tests |
@@ -271,10 +271,10 @@ When contributing changes:
 - Fix the warning or add a targeted `#[allow()]` with a comment explaining why
 
 ### Configuration Validation Failures
-- Check INI file syntax
+- Check TOML file syntax
 - Ensure section headers use proper format:
-  - Profile names in `profiles.ini`: `[profile-name]`
-  - Section names in other files: `[category]` or `[category,another]`
+  - Profile names in `profiles.toml`: `[profile-name]`
+  - Section names in other files: `[category]` or `[category-another]`
 - Verify no trailing whitespace
 
 ### Integration Test Failures

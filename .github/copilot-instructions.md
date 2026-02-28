@@ -10,7 +10,7 @@ This project manages dotfiles and system configuration using a profile-based spa
 - **Profile-Based**: Profiles (base, desktop) control sparse checkout and configuration; platform categories (linux, windows, arch) are auto-detected
 - **Idempotent**: Every run converges to the declared state without side effects
 - **Cross-Platform**: Single Rust binary; thin POSIX shell and PowerShell wrappers
-- **Declarative**: Configuration lives in `conf/` INI files, parsed natively by the Rust engine
+- **Declarative**: Configuration lives in `conf/` TOML files, deserialized via Serde
 
 ## Architecture
 
@@ -18,7 +18,7 @@ This project manages dotfiles and system configuration using a profile-based spa
 |---|---|---|
 | Rust engine | `cli/` | Cargo project — config parsing, symlinks, file ops, orchestration |
 | Shell wrappers | `dotfiles.sh` / `dotfiles.ps1` | Download or `cargo build` the binary, then exec it |
-| Configuration | `conf/` | Declarative INI config files |
+| Configuration | `conf/` | Declarative TOML config files |
 | Symlinks | `symlinks/` | Managed by the Rust engine |
 | Skills | `.github/skills/` | Agent-specific coding patterns |
 | Docs | `docs/` | Human-readable guides and reference |

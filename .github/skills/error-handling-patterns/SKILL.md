@@ -26,8 +26,8 @@ Idempotency, error handling, and dry-run patterns used in the Rust core engine a
 All fallible functions return `anyhow::Result`. Add context with `.context()`:
 
 ```rust
-packages::load(&conf.join("packages.ini"), active_categories)
-    .context("loading packages.ini")?;
+packages::load(&conf.join("packages.toml"), active_categories)
+    .context("loading packages.toml")?;
 ```
 
 ### Task Failure Recording

@@ -14,10 +14,11 @@ fn build_resources(ctx: &Context) -> Vec<SymlinkResource> {
     symlinks
         .iter()
         .map(|s| {
-            SymlinkResource::new(
-                symlinks_dir.join(&s.source),
-                compute_target(&ctx.home, &s.source),
-            )
+            let target = s.target.as_ref().map_or_else(
+                || compute_target(&ctx.home, &s.source),
+                |explicit| ctx.home.join(explicit),
+            );
+            SymlinkResource::new(symlinks_dir.join(&s.source), target)
         })
         .collect()
 }
@@ -156,6 +157,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.symlinks.push(Symlink {
             source: "bashrc".to_string(),
+            target: None,
         });
         let ctx = make_linux_context(config);
         assert!(InstallSymlinks.should_run(&ctx));
@@ -177,6 +179,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.symlinks.push(Symlink {
             source: "bashrc".to_string(),
+            target: None,
         });
         let ctx = make_linux_context(config);
         assert!(UninstallSymlinks.should_run(&ctx));

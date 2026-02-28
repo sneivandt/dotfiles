@@ -4,7 +4,7 @@ use anyhow::Result;
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};
 use crate::resources::chmod::ChmodResource;
 
-/// Apply file permissions from chmod.ini.
+/// Apply file permissions from chmod.toml.
 #[derive(Debug)]
 pub struct ApplyFilePermissions;
 

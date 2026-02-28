@@ -22,9 +22,9 @@ cli/src/
 ├── platform.rs    # OS detection (Platform, Os enum)
 ├── exec.rs        # Command execution helpers
 ├── logging.rs     # Logger with leveled output + task summary
-├── config/        # INI parsing and config loading
+├── config/        # TOML config loading and deserialization
 │   ├── mod.rs     # Config struct (aggregates all types)
-│   ├── ini.rs     # Section/KvSection parsers, filter_sections()
+│   ├── toml_loader.rs  # filter_sections(), TOML deserialization helpers
 │   ├── profiles.rs
 │   └── *.rs       # Per-type loaders (packages, symlinks, etc.)
 ├── resources/     # Declarative resource abstraction

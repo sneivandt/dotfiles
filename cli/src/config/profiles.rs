@@ -1,5 +1,7 @@
 //! Profile definition and resolution.
 use anyhow::{Context as _, Result, bail};
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -17,91 +19,53 @@ pub struct Profile {
     pub excluded_categories: Vec<String>,
 }
 
-/// Raw profile definition from profiles.ini.
-#[derive(Debug, Clone)]
+/// Raw profile definition from profiles.toml.
+#[derive(Debug, Clone, Deserialize)]
 struct ProfileDef {
-    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
     include: Vec<String>,
+    #[serde(default)]
     exclude: Vec<String>,
 }
 
-/// All known profile names available for selection via [`prompt_interactive`].
-///
-/// These must match the section headers in `conf/profiles.ini`.
-pub const PROFILE_NAMES: &[&str] = &["base", "desktop"];
-
-/// Load profile definitions from profiles.ini.
-fn load_definitions(path: &Path) -> Result<Vec<ProfileDef>, ConfigError> {
-    let content = if path.exists() {
-        std::fs::read_to_string(path).map_err(|e| ConfigError::Io {
-            path: path.display().to_string(),
-            source: e,
-        })?
-    } else {
+/// Load profile definitions from profiles.toml.
+fn load_definitions(path: &Path) -> Result<HashMap<String, ProfileDef>, ConfigError> {
+    if !path.exists() {
         return Ok(default_definitions());
-    };
-
-    let mut defs = Vec::new();
-    let mut current_name: Option<String> = None;
-    let mut current_include = Vec::new();
-    let mut current_exclude = Vec::new();
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-
-        if let Some(inner) = trimmed.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
-            // Save previous profile
-            if let Some(name) = current_name.take() {
-                defs.push(ProfileDef {
-                    name,
-                    include: std::mem::take(&mut current_include),
-                    exclude: std::mem::take(&mut current_exclude),
-                });
-            }
-            current_name = Some(inner.to_string());
-        } else if let Some((key, value)) = trimmed.split_once('=') {
-            let key = key.trim();
-            let vals: Vec<String> = value
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-
-            match key {
-                "include" => current_include = vals,
-                "exclude" => current_exclude = vals,
-                _ => {}
-            }
-        }
     }
 
-    if let Some(name) = current_name {
-        defs.push(ProfileDef {
-            name,
-            include: current_include,
-            exclude: current_exclude,
-        });
-    }
+    let content = std::fs::read_to_string(path).map_err(|e| ConfigError::Io {
+        path: path.display().to_string(),
+        source: e,
+    })?;
 
-    Ok(defs)
+    toml::from_str(&content).map_err(|e| ConfigError::TomlParse {
+        path: path.display().to_string(),
+        source: e,
+    })
 }
 
-fn default_definitions() -> Vec<ProfileDef> {
-    vec![
+fn default_definitions() -> HashMap<String, ProfileDef> {
+    let mut map = HashMap::new();
+    map.insert(
+        "base".to_string(),
         ProfileDef {
-            name: "base".to_string(),
+            description: Some("Core shell environment, no desktop GUI".to_string()),
             include: vec![],
             exclude: vec!["desktop".to_string()],
         },
+    );
+    map.insert(
+        "desktop".to_string(),
         ProfileDef {
-            name: "desktop".to_string(),
+            description: Some("Full graphical desktop (Arch + X11)".to_string()),
             include: vec!["desktop".to_string()],
             exclude: vec![],
         },
-    ]
+    );
+    map
 }
 
 /// Resolve a profile by name: compute the active and excluded categories,
@@ -109,17 +73,16 @@ fn default_definitions() -> Vec<ProfileDef> {
 ///
 /// # Errors
 ///
-/// Returns an error if the profile is not found or the profiles.ini file cannot be parsed.
+/// Returns an error if the profile is not found or the profiles.toml file cannot be parsed.
 pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profile, ConfigError> {
-    let defs = load_definitions(&conf_dir.join("profiles.ini"))?;
+    let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
     let available = defs
-        .iter()
-        .map(|d| d.name.as_str())
+        .keys()
+        .map(String::as_str)
         .collect::<Vec<_>>()
         .join(", ");
     let def = defs
-        .iter()
-        .find(|d| d.name == name)
+        .get(name)
         .ok_or_else(|| ConfigError::InvalidProfile(format!("{name} (available: {available})")))?;
 
     // Start with the profile's own include/exclude
@@ -259,19 +222,31 @@ fn set_git_config_value(content: &str, section: &str, key: &str, value: &str) ->
 
 /// Interactively prompt the user to select a profile.
 ///
+/// Profile names and descriptions are read from `conf/profiles.toml`.
+///
 /// # Errors
 ///
-/// Returns an error if user input cannot be read.
-pub fn prompt_interactive(_platform: &Platform) -> Result<String> {
-    let options: Vec<&str> = PROFILE_NAMES.to_vec();
+/// Returns an error if profiles cannot be loaded or user input cannot be read.
+pub fn prompt_interactive(conf_dir: &Path) -> Result<String> {
+    let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
+
+    let mut options: Vec<(String, Option<String>)> = defs
+        .into_iter()
+        .map(|(name, def)| (name, def.description))
+        .collect();
+    options.sort_by(|(a, _), (b, _)| a.cmp(b));
 
     if options.is_empty() {
-        bail!("no compatible profiles found for this platform");
+        bail!("no compatible profiles found");
     }
 
     println!("\nSelect a profile:");
-    for (i, name) in options.iter().enumerate() {
-        println!("  \x1b[1m{}\x1b[0m) {name}", i + 1);
+    for (i, (name, desc)) in options.iter().enumerate() {
+        if let Some(d) = desc {
+            println!("  \x1b[1m{}\x1b[0m) {name} \u{2014} {d}", i + 1);
+        } else {
+            println!("  \x1b[1m{}\x1b[0m) {name}", i + 1);
+        }
     }
     print!("\nProfile [1-{}]: ", options.len());
     io::stdout().flush().context("flushing stdout")?;
@@ -292,7 +267,7 @@ pub fn prompt_interactive(_platform: &Platform) -> Result<String> {
 
     options
         .get(choice - 1)
-        .map(ToString::to_string)
+        .map(|(name, _)| name.clone())
         .context("selection out of range")
 }
 
@@ -301,7 +276,7 @@ pub fn prompt_interactive(_platform: &Platform) -> Result<String> {
 /// # Errors
 ///
 /// Returns an error if the profile name is invalid, profile definitions cannot
-/// be loaded from profiles.ini, or if interactive prompting fails.
+/// be loaded from profiles.toml, or if interactive prompting fails.
 pub fn resolve_from_args(
     cli_profile: Option<&str>,
     root: &Path,
@@ -314,7 +289,7 @@ pub fn resolve_from_args(
     } else if let Some(name) = read_persisted(root) {
         name
     } else {
-        prompt_interactive(platform)?
+        prompt_interactive(&conf_dir)?
     };
 
     // Let resolve() validate the profile name against loaded definitions
@@ -351,7 +326,7 @@ mod tests {
     fn default_definitions_has_all_profiles() {
         let defs = default_definitions();
         assert_eq!(defs.len(), 2);
-        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
+        let names: Vec<&str> = defs.keys().map(String::as_str).collect();
         assert!(names.contains(&"base"));
         assert!(names.contains(&"desktop"));
     }
@@ -442,11 +417,6 @@ mod tests {
             msg.contains("available"),
             "error should list available profiles"
         );
-    }
-
-    #[test]
-    fn profile_names_constant() {
-        assert_eq!(PROFILE_NAMES.len(), 2);
     }
 
     // ------------------------------------------------------------------

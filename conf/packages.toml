@@ -1,0 +1,80 @@
+# System packages to install
+# Linux: Uses pacman (Arch Linux) with sections like [arch], [arch-desktop]
+#   - AUR packages are marked with aur = true
+# Windows: Uses winget (Windows Package Manager) with [windows] section
+# Sections represent category combinations that must all be active
+
+[arch]
+packages = [
+  "base-devel",
+  "bat",
+  "btop",
+  "ctags",
+  "curl",
+  "duf",
+  "eza",
+  "fd",
+  "fzf",
+  "git",
+  "git-delta",
+  "jq",
+  "lazygit",
+  "man-db",
+  "man-pages",
+  "neovim",
+  "openssh",
+  "reflector",
+  "ripgrep",
+  "rust",
+  "sed",
+  "shellcheck",
+  "tmux",
+  "vim",
+  "wget",
+  "xdg-user-dirs",
+  "zip",
+  "zoxide",
+  "zsh",
+  "zsh-autosuggestions",
+  "zsh-completions",
+  "zsh-syntax-highlighting",
+  { name = "powershell-bin", aur = true },
+]
+
+[arch-desktop]
+packages = [
+  "alacritty",
+  "alsa-utils",
+  "chromium",
+  "dunst",
+  "feh",
+  "flameshot",
+  "papirus-icon-theme",
+  "picom",
+  "redshift",
+  "rofi",
+  "rxvt-unicode",
+  "urxvt-perls",
+  "xclip",
+  "xmonad",
+  "xmonad-contrib",
+  "xorg-server",
+  "xorg-xinit",
+  "xterm",
+  { name = "chromium-widevine", aur = true },
+  { name = "spotify", aur = true },
+  { name = "visual-studio-code-insiders-bin", aur = true },
+  { name = "xautolock", aur = true },
+]
+
+[windows]
+packages = [
+  "Chocolatey.Chocolatey",
+  "Git.Git",
+  "Microsoft.PowerShell",
+  "Microsoft.Teams",
+  "Microsoft.VisualStudioCode",
+  "Microsoft.WindowsTerminal",
+  "OpenJS.NodeJS",
+  "Python.Python.3.12",
+]

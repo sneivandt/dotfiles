@@ -8,9 +8,11 @@
 #   - 'arch' is active on Arch Linux, excluded elsewhere
 
 [base]
-include=
-exclude=desktop
+description = "Core shell environment, no desktop GUI"
+include = []
+exclude = ["desktop"]
 
 [desktop]
-include=desktop
-exclude=
+description = "Full graphical desktop (Arch + X11)"
+include = ["desktop"]
+exclude = []

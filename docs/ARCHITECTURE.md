@@ -4,7 +4,7 @@ Technical documentation covering the implementation and design of the dotfiles m
 
 ## Overview
 
-This dotfiles project is a cross-platform, profile-based configuration management system built around a **Rust core engine** (`cli/`). Thin shell wrappers (`dotfiles.sh` on Linux, `dotfiles.ps1` on Windows) download or build the binary and forward all arguments to it. Configuration lives in declarative INI files (`conf/`), and the binary handles parsing, profile resolution, platform detection, and task execution.
+This dotfiles project is a cross-platform, profile-based configuration management system built around a **Rust core engine** (`cli/`). Thin shell wrappers (`dotfiles.sh` on Linux, `dotfiles.ps1` on Windows) download or build the binary and forward all arguments to it. Configuration lives in declarative TOML files (`conf/`), and the binary handles parsing, profile resolution, platform detection, and task execution.
 
 ## Design Principles
 
@@ -15,7 +15,7 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 **Solution**:
 - Single Rust binary compiled for both platforms
 - Thin platform-native entry points (`dotfiles.sh`, `dotfiles.ps1`) that download or build the binary
-- Shared configuration format (INI files in `conf/`)
+- Shared configuration format (TOML files in `conf/`)
 - Compile-time platform detection via `cfg!(target_os)` plus runtime checks (e.g. `/etc/arch-release`)
 - Profile system to exclude platform-specific files and configuration
 
@@ -34,9 +34,9 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 **Challenge**: Support multiple environments (headless server, desktop, Windows) from one repository.
 
 **Solution**:
-- Profile definitions in `conf/profiles.ini` map to category exclusions
+- Profile definitions in `conf/profiles.toml` map to category exclusions
 - Git sparse checkout excludes files by category
-- INI section names carry category tags; the binary filters them against the active profile
+- TOML table names carry category tags; the binary filters them against the active profile
 - Automatic OS detection provides safety overrides
 
 ### 4. Binary Distribution
@@ -65,7 +65,7 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 │                   parsing            │
 │  commands/      — install, uninstall,│
 │                   test, version      │
-│  config/        — INI loading &      │
+│  config/        — TOML loading &     │
 │                   profile resolution │
 │  tasks/         — Task trait impls   │
 │  platform.rs    — OS detection       │
@@ -74,14 +74,14 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 └──────────────────────────────────────┘
        │
        ▼
-┌───────────────────────────────────────────┐
-│            conf/ (INI files)              │
-│  packages.ini      symlinks.ini           │
-│  profiles.ini      manifest.ini           │
-│  systemd-units.ini vscode-extensions.ini  │
-│  registry.ini      copilot-skills.ini     │
-│  chmod.ini                                │
-└───────────────────────────────────────────┘
+┌────────────────────────────────────────────┐
+│            conf/ (TOML files)              │
+│  packages.toml      symlinks.toml          │
+│  profiles.toml      manifest.toml          │
+│  systemd-units.toml vscode-extensions.toml │
+│  registry.toml      copilot-skills.toml    │
+│  chmod.toml                                │
+└────────────────────────────────────────────┘
 ```
 
 ## Component Architecture
@@ -145,20 +145,20 @@ available only when invoking the binary directly.
 
 #### Config (`config/`)
 
-`Config::load()` reads all INI files from `conf/` and filters sections against the active profile's categories:
+`Config::load()` reads all TOML files from `conf/` and filters sections against the active profile's categories:
 
 | Module | File | Description |
 |---|---|---|
-| `profiles.rs` | `profiles.ini` | Profile resolution and category computation |
-| `ini.rs` | (all) | Generic INI parser |
-| `packages.rs` | `packages.ini` | System packages (pacman, AUR, winget) |
-| `symlinks.rs` | `symlinks.ini` | Symlink mappings |
-| `systemd_units.rs` | `systemd-units.ini` | Systemd units (Linux only) |
-| `chmod.rs` | `chmod.ini` | File permissions |
-| `vscode_extensions.rs` | `vscode-extensions.ini` | VS Code extensions |
-| `copilot_skills.rs` | `copilot-skills.ini` | GitHub Copilot CLI skills |
-| `registry.rs` | `registry.ini` | Windows registry entries |
-| `manifest.rs` | `manifest.ini` | Sparse checkout file mappings |
+| `profiles.rs` | `profiles.toml` | Profile resolution and category computation |
+| `toml_loader.rs` | (all) | Generic TOML loader |
+| `packages.rs` | `packages.toml` | System packages (pacman, AUR, winget) |
+| `symlinks.rs` | `symlinks.toml` | Symlink mappings |
+| `systemd_units.rs` | `systemd-units.toml` | Systemd units (Linux only) |
+| `chmod.rs` | `chmod.toml` | File permissions |
+| `vscode_extensions.rs` | `vscode-extensions.toml` | VS Code extensions |
+| `copilot_skills.rs` | `copilot-skills.toml` | GitHub Copilot CLI skills |
+| `registry.rs` | `registry.toml` | Windows registry entries |
+| `manifest.rs` | `manifest.toml` | Sparse checkout file mappings |
 
 #### Tasks (`tasks/`)
 
@@ -259,25 +259,29 @@ Event tags cover the full lifecycle: logger messages (`STAGE`, `INFO`, `DEBUG`,
 
 ### Configuration System
 
-#### INI File Format
+#### TOML File Format
 
-All configuration files use standard INI format:
+All configuration files use TOML format. Items are declared as typed arrays under section headers:
 
-```ini
+```toml
 [section-name]
-entry-one
-entry-two
+items = [
+  "entry-one",
+  "entry-two",
+]
 ```
 
-**Profile name distinction**:
-- `profiles.ini`: Profile names: `[base]`, `[desktop]`
-- Other files: Section names use comma-separated categories: `[arch,desktop]`
+**Section name conventions**:
+- `profiles.toml`: Profile names: `[base]`, `[desktop]`
+- Other files: Section names use hyphen-separated categories: `[arch-desktop]`
+  - This indicates the section requires ALL listed categories to be active (AND logic)
+  - Example: `[arch-desktop]` is only processed when both `arch` AND `desktop` are not excluded
 
-**Exception**: `registry.ini` uses `key = value` format.
+`registry.toml` uses a different structure — logical section names with a `path` key and a nested `[section.values]` subtable.
 
 #### Configuration Processing
 
-1. `Config::load()` reads each INI file from `conf/`
+1. `Config::load()` reads each TOML file from `conf/`
 2. Each config module parses sections and entries
 3. Sections are filtered against the active profile's `active_categories`
 4. Platform-specific configs (e.g. registry on Windows, units on Linux) are loaded conditionally
@@ -287,15 +291,15 @@ entry-two
 Git's sparse checkout feature controls which files are checked out.
 
 **Implementation flow**:
-1. Resolve profile from `profiles.ini`
+1. Resolve profile from `profiles.toml`
 2. Compute excluded categories from profile definition plus platform detection
-3. Load file mappings from `manifest.ini`
+3. Load file mappings from `manifest.toml`
 4. Build exclusion patterns
 5. Configure `git sparse-checkout set`
 
-**Pattern logic** (manifest.ini):
+**Pattern logic** (manifest.toml):
 - Uses OR logic for exclusions
-- `[arch,desktop]` means "exclude if arch OR desktop is excluded"
+- `[arch-desktop]` means "exclude if arch OR desktop is excluded"
 - Ensures files common to multiple categories are excluded appropriately
 
 ### Error Handling
@@ -303,8 +307,8 @@ Git's sparse checkout feature controls which files are checked out.
 The binary uses `anyhow::Result` throughout. Each config loader and task adds context via `.context()`:
 
 ```rust
-packages::load(&conf.join("packages.ini"), active_categories)
-    .context("loading packages.ini")?;
+packages::load(&conf.join("packages.toml"), active_categories)
+    .context("loading packages.toml")?;
 ```
 
 Task failures are caught by `tasks::execute()` and recorded as `TaskStatus::Failed` — the binary continues executing remaining tasks and reports all failures in the summary.
@@ -313,7 +317,7 @@ Task failures are caught by `tasks::execute()` and recorded as `TaskStatus::Fail
 
 ### Rust Tests
 
-- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/ini.rs`, `tasks/*.rs`)
+- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/toml_loader.rs`, `tasks/*.rs`)
 - **Integration tests**: Separate test binaries in `cli/tests/` (`install_command.rs`, `uninstall_command.rs`, `test_command.rs`), using `IntegrationTestContext` and `TestContextBuilder` helpers from `cli/tests/common/mod.rs`
 - **Snapshot tests**: Task list snapshots via the `insta` crate (`cli/tests/snapshots/`). Update with `INSTA_UPDATE=unseen cargo test` or `cargo insta review`
 
@@ -322,7 +326,7 @@ The project uses `tempfile` as a dev-dependency for tests that need temporary di
 ### Configuration Validation
 
 The `test` command validates:
-- INI file syntax
+- TOML file syntax
 - Section format
 - Profile definitions
 - File references
@@ -358,7 +362,7 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 ### Adding New Configuration Types
 
-1. Create INI file in `conf/`
+1. Create TOML file in `conf/`
 2. Add a config parser in `cli/src/config/`
 3. Add the field to the `Config` struct and load it in `Config::load()`
 4. Create a task in `cli/src/tasks/` that consumes the config
@@ -366,9 +370,9 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 ### Adding Custom Profiles
 
-1. Define in `conf/profiles.ini`
+1. Define in `conf/profiles.toml`
 2. Add sections to configuration files
-3. Map files in `conf/manifest.ini`
+3. Map files in `conf/manifest.toml`
 
 ## Performance Considerations
 
@@ -477,7 +481,7 @@ The pre-commit hook runs two checks via dedicated scripts in `hooks/`:
 
 - Uses official package managers (pacman, winget)
 - No automatic execution of arbitrary scripts
-- User reviews `packages.ini` before installation
+- User reviews `packages.toml` before installation
 
 ## See Also
 

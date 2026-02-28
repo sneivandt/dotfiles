@@ -9,9 +9,9 @@
 set -o errexit
 set -o nounset
 
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+RED=$(printf '\033[0;31m')
+YELLOW=$(printf '\033[1;33m')
+NC=$(printf '\033[0m')
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PATTERNS_FILE="$SCRIPT_DIR/sensitive-patterns.ini"
@@ -19,7 +19,7 @@ PATTERNS_FILE="$SCRIPT_DIR/sensitive-patterns.ini"
 printf "Running sensitive content scan...\n"
 
 if [ ! -f "$PATTERNS_FILE" ]; then
-  printf "${RED}ERROR: Patterns file not found: %s${NC}\n" "$PATTERNS_FILE"
+  printf '%sERROR: Patterns file not found: %s%s\n' "$RED" "$PATTERNS_FILE" "$NC"
   printf '%sCannot perform credential scanning without patterns file.%s\n' "$YELLOW" "$NC"
   exit 1
 fi
@@ -45,9 +45,27 @@ while IFS= read -r file; do
     continue
   fi
 
-  diff=$(git diff --cached --unified=0 "$against" -- "$file" | grep '^+' | grep -v '^+++' || true)
+  diff_output=$(git diff --cached --unified=0 "$against" -- "$file" || true)
 
-  if [ -z "$diff" ]; then
+  if [ -z "$diff_output" ]; then
+    continue
+  fi
+
+  # Build a list of "lineno:content" for added lines by tracking hunk headers
+  numbered_adds=$(echo "$diff_output" | awk '
+    /^@@ / {
+      # Parse +start from @@ -a,b +c,d @@
+      split($3, a, /[,+]/)
+      lineno = a[2]
+      next
+    }
+    /^\+/ && !/^\+\+\+/ {
+      print lineno ":" substr($0, 2)
+      lineno++
+    }
+  ')
+
+  if [ -z "$numbered_adds" ]; then
     continue
   fi
 
@@ -56,7 +74,7 @@ while IFS= read -r file; do
       ''|'#'*|'['*']') continue ;;
     esac
 
-    matches=$(echo "$diff" | grep -niE -- "$pattern" 2>/dev/null || true)
+    matches=$(echo "$numbered_adds" | grep -iE -- "$pattern" 2>/dev/null || true)
 
     if [ -n "$matches" ]; then
         if [ "$found_secrets" -eq 0 ]; then
@@ -65,9 +83,12 @@ while IFS= read -r file; do
           found_secrets=1
         fi
 
-        printf "${YELLOW}In file: %s${NC}\n" "$file"
-        printf "${YELLOW}Pattern matched: %s${NC}\n" "$pattern"
-        printf '%sMatched in staged changes%s\n\n' "$YELLOW" "$NC"
+        printf '%sIn file: %s%s\n' "$YELLOW" "$file" "$NC"
+        printf '%sPattern matched: %s%s\n' "$YELLOW" "$pattern" "$NC"
+        echo "$matches" | while IFS=: read -r lineno content; do
+          printf '%s  Line %s: %s%s\n' "$YELLOW" "$lineno" "$content" "$NC"
+        done
+        printf '\n'
     fi
   done <<PATTERNS_EOF
 $PATTERNS

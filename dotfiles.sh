@@ -206,7 +206,7 @@ download_binary() {
     tmpfile=$(mktemp)
     trap 'rm -f "$tmpfile"' EXIT
     if download_with_retry "$checksum_url" "$tmpfile"; then
-      expected=$(grep "$asset" "$tmpfile" | awk '{print $1}')
+      expected=$(awk -v fname="$asset" '$2 == fname {print $1}' "$tmpfile")
       actual=$(sha256sum "$BINARY" | awk '{print $1}')
       if [ -n "$expected" ] && [ "$expected" != "$actual" ]; then
         echo "ERROR: Checksum verification failed!" >&2

@@ -121,9 +121,19 @@ fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
     let tmp = target.with_extension("dotfiles_tmp");
     std::fs::copy(source, &tmp)
         .with_context(|| format!("copy {} to {}", source.display(), tmp.display()))?;
-    remove_symlink(target).with_context(|| format!("remove symlink: {}", target.display()))?;
-    std::fs::rename(&tmp, target)
-        .with_context(|| format!("rename {} to {}", tmp.display(), target.display()))?;
+
+    let cleanup_file = || {
+        let _ = std::fs::remove_file(&tmp);
+    };
+
+    if let Err(e) = remove_symlink(target) {
+        cleanup_file();
+        return Err(e).with_context(|| format!("remove symlink: {}", target.display()));
+    }
+    if let Err(e) = std::fs::rename(&tmp, target) {
+        cleanup_file();
+        return Err(e).with_context(|| format!("rename {} to {}", tmp.display(), target.display()));
+    }
     Ok(())
 }
 
@@ -138,15 +148,26 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
     );
     let tmp = parent.join(&stem);
 
+    let cleanup_dir = || {
+        let _ = std::fs::remove_dir_all(&tmp);
+    };
+
     super::fs::copy_dir_recursive(source, &tmp, false)
         .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;
-    remove_symlink(target)
-        .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
+
+    if let Err(e) = remove_symlink(target) {
+        cleanup_dir();
+        return Err(e).with_context(|| format!("remove symlink/junction: {}", target.display()));
+    }
 
     // Prefer atomic rename; fall back to copy+delete on cross-filesystem move.
     if std::fs::rename(&tmp, target).is_err() {
-        super::fs::copy_dir_recursive(&tmp, target, false)
-            .with_context(|| format!("cross-fs copy {} to {}", tmp.display(), target.display()))?;
+        if let Err(e) = super::fs::copy_dir_recursive(&tmp, target, false) {
+            cleanup_dir();
+            return Err(e).with_context(|| {
+                format!("cross-fs copy {} to {}", tmp.display(), target.display())
+            });
+        }
         std::fs::remove_dir_all(&tmp)
             .with_context(|| format!("remove tmp dir: {}", tmp.display()))?;
     }

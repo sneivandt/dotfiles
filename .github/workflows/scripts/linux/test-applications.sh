@@ -114,15 +114,18 @@ test_git_config()
   log_verbose "Custom git config found"
 
   # Check key config values
+  errors=0
   for kv in "init.defaultBranch=main" "pull.rebase=true" "merge.conflictstyle=zdiff3" "push.autoSetupRemote=true" "diff.algorithm=histogram"; do
     key="${kv%%=*}"; expected="${kv#*=}"
     actual="$(git config --get "$key" 2>/dev/null || echo "")"
     if [ "$actual" = "$expected" ]; then
       log_verbose "✓ $key = $actual"
     else
-      printf "%sWARNING: %s expected '%s', got '%s'%s\n" "${YELLOW}" "$key" "$expected" "$actual" "${NC}" >&2
+      printf "%sERROR: %s expected '%s', got '%s'%s\n" "${RED}" "$key" "$expected" "$actual" "${NC}" >&2
+      errors=$((errors + 1))
     fi
   done
+  [ "$errors" -eq 0 ] || return 1
 )}
 
 test_git_aliases()
@@ -132,13 +135,16 @@ test_git_aliases()
   [ -f "$HOME/.config/git/config" ] || { log_verbose "Git config not installed"; return 0; }
   [ -f "$HOME/.config/git/aliases" ] || { log_verbose "Aliases file not installed"; return 0; }
 
+  errors=0
   for a in st br lo ci; do
     if git config --get "alias.$a" >/dev/null 2>&1; then
       log_verbose "✓ alias.$a = $(git config --get "alias.$a")"
     else
-      printf "%sWARNING: alias.%s not defined%s\n" "${YELLOW}" "$a" "${NC}" >&2
+      printf "%sERROR: alias.%s not defined%s\n" "${RED}" "$a" "${NC}" >&2
+      errors=$((errors + 1))
     fi
   done
+  [ "$errors" -eq 0 ] || return 1
 )}
 
 test_git_behavior()
@@ -159,12 +165,13 @@ test_git_behavior()
   if [ "$branch" = "main" ]; then
     log_verbose "✓ Default branch is main"
   else
-    printf "%sWARNING: default branch is '%s'%s\n" "${YELLOW}" "$branch" "${NC}" >&2
+    printf "%sERROR: default branch is '%s', expected 'main'%s\n" "${RED}" "$branch" "${NC}" >&2
+    return 1
   fi
 
   # Can create a commit
   echo test > test.txt && git add test.txt
-  git commit -m "Test commit" >/dev/null 2>&1 || { printf "%sWARNING: commit failed%s\n" "${YELLOW}" "${NC}" >&2; return 0; }
+  git commit -m "Test commit" >/dev/null 2>&1 || { printf "%sERROR: commit failed%s\n" "${RED}" "${NC}" >&2; return 1; }
   log_verbose "✓ Commit created successfully"
 )}
 

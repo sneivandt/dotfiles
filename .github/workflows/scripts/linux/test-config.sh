@@ -82,16 +82,6 @@ test_chmod_validation()
 
   err_file="$(mktemp)"; echo 0 > "$err_file"
   # chmod.toml uses structured objects: { mode = "600", path = "ssh/config" }
-  # Extract path values from permissions arrays
-  sections="$(grep -E '^\[.+\]$' "$DIR/conf/chmod.toml" | tr -d '[]')"
-  for section in $sections; do
-    read_toml_section_array "$DIR/conf/chmod.toml" "$section" "permissions" | while IFS='' read -r file || [ -n "$file" ]; do
-      [ -n "$file" ] || continue
-      # read_toml_section_array extracts the first quoted string, which is the mode;
-      # for chmod we need the path. Extract path from the raw TOML line instead.
-      true
-    done
-  done
   # Use a direct grep approach for chmod.toml structured entries
   grep -oP 'path\s*=\s*"\K[^"]+' "$DIR/conf/chmod.toml" | while IFS='' read -r file || [ -n "$file" ]; do
     [ -n "$file" ] || continue
@@ -150,6 +140,7 @@ test_category_consistency()
             continue
           fi
           printf "%sWARNING: %s uses category '%s' not in manifest.toml%s\n" "${YELLOW}" "$name" "$part" "${NC}" >&2
+          errors=$((errors + 1))
         fi
       done
     done

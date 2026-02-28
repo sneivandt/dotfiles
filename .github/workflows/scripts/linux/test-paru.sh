@@ -88,7 +88,8 @@ test_aur_packages()
   if paru -Ss --noconfirm base-devel >/dev/null 2>&1; then
     log_verbose "✓ Paru package search works"
   else
-    printf "%sWARNING: paru search failed%s\n" "${YELLOW}" "${NC}" >&2
+    printf "%sERROR: paru search failed%s\n" "${RED}" "${NC}" >&2
+    return 1
   fi
 )}
 
@@ -99,7 +100,7 @@ test_paru_config()
   for cfg in /etc/paru.conf "$HOME/.config/paru/paru.conf"; do
     [ -f "$cfg" ] && log_verbose "Found config: $cfg"
   done
-  paru --version >/dev/null 2>&1 || printf "%sWARNING: paru may have config issues%s\n" "${YELLOW}" "${NC}" >&2
+  paru --version >/dev/null 2>&1 || { printf "%sERROR: paru --version failed, config may have issues%s\n" "${RED}" "${NC}" >&2; return 1; }
   log_verbose "Paru configuration OK"
 )}
 

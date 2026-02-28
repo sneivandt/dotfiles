@@ -16,7 +16,7 @@ use super::{Context, Task, TaskResult, task_deps};
 #[derive(Debug)]
 pub struct ReloadConfig {
     /// Shared flag set by [`super::update::UpdateRepository`] when new commits
-    /// were fetched.  When `false`, the reload is skipped.
+    /// were fetched.  When `false`, the reload is a no-op.
     pub(super) repo_updated: Arc<AtomicBool>,
 }
 
@@ -42,8 +42,8 @@ impl Task for ReloadConfig {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if !self.repo_updated.load(std::sync::atomic::Ordering::Acquire) {
             ctx.log
-                .debug("repository was not updated, skipping config reload");
-            return Ok(TaskResult::Skipped("repository not updated".to_string()));
+                .debug("repository was not updated, config reload is a no-op");
+            return Ok(TaskResult::Ok);
         }
 
         // Load the new config while holding only a read lock, so there is no
@@ -91,14 +91,14 @@ mod tests {
     }
 
     #[test]
-    fn run_skips_when_repo_not_updated() {
+    fn run_returns_ok_when_repo_not_updated() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
         let repo_updated = Arc::new(AtomicBool::new(false));
         let task = ReloadConfig::new(Arc::clone(&repo_updated));
         // repo_updated defaults to false
         let result = task.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Skipped(_)));
+        assert!(matches!(result, TaskResult::Ok));
     }
 
     #[test]

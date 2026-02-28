@@ -64,7 +64,7 @@ jobs:
           sh test-config.sh config_validation
           sh test-config.sh symlinks_validation
           sh test-config.sh chmod_validation
-          sh test-config.sh ini_syntax
+          sh test-config.sh toml_syntax
           sh test-config.sh category_consistency
           sh test-config.sh empty_sections
 

@@ -10,26 +10,32 @@ metadata:
 
 # Package Management
 
-System packages are declared in `conf/packages.ini`, loaded by `cli/src/config/packages.rs`, and installed by tasks in `cli/src/tasks/packages.rs`.
+System packages are declared in `conf/packages.toml`, loaded by `cli/src/config/packages.rs`, and installed by tasks in `cli/src/tasks/packages.rs`.
 
 ## Configuration
 
-```ini
+```toml
 [arch]
-git
-neovim
-aur:powershell-bin
+packages = [
+  "git",
+  "neovim",
+  { name = "powershell-bin", aur = true },
+]
 
-[arch,desktop]
-alacritty
-aur:visual-studio-code-insiders-bin
+[arch-desktop]
+packages = [
+  "alacritty",
+  { name = "visual-studio-code-insiders-bin", aur = true },
+]
 
 [windows]
-Git.Git
-Microsoft.PowerShell
+packages = [
+  "Git.Git",
+  "Microsoft.PowerShell",
+]
 ```
 
-The config loader strips the `aur:` prefix and tags those packages with `is_aur = true`.
+Packages with `aur = true` are tagged with `is_aur = true` in the loaded config.
 
 ## Task Structure
 

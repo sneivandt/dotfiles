@@ -1,12 +1,12 @@
 # Minimal base-profile fixture
 #
-# Represents the smallest valid `symlinks.ini` for a base-profile
+# Represents the smallest valid `symlinks.toml` for a base-profile
 # integration test — a single symlink whose source exists in the
 # `symlinks/` directory of the test repository.
 #
-# Usage: write this file to `conf/symlinks.ini` in the temp repo,
+# Usage: write this file to `conf/symlinks.toml` in the temp repo,
 # then call `TestContextBuilder::with_symlink_source("bashrc")` so
 # that validation does not warn about a missing file.
 
 [base]
-bashrc
+symlinks = ["bashrc"]

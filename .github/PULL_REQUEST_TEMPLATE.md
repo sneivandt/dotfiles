@@ -32,12 +32,12 @@
 - Profile tested: <!-- e.g., desktop -->
 
 ## Configuration Changes
-<!-- If you've modified INI files, list the changes -->
-- [ ] Updated `conf/packages.ini`
-- [ ] Updated `conf/symlinks.ini`
-- [ ] Updated `conf/systemd-units.ini`
-- [ ] Updated `conf/manifest.ini`
-- [ ] Updated `conf/profiles.ini`
+<!-- If you've modified TOML files, list the changes -->
+- [ ] Updated `conf/packages.toml`
+- [ ] Updated `conf/symlinks.toml`
+- [ ] Updated `conf/systemd-units.toml`
+- [ ] Updated `conf/manifest.toml`
+- [ ] Updated `conf/profiles.toml`
 - [ ] Other: <!-- specify -->
 
 ## Documentation
@@ -50,7 +50,7 @@
 - [ ] Rust code passes `cargo fmt --check` and `cargo clippy -- -D warnings`
 - [ ] Shell wrappers follow POSIX sh compatibility
 - [ ] All new tasks are idempotent
-- [ ] Added items to INI config files rather than hardcoding
+- [ ] Added items to TOML config files rather than hardcoding
 - [ ] CI checks pass (automatically verified)
 
 ## Additional Notes

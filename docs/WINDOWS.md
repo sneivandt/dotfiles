@@ -48,11 +48,11 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 | 3 | Update Repository | Updates the repository from remote (`git pull --ff-only`). | Skips if already up to date. |
 | 4 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
 | 5 | Git Hooks | Installs repository git hooks. | Skips if hooks already installed. |
-| 6 | Packages | Installs missing packages from `conf/packages.ini` using winget. | Skips already-installed packages. |
-| 7 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.ini`. | Only creates links whose targets do not already exist. |
-| 8 | Registry | Applies registry values from `conf/registry.ini`. | Each value compared to existing; paths created only if missing. |
-| 9 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.ini`. | Checks against `code --list-extensions`. |
-| 10 | Copilot Skills | Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`. | Skips if skill files already exist. |
+| 6 | Packages | Installs missing packages from `conf/packages.toml` using winget. | Skips already-installed packages. |
+| 7 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
+| 8 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
+| 9 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
+| 10 | Copilot Skills | Downloads GitHub Copilot CLI skills from `conf/copilot-skills.toml`. | Skips if skill files already exist. |
 
 Tasks that don't apply to Windows (systemd, shell, chmod, paru) are automatically skipped via platform detection.
 
@@ -97,21 +97,23 @@ If the update fails, resolve the situation manually (e.g., commit or stash local
 
 ## Package Management
 
-Package installation uses Windows Package Manager (winget) to install missing packages from `conf/packages.ini`.
+Package installation uses Windows Package Manager (winget) to install missing packages from `conf/packages.toml`.
 
 **Requirements:**
 - **winget**: Built into Windows 11 and modern Windows 10. If not available, install from: https://aka.ms/getwinget
 
-Configuration lives in `conf/packages.ini` under the **`[windows]` section**:
+Configuration lives in `conf/packages.toml` under the **`[windows]` section**:
 
-```ini
+```toml
 [windows]
-Git.Git
-Microsoft.PowerShell
-Microsoft.VisualStudioCode
+packages = [
+  "Git.Git",
+  "Microsoft.PowerShell",
+  "Microsoft.VisualStudioCode",
+]
 ```
 
-Each line is a **winget package ID** (case-sensitive). The binary:
+Each entry is a **winget package ID** (case-sensitive). The binary:
 - Checks if each package is already installed (idempotent)
 - Installs only missing packages
 - Uses silent installation with automatic acceptance of licenses
@@ -123,46 +125,56 @@ winget search <package-name>
 ```
 
 To add packages:
-1. Add the winget package ID to the `[windows]` section in `conf/packages.ini`
+1. Add the winget package ID to the `[windows]` section in `conf/packages.toml`
 2. Re-run `./dotfiles.ps1`
 
 **Note:** Package installation respects the profile system. Only packages in sections matching your active categories (including auto-detected `windows`) will be installed.
 
 ## Registry Customization
 
-Registry configuration lives in `conf/registry.ini` using INI format with **registry paths as sections**:
+Registry configuration lives in `conf/registry.toml`. Each section uses a logical name with a `path` key (the registry path) and a `[section.values]` subtable:
 
-```ini
-[HKCU:\Console\PSReadLine]
+```toml
+[console]
+path = 'HKCU:\Console'
+
+[console.values]
+WindowSize = 0x00200078
+FaceName = "Cascadia Mono"
+QuickEdit = 1
+
+[psreadline]
+path = 'HKCU:\Console\PSReadLine'
+
+[psreadline.values]
 NormalForeground = 0xF
-
-[HKCU:\Control Panel\International]
-sLongDate = MMMM d, yyyy
 ```
 
-Each section header is a registry path, and entries use `name = value` format. Color table entries (ColorTable00-15) use 6-digit hex RGB format that gets automatically converted to the internal DWORD format.
+Section names are logical identifiers (not registry paths). The `path` field holds the actual registry path.
 
 **Note:** Registry configuration doesn't use profile filtering since registry settings are Windows-only by nature.
 
 To add custom registry settings:
-1. Add entries to appropriate section in `conf/registry.ini` (or create a new section with a registry path).
+1. Add entries to appropriate section in `conf/registry.toml` (or create a new section with a logical name and `path` key).
 2. Re-run `./dotfiles.ps1`.
 
 The script will create missing registry keys automatically.
 
 ## Symlinks
 
-Symlink definitions live in `conf/symlinks.ini` under the **`[windows]` section**:
+Symlink definitions live in `conf/symlinks.toml` under the **`[windows]` section**:
 
-```ini
+```toml
 [windows]
-AppData/Roaming/Code/User/settings.json
-AppData/Roaming/Code - Insiders/User/settings.json
-AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json
-config/git/windows
+symlinks = [
+  "AppData/Roaming/Code/User/settings.json",
+  "AppData/Roaming/Code - Insiders/User/settings.json",
+  "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json",
+  "config/git/windows",
+]
 ```
 
-Each line is a path relative to `$env:USERPROFILE`. The source file is located at `symlinks/<same-path>` in the repository. Forward slashes are automatically converted to backslashes for Windows.
+Each entry is a path relative to `$env:USERPROFILE`. The source file is located at `symlinks/<same-path>` in the repository. Forward slashes are automatically converted to backslashes for Windows.
 
 ### Smart Dot-Prefixing
 
@@ -177,26 +189,28 @@ Examples:
 
 This allows the same configuration repository to work across both Windows and Linux while respecting platform conventions.
 
-**Note:** Windows symlinks use the same configuration file as Linux (`conf/symlinks.ini`) but use the `[windows]` section.
+**Note:** Windows symlinks use the same configuration file as Linux (`conf/symlinks.toml`) but use the `[windows]` section.
 
 To add a new link:
 1. Place the source file under `symlinks/<path>` (create directories as needed).
-2. Add the path to the `[windows]` section in `conf/symlinks.ini`.
+2. Add the path to the `[windows]` section in `conf/symlinks.toml`.
 3. Re-run `./dotfiles.ps1`.
 
 ## VS Code Extensions
 
-The file `conf/vscode-extensions.ini` contains extensions in the `[extensions]` section. Remove a line and re-run to keep new installs from occurring (does not uninstall). Add lines to expand your standard environment. The script requires the `code` CLI on PATH (Enable via VS Code: Command Palette → Shell Command: Install 'code' command in PATH).
+The file `conf/vscode-extensions.toml` contains extensions under category sections (`[desktop]`, `[windows]`, etc.). The `extensions` key holds an array of extension IDs. Remove an entry and re-run to keep new installs from occurring (does not uninstall). Add entries to expand your standard environment. The script requires the `code` CLI on PATH (Enable via VS Code: Command Palette → Shell Command: Install 'code' command in PATH).
 
 ## GitHub Copilot CLI Skills
 
-The file `conf/copilot-skills.ini` contains GitHub Copilot CLI skill folder URLs organized by profile sections (e.g., `[base]`, `[windows]`). Each URL points to a folder in a GitHub repository containing skill definition files.
+The file `conf/copilot-skills.toml` contains GitHub Copilot CLI skill folder URLs organized by category sections (e.g., `[base]`, `[windows]`). Each URL points to a folder in a GitHub repository containing skill definition files.
 
 **Format**:
-```ini
+```toml
 [base]
-https://github.com/github/awesome-copilot/blob/main/skills/azure-devops-cli
-https://github.com/microsoft/skills/blob/main/.github/skills/azure-identity-dotnet
+skills = [
+  "https://github.com/github/awesome-copilot/blob/main/skills/azure-devops-cli",
+  "https://github.com/microsoft/skills/blob/main/.github/skills/azure-identity-dotnet",
+]
 ```
 
 **How it works**:
@@ -295,7 +309,7 @@ Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
 | Symptom | Check |
 |---------|-------|
 | No output / nothing changes | Ensure you are running an elevated PowerShell session. |
-| Symlink not created | Entry present in `conf/symlinks.ini` under `[windows]` section? Does source file exist in `symlinks/`? Does a real file already exist at target path (preventing link)? Running as admin? |
+| Symlink not created | Entry present in `conf/symlinks.toml` under `[windows]` section? Does source file exist in `symlinks/`? Does a real file already exist at target path (preventing link)? Running as admin? |
 | Registry values unchanged | Verify keys under `HKCU:\Console` – did policy or another tool override them? Run as admin. |
 | VS Code extensions not installing | `code` CLI available? Run `code --version` in the same session. |
 
@@ -309,7 +323,7 @@ Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
 
 ## See Also
 
-- [Configuration Reference](CONFIGURATION.md) - Details on `conf/packages.ini`, `conf/registry.ini`, `conf/symlinks.ini`
+- [Configuration Reference](CONFIGURATION.md) - Details on `conf/packages.toml`, `conf/registry.toml`, `conf/symlinks.toml`
 - [Usage Guide](USAGE.md) - General installation and usage
 - [Troubleshooting](TROUBLESHOOTING.md) - Windows troubleshooting
 - [Architecture](ARCHITECTURE.md) - Windows module architecture

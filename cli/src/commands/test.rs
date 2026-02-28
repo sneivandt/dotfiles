@@ -83,10 +83,10 @@ impl Task for ValidateConfigFiles {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let conf = ctx.root().join("conf");
         let required = [
-            "profiles.ini",
-            "symlinks.ini",
-            "packages.ini",
-            "manifest.ini",
+            "profiles.toml",
+            "symlinks.toml",
+            "packages.toml",
+            "manifest.toml",
         ];
 
         let mut errors = 0u32;

@@ -62,28 +62,28 @@ cargo test --manifest-path cli/Cargo.toml
 
 #### Adding Configuration Files
 
-1. **Symlinks**: Add files to `symlinks/` directory, then add entries to `conf/symlinks.ini`:
-   ```ini
+1. **Symlinks**: Add files to `symlinks/` directory, then add entries to `conf/symlinks.toml`:
+   ```toml
    [base]
-   config/mynewconfig
+   symlinks = ["config/mynewconfig"]
    ```
 
-2. **Packages**: Add to appropriate section in `conf/packages.ini`:
-   ```ini
+2. **Packages**: Add to appropriate section in `conf/packages.toml`:
+   ```toml
    [arch]
-   my-new-package
+   packages = ["my-new-package"]
    ```
 
-3. **Systemd Units**: Add to `conf/systemd-units.ini`:
-   ```ini
-   [arch,desktop]
-   my-service.service
+3. **Systemd Units**: Add to `conf/systemd-units.toml`:
+   ```toml
+   [arch-desktop]
+   units = ["my-service.service"]
    ```
 
-4. **File Categorization**: If the file should be excluded in certain profiles, add to `conf/manifest.ini`:
-   ```ini
+4. **File Categorization**: If the file should be excluded in certain profiles, add to `conf/manifest.toml`:
+   ```toml
    [desktop]
-   symlinks/config/mynewconfig
+   paths = ["symlinks/config/mynewconfig"]
    ```
 
 #### Adding New Tasks
@@ -111,18 +111,18 @@ cargo test --manifest-path cli/Cargo.toml
 
 #### Adding New Configuration Types
 
-1. Create INI file in `conf/`
+1. Create TOML file in `conf/`
 2. Add a parser module in `cli/src/config/` (follow existing patterns like `packages.rs`)
 3. Add the field to the `Config` struct and load it in `Config::load()`
 4. Create a task in `cli/src/tasks/` that consumes the config
 
 #### Creating New Profiles
 
-Define in `conf/profiles.ini`:
-```ini
+Define in `conf/profiles.toml`:
+```toml
 [my-profile]
-include=
-exclude=windows,desktop
+include = []
+exclude = ["windows", "desktop"]
 ```
 
 ### Rust Code Guidelines
@@ -142,11 +142,11 @@ The shell wrappers (`dotfiles.sh`, `dotfiles.ps1`) are thin entry points that do
 - **Minimal Logic**: Keep the wrappers thin; add new logic to the Rust binary instead
 - **Error Handling**: `set -o errexit` and `set -o nounset` in `dotfiles.sh`
 
-### INI Configuration Format
+### TOML Configuration Format
 
-See [Configuration Reference](CONFIGURATION.md) and the `ini-configuration` skill for INI format details. Key points:
-- Section names use comma-separated categories (logical AND): `[arch,desktop]`
-- Exception: `registry.ini` uses `key = value` entries; `profiles.ini` uses hyphenated names
+See [Configuration Reference](CONFIGURATION.md) and the `toml-configuration` skill for TOML format details. Key points:
+- Section names use hyphen-separated categories (logical AND): `[arch-desktop]`
+- `registry.toml` uses logical section names with `path` key and nested `[section.values]` subtable; `profiles.toml` uses profile names
 
 ## Testing
 

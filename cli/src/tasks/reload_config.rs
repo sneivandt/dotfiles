@@ -107,19 +107,20 @@ mod tests {
         let conf = dir.path().join("conf");
         std::fs::create_dir_all(&conf).unwrap();
         std::fs::write(
-            conf.join("profiles.ini"),
-            "[base]\ninclude=\nexclude=desktop\n",
+            conf.join("profiles.toml"),
+            "[base]\ninclude = []\nexclude = [\"desktop\"]\n",
         )
         .unwrap();
         for file in &[
-            "symlinks.ini",
-            "packages.ini",
-            "manifest.ini",
-            "chmod.ini",
-            "systemd-units.ini",
-            "vscode-extensions.ini",
-            "copilot-skills.ini",
-            "registry.ini",
+            "symlinks.toml",
+            "packages.toml",
+            "manifest.toml",
+            "chmod.toml",
+            "systemd-units.toml",
+            "vscode-extensions.toml",
+            "copilot-skills.toml",
+            "git-config.toml",
+            "registry.toml",
         ] {
             std::fs::write(conf.join(file), "").unwrap();
         }

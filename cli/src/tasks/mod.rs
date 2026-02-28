@@ -249,6 +249,7 @@ pub mod test_helpers {
             chmod: vec![],
             vscode_extensions: vec![],
             copilot_skills: vec![],
+            git_settings: vec![],
             manifest: Manifest {
                 excluded_files: vec![],
             },

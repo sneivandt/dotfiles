@@ -67,10 +67,6 @@
             "other": "on"
         }
     },
-    // INI files
-    "[ini]": {
-        "editor.tabSize": 2
-    },
     // YAML settings (for GitHub Actions)
     "yaml.schemas": {
         "https://json.schemastore.org/github-workflow.json": [

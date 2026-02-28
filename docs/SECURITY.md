@@ -45,7 +45,7 @@ The installation scripts in this repository execute with user privileges and per
 
 2. **Before running**:
    - Review `dotfiles.sh` or `dotfiles.ps1` source code
-   - Check `conf/*.ini` files for packages and settings
+   - Check `conf/*.toml` files for packages and settings
    - Use `-d` (dry-run) mode to preview changes:
      ```bash
      ./dotfiles.sh install -p desktop -d
@@ -69,7 +69,7 @@ Windows scripts require elevation for:
 **Risks**:
 - Elevated scripts can modify system-wide settings
 - Registry changes affect user experience
-- Review `conf/registry.ini` before applying
+- Review `conf/registry.toml` before applying
 
 ### Linux-Specific Considerations
 
@@ -78,7 +78,7 @@ Linux scripts may use `sudo` for:
 
 **Risks**:
 - Package installation could introduce vulnerabilities
-- Review `conf/packages.ini` before installing
+- Review `conf/packages.toml` before installing
 - Ensure you trust package repositories
 
 ## Security Best Practices for Users

@@ -55,6 +55,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
+            scope: "user".to_string(),
         });
         let ctx = make_platform_context_with_which(config, Os::Windows, false, true);
         assert!(!ConfigureSystemd.should_run(&ctx));
@@ -72,6 +73,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
+            scope: "user".to_string(),
         });
         let ctx = make_linux_context(config); // which() returns false
         assert!(!ConfigureSystemd.should_run(&ctx));
@@ -82,6 +84,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
+            scope: "user".to_string(),
         });
         let ctx = make_platform_context_with_which(config, Os::Linux, false, true);
         assert!(ConfigureSystemd.should_run(&ctx));

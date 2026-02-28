@@ -1,11 +1,14 @@
 //! Chmod entry configuration loading.
-use anyhow::{Result, bail};
+use anyhow::Result;
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::Path;
 
-use super::ini;
+use super::category_matcher::MatchMode;
+use super::toml_loader;
 
 /// A file permission directive.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)] // fields used on unix only (tasks/chmod.rs)
 pub struct ChmodEntry {
     /// Permission mode (e.g., "600", "755").
@@ -14,48 +17,53 @@ pub struct ChmodEntry {
     pub path: String,
 }
 
-/// Load chmod entries from chmod.ini, filtered by active categories.
-///
-/// Format: `<mode> <relative-path>`
+/// TOML section containing chmod entries.
+#[derive(Debug, Deserialize)]
+struct ChmodSection {
+    permissions: Vec<ChmodEntry>,
+}
+
+/// Load chmod entries from chmod.toml, filtered by active categories.
 ///
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<ChmodEntry>> {
-    ini::load_flat_items(path, active_categories)?
+    let config: HashMap<String, ChmodSection> = toml_loader::load_config(path)?;
+
+    let items: Vec<(String, Vec<ChmodEntry>)> = config
         .into_iter()
-        .map(|item| {
-            let Some((mode, path)) = item.split_once(' ') else {
-                bail!("invalid chmod entry: {item}");
-            };
-            Ok(ChmodEntry {
-                mode: mode.to_string(),
-                path: path.to_string(),
-            })
-        })
-        .collect()
+        .map(|(k, v)| (k, v.permissions))
+        .collect();
+
+    Ok(toml_loader::filter_by_categories(
+        items,
+        active_categories,
+        MatchMode::All,
+    ))
 }
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_ini};
+    use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
 
     #[test]
     fn parse_chmod_entry() {
-        let (_dir, path) = write_temp_ini("[base]\n600 ssh/config\n755 config/git/ai-pr.sh\n");
+        let (_dir, path) = write_temp_toml(
+            r#"[base]
+permissions = [
+  { mode = "600", path = "ssh/config" },
+  { mode = "755", path = "config/git/ai-pr.sh" },
+]
+"#,
+        );
         let entries = load(&path, &["base".to_string()]).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].mode, "600");
         assert_eq!(entries[0].path, "ssh/config");
         assert_eq!(entries[1].mode, "755");
-    }
-
-    #[test]
-    fn invalid_entry_fails() {
-        let (_dir, path) = write_temp_ini("[base]\ninvalid_no_space\n");
-        assert!(load(&path, &["base".to_string()]).is_err());
     }
 
     #[test]

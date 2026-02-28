@@ -10,7 +10,7 @@ metadata:
 
 # Symlink Management
 
-Symlinks connect config files from `symlinks/` to `$HOME`. Config in `conf/symlinks.ini`, loaded by `config::symlinks`, installed by `tasks::symlinks`.
+Symlinks connect config files from `symlinks/` to `$HOME`. Config in `conf/symlinks.toml`, loaded by `config::symlinks`, installed by `tasks::symlinks`.
 
 ## Configuration
 
@@ -70,8 +70,8 @@ Platform-specific symlink creation is handled inside `SymlinkResource::apply()`.
 ## Adding Symlinks
 
 1. Create source: `symlinks/config/myapp/config` (no leading dot)
-2. Add to `conf/symlinks.ini` under correct profile section
-3. Optionally add to `conf/manifest.ini` for sparse checkout
+2. Add to `conf/symlinks.toml` under correct profile section
+3. Optionally add to `conf/manifest.toml` for sparse checkout
 4. Test: `./dotfiles.sh install -d`
 
 ## Idempotency
@@ -92,7 +92,7 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 
 ## Rules
 
-- No leading dots in `symlinks.ini` or `symlinks/` paths
+- No leading dots in `symlinks.toml` or `symlinks/` paths
 - Use directory symlinks for entire config dirs, file symlinks for selective management
 - Don't create symlinks inside already-symlinked directories
 - Source files filtered by sparse checkout are silently skipped

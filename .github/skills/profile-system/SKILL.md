@@ -24,8 +24,8 @@ Platform categories (`linux`, `windows`, `arch`) are auto-detected — users onl
 1. **Profile resolution**: `profiles::resolve()` computes `active_categories` and `excluded_categories`
 2. **Platform auto-detection**: `Platform::excludes_category()` auto-adds/excludes platform categories (`linux`, `windows`, `arch`)
 3. **Always-active**: `base` is always in `active_categories`
-4. **Config filtering**: `ini::filter_sections(&sections, active, MatchMode::All)` includes sections where ALL categories are active
-5. **Sparse checkout**: `manifest.ini` uses OR-exclude logic to filter repository files
+4. **Config filtering**: `toml_loader::filter_sections(&sections, active, MatchMode::All)` includes sections where ALL categories are active
+5. **Sparse checkout**: `manifest.toml` uses OR-exclude logic to filter repository files
 
 ## Profile Selection Priority
 
@@ -62,18 +62,18 @@ pub struct Profile {
 
 ## Section Naming Convention
 
-- **Profile names** (in `profiles.ini`): e.g., `[base]`, `[desktop]`
-- **Config sections** (all other INI files): Comma-separated — `[arch,desktop]`
+- **Profile names** (in `profiles.toml`): e.g., `[base]`, `[desktop]`
+- **Config sections** (all other TOML files): Hyphen-separated — `[arch-desktop]`
   - AND logic: all categories must be in `active_categories`
 - **Platform categories** (`linux`, `windows`, `arch`): Auto-detected, use in config sections for platform-specific items (e.g., `[linux]` for chmod entries)
 
 ## Adding a New Profile
 
-Add to `conf/profiles.ini`:
-```ini
+Add to `conf/profiles.toml`:
+```toml
 [my-profile]
-include=mycategory
-exclude=
+include = ["mycategory"]
+exclude = []
 ```
 
 Add the name to `PROFILE_NAMES` constant in `cli/src/config/profiles.rs`.

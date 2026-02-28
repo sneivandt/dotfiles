@@ -6,7 +6,7 @@ Cross-platform dotfiles management system powered by a Rust core engine, with pr
 - 🦀 Rust core engine — fast, reliable, cross-platform binary
 - 🎯 Profile-based configuration
 - 🔗 Git sparse checkout for environment-specific files
-- 📦 Declarative package and symlink management via INI config
+- 📦 Declarative package and symlink management via TOML config
 - 🔄 Idempotent installation (safe to re-run)
 - 📡 Automatic binary updates from GitHub Releases
 - 🤖 GitHub Copilot Agent Skills for development guidance
@@ -44,7 +44,7 @@ The dotfiles system has three layers:
 
 1. **Entry scripts** (`dotfiles.sh`, `dotfiles.ps1`) — thin wrappers that download the latest binary from GitHub Releases (or build from source with `--build`) and forward all arguments.
 2. **Rust binary** (`cli/`) — handles all orchestration: config parsing, profile resolution, symlinks, file permissions natively. Shells out only for package managers and system services.
-3. **Configuration** (`conf/`) — declarative INI files define what to install per profile.
+3. **Configuration** (`conf/`) — declarative TOML files define what to install per profile.
 
 Binary updates are automatic: on first run, the entry script downloads the binary. On subsequent runs, a version cache ensures no delay if the binary is already current.
 
@@ -90,17 +90,17 @@ See the [Profile System Guide](docs/PROFILES.md) for details.
 
 ## Configuration
 
-Configuration is defined in `conf/*.ini` files using standard INI format:
+Configuration is defined in `conf/*.toml` files using TOML format:
 
-- **`profiles.ini`** - Profile definitions
-- **`manifest.ini`** - File-to-category mappings for sparse checkout
-- **`symlinks.ini`** - Files to symlink to `$HOME`
-- **`packages.ini`** - System packages to install
-- **`systemd-units.ini`** - Systemd units to enable
-- **`vscode-extensions.ini`** - VS Code extensions
-- **`copilot-skills.ini`** - GitHub Copilot CLI skills
-- **`registry.ini`** - Windows registry settings
-- **`chmod.ini`** - File permissions
+- **`profiles.toml`** - Profile definitions
+- **`manifest.toml`** - File-to-category mappings for sparse checkout
+- **`symlinks.toml`** - Files to symlink to `$HOME`
+- **`packages.toml`** - System packages to install
+- **`systemd-units.toml`** - Systemd units to enable
+- **`vscode-extensions.toml`** - VS Code extensions
+- **`copilot-skills.toml`** - GitHub Copilot CLI skills
+- **`registry.toml`** - Windows registry settings
+- **`chmod.toml`** - File permissions
 
 See the [Configuration Reference](docs/CONFIGURATION.md) for detailed format documentation.
 

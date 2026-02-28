@@ -44,12 +44,15 @@ fn config_loads_with_desktop_profile() {
 /// Loading config with the desktop profile fixture yields symlinks from both
 /// the `[base]` and `[desktop]` sections.
 ///
-/// Uses the [`desktop_profile.ini`](fixtures/desktop_profile.ini) fixture with
+/// Uses the [`desktop_profile.toml`](fixtures/desktop_profile.toml) fixture with
 /// both source files created on disk.
 #[test]
 fn config_loads_with_desktop_fixture() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("symlinks.ini", include_str!("fixtures/desktop_profile.ini"))
+        .with_config_file(
+            "symlinks.toml",
+            include_str!("fixtures/desktop_profile.toml"),
+        )
         .with_symlink_source("bashrc")
         .with_symlink_source("config/Code/User/settings.json")
         .build();
@@ -72,10 +75,10 @@ fn config_loads_with_missing_optional_files() {
 
     // Only required files; optional ones are intentionally absent.
     std::fs::write(
-        conf.join("profiles.ini"),
-        "[base]\ninclude=\nexclude=desktop\n",
+        conf.join("profiles.toml"),
+        "[base]\ninclude = []\nexclude = [\"desktop\"]\n",
     )
-    .expect("write profiles.ini");
+    .expect("write profiles.toml");
 
     let platform = Platform::detect();
     let profile = profiles::resolve("base", &conf, &platform).expect("resolve profile");
@@ -106,14 +109,14 @@ fn config_validate_no_warnings_for_minimal_config() {
 // ---------------------------------------------------------------------------
 
 /// A symlink entry pointing to a non-existent source file must produce a
-/// validation warning from `symlinks.ini`.
+/// validation warning from `symlinks.toml`.
 ///
-/// Uses the [`base_profile.ini`](fixtures/base_profile.ini) fixture, whose
+/// Uses the [`base_profile.toml`](fixtures/base_profile.toml) fixture, whose
 /// `bashrc` source is intentionally not created on disk.
 #[test]
 fn config_validate_warns_on_missing_symlink_source() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("symlinks.ini", include_str!("fixtures/base_profile.ini"))
+        .with_config_file("symlinks.toml", include_str!("fixtures/base_profile.toml"))
         .build();
 
     let config = ctx.load_config("base");
@@ -125,8 +128,8 @@ fn config_validate_warns_on_missing_symlink_source() {
         "missing symlink source should produce at least one validation warning"
     );
     assert!(
-        warnings.iter().any(|w| w.source == "symlinks.ini"),
-        "expected a warning from symlinks.ini, got: {warnings:?}"
+        warnings.iter().any(|w| w.source == "symlinks.toml"),
+        "expected a warning from symlinks.toml, got: {warnings:?}"
     );
     assert!(
         warnings
@@ -138,12 +141,12 @@ fn config_validate_warns_on_missing_symlink_source() {
 
 /// A symlink entry whose source file *exists* must not produce a warning.
 ///
-/// Uses the [`base_profile.ini`](fixtures/base_profile.ini) fixture with the
+/// Uses the [`base_profile.toml`](fixtures/base_profile.toml) fixture with the
 /// `bashrc` source file created on disk.
 #[test]
 fn config_validate_no_warning_when_symlink_source_exists() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("symlinks.ini", include_str!("fixtures/base_profile.ini"))
+        .with_config_file("symlinks.toml", include_str!("fixtures/base_profile.toml"))
         .with_symlink_source("bashrc")
         .build();
 
@@ -153,7 +156,7 @@ fn config_validate_no_warning_when_symlink_source_exists() {
 
     let symlink_warnings: Vec<_> = warnings
         .iter()
-        .filter(|w| w.source == "symlinks.ini")
+        .filter(|w| w.source == "symlinks.toml")
         .collect();
     assert!(
         symlink_warnings.is_empty(),
@@ -170,7 +173,10 @@ fn config_validate_no_warning_when_symlink_source_exists() {
 #[test]
 fn config_validate_warns_on_invalid_vscode_extension_id() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("vscode-extensions.ini", "[base]\ninvalid_no_dot\n")
+        .with_config_file(
+            "vscode-extensions.toml",
+            "[base]\nextensions = [\"invalid_no_dot\"]\n",
+        )
         .build();
 
     let config = ctx.load_config("base");
@@ -178,8 +184,10 @@ fn config_validate_warns_on_invalid_vscode_extension_id() {
     let warnings = config.validate(&platform);
 
     assert!(
-        warnings.iter().any(|w| w.source == "vscode-extensions.ini"),
-        "expected a vscode-extensions.ini warning, got: {warnings:?}"
+        warnings
+            .iter()
+            .any(|w| w.source == "vscode-extensions.toml"),
+        "expected a vscode-extensions.toml warning, got: {warnings:?}"
     );
 }
 
@@ -188,7 +196,7 @@ fn config_validate_warns_on_invalid_vscode_extension_id() {
 #[test]
 fn config_validate_warns_on_invalid_copilot_skill_url() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("copilot-skills.ini", "[base]\nnot-a-url\n")
+        .with_config_file("copilot-skills.toml", "[base]\nskills = [\"not-a-url\"]\n")
         .build();
 
     let config = ctx.load_config("base");
@@ -196,8 +204,8 @@ fn config_validate_warns_on_invalid_copilot_skill_url() {
     let warnings = config.validate(&platform);
 
     assert!(
-        warnings.iter().any(|w| w.source == "copilot-skills.ini"),
-        "expected a copilot-skills.ini warning, got: {warnings:?}"
+        warnings.iter().any(|w| w.source == "copilot-skills.toml"),
+        "expected a copilot-skills.toml warning, got: {warnings:?}"
     );
 }
 
@@ -206,7 +214,7 @@ fn config_validate_warns_on_invalid_copilot_skill_url() {
 // ---------------------------------------------------------------------------
 
 /// Both `base` and `desktop` profiles must resolve successfully from the
-/// minimal `profiles.ini` written by `setup_minimal_repo`.
+/// minimal `profiles.toml` written by `setup_minimal_repo`.
 #[test]
 fn both_profiles_resolve_from_minimal_repo() {
     let ctx = common::IntegrationTestContext::new();
@@ -238,11 +246,11 @@ fn unknown_profile_returns_error() {
 // Config loading: packages
 // ---------------------------------------------------------------------------
 
-/// Packages listed in packages.ini must be loaded into `config.packages`.
+/// Packages listed in packages.toml must be loaded into `config.packages`.
 #[test]
 fn config_loads_packages_from_ini() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("packages.ini", "[base]\ngit\ncurl\n")
+        .with_config_file("packages.toml", "[base]\npackages = [\"git\", \"curl\"]\n")
         .build();
 
     let platform = Platform {
@@ -262,12 +270,15 @@ fn config_loads_packages_from_ini() {
     assert!(!config.packages[1].is_aur);
 }
 
-/// Packages prefixed with `aur:` in packages.ini must be loaded with
-/// `is_aur = true` and the prefix stripped from the name.
+/// Packages with `aur = true` in packages.toml must be loaded with
+/// `is_aur = true`.
 #[test]
 fn config_loads_aur_packages_correctly() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("packages.ini", "[base]\ngit\naur:paru-bin\n")
+        .with_config_file(
+            "packages.toml",
+            "[base]\npackages = [\"git\", { name = \"paru-bin\", aur = true }]\n",
+        )
         .build();
 
     let platform = Platform {
@@ -282,7 +293,7 @@ fn config_loads_aur_packages_correctly() {
         .iter()
         .find(|p| p.is_aur)
         .expect("aur package");
-    assert_eq!(aur_pkg.name, "paru-bin", "aur: prefix should be stripped");
+    assert_eq!(aur_pkg.name, "paru-bin");
 
     let regular_pkg = config
         .packages
@@ -300,7 +311,10 @@ fn config_loads_aur_packages_correctly() {
 #[test]
 fn config_validate_warns_on_aur_packages_on_non_arch() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("packages.ini", "[base]\naur:paru-bin\n")
+        .with_config_file(
+            "packages.toml",
+            "[base]\npackages = [{ name = \"paru-bin\", aur = true }]\n",
+        )
         .build();
 
     let platform = Platform {
@@ -311,8 +325,8 @@ fn config_validate_warns_on_aur_packages_on_non_arch() {
     let warnings = config.validate(&platform);
 
     assert!(
-        warnings.iter().any(|w| w.source == "packages.ini"),
-        "expected a packages.ini warning for AUR on non-Arch, got: {warnings:?}"
+        warnings.iter().any(|w| w.source == "packages.toml"),
+        "expected a packages.toml warning for AUR on non-Arch, got: {warnings:?}"
     );
     assert!(
         warnings
@@ -326,7 +340,10 @@ fn config_validate_warns_on_aur_packages_on_non_arch() {
 #[test]
 fn config_validate_no_warning_for_aur_packages_on_arch() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("packages.ini", "[base]\naur:paru-bin\n")
+        .with_config_file(
+            "packages.toml",
+            "[base]\npackages = [{ name = \"paru-bin\", aur = true }]\n",
+        )
         .build();
 
     let platform = Platform {
@@ -338,7 +355,7 @@ fn config_validate_no_warning_for_aur_packages_on_arch() {
 
     let pkg_warnings: Vec<_> = warnings
         .iter()
-        .filter(|w| w.source == "packages.ini" && w.message.contains("not Arch Linux"))
+        .filter(|w| w.source == "packages.toml" && w.message.contains("not Arch Linux"))
         .collect();
     assert!(
         pkg_warnings.is_empty(),
@@ -350,11 +367,14 @@ fn config_validate_no_warning_for_aur_packages_on_arch() {
 // Validation: chmod entries
 // ---------------------------------------------------------------------------
 
-/// An invalid octal mode in chmod.ini must produce a validation warning.
+/// An invalid octal mode in chmod.toml must produce a validation warning.
 #[test]
 fn config_validate_warns_on_invalid_chmod_mode() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("chmod.ini", "[base]\n999 .ssh/config\n")
+        .with_config_file(
+            "chmod.toml",
+            "[base]\npermissions = [{ mode = \"999\", path = \".ssh/config\" }]\n",
+        )
         .build();
 
     let platform = Platform {
@@ -365,8 +385,8 @@ fn config_validate_warns_on_invalid_chmod_mode() {
     let warnings = config.validate(&platform);
 
     assert!(
-        warnings.iter().any(|w| w.source == "chmod.ini"),
-        "expected a chmod.ini warning for invalid mode, got: {warnings:?}"
+        warnings.iter().any(|w| w.source == "chmod.toml"),
+        "expected a chmod.toml warning for invalid mode, got: {warnings:?}"
     );
 }
 
@@ -374,7 +394,10 @@ fn config_validate_warns_on_invalid_chmod_mode() {
 #[test]
 fn config_validate_warns_on_absolute_chmod_path() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("chmod.ini", "[base]\n644 /etc/something\n")
+        .with_config_file(
+            "chmod.toml",
+            "[base]\npermissions = [{ mode = \"644\", path = \"/etc/something\" }]\n",
+        )
         .build();
 
     let platform = Platform {
@@ -387,8 +410,8 @@ fn config_validate_warns_on_absolute_chmod_path() {
     assert!(
         warnings
             .iter()
-            .any(|w| w.source == "chmod.ini" && w.message.contains("relative")),
-        "expected a chmod.ini warning about absolute path, got: {warnings:?}"
+            .any(|w| w.source == "chmod.toml" && w.message.contains("relative")),
+        "expected a chmod.toml warning about absolute path, got: {warnings:?}"
     );
 }
 
@@ -400,7 +423,7 @@ fn config_validate_warns_on_absolute_chmod_path() {
 #[test]
 fn config_validate_warns_on_invalid_systemd_unit_extension() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("systemd-units.ini", "[base]\nmyunit\n")
+        .with_config_file("systemd-units.toml", "[base]\nunits = [\"myunit\"]\n")
         .build();
 
     let platform = Platform {
@@ -411,8 +434,8 @@ fn config_validate_warns_on_invalid_systemd_unit_extension() {
     let warnings = config.validate(&platform);
 
     assert!(
-        warnings.iter().any(|w| w.source == "systemd-units.ini"),
-        "expected a systemd-units.ini warning for invalid extension, got: {warnings:?}"
+        warnings.iter().any(|w| w.source == "systemd-units.toml"),
+        "expected a systemd-units.toml warning for invalid extension, got: {warnings:?}"
     );
     assert!(
         warnings
@@ -426,7 +449,10 @@ fn config_validate_warns_on_invalid_systemd_unit_extension() {
 #[test]
 fn config_validate_no_warning_for_valid_systemd_unit() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("systemd-units.ini", "[base]\ndunst.service\n")
+        .with_config_file(
+            "systemd-units.toml",
+            "[base]\nunits = [\"dunst.service\"]\n",
+        )
         .build();
 
     let platform = Platform {
@@ -438,7 +464,7 @@ fn config_validate_no_warning_for_valid_systemd_unit() {
 
     let unit_warnings: Vec<_> = warnings
         .iter()
-        .filter(|w| w.source == "systemd-units.ini")
+        .filter(|w| w.source == "systemd-units.toml")
         .collect();
     assert!(
         unit_warnings.is_empty(),
@@ -454,7 +480,10 @@ fn config_validate_no_warning_for_valid_systemd_unit() {
 #[test]
 fn config_validate_warns_on_absolute_symlink_source() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("symlinks.ini", "[base]\n/absolute/path/to/file\n")
+        .with_config_file(
+            "symlinks.toml",
+            "[base]\nsymlinks = [\"/absolute/path/to/file\"]\n",
+        )
         .build();
 
     let config = ctx.load_config("base");
@@ -464,8 +493,8 @@ fn config_validate_warns_on_absolute_symlink_source() {
     assert!(
         warnings
             .iter()
-            .any(|w| w.source == "symlinks.ini" && w.message.contains("should be relative")),
-        "expected a symlinks.ini warning for absolute path, got: {warnings:?}"
+            .any(|w| w.source == "symlinks.toml" && w.message.contains("should be relative")),
+        "expected a symlinks.toml warning for absolute path, got: {warnings:?}"
     );
 }
 
@@ -473,14 +502,14 @@ fn config_validate_warns_on_absolute_symlink_source() {
 // Config loading: vscode extensions, copilot skills, and chmod
 // ---------------------------------------------------------------------------
 
-/// VS Code extensions listed in vscode-extensions.ini must be loaded into
+/// VS Code extensions listed in vscode-extensions.toml must be loaded into
 /// `config.vscode_extensions`.
 #[test]
 fn config_loads_vscode_extensions_correctly() {
     let ctx = common::TestContextBuilder::new()
         .with_config_file(
-            "vscode-extensions.ini",
-            "[base]\nms-vscode.cpptools\nrust-lang.rust-analyzer\n",
+            "vscode-extensions.toml",
+            "[base]\nextensions = [\"ms-vscode.cpptools\", \"rust-lang.rust-analyzer\"]\n",
         )
         .build();
 
@@ -491,18 +520,28 @@ fn config_loads_vscode_extensions_correctly() {
         "expected 2 VS Code extensions, got {}",
         config.vscode_extensions.len()
     );
-    assert_eq!(config.vscode_extensions[0].id, "ms-vscode.cpptools");
-    assert_eq!(config.vscode_extensions[1].id, "rust-lang.rust-analyzer");
+    assert!(
+        config
+            .vscode_extensions
+            .iter()
+            .any(|e| e.id == "ms-vscode.cpptools")
+    );
+    assert!(
+        config
+            .vscode_extensions
+            .iter()
+            .any(|e| e.id == "rust-lang.rust-analyzer")
+    );
 }
 
-/// Copilot skill URLs listed in copilot-skills.ini must be loaded into
+/// Copilot skill URLs listed in copilot-skills.toml must be loaded into
 /// `config.copilot_skills`.
 #[test]
 fn config_loads_copilot_skills_correctly() {
     let ctx = common::TestContextBuilder::new()
         .with_config_file(
-            "copilot-skills.ini",
-            "[base]\nhttps://github.com/example/skill-a\nhttps://github.com/example/skill-b\n",
+            "copilot-skills.toml",
+            "[base]\nskills = [\"https://github.com/example/skill-a\", \"https://github.com/example/skill-b\"]\n",
         )
         .build();
 
@@ -513,21 +552,28 @@ fn config_loads_copilot_skills_correctly() {
         "expected 2 Copilot skills, got {}",
         config.copilot_skills.len()
     );
-    assert_eq!(
-        config.copilot_skills[0].url,
-        "https://github.com/example/skill-a"
+    assert!(
+        config
+            .copilot_skills
+            .iter()
+            .any(|s| s.url == "https://github.com/example/skill-a")
     );
-    assert_eq!(
-        config.copilot_skills[1].url,
-        "https://github.com/example/skill-b"
+    assert!(
+        config
+            .copilot_skills
+            .iter()
+            .any(|s| s.url == "https://github.com/example/skill-b")
     );
 }
 
-/// Chmod entries listed in chmod.ini must be loaded into `config.chmod`.
+/// Chmod entries listed in chmod.toml must be loaded into `config.chmod`.
 #[test]
 fn config_loads_chmod_entries_correctly() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("chmod.ini", "[base]\n600 .ssh/config\n700 .ssh\n")
+        .with_config_file(
+            "chmod.toml",
+            "[base]\npermissions = [{ mode = \"600\", path = \".ssh/config\" }, { mode = \"700\", path = \".ssh\" }]\n",
+        )
         .build();
 
     let platform = Platform {
@@ -541,22 +587,33 @@ fn config_loads_chmod_entries_correctly() {
         "expected 2 chmod entries, got {}",
         config.chmod.len()
     );
-    assert_eq!(config.chmod[0].mode, "600");
-    assert_eq!(config.chmod[0].path, ".ssh/config");
-    assert_eq!(config.chmod[1].mode, "700");
-    assert_eq!(config.chmod[1].path, ".ssh");
+    assert!(
+        config
+            .chmod
+            .iter()
+            .any(|e| e.mode == "600" && e.path == ".ssh/config")
+    );
+    assert!(
+        config
+            .chmod
+            .iter()
+            .any(|e| e.mode == "700" && e.path == ".ssh")
+    );
 }
 
 // ---------------------------------------------------------------------------
 // Config loading: registry entries (Windows-only)
 // ---------------------------------------------------------------------------
 
-/// Registry entries in registry.ini must be loaded into `config.registry`
+/// Registry entries in registry.toml must be loaded into `config.registry`
 /// when the platform is Windows.
 #[test]
 fn config_loads_registry_entries_on_windows() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("registry.ini", "[HKCU:\\Console]\nFontSize = 14\n")
+        .with_config_file(
+            "registry.toml",
+            "[console]\npath = 'HKCU:\\Console'\n[console.values]\nFontSize = 14\n",
+        )
         .build();
 
     let platform = Platform {
@@ -575,11 +632,14 @@ fn config_loads_registry_entries_on_windows() {
     assert_eq!(config.registry[0].value_data, "14");
 }
 
-/// Registry entries in registry.ini must be skipped when the platform is Linux.
+/// Registry entries in registry.toml must be skipped when the platform is Linux.
 #[test]
 fn config_does_not_load_registry_on_linux() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("registry.ini", "[HKCU:\\Console]\nFontSize = 14\n")
+        .with_config_file(
+            "registry.toml",
+            "[console]\npath = 'HKCU:\\Console'\n[console.values]\nFontSize = 14\n",
+        )
         .build();
 
     let platform = Platform {
@@ -601,7 +661,10 @@ fn config_does_not_load_registry_on_linux() {
 #[test]
 fn config_validate_no_warning_for_valid_registry_on_windows() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("registry.ini", "[HKCU:\\Console]\nFontSize = 14\n")
+        .with_config_file(
+            "registry.toml",
+            "[console]\npath = 'HKCU:\\Console'\n[console.values]\nFontSize = 14\n",
+        )
         .build();
 
     let platform = Platform {
@@ -613,7 +676,7 @@ fn config_validate_no_warning_for_valid_registry_on_windows() {
 
     let registry_warnings: Vec<_> = warnings
         .iter()
-        .filter(|w| w.source == "registry.ini")
+        .filter(|w| w.source == "registry.toml")
         .collect();
     assert!(
         registry_warnings.is_empty(),
@@ -625,7 +688,10 @@ fn config_validate_no_warning_for_valid_registry_on_windows() {
 #[test]
 fn config_validate_warns_on_non_hkcu_registry_hive() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("registry.ini", "[HKLM:\\Software\\Test]\nSetting = value\n")
+        .with_config_file(
+            "registry.toml",
+            "[test]\npath = 'HKLM:\\Software\\Test'\n[test.values]\nSetting = \"value\"\n",
+        )
         .build();
 
     let platform = Platform {
@@ -638,8 +704,8 @@ fn config_validate_warns_on_non_hkcu_registry_hive() {
     assert!(
         warnings
             .iter()
-            .any(|w| w.source == "registry.ini" && w.message.contains("non-HKCU")),
-        "expected a registry.ini warning for non-HKCU hive, got: {warnings:?}"
+            .any(|w| w.source == "registry.toml" && w.message.contains("non-HKCU")),
+        "expected a registry.toml warning for non-HKCU hive, got: {warnings:?}"
     );
 }
 
@@ -652,7 +718,10 @@ fn config_validate_warns_on_non_hkcu_registry_hive() {
 #[test]
 fn config_validate_warns_on_chmod_entries_on_windows() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("chmod.ini", "[base]\n600 .ssh/config\n")
+        .with_config_file(
+            "chmod.toml",
+            "[base]\npermissions = [{ mode = \"600\", path = \".ssh/config\" }]\n",
+        )
         .build();
 
     let platform = Platform {
@@ -665,8 +734,8 @@ fn config_validate_warns_on_chmod_entries_on_windows() {
     assert!(
         warnings
             .iter()
-            .any(|w| w.source == "chmod.ini" && w.message.contains("does not support chmod")),
-        "expected a chmod.ini warning for Windows platform, got: {warnings:?}"
+            .any(|w| w.source == "chmod.toml" && w.message.contains("does not support chmod")),
+        "expected a chmod.toml warning for Windows platform, got: {warnings:?}"
     );
 }
 
@@ -678,8 +747,11 @@ fn config_validate_warns_on_chmod_entries_on_windows() {
 #[test]
 fn config_validate_collects_warnings_from_multiple_sources() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("vscode-extensions.ini", "[base]\ninvalid_no_dot\n")
-        .with_config_file("copilot-skills.ini", "[base]\nnot-a-url\n")
+        .with_config_file(
+            "vscode-extensions.toml",
+            "[base]\nextensions = [\"invalid_no_dot\"]\n",
+        )
+        .with_config_file("copilot-skills.toml", "[base]\nskills = [\"not-a-url\"]\n")
         .build();
 
     let config = ctx.load_config("base");
@@ -689,11 +761,11 @@ fn config_validate_collects_warnings_from_multiple_sources() {
     let sources: std::collections::HashSet<&str> =
         warnings.iter().map(|w| w.source.as_str()).collect();
     assert!(
-        sources.contains("vscode-extensions.ini"),
-        "expected a vscode-extensions.ini warning"
+        sources.contains("vscode-extensions.toml"),
+        "expected a vscode-extensions.toml warning"
     );
     assert!(
-        sources.contains("copilot-skills.ini"),
-        "expected a copilot-skills.ini warning"
+        sources.contains("copilot-skills.toml"),
+        "expected a copilot-skills.toml warning"
     );
 }

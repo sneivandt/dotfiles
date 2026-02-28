@@ -1,8 +1,11 @@
 //! Package configuration loading.
 use anyhow::Result;
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::Path;
 
-use super::ini;
+use super::category_matcher::MatchMode;
+use super::toml_loader;
 
 /// A package to install.
 #[derive(Debug, Clone)]
@@ -13,25 +16,48 @@ pub struct Package {
     pub is_aur: bool,
 }
 
-/// Load packages from packages.ini, filtered by active categories.
+/// TOML package entry - can be either a string or a table with metadata.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum PackageEntry {
+    Simple(String),
+    WithMetadata { name: String, aur: Option<bool> },
+}
+
+/// TOML section containing packages.
+#[derive(Debug, Deserialize)]
+struct PackageSection {
+    packages: Vec<PackageEntry>,
+}
+
+/// Load packages from packages.toml, filtered by active categories.
 ///
-/// Packages prefixed with `aur:` are tagged with `is_aur = true` and the
-/// prefix is stripped from the package name.
+/// Packages can be simple strings or objects with metadata. The `aur`
+/// field marks a package as an AUR package.
 ///
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Package>> {
-    Ok(ini::load_flat_items(path, active_categories)?
+    let config: HashMap<String, PackageSection> = toml_loader::load_config(path)?;
+
+    let items: Vec<(String, Vec<PackageEntry>)> =
+        config.into_iter().map(|(k, v)| (k, v.packages)).collect();
+
+    let entries: Vec<PackageEntry> =
+        toml_loader::filter_by_categories(items, active_categories, MatchMode::All);
+
+    Ok(entries
         .into_iter()
-        .map(|item| {
-            let (name, is_aur) = item
-                .strip_prefix("aur:")
-                .map_or((item.as_str(), false), |n| (n, true));
-            Package {
-                name: name.to_string(),
-                is_aur,
-            }
+        .map(|entry| match entry {
+            PackageEntry::Simple(name) => Package {
+                name,
+                is_aur: false,
+            },
+            PackageEntry::WithMetadata { name, aur } => Package {
+                name,
+                is_aur: aur.unwrap_or(false),
+            },
         })
         .collect())
 }
@@ -40,12 +66,18 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Package>> {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_ini};
+    use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
 
     #[test]
     fn load_filters_by_category() {
-        let (_dir, path) =
-            write_temp_ini("[arch]\ngit\nvim\naur:paru-bin\n\n[windows]\nwinget-pkg\n");
+        let (_dir, path) = write_temp_toml(
+            r#"[arch]
+packages = ["git", "vim", { name = "paru-bin", aur = true }]
+
+[windows]
+packages = ["winget-pkg"]
+"#,
+        );
         let packages = load(&path, &["base".to_string(), "arch".to_string()]).unwrap();
         assert_eq!(packages.len(), 3);
         assert!(!packages[0].is_aur);
@@ -56,7 +88,11 @@ mod tests {
 
     #[test]
     fn aur_packages_detected() {
-        let (_dir, path) = write_temp_ini("[arch]\naur:paru-bin\naur:yay\n");
+        let (_dir, path) = write_temp_toml(
+            r#"[arch]
+packages = [{ name = "paru-bin", aur = true }, { name = "yay", aur = true }]
+"#,
+        );
         let packages = load(&path, &["base".to_string(), "arch".to_string()]).unwrap();
         assert_eq!(packages.len(), 2);
         assert!(packages[0].is_aur);

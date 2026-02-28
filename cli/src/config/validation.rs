@@ -20,7 +20,7 @@ const VALID_UNIT_EXTENSIONS: &[&str] = &[
 /// A validation warning detected during configuration loading.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationWarning {
-    /// The configuration source (e.g., "symlinks.ini", "packages.ini").
+    /// The configuration source (e.g., "symlinks.toml", "packages.toml").
     pub source: String,
     /// The specific item or section that triggered the warning.
     pub item: String,
@@ -91,7 +91,7 @@ impl ConfigValidator for SymlinkValidator<'_> {
             // Check if source file exists
             if !source_path.exists() {
                 warnings.push(ValidationWarning::new(
-                    "symlinks.ini",
+                    "symlinks.toml",
                     &symlink.source,
                     format!("source file does not exist: {}", source_path.display()),
                 ));
@@ -100,7 +100,7 @@ impl ConfigValidator for SymlinkValidator<'_> {
             // Check for absolute paths (should be relative)
             if Path::new(&symlink.source).is_absolute() || symlink.source.starts_with('/') {
                 warnings.push(ValidationWarning::new(
-                    "symlinks.ini",
+                    "symlinks.toml",
                     &symlink.source,
                     "source path should be relative to symlinks/ directory",
                 ));
@@ -124,7 +124,7 @@ impl ConfigValidator for PackageValidator<'_> {
             // Warn about AUR packages on non-Arch platforms
             if package.is_aur && !platform.is_arch_linux() {
                 warnings.push(ValidationWarning::new(
-                    "packages.ini",
+                    "packages.toml",
                     &package.name,
                     "AUR package specified but platform is not Arch Linux",
                 ));
@@ -133,7 +133,7 @@ impl ConfigValidator for PackageValidator<'_> {
             // Check for empty package names
             if package.name.trim().is_empty() {
                 warnings.push(ValidationWarning::new(
-                    "packages.ini",
+                    "packages.toml",
                     &package.name,
                     "package name is empty",
                 ));
@@ -156,7 +156,7 @@ impl ConfigValidator for RegistryValidator<'_> {
         // Warn if registry entries are defined on non-Windows platform
         if !self.entries.is_empty() && !platform.has_registry() {
             warnings.push(ValidationWarning::new(
-                "registry.ini",
+                "registry.toml",
                 "registry entries",
                 "registry entries defined but platform does not support registry",
             ));
@@ -166,7 +166,7 @@ impl ConfigValidator for RegistryValidator<'_> {
             // Check for empty key paths
             if entry.key_path.trim().is_empty() {
                 warnings.push(ValidationWarning::new(
-                    "registry.ini",
+                    "registry.toml",
                     &entry.value_name,
                     "registry key path is empty",
                 ));
@@ -175,7 +175,7 @@ impl ConfigValidator for RegistryValidator<'_> {
             // Check for empty value names
             if entry.value_name.trim().is_empty() {
                 warnings.push(ValidationWarning::new(
-                    "registry.ini",
+                    "registry.toml",
                     &entry.key_path,
                     "registry value name is empty",
                 ));
@@ -188,7 +188,7 @@ impl ConfigValidator for RegistryValidator<'_> {
                 .any(|hive| path_upper.starts_with(hive))
             {
                 warnings.push(ValidationWarning::new(
-                    "registry.ini",
+                    "registry.toml",
                     &entry.key_path,
                     "registry key path should start with a valid hive (HKCU:, HKLM:, etc.)",
                 ));
@@ -201,7 +201,7 @@ impl ConfigValidator for RegistryValidator<'_> {
                     .any(|hive| path_upper.starts_with(hive))
             {
                 warnings.push(ValidationWarning::new(
-                    "registry.ini",
+                    "registry.toml",
                     &entry.key_path,
                     "registry key uses a non-HKCU hive; this project only modifies user-scope (HKCU) keys",
                 ));
@@ -248,7 +248,7 @@ impl ConfigValidator for ChmodValidator<'_> {
         // Warn if chmod entries are defined on non-Unix platform
         if !self.entries.is_empty() && !platform.supports_chmod() {
             warnings.push(ValidationWarning::new(
-                "chmod.ini",
+                "chmod.toml",
                 "chmod entries",
                 "chmod entries defined but platform does not support chmod",
             ));
@@ -257,13 +257,13 @@ impl ConfigValidator for ChmodValidator<'_> {
         for entry in self.entries {
             // Validate mode is octal (3 or 4 digits)
             if let Some(error) = validate_octal_mode(&entry.mode) {
-                warnings.push(ValidationWarning::new("chmod.ini", &entry.path, error));
+                warnings.push(ValidationWarning::new("chmod.toml", &entry.path, error));
             }
 
             // Check for absolute paths (should be relative to $HOME)
             if Path::new(&entry.path).is_absolute() {
                 warnings.push(ValidationWarning::new(
-                    "chmod.ini",
+                    "chmod.toml",
                     &entry.path,
                     "path should be relative to $HOME directory",
                 ));
@@ -286,7 +286,7 @@ impl ConfigValidator for SystemdUnitValidator<'_> {
         // Warn if units are defined on non-systemd platform
         if !self.units.is_empty() && !platform.supports_systemd() {
             warnings.push(ValidationWarning::new(
-                "systemd-units.ini",
+                "systemd-units.toml",
                 "systemd units",
                 "systemd units defined but platform does not support systemd",
             ));
@@ -296,7 +296,7 @@ impl ConfigValidator for SystemdUnitValidator<'_> {
             // Check for empty unit names
             if unit.name.trim().is_empty() {
                 warnings.push(ValidationWarning::new(
-                    "systemd-units.ini",
+                    "systemd-units.toml",
                     &unit.name,
                     "unit name is empty",
                 ));
@@ -310,7 +310,7 @@ impl ConfigValidator for SystemdUnitValidator<'_> {
                 .any(|ext| unit.name.ends_with(ext))
             {
                 warnings.push(ValidationWarning::new(
-                    "systemd-units.ini",
+                    "systemd-units.toml",
                     &unit.name,
                     "unit name should end with a valid systemd extension (.service, .timer, .socket, etc.)",
                 ));
@@ -334,7 +334,7 @@ impl ConfigValidator for VsCodeExtensionValidator<'_> {
             // Check for empty extension IDs
             if extension.id.trim().is_empty() {
                 warnings.push(ValidationWarning::new(
-                    "vscode-extensions.ini",
+                    "vscode-extensions.toml",
                     &extension.id,
                     "extension ID is empty",
                 ));
@@ -343,7 +343,7 @@ impl ConfigValidator for VsCodeExtensionValidator<'_> {
             // Validate extension ID format (should be publisher.name)
             if !extension.id.contains('.') {
                 warnings.push(ValidationWarning::new(
-                    "vscode-extensions.ini",
+                    "vscode-extensions.toml",
                     &extension.id,
                     "extension ID should be in format 'publisher.name'",
                 ));
@@ -367,7 +367,7 @@ impl ConfigValidator for CopilotSkillValidator<'_> {
             // Check for empty skill URLs
             if skill.url.trim().is_empty() {
                 warnings.push(ValidationWarning::new(
-                    "copilot-skills.ini",
+                    "copilot-skills.toml",
                     &skill.url,
                     "skill URL is empty",
                 ));
@@ -376,7 +376,7 @@ impl ConfigValidator for CopilotSkillValidator<'_> {
             // Validate URL format (should be a valid URL)
             if !skill.url.starts_with("http://") && !skill.url.starts_with("https://") {
                 warnings.push(ValidationWarning::new(
-                    "copilot-skills.ini",
+                    "copilot-skills.toml",
                     &skill.url,
                     "skill URL should start with http:// or https://",
                 ));
@@ -414,6 +414,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let symlinks = vec![super::super::symlinks::Symlink {
             source: "nonexistent.txt".to_string(),
+            target: None,
         }];
 
         let validator = SymlinkValidator::new(&symlinks);
@@ -427,6 +428,7 @@ mod tests {
     fn symlink_validator_detects_absolute_path() {
         let symlinks = vec![super::super::symlinks::Symlink {
             source: "/absolute/path".to_string(),
+            target: None,
         }];
 
         let temp_dir = tempfile::tempdir().unwrap();
@@ -552,6 +554,7 @@ mod tests {
     fn units_validator_detects_invalid_extension() {
         let units = vec![super::super::systemd_units::SystemdUnit {
             name: "myunit".to_string(),
+            scope: "user".to_string(),
         }];
 
         let validator = SystemdUnitValidator::new(&units);
@@ -635,6 +638,7 @@ mod tests {
             chmod: vec![],
             vscode_extensions: vec![],
             copilot_skills: vec![],
+            git_settings: vec![],
             manifest: Manifest {
                 excluded_files: vec![],
             },
@@ -675,12 +679,14 @@ mod tests {
 
         assert!(warnings.len() >= 2, "expected at least 2 warnings");
         assert!(
-            warnings.iter().any(|w| w.source == "packages.ini"),
-            "expected a packages.ini warning"
+            warnings.iter().any(|w| w.source == "packages.toml"),
+            "expected a packages.toml warning"
         );
         assert!(
-            warnings.iter().any(|w| w.source == "vscode-extensions.ini"),
-            "expected a vscode-extensions.ini warning"
+            warnings
+                .iter()
+                .any(|w| w.source == "vscode-extensions.toml"),
+            "expected a vscode-extensions.toml warning"
         );
     }
 }

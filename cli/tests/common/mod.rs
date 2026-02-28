@@ -13,21 +13,22 @@ use dotfiles_cli::config::Config;
 use dotfiles_cli::config::profiles;
 use dotfiles_cli::platform::Platform;
 
-/// Write the minimal set of INI config files required by the dotfiles engine
+/// Write the minimal set of TOML config files required by the dotfiles engine
 /// into `root`.
 ///
 /// Creates:
-/// - `conf/profiles.ini`   — base and desktop profile definitions
-/// - `conf/symlinks.ini`   — empty symlink list
-/// - `conf/packages.ini`   — empty package list
-/// - `conf/manifest.ini`   — empty manifest
-/// - `conf/chmod.ini`      — empty chmod list
-/// - `conf/systemd-units.ini`
-/// - `conf/vscode-extensions.ini`
-/// - `conf/copilot-skills.ini`
-/// - `conf/registry.ini`
-/// - `symlinks/`           — directory expected by validation tasks
-/// - `hooks/`              — directory expected by validation tasks
+/// - `conf/profiles.toml`          — base and desktop profile definitions
+/// - `conf/symlinks.toml`           — empty symlink list
+/// - `conf/packages.toml`           — empty package list
+/// - `conf/manifest.toml`           — empty manifest
+/// - `conf/chmod.toml`              — empty chmod list
+/// - `conf/systemd-units.toml`
+/// - `conf/vscode-extensions.toml`
+/// - `conf/copilot-skills.toml`
+/// - `conf/git-config.toml`
+/// - `conf/registry.toml`
+/// - `symlinks/`                    — directory expected by validation tasks
+/// - `hooks/`                       — directory expected by validation tasks
 pub fn setup_minimal_repo(root: &Path) {
     let conf = root.join("conf");
     std::fs::create_dir_all(&conf).expect("create conf dir");
@@ -35,20 +36,21 @@ pub fn setup_minimal_repo(root: &Path) {
     std::fs::create_dir_all(root.join("hooks")).expect("create hooks dir");
 
     std::fs::write(
-        conf.join("profiles.ini"),
-        "[base]\ninclude=\nexclude=desktop\n\n[desktop]\ninclude=desktop\nexclude=\n",
+        conf.join("profiles.toml"),
+        "[base]\ninclude = []\nexclude = [\"desktop\"]\n\n[desktop]\ninclude = [\"desktop\"]\nexclude = []\n",
     )
-    .expect("write profiles.ini");
+    .expect("write profiles.toml");
 
     for file in &[
-        "symlinks.ini",
-        "packages.ini",
-        "manifest.ini",
-        "chmod.ini",
-        "systemd-units.ini",
-        "vscode-extensions.ini",
-        "copilot-skills.ini",
-        "registry.ini",
+        "symlinks.toml",
+        "packages.toml",
+        "manifest.toml",
+        "chmod.toml",
+        "systemd-units.toml",
+        "vscode-extensions.toml",
+        "copilot-skills.toml",
+        "git-config.toml",
+        "registry.toml",
     ] {
         std::fs::write(conf.join(file), "").expect("write config file");
     }

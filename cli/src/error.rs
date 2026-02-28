@@ -10,23 +10,32 @@ use thiserror::Error;
 /// Errors that arise from configuration loading and profile resolution.
 #[derive(Error, Debug)]
 pub enum ConfigError {
-    /// The requested profile name is not defined in `profiles.ini`.
+    /// The requested profile name is not defined in `profiles.toml`.
     ///
-    /// Valid profiles are defined in [`crate::config::profiles::PROFILE_NAMES`].
+    /// Valid profiles are defined in `conf/profiles.toml`.
     #[error("Invalid profile '{0}'")]
     InvalidProfile(String),
 
-    /// A required INI section is absent from the config file.
+    /// A required TOML section is absent from the config file.
     #[error("Missing required section [{0}]")]
     MissingSection(String),
 
-    /// The INI file contains a syntax error that prevents parsing.
-    #[error("Invalid INI syntax in {file}: {message}")]
+    /// The config file contains a syntax error that prevents parsing.
+    #[error("Invalid syntax in {file}: {message}")]
     InvalidSyntax {
-        /// Name of the INI file with the syntax error.
+        /// Name of the config file with the syntax error.
         file: String,
         /// Description of the syntax error.
         message: String,
+    },
+
+    /// The TOML file contains a syntax error that prevents parsing.
+    #[error("Invalid TOML syntax in {path}: {source}")]
+    TomlParse {
+        /// Path to the file that could not be parsed.
+        path: String,
+        /// Underlying TOML parse error.
+        source: toml::de::Error,
     },
 
     /// An I/O error occurred while reading a config file.
@@ -64,22 +73,22 @@ mod tests {
     #[test]
     fn config_error_invalid_syntax_display() {
         let e = ConfigError::InvalidSyntax {
-            file: "packages.ini".to_string(),
+            file: "packages.toml".to_string(),
             message: "unexpected token".to_string(),
         };
         assert_eq!(
             e.to_string(),
-            "Invalid INI syntax in packages.ini: unexpected token"
+            "Invalid syntax in packages.toml: unexpected token"
         );
     }
 
     #[test]
     fn config_error_io_display() {
         let e = ConfigError::Io {
-            path: "/conf/packages.ini".to_string(),
+            path: "/conf/packages.toml".to_string(),
             source: io::Error::new(io::ErrorKind::NotFound, "no such file"),
         };
-        assert!(e.to_string().contains("/conf/packages.ini"));
+        assert!(e.to_string().contains("/conf/packages.toml"));
         assert!(e.to_string().contains("IO error reading config file"));
     }
 
@@ -87,7 +96,7 @@ mod tests {
     fn config_error_io_has_source() {
         use std::error::Error as StdError;
         let e = ConfigError::Io {
-            path: "/conf/packages.ini".to_string(),
+            path: "/conf/packages.toml".to_string(),
             source: io::Error::new(io::ErrorKind::PermissionDenied, "permission denied"),
         };
         assert!(e.source().is_some());

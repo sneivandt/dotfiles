@@ -1,15 +1,19 @@
 # File permissions to apply
 # Each section represents a profile
-# Format under each section: <mode> <relative-path-under-home>
+# Format: mode and path (relative to home directory)
 #
 # Note: When applying mode to a directory, chmod -R is used which applies
 # the mode recursively to ALL files and subdirectories. Consider this when
 # setting directory permissions (e.g., 755 will apply to all contents).
 
 [linux]
-600 ssh/config
-755 config/git/ai-pr.sh
-755 config/zsh
+permissions = [
+  { mode = "600", path = "ssh/config" },
+  { mode = "755", path = "config/git/ai-pr.sh" },
+  { mode = "755", path = "config/zsh" },
+]
 
-[arch,desktop]
-755 config/volume/init-volume.sh
+[arch-desktop]
+permissions = [
+  { mode = "755", path = "config/volume/init-volume.sh" },
+]

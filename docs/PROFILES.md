@@ -4,7 +4,7 @@ The profile system allows a single dotfiles repository to serve multiple environ
 
 ## Available Profiles
 
-Profiles are defined in `conf/profiles.ini` and control the `desktop` role category. Platform categories (`linux`, `windows`, `arch`) are auto-detected and cannot be selected manually.
+Profiles are defined in `conf/profiles.toml` and control the `desktop` role category. Platform categories (`linux`, `windows`, `arch`) are auto-detected and cannot be selected manually.
 
 | Profile | Description | Use Case |
 |---------|-------------|----------|
@@ -57,8 +57,8 @@ Profiles can be selected in three ways, in order of priority:
 Git's sparse checkout feature controls which files are checked out to your working directory based on your profile. Files excluded by your profile are automatically removed from the workspace but remain in the repository.
 
 **How it works:**
-- Profile definitions in `conf/profiles.ini` specify which categories to exclude
-- File categories are mapped in `conf/manifest.ini`
+- Profile definitions in `conf/profiles.toml` specify which categories to exclude
+- File categories are mapped in `conf/manifest.toml`
 - Git sparse checkout rules are automatically configured
 - Excluded files don't clutter your workspace
 
@@ -73,18 +73,22 @@ git sparse-checkout list
 Configuration files (packages, symlinks, units, etc.) use section headers to determine which items are processed:
 
 **Single category sections:**
-```ini
+```toml
 [arch]
-base-devel
-git
+packages = [
+  "base-devel",
+  "git",
+]
 ```
 These items are processed when the `arch` category is NOT excluded.
 
 **Multi-category sections:**
-```ini
-[arch,desktop]
-xmonad
-alacritty
+```toml
+[arch-desktop]
+packages = [
+  "xmonad",
+  "alacritty",
+]
 ```
 These items require ALL listed categories to be active (AND logic).
 
@@ -113,25 +117,25 @@ The installation script handles this automatically.
 
 ## Profile Definitions
 
-Profiles are defined in `conf/profiles.ini`:
+Profiles are defined in `conf/profiles.toml`:
 
-```ini
+```toml
 [base]
-include=
-exclude=desktop
+include = []
+exclude = ["desktop"]
 
 [desktop]
-include=desktop
-exclude=
+include = ["desktop"]
+exclude = []
 ```
 
-Platform categories (`linux`, `windows`, `arch`) are not defined in profiles.ini — they are auto-detected at runtime based on the operating system.
+Platform categories (`linux`, `windows`, `arch`) are not defined in profiles.toml — they are auto-detected at runtime based on the operating system.
 
 ### Profile Syntax
 
-- **Profile names**: Section headers in `profiles.ini` (e.g., `[base]`, `[desktop]`)
-- **include**: Comma-separated list of categories to include
-- **exclude**: Comma-separated list of categories to exclude
+- **Profile names**: Section headers in `profiles.toml` (e.g., `[base]`, `[desktop]`)
+- **include**: Array of categories to include
+- **exclude**: Array of categories to exclude
 
 ## Switching Profiles
 
@@ -154,11 +158,11 @@ When you switch profiles, the sparse checkout automatically adjusts:
 
 You can create custom profiles for specific needs:
 
-1. **Edit `conf/profiles.ini`:**
-   ```ini
+1. **Edit `conf/profiles.toml`:**
+   ```toml
    [my-custom]
-   include=mycategory
-   exclude=
+   include = ["mycategory"]
+   exclude = []
    ```
 
 2. **Use your profile:**
@@ -167,8 +171,8 @@ You can create custom profiles for specific needs:
    ```
 
 3. **Add profile-specific configuration:**
-   - Add sections to `conf/packages.ini`, `conf/symlinks.ini`, etc.
-   - Use section name `[my-custom]` or category combinations like `[arch,my-custom]`
+   - Add sections to `conf/packages.toml`, `conf/symlinks.toml`, etc.
+   - Use section name `[my-custom]` or multi-category like `[arch-my-custom]`
 
 ## Profile Categories
 
@@ -182,19 +186,21 @@ Categories are logical groups used throughout the configuration system:
 | `desktop` | Desktop/GUI configuration | Systems using `desktop` profile |
 
 Custom categories can be created by:
-1. Adding them to profile definitions in `conf/profiles.ini`
-2. Creating corresponding sections in other `.ini` files
-3. Mapping files to categories in `conf/manifest.ini`
+1. Adding them to profile definitions in `conf/profiles.toml`
+2. Creating corresponding sections in other `.toml` files
+3. Mapping files to categories in `conf/manifest.toml`
 
 ## Advanced: Profile Dependencies
 
 Profiles can have implicit dependencies through category combinations:
 
-```ini
+```toml
 # This section requires BOTH arch AND desktop to be active
-[arch,desktop]
-alacritty
-dunst
+[arch-desktop]
+packages = [
+  "alacritty",
+  "dunst",
+]
 ```
 
 This allows fine-grained control over which items are installed in different environments.

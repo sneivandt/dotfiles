@@ -1,0 +1,130 @@
+# Windows registry configuration
+# Each section is a registry path with key-value pairs
+# Values support hex (0x...) and decimal formats
+
+# Console window settings (applies to cmd.exe, PowerShell console, etc.)
+[console]
+path = 'HKCU:\Console'
+
+[console.values]
+WindowSize = 0x00200078                # Console window dimensions (width x height in hex)
+ScreenBufferSize = 0x0BB80078          # Screen buffer size (width x height in hex)
+CursorSize = 100                       # Cursor size (100 = full block)
+FaceName = "Cascadia Mono"             # Console font face
+FontFamily = 54                        # Font family identifier (54 = monospace)
+FontSize = 0x00100000                  # Font size in hex
+FontWeight = 400                       # Font weight (400 = normal)
+HistoryBufferSize = 50                 # Number of commands to store in history
+HistoryNoDup = 1                       # Remove duplicate commands from history
+InsertMode = 1                         # Enable insert mode (vs overwrite)
+QuickEdit = 1                          # Enable quick edit mode (select text with mouse)
+ScreenColors = 0x0F                    # Default foreground/background colors
+PopupColors = 0xF0                     # Popup menu colors
+WindowAlpha = 0xFF                     # Window transparency (0xFF = opaque)
+ColorTable00 = 1381653                 # Color palette entry 0 (black)
+ColorTable02 = 1667139                 # Color palette entry 2 (dark green)
+ColorTable03 = 7956309                 # Color palette entry 3 (dark cyan)
+ColorTable04 = 2105488                 # Color palette entry 4 (dark red)
+ColorTable05 = 6488148                 # Color palette entry 5 (dark magenta)
+ColorTable07 = 8947848                 # Color palette entry 7 (gray)
+ColorTable08 = 6316128                 # Color palette entry 8 (dark gray)
+
+# PowerShell PSReadLine syntax highlighting colors
+[psreadline]
+path = 'HKCU:\Console\PSReadLine'
+
+[psreadline.values]
+NormalForeground = 0xF                 # Default text color (white)
+CommentForeground = 0x7                # Comment text color (gray)
+KeywordForeground = 0x1                # Keyword color (dark blue)
+StringForeground = 0xA                 # String literal color (bright green)
+OperatorForeground = 0xB               # Operator color (bright cyan)
+VariableForeground = 0xB               # Variable color (bright cyan)
+CommandForeground = 0x1                # Command/cmdlet color (dark blue)
+ParameterForeground = 0xF              # Parameter color (white)
+TypeForeground = 0xE                   # Type name color (bright yellow)
+NumberForeground = 0xC                 # Number literal color (bright red)
+MemberForeground = 0xE                 # Member/property color (bright yellow)
+EmphasisForeground = 0xD               # Emphasis/selection color (bright magenta)
+ErrorForeground = 0x4                  # Error text color (dark red)
+
+# Regional date/time formatting
+[international]
+path = 'HKCU:\Control Panel\International'
+
+[international.values]
+sLongDate = "dddd, MMMM dd, yyyy"      # Long date format (e.g., "Monday, February 05, 2026")
+sShortDate = "M/d/yyyy"                # Short date format (e.g., "2/5/2026")
+sShortTime = "HH:mm"                   # Short time format (24-hour without seconds)
+sTimeFormat = "HH:mm"                  # Full time format (24-hour without seconds)
+
+# Touch keyboard settings
+[tabletip]
+path = 'HKCU:\Software\Microsoft\TabletTip\1.7'
+
+[tabletip.values]
+TipbandDesiredVisibility = 0           # Hide touch keyboard button from taskbar
+
+# File Explorer settings
+[explorer]
+path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer'
+
+[explorer.values]
+EnableAutoTray = 0                     # Disable auto-hide inactive tray icons
+
+# File Explorer advanced settings
+[explorer_advanced]
+path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+
+[explorer_advanced.values]
+Hidden = 1                             # Show hidden files and folders
+HideFileExt = 0                        # Show file extensions
+LaunchTo = 1                           # Open File Explorer to This PC (vs Quick Access)
+ShowTaskViewButton = 0                 # Hide Task View button from taskbar
+TaskbarAnimations = 0                  # Disable taskbar animations
+TaskbarSizeMove = 0                    # Lock taskbar size and position
+TaskbarGlomLevel = 0                   # Never combine taskbar buttons
+MMTaskbarGlomLevel = 0                 # Never combine taskbar buttons on multi-monitor
+TaskbarSmallIcons = 0                  # Use large taskbar icons
+DisablePreviewDesktop = 1              # Disable Aero Peek (desktop preview)
+MultiTaskingAltTabFilter = 3           # Don't show Edge tabs in Alt+Tab (only windows)
+AutoCheckSelect = 0                    # Disable checkbox item selection
+IconsOnly = 0                          # Show icons and text in taskbar
+ListviewAlphaSelect = 1                # Enable alpha selection in list views
+ListviewShadow = 1                     # Show shadows under icon text
+ShowCortanaButton = 0                  # Hide Cortana button from taskbar
+ShowSecondsInSystemClock = 1           # Show seconds in system clock
+Start_TrackDocs = 0                    # Don't track recently opened documents
+Start_TrackProgs = 0                   # Don't track recently used programs
+
+# People/contacts taskbar button
+[explorer_people]
+path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\People'
+
+[explorer_people.values]
+PeopleBand = 0                         # Hide People button from taskbar
+
+# File Explorer address bar
+[cabinet_state]
+path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\CabinetState'
+
+[cabinet_state.values]
+FullPath = 1                           # Show full path in title bar
+
+# Control Panel view settings
+[control_panel]
+path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\ControlPanel'
+
+[control_panel.values]
+StartupPage = 1                        # Open to All Control Panel items (not Home)
+AllItemsIconView = 1                   # Use icon view for all items
+
+# Desktop icon visibility
+[hide_desktop_icons]
+path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel'
+
+[hide_desktop_icons.values]
+"{645FF040-5081-101B-9F08-00AA002F954E}" = 1  # Hide Recycle Bin
+"{20D04FE0-3AEA-1069-A2D8-08002B30309D}" = 1  # Hide This PC
+"{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}" = 1  # Hide Network
+"{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}" = 1  # Hide Control Panel

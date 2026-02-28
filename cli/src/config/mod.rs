@@ -1,67 +1,24 @@
-//! Configuration loading and validation for all INI config files.
+//! Configuration loading and validation for all TOML config files.
 pub mod category_matcher;
 pub mod chmod;
 pub mod copilot_skills;
-pub mod ini;
+pub mod git_config;
 pub mod manifest;
 pub mod packages;
 pub mod profiles;
 pub mod registry;
 pub mod symlinks;
 pub mod systemd_units;
+pub mod toml_loader;
 pub mod validation;
 pub mod vscode_extensions;
-
-/// Define a simple config struct with a single `String` field and a
-/// `From<String>` conversion, used by config types loaded via
-/// [`ini::load_flat`].
-///
-/// # Examples
-///
-/// ```ignore
-/// define_flat_config! {
-///     /// A symlink to create.
-///     Symlink {
-///         /// Relative path under symlinks/ directory.
-///         source
-///     }
-/// }
-/// // expands to:
-/// //   #[derive(Debug, Clone)]
-/// //   pub struct Symlink { pub source: String }
-/// //   impl From<String> for Symlink { ... }
-/// ```
-macro_rules! define_flat_config {
-    (
-        $(#[$meta:meta])*
-        $name:ident {
-            $(#[$field_meta:meta])*
-            $field:ident
-        }
-    ) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone)]
-        pub struct $name {
-            $(#[$field_meta])*
-            pub $field: String,
-        }
-
-        impl From<String> for $name {
-            fn from($field: String) -> Self {
-                Self { $field }
-            }
-        }
-    };
-}
-
-pub(crate) use define_flat_config;
 
 #[cfg(test)]
 /// Test helpers for config module tests.
 pub mod test_helpers {
     use std::path::PathBuf;
 
-    /// Write content to a temp INI file and return the temp dir + path.
+    /// Write content to a temp TOML file and return the temp dir + path.
     /// The `TempDir` must be kept alive for the file to persist during the test.
     ///
     /// # Panics
@@ -69,10 +26,10 @@ pub mod test_helpers {
     /// Panics if the temp directory or file cannot be created.
     #[must_use]
     #[allow(clippy::expect_used)]
-    pub fn write_temp_ini(content: &str) -> (tempfile::TempDir, PathBuf) {
+    pub fn write_temp_toml(content: &str) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let path = dir.path().join("test.ini");
-        std::fs::write(&path, content).expect("failed to write temp ini");
+        let path = dir.path().join("test.toml");
+        std::fs::write(&path, content).expect("failed to write temp toml");
         (dir, path)
     }
 
@@ -89,7 +46,7 @@ pub mod test_helpers {
         loader: impl Fn(&std::path::Path, &[String]) -> anyhow::Result<Vec<T>>,
     ) {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let path = dir.path().join("nonexistent.ini");
+        let path = dir.path().join("nonexistent.toml");
         let result = loader(&path, &["base".to_string()]).expect("loader should not fail");
         assert!(result.is_empty(), "missing file should produce empty list");
     }
@@ -121,12 +78,14 @@ pub struct Config {
     pub vscode_extensions: Vec<vscode_extensions::VsCodeExtension>,
     /// GitHub Copilot skills to clone.
     pub copilot_skills: Vec<copilot_skills::CopilotSkill>,
+    /// Git configuration settings to apply globally.
+    pub git_settings: Vec<git_config::GitSetting>,
     /// Sparse checkout manifest for file exclusions.
     pub manifest: manifest::Manifest,
 }
 
 /// Convert an [`anyhow::Error`] into a [`ConfigError::InvalidSyntax`] for
-/// the given INI file name.
+/// the given TOML file name.
 fn syntax_err(file: &str) -> impl FnOnce(anyhow::Error) -> ConfigError + '_ {
     move |e| ConfigError::InvalidSyntax {
         file: file.to_string(),
@@ -152,7 +111,7 @@ impl Config {
 
         // Macro to build the path and attach the filename to any parse error,
         // removing the duplication of writing each filename twice.
-        macro_rules! load_ini {
+        macro_rules! load_toml {
             // Two-argument form: loaders that do not filter by category (e.g. registry).
             ($file:literal, $loader:expr) => {
                 $loader(&conf.join($file)).map_err(syntax_err($file))?
@@ -163,26 +122,34 @@ impl Config {
             };
         }
 
-        let packages = load_ini!("packages.ini", packages::load, active_categories);
-        let symlinks = load_ini!("symlinks.ini", ini::load_flat, active_categories);
+        let packages = load_toml!("packages.toml", packages::load, active_categories);
+        let symlinks = load_toml!("symlinks.toml", symlinks::load, active_categories);
 
         let registry = if platform.has_registry() {
-            load_ini!("registry.ini", registry::load)
+            load_toml!("registry.toml", registry::load)
         } else {
             Vec::new()
         };
 
         let units = if platform.supports_systemd() {
-            load_ini!("systemd-units.ini", ini::load_flat, active_categories)
+            load_toml!("systemd-units.toml", systemd_units::load, active_categories)
         } else {
             Vec::new()
         };
 
-        let chmod_entries = load_ini!("chmod.ini", chmod::load, active_categories);
-        let vscode_extensions =
-            load_ini!("vscode-extensions.ini", ini::load_flat, active_categories);
-        let copilot_skills = load_ini!("copilot-skills.ini", ini::load_flat, active_categories);
-        let manifest = load_ini!("manifest.ini", manifest::load, excluded_categories);
+        let chmod_entries = load_toml!("chmod.toml", chmod::load, active_categories);
+        let vscode_extensions = load_toml!(
+            "vscode-extensions.toml",
+            vscode_extensions::load,
+            active_categories
+        );
+        let copilot_skills = load_toml!(
+            "copilot-skills.toml",
+            copilot_skills::load,
+            active_categories
+        );
+        let git_settings = load_toml!("git-config.toml", git_config::load, active_categories);
+        let manifest = load_toml!("manifest.toml", manifest::load, excluded_categories);
 
         Ok(Self {
             root: root.to_path_buf(),
@@ -194,6 +161,7 @@ impl Config {
             chmod: chmod_entries,
             vscode_extensions,
             copilot_skills,
+            git_settings,
             manifest,
         })
     }
@@ -227,20 +195,21 @@ mod tests {
         std::fs::create_dir_all(&conf).expect("create conf dir");
 
         for file in &[
-            "packages.ini",
-            "symlinks.ini",
-            "registry.ini",
-            "systemd-units.ini",
-            "chmod.ini",
-            "vscode-extensions.ini",
-            "copilot-skills.ini",
-            "manifest.ini",
+            "packages.toml",
+            "symlinks.toml",
+            "registry.toml",
+            "systemd-units.toml",
+            "chmod.toml",
+            "vscode-extensions.toml",
+            "copilot-skills.toml",
+            "git-config.toml",
+            "manifest.toml",
         ] {
-            std::fs::write(conf.join(file), "").expect("write empty ini");
+            std::fs::write(conf.join(file), "").expect("write empty toml");
         }
 
         for (name, content) in overrides {
-            std::fs::write(conf.join(name), content).expect("write override ini");
+            std::fs::write(conf.join(name), content).expect("write override toml");
         }
 
         let profile = profiles::Profile {
@@ -274,8 +243,13 @@ mod tests {
 
     #[test]
     fn load_populates_symlinks() {
-        let (dir, profile, platform) =
-            setup_load(linux(), &[("symlinks.ini", "[base]\n.bashrc\n.vimrc\n")]);
+        let (dir, profile, platform) = setup_load(
+            linux(),
+            &[(
+                "symlinks.toml",
+                "[base]\nsymlinks = [\".bashrc\", \".vimrc\"]\n",
+            )],
+        );
         let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
         assert_eq!(config.symlinks.len(), 2);
         assert_eq!(config.symlinks[0].source, ".bashrc");
@@ -284,8 +258,10 @@ mod tests {
 
     #[test]
     fn load_populates_packages() {
-        let (dir, profile, platform) =
-            setup_load(linux(), &[("packages.ini", "[base]\ngit\ncurl\n")]);
+        let (dir, profile, platform) = setup_load(
+            linux(),
+            &[("packages.toml", "[base]\npackages = [\"git\", \"curl\"]\n")],
+        );
         let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
         assert_eq!(config.packages.len(), 2);
     }
@@ -299,16 +275,23 @@ mod tests {
 
     #[test]
     fn load_skips_registry_on_linux() {
-        let (dir, profile, platform) =
-            setup_load(linux(), &[("registry.ini", "[HKCU\\Test]\nKey=Value\n")]);
+        let (dir, profile, platform) = setup_load(
+            linux(),
+            &[(
+                "registry.toml",
+                "[test]\npath = \"HKCU:\\\\Test\"\n[test.values]\nKey = \"Value\"\n",
+            )],
+        );
         let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
         assert!(config.registry.is_empty(), "registry skipped on linux");
     }
 
     #[test]
     fn load_populates_systemd_units_on_linux() {
-        let (dir, profile, platform) =
-            setup_load(linux(), &[("systemd-units.ini", "[base]\nssh.service\n")]);
+        let (dir, profile, platform) = setup_load(
+            linux(),
+            &[("systemd-units.toml", "[base]\nunits = [\"ssh.service\"]\n")],
+        );
         let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
         assert_eq!(config.units.len(), 1);
     }

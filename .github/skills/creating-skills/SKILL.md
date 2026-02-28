@@ -53,7 +53,7 @@ Create a skill when the topic is complex, repeated across files, or has common p
 
 1. **Overview**: Brief intro
 2. **Core Content**: Organized with clear headings
-3. **Code Examples**: Rust, shell, or INI as appropriate
+3. **Code Examples**: Rust, shell, or TOML as appropriate
 4. **Rules**: Clear dos and don'ts
 5. **Cross-references**: Links to related skills
 
@@ -79,11 +79,13 @@ impl Task for MyTask {
 }
 ```
 
-```ini
-# INI config example
+```toml
+# TOML config example
 [base]
-entry-one
-entry-two
+items = [
+  "entry-one",
+  "entry-two",
+]
 ```
 
 After creating, add the skill to `.github/copilot-instructions.md` and validate with `./dotfiles.sh test`.

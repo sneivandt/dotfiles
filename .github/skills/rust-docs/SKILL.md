@@ -66,7 +66,7 @@ pub fn filter_sections_and(sections: &[Section], active: &[String]) -> Vec<Secti
 All public functions returning `Result<T>` **must** document error conditions:
 
 ```rust
-/// Load configuration from INI file.
+/// Load configuration from TOML file.
 ///
 /// # Errors
 ///

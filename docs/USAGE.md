@@ -161,7 +161,7 @@ git pull
 **Run configuration validation:**
 ```bash
 ./dotfiles.sh test
-# Validates INI file syntax
+# Validates TOML file syntax
 # Checks profile definitions
 # Verifies configuration references
 ```
@@ -183,15 +183,15 @@ The installation process handles different components based on your profile:
 2. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
 3. **Configure Git** - Applies git configuration
 4. **Install Git Hooks** - Symlinks repository git hooks
-5. **Install Packages** - Installs packages from `conf/packages.ini` using pacman
+5. **Install Packages** - Installs packages from `conf/packages.toml` using pacman
 6. **Install Paru** - Bootstraps paru AUR helper (Arch Linux only)
 7. **Install AUR Packages** - Installs AUR packages via paru (Arch Linux only)
 8. **Create Symlinks** - Links files from `symlinks/` to `$HOME`
-9. **Set Permissions** - Applies file permissions from `conf/chmod.ini`
+9. **Set Permissions** - Applies file permissions from `conf/chmod.toml`
 10. **Configure Shell** - Sets default shell
-11. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.ini`
-12. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.ini`
-13. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`
+11. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.toml`
+12. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
+13. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.toml`
 
 ### Windows Installation Steps
 
@@ -202,9 +202,9 @@ The installation process handles different components based on your profile:
 5. **Install Git Hooks** - Symlinks repository git hooks
 6. **Install Packages** - Installs packages using winget
 7. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
-8. **Apply Registry Settings** - Configures registry from `conf/registry.ini`
-9. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.ini`
-10. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.ini`
+8. **Apply Registry Settings** - Configures registry from `conf/registry.toml`
+9. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
+10. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.toml`
 
 ## Verbose Mode
 

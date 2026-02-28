@@ -10,7 +10,7 @@ use crate::platform::Platform;
 /// Shared context for task execution.
 #[derive(Clone)]
 pub struct Context {
-    /// Configuration loaded from INI files.
+    /// Configuration loaded from TOML files.
     ///
     /// Wrapped in `Arc<RwLock<_>>` so that `ReloadConfig` can atomically
     /// replace the config after a `git pull` while all other tasks see the

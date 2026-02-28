@@ -70,9 +70,9 @@ function Test-InstallUninstallBaseProfile {
     $homeDir = $env:USERPROFILE
     if (-not $homeDir) { $homeDir = $env:HOME }  # fallback for non-native Windows shells (e.g. Git Bash)
 
-    # Representative symlinks from the [base] section of symlinks.ini
+    # Representative symlinks from the [base] section of symlinks.toml
     $gitConfig = Join-Path $homeDir ".config\git\config"
-    # Representative symlinks from the [windows] section of symlinks.ini
+    # Representative symlinks from the [windows] section of symlinks.toml
     $psProfile = Join-Path $homeDir "Documents\PowerShell\Microsoft.PowerShell_profile.ps1"
 
     Write-Host "Running install..."

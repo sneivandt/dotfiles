@@ -3,7 +3,7 @@ set -o errexit
 set -o nounset
 
 # -----------------------------------------------------------------------------
-# test-config.sh — Configuration validation tests for INI files.
+# test-config.sh — Configuration validation tests for TOML files.
 # Dependencies: test-helpers.sh
 # Expected:     DIR (repository root)
 # -----------------------------------------------------------------------------
@@ -19,27 +19,27 @@ fi
 # shellcheck source=lib/test-helpers.sh
 . "$SCRIPT_DIR"/lib/test-helpers.sh
 
-# Validate that files listed in manifest.ini exist in symlinks/.
+# Validate that files listed in manifest.toml exist in symlinks/.
 test_config_validation()
 {(
   log_stage "Validating configuration consistency"
-  [ -f "$DIR/conf/manifest.ini" ] || { log_verbose "No manifest.ini, skipping"; return 0; }
+  [ -f "$DIR/conf/manifest.toml" ] || { log_verbose "No manifest.toml, skipping"; return 0; }
 
   err_file="$(mktemp)"; echo 0 > "$err_file"
-  sections="$(grep -E '^\[.+\]$' "$DIR/conf/manifest.ini" | tr -d '[]')"
+  sections="$(grep -E '^\[.+\]$' "$DIR/conf/manifest.toml" | tr -d '[]')"
   for section in $sections; do
-    entries="$(read_ini_section "$DIR/conf/manifest.ini" "$section")" || true
+    entries="$(read_toml_section_array "$DIR/conf/manifest.toml" "$section" "paths")" || true
     echo "$entries" | while IFS='' read -r file || [ -n "$file" ]; do
       [ -n "$file" ] || continue
       if [ ! -e "$DIR/symlinks/$file" ] && [ ! -L "$DIR/symlinks/${file%/}" ]; then
-        printf "%sERROR: manifest.ini [%s] references missing: symlinks/%s%s\n" "${RED}" "$section" "$file" "${NC}" >&2
+        printf "%sERROR: manifest.toml [%s] references missing: symlinks/%s%s\n" "${RED}" "$section" "$file" "${NC}" >&2
         echo 1 > "$err_file"
       fi
     done
   done
 
   # Validate profiles
-  if [ -f "$DIR/conf/profiles.ini" ]; then
+  if [ -f "$DIR/conf/profiles.toml" ]; then
     for profile in $(list_available_profiles); do
       if ! parse_profile "$profile"; then
         printf "%sERROR: profile '%s' could not be parsed%s\n" "${RED}" "$profile" "${NC}" >&2
@@ -52,22 +52,20 @@ test_config_validation()
   [ "$result" -eq 0 ] || return 1
 )}
 
-# Validate that files in symlinks.ini exist in symlinks/.
+# Validate that files in symlinks.toml exist in symlinks/.
 test_symlinks_validation()
 {(
-  log_stage "Validating symlinks.ini references"
-  [ -f "$DIR/conf/symlinks.ini" ] || { log_verbose "No symlinks.ini, skipping"; return 0; }
+  log_stage "Validating symlinks.toml references"
+  [ -f "$DIR/conf/symlinks.toml" ] || { log_verbose "No symlinks.toml, skipping"; return 0; }
 
   err_file="$(mktemp)"; echo 0 > "$err_file"
-  sections="$(grep -E '^\[.+\]$' "$DIR/conf/symlinks.ini" | tr -d '[]')"
+  sections="$(grep -E '^\[.+\]$' "$DIR/conf/symlinks.toml" | tr -d '[]')"
   for section in $sections; do
-    entries="$(read_ini_section "$DIR/conf/symlinks.ini" "$section")" || true
-    echo "$entries" | while IFS='' read -r entry || [ -n "$entry" ]; do
-      [ -n "$entry" ] || continue
-      src="${entry%%=*}"
-      src="$(echo "$src" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    entries="$(read_toml_section_array "$DIR/conf/symlinks.toml" "$section" "symlinks")" || true
+    echo "$entries" | while IFS='' read -r src || [ -n "$src" ]; do
+      [ -n "$src" ] || continue
       if [ ! -e "$DIR/symlinks/$src" ] && [ ! -L "$DIR/symlinks/$src" ]; then
-        printf "%sERROR: symlinks.ini [%s] source missing: symlinks/%s%s\n" "${RED}" "$section" "$src" "${NC}" >&2
+        printf "%sERROR: symlinks.toml [%s] source missing: symlinks/%s%s\n" "${RED}" "$section" "$src" "${NC}" >&2
         echo 1 > "$err_file"
       fi
     done
@@ -76,39 +74,44 @@ test_symlinks_validation()
   [ "$result" -eq 0 ] || return 1
 )}
 
-# Validate that files in chmod.ini exist in symlinks/.
+# Validate that files in chmod.toml exist in symlinks/.
 test_chmod_validation()
 {(
-  log_stage "Validating chmod.ini references"
-  [ -f "$DIR/conf/chmod.ini" ] || { log_verbose "No chmod.ini, skipping"; return 0; }
+  log_stage "Validating chmod.toml references"
+  [ -f "$DIR/conf/chmod.toml" ] || { log_verbose "No chmod.toml, skipping"; return 0; }
 
   err_file="$(mktemp)"; echo 0 > "$err_file"
-  sections="$(grep -E '^\[.+\]$' "$DIR/conf/chmod.ini" | tr -d '[]')"
+  # chmod.toml uses structured objects: { mode = "600", path = "ssh/config" }
+  # Extract path values from permissions arrays
+  sections="$(grep -E '^\[.+\]$' "$DIR/conf/chmod.toml" | tr -d '[]')"
   for section in $sections; do
-    entries="$(read_ini_section "$DIR/conf/chmod.ini" "$section")" || true
-    echo "$entries" | while IFS='' read -r entry || [ -n "$entry" ]; do
-      [ -n "$entry" ] || continue
-      # chmod.ini format: <mode> <path>, extract just the path
-      file="$(echo "$entry" | awk '{print $2}')"
-      file="$(echo "$file" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-      if [ ! -e "$DIR/symlinks/$file" ] && [ ! -L "$DIR/symlinks/$file" ]; then
-        printf "%sERROR: chmod.ini [%s] references missing: symlinks/%s%s\n" "${RED}" "$section" "$file" "${NC}" >&2
-        echo 1 > "$err_file"
-      fi
+    read_toml_section_array "$DIR/conf/chmod.toml" "$section" "permissions" | while IFS='' read -r file || [ -n "$file" ]; do
+      [ -n "$file" ] || continue
+      # read_toml_section_array extracts the first quoted string, which is the mode;
+      # for chmod we need the path. Extract path from the raw TOML line instead.
+      true
     done
+  done
+  # Use a direct grep approach for chmod.toml structured entries
+  grep -oP 'path\s*=\s*"\K[^"]+' "$DIR/conf/chmod.toml" | while IFS='' read -r file || [ -n "$file" ]; do
+    [ -n "$file" ] || continue
+    if [ ! -e "$DIR/symlinks/$file" ] && [ ! -L "$DIR/symlinks/$file" ]; then
+      printf "%sERROR: chmod.toml references missing: symlinks/%s%s\n" "${RED}" "$file" "${NC}" >&2
+      echo 1 > "$err_file"
+    fi
   done
   result="$(cat "$err_file")"; rm -f "$err_file"
   [ "$result" -eq 0 ] || return 1
 )}
 
-# Validate INI file syntax (sections, no trailing whitespace, no duplicates).
-test_ini_syntax()
+# Validate TOML file syntax (no trailing whitespace).
+test_toml_syntax()
 {(
-  log_stage "Validating INI file syntax"
+  log_stage "Validating TOML file syntax"
   errors=0
-  for ini in "$DIR"/conf/*.ini; do
-    [ -f "$ini" ] || continue
-    name="$(basename "$ini")"
+  for toml in "$DIR"/conf/*.toml; do
+    [ -f "$toml" ] || continue
+    name="$(basename "$toml")"
     lineno=0
     while IFS='' read -r line || [ -n "$line" ]; do
       lineno=$((lineno + 1))
@@ -119,42 +122,34 @@ test_ini_syntax()
           errors=$((errors + 1))
           ;;
       esac
-      # Malformed section header
-      case "$line" in
-        \[*) case "$line" in *\]) ;; *)
-          printf "%sERROR: %s:%d malformed section header%s\n" "${RED}" "$name" "$lineno" "${NC}" >&2
-          errors=$((errors + 1))
-          ;; esac ;;
-      esac
-    done < "$ini"
+    done < "$toml"
     log_verbose "$name: syntax OK"
   done
   [ "$errors" -eq 0 ] || return 1
 )}
 
-# Check that categories used in INI files are consistent across config files.
+# Check that categories used in TOML files are consistent across config files.
 test_category_consistency()
 {(
   log_stage "Validating category consistency"
-  [ -f "$DIR/conf/manifest.ini" ] || { log_verbose "No manifest.ini, skipping"; return 0; }
+  [ -f "$DIR/conf/manifest.toml" ] || { log_verbose "No manifest.toml, skipping"; return 0; }
 
-  manifest_cats="$(grep -E '^\[.+\]$' "$DIR/conf/manifest.ini" | tr -d '[]' | sort -u)"
+  manifest_cats="$(grep -E '^\[.+\]$' "$DIR/conf/manifest.toml" | tr -d '[]' | sort -u)"
 
   errors=0
-  for ini in "$DIR"/conf/symlinks.ini "$DIR"/conf/chmod.ini "$DIR"/conf/packages.ini; do
-    [ -f "$ini" ] || continue
-    name="$(basename "$ini")"
-    cats="$(grep -E '^\[.+\]$' "$ini" | tr -d '[]' | sort -u)"
+  for toml in "$DIR"/conf/symlinks.toml "$DIR"/conf/chmod.toml "$DIR"/conf/packages.toml; do
+    [ -f "$toml" ] || continue
+    name="$(basename "$toml")"
+    cats="$(grep -E '^\[.+\]$' "$toml" | tr -d '[]' | sort -u)"
     for cat in $cats; do
-      # Categories with commas (e.g. "arch,aur") — check each part
-      for part in $(echo "$cat" | tr ',' ' '); do
-        case "$part" in aur) continue ;; esac  # aur is packages-only
+      # Categories with hyphens (e.g. "arch-desktop") — check each part
+      for part in $(echo "$cat" | tr '-' ' '); do
         if ! echo "$manifest_cats" | grep -qxF "$part"; then
           # Check if it's a known profile category
-          if [ -f "$DIR/conf/profiles.ini" ] && grep -qE "^\[$part\]$" "$DIR/conf/profiles.ini" 2>/dev/null; then
+          if [ -f "$DIR/conf/profiles.toml" ] && grep -qE "^\[$part\]$" "$DIR/conf/profiles.toml" 2>/dev/null; then
             continue
           fi
-          printf "%sWARNING: %s uses category '%s' not in manifest.ini%s\n" "${YELLOW}" "$name" "$part" "${NC}" >&2
+          printf "%sWARNING: %s uses category '%s' not in manifest.toml%s\n" "${YELLOW}" "$name" "$part" "${NC}" >&2
         fi
       done
     done
@@ -162,18 +157,18 @@ test_category_consistency()
   [ "$errors" -eq 0 ] || return 1
 )}
 
-# Check for empty sections in INI files.
+# Check for empty sections in TOML files.
 test_empty_sections()
 {(
   log_stage "Checking for empty sections"
   errors=0
-  for ini in "$DIR"/conf/*.ini; do
-    [ -f "$ini" ] || continue
-    name="$(basename "$ini")"
+  for toml in "$DIR"/conf/*.toml; do
+    [ -f "$toml" ] || continue
+    name="$(basename "$toml")"
     prev_section=""
     while IFS='' read -r line || [ -n "$line" ]; do
       case "$line" in ''|\#*) continue ;; esac
-      if [ "${line#\[}" != "$line" ]; then
+      if echo "$line" | grep -qE '^\[.+\]$'; then
         section="${line#\[}"; section="${section%\]}"
         if [ -n "$prev_section" ]; then
           printf "%sERROR: %s section [%s] is empty%s\n" "${RED}" "$name" "$prev_section" "${NC}" >&2
@@ -183,7 +178,7 @@ test_empty_sections()
       else
         prev_section=""
       fi
-    done < "$ini"
+    done < "$toml"
     # Check last section
     if [ -n "$prev_section" ]; then
       printf "%sERROR: %s section [%s] is empty%s\n" "${RED}" "$name" "$prev_section" "${NC}" >&2

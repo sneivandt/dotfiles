@@ -103,9 +103,9 @@ git sparse-checkout init --cone
 
 3. **Entry not in correct section**:
    ```bash
-   # Check conf/symlinks.ini
+   # Check conf/symlinks.toml
    # Verify entry is in a section matching your profile
-   grep -A5 "\[base\]" conf/symlinks.ini
+   grep -A5 "\[base\]" conf/symlinks.toml
    ```
 
 4. **Parent directory doesn't exist**:
@@ -139,21 +139,21 @@ rm ~/.<path>
 ### Package Installation Issues
 
 #### Package not installed
-**Symptoms**: Package from `packages.ini` wasn't installed.
+**Symptoms**: Package from `packages.toml` wasn't installed.
 
 **Possible causes and solutions**:
 
-1. **Wrong section in packages.ini**:
+1. **Wrong section in packages.toml**:
    ```bash
    # Verify package is in correct section
-   # On Arch with desktop profile, package should be in [arch] or [arch,desktop]
-   grep -B2 "package-name" conf/packages.ini
+   # On Arch with desktop profile, package should be in [arch] or [arch-desktop]
+   grep -B2 "package-name" conf/packages.toml
    ```
 
 2. **Profile excludes the category**:
    ```bash
    # Check profile definition
-   grep -A2 "\[desktop\]" conf/profiles.ini
+   grep -A2 "\[desktop\]" conf/profiles.toml
 
    # Verify section isn't excluded
    ./dotfiles.sh install -v | grep "Skipping section"
@@ -204,13 +204,13 @@ winget search <package-name>
 # Try installing manually
 winget install <PackageId>
 
-# Update package ID in conf/packages.ini if needed
+# Update package ID in conf/packages.toml if needed
 ```
 
 ### Systemd Unit Issues
 
 #### Unit not enabled
-**Symptoms**: Systemd unit from `systemd-units.ini` isn't running.
+**Symptoms**: Systemd unit from `systemd-units.toml` isn't running.
 
 **Solution**:
 ```bash
@@ -259,8 +259,8 @@ code --list-extensions | grep <extension-id>
 # Install manually
 code --install-extension <extension-id>
 
-# Verify extension ID in conf/vscode-extensions.ini
-cat conf/vscode-extensions.ini
+# Verify extension ID in conf/vscode-extensions.toml
+   cat conf/vscode-extensions.toml
 ```
 
 #### Extension installation hangs
@@ -270,7 +270,7 @@ cat conf/vscode-extensions.ini
 - Press Ctrl+C to cancel
 - Try installing extensions manually
 - Check VS Code marketplace availability
-- Temporarily comment out extensions in `conf/vscode-extensions.ini` to skip them
+- Temporarily comment out extensions in `conf/vscode-extensions.toml` to skip them
 
 ### GitHub Copilot Skills Issues
 
@@ -289,8 +289,8 @@ gh extension list | grep copilot
 # Check skills directory
 ls -la ~/.copilot/skills/
 
-# Verify skill URLs in conf/copilot-skills.ini
-cat conf/copilot-skills.ini
+# Verify skill URLs in conf/copilot-skills.toml
+   cat conf/copilot-skills.toml
 ```
 
 #### Skill download fails
@@ -451,7 +451,7 @@ shellcheck dotfiles.sh install.sh
 
 **Solution**:
 ```bash
-# Check INI file syntax
+# Check TOML file syntax
 # Ensure section headers use []
 # Ensure no trailing whitespace
 # Verify file references exist

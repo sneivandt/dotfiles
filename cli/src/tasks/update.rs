@@ -41,6 +41,21 @@ impl Task for UpdateRepository {
         let home_str = ctx.home.to_string_lossy().to_string();
         let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
 
+        // Skip when not on a branch (e.g. detached HEAD in CI checkouts).
+        if ctx
+            .executor
+            .run_in_with_env(
+                &ctx.root(),
+                "git",
+                &["symbolic-ref", "--quiet", "HEAD"],
+                git_env,
+            )
+            .is_err()
+        {
+            ctx.log.info("detached HEAD, skipping pull");
+            return Ok(TaskResult::Skipped("detached HEAD".to_string()));
+        }
+
         // Refuse to pull if there are staged changes that could be lost
         if let Ok(diff) = ctx.executor.run_in_with_env(
             &ctx.root(),
@@ -139,10 +154,28 @@ mod tests {
     }
 
     #[test]
+    fn run_returns_skipped_when_detached_head() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        // First call (symbolic-ref): fails → detached HEAD
+        let executor = MockExecutor::fail();
+        let ctx = make_update_context(config, executor);
+        let repo_updated = Arc::new(AtomicBool::new(false));
+        let task = UpdateRepository::new(Arc::clone(&repo_updated));
+
+        let result = task.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("detached HEAD")));
+        assert!(!repo_updated.load(Ordering::Acquire));
+    }
+
+    #[test]
     fn run_skips_when_staged_changes_detected() {
         let config = empty_config(PathBuf::from("/tmp"));
-        // First call (diff --cached) returns non-empty stdout → staged changes
-        let executor = MockExecutor::ok("dirty_file.txt");
+        // First call (symbolic-ref): succeeds → on a branch
+        // Second call (diff --cached): returns non-empty stdout → staged changes
+        let executor = MockExecutor::with_responses(vec![
+            (true, "refs/heads/main".to_string()),
+            (true, "dirty_file.txt".to_string()),
+        ]);
         let ctx = make_update_context(config, executor);
         let repo_updated = Arc::new(AtomicBool::new(false));
         let task = UpdateRepository::new(Arc::clone(&repo_updated));
@@ -154,9 +187,11 @@ mod tests {
     #[test]
     fn run_returns_ok_and_does_not_mark_updated_when_already_up_to_date() {
         let config = empty_config(PathBuf::from("/tmp"));
-        // First call (diff): empty stdout → no staged changes
-        // Second call (pull): "Already up to date."
+        // First call (symbolic-ref): succeeds → on a branch
+        // Second call (diff): empty stdout → no staged changes
+        // Third call (pull): "Already up to date."
         let executor = MockExecutor::with_responses(vec![
+            (true, "refs/heads/main".to_string()),
             (true, String::new()),
             (true, "Already up to date.".to_string()),
         ]);
@@ -172,9 +207,11 @@ mod tests {
     #[test]
     fn run_returns_ok_and_marks_updated_when_pull_fetches_new_commits() {
         let config = empty_config(PathBuf::from("/tmp"));
-        // First call (diff): empty stdout → no staged changes
-        // Second call (pull): update output → repo was updated
+        // First call (symbolic-ref): succeeds → on a branch
+        // Second call (diff): empty stdout → no staged changes
+        // Third call (pull): update output → repo was updated
         let executor = MockExecutor::with_responses(vec![
+            (true, "refs/heads/main".to_string()),
             (true, String::new()),
             (true, "Updating abc1234..def5678\nFast-forward".to_string()),
         ]);
@@ -190,10 +227,14 @@ mod tests {
     #[test]
     fn run_returns_skipped_when_pull_fails() {
         let config = empty_config(PathBuf::from("/tmp"));
-        // First call (diff): empty stdout → no staged changes
-        // Second call (pull): fails
-        let executor =
-            MockExecutor::with_responses(vec![(true, String::new()), (false, String::new())]);
+        // First call (symbolic-ref): succeeds → on a branch
+        // Second call (diff): empty stdout → no staged changes
+        // Third call (pull): fails
+        let executor = MockExecutor::with_responses(vec![
+            (true, "refs/heads/main".to_string()),
+            (true, String::new()),
+            (false, String::new()),
+        ]);
         let ctx = make_update_context(config, executor);
         let repo_updated = Arc::new(AtomicBool::new(false));
         let task = UpdateRepository::new(Arc::clone(&repo_updated));

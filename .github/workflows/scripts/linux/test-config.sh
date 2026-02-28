@@ -139,6 +139,8 @@ test_category_consistency()
           if [ -f "$DIR/conf/profiles.toml" ] && grep -qE "^\[$part\]$" "$DIR/conf/profiles.toml" 2>/dev/null; then
             continue
           fi
+          # Allow auto-detected platform categories (handled by platform detection, not manifest)
+          case "$part" in linux|windows|arch) continue ;; esac
           printf "%sWARNING: %s uses category '%s' not in manifest.toml%s\n" "${YELLOW}" "$name" "$part" "${NC}" >&2
           errors=$((errors + 1))
         fi

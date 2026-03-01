@@ -1,10 +1,7 @@
 //! Task: reload configuration after repository update.
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-
 use anyhow::{Context as _, Result};
 
-use super::{Context, Task, TaskResult, task_deps};
+use super::{Context, Task, TaskResult, task_deps, update_signal::UpdateSignal};
 
 /// Re-parse all configuration files after `UpdateRepository` has pulled the
 /// latest changes.
@@ -17,13 +14,13 @@ use super::{Context, Task, TaskResult, task_deps};
 pub struct ReloadConfig {
     /// Shared flag set by [`super::update::UpdateRepository`] when new commits
     /// were fetched.  When `false`, the reload is a no-op.
-    pub(super) repo_updated: Arc<AtomicBool>,
+    pub(super) repo_updated: UpdateSignal,
 }
 
 impl ReloadConfig {
     /// Create a new task, sharing `repo_updated` with `UpdateRepository`.
     #[must_use]
-    pub const fn new(repo_updated: Arc<AtomicBool>) -> Self {
+    pub const fn new(repo_updated: UpdateSignal) -> Self {
         Self { repo_updated }
     }
 }
@@ -40,7 +37,7 @@ impl Task for ReloadConfig {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if !self.repo_updated.load(std::sync::atomic::Ordering::Acquire) {
+        if !self.repo_updated.was_updated() {
             ctx.log
                 .debug("repository was not updated, config reload is a no-op");
             return Ok(TaskResult::Ok);
@@ -79,14 +76,14 @@ impl Task for ReloadConfig {
 mod tests {
     use super::*;
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use crate::tasks::update_signal::UpdateSignal;
     use std::path::PathBuf;
-    use std::sync::atomic::Ordering;
 
     #[test]
     fn should_run_always() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        let task = ReloadConfig::new(Arc::new(AtomicBool::new(false)));
+        let task = ReloadConfig::new(UpdateSignal::new());
         assert!(task.should_run(&ctx));
     }
 
@@ -94,8 +91,8 @@ mod tests {
     fn run_returns_ok_when_repo_not_updated() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        let repo_updated = Arc::new(AtomicBool::new(false));
-        let task = ReloadConfig::new(Arc::clone(&repo_updated));
+        let repo_updated = UpdateSignal::new();
+        let task = ReloadConfig::new(repo_updated);
         // repo_updated defaults to false
         let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Ok));
@@ -132,9 +129,9 @@ mod tests {
             excluded_categories: vec![],
         };
         let ctx = make_linux_context(config);
-        let repo_updated = Arc::new(AtomicBool::new(false));
-        repo_updated.store(true, Ordering::Release);
-        let task = ReloadConfig::new(Arc::clone(&repo_updated));
+        let repo_updated = UpdateSignal::new();
+        repo_updated.mark_updated();
+        let task = ReloadConfig::new(repo_updated);
         let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Ok));
     }

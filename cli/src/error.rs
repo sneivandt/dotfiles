@@ -16,19 +16,6 @@ pub enum ConfigError {
     #[error("Invalid profile '{0}'")]
     InvalidProfile(String),
 
-    /// A required TOML section is absent from the config file.
-    #[error("Missing required section [{0}]")]
-    MissingSection(String),
-
-    /// The config file contains a syntax error that prevents parsing.
-    #[error("Invalid syntax in {file}: {message}")]
-    InvalidSyntax {
-        /// Name of the config file with the syntax error.
-        file: String,
-        /// Description of the syntax error.
-        message: String,
-    },
-
     /// The TOML file contains a syntax error that prevents parsing.
     #[error("Invalid TOML syntax in {path}: {source}")]
     TomlParse {
@@ -62,24 +49,6 @@ mod tests {
     fn config_error_invalid_profile_display() {
         let e = ConfigError::InvalidProfile("unknown".to_string());
         assert_eq!(e.to_string(), "Invalid profile 'unknown'");
-    }
-
-    #[test]
-    fn config_error_missing_section_display() {
-        let e = ConfigError::MissingSection("packages".to_string());
-        assert_eq!(e.to_string(), "Missing required section [packages]");
-    }
-
-    #[test]
-    fn config_error_invalid_syntax_display() {
-        let e = ConfigError::InvalidSyntax {
-            file: "packages.toml".to_string(),
-            message: "unexpected token".to_string(),
-        };
-        assert_eq!(
-            e.to_string(),
-            "Invalid syntax in packages.toml: unexpected token"
-        );
     }
 
     #[test]

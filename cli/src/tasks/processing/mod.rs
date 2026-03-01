@@ -14,7 +14,7 @@ pub use context::Context;
 
 use anyhow::Result;
 
-use crate::resources::{Resource, ResourceState};
+use crate::resources::{Applicable, Resource, ResourceState};
 
 /// Result of a single task execution.
 ///
@@ -266,7 +266,7 @@ pub fn process_resources<R: Resource + Send>(
 /// Returns an error if any resource fails to apply changes, depending on the
 /// `bail_on_error` setting in `opts`. If `bail_on_error` is `false`, errors are
 /// logged as warnings instead.
-pub fn process_resource_states<R: Resource + Send>(
+pub fn process_resource_states<R: Applicable + Send>(
     ctx: &Context,
     resource_states: impl IntoIterator<Item = (R, ResourceState)>,
     opts: &ProcessOpts,
@@ -326,7 +326,7 @@ pub fn process_resources_remove<R: Resource + Send>(
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::resources::{Resource, ResourceChange, ResourceState};
+    use crate::resources::{Applicable, Resource, ResourceChange, ResourceState};
     use crate::tasks::test_helpers::{empty_config, make_static_context};
     use std::path::PathBuf;
 
@@ -368,15 +368,9 @@ mod tests {
         }
     }
 
-    impl Resource for MockResource {
+    impl Applicable for MockResource {
         fn description(&self) -> String {
             self.desc.clone()
-        }
-
-        fn current_state(&self) -> Result<ResourceState> {
-            self.state_result
-                .clone()
-                .map_err(|s| anyhow::anyhow!("{s}"))
         }
 
         fn apply(&self) -> Result<ResourceChange> {
@@ -387,6 +381,14 @@ mod tests {
 
         fn remove(&self) -> Result<ResourceChange> {
             self.remove_result
+                .clone()
+                .map_err(|s| anyhow::anyhow!("{s}"))
+        }
+    }
+
+    impl Resource for MockResource {
+        fn current_state(&self) -> Result<ResourceState> {
+            self.state_result
                 .clone()
                 .map_err(|s| anyhow::anyhow!("{s}"))
         }

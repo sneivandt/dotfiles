@@ -14,6 +14,46 @@ pub mod vscode_extension;
 
 use anyhow::Result;
 
+/// Minimal interface for resources that can be described, applied, and removed.
+///
+/// Resources whose state is determined via a single external bulk query (e.g.
+/// VS Code extensions) should implement only this trait.  Resources that can
+/// determine their own state independently implement the richer [`Resource`]
+/// super-trait.
+pub trait Applicable {
+    /// Human-readable description of this resource.
+    fn description(&self) -> String;
+
+    /// Apply the resource change.
+    ///
+    /// This method should:
+    /// - Create parent directories if needed
+    /// - Update the resource to match the desired state
+    /// - Return the appropriate `ResourceChange` result
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the resource cannot be applied due to I/O failures,
+    /// permission issues, invalid paths, or other system errors.
+    fn apply(&self) -> Result<ResourceChange>;
+
+    /// Remove the resource, undoing a previous `apply()`.
+    ///
+    /// Default implementation returns an error — override in resources
+    /// that support removal.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the resource cannot be removed, or if removal is not supported
+    /// for this resource type.
+    fn remove(&self) -> Result<ResourceChange> {
+        anyhow::bail!(
+            "operation 'remove' is not supported for resource '{}'",
+            self.description()
+        )
+    }
+}
+
 /// State of a resource (file, registry entry, etc.).
 ///
 /// # Examples
@@ -76,11 +116,12 @@ pub enum ResourceChange {
 
 /// Unified interface for resources that can be checked and applied.
 ///
-/// This abstraction provides consistent handling for:
-/// - Symlinks (file system links)
-/// - Registry entries (Windows registry)
-/// - File permissions (chmod on Unix)
-/// - Other declarative resources
+/// Extends [`Applicable`] with state-checking methods for resources that can
+/// independently determine their own state (e.g. symlinks, registry entries,
+/// file permissions).
+///
+/// Resources whose state requires a single external bulk query should implement
+/// only [`Applicable`] instead.
 ///
 /// # Examples
 ///
@@ -91,10 +132,7 @@ pub enum ResourceChange {
 ///     resource.apply()?;
 /// }
 /// ```
-pub trait Resource {
-    /// Human-readable description of this resource.
-    fn description(&self) -> String;
-
+pub trait Resource: Applicable {
     /// Check the current state of the resource.
     ///
     /// # Errors
@@ -116,38 +154,6 @@ pub trait Resource {
             ResourceState::Missing | ResourceState::Incorrect { .. }
         ))
     }
-
-    /// Apply the resource change.
-    ///
-    /// This method should:
-    /// - Create parent directories if needed
-    /// - Update the resource to match the desired state
-    /// - Return the appropriate `ResourceChange` result
-    ///
-    /// This method is only called when NOT in dry-run mode and when
-    /// `needs_change()` returns `true`.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the resource cannot be applied due to I/O failures,
-    /// permission issues, invalid paths, or other system errors.
-    fn apply(&self) -> Result<ResourceChange>;
-
-    /// Remove the resource, undoing a previous `apply()`.
-    ///
-    /// Default implementation returns an error — override in resources
-    /// that support removal.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the resource cannot be removed, or if removal is not supported
-    /// for this resource type.
-    fn remove(&self) -> Result<ResourceChange> {
-        anyhow::bail!(
-            "operation 'remove' is not supported for resource '{}'",
-            self.description()
-        )
-    }
 }
 
 /// Shared test helpers for resource unit tests.
@@ -159,7 +165,10 @@ pub mod test_helpers {
     use crate::exec::{ExecResult, Executor};
     use std::collections::VecDeque;
     use std::path::Path;
-    use std::sync::Mutex;
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     /// A configurable mock executor for resource unit tests.
     ///
@@ -169,11 +178,15 @@ pub mod test_helpers {
     ///
     /// Use [`with_which`](Self::with_which) to configure the value returned
     /// by [`Executor::which`] (defaults to `false`).
+    ///
+    /// Use [`call_count`](Self::call_count) to inspect how many executor calls
+    /// were made.
     #[derive(Debug)]
     pub struct MockExecutor {
         responses: Mutex<VecDeque<(bool, String)>>,
         /// Return value for every [`Executor::which`] call.
         which_result: bool,
+        call_count: Arc<AtomicUsize>,
     }
 
     impl MockExecutor {
@@ -195,6 +208,7 @@ pub mod test_helpers {
             Self {
                 responses: Mutex::new(responses.into()),
                 which_result: false,
+                call_count: Arc::new(AtomicUsize::new(0)),
             }
         }
 
@@ -205,7 +219,14 @@ pub mod test_helpers {
             self
         }
 
+        /// Return the total number of executor calls made so far.
+        #[must_use]
+        pub fn call_count(&self) -> usize {
+            self.call_count.load(Ordering::SeqCst)
+        }
+
         fn next(&self) -> (bool, String) {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
             self.responses.lock().map_or_else(
                 |_| (false, "mutex poisoned".to_string()),
                 |mut guard| {
@@ -275,17 +296,19 @@ mod tests {
         state: ResourceState,
     }
 
-    impl Resource for TestResource {
+    impl Applicable for TestResource {
         fn description(&self) -> String {
             "test resource".to_string()
         }
 
-        fn current_state(&self) -> Result<ResourceState> {
-            Ok(self.state.clone())
-        }
-
         fn apply(&self) -> Result<ResourceChange> {
             Ok(ResourceChange::Applied)
+        }
+    }
+
+    impl Resource for TestResource {
+        fn current_state(&self) -> Result<ResourceState> {
+            Ok(self.state.clone())
         }
     }
 

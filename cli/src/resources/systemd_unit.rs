@@ -1,7 +1,7 @@
 //! Systemd user unit resource.
 use anyhow::Result;
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Applicable, Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
 
 /// A systemd user unit resource that can be checked and enabled.
@@ -30,20 +30,9 @@ impl<'a> SystemdUnitResource<'a> {
     }
 }
 
-impl Resource for SystemdUnitResource<'_> {
+impl Applicable for SystemdUnitResource<'_> {
     fn description(&self) -> String {
         self.name.clone()
-    }
-
-    fn current_state(&self) -> Result<ResourceState> {
-        let result = self
-            .executor
-            .run_unchecked("systemctl", &["--user", "is-enabled", &self.name])?;
-        if result.success {
-            Ok(ResourceState::Correct)
-        } else {
-            Ok(ResourceState::Missing)
-        }
     }
 
     fn apply(&self) -> Result<ResourceChange> {
@@ -56,6 +45,19 @@ impl Resource for SystemdUnitResource<'_> {
             Ok(ResourceChange::Skipped {
                 reason: format!("failed to enable: {}", result.stderr.trim()),
             })
+        }
+    }
+}
+
+impl Resource for SystemdUnitResource<'_> {
+    fn current_state(&self) -> Result<ResourceState> {
+        let result = self
+            .executor
+            .run_unchecked("systemctl", &["--user", "is-enabled", &self.name])?;
+        if result.success {
+            Ok(ResourceState::Correct)
+        } else {
+            Ok(ResourceState::Missing)
         }
     }
 }

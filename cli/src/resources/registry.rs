@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use anyhow::Context as _;
 use anyhow::Result;
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Applicable, Resource, ResourceChange, ResourceState};
 
 /// Native Windows registry access via the `winreg` crate.
 #[cfg(windows)]
@@ -186,24 +186,12 @@ pub fn batch_check_values(
     Ok(HashMap::new())
 }
 
-impl Resource for RegistryResource {
+impl Applicable for RegistryResource {
     fn description(&self) -> String {
         format!(
             "{}\\{} = {}",
             self.key_path, self.value_name, self.value_data
         )
-    }
-
-    fn current_state(&self) -> Result<ResourceState> {
-        #[cfg(windows)]
-        {
-            let current_value = native::read_value(&self.key_path, &self.value_name)?;
-            Ok(self.state_from_cached(current_value.as_deref()))
-        }
-        #[cfg(not(windows))]
-        {
-            Ok(ResourceState::Missing)
-        }
     }
 
     fn apply(&self) -> Result<ResourceChange> {
@@ -216,6 +204,20 @@ impl Resource for RegistryResource {
         #[cfg(not(windows))]
         {
             anyhow::bail!("registry operations are only supported on Windows")
+        }
+    }
+}
+
+impl Resource for RegistryResource {
+    fn current_state(&self) -> Result<ResourceState> {
+        #[cfg(windows)]
+        {
+            let current_value = native::read_value(&self.key_path, &self.value_name)?;
+            Ok(self.state_from_cached(current_value.as_deref()))
+        }
+        #[cfg(not(windows))]
+        {
+            Ok(ResourceState::Missing)
         }
     }
 }

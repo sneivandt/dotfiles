@@ -2,7 +2,7 @@
 use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Applicable, Resource, ResourceChange, ResourceState};
 
 /// Unix file permission mask (all permission bits).
 #[cfg(unix)]
@@ -32,11 +32,40 @@ impl ChmodResource {
     }
 }
 
-impl Resource for ChmodResource {
+impl Applicable for ChmodResource {
     fn description(&self) -> String {
         format!("{} {}", self.mode, self.target.display())
     }
 
+    fn apply(&self) -> Result<ResourceChange> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mode = u32::from_str_radix(&self.mode, 8)
+                .with_context(|| format!("invalid octal mode: {}", self.mode))?;
+
+            if self.target.is_dir() {
+                apply_recursive(&self.target, mode)?;
+            } else {
+                let perms = std::fs::Permissions::from_mode(mode);
+                std::fs::set_permissions(&self.target, perms)
+                    .with_context(|| format!("set permissions: {}", self.target.display()))?;
+            }
+
+            Ok(ResourceChange::Applied)
+        }
+
+        #[cfg(not(unix))]
+        {
+            Ok(ResourceChange::Skipped {
+                reason: "chmod not supported on this platform".to_string(),
+            })
+        }
+    }
+}
+
+impl Resource for ChmodResource {
     fn current_state(&self) -> Result<ResourceState> {
         // Check if target exists
         if !self.target.exists() {
@@ -69,33 +98,6 @@ impl Resource for ChmodResource {
         {
             let _ = desired_mode; // Suppress unused warning
             Ok(ResourceState::Invalid {
-                reason: "chmod not supported on this platform".to_string(),
-            })
-        }
-    }
-
-    fn apply(&self) -> Result<ResourceChange> {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-
-            let mode = u32::from_str_radix(&self.mode, 8)
-                .with_context(|| format!("invalid octal mode: {}", self.mode))?;
-
-            if self.target.is_dir() {
-                apply_recursive(&self.target, mode)?;
-            } else {
-                let perms = std::fs::Permissions::from_mode(mode);
-                std::fs::set_permissions(&self.target, perms)
-                    .with_context(|| format!("set permissions: {}", self.target.display()))?;
-            }
-
-            Ok(ResourceChange::Applied)
-        }
-
-        #[cfg(not(unix))]
-        {
-            Ok(ResourceChange::Skipped {
                 reason: "chmod not supported on this platform".to_string(),
             })
         }

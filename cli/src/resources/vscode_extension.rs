@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Applicable, ResourceChange, ResourceState};
 use crate::exec::{self, Executor};
 
 /// A VS Code extension resource that can be checked and installed.
@@ -68,14 +68,15 @@ pub fn get_installed_extensions(
     Ok(set)
 }
 
-impl Resource for VsCodeExtensionResource {
+/// `VsCodeExtensionResource` intentionally implements only `Applicable`, not
+/// the full `Resource` super-trait.  Its state depends on a single
+/// `code --list-extensions` bulk query that is prohibitively expensive to
+/// repeat for each extension individually.  Callers must use
+/// [`get_installed_extensions`] once and then [`Self::state_from_installed`]
+/// per resource; the task (`InstallVsCodeExtensions`) already does this.
+impl Applicable for VsCodeExtensionResource {
     fn description(&self) -> String {
         self.id.clone()
-    }
-
-    fn current_state(&self) -> Result<ResourceState> {
-        let installed = get_installed_extensions(&self.code_cmd, &*self.executor)?;
-        Ok(self.state_from_installed(&installed))
     }
 
     fn apply(&self) -> Result<ResourceChange> {
@@ -207,5 +208,20 @@ mod tests {
         let executor = MockExecutor::fail();
         let installed = get_installed_extensions("code", &executor).unwrap();
         assert!(installed.is_empty());
+    }
+
+    #[test]
+    fn get_installed_extensions_uses_single_bulk_query() {
+        let executor = MockExecutor::ok("github.copilot-chat\n");
+        let installed = get_installed_extensions("code", &executor).unwrap();
+        assert!(
+            installed.contains("github.copilot-chat"),
+            "extension should be found"
+        );
+        assert_eq!(
+            executor.call_count(),
+            1,
+            "get_installed_extensions should call the executor exactly once"
+        );
     }
 }

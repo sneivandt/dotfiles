@@ -1,7 +1,6 @@
 //! VS Code extension configuration loading.
 use anyhow::Result;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::path::Path;
 
 use super::category_matcher::{Category, MatchMode};
@@ -26,10 +25,7 @@ struct ExtensionSection {
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<VsCodeExtension>> {
-    let config: HashMap<String, ExtensionSection> = toml_loader::load_config(path)?;
-
-    let items: Vec<(String, Vec<String>)> =
-        config.into_iter().map(|(k, v)| (k, v.extensions)).collect();
+    let items = toml_loader::load_section_items(path, |s: ExtensionSection| s.extensions)?;
 
     let ids: Vec<String> =
         toml_loader::filter_by_categories(items, active_categories, MatchMode::All);

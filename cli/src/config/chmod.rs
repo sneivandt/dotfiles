@@ -1,7 +1,6 @@
 //! Chmod entry configuration loading.
 use anyhow::Result;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::path::Path;
 
 use super::category_matcher::{Category, MatchMode};
@@ -29,13 +28,7 @@ struct ChmodSection {
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<ChmodEntry>> {
-    let config: HashMap<String, ChmodSection> = toml_loader::load_config(path)?;
-
-    let items: Vec<(String, Vec<ChmodEntry>)> = config
-        .into_iter()
-        .map(|(k, v)| (k, v.permissions))
-        .collect();
-
+    let items = toml_loader::load_section_items(path, |s: ChmodSection| s.permissions)?;
     Ok(toml_loader::filter_by_categories(
         items,
         active_categories,

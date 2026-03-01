@@ -1,7 +1,6 @@
 //! Package configuration loading.
 use anyhow::Result;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::path::Path;
 
 use super::category_matcher::{Category, MatchMode};
@@ -39,10 +38,7 @@ struct PackageSection {
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Package>> {
-    let config: HashMap<String, PackageSection> = toml_loader::load_config(path)?;
-
-    let items: Vec<(String, Vec<PackageEntry>)> =
-        config.into_iter().map(|(k, v)| (k, v.packages)).collect();
+    let items = toml_loader::load_section_items(path, |s: PackageSection| s.packages)?;
 
     let entries: Vec<PackageEntry> =
         toml_loader::filter_by_categories(items, active_categories, MatchMode::All);

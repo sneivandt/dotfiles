@@ -1,7 +1,6 @@
 //! Symlink configuration loading.
 use anyhow::Result;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::path::Path;
 
 use super::category_matcher::{Category, MatchMode};
@@ -39,10 +38,7 @@ struct SymlinkSection {
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Symlink>> {
-    let config: HashMap<String, SymlinkSection> = toml_loader::load_config(path)?;
-
-    let items: Vec<(String, Vec<SymlinkEntry>)> =
-        config.into_iter().map(|(k, v)| (k, v.symlinks)).collect();
+    let items = toml_loader::load_section_items(path, |s: SymlinkSection| s.symlinks)?;
 
     let entries: Vec<SymlinkEntry> =
         toml_loader::filter_by_categories(items, active_categories, MatchMode::All);

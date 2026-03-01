@@ -1,6 +1,7 @@
 //! TOML configuration file parsing with category filtering.
 use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
+use std::collections::HashMap;
 use std::path::Path;
 
 use super::category_matcher::{Category, MatchMode};
@@ -47,7 +48,7 @@ pub fn load_section_items<S, T>(
 where
     S: DeserializeOwned,
 {
-    let config: std::collections::HashMap<String, S> = load_config(path)?;
+    let config: HashMap<String, S> = load_config(path)?;
     Ok(config.into_iter().map(|(k, v)| (k, extract(v))).collect())
 }
 

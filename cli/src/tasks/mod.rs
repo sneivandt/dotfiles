@@ -120,7 +120,7 @@ pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
     let repo_updated = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     vec![
         Box::new(developer_mode::EnableDeveloperMode),
-        Box::new(sparse_checkout::ConfigureSparseCheckout),
+        Box::new(sparse_checkout::ConfigureSparseCheckout::new()),
         Box::new(update::UpdateRepository::new(std::sync::Arc::clone(
             &repo_updated,
         ))),

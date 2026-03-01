@@ -280,4 +280,59 @@ mod tests {
         let ctx = make_linux_context(config);
         assert!(UninstallGitHooks::new().should_run(&ctx));
     }
+
+    // ------------------------------------------------------------------
+    // InstallGitHooks::run / UninstallGitHooks::run — real filesystem
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn install_run_installs_hook_into_git_hooks() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Create hooks/ dir with a hook file (no extension)
+        let hooks_dir = dir.path().join("hooks");
+        std::fs::create_dir(&hooks_dir).unwrap();
+        std::fs::write(hooks_dir.join("pre-commit"), "#!/bin/sh\nexit 0").unwrap();
+
+        // Create .git/hooks/ dir
+        let git_hooks_dir = dir.path().join(".git").join("hooks");
+        std::fs::create_dir_all(&git_hooks_dir).unwrap();
+
+        let config = empty_config(dir.path().to_path_buf());
+        let ctx = make_linux_context(config);
+        let task = InstallGitHooks::new();
+
+        let result = task.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+        assert!(
+            git_hooks_dir.join("pre-commit").exists(),
+            "pre-commit hook should be installed in .git/hooks/"
+        );
+    }
+
+    #[test]
+    fn uninstall_run_removes_installed_hook() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Create hooks/ dir with a hook file
+        let hooks_dir = dir.path().join("hooks");
+        std::fs::create_dir(&hooks_dir).unwrap();
+        std::fs::write(hooks_dir.join("pre-commit"), "#!/bin/sh\nexit 0").unwrap();
+
+        // Create .git/hooks/ with the hook already installed
+        let git_hooks_dir = dir.path().join(".git").join("hooks");
+        std::fs::create_dir_all(&git_hooks_dir).unwrap();
+        std::fs::write(git_hooks_dir.join("pre-commit"), "#!/bin/sh\nexit 0").unwrap();
+
+        let config = empty_config(dir.path().to_path_buf());
+        let ctx = make_linux_context(config);
+        let task = UninstallGitHooks::new();
+
+        let result = task.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+        assert!(
+            !git_hooks_dir.join("pre-commit").exists(),
+            "pre-commit hook should be removed from .git/hooks/"
+        );
+    }
 }

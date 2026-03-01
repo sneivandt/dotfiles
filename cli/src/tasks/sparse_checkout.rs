@@ -187,8 +187,11 @@ impl Task for ConfigureSparseCheckout {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use crate::platform::{Os, Platform};
+    use crate::resources::test_helpers::MockExecutor;
+    use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     // -----------------------------------------------------------------------
     // build_patterns
@@ -303,5 +306,96 @@ mod tests {
         let nonexistent = symlinks_dir.join("missing");
         std::os::unix::fs::symlink(&nonexistent, &link).unwrap();
         assert!(is_broken_symlink_into(&link, &symlinks_dir));
+    }
+
+    // -----------------------------------------------------------------------
+    // ConfigureSparseCheckout::run
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn run_returns_ok_when_no_excluded_files() {
+        // Empty manifest → no exclusions → returns Ok immediately without git calls.
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = make_linux_context(config);
+        let result = ConfigureSparseCheckout.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+    }
+
+    #[test]
+    fn run_returns_ok_when_already_up_to_date() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Write the exact patterns that build_patterns would produce
+        let info_dir = dir.path().join(".git").join("info");
+        std::fs::create_dir_all(&info_dir).unwrap();
+        std::fs::write(info_dir.join("sparse-checkout"), "/*\n!/symlinks").unwrap();
+
+        let mut config = empty_config(dir.path().to_path_buf());
+        config.manifest.excluded_files.push("symlinks".to_string());
+        let ctx = make_linux_context(config);
+
+        let result = ConfigureSparseCheckout.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Ok),
+            "expected Ok when sparse-checkout is already up to date, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn run_returns_dry_run_when_patterns_need_update() {
+        let dir = tempfile::tempdir().unwrap();
+        // No sparse-checkout file → patterns differ → DryRun
+
+        let mut config = empty_config(dir.path().to_path_buf());
+        config.manifest.excluded_files.push("symlinks".to_string());
+        let mut ctx = make_linux_context(config);
+        ctx.dry_run = true;
+
+        let result = ConfigureSparseCheckout.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::DryRun),
+            "expected DryRun, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn run_writes_sparse_checkout_patterns_and_calls_git() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+
+        let mut config = empty_config(dir.path().to_path_buf());
+        config.manifest.excluded_files.push("symlinks".to_string());
+
+        // The excluded file "symlinks" does NOT exist on disk, so the
+        // `git checkout HEAD -- <files>` step is skipped.  Two git calls remain:
+        //   1. git sparse-checkout init --no-cone
+        //   2. git read-tree -mu HEAD
+        let executor = MockExecutor::with_responses(vec![
+            (true, String::new()), // sparse-checkout init
+            (true, String::new()), // read-tree
+        ]);
+        let ctx = make_context(
+            config,
+            Arc::new(Platform::new(Os::Linux, false)),
+            Arc::new(executor),
+        );
+
+        let result = ConfigureSparseCheckout.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Ok),
+            "expected Ok after writing sparse-checkout, got {result:?}"
+        );
+
+        // Verify the sparse-checkout file was written with the expected patterns
+        let sparse_file = dir.path().join(".git").join("info").join("sparse-checkout");
+        let content = std::fs::read_to_string(&sparse_file).unwrap();
+        assert!(
+            content.contains("/*"),
+            "must include default inclusion pattern"
+        );
+        assert!(
+            content.contains("!/symlinks"),
+            "must include exclusion pattern for 'symlinks'"
+        );
     }
 }

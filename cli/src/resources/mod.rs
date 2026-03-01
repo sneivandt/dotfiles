@@ -159,7 +159,10 @@ pub mod test_helpers {
     use crate::exec::{ExecResult, Executor};
     use std::collections::VecDeque;
     use std::path::Path;
-    use std::sync::Mutex;
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     /// A configurable mock executor for resource unit tests.
     ///
@@ -169,11 +172,13 @@ pub mod test_helpers {
     ///
     /// Use [`with_which`](Self::with_which) to configure the value returned
     /// by [`Executor::which`] (defaults to `false`).
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct MockExecutor {
-        responses: Mutex<VecDeque<(bool, String)>>,
+        responses: Arc<Mutex<VecDeque<(bool, String)>>>,
         /// Return value for every [`Executor::which`] call.
         which_result: bool,
+        /// Number of executor method invocations.
+        call_count: Arc<AtomicUsize>,
     }
 
     impl MockExecutor {
@@ -193,8 +198,9 @@ pub mod test_helpers {
         #[must_use]
         pub fn with_responses(responses: Vec<(bool, String)>) -> Self {
             Self {
-                responses: Mutex::new(responses.into()),
+                responses: Arc::new(Mutex::new(responses.into())),
                 which_result: false,
+                call_count: Arc::new(AtomicUsize::new(0)),
             }
         }
 
@@ -205,7 +211,14 @@ pub mod test_helpers {
             self
         }
 
+        /// Return the total number of executor method invocations so far.
+        #[must_use]
+        pub fn call_count(&self) -> usize {
+            self.call_count.load(Ordering::SeqCst)
+        }
+
         fn next(&self) -> (bool, String) {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
             self.responses.lock().map_or_else(
                 |_| (false, "mutex poisoned".to_string()),
                 |mut guard| {

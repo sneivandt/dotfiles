@@ -72,6 +72,13 @@ impl Resource for VsCodeExtensionResource<'_> {
         self.id.clone()
     }
 
+    /// Check whether this extension is installed.
+    ///
+    /// **Performance note**: This method runs `code --list-extensions` as a
+    /// subprocess every time it is called. When checking multiple extensions,
+    /// prefer calling [`get_installed_extensions`] once and using
+    /// [`Self::state_from_installed`] on each resource to avoid N subprocess
+    /// invocations.
     fn current_state(&self) -> Result<ResourceState> {
         let installed = get_installed_extensions(&self.code_cmd, self.executor)?;
         Ok(self.state_from_installed(&installed))
@@ -206,5 +213,22 @@ mod tests {
         let executor = MockExecutor::fail();
         let installed = get_installed_extensions("code", &executor).unwrap();
         assert!(installed.is_empty());
+    }
+
+    #[test]
+    fn current_state_calls_executor_once() {
+        let executor = MockExecutor::ok("github.copilot-chat\n");
+        let resource = VsCodeExtensionResource::new(
+            "github.copilot-chat".to_string(),
+            "code".to_string(),
+            &executor,
+        );
+        let state = resource.current_state().unwrap();
+        assert_eq!(state, ResourceState::Correct);
+        assert_eq!(
+            executor.call_count(),
+            1,
+            "current_state should call the executor exactly once"
+        );
     }
 }

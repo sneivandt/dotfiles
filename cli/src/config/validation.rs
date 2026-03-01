@@ -181,30 +181,20 @@ impl ConfigValidator for RegistryValidator<'_> {
                 ));
             }
 
-            // Validate registry key format (should start with HKCU:, HKLM:, etc.)
+            // Validate registry key format and HKCU policy.
             let path_upper = entry.key_path.to_uppercase();
-            if !VALID_REGISTRY_HIVES
-                .iter()
-                .any(|hive| path_upper.starts_with(hive))
-            {
-                warnings.push(ValidationWarning::new(
+            match VALID_REGISTRY_HIVES.iter().find(|h| path_upper.starts_with(**h)) {
+                None => warnings.push(ValidationWarning::new(
                     "registry.toml",
                     &entry.key_path,
                     "registry key path should start with a valid hive (HKCU:, HKLM:, etc.)",
-                ));
-            }
-
-            // Warn about non-HKCU hives (project policy: only HKCU modifications)
-            if !path_upper.starts_with("HKCU:")
-                && VALID_REGISTRY_HIVES
-                    .iter()
-                    .any(|hive| path_upper.starts_with(hive))
-            {
-                warnings.push(ValidationWarning::new(
+                )),
+                Some(&hive) if hive != "HKCU:" => warnings.push(ValidationWarning::new(
                     "registry.toml",
                     &entry.key_path,
                     "registry key uses a non-HKCU hive; this project only modifies user-scope (HKCU) keys",
-                ));
+                )),
+                _ => {}
             }
         }
 

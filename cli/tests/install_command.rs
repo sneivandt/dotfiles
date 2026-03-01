@@ -548,3 +548,151 @@ fn install_symlinks_is_idempotent() {
         "symlink must still be Correct after second install (idempotency guarantee)"
     );
 }
+
+// ---------------------------------------------------------------------------
+// ApplyFilePermissions: real filesystem chmod
+// ---------------------------------------------------------------------------
+
+/// `ApplyFilePermissions.run()` must set the declared mode on an existing file.
+///
+/// Creates `$HOME/.ssh/config` with permissions `0o644`, then runs the task
+/// and asserts that the permissions are updated to `0o600`.
+#[cfg(unix)]
+#[test]
+fn apply_file_permissions_run_sets_mode_on_unix() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::Arc;
+
+    use dotfiles_cli::tasks::Task;
+
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file(
+            "chmod.toml",
+            "[base]\npermissions = [{ mode = \"600\", path = \"ssh/config\" }]\n",
+        )
+        .build();
+
+    let home_dir = tempfile::tempdir().expect("create temp home dir");
+
+    // Create $HOME/.ssh/config with mode 0o644.
+    let ssh_dir = home_dir.path().join(".ssh");
+    std::fs::create_dir_all(&ssh_dir).expect("create .ssh dir");
+    let ssh_config = ssh_dir.join("config");
+    std::fs::write(&ssh_config, "").expect("create ssh config");
+    std::fs::set_permissions(&ssh_config, std::fs::Permissions::from_mode(0o644))
+        .expect("set initial permissions");
+
+    let platform = dotfiles_cli::platform::Platform {
+        os: dotfiles_cli::platform::Os::Linux,
+        is_arch: false,
+    };
+    let executor: Arc<dyn dotfiles_cli::exec::Executor> =
+        Arc::new(dotfiles_cli::exec::SystemExecutor);
+    let log: Arc<dotfiles_cli::logging::Logger> =
+        Arc::new(dotfiles_cli::logging::Logger::new("test-chmod"));
+
+    let config = ctx.load_config_for_platform("base", &platform);
+    let task_ctx = dotfiles_cli::tasks::Context {
+        config: Arc::new(std::sync::RwLock::new(config)),
+        platform: Arc::new(platform),
+        log: Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
+        dry_run: false,
+        home: home_dir.path().to_path_buf(),
+        executor,
+        parallel: false,
+    };
+
+    let result = dotfiles_cli::tasks::chmod::ApplyFilePermissions
+        .run(&task_ctx)
+        .expect("apply file permissions run");
+    assert!(
+        matches!(result, dotfiles_cli::tasks::TaskResult::Ok),
+        "apply file permissions should succeed"
+    );
+
+    let perms = std::fs::metadata(&ssh_config)
+        .expect("read file metadata")
+        .permissions();
+    assert_eq!(
+        perms.mode() & 0o777,
+        0o600,
+        "file permissions should be 0o600 after applying chmod"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// install::run: full dry-run pipeline
+// ---------------------------------------------------------------------------
+
+/// Calling `commands::install::run` with `dry_run: true` must return `Ok(())`
+/// without making any filesystem changes.
+#[test]
+fn install_run_dry_run_returns_ok() {
+    use std::sync::Arc;
+
+    let ctx = common::TestContextBuilder::new().build();
+    let root_path = ctx.root_path().to_path_buf();
+
+    // `resolve_from_args` calls `persist()` which writes to `.git/config`;
+    // create the directory so the write succeeds.
+    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
+
+    let global = dotfiles_cli::cli::GlobalOpts {
+        root: Some(root_path),
+        profile: Some("base".to_string()),
+        dry_run: true,
+        parallel: false,
+    };
+    let opts = dotfiles_cli::cli::InstallOpts {
+        skip: vec![],
+        only: vec![],
+    };
+    let log: Arc<dotfiles_cli::logging::Logger> =
+        Arc::new(dotfiles_cli::logging::Logger::new("test-dry-run-pipeline"));
+
+    let result = dotfiles_cli::commands::install::run(&global, &opts, &log);
+    assert!(
+        result.is_ok(),
+        "dry-run install should return Ok: {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Parallel execution: should_run with parallel enabled
+// ---------------------------------------------------------------------------
+
+/// `should_run` must not panic for any install task when `parallel` is `true`.
+///
+/// This exercises the scheduler path that dispatches resources to Rayon
+/// without needing a real system.
+#[test]
+fn install_tasks_should_run_with_parallel_enabled() {
+    use std::sync::Arc;
+
+    let ctx_builder = common::TestContextBuilder::new();
+    let ctx = ctx_builder.build();
+    let config = ctx.load_config("base");
+
+    let platform = dotfiles_cli::platform::Platform::detect();
+    let executor: Arc<dyn dotfiles_cli::exec::Executor> =
+        Arc::new(dotfiles_cli::exec::SystemExecutor);
+    let log: Arc<dotfiles_cli::logging::Logger> =
+        Arc::new(dotfiles_cli::logging::Logger::new("test-parallel"));
+
+    let task_ctx = dotfiles_cli::tasks::Context {
+        config: Arc::new(std::sync::RwLock::new(config)),
+        platform: Arc::new(platform),
+        log: Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
+        dry_run: true,
+        home: std::path::PathBuf::from(
+            std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()),
+        ),
+        executor,
+        parallel: true,
+    };
+
+    let all_tasks = tasks::all_install_tasks();
+    for task in &all_tasks {
+        let _ = task.should_run(&task_ctx);
+    }
+}

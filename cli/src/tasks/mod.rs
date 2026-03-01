@@ -3,6 +3,7 @@ pub mod chmod;
 pub mod copilot_skills;
 pub mod developer_mode;
 pub mod git_config;
+mod graph;
 pub mod hooks;
 pub mod packages;
 mod processing;
@@ -47,6 +48,7 @@ macro_rules! task_deps {
 
 pub(crate) use task_deps;
 
+pub(crate) use graph::has_cycle;
 // Re-export public items so downstream `use super::` and `use crate::tasks::`
 // continue to work unchanged.
 pub use processing::Context;

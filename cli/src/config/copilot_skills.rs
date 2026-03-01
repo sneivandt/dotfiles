@@ -1,7 +1,6 @@
 //! GitHub Copilot skills configuration loading.
 use anyhow::Result;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::path::Path;
 
 use super::category_matcher::MatchMode;
@@ -26,10 +25,7 @@ struct SkillSection {
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<CopilotSkill>> {
-    let config: HashMap<String, SkillSection> = toml_loader::load_config(path)?;
-
-    let items: Vec<(String, Vec<String>)> =
-        config.into_iter().map(|(k, v)| (k, v.skills)).collect();
+    let items = toml_loader::load_section_items(path, |s: SkillSection| s.skills)?;
 
     let urls: Vec<String> =
         toml_loader::filter_by_categories(items, active_categories, MatchMode::All);

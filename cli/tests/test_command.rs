@@ -769,3 +769,49 @@ fn config_validate_collects_warnings_from_multiple_sources() {
         "expected a copilot-skills.toml warning"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Config loading: invalid TOML returns Err
+// ---------------------------------------------------------------------------
+
+/// `Config::load` must return `Err` (not panic) when a config file contains
+/// invalid TOML syntax.
+#[test]
+fn config_load_returns_error_on_invalid_toml() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let conf = dir.path().join("conf");
+    std::fs::create_dir_all(&conf).expect("create conf dir");
+
+    // Write a valid profiles.toml.
+    std::fs::write(
+        conf.join("profiles.toml"),
+        "[base]\ninclude = []\nexclude = [\"desktop\"]\n",
+    )
+    .expect("write profiles.toml");
+
+    // Write an intentionally invalid symlinks.toml.
+    std::fs::write(conf.join("symlinks.toml"), "this is not valid toml ][[")
+        .expect("write invalid symlinks.toml");
+
+    // Write the remaining required config files as empty so only symlinks.toml is bad.
+    for file in &[
+        "packages.toml",
+        "manifest.toml",
+        "chmod.toml",
+        "systemd-units.toml",
+        "vscode-extensions.toml",
+        "copilot-skills.toml",
+        "git-config.toml",
+        "registry.toml",
+    ] {
+        std::fs::write(conf.join(file), "").expect("write config file");
+    }
+
+    let platform = Platform::detect();
+    let profile = profiles::resolve("base", &conf, &platform).expect("resolve profile");
+    let result = Config::load(dir.path(), &profile, &platform);
+    assert!(
+        result.is_err(),
+        "Config::load should return Err on invalid TOML, got Ok"
+    );
+}

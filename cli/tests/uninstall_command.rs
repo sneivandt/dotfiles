@@ -214,6 +214,83 @@ fn uninstall_tasks_form_acyclic_dependency_graph() {
 }
 
 // ---------------------------------------------------------------------------
+// Idempotency: uninstall → uninstall is a no-op
+// ---------------------------------------------------------------------------
+
+/// Running `UninstallSymlinks` twice must succeed on both calls.
+///
+/// After the first uninstall the symlink is materialised to a regular file.
+/// The second call must return `TaskResult::Ok` without panicking or erroring
+/// because the target is no longer a symlink (`process_resources_remove`
+/// silently skips resources that are not in the `Correct` state).
+#[cfg(unix)]
+#[test]
+fn uninstall_symlinks_is_idempotent() {
+    use std::sync::Arc;
+
+    use dotfiles_cli::tasks::Task;
+
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")
+        .with_symlink_source("bashrc")
+        .build();
+
+    let home_dir = tempfile::tempdir().expect("create temp home dir");
+
+    let platform = dotfiles_cli::platform::Platform::detect();
+    let executor: Arc<dyn dotfiles_cli::exec::Executor> =
+        Arc::new(dotfiles_cli::exec::SystemExecutor);
+    let log: Arc<dotfiles_cli::logging::Logger> = Arc::new(dotfiles_cli::logging::Logger::new(
+        "test-uninstall-idempotent",
+    ));
+
+    let config = ctx.load_config("base");
+    let task_ctx = dotfiles_cli::tasks::Context {
+        config: Arc::new(std::sync::RwLock::new(config)),
+        platform: Arc::new(platform),
+        log: Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
+        dry_run: false,
+        home: home_dir.path().to_path_buf(),
+        executor,
+        parallel: false,
+    };
+
+    // Install the symlink first so there is something to uninstall.
+    let install_result = dotfiles_cli::tasks::symlinks::InstallSymlinks
+        .run(&task_ctx)
+        .expect("install run");
+    assert!(
+        matches!(install_result, dotfiles_cli::tasks::TaskResult::Ok),
+        "install run should succeed"
+    );
+
+    // First uninstall: symlink must be materialised to a regular file.
+    let result1 = dotfiles_cli::tasks::symlinks::UninstallSymlinks
+        .run(&task_ctx)
+        .expect("first uninstall run");
+    assert!(
+        matches!(result1, dotfiles_cli::tasks::TaskResult::Ok),
+        "first uninstall run should succeed"
+    );
+
+    let target = home_dir.path().join(".bashrc");
+    let meta = std::fs::symlink_metadata(&target).expect("target should exist after uninstall");
+    assert!(
+        !meta.is_symlink(),
+        "target should be materialised to a regular file after uninstall"
+    );
+
+    // Second uninstall: must succeed (idempotency — target is no longer a symlink).
+    let result2 = dotfiles_cli::tasks::symlinks::UninstallSymlinks
+        .run(&task_ctx)
+        .expect("second uninstall run");
+    assert!(
+        matches!(result2, dotfiles_cli::tasks::TaskResult::Ok),
+        "second uninstall run should succeed (idempotency guarantee)"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Dry-run: task list with a Windows platform
 // ---------------------------------------------------------------------------
 

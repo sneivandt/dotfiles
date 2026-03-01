@@ -183,6 +183,7 @@ pub mod test_helpers {
     use std::sync::Arc;
 
     use crate::config::Config;
+    use crate::config::category_matcher::Category;
     use crate::config::manifest::Manifest;
     use crate::config::profiles::Profile;
     use crate::exec::{ExecResult, Executor};
@@ -238,7 +239,7 @@ pub mod test_helpers {
             root,
             profile: Profile {
                 name: "test".to_string(),
-                active_categories: vec!["base".to_string()],
+                active_categories: vec![Category::Base],
                 excluded_categories: vec![],
             },
             packages: vec![],

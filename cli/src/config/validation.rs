@@ -612,13 +612,14 @@ mod tests {
 
     /// Build a minimal `Config` for `validate_all` tests.
     fn make_config_for_validate_all(root: std::path::PathBuf) -> super::super::Config {
+        use crate::config::category_matcher::Category;
         use crate::config::manifest::Manifest;
         use crate::config::profiles::Profile;
         super::super::Config {
             root,
             profile: Profile {
                 name: "test".to_string(),
-                active_categories: vec!["base".to_string()],
+                active_categories: vec![Category::Base],
                 excluded_categories: vec![],
             },
             packages: vec![],

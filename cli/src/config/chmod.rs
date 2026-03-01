@@ -3,7 +3,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
+use super::category_matcher::{Category, MatchMode};
 use super::toml_loader;
 
 /// A file permission directive.
@@ -27,7 +27,7 @@ struct ChmodSection {
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<ChmodEntry>> {
+pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<ChmodEntry>> {
     let items = toml_loader::load_section_items(path, |s: ChmodSection| s.permissions)?;
     Ok(toml_loader::filter_by_categories(
         items,
@@ -52,7 +52,7 @@ permissions = [
 ]
 "#,
         );
-        let entries = load(&path, &["base".to_string()]).unwrap();
+        let entries = load(&path, &[Category::Base]).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].mode, "600");
         assert_eq!(entries[0].path, "ssh/config");

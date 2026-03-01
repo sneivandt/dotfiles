@@ -3,7 +3,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
+use super::category_matcher::{Category, MatchMode};
 use super::toml_loader;
 
 /// A symlink to create: source (in symlinks/) → target (in $HOME).
@@ -37,7 +37,7 @@ struct SymlinkSection {
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Symlink>> {
+pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Symlink>> {
     let items = toml_loader::load_section_items(path, |s: SymlinkSection| s.symlinks)?;
 
     let entries: Vec<SymlinkEntry> =
@@ -74,7 +74,7 @@ symlinks = ["bashrc", "config/git/config"]
 symlinks = ["config/i3"]
 "#,
         );
-        let symlinks: Vec<Symlink> = load(&path, &["base".to_string()]).unwrap();
+        let symlinks: Vec<Symlink> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(symlinks.len(), 2);
         assert_eq!(symlinks[0].source, "bashrc");
         assert_eq!(symlinks[1].source, "config/git/config");
@@ -90,15 +90,8 @@ symlinks = ["bashrc"]
 symlinks = ["config/i3"]
 "#,
         );
-        let symlinks: Vec<Symlink> = load(
-            &path,
-            &[
-                "base".to_string(),
-                "arch".to_string(),
-                "desktop".to_string(),
-            ],
-        )
-        .unwrap();
+        let symlinks: Vec<Symlink> =
+            load(&path, &[Category::Base, Category::Arch, Category::Desktop]).unwrap();
         assert_eq!(symlinks.len(), 2);
     }
 
@@ -112,7 +105,7 @@ symlinks = [
 ]
 "#,
         );
-        let symlinks: Vec<Symlink> = load(&path, &["base".to_string()]).unwrap();
+        let symlinks: Vec<Symlink> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(symlinks.len(), 2);
         assert_eq!(symlinks[0].source, "bashrc");
         assert!(symlinks[0].target.is_none());

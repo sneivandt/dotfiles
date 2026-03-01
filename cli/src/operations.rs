@@ -25,6 +25,23 @@ pub trait FileSystemOps: Send + Sync + std::fmt::Debug {
     ///
     /// Returns an error if `path` cannot be opened or read as a directory.
     fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>>;
+
+    /// Read the target of the symbolic link at `path`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `path` is not a symlink or cannot be read.
+    fn read_link(&self, path: &Path) -> std::io::Result<PathBuf>;
+
+    /// Remove the file or empty directory at `path`.
+    ///
+    /// Calls `std::fs::remove_file` for files/symlinks and
+    /// `std::fs::remove_dir` for directories.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if removal fails.
+    fn remove(&self, path: &Path) -> std::io::Result<()>;
 }
 
 /// Production [`FileSystemOps`] implementation that delegates to [`std::fs`].
@@ -44,6 +61,19 @@ impl FileSystemOps for SystemFileSystemOps {
         std::fs::read_dir(path)?
             .map(|e| e.map(|entry| entry.path()).map_err(Into::into))
             .collect()
+    }
+
+    fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {
+        std::fs::read_link(path)
+    }
+
+    fn remove(&self, path: &Path) -> std::io::Result<()> {
+        let meta = std::fs::symlink_metadata(path)?;
+        if meta.is_dir() {
+            std::fs::remove_dir(path)
+        } else {
+            std::fs::remove_file(path)
+        }
     }
 }
 
@@ -72,6 +102,8 @@ pub struct MockFileSystemOps {
     existing: Vec<PathBuf>,
     files: Vec<PathBuf>,
     dirs: std::collections::HashMap<PathBuf, Vec<PathBuf>>,
+    symlinks: std::collections::HashMap<PathBuf, PathBuf>,
+    removed: std::sync::Mutex<std::collections::HashSet<PathBuf>>,
 }
 
 #[cfg(test)]
@@ -117,12 +149,32 @@ impl MockFileSystemOps {
         self.dirs.insert(d, entries);
         self
     }
+
+    /// Register `path` as a symbolic link pointing to `target`.
+    ///
+    /// The path is also implicitly marked as existing.
+    #[must_use]
+    pub fn with_symlink(mut self, path: impl Into<PathBuf>, target: impl Into<PathBuf>) -> Self {
+        let p = path.into();
+        let t = target.into();
+        if !self.existing.contains(&p) {
+            self.existing.push(p.clone());
+        }
+        self.symlinks.insert(p, t);
+        self
+    }
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 impl FileSystemOps for MockFileSystemOps {
     fn exists(&self, path: &Path) -> bool {
-        self.existing.iter().any(|p| p == path)
+        !self
+            .removed
+            .lock()
+            .expect("mock removed set poisoned")
+            .contains(path)
+            && self.existing.iter().any(|p| p == path)
     }
 
     fn is_file(&self, path: &Path) -> bool {
@@ -134,5 +186,28 @@ impl FileSystemOps for MockFileSystemOps {
             .get(path)
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("mock: no entries configured for {}", path.display()))
+    }
+
+    fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {
+        if self
+            .removed
+            .lock()
+            .expect("mock removed set poisoned")
+            .contains(path)
+        {
+            return Err(std::io::Error::from(std::io::ErrorKind::NotFound));
+        }
+        self.symlinks
+            .get(path)
+            .cloned()
+            .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::InvalidInput))
+    }
+
+    fn remove(&self, path: &Path) -> std::io::Result<()> {
+        self.removed
+            .lock()
+            .expect("mock removed set poisoned")
+            .insert(path.to_path_buf());
+        Ok(())
     }
 }

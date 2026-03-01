@@ -8,6 +8,34 @@ use super::diagnostic::{DiagEvent, DiagnosticLog};
 use super::types::{Log, TaskEntry, TaskStatus};
 use super::utils::{log_file_path, terminal_columns};
 
+/// Generate an inherent `pub fn $name(&self, msg: &str)` method on `Logger`
+/// that optionally emits to the diagnostic log and then forwards to the given
+/// `tracing` macro.
+///
+/// Two forms are supported:
+/// - Without a target: `log_method!(#[doc...] name, Event, tracing::mac)`
+/// - With a target:    `log_method!(#[doc...] name, Event, tracing::mac, target: "…")`
+macro_rules! log_method {
+    ($(#[$doc:meta])* $name:ident, $event:ident, $mac:path) => {
+        $(#[$doc])*
+        pub fn $name(&self, msg: &str) {
+            if let Some(d) = &self.diagnostic {
+                d.emit(DiagEvent::$event, msg);
+            }
+            $mac!("{msg}");
+        }
+    };
+    ($(#[$doc:meta])* $name:ident, $event:ident, $mac:path, target: $target:literal) => {
+        $(#[$doc])*
+        pub fn $name(&self, msg: &str) {
+            if let Some(d) = &self.diagnostic {
+                d.emit(DiagEvent::$event, msg);
+            }
+            $mac!(target: $target, "{msg}");
+        }
+    };
+}
+
 /// Implement the display methods of [`Log`] by delegating to inherent methods
 /// of the same name on the implementing type.
 ///
@@ -92,54 +120,36 @@ impl Logger {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Log an error message.
-    pub fn error(&self, msg: &str) {
-        if let Some(d) = &self.diagnostic {
-            d.emit(DiagEvent::Error, msg);
-        }
-        tracing::error!("{msg}");
-    }
+    log_method!(
+        /// Log an error message.
+        error, Error, tracing::error
+    );
 
-    /// Log a warning message.
-    pub fn warn(&self, msg: &str) {
-        if let Some(d) = &self.diagnostic {
-            d.emit(DiagEvent::Warn, msg);
-        }
-        tracing::warn!("{msg}");
-    }
+    log_method!(
+        /// Log a warning message.
+        warn, Warn, tracing::warn
+    );
 
-    /// Log a stage header (major section).
-    pub fn stage(&self, msg: &str) {
-        if let Some(d) = &self.diagnostic {
-            d.emit(DiagEvent::Stage, msg);
-        }
-        tracing::info!(target: "dotfiles::stage", "{msg}");
-    }
+    log_method!(
+        /// Log a stage header (major section).
+        stage, Stage, tracing::info, target: "dotfiles::stage"
+    );
 
-    /// Log an informational message.
-    pub fn info(&self, msg: &str) {
-        if let Some(d) = &self.diagnostic {
-            d.emit(DiagEvent::Info, msg);
-        }
-        tracing::info!("{msg}");
-    }
+    log_method!(
+        /// Log an informational message.
+        info, Info, tracing::info
+    );
 
-    /// Log a debug message (suppressed on console unless verbose; always
-    /// written to the log file via the [`FileLayer`](super::subscriber::FileLayer)).
-    pub fn debug(&self, msg: &str) {
-        if let Some(d) = &self.diagnostic {
-            d.emit(DiagEvent::Debug, msg);
-        }
-        tracing::debug!("{msg}");
-    }
+    log_method!(
+        /// Log a debug message (suppressed on console unless verbose; always
+        /// written to the log file via the [`FileLayer`](super::subscriber::FileLayer)).
+        debug, Debug, tracing::debug
+    );
 
-    /// Log a dry-run action message.
-    pub fn dry_run(&self, msg: &str) {
-        if let Some(d) = &self.diagnostic {
-            d.emit(DiagEvent::DryRun, msg);
-        }
-        tracing::info!(target: "dotfiles::dry_run", "{msg}");
-    }
+    log_method!(
+        /// Log a dry-run action message.
+        dry_run, DryRun, tracing::info, target: "dotfiles::dry_run"
+    );
 
     /// Record a task result for the summary.
     pub fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {

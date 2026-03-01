@@ -248,23 +248,32 @@ function Get-Binary
         exit 1
     }
 
-    # Verify checksum
+    # Download and verify checksum
     $checksumUrl = "https://github.com/$Repo/releases/download/$Version/checksums.sha256"
     try
     {
-        $checksums = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing -TimeoutSec $TransferTimeout).Content
-        $expected = ($checksums -split "`n" | Where-Object { $_ -match [regex]::Escape($AssetName) }) -replace '\s+.*', ''
-        $actual = (Get-FileHash -Path $Binary -Algorithm SHA256).Hash.ToLower()
-        if ($expected -and ($expected -ne $actual))
-        {
-            Remove-Item $Binary -Force
-            Write-Error "Checksum verification failed!"
-            exit 1
-        }
+        $checksumContent = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing -TimeoutSec $TransferTimeout).Content
     }
     catch
     {
-        Write-Verbose "Could not verify checksum: $_"
+        if (Test-Path $Binary) { Remove-Item $Binary -Force }
+        Write-Error "Failed to download checksum file for ${Version}: $($_.Exception.Message)"
+        exit 1
+    }
+    $expectedLine = ($checksumContent -split "`n" | Where-Object { $_ -match [regex]::Escape($AssetName) } | Select-Object -First 1)
+    if ([string]::IsNullOrWhiteSpace($expectedLine))
+    {
+        if (Test-Path $Binary) { Remove-Item $Binary -Force }
+        Write-Error "Checksum not found in checksum file for $AssetName."
+        exit 1
+    }
+    $expected = ($expectedLine -split '\s+')[0].Trim().ToLower()
+    $actual = (Get-FileHash -Path $Binary -Algorithm SHA256).Hash.ToLower()
+    if ($expected -ne $actual)
+    {
+        if (Test-Path $Binary) { Remove-Item $Binary -Force }
+        Write-Error "Checksum verification failed!"
+        exit 1
     }
 
     # Make binary executable on Linux

@@ -76,49 +76,8 @@ impl CommandSetup {
     pub fn init(global: &GlobalOpts, log: &dyn Log) -> Result<Self> {
         let platform = Platform::detect();
         let root = install::resolve_root(global)?;
-
-        log.stage("Resolving profile");
-        let profile = profiles::resolve_from_args(global.profile.as_deref(), &root, &platform)?;
-        log.info(&format!("profile: {}", profile.name));
-
-        log.stage("Loading configuration");
-        let config = Config::load(&root, &profile, &platform)?;
-
-        macro_rules! debug_count {
-            ($field:expr, $label:expr) => {
-                log.debug(&format!("{} {}", $field.len(), $label));
-            };
-        }
-
-        debug_count!(config.packages, "packages");
-        debug_count!(config.symlinks, "symlinks");
-        debug_count!(config.registry, "registry entries");
-        debug_count!(config.units, "systemd units");
-        debug_count!(config.chmod, "chmod entries");
-        debug_count!(config.vscode_extensions, "vscode extensions");
-        debug_count!(config.copilot_skills, "copilot skills");
-        debug_count!(config.manifest.excluded_files, "manifest exclusions");
-        log.info(&format!(
-            "loaded {} packages, {} symlinks",
-            config.packages.len(),
-            config.symlinks.len()
-        ));
-
-        // Validate configuration and display warnings
-        let warnings = config.validate(&platform);
-        if !warnings.is_empty() {
-            log.warn(&format!(
-                "found {} configuration warning(s):",
-                warnings.len()
-            ));
-            for warning in &warnings {
-                log.warn(&format!(
-                    "  {} [{}]: {}",
-                    warning.source, warning.item, warning.message
-                ));
-            }
-        }
-
+        let profile = resolve_profile(global, &root, &platform, log)?;
+        let config = load_config(&root, &profile, &platform, log)?;
         Ok(Self { platform, config })
     }
 
@@ -141,6 +100,78 @@ impl CommandSetup {
             global.parallel,
         )
     }
+}
+
+/// Resolve the active profile from CLI args, persisted git config, or an
+/// interactive prompt, logging the result.
+///
+/// # Errors
+///
+/// Returns an error if the profile name is invalid, profile definitions cannot
+/// be loaded from `profiles.toml`, or interactive prompting fails.
+fn resolve_profile(
+    global: &GlobalOpts,
+    root: &std::path::Path,
+    platform: &Platform,
+    log: &dyn Log,
+) -> Result<profiles::Profile> {
+    log.stage("Resolving profile");
+    let profile = profiles::resolve_from_args(global.profile.as_deref(), root, platform)?;
+    log.info(&format!("profile: {}", profile.name));
+    Ok(profile)
+}
+
+/// Load configuration for the given root, profile, and platform, emitting
+/// debug counts and any validation warnings.
+///
+/// # Errors
+///
+/// Returns an error if any configuration file fails to parse.
+fn load_config(
+    root: &std::path::Path,
+    profile: &profiles::Profile,
+    platform: &Platform,
+    log: &dyn Log,
+) -> Result<Config> {
+    log.stage("Loading configuration");
+    let config = Config::load(root, profile, platform)?;
+
+    macro_rules! debug_count {
+        ($field:expr, $label:expr) => {
+            log.debug(&format!("{} {}", $field.len(), $label));
+        };
+    }
+
+    debug_count!(config.packages, "packages");
+    debug_count!(config.symlinks, "symlinks");
+    debug_count!(config.registry, "registry entries");
+    debug_count!(config.units, "systemd units");
+    debug_count!(config.chmod, "chmod entries");
+    debug_count!(config.vscode_extensions, "vscode extensions");
+    debug_count!(config.copilot_skills, "copilot skills");
+    debug_count!(config.manifest.excluded_files, "manifest exclusions");
+    log.info(&format!(
+        "loaded {} packages, {} symlinks",
+        config.packages.len(),
+        config.symlinks.len()
+    ));
+
+    // Validate configuration and display warnings
+    let warnings = config.validate(platform);
+    if !warnings.is_empty() {
+        log.warn(&format!(
+            "found {} configuration warning(s):",
+            warnings.len()
+        ));
+        for warning in &warnings {
+            log.warn(&format!(
+                "  {} [{}]: {}",
+                warning.source, warning.item, warning.message
+            ));
+        }
+    }
+
+    Ok(config)
 }
 
 /// Execute every task respecting dependency order.

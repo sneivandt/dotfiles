@@ -3,7 +3,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
+use super::category_matcher::{Category, MatchMode};
 use super::toml_loader;
 
 /// A package to install.
@@ -37,7 +37,7 @@ struct PackageSection {
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Package>> {
+pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Package>> {
     let items = toml_loader::load_section_items(path, |s: PackageSection| s.packages)?;
 
     let entries: Vec<PackageEntry> =
@@ -74,7 +74,7 @@ packages = ["git", "vim", { name = "paru-bin", aur = true }]
 packages = ["winget-pkg"]
 "#,
         );
-        let packages = load(&path, &["base".to_string(), "arch".to_string()]).unwrap();
+        let packages = load(&path, &[Category::Base, Category::Arch]).unwrap();
         assert_eq!(packages.len(), 3);
         assert!(!packages[0].is_aur);
         assert_eq!(packages[0].name, "git");
@@ -89,7 +89,7 @@ packages = ["winget-pkg"]
 packages = [{ name = "paru-bin", aur = true }, { name = "yay", aur = true }]
 "#,
         );
-        let packages = load(&path, &["base".to_string(), "arch".to_string()]).unwrap();
+        let packages = load(&path, &[Category::Base, Category::Arch]).unwrap();
         assert_eq!(packages.len(), 2);
         assert!(packages[0].is_aur);
         assert!(packages[1].is_aur);

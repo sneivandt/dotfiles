@@ -3,7 +3,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
+use super::category_matcher::{Category, MatchMode};
 use super::toml_loader;
 
 /// A systemd unit to enable.
@@ -37,7 +37,7 @@ struct SystemdSection {
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<SystemdUnit>> {
+pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<SystemdUnit>> {
     let items = toml_loader::load_section_items(path, |s: SystemdSection| s.units)?;
 
     let entries: Vec<UnitEntry> =
@@ -71,7 +71,7 @@ units = ["clean-home-tmp.timer"]
 units = ["dunst.service"]
 "#,
         );
-        let units: Vec<SystemdUnit> = load(&path, &["base".to_string()]).unwrap();
+        let units: Vec<SystemdUnit> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(units.len(), 1);
         assert_eq!(units[0].name, "clean-home-tmp.timer");
         assert_eq!(units[0].scope, "user");
@@ -84,7 +84,7 @@ units = ["dunst.service"]
 units = ["clean-home-tmp.timer"]
 "#,
         );
-        let units = load(&path, &["base".to_string()]).unwrap();
+        let units = load(&path, &[Category::Base]).unwrap();
         assert_eq!(units[0].scope, "user");
     }
 
@@ -95,7 +95,7 @@ units = ["clean-home-tmp.timer"]
 units = [{ name = "some-daemon.service", scope = "system" }]
 "#,
         );
-        let units = load(&path, &["base".to_string()]).unwrap();
+        let units = load(&path, &[Category::Base]).unwrap();
         assert_eq!(units[0].name, "some-daemon.service");
         assert_eq!(units[0].scope, "system");
     }

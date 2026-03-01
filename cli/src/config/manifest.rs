@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
+use super::category_matcher::{Category, MatchMode};
 use super::toml_loader;
 
 /// Sparse checkout manifest — files to exclude by category.
@@ -28,7 +28,7 @@ struct ManifestSection {
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
-pub fn load(path: &Path, excluded_categories: &[String]) -> Result<Manifest> {
+pub fn load(path: &Path, excluded_categories: &[Category]) -> Result<Manifest> {
     let config: HashMap<String, ManifestSection> = toml_loader::load_config(path)?;
 
     let items: Vec<(String, Vec<String>)> = config.into_iter().map(|(k, v)| (k, v.paths)).collect();
@@ -62,7 +62,7 @@ paths = ["file4"]
 "#,
         );
         // Excluding 'windows' should exclude only file3
-        let manifest = load(&path, &["windows".to_string()]).unwrap();
+        let manifest = load(&path, &[Category::Windows]).unwrap();
         assert_eq!(manifest.excluded_files, vec!["file3"]);
     }
 
@@ -74,14 +74,14 @@ paths = ["file1"]
 "#,
         );
         // Excluding just 'arch' should still exclude the section (OR logic)
-        let manifest = load(&path, &["arch".to_string()]).unwrap();
+        let manifest = load(&path, &[Category::Arch]).unwrap();
         assert_eq!(manifest.excluded_files, vec!["file1"]);
     }
 
     #[test]
     fn load_missing_file_returns_empty() {
         let dir = tempfile::tempdir().unwrap();
-        let manifest = load(&dir.path().join("nope.toml"), &["windows".to_string()]).unwrap();
+        let manifest = load(&dir.path().join("nope.toml"), &[Category::Windows]).unwrap();
         assert!(
             manifest.excluded_files.is_empty(),
             "missing file should produce empty manifest"
@@ -98,7 +98,7 @@ paths = ["file1"]
 paths = ["file2"]
 "#,
         );
-        let manifest = load(&path, &["windows".to_string()]).unwrap();
+        let manifest = load(&path, &[Category::Windows]).unwrap();
         assert!(
             manifest.excluded_files.is_empty(),
             "no categories matched — nothing should be excluded"

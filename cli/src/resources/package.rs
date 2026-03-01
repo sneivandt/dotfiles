@@ -1,5 +1,6 @@
 //! Package installation resource.
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use anyhow::Result;
 
@@ -29,19 +30,19 @@ impl std::fmt::Display for PackageManager {
 
 /// A system package resource that can be checked and installed.
 #[derive(Debug)]
-pub struct PackageResource<'a> {
+pub struct PackageResource {
     /// Package name (or winget ID).
     pub name: String,
     /// Package manager to use.
     pub manager: PackageManager,
     /// Executor for running package manager commands.
-    executor: &'a dyn Executor,
+    executor: Arc<dyn Executor>,
 }
 
-impl<'a> PackageResource<'a> {
+impl PackageResource {
     /// Create a new package resource.
     #[must_use]
-    pub const fn new(name: String, manager: PackageManager, executor: &'a dyn Executor) -> Self {
+    pub fn new(name: String, manager: PackageManager, executor: Arc<dyn Executor>) -> Self {
         Self {
             name,
             manager,
@@ -134,7 +135,7 @@ pub fn get_installed_packages(
 ///
 /// Returns an error if any package manager command fails, or if a Winget
 /// install is skipped (i.e. the installer reported failure).
-pub fn batch_install_packages(resources: &[&PackageResource<'_>]) -> Result<()> {
+pub fn batch_install_packages(resources: &[&PackageResource]) -> Result<()> {
     if let Some(first) = resources
         .iter()
         .find(|r| r.manager == PackageManager::Pacman)
@@ -177,7 +178,7 @@ pub fn batch_install_packages(resources: &[&PackageResource<'_>]) -> Result<()> 
     Ok(())
 }
 
-impl Resource for PackageResource<'_> {
+impl Resource for PackageResource {
     fn description(&self) -> String {
         format!("{} ({})", self.name, self.manager)
     }
@@ -267,23 +268,37 @@ mod tests {
 
     #[test]
     fn description_includes_manager() {
-        let executor = crate::exec::SystemExecutor;
-        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
+        let resource = PackageResource::new(
+            "git".to_string(),
+            PackageManager::Pacman,
+            Arc::clone(&executor),
+        );
         assert_eq!(resource.description(), "git (pacman)");
 
-        let resource =
-            PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &executor);
+        let resource = PackageResource::new(
+            "paru-bin".to_string(),
+            PackageManager::Paru,
+            Arc::clone(&executor),
+        );
         assert_eq!(resource.description(), "paru-bin (paru)");
 
-        let resource =
-            PackageResource::new("Git.Git".to_string(), PackageManager::Winget, &executor);
+        let resource = PackageResource::new(
+            "Git.Git".to_string(),
+            PackageManager::Winget,
+            Arc::clone(&executor),
+        );
         assert_eq!(resource.description(), "Git.Git (winget)");
     }
 
     #[test]
     fn state_from_installed_correct() {
-        let executor = crate::exec::SystemExecutor;
-        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
+        let resource = PackageResource::new(
+            "git".to_string(),
+            PackageManager::Pacman,
+            Arc::clone(&executor),
+        );
         let mut installed = HashSet::new();
         installed.insert("git".to_string());
         installed.insert("vim".to_string());
@@ -295,8 +310,12 @@ mod tests {
 
     #[test]
     fn state_from_installed_missing() {
-        let executor = crate::exec::SystemExecutor;
-        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
+        let resource = PackageResource::new(
+            "git".to_string(),
+            PackageManager::Pacman,
+            Arc::clone(&executor),
+        );
         let installed = HashSet::new();
         assert_eq!(
             resource.state_from_installed(&installed),
@@ -344,32 +363,46 @@ mod tests {
 
     #[test]
     fn current_state_pacman_correct_when_query_succeeds() {
-        let executor = MockExecutor::ok("git 2.39.0\n");
-        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        let executor: Arc<dyn Executor> = Arc::new(MockExecutor::ok("git 2.39.0\n"));
+        let resource = PackageResource::new(
+            "git".to_string(),
+            PackageManager::Pacman,
+            Arc::clone(&executor),
+        );
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 
     #[test]
     fn current_state_pacman_missing_when_query_fails() {
-        let executor = MockExecutor::fail();
-        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        let executor: Arc<dyn Executor> = Arc::new(MockExecutor::fail());
+        let resource = PackageResource::new(
+            "git".to_string(),
+            PackageManager::Pacman,
+            Arc::clone(&executor),
+        );
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
     }
 
     #[test]
     fn current_state_winget_correct_when_id_in_output() {
-        let executor = MockExecutor::ok("Git.Git  2.39.0\n");
-        let resource =
-            PackageResource::new("Git.Git".to_string(), PackageManager::Winget, &executor);
+        let executor: Arc<dyn Executor> = Arc::new(MockExecutor::ok("Git.Git  2.39.0\n"));
+        let resource = PackageResource::new(
+            "Git.Git".to_string(),
+            PackageManager::Winget,
+            Arc::clone(&executor),
+        );
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 
     #[test]
     fn current_state_winget_missing_when_not_in_output() {
         // success=true but ID not present in stdout
-        let executor = MockExecutor::ok("No packages found.\n");
-        let resource =
-            PackageResource::new("Git.Git".to_string(), PackageManager::Winget, &executor);
+        let executor: Arc<dyn Executor> = Arc::new(MockExecutor::ok("No packages found.\n"));
+        let resource = PackageResource::new(
+            "Git.Git".to_string(),
+            PackageManager::Winget,
+            Arc::clone(&executor),
+        );
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
     }
 
@@ -379,16 +412,23 @@ mod tests {
 
     #[test]
     fn apply_pacman_returns_applied_on_success() {
-        let executor = MockExecutor::ok("");
-        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        let executor: Arc<dyn Executor> = Arc::new(MockExecutor::ok(""));
+        let resource = PackageResource::new(
+            "git".to_string(),
+            PackageManager::Pacman,
+            Arc::clone(&executor),
+        );
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
 
     #[test]
     fn apply_paru_returns_applied_on_success() {
-        let executor = MockExecutor::ok("");
-        let resource =
-            PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &executor);
+        let executor: Arc<dyn Executor> = Arc::new(MockExecutor::ok(""));
+        let resource = PackageResource::new(
+            "paru-bin".to_string(),
+            PackageManager::Paru,
+            Arc::clone(&executor),
+        );
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
 
@@ -465,9 +505,17 @@ mod tests {
 
     #[test]
     fn batch_install_pacman_groups_into_single_command() {
-        let executor = RecordingExecutor::new();
-        let r1 = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
-        let r2 = PackageResource::new("vim".to_string(), PackageManager::Pacman, &executor);
+        let executor = Arc::new(RecordingExecutor::new());
+        let r1 = PackageResource::new(
+            "git".to_string(),
+            PackageManager::Pacman,
+            Arc::clone(&executor) as Arc<dyn Executor>,
+        );
+        let r2 = PackageResource::new(
+            "vim".to_string(),
+            PackageManager::Pacman,
+            Arc::clone(&executor) as Arc<dyn Executor>,
+        );
         batch_install_packages(&[&r1, &r2]).unwrap();
 
         let calls = executor.recorded_calls();
@@ -488,9 +536,17 @@ mod tests {
 
     #[test]
     fn batch_install_paru_groups_into_single_command() {
-        let executor = RecordingExecutor::new();
-        let r1 = PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &executor);
-        let r2 = PackageResource::new("yay".to_string(), PackageManager::Paru, &executor);
+        let executor = Arc::new(RecordingExecutor::new());
+        let r1 = PackageResource::new(
+            "paru-bin".to_string(),
+            PackageManager::Paru,
+            Arc::clone(&executor) as Arc<dyn Executor>,
+        );
+        let r2 = PackageResource::new(
+            "yay".to_string(),
+            PackageManager::Paru,
+            Arc::clone(&executor) as Arc<dyn Executor>,
+        );
         batch_install_packages(&[&r1, &r2]).unwrap();
 
         let calls = executor.recorded_calls();
@@ -506,10 +562,18 @@ mod tests {
 
     #[test]
     fn batch_install_mixed_managers_sends_separate_commands() {
-        let pacman_exec = RecordingExecutor::new();
-        let paru_exec = RecordingExecutor::new();
-        let r1 = PackageResource::new("git".to_string(), PackageManager::Pacman, &pacman_exec);
-        let r2 = PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &paru_exec);
+        let pacman_exec = Arc::new(RecordingExecutor::new());
+        let paru_exec = Arc::new(RecordingExecutor::new());
+        let r1 = PackageResource::new(
+            "git".to_string(),
+            PackageManager::Pacman,
+            Arc::clone(&pacman_exec) as Arc<dyn Executor>,
+        );
+        let r2 = PackageResource::new(
+            "paru-bin".to_string(),
+            PackageManager::Paru,
+            Arc::clone(&paru_exec) as Arc<dyn Executor>,
+        );
         batch_install_packages(&[&r1, &r2]).unwrap();
 
         // Pacman batch uses pacman_exec
@@ -527,14 +591,18 @@ mod tests {
 
     #[test]
     fn batch_install_empty_list_is_noop() {
-        let resources: &[&PackageResource<'_>] = &[];
+        let resources: &[&PackageResource] = &[];
         batch_install_packages(resources).unwrap();
     }
 
     #[test]
     fn batch_install_propagates_pacman_error() {
-        let executor = MockExecutor::fail();
-        let r1 = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        let executor: Arc<dyn Executor> = Arc::new(MockExecutor::fail());
+        let r1 = PackageResource::new(
+            "git".to_string(),
+            PackageManager::Pacman,
+            Arc::clone(&executor),
+        );
         assert!(batch_install_packages(&[&r1]).is_err());
     }
 
@@ -544,8 +612,12 @@ mod tests {
         // PackageResource::apply() for Winget checks result.success and returns
         // ResourceChange::Skipped on failure — batch_install_packages must
         // convert that into an error.
-        let executor = MockExecutor::fail();
-        let r1 = PackageResource::new("Git.Git".to_string(), PackageManager::Winget, &executor);
+        let executor: Arc<dyn Executor> = Arc::new(MockExecutor::fail());
+        let r1 = PackageResource::new(
+            "Git.Git".to_string(),
+            PackageManager::Winget,
+            Arc::clone(&executor),
+        );
         let err = batch_install_packages(&[&r1]).unwrap_err();
         assert!(
             err.to_string().contains("winget install failed"),

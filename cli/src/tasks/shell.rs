@@ -1,5 +1,6 @@
 //! Task: configure the login shell.
 use anyhow::Result;
+use std::sync::Arc;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};
 use crate::resources::shell::DefaultShellResource;
@@ -22,7 +23,7 @@ impl Task for ConfigureShell {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resource = DefaultShellResource::new("zsh".to_string(), &*ctx.executor);
+        let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&ctx.executor));
         process_resources(
             ctx,
             std::iter::once(resource),

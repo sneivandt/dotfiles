@@ -1,5 +1,6 @@
 //! Tasks: install system packages.
 use anyhow::{Context as _, Result};
+use std::sync::Arc;
 
 use super::{
     Context, ProcessOpts, Task, TaskResult, TaskStats, process_resource_states, task_deps,
@@ -36,7 +37,8 @@ fn process_packages(
     // per-resource loop so a single failure does not abort the rest.
     if manager == PackageManager::Winget {
         let resource_states = packages.iter().map(|pkg| {
-            let resource = PackageResource::new(pkg.name.clone(), manager, &*ctx.executor);
+            let resource =
+                PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor));
             let state = resource.state_from_installed(&installed);
             (resource, state)
         });
@@ -51,7 +53,7 @@ fn process_packages(
     // command, which is faster and resolves cross-package dependencies once.
     let resources: Vec<PackageResource> = packages
         .iter()
-        .map(|pkg| PackageResource::new(pkg.name.clone(), manager, &*ctx.executor))
+        .map(|pkg| PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor)))
         .collect();
 
     let mut stats = TaskStats::new();
@@ -289,6 +291,7 @@ mod tests {
     use super::*;
 
     use crate::config::packages::Package;
+    use crate::exec::Executor;
     use crate::platform::Os;
     use crate::resources::Resource;
     use crate::resources::package::PackageResource;
@@ -300,16 +303,26 @@ mod tests {
 
     #[test]
     fn package_resource_description() {
-        let executor = crate::exec::SystemExecutor;
-        let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
+        let resource = PackageResource::new(
+            "git".to_string(),
+            PackageManager::Pacman,
+            Arc::clone(&executor),
+        );
         assert_eq!(resource.description(), "git (pacman)");
 
-        let resource =
-            PackageResource::new("paru-bin".to_string(), PackageManager::Paru, &executor);
+        let resource = PackageResource::new(
+            "paru-bin".to_string(),
+            PackageManager::Paru,
+            Arc::clone(&executor),
+        );
         assert_eq!(resource.description(), "paru-bin (paru)");
 
-        let resource =
-            PackageResource::new("Git.Git".to_string(), PackageManager::Winget, &executor);
+        let resource = PackageResource::new(
+            "Git.Git".to_string(),
+            PackageManager::Winget,
+            Arc::clone(&executor),
+        );
         assert_eq!(resource.description(), "Git.Git (winget)");
     }
 

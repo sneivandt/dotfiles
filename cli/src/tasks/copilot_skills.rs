@@ -1,5 +1,6 @@
 //! Task: install GitHub Copilot skills.
 use anyhow::Result;
+use std::sync::Arc;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};
 use crate::resources::copilot_skill::CopilotSkillResource;
@@ -25,9 +26,9 @@ impl Task for InstallCopilotSkills {
         ctx.log
             .debug(&format!("skills directory: {}", skills_dir.display()));
 
-        let resources = skills
-            .iter()
-            .map(|skill| CopilotSkillResource::from_entry(skill, &skills_dir, &*ctx.executor));
+        let resources = skills.iter().map(|skill| {
+            CopilotSkillResource::from_entry(skill, &skills_dir, Arc::clone(&ctx.executor))
+        });
         process_resources(
             ctx,
             resources,

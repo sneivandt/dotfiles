@@ -18,7 +18,7 @@ use crate::resources::hook::HookFileResource;
 /// # Errors
 ///
 /// Returns an error if the `hooks/` directory cannot be read.
-fn discover_hooks(ctx: &Context, fs_ops: &dyn FileSystemOps) -> Result<Vec<HookFileResource>> {
+fn discover_hooks(ctx: &Context, fs_ops: &Arc<dyn FileSystemOps>) -> Result<Vec<HookFileResource>> {
     let hooks_src = ctx.hooks_dir();
     let hooks_dst = ctx.root().join(".git/hooks");
 
@@ -59,6 +59,10 @@ impl InstallGitHooks {
     pub fn with_fs_ops(fs_ops: Arc<dyn FileSystemOps>) -> Self {
         Self { fs_ops }
     }
+
+    fn discover(&self, ctx: &Context) -> Result<Vec<HookFileResource>> {
+        discover_hooks(ctx, &self.fs_ops)
+    }
 }
 
 impl Default for InstallGitHooks {
@@ -79,7 +83,7 @@ impl Task for InstallGitHooks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resources = discover_hooks(ctx, &*self.fs_ops)?;
+        let resources = self.discover(ctx)?;
         process_resources(ctx, resources, &ProcessOpts::apply_all("install hook"))
     }
 }
@@ -104,6 +108,10 @@ impl UninstallGitHooks {
     pub fn with_fs_ops(fs_ops: Arc<dyn FileSystemOps>) -> Self {
         Self { fs_ops }
     }
+
+    fn discover(&self, ctx: &Context) -> Result<Vec<HookFileResource>> {
+        discover_hooks(ctx, &self.fs_ops)
+    }
 }
 
 impl Default for UninstallGitHooks {
@@ -122,7 +130,7 @@ impl Task for UninstallGitHooks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resources = discover_hooks(ctx, &*self.fs_ops)?;
+        let resources = self.discover(ctx)?;
         process_resources_remove(ctx, resources, "remove hook")
     }
 }
@@ -212,7 +220,9 @@ mod tests {
             .with_file("/repo/hooks/hooks.ini");
         let ctx = make_linux_context(config);
 
-        let resources = discover_hooks(&ctx, &fs).unwrap();
+        let resources = InstallGitHooks::with_fs_ops(Arc::new(fs))
+            .discover(&ctx)
+            .unwrap();
         assert_eq!(resources.len(), 2);
         let names: Vec<_> = resources
             .iter()
@@ -237,7 +247,9 @@ mod tests {
         // /repo/hooks/subdir is NOT added as a file → is_file returns false for it
         let ctx = make_linux_context(config);
 
-        let resources = discover_hooks(&ctx, &fs).unwrap();
+        let resources = InstallGitHooks::with_fs_ops(Arc::new(fs))
+            .discover(&ctx)
+            .unwrap();
         assert_eq!(resources.len(), 1);
     }
 
@@ -249,7 +261,9 @@ mod tests {
             .with_file("/repo/hooks/pre-commit");
         let ctx = make_linux_context(config);
 
-        let resources = discover_hooks(&ctx, &fs).unwrap();
+        let resources = InstallGitHooks::with_fs_ops(Arc::new(fs))
+            .discover(&ctx)
+            .unwrap();
         assert_eq!(resources.len(), 1);
         assert_eq!(
             resources[0].target,

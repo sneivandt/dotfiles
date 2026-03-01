@@ -242,4 +242,56 @@ mod tests {
         let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("git pull failed")));
     }
+
+    // -----------------------------------------------------------------------
+    // run() — dry-run comparison paths
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn run_dry_run_returns_ok_when_already_up_to_date() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        // symbolic-ref: success → on a branch
+        // diff --cached: empty → no staged changes
+        // rev-parse HEAD: abc123
+        // rev-parse @{u}: abc123 (same SHA → already up to date)
+        let executor = MockExecutor::with_responses(vec![
+            (true, "refs/heads/main".to_string()),
+            (true, String::new()),
+            (true, "abc123".to_string()),
+            (true, "abc123".to_string()),
+        ]);
+        let mut ctx = make_update_context(config, executor);
+        ctx.dry_run = true;
+        let task = UpdateRepository::new(Arc::new(AtomicBool::new(false)));
+
+        let result = task.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Ok),
+            "expected Ok (already up to date in dry-run), got {result:?}"
+        );
+    }
+
+    #[test]
+    fn run_dry_run_returns_dry_run_when_behind_upstream() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        // symbolic-ref: success
+        // diff --cached: empty
+        // rev-parse HEAD: abc123
+        // rev-parse @{u}: def456 (different SHA → would pull)
+        let executor = MockExecutor::with_responses(vec![
+            (true, "refs/heads/main".to_string()),
+            (true, String::new()),
+            (true, "abc123".to_string()),
+            (true, "def456".to_string()),
+        ]);
+        let mut ctx = make_update_context(config, executor);
+        ctx.dry_run = true;
+        let task = UpdateRepository::new(Arc::new(AtomicBool::new(false)));
+
+        let result = task.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::DryRun),
+            "expected DryRun (behind upstream), got {result:?}"
+        );
+    }
 }

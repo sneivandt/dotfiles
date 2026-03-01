@@ -81,4 +81,37 @@ mod tests {
         let ctx = make_windows_context(config);
         assert!(ApplyRegistry.should_run(&ctx));
     }
+
+    // ------------------------------------------------------------------
+    // ApplyRegistry::run
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn run_with_empty_registry_returns_ok() {
+        // With no registry entries the resource loop is empty → always Ok.
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = make_windows_context(config);
+        let result = ApplyRegistry.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+    }
+
+    #[test]
+    fn run_with_entries_on_non_windows_skips_gracefully() {
+        // On non-Windows, batch_check_values() returns an empty map.
+        // Every entry therefore has state Missing, and apply() returns an
+        // error ("registry operations are only supported on Windows").
+        // Because ProcessOpts uses no_bail(), each error is caught and counted
+        // as skipped — the task still returns Ok rather than propagating the error.
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.registry.push(RegistryEntry {
+            key_path: r"HKCU:\Console".to_string(),
+            value_name: "QuickEdit".to_string(),
+            value_data: "1".to_string(),
+        });
+        // Use a Windows-platform context so the task logic runs (should_run
+        // would normally gate this, but run() is called directly in unit tests).
+        let ctx = make_windows_context(config);
+        let result = ApplyRegistry.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+    }
 }

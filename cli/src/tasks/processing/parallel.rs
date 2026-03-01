@@ -5,10 +5,10 @@ use std::sync::Mutex;
 use anyhow::Result;
 
 use super::apply::{process_single, remove_single};
+use super::context::Context;
 use super::{ProcessOpts, TaskStats};
 use crate::logging::{diag_thread_name, set_diag_thread_name};
 use crate::resources::{Resource, ResourceState};
-use crate::tasks::Context;
 
 /// Process resources in parallel using Rayon.
 pub(super) fn process_resources_parallel<R: Resource + Send>(

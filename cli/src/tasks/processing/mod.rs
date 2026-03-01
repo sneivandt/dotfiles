@@ -3,14 +3,17 @@
 //! This module is split into sub-modules:
 //!
 //! - [`apply`] — single-resource processing (`process_single`, `apply_resource`, `remove_single`)
+//! - [`context`] — shared execution context for tasks
 //! - [`parallel`] — Rayon-based parallel processing helpers
 
 mod apply;
+pub mod context;
 mod parallel;
+
+pub use context::Context;
 
 use anyhow::Result;
 
-use super::context::Context;
 use crate::resources::{Resource, ResourceState};
 
 /// Result of a single task execution.

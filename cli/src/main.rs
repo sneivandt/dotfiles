@@ -19,8 +19,7 @@ fn main() {
         cli::Command::Uninstall(opts) => commands::uninstall::run(&args.global, &opts, &log),
         cli::Command::Test(opts) => commands::test::run(&args.global, &opts, &log),
         cli::Command::Version => {
-            let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
-            println!("dotfiles {version}");
+            commands::version::run();
             return;
         }
     };

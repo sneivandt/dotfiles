@@ -1,6 +1,7 @@
 //! TOML configuration file parsing with category filtering.
 use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
+use std::collections::HashMap;
 use std::path::Path;
 
 use super::category_matcher::MatchMode;
@@ -29,6 +30,26 @@ pub fn load_config<T: DeserializeOwned>(path: &Path) -> Result<T> {
 
     toml::from_str(&content)
         .with_context(|| format!("Failed to parse TOML config: {}", path.display()))
+}
+
+/// Load a TOML config file where each top-level section contains a single
+/// repeated field, and return all items as `(section_name, Vec<T>)` pairs.
+///
+/// `extract` receives the deserialized section value and returns the `Vec<T>`
+/// stored inside it (e.g. `|s: PackageSection| s.packages`).
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read or parsed.
+pub fn load_section_items<S, T>(
+    path: &Path,
+    extract: impl Fn(S) -> Vec<T>,
+) -> Result<Vec<(String, Vec<T>)>>
+where
+    S: DeserializeOwned,
+{
+    let config: HashMap<String, S> = load_config(path)?;
+    Ok(config.into_iter().map(|(k, v)| (k, extract(v))).collect())
 }
 
 /// Filter items from a TOML table by category matching.

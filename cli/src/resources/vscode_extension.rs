@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Applicable, ResourceChange, ResourceState};
 use crate::exec::{self, Executor};
 
 /// A VS Code extension resource that can be checked and installed.
@@ -67,16 +67,9 @@ pub fn get_installed_extensions(
     Ok(set)
 }
 
-impl Resource for VsCodeExtensionResource<'_> {
+impl Applicable for VsCodeExtensionResource<'_> {
     fn description(&self) -> String {
         self.id.clone()
-    }
-
-    fn current_state(&self) -> Result<ResourceState> {
-        anyhow::bail!(
-            "use get_installed_extensions once and state_from_installed per resource; \
-             do not call current_state on VsCodeExtensionResource"
-        )
     }
 
     fn apply(&self) -> Result<ResourceChange> {

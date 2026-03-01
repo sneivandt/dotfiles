@@ -5,7 +5,7 @@ use super::{
     Context, ProcessOpts, Task, TaskResult, TaskStats, process_resource_states, task_deps,
 };
 use crate::config::packages::Package;
-use crate::resources::Resource as _;
+use crate::resources::Applicable as _;
 use crate::resources::package::{
     PackageManager, PackageResource, batch_install_packages, get_installed_packages,
 };
@@ -290,7 +290,6 @@ mod tests {
 
     use crate::config::packages::Package;
     use crate::platform::Os;
-    use crate::resources::Resource;
     use crate::resources::package::PackageResource;
     use crate::tasks::test_helpers::{
         empty_config, make_arch_context, make_linux_context, make_platform_context_with_which,

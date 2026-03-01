@@ -1,7 +1,7 @@
 //! Login shell configuration resource.
 use anyhow::Result;
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Applicable, Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
 
 /// A resource for configuring the default login shell.
@@ -24,11 +24,22 @@ impl<'a> DefaultShellResource<'a> {
     }
 }
 
-impl Resource for DefaultShellResource<'_> {
+impl Applicable for DefaultShellResource<'_> {
     fn description(&self) -> String {
         format!("default shell → {}", self.target_shell)
     }
 
+    fn apply(&self) -> Result<ResourceChange> {
+        let shell_path = crate::exec::which_path(&self.target_shell)?;
+        let shell_str = shell_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("non-UTF-8 shell path: {}", shell_path.display()))?;
+        self.executor.run("chsh", &["-s", shell_str])?;
+        Ok(ResourceChange::Applied)
+    }
+}
+
+impl Resource for DefaultShellResource<'_> {
     fn current_state(&self) -> Result<ResourceState> {
         let current_shell = std::env::var("SHELL").unwrap_or_default();
 
@@ -47,15 +58,6 @@ impl Resource for DefaultShellResource<'_> {
                 current: current_shell,
             })
         }
-    }
-
-    fn apply(&self) -> Result<ResourceChange> {
-        let shell_path = crate::exec::which_path(&self.target_shell)?;
-        let shell_str = shell_path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("non-UTF-8 shell path: {}", shell_path.display()))?;
-        self.executor.run("chsh", &["-s", shell_str])?;
-        Ok(ResourceChange::Applied)
     }
 }
 

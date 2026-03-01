@@ -74,48 +74,14 @@ pub enum ResourceChange {
     },
 }
 
-/// Unified interface for resources that can be checked and applied.
+/// Minimal interface for resources that can be described and applied.
 ///
-/// This abstraction provides consistent handling for:
-/// - Symlinks (file system links)
-/// - Registry entries (Windows registry)
-/// - File permissions (chmod on Unix)
-/// - Other declarative resources
-///
-/// # Examples
-///
-/// ```ignore
-/// // All resources follow the same check-then-apply pattern:
-/// let state = resource.current_state()?;
-/// if resource.needs_change()? {
-///     resource.apply()?;
-/// }
-/// ```
-pub trait Resource {
+/// Implement this trait for resources whose state is determined externally
+/// (e.g. via a single bulk query) so that `current_state` is never needed.
+/// [`Resource`] extends this trait and adds `current_state`.
+pub trait Applicable {
     /// Human-readable description of this resource.
     fn description(&self) -> String;
-
-    /// Check the current state of the resource.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the resource state cannot be determined due to I/O failures,
-    /// permission issues, or other system errors.
-    fn current_state(&self) -> Result<ResourceState>;
-
-    /// Determine if the resource needs to be changed.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the current state cannot be determined (propagates errors from
-    /// `current_state()`).
-    #[allow(dead_code)] // Part of trait contract; used in tests
-    fn needs_change(&self) -> Result<bool> {
-        Ok(matches!(
-            self.current_state()?,
-            ResourceState::Missing | ResourceState::Incorrect { .. }
-        ))
-    }
 
     /// Apply the resource change.
     ///
@@ -124,8 +90,8 @@ pub trait Resource {
     /// - Update the resource to match the desired state
     /// - Return the appropriate `ResourceChange` result
     ///
-    /// This method is only called when NOT in dry-run mode and when
-    /// `needs_change()` returns `true`.
+    /// This method is only called when NOT in dry-run mode and when the
+    /// pre-computed state indicates a change is needed.
     ///
     /// # Errors
     ///
@@ -147,6 +113,47 @@ pub trait Resource {
             "operation 'remove' is not supported for resource '{}'",
             self.description()
         )
+    }
+}
+
+/// Unified interface for resources that can be checked and applied.
+///
+/// This abstraction provides consistent handling for:
+/// - Symlinks (file system links)
+/// - Registry entries (Windows registry)
+/// - File permissions (chmod on Unix)
+/// - Other declarative resources
+///
+/// # Examples
+///
+/// ```ignore
+/// // All resources follow the same check-then-apply pattern:
+/// let state = resource.current_state()?;
+/// if resource.needs_change()? {
+///     resource.apply()?;
+/// }
+/// ```
+pub trait Resource: Applicable {
+    /// Check the current state of the resource.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the resource state cannot be determined due to I/O failures,
+    /// permission issues, or other system errors.
+    fn current_state(&self) -> Result<ResourceState>;
+
+    /// Determine if the resource needs to be changed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the current state cannot be determined (propagates errors from
+    /// `current_state()`).
+    #[allow(dead_code)] // Part of trait contract; used in tests
+    fn needs_change(&self) -> Result<bool> {
+        Ok(matches!(
+            self.current_state()?,
+            ResourceState::Missing | ResourceState::Incorrect { .. }
+        ))
     }
 }
 
@@ -288,17 +295,19 @@ mod tests {
         state: ResourceState,
     }
 
-    impl Resource for TestResource {
+    impl Applicable for TestResource {
         fn description(&self) -> String {
             "test resource".to_string()
         }
 
-        fn current_state(&self) -> Result<ResourceState> {
-            Ok(self.state.clone())
-        }
-
         fn apply(&self) -> Result<ResourceChange> {
             Ok(ResourceChange::Applied)
+        }
+    }
+
+    impl Resource for TestResource {
+        fn current_state(&self) -> Result<ResourceState> {
+            Ok(self.state.clone())
         }
     }
 

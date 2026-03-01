@@ -2,7 +2,7 @@
 use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Applicable, Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
 
 /// A GitHub Copilot skill resource that can be checked and installed.
@@ -44,17 +44,9 @@ impl<'a> CopilotSkillResource<'a> {
     }
 }
 
-impl Resource for CopilotSkillResource<'_> {
+impl Applicable for CopilotSkillResource<'_> {
     fn description(&self) -> String {
         self.url.clone()
-    }
-
-    fn current_state(&self) -> Result<ResourceState> {
-        if self.dest.exists() {
-            Ok(ResourceState::Correct)
-        } else {
-            Ok(ResourceState::Missing)
-        }
     }
 
     fn apply(&self) -> Result<ResourceChange> {
@@ -63,6 +55,16 @@ impl Resource for CopilotSkillResource<'_> {
         download_github_folder(&self.url, &self.dest, self.executor)
             .with_context(|| format!("downloading skill from {}", self.url))?;
         Ok(ResourceChange::Applied)
+    }
+}
+
+impl Resource for CopilotSkillResource<'_> {
+    fn current_state(&self) -> Result<ResourceState> {
+        if self.dest.exists() {
+            Ok(ResourceState::Correct)
+        } else {
+            Ok(ResourceState::Missing)
+        }
     }
 }
 

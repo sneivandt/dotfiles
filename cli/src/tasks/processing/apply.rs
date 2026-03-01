@@ -5,10 +5,10 @@ use anyhow::Result;
 use super::context::Context;
 use super::{ProcessOpts, TaskStats};
 use crate::logging::DiagEvent;
-use crate::resources::{Resource, ResourceChange, ResourceState};
+use crate::resources::{Applicable, ResourceChange, ResourceState};
 
 /// Process a single resource given its current state, returning a stats delta.
-pub(super) fn process_single<R: Resource>(
+pub(super) fn process_single<R: Applicable>(
     ctx: &Context,
     resource: &R,
     resource_state: ResourceState,
@@ -57,7 +57,7 @@ pub(super) fn process_single<R: Resource>(
 }
 
 /// Apply a single resource change, returning a stats delta.
-pub(super) fn apply_resource<R: Resource>(
+pub(super) fn apply_resource<R: Applicable>(
     ctx: &Context,
     resource: &R,
     opts: &ProcessOpts,
@@ -119,7 +119,7 @@ pub(super) fn apply_resource<R: Resource>(
 }
 
 /// Remove a single resource, returning a stats delta.
-pub(super) fn remove_single<R: Resource>(
+pub(super) fn remove_single<R: Applicable>(
     ctx: &Context,
     resource: &R,
     current: &ResourceState,

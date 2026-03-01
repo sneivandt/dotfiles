@@ -2,7 +2,7 @@
 use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Applicable, Resource, ResourceChange, ResourceState};
 
 /// A git hook file resource that can be checked, installed, and removed.
 #[derive(Debug, Clone)]
@@ -21,45 +21,12 @@ impl HookFileResource {
     }
 }
 
-impl Resource for HookFileResource {
+impl Applicable for HookFileResource {
     fn description(&self) -> String {
         self.target.file_name().map_or_else(
             || self.target.display().to_string(),
             |n| n.to_string_lossy().to_string(),
         )
-    }
-
-    fn current_state(&self) -> Result<ResourceState> {
-        if !self.source.exists() {
-            return Ok(ResourceState::Invalid {
-                reason: format!("source does not exist: {}", self.source.display()),
-            });
-        }
-
-        // Detect broken symlinks at the target location
-        if !self.target.exists() && self.target.symlink_metadata().is_ok() {
-            return Ok(ResourceState::Incorrect {
-                current: "broken symlink".to_string(),
-            });
-        }
-
-        if !self.target.exists() {
-            return Ok(ResourceState::Missing);
-        }
-
-        // Compare file contents
-        let src_content = std::fs::read(&self.source)
-            .with_context(|| format!("read source: {}", self.source.display()))?;
-        let dst_content = std::fs::read(&self.target)
-            .with_context(|| format!("read target: {}", self.target.display()))?;
-
-        if src_content == dst_content {
-            Ok(ResourceState::Correct)
-        } else {
-            Ok(ResourceState::Incorrect {
-                current: "content differs".to_string(),
-            })
-        }
     }
 
     fn apply(&self) -> Result<ResourceChange> {
@@ -92,6 +59,41 @@ impl Resource for HookFileResource {
             Ok(ResourceChange::Applied)
         } else {
             Ok(ResourceChange::AlreadyCorrect)
+        }
+    }
+}
+
+impl Resource for HookFileResource {
+    fn current_state(&self) -> Result<ResourceState> {
+        if !self.source.exists() {
+            return Ok(ResourceState::Invalid {
+                reason: format!("source does not exist: {}", self.source.display()),
+            });
+        }
+
+        // Detect broken symlinks at the target location
+        if !self.target.exists() && self.target.symlink_metadata().is_ok() {
+            return Ok(ResourceState::Incorrect {
+                current: "broken symlink".to_string(),
+            });
+        }
+
+        if !self.target.exists() {
+            return Ok(ResourceState::Missing);
+        }
+
+        // Compare file contents
+        let src_content = std::fs::read(&self.source)
+            .with_context(|| format!("read source: {}", self.source.display()))?;
+        let dst_content = std::fs::read(&self.target)
+            .with_context(|| format!("read target: {}", self.target.display()))?;
+
+        if src_content == dst_content {
+            Ok(ResourceState::Correct)
+        } else {
+            Ok(ResourceState::Incorrect {
+                current: "content differs".to_string(),
+            })
         }
     }
 }

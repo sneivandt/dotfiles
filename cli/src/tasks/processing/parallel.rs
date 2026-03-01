@@ -8,7 +8,7 @@ use super::apply::{process_single, remove_single};
 use super::context::Context;
 use super::{ProcessOpts, TaskStats};
 use crate::logging::{diag_thread_name, set_diag_thread_name};
-use crate::resources::{Resource, ResourceState};
+use crate::resources::{Applicable, Resource, ResourceState};
 
 /// Process resources in parallel using Rayon.
 pub(super) fn process_resources_parallel<R: Resource + Send>(
@@ -23,7 +23,7 @@ pub(super) fn process_resources_parallel<R: Resource + Send>(
 }
 
 /// Process resources with pre-computed states in parallel using Rayon.
-pub(super) fn process_resource_states_parallel<R: Resource + Send>(
+pub(super) fn process_resource_states_parallel<R: Applicable + Send>(
     ctx: &Context,
     resource_states: Vec<(R, ResourceState)>,
     opts: &ProcessOpts,
@@ -81,7 +81,7 @@ fn collect_parallel_stats<T: Send>(
 /// The per-item work (`get_resource_state` and `process_single`) runs **without** the
 /// stats lock held, so all resources can be applied concurrently. The lock is acquired
 /// only for the brief stats counter update after the work completes.
-fn run_parallel<T: Send, R: Resource + Send>(
+fn run_parallel<T: Send, R: Applicable + Send>(
     ctx: &Context,
     items: Vec<T>,
     opts: &ProcessOpts,

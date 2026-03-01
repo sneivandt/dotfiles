@@ -1,8 +1,10 @@
 //! Task: configure sparse checkout.
 use anyhow::{Context as _, Result};
 use std::path::Path;
+use std::sync::Arc;
 
 use super::{Context, Task, TaskResult};
+use crate::operations::{FileSystemOps, SystemFileSystemOps};
 
 /// Default sparse checkout pattern that includes all files at root level.
 const DEFAULT_SPARSE_PATTERN: &str = "/*";
@@ -30,25 +32,24 @@ fn is_up_to_date(sparse_file: &Path, patterns_str: &str) -> bool {
 /// repo's `symlinks/` directory.  These become dangling when sparse-checkout
 /// excludes `symlinks/`, which then prevents git from running at all because
 /// it cannot read its own XDG config / exclude files.
-fn remove_broken_git_symlinks(ctx: &Context) {
+fn remove_broken_git_symlinks(ctx: &Context, fs: &dyn FileSystemOps) {
     let git_config_dir = ctx.home.join(".config").join("git");
-    if !git_config_dir.exists() {
+    if !fs.exists(&git_config_dir) {
         return;
     }
     let symlinks_dir = ctx.symlinks_dir();
-    let Ok(entries) = std::fs::read_dir(&git_config_dir) else {
+    let Ok(entries) = fs.read_dir(&git_config_dir) else {
         return;
     };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !is_broken_symlink_into(&path, &symlinks_dir) {
+    for path in entries {
+        if !is_broken_symlink_into(fs, &path, &symlinks_dir) {
             continue;
         }
         ctx.log.debug(&format!(
             "removing broken git config symlink: {}",
             path.display()
         ));
-        if let Err(e) = remove_path(&path) {
+        if let Err(e) = fs.remove(&path) {
             ctx.log.debug(&format!("failed to remove symlink: {e}"));
         }
     }
@@ -56,12 +57,8 @@ fn remove_broken_git_symlinks(ctx: &Context) {
 
 /// Returns true when `path` is a symlink whose target lives under `dir` and
 /// the target does not exist on disk.
-fn is_broken_symlink_into(path: &Path, dir: &Path) -> bool {
-    match std::fs::symlink_metadata(path) {
-        Ok(m) if m.is_symlink() => {}
-        _ => return false,
-    }
-    std::fs::read_link(path).is_ok_and(|target| {
+fn is_broken_symlink_into(fs: &dyn FileSystemOps, path: &Path, dir: &Path) -> bool {
+    fs.read_link(path).is_ok_and(|target| {
         // Resolve relative symlink targets relative to the symlink's directory
         let resolved_target = if target.is_absolute() {
             target
@@ -69,22 +66,37 @@ fn is_broken_symlink_into(path: &Path, dir: &Path) -> bool {
             path.parent()
                 .map_or_else(|| target.clone(), |parent| parent.join(&target))
         };
-        resolved_target.starts_with(dir) && !resolved_target.exists()
+        resolved_target.starts_with(dir) && !fs.exists(&resolved_target)
     })
-}
-
-fn remove_path(path: &Path) -> std::io::Result<()> {
-    let meta = std::fs::symlink_metadata(path)?;
-    if meta.is_dir() {
-        std::fs::remove_dir(path)
-    } else {
-        std::fs::remove_file(path)
-    }
 }
 
 /// Configure git sparse checkout based on the profile manifest.
 #[derive(Debug)]
-pub struct ConfigureSparseCheckout;
+pub struct ConfigureSparseCheckout {
+    fs_ops: Arc<dyn FileSystemOps>,
+}
+
+impl ConfigureSparseCheckout {
+    /// Create using the real filesystem.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            fs_ops: Arc::new(SystemFileSystemOps),
+        }
+    }
+
+    /// Create with a custom [`FileSystemOps`] implementation (for testing).
+    #[cfg(test)]
+    pub fn with_fs_ops(fs_ops: Arc<dyn FileSystemOps>) -> Self {
+        Self { fs_ops }
+    }
+}
+
+impl Default for ConfigureSparseCheckout {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Task for ConfigureSparseCheckout {
     fn name(&self) -> &'static str {
@@ -93,7 +105,7 @@ impl Task for ConfigureSparseCheckout {
 
     fn should_run(&self, ctx: &Context) -> bool {
         // Only run if git is available and we're in a git repo
-        ctx.root().join(".git").exists()
+        self.fs_ops.exists(&ctx.root().join(".git"))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -125,7 +137,7 @@ impl Task for ConfigureSparseCheckout {
         }
 
         // Clean up broken git config symlinks that prevent git from running.
-        remove_broken_git_symlinks(ctx);
+        remove_broken_git_symlinks(ctx, &*self.fs_ops);
 
         let root = ctx.root();
 
@@ -187,6 +199,7 @@ impl Task for ConfigureSparseCheckout {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::operations::MockFileSystemOps;
     use crate::platform::{Os, Platform};
     use crate::resources::test_helpers::MockExecutor;
     use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
@@ -259,7 +272,7 @@ mod tests {
     fn should_run_false_when_git_dir_missing() {
         let config = empty_config(PathBuf::from("/nonexistent/repo"));
         let ctx = make_linux_context(config);
-        assert!(!ConfigureSparseCheckout.should_run(&ctx));
+        assert!(!ConfigureSparseCheckout::new().should_run(&ctx));
     }
 
     #[test]
@@ -268,7 +281,7 @@ mod tests {
         std::fs::create_dir(dir.path().join(".git")).unwrap();
         let config = empty_config(dir.path().to_path_buf());
         let ctx = make_linux_context(config);
-        assert!(ConfigureSparseCheckout.should_run(&ctx));
+        assert!(ConfigureSparseCheckout::new().should_run(&ctx));
     }
 
     // -----------------------------------------------------------------------
@@ -280,7 +293,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("regular");
         std::fs::write(&file, "content").unwrap();
-        assert!(!is_broken_symlink_into(&file, dir.path()));
+        assert!(!is_broken_symlink_into(
+            &SystemFileSystemOps,
+            &file,
+            dir.path()
+        ));
     }
 
     #[cfg(unix)]
@@ -292,7 +309,11 @@ mod tests {
         std::fs::write(&target, "content").unwrap();
         std::os::unix::fs::symlink(&target, &link).unwrap();
         // Valid symlink (target exists) → not broken
-        assert!(!is_broken_symlink_into(&link, dir.path()));
+        assert!(!is_broken_symlink_into(
+            &SystemFileSystemOps,
+            &link,
+            dir.path()
+        ));
     }
 
     #[cfg(unix)]
@@ -305,7 +326,11 @@ mod tests {
         // Point into symlinks_dir at a path that does not exist
         let nonexistent = symlinks_dir.join("missing");
         std::os::unix::fs::symlink(&nonexistent, &link).unwrap();
-        assert!(is_broken_symlink_into(&link, &symlinks_dir));
+        assert!(is_broken_symlink_into(
+            &SystemFileSystemOps,
+            &link,
+            &symlinks_dir
+        ));
     }
 
     // -----------------------------------------------------------------------
@@ -317,7 +342,7 @@ mod tests {
         // Empty manifest → no exclusions → returns Ok immediately without git calls.
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        let result = ConfigureSparseCheckout.run(&ctx).unwrap();
+        let result = ConfigureSparseCheckout::new().run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Ok));
     }
 
@@ -334,7 +359,7 @@ mod tests {
         config.manifest.excluded_files.push("symlinks".to_string());
         let ctx = make_linux_context(config);
 
-        let result = ConfigureSparseCheckout.run(&ctx).unwrap();
+        let result = ConfigureSparseCheckout::new().run(&ctx).unwrap();
         assert!(
             matches!(result, TaskResult::Ok),
             "expected Ok when sparse-checkout is already up to date, got {result:?}"
@@ -351,7 +376,7 @@ mod tests {
         let mut ctx = make_linux_context(config);
         ctx.dry_run = true;
 
-        let result = ConfigureSparseCheckout.run(&ctx).unwrap();
+        let result = ConfigureSparseCheckout::new().run(&ctx).unwrap();
         assert!(
             matches!(result, TaskResult::DryRun),
             "expected DryRun, got {result:?}"
@@ -380,7 +405,7 @@ mod tests {
             Arc::new(executor),
         );
 
-        let result = ConfigureSparseCheckout.run(&ctx).unwrap();
+        let result = ConfigureSparseCheckout::new().run(&ctx).unwrap();
         assert!(
             matches!(result, TaskResult::Ok),
             "expected Ok after writing sparse-checkout, got {result:?}"
@@ -397,5 +422,95 @@ mod tests {
             content.contains("!/symlinks"),
             "must include exclusion pattern for 'symlinks'"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // remove_broken_git_symlinks — using MockFileSystemOps
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn remove_broken_git_symlinks_skips_when_git_config_dir_missing() {
+        // ~/.config/git does not exist → function should return immediately
+        let config = empty_config(PathBuf::from("/repo"));
+        let ctx = make_linux_context(config);
+        let fs = Arc::new(MockFileSystemOps::new());
+        // Should not panic or remove anything
+        remove_broken_git_symlinks(&ctx, &*fs);
+    }
+
+    #[test]
+    fn remove_broken_git_symlinks_skips_valid_symlinks() {
+        // Symlink whose target exists → must not be removed
+        let config = empty_config(PathBuf::from("/repo"));
+        let ctx = make_linux_context(config);
+        let symlink_path = PathBuf::from("/home/test/.config/git/gitconfig");
+        let target = PathBuf::from("/repo/symlinks/git/gitconfig");
+        let fs = Arc::new(
+            MockFileSystemOps::new()
+                .with_dir_entries("/home/test/.config/git", vec![symlink_path.clone()])
+                .with_symlink(symlink_path.clone(), target.clone())
+                .with_existing(target), // target exists → not broken
+        );
+        remove_broken_git_symlinks(&ctx, &*fs);
+        assert!(
+            fs.exists(&symlink_path),
+            "valid symlink must not be removed"
+        );
+    }
+
+    #[test]
+    fn remove_broken_git_symlinks_removes_dangling_symlinks_pointing_into_symlinks_dir() {
+        // Symlink whose target is under symlinks_dir and does not exist → must be removed
+        let config = empty_config(PathBuf::from("/repo"));
+        let ctx = make_linux_context(config);
+        let symlink_path = PathBuf::from("/home/test/.config/git/gitconfig");
+        let target = PathBuf::from("/repo/symlinks/git/gitconfig");
+        let fs = Arc::new(
+            MockFileSystemOps::new()
+                .with_dir_entries("/home/test/.config/git", vec![symlink_path.clone()])
+                .with_symlink(symlink_path.clone(), target), // target not in existing → broken
+        );
+        remove_broken_git_symlinks(&ctx, &*fs);
+        assert!(
+            !fs.exists(&symlink_path),
+            "dangling symlink must be removed"
+        );
+    }
+
+    #[test]
+    fn remove_broken_git_symlinks_ignores_regular_files() {
+        // A regular file (not a symlink) must never be removed
+        let config = empty_config(PathBuf::from("/repo"));
+        let ctx = make_linux_context(config);
+        let file_path = PathBuf::from("/home/test/.config/git/config");
+        let fs = Arc::new(
+            MockFileSystemOps::new()
+                .with_dir_entries("/home/test/.config/git", vec![file_path.clone()])
+                .with_file(file_path.clone()),
+        );
+        remove_broken_git_symlinks(&ctx, &*fs);
+        assert!(fs.exists(&file_path), "regular file must not be removed");
+    }
+
+    // -----------------------------------------------------------------------
+    // should_run — using MockFileSystemOps
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn should_run_false_when_git_dir_missing_via_mock() {
+        let config = empty_config(PathBuf::from("/repo"));
+        let ctx = make_linux_context(config);
+        let fs = MockFileSystemOps::new(); // no .git registered
+        let task = ConfigureSparseCheckout::with_fs_ops(Arc::new(fs));
+        assert!(!task.should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_true_when_git_dir_exists_via_mock() {
+        let config = empty_config(PathBuf::from("/repo"));
+        let ctx = make_linux_context(config);
+        let fs = MockFileSystemOps::new().with_existing("/repo/.git");
+        let task = ConfigureSparseCheckout::with_fs_ops(Arc::new(fs));
+        assert!(task.should_run(&ctx));
     }
 }

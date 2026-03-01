@@ -54,7 +54,8 @@ pub mod test_helpers {
 
 use std::path::{Path, PathBuf};
 
-use crate::error::ConfigError;
+use anyhow::{Context as _, Result};
+
 use crate::platform::Platform;
 
 /// All loaded configuration for a resolved profile.
@@ -84,26 +85,13 @@ pub struct Config {
     pub manifest: manifest::Manifest,
 }
 
-/// Convert an [`anyhow::Error`] into a [`ConfigError::InvalidSyntax`] for
-/// the given TOML file name.
-fn syntax_err(file: &str) -> impl FnOnce(anyhow::Error) -> ConfigError + '_ {
-    move |e| ConfigError::InvalidSyntax {
-        file: file.to_string(),
-        message: e.to_string(),
-    }
-}
-
 impl Config {
     /// Load all configuration for the given profile from the conf/ directory.
     ///
     /// # Errors
     ///
     /// Returns an error if any configuration file cannot be parsed.
-    pub fn load(
-        root: &Path,
-        profile: &profiles::Profile,
-        platform: &Platform,
-    ) -> Result<Self, ConfigError> {
+    pub fn load(root: &Path, profile: &profiles::Profile, platform: &Platform) -> Result<Self> {
         let conf = root.join("conf");
 
         let active_categories = &profile.active_categories;
@@ -114,11 +102,13 @@ impl Config {
         macro_rules! load_toml {
             // Two-argument form: loaders that do not filter by category (e.g. registry).
             ($file:literal, $loader:expr) => {
-                $loader(&conf.join($file)).map_err(syntax_err($file))?
+                $loader(&conf.join($file))
+                    .with_context(|| format!("Invalid syntax in {}", $file))?
             };
             // Three-argument form: loaders that accept a category slice for filtering.
             ($file:literal, $loader:expr, $cats:expr) => {
-                $loader(&conf.join($file), $cats).map_err(syntax_err($file))?
+                $loader(&conf.join($file), $cats)
+                    .with_context(|| format!("Invalid syntax in {}", $file))?
             };
         }
 

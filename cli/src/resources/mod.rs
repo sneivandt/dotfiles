@@ -2,7 +2,6 @@
 pub mod chmod;
 pub mod copilot_skill;
 pub mod developer_mode;
-pub mod error;
 pub mod fs;
 pub mod git_config;
 pub mod hook;
@@ -12,8 +11,6 @@ pub mod shell;
 pub mod symlink;
 pub mod systemd_unit;
 pub mod vscode_extension;
-
-pub use error::ResourceError;
 
 use anyhow::Result;
 
@@ -146,11 +143,10 @@ pub trait Resource {
     /// Returns an error if the resource cannot be removed, or if removal is not supported
     /// for this resource type.
     fn remove(&self) -> Result<ResourceChange> {
-        Err(ResourceError::UnsupportedOperation {
-            operation: "remove".to_string(),
-            resource: self.description(),
-        }
-        .into())
+        anyhow::bail!(
+            "operation 'remove' is not supported for resource '{}'",
+            self.description()
+        )
     }
 }
 

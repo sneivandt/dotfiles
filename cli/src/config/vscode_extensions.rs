@@ -3,7 +3,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
+use super::category_matcher::{Category, MatchMode};
 use super::toml_loader;
 
 /// A VS Code extension to install.
@@ -24,7 +24,7 @@ struct ExtensionSection {
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<VsCodeExtension>> {
+pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<VsCodeExtension>> {
     let items = toml_loader::load_section_items(path, |s: ExtensionSection| s.extensions)?;
 
     let ids: Vec<String> =
@@ -47,7 +47,7 @@ extensions = ["github.copilot-chat", "ms-python.python"]
 "#,
         );
         let extensions: Vec<VsCodeExtension> =
-            load(&path, &["base".to_string(), "desktop".to_string()]).unwrap();
+            load(&path, &[Category::Base, Category::Desktop]).unwrap();
         assert_eq!(extensions.len(), 2);
         assert_eq!(extensions[0].id, "github.copilot-chat");
     }
@@ -62,7 +62,7 @@ extensions = ["github.copilot"]
 extensions = ["github.copilot-chat"]
 "#,
         );
-        let extensions: Vec<VsCodeExtension> = load(&path, &["base".to_string()]).unwrap();
+        let extensions: Vec<VsCodeExtension> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(extensions.len(), 1, "desktop section should not be loaded");
         assert_eq!(extensions[0].id, "github.copilot");
     }

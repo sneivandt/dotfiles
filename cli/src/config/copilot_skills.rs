@@ -3,7 +3,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
+use super::category_matcher::{Category, MatchMode};
 use super::toml_loader;
 
 /// A GitHub Copilot skill URL.
@@ -24,7 +24,7 @@ struct SkillSection {
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<CopilotSkill>> {
+pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<CopilotSkill>> {
     let items = toml_loader::load_section_items(path, |s: SkillSection| s.skills)?;
 
     let urls: Vec<String> =
@@ -49,7 +49,7 @@ skills = [
 ]
 "#,
         );
-        let skills: Vec<CopilotSkill> = load(&path, &["base".to_string()]).unwrap();
+        let skills: Vec<CopilotSkill> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(skills.len(), 2);
         assert!(skills[0].url.starts_with("https://"));
     }
@@ -64,7 +64,7 @@ skills = ["https://github.com/example/base-skill"]
 skills = ["https://github.com/example/desktop-skill"]
 "#,
         );
-        let skills: Vec<CopilotSkill> = load(&path, &["base".to_string()]).unwrap();
+        let skills: Vec<CopilotSkill> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(skills.len(), 1, "desktop section should not be loaded");
         assert!(skills[0].url.contains("base-skill"));
     }

@@ -4,7 +4,7 @@ use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
+use super::category_matcher::{Category, MatchMode};
 
 /// Load and filter TOML config sections by active categories.
 ///
@@ -60,7 +60,7 @@ where
 #[must_use]
 pub fn filter_by_categories<T>(
     items: Vec<(String, Vec<T>)>,
-    active_categories: &[String],
+    active_categories: &[Category],
     mode: MatchMode,
 ) -> Vec<T> {
     use super::category_matcher::matches;
@@ -68,9 +68,9 @@ pub fn filter_by_categories<T>(
     items
         .into_iter()
         .filter(|(section_name, _)| {
-            let categories: Vec<String> = section_name
+            let categories: Vec<Category> = section_name
                 .split('-')
-                .map(|s| s.trim().to_lowercase())
+                .map(|s| Category::from_tag(s.trim()))
                 .collect();
             matches(&categories, active_categories, mode)
         })

@@ -3,7 +3,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
+use super::category_matcher::{Category, MatchMode};
 use super::toml_loader;
 
 /// A git config key-value pair to apply globally.
@@ -26,7 +26,7 @@ struct GitConfigSection {
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<GitSetting>> {
+pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<GitSetting>> {
     let items = toml_loader::load_section_items(path, |s: GitConfigSection| s.settings)?;
     Ok(toml_loader::filter_by_categories(
         items,
@@ -51,7 +51,7 @@ settings = [
 ]
 "#,
         );
-        let settings = load(&path, &["windows".to_string()]).unwrap();
+        let settings = load(&path, &[Category::Windows]).unwrap();
         assert_eq!(settings.len(), 2);
         assert_eq!(settings[0].key, "core.autocrlf");
         assert_eq!(settings[0].value, "false");
@@ -64,7 +64,7 @@ settings = [
 settings = [{ key = "core.autocrlf", value = "false" }]
 "#,
         );
-        let settings = load(&path, &["base".to_string(), "linux".to_string()]).unwrap();
+        let settings = load(&path, &[Category::Base, Category::Linux]).unwrap();
         assert!(settings.is_empty());
     }
 

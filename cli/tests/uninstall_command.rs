@@ -142,9 +142,11 @@ fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
         Arc::new(std::sync::RwLock::new(config)),
         Arc::new(platform),
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
-        true, // dry_run
         executor,
-        false, // parallel
+        dotfiles_cli::tasks::ContextOpts {
+            dry_run: true,
+            parallel: false,
+        },
     )
     .expect("create context");
 
@@ -317,9 +319,11 @@ fn uninstall_tasks_should_run_with_windows_platform() {
         Arc::new(std::sync::RwLock::new(config)),
         Arc::new(platform),
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
-        true, // dry_run
         executor,
-        false, // parallel
+        dotfiles_cli::tasks::ContextOpts {
+            dry_run: true,
+            parallel: false,
+        },
     )
     .expect("create context");
 

@@ -50,6 +50,7 @@ pub(crate) use task_deps;
 // Re-export public items so downstream `use super::` and `use crate::tasks::`
 // continue to work unchanged.
 pub use processing::Context;
+pub use processing::ContextOpts;
 #[allow(unused_imports)] // TaskStats is used by doc-tests via the lib crate
 pub use processing::{
     ProcessOpts, TaskResult, TaskStats, process_resource_states, process_resources,

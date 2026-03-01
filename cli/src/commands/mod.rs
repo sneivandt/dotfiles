@@ -95,9 +95,11 @@ impl CommandSetup {
             Arc::new(std::sync::RwLock::new(self.config)),
             Arc::new(self.platform),
             Arc::clone(log) as Arc<dyn Log>,
-            global.dry_run,
             executor,
-            global.parallel,
+            crate::tasks::ContextOpts {
+                dry_run: global.dry_run,
+                parallel: global.parallel,
+            },
         )
     }
 }

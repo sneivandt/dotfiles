@@ -33,24 +33,46 @@ fn process_packages(
     ));
     let installed = get_installed_packages(manager, &*ctx.executor)?;
 
-    // Winget does not support multi-package installs; fall back to the
-    // per-resource loop so a single failure does not abort the rest.
     if manager == PackageManager::Winget {
-        let resource_states = packages.iter().map(|pkg| {
-            let resource =
-                PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor));
-            let state = resource.state_from_installed(&installed);
-            (resource, state)
-        });
-        return process_resource_states(
-            ctx,
-            resource_states,
-            &ProcessOpts::apply_all("install").no_bail(),
-        );
+        process_packages_per_package(ctx, packages, manager, &installed)
+    } else {
+        Ok(process_packages_batch(ctx, packages, manager, &installed))
     }
+}
 
-    // Pacman / Paru: collect missing packages and install them in one batch
-    // command, which is faster and resolves cross-package dependencies once.
+/// Winget path: install packages individually so one failure does not abort the rest.
+///
+/// Winget does not support multi-package installs, so each package is processed
+/// via the per-resource loop with `no_bail` so a single failure does not prevent
+/// the remaining packages from being attempted.
+fn process_packages_per_package(
+    ctx: &Context,
+    packages: &[Package],
+    manager: PackageManager,
+    installed: &std::collections::HashSet<String>,
+) -> Result<TaskResult> {
+    let resource_states = packages.iter().map(|pkg| {
+        let resource = PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor));
+        let state = resource.state_from_installed(installed);
+        (resource, state)
+    });
+    process_resource_states(
+        ctx,
+        resource_states,
+        &ProcessOpts::apply_all("install").no_bail(),
+    )
+}
+
+/// Pacman/Paru path: collect missing packages and install them in a single batch command.
+///
+/// Faster than individual installs and allows the package manager to resolve
+/// cross-package dependencies across the full set at once.
+fn process_packages_batch(
+    ctx: &Context,
+    packages: &[Package],
+    manager: PackageManager,
+    installed: &std::collections::HashSet<String>,
+) -> TaskResult {
     let resources: Vec<PackageResource> = packages
         .iter()
         .map(|pkg| PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor)))
@@ -69,7 +91,7 @@ fn process_packages(
     }
 
     if missing.is_empty() {
-        return Ok(stats.finish(ctx));
+        return stats.finish(ctx);
     }
 
     if ctx.dry_run {
@@ -78,7 +100,7 @@ fn process_packages(
                 .dry_run(&format!("would install: {}", r.description()));
         }
         stats.changed = missing.len() as u32;
-        return Ok(stats.finish(ctx));
+        return stats.finish(ctx);
     }
 
     ctx.log
@@ -90,7 +112,7 @@ fn process_packages(
         stats.changed = missing.len() as u32;
     }
 
-    Ok(stats.finish(ctx))
+    stats.finish(ctx)
 }
 
 /// Install system packages via pacman or winget.

@@ -1,7 +1,7 @@
 //! Windows Developer Mode resource.
 use anyhow::Result;
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Applicable, Resource, ResourceChange, ResourceState};
 
 /// Registry key path for Windows Developer Mode (display/description only).
 const DEVELOPER_MODE_KEY: &str = r"HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock";
@@ -34,11 +34,37 @@ impl Default for DeveloperModeResource {
     }
 }
 
-impl Resource for DeveloperModeResource {
+impl Applicable for DeveloperModeResource {
     fn description(&self) -> String {
         format!("{DEVELOPER_MODE_KEY}\\{DEVELOPER_MODE_VALUE}")
     }
 
+    fn apply(&self) -> Result<ResourceChange> {
+        #[cfg(windows)]
+        {
+            use winreg::RegKey;
+            use winreg::enums::HKEY_LOCAL_MACHINE;
+            let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+            match hklm.create_subkey(DEVELOPER_MODE_SUBKEY) {
+                Ok((key, _)) => match key.set_value(DEVELOPER_MODE_VALUE, &1u32) {
+                    Ok(()) => Ok(ResourceChange::Applied),
+                    Err(e) => Ok(ResourceChange::Skipped {
+                        reason: e.to_string(),
+                    }),
+                },
+                Err(e) => Ok(ResourceChange::Skipped {
+                    reason: e.to_string(),
+                }),
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            anyhow::bail!("developer mode is only supported on Windows")
+        }
+    }
+}
+
+impl Resource for DeveloperModeResource {
     fn current_state(&self) -> Result<ResourceState> {
         #[cfg(windows)]
         {
@@ -65,30 +91,6 @@ impl Resource for DeveloperModeResource {
         #[cfg(not(windows))]
         {
             Ok(ResourceState::Missing)
-        }
-    }
-
-    fn apply(&self) -> Result<ResourceChange> {
-        #[cfg(windows)]
-        {
-            use winreg::RegKey;
-            use winreg::enums::HKEY_LOCAL_MACHINE;
-            let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-            match hklm.create_subkey(DEVELOPER_MODE_SUBKEY) {
-                Ok((key, _)) => match key.set_value(DEVELOPER_MODE_VALUE, &1u32) {
-                    Ok(()) => Ok(ResourceChange::Applied),
-                    Err(e) => Ok(ResourceChange::Skipped {
-                        reason: e.to_string(),
-                    }),
-                },
-                Err(e) => Ok(ResourceChange::Skipped {
-                    reason: e.to_string(),
-                }),
-            }
-        }
-        #[cfg(not(windows))]
-        {
-            anyhow::bail!("developer mode is only supported on Windows")
         }
     }
 }

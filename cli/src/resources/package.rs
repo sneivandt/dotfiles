@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Applicable, Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
 
 /// Supported package managers.
@@ -178,39 +178,9 @@ pub fn batch_install_packages(resources: &[&PackageResource]) -> Result<()> {
     Ok(())
 }
 
-impl Resource for PackageResource {
+impl Applicable for PackageResource {
     fn description(&self) -> String {
         format!("{} ({})", self.name, self.manager)
-    }
-
-    fn current_state(&self) -> Result<ResourceState> {
-        match self.manager {
-            PackageManager::Pacman | PackageManager::Paru => {
-                let result = self.executor.run_unchecked("pacman", &["-Q", &self.name])?;
-                if result.success {
-                    Ok(ResourceState::Correct)
-                } else {
-                    Ok(ResourceState::Missing)
-                }
-            }
-            PackageManager::Winget => {
-                let result = self.executor.run_unchecked(
-                    "winget",
-                    &[
-                        "list",
-                        "--id",
-                        &self.name,
-                        "--exact",
-                        "--accept-source-agreements",
-                    ],
-                )?;
-                if result.success && result.stdout.contains(&self.name) {
-                    Ok(ResourceState::Correct)
-                } else {
-                    Ok(ResourceState::Missing)
-                }
-            }
-        }
     }
 
     fn apply(&self) -> Result<ResourceChange> {
@@ -254,6 +224,38 @@ impl Resource for PackageResource {
                     Ok(ResourceChange::Skipped {
                         reason: format!("winget install failed: {detail}"),
                     })
+                }
+            }
+        }
+    }
+}
+
+impl Resource for PackageResource {
+    fn current_state(&self) -> Result<ResourceState> {
+        match self.manager {
+            PackageManager::Pacman | PackageManager::Paru => {
+                let result = self.executor.run_unchecked("pacman", &["-Q", &self.name])?;
+                if result.success {
+                    Ok(ResourceState::Correct)
+                } else {
+                    Ok(ResourceState::Missing)
+                }
+            }
+            PackageManager::Winget => {
+                let result = self.executor.run_unchecked(
+                    "winget",
+                    &[
+                        "list",
+                        "--id",
+                        &self.name,
+                        "--exact",
+                        "--accept-source-agreements",
+                    ],
+                )?;
+                if result.success && result.stdout.contains(&self.name) {
+                    Ok(ResourceState::Correct)
+                } else {
+                    Ok(ResourceState::Missing)
                 }
             }
         }

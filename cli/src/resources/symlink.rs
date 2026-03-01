@@ -2,7 +2,7 @@
 use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Applicable, Resource, ResourceChange, ResourceState};
 
 /// A symlink resource that can be checked and applied.
 #[derive(Debug, Clone)]
@@ -21,11 +21,42 @@ impl SymlinkResource {
     }
 }
 
-impl Resource for SymlinkResource {
+impl Applicable for SymlinkResource {
     fn description(&self) -> String {
         format!("{} -> {}", self.target.display(), self.source.display())
     }
 
+    fn apply(&self) -> Result<ResourceChange> {
+        super::fs::ensure_parent_dir(&self.target)?;
+
+        // Remove existing target if it's a symlink or file
+        if self.target.exists() || self.target.symlink_metadata().is_ok() {
+            remove_symlink(&self.target)
+                .with_context(|| format!("remove existing: {}", self.target.display()))?;
+        }
+
+        // Create the symlink
+        create_symlink(&self.source, &self.target)
+            .with_context(|| format!("create link: {}", self.target.display()))?;
+
+        Ok(ResourceChange::Applied)
+    }
+
+    fn remove(&self) -> Result<ResourceChange> {
+        // Copy source content into place, then remove the symlink, so the user
+        // retains the file/directory after uninstall instead of losing it.
+        copy_into_place(&self.source, &self.target).with_context(|| {
+            format!(
+                "materialize {} -> {}",
+                self.target.display(),
+                self.source.display()
+            )
+        })?;
+        Ok(ResourceChange::Applied)
+    }
+}
+
+impl Resource for SymlinkResource {
     fn current_state(&self) -> Result<ResourceState> {
         // Check if source exists
         if !self.source.exists() {
@@ -69,35 +100,6 @@ impl Resource for SymlinkResource {
                 }
             },
         )
-    }
-
-    fn apply(&self) -> Result<ResourceChange> {
-        super::fs::ensure_parent_dir(&self.target)?;
-
-        // Remove existing target if it's a symlink or file
-        if self.target.exists() || self.target.symlink_metadata().is_ok() {
-            remove_symlink(&self.target)
-                .with_context(|| format!("remove existing: {}", self.target.display()))?;
-        }
-
-        // Create the symlink
-        create_symlink(&self.source, &self.target)
-            .with_context(|| format!("create link: {}", self.target.display()))?;
-
-        Ok(ResourceChange::Applied)
-    }
-
-    fn remove(&self) -> Result<ResourceChange> {
-        // Copy source content into place, then remove the symlink, so the user
-        // retains the file/directory after uninstall instead of losing it.
-        copy_into_place(&self.source, &self.target).with_context(|| {
-            format!(
-                "materialize {} -> {}",
-                self.target.display(),
-                self.source.display()
-            )
-        })?;
-        Ok(ResourceChange::Applied)
     }
 }
 

@@ -198,16 +198,7 @@ impl Resource for RegistryResource {
         #[cfg(windows)]
         {
             let current_value = native::read_value(&self.key_path, &self.value_name)?;
-            current_value.map_or_else(
-                || Ok(ResourceState::Missing),
-                |current| {
-                    if value_matches(&current, &self.value_data) {
-                        Ok(ResourceState::Correct)
-                    } else {
-                        Ok(ResourceState::Incorrect { current })
-                    }
-                },
-            )
+            Ok(self.state_from_cached(current_value.as_deref()))
         }
         #[cfg(not(windows))]
         {

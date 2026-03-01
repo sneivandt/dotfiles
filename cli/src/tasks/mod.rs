@@ -122,7 +122,7 @@ pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
     let repo_updated = update_signal::UpdateSignal::new();
     vec![
         Box::new(developer_mode::EnableDeveloperMode),
-        Box::new(sparse_checkout::ConfigureSparseCheckout),
+        Box::new(sparse_checkout::ConfigureSparseCheckout::new()),
         Box::new(update::UpdateRepository::new(repo_updated.clone())),
         Box::new(git_config::ConfigureGit),
         Box::new(hooks::InstallGitHooks::new()),

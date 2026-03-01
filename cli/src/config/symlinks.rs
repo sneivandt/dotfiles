@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
+use super::category_matcher::{Category, MatchMode};
 use super::toml_loader;
 
 /// A symlink to create: source (in symlinks/) → target (in $HOME).
@@ -38,7 +38,7 @@ struct SymlinkSection {
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Symlink>> {
+pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Symlink>> {
     let config: HashMap<String, SymlinkSection> = toml_loader::load_config(path)?;
 
     let items: Vec<(String, Vec<SymlinkEntry>)> =
@@ -66,6 +66,7 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<Symlink>> {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::config::category_matcher::Category;
     use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
 
     #[test]
@@ -78,7 +79,7 @@ symlinks = ["bashrc", "config/git/config"]
 symlinks = ["config/i3"]
 "#,
         );
-        let symlinks: Vec<Symlink> = load(&path, &["base".to_string()]).unwrap();
+        let symlinks: Vec<Symlink> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(symlinks.len(), 2);
         assert_eq!(symlinks[0].source, "bashrc");
         assert_eq!(symlinks[1].source, "config/git/config");
@@ -94,15 +95,8 @@ symlinks = ["bashrc"]
 symlinks = ["config/i3"]
 "#,
         );
-        let symlinks: Vec<Symlink> = load(
-            &path,
-            &[
-                "base".to_string(),
-                "arch".to_string(),
-                "desktop".to_string(),
-            ],
-        )
-        .unwrap();
+        let symlinks: Vec<Symlink> =
+            load(&path, &[Category::Base, Category::Arch, Category::Desktop]).unwrap();
         assert_eq!(symlinks.len(), 2);
     }
 
@@ -116,7 +110,7 @@ symlinks = [
 ]
 "#,
         );
-        let symlinks: Vec<Symlink> = load(&path, &["base".to_string()]).unwrap();
+        let symlinks: Vec<Symlink> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(symlinks.len(), 2);
         assert_eq!(symlinks[0].source, "bashrc");
         assert!(symlinks[0].target.is_none());

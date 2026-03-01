@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
+use super::category_matcher::{Category, MatchMode};
 use super::toml_loader;
 
 /// A GitHub Copilot skill URL.
@@ -25,7 +25,7 @@ struct SkillSection {
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<CopilotSkill>> {
+pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<CopilotSkill>> {
     let config: HashMap<String, SkillSection> = toml_loader::load_config(path)?;
 
     let items: Vec<(String, Vec<String>)> =
@@ -41,6 +41,7 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<CopilotSkil
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::config::category_matcher::Category;
     use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
 
     #[test]
@@ -53,7 +54,7 @@ skills = [
 ]
 "#,
         );
-        let skills: Vec<CopilotSkill> = load(&path, &["base".to_string()]).unwrap();
+        let skills: Vec<CopilotSkill> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(skills.len(), 2);
         assert!(skills[0].url.starts_with("https://"));
     }
@@ -68,7 +69,7 @@ skills = ["https://github.com/example/base-skill"]
 skills = ["https://github.com/example/desktop-skill"]
 "#,
         );
-        let skills: Vec<CopilotSkill> = load(&path, &["base".to_string()]).unwrap();
+        let skills: Vec<CopilotSkill> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(skills.len(), 1, "desktop section should not be loaded");
         assert!(skills[0].url.contains("base-skill"));
     }

@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::io::{self, Write};
 use std::path::Path;
 
+use crate::config::category_matcher::Category;
 use crate::error::ConfigError;
 use crate::platform::Platform;
 
@@ -13,10 +14,10 @@ use crate::platform::Platform;
 pub struct Profile {
     /// The profile name (e.g., "base", "desktop").
     pub name: String,
-    /// Categories that are active for this profile (e.g., `["base", "linux"]`).
-    pub active_categories: Vec<String>,
-    /// Categories that are excluded for this profile (e.g., `["windows", "desktop"]`).
-    pub excluded_categories: Vec<String>,
+    /// Categories that are active for this profile (e.g., `[Category::Base, Category::Linux]`).
+    pub active_categories: Vec<Category>,
+    /// Categories that are excluded for this profile (e.g., `[Category::Windows, Category::Desktop]`).
+    pub excluded_categories: Vec<Category>,
 }
 
 /// Raw profile definition from profiles.toml.
@@ -86,17 +87,17 @@ pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profi
         .ok_or_else(|| ConfigError::InvalidProfile(format!("{name} (available: {available})")))?;
 
     // Start with the profile's own include/exclude
-    let mut active: Vec<String> = vec!["base".to_string()];
-    active.extend(def.include.iter().cloned());
+    let mut active: Vec<Category> = vec![Category::Base];
+    active.extend(def.include.iter().map(|s| Category::from_tag(s)));
 
-    let mut excluded = def.exclude.clone();
+    let mut excluded: Vec<Category> = def.exclude.iter().map(|s| Category::from_tag(s)).collect();
 
     // Auto-add platform-detected categories
-    for category in ["linux", "windows", "arch"] {
-        if !platform.excludes_category(category) {
-            active.push(category.to_string());
-        } else if !excluded.iter().any(|c| c == category) {
-            excluded.push(category.to_string());
+    for category in [Category::Linux, Category::Windows, Category::Arch] {
+        if !platform.excludes_category(&category) {
+            active.push(category.clone());
+        } else if !excluded.contains(&category) {
+            excluded.push(category);
         }
     }
 
@@ -336,72 +337,72 @@ mod tests {
         let dir = std::env::temp_dir();
         let profile = resolve("base", &dir, &linux_platform()).unwrap();
         assert_eq!(profile.name, "base");
-        assert!(profile.active_categories.contains(&"base".to_string()));
-        assert!(profile.active_categories.contains(&"linux".to_string()));
-        assert!(!profile.active_categories.contains(&"desktop".to_string()));
-        assert!(profile.excluded_categories.contains(&"windows".to_string()));
-        assert!(profile.excluded_categories.contains(&"arch".to_string()));
-        assert!(profile.excluded_categories.contains(&"desktop".to_string()));
+        assert!(profile.active_categories.contains(&Category::Base));
+        assert!(profile.active_categories.contains(&Category::Linux));
+        assert!(!profile.active_categories.contains(&Category::Desktop));
+        assert!(profile.excluded_categories.contains(&Category::Windows));
+        assert!(profile.excluded_categories.contains(&Category::Arch));
+        assert!(profile.excluded_categories.contains(&Category::Desktop));
     }
 
     #[test]
     fn resolve_desktop_on_linux() {
         let dir = std::env::temp_dir();
         let profile = resolve("desktop", &dir, &linux_platform()).unwrap();
-        assert!(profile.active_categories.contains(&"base".to_string()));
-        assert!(profile.active_categories.contains(&"linux".to_string()));
-        assert!(profile.active_categories.contains(&"desktop".to_string()));
-        assert!(!profile.active_categories.contains(&"arch".to_string()));
-        assert!(profile.excluded_categories.contains(&"windows".to_string()));
-        assert!(profile.excluded_categories.contains(&"arch".to_string()));
+        assert!(profile.active_categories.contains(&Category::Base));
+        assert!(profile.active_categories.contains(&Category::Linux));
+        assert!(profile.active_categories.contains(&Category::Desktop));
+        assert!(!profile.active_categories.contains(&Category::Arch));
+        assert!(profile.excluded_categories.contains(&Category::Windows));
+        assert!(profile.excluded_categories.contains(&Category::Arch));
     }
 
     #[test]
     fn resolve_desktop_on_arch() {
         let dir = std::env::temp_dir();
         let profile = resolve("desktop", &dir, &arch_platform()).unwrap();
-        assert!(profile.active_categories.contains(&"base".to_string()));
-        assert!(profile.active_categories.contains(&"linux".to_string()));
-        assert!(profile.active_categories.contains(&"desktop".to_string()));
-        assert!(profile.active_categories.contains(&"arch".to_string()));
-        assert!(profile.excluded_categories.contains(&"windows".to_string()));
-        assert!(!profile.excluded_categories.contains(&"arch".to_string()));
+        assert!(profile.active_categories.contains(&Category::Base));
+        assert!(profile.active_categories.contains(&Category::Linux));
+        assert!(profile.active_categories.contains(&Category::Desktop));
+        assert!(profile.active_categories.contains(&Category::Arch));
+        assert!(profile.excluded_categories.contains(&Category::Windows));
+        assert!(!profile.excluded_categories.contains(&Category::Arch));
     }
 
     #[test]
     fn resolve_base_on_arch() {
         let dir = std::env::temp_dir();
         let profile = resolve("base", &dir, &arch_platform()).unwrap();
-        assert!(profile.active_categories.contains(&"base".to_string()));
-        assert!(profile.active_categories.contains(&"linux".to_string()));
-        assert!(profile.active_categories.contains(&"arch".to_string()));
-        assert!(!profile.active_categories.contains(&"desktop".to_string()));
-        assert!(profile.excluded_categories.contains(&"windows".to_string()));
-        assert!(profile.excluded_categories.contains(&"desktop".to_string()));
+        assert!(profile.active_categories.contains(&Category::Base));
+        assert!(profile.active_categories.contains(&Category::Linux));
+        assert!(profile.active_categories.contains(&Category::Arch));
+        assert!(!profile.active_categories.contains(&Category::Desktop));
+        assert!(profile.excluded_categories.contains(&Category::Windows));
+        assert!(profile.excluded_categories.contains(&Category::Desktop));
     }
 
     #[test]
     fn resolve_base_on_windows() {
         let dir = std::env::temp_dir();
         let profile = resolve("base", &dir, &windows_platform()).unwrap();
-        assert!(profile.active_categories.contains(&"base".to_string()));
-        assert!(profile.active_categories.contains(&"windows".to_string()));
-        assert!(!profile.active_categories.contains(&"linux".to_string()));
-        assert!(!profile.active_categories.contains(&"desktop".to_string()));
-        assert!(profile.excluded_categories.contains(&"linux".to_string()));
-        assert!(profile.excluded_categories.contains(&"desktop".to_string()));
+        assert!(profile.active_categories.contains(&Category::Base));
+        assert!(profile.active_categories.contains(&Category::Windows));
+        assert!(!profile.active_categories.contains(&Category::Linux));
+        assert!(!profile.active_categories.contains(&Category::Desktop));
+        assert!(profile.excluded_categories.contains(&Category::Linux));
+        assert!(profile.excluded_categories.contains(&Category::Desktop));
     }
 
     #[test]
     fn resolve_desktop_on_windows() {
         let dir = std::env::temp_dir();
         let profile = resolve("desktop", &dir, &windows_platform()).unwrap();
-        assert!(profile.active_categories.contains(&"base".to_string()));
-        assert!(profile.active_categories.contains(&"windows".to_string()));
-        assert!(profile.active_categories.contains(&"desktop".to_string()));
-        assert!(!profile.active_categories.contains(&"linux".to_string()));
-        assert!(profile.excluded_categories.contains(&"linux".to_string()));
-        assert!(profile.excluded_categories.contains(&"arch".to_string()));
+        assert!(profile.active_categories.contains(&Category::Base));
+        assert!(profile.active_categories.contains(&Category::Windows));
+        assert!(profile.active_categories.contains(&Category::Desktop));
+        assert!(!profile.active_categories.contains(&Category::Linux));
+        assert!(profile.excluded_categories.contains(&Category::Linux));
+        assert!(profile.excluded_categories.contains(&Category::Arch));
     }
 
     #[test]

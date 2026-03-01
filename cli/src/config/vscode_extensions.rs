@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
+use super::category_matcher::{Category, MatchMode};
 use super::toml_loader;
 
 /// A VS Code extension to install.
@@ -25,7 +25,7 @@ struct ExtensionSection {
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<VsCodeExtension>> {
+pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<VsCodeExtension>> {
     let config: HashMap<String, ExtensionSection> = toml_loader::load_config(path)?;
 
     let items: Vec<(String, Vec<String>)> =
@@ -41,6 +41,7 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<VsCodeExten
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::config::category_matcher::Category;
     use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
 
     #[test]
@@ -51,7 +52,7 @@ extensions = ["github.copilot-chat", "ms-python.python"]
 "#,
         );
         let extensions: Vec<VsCodeExtension> =
-            load(&path, &["base".to_string(), "desktop".to_string()]).unwrap();
+            load(&path, &[Category::Base, Category::Desktop]).unwrap();
         assert_eq!(extensions.len(), 2);
         assert_eq!(extensions[0].id, "github.copilot-chat");
     }
@@ -66,7 +67,7 @@ extensions = ["github.copilot"]
 extensions = ["github.copilot-chat"]
 "#,
         );
-        let extensions: Vec<VsCodeExtension> = load(&path, &["base".to_string()]).unwrap();
+        let extensions: Vec<VsCodeExtension> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(extensions.len(), 1, "desktop section should not be loaded");
         assert_eq!(extensions[0].id, "github.copilot");
     }

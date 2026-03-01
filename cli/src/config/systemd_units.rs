@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::category_matcher::MatchMode;
+use super::category_matcher::{Category, MatchMode};
 use super::toml_loader;
 
 /// A systemd unit to enable.
@@ -38,7 +38,7 @@ struct SystemdSection {
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<SystemdUnit>> {
+pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<SystemdUnit>> {
     let config: HashMap<String, SystemdSection> = toml_loader::load_config(path)?;
 
     let items: Vec<(String, Vec<UnitEntry>)> =
@@ -63,6 +63,7 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<SystemdUnit
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::config::category_matcher::Category;
     use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
 
     #[test]
@@ -75,7 +76,7 @@ units = ["clean-home-tmp.timer"]
 units = ["dunst.service"]
 "#,
         );
-        let units: Vec<SystemdUnit> = load(&path, &["base".to_string()]).unwrap();
+        let units: Vec<SystemdUnit> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(units.len(), 1);
         assert_eq!(units[0].name, "clean-home-tmp.timer");
         assert_eq!(units[0].scope, "user");
@@ -88,7 +89,7 @@ units = ["dunst.service"]
 units = ["clean-home-tmp.timer"]
 "#,
         );
-        let units = load(&path, &["base".to_string()]).unwrap();
+        let units = load(&path, &[Category::Base]).unwrap();
         assert_eq!(units[0].scope, "user");
     }
 
@@ -99,7 +100,7 @@ units = ["clean-home-tmp.timer"]
 units = [{ name = "some-daemon.service", scope = "system" }]
 "#,
         );
-        let units = load(&path, &["base".to_string()]).unwrap();
+        let units = load(&path, &[Category::Base]).unwrap();
         assert_eq!(units[0].name, "some-daemon.service");
         assert_eq!(units[0].scope, "system");
     }

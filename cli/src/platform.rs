@@ -142,11 +142,12 @@ impl Platform {
     /// Check whether a profile category tag should be excluded based on platform.
     /// Returns true if the tag is incompatible with this platform.
     #[must_use]
-    pub fn excludes_category(&self, category: &str) -> bool {
+    pub fn excludes_category(&self, category: &crate::config::category_matcher::Category) -> bool {
+        use crate::config::category_matcher::Category;
         match category {
-            "linux" => self.os != Os::Linux,
-            "windows" => self.os != Os::Windows,
-            "arch" => !self.is_arch_linux(),
+            Category::Linux => self.os != Os::Linux,
+            Category::Windows => self.os != Os::Windows,
+            Category::Arch => !self.is_arch_linux(),
             _ => false,
         }
     }
@@ -175,6 +176,7 @@ impl Platform {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::config::category_matcher::Category;
 
     #[test]
     fn platform_detect_returns_valid() {
@@ -209,39 +211,39 @@ mod tests {
     #[test]
     fn excludes_category_linux_on_linux() {
         let p = Platform::new(Os::Linux, false);
-        assert!(!p.excludes_category("linux"));
+        assert!(!p.excludes_category(&Category::Linux));
     }
 
     #[test]
     fn excludes_category_linux_on_windows() {
         let p = Platform::new(Os::Windows, false);
-        assert!(p.excludes_category("linux"));
+        assert!(p.excludes_category(&Category::Linux));
     }
 
     #[test]
     fn excludes_category_windows_on_linux() {
         let p = Platform::new(Os::Linux, false);
-        assert!(p.excludes_category("windows"));
-        assert!(!p.excludes_category("desktop"));
+        assert!(p.excludes_category(&Category::Windows));
+        assert!(!p.excludes_category(&Category::Desktop));
     }
 
     #[test]
     fn excludes_category_arch_on_non_arch() {
         let p = Platform::new(Os::Linux, false);
-        assert!(p.excludes_category("arch"));
+        assert!(p.excludes_category(&Category::Arch));
     }
 
     #[test]
     fn excludes_category_arch_on_arch() {
         let p = Platform::new(Os::Linux, true);
-        assert!(!p.excludes_category("arch"));
+        assert!(!p.excludes_category(&Category::Arch));
     }
 
     #[test]
     fn excludes_category_windows_on_windows() {
         let p = Platform::new(Os::Windows, false);
-        assert!(!p.excludes_category("windows"));
-        assert!(p.excludes_category("arch"));
+        assert!(!p.excludes_category(&Category::Windows));
+        assert!(p.excludes_category(&Category::Arch));
     }
 
     #[test]

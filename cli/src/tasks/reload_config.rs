@@ -128,7 +128,7 @@ mod tests {
         let mut config = empty_config(dir.path().to_path_buf());
         config.profile = crate::config::profiles::Profile {
             name: "base".to_string(),
-            active_categories: vec!["base".to_string()],
+            active_categories: vec![crate::config::category_matcher::Category::Base],
             excluded_categories: vec![],
         };
         let ctx = make_linux_context(config);

@@ -43,11 +43,15 @@ pub mod test_helpers {
     /// Panics if the temp directory cannot be created or the loader fails.
     #[allow(clippy::expect_used)]
     pub fn assert_load_missing_returns_empty<T>(
-        loader: impl Fn(&std::path::Path, &[String]) -> anyhow::Result<Vec<T>>,
+        loader: impl Fn(
+            &std::path::Path,
+            &[crate::config::category_matcher::Category],
+        ) -> anyhow::Result<Vec<T>>,
     ) {
+        use crate::config::category_matcher::Category;
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let path = dir.path().join("nonexistent.toml");
-        let result = loader(&path, &["base".to_string()]).expect("loader should not fail");
+        let result = loader(&path, &[Category::Base]).expect("loader should not fail");
         assert!(result.is_empty(), "missing file should produce empty list");
     }
 }
@@ -172,6 +176,7 @@ impl Config {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::config::category_matcher::Category;
     use crate::platform::{Os, Platform};
 
     /// Create a temporary directory tree with the minimal conf/ files required
@@ -204,8 +209,8 @@ mod tests {
 
         let profile = profiles::Profile {
             name: "base".to_string(),
-            active_categories: vec!["base".to_string()],
-            excluded_categories: vec!["desktop".to_string()],
+            active_categories: vec![Category::Base],
+            excluded_categories: vec![Category::Desktop],
         };
         (dir, profile, platform)
     }

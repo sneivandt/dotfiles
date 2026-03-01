@@ -49,23 +49,26 @@ usage() {
 # Parse arguments — only recognised options are accepted
 # --------------------------------------------------------------------------- #
 BUILD_MODE=false
-CLI_ARGS=""
-EXPECT_VALUE=""
+SUBCOMMAND=""
+PROFILE_VALUE=""
+DRY_RUN=false
+VERBOSE=false
+EXPECT_PROFILE=false
 
 for arg in "$@"; do
-  if [ -n "$EXPECT_VALUE" ]; then
-    CLI_ARGS="$CLI_ARGS $(printf "'%s'" "$(printf '%s' "$arg" | sed "s/'/'\\\\''/g")")"
-    EXPECT_VALUE=""
+  if [ "$EXPECT_PROFILE" = true ]; then
+    PROFILE_VALUE="$arg"
+    EXPECT_PROFILE=false
     continue
   fi
   case "$arg" in
     --build)                BUILD_MODE=true ;;
     -h|--help)              usage ;;
-    -p|--profile)           CLI_ARGS="$CLI_ARGS '$arg'"; EXPECT_VALUE=1 ;;
-    -d|--dry-run)           CLI_ARGS="$CLI_ARGS '$arg'" ;;
-    -v|--verbose)           CLI_ARGS="$CLI_ARGS '$arg'" ;;
+    -p|--profile)           EXPECT_PROFILE=true ;;
+    -d|--dry-run)           DRY_RUN=true ;;
+    -v|--verbose)           VERBOSE=true ;;
     install|uninstall|test|version)
-                            CLI_ARGS="$CLI_ARGS '$arg'" ;;
+                            SUBCOMMAND="$arg" ;;
     -*)                     echo "ERROR: Unknown option: $arg" >&2
                             echo "Run 'dotfiles.sh --help' for usage." >&2
                             exit 1 ;;
@@ -75,12 +78,17 @@ for arg in "$@"; do
   esac
 done
 
-if [ -n "$EXPECT_VALUE" ]; then
+if [ "$EXPECT_PROFILE" = true ]; then
   echo "ERROR: Option requires a value: --profile" >&2
   exit 1
 fi
 
-eval set -- "$CLI_ARGS"
+# Reconstruct positional parameters from validated arguments without eval
+set --
+if [ -n "$SUBCOMMAND" ];    then set -- "$@" "$SUBCOMMAND"; fi
+if [ -n "$PROFILE_VALUE" ]; then set -- "$@" "--profile" "$PROFILE_VALUE"; fi
+if [ "$DRY_RUN" = true ];   then set -- "$@" "--dry-run"; fi
+if [ "$VERBOSE" = true ];   then set -- "$@" "--verbose"; fi
 
 # --------------------------------------------------------------------------- #
 # Build mode: build from source and run
@@ -200,26 +208,34 @@ download_binary() {
 
   chmod +x "$BINARY"
 
-  # Download and verify checksum if available
+  # Download and verify checksum
   checksum_url="https://github.com/$REPO/releases/download/$version/checksums.sha256"
-  if command -v sha256sum >/dev/null 2>&1; then
-    tmpfile=$(mktemp)
-    trap 'rm -f "$tmpfile"' EXIT
-    if download_with_retry "$checksum_url" "$tmpfile"; then
-      expected=$(awk -v fname="$asset" '$2 == fname {print $1}' "$tmpfile")
-      actual=$(sha256sum "$BINARY" | awk '{print $1}')
-      if [ -n "$expected" ] && [ "$expected" != "$actual" ]; then
-        echo "ERROR: Checksum verification failed!" >&2
-        rm -f "$BINARY"
-        rm -f "$tmpfile"
-        exit 1
-      fi
-    fi
-    rm -f "$tmpfile"
-    trap - EXIT
-  else
-    echo "WARNING: sha256sum not found, skipping checksum verification" >&2
+  if ! command -v sha256sum >/dev/null 2>&1; then
+    echo "ERROR: sha256sum not found. Cannot verify download integrity." >&2
+    rm -f "$BINARY"
+    exit 1
   fi
+  tmpfile=$(mktemp)
+  trap 'rm -f "$tmpfile"' EXIT
+  if ! download_with_retry "$checksum_url" "$tmpfile"; then
+    echo "ERROR: Failed to download checksum file for $version." >&2
+    rm -f "$BINARY"
+    exit 1
+  fi
+  expected=$(awk -v fname="$asset" '$2 == fname {print $1}' "$tmpfile")
+  if [ -z "$expected" ]; then
+    echo "ERROR: Checksum not found in checksum file for $asset." >&2
+    rm -f "$BINARY"
+    exit 1
+  fi
+  actual=$(sha256sum "$BINARY" | awk '{print $1}')
+  if [ "$expected" != "$actual" ]; then
+    echo "ERROR: Checksum verification failed!" >&2
+    rm -f "$BINARY"
+    exit 1
+  fi
+  rm -f "$tmpfile"
+  trap - EXIT
 }
 
 # Update the version cache

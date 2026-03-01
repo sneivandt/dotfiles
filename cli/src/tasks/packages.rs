@@ -571,4 +571,26 @@ mod tests {
             "expected DryRun, got {result:?}"
         );
     }
+
+    #[test]
+    fn install_packages_winget_installs_per_package() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.packages.push(Package {
+            name: "Git.Git".to_string(),
+            is_aur: false,
+        });
+        // Response 1: winget list (get_installed_packages) → empty (nothing installed)
+        // Response 2: winget install Git.Git (apply via process_resource_states) → success
+        let ctx = make_package_context(
+            config,
+            Os::Windows,
+            false,
+            vec![(true, String::new()), (true, String::new())],
+        );
+        let result = InstallPackages.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Ok),
+            "expected Ok after winget per-package install, got {result:?}"
+        );
+    }
 }

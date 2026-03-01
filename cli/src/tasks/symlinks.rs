@@ -184,4 +184,75 @@ mod tests {
         let ctx = make_linux_context(config);
         assert!(UninstallSymlinks.should_run(&ctx));
     }
+
+    // ------------------------------------------------------------------
+    // InstallSymlinks::run / UninstallSymlinks::run — real filesystem
+    // ------------------------------------------------------------------
+
+    #[cfg(unix)]
+    #[test]
+    fn install_run_creates_symlink_for_configured_source() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let home_dir = tempfile::tempdir().unwrap();
+
+        // Create symlinks/ dir and a source file inside it
+        let symlinks_dir = repo_dir.path().join("symlinks");
+        std::fs::create_dir(&symlinks_dir).unwrap();
+        std::fs::write(symlinks_dir.join("bashrc"), "# bash config").unwrap();
+
+        let mut config = empty_config(repo_dir.path().to_path_buf());
+        config.symlinks.push(Symlink {
+            source: "bashrc".to_string(),
+            target: None,
+        });
+        let mut ctx = make_linux_context(config);
+        ctx.home = home_dir.path().to_path_buf();
+
+        let result = InstallSymlinks.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+
+        // Symlink must exist at $HOME/.bashrc and point to symlinks/bashrc
+        let link = home_dir.path().join(".bashrc");
+        assert!(
+            link.symlink_metadata().is_ok(),
+            "symlink should exist at ~/.bashrc"
+        );
+        let target = std::fs::read_link(&link).unwrap();
+        assert_eq!(target, symlinks_dir.join("bashrc"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn uninstall_run_materializes_symlink_content() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let home_dir = tempfile::tempdir().unwrap();
+
+        // Create source file
+        let symlinks_dir = repo_dir.path().join("symlinks");
+        std::fs::create_dir(&symlinks_dir).unwrap();
+        std::fs::write(symlinks_dir.join("bashrc"), "# bash config").unwrap();
+
+        // Pre-create the symlink at $HOME/.bashrc
+        let link = home_dir.path().join(".bashrc");
+        std::os::unix::fs::symlink(symlinks_dir.join("bashrc"), &link).unwrap();
+
+        let mut config = empty_config(repo_dir.path().to_path_buf());
+        config.symlinks.push(Symlink {
+            source: "bashrc".to_string(),
+            target: None,
+        });
+        let mut ctx = make_linux_context(config);
+        ctx.home = home_dir.path().to_path_buf();
+
+        let result = UninstallSymlinks.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+
+        // Must be a regular file (materialized), not a symlink
+        let meta = std::fs::symlink_metadata(&link).unwrap();
+        assert!(
+            !meta.is_symlink(),
+            "target should be materialized to a regular file"
+        );
+        assert_eq!(std::fs::read_to_string(&link).unwrap(), "# bash config");
+    }
 }

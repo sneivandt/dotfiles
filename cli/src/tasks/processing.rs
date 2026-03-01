@@ -298,6 +298,35 @@ fn process_resource_states_parallel<R: Resource + Send>(
     run_parallel(ctx, resource_states, opts, Ok)
 }
 
+/// Accumulate per-item [`TaskStats`] deltas in parallel using Rayon.
+///
+/// Runs `work` on each item concurrently; the resulting deltas are added to a
+/// shared `Mutex<TaskStats>`. The accumulated total is returned when all items
+/// have been processed.
+///
+/// The diagnostic thread name is captured once before dispatching and re-set
+/// on each iteration so the log timeline remains accurate even when Rayon
+/// reuses threads across work items (a stale name is harmless but misleading).
+fn collect_parallel_stats<T: Send>(
+    items: Vec<T>,
+    work: impl Fn(T) -> Result<TaskStats> + Sync + Send,
+) -> Result<TaskStats> {
+    use rayon::prelude::*;
+    let task_name = diag_thread_name();
+    let stats = Mutex::new(TaskStats::new());
+    items.into_par_iter().try_for_each(|item| -> Result<()> {
+        set_diag_thread_name(&task_name);
+        let delta = work(item)?;
+        *stats
+            .lock()
+            .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))? += delta;
+        Ok(())
+    })?;
+    Ok(stats
+        .into_inner()
+        .unwrap_or_else(std::sync::PoisonError::into_inner))
+}
+
 /// Generic parallel processing helper using Rayon.
 ///
 /// Accepts a vector of items and a closure that extracts a `(Resource, ResourceState)`
@@ -312,26 +341,11 @@ fn run_parallel<T: Send, R: Resource + Send>(
     opts: &ProcessOpts,
     get_resource_state: impl Fn(T) -> Result<(R, ResourceState)> + Sync,
 ) -> Result<TaskResult> {
-    use rayon::prelude::*;
-    let task_name = diag_thread_name();
-    let stats = Mutex::new(TaskStats::new());
-    items.into_par_iter().try_for_each(|item| -> Result<()> {
-        // Rayon reuses threads across work items, so re-set the name each
-        // iteration to ensure the diagnostic log attributes events correctly
-        // (a stale name from a previous or panicked item is harmless but
-        // misleading).
-        set_diag_thread_name(&task_name);
+    let stats = collect_parallel_stats(items, |item| {
         let (resource, current) = get_resource_state(item)?;
-        let delta = process_single(ctx, &resource, current, opts)?;
-        *stats
-            .lock()
-            .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))? += delta;
-        Ok(())
+        process_single(ctx, &resource, current, opts)
     })?;
-    Ok(stats
-        .into_inner()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .finish(ctx))
+    Ok(stats.finish(ctx))
 }
 
 /// Process resources for removal.
@@ -413,25 +427,11 @@ fn process_remove_parallel<R: Resource + Send>(
     resources: Vec<R>,
     verb: &str,
 ) -> Result<TaskResult> {
-    use rayon::prelude::*;
-    let task_name = diag_thread_name();
-    let stats = Mutex::new(TaskStats::new());
-    resources
-        .into_par_iter()
-        .try_for_each(|resource| -> Result<()> {
-            // See comment in run_parallel — re-set on each iteration.
-            set_diag_thread_name(&task_name);
-            let current = resource.current_state()?;
-            let delta = remove_single(ctx, &resource, &current, verb)?;
-            *stats
-                .lock()
-                .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))? += delta;
-            Ok(())
-        })?;
-    Ok(stats
-        .into_inner()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .finish(ctx))
+    let stats = collect_parallel_stats(resources, |resource| {
+        let current = resource.current_state()?;
+        remove_single(ctx, &resource, &current, verb)
+    })?;
+    Ok(stats.finish(ctx))
 }
 
 /// Process a single resource given its current state, returning a stats delta.

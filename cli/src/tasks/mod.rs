@@ -272,17 +272,79 @@ pub mod test_helpers {
         }
     }
 
-    /// Build a [`Context`] with the specified OS/arch and default [`WhichExecutor`].
+    /// Builder for test [`Context`] instances.
     ///
-    /// Replaces the per-platform helpers (`make_linux_context`, etc.) with a
-    /// single generic factory, reducing near-identical code.
+    /// Provides a fluent API so that tests can construct exactly the context
+    /// variant they need without relying on a growing list of factory functions.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let ctx = ContextBuilder::new(config)
+    ///     .os(crate::platform::Os::Linux)
+    ///     .arch(true)
+    ///     .which(true)
+    ///     .build();
+    /// ```
+    #[derive(Debug)]
+    #[must_use]
+    pub struct ContextBuilder {
+        config: Config,
+        os: crate::platform::Os,
+        is_arch: bool,
+        which_result: bool,
+    }
+
+    impl ContextBuilder {
+        /// Create a new builder with Linux, non-arch, `which = false` defaults.
+        pub fn new(config: Config) -> Self {
+            Self {
+                config,
+                os: crate::platform::Os::Linux,
+                is_arch: false,
+                which_result: false,
+            }
+        }
+
+        /// Set the target OS.
+        pub fn os(mut self, os: crate::platform::Os) -> Self {
+            self.os = os;
+            self
+        }
+
+        /// Set whether the platform is Arch Linux.
+        pub fn arch(mut self, is_arch: bool) -> Self {
+            self.is_arch = is_arch;
+            self
+        }
+
+        /// Set the value returned by `executor.which()`.
+        pub fn which(mut self, which_result: bool) -> Self {
+            self.which_result = which_result;
+            self
+        }
+
+        /// Consume the builder and produce a [`Context`].
+        #[must_use]
+        pub fn build(self) -> Context {
+            make_context(
+                self.config,
+                Arc::new(Platform::new(self.os, self.is_arch)),
+                Arc::new(WhichExecutor {
+                    which_result: self.which_result,
+                }),
+            )
+        }
+    }
+
+    /// Build a [`Context`] with the specified OS/arch and default [`WhichExecutor`].
     #[must_use]
     pub fn make_platform_context(
         config: Config,
         os: crate::platform::Os,
         is_arch: bool,
     ) -> Context {
-        make_platform_context_with_which(config, os, is_arch, false)
+        ContextBuilder::new(config).os(os).arch(is_arch).build()
     }
 
     /// Build a [`Context`] with the specified OS/arch and a [`WhichExecutor`]
@@ -297,11 +359,11 @@ pub mod test_helpers {
         is_arch: bool,
         which_result: bool,
     ) -> Context {
-        make_context(
-            config,
-            Arc::new(Platform::new(os, is_arch)),
-            Arc::new(WhichExecutor { which_result }),
-        )
+        ContextBuilder::new(config)
+            .os(os)
+            .arch(is_arch)
+            .which(which_result)
+            .build()
     }
 
     /// Build a [`Context`] with a Linux non-arch platform and default [`WhichExecutor`].
@@ -309,7 +371,7 @@ pub mod test_helpers {
     /// Convenience shorthand for tests that only need a plain Linux context.
     #[must_use]
     pub fn make_linux_context(config: Config) -> Context {
-        make_platform_context(config, crate::platform::Os::Linux, false)
+        ContextBuilder::new(config).build()
     }
 
     /// Build a [`Context`] with a Windows platform and default [`WhichExecutor`].
@@ -317,7 +379,9 @@ pub mod test_helpers {
     /// Convenience shorthand for tests that only need a plain Windows context.
     #[must_use]
     pub fn make_windows_context(config: Config) -> Context {
-        make_platform_context(config, crate::platform::Os::Windows, false)
+        ContextBuilder::new(config)
+            .os(crate::platform::Os::Windows)
+            .build()
     }
 
     /// Build a [`Context`] with an Arch Linux platform and default [`WhichExecutor`].
@@ -325,7 +389,7 @@ pub mod test_helpers {
     /// Convenience shorthand for tests that target Arch-specific behaviour.
     #[must_use]
     pub fn make_arch_context(config: Config) -> Context {
-        make_platform_context(config, crate::platform::Os::Linux, true)
+        ContextBuilder::new(config).arch(true).build()
     }
 
     /// Build a [`Context`] with a default Linux platform and

@@ -1,8 +1,9 @@
-//! Top-level command handlers for install, uninstall, and test.
+//! Top-level command handlers for install, uninstall, test, and version.
 pub mod install;
 mod scheduler;
 pub mod test;
 pub mod uninstall;
+pub mod version;
 
 use std::sync::Arc;
 

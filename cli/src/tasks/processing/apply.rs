@@ -2,10 +2,10 @@
 
 use anyhow::Result;
 
+use super::context::Context;
 use super::{ProcessOpts, TaskStats};
 use crate::logging::DiagEvent;
 use crate::resources::{Resource, ResourceChange, ResourceState};
-use crate::tasks::Context;
 
 /// Process a single resource given its current state, returning a stats delta.
 pub(super) fn process_single<R: Resource>(

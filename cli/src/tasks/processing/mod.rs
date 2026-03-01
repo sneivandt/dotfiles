@@ -11,6 +11,7 @@ pub mod context;
 mod parallel;
 
 pub use context::Context;
+pub use context::ContextOpts;
 
 use anyhow::Result;
 

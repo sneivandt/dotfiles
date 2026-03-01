@@ -7,6 +7,17 @@ use crate::exec::Executor;
 use crate::logging::Log;
 use crate::platform::Platform;
 
+/// Boolean flags for context construction.
+///
+/// Passed to [`Context::new`] to avoid positional `bool` confusion.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ContextOpts {
+    /// Whether to perform a dry run (preview changes without applying).
+    pub dry_run: bool,
+    /// Whether to process resources in parallel.
+    pub parallel: bool,
+}
+
 /// Shared context for task execution.
 #[derive(Clone)]
 pub struct Context {
@@ -55,9 +66,8 @@ impl Context {
         config: Arc<RwLock<Config>>,
         platform: Arc<Platform>,
         log: Arc<dyn Log>,
-        dry_run: bool,
         executor: Arc<dyn Executor>,
-        parallel: bool,
+        opts: ContextOpts,
     ) -> Result<Self> {
         let home = if cfg!(target_os = "windows") {
             std::env::var("USERPROFILE")
@@ -74,10 +84,10 @@ impl Context {
             config,
             platform,
             log,
-            dry_run,
+            dry_run: opts.dry_run,
             home: std::path::PathBuf::from(home),
             executor,
-            parallel,
+            parallel: opts.parallel,
         })
     }
 

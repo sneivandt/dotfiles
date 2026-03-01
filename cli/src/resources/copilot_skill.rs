@@ -1,25 +1,26 @@
 //! GitHub Copilot skill resource.
 use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use super::{Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
 
 /// A GitHub Copilot skill resource that can be checked and installed.
 #[derive(Debug)]
-pub struct CopilotSkillResource<'a> {
+pub struct CopilotSkillResource {
     /// Source URL (GitHub blob/tree URL).
     pub url: String,
     /// Destination directory under `~/.copilot/skills/`.
     pub dest: PathBuf,
     /// Executor for running git commands.
-    executor: &'a dyn Executor,
+    executor: Arc<dyn Executor>,
 }
 
-impl<'a> CopilotSkillResource<'a> {
+impl CopilotSkillResource {
     /// Create a new Copilot skill resource.
     #[must_use]
-    pub const fn new(url: String, dest: PathBuf, executor: &'a dyn Executor) -> Self {
+    pub fn new(url: String, dest: PathBuf, executor: Arc<dyn Executor>) -> Self {
         Self {
             url,
             dest,
@@ -32,7 +33,7 @@ impl<'a> CopilotSkillResource<'a> {
     pub fn from_entry(
         entry: &crate::config::copilot_skills::CopilotSkill,
         skills_dir: &Path,
-        executor: &'a dyn Executor,
+        executor: Arc<dyn Executor>,
     ) -> Self {
         let dir_name = entry
             .url
@@ -44,7 +45,7 @@ impl<'a> CopilotSkillResource<'a> {
     }
 }
 
-impl Resource for CopilotSkillResource<'_> {
+impl Resource for CopilotSkillResource {
     fn description(&self) -> String {
         self.url.clone()
     }
@@ -60,7 +61,7 @@ impl Resource for CopilotSkillResource<'_> {
     fn apply(&self) -> Result<ResourceChange> {
         super::fs::ensure_parent_dir(&self.dest)?;
 
-        download_github_folder(&self.url, &self.dest, self.executor)
+        download_github_folder(&self.url, &self.dest, &*self.executor)
             .with_context(|| format!("downloading skill from {}", self.url))?;
         Ok(ResourceChange::Applied)
     }
@@ -182,11 +183,11 @@ mod tests {
 
     #[test]
     fn description_returns_url() {
-        let executor = crate::exec::SystemExecutor;
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let resource = CopilotSkillResource::new(
             "https://github.com/example/skills/tree/main/my-skill".to_string(),
             PathBuf::from("/home/user/.copilot/skills/my-skill"),
-            &executor,
+            Arc::clone(&executor),
         );
         assert_eq!(
             resource.description(),
@@ -196,11 +197,11 @@ mod tests {
 
     #[test]
     fn missing_when_dest_does_not_exist() {
-        let executor = crate::exec::SystemExecutor;
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let resource = CopilotSkillResource::new(
             "https://github.com/example/skills/tree/main/my-skill".to_string(),
             PathBuf::from("/nonexistent/path/my-skill"),
-            &executor,
+            Arc::clone(&executor),
         );
         assert!(matches!(
             resource.current_state().unwrap(),
@@ -214,11 +215,11 @@ mod tests {
         let dest = dir.path().join("my-skill");
         std::fs::create_dir(&dest).unwrap();
 
-        let executor = crate::exec::SystemExecutor;
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let resource = CopilotSkillResource::new(
             "https://github.com/example/skills/tree/main/my-skill".to_string(),
             dest,
-            &executor,
+            Arc::clone(&executor),
         );
         assert!(matches!(
             resource.current_state().unwrap(),
@@ -228,12 +229,12 @@ mod tests {
 
     #[test]
     fn from_entry_derives_dir_name() {
-        let executor = crate::exec::SystemExecutor;
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let entry = crate::config::copilot_skills::CopilotSkill {
             url: "https://github.com/example/skills/tree/main/my-skill".to_string(),
         };
         let skills_dir = PathBuf::from("/home/user/.copilot/skills");
-        let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, &executor);
+        let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, Arc::clone(&executor));
         assert_eq!(
             resource.dest,
             PathBuf::from("/home/user/.copilot/skills/my-skill")
@@ -262,12 +263,12 @@ mod tests {
 
     #[test]
     fn from_entry_trims_trailing_slash_in_url() {
-        let executor = crate::exec::SystemExecutor;
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let entry = crate::config::copilot_skills::CopilotSkill {
             url: "https://github.com/example/skills/tree/main/my-skill/".to_string(),
         };
         let skills_dir = PathBuf::from("/home/user/.copilot/skills");
-        let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, &executor);
+        let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, Arc::clone(&executor));
         // The trailing slash should be stripped so the dir name is "my-skill", not "".
         assert_eq!(
             resource.dest,
@@ -277,12 +278,12 @@ mod tests {
 
     #[test]
     fn from_entry_uses_full_string_when_no_slash_in_url() {
-        let executor = crate::exec::SystemExecutor;
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let entry = crate::config::copilot_skills::CopilotSkill {
             url: "simple-name".to_string(),
         };
         let skills_dir = PathBuf::from("/home/user/.copilot/skills");
-        let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, &executor);
+        let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, Arc::clone(&executor));
         assert_eq!(
             resource.dest,
             PathBuf::from("/home/user/.copilot/skills/simple-name")
@@ -295,11 +296,12 @@ mod tests {
         let dest = dir.path().join("skill");
         // MockExecutor would panic if called; but URL parsing fails before any
         // executor call so this tests the validation path only.
-        let executor = crate::resources::test_helpers::MockExecutor::ok("");
+        let executor: Arc<dyn Executor> =
+            Arc::new(crate::resources::test_helpers::MockExecutor::ok(""));
         let resource = CopilotSkillResource::new(
             "https://github.com/owner/repo/main/path".to_string(),
             dest,
-            &executor,
+            Arc::clone(&executor),
         );
         let err = resource.apply().unwrap_err();
         // The error is wrapped by `with_context`, so check the full chain.

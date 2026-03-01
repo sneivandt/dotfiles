@@ -1,5 +1,6 @@
 //! Task: install VS Code extensions.
 use anyhow::Result;
+use std::sync::Arc;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states, task_deps};
 use crate::resources::vscode_extension::{
@@ -39,8 +40,11 @@ impl Task for InstallVsCodeExtensions {
         process_resource_states(
             ctx,
             extensions.iter().map(|ext| {
-                let resource =
-                    VsCodeExtensionResource::new(ext.id.clone(), cmd.clone(), &*ctx.executor);
+                let resource = VsCodeExtensionResource::new(
+                    ext.id.clone(),
+                    cmd.clone(),
+                    Arc::clone(&ctx.executor),
+                );
                 let state = resource.state_from_installed(&installed);
                 (resource, state)
             }),

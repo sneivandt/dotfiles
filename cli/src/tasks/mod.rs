@@ -13,6 +13,7 @@ pub mod sparse_checkout;
 pub mod symlinks;
 pub mod systemd_units;
 pub mod update;
+pub mod update_signal;
 pub mod vscode_extensions;
 
 /// Implement [`Task::dependencies`] by expanding to the required
@@ -117,13 +118,11 @@ pub fn all_uninstall_tasks() -> Vec<Box<dyn Task>> {
 /// from each task's [`Task::dependencies`] declaration.
 #[must_use]
 pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
-    let repo_updated = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let repo_updated = update_signal::UpdateSignal::new();
     vec![
         Box::new(developer_mode::EnableDeveloperMode),
         Box::new(sparse_checkout::ConfigureSparseCheckout),
-        Box::new(update::UpdateRepository::new(std::sync::Arc::clone(
-            &repo_updated,
-        ))),
+        Box::new(update::UpdateRepository::new(repo_updated.clone())),
         Box::new(git_config::ConfigureGit),
         Box::new(hooks::InstallGitHooks::new()),
         Box::new(packages::InstallPackages),

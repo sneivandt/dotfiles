@@ -1,10 +1,7 @@
 //! Task: update the dotfiles repository.
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-
 use anyhow::Result;
 
-use super::{Context, Task, TaskResult, task_deps};
+use super::{Context, Task, TaskResult, task_deps, update_signal::UpdateSignal};
 
 /// Pull latest changes from the remote repository.
 #[derive(Debug)]
@@ -13,13 +10,13 @@ pub struct UpdateRepository {
     ///
     /// Shared with [`super::reload_config::ReloadConfig`] so that task can
     /// skip the reload when the repository was already up to date.
-    pub(super) repo_updated: Arc<AtomicBool>,
+    pub(super) repo_updated: UpdateSignal,
 }
 
 impl UpdateRepository {
     /// Create a new task, sharing `repo_updated` with `ReloadConfig`.
     #[must_use]
-    pub const fn new(repo_updated: Arc<AtomicBool>) -> Self {
+    pub const fn new(repo_updated: UpdateSignal) -> Self {
         Self { repo_updated }
     }
 }
@@ -98,8 +95,7 @@ impl Task for UpdateRepository {
                 if msg.contains("Already up to date") {
                     ctx.log.info("already up to date");
                 } else {
-                    self.repo_updated
-                        .store(true, std::sync::atomic::Ordering::Release);
+                    self.repo_updated.mark_updated();
                     ctx.log.info("repository updated");
                 }
                 Ok(TaskResult::Ok)
@@ -119,14 +115,15 @@ mod tests {
     use crate::platform::{Os, Platform};
     use crate::resources::test_helpers::MockExecutor;
     use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
+    use crate::tasks::update_signal::UpdateSignal;
     use std::path::PathBuf;
-    use std::sync::atomic::Ordering;
+    use std::sync::Arc;
 
     #[test]
     fn should_run_false_when_git_dir_missing() {
         let config = empty_config(PathBuf::from("/nonexistent/repo"));
         let ctx = make_linux_context(config);
-        let task = UpdateRepository::new(Arc::new(AtomicBool::new(false)));
+        let task = UpdateRepository::new(UpdateSignal::new());
         assert!(!task.should_run(&ctx));
     }
 
@@ -136,7 +133,7 @@ mod tests {
         std::fs::create_dir(dir.path().join(".git")).unwrap();
         let config = empty_config(dir.path().to_path_buf());
         let ctx = make_linux_context(config);
-        let task = UpdateRepository::new(Arc::new(AtomicBool::new(false)));
+        let task = UpdateRepository::new(UpdateSignal::new());
         assert!(task.should_run(&ctx));
     }
 
@@ -159,12 +156,12 @@ mod tests {
         // First call (symbolic-ref): fails → detached HEAD
         let executor = MockExecutor::fail();
         let ctx = make_update_context(config, executor);
-        let repo_updated = Arc::new(AtomicBool::new(false));
-        let task = UpdateRepository::new(Arc::clone(&repo_updated));
+        let repo_updated = UpdateSignal::new();
+        let task = UpdateRepository::new(repo_updated.clone());
 
         let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("detached HEAD")));
-        assert!(!repo_updated.load(Ordering::Acquire));
+        assert!(!repo_updated.was_updated());
     }
 
     #[test]
@@ -177,8 +174,8 @@ mod tests {
             (true, "dirty_file.txt".to_string()),
         ]);
         let ctx = make_update_context(config, executor);
-        let repo_updated = Arc::new(AtomicBool::new(false));
-        let task = UpdateRepository::new(Arc::clone(&repo_updated));
+        let repo_updated = UpdateSignal::new();
+        let task = UpdateRepository::new(repo_updated);
 
         let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("staged changes")));
@@ -196,12 +193,12 @@ mod tests {
             (true, "Already up to date.".to_string()),
         ]);
         let ctx = make_update_context(config, executor);
-        let repo_updated = Arc::new(AtomicBool::new(false));
-        let task = UpdateRepository::new(Arc::clone(&repo_updated));
+        let repo_updated = UpdateSignal::new();
+        let task = UpdateRepository::new(repo_updated.clone());
 
         let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Ok));
-        assert!(!repo_updated.load(Ordering::Acquire));
+        assert!(!repo_updated.was_updated());
     }
 
     #[test]
@@ -216,12 +213,12 @@ mod tests {
             (true, "Updating abc1234..def5678\nFast-forward".to_string()),
         ]);
         let ctx = make_update_context(config, executor);
-        let repo_updated = Arc::new(AtomicBool::new(false));
-        let task = UpdateRepository::new(Arc::clone(&repo_updated));
+        let repo_updated = UpdateSignal::new();
+        let task = UpdateRepository::new(repo_updated.clone());
 
         let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Ok));
-        assert!(repo_updated.load(Ordering::Acquire));
+        assert!(repo_updated.was_updated());
     }
 
     #[test]
@@ -236,8 +233,8 @@ mod tests {
             (false, String::new()),
         ]);
         let ctx = make_update_context(config, executor);
-        let repo_updated = Arc::new(AtomicBool::new(false));
-        let task = UpdateRepository::new(Arc::clone(&repo_updated));
+        let repo_updated = UpdateSignal::new();
+        let task = UpdateRepository::new(repo_updated);
 
         let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("git pull failed")));
@@ -262,7 +259,7 @@ mod tests {
         ]);
         let mut ctx = make_update_context(config, executor);
         ctx.dry_run = true;
-        let task = UpdateRepository::new(Arc::new(AtomicBool::new(false)));
+        let task = UpdateRepository::new(UpdateSignal::new());
 
         let result = task.run(&ctx).unwrap();
         assert!(
@@ -286,7 +283,7 @@ mod tests {
         ]);
         let mut ctx = make_update_context(config, executor);
         ctx.dry_run = true;
-        let task = UpdateRepository::new(Arc::new(AtomicBool::new(false)));
+        let task = UpdateRepository::new(UpdateSignal::new());
 
         let result = task.run(&ctx).unwrap();
         assert!(

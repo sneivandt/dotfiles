@@ -202,6 +202,10 @@ impl Executor for StubExecutor {
     fn which(&self, _: &str) -> bool {
         false
     }
+
+    fn which_path(&self, program: &str) -> anyhow::Result<std::path::PathBuf> {
+        anyhow::bail!("{program} not found on PATH")
+    }
 }
 
 /// A task execution context backed by a temporary home directory.

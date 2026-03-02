@@ -230,6 +230,10 @@ pub mod test_helpers {
         fn which(&self, _: &str) -> bool {
             self.which_result
         }
+
+        fn which_path(&self, program: &str) -> anyhow::Result<std::path::PathBuf> {
+            anyhow::bail!("{program} not found on PATH")
+        }
     }
 
     /// Build a [`Config`] with all lists empty and `root` set to `root`.

@@ -251,7 +251,7 @@ impl ConfigValidator for ChmodValidator<'_> {
             }
 
             // Check for absolute paths (should be relative to $HOME)
-            if Path::new(&entry.path).is_absolute() {
+            if Path::new(&entry.path).is_absolute() || entry.path.starts_with('/') {
                 warnings.push(ValidationWarning::new(
                     "chmod.toml",
                     &entry.path,

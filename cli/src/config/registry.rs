@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::toml_loader;
+use super::helpers::toml_loader;
 
 /// A Windows registry entry.
 #[derive(Debug, Clone)]

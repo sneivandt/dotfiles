@@ -21,17 +21,34 @@ cli/src/
 ├── cli.rs         # clap CLI definitions (Cli, Command, GlobalOpts)
 ├── platform.rs    # OS detection (Platform, Os enum)
 ├── exec.rs        # Command execution helpers
-├── logging.rs     # Logger with leveled output + task summary
+├── logging/       # Logging subsystem
+│   ├── mod.rs     # Re-exports, init_subscriber()
+│   ├── logger.rs  # Logger (sequential output)
+│   ├── buffered.rs # BufferedLog (parallel task output)
+│   ├── diagnostic.rs # High-precision diagnostic event log
+│   ├── types.rs   # Log trait, TaskEntry, TaskStatus
+│   ├── subscriber.rs # DotfilesFormatter tracing subscriber
+│   └── utils.rs   # ANSI stripping, formatting helpers
 ├── config/        # TOML config loading and deserialization
 │   ├── mod.rs     # Config struct (aggregates all types)
-│   ├── toml_loader.rs  # filter_sections(), TOML deserialization helpers
+│   ├── helpers/   # Shared loader utilities
+│   │   ├── toml_loader.rs  # filter_sections(), TOML deserialization helpers
+│   │   ├── category_matcher.rs  # Category matching logic
+│   │   └── validation.rs   # Config validation helpers
 │   ├── profiles.rs
 │   └── *.rs       # Per-type loaders (packages, symlinks, etc.)
 ├── resources/     # Declarative resource abstraction
-│   ├── mod.rs     # Resource trait, ResourceState, ResourceChange
+│   ├── mod.rs     # Applicable + Resource traits, ResourceState, ResourceChange
 │   └── *.rs       # Per-type resources (symlink, registry, chmod, etc.)
 ├── tasks/         # Task implementations
-│   ├── mod.rs     # Task trait, Context, ProcessOpts, process_resources()
+│   ├── mod.rs     # Task trait, task_deps!, re-exports from processing/
+│   ├── processing/  # Generic resource processing engine
+│   │   ├── mod.rs   # ProcessOpts, process_resources(), process_resource_states()
+│   │   ├── apply.rs # Apply/remove logic
+│   │   ├── context.rs # Context, ContextOpts
+│   │   ├── graph.rs # Dependency graph and scheduler
+│   │   ├── parallel.rs # Parallel execution helpers
+│   │   └── update_signal.rs # Arc<AtomicBool> signalling
 │   └── *.rs       # One file per task
 └── commands/      # install.rs, uninstall.rs, test.rs
 ```
@@ -207,6 +224,17 @@ pub struct Context {
 
 Helpers: `ctx.root()`, `ctx.symlinks_dir()`, `ctx.hooks_dir()`.
 
+### ContextOpts
+
+`Context::new()` takes a `ContextOpts` struct to avoid positional `bool` confusion:
+
+```rust
+pub struct ContextOpts {
+    pub dry_run: bool,
+    pub parallel: bool,
+}
+```
+
 Config access uses an `RwLock` so the `ReloadConfig` task can atomically swap
 the config after a git pull. Use `ctx.config_read()` to get a read guard; clone
 the data out before a long-running operation so the lock is not held across
@@ -308,21 +336,33 @@ Use `anyhow::Result`, `?`, `.context("msg")?`, `bail!("msg")`. No `unwrap()` in 
 
 ## Resource Abstraction
 
-The `resources/` module provides a declarative layer for checking and applying system state:
+The `resources/` module provides a two-level trait hierarchy for checking and applying system state:
 
 ```rust
-pub trait Resource {
+/// Base trait — implement for resources whose state is determined by a bulk
+/// external query (e.g. VS Code extensions, packages).
+pub trait Applicable {
     fn description(&self) -> String;
-    fn current_state(&self) -> Result<ResourceState>;
-    fn needs_change(&self) -> Result<bool>;
     fn apply(&self) -> Result<ResourceChange>;
     fn remove(&self) -> Result<ResourceChange>; // default: unimplemented
 }
+
+/// Extended trait — implement for resources that can independently check
+/// their own state (e.g. symlinks, registry entries, file permissions).
+pub trait Resource: Applicable {
+    fn current_state(&self) -> Result<ResourceState>;
+    fn needs_change(&self) -> Result<bool>; // default: Missing|Incorrect → true
+}
+
 pub enum ResourceState { Missing, Correct, Incorrect { current: String }, Invalid { reason: String } }
 pub enum ResourceChange { Applied, AlreadyCorrect, Skipped { reason: String } }
 ```
 
-Tasks use `Resource` implementors (e.g., `SymlinkResource`, `RegistryResource`) to check state and apply changes. New declarative resources go in `resources/*.rs`.
+**Which trait to implement:**
+- **`Resource`** (implies `Applicable`) — when the resource can check its own state individually (symlinks, chmod, registry, git config, hooks).
+- **`Applicable` only** — when state is determined via a single external bulk query shared across all instances (VS Code extensions, packages). These use `process_resource_states()` with pre-computed `(impl Applicable, ResourceState)` pairs.
+
+Tasks use `Resource` / `Applicable` implementors (e.g., `SymlinkResource`, `RegistryResource`) to check state and apply changes. New declarative resources go in `resources/*.rs`.
 
 ### Resource Struct Pattern
 

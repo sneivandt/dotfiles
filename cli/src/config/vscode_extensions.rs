@@ -3,8 +3,8 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
-use super::category_matcher::{Category, MatchMode};
-use super::toml_loader;
+use super::helpers::category_matcher::{Category, MatchMode};
+use super::helpers::toml_loader;
 
 /// A VS Code extension to install.
 #[derive(Debug, Clone)]

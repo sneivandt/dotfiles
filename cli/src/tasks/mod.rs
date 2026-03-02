@@ -1,7 +1,4 @@
 //! Named, dependency-ordered tasks that orchestrate resource changes.
-mod graph;
-pub(crate) use graph::has_cycle;
-
 pub mod chmod;
 pub mod copilot_skills;
 pub mod developer_mode;
@@ -16,7 +13,6 @@ pub mod sparse_checkout;
 pub mod symlinks;
 pub mod systemd_units;
 pub mod update;
-pub mod update_signal;
 pub mod vscode_extensions;
 
 /// Implement [`Task::dependencies`] by expanding to the required
@@ -54,6 +50,8 @@ pub(crate) use task_deps;
 // continue to work unchanged.
 pub use processing::Context;
 pub use processing::ContextOpts;
+pub(crate) use processing::graph::has_cycle;
+pub use processing::update_signal::UpdateSignal;
 #[allow(unused_imports)] // TaskStats is used by doc-tests via the lib crate
 pub use processing::{
     ProcessOpts, TaskResult, TaskStats, process_resource_states, process_resources,
@@ -122,7 +120,7 @@ pub fn all_uninstall_tasks() -> Vec<Box<dyn Task>> {
 /// from each task's [`Task::dependencies`] declaration.
 #[must_use]
 pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
-    let repo_updated = update_signal::UpdateSignal::new();
+    let repo_updated = UpdateSignal::new();
     vec![
         Box::new(developer_mode::EnableDeveloperMode),
         Box::new(sparse_checkout::ConfigureSparseCheckout::new()),

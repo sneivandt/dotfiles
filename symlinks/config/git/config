@@ -57,6 +57,11 @@
 [diff "bin"]
   textconv = hexdump -v -C
 
+[filter "vscode-settings"]
+  clean = "sh -c 'if command -v jq >/dev/null 2>&1; then jq --indent 4 \"del(.\\\"chat.viewSessions.orientation\\\")\"; else cat; fi'"
+  smudge = cat
+  required
+
 [feature]
   manyFiles = true
 

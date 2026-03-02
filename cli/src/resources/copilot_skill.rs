@@ -51,7 +51,7 @@ impl Applicable for CopilotSkillResource {
     }
 
     fn apply(&self) -> Result<ResourceChange> {
-        super::fs::ensure_parent_dir(&self.dest)?;
+        super::helpers::fs::ensure_parent_dir(&self.dest)?;
 
         download_github_folder(&self.url, &self.dest, &*self.executor)
             .with_context(|| format!("downloading skill from {}", self.url))?;
@@ -145,7 +145,7 @@ fn download_github_folder(url: &str, dest: &Path, executor: &dyn Executor) -> Re
         anyhow::bail!("path '{subpath}' not found in repository");
     }
 
-    super::fs::copy_dir_recursive(&src, dest, true)?;
+    super::helpers::fs::copy_dir_recursive(&src, dest, true)?;
 
     // Best effort cleanup
     if let Err(e) = std::fs::remove_dir_all(&tmp) {

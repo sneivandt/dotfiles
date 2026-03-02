@@ -27,7 +27,7 @@ impl Applicable for SymlinkResource {
     }
 
     fn apply(&self) -> Result<ResourceChange> {
-        super::fs::ensure_parent_dir(&self.target)?;
+        super::helpers::fs::ensure_parent_dir(&self.target)?;
 
         // Remove existing target if it's a symlink or file
         if self.target.exists() || self.target.symlink_metadata().is_ok() {
@@ -154,7 +154,7 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
         let _ = std::fs::remove_dir_all(&tmp);
     };
 
-    super::fs::copy_dir_recursive(source, &tmp, false)
+    super::helpers::fs::copy_dir_recursive(source, &tmp, false)
         .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;
 
     if let Err(e) = remove_symlink(target) {
@@ -164,7 +164,7 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
 
     // Prefer atomic rename; fall back to copy+delete on cross-filesystem move.
     if std::fs::rename(&tmp, target).is_err() {
-        if let Err(e) = super::fs::copy_dir_recursive(&tmp, target, false) {
+        if let Err(e) = super::helpers::fs::copy_dir_recursive(&tmp, target, false) {
             cleanup_dir();
             return Err(e).with_context(|| {
                 format!("cross-fs copy {} to {}", tmp.display(), target.display())

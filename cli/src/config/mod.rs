@@ -1,16 +1,18 @@
 //! Configuration loading and validation for all TOML config files.
-pub mod category_matcher;
+pub mod category_matcher {
+    //! Re-export of [`super::helpers::category_matcher`].
+    pub use super::helpers::category_matcher::*;
+}
 pub mod chmod;
 pub mod copilot_skills;
 pub mod git_config;
+pub(crate) mod helpers;
 pub mod manifest;
 pub mod packages;
 pub mod profiles;
 pub mod registry;
 pub mod symlinks;
 pub mod systemd_units;
-pub mod toml_loader;
-pub mod validation;
 pub mod vscode_extensions;
 
 #[cfg(test)]
@@ -167,8 +169,8 @@ impl Config {
     /// - Invalid values (e.g., invalid octal modes for chmod)
     /// - Platform incompatibilities
     #[must_use]
-    pub fn validate(&self, platform: &Platform) -> Vec<validation::ValidationWarning> {
-        validation::validate_all(self, platform)
+    pub fn validate(&self, platform: &Platform) -> Vec<helpers::validation::ValidationWarning> {
+        helpers::validation::validate_all(self, platform)
     }
 }
 

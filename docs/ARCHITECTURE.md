@@ -150,7 +150,7 @@ available only when invoking the binary directly.
 | Module | File | Description |
 |---|---|---|
 | `profiles.rs` | `profiles.toml` | Profile resolution and category computation |
-| `toml_loader.rs` | (all) | Generic TOML loader |
+| `helpers/toml_loader.rs` | (all) | Generic TOML loader |
 | `packages.rs` | `packages.toml` | System packages (pacman, AUR, winget) |
 | `symlinks.rs` | `symlinks.toml` | Symlink mappings |
 | `systemd_units.rs` | `systemd-units.toml` | Systemd units (Linux only) |
@@ -158,6 +158,7 @@ available only when invoking the binary directly.
 | `vscode_extensions.rs` | `vscode-extensions.toml` | VS Code extensions |
 | `copilot_skills.rs` | `copilot-skills.toml` | GitHub Copilot CLI skills |
 | `registry.rs` | `registry.toml` | Windows registry entries |
+| `git_config.rs` | `git-config.toml` | Git configuration settings |
 | `manifest.rs` | `manifest.toml` | Sparse checkout file mappings |
 
 #### Tasks (`tasks/`)

@@ -71,6 +71,7 @@ packages = [
 packages = [
   "Chocolatey.Chocolatey",
   "Git.Git",
+  "jqlang.jq",
   "Microsoft.PowerShell",
   "Microsoft.Teams",
   "Microsoft.VisualStudioCode",

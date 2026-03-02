@@ -26,6 +26,11 @@ function Write-TestFail {
 function Test-BuildMode {
     Write-TestStage "Testing dotfiles.ps1 -Build mode"
 
+    if ($env:BINARY_PATH -and (Test-Path $env:BINARY_PATH)) {
+        Write-Host "Skipping: pre-built binary available, build tested separately" -ForegroundColor Yellow
+        return $true
+    }
+
     if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
         Write-Host "Skipping: cargo not installed" -ForegroundColor Yellow
         return $true

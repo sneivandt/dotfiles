@@ -1,7 +1,7 @@
 //! Task: update the dotfiles repository.
 use anyhow::Result;
 
-use super::{Context, Task, TaskResult, task_deps, update_signal::UpdateSignal};
+use super::{Context, Task, TaskResult, UpdateSignal, task_deps};
 
 /// Pull latest changes from the remote repository.
 #[derive(Debug)]
@@ -114,8 +114,8 @@ mod tests {
     use super::*;
     use crate::platform::{Os, Platform};
     use crate::resources::test_helpers::MockExecutor;
+    use crate::tasks::UpdateSignal;
     use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
-    use crate::tasks::update_signal::UpdateSignal;
     use std::path::PathBuf;
     use std::sync::Arc;
 

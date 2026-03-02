@@ -1,7 +1,7 @@
 //! Task: reload configuration after repository update.
 use anyhow::{Context as _, Result};
 
-use super::{Context, Task, TaskResult, task_deps, update_signal::UpdateSignal};
+use super::{Context, Task, TaskResult, UpdateSignal, task_deps};
 
 /// Re-parse all configuration files after `UpdateRepository` has pulled the
 /// latest changes.
@@ -33,16 +33,10 @@ impl Task for ReloadConfig {
     task_deps![super::update::UpdateRepository];
 
     fn should_run(&self, _ctx: &Context) -> bool {
-        true
+        self.repo_updated.was_updated()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if !self.repo_updated.was_updated() {
-            ctx.log
-                .debug("repository was not updated, config reload is a no-op");
-            return Ok(TaskResult::Ok);
-        }
-
         // Load the new config while holding only a read lock, so there is no
         // window where the lock is held for writing across I/O.
         let new_config = {
@@ -75,27 +69,26 @@ impl Task for ReloadConfig {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::tasks::UpdateSignal;
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
-    use crate::tasks::update_signal::UpdateSignal;
     use std::path::PathBuf;
 
     #[test]
-    fn should_run_always() {
+    fn should_not_run_when_repo_not_updated() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
         let task = ReloadConfig::new(UpdateSignal::new());
-        assert!(task.should_run(&ctx));
+        assert!(!task.should_run(&ctx));
     }
 
     #[test]
-    fn run_returns_ok_when_repo_not_updated() {
+    fn should_run_when_repo_updated() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        let repo_updated = UpdateSignal::new();
-        let task = ReloadConfig::new(repo_updated);
-        // repo_updated defaults to false
-        let result = task.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Ok));
+        let signal = UpdateSignal::new();
+        signal.mark_updated();
+        let task = ReloadConfig::new(signal);
+        assert!(task.should_run(&ctx));
     }
 
     #[test]

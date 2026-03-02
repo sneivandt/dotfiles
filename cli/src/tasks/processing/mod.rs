@@ -8,7 +8,9 @@
 
 mod apply;
 pub mod context;
+pub mod graph;
 mod parallel;
+pub mod update_signal;
 
 pub use context::Context;
 pub use context::ContextOpts;

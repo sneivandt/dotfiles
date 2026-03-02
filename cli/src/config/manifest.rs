@@ -4,8 +4,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::category_matcher::{Category, MatchMode};
-use super::toml_loader;
+use super::helpers::category_matcher::{Category, MatchMode};
+use super::helpers::toml_loader;
 
 /// Sparse checkout manifest — files to exclude by category.
 #[derive(Debug, Clone)]

@@ -25,6 +25,12 @@ test_wrapper_build_mode()
 {(
   log_stage "Testing dotfiles.sh --build mode"
 
+  # Skip if pre-built binary is available (build tested separately in CI)
+  if [ -n "$BINARY_PATH" ] && [ -x "$BINARY_PATH" ]; then
+    log_verbose "Skipping: pre-built binary available, build tested separately"
+    return 0
+  fi
+
   # Ensure cargo is available
   if ! command -v cargo >/dev/null 2>&1; then
     log_verbose "Skipping: cargo not installed"

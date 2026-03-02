@@ -10,7 +10,7 @@ metadata:
 
 # Logging Patterns
 
-All logging is via `Logger` in `cli/src/logging.rs`, passed to tasks through `Context`.
+All logging is via `Logger` in `cli/src/logging/`, passed to tasks through `Context`.
 `Logger` emits [`tracing`](https://docs.rs/tracing) events internally; a
 `DotfilesFormatter` subscriber (initialised in `main.rs`) formats them for the
 console.
@@ -42,6 +42,8 @@ ctx.log.debug(msg);    // Only when verbose=true on terminal
 ctx.log.warn(msg);     // Yellow to stderr
 ctx.log.error(msg);    // Red to stderr
 ctx.log.dry_run(msg);  // Yellow "[DRY RUN]" prefix
+ctx.log.record_task(name, status, message);  // Record task result for summary
+ctx.log.diagnostic();  // Access high-precision diagnostic log (if available)
 ```
 
 All messages (including `debug`) are always written to a persistent log file at

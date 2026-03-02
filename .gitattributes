@@ -22,5 +22,9 @@
 *.psm1 diff=powershell
 *.md linguist-language=Markdown
 
+# Strip volatile VS Code settings on commit
+symlinks/config/Code/User/settings.json filter=vscode-settings
+symlinks/config/Code%20-%20Insiders/User/settings.json filter=vscode-settings
+
 # Shell scripts diff driver (optional if custom driver added later)
 *.sh diff

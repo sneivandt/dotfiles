@@ -77,7 +77,7 @@ macro_rules! define_validator {
 
 define_validator! {
     /// Validator for symlink configurations.
-    SymlinkValidator { symlinks: super::symlinks::Symlink }
+    SymlinkValidator { symlinks: crate::config::symlinks::Symlink }
 }
 
 impl ConfigValidator for SymlinkValidator<'_> {
@@ -113,7 +113,7 @@ impl ConfigValidator for SymlinkValidator<'_> {
 
 define_validator! {
     /// Validator for package configurations.
-    PackageValidator { packages: super::packages::Package }
+    PackageValidator { packages: crate::config::packages::Package }
 }
 
 impl ConfigValidator for PackageValidator<'_> {
@@ -146,7 +146,7 @@ impl ConfigValidator for PackageValidator<'_> {
 
 define_validator! {
     /// Validator for registry configurations.
-    RegistryValidator { entries: super::registry::RegistryEntry }
+    RegistryValidator { entries: crate::config::registry::RegistryEntry }
 }
 
 impl ConfigValidator for RegistryValidator<'_> {
@@ -228,7 +228,7 @@ fn validate_octal_mode(mode: &str) -> Option<String> {
 
 define_validator! {
     /// Validator for chmod configurations.
-    ChmodValidator { entries: super::chmod::ChmodEntry }
+    ChmodValidator { entries: crate::config::chmod::ChmodEntry }
 }
 
 impl ConfigValidator for ChmodValidator<'_> {
@@ -266,7 +266,7 @@ impl ConfigValidator for ChmodValidator<'_> {
 
 define_validator! {
     /// Validator for systemd unit configurations.
-    SystemdUnitValidator { units: super::systemd_units::SystemdUnit }
+    SystemdUnitValidator { units: crate::config::systemd_units::SystemdUnit }
 }
 
 impl ConfigValidator for SystemdUnitValidator<'_> {
@@ -313,7 +313,7 @@ impl ConfigValidator for SystemdUnitValidator<'_> {
 
 define_validator! {
     /// Validator for VS Code extension configurations.
-    VsCodeExtensionValidator { extensions: super::vscode_extensions::VsCodeExtension }
+    VsCodeExtensionValidator { extensions: crate::config::vscode_extensions::VsCodeExtension }
 }
 
 impl ConfigValidator for VsCodeExtensionValidator<'_> {
@@ -346,7 +346,7 @@ impl ConfigValidator for VsCodeExtensionValidator<'_> {
 
 define_validator! {
     /// Validator for Copilot skill configurations.
-    CopilotSkillValidator { skills: super::copilot_skills::CopilotSkill }
+    CopilotSkillValidator { skills: crate::config::copilot_skills::CopilotSkill }
 }
 
 impl ConfigValidator for CopilotSkillValidator<'_> {
@@ -379,7 +379,7 @@ impl ConfigValidator for CopilotSkillValidator<'_> {
 
 /// Validate all configuration and return collected warnings.
 #[must_use]
-pub fn validate_all(config: &super::Config, platform: &Platform) -> Vec<ValidationWarning> {
+pub fn validate_all(config: &crate::config::Config, platform: &Platform) -> Vec<ValidationWarning> {
     let root = &config.root;
     let mut warnings = Vec::new();
     warnings.extend(SymlinkValidator::new(&config.symlinks).validate(root, platform));
@@ -402,7 +402,7 @@ mod tests {
     #[test]
     fn symlink_validator_detects_missing_source() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let symlinks = vec![super::super::symlinks::Symlink {
+        let symlinks = vec![crate::config::symlinks::Symlink {
             source: "nonexistent.txt".to_string(),
             target: None,
         }];
@@ -416,7 +416,7 @@ mod tests {
 
     #[test]
     fn symlink_validator_detects_absolute_path() {
-        let symlinks = vec![super::super::symlinks::Symlink {
+        let symlinks = vec![crate::config::symlinks::Symlink {
             source: "/absolute/path".to_string(),
             target: None,
         }];
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn package_validator_warns_aur_on_non_arch() {
-        let packages = vec![super::super::packages::Package {
+        let packages = vec![crate::config::packages::Package {
             name: "yay".to_string(),
             is_aur: true,
         }];
@@ -457,7 +457,7 @@ mod tests {
 
     #[test]
     fn chmod_validator_detects_invalid_mode() {
-        let entries = vec![super::super::chmod::ChmodEntry {
+        let entries = vec![crate::config::chmod::ChmodEntry {
             mode: "999".to_string(),
             path: ".ssh/config".to_string(),
         }];
@@ -471,7 +471,7 @@ mod tests {
 
     #[test]
     fn chmod_validator_detects_invalid_mode_length() {
-        let entries = vec![super::super::chmod::ChmodEntry {
+        let entries = vec![crate::config::chmod::ChmodEntry {
             mode: "12".to_string(),
             path: ".ssh/config".to_string(),
         }];
@@ -485,7 +485,7 @@ mod tests {
 
     #[test]
     fn registry_validator_warns_on_non_windows() {
-        let entries = vec![super::super::registry::RegistryEntry {
+        let entries = vec![crate::config::registry::RegistryEntry {
             key_path: "HKCU:\\Console".to_string(),
             value_name: "FontSize".to_string(),
             value_data: "14".to_string(),
@@ -502,7 +502,7 @@ mod tests {
 
     #[test]
     fn registry_validator_detects_invalid_hive() {
-        let entries = vec![super::super::registry::RegistryEntry {
+        let entries = vec![crate::config::registry::RegistryEntry {
             key_path: "INVALID:\\Path".to_string(),
             value_name: "Test".to_string(),
             value_data: "Value".to_string(),
@@ -518,12 +518,12 @@ mod tests {
     #[test]
     fn registry_validator_accepts_case_insensitive_hive() {
         let entries = vec![
-            super::super::registry::RegistryEntry {
+            crate::config::registry::RegistryEntry {
                 key_path: "hkcu:\\Console".to_string(),
                 value_name: "FontSize".to_string(),
                 value_data: "14".to_string(),
             },
-            super::super::registry::RegistryEntry {
+            crate::config::registry::RegistryEntry {
                 key_path: "HkLm:\\Software".to_string(),
                 value_name: "Test".to_string(),
                 value_data: "Value".to_string(),
@@ -542,7 +542,7 @@ mod tests {
 
     #[test]
     fn units_validator_detects_invalid_extension() {
-        let units = vec![super::super::systemd_units::SystemdUnit {
+        let units = vec![crate::config::systemd_units::SystemdUnit {
             name: "myunit".to_string(),
             scope: "user".to_string(),
         }];
@@ -556,7 +556,7 @@ mod tests {
 
     #[test]
     fn vscode_validator_detects_invalid_format() {
-        let extensions = vec![super::super::vscode_extensions::VsCodeExtension {
+        let extensions = vec![crate::config::vscode_extensions::VsCodeExtension {
             id: "invalid_no_publisher".to_string(),
         }];
 
@@ -611,11 +611,11 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// Build a minimal `Config` for `validate_all` tests.
-    fn make_config_for_validate_all(root: std::path::PathBuf) -> super::super::Config {
+    fn make_config_for_validate_all(root: std::path::PathBuf) -> crate::config::Config {
         use crate::config::category_matcher::Category;
         use crate::config::manifest::Manifest;
         use crate::config::profiles::Profile;
-        super::super::Config {
+        crate::config::Config {
             root,
             profile: Profile {
                 name: "test".to_string(),
@@ -654,14 +654,14 @@ mod tests {
         let mut config = make_config_for_validate_all(dir.path().to_path_buf());
 
         // Trigger a warning from PackageValidator (AUR on non-Arch)
-        config.packages.push(super::super::packages::Package {
+        config.packages.push(crate::config::packages::Package {
             name: "paru".to_string(),
             is_aur: true,
         });
         // Trigger a warning from VsCodeExtensionValidator (bad format)
         config
             .vscode_extensions
-            .push(super::super::vscode_extensions::VsCodeExtension {
+            .push(crate::config::vscode_extensions::VsCodeExtension {
                 id: "invalid_no_publisher".to_string(),
             });
 

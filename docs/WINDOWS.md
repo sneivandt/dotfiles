@@ -167,33 +167,35 @@ Symlink definitions live in `conf/symlinks.toml` under the **`[windows]` section
 ```toml
 [windows]
 symlinks = [
-  "AppData/Roaming/Code/User/settings.json",
-  "AppData/Roaming/Code - Insiders/User/settings.json",
-  "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json",
+  { source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" },
+  { source = "AppData/Roaming/Code - Insiders/User/settings.json", target = "AppData/Roaming/Code - Insiders/User/settings.json" },
+  { source = "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json", target = "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json" },
   "config/git/windows",
 ]
 ```
 
 Each entry is a path relative to `$env:USERPROFILE`. The source file is located at `symlinks/<same-path>` in the repository. Forward slashes are automatically converted to backslashes for Windows.
 
-### Smart Dot-Prefixing
+### Target Path Handling
 
-Windows symlinks use intelligent dot-prefixing:
-- **Well-known Windows folders** (AppData, Documents, etc.) remain as-is in the target path
-- **Unix-style paths** (config, ssh, etc.) are automatically prefixed with a dot
+By default, a symlink entry `"foo/bar"` maps to `%USERPROFILE%\.foo\bar` (a dot is prepended). For Windows paths that must **not** receive a dot prefix — such as `AppData\` or `Documents\` — specify an explicit `target` field:
 
-Examples:
-- `AppData/Roaming/Code/User/settings.json` → `%USERPROFILE%\AppData\Roaming\Code\User\settings.json`
-- `config/git/config` → `%USERPROFILE%\.config\git\config`
-- `ssh/config` → `%USERPROFILE%\.ssh\config`
+```toml
+{ source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }
+```
 
-This allows the same configuration repository to work across both Windows and Linux while respecting platform conventions.
+This maps `symlinks/AppData/Roaming/Code/User/settings.json` →
+`%USERPROFILE%\AppData\Roaming\Code\User\settings.json`.
+
+Unix-style paths (no explicit target) continue to receive the dot prefix automatically:
+- `"config/git/windows"` → `%USERPROFILE%\.config\git\windows`
+- `"ssh/config"` → `%USERPROFILE%\.ssh\config`
 
 **Note:** Windows symlinks use the same configuration file as Linux (`conf/symlinks.toml`) but use the `[windows]` section.
 
 To add a new link:
 1. Place the source file under `symlinks/<path>` (create directories as needed).
-2. Add the path to the `[windows]` section in `conf/symlinks.toml`.
+2. Add the path to the `[windows]` section in `conf/symlinks.toml`. Use a plain string for Unix-style paths (dot prefix applied automatically) or `{ source, target }` for Windows paths that need no dot prefix.
 3. Re-run `./dotfiles.ps1`.
 
 ## VS Code Extensions

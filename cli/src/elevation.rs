@@ -5,57 +5,19 @@
 
 /// Check if the current process is running with administrator privileges.
 ///
-/// On Windows, queries the process token for `TokenElevation` via the
-/// Win32 API. On non-Windows platforms, always returns `false`.
+/// On Windows, runs `net session` which succeeds only when elevated.
+/// On non-Windows platforms, always returns `false`.
 #[cfg(windows)]
 #[must_use]
 pub fn is_elevated() -> bool {
-    use std::mem::{MaybeUninit, size_of};
-    use std::ptr;
+    use std::process::{Command, Stdio};
 
-    // Win32 constants
-    const TOKEN_QUERY: u32 = 0x0008;
-    const TOKEN_ELEVATION: u32 = 20; // TokenElevation info class
-
-    #[repr(C)]
-    struct TokenElevationInfo {
-        token_is_elevated: u32,
-    }
-
-    extern "system" {
-        fn OpenProcessToken(
-            process: *mut std::ffi::c_void,
-            desired_access: u32,
-            token: *mut *mut std::ffi::c_void,
-        ) -> i32;
-        fn GetCurrentProcess() -> *mut std::ffi::c_void;
-        fn GetTokenInformation(
-            token: *mut std::ffi::c_void,
-            info_class: u32,
-            info: *mut std::ffi::c_void,
-            length: u32,
-            return_length: *mut u32,
-        ) -> i32;
-        fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
-    }
-
-    unsafe {
-        let mut token = ptr::null_mut();
-        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
-            return false;
-        }
-        let mut elevation = MaybeUninit::<TokenElevationInfo>::uninit();
-        let mut ret_len: u32 = 0;
-        let ok = GetTokenInformation(
-            token,
-            TOKEN_ELEVATION,
-            elevation.as_mut_ptr().cast(),
-            size_of::<TokenElevationInfo>() as u32,
-            &mut ret_len,
-        );
-        CloseHandle(token);
-        ok != 0 && elevation.assume_init().token_is_elevated != 0
-    }
+    Command::new("net")
+        .arg("session")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 /// Check if the current process is running with administrator privileges.

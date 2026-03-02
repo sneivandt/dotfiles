@@ -13,11 +13,12 @@ fn main() {
             &args.command,
             cli::Command::Install(_) | cli::Command::Uninstall(_)
         ) && !args.global.dry_run;
-        if needs_elevation && !dotfiles_cli::elevation::is_elevated() {
-            if let Err(e) = dotfiles_cli::elevation::elevate_and_exit() {
-                eprintln!("\x1b[31mError: {e}\x1b[0m");
-                std::process::exit(1);
-            }
+        if needs_elevation
+            && !dotfiles_cli::elevation::is_elevated()
+            && let Err(e) = dotfiles_cli::elevation::elevate_and_exit()
+        {
+            eprintln!("\x1b[31mError: {e}\x1b[0m");
+            std::process::exit(1);
         }
     }
 

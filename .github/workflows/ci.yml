@@ -108,6 +108,9 @@ jobs:
             binary_name: dotfiles.exe
     steps:
       - uses: actions/checkout@v4
+      - name: Disable Windows Defender real-time monitoring
+        if: runner.os == 'Windows'
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy

@@ -62,10 +62,11 @@ codegen-units = 256
 debug = 0
 
 [profile.ci]
-inherits = "release"
-lto = "thin"
-codegen-units = 16
-opt-level = 2
+inherits = "dev"
+opt-level = 1
+lto = false
+codegen-units = 256
+debug = 0
 
 [profile.release]
 strip = true

@@ -7,9 +7,10 @@ set -o nounset
 # Default: downloads the latest published binary from GitHub Releases.
 # --build: builds the Rust binary from source (requires cargo).
 #
-# Only recognised options are forwarded to the dotfiles binary.
-# Developer flags (--skip, --only, --root, --no-parallel) require
-# invoking the binary directly.
+# All options except --build are forwarded verbatim to the dotfiles binary.
+# Commonly used flags: --profile <name>, --dry-run.
+# Advanced flags (--skip, --only, --root, --no-parallel) require invoking
+# the binary directly.
 
 DOTFILES_ROOT="$(dirname "$(readlink -f "$0")")"
 export DOTFILES_ROOT
@@ -23,25 +24,30 @@ CONNECT_TIMEOUT=10   # seconds — TCP connect timeout
 TRANSFER_TIMEOUT=120 # seconds — total transfer timeout
 RETRY_COUNT=3        # number of download attempts
 RETRY_DELAY=2        # seconds between retries
+# NOTE: Keep these constants in sync with the equivalent values in dotfiles.ps1.
+# dotfiles.ps1: $CacheMaxAge / $ConnectTimeout / $TransferTimeout / $RetryCount / $RetryDelay
 
 # --------------------------------------------------------------------------- #
 # Parse arguments — extract --build, pass everything else to the binary
 # --------------------------------------------------------------------------- #
 BUILD_MODE=false
-first=true
+_has_args=false
 for arg in "$@"; do
   if [ "$arg" = "--build" ]; then
     BUILD_MODE=true
-  elif [ "$first" = true ]; then
-    set -- "$arg"
-    first=false
   else
-    set -- "$@" "$arg"
+    if [ "$_has_args" = false ]; then
+      set -- "$arg"
+      _has_args=true
+    else
+      set -- "$@" "$arg"
+    fi
   fi
 done
-if [ "$first" = true ]; then
+if [ "$_has_args" = false ]; then
   set --
 fi
+unset _has_args
 
 # --------------------------------------------------------------------------- #
 # Build mode: build from source and run

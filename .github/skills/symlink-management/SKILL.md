@@ -21,28 +21,30 @@ config/git/config
 [arch,desktop]
 config/xmonad
 [windows]
-AppData/Roaming/Code/User/settings.json
+{ source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }
+"config/git/windows"
 ```
 
 Source files in `symlinks/` have **no leading dots**.
 
 ## Target Path
 
-`compute_target()` in `tasks/symlinks.rs`:
-- Most paths: `$HOME/.<entry>` (dot prepended)
-- Paths starting with `Documents/` (any case): `$HOME/Documents/...` (no dot)
-- Paths starting with `AppData/` (any case): `$HOME/AppData/...` (no dot)
+`compute_target()` in `tasks/symlinks.rs` always prepends a dot:
 
 ```rust
 fn compute_target(home: &Path, source: &str) -> PathBuf {
-    let lower = source.to_ascii_lowercase();
-    if lower.starts_with("documents/") || lower.starts_with("appdata/") {
-        home.join(source)
-    } else {
-        home.join(format!(".{source}"))
-    }
+    home.join(format!(".{source}"))
 }
 ```
+
+For paths that must **not** receive a dot prefix (Windows paths like `AppData/` or
+`Documents/`), use an explicit `target` field in `conf/symlinks.toml`:
+
+```toml
+{ source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }
+```
+
+The explicit target is joined to `$HOME` directly: `home.join(target)`.
 
 ## Task Implementation
 
@@ -70,7 +72,9 @@ Platform-specific symlink creation is handled inside `SymlinkResource::apply()`.
 ## Adding Symlinks
 
 1. Create source: `symlinks/config/myapp/config` (no leading dot)
-2. Add to `conf/symlinks.toml` under correct profile section
+2. Add to `conf/symlinks.toml` under correct profile section:
+   - Plain string `"config/myapp/config"` → target `~/.config/myapp/config` (dot prepended automatically)
+   - `{ source = "AppData/Roaming/MyApp/config", target = "AppData/Roaming/MyApp/config" }` → target `~/AppData/Roaming/MyApp/config` (no dot prefix)
 3. Optionally add to `conf/manifest.toml` for sparse checkout
 4. Test: `./dotfiles.sh install -d`
 

@@ -40,7 +40,7 @@ fn install_task_names() {
 /// The install task list must contain exactly the expected number of tasks.
 #[test]
 fn install_task_count() {
-    assert_eq!(tasks::all_install_tasks().len(), 16);
+    assert_eq!(tasks::all_install_tasks().len(), 17);
 }
 
 /// Every task name must be non-empty.

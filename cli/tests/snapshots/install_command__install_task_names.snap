@@ -2,6 +2,7 @@
 source: tests/install_command.rs
 expression: "task_names.join(\"\\n\")"
 ---
+Update binary
 Enable developer mode
 Configure sparse checkout
 Update repository

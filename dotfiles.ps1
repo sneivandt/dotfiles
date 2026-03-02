@@ -5,7 +5,8 @@
     Thin wrapper that downloads (or builds with -Build) the dotfiles Rust binary
     and forwards all arguments to it. Works on both Windows and Linux (pwsh).
 
-    Default: downloads the latest published binary from GitHub Releases.
+    Default: downloads the latest published binary from GitHub Releases if no
+    binary is present, then runs it. The binary handles its own updates.
     -Build:  builds the Rust binary from source (requires cargo).
 .PARAMETER Action
     Subcommand to run: install, uninstall, test, or version.
@@ -41,14 +42,12 @@ $ErrorActionPreference = 'Stop'
 $DotfilesRoot = $PSScriptRoot
 $Repo = "sneivandt/dotfiles"
 $BinDir = Join-Path $DotfilesRoot "bin"
-$CacheFile = Join-Path $BinDir ".dotfiles-version-cache"
-$CacheMaxAge = 3600
 $ConnectTimeout = 10    # seconds — TCP connect timeout (used where supported)
 $TransferTimeout = 120  # seconds — total transfer timeout
 $RetryCount = 3         # number of download attempts
 $RetryDelay = 2         # seconds between retries
 # NOTE: Keep these constants in sync with the equivalent values in dotfiles.sh.
-# dotfiles.sh: CACHE_MAX_AGE / CONNECT_TIMEOUT / TRANSFER_TIMEOUT / RETRY_COUNT / RETRY_DELAY
+# dotfiles.sh: CONNECT_TIMEOUT / TRANSFER_TIMEOUT / RETRY_COUNT / RETRY_DELAY
 
 # Build CLI arguments from declared parameters
 $CliArgs = @()
@@ -93,19 +92,8 @@ if ($Build)
     }
 }
 
-# Production mode: ensure latest binary
-function Get-LocalVersion
-{
-    if (Test-Path $Binary)
-    {
-        $output = & $Binary version 2>$null
-        if ($output -match 'dotfiles\s+(.+)')
-        {
-            return $Matches[1]
-        }
-    }
-    return "none"
-}
+# Production mode: bootstrap binary if not present.
+# Subsequent updates are handled by the binary itself.
 
 function Get-LatestVersion
 {
@@ -226,71 +214,17 @@ function Get-Binary
     }
 }
 
-function Write-CacheFile
+# Bootstrap: download the latest binary only if no binary is present.
+if (-not (Test-Path $Binary))
 {
-    param ([string]$Version)
-    @($Version, [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) | Set-Content $CacheFile
-}
-
-function Get-CachedVersion
-{
-    if (Test-Path $CacheFile)
+    $latest = Get-LatestVersion
+    if ([string]::IsNullOrEmpty($latest))
     {
-        $lines = Get-Content $CacheFile
-        if ($lines.Count -ge 1)
-        {
-            return $lines[0]
-        }
+        Write-Error "Cannot determine latest version and no local binary found. Use -Build to build from source."
+        exit 1
     }
-    return ""
-}
-
-function Test-CacheFresh
-{
-    if (-not (Test-Path $CacheFile))
-    {
-        return $false
-    }
-    $lines = Get-Content $CacheFile
-    if ($lines.Count -lt 2)
-    {
-        return $false
-    }
-    $cachedTs = [int]$lines[1]
-    $now = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-    return (($now - $cachedTs) -lt $CacheMaxAge)
-}
-
-# Ensure binary is present and up to date
-$localVersion = Get-LocalVersion
-
-if (($localVersion -ne "none") -and (Test-CacheFresh))
-{
-    & $Binary --root $DotfilesRoot @CliArgs
-    exit $LASTEXITCODE
-}
-
-$latest = Get-LatestVersion
-if ([string]::IsNullOrEmpty($latest))
-{
-    if ($localVersion -ne "none")
-    {
-        Write-Output "Using cached dotfiles $localVersion (offline)"
-        & $Binary --root $DotfilesRoot @CliArgs
-        exit $LASTEXITCODE
-    }
-    Write-Error "Cannot determine latest version and no local binary found. Use -Build to build from source."
-    exit 1
-}
-
-# Compare cached release tag (not binary's self-reported version) to avoid
-# unnecessary re-downloads when git-describe output differs from release tag.
-$cached = Get-CachedVersion
-if (($localVersion -eq "none") -or ($cached -ne $latest))
-{
     Get-Binary -Version $latest
 }
 
-Write-CacheFile -Version $latest
 & $Binary --root $DotfilesRoot @CliArgs
 exit $LASTEXITCODE

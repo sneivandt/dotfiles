@@ -20,8 +20,10 @@ enable-ansi-support = "0.2"
 git2 = "0.20.4"
 rayon = "1.10"
 serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
 toml = "0.8"
 tracing = "0.1"
+ureq = "3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 which = "8.0.0"
 terminal_size = "0.4.3"

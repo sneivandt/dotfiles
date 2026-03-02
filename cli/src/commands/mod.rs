@@ -197,7 +197,7 @@ pub fn run_tasks_to_completion<'a>(
     let tasks: Vec<&dyn Task> = tasks.into_iter().collect();
 
     if ctx.parallel && tasks.len() > 1 {
-        if scheduler::has_cycle(&tasks) {
+        if tasks::has_cycle(&tasks) {
             log.warn("dependency cycle detected; falling back to sequential execution");
             for task in &tasks {
                 tasks::execute(*task, ctx);

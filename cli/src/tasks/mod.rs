@@ -1,4 +1,7 @@
 //! Named, dependency-ordered tasks that orchestrate resource changes.
+mod graph;
+pub(crate) use graph::has_cycle;
+
 pub mod chmod;
 pub mod copilot_skills;
 pub mod developer_mode;

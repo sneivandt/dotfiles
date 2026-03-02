@@ -115,16 +115,16 @@ jobs:
         with:
           workspaces: "cli -> target"
           cache-on-failure: true
-      - name: Build release binary
-        run: cargo build --release --manifest-path cli/Cargo.toml
+      - name: Build CI binary
+        run: cargo build --profile ci --manifest-path cli/Cargo.toml
       - name: Clippy
-        run: cargo clippy --release --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings
       - name: Tests
-        run: cargo test --release --manifest-path cli/Cargo.toml
+        run: cargo test --profile ci --manifest-path cli/Cargo.toml
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: cli/target/release/${{ matrix.binary_name }}
+          path: cli/target/ci/${{ matrix.binary_name }}
           retention-days: 1
 
   # ── Integration Tests ─────────────────────────────────

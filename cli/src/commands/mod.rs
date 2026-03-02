@@ -18,9 +18,8 @@ use crate::tasks::{self, Context, Task};
 
 /// Shared orchestration helper that combines setup and task execution.
 ///
-/// Collapses the repeated `CommandSetup::init` + `into_context` +
-/// `run_tasks_to_completion` boilerplate present in every command into a
-/// single, consistent entry point.
+/// Handles platform detection, profile resolution, config loading,
+/// `Context` construction, and task execution in a single entry point.
 #[derive(Debug)]
 pub struct CommandRunner {
     ctx: Context,
@@ -36,8 +35,23 @@ impl CommandRunner {
     /// Returns an error if setup fails (profile resolution, configuration
     /// loading, or the HOME environment variable is not set).
     pub fn new(global: &GlobalOpts, log: &Arc<Logger>) -> Result<Self> {
-        let setup = CommandSetup::init(global, &**log)?;
-        let ctx = setup.into_context(global, log)?;
+        let platform = Platform::detect();
+        let root = install::resolve_root(global)?;
+        let profile = resolve_profile(global, &root, &platform, &**log)?;
+        let config = load_config(&root, &profile, &platform, &**log)?;
+
+        let executor: Arc<dyn crate::exec::Executor> = Arc::new(crate::exec::SystemExecutor);
+        let ctx = Context::new(
+            Arc::new(std::sync::RwLock::new(config)),
+            Arc::new(platform),
+            Arc::clone(log) as Arc<dyn Log>,
+            executor,
+            crate::tasks::ContextOpts {
+                dry_run: global.dry_run,
+                parallel: global.parallel,
+            },
+        )?;
+
         Ok(Self {
             ctx,
             log: Arc::clone(log),
@@ -51,56 +65,6 @@ impl CommandRunner {
     /// Returns an error if one or more tasks fail.
     pub fn run<'a>(&self, tasks: impl IntoIterator<Item = &'a dyn Task>) -> Result<()> {
         run_tasks_to_completion(tasks, &self.ctx, &self.log)
-    }
-}
-
-/// Shared state produced by the common command setup sequence.
-///
-/// Encapsulates platform detection, profile resolution, and configuration
-/// loading so that each command does not have to repeat the boilerplate.
-#[derive(Debug)]
-pub struct CommandSetup {
-    /// Detected platform (OS and Arch Linux flag).
-    pub platform: Platform,
-    /// Loaded and validated configuration for the resolved profile.
-    pub config: Config,
-}
-
-impl CommandSetup {
-    /// Detect the platform, resolve the profile, and load all configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the root directory cannot be determined, the profile
-    /// cannot be resolved, or any configuration file fails to parse.
-    pub fn init(global: &GlobalOpts, log: &dyn Log) -> Result<Self> {
-        let platform = Platform::detect();
-        let root = install::resolve_root(global)?;
-        let profile = resolve_profile(global, &root, &platform, log)?;
-        let config = load_config(&root, &profile, &platform, log)?;
-        Ok(Self { platform, config })
-    }
-
-    /// Convert setup state into a task execution [`Context`].
-    ///
-    /// This eliminates the repeated `Context::new(...)` boilerplate
-    /// across `install`, `uninstall`, and `test` commands.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the HOME environment variable is not set.
-    pub fn into_context(self, global: &GlobalOpts, log: &Arc<Logger>) -> Result<Context> {
-        let executor: Arc<dyn crate::exec::Executor> = Arc::new(crate::exec::SystemExecutor);
-        Context::new(
-            Arc::new(std::sync::RwLock::new(self.config)),
-            Arc::new(self.platform),
-            Arc::clone(log) as Arc<dyn Log>,
-            executor,
-            crate::tasks::ContextOpts {
-                dry_run: global.dry_run,
-                parallel: global.parallel,
-            },
-        )
     }
 }
 

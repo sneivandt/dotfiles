@@ -4,7 +4,8 @@ set -o nounset
 
 # dotfiles.sh — Thin entry point for the dotfiles management engine.
 #
-# Default: downloads the latest published binary from GitHub Releases.
+# Default: downloads the latest published binary from GitHub Releases if no
+# binary is present, then runs it. The binary handles its own updates.
 # --build: builds the Rust binary from source (requires cargo).
 #
 # All options except --build are forwarded verbatim to the dotfiles binary.
@@ -18,14 +19,12 @@ export DOTFILES_ROOT
 REPO="sneivandt/dotfiles"
 BIN_DIR="$DOTFILES_ROOT/bin"
 BINARY="$BIN_DIR/dotfiles"
-CACHE_FILE="$BIN_DIR/.dotfiles-version-cache"
-CACHE_MAX_AGE=3600   # seconds
 CONNECT_TIMEOUT=10   # seconds — TCP connect timeout
 TRANSFER_TIMEOUT=120 # seconds — total transfer timeout
 RETRY_COUNT=3        # number of download attempts
 RETRY_DELAY=2        # seconds between retries
 # NOTE: Keep these constants in sync with the equivalent values in dotfiles.ps1.
-# dotfiles.ps1: $CacheMaxAge / $ConnectTimeout / $TransferTimeout / $RetryCount / $RetryDelay
+# dotfiles.ps1: $ConnectTimeout / $TransferTimeout / $RetryCount / $RetryDelay
 
 # --------------------------------------------------------------------------- #
 # Parse arguments — extract --build, pass everything else to the binary
@@ -57,52 +56,8 @@ if [ "$BUILD_MODE" = true ]; then
 fi
 
 # --------------------------------------------------------------------------- #
-# Production mode: ensure latest binary is available
+# Production mode: ensure binary is present
 # --------------------------------------------------------------------------- #
-
-# Check if the cached version is still fresh
-is_cache_fresh() {
-  if [ ! -f "$CACHE_FILE" ]; then
-    return 1
-  fi
-  cached_ts=$(sed -n '2p' "$CACHE_FILE" 2>/dev/null || echo "0")
-  now=$(date +%s)
-  age=$((now - cached_ts))
-  [ "$age" -lt "$CACHE_MAX_AGE" ]
-}
-
-# Get the currently installed binary version
-get_local_version() {
-  if [ -x "$BINARY" ]; then
-    "$BINARY" version 2>/dev/null | awk '{print $2}' || echo "none"
-  else
-    echo "none"
-  fi
-}
-
-# Get the version tag from the cache file (line 1)
-get_cached_version() {
-  if [ -f "$CACHE_FILE" ]; then
-    sed -n '1p' "$CACHE_FILE" 2>/dev/null || echo ""
-  else
-    echo ""
-  fi
-}
-
-# Get the latest release tag from GitHub
-get_latest_version() {
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
-      "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
-      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
-  elif command -v wget >/dev/null 2>&1; then
-    wget -qO- --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
-      "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
-      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
-  else
-    echo ""
-  fi
-}
 
 # Detect CPU architecture
 detect_arch() {
@@ -140,6 +95,21 @@ download_with_retry() {
     _dwr_attempt=$((_dwr_attempt + 1))
   done
   return 1
+}
+
+# Get the latest release tag from GitHub
+get_latest_version() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
+      "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
+      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO- --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
+      "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
+      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
+  else
+    echo ""
+  fi
 }
 
 # Download the binary for the given version tag
@@ -195,44 +165,16 @@ download_binary() {
   unset -f _cleanup_download_tmpfile
 }
 
-# Update the version cache
-update_cache() {
-  version="$1"
-  echo "$version" > "$CACHE_FILE"
-  date +%s >> "$CACHE_FILE"
-}
-
-# Ensure binary is present and up to date
-ensure_binary() {
-  local_version=$(get_local_version)
-
-  # Fast path: binary exists and cache is fresh
-  if [ "$local_version" != "none" ] && is_cache_fresh; then
-    return 0
-  fi
-
-  # Check latest version
+# Bootstrap: download the latest binary only if no binary is present.
+# Subsequent updates are handled by the binary itself.
+if [ ! -x "$BINARY" ]; then
   latest=$(get_latest_version)
   if [ -z "$latest" ]; then
-    # Can't reach GitHub — use existing binary if available
-    if [ "$local_version" != "none" ]; then
-      echo "Using cached dotfiles $local_version (offline)"
-      return 0
-    fi
     echo "ERROR: Cannot determine latest version and no local binary found." >&2
     echo "Use --build to build from source, or check your internet connection." >&2
     exit 1
   fi
+  download_binary "$latest"
+fi
 
-  # Compare cached release tag (not binary's self-reported version) to avoid
-  # unnecessary re-downloads when git-describe output differs from release tag.
-  cached=$(get_cached_version)
-  if [ "$local_version" = "none" ] || [ "$cached" != "$latest" ]; then
-    download_binary "$latest"
-  fi
-
-  update_cache "$latest"
-}
-
-ensure_binary
 exec "$BINARY" --root "$DOTFILES_ROOT" "$@"

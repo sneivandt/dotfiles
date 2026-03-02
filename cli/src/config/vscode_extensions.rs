@@ -3,6 +3,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
+use super::ValidationWarning;
 use super::helpers::category_matcher::{Category, MatchMode};
 use super::helpers::toml_loader;
 
@@ -31,6 +32,32 @@ pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<VsCodeExt
         toml_loader::filter_by_categories(items, active_categories, MatchMode::All);
 
     Ok(ids.into_iter().map(|id| VsCodeExtension { id }).collect())
+}
+
+/// Validate VS Code extension entries and return any warnings.
+#[must_use]
+pub fn validate(extensions: &[VsCodeExtension]) -> Vec<ValidationWarning> {
+    let mut warnings = Vec::new();
+
+    for extension in extensions {
+        if extension.id.trim().is_empty() {
+            warnings.push(ValidationWarning::new(
+                "vscode-extensions.toml",
+                &extension.id,
+                "extension ID is empty",
+            ));
+        }
+
+        if !extension.id.contains('.') {
+            warnings.push(ValidationWarning::new(
+                "vscode-extensions.toml",
+                &extension.id,
+                "extension ID should be in format 'publisher.name'",
+            ));
+        }
+    }
+
+    warnings
 }
 
 #[cfg(test)]
@@ -70,5 +97,15 @@ extensions = ["github.copilot-chat"]
     #[test]
     fn load_missing_file_returns_empty() {
         assert_load_missing_returns_empty(load);
+    }
+
+    #[test]
+    fn validate_detects_invalid_format() {
+        let extensions = vec![VsCodeExtension {
+            id: "invalid_no_publisher".to_string(),
+        }];
+        let warnings = validate(&extensions);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("publisher.name"));
     }
 }

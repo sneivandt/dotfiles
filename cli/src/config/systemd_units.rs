@@ -3,6 +3,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
+use super::ValidationWarning;
 use super::helpers::category_matcher::{Category, MatchMode};
 use super::helpers::toml_loader;
 
@@ -55,6 +56,53 @@ pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<SystemdUn
         .collect())
 }
 
+/// Valid systemd unit file extensions.
+const VALID_UNIT_EXTENSIONS: &[&str] = &[
+    ".service", ".timer", ".socket", ".target", ".path", ".mount",
+];
+
+/// Validate systemd unit entries and return any warnings.
+#[must_use]
+pub fn validate(
+    units: &[SystemdUnit],
+    platform: crate::platform::Platform,
+) -> Vec<ValidationWarning> {
+    let mut warnings = Vec::new();
+
+    if !units.is_empty() && !platform.supports_systemd() {
+        warnings.push(ValidationWarning::new(
+            "systemd-units.toml",
+            "systemd units",
+            "systemd units defined but platform does not support systemd",
+        ));
+    }
+
+    for unit in units {
+        if unit.name.trim().is_empty() {
+            warnings.push(ValidationWarning::new(
+                "systemd-units.toml",
+                &unit.name,
+                "unit name is empty",
+            ));
+        }
+
+        // Note: systemd unit extensions are case-sensitive on Linux
+        #[allow(clippy::case_sensitive_file_extension_comparisons)]
+        if !VALID_UNIT_EXTENSIONS
+            .iter()
+            .any(|ext| unit.name.ends_with(ext))
+        {
+            warnings.push(ValidationWarning::new(
+                "systemd-units.toml",
+                &unit.name,
+                "unit name should end with a valid systemd extension (.service, .timer, .socket, etc.)",
+            ));
+        }
+    }
+
+    warnings
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
@@ -103,5 +151,18 @@ units = [{ name = "some-daemon.service", scope = "system" }]
     #[test]
     fn load_missing_file_returns_empty() {
         assert_load_missing_returns_empty(load);
+    }
+
+    #[test]
+    fn validate_detects_invalid_extension() {
+        use crate::platform::{Os, Platform};
+
+        let units = vec![SystemdUnit {
+            name: "myunit".to_string(),
+            scope: "user".to_string(),
+        }];
+        let warnings = validate(&units, Platform::new(Os::Linux, false));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("valid systemd extension"));
     }
 }

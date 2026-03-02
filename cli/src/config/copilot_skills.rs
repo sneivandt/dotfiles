@@ -3,6 +3,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
+use super::ValidationWarning;
 use super::helpers::category_matcher::{Category, MatchMode};
 use super::helpers::toml_loader;
 
@@ -31,6 +32,32 @@ pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<CopilotSk
         toml_loader::filter_by_categories(items, active_categories, MatchMode::All);
 
     Ok(urls.into_iter().map(|url| CopilotSkill { url }).collect())
+}
+
+/// Validate Copilot skill entries and return any warnings.
+#[must_use]
+pub fn validate(skills: &[CopilotSkill]) -> Vec<ValidationWarning> {
+    let mut warnings = Vec::new();
+
+    for skill in skills {
+        if skill.url.trim().is_empty() {
+            warnings.push(ValidationWarning::new(
+                "copilot-skills.toml",
+                &skill.url,
+                "skill URL is empty",
+            ));
+        }
+
+        if !skill.url.starts_with("http://") && !skill.url.starts_with("https://") {
+            warnings.push(ValidationWarning::new(
+                "copilot-skills.toml",
+                &skill.url,
+                "skill URL should start with http:// or https://",
+            ));
+        }
+    }
+
+    warnings
 }
 
 #[cfg(test)]

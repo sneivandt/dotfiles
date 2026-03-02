@@ -4,6 +4,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
+use super::ValidationWarning;
 use super::helpers::toml_loader;
 
 /// A Windows registry entry.
@@ -60,6 +61,64 @@ fn value_to_string(value: &toml::Value) -> String {
         toml::Value::Boolean(b) => if *b { "1" } else { "0" }.to_string(),
         _ => value.to_string(),
     }
+}
+
+/// Valid Windows registry hive prefixes.
+const VALID_HIVE_PREFIXES: &[&str] = &["HKCU:", "HKLM:", "HKCR:", "HKU:", "HKCC:"];
+
+/// Validate registry entries and return any warnings.
+#[must_use]
+pub fn validate(
+    entries: &[RegistryEntry],
+    platform: crate::platform::Platform,
+) -> Vec<ValidationWarning> {
+    let mut warnings = Vec::new();
+
+    if !entries.is_empty() && !platform.has_registry() {
+        warnings.push(ValidationWarning::new(
+            "registry.toml",
+            "registry entries",
+            "registry entries defined but platform does not support the Windows registry",
+        ));
+    }
+
+    for entry in entries {
+        if entry.key_path.trim().is_empty() {
+            warnings.push(ValidationWarning::new(
+                "registry.toml",
+                &entry.value_name,
+                "registry key path is empty",
+            ));
+        }
+
+        if entry.value_name.trim().is_empty() {
+            warnings.push(ValidationWarning::new(
+                "registry.toml",
+                &entry.key_path,
+                "registry value name is empty",
+            ));
+        }
+
+        let upper = entry.key_path.to_uppercase();
+        if !VALID_HIVE_PREFIXES
+            .iter()
+            .any(|prefix| upper.starts_with(prefix))
+        {
+            warnings.push(ValidationWarning::new(
+                "registry.toml",
+                &entry.key_path,
+                "registry key path should start with a valid hive (HKCU:, HKLM:, HKCR:, HKU:, HKCC:)",
+            ));
+        } else if !upper.starts_with("HKCU:") {
+            warnings.push(ValidationWarning::new(
+                "registry.toml",
+                &entry.key_path,
+                "non-HKCU registry hive requires elevated privileges and may fail without admin rights",
+            ));
+        }
+    }
+
+    warnings
 }
 
 #[cfg(test)]
@@ -135,5 +194,19 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let entries = load(&dir.path().join("nope.toml")).unwrap();
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn validate_detects_invalid_hive() {
+        use crate::platform::{Os, Platform};
+
+        let entries = vec![RegistryEntry {
+            key_path: "INVALID:\\Key".to_string(),
+            value_name: "Test".to_string(),
+            value_data: "1".to_string(),
+        }];
+        let warnings = validate(&entries, Platform::new(Os::Windows, false));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("valid hive"));
     }
 }

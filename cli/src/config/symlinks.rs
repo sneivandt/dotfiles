@@ -3,6 +3,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
+use super::ValidationWarning;
 use super::helpers::category_matcher::{Category, MatchMode};
 use super::helpers::toml_loader;
 
@@ -56,6 +57,35 @@ pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Symlink>>
             },
         })
         .collect())
+}
+
+/// Validate symlink entries and return any warnings.
+#[must_use]
+pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<ValidationWarning> {
+    let mut warnings = Vec::new();
+    let symlinks_dir = root.join("symlinks");
+
+    for symlink in symlinks {
+        let source_path = symlinks_dir.join(&symlink.source);
+
+        if !source_path.exists() {
+            warnings.push(ValidationWarning::new(
+                "symlinks.toml",
+                &symlink.source,
+                format!("source file does not exist: {}", source_path.display()),
+            ));
+        }
+
+        if Path::new(&symlink.source).is_absolute() || symlink.source.starts_with('/') {
+            warnings.push(ValidationWarning::new(
+                "symlinks.toml",
+                &symlink.source,
+                "source path should be relative to symlinks/ directory",
+            ));
+        }
+    }
+
+    warnings
 }
 
 #[cfg(test)]
@@ -116,5 +146,40 @@ symlinks = [
     #[test]
     fn load_missing_file_returns_empty() {
         assert_load_missing_returns_empty(load);
+    }
+
+    #[test]
+    fn validate_detects_missing_source() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let symlinks = vec![Symlink {
+            source: "nonexistent.txt".to_string(),
+            target: None,
+        }];
+
+        let warnings = validate(&symlinks, temp_dir.path());
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("does not exist"));
+    }
+
+    #[test]
+    fn validate_detects_absolute_path() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let symlinks = vec![Symlink {
+            source: "/absolute/path".to_string(),
+            target: None,
+        }];
+
+        let warnings = validate(&symlinks, temp_dir.path());
+        assert_eq!(warnings.len(), 2);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.message.contains("should be relative"))
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.message.contains("does not exist"))
+        );
     }
 }

@@ -64,6 +64,33 @@ use anyhow::{Context as _, Result};
 
 use crate::platform::Platform;
 
+/// A validation warning detected during configuration loading.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidationWarning {
+    /// The configuration source (e.g., "symlinks.toml", "packages.toml").
+    pub source: String,
+    /// The specific item or section that triggered the warning.
+    pub item: String,
+    /// Human-readable warning message.
+    pub message: String,
+}
+
+impl ValidationWarning {
+    /// Create a new validation warning.
+    #[must_use]
+    pub fn new(
+        source: impl Into<String>,
+        item: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            source: source.into(),
+            item: item.into(),
+            message: message.into(),
+        }
+    }
+}
+
 /// All loaded configuration for a resolved profile.
 #[derive(Debug)]
 pub struct Config {
@@ -169,8 +196,17 @@ impl Config {
     /// - Invalid values (e.g., invalid octal modes for chmod)
     /// - Platform incompatibilities
     #[must_use]
-    pub fn validate(&self, platform: Platform) -> Vec<helpers::validation::ValidationWarning> {
-        helpers::validation::validate_all(self, platform)
+    pub fn validate(&self, platform: Platform) -> Vec<ValidationWarning> {
+        let root = &self.root;
+        let mut warnings = Vec::new();
+        warnings.extend(symlinks::validate(&self.symlinks, root));
+        warnings.extend(packages::validate(&self.packages, platform));
+        warnings.extend(registry::validate(&self.registry, platform));
+        warnings.extend(chmod::validate(&self.chmod, platform));
+        warnings.extend(systemd_units::validate(&self.units, platform));
+        warnings.extend(vscode_extensions::validate(&self.vscode_extensions));
+        warnings.extend(copilot_skills::validate(&self.copilot_skills));
+        warnings
     }
 }
 

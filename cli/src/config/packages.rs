@@ -3,6 +3,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
+use super::ValidationWarning;
 use super::helpers::category_matcher::{Category, MatchMode};
 use super::helpers::toml_loader;
 
@@ -58,6 +59,35 @@ pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Package>>
         .collect())
 }
 
+/// Validate package entries and return any warnings.
+#[must_use]
+pub fn validate(
+    packages: &[Package],
+    platform: crate::platform::Platform,
+) -> Vec<ValidationWarning> {
+    let mut warnings = Vec::new();
+
+    for package in packages {
+        if package.is_aur && !platform.is_arch_linux() {
+            warnings.push(ValidationWarning::new(
+                "packages.toml",
+                &package.name,
+                "AUR package specified but platform is not Arch Linux",
+            ));
+        }
+
+        if package.name.trim().is_empty() {
+            warnings.push(ValidationWarning::new(
+                "packages.toml",
+                &package.name,
+                "package name is empty",
+            ));
+        }
+    }
+
+    warnings
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
@@ -98,5 +128,18 @@ packages = [{ name = "paru-bin", aur = true }, { name = "yay", aur = true }]
     #[test]
     fn load_missing_file_returns_empty() {
         assert_load_missing_returns_empty(load);
+    }
+
+    #[test]
+    fn validate_warns_aur_on_non_arch() {
+        use crate::platform::{Os, Platform};
+
+        let packages = vec![Package {
+            name: "yay".to_string(),
+            is_aur: true,
+        }];
+        let warnings = validate(&packages, Platform::new(Os::Linux, false));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("not Arch Linux"));
     }
 }

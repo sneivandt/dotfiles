@@ -14,6 +14,10 @@
 mod common;
 
 use dotfiles_cli::tasks;
+#[cfg(unix)]
+use dotfiles_cli::tasks::chmod::ApplyFilePermissions;
+use dotfiles_cli::tasks::copilot_skills::InstallCopilotSkills;
+use dotfiles_cli::tasks::git_config::ConfigureGit;
 use dotfiles_cli::tasks::hooks::{InstallGitHooks, UninstallGitHooks};
 use dotfiles_cli::tasks::symlinks::InstallSymlinks;
 #[cfg(unix)]
@@ -392,6 +396,81 @@ fn execute_mixed_skip_and_success() {
 }
 
 // ===========================================================================
+// Chmod dry-run
+// ===========================================================================
+
+/// Dry-run mode must not modify any file permissions.
+#[cfg(unix)]
+#[test]
+fn chmod_dry_run_preserves_permissions() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let test = common::TestContextBuilder::new()
+        .with_config_file(
+            "chmod.toml",
+            "[base]\npermissions = [{ path = \"ssh/config\", mode = \"600\" }]\n",
+        )
+        .build();
+
+    let ec = test.make_dry_run_context("base");
+
+    let target = ec.ctx.home.join(".ssh/config");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::fs::write(&target, "Host *\n").unwrap();
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    let result = ApplyFilePermissions.run(&ec.ctx).unwrap();
+    assert!(matches!(result, TaskResult::DryRun));
+
+    let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o644, "dry-run should not change permissions");
+}
+
+// ===========================================================================
+// Copilot skills dry-run
+// ===========================================================================
+
+/// Dry-run mode must not create any skill directories.
+#[test]
+fn copilot_skills_dry_run_creates_no_directories() {
+    let test = common::TestContextBuilder::new()
+        .with_config_file(
+            "copilot-skills.toml",
+            "[base]\nskills = [\"https://github.com/user/repo/blob/main/skills/test\"]\n",
+        )
+        .build();
+
+    let ec = test.make_dry_run_context("base");
+    let result = InstallCopilotSkills.run(&ec.ctx).unwrap();
+    assert!(matches!(result, TaskResult::DryRun));
+
+    let skills_dir = ec.ctx.home.join(".copilot/skills");
+    assert!(
+        !skills_dir.exists(),
+        "dry-run should not create skills directory"
+    );
+}
+
+// ===========================================================================
+// Git config dry-run
+// ===========================================================================
+
+/// Dry-run mode must not modify git configuration.
+#[test]
+fn git_config_dry_run_makes_no_changes() {
+    let test = common::TestContextBuilder::new()
+        .with_config_file(
+            "git-config.toml",
+            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n",
+        )
+        .build();
+
+    let ec = test.make_dry_run_context("base");
+    let result = ConfigureGit.run(&ec.ctx).unwrap();
+    assert!(matches!(result, TaskResult::DryRun));
+}
+
+// ===========================================================================
 // Dry-run pipeline
 // ===========================================================================
 
@@ -406,6 +485,7 @@ const FILESYSTEM_TASKS: &[&str] = &[
     "Install git hooks",
     "Apply file permissions",
     "Install Copilot skills",
+    "Configure git",
 ];
 
 #[test]
@@ -415,6 +495,14 @@ fn dry_run_pipeline_produces_no_failures() {
         .with_symlink_source("bashrc")
         .with_hook_source("pre-commit", "#!/bin/sh\nexit 0\n")
         .with_git_hooks_dir()
+        .with_config_file(
+            "copilot-skills.toml",
+            "[base]\nskills = [\"https://github.com/user/repo/blob/main/skills/test\"]\n",
+        )
+        .with_config_file(
+            "git-config.toml",
+            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n",
+        )
         .build();
 
     let ec = test.make_dry_run_context("base");

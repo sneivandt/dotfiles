@@ -1016,4 +1016,144 @@ mod tests {
         let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
         assert!(matches!(result, TaskResult::Ok));
     }
+
+    // -----------------------------------------------------------------------
+    // remove_single — direct unit tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn remove_single_correct_increments_changed() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = test_context(config);
+        let resource = MockResource::new(ResourceState::Correct);
+        let stats =
+            apply::remove_single(&ctx, &resource, &ResourceState::Correct, "unlink").unwrap();
+        assert_eq!(stats.changed, 1);
+        assert_eq!(stats.already_ok, 0);
+    }
+
+    #[test]
+    fn remove_single_missing_increments_already_ok() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = test_context(config);
+        let resource = MockResource::new(ResourceState::Missing);
+        let stats =
+            apply::remove_single(&ctx, &resource, &ResourceState::Missing, "unlink").unwrap();
+        assert_eq!(stats.already_ok, 1);
+        assert_eq!(stats.changed, 0);
+    }
+
+    #[test]
+    fn remove_single_incorrect_increments_already_ok() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = test_context(config);
+        let resource = MockResource::new(ResourceState::Incorrect {
+            current: "other".to_string(),
+        });
+        let stats = apply::remove_single(
+            &ctx,
+            &resource,
+            &ResourceState::Incorrect {
+                current: "other".to_string(),
+            },
+            "unlink",
+        )
+        .unwrap();
+        assert_eq!(stats.already_ok, 1);
+        assert_eq!(stats.changed, 0);
+    }
+
+    #[test]
+    fn remove_single_invalid_increments_already_ok() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = test_context(config);
+        let resource = MockResource::new(ResourceState::Invalid {
+            reason: "bad".to_string(),
+        });
+        let stats = apply::remove_single(
+            &ctx,
+            &resource,
+            &ResourceState::Invalid {
+                reason: "bad".to_string(),
+            },
+            "unlink",
+        )
+        .unwrap();
+        assert_eq!(stats.already_ok, 1);
+        assert_eq!(stats.changed, 0);
+    }
+
+    #[test]
+    fn remove_single_dry_run_does_not_call_remove() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = dry_run_context(config);
+        // remove() would error if called, but dry-run skips it
+        let resource =
+            MockResource::new(ResourceState::Correct).with_remove(Err("should not call".into()));
+        let stats =
+            apply::remove_single(&ctx, &resource, &ResourceState::Correct, "unlink").unwrap();
+        assert_eq!(stats.changed, 1);
+    }
+
+    #[test]
+    fn remove_single_error_propagates() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = test_context(config);
+        let resource =
+            MockResource::new(ResourceState::Correct).with_remove(Err("remove failed".into()));
+        let result = apply::remove_single(&ctx, &resource, &ResourceState::Correct, "unlink");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("remove failed"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Parallel — dry-run behaviour
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn process_resources_parallel_dry_run() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (mut ctx, _log) = parallel_context(config);
+        ctx.dry_run = true;
+        // apply() would error if called — dry-run must skip it
+        let resources = vec![
+            MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
+            MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
+        ];
+        let opts = default_opts();
+        let result = process_resources(&ctx, resources, &opts).unwrap();
+        assert!(matches!(result, TaskResult::DryRun));
+    }
+
+    #[test]
+    fn process_resources_remove_parallel_dry_run() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (mut ctx, _log) = parallel_context(config);
+        ctx.dry_run = true;
+        let resources = vec![
+            MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),
+            MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),
+        ];
+        let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
+        assert!(matches!(result, TaskResult::DryRun));
+    }
+
+    #[test]
+    fn process_resource_states_parallel_no_bail_skips_errors() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _log) = parallel_context(config);
+        let resource_states = vec![
+            (
+                MockResource::new(ResourceState::Missing).with_apply(Err("oops".into())),
+                ResourceState::Missing,
+            ),
+            (
+                MockResource::new(ResourceState::Correct),
+                ResourceState::Correct,
+            ),
+        ];
+        let opts = default_opts(); // no_bail
+        let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+    }
 }

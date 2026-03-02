@@ -163,3 +163,165 @@ pub fn init_subscriber(verbose: bool, command: &str) {
         .with(file_layer)
         .init();
 }
+
+#[cfg(test)]
+#[allow(unsafe_code)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use tracing_subscriber::{Layer as _, filter::LevelFilter, layer::SubscriberExt as _};
+
+    /// Create a [`FileLayer`] in a temp directory and return the log file path,
+    /// temp dir (must outlive the layer), and a tracing dispatcher guard.
+    fn isolated_file_layer() -> (
+        std::path::PathBuf,
+        tempfile::TempDir,
+        tracing::dispatcher::DefaultGuard,
+    ) {
+        let tmp = tempfile::tempdir().expect("failed to create temp dir");
+        let env_lock = super::super::TEST_ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        unsafe {
+            std::env::set_var("XDG_CACHE_HOME", tmp.path());
+        }
+        let layer = FileLayer::new("test").expect("FileLayer::new should succeed");
+        let path = log_file_path("test").expect("log path should resolve");
+        unsafe {
+            std::env::remove_var("XDG_CACHE_HOME");
+        }
+        drop(env_lock);
+        let subscriber = tracing_subscriber::registry().with(layer.with_filter(LevelFilter::DEBUG));
+        let guard = tracing::dispatcher::set_default(&tracing::Dispatch::new(subscriber));
+        (path, tmp, guard)
+    }
+
+    // -----------------------------------------------------------------------
+    // FileLayer::new — header
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn file_layer_new_writes_header() {
+        let (path, _tmp, _guard) = isolated_file_layer();
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("=========================================="),
+            "header should contain separator line"
+        );
+        assert!(
+            content.contains("Dotfiles"),
+            "header should contain 'Dotfiles'"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // FileLayer::on_event — formatting
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn file_layer_formats_stage_with_arrow() {
+        let (path, _tmp, _guard) = isolated_file_layer();
+        tracing::info!(target: "dotfiles::stage", "my stage");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("==> my stage"),
+            "stage should be prefixed with ==>: {content}"
+        );
+    }
+
+    #[test]
+    fn file_layer_formats_dry_run_tag() {
+        let (path, _tmp, _guard) = isolated_file_layer();
+        tracing::info!(target: "dotfiles::dry_run", "would link");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("[dry run] would link"),
+            "dry_run should have [dry run] tag: {content}"
+        );
+    }
+
+    #[test]
+    fn file_layer_formats_error_tag() {
+        let (path, _tmp, _guard) = isolated_file_layer();
+        tracing::error!("something broke");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("[error] something broke"),
+            "error should have [error] tag: {content}"
+        );
+    }
+
+    #[test]
+    fn file_layer_formats_warn_tag() {
+        let (path, _tmp, _guard) = isolated_file_layer();
+        tracing::warn!("careful now");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("[warn] careful now"),
+            "warn should have [warn] tag: {content}"
+        );
+    }
+
+    #[test]
+    fn file_layer_formats_debug_tag() {
+        let (path, _tmp, _guard) = isolated_file_layer();
+        tracing::debug!("extra detail");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("[debug] extra detail"),
+            "debug should have [debug] tag: {content}"
+        );
+    }
+
+    #[test]
+    fn file_layer_formats_info_without_special_tag() {
+        let (path, _tmp, _guard) = isolated_file_layer();
+        tracing::info!("regular info");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("regular info"),
+            "info message should appear: {content}"
+        );
+        // Should NOT have any of the special tags
+        let info_line = content
+            .lines()
+            .find(|l| l.contains("regular info"))
+            .unwrap();
+        assert!(
+            !info_line.contains("[error]")
+                && !info_line.contains("[warn]")
+                && !info_line.contains("[debug]")
+                && !info_line.contains("[dry run]")
+                && !info_line.contains("==>"),
+            "plain info should have no special tag: {info_line}"
+        );
+    }
+
+    #[test]
+    fn file_layer_strips_ansi_codes() {
+        let (path, _tmp, _guard) = isolated_file_layer();
+        tracing::info!("\x1b[31mcolored\x1b[0m text");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("colored text"),
+            "ANSI codes should be stripped: {content}"
+        );
+        assert!(
+            !content.contains("\x1b["),
+            "no ANSI escape should remain: {content}"
+        );
+    }
+
+    #[test]
+    fn file_layer_includes_timestamp() {
+        let (path, _tmp, _guard) = isolated_file_layer();
+        tracing::info!("timestamped");
+        let content = fs::read_to_string(&path).unwrap();
+        let line = content.lines().find(|l| l.contains("timestamped")).unwrap();
+        // Timestamp format: [HH:MM:SS]
+        assert!(
+            line.starts_with('['),
+            "event line should start with timestamp bracket: {line}"
+        );
+    }
+}

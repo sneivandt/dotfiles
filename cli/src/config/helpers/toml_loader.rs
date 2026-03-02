@@ -77,3 +77,133 @@ pub fn filter_by_categories<T>(
         .flat_map(|(_, items)| items)
         .collect()
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::config::test_helpers::write_temp_toml;
+    use serde::Deserialize;
+
+    // -----------------------------------------------------------------------
+    // load_config
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn load_config_missing_file_returns_empty_hashmap() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("nonexistent.toml");
+        let result: HashMap<String, String> = load_config(&path).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn load_config_valid_toml() {
+        #[derive(Deserialize)]
+        struct Root {
+            key: String,
+        }
+        let (_dir, path) = write_temp_toml("key = \"value\"\n");
+        let root: Root = load_config(&path).unwrap();
+        assert_eq!(root.key, "value");
+    }
+
+    #[test]
+    fn load_config_invalid_toml_returns_error() {
+        let (_dir, path) = write_temp_toml("not valid {{{{ toml");
+        let result: Result<HashMap<String, String>> = load_config(&path);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("Failed to parse TOML config"),
+            "error should mention parse failure: {msg}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // load_section_items
+    // -----------------------------------------------------------------------
+
+    #[derive(Deserialize)]
+    struct Section {
+        items: Vec<String>,
+    }
+
+    #[test]
+    fn load_section_items_extracts_sections() {
+        let toml = "\
+[base]
+items = [\"a\", \"b\"]
+
+[desktop]
+items = [\"c\"]
+";
+        let (_dir, path) = write_temp_toml(toml);
+        let sections = load_section_items(&path, |s: Section| s.items).unwrap();
+        let total_items: usize = sections.iter().map(|(_, v)| v.len()).sum();
+        assert_eq!(total_items, 3);
+    }
+
+    #[test]
+    fn load_section_items_missing_file_returns_empty() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("nonexistent.toml");
+        let sections = load_section_items(&path, |s: Section| s.items).unwrap();
+        assert!(sections.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // filter_by_categories
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn filter_by_categories_any_mode() {
+        let items = vec![
+            ("base".to_string(), vec!["a", "b"]),
+            ("desktop".to_string(), vec!["c"]),
+            ("windows".to_string(), vec!["d"]),
+        ];
+        let active = vec![Category::Base, Category::Desktop];
+        let result = filter_by_categories(items, &active, MatchMode::Any);
+        assert_eq!(result.len(), 3, "base + desktop items");
+        assert!(result.contains(&"a"));
+        assert!(result.contains(&"b"));
+        assert!(result.contains(&"c"));
+    }
+
+    #[test]
+    fn filter_by_categories_all_mode() {
+        let items = vec![
+            ("arch-desktop".to_string(), vec!["a"]),
+            ("arch".to_string(), vec!["b"]),
+        ];
+        let active = vec![Category::Arch];
+        let result = filter_by_categories(items, &active, MatchMode::All);
+        // "arch-desktop" requires both arch AND desktop; only arch is active
+        assert_eq!(result, vec!["b"]);
+    }
+
+    #[test]
+    fn filter_by_categories_compound_key_all_mode_both_active() {
+        let items = vec![("arch-desktop".to_string(), vec!["x"])];
+        let active = vec![Category::Arch, Category::Desktop];
+        let result = filter_by_categories(items, &active, MatchMode::All);
+        assert_eq!(result, vec!["x"]);
+    }
+
+    #[test]
+    fn filter_by_categories_no_match_returns_empty() {
+        let items = vec![("windows".to_string(), vec!["a", "b"])];
+        let active = vec![Category::Linux];
+        let result = filter_by_categories(items, &active, MatchMode::Any);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn filter_by_categories_empty_items() {
+        let items: Vec<(String, Vec<&str>)> = vec![];
+        let active = vec![Category::Base];
+        let result = filter_by_categories(items, &active, MatchMode::Any);
+        assert!(result.is_empty());
+    }
+}

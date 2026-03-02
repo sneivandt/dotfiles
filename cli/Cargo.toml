@@ -24,6 +24,7 @@ toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 which = "8.0.0"
+terminal_size = "0.4.3"
 
 [dev-dependencies]
 insta = { version = "1", features = ["yaml"] }

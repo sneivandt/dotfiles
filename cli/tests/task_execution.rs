@@ -15,7 +15,9 @@ mod common;
 
 use dotfiles_cli::tasks;
 use dotfiles_cli::tasks::hooks::{InstallGitHooks, UninstallGitHooks};
-use dotfiles_cli::tasks::symlinks::{InstallSymlinks, UninstallSymlinks};
+use dotfiles_cli::tasks::symlinks::InstallSymlinks;
+#[cfg(unix)]
+use dotfiles_cli::tasks::symlinks::UninstallSymlinks;
 use dotfiles_cli::tasks::{Task, TaskResult};
 
 // ===========================================================================

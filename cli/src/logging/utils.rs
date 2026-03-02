@@ -30,13 +30,18 @@ pub(super) fn strip_ansi(s: &str) -> String {
 
 /// Return the terminal width in columns.
 ///
-/// Reads the `COLUMNS` environment variable, falling back to 80 if unset
-/// or unparseable.
+/// Queries the actual terminal size via ioctl (Unix) or the console API
+/// (Windows), falling back to the `COLUMNS` environment variable, then 80.
 pub(super) fn terminal_columns() -> usize {
-    std::env::var("COLUMNS")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
+    terminal_size::terminal_size()
+        .map(|(w, _)| w.0 as usize)
         .filter(|&n| n > 0)
+        .or_else(|| {
+            std::env::var("COLUMNS")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .filter(|&n| n > 0)
+        })
         .unwrap_or(80)
 }
 
@@ -129,7 +134,7 @@ mod tests {
 
     #[test]
     #[allow(unsafe_code)]
-    fn terminal_columns_reads_env_var() {
+    fn terminal_columns_reads_env_var_as_fallback() {
         let _lock = ENV_MUTEX
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -140,7 +145,14 @@ mod tests {
         unsafe {
             std::env::remove_var("COLUMNS");
         }
-        assert_eq!(cols, 120);
+        // ioctl takes priority when a real TTY is attached; COLUMNS is the
+        // fallback (e.g. piped output, CI).  Either source is valid.
+        let has_tty = terminal_size::terminal_size().is_some();
+        if has_tty {
+            assert!(cols > 0);
+        } else {
+            assert_eq!(cols, 120);
+        }
     }
 
     #[test]
@@ -156,7 +168,14 @@ mod tests {
         unsafe {
             std::env::remove_var("COLUMNS");
         }
-        assert_eq!(cols, 80, "zero COLUMNS should fall back to 80");
+        // With a TTY, ioctl returns the real width; without one, COLUMNS=0
+        // is rejected and the 80-column default is used.
+        let has_tty = terminal_size::terminal_size().is_some();
+        if has_tty {
+            assert!(cols > 0);
+        } else {
+            assert_eq!(cols, 80, "zero COLUMNS should fall back to 80");
+        }
     }
 
     #[test]

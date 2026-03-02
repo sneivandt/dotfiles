@@ -114,7 +114,7 @@ pub fn which_path(program: &str) -> Result<std::path::PathBuf> {
 ///
 /// Implement this trait to provide mock executors for unit tests.
 /// The [`SystemExecutor`] implementation delegates to the real free functions.
-#[allow(dead_code)] // run_in and run_in_with_env complete the trait contract
+#[allow(dead_code)] // run_in and run_in_with_env are not called through trait objects
 pub trait Executor: std::fmt::Debug + Send + Sync {
     /// Execute a command, bailing on non-zero exit.
     ///
@@ -157,6 +157,13 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     /// Check if a program is available on PATH.
     #[must_use]
     fn which(&self, program: &str) -> bool;
+
+    /// Resolve the full path of a program on PATH.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the program cannot be found on PATH.
+    fn which_path(&self, program: &str) -> Result<std::path::PathBuf>;
 }
 
 /// The real system executor that delegates to process spawning.
@@ -188,6 +195,10 @@ impl Executor for SystemExecutor {
 
     fn which(&self, program: &str) -> bool {
         which(program)
+    }
+
+    fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
+        which_path(program)
     }
 }
 
@@ -275,6 +286,29 @@ mod tests {
         assert!(
             msg.contains("not found on PATH"),
             "error message should mention 'not found on PATH'"
+        );
+    }
+
+    #[test]
+    fn system_executor_which_path_finds_known_program() {
+        let executor = SystemExecutor;
+        #[cfg(windows)]
+        let result = executor.which_path("cmd");
+        #[cfg(not(windows))]
+        let result = executor.which_path("echo");
+        assert!(
+            result.is_ok(),
+            "SystemExecutor::which_path should find a known program"
+        );
+    }
+
+    #[test]
+    fn system_executor_which_path_fails_for_missing() {
+        let executor = SystemExecutor;
+        let result = executor.which_path("this-program-does-not-exist-12345");
+        assert!(
+            result.is_err(),
+            "SystemExecutor::which_path should fail for missing program"
         );
     }
 

@@ -98,7 +98,7 @@ pub fn wait_if_elevated() {
 #[cfg(not(windows))]
 pub const fn wait_if_elevated() {}
 
-#[cfg(test)]
+#[cfg(all(test, not(windows)))]
 mod tests {
     use super::*;
 

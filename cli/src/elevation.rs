@@ -31,7 +31,7 @@ pub const fn is_elevated() -> bool {
 
 /// Re-launch the current process with administrator privileges via UAC.
 ///
-/// Uses PowerShell `Start-Process -Verb RunAs` to trigger the UAC prompt.
+/// Uses `PowerShell` `Start-Process -Verb RunAs` to trigger the UAC prompt.
 /// On success, an elevated window opens and the current process exits.
 ///
 /// # Errors

@@ -76,10 +76,20 @@ fn write_cache(root: &std::path::Path, tag: &str) -> Result<()> {
     Ok(())
 }
 
+/// Build a [`ureq::Agent`] with reasonable timeouts.
+fn http_agent(timeout_secs: u64) -> ureq::Agent {
+    let config = ureq::config::Config::builder()
+        .timeout_global(Some(std::time::Duration::from_secs(timeout_secs)))
+        .build();
+    config.new_agent()
+}
+
 /// Query the GitHub API for the latest release tag.
 fn fetch_latest_tag() -> Result<Option<String>> {
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let Ok(response) = ureq::get(&url)
+    let agent = http_agent(30);
+    let Ok(response) = agent
+        .get(&url)
         .header("Accept", "application/vnd.github.v3+json")
         .header("User-Agent", "dotfiles-cli")
         .call()
@@ -87,7 +97,7 @@ fn fetch_latest_tag() -> Result<Option<String>> {
         return Ok(None);
     };
 
-    let body = response
+    let body: String = response
         .into_body()
         .read_to_string()
         .context("reading GitHub API response")?;
@@ -109,7 +119,9 @@ fn fetch_latest_tag() -> Result<Option<String>> {
 
 /// Download a URL and return the bytes.
 fn download_bytes(url: &str) -> Result<Vec<u8>> {
-    let response = ureq::get(url)
+    let agent = http_agent(120);
+    let response = agent
+        .get(url)
         .header("User-Agent", "dotfiles-cli")
         .call()
         .with_context(|| format!("downloading {url}"))?;

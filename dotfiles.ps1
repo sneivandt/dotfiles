@@ -47,7 +47,7 @@ $TransferTimeout = 120  # seconds — total transfer timeout
 $RetryCount = 3         # number of download attempts
 $RetryDelay = 2         # seconds between retries
 # NOTE: Keep these constants in sync with the equivalent values in dotfiles.sh.
-# dotfiles.sh: $ConnectTimeout / $TransferTimeout / $RetryCount / $RetryDelay
+# dotfiles.sh: CONNECT_TIMEOUT / TRANSFER_TIMEOUT / RETRY_COUNT / RETRY_DELAY
 
 # Build CLI arguments from declared parameters
 $CliArgs = @()

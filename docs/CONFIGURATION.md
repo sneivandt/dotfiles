@@ -115,12 +115,20 @@ symlinks = [
   "xinitrc",
   "config/xmonad/xmonad.hs",
 ]
+
+[windows]
+symlinks = [
+  { source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" },
+  "config/git/windows",
+]
 ```
 
 **How it works**:
 - Source files are located in `symlinks/<path>` at repository root
-- Targets are created at `~/.<path>`
+- By default, targets are created at `~/.<path>` (a dot is prepended)
+- For paths that must not receive a dot prefix (e.g. Windows `AppData\`, `Documents\`), use `{ source = "...", target = "..." }` to specify the target explicitly
 - Example: `config/nvim` → `~/.config/nvim` symlinked to `<repo>/symlinks/config/nvim`
+- Example: `{ source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }` → `~/AppData/Roaming/Code/User/settings.json`
 
 ---
 

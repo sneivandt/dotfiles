@@ -64,18 +64,16 @@ impl Task for UninstallSymlinks {
     }
 }
 
-/// Compute the target path in $HOME for a symlink source.
+/// Compute the default target path in $HOME for a symlink source.
 ///
 /// Symlink sources like "bashrc" map to "$HOME/.bashrc".
 /// Sources like "config/git/config" map to "$HOME/.config/git/config".
-/// Sources under "Documents/" or "`AppData`/" map to "$HOME/..." (no dot prefix).
+///
+/// When a non-standard target path is required (e.g. Windows paths under
+/// `AppData/` or `Documents/`), use an explicit `target` field in
+/// `conf/symlinks.toml` rather than relying on naming conventions.
 fn compute_target(home: &Path, source: &str) -> std::path::PathBuf {
-    let lower = source.to_ascii_lowercase();
-    if lower.starts_with("documents/") || lower.starts_with("appdata/") {
-        home.join(source)
-    } else {
-        home.join(format!(".{source}"))
-    }
+    home.join(format!(".{source}"))
 }
 
 #[cfg(test)]
@@ -102,36 +100,6 @@ mod tests {
         let home = PathBuf::from("/home/user");
         let target = compute_target(&home, "config/git/config");
         assert_eq!(target, PathBuf::from("/home/user/.config/git/config"));
-    }
-
-    #[test]
-    fn target_for_documents() {
-        let home = PathBuf::from("/home/user");
-        let target = compute_target(&home, "Documents/PowerShell/profile.ps1");
-        assert_eq!(
-            target,
-            PathBuf::from("/home/user/Documents/PowerShell/profile.ps1")
-        );
-    }
-
-    #[test]
-    fn target_for_appdata() {
-        let home = PathBuf::from("C:/Users/user");
-        let target = compute_target(&home, "AppData/Roaming/Code/User/settings.json");
-        assert_eq!(
-            target,
-            PathBuf::from("C:/Users/user/AppData/Roaming/Code/User/settings.json")
-        );
-    }
-
-    #[test]
-    fn target_for_appdata_lowercase() {
-        let home = PathBuf::from("C:/Users/user");
-        let target = compute_target(&home, "appdata/Local/something");
-        assert_eq!(
-            target,
-            PathBuf::from("C:/Users/user/appdata/Local/something")
-        );
     }
 
     #[test]

@@ -1,5 +1,5 @@
 Config {
--- Apearance -------------------------------------------------------------- {{{
+-- Appearance -------------------------------------------------------------- {{{
       font            = "xft:pixelsize=14:antialias=true:hinting=true:Source Code Pro\
                         \,Font Awesome 5 Free Solid\
                         \,Noto Sans CJK CH\

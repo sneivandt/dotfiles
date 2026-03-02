@@ -13,7 +13,6 @@ import XMonad.Layout.NoBorders
 import XMonad.Layout.Reflect
 import XMonad.Layout.Renamed
 import XMonad.Layout.Spacing
-import XMonad.Operations
 import XMonad.Util.EZConfig
 import XMonad.Util.NamedScratchpad
 import XMonad.Util.Run
@@ -22,9 +21,8 @@ import qualified XMonad.StackSet as W
 import qualified XMonad.Util.ExtensibleState as XS
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Control.Monad (when, forM_)
+import Control.Monad (forM_, unless, when)
 import Graphics.X11.Xlib.Extras
-import Foreign.C.Types (CLong)
 import Data.List (isInfixOf)
 -- }}}
 -- Startup ---------------------------------------------------------------- {{{
@@ -38,12 +36,6 @@ myBorderWidth        = 3
 myNormalBorderColor  = "#1a1a1a"
 myFocusedBorderColor = "#61afef"
 myPinnedBorderColor  = "#b48ead"
-
-myDmenuFont          = "xft:Source Code Pro:pixelsize=14:antialias=true:hinting=true"
-myDmenuNormBG        = "#121212"
-myDmenuSelBG         = "#3465a4"
-myDmenuNormFG        = "#d0d0d0"
-myDmenuSelFG         = "#d0d0d0"
 -- }}}
 -- Main ------------------------------------------------------------------- {{{
 main = do
@@ -97,7 +89,6 @@ scratchpads = [ NS "terminal" spawnTerm findTerm manageTerm ]
         l = 0.95 - w
 -- }}}
 -- Key Bindings ----------------------------------------------------------- {{{
-dmenuArgs = "-fn '" ++ myDmenuFont ++ "' -nb '" ++ myDmenuNormBG ++ "' -sb '" ++ myDmenuSelBG ++ "' -nf '" ++ myDmenuNormFG ++ "' -sf '" ++ myDmenuSelFG ++ "'"
 myKeys =
   [
     -- Launcher
@@ -107,7 +98,7 @@ myKeys =
     -- Windows
   , ("M-q",         withFocused unpin >> kill)
   , ("M-s",         namedScratchpadAction scratchpads "terminal")
-  -- Windows
+  -- System
   , ("M-<End>",     spawn "$XDG_CONFIG_HOME/lock.sh")
   , ("M-S-s",       spawn "flameshot gui --clipboard --accept-on-select")
     -- Layout
@@ -137,8 +128,7 @@ myKeys =
 myLogHook h = dynamicLogWithPP (wsPP { ppOutput = hPutStrLn h }) >> pinLogHook >> pinBorderHook >> atomHook
 myWsBar     = "xmobar $XDG_CONFIG_HOME/xmonad/xmobar.hs"
 wsPP        = xmobarPP
-              { ppOrder   = \(ws:l:t:r) -> ws:l:t:r
-              , ppTitle   = shorten 64
+              { ppTitle   = shorten 64
               , ppCurrent = \_ -> wrap "<fn=2>" "</fn>" "\xf111"
               , ppHidden  = \_ -> wrap "<fn=1>" "</fn>" "\xf111"
               , ppLayout  = \x -> if "Full" `isInfixOf` x
@@ -208,12 +198,12 @@ pinBorderHook = do
 pinLogHook :: X ()
 pinLogHook = do
   PinnedWindows pinned <- XS.get
-  when (not (S.null pinned)) $ do
+  unless (S.null pinned) $ do
     ws <- gets windowset
     let cur    = W.currentTag ws
         curSet = S.fromList (W.index ws)
         toMove = S.difference pinned curSet
-    when (not (S.null toMove)) $
+    unless (S.null toMove) $
       windows $ \s ->
         let shifted = S.foldl' (\acc w -> W.shiftWin cur w acc) s toMove
         in sinkPinnedToEnd pinned shifted

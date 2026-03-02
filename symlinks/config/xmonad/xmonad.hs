@@ -17,9 +17,12 @@ import XMonad.Operations
 import XMonad.Util.EZConfig
 import XMonad.Util.NamedScratchpad
 import XMonad.Util.Run
+import XMonad.Util.WorkspaceCompare (getSortByIndex)
 import qualified XMonad.StackSet as W
+import qualified XMonad.Util.ExtensibleState as XS
 import qualified Data.Map as M
-import Control.Monad (when)
+import qualified Data.Set as S
+import Control.Monad (when, forM_)
 import Graphics.X11.Xlib.Extras
 import Foreign.C.Types (CLong)
 import Data.List (isInfixOf)
@@ -34,6 +37,7 @@ myStartupHook = do
 myBorderWidth        = 3
 myNormalBorderColor  = "#1a1a1a"
 myFocusedBorderColor = "#61afef"
+myPinnedBorderColor  = "#b48ead"
 
 myDmenuFont          = "xft:Source Code Pro:pixelsize=14:antialias=true:hinting=true"
 myDmenuNormBG        = "#121212"
@@ -101,7 +105,7 @@ myKeys =
     -- Xmonad
   , ("M-r",         spawn "if type xmonad; then xmonad --recompile && xmonad --restart; else xmessage xmonad not in \\$PATH: \"$PATH\"; fi")
     -- Windows
-  , ("M-q",         kill)
+  , ("M-q",         withFocused unpin >> kill)
   , ("M-s",         namedScratchpadAction scratchpads "terminal")
   -- Windows
   , ("M-<End>",     spawn "$XDG_CONFIG_HOME/lock.sh")
@@ -113,8 +117,8 @@ myKeys =
   , ("M-y",         sendMessage $ Toggle REFLECTY)
   , ("M-z",         sendMessage $ Toggle MIRROR)
     -- Workspaces
-  , ("M-<Tab>",     moveTo Next (Not emptyWS))
-  , ("M-S-<Tab>",   moveTo Prev (Not emptyWS))
+  , ("M-<Tab>",     findWorkspace getSortByIndex Next (Not emptyWS) 1 >>= switchWorkspace)
+  , ("M-S-<Tab>",   findWorkspace getSortByIndex Prev (Not emptyWS) 1 >>= switchWorkspace)
     -- Programs
   , ("M-<Return>",  spawn "$XDG_CONFIG_HOME/xmonad/scripts/choose-term.sh")
   , ("M-o",         spawn "$XDG_CONFIG_HOME/xmonad/scripts/choose-browser.sh")
@@ -124,10 +128,13 @@ myKeys =
   , ("M-m",         spawn "$XDG_CONFIG_HOME/xmonad/scripts/mute.sh")
     -- Appearance
   , ("M-w",         spawn "$XDG_CONFIG_HOME/wallpaper/wallpaper.sh")
+    -- Pin window to follow across workspaces
+  , ("M-v",         togglePin)
   ]
+  ++ [("M-" ++ show n, switchWorkspace (show n)) | n <- [1..9 :: Int]]
 -- }}}
 -- Xmobar ----------------------------------------------------------------- {{{
-myLogHook h = dynamicLogWithPP (wsPP { ppOutput = hPutStrLn h }) >> atomHook
+myLogHook h = dynamicLogWithPP (wsPP { ppOutput = hPutStrLn h }) >> pinLogHook >> pinBorderHook >> atomHook
 myWsBar     = "xmobar $XDG_CONFIG_HOME/xmonad/xmobar.hs"
 wsPP        = xmobarPP
               { ppOrder   = \(ws:l:t:r) -> ws:l:t:r
@@ -144,6 +151,97 @@ wsPP        = xmobarPP
               , ppSep     = "   "
               , ppWsSep   = " "
               }
+-- }}}
+-- Pinned Windows
+
+-- | Switch workspace and move pinned windows in a single atomic operation
+-- to avoid a double-render (which causes visible resize jumps).
+switchWorkspace :: WorkspaceId -> X ()
+switchWorkspace ws = do
+  PinnedWindows pinned <- XS.get
+  windows $ movePins pinned . W.greedyView ws
+
+movePins :: (Eq i, Eq s) => S.Set Window -> W.StackSet i l Window s sd -> W.StackSet i l Window s sd
+movePins pinned ss
+  | S.null toMove = ss
+  | otherwise     = sinkPinnedToEnd pinned shifted
+  where
+    cur     = W.currentTag ss
+    curSet  = S.fromList (W.index ss)
+    toMove  = S.difference pinned curSet
+    shifted = S.foldl' (\acc w -> W.shiftWin cur w acc) ss toMove
+
+newtype PinnedWindows = PinnedWindows (S.Set Window)
+
+instance ExtensionClass PinnedWindows where
+  initialValue = PinnedWindows S.empty
+
+togglePin :: X ()
+togglePin = withFocused $ \w -> do
+  PinnedWindows pinned <- XS.get
+  if S.member w pinned
+    then XS.put (PinnedWindows (S.delete w pinned))
+    else XS.put (PinnedWindows (S.insert w pinned))
+
+unpin :: Window -> X ()
+unpin w = XS.modify $ \(PinnedWindows s) -> PinnedWindows (S.delete w s)
+
+pinBorderHook :: X ()
+pinBorderHook = do
+  PinnedWindows pinned <- XS.get
+  ws <- gets windowset
+  let focused = W.peek ws
+      nbc = myNormalBorderColor
+      fbc = myFocusedBorderColor
+      pbc = myPinnedBorderColor
+  withDisplay $ \dpy -> do
+    Just pinnedPixel <- io $ initColor dpy pbc
+    Just normalPixel <- io $ initColor dpy nbc
+    Just focusPixel  <- io $ initColor dpy fbc
+    forM_ (W.index ws) $ \w ->
+      let color
+            | Just w == focused = focusPixel
+            | S.member w pinned = pinnedPixel
+            | otherwise         = normalPixel
+      in io $ setWindowBorder dpy w color
+
+pinLogHook :: X ()
+pinLogHook = do
+  PinnedWindows pinned <- XS.get
+  when (not (S.null pinned)) $ do
+    ws <- gets windowset
+    let cur    = W.currentTag ws
+        curSet = S.fromList (W.index ws)
+        toMove = S.difference pinned curSet
+    when (not (S.null toMove)) $
+      windows $ \s ->
+        let shifted = S.foldl' (\acc w -> W.shiftWin cur w acc) s toMove
+        in sinkPinnedToEnd pinned shifted
+
+sinkPinnedToEnd :: S.Set Window -> W.StackSet i l Window s sd -> W.StackSet i l Window s sd
+sinkPinnedToEnd pinned ss =
+  case W.stack . W.workspace . W.current $ ss of
+    Nothing  -> ss
+    Just stk ->
+      let stk' = pushToEnd pinned stk
+          cur   = W.current ss
+          ws    = W.workspace cur
+      in ss { W.current = cur { W.workspace = ws { W.stack = Just stk' } } }
+
+pushToEnd :: S.Set Window -> W.Stack Window -> W.Stack Window
+pushToEnd pinned (W.Stack f u d)
+  | S.member f pinned =
+      let allOrdered = reverse u ++ [f] ++ d
+          normal = filter (`S.notMember` pinned) allOrdered
+          pins   = filter (`S.member` pinned) allOrdered
+      in case normal of
+           []     -> W.Stack f u d
+           (n:ns) -> W.Stack n [] (ns ++ pins)
+  | otherwise =
+      let normalBef = filter (`S.notMember` pinned) (reverse u)
+          normalAft = filter (`S.notMember` pinned) d
+          pins      = filter (`S.member` pinned) (reverse u ++ d)
+      in W.Stack f (reverse normalBef) (normalAft ++ pins)
 -- }}}
 -- Atom Hook -------------------------------------------------------------- {{{
 atomHook :: X ()

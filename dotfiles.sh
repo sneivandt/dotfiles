@@ -39,7 +39,7 @@ for arg in "$@"; do
     _forward_args="$_forward_args $(printf '%s' "$arg" | sed "s/'/'\\\\''/g; s/^/'/; s/$/'/")"
   fi
 done
-# _forward_args is intentionally unquoted so eval joins the pre-quoted tokens
+# shellcheck disable=SC2086  # unquoted: eval must word-split the pre-quoted tokens
 eval set -- $_forward_args
 unset _forward_args
 

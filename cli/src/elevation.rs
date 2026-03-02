@@ -102,12 +102,14 @@ pub const fn wait_if_elevated() {}
 mod tests {
     use super::*;
 
+    #[cfg(not(windows))]
     #[test]
     fn is_elevated_returns_false_on_non_windows() {
         // On Linux/macOS, is_elevated() is a const fn that always returns false.
         assert!(!is_elevated());
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn wait_if_elevated_is_noop_on_non_windows() {
         // Should complete without blocking or panicking.

@@ -213,7 +213,7 @@ ctx.platform.supports_systemd() && !ctx.config_read().units.is_empty()
 ```rust
 pub struct Context {
     pub config: Arc<RwLock<Config>>,         // locked; use ctx.config_read()
-    pub platform: Arc<Platform>,
+    pub platform: Platform,
     pub log: Arc<dyn Log>,
     pub dry_run: bool,
     pub home: PathBuf,

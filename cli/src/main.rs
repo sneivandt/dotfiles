@@ -5,6 +5,22 @@ use dotfiles_cli::{cli, commands, logging};
 fn main() {
     enable_ansi_support::enable_ansi_support().ok(); // best-effort; no-op on non-Windows
     let args = cli::Cli::parse();
+
+    // Auto-elevate on Windows for install/uninstall when not in dry-run mode
+    #[cfg(windows)]
+    {
+        let needs_elevation = matches!(
+            &args.command,
+            cli::Command::Install(_) | cli::Command::Uninstall(_)
+        ) && !args.global.dry_run;
+        if needs_elevation && !dotfiles_cli::elevation::is_elevated() {
+            if let Err(e) = dotfiles_cli::elevation::elevate_and_exit() {
+                eprintln!("\x1b[31mError: {e}\x1b[0m");
+                std::process::exit(1);
+            }
+        }
+    }
+
     let command_name = match &args.command {
         cli::Command::Install(_) => "install",
         cli::Command::Uninstall(_) => "uninstall",
@@ -26,6 +42,9 @@ fn main() {
 
     if let Err(e) = result {
         eprintln!("\x1b[31mError: {e}\x1b[0m");
+        dotfiles_cli::elevation::wait_if_elevated();
         std::process::exit(1);
     }
+
+    dotfiles_cli::elevation::wait_if_elevated();
 }

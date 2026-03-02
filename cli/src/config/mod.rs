@@ -97,7 +97,7 @@ impl Config {
     /// # Errors
     ///
     /// Returns an error if any configuration file cannot be parsed.
-    pub fn load(root: &Path, profile: &profiles::Profile, platform: &Platform) -> Result<Self> {
+    pub fn load(root: &Path, profile: &profiles::Profile, platform: Platform) -> Result<Self> {
         let conf = root.join("conf");
 
         let active_categories = &profile.active_categories;
@@ -169,7 +169,7 @@ impl Config {
     /// - Invalid values (e.g., invalid octal modes for chmod)
     /// - Platform incompatibilities
     #[must_use]
-    pub fn validate(&self, platform: &Platform) -> Vec<helpers::validation::ValidationWarning> {
+    pub fn validate(&self, platform: Platform) -> Vec<helpers::validation::ValidationWarning> {
         helpers::validation::validate_all(self, platform)
     }
 }
@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn load_with_empty_config_files() {
         let (dir, profile, platform) = setup_load(linux(), &[]);
-        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
         assert!(config.packages.is_empty());
         assert!(config.symlinks.is_empty());
         assert!(config.registry.is_empty());
@@ -247,7 +247,7 @@ mod tests {
                 "[base]\nsymlinks = [\".bashrc\", \".vimrc\"]\n",
             )],
         );
-        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
         assert_eq!(config.symlinks.len(), 2);
         assert_eq!(config.symlinks[0].source, ".bashrc");
         assert_eq!(config.symlinks[1].source, ".vimrc");
@@ -259,14 +259,14 @@ mod tests {
             linux(),
             &[("packages.toml", "[base]\npackages = [\"git\", \"curl\"]\n")],
         );
-        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
         assert_eq!(config.packages.len(), 2);
     }
 
     #[test]
     fn load_stores_root_path() {
         let (dir, profile, platform) = setup_load(linux(), &[]);
-        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
         assert_eq!(config.root, dir.path());
     }
 
@@ -279,7 +279,7 @@ mod tests {
                 "[test]\npath = \"HKCU:\\\\Test\"\n[test.values]\nKey = \"Value\"\n",
             )],
         );
-        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
         assert!(config.registry.is_empty(), "registry skipped on linux");
     }
 
@@ -289,14 +289,14 @@ mod tests {
             linux(),
             &[("systemd-units.toml", "[base]\nunits = [\"ssh.service\"]\n")],
         );
-        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
         assert_eq!(config.units.len(), 1);
     }
 
     #[test]
     fn load_skips_systemd_units_on_windows() {
         let (dir, profile, platform) = setup_load(windows(), &[]);
-        let config = Config::load(dir.path(), &profile, &platform).expect("load should succeed");
+        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
         assert!(config.units.is_empty(), "systemd units skipped on windows");
     }
 }

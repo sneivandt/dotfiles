@@ -7,6 +7,10 @@ use crate::exec::Executor;
 use crate::logging::Log;
 use crate::platform::Platform;
 
+// Note: `Platform` is `Copy` (two small fields), so it is stored by value
+// rather than behind an `Arc`.  This avoids atomic refcount overhead for a
+// type that is cheaper to copy than to reference-count.
+
 /// Boolean flags for context construction.
 ///
 /// Passed to [`Context::new`] to avoid positional `bool` confusion.
@@ -28,7 +32,7 @@ pub struct Context {
     /// updated values.  Use [`Context::config_read`] for read access.
     pub config: Arc<RwLock<Config>>,
     /// Detected platform information.
-    pub platform: Arc<Platform>,
+    pub platform: Platform,
     /// Logger for output and task recording.
     pub log: Arc<dyn Log>,
     /// Whether to perform a dry run (preview changes without applying).
@@ -64,7 +68,7 @@ impl Context {
     /// is not set.
     pub fn new(
         config: Arc<RwLock<Config>>,
-        platform: Arc<Platform>,
+        platform: Platform,
         log: Arc<dyn Log>,
         executor: Arc<dyn Executor>,
         opts: ContextOpts,
@@ -202,6 +206,6 @@ mod tests {
         assert_eq!(ctx2.home, ctx.home);
         assert_eq!(ctx2.parallel, ctx.parallel);
         assert!(Arc::ptr_eq(&ctx.config, &ctx2.config));
-        assert!(Arc::ptr_eq(&ctx.platform, &ctx2.platform));
+        assert_eq!(ctx.platform, ctx2.platform);
     }
 }

@@ -75,7 +75,7 @@ fn default_definitions() -> HashMap<String, ProfileDef> {
 /// # Errors
 ///
 /// Returns an error if the profile is not found or the profiles.toml file cannot be parsed.
-pub fn resolve(name: &str, conf_dir: &Path, platform: &Platform) -> Result<Profile, ConfigError> {
+pub fn resolve(name: &str, conf_dir: &Path, platform: Platform) -> Result<Profile, ConfigError> {
     let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
     let available = defs
         .keys()
@@ -281,7 +281,7 @@ pub fn prompt_interactive(conf_dir: &Path) -> Result<String> {
 pub fn resolve_from_args(
     cli_profile: Option<&str>,
     root: &Path,
-    platform: &Platform,
+    platform: Platform,
 ) -> Result<Profile> {
     let conf_dir = root.join("conf");
 
@@ -336,7 +336,7 @@ mod tests {
     #[test]
     fn resolve_base_on_linux() {
         let dir = std::env::temp_dir();
-        let profile = resolve("base", &dir, &linux_platform()).unwrap();
+        let profile = resolve("base", &dir, linux_platform()).unwrap();
         assert_eq!(profile.name, "base");
         assert!(profile.active_categories.contains(&Category::Base));
         assert!(profile.active_categories.contains(&Category::Linux));
@@ -349,7 +349,7 @@ mod tests {
     #[test]
     fn resolve_desktop_on_linux() {
         let dir = std::env::temp_dir();
-        let profile = resolve("desktop", &dir, &linux_platform()).unwrap();
+        let profile = resolve("desktop", &dir, linux_platform()).unwrap();
         assert!(profile.active_categories.contains(&Category::Base));
         assert!(profile.active_categories.contains(&Category::Linux));
         assert!(profile.active_categories.contains(&Category::Desktop));
@@ -361,7 +361,7 @@ mod tests {
     #[test]
     fn resolve_desktop_on_arch() {
         let dir = std::env::temp_dir();
-        let profile = resolve("desktop", &dir, &arch_platform()).unwrap();
+        let profile = resolve("desktop", &dir, arch_platform()).unwrap();
         assert!(profile.active_categories.contains(&Category::Base));
         assert!(profile.active_categories.contains(&Category::Linux));
         assert!(profile.active_categories.contains(&Category::Desktop));
@@ -373,7 +373,7 @@ mod tests {
     #[test]
     fn resolve_base_on_arch() {
         let dir = std::env::temp_dir();
-        let profile = resolve("base", &dir, &arch_platform()).unwrap();
+        let profile = resolve("base", &dir, arch_platform()).unwrap();
         assert!(profile.active_categories.contains(&Category::Base));
         assert!(profile.active_categories.contains(&Category::Linux));
         assert!(profile.active_categories.contains(&Category::Arch));
@@ -385,7 +385,7 @@ mod tests {
     #[test]
     fn resolve_base_on_windows() {
         let dir = std::env::temp_dir();
-        let profile = resolve("base", &dir, &windows_platform()).unwrap();
+        let profile = resolve("base", &dir, windows_platform()).unwrap();
         assert!(profile.active_categories.contains(&Category::Base));
         assert!(profile.active_categories.contains(&Category::Windows));
         assert!(!profile.active_categories.contains(&Category::Linux));
@@ -397,7 +397,7 @@ mod tests {
     #[test]
     fn resolve_desktop_on_windows() {
         let dir = std::env::temp_dir();
-        let profile = resolve("desktop", &dir, &windows_platform()).unwrap();
+        let profile = resolve("desktop", &dir, windows_platform()).unwrap();
         assert!(profile.active_categories.contains(&Category::Base));
         assert!(profile.active_categories.contains(&Category::Windows));
         assert!(profile.active_categories.contains(&Category::Desktop));
@@ -409,7 +409,7 @@ mod tests {
     #[test]
     fn resolve_unknown_profile_fails() {
         let dir = std::env::temp_dir();
-        let err = resolve("nonexistent", &dir, &linux_platform()).unwrap_err();
+        let err = resolve("nonexistent", &dir, linux_platform()).unwrap_err();
         let msg = err.to_string();
         assert!(
             msg.contains("nonexistent"),

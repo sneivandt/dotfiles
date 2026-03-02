@@ -50,7 +50,7 @@ impl fmt::Display for Os {
 }
 
 /// Platform information for the current system.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Platform {
     /// Detected operating system.
     pub os: Os,

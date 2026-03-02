@@ -37,13 +37,13 @@ impl CommandRunner {
     pub fn new(global: &GlobalOpts, log: &Arc<Logger>) -> Result<Self> {
         let platform = Platform::detect();
         let root = install::resolve_root(global)?;
-        let profile = resolve_profile(global, &root, &platform, &**log)?;
-        let config = load_config(&root, &profile, &platform, &**log)?;
+        let profile = resolve_profile(global, &root, platform, &**log)?;
+        let config = load_config(&root, &profile, platform, &**log)?;
 
         let executor: Arc<dyn crate::exec::Executor> = Arc::new(crate::exec::SystemExecutor);
         let ctx = Context::new(
             Arc::new(std::sync::RwLock::new(config)),
-            Arc::new(platform),
+            platform,
             Arc::clone(log) as Arc<dyn Log>,
             executor,
             crate::tasks::ContextOpts {
@@ -78,7 +78,7 @@ impl CommandRunner {
 fn resolve_profile(
     global: &GlobalOpts,
     root: &std::path::Path,
-    platform: &Platform,
+    platform: Platform,
     log: &dyn Log,
 ) -> Result<profiles::Profile> {
     log.stage("Resolving profile");
@@ -96,7 +96,7 @@ fn resolve_profile(
 fn load_config(
     root: &std::path::Path,
     profile: &profiles::Profile,
-    platform: &Platform,
+    platform: Platform,
     log: &dyn Log,
 ) -> Result<Config> {
     log.stage("Loading configuration");

@@ -260,7 +260,7 @@ pub mod test_helpers {
     /// Build a [`Context`] from the given config, platform and executor.
     pub fn make_context(
         config: Config,
-        platform: Arc<Platform>,
+        platform: Platform,
         executor: Arc<dyn Executor>,
     ) -> Context {
         Context {
@@ -331,7 +331,7 @@ pub mod test_helpers {
         pub fn build(self) -> Context {
             make_context(
                 self.config,
-                Arc::new(Platform::new(self.os, self.is_arch)),
+                Platform::new(self.os, self.is_arch),
                 Arc::new(WhichExecutor {
                     which_result: self.which_result,
                 }),

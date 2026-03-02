@@ -53,7 +53,7 @@ impl ValidationWarning {
 /// - Non-existent file paths
 pub trait ConfigValidator {
     /// Validate the configuration and return any warnings found.
-    fn validate(&self, root: &Path, platform: &Platform) -> Vec<ValidationWarning>;
+    fn validate(&self, root: &Path, platform: Platform) -> Vec<ValidationWarning>;
 }
 
 /// Define a validator struct that wraps a slice reference and provides a `new` constructor.
@@ -81,7 +81,7 @@ define_validator! {
 }
 
 impl ConfigValidator for SymlinkValidator<'_> {
-    fn validate(&self, root: &Path, _platform: &Platform) -> Vec<ValidationWarning> {
+    fn validate(&self, root: &Path, _platform: Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
         let symlinks_dir = root.join("symlinks");
 
@@ -117,7 +117,7 @@ define_validator! {
 }
 
 impl ConfigValidator for PackageValidator<'_> {
-    fn validate(&self, _root: &Path, platform: &Platform) -> Vec<ValidationWarning> {
+    fn validate(&self, _root: &Path, platform: Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
         for package in self.packages {
@@ -150,7 +150,7 @@ define_validator! {
 }
 
 impl ConfigValidator for RegistryValidator<'_> {
-    fn validate(&self, _root: &Path, platform: &Platform) -> Vec<ValidationWarning> {
+    fn validate(&self, _root: &Path, platform: Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
         // Warn if registry entries are defined on non-Windows platform
@@ -232,7 +232,7 @@ define_validator! {
 }
 
 impl ConfigValidator for ChmodValidator<'_> {
-    fn validate(&self, _root: &Path, platform: &Platform) -> Vec<ValidationWarning> {
+    fn validate(&self, _root: &Path, platform: Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
         // Warn if chmod entries are defined on non-Unix platform
@@ -270,7 +270,7 @@ define_validator! {
 }
 
 impl ConfigValidator for SystemdUnitValidator<'_> {
-    fn validate(&self, _root: &Path, platform: &Platform) -> Vec<ValidationWarning> {
+    fn validate(&self, _root: &Path, platform: Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
         // Warn if units are defined on non-systemd platform
@@ -317,7 +317,7 @@ define_validator! {
 }
 
 impl ConfigValidator for VsCodeExtensionValidator<'_> {
-    fn validate(&self, _root: &Path, _platform: &Platform) -> Vec<ValidationWarning> {
+    fn validate(&self, _root: &Path, _platform: Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
         for extension in self.extensions {
@@ -350,7 +350,7 @@ define_validator! {
 }
 
 impl ConfigValidator for CopilotSkillValidator<'_> {
-    fn validate(&self, _root: &Path, _platform: &Platform) -> Vec<ValidationWarning> {
+    fn validate(&self, _root: &Path, _platform: Platform) -> Vec<ValidationWarning> {
         let mut warnings = Vec::new();
 
         for skill in self.skills {
@@ -379,7 +379,7 @@ impl ConfigValidator for CopilotSkillValidator<'_> {
 
 /// Validate all configuration and return collected warnings.
 #[must_use]
-pub fn validate_all(config: &crate::config::Config, platform: &Platform) -> Vec<ValidationWarning> {
+pub fn validate_all(config: &crate::config::Config, platform: Platform) -> Vec<ValidationWarning> {
     let root = &config.root;
     let mut warnings = Vec::new();
     warnings.extend(SymlinkValidator::new(&config.symlinks).validate(root, platform));
@@ -408,7 +408,7 @@ mod tests {
         }];
 
         let validator = SymlinkValidator::new(&symlinks);
-        let warnings = validator.validate(temp_dir.path(), &Platform::new(Os::Linux, false));
+        let warnings = validator.validate(temp_dir.path(), Platform::new(Os::Linux, false));
 
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("does not exist"));
@@ -423,7 +423,7 @@ mod tests {
 
         let temp_dir = tempfile::tempdir().unwrap();
         let validator = SymlinkValidator::new(&symlinks);
-        let warnings = validator.validate(temp_dir.path(), &Platform::new(Os::Linux, false));
+        let warnings = validator.validate(temp_dir.path(), Platform::new(Os::Linux, false));
 
         // Expect 2 warnings: non-existent file AND absolute path
         assert_eq!(warnings.len(), 2);
@@ -449,7 +449,7 @@ mod tests {
         let platform = Platform::new(Os::Linux, false);
 
         let validator = PackageValidator::new(&packages);
-        let warnings = validator.validate(Path::new("/tmp"), &platform);
+        let warnings = validator.validate(Path::new("/tmp"), platform);
 
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("not Arch Linux"));
@@ -463,7 +463,7 @@ mod tests {
         }];
 
         let validator = ChmodValidator::new(&entries);
-        let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Linux, false));
+        let warnings = validator.validate(Path::new("/tmp"), Platform::new(Os::Linux, false));
 
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("invalid octal digit"));
@@ -477,7 +477,7 @@ mod tests {
         }];
 
         let validator = ChmodValidator::new(&entries);
-        let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Linux, false));
+        let warnings = validator.validate(Path::new("/tmp"), Platform::new(Os::Linux, false));
 
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("must be 3 or 4 digits"));
@@ -494,7 +494,7 @@ mod tests {
         let platform = Platform::new(Os::Linux, true);
 
         let validator = RegistryValidator::new(&entries);
-        let warnings = validator.validate(Path::new("/tmp"), &platform);
+        let warnings = validator.validate(Path::new("/tmp"), platform);
 
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("does not support registry"));
@@ -509,7 +509,7 @@ mod tests {
         }];
 
         let validator = RegistryValidator::new(&entries);
-        let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Windows, false));
+        let warnings = validator.validate(Path::new("/tmp"), Platform::new(Os::Windows, false));
 
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("valid hive"));
@@ -531,7 +531,7 @@ mod tests {
         ];
 
         let validator = RegistryValidator::new(&entries);
-        let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Windows, false));
+        let warnings = validator.validate(Path::new("/tmp"), Platform::new(Os::Windows, false));
 
         // Should not have warnings about invalid hives
         assert!(
@@ -548,7 +548,7 @@ mod tests {
         }];
 
         let validator = SystemdUnitValidator::new(&units);
-        let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Linux, false));
+        let warnings = validator.validate(Path::new("/tmp"), Platform::new(Os::Linux, false));
 
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("valid systemd extension"));
@@ -561,7 +561,7 @@ mod tests {
         }];
 
         let validator = VsCodeExtensionValidator::new(&extensions);
-        let warnings = validator.validate(Path::new("/tmp"), &Platform::new(Os::Linux, false));
+        let warnings = validator.validate(Path::new("/tmp"), Platform::new(Os::Linux, false));
 
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("publisher.name"));
@@ -641,7 +641,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = make_config_for_validate_all(dir.path().to_path_buf());
         let platform = Platform::new(Os::Linux, false);
-        let warnings = super::validate_all(&config, &platform);
+        let warnings = super::validate_all(&config, platform);
         assert!(
             warnings.is_empty(),
             "clean config should produce no warnings"
@@ -666,7 +666,7 @@ mod tests {
             });
 
         let platform = Platform::new(Os::Linux, false);
-        let warnings = super::validate_all(&config, &platform);
+        let warnings = super::validate_all(&config, platform);
 
         assert!(warnings.len() >= 2, "expected at least 2 warnings");
         assert!(

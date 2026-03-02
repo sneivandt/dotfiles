@@ -98,11 +98,7 @@ mod tests {
 
     /// Build a context backed by `MockExecutor` for `run()` tests.
     fn make_systemd_context(config: crate::config::Config, executor: MockExecutor) -> Context {
-        make_context(
-            config,
-            Arc::new(Platform::new(Os::Linux, false)),
-            Arc::new(executor),
-        )
+        make_context(config, Platform::new(Os::Linux, false), Arc::new(executor))
     }
 
     #[test]

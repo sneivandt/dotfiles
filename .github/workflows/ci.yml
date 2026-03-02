@@ -1,31 +1,40 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'LICENSE'
   pull_request:
     branches:
       - master
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'LICENSE'
   workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  # ── Rust Code Quality ─────────────────────────────────
-  rust:
-    name: "Rust: Fmt, Clippy, Tests"
+  # ── Rust Format Check ──────────────────────────────────
+  rust-fmt:
+    name: "Rust: Format Check"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "cli -> target"
-          cache-on-failure: true
+          components: rustfmt
       - run: cargo fmt --check --manifest-path cli/Cargo.toml
-      - run: cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
-      - run: cargo test --manifest-path cli/Cargo.toml
 
   # ── Script Linting ────────────────────────────────────
   lint:
@@ -68,9 +77,22 @@ jobs:
           sh test-config.sh category_consistency
           sh test-config.sh empty_sections
 
-  # ── Build ─────────────────────────────────────────────
+  # ── Security ──────────────────────────────────────────
+  audit:
+    name: "Security: Cargo Audit"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "cli -> target"
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit --file cli/Cargo.lock
+
+  # ── Build, Clippy & Test ──────────────────────────────
   build:
-    name: "Build: ${{ matrix.os_name }} Binary"
+    name: "Build: ${{ matrix.os_name }}"
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -87,12 +109,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "cli -> target"
           cache-on-failure: true
       - name: Build release binary
         run: cargo build --release --manifest-path cli/Cargo.toml
+      - name: Clippy
+        run: cargo clippy --release --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test --release --manifest-path cli/Cargo.toml
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -270,9 +298,10 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     needs:
-      - rust
+      - rust-fmt
       - lint
       - validate-config
+      - audit
       - build
       - integration
       - test-install-uninstall

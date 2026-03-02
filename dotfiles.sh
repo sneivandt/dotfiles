@@ -25,70 +25,23 @@ RETRY_COUNT=3        # number of download attempts
 RETRY_DELAY=2        # seconds between retries
 
 # --------------------------------------------------------------------------- #
-# Usage
-# --------------------------------------------------------------------------- #
-usage() {
-  echo "Usage: dotfiles.sh [--build] <command> [options]"
-  echo ""
-  echo "Commands:"
-  echo "  install     Install dotfiles and configure system"
-  echo "  uninstall   Remove installed dotfiles"
-  echo "  test        Run configuration validation"
-  echo "  version     Print version information"
-  echo ""
-  echo "Options:"
-  echo "  --build           Build and run from source (requires cargo)"
-  echo "  -p, --profile P   Use specific profile (base, desktop)"
-  echo "  -d, --dry-run     Preview changes without applying"
-  echo "  -v, --verbose     Enable verbose logging"
-  echo "  -h, --help        Show this help message"
-  exit 0
-}
-
-# --------------------------------------------------------------------------- #
-# Parse arguments — only recognised options are accepted
+# Parse arguments — extract --build, pass everything else to the binary
 # --------------------------------------------------------------------------- #
 BUILD_MODE=false
-SUBCOMMAND=""
-PROFILE_VALUE=""
-DRY_RUN=false
-VERBOSE=false
-EXPECT_PROFILE=false
-
+first=true
 for arg in "$@"; do
-  if [ "$EXPECT_PROFILE" = true ]; then
-    PROFILE_VALUE="$arg"
-    EXPECT_PROFILE=false
-    continue
+  if [ "$arg" = "--build" ]; then
+    BUILD_MODE=true
+  elif [ "$first" = true ]; then
+    set -- "$arg"
+    first=false
+  else
+    set -- "$@" "$arg"
   fi
-  case "$arg" in
-    --build)                BUILD_MODE=true ;;
-    -h|--help)              usage ;;
-    -p|--profile)           EXPECT_PROFILE=true ;;
-    -d|--dry-run)           DRY_RUN=true ;;
-    -v|--verbose)           VERBOSE=true ;;
-    install|uninstall|test|version)
-                            SUBCOMMAND="$arg" ;;
-    -*)                     echo "ERROR: Unknown option: $arg" >&2
-                            echo "Run 'dotfiles.sh --help' for usage." >&2
-                            exit 1 ;;
-    *)                      echo "ERROR: Unknown argument: $arg" >&2
-                            echo "Run 'dotfiles.sh --help' for usage." >&2
-                            exit 1 ;;
-  esac
 done
-
-if [ "$EXPECT_PROFILE" = true ]; then
-  echo "ERROR: Option requires a value: --profile" >&2
-  exit 1
+if [ "$first" = true ]; then
+  set --
 fi
-
-# Reconstruct positional parameters from validated arguments without eval
-set --
-if [ -n "$SUBCOMMAND" ];    then set -- "$@" "$SUBCOMMAND"; fi
-if [ -n "$PROFILE_VALUE" ]; then set -- "$@" "--profile" "$PROFILE_VALUE"; fi
-if [ "$DRY_RUN" = true ];   then set -- "$@" "--dry-run"; fi
-if [ "$VERBOSE" = true ];   then set -- "$@" "--verbose"; fi
 
 # --------------------------------------------------------------------------- #
 # Build mode: build from source and run

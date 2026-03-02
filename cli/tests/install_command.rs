@@ -227,7 +227,7 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
 
     let task_ctx = dotfiles_cli::tasks::Context::new(
         Arc::new(std::sync::RwLock::new(config)),
-        Arc::new(platform),
+        platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
         dotfiles_cli::tasks::ContextOpts {
@@ -363,7 +363,7 @@ fn install_tasks_should_run_with_windows_platform() {
         os: Os::Windows,
         is_arch: false,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
+    let config = ctx.load_config_for_platform("base", platform);
 
     let executor: Arc<dyn dotfiles_cli::exec::Executor> =
         Arc::new(dotfiles_cli::exec::SystemExecutor);
@@ -372,7 +372,7 @@ fn install_tasks_should_run_with_windows_platform() {
 
     let task_ctx = dotfiles_cli::tasks::Context::new(
         Arc::new(std::sync::RwLock::new(config)),
-        Arc::new(platform),
+        platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
         dotfiles_cli::tasks::ContextOpts {
@@ -504,7 +504,7 @@ fn install_symlinks_is_idempotent() {
     let config = ctx.load_config("base");
     let task_ctx = dotfiles_cli::tasks::Context {
         config: Arc::new(std::sync::RwLock::new(config)),
-        platform: Arc::new(platform),
+        platform,
         log: Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         dry_run: false,
         home: home_dir.path().to_path_buf(),
@@ -595,10 +595,10 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-chmod"));
 
-    let config = ctx.load_config_for_platform("base", &platform);
+    let config = ctx.load_config_for_platform("base", platform);
     let task_ctx = dotfiles_cli::tasks::Context {
         config: Arc::new(std::sync::RwLock::new(config)),
-        platform: Arc::new(platform),
+        platform,
         log: Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         dry_run: false,
         home: home_dir.path().to_path_buf(),
@@ -685,7 +685,7 @@ fn install_tasks_should_run_with_parallel_enabled() {
 
     let task_ctx = dotfiles_cli::tasks::Context {
         config: Arc::new(std::sync::RwLock::new(config)),
-        platform: Arc::new(platform),
+        platform,
         log: Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         dry_run: true,
         home: std::path::PathBuf::from(

@@ -81,8 +81,8 @@ fn config_loads_with_missing_optional_files() {
     .expect("write profiles.toml");
 
     let platform = Platform::detect();
-    let profile = profiles::resolve("base", &conf, &platform).expect("resolve profile");
-    let config = Config::load(root.path(), &profile, &platform).expect("load config");
+    let profile = profiles::resolve("base", &conf, platform).expect("resolve profile");
+    let config = Config::load(root.path(), &profile, platform).expect("load config");
     assert!(config.symlinks.is_empty());
     assert!(config.packages.is_empty());
 }
@@ -97,7 +97,7 @@ fn config_validate_no_warnings_for_minimal_config() {
     let ctx = common::IntegrationTestContext::new();
     let config = ctx.load_config("base");
     let platform = Platform::detect();
-    let warnings = config.validate(&platform);
+    let warnings = config.validate(platform);
     assert!(
         warnings.is_empty(),
         "empty config should produce no warnings, got: {warnings:?}"
@@ -121,7 +121,7 @@ fn config_validate_warns_on_missing_symlink_source() {
 
     let config = ctx.load_config("base");
     let platform = Platform::detect();
-    let warnings = config.validate(&platform);
+    let warnings = config.validate(platform);
 
     assert!(
         !warnings.is_empty(),
@@ -152,7 +152,7 @@ fn config_validate_no_warning_when_symlink_source_exists() {
 
     let config = ctx.load_config("base");
     let platform = Platform::detect();
-    let warnings = config.validate(&platform);
+    let warnings = config.validate(platform);
 
     let symlink_warnings: Vec<_> = warnings
         .iter()
@@ -181,7 +181,7 @@ fn config_validate_warns_on_invalid_vscode_extension_id() {
 
     let config = ctx.load_config("base");
     let platform = Platform::detect();
-    let warnings = config.validate(&platform);
+    let warnings = config.validate(platform);
 
     assert!(
         warnings
@@ -201,7 +201,7 @@ fn config_validate_warns_on_invalid_copilot_skill_url() {
 
     let config = ctx.load_config("base");
     let platform = Platform::detect();
-    let warnings = config.validate(&platform);
+    let warnings = config.validate(platform);
 
     assert!(
         warnings.iter().any(|w| w.source == "copilot-skills.toml"),
@@ -221,8 +221,8 @@ fn both_profiles_resolve_from_minimal_repo() {
     let conf_dir = ctx.root_path().join("conf");
     let platform = Platform::detect();
 
-    let base = profiles::resolve("base", &conf_dir, &platform);
-    let desktop = profiles::resolve("desktop", &conf_dir, &platform);
+    let base = profiles::resolve("base", &conf_dir, platform);
+    let desktop = profiles::resolve("desktop", &conf_dir, platform);
 
     assert!(base.is_ok(), "base profile should resolve");
     assert!(desktop.is_ok(), "desktop profile should resolve");
@@ -235,7 +235,7 @@ fn unknown_profile_returns_error() {
     let conf_dir = ctx.root_path().join("conf");
     let platform = Platform::detect();
 
-    let result = profiles::resolve("nonexistent", &conf_dir, &platform);
+    let result = profiles::resolve("nonexistent", &conf_dir, platform);
     assert!(
         result.is_err(),
         "resolving an unknown profile should return an error"
@@ -257,7 +257,7 @@ fn config_loads_packages_from_ini() {
         os: Os::Linux,
         is_arch: false,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
+    let config = ctx.load_config_for_platform("base", platform);
     assert_eq!(
         config.packages.len(),
         2,
@@ -285,7 +285,7 @@ fn config_loads_aur_packages_correctly() {
         os: Os::Linux,
         is_arch: true,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
+    let config = ctx.load_config_for_platform("base", platform);
     assert_eq!(config.packages.len(), 2);
 
     let aur_pkg = config
@@ -321,8 +321,8 @@ fn config_validate_warns_on_aur_packages_on_non_arch() {
         os: Os::Linux,
         is_arch: false,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
-    let warnings = config.validate(&platform);
+    let config = ctx.load_config_for_platform("base", platform);
+    let warnings = config.validate(platform);
 
     assert!(
         warnings.iter().any(|w| w.source == "packages.toml"),
@@ -350,8 +350,8 @@ fn config_validate_no_warning_for_aur_packages_on_arch() {
         os: Os::Linux,
         is_arch: true,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
-    let warnings = config.validate(&platform);
+    let config = ctx.load_config_for_platform("base", platform);
+    let warnings = config.validate(platform);
 
     let pkg_warnings: Vec<_> = warnings
         .iter()
@@ -381,8 +381,8 @@ fn config_validate_warns_on_invalid_chmod_mode() {
         os: Os::Linux,
         is_arch: false,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
-    let warnings = config.validate(&platform);
+    let config = ctx.load_config_for_platform("base", platform);
+    let warnings = config.validate(platform);
 
     assert!(
         warnings.iter().any(|w| w.source == "chmod.toml"),
@@ -404,8 +404,8 @@ fn config_validate_warns_on_absolute_chmod_path() {
         os: Os::Linux,
         is_arch: false,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
-    let warnings = config.validate(&platform);
+    let config = ctx.load_config_for_platform("base", platform);
+    let warnings = config.validate(platform);
 
     assert!(
         warnings
@@ -430,8 +430,8 @@ fn config_validate_warns_on_invalid_systemd_unit_extension() {
         os: Os::Linux,
         is_arch: false,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
-    let warnings = config.validate(&platform);
+    let config = ctx.load_config_for_platform("base", platform);
+    let warnings = config.validate(platform);
 
     assert!(
         warnings.iter().any(|w| w.source == "systemd-units.toml"),
@@ -459,8 +459,8 @@ fn config_validate_no_warning_for_valid_systemd_unit() {
         os: Os::Linux,
         is_arch: false,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
-    let warnings = config.validate(&platform);
+    let config = ctx.load_config_for_platform("base", platform);
+    let warnings = config.validate(platform);
 
     let unit_warnings: Vec<_> = warnings
         .iter()
@@ -488,7 +488,7 @@ fn config_validate_warns_on_absolute_symlink_source() {
 
     let config = ctx.load_config("base");
     let platform = Platform::detect();
-    let warnings = config.validate(&platform);
+    let warnings = config.validate(platform);
 
     assert!(
         warnings
@@ -580,7 +580,7 @@ fn config_loads_chmod_entries_correctly() {
         os: Os::Linux,
         is_arch: false,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
+    let config = ctx.load_config_for_platform("base", platform);
     assert_eq!(
         config.chmod.len(),
         2,
@@ -620,7 +620,7 @@ fn config_loads_registry_entries_on_windows() {
         os: Os::Windows,
         is_arch: false,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
+    let config = ctx.load_config_for_platform("base", platform);
     assert_eq!(
         config.registry.len(),
         1,
@@ -646,7 +646,7 @@ fn config_does_not_load_registry_on_linux() {
         os: Os::Linux,
         is_arch: false,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
+    let config = ctx.load_config_for_platform("base", platform);
     assert!(
         config.registry.is_empty(),
         "expected no registry entries on Linux"
@@ -671,8 +671,8 @@ fn config_validate_no_warning_for_valid_registry_on_windows() {
         os: Os::Windows,
         is_arch: false,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
-    let warnings = config.validate(&platform);
+    let config = ctx.load_config_for_platform("base", platform);
+    let warnings = config.validate(platform);
 
     let registry_warnings: Vec<_> = warnings
         .iter()
@@ -698,8 +698,8 @@ fn config_validate_warns_on_non_hkcu_registry_hive() {
         os: Os::Windows,
         is_arch: false,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
-    let warnings = config.validate(&platform);
+    let config = ctx.load_config_for_platform("base", platform);
+    let warnings = config.validate(platform);
 
     assert!(
         warnings
@@ -728,8 +728,8 @@ fn config_validate_warns_on_chmod_entries_on_windows() {
         os: Os::Windows,
         is_arch: false,
     };
-    let config = ctx.load_config_for_platform("base", &platform);
-    let warnings = config.validate(&platform);
+    let config = ctx.load_config_for_platform("base", platform);
+    let warnings = config.validate(platform);
 
     assert!(
         warnings
@@ -756,7 +756,7 @@ fn config_validate_collects_warnings_from_multiple_sources() {
 
     let config = ctx.load_config("base");
     let platform = Platform::detect();
-    let warnings = config.validate(&platform);
+    let warnings = config.validate(platform);
 
     let sources: std::collections::HashSet<&str> =
         warnings.iter().map(|w| w.source.as_str()).collect();
@@ -808,8 +808,8 @@ fn config_load_returns_error_on_invalid_toml() {
     }
 
     let platform = Platform::detect();
-    let profile = profiles::resolve("base", &conf, &platform).expect("resolve profile");
-    let result = Config::load(dir.path(), &profile, &platform);
+    let profile = profiles::resolve("base", &conf, platform).expect("resolve profile");
+    let result = Config::load(dir.path(), &profile, platform);
     assert!(
         result.is_err(),
         "Config::load should return Err on invalid TOML, got Ok"

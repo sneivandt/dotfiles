@@ -47,22 +47,6 @@ $TransferTimeout = 120  # seconds — total transfer timeout
 $RetryCount = 3         # number of download attempts
 $RetryDelay = 2         # seconds between retries
 
-# When running in an elevated window, pause before closing so the user can see output
-function Wait-IfElevated
-{
-    if ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
-    {
-        $principal = New-Object Security.Principal.WindowsPrincipal(
-            [Security.Principal.WindowsIdentity]::GetCurrent()
-        )
-        if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
-        {
-            Write-Output ""
-            Read-Host "Press Enter to close"
-        }
-    }
-}
-
 # Build CLI arguments from declared parameters
 $CliArgs = @()
 if ($ProfileName) { $CliArgs += '--profile'; $CliArgs += $ProfileName }
@@ -84,61 +68,6 @@ else
 }
 $Binary = Join-Path $BinDir $BinaryName
 
-# Auto-elevate to administrator on Windows when not in dry-run mode
-if (-not $DryRun -and ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT')))
-{
-    $currentPrincipal = New-Object Security.Principal.WindowsPrincipal(
-        [Security.Principal.WindowsIdentity]::GetCurrent()
-    )
-    $isAdmin = $currentPrincipal.IsInRole(
-        [Security.Principal.WindowsBuiltInRole]::Administrator
-    )
-    if (-not $isAdmin)
-    {
-        Write-Output "Not running as administrator. Requesting elevation..."
-
-        if ($PSVersionTable.PSEdition -eq 'Core')
-        {
-            $psExe = 'pwsh'
-        }
-        else
-        {
-            $psExe = 'powershell'
-        }
-
-        $scriptArgs = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
-        if ($Build) { $scriptArgs += '-Build' }
-        if ($ProfileName) { $scriptArgs += '-ProfileName'; $scriptArgs += $ProfileName }
-        if ($DryRun) { $scriptArgs += '-DryRun' }
-        if ($PSBoundParameters.ContainsKey('Verbose')) { $scriptArgs += '-Verbose' }
-        if ($Action) { $scriptArgs += $Action }
-
-        try
-        {
-            $process = Start-Process -FilePath $psExe -ArgumentList $scriptArgs -Verb RunAs -PassThru
-            Write-Output "Elevated PowerShell window opened (PID: $($process.Id))."
-            exit 0
-        }
-        catch [System.ComponentModel.Win32Exception]
-        {
-            if ($_.Exception.NativeErrorCode -eq 1223)
-            {
-                Write-Error "UAC elevation was cancelled. Administrator privileges are required. Use -d (dry-run) to preview changes."
-            }
-            else
-            {
-                Write-Error "Failed to elevate: $($_.Exception.Message)"
-            }
-            exit 1
-        }
-        catch
-        {
-            Write-Error "Failed to start elevated process: $($_.Exception.Message)"
-            exit 1
-        }
-    }
-}
-
 # Build mode: build from source
 if ($Build)
 {
@@ -153,9 +82,7 @@ if ($Build)
         cargo build --profile dev-opt
         $BuildBinary = Join-Path $DotfilesRoot (Join-Path "cli" (Join-Path "target" (Join-Path "dev-opt" $BinaryName)))
         & $BuildBinary --root $DotfilesRoot @CliArgs
-        $ec = $LASTEXITCODE
-        Wait-IfElevated
-        exit $ec
+        exit $LASTEXITCODE
     }
     finally
     {
@@ -324,9 +251,7 @@ $localVersion = Get-LocalVersion
 if (($localVersion -ne "none") -and (Test-CacheFresh))
 {
     & $Binary --root $DotfilesRoot @CliArgs
-    $ec = $LASTEXITCODE
-    Wait-IfElevated
-    exit $ec
+    exit $LASTEXITCODE
 }
 
 $latest = Get-LatestVersion
@@ -336,9 +261,7 @@ if ([string]::IsNullOrEmpty($latest))
     {
         Write-Output "Using cached dotfiles $localVersion (offline)"
         & $Binary --root $DotfilesRoot @CliArgs
-        $ec = $LASTEXITCODE
-        Wait-IfElevated
-        exit $ec
+        exit $LASTEXITCODE
     }
     Write-Error "Cannot determine latest version and no local binary found. Use -Build to build from source."
     exit 1
@@ -354,6 +277,4 @@ if (($localVersion -eq "none") -or ($cached -ne $latest))
 
 Write-CacheFile -Version $latest
 & $Binary --root $DotfilesRoot @CliArgs
-$ec = $LASTEXITCODE
-Wait-IfElevated
-exit $ec
+exit $LASTEXITCODE

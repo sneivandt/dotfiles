@@ -399,11 +399,7 @@ mod tests {
             (true, String::new()), // sparse-checkout init
             (true, String::new()), // read-tree
         ]);
-        let ctx = make_context(
-            config,
-            Arc::new(Platform::new(Os::Linux, false)),
-            Arc::new(executor),
-        );
+        let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
         let result = ConfigureSparseCheckout::new().run(&ctx).unwrap();
         assert!(

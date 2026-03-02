@@ -538,7 +538,7 @@ mod tests {
         use crate::resources::test_helpers::MockExecutor;
         crate::tasks::test_helpers::make_context(
             config,
-            std::sync::Arc::new(Platform::new(os, is_arch)),
+            Platform::new(os, is_arch),
             std::sync::Arc::new(MockExecutor::with_responses(responses).with_which(true)),
         )
     }

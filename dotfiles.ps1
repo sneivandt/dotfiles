@@ -52,10 +52,10 @@ $RetryDelay = 2         # seconds between retries
 
 # Build CLI arguments from declared parameters
 $CliArgs = @()
+if ($Action) { $CliArgs += $Action }
 if ($ProfileName) { $CliArgs += '--profile'; $CliArgs += $ProfileName }
 if ($DryRun) { $CliArgs += '--dry-run' }
 if ($VerbosePreference -ne 'SilentlyContinue') { $CliArgs += '--verbose' }
-if ($Action) { $CliArgs += $Action }
 
 # Platform detection
 if ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))

@@ -31,23 +31,17 @@ RETRY_DELAY=2        # seconds between retries
 # Parse arguments — extract --build, pass everything else to the binary
 # --------------------------------------------------------------------------- #
 BUILD_MODE=false
-_has_args=false
+_forward_args=""
 for arg in "$@"; do
   if [ "$arg" = "--build" ]; then
     BUILD_MODE=true
   else
-    if [ "$_has_args" = false ]; then
-      set -- "$arg"
-      _has_args=true
-    else
-      set -- "$@" "$arg"
-    fi
+    _forward_args="$_forward_args $(printf '%s' "$arg" | sed "s/'/'\\\\''/g; s/^/'/; s/$/'/")"
   fi
 done
-if [ "$_has_args" = false ]; then
-  set --
-fi
-unset _has_args
+# shellcheck disable=SC2086  # unquoted: eval must word-split the pre-quoted tokens
+eval set -- $_forward_args
+unset _forward_args
 
 # --------------------------------------------------------------------------- #
 # Build mode: build from source and run
@@ -175,7 +169,10 @@ download_binary() {
     exit 1
   fi
   tmpfile=$(mktemp)
-  trap 'rm -f "$tmpfile"' EXIT
+  # Use a dedicated cleanup function so the trap survives re-entrant calls
+  # and does not clobber any outer EXIT trap.
+  _cleanup_download_tmpfile() { rm -f "$tmpfile"; }
+  trap '_cleanup_download_tmpfile' EXIT
   if ! download_with_retry "$checksum_url" "$tmpfile"; then
     echo "ERROR: Failed to download checksum file for $version." >&2
     rm -f "$BINARY"
@@ -193,8 +190,9 @@ download_binary() {
     rm -f "$BINARY"
     exit 1
   fi
-  rm -f "$tmpfile"
+  _cleanup_download_tmpfile
   trap - EXIT
+  unset -f _cleanup_download_tmpfile
 }
 
 # Update the version cache

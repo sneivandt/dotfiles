@@ -5,18 +5,57 @@
 
 /// Check if the current process is running with administrator privileges.
 ///
-/// On Windows, attempts to open `HKLM\SOFTWARE` with write access, which
-/// only succeeds for elevated processes. On non-Windows platforms, always
-/// returns `false`.
+/// On Windows, queries the process token for `TokenElevation` via the
+/// Win32 API. On non-Windows platforms, always returns `false`.
 #[cfg(windows)]
 #[must_use]
 pub fn is_elevated() -> bool {
-    use winreg::RegKey;
-    use winreg::enums::HKEY_LOCAL_MACHINE;
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    // KEY_WRITE = 0x20006 — opening HKLM\SOFTWARE with write access
-    // succeeds only when the process token is elevated.
-    hklm.open_subkey_with_flags("SOFTWARE", 0x20006).is_ok()
+    use std::mem::{MaybeUninit, size_of};
+    use std::ptr;
+
+    // Win32 constants
+    const TOKEN_QUERY: u32 = 0x0008;
+    const TOKEN_ELEVATION: u32 = 20; // TokenElevation info class
+
+    #[repr(C)]
+    struct TokenElevationInfo {
+        token_is_elevated: u32,
+    }
+
+    extern "system" {
+        fn OpenProcessToken(
+            process: *mut std::ffi::c_void,
+            desired_access: u32,
+            token: *mut *mut std::ffi::c_void,
+        ) -> i32;
+        fn GetCurrentProcess() -> *mut std::ffi::c_void;
+        fn GetTokenInformation(
+            token: *mut std::ffi::c_void,
+            info_class: u32,
+            info: *mut std::ffi::c_void,
+            length: u32,
+            return_length: *mut u32,
+        ) -> i32;
+        fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+    }
+
+    unsafe {
+        let mut token = ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+            return false;
+        }
+        let mut elevation = MaybeUninit::<TokenElevationInfo>::uninit();
+        let mut ret_len: u32 = 0;
+        let ok = GetTokenInformation(
+            token,
+            TOKEN_ELEVATION,
+            elevation.as_mut_ptr().cast(),
+            size_of::<TokenElevationInfo>() as u32,
+            &mut ret_len,
+        );
+        CloseHandle(token);
+        ok != 0 && elevation.assume_init().token_is_elevated != 0
+    }
 }
 
 /// Check if the current process is running with administrator privileges.

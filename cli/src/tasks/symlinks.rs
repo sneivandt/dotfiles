@@ -60,6 +60,8 @@ impl Task for UninstallSymlinks {
         "Remove symlinks"
     }
 
+    task_deps![super::reload_config::ReloadConfig];
+
     fn should_run(&self, ctx: &Context) -> bool {
         !ctx.config_read().symlinks.is_empty()
     }

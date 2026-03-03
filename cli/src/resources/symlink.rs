@@ -201,7 +201,8 @@ fn paths_equal(a: &Path, b: &Path) -> bool {
 }
 
 /// Create a symlink at `link` pointing to `target`.
-fn create_symlink(target: &Path, link: &Path, _executor: &dyn Executor) -> Result<()> {
+#[cfg_attr(not(windows), allow(unused_variables))]
+fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(target, link).with_context(|| {
@@ -235,7 +236,7 @@ fn create_symlink(target: &Path, link: &Path, _executor: &dyn Executor) -> Resul
             }
             args.push(&link_str);
             args.push(&target_str);
-            _executor.run("cmd", &args)?;
+            executor.run("cmd", &args)?;
         }
     }
 

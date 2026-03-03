@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     PowerShell entry point for dotfiles management engine.
 .DESCRIPTION

@@ -40,80 +40,10 @@ fn execute_checked(mut cmd: Command, label: &str) -> Result<ExecResult> {
     Ok(result)
 }
 
-/// Run a command and return its output. Fails if the command exits non-zero.
-///
-/// # Errors
-///
-/// Returns an error if the command cannot be executed or exits with non-zero status.
-pub fn run(program: &str, args: &[&str]) -> Result<ExecResult> {
-    let mut cmd = Command::new(program);
-    cmd.args(args);
-    execute_checked(cmd, program)
-}
-
-/// Run a command in a specific directory.
-///
-/// # Errors
-///
-/// Returns an error if the command cannot be executed or exits with non-zero status.
-pub fn run_in(dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
-    let mut cmd = Command::new(program);
-    cmd.args(args).current_dir(dir);
-    execute_checked(cmd, &format!("{program} in {}", dir.display()))
-}
-
-/// Run a command in a specific directory with extra environment variables.
-///
-/// # Errors
-///
-/// Returns an error if the command cannot be executed or exits with non-zero status.
-pub fn run_in_with_env(
-    dir: &Path,
-    program: &str,
-    args: &[&str],
-    env: &[(&str, &str)],
-) -> Result<ExecResult> {
-    let mut cmd = Command::new(program);
-    cmd.args(args).current_dir(dir);
-    for (k, v) in env {
-        cmd.env(k, v);
-    }
-    execute_checked(cmd, &format!("{program} in {}", dir.display()))
-}
-
-/// Run a command, allowing failure (returns result without bailing).
-///
-/// # Errors
-///
-/// Returns an error only if the command cannot be executed (not for non-zero exit).
-pub fn run_unchecked(program: &str, args: &[&str]) -> Result<ExecResult> {
-    let output = Command::new(program)
-        .args(args)
-        .output()
-        .with_context(|| format!("failed to execute: {program}"))?;
-
-    Ok(ExecResult::from(output))
-}
-
-/// Check if a program is available on PATH.
-#[must_use]
-pub fn which(program: &str) -> bool {
-    which::which(program).is_ok()
-}
-
-/// Resolve the full path of a program on PATH.
-///
-/// # Errors
-///
-/// Returns an error if the program cannot be found on PATH.
-pub fn which_path(program: &str) -> Result<std::path::PathBuf> {
-    which::which(program).with_context(|| format!("{program} not found on PATH"))
-}
-
 /// Trait for executing system commands, enabling test injection.
 ///
 /// Implement this trait to provide mock executors for unit tests.
-/// The [`SystemExecutor`] implementation delegates to the real free functions.
+/// The [`SystemExecutor`] implementation delegates to real process spawning.
 pub trait Executor: std::fmt::Debug + Send + Sync {
     /// Execute a command, bailing on non-zero exit.
     ///
@@ -171,11 +101,15 @@ pub struct SystemExecutor;
 
 impl Executor for SystemExecutor {
     fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-        run(program, args)
+        let mut cmd = Command::new(program);
+        cmd.args(args);
+        execute_checked(cmd, program)
     }
 
     fn run_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
-        run_in(dir, program, args)
+        let mut cmd = Command::new(program);
+        cmd.args(args).current_dir(dir);
+        execute_checked(cmd, &format!("{program} in {}", dir.display()))
     }
 
     fn run_in_with_env(
@@ -185,19 +119,28 @@ impl Executor for SystemExecutor {
         args: &[&str],
         env: &[(&str, &str)],
     ) -> Result<ExecResult> {
-        run_in_with_env(dir, program, args, env)
+        let mut cmd = Command::new(program);
+        cmd.args(args).current_dir(dir);
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        execute_checked(cmd, &format!("{program} in {}", dir.display()))
     }
 
     fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-        run_unchecked(program, args)
+        let output = Command::new(program)
+            .args(args)
+            .output()
+            .with_context(|| format!("failed to execute: {program}"))?;
+        Ok(ExecResult::from(output))
     }
 
     fn which(&self, program: &str) -> bool {
-        which(program)
+        which::which(program).is_ok()
     }
 
     fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
-        which_path(program)
+        which::which(program).with_context(|| format!("{program} not found on PATH"))
     }
 }
 
@@ -208,13 +151,14 @@ mod tests {
 
     /// Helper: run a simple echo command cross-platform.
     fn echo_result(msg: &str) -> Result<ExecResult> {
+        let executor = SystemExecutor;
         #[cfg(windows)]
         {
-            run("cmd", &["/C", "echo", msg])
+            executor.run("cmd", &["/C", "echo", msg])
         }
         #[cfg(not(windows))]
         {
-            run("echo", &[msg])
+            executor.run("echo", &[msg])
         }
     }
 
@@ -227,45 +171,50 @@ mod tests {
 
     #[test]
     fn run_failure() {
+        let executor = SystemExecutor;
         #[cfg(windows)]
-        let result = run("cmd", &["/C", "exit", "1"]);
+        let result = executor.run("cmd", &["/C", "exit", "1"]);
         #[cfg(not(windows))]
-        let result = run("false", &[]);
+        let result = executor.run("false", &[]);
         assert!(result.is_err(), "non-zero exit should produce an error");
     }
 
     #[test]
     fn run_unchecked_failure() {
+        let executor = SystemExecutor;
         #[cfg(windows)]
-        let result = run_unchecked("cmd", &["/C", "exit", "1"]).unwrap();
+        let result = executor.run_unchecked("cmd", &["/C", "exit", "1"]).unwrap();
         #[cfg(not(windows))]
-        let result = run_unchecked("false", &[]).unwrap();
+        let result = executor.run_unchecked("false", &[]).unwrap();
         assert!(!result.success, "non-zero exit should set success=false");
     }
 
     #[test]
     fn which_finds_known_program() {
+        let executor = SystemExecutor;
         // `cmd` always exists on Windows; `echo` is a real binary on Unix.
         #[cfg(windows)]
-        assert!(which("cmd"), "cmd should be found on Windows");
+        assert!(executor.which("cmd"), "cmd should be found on Windows");
         #[cfg(not(windows))]
-        assert!(which("echo"), "echo should be found on Unix");
+        assert!(executor.which("echo"), "echo should be found on Unix");
     }
 
     #[test]
     fn which_missing_program() {
+        let executor = SystemExecutor;
         assert!(
-            !which("this-program-does-not-exist-12345"),
+            !executor.which("this-program-does-not-exist-12345"),
             "non-existent program should not be found"
         );
     }
 
     #[test]
     fn which_path_finds_known_program() {
+        let executor = SystemExecutor;
         #[cfg(windows)]
-        let result = which_path("cmd");
+        let result = executor.which_path("cmd");
         #[cfg(not(windows))]
-        let result = which_path("echo");
+        let result = executor.which_path("echo");
         assert!(result.is_ok(), "which_path should find a known program");
         let path = result.unwrap();
         assert!(
@@ -276,7 +225,8 @@ mod tests {
 
     #[test]
     fn which_path_fails_for_missing_program() {
-        let result = which_path("this-program-does-not-exist-12345");
+        let executor = SystemExecutor;
+        let result = executor.which_path("this-program-does-not-exist-12345");
         assert!(
             result.is_err(),
             "which_path should fail for a missing program"
@@ -313,11 +263,14 @@ mod tests {
 
     #[test]
     fn run_in_tempdir() {
+        let executor = SystemExecutor;
         let dir = std::env::temp_dir();
         #[cfg(windows)]
-        let result = run_in(&dir, "cmd", &["/C", "echo", "hello"]).unwrap();
+        let result = executor
+            .run_in(&dir, "cmd", &["/C", "echo", "hello"])
+            .unwrap();
         #[cfg(not(windows))]
-        let result = run_in(&dir, "echo", &["hello"]).unwrap();
+        let result = executor.run_in(&dir, "echo", &["hello"]).unwrap();
         assert!(result.success, "echo in temp dir should succeed");
     }
 }

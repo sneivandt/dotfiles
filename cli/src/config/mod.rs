@@ -172,7 +172,7 @@ impl Config {
             active_categories
         );
         let git_settings = load_toml!("git-config.toml", git_config::load, active_categories);
-        let manifest = load_toml!("manifest.toml", manifest::load, excluded_categories);
+        let manifest = load_toml!("symlinks.toml", manifest::load, excluded_categories);
 
         Ok(Self {
             root: root.to_path_buf(),
@@ -236,7 +236,6 @@ mod tests {
             "vscode-extensions.toml",
             "copilot-skills.toml",
             "git-config.toml",
-            "manifest.toml",
         ] {
             std::fs::write(conf.join(file), "").expect("write empty toml");
         }

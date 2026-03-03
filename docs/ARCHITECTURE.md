@@ -77,7 +77,7 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 ┌────────────────────────────────────────────┐
 │            conf/ (TOML files)              │
 │  packages.toml      symlinks.toml          │
-│  profiles.toml      manifest.toml          │
+│  profiles.toml                             │
 │  systemd-units.toml vscode-extensions.toml │
 │  registry.toml      copilot-skills.toml    │
 │  chmod.toml                                │
@@ -159,7 +159,7 @@ available only when invoking the binary directly.
 | `copilot_skills.rs` | `copilot-skills.toml` | GitHub Copilot CLI skills |
 | `registry.rs` | `registry.toml` | Windows registry entries |
 | `git_config.rs` | `git-config.toml` | Git configuration settings |
-| `manifest.rs` | `manifest.toml` | Sparse checkout file mappings |
+| `manifest.rs` | `symlinks.toml` | Sparse checkout exclusions (OR logic) |
 
 #### Tasks (`tasks/`)
 
@@ -294,11 +294,11 @@ Git's sparse checkout feature controls which files are checked out.
 **Implementation flow**:
 1. Resolve profile from `profiles.toml`
 2. Compute excluded categories from profile definition plus platform detection
-3. Load file mappings from `manifest.toml`
+3. Derive excluded files from `symlinks.toml` (OR logic)
 4. Build exclusion patterns
 5. Configure `git sparse-checkout set`
 
-**Pattern logic** (manifest.toml):
+**Pattern logic** (sparse checkout exclusions from symlinks.toml):
 - Uses OR logic for exclusions
 - `[arch-desktop]` means "exclude if arch OR desktop is excluded"
 - Ensures files common to multiple categories are excluded appropriately
@@ -373,7 +373,7 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 1. Define in `conf/profiles.toml`
 2. Add sections to configuration files
-3. Map files in `conf/manifest.toml`
+3. Add sections to `symlinks.toml` and other config files as needed
 
 ## Performance Considerations
 

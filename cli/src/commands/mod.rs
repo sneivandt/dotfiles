@@ -115,7 +115,7 @@ fn load_config(
     debug_count!(config.chmod, "chmod entries");
     debug_count!(config.vscode_extensions, "vscode extensions");
     debug_count!(config.copilot_skills, "copilot skills");
-    debug_count!(config.manifest.excluded_files, "manifest exclusions");
+    debug_count!(config.manifest.excluded_files, "sparse checkout exclusions");
     log.info(&format!(
         "loaded {} packages, {} symlinks",
         config.packages.len(),

@@ -82,12 +82,7 @@ impl Task for ValidateConfigFiles {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let conf = ctx.root().join("conf");
-        let required = [
-            "profiles.toml",
-            "symlinks.toml",
-            "packages.toml",
-            "manifest.toml",
-        ];
+        let required = ["profiles.toml", "symlinks.toml", "packages.toml"];
 
         let mut errors = 0u32;
         for config_file in &required {

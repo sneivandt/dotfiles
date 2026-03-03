@@ -19,20 +19,20 @@ fi
 # shellcheck source=lib/test-helpers.sh
 . "$SCRIPT_DIR"/lib/test-helpers.sh
 
-# Validate that files listed in manifest.toml exist in symlinks/.
+# Validate that files listed in symlinks.toml exist in symlinks/.
 test_config_validation()
 {(
   log_stage "Validating configuration consistency"
-  [ -f "$DIR/conf/manifest.toml" ] || { log_verbose "No manifest.toml, skipping"; return 0; }
+  [ -f "$DIR/conf/symlinks.toml" ] || { log_verbose "No symlinks.toml, skipping"; return 0; }
 
   err_file="$(mktemp)"; echo 0 > "$err_file"
-  sections="$(grep -E '^\[.+\]$' "$DIR/conf/manifest.toml" | tr -d '[]')"
+  sections="$(grep -E '^\[.+\]$' "$DIR/conf/symlinks.toml" | tr -d '[]')"
   for section in $sections; do
-    entries="$(read_toml_section_array "$DIR/conf/manifest.toml" "$section" "paths")" || true
+    entries="$(read_toml_section_array "$DIR/conf/symlinks.toml" "$section" "symlinks")" || true
     echo "$entries" | while IFS='' read -r file || [ -n "$file" ]; do
       [ -n "$file" ] || continue
-      if [ ! -e "$DIR/symlinks/$file" ] && [ ! -L "$DIR/symlinks/${file%/}" ]; then
-        printf "%sERROR: manifest.toml [%s] references missing: symlinks/%s%s\n" "${RED}" "$section" "$file" "${NC}" >&2
+      if [ ! -e "$DIR/symlinks/$file" ] && [ ! -L "$DIR/symlinks/$file" ]; then
+        printf "%sERROR: symlinks.toml [%s] references missing: symlinks/%s%s\n" "${RED}" "$section" "$file" "${NC}" >&2
         echo 1 > "$err_file"
       fi
     done
@@ -122,26 +122,26 @@ test_toml_syntax()
 test_category_consistency()
 {(
   log_stage "Validating category consistency"
-  [ -f "$DIR/conf/manifest.toml" ] || { log_verbose "No manifest.toml, skipping"; return 0; }
+  [ -f "$DIR/conf/symlinks.toml" ] || { log_verbose "No symlinks.toml, skipping"; return 0; }
 
-  manifest_cats="$(grep -E '^\[.+\]$' "$DIR/conf/manifest.toml" | tr -d '[]' | sort -u)"
+  symlinks_cats="$(grep -E '^\[.+\]$' "$DIR/conf/symlinks.toml" | tr -d '[]' | sort -u)"
 
   errors=0
-  for toml in "$DIR"/conf/symlinks.toml "$DIR"/conf/chmod.toml "$DIR"/conf/packages.toml; do
+  for toml in "$DIR"/conf/chmod.toml "$DIR"/conf/packages.toml; do
     [ -f "$toml" ] || continue
     name="$(basename "$toml")"
     cats="$(grep -E '^\[.+\]$' "$toml" | tr -d '[]' | sort -u)"
     for cat in $cats; do
       # Categories with hyphens (e.g. "arch-desktop") — check each part
       for part in $(echo "$cat" | tr '-' ' '); do
-        if ! echo "$manifest_cats" | grep -qxF "$part"; then
+        if ! echo "$symlinks_cats" | grep -qxF "$part"; then
           # Check if it's a known profile category
           if [ -f "$DIR/conf/profiles.toml" ] && grep -qE "^\[$part\]$" "$DIR/conf/profiles.toml" 2>/dev/null; then
             continue
           fi
-          # Allow auto-detected platform categories (handled by platform detection, not manifest)
+          # Allow auto-detected platform categories (handled by platform detection, not symlinks)
           case "$part" in linux|windows|arch) continue ;; esac
-          printf "%sWARNING: %s uses category '%s' not in manifest.toml%s\n" "${YELLOW}" "$name" "$part" "${NC}" >&2
+          printf "%sWARNING: %s uses category '%s' not in symlinks.toml%s\n" "${YELLOW}" "$name" "$part" "${NC}" >&2
           errors=$((errors + 1))
         fi
       done

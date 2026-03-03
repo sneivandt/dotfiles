@@ -58,7 +58,7 @@ Git's sparse checkout feature controls which files are checked out to your worki
 
 **How it works:**
 - Profile definitions in `conf/profiles.toml` specify which categories to exclude
-- File categories are mapped in `conf/manifest.toml`
+- Sparse checkout exclusions are derived from `symlinks.toml` categories
 - Git sparse checkout rules are automatically configured
 - Excluded files don't clutter your workspace
 
@@ -188,7 +188,7 @@ Categories are logical groups used throughout the configuration system:
 Custom categories can be created by:
 1. Adding them to profile definitions in `conf/profiles.toml`
 2. Creating corresponding sections in other `.toml` files
-3. Mapping files to categories in `conf/manifest.toml`
+3. Adding sections to `symlinks.toml` and other config files
 
 ## Advanced: Profile Dependencies
 

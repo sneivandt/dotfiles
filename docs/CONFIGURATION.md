@@ -32,7 +32,7 @@ items = ["more-entries"]
 - **Section names** (in all other .toml files) use hyphen-separated categories: `[arch-desktop]`
   - This indicates the section requires ALL listed categories to be active (AND logic)
   - Example: `[arch-desktop]` is only processed when both `arch` AND `desktop` are not excluded
-  - **Exception**: `manifest.toml` uses OR logic—`[arch-desktop]` means exclude if arch OR desktop is excluded
+  - **Sparse checkout**: `symlinks.toml` is also used with OR-exclude logic to derive sparse checkout exclusions
 - Empty lines and comments starting with `#` are ignored
 - Only sections whose required categories match the active profile are processed
 - `registry.toml` uses a nested structure: logical section names with a `path` key and `[section.values]` subtable
@@ -69,30 +69,9 @@ exclude = []
 
 ---
 
-### `manifest.toml`
-**Purpose**: Maps files and directories to categories for git sparse checkout exclusion.
+### Sparse Checkout Exclusions
 
-**Format**: Sections represent categories; entries are paths relative to `symlinks/` directory root.
-
-**Example**:
-```toml
-[desktop]
-paths = [
-  "config/Code/",
-  "config/Code - Insiders/",
-]
-
-[arch-desktop]
-paths = [
-  "config/dunst/",
-]
-```
-
-**Important: OR Logic for Exclusions**:
-- Unlike other configuration files, manifest.toml uses **OR logic** for multi-category sections
-- `[arch-desktop]` means "exclude if arch OR desktop is excluded" (not both required)
-- This ensures files common to multiple categories are excluded if ANY of those categories is excluded
-- Other config files use AND logic: `[arch-desktop]` means "include only if BOTH arch AND desktop are active"
+Sparse checkout exclusions are derived automatically from `symlinks.toml`. When a category is excluded by the active profile, all symlink sources in that category's section are excluded from git sparse checkout using OR logic — `[arch-desktop]` means "exclude if arch OR desktop is excluded".
 
 ---
 
@@ -280,7 +259,6 @@ packages = ["my-new-package"]
 ### Adding a Symlink
 1. Place file in `symlinks/` directory
 2. Add entry to appropriate section in `symlinks.toml`
-3. Update `manifest.toml` if it belongs to a specific category
 
 ### Adding a New Profile
 1. Define in `profiles.toml`:

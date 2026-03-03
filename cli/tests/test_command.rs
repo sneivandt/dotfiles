@@ -796,7 +796,6 @@ fn config_load_returns_error_on_invalid_toml() {
     // Write the remaining required config files as empty so only symlinks.toml is bad.
     for file in &[
         "packages.toml",
-        "manifest.toml",
         "chmod.toml",
         "systemd-units.toml",
         "vscode-extensions.toml",

@@ -36,7 +36,6 @@
 - [ ] Updated `conf/packages.toml`
 - [ ] Updated `conf/symlinks.toml`
 - [ ] Updated `conf/systemd-units.toml`
-- [ ] Updated `conf/manifest.toml`
 - [ ] Updated `conf/profiles.toml`
 - [ ] Other: <!-- specify -->
 

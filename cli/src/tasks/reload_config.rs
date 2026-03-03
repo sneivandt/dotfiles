@@ -104,7 +104,6 @@ mod tests {
         for file in &[
             "symlinks.toml",
             "packages.toml",
-            "manifest.toml",
             "chmod.toml",
             "systemd-units.toml",
             "vscode-extensions.toml",

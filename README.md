@@ -93,8 +93,7 @@ See the [Profile System Guide](docs/PROFILES.md) for details.
 Configuration is defined in `conf/*.toml` files using TOML format:
 
 - **`profiles.toml`** - Profile definitions
-- **`manifest.toml`** - File-to-category mappings for sparse checkout
-- **`symlinks.toml`** - Files to symlink to `$HOME`
+- **`symlinks.toml`** - Files to symlink to `$HOME` (also drives sparse checkout exclusions)
 - **`packages.toml`** - System packages to install
 - **`systemd-units.toml`** - Systemd units to enable
 - **`vscode-extensions.toml`** - VS Code extensions

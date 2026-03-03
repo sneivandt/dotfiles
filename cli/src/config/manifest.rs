@@ -1,7 +1,6 @@
-//! Sparse-checkout manifest configuration loading.
+//! Sparse-checkout manifest derived from symlinks.toml.
 use anyhow::Result;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::path::Path;
 
 use super::helpers::category_matcher::{Category, MatchMode};
@@ -14,27 +13,49 @@ pub struct Manifest {
     pub excluded_files: Vec<String>,
 }
 
-/// TOML section containing excluded paths.
+/// A single entry in a symlinks section — either a plain source path or a
+/// structured `{ source, target }` pair.
 #[derive(Debug, Deserialize)]
-struct ManifestSection {
-    paths: Vec<String>,
+#[serde(untagged)]
+enum SymlinkEntry {
+    Simple(String),
+    WithTarget {
+        source: String,
+        #[allow(dead_code)]
+        target: String,
+    },
 }
 
-/// Load manifest from manifest.toml using OR exclusion logic.
+impl SymlinkEntry {
+    fn into_source(self) -> String {
+        match self {
+            Self::Simple(s) => s,
+            Self::WithTarget { source, .. } => source,
+        }
+    }
+}
+
+/// TOML section containing symlinks.
+#[derive(Debug, Deserialize)]
+struct SymlinkSection {
+    symlinks: Vec<SymlinkEntry>,
+}
+
+/// Derive excluded files from symlinks.toml using OR exclusion logic.
 ///
-/// A file section is excluded if ANY of its category tags match the excluded set.
-/// This is the opposite of other config files which use AND inclusion logic.
+/// A section is excluded if ANY of its category tags match the excluded set.
+/// This is the opposite of the symlink loader which uses AND inclusion logic.
 ///
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, excluded_categories: &[Category]) -> Result<Manifest> {
-    let config: HashMap<String, ManifestSection> = toml_loader::load_config(path)?;
+    let items = toml_loader::load_section_items(path, |s: SymlinkSection| s.symlinks)?;
 
-    let items: Vec<(String, Vec<String>)> = config.into_iter().map(|(k, v)| (k, v.paths)).collect();
-
-    let excluded_files =
+    let entries: Vec<SymlinkEntry> =
         toml_loader::filter_by_categories(items, excluded_categories, MatchMode::Any);
+
+    let excluded_files: Vec<String> = entries.into_iter().map(SymlinkEntry::into_source).collect();
 
     Ok(Manifest { excluded_files })
 }
@@ -49,16 +70,16 @@ mod tests {
     fn or_exclusion_logic() {
         let (_dir, path) = write_temp_toml(
             r#"[base]
-paths = ["file1"]
+symlinks = ["file1"]
 
 [arch]
-paths = ["file2"]
+symlinks = ["file2"]
 
 [windows]
-paths = ["file3"]
+symlinks = ["file3"]
 
 [arch-desktop]
-paths = ["file4"]
+symlinks = ["file4"]
 "#,
         );
         // Excluding 'windows' should exclude only file3
@@ -70,7 +91,7 @@ paths = ["file4"]
     fn or_logic_multi_category() {
         let (_dir, path) = write_temp_toml(
             r#"[arch-desktop]
-paths = ["file1"]
+symlinks = ["file1"]
 "#,
         );
         // Excluding just 'arch' should still exclude the section (OR logic)
@@ -92,16 +113,36 @@ paths = ["file1"]
     fn excludes_nothing_when_no_categories_match() {
         let (_dir, path) = write_temp_toml(
             r#"[base]
-paths = ["file1"]
+symlinks = ["file1"]
 
 [arch]
-paths = ["file2"]
+symlinks = ["file2"]
 "#,
         );
         let manifest = load(&path, &[Category::Windows]).unwrap();
         assert!(
             manifest.excluded_files.is_empty(),
             "no categories matched — nothing should be excluded"
+        );
+    }
+
+    #[test]
+    fn extracts_source_from_explicit_target() {
+        let (_dir, path) = write_temp_toml(
+            r#"[windows]
+symlinks = [
+  "simple_file",
+  { source = "AppData/path", target = "AppData/path" },
+]
+"#,
+        );
+        let manifest = load(&path, &[Category::Windows]).unwrap();
+        assert_eq!(manifest.excluded_files.len(), 2);
+        assert!(manifest.excluded_files.contains(&"simple_file".to_string()));
+        assert!(
+            manifest
+                .excluded_files
+                .contains(&"AppData/path".to_string())
         );
     }
 }

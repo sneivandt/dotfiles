@@ -80,11 +80,7 @@ cargo test --manifest-path cli/Cargo.toml
    units = ["my-service.service"]
    ```
 
-4. **File Categorization**: If the file should be excluded in certain profiles, add to `conf/manifest.toml`:
-   ```toml
-   [desktop]
-   paths = ["symlinks/config/mynewconfig"]
-   ```
+4. **File Categorization**: Sparse checkout exclusions are derived automatically from `symlinks.toml` categories — no separate configuration needed.
 
 #### Adding New Tasks
 

@@ -39,7 +39,7 @@ pub const fn is_elevated() -> bool {
 /// Returns an error if the user cancels the UAC prompt or the elevated
 /// process fails to start.
 #[cfg(windows)]
-pub fn elevate_and_exit() -> anyhow::Result<()> {
+pub fn elevate_and_exit(executor: &dyn crate::exec::Executor) -> anyhow::Result<()> {
     use anyhow::{Context, bail};
 
     let exe = std::env::current_exe().context("failed to determine current executable path")?;
@@ -57,7 +57,7 @@ pub fn elevate_and_exit() -> anyhow::Result<()> {
         format!("Start-Process -FilePath '{exe_escaped}' -ArgumentList {arg_list} -Verb RunAs")
     };
 
-    let ps_exe = if crate::exec::which("pwsh") {
+    let ps_exe = if executor.which("pwsh") {
         "pwsh"
     } else {
         "powershell"

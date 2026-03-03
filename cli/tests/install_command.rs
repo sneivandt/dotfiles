@@ -524,7 +524,11 @@ fn install_symlinks_is_idempotent() {
     // Build the resource to inspect state directly.
     let source = ctx.root_path().join("symlinks").join("bashrc");
     let target = home_dir.path().join(".bashrc");
-    let resource = dotfiles_cli::resources::symlink::SymlinkResource::new(source, target);
+    let resource = dotfiles_cli::resources::symlink::SymlinkResource::new(
+        source,
+        target,
+        std::sync::Arc::new(dotfiles_cli::exec::SystemExecutor),
+    );
 
     // After the first run every resource must be Correct.  This is the
     // precondition that proves the second run will make zero changes.

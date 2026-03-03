@@ -15,7 +15,8 @@ fn main() {
         ) && !args.global.dry_run;
         if needs_elevation
             && !dotfiles_cli::elevation::is_elevated()
-            && let Err(e) = dotfiles_cli::elevation::elevate_and_exit()
+            && let Err(e) =
+                dotfiles_cli::elevation::elevate_and_exit(&dotfiles_cli::exec::SystemExecutor)
         {
             eprintln!("\x1b[31mError: {e}\x1b[0m");
             std::process::exit(1);

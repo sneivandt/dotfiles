@@ -199,8 +199,8 @@ impl Task for ConfigureSparseCheckout {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::resources::helpers::fs::MockFileSystemOps;
     use crate::platform::{Os, Platform};
+    use crate::resources::helpers::fs::MockFileSystemOps;
     use crate::resources::test_helpers::MockExecutor;
     use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
     use std::path::PathBuf;

@@ -214,7 +214,6 @@ impl FileSystemOps for MockFileSystemOps {
     }
 }
 
-
 /// Ensure the parent directory of `path` exists, creating it (and any
 /// ancestors) if necessary.
 ///

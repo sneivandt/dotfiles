@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use super::diagnostic::{DiagEvent, DiagnosticLog};
 use super::types::{Log, TaskEntry, TaskStatus};
-use super::utils::{log_file_path, terminal_columns};
+use super::utils::{dotfiles_cache_dir, log_file_path, terminal_columns};
 
 /// Generate an inherent `pub fn $name(&self, msg: &str)` method on `Logger`
 /// that optionally emits to the diagnostic log and then forwards to the given
@@ -90,7 +90,8 @@ impl Logger {
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
             progress_rows: Mutex::new(0),
-            diagnostic: DiagnosticLog::new(command, start),
+            diagnostic: dotfiles_cache_dir()
+                .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
         }
     }
 

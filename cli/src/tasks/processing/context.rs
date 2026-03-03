@@ -27,10 +27,11 @@ pub struct ContextOpts {
 pub struct Context {
     /// Configuration loaded from TOML files.
     ///
-    /// Wrapped in `Arc<RwLock<_>>` so that `ReloadConfig` can atomically
-    /// replace the config after a `git pull` while all other tasks see the
-    /// updated values.  Use [`Context::config_read`] for read access.
-    pub config: Arc<RwLock<Config>>,
+    /// Wrapped in `Arc<RwLock<Arc<Config>>>` so that `ReloadConfig` can
+    /// atomically swap the inner `Arc<Config>` after a `git pull`.
+    /// Readers call [`Context::config_read`] to get an `Arc<Config>`
+    /// snapshot, releasing the lock immediately.
+    pub config: Arc<RwLock<Arc<Config>>>,
     /// Detected platform information.
     pub platform: Platform,
     /// Logger for output and task recording.
@@ -67,7 +68,7 @@ impl Context {
     /// Returns an error if the HOME (or USERPROFILE on Windows) environment variable
     /// is not set.
     pub fn new(
-        config: Arc<RwLock<Config>>,
+        config: Arc<RwLock<Arc<Config>>>,
         platform: Platform,
         log: Arc<dyn Log>,
         executor: Arc<dyn Executor>,
@@ -95,14 +96,18 @@ impl Context {
         })
     }
 
-    /// Acquire a shared read lock on the configuration.
+    /// Get a snapshot of the current configuration.
     ///
-    /// Recovers from a poisoned lock (which can only occur if a previous task
-    /// panicked) by consuming the poison and returning the inner value.
-    pub fn config_read(&self) -> std::sync::RwLockReadGuard<'_, Config> {
-        self.config
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    /// The returned `Arc<Config>` is a cheap clone; the read lock is held
+    /// only for the duration of the `Arc::clone`.  Callers can hold the
+    /// snapshot as long as needed without blocking `ReloadConfig`.
+    pub fn config_read(&self) -> Arc<Config> {
+        Arc::clone(
+            &*self
+                .config
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
     }
 
     /// Root directory of the dotfiles repository.

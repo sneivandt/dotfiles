@@ -14,6 +14,7 @@ pub mod sparse_checkout;
 pub mod symlinks;
 pub mod systemd_units;
 pub mod update;
+pub mod validation;
 pub mod vscode_extensions;
 
 /// Implement [`Task::dependencies`] by expanding to the required
@@ -55,7 +56,7 @@ pub(crate) use processing::graph::has_cycle;
 pub use processing::update_signal::UpdateSignal;
 #[allow(unused_imports)] // TaskStats is used by doc-tests via the lib crate
 pub use processing::{
-    ProcessOpts, TaskResult, TaskStats, process_resource_states, process_resources,
+    ProcessMode, ProcessOpts, TaskResult, TaskStats, process_resource_states, process_resources,
     process_resources_remove,
 };
 
@@ -182,61 +183,26 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 #[cfg(test)]
 #[allow(clippy::panic)]
 pub mod test_helpers {
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use std::sync::Arc;
 
     use crate::config::Config;
     use crate::config::category_matcher::Category;
     use crate::config::manifest::Manifest;
     use crate::config::profiles::Profile;
-    use crate::exec::{ExecResult, Executor};
+    use crate::exec::Executor;
     use crate::logging::Logger;
     use crate::platform::Platform;
 
     use super::Context;
 
-    /// Stub executor that panics if any real command is issued.
-    ///
-    /// `which()` returns the configured `which_result` value (default: `false`),
-    /// which causes tasks that guard on tool availability to report
-    /// *not applicable* unless explicitly overridden.
-    #[derive(Debug, Default)]
-    pub struct WhichExecutor {
-        /// Value returned by `which()` regardless of program name.
-        pub which_result: bool,
-    }
+    /// Re-export [`TestExecutor`](crate::exec::test_helpers::TestExecutor) for
+    /// backward compatibility.  Code that referenced `WhichExecutor` should
+    /// migrate to `TestExecutor::stub().with_which(value)`.
+    pub use crate::exec::test_helpers::TestExecutor;
 
-    impl Executor for WhichExecutor {
-        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
-            panic!("unexpected executor call in test")
-        }
-
-        fn run_in(&self, _: &Path, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
-            panic!("unexpected executor call in test")
-        }
-
-        fn run_in_with_env(
-            &self,
-            _: &Path,
-            _: &str,
-            _: &[&str],
-            _: &[(&str, &str)],
-        ) -> anyhow::Result<ExecResult> {
-            panic!("unexpected executor call in test")
-        }
-
-        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
-            panic!("unexpected executor call in test")
-        }
-
-        fn which(&self, _: &str) -> bool {
-            self.which_result
-        }
-
-        fn which_path(&self, program: &str) -> anyhow::Result<std::path::PathBuf> {
-            anyhow::bail!("{program} not found on PATH")
-        }
-    }
+    /// Backward-compatible alias for [`TestExecutor`].
+    pub type WhichExecutor = TestExecutor;
 
     /// Build a [`Config`] with all lists empty and `root` set to `root`.
     #[must_use]
@@ -270,7 +236,7 @@ pub mod test_helpers {
         executor: Arc<dyn Executor>,
     ) -> Context {
         Context {
-            config: std::sync::Arc::new(std::sync::RwLock::new(config)),
+            config: std::sync::Arc::new(std::sync::RwLock::new(std::sync::Arc::new(config))),
             platform,
             log: Arc::new(Logger::new("test")),
             dry_run: false,
@@ -338,9 +304,7 @@ pub mod test_helpers {
             make_context(
                 self.config,
                 Platform::new(self.os, self.is_arch),
-                Arc::new(WhichExecutor {
-                    which_result: self.which_result,
-                }),
+                Arc::new(TestExecutor::stub().with_which(self.which_result)),
             )
         }
     }

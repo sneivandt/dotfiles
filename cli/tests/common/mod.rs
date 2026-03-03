@@ -232,7 +232,7 @@ impl IntegrationTestContext {
         let home = tempfile::tempdir().expect("create home dir");
         let log = Arc::new(Logger::new("test"));
         let ctx = Context {
-            config: Arc::new(RwLock::new(config)),
+            config: Arc::new(RwLock::new(Arc::new(config))),
             platform: Platform::detect(),
             log: Arc::clone(&log) as Arc<dyn Log>,
             dry_run: false,

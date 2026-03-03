@@ -274,3 +274,157 @@ mod tests {
         assert!(result.success, "echo in temp dir should succeed");
     }
 }
+
+/// Shared test executor for unit tests.
+///
+/// Provides a unified [`TestExecutor`] that replaces the previously separate
+/// `MockExecutor` (FIFO response queue) and `WhichExecutor` (stub that panics).
+#[cfg(test)]
+#[allow(clippy::panic)]
+pub mod test_helpers {
+    use super::{ExecResult, Executor};
+    use std::collections::VecDeque;
+    use std::path::Path;
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    /// A unified test executor covering both **stub** and **mock** use cases.
+    ///
+    /// # Modes
+    ///
+    /// | Constructor | Queue | `which()` | On empty queue |
+    /// |---|---|---|---|
+    /// | [`stub()`](Self::stub) | empty | `false` | **panics** |
+    /// | [`ok()`](Self::ok) | 1 success | `false` | returns error |
+    /// | [`fail()`](Self::fail) | 1 failure | `false` | returns error |
+    /// | [`with_responses()`](Self::with_responses) | custom | `false` | returns error |
+    ///
+    /// Call [`with_which()`](Self::with_which) to set the value returned by
+    /// [`Executor::which`].
+    #[derive(Debug)]
+    pub struct TestExecutor {
+        responses: Mutex<VecDeque<(bool, String)>>,
+        which_result: bool,
+        call_count: Arc<AtomicUsize>,
+        /// When `true`, any `run*()` call with an empty queue panics.
+        panic_on_empty: bool,
+    }
+
+    impl TestExecutor {
+        /// Create a stub executor that panics on any `run*()` call.
+        ///
+        /// Equivalent to the former `WhichExecutor` / `StubExecutor`.
+        #[must_use]
+        pub fn stub() -> Self {
+            Self {
+                responses: Mutex::new(VecDeque::new()),
+                which_result: false,
+                call_count: Arc::new(AtomicUsize::new(0)),
+                panic_on_empty: true,
+            }
+        }
+
+        /// Create a mock with a single successful response.
+        #[must_use]
+        pub fn ok(stdout: &str) -> Self {
+            Self::with_responses(vec![(true, stdout.to_string())])
+        }
+
+        /// Create a mock with a single failed response (empty stdout).
+        #[must_use]
+        pub fn fail() -> Self {
+            Self::with_responses(vec![(false, String::new())])
+        }
+
+        /// Create a mock from an ordered list of `(success, stdout)` pairs.
+        #[must_use]
+        pub fn with_responses(responses: Vec<(bool, String)>) -> Self {
+            Self {
+                responses: Mutex::new(responses.into()),
+                which_result: false,
+                call_count: Arc::new(AtomicUsize::new(0)),
+                panic_on_empty: false,
+            }
+        }
+
+        /// Set the value returned by every [`Executor::which`] call.
+        #[must_use]
+        pub fn with_which(mut self, result: bool) -> Self {
+            self.which_result = result;
+            self
+        }
+
+        /// Return the total number of `run*()` calls made so far.
+        #[must_use]
+        pub fn call_count(&self) -> usize {
+            self.call_count.load(Ordering::SeqCst)
+        }
+
+        fn next(&self) -> (bool, String) {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
+            self.responses.lock().map_or_else(
+                |_| (false, "mutex poisoned".to_string()),
+                |mut guard| {
+                    guard.pop_front().unwrap_or_else(|| {
+                        assert!(!self.panic_on_empty, "unexpected executor call in test");
+                        (false, "unexpected call".to_string())
+                    })
+                },
+            )
+        }
+
+        fn next_result(&self) -> anyhow::Result<ExecResult> {
+            let (success, stdout) = self.next();
+            if success {
+                Ok(ExecResult {
+                    stdout,
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                anyhow::bail!("mock command failed")
+            }
+        }
+    }
+
+    impl Executor for TestExecutor {
+        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+            self.next_result()
+        }
+
+        fn run_in(&self, _: &Path, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+            self.next_result()
+        }
+
+        fn run_in_with_env(
+            &self,
+            _: &Path,
+            _: &str,
+            _: &[&str],
+            _: &[(&str, &str)],
+        ) -> anyhow::Result<ExecResult> {
+            self.next_result()
+        }
+
+        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
+            let (success, stdout) = self.next();
+            Ok(ExecResult {
+                stdout,
+                stderr: String::new(),
+                success,
+                code: Some(i32::from(!success)),
+            })
+        }
+
+        fn which(&self, _: &str) -> bool {
+            self.which_result
+        }
+
+        fn which_path(&self, program: &str) -> anyhow::Result<std::path::PathBuf> {
+            anyhow::bail!("{program} not found on PATH")
+        }
+    }
+}

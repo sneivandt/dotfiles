@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Instant;
 
-use super::utils::{diag_log_file_path, format_utc_datetime_us, strip_ansi};
+use super::utils::{format_utc_datetime_us, strip_ansi};
 
 thread_local! {
     /// Task name for the current thread, set by the parallel scheduler.
@@ -116,10 +116,14 @@ pub struct DiagnosticLog {
 impl DiagnosticLog {
     /// Create a new diagnostic log file for the given command.
     ///
-    /// Returns `None` if the cache directory cannot be created or the file
-    /// cannot be opened.
-    pub(super) fn new(command: &str, start: Instant) -> Option<Self> {
-        let path = diag_log_file_path(command)?;
+    /// `cache_dir` is the resolved `dotfiles` cache directory (e.g.
+    /// `$XDG_CACHE_HOME/dotfiles/`).  The caller is responsible for
+    /// resolving the directory; this constructor never reads environment
+    /// variables.
+    ///
+    /// Returns `None` if the file cannot be created.
+    pub(super) fn new(command: &str, cache_dir: &std::path::Path, start: Instant) -> Option<Self> {
+        let path = cache_dir.join(format!("{command}.diag.log"));
         let version =
             option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
         let header = format!(
@@ -180,19 +184,8 @@ mod tests {
     use std::fs;
 
     fn isolated_diag_log() -> (DiagnosticLog, tempfile::TempDir) {
-        let _lock = crate::logging::TEST_ENV_MUTEX
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let tmp = tempfile::tempdir().expect("tempdir");
-        #[allow(unsafe_code)]
-        unsafe {
-            std::env::set_var("XDG_CACHE_HOME", tmp.path());
-        }
-        let diag = DiagnosticLog::new("test", Instant::now()).expect("diag log");
-        #[allow(unsafe_code)]
-        unsafe {
-            std::env::remove_var("XDG_CACHE_HOME");
-        }
+        let diag = DiagnosticLog::new("test", tmp.path(), Instant::now()).expect("diag log");
         (diag, tmp)
     }
 

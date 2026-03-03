@@ -141,14 +141,80 @@ impl std::ops::AddAssign for TaskStats {
     }
 }
 
+/// Processing strategy that determines how each [`ResourceState`] variant is handled.
+///
+/// Each variant encodes a specific combination of behaviours — which states
+/// are fixable and whether errors are fatal — so the intent is explicit
+/// without reasoning about individual boolean flags.
+///
+/// # Examples
+///
+/// ```
+/// use dotfiles_cli::tasks::ProcessMode;
+///
+/// let strict = ProcessMode::Strict;
+/// assert!(strict.fix_incorrect() && strict.fix_missing() && strict.bail_on_error());
+///
+/// let lenient = ProcessMode::Lenient;
+/// assert!(lenient.fix_incorrect() && lenient.fix_missing() && !lenient.bail_on_error());
+///
+/// let missing_only = ProcessMode::InstallMissing;
+/// assert!(!missing_only.fix_incorrect() && missing_only.fix_missing());
+///
+/// let existing_only = ProcessMode::FixExisting;
+/// assert!(existing_only.fix_incorrect() && !existing_only.fix_missing());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessMode {
+    /// Fix both missing and incorrect resources, bailing on errors.
+    ///
+    /// Use for resources where every failure must be surfaced (e.g. symlinks,
+    /// hooks, git config).
+    Strict,
+    /// Fix both missing and incorrect resources, warning on errors instead of bailing.
+    ///
+    /// Use for resources where individual failures should not abort the batch
+    /// (e.g. packages via winget, registry entries, developer mode).
+    Lenient,
+    /// Install only missing resources, warning on errors.
+    ///
+    /// Suitable for resources that should not be overwritten when already
+    /// present (e.g. VS Code extensions, systemd units, Copilot skills).
+    InstallMissing,
+    /// Fix only incorrect resources (skip missing), bailing on errors.
+    ///
+    /// Use for resources where missing state is expected and only existing
+    /// items need correction (e.g. chmod on files that may not exist yet).
+    FixExisting,
+}
+
+impl ProcessMode {
+    /// Whether `Incorrect` resources should be fixed.
+    #[must_use]
+    pub const fn fix_incorrect(self) -> bool {
+        matches!(self, Self::Strict | Self::Lenient | Self::FixExisting)
+    }
+
+    /// Whether `Missing` resources should be created.
+    #[must_use]
+    pub const fn fix_missing(self) -> bool {
+        matches!(self, Self::Strict | Self::Lenient | Self::InstallMissing)
+    }
+
+    /// Whether errors from `apply()` should propagate (bail).
+    ///
+    /// When `false`, errors are logged as warnings and counted as skipped.
+    #[must_use]
+    pub const fn bail_on_error(self) -> bool {
+        matches!(self, Self::Strict | Self::FixExisting)
+    }
+}
+
 /// Configuration for the generic resource processing loop.
 ///
-/// Controls how each [`ResourceState`] variant is handled.
+/// Pairs a [`ProcessMode`] with a human-readable verb for log messages.
 ///
-/// Use the named constructors [`apply_all`](Self::apply_all) and
-/// [`install_missing`](Self::install_missing) for common presets, with
-/// optional modifiers like [`no_bail`](Self::no_bail) and
-/// [`skip_missing`](Self::skip_missing).
+/// Use the named constructors to express intent clearly:
 ///
 /// # Examples
 ///
@@ -156,31 +222,27 @@ impl std::ops::AddAssign for TaskStats {
 /// use dotfiles_cli::tasks::ProcessOpts;
 ///
 /// // Fix everything, bail on errors (strict):
-/// let opts = ProcessOpts::apply_all("link");
-/// assert!(opts.fix_incorrect && opts.fix_missing && opts.bail_on_error);
+/// let opts = ProcessOpts::strict("link");
+/// assert!(opts.mode.fix_incorrect() && opts.mode.fix_missing() && opts.mode.bail_on_error());
 ///
 /// // Fix everything, warn on errors (lenient):
-/// let opts = ProcessOpts::apply_all("install").no_bail();
-/// assert!(opts.fix_incorrect && opts.fix_missing && !opts.bail_on_error);
+/// let opts = ProcessOpts::lenient("install");
+/// assert!(opts.mode.fix_incorrect() && opts.mode.fix_missing() && !opts.mode.bail_on_error());
 ///
 /// // Install only missing resources (lenient):
 /// let opts = ProcessOpts::install_missing("enable");
-/// assert!(!opts.fix_incorrect && opts.fix_missing && !opts.bail_on_error);
+/// assert!(!opts.mode.fix_incorrect() && opts.mode.fix_missing() && !opts.mode.bail_on_error());
 ///
 /// // Fix existing only, bail on errors:
-/// let opts = ProcessOpts::apply_all("chmod").skip_missing();
-/// assert!(opts.fix_incorrect && !opts.fix_missing && opts.bail_on_error);
+/// let opts = ProcessOpts::fix_existing("chmod");
+/// assert!(opts.mode.fix_incorrect() && !opts.mode.fix_missing() && opts.mode.bail_on_error());
 /// ```
 #[derive(Debug)]
 pub struct ProcessOpts<'a> {
     /// Verb for log messages (e.g., "install", "link", "chmod").
     pub verb: &'a str,
-    /// Treat `Incorrect` as fixable (apply the change). If `false`, skip it.
-    pub fix_incorrect: bool,
-    /// Treat `Missing` as fixable (apply the change). If `false`, skip it.
-    pub fix_missing: bool,
-    /// Propagate errors from `apply()` (bail). If `false`, warn and count as skipped.
-    pub bail_on_error: bool,
+    /// Processing strategy controlling which states are fixable and error behaviour.
+    pub mode: ProcessMode,
 }
 
 impl<'a> ProcessOpts<'a> {
@@ -189,12 +251,22 @@ impl<'a> ProcessOpts<'a> {
     /// This is the strict default — suitable for resources where every
     /// failure must be surfaced (e.g. symlinks, hooks, git config).
     #[must_use]
-    pub const fn apply_all(verb: &'a str) -> Self {
+    pub const fn strict(verb: &'a str) -> Self {
         Self {
             verb,
-            fix_incorrect: true,
-            fix_missing: true,
-            bail_on_error: true,
+            mode: ProcessMode::Strict,
+        }
+    }
+
+    /// Fix both missing and incorrect resources, warning on errors.
+    ///
+    /// Suitable for resources where individual failures should not abort
+    /// the batch (e.g. packages, registry entries).
+    #[must_use]
+    pub const fn lenient(verb: &'a str) -> Self {
+        Self {
+            verb,
+            mode: ProcessMode::Lenient,
         }
     }
 
@@ -206,24 +278,19 @@ impl<'a> ProcessOpts<'a> {
     pub const fn install_missing(verb: &'a str) -> Self {
         Self {
             verb,
-            fix_incorrect: false,
-            fix_missing: true,
-            bail_on_error: false,
+            mode: ProcessMode::InstallMissing,
         }
     }
 
-    /// Warn on errors instead of bailing.
+    /// Fix only incorrect resources, bailing on errors.
+    ///
+    /// Skip missing resources — only fix existing items that have drifted.
     #[must_use]
-    pub const fn no_bail(mut self) -> Self {
-        self.bail_on_error = false;
-        self
-    }
-
-    /// Skip missing resources (only fix incorrect ones).
-    #[must_use]
-    pub const fn skip_missing(mut self) -> Self {
-        self.fix_missing = false;
-        self
+    pub const fn fix_existing(verb: &'a str) -> Self {
+        Self {
+            verb,
+            mode: ProcessMode::FixExisting,
+        }
     }
 }
 
@@ -424,11 +491,11 @@ mod tests {
     }
 
     fn default_opts() -> ProcessOpts<'static> {
-        ProcessOpts::apply_all("install").no_bail()
+        ProcessOpts::lenient("install")
     }
 
     fn bail_opts() -> ProcessOpts<'static> {
-        ProcessOpts::apply_all("install")
+        ProcessOpts::strict("install")
     }
 
     // -----------------------------------------------------------------------
@@ -529,10 +596,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let (ctx, _log) = test_context(config);
         let resource = MockResource::new(ResourceState::Missing);
-        let opts = ProcessOpts {
-            fix_missing: false,
-            ..default_opts()
-        };
+        let opts = ProcessOpts::fix_existing("install");
 
         let stats = apply::process_single(&ctx, &resource, ResourceState::Missing, &opts).unwrap();
 
@@ -547,10 +611,7 @@ mod tests {
         let resource = MockResource::new(ResourceState::Incorrect {
             current: "wrong".to_string(),
         });
-        let opts = ProcessOpts {
-            fix_incorrect: false,
-            ..default_opts()
-        };
+        let opts = ProcessOpts::install_missing("install");
 
         let stats = apply::process_single(
             &ctx,

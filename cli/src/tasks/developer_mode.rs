@@ -22,7 +22,7 @@ impl Task for EnableDeveloperMode {
         process_resources(
             ctx,
             std::iter::once(resource),
-            &ProcessOpts::apply_all("enable").no_bail(),
+            &ProcessOpts::lenient("enable"),
         )
     }
 }

@@ -42,7 +42,7 @@ impl CommandRunner {
 
         let executor: Arc<dyn crate::exec::Executor> = Arc::new(crate::exec::SystemExecutor);
         let ctx = Context::new(
-            Arc::new(std::sync::RwLock::new(config)),
+            Arc::new(std::sync::RwLock::new(Arc::new(config))),
             platform,
             Arc::clone(log) as Arc<dyn Log>,
             executor,

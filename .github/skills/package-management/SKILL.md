@@ -73,12 +73,11 @@ installed packages once and then processes each package via `process_resource_st
 
 ```rust
 let installed = get_installed_packages(manager, &*ctx.executor)?;
-let resource_states = packages.iter().map(|pkg| {
-    let resource = PackageResource::new(pkg.name.clone(), manager, &*ctx.executor);
-    let state = resource.state_from_installed(&installed);
-    (resource, state)
-});
-process_resource_states(ctx, resource_states, &ProcessOpts::apply_all("install").no_bail())
+let strategy: &dyn PackageStrategy = match manager {
+    PackageManager::Winget => &IndividualInstall { manager },
+    _ => &BatchInstall { manager },
+};
+strategy.install(ctx, packages, &installed)
 ```
 
 ### Batch State Checking

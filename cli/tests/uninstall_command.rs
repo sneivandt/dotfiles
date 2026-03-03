@@ -139,7 +139,7 @@ fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
         Arc::new(dotfiles_cli::logging::Logger::new("test-uninstall"));
 
     let task_ctx = dotfiles_cli::tasks::Context::new(
-        Arc::new(std::sync::RwLock::new(config)),
+        Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
@@ -248,7 +248,7 @@ fn uninstall_symlinks_is_idempotent() {
 
     let config = ctx.load_config("base");
     let task_ctx = dotfiles_cli::tasks::Context {
-        config: Arc::new(std::sync::RwLock::new(config)),
+        config: Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         log: Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         dry_run: false,
@@ -316,7 +316,7 @@ fn uninstall_tasks_should_run_with_windows_platform() {
         Arc::new(dotfiles_cli::logging::Logger::new("test-uninstall-windows"));
 
     let task_ctx = dotfiles_cli::tasks::Context::new(
-        Arc::new(std::sync::RwLock::new(config)),
+        Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,

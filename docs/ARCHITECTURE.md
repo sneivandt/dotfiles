@@ -411,7 +411,7 @@ of tasks with unsatisfied dependencies (common on 2-vCPU CI runners).
 Within each task, resource operations (symlinks, packages, registry entries,
 etc.) are also processed in parallel using Rayon's `into_par_iter()`.
 
-- `process_resources()` and `process_resource_states()` in `tasks/processing.rs` dispatch
+- `process_resources()` and `process_resource_states()` in `tasks/processing/` dispatch
   to Rayon's `into_par_iter()` when `ctx.parallel` is `true` and there is more than
   one resource to process
 - A `Mutex<TaskStats>` accumulates changed/skipped counters across threads

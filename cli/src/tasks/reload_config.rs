@@ -1,4 +1,6 @@
 //! Task: reload configuration after repository update.
+use std::sync::Arc;
+
 use anyhow::{Context as _, Result};
 
 use super::{Context, Task, TaskResult, UpdateSignal, task_deps};
@@ -57,7 +59,7 @@ impl Task for ReloadConfig {
             .config
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *guard = new_config;
+        *guard = Arc::new(new_config);
         drop(guard);
 
         ctx.log.info("configuration reloaded");

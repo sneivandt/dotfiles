@@ -4,6 +4,7 @@ use anyhow::Result;
 
 use super::context::Context;
 use super::{ProcessOpts, TaskStats};
+use crate::error::ResourceError;
 use crate::logging::DiagEvent;
 use crate::resources::{Applicable, ResourceChange, ResourceState};
 
@@ -31,10 +32,10 @@ pub(super) fn process_single<R: Applicable>(
             ctx.log.debug(&format!("skipping {desc}: {reason}"));
             delta.skipped += 1;
         }
-        ResourceState::Missing if !opts.fix_missing => {
+        ResourceState::Missing if !opts.mode.fix_missing() => {
             delta.skipped += 1;
         }
-        ResourceState::Incorrect { .. } if !opts.fix_incorrect => {
+        ResourceState::Incorrect { .. } if !opts.mode.fix_incorrect() => {
             ctx.log
                 .debug(&format!("skipping {desc} (unexpected state)"));
             delta.skipped += 1;
@@ -70,10 +71,14 @@ pub(super) fn apply_resource<R: Applicable>(
     let change = match resource.apply() {
         Ok(change) => change,
         Err(e) => {
+            let category = categorize_error(&e);
             if let Some(diag) = ctx.log.diagnostic() {
-                diag.emit(DiagEvent::ResourceResult, &format!("{desc} error: {e}"));
+                diag.emit(
+                    DiagEvent::ResourceResult,
+                    &format!("{desc} error [{category}]: {e}"),
+                );
             }
-            if opts.bail_on_error {
+            if opts.mode.bail_on_error() {
                 return Err(e);
             }
             ctx.log
@@ -107,7 +112,7 @@ pub(super) fn apply_resource<R: Applicable>(
                     &format!("{desc} skipped: {reason}"),
                 );
             }
-            if opts.bail_on_error {
+            if opts.mode.bail_on_error() {
                 anyhow::bail!("failed to {} {desc}: {reason}", opts.verb);
             }
             ctx.log
@@ -150,4 +155,18 @@ pub(super) fn remove_single<R: Applicable>(
         }
     }
     Ok(delta)
+}
+
+/// Categorise an error for diagnostic logging.
+///
+/// Attempts to downcast the `anyhow::Error` to a [`ResourceError`] for a
+/// structured category label. Falls back to `"unknown"` for untyped errors.
+fn categorize_error(e: &anyhow::Error) -> &'static str {
+    match e.downcast_ref::<ResourceError>() {
+        Some(ResourceError::CommandFailed { .. }) => "command_failed",
+        Some(ResourceError::PermissionDenied { .. }) => "permission_denied",
+        Some(ResourceError::ConflictingState { .. }) => "conflicting_state",
+        Some(ResourceError::NotSupported { .. }) => "not_supported",
+        None => "unknown",
+    }
 }

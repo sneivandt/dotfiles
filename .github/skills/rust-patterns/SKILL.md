@@ -43,7 +43,7 @@ cli/src/
 ├── tasks/         # Task implementations
 │   ├── mod.rs     # Task trait, task_deps!, re-exports from processing/
 │   ├── processing/  # Generic resource processing engine
-│   │   ├── mod.rs   # ProcessOpts, process_resources(), process_resource_states()
+│   │   ├── mod.rs   # ProcessMode, ProcessOpts, process_resources(), process_resource_states()
 │   │   ├── apply.rs # Apply/remove logic
 │   │   ├── context.rs # Context, ContextOpts
 │   │   ├── graph.rs # Dependency graph and scheduler
@@ -116,7 +116,7 @@ impl Task for MyTask {
         let items = ctx.config_read().items.clone();
         let resources = items.iter()
             .map(|entry| MyResource::from_entry(entry, &*ctx.executor));
-        process_resources(ctx, resources, &ProcessOpts::apply_all("install"))
+        process_resources(ctx, resources, &ProcessOpts::strict("install"))
     }
 }
 ```
@@ -139,22 +139,26 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 }
 ```
 
-### ProcessOpts Fields
+### ProcessMode and ProcessOpts
 
-| Field | Purpose |
-|---|---|
-| `verb` | Verb for log messages ("install", "link", "chmod") |
-| `fix_incorrect` | Apply when state is `Incorrect` (else skip) |
-| `fix_missing` | Apply when state is `Missing` (else skip) |
-| `bail_on_error` | `true`: propagate `apply()` errors. `false`: warn and count as skipped |
+`ProcessMode` is an enum that replaces the old boolean flags, making the
+intent of each processing strategy explicit:
 
-Use named constructors and modifier methods instead of building the struct directly:
+| Mode | `fix_incorrect()` | `fix_missing()` | `bail_on_error()` | Typical use |
+|---|---|---|---|---|
+| `Strict` | yes | yes | yes | symlinks, hooks, git config |
+| `Lenient` | yes | yes | no | packages, registry, developer mode |
+| `InstallMissing` | no | yes | no | VS Code extensions, systemd units |
+| `FixExisting` | yes | no | yes | chmod (files may not exist yet) |
+
+`ProcessOpts` pairs a `ProcessMode` with a human-readable `verb` for log messages.
+Use named constructors:
 
 ```rust
-ProcessOpts::apply_all("link")            // fix Missing+Incorrect, bail on errors (strict)
-ProcessOpts::apply_all("install").no_bail() // fix Missing+Incorrect, warn on errors (lenient)
-ProcessOpts::install_missing("enable")    // only fix Missing, warn on errors
-ProcessOpts::apply_all("chmod").skip_missing() // only fix Incorrect, bail on errors
+ProcessOpts::strict("link")           // fix Missing+Incorrect, bail on errors
+ProcessOpts::lenient("install")       // fix Missing+Incorrect, warn on errors
+ProcessOpts::install_missing("enable") // only fix Missing, warn on errors
+ProcessOpts::fix_existing("chmod")    // only fix Incorrect, bail on errors
 ```
 
 ### Non-Resource Task Template
@@ -212,7 +216,7 @@ ctx.platform.supports_systemd() && !ctx.config_read().units.is_empty()
 
 ```rust
 pub struct Context {
-    pub config: Arc<RwLock<Config>>,         // locked; use ctx.config_read()
+    pub config: Arc<RwLock<Arc<Config>>>,    // RCU pattern; use ctx.config_read()
     pub platform: Platform,
     pub log: Arc<dyn Log>,
     pub dry_run: bool,
@@ -235,9 +239,12 @@ pub struct ContextOpts {
 }
 ```
 
-Config access uses an `RwLock` so the `ReloadConfig` task can atomically swap
-the config after a git pull. Use `ctx.config_read()` to get a read guard; clone
-the data out before a long-running operation so the lock is not held across
+Config access uses an `RwLock<Arc<Config>>` (read-copy-update pattern) so the
+`ReloadConfig` task can atomically swap the inner `Arc<Config>` after a git pull.
+`ctx.config_read()` returns an `Arc<Config>` snapshot — the read lock is held
+only for the duration of the `Arc::clone`, so callers can hold the snapshot as
+long as needed without blocking writers. Clone data out before long-running
+operations if you only need a subset:
 `await` points or parallel sections:
 
 ```rust

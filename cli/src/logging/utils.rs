@@ -66,11 +66,6 @@ pub(super) fn log_file_path(command: &str) -> Option<PathBuf> {
     Some(dotfiles_cache_dir()?.join(format!("{command}.log")))
 }
 
-/// Return the diagnostic log file path under `$XDG_CACHE_HOME/dotfiles/`.
-pub(super) fn diag_log_file_path(command: &str) -> Option<PathBuf> {
-    Some(dotfiles_cache_dir()?.join(format!("{command}.diag.log")))
-}
-
 /// Format the current UTC time as `YYYY-MM-DDTHH:MM:SS.ffffffZ` (microsecond precision).
 pub(super) fn format_utc_datetime_us() -> String {
     chrono::Utc::now()

@@ -24,11 +24,7 @@ impl Task for ApplyFilePermissions {
         let resources = entries
             .iter()
             .map(|entry| ChmodResource::from_entry(entry, &ctx.home));
-        process_resources(
-            ctx,
-            resources,
-            &ProcessOpts::apply_all("chmod").skip_missing(),
-        )
+        process_resources(ctx, resources, &ProcessOpts::fix_existing("chmod"))
     }
 }
 

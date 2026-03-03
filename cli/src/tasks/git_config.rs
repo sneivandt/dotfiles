@@ -22,7 +22,7 @@ impl Task for ConfigureGit {
         let resources = settings
             .into_iter()
             .map(|s| GitConfigResource::new(s.key, s.value));
-        process_resources(ctx, resources, &ProcessOpts::apply_all("set git config"))
+        process_resources(ctx, resources, &ProcessOpts::strict("set git config"))
     }
 }
 

@@ -63,15 +63,17 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
     let items = ctx.config_read().items.clone();
     let resources = items.iter()
         .map(|entry| MyResource::from_entry(entry, &*ctx.executor));
-    process_resources(ctx, resources, &ProcessOpts::apply_all("install").no_bail())
+    process_resources(ctx, resources, &ProcessOpts::lenient("install"))
 }
 ```
 
-`ProcessOpts` controls behaviour per state variant:
-- `fix_missing` / `fix_incorrect` — skip states that shouldn't trigger an apply
-- `bail_on_error` — `true` propagates `apply()` errors; `false` warns and counts as skipped
+`ProcessOpts` controls behaviour per state variant via a `ProcessMode` enum:
+- `Strict` — fix missing + incorrect, bail on errors (symlinks, hooks, git config)
+- `Lenient` — fix missing + incorrect, warn on errors (packages, registry)
+- `InstallMissing` — only fix missing, warn on errors
+- `FixExisting` — only fix incorrect, bail on errors
 
-See the `rust-patterns` skill for full `ProcessOpts` reference.
+See the `rust-patterns` skill for full `ProcessMode` / `ProcessOpts` reference.
 
 ### Custom Tasks (non-resource)
 

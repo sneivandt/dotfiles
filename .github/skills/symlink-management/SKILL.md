@@ -62,7 +62,7 @@ impl Task for InstallSymlinks {
     ];
     fn should_run(&self, ctx: &Context) -> bool { !ctx.config_read().symlinks.is_empty() }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        process_resources(ctx, build_resources(ctx), &ProcessOpts::apply_all("link"))
+        process_resources(ctx, build_resources(ctx), &ProcessOpts::strict("link"))
     }
 }
 ```

@@ -27,7 +27,7 @@ impl Task for ConfigureShell {
         process_resources(
             ctx,
             std::iter::once(resource),
-            &ProcessOpts::apply_all("configure"),
+            &ProcessOpts::strict("configure"),
         )
     }
 }

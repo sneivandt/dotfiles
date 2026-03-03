@@ -40,11 +40,7 @@ impl Task for ApplyRegistry {
             (r, state)
         });
 
-        process_resource_states(
-            ctx,
-            resource_states,
-            &ProcessOpts::apply_all("set registry").no_bail(),
-        )
+        process_resource_states(ctx, resource_states, &ProcessOpts::lenient("set registry"))
     }
 }
 

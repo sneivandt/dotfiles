@@ -1,8 +1,10 @@
 //! Symlink resource.
 use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use super::{Applicable, Resource, ResourceChange, ResourceState};
+use crate::exec::Executor;
 
 /// A symlink resource that can be checked and applied.
 #[derive(Debug, Clone)]
@@ -11,13 +13,19 @@ pub struct SymlinkResource {
     pub source: PathBuf,
     /// The target path (where the symlink will be created).
     pub target: PathBuf,
+    /// Executor used for subprocess fallbacks (e.g. mklink on Windows).
+    executor: Arc<dyn Executor>,
 }
 
 impl SymlinkResource {
     /// Create a new symlink resource.
     #[must_use]
-    pub const fn new(source: PathBuf, target: PathBuf) -> Self {
-        Self { source, target }
+    pub fn new(source: PathBuf, target: PathBuf, executor: Arc<dyn Executor>) -> Self {
+        Self {
+            source,
+            target,
+            executor,
+        }
     }
 }
 
@@ -36,7 +44,7 @@ impl Applicable for SymlinkResource {
         }
 
         // Create the symlink
-        create_symlink(&self.source, &self.target)
+        create_symlink(&self.source, &self.target, &*self.executor)
             .with_context(|| format!("create link: {}", self.target.display()))?;
 
         Ok(ResourceChange::Applied)
@@ -193,7 +201,7 @@ fn paths_equal(a: &Path, b: &Path) -> bool {
 }
 
 /// Create a symlink at `link` pointing to `target`.
-fn create_symlink(target: &Path, link: &Path) -> Result<()> {
+fn create_symlink(target: &Path, link: &Path, _executor: &dyn Executor) -> Result<()> {
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(target, link).with_context(|| {
@@ -207,8 +215,6 @@ fn create_symlink(target: &Path, link: &Path) -> Result<()> {
 
     #[cfg(windows)]
     {
-        use crate::exec;
-
         // Try native symlink API first
         let is_dir = target.is_dir();
         let result = if is_dir {
@@ -229,7 +235,7 @@ fn create_symlink(target: &Path, link: &Path) -> Result<()> {
             }
             args.push(&link_str);
             args.push(&target_str);
-            exec::run("cmd", &args)?;
+            _executor.run("cmd", &args)?;
         }
     }
 
@@ -305,6 +311,11 @@ fn remove_dir_fallback(path: &Path) -> Result<()> {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::exec::SystemExecutor;
+
+    fn system_executor() -> Arc<dyn Executor> {
+        Arc::new(SystemExecutor)
+    }
 
     #[test]
     fn paths_equal_works() {
@@ -318,7 +329,11 @@ mod tests {
 
     #[test]
     fn symlink_resource_description() {
-        let resource = SymlinkResource::new(PathBuf::from("/source"), PathBuf::from("/target"));
+        let resource = SymlinkResource::new(
+            PathBuf::from("/source"),
+            PathBuf::from("/target"),
+            system_executor(),
+        );
         assert!(resource.description().contains("/source"));
         assert!(resource.description().contains("/target"));
     }
@@ -329,6 +344,7 @@ mod tests {
         let resource = SymlinkResource::new(
             temp_dir.path().join("nonexistent"),
             temp_dir.path().join("target"),
+            system_executor(),
         );
 
         let state = resource.current_state().unwrap();
@@ -341,7 +357,8 @@ mod tests {
         let source = temp_dir.path().join("source");
         std::fs::write(&source, "test").unwrap();
 
-        let resource = SymlinkResource::new(source, temp_dir.path().join("target"));
+        let resource =
+            SymlinkResource::new(source, temp_dir.path().join("target"), system_executor());
 
         let state = resource.current_state().unwrap();
         assert_eq!(state, ResourceState::Missing);
@@ -356,7 +373,7 @@ mod tests {
         std::fs::write(&source, "test").unwrap();
         std::os::unix::fs::symlink(&source, &target).unwrap();
 
-        let resource = SymlinkResource::new(source, target);
+        let resource = SymlinkResource::new(source, target, system_executor());
 
         let state = resource.current_state().unwrap();
         assert_eq!(state, ResourceState::Correct);
@@ -374,7 +391,7 @@ mod tests {
         // link target → other (not source)
         std::os::unix::fs::symlink(&other, &target).unwrap();
 
-        let resource = SymlinkResource::new(source, target);
+        let resource = SymlinkResource::new(source, target, system_executor());
 
         let state = resource.current_state().unwrap();
         assert!(matches!(state, ResourceState::Incorrect { .. }));
@@ -388,7 +405,7 @@ mod tests {
         std::fs::write(&source, "content").unwrap();
         std::fs::write(&target, "other content").unwrap(); // regular file, not a symlink
 
-        let resource = SymlinkResource::new(source, target);
+        let resource = SymlinkResource::new(source, target, system_executor());
 
         let state = resource.current_state().unwrap();
         assert!(matches!(state, ResourceState::Incorrect { .. }));
@@ -404,7 +421,7 @@ mod tests {
         let target = temp_dir.path().join("target.txt");
         std::fs::write(&source, b"hello dotfiles").unwrap();
 
-        let resource = SymlinkResource::new(source.clone(), target.clone());
+        let resource = SymlinkResource::new(source.clone(), target.clone(), system_executor());
         resource.apply().unwrap();
         assert!(matches!(
             resource.current_state().unwrap(),
@@ -436,7 +453,8 @@ mod tests {
         std::fs::create_dir(source_dir.join("sub")).unwrap();
         std::fs::write(source_dir.join("sub").join("b.txt"), b"bbb").unwrap();
 
-        let resource = SymlinkResource::new(source_dir.clone(), target_dir.clone());
+        let resource =
+            SymlinkResource::new(source_dir.clone(), target_dir.clone(), system_executor());
         resource.apply().unwrap();
         assert!(matches!(
             resource.current_state().unwrap(),

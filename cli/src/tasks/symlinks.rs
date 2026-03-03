@@ -1,6 +1,7 @@
 //! Tasks: install and uninstall symlinks.
 use anyhow::Result;
 use std::path::Path;
+use std::sync::Arc;
 
 use super::{
     Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove, task_deps,
@@ -18,7 +19,11 @@ fn build_resources(ctx: &Context) -> Vec<SymlinkResource> {
                 || compute_target(&ctx.home, &s.source),
                 |explicit| ctx.home.join(explicit),
             );
-            SymlinkResource::new(symlinks_dir.join(&s.source), target)
+            SymlinkResource::new(
+                symlinks_dir.join(&s.source),
+                target,
+                Arc::clone(&ctx.executor),
+            )
         })
         .collect()
 }

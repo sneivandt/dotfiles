@@ -10,9 +10,9 @@ use crate::resources::symlink::SymlinkResource;
 
 /// Build [`SymlinkResource`] instances from the loaded config.
 fn build_resources(ctx: &Context) -> Vec<SymlinkResource> {
-    let symlinks = ctx.config_read().symlinks.clone();
     let symlinks_dir = ctx.symlinks_dir();
-    symlinks
+    ctx.config_read()
+        .symlinks
         .iter()
         .map(|s| {
             let target = s.target.as_ref().map_or_else(

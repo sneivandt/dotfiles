@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     PowerShell entry point for dotfiles management engine.
 .DESCRIPTION
@@ -95,17 +95,18 @@ if ($Build)
 # Production mode: bootstrap binary if not present.
 # Subsequent updates are handled by the binary itself.
 
+# Use -ConnectionTimeoutSeconds if available (PowerShell 7.4+); computed once for all web requests.
+$script:ConnectArgs = if ($PSVersionTable.PSVersion -ge [version]'7.4') {
+    @{ ConnectionTimeoutSeconds = $ConnectTimeout }
+} else {
+    @{}
+}
+
 function Get-LatestVersion
 {
-    # Use -ConnectionTimeoutSeconds if available (PowerShell 7.4+)
-    $connectArgs = if ($PSVersionTable.PSVersion -ge [version]'7.4') {
-        @{ ConnectionTimeoutSeconds = $ConnectTimeout }
-    } else {
-        @{}
-    }
     try
     {
-        $response = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec $TransferTimeout @connectArgs
+        $response = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec $TransferTimeout @script:ConnectArgs
         return $response.tag_name
     }
     catch [System.Net.WebException]
@@ -136,13 +137,6 @@ function Get-Binary
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    # Use -ConnectionTimeoutSeconds if available (PowerShell 7.4+)
-    $connectArgs = if ($PSVersionTable.PSVersion -ge [version]'7.4') {
-        @{ ConnectionTimeoutSeconds = $ConnectTimeout }
-    } else {
-        @{}
-    }
-
     Write-Output "Downloading dotfiles $Version..."
     $downloaded = $false
     for ($attempt = 1; $attempt -le $RetryCount; $attempt++)
@@ -154,7 +148,7 @@ function Get-Binary
         }
         try
         {
-            Invoke-WebRequest -Uri $url -OutFile $Binary -UseBasicParsing -TimeoutSec $TransferTimeout @connectArgs
+            Invoke-WebRequest -Uri $url -OutFile $Binary -UseBasicParsing -TimeoutSec $TransferTimeout @script:ConnectArgs
             $downloaded = $true
             break
         }
@@ -183,7 +177,7 @@ function Get-Binary
     $checksumUrl = "https://github.com/$Repo/releases/download/$Version/checksums.sha256"
     try
     {
-        $checksumContent = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing -TimeoutSec $TransferTimeout @connectArgs).Content
+        $checksumContent = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing -TimeoutSec $TransferTimeout @script:ConnectArgs).Content
     }
     catch
     {

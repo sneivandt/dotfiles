@@ -1,4 +1,9 @@
 //! Package installation resource.
+//!
+//! The [`PackageProvider`] trait abstracts over different package managers
+//! (pacman, paru, winget). Adding support for a new manager requires only a
+//! new implementation of `PackageProvider` and a corresponding variant in
+//! [`PackageManager`].
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -6,6 +11,225 @@ use anyhow::Result;
 
 use super::{Applicable, Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
+
+// ---------------------------------------------------------------------------
+// PackageProvider trait
+// ---------------------------------------------------------------------------
+
+/// Abstraction over package manager operations.
+///
+/// Each implementation encapsulates the command-line interface of a specific
+/// package manager, allowing new managers to be added without modifying the
+/// core resource processing logic.
+///
+/// See [`PacmanProvider`], [`ParuProvider`], and [`WingetProvider`] for
+/// concrete implementations.
+pub trait PackageProvider: std::fmt::Debug + Send + Sync {
+    /// Human-readable name of this provider (e.g., `"pacman"`).
+    fn name(&self) -> &'static str;
+
+    /// Query all currently installed package names.
+    ///
+    /// Returns a set of names/IDs that can be matched against desired
+    /// package names to determine what is already installed. Runs a
+    /// **single** command regardless of how many packages need checking.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the package manager command fails or output
+    /// cannot be parsed.
+    fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>>;
+
+    /// Check whether a single package is currently installed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the package manager command fails.
+    fn is_installed(&self, name: &str, executor: &dyn Executor) -> Result<bool>;
+
+    /// Install a single package.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the installation command fails.
+    fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange>;
+
+    /// Whether this provider supports installing multiple packages in one command.
+    fn supports_batch(&self) -> bool {
+        false
+    }
+
+    /// Install multiple packages in a single invocation.
+    ///
+    /// Only called when [`supports_batch`](Self::supports_batch) returns `true`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the batch installation command fails.
+    fn batch_install(&self, names: &[&str], executor: &dyn Executor) -> Result<()> {
+        let _ = (names, executor);
+        anyhow::bail!("batch install not supported by {}", self.name())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Provider implementations
+// ---------------------------------------------------------------------------
+
+/// Pacman provider for official Arch Linux packages.
+#[derive(Debug, Clone, Copy)]
+pub struct PacmanProvider;
+
+impl PackageProvider for PacmanProvider {
+    fn name(&self) -> &'static str {
+        "pacman"
+    }
+
+    fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
+        let result = executor.run_unchecked("pacman", &["-Q"])?;
+        let mut set = HashSet::new();
+        if result.success {
+            for line in result.stdout.lines() {
+                if let Some(name) = line.split_whitespace().next() {
+                    set.insert(name.to_string());
+                }
+            }
+        }
+        Ok(set)
+    }
+
+    fn is_installed(&self, name: &str, executor: &dyn Executor) -> Result<bool> {
+        let result = executor.run_unchecked("pacman", &["-Q", name])?;
+        Ok(result.success)
+    }
+
+    fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
+        executor.run("sudo", &["pacman", "-S", "--needed", "--noconfirm", name])?;
+        Ok(ResourceChange::Applied)
+    }
+
+    fn supports_batch(&self) -> bool {
+        true
+    }
+
+    fn batch_install(&self, names: &[&str], executor: &dyn Executor) -> Result<()> {
+        let mut args = vec!["pacman", "-S", "--needed", "--noconfirm"];
+        args.extend(names);
+        executor.run("sudo", &args)?;
+        Ok(())
+    }
+}
+
+/// Paru provider for AUR packages.
+#[derive(Debug, Clone, Copy)]
+pub struct ParuProvider;
+
+impl PackageProvider for ParuProvider {
+    fn name(&self) -> &'static str {
+        "paru"
+    }
+
+    fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
+        // Paru packages are also visible via pacman -Q.
+        PacmanProvider.query_installed(executor)
+    }
+
+    fn is_installed(&self, name: &str, executor: &dyn Executor) -> Result<bool> {
+        PacmanProvider.is_installed(name, executor)
+    }
+
+    fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
+        executor.run("paru", &["-S", "--needed", "--noconfirm", name])?;
+        Ok(ResourceChange::Applied)
+    }
+
+    fn supports_batch(&self) -> bool {
+        true
+    }
+
+    fn batch_install(&self, names: &[&str], executor: &dyn Executor) -> Result<()> {
+        let mut args = vec!["-S", "--needed", "--noconfirm"];
+        args.extend(names);
+        executor.run("paru", &args)?;
+        Ok(())
+    }
+}
+
+/// Winget provider for Windows packages.
+#[derive(Debug, Clone, Copy)]
+pub struct WingetProvider;
+
+impl PackageProvider for WingetProvider {
+    fn name(&self) -> &'static str {
+        "winget"
+    }
+
+    fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
+        let result = executor.run_unchecked(
+            "winget",
+            &[
+                "list",
+                "--accept-source-agreements",
+                "--disable-interactivity",
+            ],
+        )?;
+        let mut set = HashSet::new();
+        if result.success {
+            for line in result.stdout.lines() {
+                for token in line.split_whitespace() {
+                    set.insert(token.to_string());
+                }
+            }
+        }
+        Ok(set)
+    }
+
+    fn is_installed(&self, name: &str, executor: &dyn Executor) -> Result<bool> {
+        let result = executor.run_unchecked(
+            "winget",
+            &[
+                "list",
+                "--id",
+                name,
+                "--exact",
+                "--accept-source-agreements",
+            ],
+        )?;
+        Ok(result.success && result.stdout.contains(name))
+    }
+
+    fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
+        let result = executor.run_unchecked(
+            "winget",
+            &[
+                "install",
+                "--id",
+                name,
+                "--exact",
+                "--source",
+                "winget",
+                "--accept-source-agreements",
+                "--accept-package-agreements",
+            ],
+        )?;
+        if result.success {
+            Ok(ResourceChange::Applied)
+        } else {
+            let detail = if result.stderr.trim().is_empty() {
+                result.stdout.trim().to_string()
+            } else {
+                format!("{}\n{}", result.stdout.trim(), result.stderr.trim())
+            };
+            Ok(ResourceChange::Skipped {
+                reason: format!("winget install failed: {detail}"),
+            })
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PackageManager enum
+// ---------------------------------------------------------------------------
 
 /// Supported package managers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,13 +242,21 @@ pub enum PackageManager {
     Winget,
 }
 
+impl PackageManager {
+    /// Return the [`PackageProvider`] implementation for this manager.
+    #[must_use]
+    pub fn provider(self) -> &'static dyn PackageProvider {
+        match self {
+            Self::Pacman => &PacmanProvider,
+            Self::Paru => &ParuProvider,
+            Self::Winget => &WingetProvider,
+        }
+    }
+}
+
 impl std::fmt::Display for PackageManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Pacman => write!(f, "pacman"),
-            Self::Paru => write!(f, "paru"),
-            Self::Winget => write!(f, "winget"),
-        }
+        write!(f, "{}", self.provider().name())
     }
 }
 
@@ -35,6 +267,8 @@ pub struct PackageResource {
     pub name: String,
     /// Package manager to use.
     pub manager: PackageManager,
+    /// Provider implementation for this package manager.
+    provider: &'static dyn PackageProvider,
     /// Executor for running package manager commands.
     executor: Arc<dyn Executor>,
 }
@@ -46,6 +280,7 @@ impl PackageResource {
         Self {
             name,
             manager,
+            provider: manager.provider(),
             executor,
         }
     }
@@ -66,10 +301,9 @@ impl PackageResource {
 
 /// Query the full set of installed package names for a given manager.
 ///
-/// Returns a `HashSet` of package names (or winget IDs) that are currently
-/// installed. This runs a **single** command regardless of how many packages
-/// need to be checked — compared to one command per package when using
-/// `PackageResource::current_state()` directly.
+/// Delegates to the manager's [`PackageProvider::query_installed`]
+/// implementation, running a **single** command regardless of how many
+/// packages need to be checked.
 ///
 /// # Errors
 ///
@@ -79,99 +313,52 @@ pub fn get_installed_packages(
     manager: PackageManager,
     executor: &dyn Executor,
 ) -> Result<HashSet<String>> {
-    match manager {
-        PackageManager::Pacman | PackageManager::Paru => {
-            // `pacman -Q` lists all explicitly & dependency-installed packages,
-            // one per line: "name version"
-            let result = executor.run_unchecked("pacman", &["-Q"])?;
-            let mut set = HashSet::new();
-            if result.success {
-                for line in result.stdout.lines() {
-                    if let Some(name) = line.split_whitespace().next() {
-                        set.insert(name.to_string());
-                    }
-                }
-            }
-            Ok(set)
-        }
-        PackageManager::Winget => {
-            // `winget list` outputs a formatted table — each line may contain
-            // the package ID as a whitespace-delimited token.  Winget IDs are
-            // reverse-domain names (e.g. `Git.Git`, `Microsoft.PowerShell`) so
-            // collisions with version numbers or other tokens are not a concern
-            // when doing exact-match lookups via `state_from_installed`.
-            let result = executor.run_unchecked(
-                "winget",
-                &[
-                    "list",
-                    "--accept-source-agreements",
-                    "--disable-interactivity",
-                ],
-            )?;
-            let mut set = HashSet::new();
-            if result.success {
-                for line in result.stdout.lines() {
-                    for token in line.split_whitespace() {
-                        set.insert(token.to_string());
-                    }
-                }
-            }
-            Ok(set)
-        }
-    }
+    manager.provider().query_installed(executor)
 }
 
 /// Install a batch of packages in a single command, grouped by package manager.
 ///
-/// Groups the given resources by their [`PackageManager`] and runs one
-/// installation command per group, using each resource's own executor.
-/// For Pacman packages the command is
-/// `sudo pacman -S --needed --noconfirm <names…>`; for Paru packages it is
-/// `paru -S --needed --noconfirm <names…>`.  Winget packages are installed
-/// individually (winget does not support multi-package installs in one call);
-/// a `Skipped` result from any Winget install is treated as an error.
+/// Groups the given resources by their [`PackageManager`] and delegates to
+/// each provider's batch or individual install method. Providers that support
+/// batch installation (pacman, paru) install all missing packages in one
+/// command; providers that do not (winget) install individually.
 ///
 /// # Errors
 ///
 /// Returns an error if any package manager command fails, or if a Winget
 /// install is skipped (i.e. the installer reported failure).
 pub fn batch_install_packages(resources: &[&PackageResource]) -> Result<()> {
-    if let Some(first) = resources
-        .iter()
-        .find(|r| r.manager == PackageManager::Pacman)
-    {
-        let mut args = vec!["pacman", "-S", "--needed", "--noconfirm"];
-        args.extend(
-            resources
-                .iter()
-                .filter(|r| r.manager == PackageManager::Pacman)
-                .map(|r| r.name.as_str()),
-        );
-        first.executor.run("sudo", &args)?;
-    }
+    for &manager in &[
+        PackageManager::Pacman,
+        PackageManager::Paru,
+        PackageManager::Winget,
+    ] {
+        let group: Vec<_> = resources.iter().filter(|r| r.manager == manager).collect();
+        if group.is_empty() {
+            continue;
+        }
 
-    if let Some(first) = resources.iter().find(|r| r.manager == PackageManager::Paru) {
-        let mut args = vec!["-S", "--needed", "--noconfirm"];
-        args.extend(
-            resources
-                .iter()
-                .filter(|r| r.manager == PackageManager::Paru)
-                .map(|r| r.name.as_str()),
-        );
-        first.executor.run("paru", &args)?;
-    }
+        let provider = manager.provider();
+        let Some(first) = group.first() else {
+            continue;
+        };
+        let executor = &*first.executor;
 
-    // Winget does not support batch installs; delegate to individual apply()
-    // and propagate skipped installations as errors.
-    // Note: PackageResource::apply() for Winget only returns Skipped when the
-    // process exits non-zero, so Skipped always indicates an install failure.
-    for resource in resources
-        .iter()
-        .filter(|r| r.manager == PackageManager::Winget)
-    {
-        let change = resource.apply()?;
-        if let ResourceChange::Skipped { reason } = change {
-            anyhow::bail!("winget install failed for '{}': {reason}", resource.name);
+        if provider.supports_batch() {
+            let names: Vec<&str> = group.iter().map(|r| r.name.as_str()).collect();
+            provider.batch_install(&names, executor)?;
+        } else {
+            // Individual install — propagate skipped installations as errors.
+            for resource in &group {
+                let change = resource.apply()?;
+                if let ResourceChange::Skipped { reason } = change {
+                    anyhow::bail!(
+                        "{} install failed for '{}': {reason}",
+                        provider.name(),
+                        resource.name
+                    );
+                }
+            }
         }
     }
 
@@ -184,80 +371,17 @@ impl Applicable for PackageResource {
     }
 
     fn apply(&self) -> Result<ResourceChange> {
-        match self.manager {
-            PackageManager::Pacman => {
-                self.executor.run(
-                    "sudo",
-                    &["pacman", "-S", "--needed", "--noconfirm", &self.name],
-                )?;
-                Ok(ResourceChange::Applied)
-            }
-            PackageManager::Paru => {
-                self.executor
-                    .run("paru", &["-S", "--needed", "--noconfirm", &self.name])?;
-                Ok(ResourceChange::Applied)
-            }
-            PackageManager::Winget => {
-                let result = self.executor.run_unchecked(
-                    "winget",
-                    &[
-                        "install",
-                        "--id",
-                        &self.name,
-                        "--exact",
-                        "--source",
-                        "winget",
-                        "--accept-source-agreements",
-                        "--accept-package-agreements",
-                    ],
-                )?;
-                if result.success {
-                    Ok(ResourceChange::Applied)
-                } else {
-                    // winget writes most diagnostics to stdout, not stderr.
-                    // Combine both streams so the user sees useful output.
-                    let detail = if result.stderr.trim().is_empty() {
-                        result.stdout.trim().to_string()
-                    } else {
-                        format!("{}\n{}", result.stdout.trim(), result.stderr.trim())
-                    };
-                    Ok(ResourceChange::Skipped {
-                        reason: format!("winget install failed: {detail}"),
-                    })
-                }
-            }
-        }
+        self.provider.install(&self.name, &*self.executor)
     }
 }
 
 impl Resource for PackageResource {
     fn current_state(&self) -> Result<ResourceState> {
-        match self.manager {
-            PackageManager::Pacman | PackageManager::Paru => {
-                let result = self.executor.run_unchecked("pacman", &["-Q", &self.name])?;
-                if result.success {
-                    Ok(ResourceState::Correct)
-                } else {
-                    Ok(ResourceState::Missing)
-                }
-            }
-            PackageManager::Winget => {
-                let result = self.executor.run_unchecked(
-                    "winget",
-                    &[
-                        "list",
-                        "--id",
-                        &self.name,
-                        "--exact",
-                        "--accept-source-agreements",
-                    ],
-                )?;
-                if result.success && result.stdout.contains(&self.name) {
-                    Ok(ResourceState::Correct)
-                } else {
-                    Ok(ResourceState::Missing)
-                }
-            }
+        let installed = self.provider.is_installed(&self.name, &*self.executor)?;
+        if installed {
+            Ok(ResourceState::Correct)
+        } else {
+            Ok(ResourceState::Missing)
         }
     }
 }

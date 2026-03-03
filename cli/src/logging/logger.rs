@@ -5,7 +5,9 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use super::diagnostic::{DiagEvent, DiagnosticLog};
-use super::types::{Log, TaskEntry, TaskStatus};
+#[cfg(test)]
+use super::types::Log;
+use super::types::{Output, TaskEntry, TaskRecorder, TaskStatus};
 use super::utils::{dotfiles_cache_dir, log_file_path, terminal_columns};
 
 /// Generate an inherent `pub fn $name(&self, msg: &str)` method on `Logger`
@@ -36,7 +38,7 @@ macro_rules! log_method {
     };
 }
 
-/// Implement the display methods of [`Log`] by delegating to inherent methods
+/// Implement the display methods of [`Output`] by delegating to inherent methods
 /// of the same name on the implementing type.
 ///
 /// The `record_task` method is **not** included because its signature differs
@@ -309,15 +311,17 @@ impl Logger {
     }
 }
 
-impl Log for Logger {
+impl Output for Logger {
     forward_log_methods!(stage, info, debug, warn, error, dry_run);
-
-    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
-        self.record_task(name, status, message);
-    }
 
     fn diagnostic(&self) -> Option<&DiagnosticLog> {
         self.diagnostic.as_ref()
+    }
+}
+
+impl TaskRecorder for Logger {
+    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
+        self.record_task(name, status, message);
     }
 }
 

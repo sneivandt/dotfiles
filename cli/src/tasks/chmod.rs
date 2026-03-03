@@ -1,30 +1,17 @@
 //! Task: apply file permissions.
-use anyhow::Result;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};
+use super::{ProcessOpts, resource_task};
 use crate::resources::chmod::ChmodResource;
 
-/// Apply file permissions from chmod.toml.
-#[derive(Debug)]
-pub struct ApplyFilePermissions;
-
-impl Task for ApplyFilePermissions {
-    fn name(&self) -> &'static str {
-        "Apply file permissions"
-    }
-
-    task_deps![super::symlinks::InstallSymlinks];
-
-    fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.supports_chmod() && !ctx.config_read().chmod.is_empty()
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let entries: Vec<_> = ctx.config_read().chmod.clone();
-        let resources = entries
-            .iter()
-            .map(|entry| ChmodResource::from_entry(entry, &ctx.home));
-        process_resources(ctx, resources, &ProcessOpts::fix_existing("chmod"))
+resource_task! {
+    /// Apply file permissions from chmod.toml.
+    pub ApplyFilePermissions {
+        name: "Apply file permissions",
+        deps: [super::symlinks::InstallSymlinks],
+        guard: |ctx| ctx.platform.supports_chmod(),
+        items: |ctx| ctx.config_read().chmod.clone(),
+        build: |entry, ctx| ChmodResource::from_entry(&entry, &ctx.home),
+        opts: ProcessOpts::fix_existing("chmod"),
     }
 }
 
@@ -33,6 +20,7 @@ impl Task for ApplyFilePermissions {
 mod tests {
     use super::*;
     use crate::config::chmod::ChmodEntry;
+    use crate::tasks::Task;
     use crate::tasks::test_helpers::{empty_config, make_linux_context, make_windows_context};
     use std::path::PathBuf;
 

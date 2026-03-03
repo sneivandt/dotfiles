@@ -99,7 +99,46 @@ it must appear inside `impl Task for …`.
 
 Most tasks process a list of `Resource` implementors. Use the generic
 `process_resources()` or `process_resource_states()` helpers instead of
-writing the state-match loop by hand:
+writing the state-match loop by hand.
+
+#### `resource_task!` macro (simplest — use for config→resource tasks)
+
+For tasks that read config items, map each to a resource, and process them,
+the `resource_task!` macro eliminates all boilerplate:
+
+```rust
+use super::{ProcessOpts, resource_task};
+use crate::resources::my_resource::MyResource;
+
+resource_task! {
+    /// Install my resources from config.
+    pub MyTask {
+        name: "My task",
+        deps: [super::some_dependency::SomeDependency],  // optional
+        guard: |ctx| ctx.platform.supports_systemd(),     // optional
+        items: |ctx| ctx.config_read().items.clone(),
+        build: |item, ctx| MyResource::from_entry(&item, &ctx.home),
+        opts: ProcessOpts::strict("install"),
+    }
+}
+```
+
+The macro generates a `Debug` struct and a full `Task` implementation:
+- `should_run` returns `false` when the `guard` fails or `items` is empty
+- `run` clones the config items, maps each to a resource via `build`, and
+  delegates to `process_resources`
+
+Import `resource_task` from `super::` alongside `ProcessOpts`. Tests that call
+`should_run` or `run` must also import `crate::tasks::Task` to bring the
+trait into scope.
+
+See `tasks/git_config.rs` (no deps, no guard) and `tasks/chmod.rs` (deps + guard)
+for real examples.
+
+#### Manual `Task` impl (for complex or non-standard tasks)
+
+When a task needs custom logic beyond the macro (e.g., batch-querying state,
+conditional skipping, or non-resource work), write the impl manually:
 
 ```rust
 use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};
@@ -139,10 +178,10 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 }
 ```
 
-### ProcessMode and ProcessOpts
+### ProcessMode, ResourceAction, and ProcessOpts
 
-`ProcessMode` is an enum that replaces the old boolean flags, making the
-intent of each processing strategy explicit:
+`ProcessMode` is an enum that makes the intent of each processing strategy
+explicit:
 
 | Mode | `fix_incorrect()` | `fix_missing()` | `bail_on_error()` | Typical use |
 |---|---|---|---|---|
@@ -150,6 +189,34 @@ intent of each processing strategy explicit:
 | `Lenient` | yes | yes | no | packages, registry, developer mode |
 | `InstallMissing` | no | yes | no | VS Code extensions, systemd units |
 | `FixExisting` | yes | no | yes | chmod (files may not exist yet) |
+
+#### ResourceAction (lifecycle state machine)
+
+`ProcessMode::action_for(&ResourceState)` returns a `ResourceAction` — the
+explicit decision of what to do with a resource:
+
+```rust
+pub enum ResourceAction {
+    Apply,          // Create or update the resource
+    Noop,           // Already correct, nothing to do
+    Skip(String),   // Skip with a reason (invalid, mode disallows, etc.)
+}
+```
+
+The processing loop (`process_single`) matches on `ResourceAction` instead of
+nesting matches on `ResourceState` and mode flags:
+
+```rust
+match opts.mode.action_for(&resource_state) {
+    ResourceAction::Noop  => { /* already ok */ },
+    ResourceAction::Skip(reason) => { /* log skip */ },
+    ResourceAction::Apply => { /* apply change */ },
+}
+```
+
+This makes the lifecycle state machine explicit and independently testable.
+
+#### ProcessOpts
 
 `ProcessOpts` pairs a `ProcessMode` with a human-readable `verb` for log messages.
 Use named constructors:

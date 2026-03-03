@@ -48,6 +48,79 @@ macro_rules! task_deps {
 
 pub(crate) use task_deps;
 
+/// Define a task that processes config-derived resources with minimal
+/// boilerplate.
+///
+/// Generates a `Debug` struct and a full [`Task`] implementation for the
+/// common pattern: read config items → build resources → process.
+///
+/// # Syntax
+///
+/// ```ignore
+/// resource_task! {
+///     /// Doc comment for the task.
+///     pub StructName {
+///         name: "Human-readable task name",
+///         deps: [DepType1, DepType2],          // optional
+///         guard: |ctx| bool_expr,              // optional platform/tool guard
+///         items: |ctx| ctx.config_read().field.clone(),
+///         build: |item, ctx| Resource::from(&item, &ctx.home),
+///         opts: ProcessOpts::strict("verb"),
+///     }
+/// }
+/// ```
+///
+/// The generated struct implements `Task` with:
+/// - `should_run` returning `false` when the guard fails or items are empty
+/// - `run` cloning the config items, mapping each to a resource via `build`,
+///   and delegating to [`process_resources`]
+macro_rules! resource_task {
+    (
+        $(#[$meta:meta])*
+        $vis:vis $name:ident {
+            name: $task_name:expr,
+            $(deps: [$($dep:ty),+ $(,)?],)?
+            $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
+            items: |$items_ctx:ident| $items_expr:expr,
+            build: |$item:ident, $build_ctx:ident| $build_expr:expr,
+            opts: $opts:expr $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug)]
+        $vis struct $name;
+
+        impl $crate::tasks::Task for $name {
+            fn name(&self) -> &'static str {
+                $task_name
+            }
+
+            $($crate::tasks::task_deps![$($dep),+];)?
+
+            fn should_run(&self, ctx: &$crate::tasks::Context) -> bool {
+                $(
+                    let $guard_ctx = ctx;
+                    if !{ $guard_expr } { return false; }
+                )?
+                let $items_ctx = ctx;
+                !{ $items_expr }.is_empty()
+            }
+
+            fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
+                let $items_ctx = ctx;
+                let items: Vec<_> = { $items_expr };
+                let resources = items.into_iter().map(|$item| {
+                    let $build_ctx = ctx;
+                    $build_expr
+                });
+                $crate::tasks::process_resources(ctx, resources, &$opts)
+            }
+        }
+    };
+}
+
+pub(crate) use resource_task;
+
 // Re-export public items so downstream `use super::` and `use crate::tasks::`
 // continue to work unchanged.
 pub use processing::Context;
@@ -56,8 +129,8 @@ pub(crate) use processing::graph::has_cycle;
 pub use processing::update_signal::UpdateSignal;
 #[allow(unused_imports)] // TaskStats is used by doc-tests via the lib crate
 pub use processing::{
-    ProcessMode, ProcessOpts, TaskResult, TaskStats, process_resource_states, process_resources,
-    process_resources_remove,
+    ProcessMode, ProcessOpts, ResourceAction, TaskResult, TaskStats, process_resource_states,
+    process_resources, process_resources_remove,
 };
 
 use std::any::TypeId;
@@ -145,7 +218,14 @@ pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
 }
 
 /// Execute a task, recording the result in the logger.
+///
+/// Each task invocation is wrapped in a [`tracing::info_span`] so that
+/// the log file and diagnostic output include structured context about
+/// which task produced each message.
 pub fn execute(task: &dyn Task, ctx: &Context) {
+    let span = tracing::info_span!("task", name = task.name());
+    let _enter = span.enter();
+
     if !task.should_run(ctx) {
         ctx.log
             .debug(&format!("skipping task: {} (not applicable)", task.name()));

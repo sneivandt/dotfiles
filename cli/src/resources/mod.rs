@@ -87,6 +87,17 @@ pub enum ResourceState {
     },
 }
 
+impl std::fmt::Display for ResourceState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Missing => write!(f, "missing"),
+            Self::Correct => write!(f, "correct"),
+            Self::Incorrect { current } => write!(f, "incorrect (current: {current})"),
+            Self::Invalid { reason } => write!(f, "invalid ({reason})"),
+        }
+    }
+}
+
 /// Result of applying a resource change.
 ///
 /// # Examples

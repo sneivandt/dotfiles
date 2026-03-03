@@ -208,6 +208,75 @@ impl ProcessMode {
     pub const fn bail_on_error(self) -> bool {
         matches!(self, Self::Strict | Self::FixExisting)
     }
+
+    /// Determine the action to take for a resource in the given state.
+    ///
+    /// This encodes the state machine transition logic, mapping every
+    /// combination of [`ResourceState`] × [`ProcessMode`] to a concrete
+    /// [`ResourceAction`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dotfiles_cli::resources::ResourceState;
+    /// use dotfiles_cli::tasks::{ProcessMode, ResourceAction};
+    ///
+    /// assert_eq!(
+    ///     ProcessMode::Strict.action_for(&ResourceState::Missing),
+    ///     ResourceAction::Apply,
+    /// );
+    /// assert_eq!(
+    ///     ProcessMode::Strict.action_for(&ResourceState::Correct),
+    ///     ResourceAction::Noop,
+    /// );
+    /// assert!(matches!(
+    ///     ProcessMode::InstallMissing.action_for(
+    ///         &ResourceState::Incorrect { current: "x".into() },
+    ///     ),
+    ///     ResourceAction::Skip(_),
+    /// ));
+    /// ```
+    #[must_use]
+    pub fn action_for(self, state: &ResourceState) -> ResourceAction {
+        match state {
+            ResourceState::Correct => ResourceAction::Noop,
+            ResourceState::Invalid { reason } => ResourceAction::Skip(reason.clone()),
+            ResourceState::Missing if self.fix_missing() => ResourceAction::Apply,
+            ResourceState::Missing => ResourceAction::Skip("mode skips missing resources".into()),
+            ResourceState::Incorrect { .. } if self.fix_incorrect() => ResourceAction::Apply,
+            ResourceState::Incorrect { .. } => {
+                ResourceAction::Skip("mode skips incorrect resources".into())
+            }
+        }
+    }
+}
+
+/// Action to take on a resource, as determined by [`ProcessMode::action_for`].
+///
+/// This enum encodes the output of the resource lifecycle state machine,
+/// making the decision explicit and testable independently of the processing
+/// loop.
+///
+/// # Examples
+///
+/// ```
+/// use dotfiles_cli::tasks::ResourceAction;
+///
+/// let apply = ResourceAction::Apply;
+/// let noop = ResourceAction::Noop;
+/// let skip = ResourceAction::Skip("not applicable".into());
+///
+/// assert_eq!(apply, ResourceAction::Apply);
+/// assert_ne!(apply, noop);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResourceAction {
+    /// Apply the resource change (create or update).
+    Apply,
+    /// No action needed — resource is already in the desired state.
+    Noop,
+    /// Skip the resource for the given reason.
+    Skip(String),
 }
 
 /// Configuration for the generic resource processing loop.
@@ -310,6 +379,12 @@ pub fn process_resources<R: Resource + Send>(
     opts: &ProcessOpts,
 ) -> Result<TaskResult> {
     let resources: Vec<R> = resources.into_iter().collect();
+    let span = tracing::debug_span!(
+        "process_resources",
+        verb = opts.verb,
+        count = resources.len()
+    );
+    let _enter = span.enter();
     if ctx.parallel && resources.len() > 1 {
         ctx.log.debug(&format!(
             "processing {} resources in parallel",
@@ -320,7 +395,7 @@ pub fn process_resources<R: Resource + Send>(
         let mut stats = TaskStats::new();
         for resource in resources {
             let current = resource.current_state()?;
-            stats += apply::process_single(ctx, &resource, current, opts)?;
+            stats += apply::process_single(ctx, &resource, &current, opts)?;
         }
         Ok(stats.finish(ctx))
     }
@@ -342,6 +417,12 @@ pub fn process_resource_states<R: Applicable + Send>(
     opts: &ProcessOpts,
 ) -> Result<TaskResult> {
     let resource_states: Vec<(R, ResourceState)> = resource_states.into_iter().collect();
+    let span = tracing::debug_span!(
+        "process_resource_states",
+        verb = opts.verb,
+        count = resource_states.len()
+    );
+    let _enter = span.enter();
     if ctx.parallel && resource_states.len() > 1 {
         ctx.log.debug(&format!(
             "processing {} resources in parallel",
@@ -351,7 +432,7 @@ pub fn process_resource_states<R: Applicable + Send>(
     } else {
         let mut stats = TaskStats::new();
         for (resource, current) in resource_states {
-            stats += apply::process_single(ctx, &resource, current, opts)?;
+            stats += apply::process_single(ctx, &resource, &current, opts)?;
         }
         Ok(stats.finish(ctx))
     }
@@ -376,6 +457,8 @@ pub fn process_resources_remove<R: Resource + Send>(
     verb: &str,
 ) -> Result<TaskResult> {
     let resources: Vec<R> = resources.into_iter().collect();
+    let span = tracing::debug_span!("process_resources_remove", verb, count = resources.len());
+    let _enter = span.enter();
     if ctx.parallel && resources.len() > 1 {
         ctx.log.debug(&format!(
             "processing {} resources in parallel",
@@ -561,7 +644,7 @@ mod tests {
         let resource = MockResource::new(ResourceState::Correct);
         let opts = default_opts();
 
-        let stats = apply::process_single(&ctx, &resource, ResourceState::Correct, &opts).unwrap();
+        let stats = apply::process_single(&ctx, &resource, &ResourceState::Correct, &opts).unwrap();
 
         assert_eq!(stats.already_ok, 1);
         assert_eq!(stats.changed, 0);
@@ -580,7 +663,7 @@ mod tests {
         let stats = apply::process_single(
             &ctx,
             &resource,
-            ResourceState::Invalid {
+            &ResourceState::Invalid {
                 reason: "test".to_string(),
             },
             &opts,
@@ -598,7 +681,7 @@ mod tests {
         let resource = MockResource::new(ResourceState::Missing);
         let opts = ProcessOpts::fix_existing("install");
 
-        let stats = apply::process_single(&ctx, &resource, ResourceState::Missing, &opts).unwrap();
+        let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
 
         assert_eq!(stats.skipped, 1);
         assert_eq!(stats.changed, 0);
@@ -616,7 +699,7 @@ mod tests {
         let stats = apply::process_single(
             &ctx,
             &resource,
-            ResourceState::Incorrect {
+            &ResourceState::Incorrect {
                 current: "wrong".to_string(),
             },
             &opts,
@@ -634,7 +717,7 @@ mod tests {
         let resource = MockResource::new(ResourceState::Missing);
         let opts = default_opts();
 
-        let stats = apply::process_single(&ctx, &resource, ResourceState::Missing, &opts).unwrap();
+        let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
 
         assert_eq!(stats.changed, 1);
         assert_eq!(stats.already_ok, 0);
@@ -652,7 +735,7 @@ mod tests {
         let stats = apply::process_single(
             &ctx,
             &resource,
-            ResourceState::Incorrect {
+            &ResourceState::Incorrect {
                 current: "wrong".to_string(),
             },
             &opts,
@@ -671,7 +754,7 @@ mod tests {
             MockResource::new(ResourceState::Missing).with_apply(Err("should not call".into()));
         let opts = default_opts();
 
-        let stats = apply::process_single(&ctx, &resource, ResourceState::Missing, &opts).unwrap();
+        let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
 
         assert_eq!(stats.changed, 1);
     }
@@ -688,7 +771,7 @@ mod tests {
         let stats = apply::process_single(
             &ctx,
             &resource,
-            ResourceState::Incorrect {
+            &ResourceState::Incorrect {
                 current: "old-value".to_string(),
             },
             &opts,

@@ -32,8 +32,24 @@ debug messages are **always** written to the log file regardless.
 
 ## Logger API
 
-`ctx.log` is an `Arc<dyn Log>` — both `Logger` (sequential) and `BufferedLog`
-(parallel) implement the `Log` trait. All logging goes through these methods:
+`ctx.log` is an `Arc<dyn Log>`. The `Log` trait is composed from two sub-traits:
+
+- **`Output`** — user-facing display methods (`stage`, `info`, `debug`, `warn`,
+  `error`, `dry_run`, `diagnostic`)
+- **`TaskRecorder`** — structured task result recording (`record_task`)
+
+`Log` is defined as `Log: Output + TaskRecorder` with a blanket implementation
+(`impl<T: Output + TaskRecorder> Log for T {}`), so concrete types only implement
+the two sub-traits.
+
+Both `Logger` (sequential) and `BufferedLog` (parallel) implement `Output` and
+`TaskRecorder`, and therefore automatically implement `Log`.
+
+**When to use each trait:**
+- Accept `&dyn Log` (or `Arc<dyn Log>`) when you need both display and task
+  recording (e.g., `Context`, `execute()`).
+- Accept `&dyn Output` when you only need display methods and not task recording
+  (e.g., `resolve_profile()`, `load_config()`).
 
 ```rust
 ctx.log.stage(msg);    // Bold blue "==>" header

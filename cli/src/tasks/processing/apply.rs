@@ -3,7 +3,7 @@
 use anyhow::Result;
 
 use super::context::Context;
-use super::{ProcessOpts, TaskStats};
+use super::{ProcessOpts, ResourceAction, TaskStats};
 use crate::error::ResourceError;
 use crate::logging::DiagEvent;
 use crate::resources::{Applicable, ResourceChange, ResourceState};
@@ -12,37 +12,29 @@ use crate::resources::{Applicable, ResourceChange, ResourceState};
 pub(super) fn process_single<R: Applicable>(
     ctx: &Context,
     resource: &R,
-    resource_state: ResourceState,
+    resource_state: &ResourceState,
     opts: &ProcessOpts,
 ) -> Result<TaskStats> {
     let desc = resource.description();
     if let Some(diag) = ctx.log.diagnostic() {
         diag.emit(
             DiagEvent::ResourceCheck,
-            &format!("{desc} state={resource_state:?}"),
+            &format!("{desc} state={resource_state}"),
         );
     }
     let mut delta = TaskStats::new();
-    match resource_state {
-        ResourceState::Correct => {
+    match opts.mode.action_for(resource_state) {
+        ResourceAction::Noop => {
             ctx.log.debug(&format!("ok: {desc}"));
             delta.already_ok += 1;
         }
-        ResourceState::Invalid { reason } => {
+        ResourceAction::Skip(reason) => {
             ctx.log.debug(&format!("skipping {desc}: {reason}"));
             delta.skipped += 1;
         }
-        ResourceState::Missing if !opts.mode.fix_missing() => {
-            delta.skipped += 1;
-        }
-        ResourceState::Incorrect { .. } if !opts.mode.fix_incorrect() => {
-            ctx.log
-                .debug(&format!("skipping {desc} (unexpected state)"));
-            delta.skipped += 1;
-        }
-        resource_state @ (ResourceState::Missing | ResourceState::Incorrect { .. }) => {
+        ResourceAction::Apply => {
             if ctx.dry_run {
-                let msg = if let ResourceState::Incorrect { ref current } = resource_state {
+                let msg = if let ResourceState::Incorrect { ref current } = *resource_state {
                     format!("would {} {desc} (currently {current})", opts.verb)
                 } else {
                     format!("would {}: {desc}", opts.verb)

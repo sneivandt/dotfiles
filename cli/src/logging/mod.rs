@@ -11,7 +11,7 @@ pub use buffered::BufferedLog;
 pub use diagnostic::{DiagEvent, DiagnosticLog, diag_thread_name, set_diag_thread_name};
 pub use logger::Logger;
 pub use subscriber::init_subscriber;
-pub use types::{Log, TaskEntry, TaskStatus};
+pub use types::{Log, Output, TaskEntry, TaskRecorder, TaskStatus};
 
 /// Serializes `XDG_CACHE_HOME` manipulation across parallel test threads.
 #[cfg(test)]

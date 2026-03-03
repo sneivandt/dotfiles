@@ -27,13 +27,16 @@ pub enum TaskStatus {
     Failed,
 }
 
-/// Abstraction over logging backends.
+/// User-facing output methods.
 ///
-/// Both [`Logger`](super::logger::Logger) (direct output) and
-/// [`BufferedLog`](super::buffered::BufferedLog) (deferred output for
-/// parallel tasks) implement this trait, allowing task code to log without
-/// knowing whether output is immediate or buffered.
-pub trait Log: Send + Sync {
+/// This trait covers display-oriented logging: stage headers, informational
+/// messages, debug output, warnings, errors, and dry-run annotations. It
+/// intentionally excludes structured task recording, which belongs to
+/// [`TaskRecorder`].
+///
+/// Both [`Logger`](super::logger::Logger) and
+/// [`BufferedLog`](super::buffered::BufferedLog) implement this trait.
+pub trait Output: Send + Sync {
     /// Log a stage header (major section).
     fn stage(&self, msg: &str);
     /// Log an informational message.
@@ -46,13 +49,35 @@ pub trait Log: Send + Sync {
     fn error(&self, msg: &str);
     /// Log a dry-run action message.
     fn dry_run(&self, msg: &str);
-    /// Record a task result for the summary.
-    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>);
     /// Access the high-precision diagnostic log, if available.
     fn diagnostic(&self) -> Option<&DiagnosticLog> {
         None
     }
 }
+
+/// Structured task result recording for summary reports.
+///
+/// Separated from [`Output`] so that resource-processing code can depend
+/// only on display methods while the scheduler records task outcomes
+/// independently.
+pub trait TaskRecorder: Send + Sync {
+    /// Record a task result for the summary.
+    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>);
+}
+
+/// Combined logging interface: user-facing output plus task recording.
+///
+/// This is the primary trait stored in [`Context`](crate::tasks::Context).
+/// It composes [`Output`] (display methods) and [`TaskRecorder`] (structured
+/// task results), allowing callers that need the full interface to accept a
+/// single trait object.
+///
+/// A blanket implementation is provided for any type that implements both
+/// sub-traits, so concrete types only need to implement [`Output`] and
+/// [`TaskRecorder`].
+pub trait Log: Output + TaskRecorder {}
+
+impl<T: Output + TaskRecorder> Log for T {}
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]

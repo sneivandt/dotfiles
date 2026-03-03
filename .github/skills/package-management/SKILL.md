@@ -66,24 +66,61 @@ Runs only on Arch with `paru` installed. Uses `paru -S --needed --noconfirm`.
 
 ## Implementation Patterns
 
+### PackageProvider Trait
+
+All package manager operations are abstracted behind the `PackageProvider` trait
+(`resources/package.rs`). Each implementation encapsulates one package manager's
+CLI, and new managers require only a new `PackageProvider` impl and a
+`PackageManager` enum variant:
+
+```rust
+pub trait PackageProvider: std::fmt::Debug + Send + Sync {
+    fn name(&self) -> &'static str;
+    fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>>;
+    fn is_installed(&self, name: &str, executor: &dyn Executor) -> Result<bool>;
+    fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange>;
+    fn supports_batch(&self) -> bool { false }
+    fn batch_install(&self, names: &[&str], executor: &dyn Executor) -> Result<()> { ... }
+}
+```
+
+Concrete implementations:
+- `PacmanProvider` — `pacman -S --needed --noconfirm`
+- `ParuProvider` — `paru -S --needed --noconfirm` (delegates `query_installed` to `PacmanProvider`)
+- `WingetProvider` — `winget install --id --exact` (no batch support)
+
+### PackageManager::provider()
+
+The `PackageManager` enum maps to its provider via `provider()`:
+
+```rust
+let provider: &'static dyn PackageProvider = PackageManager::Pacman.provider();
+```
+
+Providers are `&'static` (zero-cost, no `Arc`). `PackageResource` stores both
+the `PackageManager` enum and its `provider` reference.
+
 ### Resource-Based Package Installation
 
-All package managers use a shared `process_packages()` helper that batch-queries
-installed packages once and then processes each package via `process_resource_states()`:
+All package managers use `process_resource_states()` with batch-queried state.
+The `batch_install_packages()` function groups resources by manager and delegates
+to each provider:
 
 ```rust
 let installed = get_installed_packages(manager, &*ctx.executor)?;
-let strategy: &dyn PackageStrategy = match manager {
-    PackageManager::Winget => &IndividualInstall { manager },
-    _ => &BatchInstall { manager },
-};
-strategy.install(ctx, packages, &installed)
+// Build (PackageResource, ResourceState) pairs using state_from_installed()
+// Then call process_resource_states() for dry-run/apply logic
+// Finally batch_install_packages() for the actual install
 ```
+
+Providers that support batch installation (pacman, paru) install all missing
+packages in one command; providers that do not (winget) install individually.
 
 ### Batch State Checking
 
 For efficiency, all installed packages are queried once via `get_installed_packages(manager, executor)`,
-then each resource checks membership via `state_from_installed(&installed)` (a `HashSet` lookup).
+which delegates to `provider.query_installed()`, then each resource checks
+membership via `state_from_installed(&installed)` (a `HashSet` lookup).
 This avoids running one command per package.
 
 ## Key Patterns

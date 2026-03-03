@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use super::diagnostic::{DiagEvent, DiagnosticLog};
 use super::logger::Logger;
-use super::types::{Log, TaskStatus};
+use super::types::{Output, TaskRecorder, TaskStatus};
 
 /// A single buffered log entry, replayed when flushed.
 #[derive(Debug, Clone)]
@@ -39,7 +39,7 @@ impl LogEntry {
     }
 }
 
-/// Implement the display methods of [`Log`] by buffering each message into
+/// Implement the display methods of [`Output`] by buffering each message into
 /// `self.entries` as the corresponding [`LogEntry`] variant.
 ///
 /// Each method also forwards the message to the diagnostic log in real-time
@@ -128,7 +128,7 @@ impl BufferedLog {
     }
 }
 
-impl Log for BufferedLog {
+impl Output for BufferedLog {
     buffer_log_methods! {
         stage   => Stage   => Stage,
         info    => Info    => Info,
@@ -138,12 +138,14 @@ impl Log for BufferedLog {
         dry_run => DryRun  => DryRun,
     }
 
-    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
-        self.inner.record_task(name, status, message);
-    }
-
     fn diagnostic(&self) -> Option<&DiagnosticLog> {
         self.inner.diagnostic.as_ref()
+    }
+}
+
+impl TaskRecorder for BufferedLog {
+    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
+        self.inner.record_task(name, status, message);
     }
 }
 

@@ -12,7 +12,7 @@ use anyhow::Result;
 use crate::cli::GlobalOpts;
 use crate::config::Config;
 use crate::config::profiles;
-use crate::logging::{Log, Logger};
+use crate::logging::{Log, Logger, Output};
 use crate::platform::Platform;
 use crate::tasks::{self, Context, Task};
 
@@ -79,7 +79,7 @@ fn resolve_profile(
     global: &GlobalOpts,
     root: &std::path::Path,
     platform: Platform,
-    log: &dyn Log,
+    log: &dyn Output,
 ) -> Result<profiles::Profile> {
     log.stage("Resolving profile");
     let profile = profiles::resolve_from_args(global.profile.as_deref(), root, platform)?;
@@ -97,7 +97,7 @@ fn load_config(
     root: &std::path::Path,
     profile: &profiles::Profile,
     platform: Platform,
-    log: &dyn Log,
+    log: &dyn Output,
 ) -> Result<Config> {
     log.stage("Loading configuration");
     let config = Config::load(root, profile, platform)?;

@@ -1,28 +1,15 @@
 //! Task: configure Git settings.
-use anyhow::Result;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
+use super::{ProcessOpts, resource_task};
 use crate::resources::git_config::GitConfigResource;
 
-/// Configure git settings from git-config.toml.
-#[derive(Debug)]
-pub struct ConfigureGit;
-
-impl Task for ConfigureGit {
-    fn name(&self) -> &'static str {
-        "Configure git"
-    }
-
-    fn should_run(&self, ctx: &Context) -> bool {
-        !ctx.config_read().git_settings.is_empty()
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let settings = ctx.config_read().git_settings.clone();
-        let resources = settings
-            .into_iter()
-            .map(|s| GitConfigResource::new(s.key, s.value));
-        process_resources(ctx, resources, &ProcessOpts::strict("set git config"))
+resource_task! {
+    /// Configure git settings from git-config.toml.
+    pub ConfigureGit {
+        name: "Configure git",
+        items: |ctx| ctx.config_read().git_settings.clone(),
+        build: |s, _ctx| GitConfigResource::new(s.key, s.value),
+        opts: ProcessOpts::strict("set git config"),
     }
 }
 
@@ -31,6 +18,7 @@ impl Task for ConfigureGit {
 mod tests {
     use super::*;
     use crate::config::git_config::GitSetting;
+    use crate::tasks::Task;
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 

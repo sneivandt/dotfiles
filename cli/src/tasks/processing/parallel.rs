@@ -89,7 +89,7 @@ fn run_parallel<T: Send, R: Applicable + Send>(
 ) -> Result<super::TaskResult> {
     let stats = collect_parallel_stats(items, |item| {
         let (resource, current) = get_resource_state(item)?;
-        process_single(ctx, &resource, current, opts)
+        process_single(ctx, &resource, &current, opts)
     })?;
     Ok(stats.finish(ctx))
 }

@@ -31,7 +31,7 @@ impl Applicable for DefaultShellResource {
     }
 
     fn apply(&self) -> Result<ResourceChange> {
-        let shell_path = crate::exec::which_path(&self.target_shell)?;
+        let shell_path = self.executor.which_path(&self.target_shell)?;
         let shell_str = shell_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("non-UTF-8 shell path: {}", shell_path.display()))?;

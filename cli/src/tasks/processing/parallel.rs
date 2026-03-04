@@ -6,7 +6,8 @@ use anyhow::Result;
 
 use super::apply::{process_single, remove_single};
 use super::context::Context;
-use super::{ProcessOpts, TaskStats};
+use super::mode::ProcessOpts;
+use super::stats::TaskStats;
 use crate::logging::{diag_thread_name, set_diag_thread_name};
 use crate::resources::{Applicable, Resource, ResourceState};
 
@@ -15,7 +16,7 @@ pub(super) fn process_resources_parallel<R: Resource + Send>(
     ctx: &Context,
     resources: Vec<R>,
     opts: &ProcessOpts,
-) -> Result<super::TaskResult> {
+) -> Result<super::stats::TaskResult> {
     run_parallel(ctx, resources, opts, |resource| {
         let state = resource.current_state()?;
         Ok((resource, state))
@@ -27,7 +28,7 @@ pub(super) fn process_resource_states_parallel<R: Applicable + Send>(
     ctx: &Context,
     resource_states: Vec<(R, ResourceState)>,
     opts: &ProcessOpts,
-) -> Result<super::TaskResult> {
+) -> Result<super::stats::TaskResult> {
     run_parallel(ctx, resource_states, opts, Ok)
 }
 
@@ -36,7 +37,7 @@ pub(super) fn process_remove_parallel<R: Resource + Send>(
     ctx: &Context,
     resources: Vec<R>,
     verb: &str,
-) -> Result<super::TaskResult> {
+) -> Result<super::stats::TaskResult> {
     let stats = collect_parallel_stats(resources, |resource| {
         let current = resource.current_state()?;
         remove_single(ctx, &resource, &current, verb)
@@ -86,7 +87,7 @@ fn run_parallel<T: Send, R: Applicable + Send>(
     items: Vec<T>,
     opts: &ProcessOpts,
     get_resource_state: impl Fn(T) -> Result<(R, ResourceState)> + Sync,
-) -> Result<super::TaskResult> {
+) -> Result<super::stats::TaskResult> {
     let stats = collect_parallel_stats(items, |item| {
         let (resource, current) = get_resource_state(item)?;
         process_single(ctx, &resource, &current, opts)

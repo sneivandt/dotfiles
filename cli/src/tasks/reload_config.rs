@@ -1,5 +1,4 @@
 //! Task: reload configuration after repository update.
-use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 
@@ -55,12 +54,7 @@ impl Task for ReloadConfig {
 
         // Atomically replace the shared config so all downstream tasks see the
         // freshly-loaded values.
-        let mut guard = ctx
-            .config
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *guard = Arc::new(new_config);
-        drop(guard);
+        ctx.config_swap(new_config);
 
         ctx.log.info("configuration reloaded");
         Ok(TaskResult::Ok)

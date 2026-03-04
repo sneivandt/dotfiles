@@ -3,7 +3,8 @@
 use anyhow::Result;
 
 use super::context::Context;
-use super::{ProcessOpts, ResourceAction, TaskStats};
+use super::mode::{ProcessOpts, ResourceAction};
+use super::stats::TaskStats;
 use crate::error::ResourceError;
 use crate::logging::DiagEvent;
 use crate::resources::{Applicable, ResourceChange, ResourceState};

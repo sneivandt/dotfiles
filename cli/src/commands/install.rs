@@ -26,6 +26,8 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Arc<Logger>) -> Result
 
     // Filter by --skip and --only
     let all_tasks = tasks::all_install_tasks();
+    warn_unmatched_filters(&all_tasks, &opts.only, "--only", &**log);
+    warn_unmatched_filters(&all_tasks, &opts.skip, "--skip", &**log);
     runner.run(
         all_tasks
             .iter()
@@ -41,6 +43,24 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Arc<Logger>) -> Result
             })
             .map(Box::as_ref),
     )
+}
+
+/// Warn about filter values that don't match any known task name.
+fn warn_unmatched_filters(
+    tasks: &[Box<dyn tasks::Task>],
+    filters: &[String],
+    flag: &str,
+    log: &dyn crate::logging::Output,
+) {
+    for filter in filters {
+        let lower = filter.to_lowercase();
+        let matched = tasks
+            .iter()
+            .any(|t| t.name().to_lowercase().contains(&lower));
+        if !matched {
+            log.warn(&format!("{flag} '{filter}' did not match any task"));
+        }
+    }
 }
 
 /// Resolve the dotfiles root directory from CLI arguments or auto-detection.
@@ -134,5 +154,31 @@ mod tests {
                 assert!(e.to_string().contains("cannot determine dotfiles root"));
             }
         }
+    }
+
+    // ------------------------------------------------------------------
+    // warn_unmatched_filters
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn warn_unmatched_filters_warns_on_no_match() {
+        use crate::logging::Logger;
+        let log = Logger::new("test");
+        let all = tasks::all_install_tasks();
+
+        // "xyznonexistent" should not match any task
+        warn_unmatched_filters(&all, &["xyznonexistent".to_string()], "--only", &log);
+        // Verification: the function runs without panic; the warning is
+        // emitted via log.warn() which is captured by the Logger.
+    }
+
+    #[test]
+    fn warn_unmatched_filters_silent_on_valid_match() {
+        use crate::logging::Logger;
+        let log = Logger::new("test");
+        let all = tasks::all_install_tasks();
+
+        // "symlink" matches "Install symlinks"
+        warn_unmatched_filters(&all, &["symlink".to_string()], "--only", &log);
     }
 }

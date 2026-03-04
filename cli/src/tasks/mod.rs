@@ -551,4 +551,33 @@ mod tests {
         execute(&task, &ctx);
         assert_eq!(log.failure_count(), 0);
     }
+
+    // ------------------------------------------------------------------
+    // Task registration completeness
+    // ------------------------------------------------------------------
+
+    /// Guard against forgetting to register a new task.
+    ///
+    /// When you add a new task to the codebase, add it to
+    /// `all_install_tasks()` and bump the expected count here.
+    #[test]
+    fn all_install_tasks_count() {
+        let tasks = all_install_tasks();
+        assert_eq!(
+            tasks.len(),
+            17,
+            "expected 17 install tasks — did you add a new task without updating \
+             all_install_tasks()? Update the registration list and this test."
+        );
+    }
+
+    #[test]
+    fn all_uninstall_tasks_count() {
+        let tasks = all_uninstall_tasks();
+        assert_eq!(
+            tasks.len(),
+            2,
+            "expected 2 uninstall tasks — update all_uninstall_tasks() and this test."
+        );
+    }
 }

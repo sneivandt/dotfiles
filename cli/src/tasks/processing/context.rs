@@ -140,6 +140,45 @@ impl Context {
             ..self.clone()
         }
     }
+
+    /// Create a copy of this context with dry-run mode set.
+    #[must_use]
+    pub fn with_dry_run(&self, dry_run: bool) -> Self {
+        Self {
+            dry_run,
+            ..self.clone()
+        }
+    }
+
+    /// Create a copy of this context with parallel mode set.
+    #[must_use]
+    pub fn with_parallel(&self, parallel: bool) -> Self {
+        Self {
+            parallel,
+            ..self.clone()
+        }
+    }
+
+    /// Create a copy of this context with a different home directory.
+    #[must_use]
+    pub fn with_home(&self, home: std::path::PathBuf) -> Self {
+        Self {
+            home,
+            ..self.clone()
+        }
+    }
+
+    /// Atomically replace the shared configuration.
+    ///
+    /// Used by [`super::super::reload_config::ReloadConfig`] after a `git pull`
+    /// to swap in the freshly-loaded config.
+    pub fn config_swap(&self, new_config: Config) {
+        let mut guard = self
+            .config
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = Arc::new(new_config);
+    }
 }
 
 #[cfg(test)]

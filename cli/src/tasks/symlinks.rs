@@ -178,8 +178,8 @@ mod tests {
             source: "bashrc".to_string(),
             target: None,
         });
-        let mut ctx = make_linux_context(config);
-        ctx.home = home_dir.path().to_path_buf();
+        let ctx = make_linux_context(config);
+        let ctx = ctx.with_home(home_dir.path().to_path_buf());
 
         let result = InstallSymlinks.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Ok));
@@ -214,8 +214,8 @@ mod tests {
             source: "bashrc".to_string(),
             target: None,
         });
-        let mut ctx = make_linux_context(config);
-        ctx.home = home_dir.path().to_path_buf();
+        let ctx = make_linux_context(config);
+        let ctx = ctx.with_home(home_dir.path().to_path_buf());
 
         let result = UninstallSymlinks.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Ok));

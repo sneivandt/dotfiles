@@ -104,19 +104,12 @@ fn fetch_latest_tag() -> Result<Option<String>> {
         .read_to_string()
         .context("reading GitHub API response")?;
 
-    // Minimal JSON parsing — avoid pulling in a full JSON crate.
-    for line in body.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("\"tag_name\"")
-            && let Some(start) = trimmed.find(": \"")
-        {
-            let rest = &trimmed[start + 3..];
-            if let Some(end) = rest.find('"') {
-                return Ok(Some(rest[..end].to_string()));
-            }
-        }
-    }
-    Ok(None)
+    let parsed: serde_json::Value =
+        serde_json::from_str(&body).context("parsing GitHub API JSON response")?;
+    Ok(parsed
+        .get("tag_name")
+        .and_then(serde_json::Value::as_str)
+        .map(String::from))
 }
 
 /// Download a URL and return the bytes.
@@ -215,6 +208,68 @@ fn is_running_from_bin(root: &std::path::Path) -> bool {
     resolved_exe == resolved_expected
 }
 
+/// Result of checking for an available update.
+enum UpdateCheck {
+    /// Cache is fresh — no network call needed.
+    CacheFresh,
+    /// Could not reach GitHub.
+    Offline,
+    /// Already running the latest version.
+    AlreadyCurrent(String),
+    /// A newer version is available.
+    UpdateAvailable {
+        /// Latest release tag (e.g., "v0.2.0").
+        latest: String,
+        /// Current version tag (e.g., "v0.1.0").
+        current: String,
+    },
+}
+
+/// Check whether an update is available by comparing the local cache and
+/// the latest GitHub release.
+///
+/// # Errors
+///
+/// Returns an error if the cache file cannot be written.
+fn check_for_update(root: &std::path::Path) -> Result<UpdateCheck> {
+    if is_cache_fresh(root) {
+        return Ok(UpdateCheck::CacheFresh);
+    }
+    let Some(latest) = fetch_latest_tag()? else {
+        return Ok(UpdateCheck::Offline);
+    };
+    if cached_version(root).as_deref() == Some(latest.as_str()) {
+        write_cache(root, &latest)?;
+        return Ok(UpdateCheck::AlreadyCurrent(latest));
+    }
+    let current = format!(
+        "v{}",
+        option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+    );
+    if latest == current {
+        write_cache(root, &latest)?;
+        return Ok(UpdateCheck::AlreadyCurrent(latest));
+    }
+    Ok(UpdateCheck::UpdateAvailable { latest, current })
+}
+
+/// Download the release asset for the given tag and install it.
+///
+/// # Errors
+///
+/// Returns an error if the download, checksum verification, or binary
+/// replacement fails.
+fn download_and_install(root: &std::path::Path, tag: &str) -> Result<()> {
+    let asset = asset_name();
+    let url = format!("https://github.com/{REPO}/releases/download/{tag}/{asset}");
+    let data = download_bytes(&url)?;
+    verify_checksum(tag, asset, &data)?;
+    let bin = binary_path(root);
+    replace_binary(&bin, &data)?;
+    write_cache(root, tag)?;
+    Ok(())
+}
+
 /// Run the self-update check before the task graph.
 ///
 /// When the binary lives in `$root/bin/` and a newer release is available,
@@ -233,53 +288,22 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
     if !is_running_from_bin(root) {
         return Ok(false);
     }
-
-    // Fast path: cache is fresh — skip network call.
-    if is_cache_fresh(root) {
-        return Ok(false);
+    match check_for_update(root)? {
+        UpdateCheck::CacheFresh | UpdateCheck::Offline | UpdateCheck::AlreadyCurrent(_) => {
+            Ok(false)
+        }
+        UpdateCheck::UpdateAvailable { latest, current } => {
+            if dry_run {
+                log.info(&format!("update available: {current} → {latest}"));
+                return Ok(false);
+            }
+            log.stage("Self update");
+            log.info(&format!("updating: {current} → {latest}"));
+            download_and_install(root, &latest)?;
+            log.info("binary updated, restarting");
+            Ok(true)
+        }
     }
-
-    // Fetch latest release tag from GitHub.
-    let Some(latest) = fetch_latest_tag()? else {
-        return Ok(false);
-    };
-
-    // Already up to date.
-    if cached_version(root).as_deref() == Some(latest.as_str()) {
-        write_cache(root, &latest)?;
-        return Ok(false);
-    }
-
-    // Check if this is actually a newer (different) version.
-    let current = format!(
-        "v{}",
-        option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
-    );
-    if latest == current {
-        write_cache(root, &latest)?;
-        return Ok(false);
-    }
-
-    if dry_run {
-        log.info(&format!("update available: {current} → {latest}"));
-        return Ok(false);
-    }
-
-    log.stage("Self update");
-    log.info(&format!("updating: {current} → {latest}"));
-
-    let asset = asset_name();
-    let url = format!("https://github.com/{REPO}/releases/download/{latest}/{asset}");
-
-    let data = download_bytes(&url)?;
-    verify_checksum(&latest, asset, &data)?;
-
-    let bin = binary_path(root);
-    replace_binary(&bin, &data)?;
-    write_cache(root, &latest)?;
-
-    log.info("binary updated, restarting");
-    Ok(true)
 }
 
 /// Update the running dotfiles binary to the latest GitHub release.
@@ -299,47 +323,31 @@ impl Task for UpdateBinary {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let root = ctx.root();
-
-        // Fast path: cache is fresh — skip network call.
-        if is_cache_fresh(&root) {
-            ctx.log.info("version cache is fresh, skipping check");
-            return Ok(TaskResult::Skipped("cache fresh".to_string()));
+        match check_for_update(&root)? {
+            UpdateCheck::CacheFresh => {
+                ctx.log.info("version cache is fresh, skipping check");
+                Ok(TaskResult::Skipped("cache fresh".to_string()))
+            }
+            UpdateCheck::Offline => {
+                ctx.log
+                    .warn("could not reach GitHub, skipping binary update");
+                Ok(TaskResult::Skipped("offline".to_string()))
+            }
+            UpdateCheck::AlreadyCurrent(tag) => {
+                ctx.log.info(&format!("already up to date ({tag})"));
+                Ok(TaskResult::Ok)
+            }
+            UpdateCheck::UpdateAvailable { latest, .. } => {
+                if ctx.dry_run {
+                    ctx.log.dry_run(&format!("would update binary to {latest}"));
+                    return Ok(TaskResult::DryRun);
+                }
+                ctx.log.info(&format!("downloading {latest}…"));
+                download_and_install(&root, &latest)?;
+                ctx.log.info(&format!("updated to {latest}"));
+                Ok(TaskResult::Ok)
+            }
         }
-
-        // Fetch latest release tag from GitHub.
-        let Some(latest) = fetch_latest_tag()? else {
-            ctx.log
-                .warn("could not reach GitHub, skipping binary update");
-            return Ok(TaskResult::Skipped("offline".to_string()));
-        };
-
-        // Compare with cached tag.
-        if cached_version(&root).as_deref() == Some(latest.as_str()) {
-            write_cache(&root, &latest)?;
-            ctx.log.info("already up to date");
-            return Ok(TaskResult::Ok);
-        }
-
-        if ctx.dry_run {
-            ctx.log.dry_run(&format!("would update binary to {latest}"));
-            return Ok(TaskResult::DryRun);
-        }
-
-        let asset = asset_name();
-        let url = format!("https://github.com/{REPO}/releases/download/{latest}/{asset}");
-
-        ctx.log.info(&format!("downloading {latest}…"));
-        let data = download_bytes(&url)?;
-
-        ctx.log.debug("verifying checksum");
-        verify_checksum(&latest, asset, &data)?;
-
-        let bin = binary_path(&root);
-        replace_binary(&bin, &data)?;
-
-        write_cache(&root, &latest)?;
-        ctx.log.info(&format!("updated to {latest}"));
-        Ok(TaskResult::Ok)
     }
 }
 

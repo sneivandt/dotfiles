@@ -254,7 +254,7 @@ mod tests {
             (true, "abc123".to_string()),
         ]);
         let mut ctx = make_update_context(config, executor);
-        ctx.dry_run = true;
+        ctx = ctx.with_dry_run(true);
         let task = UpdateRepository::new(UpdateSignal::new());
 
         let result = task.run(&ctx).unwrap();
@@ -278,7 +278,7 @@ mod tests {
             (true, "def456".to_string()),
         ]);
         let mut ctx = make_update_context(config, executor);
-        ctx.dry_run = true;
+        ctx = ctx.with_dry_run(true);
         let task = UpdateRepository::new(UpdateSignal::new());
 
         let result = task.run(&ctx).unwrap();

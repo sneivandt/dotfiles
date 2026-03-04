@@ -1,39 +1,24 @@
 //! Task: install GitHub Copilot skills.
-use anyhow::Result;
-use std::sync::Arc;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};
+use super::{ProcessOpts, resource_task};
 use crate::resources::copilot_skill::CopilotSkillResource;
 
-/// Install GitHub Copilot skills.
-#[derive(Debug)]
-pub struct InstallCopilotSkills;
-
-impl Task for InstallCopilotSkills {
-    fn name(&self) -> &'static str {
-        "Install Copilot skills"
-    }
-
-    task_deps![super::symlinks::InstallSymlinks];
-
-    fn should_run(&self, ctx: &Context) -> bool {
-        !ctx.config_read().copilot_skills.is_empty()
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let skills: Vec<_> = ctx.config_read().copilot_skills.clone();
-        let skills_dir = ctx.home.join(".copilot/skills");
-        ctx.log
-            .debug(&format!("skills directory: {}", skills_dir.display()));
-
-        let resources = skills.iter().map(|skill| {
-            CopilotSkillResource::from_entry(skill, &skills_dir, Arc::clone(&ctx.executor))
-        });
-        process_resources(
-            ctx,
-            resources,
-            &ProcessOpts::install_missing("install skill"),
-        )
+resource_task! {
+    /// Install GitHub Copilot skills.
+    pub InstallCopilotSkills {
+        name: "Install Copilot skills",
+        deps: [super::symlinks::InstallSymlinks],
+        items: |ctx| ctx.config_read().copilot_skills.clone(),
+        build: |skill, ctx| {
+            use std::sync::Arc;
+            let skills_dir = ctx.home.join(".copilot/skills");
+            CopilotSkillResource::from_entry(
+                &skill,
+                &skills_dir,
+                Arc::clone(&ctx.executor),
+            )
+        },
+        opts: ProcessOpts::install_missing("install skill"),
     }
 }
 
@@ -42,6 +27,7 @@ impl Task for InstallCopilotSkills {
 mod tests {
     use super::*;
     use crate::config::copilot_skills::CopilotSkill;
+    use crate::tasks::Task;
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 

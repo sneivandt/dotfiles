@@ -203,7 +203,10 @@ impl Applicable for RegistryResource {
         }
         #[cfg(not(windows))]
         {
-            anyhow::bail!("registry operations are only supported on Windows")
+            Err(crate::error::ResourceError::NotSupported {
+                reason: "registry operations are only supported on Windows".to_string(),
+            }
+            .into())
         }
     }
 }

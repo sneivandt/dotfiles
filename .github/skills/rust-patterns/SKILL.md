@@ -43,7 +43,9 @@ cli/src/
 ├── tasks/         # Task implementations
 │   ├── mod.rs     # Task trait, task_deps!, re-exports from processing/
 │   ├── processing/  # Generic resource processing engine
-│   │   ├── mod.rs   # ProcessMode, ProcessOpts, process_resources(), process_resource_states()
+│   │   ├── mod.rs   # process_resources(), process_resource_states(), tests
+│   │   ├── mode.rs  # ProcessMode, ProcessOpts, ResourceAction
+│   │   ├── stats.rs # TaskResult, TaskStats
 │   │   ├── apply.rs # Apply/remove logic
 │   │   ├── context.rs # Context, ContextOpts
 │   │   ├── graph.rs # Dependency graph and scheduler
@@ -294,6 +296,13 @@ pub struct Context {
 ```
 
 Helpers: `ctx.root()`, `ctx.symlinks_dir()`, `ctx.hooks_dir()`.
+
+Builder methods for creating modified copies (used extensively in tests):
+- `ctx.with_log(log)` — different logger (used by parallel scheduler)
+- `ctx.with_dry_run(true)` — enable dry-run mode
+- `ctx.with_parallel(true)` — enable parallel processing
+- `ctx.with_home(path)` — override home directory
+- `ctx.config_swap(new_config)` — atomically replace the shared config (used by `ReloadConfig`)
 
 ### ContextOpts
 

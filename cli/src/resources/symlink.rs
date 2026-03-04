@@ -299,11 +299,15 @@ fn remove_dir_fallback(path: &Path) -> Result<()> {
         .output()
         .context("failed to run rmdir")?;
     if !output.status.success() {
-        anyhow::bail!(
-            "remove directory/symlink '{}': {}",
-            path.display(),
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
+        return Err(crate::error::ResourceError::CommandFailed {
+            program: "rmdir".to_string(),
+            message: format!(
+                "remove directory/symlink '{}': {}",
+                path.display(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
+        }
+        .into());
     }
     Ok(())
 }

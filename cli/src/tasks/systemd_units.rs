@@ -140,7 +140,7 @@ mod tests {
             (false, String::new()), // is-enabled → Missing
         ]);
         let mut ctx = make_systemd_context(config, executor);
-        ctx.dry_run = true;
+        ctx = ctx.with_dry_run(true);
 
         let result = ConfigureSystemd.run(&ctx).unwrap();
         assert!(

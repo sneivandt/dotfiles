@@ -520,7 +520,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         // which_result=true ⇒ paru found in PATH
         let mut ctx = make_platform_context_with_which(config, Os::Linux, true, true);
-        ctx.dry_run = true;
+        ctx = ctx.with_dry_run(true);
         let result = InstallParu.run(&ctx).unwrap();
         assert!(
             matches!(result, TaskResult::Ok),
@@ -623,7 +623,7 @@ mod tests {
         });
         // Response: pacman -Q → nothing installed
         let mut ctx = make_package_context(config, Os::Linux, true, vec![(true, String::new())]);
-        ctx.dry_run = true;
+        ctx = ctx.with_dry_run(true);
         let result = InstallPackages.run(&ctx).unwrap();
         assert!(
             matches!(result, TaskResult::DryRun),

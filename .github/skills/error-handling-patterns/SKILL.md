@@ -30,6 +30,29 @@ packages::load(&conf.join("packages.toml"), active_categories)
     .context("loading packages.toml")?;
 ```
 
+### ResourceError in Resources
+
+Resource implementations (`resources/*.rs`) should return typed `ResourceError` variants
+instead of `anyhow::bail!()`. This enables `categorize_error()` in the processing pipeline
+to classify failures for diagnostic logging:
+
+```rust
+use crate::error::ResourceError;
+
+// Platform-unsupported operations:
+Err(ResourceError::NotSupported {
+    reason: "registry operations are only supported on Windows".to_string(),
+}.into())
+
+// External command failures:
+Err(ResourceError::CommandFailed {
+    program: "pacman".to_string(),
+    message: format!("exit code {code}"),
+}.into())
+```
+
+Available variants: `CommandFailed`, `PermissionDenied`, `ConflictingState`, `NotSupported`.
+
 ### Task Failure Recording
 
 Task failures don't abort the run. `tasks::execute()` catches errors and records `TaskStatus::Failed`; remaining tasks still execute. The summary reports all failures at the end.

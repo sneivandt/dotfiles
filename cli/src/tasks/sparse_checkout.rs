@@ -374,7 +374,7 @@ mod tests {
         let mut config = empty_config(dir.path().to_path_buf());
         config.manifest.excluded_files.push("symlinks".to_string());
         let mut ctx = make_linux_context(config);
-        ctx.dry_run = true;
+        ctx = ctx.with_dry_run(true);
 
         let result = ConfigureSparseCheckout::new().run(&ctx).unwrap();
         assert!(

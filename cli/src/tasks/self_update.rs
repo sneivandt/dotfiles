@@ -212,6 +212,21 @@ fn is_running_from_bin(root: &std::path::Path) -> bool {
     matched
 }
 
+/// Return `true` if `v` is a proper release version tag (`vMAJOR.MINOR.PATCH`).
+///
+/// Development builds produced by `git describe` (e.g., `v0.1.2-3-gabcdef` or
+/// `c6c5897-dirty`) are not release versions and must not trigger a self-update.
+fn is_release_version(v: &str) -> bool {
+    let v = v.strip_prefix('v').unwrap_or(v);
+    let mut parts = v.split('.');
+    let all_digits = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit());
+    matches!(
+        (parts.next(), parts.next(), parts.next(), parts.next()),
+        (Some(major), Some(minor), Some(patch), None)
+            if all_digits(major) && all_digits(minor) && all_digits(patch)
+    )
+}
+
 /// Result of checking for an available update.
 enum UpdateCheck {
     /// Cache is fresh — no network call needed.
@@ -220,6 +235,8 @@ enum UpdateCheck {
     Offline,
     /// Already running the latest version.
     AlreadyCurrent(String),
+    /// Running a development build; self-update is not applicable.
+    DevBuild,
     /// A newer version is available.
     UpdateAvailable {
         /// Latest release tag (e.g., "v0.2.0").
@@ -236,6 +253,12 @@ enum UpdateCheck {
 ///
 /// Returns an error if the cache file cannot be written.
 fn check_for_update(root: &std::path::Path) -> Result<UpdateCheck> {
+    let raw_version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    let current = format!("v{}", raw_version.strip_prefix('v').unwrap_or(raw_version));
+    if !is_release_version(&current) {
+        tracing::debug!("dev build ({current}), skipping update check");
+        return Ok(UpdateCheck::DevBuild);
+    }
     if is_cache_fresh(root) {
         return Ok(UpdateCheck::CacheFresh);
     }
@@ -247,8 +270,6 @@ fn check_for_update(root: &std::path::Path) -> Result<UpdateCheck> {
         write_cache(root, &latest)?;
         return Ok(UpdateCheck::AlreadyCurrent(latest));
     }
-    let raw_version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
-    let current = format!("v{}", raw_version.strip_prefix('v').unwrap_or(raw_version));
     if latest == current {
         write_cache(root, &latest)?;
         return Ok(UpdateCheck::AlreadyCurrent(latest));
@@ -292,9 +313,10 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
         return Ok(false);
     }
     match check_for_update(root)? {
-        UpdateCheck::CacheFresh | UpdateCheck::Offline | UpdateCheck::AlreadyCurrent(_) => {
-            Ok(false)
-        }
+        UpdateCheck::CacheFresh
+        | UpdateCheck::Offline
+        | UpdateCheck::DevBuild
+        | UpdateCheck::AlreadyCurrent(_) => Ok(false),
         UpdateCheck::UpdateAvailable { latest, current } => {
             if dry_run {
                 log.info(&format!("update available: {current} → {latest}"));
@@ -335,6 +357,10 @@ impl Task for UpdateBinary {
                 ctx.log
                     .warn("could not reach GitHub, skipping binary update");
                 Ok(TaskResult::Skipped("offline".to_string()))
+            }
+            UpdateCheck::DevBuild => {
+                ctx.log.info("dev build, skipping update check");
+                Ok(TaskResult::Skipped("dev build".to_string()))
             }
             UpdateCheck::AlreadyCurrent(tag) => {
                 ctx.log.info(&format!("already up to date ({tag})"));
@@ -473,5 +499,22 @@ mod tests {
     #[test]
     fn asset_name_is_non_empty() {
         assert!(!asset_name().is_empty());
+    }
+
+    #[test]
+    fn is_release_version_accepts_semver_tags() {
+        assert!(is_release_version("v0.1.0"));
+        assert!(is_release_version("v1.2.3"));
+        assert!(is_release_version("v0.1.163"));
+    }
+
+    #[test]
+    fn is_release_version_rejects_dev_builds() {
+        assert!(!is_release_version("c6c5897-dirty"));
+        assert!(!is_release_version("vc6c5897-dirty"));
+        assert!(!is_release_version("v0.1.2-3-gabcdef"));
+        assert!(!is_release_version("v0.1.2-dirty"));
+        assert!(!is_release_version("0.1.2-dirty"));
+        assert!(!is_release_version(""));
     }
 }

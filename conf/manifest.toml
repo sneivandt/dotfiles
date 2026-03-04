@@ -26,6 +26,7 @@ paths = [
   "AppData/",
   "config/git/windows",
   "Documents/",
+  "wslconfig",
 ]
 
 # Arch Linux-specific files

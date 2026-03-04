@@ -102,13 +102,14 @@ symlinks = [
 
 [windows]
 symlinks = [
+  "config/git/windows",
+  "wslconfig",
   { source = "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json", target = "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json" },
   { source = "AppData/Roaming/Code - Insiders/User/keybindings.json", target = "AppData/Roaming/Code - Insiders/User/keybindings.json" },
   { source = "AppData/Roaming/Code - Insiders/User/settings.json", target = "AppData/Roaming/Code - Insiders/User/settings.json" },
   { source = "AppData/Roaming/Code/User/keybindings.json", target = "AppData/Roaming/Code/User/keybindings.json" },
   { source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" },
   { source = "AppData/Roaming/NuGet/nuget.config", target = "AppData/Roaming/NuGet/nuget.config" },
-  "config/git/windows",
   { source = "Documents/PowerShell/Microsoft.PowerShell_profile.ps1", target = "Documents/PowerShell/Microsoft.PowerShell_profile.ps1" },
   { source = "Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1", target = "Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1" },
 ]

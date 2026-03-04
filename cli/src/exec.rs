@@ -294,7 +294,7 @@ pub mod test_helpers {
     ///
     /// # Modes
     ///
-    /// | Constructor | Queue | `which()` | On empty queue |
+    /// | Constructor | Queue | `which()` / `which_path()` | On empty queue |
     /// |---|---|---|---|
     /// | [`stub()`](Self::stub) | empty | `false` | **panics** |
     /// | [`ok()`](Self::ok) | 1 success | `false` | returns error |
@@ -424,7 +424,51 @@ pub mod test_helpers {
         }
 
         fn which_path(&self, program: &str) -> anyhow::Result<std::path::PathBuf> {
-            anyhow::bail!("{program} not found on PATH")
+            if self.which_result {
+                Ok(std::path::PathBuf::from(format!("/usr/bin/{program}")))
+            } else {
+                anyhow::bail!("{program} not found on PATH")
+            }
+        }
+    }
+
+    #[cfg(test)]
+    #[allow(clippy::expect_used, clippy::unwrap_used)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn which_path_returns_ok_when_which_result_true() {
+            let executor = TestExecutor::stub().with_which(true);
+            let result = executor.which_path("cargo");
+            assert!(
+                result.is_ok(),
+                "which_path should succeed when which_result is true"
+            );
+            let path = result.unwrap();
+            assert!(
+                path.is_absolute(),
+                "which_path should return an absolute path"
+            );
+            assert!(
+                path.to_string_lossy().contains("cargo"),
+                "which_path should include the program name in the path"
+            );
+        }
+
+        #[test]
+        fn which_path_returns_err_when_which_result_false() {
+            let executor = TestExecutor::stub().with_which(false);
+            let result = executor.which_path("cargo");
+            assert!(
+                result.is_err(),
+                "which_path should fail when which_result is false"
+            );
+            let msg = result.unwrap_err().to_string();
+            assert!(
+                msg.contains("not found on PATH"),
+                "error message should mention 'not found on PATH'"
+            );
         }
     }
 }

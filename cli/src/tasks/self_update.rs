@@ -205,7 +205,11 @@ fn is_running_from_bin(root: &std::path::Path) -> bool {
     let expected = binary_path(root);
     let resolved_exe = fs::canonicalize(&exe).unwrap_or(exe);
     let resolved_expected = fs::canonicalize(&expected).unwrap_or(expected);
-    resolved_exe == resolved_expected
+    let matched = resolved_exe == resolved_expected;
+    tracing::debug!(
+        "is_running_from_bin: resolved_exe={resolved_exe:?} resolved_expected={resolved_expected:?} match={matched}"
+    );
+    matched
 }
 
 /// Result of checking for an available update.
@@ -236,16 +240,15 @@ fn check_for_update(root: &std::path::Path) -> Result<UpdateCheck> {
         return Ok(UpdateCheck::CacheFresh);
     }
     let Some(latest) = fetch_latest_tag()? else {
+        tracing::debug!("fetch_latest_tag returned None, treating as offline");
         return Ok(UpdateCheck::Offline);
     };
     if cached_version(root).as_deref() == Some(latest.as_str()) {
         write_cache(root, &latest)?;
         return Ok(UpdateCheck::AlreadyCurrent(latest));
     }
-    let current = format!(
-        "v{}",
-        option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
-    );
+    let raw_version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    let current = format!("v{}", raw_version.strip_prefix('v').unwrap_or(raw_version));
     if latest == current {
         write_cache(root, &latest)?;
         return Ok(UpdateCheck::AlreadyCurrent(latest));

@@ -177,7 +177,15 @@ function Get-Binary
     $checksumUrl = "https://github.com/$Repo/releases/download/$Version/checksums.sha256"
     try
     {
-        $checksumContent = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing -TimeoutSec $TransferTimeout @script:ConnectArgs).Content
+        $checksumResponse = Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing -TimeoutSec $TransferTimeout @script:ConnectArgs
+        $checksumContent = if ($checksumResponse.Content -is [byte[]])
+        {
+            [System.Text.Encoding]::UTF8.GetString($checksumResponse.Content)
+        }
+        else
+        {
+            $checksumResponse.Content
+        }
     }
     catch
     {

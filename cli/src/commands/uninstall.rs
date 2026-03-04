@@ -12,6 +12,12 @@ use crate::tasks;
 ///
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Arc<Logger>) -> Result<()> {
+    // Self-update before the task graph.
+    let root = super::install::resolve_root(global)?;
+    if tasks::self_update::pre_update(&root, &**log, global.dry_run)? {
+        super::re_exec();
+    }
+
     let runner = super::CommandRunner::new(global, log)?;
     let tasks = tasks::all_uninstall_tasks();
     runner.run(tasks.iter().map(Box::as_ref))

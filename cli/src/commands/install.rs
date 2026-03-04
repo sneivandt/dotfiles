@@ -15,6 +15,13 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Arc<Logger>) -> Result
     let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     log.info(&format!("dotfiles {version}"));
 
+    // Self-update before the task graph — if the binary is replaced, re-exec
+    // so all tasks run with the updated code and config parsers.
+    let root = resolve_root(global)?;
+    if tasks::self_update::pre_update(&root, &**log, global.dry_run)? {
+        super::re_exec();
+    }
+
     let runner = super::CommandRunner::new(global, log)?;
 
     // Filter by --skip and --only

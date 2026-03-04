@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use anyhow::{Context as _, Result, bail};
 use sha2::{Digest, Sha256};
 
+use crate::logging::Output;
+
 use super::{Context, Task, TaskResult};
 
 /// GitHub repository used for release lookups.
@@ -202,6 +204,84 @@ fn replace_binary(path: &std::path::Path, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Check whether the current process is running from `$root/bin/dotfiles`.
+fn is_running_from_bin(root: &std::path::Path) -> bool {
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    let expected = binary_path(root);
+    let resolved_exe = fs::canonicalize(&exe).unwrap_or(exe);
+    let resolved_expected = fs::canonicalize(&expected).unwrap_or(expected);
+    resolved_exe == resolved_expected
+}
+
+/// Run the self-update check before the task graph.
+///
+/// When the binary lives in `$root/bin/` and a newer release is available,
+/// this function downloads and replaces the binary, returning `Ok(true)`.
+/// The caller should then re-exec the new binary so that all tasks run
+/// with the updated code.
+///
+/// Returns `Ok(false)` when no update is needed or when running from a
+/// cargo build directory.
+///
+/// # Errors
+///
+/// Returns an error if the GitHub API call, download, or checksum
+/// verification fails.
+pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Result<bool> {
+    if !is_running_from_bin(root) {
+        return Ok(false);
+    }
+
+    // Fast path: cache is fresh — skip network call.
+    if is_cache_fresh(root) {
+        return Ok(false);
+    }
+
+    // Fetch latest release tag from GitHub.
+    let Some(latest) = fetch_latest_tag()? else {
+        return Ok(false);
+    };
+
+    // Already up to date.
+    if cached_version(root).as_deref() == Some(latest.as_str()) {
+        write_cache(root, &latest)?;
+        return Ok(false);
+    }
+
+    // Check if this is actually a newer (different) version.
+    let current = format!(
+        "v{}",
+        option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+    );
+    if latest == current {
+        write_cache(root, &latest)?;
+        return Ok(false);
+    }
+
+    if dry_run {
+        log.info(&format!("update available: {current} → {latest}"));
+        return Ok(false);
+    }
+
+    log.stage("Self update");
+    log.info(&format!("updating: {current} → {latest}"));
+
+    let asset = asset_name();
+    let url = format!("https://github.com/{REPO}/releases/download/{latest}/{asset}");
+
+    let data = download_bytes(&url)?;
+    verify_checksum(&latest, asset, &data)?;
+
+    let bin = binary_path(root);
+    replace_binary(&bin, &data)?;
+    write_cache(root, &latest)?;
+
+    log.info("binary updated, restarting");
+    Ok(true)
+}
+
 /// Update the running dotfiles binary to the latest GitHub release.
 #[derive(Debug)]
 pub struct UpdateBinary;
@@ -214,13 +294,7 @@ impl Task for UpdateBinary {
     fn should_run(&self, ctx: &Context) -> bool {
         // Only run when the binary lives in $DOTFILES_ROOT/bin/ (production
         // layout). Skip when running from a cargo build directory.
-        let Ok(exe) = std::env::current_exe() else {
-            return false;
-        };
-        let expected = binary_path(&ctx.root());
-        let resolved_exe = fs::canonicalize(&exe).unwrap_or(exe);
-        let resolved_expected = fs::canonicalize(&expected).unwrap_or(expected);
-        resolved_exe == resolved_expected
+        is_running_from_bin(&ctx.root())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

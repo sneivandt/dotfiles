@@ -30,17 +30,21 @@ RETRY_DELAY=2        # seconds between retries
 # Parse arguments — extract --build, pass everything else to the binary
 # --------------------------------------------------------------------------- #
 BUILD_MODE=false
-_forward_args=""
+_has_args=false
 for arg in "$@"; do
   if [ "$arg" = "--build" ]; then
     BUILD_MODE=true
+  elif [ "$_has_args" = false ]; then
+    set -- "$arg"
+    _has_args=true
   else
-    _forward_args="$_forward_args $(printf '%s' "$arg" | sed "s/'/'\\\\''/g; s/^/'/; s/$/'/")"
+    set -- "$@" "$arg"
   fi
 done
-# shellcheck disable=SC2086  # unquoted: eval must word-split the pre-quoted tokens
-eval set -- $_forward_args
-unset _forward_args
+if [ "$_has_args" = false ]; then
+  set --
+fi
+unset _has_args
 
 # --------------------------------------------------------------------------- #
 # Build mode: build from source and run
@@ -112,6 +116,29 @@ get_latest_version() {
   fi
 }
 
+# Verify checksum in a subshell to scope the trap safely.
+_verify_checksum() {
+  _vc_asset="$1"
+  _vc_binary="$2"
+  _vc_url="$3"
+  tmpfile=$(mktemp)
+  trap 'rm -f "$tmpfile"' EXIT
+  if ! download_with_retry "$_vc_url" "$tmpfile"; then
+    echo "ERROR: Failed to download checksum file." >&2
+    return 1
+  fi
+  expected=$(awk -v fname="$_vc_asset" '$2 == fname {print $1}' "$tmpfile")
+  if [ -z "$expected" ]; then
+    echo "ERROR: Checksum not found in checksum file for $_vc_asset." >&2
+    return 1
+  fi
+  actual=$(sha256sum "$_vc_binary" | awk '{print $1}')
+  if [ "$expected" != "$actual" ]; then
+    echo "ERROR: Checksum verification failed!" >&2
+    return 1
+  fi
+}
+
 # Download the binary for the given version tag
 download_binary() {
   version="$1"
@@ -138,31 +165,10 @@ download_binary() {
     rm -f "$BINARY"
     exit 1
   fi
-  tmpfile=$(mktemp)
-  # Use a dedicated cleanup function so the trap survives re-entrant calls
-  # and does not clobber any outer EXIT trap.
-  _cleanup_download_tmpfile() { rm -f "$tmpfile"; }
-  trap '_cleanup_download_tmpfile' EXIT
-  if ! download_with_retry "$checksum_url" "$tmpfile"; then
-    echo "ERROR: Failed to download checksum file for $version." >&2
+  if ! ( _verify_checksum "$asset" "$BINARY" "$checksum_url" ); then
     rm -f "$BINARY"
     exit 1
   fi
-  expected=$(awk -v fname="$asset" '$2 == fname {print $1}' "$tmpfile")
-  if [ -z "$expected" ]; then
-    echo "ERROR: Checksum not found in checksum file for $asset." >&2
-    rm -f "$BINARY"
-    exit 1
-  fi
-  actual=$(sha256sum "$BINARY" | awk '{print $1}')
-  if [ "$expected" != "$actual" ]; then
-    echo "ERROR: Checksum verification failed!" >&2
-    rm -f "$BINARY"
-    exit 1
-  fi
-  _cleanup_download_tmpfile
-  trap - EXIT
-  unset -f _cleanup_download_tmpfile
 }
 
 # Bootstrap: download the latest binary only if no binary is present.

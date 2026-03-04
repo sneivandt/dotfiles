@@ -7,7 +7,7 @@ use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, mpsc};
 
-use crate::logging::{self, BufferedLog, DiagEvent, Log, Logger};
+use crate::logging::{self, BufferedLog, DiagEvent, Log, Logger, TaskStatus};
 use crate::tasks::{self, Context, Task};
 
 /// Run tasks in parallel using a dependency graph.
@@ -93,10 +93,27 @@ pub(super) fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<L
                 }
 
                 // Wait for all deps: receive one message per dependency.
-                if let Some(rx) = rx {
-                    for _ in 0..deps.len() {
-                        let _ = rx.recv();
+                // If recv() returns Err(RecvError) a sender was dropped without
+                // sending — the dependency did not complete (e.g. it panicked).
+                let deps_ok = rx
+                    .is_none_or(|rx| (0..deps.len()).all(|_| rx.recv().is_ok()));
+
+                if !deps_ok {
+                    if let Some(diag) = log.diagnostic() {
+                        diag.emit_task(
+                            DiagEvent::TaskSkip,
+                            task.name(),
+                            "skipped: dependency did not complete",
+                        );
                     }
+                    log.record_task(
+                        task.name(),
+                        TaskStatus::Skipped,
+                        Some("dependency did not complete"),
+                    );
+                    // my_senders is dropped here without sending, propagating
+                    // RecvError to any tasks that depend on this one.
+                    return;
                 }
 
                 if let Some(diag) = log.diagnostic() {
@@ -126,4 +143,213 @@ pub(super) fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<L
             });
         }
     });
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use anyhow::Result;
+
+    use super::*;
+    use crate::tasks::test_helpers::{ContextBuilder, empty_config};
+    use crate::tasks::{TaskResult, task_deps};
+
+    fn make_test_log_and_ctx() -> (Arc<Logger>, Context) {
+        let log = Arc::new(Logger::new("test"));
+        let ctx = ContextBuilder::new(empty_config(PathBuf::from("/tmp"))).build();
+        (log, ctx)
+    }
+
+    // -----------------------------------------------------------------------
+    // Independent task: sets a flag when it runs.
+    // -----------------------------------------------------------------------
+    struct FlagTask {
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for FlagTask {
+        fn name(&self) -> &'static str {
+            "flag-task"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Panic task: panics unconditionally, simulating a failed dependency.
+    // -----------------------------------------------------------------------
+    struct PanicTask;
+
+    impl Task for PanicTask {
+        fn name(&self) -> &'static str {
+            "panic-task"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        #[allow(clippy::panic)]
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            panic!("simulated failure");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Task that depends on PanicTask; sets a flag if it runs.
+    // -----------------------------------------------------------------------
+    struct DepOnPanicTask {
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for DepOnPanicTask {
+        fn name(&self) -> &'static str {
+            "dep-on-panic"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        task_deps![PanicTask];
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Chain tasks: PanicTask → ChainB → ChainC.
+    // -----------------------------------------------------------------------
+    struct ChainB {
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for ChainB {
+        fn name(&self) -> &'static str {
+            "chain-b"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        task_deps![PanicTask];
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    struct ChainC {
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for ChainC {
+        fn name(&self) -> &'static str {
+            "chain-c"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        task_deps![ChainB];
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn independent_task_runs_normally() {
+        let (log, ctx) = make_test_log_and_ctx();
+        let ran = Arc::new(AtomicBool::new(false));
+        let task = FlagTask {
+            ran: Arc::clone(&ran),
+        };
+
+        run_tasks_parallel(&[&task], &ctx, &log);
+
+        assert!(ran.load(Ordering::SeqCst), "independent task should have run");
+    }
+
+    #[test]
+    fn dependent_task_is_skipped_when_dependency_panics() {
+        let (log, ctx) = make_test_log_and_ctx();
+        let ran = Arc::new(AtomicBool::new(false));
+        let panic_task = PanicTask;
+        let dep_task = DepOnPanicTask {
+            ran: Arc::clone(&ran),
+        };
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_tasks_parallel(&[&panic_task, &dep_task], &ctx, &log);
+        }));
+
+        assert!(result.is_err(), "scheduler should propagate the panic");
+        assert!(
+            !ran.load(Ordering::SeqCst),
+            "dependent task should not have run"
+        );
+        assert!(
+            log.task_entries()
+                .iter()
+                .any(|e| e.name == "dep-on-panic" && e.status == TaskStatus::Skipped),
+            "dependent task should be recorded as Skipped"
+        );
+    }
+
+    #[test]
+    fn failure_propagates_through_dependency_chain() {
+        let (log, ctx) = make_test_log_and_ctx();
+        let ran_b = Arc::new(AtomicBool::new(false));
+        let ran_c = Arc::new(AtomicBool::new(false));
+        let panic_task = PanicTask;
+        let chain_b = ChainB {
+            ran: Arc::clone(&ran_b),
+        };
+        let chain_c = ChainC {
+            ran: Arc::clone(&ran_c),
+        };
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_tasks_parallel(&[&panic_task, &chain_b, &chain_c], &ctx, &log);
+        }));
+
+        assert!(result.is_err(), "scheduler should propagate the panic");
+        assert!(!ran_b.load(Ordering::SeqCst), "chain-b should not have run");
+        assert!(!ran_c.load(Ordering::SeqCst), "chain-c should not have run");
+        let entries = log.task_entries();
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.name == "chain-b" && e.status == TaskStatus::Skipped),
+            "chain-b should be recorded as Skipped"
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.name == "chain-c" && e.status == TaskStatus::Skipped),
+            "chain-c should be recorded as Skipped"
+        );
+    }
 }

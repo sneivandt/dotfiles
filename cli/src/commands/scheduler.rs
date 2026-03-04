@@ -95,8 +95,7 @@ pub(super) fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<L
                 // Wait for all deps: receive one message per dependency.
                 // If recv() returns Err(RecvError) a sender was dropped without
                 // sending — the dependency did not complete (e.g. it panicked).
-                let deps_ok = rx
-                    .is_none_or(|rx| (0..deps.len()).all(|_| rx.recv().is_ok()));
+                let deps_ok = rx.is_none_or(|rx| (0..deps.len()).all(|_| rx.recv().is_ok()));
 
                 if !deps_ok {
                     if let Some(diag) = log.diagnostic() {
@@ -289,7 +288,10 @@ mod tests {
 
         run_tasks_parallel(&[&task], &ctx, &log);
 
-        assert!(ran.load(Ordering::SeqCst), "independent task should have run");
+        assert!(
+            ran.load(Ordering::SeqCst),
+            "independent task should have run"
+        );
     }
 
     #[test]

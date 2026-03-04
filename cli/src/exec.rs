@@ -425,7 +425,11 @@ pub mod test_helpers {
 
         fn which_path(&self, program: &str) -> anyhow::Result<std::path::PathBuf> {
             if self.which_result {
-                Ok(std::path::PathBuf::from(format!("/usr/bin/{program}")))
+                #[cfg(windows)]
+                let path = std::path::PathBuf::from(format!(r"C:\Windows\System32\{program}.exe"));
+                #[cfg(not(windows))]
+                let path = std::path::PathBuf::from(format!("/usr/bin/{program}"));
+                Ok(path)
             } else {
                 anyhow::bail!("{program} not found on PATH")
             }

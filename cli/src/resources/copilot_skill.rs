@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::{Applicable, Resource, ResourceChange, ResourceState};
+use crate::error::ResourceError;
 use crate::exec::Executor;
 
 /// A GitHub Copilot skill resource that can be checked and installed.
@@ -142,7 +143,12 @@ fn download_github_folder(url: &str, dest: &Path, executor: &dyn Executor) -> Re
         if let Err(e) = std::fs::remove_dir_all(&tmp) {
             tracing::warn!("failed to cleanup temp dir {}: {e}", tmp.display());
         }
-        anyhow::bail!("path '{subpath}' not found in repository");
+        return Err(ResourceError::ConflictingState {
+            resource: format!("skill path {subpath}"),
+            expected: "path exists in repository".to_string(),
+            actual: "path not found after checkout".to_string(),
+        }
+        .into());
     }
 
     crate::fs::copy_dir_recursive(&src, dest, true)?;

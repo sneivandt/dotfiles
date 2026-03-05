@@ -66,8 +66,7 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
     /// # Errors
     ///
     /// Returns an error if the batch installation command fails.
-    fn batch_install(&self, names: &[&str], executor: &dyn Executor) -> Result<()> {
-        let _ = (names, executor);
+    fn batch_install(&self, _names: &[&str], _executor: &dyn Executor) -> Result<()> {
         anyhow::bail!("batch install not supported by {}", self.name())
     }
 }

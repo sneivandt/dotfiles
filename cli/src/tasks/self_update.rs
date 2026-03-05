@@ -188,8 +188,7 @@ fn replace_binary(path: &std::path::Path, data: &[u8]) -> Result<()> {
     #[cfg(windows)]
     if path.exists() {
         let old = dir.join(".dotfiles-old.exe");
-        // Remove stale .old from a previous update if present.
-        let _ = fs::remove_file(&old);
+        fs::remove_file(&old).ok(); // Remove stale .old from a previous update if present
         fs::rename(path, &old).context("renaming current binary to .old")?;
     }
 

@@ -96,7 +96,7 @@ impl Resource for ChmodResource {
 
         #[cfg(not(unix))]
         {
-            let _ = desired_mode; // Suppress unused warning
+            let _unused = desired_mode;
             Ok(ResourceState::Invalid {
                 reason: "chmod not supported on this platform".to_string(),
             })

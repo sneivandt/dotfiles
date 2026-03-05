@@ -133,7 +133,7 @@ fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
         .with_context(|| format!("copy {} to {}", source.display(), tmp.display()))?;
 
     let cleanup_file = || {
-        let _ = std::fs::remove_file(&tmp);
+        std::fs::remove_file(&tmp).ok(); // Cleanup: ignore if already removed
     };
 
     if let Err(e) = remove_symlink(target) {
@@ -159,7 +159,7 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
     let tmp = parent.join(&stem);
 
     let cleanup_dir = || {
-        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::remove_dir_all(&tmp).ok(); // Cleanup: ignore if already removed
     };
 
     crate::fs::copy_dir_recursive(source, &tmp, false)

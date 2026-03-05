@@ -30,6 +30,29 @@ struct PackageSection {
     packages: Vec<PackageEntry>,
 }
 
+impl toml_loader::ConfigSection for PackageSection {
+    type Entry = PackageEntry;
+    type Item = Package;
+    const MATCH_MODE: MatchMode = MatchMode::All;
+
+    fn extract(self) -> Vec<PackageEntry> {
+        self.packages
+    }
+
+    fn map(entry: PackageEntry) -> Package {
+        match entry {
+            PackageEntry::Simple(name) => Package {
+                name,
+                is_aur: false,
+            },
+            PackageEntry::WithMetadata { name, aur } => Package {
+                name,
+                is_aur: aur.unwrap_or(false),
+            },
+        }
+    }
+}
+
 /// Load packages from packages.toml, filtered by active categories.
 ///
 /// Packages can be simple strings or objects with metadata. The `aur`
@@ -39,22 +62,7 @@ struct PackageSection {
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Package>> {
-    toml_loader::load_filtered(
-        path,
-        |s: PackageSection| s.packages,
-        |entry| match entry {
-            PackageEntry::Simple(name) => Package {
-                name,
-                is_aur: false,
-            },
-            PackageEntry::WithMetadata { name, aur } => Package {
-                name,
-                is_aur: aur.unwrap_or(false),
-            },
-        },
-        active_categories,
-        MatchMode::All,
-    )
+    toml_loader::load_section::<PackageSection>(path, active_categories)
 }
 
 /// Validate package entries and return any warnings.
@@ -63,27 +71,23 @@ pub fn validate(
     packages: &[Package],
     platform: crate::platform::Platform,
 ) -> Vec<ValidationWarning> {
-    let mut warnings = Vec::new();
+    use super::helpers::validation::{Validator, check};
 
-    for package in packages {
-        if package.is_aur && !platform.is_arch_linux() {
-            warnings.push(ValidationWarning::new(
-                "packages.toml",
-                &package.name,
-                "AUR package specified but platform is not Arch Linux",
-            ));
-        }
-
-        if package.name.trim().is_empty() {
-            warnings.push(ValidationWarning::new(
-                "packages.toml",
-                &package.name,
-                "package name is empty",
-            ));
-        }
-    }
-
-    warnings
+    Validator::new("packages.toml")
+        .check_each(
+            packages,
+            |pkg| &pkg.name,
+            |pkg| {
+                vec![
+                    check(
+                        pkg.is_aur && !platform.is_arch_linux(),
+                        "AUR package specified but platform is not Arch Linux",
+                    ),
+                    check(pkg.name.trim().is_empty(), "package name is empty"),
+                ]
+            },
+        )
+        .finish()
 }
 
 #[cfg(test)]

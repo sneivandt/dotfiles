@@ -1,46 +1,28 @@
 //! Task: apply Windows registry entries.
-use anyhow::Result;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states, task_deps};
+use super::{ProcessOpts, batch_resource_task};
 use crate::resources::registry::{RegistryResource, batch_check_values};
 
-/// Apply Windows registry settings.
-#[derive(Debug)]
-pub struct ApplyRegistry;
-
-impl Task for ApplyRegistry {
-    fn name(&self) -> &'static str {
-        "Apply registry settings"
-    }
-
-    task_deps![super::reload_config::ReloadConfig];
-
-    fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.has_registry() && !ctx.config_read().registry.is_empty()
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let registry_entries: Vec<_> = ctx.config_read().registry.clone();
-        let resources: Vec<RegistryResource> = registry_entries
-            .iter()
-            .map(RegistryResource::from_entry)
-            .collect();
-
-        ctx.log.debug(&format!(
-            "batch-checking {} registry values",
-            resources.len()
-        ));
-
-        let cached = batch_check_values(&resources)?;
-
-        let resource_states = resources.into_iter().map(|r| {
+batch_resource_task! {
+    /// Apply Windows registry settings.
+    pub ApplyRegistry {
+        name: "Apply registry settings",
+        deps: [super::reload_config::ReloadConfig],
+        guard: |ctx| ctx.platform.has_registry(),
+        items: |ctx| ctx.config_read().registry.clone(),
+        cache: |items, _ctx| {
+            let resources: Vec<RegistryResource> = items.iter()
+                .map(RegistryResource::from_entry)
+                .collect();
+            batch_check_values(&resources)
+        },
+        build: |entry, _ctx| RegistryResource::from_entry(&entry),
+        state: |r, cached| {
             let key = format!("{}\\{}", r.key_path, r.value_name);
             let val = cached.get(&key).and_then(|v| v.as_deref());
-            let state = r.state_from_cached(val);
-            (r, state)
-        });
-
-        process_resource_states(ctx, resource_states, &ProcessOpts::lenient("set registry"))
+            r.state_from_cached(val)
+        },
+        opts: ProcessOpts::lenient("set registry"),
     }
 }
 
@@ -49,6 +31,8 @@ impl Task for ApplyRegistry {
 mod tests {
     use super::*;
     use crate::config::registry::RegistryEntry;
+    use crate::tasks::Task;
+    use crate::tasks::TaskResult;
     use crate::tasks::test_helpers::{empty_config, make_linux_context, make_windows_context};
     use std::path::PathBuf;
 

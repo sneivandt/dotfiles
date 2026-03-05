@@ -128,6 +128,93 @@ macro_rules! resource_task {
 
 pub(crate) use resource_task;
 
+/// Define a task that batch-queries state once and then processes resources
+/// with pre-computed states.
+///
+/// This is the counterpart to [`resource_task!`] for resources whose state
+/// is determined by a single bulk query (e.g., VS Code extensions, registry
+/// entries).
+///
+/// # Syntax
+///
+/// ```ignore
+/// batch_resource_task! {
+///     /// Doc comment for the task.
+///     pub StructName {
+///         name: "Human-readable task name",
+///         deps: [DepType1, DepType2],               // optional
+///         guard: |ctx| bool_expr,                    // optional
+///         items: |ctx| ctx.config_read().field.clone(),
+///         cache: |items, ctx| query_bulk_state(items, ctx),
+///         build: |item, ctx| Resource::from(&item, &ctx.home),
+///         state: |resource, cache| resource.state_from_cache(&cache),
+///         opts: ProcessOpts::lenient("verb"),
+///     }
+/// }
+/// ```
+///
+/// The generated struct implements `Task` with:
+/// - `should_run` returning `false` when the guard fails or items are empty
+/// - `run` collecting items, querying state once via `cache`, building
+///   `(Resource, ResourceState)` pairs, and delegating to
+///   [`process_resource_states`]
+macro_rules! batch_resource_task {
+    (
+        $(#[$meta:meta])*
+        $vis:vis $name:ident {
+            name: $task_name:expr,
+            $(deps: [$($dep:ty),+ $(,)?],)?
+            $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
+            items: |$items_ctx:ident| $items_expr:expr,
+            cache: |$cache_items:ident, $cache_ctx:ident| $cache_expr:expr,
+            build: |$item:ident, $build_ctx:ident| $build_expr:expr,
+            state: |$state_res:ident, $state_cache:ident| $state_expr:expr,
+            opts: $opts:expr $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug)]
+        $vis struct $name;
+
+        impl $crate::tasks::Task for $name {
+            fn name(&self) -> &'static str {
+                $task_name
+            }
+
+            $($crate::tasks::task_deps![$($dep),+];)?
+
+            fn should_run(&self, ctx: &$crate::tasks::Context) -> bool {
+                $(
+                    let $guard_ctx = ctx;
+                    if !{ $guard_expr } { return false; }
+                )?
+                let $items_ctx = ctx;
+                !{ $items_expr }.is_empty()
+            }
+
+            fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
+                let $items_ctx = ctx;
+                let $cache_items: Vec<_> = { $items_expr };
+                ctx.log.debug(&format!(
+                    "batch-checking {} resources with a single query",
+                    $cache_items.len()
+                ));
+                let $cache_ctx = ctx;
+                let $state_cache = { $cache_expr }?;
+                let resource_states = $cache_items.into_iter().map(|$item| {
+                    let $build_ctx = ctx;
+                    let $state_res = { $build_expr };
+                    let state = { $state_expr };
+                    ($state_res, state)
+                });
+                $crate::tasks::process_resource_states(ctx, resource_states, &$opts)
+            }
+        }
+    };
+}
+
+pub(crate) use batch_resource_task;
+
 // Re-export public items so downstream `use super::` and `use crate::tasks::`
 // continue to work unchanged.
 pub use processing::Context;

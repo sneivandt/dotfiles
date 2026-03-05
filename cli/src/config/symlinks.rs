@@ -33,16 +33,17 @@ struct SymlinkSection {
     symlinks: Vec<SymlinkEntry>,
 }
 
-/// Load symlinks from symlinks.toml, filtered by active categories.
-///
-/// # Errors
-///
-/// Returns an error if the file exists but cannot be parsed.
-pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Symlink>> {
-    toml_loader::load_filtered(
-        path,
-        |s: SymlinkSection| s.symlinks,
-        |entry| match entry {
+impl toml_loader::ConfigSection for SymlinkSection {
+    type Entry = SymlinkEntry;
+    type Item = Symlink;
+    const MATCH_MODE: MatchMode = MatchMode::All;
+
+    fn extract(self) -> Vec<SymlinkEntry> {
+        self.symlinks
+    }
+
+    fn map(entry: SymlinkEntry) -> Symlink {
+        match entry {
             SymlinkEntry::Simple(source) => Symlink {
                 source,
                 target: None,
@@ -51,39 +52,44 @@ pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Symlink>>
                 source,
                 target: Some(target),
             },
-        },
-        active_categories,
-        MatchMode::All,
-    )
+        }
+    }
+}
+
+/// Load symlinks from symlinks.toml, filtered by active categories.
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be parsed.
+pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Symlink>> {
+    toml_loader::load_section::<SymlinkSection>(path, active_categories)
 }
 
 /// Validate symlink entries and return any warnings.
 #[must_use]
 pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<ValidationWarning> {
-    let mut warnings = Vec::new();
+    use super::helpers::validation::{Validator, check};
+
     let symlinks_dir = root.join("symlinks");
-
-    for symlink in symlinks {
-        let source_path = symlinks_dir.join(&symlink.source);
-
-        if !source_path.exists() {
-            warnings.push(ValidationWarning::new(
-                "symlinks.toml",
-                &symlink.source,
-                format!("source file does not exist: {}", source_path.display()),
-            ));
-        }
-
-        if Path::new(&symlink.source).is_absolute() || symlink.source.starts_with('/') {
-            warnings.push(ValidationWarning::new(
-                "symlinks.toml",
-                &symlink.source,
-                "source path should be relative to symlinks/ directory",
-            ));
-        }
-    }
-
-    warnings
+    Validator::new("symlinks.toml")
+        .check_each(
+            symlinks,
+            |s| &s.source,
+            |s| {
+                let source_path = symlinks_dir.join(&s.source);
+                vec![
+                    check(
+                        !source_path.exists(),
+                        format!("source file does not exist: {}", source_path.display()),
+                    ),
+                    check(
+                        Path::new(&s.source).is_absolute() || s.source.starts_with('/'),
+                        "source path should be relative to symlinks/ directory",
+                    ),
+                ]
+            },
+        )
+        .finish()
 }
 
 #[cfg(test)]

@@ -3,10 +3,22 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
-use super::{
-    Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove, task_deps,
-};
+use super::{Context, ProcessOpts, Task, TaskResult, process_resources_remove, resource_task};
 use crate::resources::symlink::SymlinkResource;
+
+/// Build a single [`SymlinkResource`] from a config entry.
+fn build_resource(
+    s: &crate::config::symlinks::Symlink,
+    symlinks_dir: &Path,
+    home: &Path,
+    executor: &Arc<dyn crate::exec::Executor>,
+) -> SymlinkResource {
+    let target = s.target.as_ref().map_or_else(
+        || compute_target(home, &s.source),
+        |explicit| home.join(explicit),
+    );
+    SymlinkResource::new(symlinks_dir.join(&s.source), target, Arc::clone(executor))
+}
 
 /// Build [`SymlinkResource`] instances from the loaded config.
 fn build_resources(ctx: &Context) -> Vec<SymlinkResource> {
@@ -14,40 +26,24 @@ fn build_resources(ctx: &Context) -> Vec<SymlinkResource> {
     ctx.config_read()
         .symlinks
         .iter()
-        .map(|s| {
-            let target = s.target.as_ref().map_or_else(
-                || compute_target(&ctx.home, &s.source),
-                |explicit| ctx.home.join(explicit),
-            );
-            SymlinkResource::new(
-                symlinks_dir.join(&s.source),
-                target,
-                Arc::clone(&ctx.executor),
-            )
-        })
+        .map(|s| build_resource(s, &symlinks_dir, &ctx.home, &ctx.executor))
         .collect()
 }
 
-/// Create symlinks from symlinks/ to $HOME.
-#[derive(Debug)]
-pub struct InstallSymlinks;
-
-impl Task for InstallSymlinks {
-    fn name(&self) -> &'static str {
-        "Install symlinks"
-    }
-
-    task_deps![
-        super::reload_config::ReloadConfig,
-        super::developer_mode::EnableDeveloperMode
-    ];
-
-    fn should_run(&self, ctx: &Context) -> bool {
-        !ctx.config_read().symlinks.is_empty()
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        process_resources(ctx, build_resources(ctx), &ProcessOpts::strict("link"))
+resource_task! {
+    /// Create symlinks from symlinks/ to $HOME.
+    pub InstallSymlinks {
+        name: "Install symlinks",
+        deps: [
+            super::reload_config::ReloadConfig,
+            super::developer_mode::EnableDeveloperMode,
+        ],
+        items: |ctx| ctx.config_read().symlinks.clone(),
+        build: |s, ctx| {
+            let symlinks_dir = ctx.symlinks_dir();
+            build_resource(&s, &symlinks_dir, &ctx.home, &ctx.executor)
+        },
+        opts: ProcessOpts::strict("link"),
     }
 }
 

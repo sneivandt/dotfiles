@@ -72,53 +72,33 @@ pub fn validate(
     entries: &[RegistryEntry],
     platform: crate::platform::Platform,
 ) -> Vec<ValidationWarning> {
-    let mut warnings = Vec::new();
+    use super::helpers::validation::{Validator, check};
 
-    if !entries.is_empty() && !platform.has_registry() {
-        warnings.push(ValidationWarning::new(
-            "registry.toml",
-            "registry entries",
-            "registry entries defined but platform does not support the Windows registry",
-        ));
-    }
-
-    for entry in entries {
-        if entry.key_path.trim().is_empty() {
-            warnings.push(ValidationWarning::new(
-                "registry.toml",
-                &entry.value_name,
-                "registry key path is empty",
-            ));
-        }
-
-        if entry.value_name.trim().is_empty() {
-            warnings.push(ValidationWarning::new(
-                "registry.toml",
-                &entry.key_path,
-                "registry value name is empty",
-            ));
-        }
-
-        let upper = entry.key_path.to_uppercase();
-        if !VALID_HIVE_PREFIXES
+    let mut v = Validator::new("registry.toml");
+    v.warn_if(
+        !entries.is_empty() && !platform.has_registry(),
+        "registry entries",
+        "registry entries defined but platform does not support the Windows registry",
+    );
+    v.check_each(entries, |e| &e.value_name, |e| {
+        let upper = e.key_path.to_uppercase();
+        let has_valid_hive = VALID_HIVE_PREFIXES
             .iter()
-            .any(|prefix| upper.starts_with(prefix))
-        {
-            warnings.push(ValidationWarning::new(
-                "registry.toml",
-                &entry.key_path,
+            .any(|prefix| upper.starts_with(prefix));
+        vec![
+            check(e.key_path.trim().is_empty(), "registry key path is empty"),
+            check(e.value_name.trim().is_empty(), "registry value name is empty"),
+            check(
+                !has_valid_hive,
                 "registry key path should start with a valid hive (HKCU:, HKLM:, HKCR:, HKU:, HKCC:)",
-            ));
-        } else if !upper.starts_with("HKCU:") {
-            warnings.push(ValidationWarning::new(
-                "registry.toml",
-                &entry.key_path,
+            ),
+            check(
+                has_valid_hive && !upper.starts_with("HKCU:"),
                 "non-HKCU registry hive requires elevated privileges and may fail without admin rights",
-            ));
-        }
-    }
-
-    warnings
+            ),
+        ]
+    })
+    .finish()
 }
 
 #[cfg(test)]

@@ -20,45 +20,49 @@ struct SkillSection {
     skills: Vec<String>,
 }
 
+impl toml_loader::ConfigSection for SkillSection {
+    type Entry = String;
+    type Item = CopilotSkill;
+    const MATCH_MODE: MatchMode = MatchMode::All;
+
+    fn extract(self) -> Vec<String> {
+        self.skills
+    }
+
+    fn map(url: String) -> CopilotSkill {
+        CopilotSkill { url }
+    }
+}
+
 /// Load Copilot skills from copilot-skills.toml, filtered by active categories.
 ///
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<CopilotSkill>> {
-    toml_loader::load_filtered(
-        path,
-        |s: SkillSection| s.skills,
-        |url| CopilotSkill { url },
-        active_categories,
-        MatchMode::All,
-    )
+    toml_loader::load_section::<SkillSection>(path, active_categories)
 }
 
 /// Validate Copilot skill entries and return any warnings.
 #[must_use]
 pub fn validate(skills: &[CopilotSkill]) -> Vec<ValidationWarning> {
-    let mut warnings = Vec::new();
+    use super::helpers::validation::{Validator, check};
 
-    for skill in skills {
-        if skill.url.trim().is_empty() {
-            warnings.push(ValidationWarning::new(
-                "copilot-skills.toml",
-                &skill.url,
-                "skill URL is empty",
-            ));
-        }
-
-        if !skill.url.starts_with("http://") && !skill.url.starts_with("https://") {
-            warnings.push(ValidationWarning::new(
-                "copilot-skills.toml",
-                &skill.url,
-                "skill URL should start with http:// or https://",
-            ));
-        }
-    }
-
-    warnings
+    Validator::new("copilot-skills.toml")
+        .check_each(
+            skills,
+            |skill| &skill.url,
+            |skill| {
+                vec![
+                    check(skill.url.trim().is_empty(), "skill URL is empty"),
+                    check(
+                        !skill.url.starts_with("http://") && !skill.url.starts_with("https://"),
+                        "skill URL should start with http:// or https://",
+                    ),
+                ]
+            },
+        )
+        .finish()
 }
 
 #[cfg(test)]

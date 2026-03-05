@@ -6,6 +6,55 @@ use std::path::Path;
 
 use super::category_matcher::{Category, MatchMode};
 
+/// Trait for TOML config sections that follow the standard load-filter-map pattern.
+///
+/// Implementing this trait on a section type replaces the per-module `load()`
+/// boilerplate with a single generic call to [`load_section::<S>`].
+///
+/// # Examples
+///
+/// ```ignore
+/// #[derive(Debug, Deserialize)]
+/// struct SkillSection { skills: Vec<String> }
+///
+/// impl ConfigSection for SkillSection {
+///     type Entry = String;
+///     type Item = CopilotSkill;
+///     const MATCH_MODE: MatchMode = MatchMode::All;
+///     fn extract(self) -> Vec<String> { self.skills }
+///     fn map(entry: String) -> CopilotSkill { CopilotSkill { url: entry } }
+/// }
+/// ```
+pub trait ConfigSection: DeserializeOwned {
+    /// The raw deserialized entry type stored in the TOML section.
+    type Entry;
+    /// The final domain type produced after mapping each entry.
+    type Item;
+    /// How category tags are combined when filtering sections.
+    const MATCH_MODE: MatchMode;
+
+    /// Extract the entry list from this section (e.g. `self.packages`).
+    fn extract(self) -> Vec<Self::Entry>;
+
+    /// Map a single raw entry to the domain type.
+    fn map(entry: Self::Entry) -> Self::Item;
+}
+
+/// Load a TOML config using a [`ConfigSection`] implementation.
+///
+/// This replaces the repeated `load_filtered(path, extract, map, cats, mode)`
+/// calls across config modules with a single generic call.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read or parsed.
+pub fn load_section<S: ConfigSection>(
+    path: &Path,
+    active_categories: &[Category],
+) -> Result<Vec<S::Item>> {
+    load_filtered(path, S::extract, S::map, active_categories, S::MATCH_MODE)
+}
+
 /// Load and filter TOML config sections by active categories.
 ///
 /// Generic loader that deserializes a TOML file and extracts items from

@@ -33,25 +33,33 @@ struct SystemdSection {
     units: Vec<UnitEntry>,
 }
 
+impl toml_loader::ConfigSection for SystemdSection {
+    type Entry = UnitEntry;
+    type Item = SystemdUnit;
+    const MATCH_MODE: MatchMode = MatchMode::All;
+
+    fn extract(self) -> Vec<UnitEntry> {
+        self.units
+    }
+
+    fn map(entry: UnitEntry) -> SystemdUnit {
+        match entry {
+            UnitEntry::Simple(name) => SystemdUnit {
+                name,
+                scope: "user".to_string(),
+            },
+            UnitEntry::WithScope { name, scope } => SystemdUnit { name, scope },
+        }
+    }
+}
+
 /// Load systemd units from systemd-units.toml, filtered by active categories.
 ///
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<SystemdUnit>> {
-    toml_loader::load_filtered(
-        path,
-        |s: SystemdSection| s.units,
-        |entry| match entry {
-            UnitEntry::Simple(name) => SystemdUnit {
-                name,
-                scope: "user".to_string(),
-            },
-            UnitEntry::WithScope { name, scope } => SystemdUnit { name, scope },
-        },
-        active_categories,
-        MatchMode::All,
-    )
+    toml_loader::load_section::<SystemdSection>(path, active_categories)
 }
 
 /// Valid systemd unit file extensions.
@@ -65,40 +73,29 @@ pub fn validate(
     units: &[SystemdUnit],
     platform: crate::platform::Platform,
 ) -> Vec<ValidationWarning> {
-    let mut warnings = Vec::new();
+    use super::helpers::validation::{Validator, check};
 
-    if !units.is_empty() && !platform.supports_systemd() {
-        warnings.push(ValidationWarning::new(
-            "systemd-units.toml",
-            "systemd units",
-            "systemd units defined but platform does not support systemd",
-        ));
-    }
-
-    for unit in units {
-        if unit.name.trim().is_empty() {
-            warnings.push(ValidationWarning::new(
-                "systemd-units.toml",
-                &unit.name,
-                "unit name is empty",
-            ));
-        }
-
+    let mut v = Validator::new("systemd-units.toml");
+    v.warn_if(
+        !units.is_empty() && !platform.supports_systemd(),
+        "systemd units",
+        "systemd units defined but platform does not support systemd",
+    );
+    v.check_each(units, |u| &u.name, |u| {
         // Note: systemd unit extensions are case-sensitive on Linux
         #[allow(clippy::case_sensitive_file_extension_comparisons)]
-        if !VALID_UNIT_EXTENSIONS
+        let has_valid_ext = VALID_UNIT_EXTENSIONS
             .iter()
-            .any(|ext| unit.name.ends_with(ext))
-        {
-            warnings.push(ValidationWarning::new(
-                "systemd-units.toml",
-                &unit.name,
+            .any(|ext| u.name.ends_with(ext));
+        vec![
+            check(u.name.trim().is_empty(), "unit name is empty"),
+            check(
+                !has_valid_ext,
                 "unit name should end with a valid systemd extension (.service, .timer, .socket, etc.)",
-            ));
-        }
-    }
-
-    warnings
+            ),
+        ]
+    })
+    .finish()
 }
 
 #[cfg(test)]

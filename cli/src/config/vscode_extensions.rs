@@ -20,45 +20,49 @@ struct ExtensionSection {
     extensions: Vec<String>,
 }
 
+impl toml_loader::ConfigSection for ExtensionSection {
+    type Entry = String;
+    type Item = VsCodeExtension;
+    const MATCH_MODE: MatchMode = MatchMode::All;
+
+    fn extract(self) -> Vec<String> {
+        self.extensions
+    }
+
+    fn map(id: String) -> VsCodeExtension {
+        VsCodeExtension { id }
+    }
+}
+
 /// Load VS Code extensions from vscode-extensions.toml, filtered by active categories.
 ///
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<VsCodeExtension>> {
-    toml_loader::load_filtered(
-        path,
-        |s: ExtensionSection| s.extensions,
-        |id| VsCodeExtension { id },
-        active_categories,
-        MatchMode::All,
-    )
+    toml_loader::load_section::<ExtensionSection>(path, active_categories)
 }
 
 /// Validate VS Code extension entries and return any warnings.
 #[must_use]
 pub fn validate(extensions: &[VsCodeExtension]) -> Vec<ValidationWarning> {
-    let mut warnings = Vec::new();
+    use super::helpers::validation::{Validator, check};
 
-    for extension in extensions {
-        if extension.id.trim().is_empty() {
-            warnings.push(ValidationWarning::new(
-                "vscode-extensions.toml",
-                &extension.id,
-                "extension ID is empty",
-            ));
-        }
-
-        if !extension.id.contains('.') {
-            warnings.push(ValidationWarning::new(
-                "vscode-extensions.toml",
-                &extension.id,
-                "extension ID should be in format 'publisher.name'",
-            ));
-        }
-    }
-
-    warnings
+    Validator::new("vscode-extensions.toml")
+        .check_each(
+            extensions,
+            |ext| &ext.id,
+            |ext| {
+                vec![
+                    check(ext.id.trim().is_empty(), "extension ID is empty"),
+                    check(
+                        !ext.id.contains('.'),
+                        "extension ID should be in format 'publisher.name'",
+                    ),
+                ]
+            },
+        )
+        .finish()
 }
 
 #[cfg(test)]

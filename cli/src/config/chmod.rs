@@ -23,19 +23,27 @@ struct ChmodSection {
     permissions: Vec<ChmodEntry>,
 }
 
+impl toml_loader::ConfigSection for ChmodSection {
+    type Entry = ChmodEntry;
+    type Item = ChmodEntry;
+    const MATCH_MODE: MatchMode = MatchMode::All;
+
+    fn extract(self) -> Vec<ChmodEntry> {
+        self.permissions
+    }
+
+    fn map(entry: ChmodEntry) -> ChmodEntry {
+        entry
+    }
+}
+
 /// Load chmod entries from chmod.toml, filtered by active categories.
 ///
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<ChmodEntry>> {
-    toml_loader::load_filtered(
-        path,
-        |s: ChmodSection| s.permissions,
-        |e| e,
-        active_categories,
-        MatchMode::All,
-    )
+    toml_loader::load_section::<ChmodSection>(path, active_categories)
 }
 
 /// Minimum length for octal mode strings.
@@ -73,31 +81,28 @@ pub fn validate(
     entries: &[ChmodEntry],
     platform: crate::platform::Platform,
 ) -> Vec<ValidationWarning> {
-    let mut warnings = Vec::new();
+    use super::helpers::validation::{Validator, check};
 
-    if !entries.is_empty() && !platform.supports_chmod() {
-        warnings.push(ValidationWarning::new(
-            "chmod.toml",
-            "chmod entries",
-            "chmod entries defined but platform does not support chmod",
-        ));
-    }
-
-    for entry in entries {
-        if let Some(error) = validate_octal_mode(&entry.mode) {
-            warnings.push(ValidationWarning::new("chmod.toml", &entry.path, error));
-        }
-
-        if Path::new(&entry.path).is_absolute() || entry.path.starts_with('/') {
-            warnings.push(ValidationWarning::new(
-                "chmod.toml",
-                &entry.path,
-                "path should be relative to $HOME directory",
-            ));
-        }
-    }
-
-    warnings
+    let mut v = Validator::new("chmod.toml");
+    v.warn_if(
+        !entries.is_empty() && !platform.supports_chmod(),
+        "chmod entries",
+        "chmod entries defined but platform does not support chmod",
+    );
+    v.check_each(
+        entries,
+        |e| &e.path,
+        |e| {
+            vec![
+                validate_octal_mode(&e.mode),
+                check(
+                    Path::new(&e.path).is_absolute() || e.path.starts_with('/'),
+                    "path should be relative to $HOME directory",
+                ),
+            ]
+        },
+    )
+    .finish()
 }
 
 #[cfg(test)]

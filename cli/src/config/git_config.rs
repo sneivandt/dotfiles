@@ -21,19 +21,27 @@ struct GitConfigSection {
     settings: Vec<GitSetting>,
 }
 
+impl toml_loader::ConfigSection for GitConfigSection {
+    type Entry = GitSetting;
+    type Item = GitSetting;
+    const MATCH_MODE: MatchMode = MatchMode::All;
+
+    fn extract(self) -> Vec<GitSetting> {
+        self.settings
+    }
+
+    fn map(entry: GitSetting) -> GitSetting {
+        entry
+    }
+}
+
 /// Load git settings from git-config.toml, filtered by active categories.
 ///
 /// # Errors
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<GitSetting>> {
-    toml_loader::load_filtered(
-        path,
-        |s: GitConfigSection| s.settings,
-        |e| e,
-        active_categories,
-        MatchMode::All,
-    )
+    toml_loader::load_section::<GitConfigSection>(path, active_categories)
 }
 
 #[cfg(test)]

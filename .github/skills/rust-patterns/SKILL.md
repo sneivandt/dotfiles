@@ -32,7 +32,8 @@ cli/src/
 ├── config/        # TOML config loading and deserialization
 │   ├── mod.rs     # Config struct (aggregates all types)
 │   ├── helpers/   # Shared loader utilities
-│   │   ├── toml_loader.rs  # filter_sections(), TOML deserialization helpers
+│   │   ├── mod.rs       # Re-exports
+│   │   ├── toml_loader.rs  # filter_by_categories(), TOML deserialization helpers
 │   │   ├── category_matcher.rs  # Category matching logic
 │   │   └── validation.rs   # Config validation helpers
 │   ├── profiles.rs
@@ -361,6 +362,7 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     fn run_in_with_env(&self, dir: &Path, program: &str, args: &[&str], env: &[(&str, &str)]) -> Result<ExecResult>;
     fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
     fn which(&self, program: &str) -> bool;
+    fn which_path(&self, program: &str) -> Result<std::path::PathBuf>;
 }
 ```
 
@@ -376,7 +378,7 @@ still exist but are only called by `SystemExecutor` internally.
 
 The executor flows top-down through the system:
 
-1. **Commands** create a `Context` via `CommandRunner::new()`, which combines `CommandSetup::init()` + `setup.into_context()`
+1. **Commands** create a `Context` via `CommandRunner::new()`, which detects the platform, resolves the profile, loads config, and builds the `Context` directly
 2. **Context** stores `executor: Arc<dyn Executor>`
 3. **Tasks** pass `&*ctx.executor` to resource constructors and batch query functions
 4. **Resources** store `executor: &'a dyn Executor` and call `self.executor.run()` etc.
@@ -387,7 +389,7 @@ let runner = super::CommandRunner::new(global, log)?;
 runner.run(tasks.iter().map(Box::as_ref))
 ```
 
-`CommandRunner::new()` calls `CommandSetup::init()` and `into_context()` internally, then stores the resulting `Context` and `Arc<Logger>`. `CommandRunner::run()` delegates to `run_tasks_to_completion()`.
+`CommandRunner::new()` detects the platform, resolves the profile, loads config, and constructs the `Context` directly, then stores the resulting `Context` and `Arc<Logger>`. `CommandRunner::run()` delegates to `run_tasks_to_completion()`.
 
 Resources borrow the executor for the duration of the task. Pass `&*ctx.executor`
 (deref coercion) when constructing resources:
@@ -409,9 +411,9 @@ let cached = batch_check_values(&resources)?;
 
 ## Config Loader Pattern
 
-Each `config/*.rs` module: `ini::parse_sections(path)` → `ini::filter_sections(sections, categories, MatchMode::All)` → parse items.
+Each `config/*.rs` module: `toml_loader::load_section_items(path, extract)` → `toml_loader::filter_by_categories(sections, categories, MatchMode::All)` → map items.
 
-For simple flat lists, use the convenience wrapper `ini::load_flat_items(path, active_categories)` which combines all three steps.
+For simple flat lists, use the convenience wrapper `toml_loader::load_section::<S>(path, active_categories)` which combines all three steps via the `ConfigSection` trait.
 
 ## Error Handling
 
@@ -503,7 +505,7 @@ Use these helpers for **all** new resource-based tasks.
 **Parallel execution:** When `ctx.parallel` is `true` and there is more than one
 resource, both helpers automatically dispatch to Rayon's parallel iterator.
 Task-level parallelism uses OS threads (via `std::thread::scope`) so blocking
-on `Condvar` does not exhaust the Rayon thread pool. Resources
+on `mpsc::Receiver::recv()` does not exhaust the Rayon thread pool. Resources
 must implement `Send`; because `Executor: Sync`, all resources holding `&dyn Executor`
 satisfy this automatically. Tests set `parallel: false` in their `Context` to keep
 execution deterministic.

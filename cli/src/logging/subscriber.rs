@@ -44,6 +44,22 @@ impl FileLayer {
     /// cannot be opened.
     pub(super) fn new(command: &str) -> Option<Self> {
         let path = log_file_path(command)?;
+        Self::create_at(&path)
+    }
+
+    /// Open (or create) the log file for `command` under `cache_dir`, write
+    /// a run header, and return a new `FileLayer`.
+    ///
+    /// Like [`new`](Self::new) but uses an explicit cache base directory
+    /// instead of reading `XDG_CACHE_HOME` from the environment.
+    #[cfg(test)]
+    pub(super) fn new_in(command: &str, cache_dir: &std::path::Path) -> Option<Self> {
+        let path = super::utils::log_file_path_in(command, cache_dir)?;
+        Self::create_at(&path)
+    }
+
+    /// Shared implementation: write a header and open the file for appending.
+    fn create_at(path: &std::path::Path) -> Option<Self> {
         let version =
             option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
         let header = format!(
@@ -52,8 +68,8 @@ impl FileLayer {
              ==========================================\n",
             format_utc_datetime(),
         );
-        fs::write(&path, header).ok()?;
-        let file = fs::OpenOptions::new().append(true).open(&path).ok()?;
+        fs::write(path, header).ok()?;
+        let file = fs::OpenOptions::new().append(true).open(path).ok()?;
         Some(Self {
             file: Mutex::new(file),
         })
@@ -165,7 +181,6 @@ pub fn init_subscriber(verbose: bool, command: &str) {
 }
 
 #[cfg(test)]
-#[allow(unsafe_code)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
@@ -179,18 +194,10 @@ mod tests {
         tracing::dispatcher::DefaultGuard,
     ) {
         let tmp = tempfile::tempdir().expect("failed to create temp dir");
-        let env_lock = super::super::TEST_ENV_MUTEX
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        unsafe {
-            std::env::set_var("XDG_CACHE_HOME", tmp.path());
-        }
-        let layer = FileLayer::new("test").expect("FileLayer::new should succeed");
-        let path = log_file_path("test").expect("log path should resolve");
-        unsafe {
-            std::env::remove_var("XDG_CACHE_HOME");
-        }
-        drop(env_lock);
+        let layer =
+            FileLayer::new_in("test", tmp.path()).expect("FileLayer::new_in should succeed");
+        let path = super::super::utils::log_file_path_in("test", tmp.path())
+            .expect("log path should resolve");
         let subscriber = tracing_subscriber::registry().with(layer.with_filter(LevelFilter::DEBUG));
         let guard = tracing::dispatcher::set_default(&tracing::Dispatch::new(subscriber));
         (path, tmp, guard)

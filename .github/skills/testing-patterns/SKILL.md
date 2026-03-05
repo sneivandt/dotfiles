@@ -112,9 +112,11 @@ fn parse_dry_run() {
 
 **Platform** — use `Platform::new()` to control detection (test-only API, `#[cfg(test)]`):
 ```rust
+use crate::config::category_matcher::Category;
+
 #[test]
 fn excludes_windows_on_linux() {
-    assert!(Platform::new(Os::Linux, false).excludes_category("windows"));
+    assert!(Platform::new(Os::Linux, false).excludes_category(&Category::Windows));
 }
 ```
 

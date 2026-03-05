@@ -20,6 +20,12 @@ pub struct ContextOpts {
     pub dry_run: bool,
     /// Whether to process resources in parallel.
     pub parallel: bool,
+    /// Whether the process is running inside a CI environment.
+    ///
+    /// When `None` (the default), [`Context::new`] reads the `CI` environment
+    /// variable.  Tests can set this explicitly to avoid mutating process-global
+    /// state.
+    pub is_ci: Option<bool>,
 }
 
 /// Shared context for task execution.
@@ -44,6 +50,13 @@ pub struct Context {
     pub executor: Arc<dyn Executor>,
     /// Whether to process resources in parallel using Rayon.
     pub parallel: bool,
+    /// Whether the process is running inside a CI environment.
+    ///
+    /// Derived from the `CI` environment variable at construction time (or
+    /// supplied directly via [`ContextOpts::is_ci`]) so that tasks can check
+    /// this without reading env-globals themselves and tests can inject the
+    /// value without mutating process state.
+    pub is_ci: bool,
 }
 
 impl std::fmt::Debug for Context {
@@ -56,6 +69,7 @@ impl std::fmt::Debug for Context {
             .field("home", &self.home)
             .field("executor", &"<dyn Executor>")
             .field("parallel", &self.parallel)
+            .field("is_ci", &self.is_ci)
             .finish()
     }
 }
@@ -85,6 +99,8 @@ impl Context {
                 .map_err(|_| anyhow::anyhow!("HOME environment variable is not set"))?
         };
 
+        let is_ci = opts.is_ci.unwrap_or_else(|| std::env::var("CI").is_ok());
+
         Ok(Self {
             config,
             platform,
@@ -93,6 +109,7 @@ impl Context {
             home: std::path::PathBuf::from(home),
             executor,
             parallel: opts.parallel,
+            is_ci,
         })
     }
 
@@ -163,6 +180,18 @@ impl Context {
     pub fn with_home(&self, home: std::path::PathBuf) -> Self {
         Self {
             home,
+            ..self.clone()
+        }
+    }
+
+    /// Create a copy of this context with the CI flag overridden.
+    ///
+    /// Used in tests to validate CI-gated task behaviour without mutating
+    /// process-global environment variables.
+    #[must_use]
+    pub fn with_ci(&self, is_ci: bool) -> Self {
+        Self {
+            is_ci,
             ..self.clone()
         }
     }

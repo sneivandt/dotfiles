@@ -400,17 +400,21 @@ Tasks are executed in parallel using a dependency-graph scheduler.  Each task
 declares its dependencies using the `task_deps!` macro (exported from
 `tasks/mod.rs`), which implements `Task::dependencies()` returning `TypeId`s of
 prerequisite task structs.  The scheduler uses `std::thread::scope` to spawn
-one OS thread per task and a `Condvar`-based `TaskGraph` to block each task
-until its dependencies are marked complete.  OS threads are used deliberately
-— blocking on a `Condvar` inside a Rayon worker would exhaust Rayon's
+one OS thread per task and `mpsc` channels to block each task until its
+dependencies complete.  For each task, a channel is created — dependent tasks
+wait by calling `recv()` on the receiving end, and each dependency sends a
+notification when it finishes.  OS threads are used deliberately — blocking on
+`mpsc::Receiver::recv()` inside a Rayon worker would exhaust Rayon's
 fixed-size thread pool and deadlock when the pool is smaller than the number
 of tasks with unsatisfied dependencies (common on 2-vCPU CI runners).
 
 **How it works:**
 
 - Each task is spawned into an OS thread via `std::thread::scope`
-- `TaskGraph::wait_for_deps()` blocks the task until all declared dependencies
-  have called `TaskGraph::mark_complete()`
+- Tasks wait for their dependencies by calling `recv()` on an `mpsc::Receiver`,
+  receiving one message per dependency
+- When a task completes, it sends a notification to all tasks that depend on it
+  via their `mpsc::Sender`s
 - Tasks with no dependencies (or whose dependencies were filtered out) start
   immediately
 - Each task's console output is captured in a per-task `BufferedLog`; when the
@@ -441,8 +445,9 @@ debugging), pass `--no-parallel` directly to the binary — this flag is not
 exposed by the wrapper scripts (see
 [Advanced Binary Options](USAGE.md#advanced-binary-options)).
 
-`process_resources_remove()` (used by uninstall tasks) is always sequential because
-removal operations are rare and order may matter.
+`process_resources_remove()` (used by uninstall tasks) also dispatches to parallel
+processing when `ctx.parallel` is `true` and there is more than one resource,
+matching the behaviour of `process_resources()` and `process_resource_states()`.
 
 ### Binary Distribution
 

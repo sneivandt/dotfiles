@@ -99,6 +99,7 @@ impl CommandRunner {
             crate::engine::ContextOpts {
                 dry_run: global.dry_run,
                 parallel: global.parallel,
+                is_ci: None,
             },
         )?;
 

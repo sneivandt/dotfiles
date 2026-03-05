@@ -9,6 +9,8 @@ use super::diagnostic::{DiagEvent, DiagnosticLog};
 use super::types::Log;
 use super::types::{Output, TaskEntry, TaskRecorder, TaskStatus};
 use super::utils::{dotfiles_cache_dir, log_file_path, terminal_columns};
+#[cfg(test)]
+use super::utils::{dotfiles_cache_subdir, log_file_path_in};
 
 /// Generate an inherent `pub fn $name(&self, msg: &str)` method on `Logger`
 /// that optionally emits to the diagnostic log and then forwards to the given
@@ -93,6 +95,27 @@ impl Logger {
             active_tasks: Mutex::new(Vec::new()),
             progress_rows: Mutex::new(0),
             diagnostic: dotfiles_cache_dir()
+                .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
+        }
+    }
+
+    /// Create a new logger using an explicit cache base directory.
+    ///
+    /// Like [`new`](Self::new) but resolves the log file path and diagnostic
+    /// log under `cache_dir` instead of reading `XDG_CACHE_HOME` from the
+    /// environment.  Intended for tests that need an isolated logger without
+    /// mutating process-global state.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn new_in(command: &str, cache_dir: &std::path::Path) -> Self {
+        let start = Instant::now();
+        Self {
+            tasks: Mutex::new(Vec::new()),
+            log_file: log_file_path_in(command, cache_dir),
+            flush_lock: Mutex::new(()),
+            active_tasks: Mutex::new(Vec::new()),
+            progress_rows: Mutex::new(0),
+            diagnostic: dotfiles_cache_subdir(cache_dir)
                 .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
         }
     }

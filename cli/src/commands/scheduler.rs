@@ -278,6 +278,143 @@ mod tests {
     // Tests
     // -----------------------------------------------------------------------
 
+    // -----------------------------------------------------------------------
+    // A second independent task type (different TypeId from FlagTask).
+    // -----------------------------------------------------------------------
+    struct FlagTask2 {
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for FlagTask2 {
+        fn name(&self) -> &'static str {
+            "flag-task-2"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Task that depends on FlagTask (for happy-path dependency tests).
+    // -----------------------------------------------------------------------
+    struct DepOnFlagTask {
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for DepOnFlagTask {
+        fn name(&self) -> &'static str {
+            "dep-on-flag"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        task_deps![FlagTask];
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Diamond tasks: A → D, B → D (two independent parents, one child).
+    // -----------------------------------------------------------------------
+    struct DiamondA {
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for DiamondA {
+        fn name(&self) -> &'static str {
+            "diamond-a"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    struct DiamondB {
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for DiamondB {
+        fn name(&self) -> &'static str {
+            "diamond-b"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    struct DiamondD {
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for DiamondD {
+        fn name(&self) -> &'static str {
+            "diamond-d"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        task_deps![DiamondA, DiamondB];
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Task with a dependency on a type not in the task list.
+    // -----------------------------------------------------------------------
+    struct DepOnMissing {
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for DepOnMissing {
+        fn name(&self) -> &'static str {
+            "dep-on-missing"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        // Depends on PanicTask which won't be in the task list.
+        task_deps![PanicTask];
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests
+    // -----------------------------------------------------------------------
+
     #[test]
     fn independent_task_runs_normally() {
         let (log, ctx) = make_test_log_and_ctx();
@@ -352,6 +489,146 @@ mod tests {
                 .iter()
                 .any(|e| e.name == "chain-c" && e.status == TaskStatus::Skipped),
             "chain-c should be recorded as Skipped"
+        );
+    }
+
+    #[test]
+    fn multiple_independent_tasks_all_run() {
+        let (log, ctx) = make_test_log_and_ctx();
+        let ran_1 = Arc::new(AtomicBool::new(false));
+        let ran_2 = Arc::new(AtomicBool::new(false));
+        let task_1 = FlagTask {
+            ran: Arc::clone(&ran_1),
+        };
+        let task_2 = FlagTask2 {
+            ran: Arc::clone(&ran_2),
+        };
+
+        run_tasks_parallel(&[&task_1, &task_2], &ctx, &log);
+
+        assert!(
+            ran_1.load(Ordering::SeqCst),
+            "first independent task should have run"
+        );
+        assert!(
+            ran_2.load(Ordering::SeqCst),
+            "second independent task should have run"
+        );
+    }
+
+    #[test]
+    fn task_runs_after_dependency_completes() {
+        let (log, ctx) = make_test_log_and_ctx();
+        let ran_flag = Arc::new(AtomicBool::new(false));
+        let ran_dep = Arc::new(AtomicBool::new(false));
+        let flag_task = FlagTask {
+            ran: Arc::clone(&ran_flag),
+        };
+        let dep_task = DepOnFlagTask {
+            ran: Arc::clone(&ran_dep),
+        };
+
+        run_tasks_parallel(&[&flag_task, &dep_task], &ctx, &log);
+
+        assert!(
+            ran_flag.load(Ordering::SeqCst),
+            "dependency (FlagTask) should have run"
+        );
+        assert!(
+            ran_dep.load(Ordering::SeqCst),
+            "dependent task should have run after its dependency"
+        );
+    }
+
+    #[test]
+    fn diamond_dependency_all_tasks_run() {
+        let (log, ctx) = make_test_log_and_ctx();
+        let ran_a = Arc::new(AtomicBool::new(false));
+        let ran_b = Arc::new(AtomicBool::new(false));
+        let ran_d = Arc::new(AtomicBool::new(false));
+        let task_a = DiamondA {
+            ran: Arc::clone(&ran_a),
+        };
+        let task_b = DiamondB {
+            ran: Arc::clone(&ran_b),
+        };
+        let task_d = DiamondD {
+            ran: Arc::clone(&ran_d),
+        };
+
+        run_tasks_parallel(&[&task_a, &task_b, &task_d], &ctx, &log);
+
+        assert!(ran_a.load(Ordering::SeqCst), "diamond-a should have run");
+        assert!(ran_b.load(Ordering::SeqCst), "diamond-b should have run");
+        assert!(
+            ran_d.load(Ordering::SeqCst),
+            "diamond-d should have run after both parents completed"
+        );
+    }
+
+    #[test]
+    fn empty_task_list_completes_without_panic() {
+        let (log, ctx) = make_test_log_and_ctx();
+        let empty: Vec<&dyn Task> = vec![];
+        run_tasks_parallel(&empty, &ctx, &log);
+        // No panic = success
+    }
+
+    #[test]
+    fn dependency_not_in_list_is_ignored() {
+        let (log, ctx) = make_test_log_and_ctx();
+        let ran = Arc::new(AtomicBool::new(false));
+        let task = DepOnMissing {
+            ran: Arc::clone(&ran),
+        };
+
+        // PanicTask is not in the task list, so its dep is filtered out.
+        // DepOnMissing should run as if it has no dependencies.
+        run_tasks_parallel(&[&task], &ctx, &log);
+
+        assert!(
+            ran.load(Ordering::SeqCst),
+            "task with missing dependency should run (dep filtered out)"
+        );
+    }
+
+    #[test]
+    fn dependency_ordering_is_respected() {
+        let (log, ctx) = make_test_log_and_ctx();
+
+        // Use the existing FlagTask → DepOnFlagTask relationship:
+        // FlagTask must run before DepOnFlagTask. Verify using order of
+        // task completion recorded in the logger.
+        let flag_ran = Arc::new(AtomicBool::new(false));
+        let dep_ran = Arc::new(AtomicBool::new(false));
+        let flag_task = FlagTask {
+            ran: Arc::clone(&flag_ran),
+        };
+        let dep_task = DepOnFlagTask {
+            ran: Arc::clone(&dep_ran),
+        };
+
+        run_tasks_parallel(&[&dep_task, &flag_task], &ctx, &log);
+
+        // Both must run.
+        assert!(flag_ran.load(Ordering::SeqCst), "flag-task should have run");
+        assert!(
+            dep_ran.load(Ordering::SeqCst),
+            "dep-on-flag should have run"
+        );
+
+        // dep-on-flag depends on FlagTask, so FlagTask must complete first.
+        // The logger records tasks in completion order.
+        let entries = log.task_entries();
+        let flag_pos = entries.iter().position(|e| e.name == "flag-task");
+        let dep_pos = entries.iter().position(|e| e.name == "dep-on-flag");
+        assert!(
+            flag_pos.is_some() && dep_pos.is_some(),
+            "both tasks should be recorded in the logger"
+        );
+        assert!(
+            flag_pos.unwrap() < dep_pos.unwrap(),
+            "flag-task should complete before dep-on-flag (dependency ordering)"
         );
     }
 }

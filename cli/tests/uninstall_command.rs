@@ -146,6 +146,7 @@ fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
         dotfiles_cli::tasks::ContextOpts {
             dry_run: true,
             parallel: false,
+            is_ci: None,
         },
     )
     .expect("create context");
@@ -213,6 +214,7 @@ fn uninstall_symlinks_is_idempotent() {
         home: home_dir.path().to_path_buf(),
         executor,
         parallel: false,
+        is_ci: false,
     };
 
     // Install the symlink first so there is something to uninstall.
@@ -281,6 +283,7 @@ fn uninstall_tasks_should_run_with_windows_platform() {
         dotfiles_cli::tasks::ContextOpts {
             dry_run: true,
             parallel: false,
+            is_ci: None,
         },
     )
     .expect("create context");

@@ -49,20 +49,20 @@ paths = ["AppData/"]
 [arch]
 paths = ["config/pacman.conf"]
 
-["arch.desktop"]
+[arch-desktop]
 paths = ["config/xmonad/"]
 ```
 
 **Logic Explanation:**
 - `[windows]` - Excluded if `windows` category is excluded
 - `[arch]` - Excluded if `arch` category is excluded
-- `["arch.desktop"]` - Excluded if **EITHER** `arch` **OR** `desktop` is excluded (not both required)
+- `[arch-desktop]` - Excluded if **EITHER** `arch` **OR** `desktop` is excluded (not both required)
 
 This ensures files shared by multiple categories are excluded when ANY category is excluded, preventing partial checkouts of related files.
 
 **Contrast with Other Config Files:**
 Most other configuration files (e.g., `packages.toml`, `symlinks.toml`) use **AND logic**:
-- `["arch.desktop"]` - Section processed only if **BOTH** `arch` **AND** `desktop` are active
+- `[arch-desktop]` - Section processed only if **BOTH** `arch` **AND** `desktop` are active
 
 ### Path Format
 
@@ -144,10 +144,10 @@ Defines which categories each profile excludes:
 
 ```toml
 [base]
-excludes = ["desktop"]
+exclude = ["desktop"]
 
 [desktop]
-excludes = []
+exclude = []
 ```
 
 Platform categories (`linux`, `windows`, `arch`) are auto-detected, not defined in profiles.
@@ -175,12 +175,14 @@ The Rust engine calls `Platform::excludes_category()` to determine which categor
 
 ### Multi-Category Sections
 
-Use comma-separated categories for files that belong to multiple contexts:
+Use hyphen-separated categories for files that belong to multiple contexts:
 
-```ini
-[arch,desktop]
-config/xmonad/           # Arch desktop window manager
-config/dunst/            # Arch desktop notifications
+```toml
+[arch-desktop]
+paths = [
+  "config/xmonad/",          # Arch desktop window manager
+  "config/dunst/",            # Arch desktop notifications
+]
 ```
 
 **Rule**: List a file under multiple categories when it should be excluded if **ANY** of those categories is excluded.
@@ -195,7 +197,7 @@ Ask: "Which profiles should NOT have this file?"
 - PowerShell script → `[windows]` (exclude on Linux)
 - Arch package config → `[arch]` (exclude on non-Arch systems)
 - GUI tool config → `[desktop]` (exclude on headless systems)
-- Window manager config → `["arch.desktop"]` (exclude unless both arch AND desktop)
+- Window manager config → `[arch-desktop]` (exclude unless both arch AND desktop)
 
 ### Step 2: Add to Manifest
 
@@ -247,16 +249,14 @@ git sparse-checkout list | grep alacritty  # Should not show exclusion
 
 ### Pattern: Exclude Platform-Specific Directory
 
-```ini
+```toml
 [windows]
-AppData/                # Windows-specific application data
-config/powershell/      # Windows PowerShell configuration
+paths = [
+  "AppData/",                # Windows-specific application data
+  "config/powershell/",      # Windows PowerShell configuration
+]
 ```
 
-### Pattern: Exclude OS-Specific Tool Config
-
-```ini
-[arch]
 ### Pattern: Exclude Arch-Specific System Files
 
 ```toml
@@ -280,7 +280,7 @@ paths = [
 ### Pattern: Exclude Arch Desktop-Specific
 
 ```toml
-["arch.desktop"]
+[arch-desktop]
 paths = [
   "config/xmonad/",          # Window manager (needs both Arch and desktop)
   "config/dunst/",           # Notification daemon
@@ -303,11 +303,11 @@ paths = [
 **Example:**
 ```toml
 # manifest.toml (OR logic)
-["arch.desktop"]
+[arch-desktop]
 paths = ["config/xmonad/"]  # Exclude if EITHER arch OR desktop excluded
 
 # packages.toml (AND logic)
-["arch.desktop"]
+[arch-desktop]
 packages = ["xmonad"]       # Install only if BOTH arch AND desktop active
 ```
 
@@ -325,7 +325,7 @@ This ensures files are available when their corresponding packages are installed
 ### Files Disappearing Unexpectedly
 
 1. **Check manifest sections**: File may be listed under wrong category
-2. **Review OR logic**: `[arch,desktop]` excludes if EITHER category excluded
+2. **Review OR logic**: `[arch-desktop]` excludes if EITHER category excluded
 3. **Verify sparse checkout state**: `git sparse-checkout list`
 4. **Check for uncommitted changes**: Sparse checkout requires clean working directory
 
@@ -342,11 +342,11 @@ When working with sparse checkout and manifest:
 
 1. **Always use OR logic** for manifest.toml sections (unlike other config files)
 2. **Include trailing slash** for directories in manifest.toml
-3. **Use quoted dotted keys** for multi-category sections: `["arch.desktop"]`
+3. **Use hyphen-separated names** for multi-category sections: `[arch-desktop]`
 4. **Paths are relative** to `symlinks/` directory (prefix not included in manifest)
 5. **Base files don't need listing** - only list files that should be excluded
 6. **Test across profiles** after adding new manifest entries
-7. **Use multi-category sections** `["arch.desktop"]` when file should be excluded if ANY category is excluded
+7. **Use multi-category sections** `[arch-desktop]` when file should be excluded if ANY category is excluded
 8. **Verify auto-detection** overrides - system enforces OS compatibility automatically
 9. **Clean working directory** required before applying sparse checkout (uncommitted changes cause errors)
 10. **Document category choices** when adding new files to manifest

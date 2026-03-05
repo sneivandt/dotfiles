@@ -412,6 +412,7 @@ pub mod test_helpers {
             home: PathBuf::from("/home/test"),
             executor,
             parallel: false,
+            is_ci: false,
         }
     }
 
@@ -436,6 +437,7 @@ pub mod test_helpers {
         os: crate::platform::Os,
         is_arch: bool,
         which_result: bool,
+        is_ci: bool,
     }
 
     impl ContextBuilder {
@@ -446,6 +448,7 @@ pub mod test_helpers {
                 os: crate::platform::Os::Linux,
                 is_arch: false,
                 which_result: false,
+                is_ci: false,
             }
         }
 
@@ -467,6 +470,15 @@ pub mod test_helpers {
             self
         }
 
+        /// Set whether the context simulates a CI environment.
+        ///
+        /// Tasks that check [`Context::is_ci`] (such as `ConfigureShell`)
+        /// can be tested without mutating process-global environment variables.
+        pub fn ci(mut self, is_ci: bool) -> Self {
+            self.is_ci = is_ci;
+            self
+        }
+
         /// Consume the builder and produce a [`Context`].
         #[must_use]
         pub fn build(self) -> Context {
@@ -475,6 +487,7 @@ pub mod test_helpers {
                 Platform::new(self.os, self.is_arch),
                 Arc::new(TestExecutor::stub().with_which(self.which_result)),
             )
+            .with_ci(self.is_ci)
         }
     }
 

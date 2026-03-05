@@ -33,12 +33,18 @@ pub(super) fn strip_ansi(s: &str) -> String {
 /// Queries the actual terminal size via ioctl (Unix) or the console API
 /// (Windows), falling back to the `COLUMNS` environment variable, then 80.
 pub(super) fn terminal_columns() -> usize {
+    terminal_columns_with(std::env::var("COLUMNS").ok())
+}
+
+/// Inner implementation of [`terminal_columns`] that accepts the `COLUMNS`
+/// environment variable value as a parameter so tests can exercise the
+/// fallback logic without mutating process-global state.
+pub(super) fn terminal_columns_with(columns_env: Option<String>) -> usize {
     terminal_size::terminal_size()
         .map(|(w, _)| w.0 as usize)
         .filter(|&n| n > 0)
         .or_else(|| {
-            std::env::var("COLUMNS")
-                .ok()
+            columns_env
                 .and_then(|v| v.parse::<usize>().ok())
                 .filter(|&n| n > 0)
         })
@@ -56,7 +62,16 @@ pub(super) fn dotfiles_cache_dir() -> Option<PathBuf> {
         },
         PathBuf::from,
     );
-    let dir = cache_dir.join("dotfiles");
+    dotfiles_cache_subdir(&cache_dir)
+}
+
+/// Return `<base>/dotfiles/`, creating it if needed.
+///
+/// Extracted from [`dotfiles_cache_dir`] so that callers (especially tests)
+/// can supply an explicit base path without manipulating environment
+/// variables.
+pub(super) fn dotfiles_cache_subdir(base: &std::path::Path) -> Option<PathBuf> {
+    let dir = base.join("dotfiles");
     fs::create_dir_all(&dir).ok()?;
     Some(dir)
 }
@@ -64,6 +79,15 @@ pub(super) fn dotfiles_cache_dir() -> Option<PathBuf> {
 /// Return the log file path under `$XDG_CACHE_HOME/dotfiles/` (or `~/.cache/dotfiles/`).
 pub(super) fn log_file_path(command: &str) -> Option<PathBuf> {
     Some(dotfiles_cache_dir()?.join(format!("{command}.log")))
+}
+
+/// Return the log file path under `<base>/dotfiles/`.
+///
+/// Like [`log_file_path`] but uses an explicit base directory instead of
+/// reading `XDG_CACHE_HOME` from the environment.
+#[cfg(test)]
+pub(super) fn log_file_path_in(command: &str, base: &std::path::Path) -> Option<PathBuf> {
+    Some(dotfiles_cache_subdir(base)?.join(format!("{command}.log")))
 }
 
 /// Decompose seconds since the Unix epoch into `(year, month, day, hour, min, sec)`.
@@ -125,13 +149,9 @@ pub(super) fn format_utc_time() -> String {
 }
 
 #[cfg(test)]
-#[allow(unsafe_code)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn strip_ansi_removes_colors() {
@@ -169,22 +189,13 @@ mod tests {
     }
 
     #[test]
-    #[allow(unsafe_code)]
     fn terminal_columns_reads_env_var_as_fallback() {
-        let _lock = ENV_MUTEX
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        unsafe {
-            std::env::set_var("COLUMNS", "120");
-        }
-        let cols = terminal_columns();
-        unsafe {
-            std::env::remove_var("COLUMNS");
-        }
-        // ioctl takes priority when a real TTY is attached; COLUMNS is the
-        // fallback (e.g. piped output, CI).  Either source is valid.
+        // Use the parameterized variant to test the env fallback path
+        // without mutating process-global state.
         let has_tty = terminal_size::terminal_size().is_some();
+        let cols = terminal_columns_with(Some("120".to_string()));
         if has_tty {
+            // ioctl takes priority when a real TTY is attached.
             assert!(cols > 0);
         } else {
             assert_eq!(cols, 120);
@@ -192,25 +203,24 @@ mod tests {
     }
 
     #[test]
-    #[allow(unsafe_code)]
     fn terminal_columns_ignores_zero() {
-        let _lock = ENV_MUTEX
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        unsafe {
-            std::env::set_var("COLUMNS", "0");
-        }
-        let cols = terminal_columns();
-        unsafe {
-            std::env::remove_var("COLUMNS");
-        }
-        // With a TTY, ioctl returns the real width; without one, COLUMNS=0
-        // is rejected and the 80-column default is used.
         let has_tty = terminal_size::terminal_size().is_some();
+        let cols = terminal_columns_with(Some("0".to_string()));
         if has_tty {
             assert!(cols > 0);
         } else {
             assert_eq!(cols, 80, "zero COLUMNS should fall back to 80");
+        }
+    }
+
+    #[test]
+    fn terminal_columns_with_none_falls_back_to_default() {
+        let has_tty = terminal_size::terminal_size().is_some();
+        let cols = terminal_columns_with(None);
+        if has_tty {
+            assert!(cols > 0);
+        } else {
+            assert_eq!(cols, 80, "absent COLUMNS should fall back to 80");
         }
     }
 

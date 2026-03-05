@@ -24,7 +24,7 @@ Platform categories (`linux`, `windows`, `arch`) are auto-detected — users onl
 1. **Profile resolution**: `profiles::resolve()` computes `active_categories` and `excluded_categories`
 2. **Platform auto-detection**: `Platform::excludes_category()` auto-adds/excludes platform categories (`linux`, `windows`, `arch`)
 3. **Always-active**: `base` is always in `active_categories`
-4. **Config filtering**: `toml_loader::filter_sections(&sections, active, MatchMode::All)` includes sections where ALL categories are active
+4. **Config filtering**: `toml_loader::filter_by_categories(sections, active, MatchMode::All)` includes sections where ALL categories are active
 5. **Sparse checkout**: `manifest.toml` uses OR-exclude logic to filter repository files
 
 ## Profile Selection Priority
@@ -35,10 +35,11 @@ CLI `-p` (`--profile`) > git config dotfiles.profile > interactive prompt
 
 Implemented in `profiles::resolve_from_args()`:
 ```rust
-pub fn resolve_from_args(cli_profile: Option<&str>, root: &Path, platform: &Platform) -> Result<Profile> {
+pub fn resolve_from_args(cli_profile: Option<&str>, root: &Path, platform: Platform) -> Result<Profile> {
+    let conf_dir = root.join("conf");
     let name = if let Some(name) = cli_profile { name.to_string() }
     else if let Some(name) = read_persisted(root) { name }
-    else { prompt_interactive(platform)? };
+    else { prompt_interactive(&conf_dir)? };
     // ...
 }
 ```
@@ -51,14 +52,16 @@ result.
 ## Profile Data Structure
 
 ```rust
+use crate::config::category_matcher::Category;
+
 pub struct Profile {
     pub name: String,
-    pub active_categories: Vec<String>,   // e.g., ["base", "arch", "desktop"]
-    pub excluded_categories: Vec<String>, // e.g., ["windows"]
+    pub active_categories: Vec<Category>,   // e.g., [Base, Arch, Desktop]
+    pub excluded_categories: Vec<Category>, // e.g., [Windows]
 }
 ```
 
-`active_categories` always includes `"base"`. Platform categories (`linux`, `windows`, `arch`) are auto-added or auto-excluded based on `Platform::excludes_category()`. Users only choose the role (`base` or `desktop`).
+`active_categories` always includes `Category::Base`. Platform categories (`Linux`, `Windows`, `Arch`) are auto-added or auto-excluded based on `Platform::excludes_category()`. Users only choose the role (`base` or `desktop`).
 
 ## Section Naming Convention
 
@@ -76,7 +79,7 @@ include = ["mycategory"]
 exclude = []
 ```
 
-Add the name to `PROFILE_NAMES` constant in `cli/src/config/profiles.rs`.
+Profile names are loaded dynamically from `profiles.toml` via `load_definitions()` — no code changes needed.
 
 ## Usage
 
@@ -88,7 +91,7 @@ Add the name to `PROFILE_NAMES` constant in `cli/src/config/profiles.rs`.
 ## Rules
 
 - Platform detection always overrides profile config for safety
-- Profile names are `base` or `desktop`; config section categories use commas
-- `active_categories` always contains `"base"` plus auto-detected platform categories
-- Use `filter_sections(&sections, active, MatchMode::All)` for config filtering (AND logic)
-- Use `filter_sections(&sections, excluded, MatchMode::Any)` for manifest filtering (OR logic)
+- Profile names are `base` or `desktop`; config section categories use hyphens (e.g. `[arch-desktop]`)
+- `active_categories` always contains `Category::Base` plus auto-detected platform categories
+- Use `filter_by_categories(sections, active, MatchMode::All)` for config filtering (AND logic)
+- Use `filter_by_categories(sections, excluded, MatchMode::Any)` for manifest filtering (OR logic)

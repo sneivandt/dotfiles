@@ -13,10 +13,6 @@ pub use logger::Logger;
 pub use subscriber::init_subscriber;
 pub use types::{Log, Output, TaskEntry, TaskRecorder, TaskStatus};
 
-/// Serializes `XDG_CACHE_HOME` manipulation across parallel test threads.
-#[cfg(test)]
-pub(crate) static TEST_ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 /// Create a Logger backed by an isolated per-thread tracing subscriber
 /// with a [`FileLayer`], so that tracing events emitted by logger methods
 /// actually reach the log file during tests.
@@ -29,21 +25,9 @@ pub(crate) static TEST_ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new((
 pub(crate) fn isolated_logger() -> (Logger, tempfile::TempDir, tracing::dispatcher::DefaultGuard) {
     use tracing_subscriber::{Layer as _, filter::LevelFilter, layer::SubscriberExt as _};
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
-    let env_lock = TEST_ENV_MUTEX
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    // SAFETY: Protected by TEST_ENV_MUTEX; restored before lock is released.
-    #[allow(unsafe_code)]
-    unsafe {
-        std::env::set_var("XDG_CACHE_HOME", tmp.path());
-    }
-    let file_layer = subscriber::FileLayer::new("test").expect("failed to create file layer");
-    let log = Logger::new("test");
-    #[allow(unsafe_code)]
-    unsafe {
-        std::env::remove_var("XDG_CACHE_HOME");
-    }
-    drop(env_lock);
+    let file_layer =
+        subscriber::FileLayer::new_in("test", tmp.path()).expect("failed to create file layer");
+    let log = Logger::new_in("test", tmp.path());
     let subscriber =
         tracing_subscriber::registry().with(file_layer.with_filter(LevelFilter::DEBUG));
     let guard = tracing::dispatcher::set_default(&tracing::Dispatch::new(subscriber));

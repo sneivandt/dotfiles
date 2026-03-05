@@ -46,7 +46,7 @@ impl Task for InstallGitHooks {
         self.fs_ops.exists(&ctx.hooks_dir()) && self.fs_ops.exists(&ctx.root().join(".git"))
     }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resources = discover_hooks(ctx, &*self.fs_ops)?;
+        let resources = self.discover(ctx)?;
         process_resources(ctx, resources, &ProcessOpts::strict("install hook"))
     }
 }
@@ -57,7 +57,7 @@ calling `.exists()` directly on the path. This allows tests to inject a
 `MockFileSystemOps` via `InstallGitHooks::with_fs_ops(Arc::new(mock))` without touching
 the real filesystem.
 
-`discover_hooks()` takes `ctx` and a `&dyn FileSystemOps` argument and reads the
+`discover_hooks()` takes `ctx` and a `&Arc<dyn FileSystemOps>` argument and reads the
 `hooks/` directory via `fs_ops.read_dir()`, returning one `HookFileResource` per file
 that has no extension (conventional hook scripts such as `pre-commit`, `commit-msg`).
 
@@ -82,10 +82,11 @@ Categories: `api-keys`, `passwords`, `tokens`, `aws`, `private-keys`, `github`, 
 
 ### Pre-commit Hook
 
-The `hooks/pre-commit` script is POSIX shell (`#!/bin/sh`):
-1. Reads patterns from `hooks/sensitive-patterns.ini`
-2. Scans `git diff --cached` for matches
-3. Prints error and aborts if sensitive data found
+The `hooks/pre-commit` script is a POSIX shell (`#!/bin/sh`) orchestrator that
+delegates to dedicated scripts:
+1. Runs `hooks/check-sensitive.sh` which reads patterns from `hooks/sensitive-patterns.ini` and scans `git diff --cached` for matches
+2. Runs `hooks/check-rust.sh` which runs `cargo fmt --check` and `cargo clippy -- -D warnings` when `.rs` files are staged
+3. Prints error and aborts if either check fails
 
 ### Bypassing
 

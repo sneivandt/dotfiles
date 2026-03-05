@@ -241,6 +241,7 @@ impl IntegrationTestContext {
             home: home.path().to_path_buf(),
             executor: Arc::new(StubExecutor),
             parallel: false,
+            is_ci: false,
         };
         ExecutionContext {
             ctx,

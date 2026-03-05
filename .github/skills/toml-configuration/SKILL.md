@@ -43,16 +43,17 @@ Deserialized using `#[serde(untagged)] enum` for polymorphic types.
 
 ## Multi-Category Sections
 
-Use **quoted dotted keys** for multi-category sections (AND logic):
+Use **hyphen-separated** table names for multi-category sections (AND logic):
 
 ```toml
-# Quoted table name for literal dots
-["arch.desktop"]
+# Hyphen-separated categories
+[arch-desktop]
 packages = ["rofi", "picom"]
 ```
 
-**IMPORTANT**: Unquoted `[arch.desktop]` creates nested tables (`[arch]` then `[arch.desktop]`).
-Always quote multi-category table names.
+The TOML loader splits section names on `-` to extract category tags.
+Do **not** use dots or commas — dots create nested TOML tables and commas are
+not valid in unquoted table names.
 
 ## Section Filtering
 
@@ -85,16 +86,16 @@ struct MySection {
     items: Vec<MyType>,
 }
 
-pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<MyType>> {
+pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<MyType>> {
     // Load TOML file into HashMap
     let config: HashMap<String, MySection> = toml_loader::load_config(path)?;
-    
+
     // Convert to (category, Vec<items>) pairs
     let sections: Vec<(String, Vec<MyType>)> = config
         .into_iter()
         .map(|(cat, section)| (cat, section.items))
         .collect();
-    
+
     // Filter by active categories and flatten
     Ok(toml_loader::filter_by_categories(sections, active_categories, MatchMode::All))
 }
@@ -104,7 +105,7 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<MyType>> {
 
 | File | Format | Notes |
 |------|--------|-------|
-| `profiles.toml` | table | Profile definitions with `excludes` arrays |
+| `profiles.toml` | table | Profile definitions with `include`/`exclude` arrays |
 | `manifest.toml` | arrays | Sparse checkout (OR-exclude via `MatchMode::Any`) |
 | `symlinks.toml` | arrays | Profile-filtered symlink paths |
 | `packages.toml` | arrays | Simple strings or `{ name, aur }` objects |
@@ -122,7 +123,7 @@ pub fn load(path: &Path, active_categories: &[String]) -> Result<Vec<MyType>> {
 [base]
 units = ["sshd", "docker"]
 
-["arch.desktop"]
+[arch-desktop]
 units = ["gdm"]
 ```
 
@@ -159,9 +160,9 @@ ShowHidden = 0x00000001
 
 ## Rules
 
-- Use **quoted table names** for multi-category sections: `["arch.desktop"]`
+- Use **hyphen-separated** table names for multi-category sections: `[arch-desktop]`
 - All config files use TOML arrays or tables — no custom parsing
-- Categories are extracted from table names (lowercased, split on `.`)
+- Categories are extracted from table names (lowercased, split on `-`)
 - Serde handles deserialization with strong typing
 - Use `#[serde(untagged)]` for polymorphic enums (string vs object)
 - Always validate TOML syntax — malformed files cause deserialization errors

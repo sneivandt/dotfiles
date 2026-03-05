@@ -233,6 +233,7 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
         dotfiles_cli::tasks::ContextOpts {
             dry_run: true,
             parallel: false,
+            is_ci: None,
         },
     )
     .expect("create context");
@@ -336,6 +337,7 @@ fn install_tasks_should_run_with_windows_platform() {
         dotfiles_cli::tasks::ContextOpts {
             dry_run: true,
             parallel: false,
+            is_ci: None,
         },
     )
     .expect("create context");
@@ -468,6 +470,7 @@ fn install_symlinks_is_idempotent() {
         home: home_dir.path().to_path_buf(),
         executor,
         parallel: false,
+        is_ci: false,
     };
 
     let task = dotfiles_cli::tasks::symlinks::InstallSymlinks;
@@ -566,6 +569,7 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
         home: home_dir.path().to_path_buf(),
         executor,
         parallel: false,
+        is_ci: false,
     };
 
     let result = dotfiles_cli::tasks::chmod::ApplyFilePermissions
@@ -623,6 +627,157 @@ fn install_run_dry_run_returns_ok() {
     );
 }
 
+/// Calling `install::run` with `--only symlinks` in dry-run mode must return
+/// `Ok(())` and execute only matching tasks.
+#[test]
+fn install_run_dry_run_with_only_filter_returns_ok() {
+    use std::sync::Arc;
+
+    let ctx = common::TestContextBuilder::new().build();
+    let root_path = ctx.root_path().to_path_buf();
+    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
+
+    let global = dotfiles_cli::cli::GlobalOpts {
+        root: Some(root_path),
+        profile: Some("base".to_string()),
+        dry_run: true,
+        parallel: false,
+    };
+    let opts = dotfiles_cli::cli::InstallOpts {
+        skip: vec![],
+        only: vec!["symlinks".to_string()],
+    };
+    let log: Arc<dotfiles_cli::logging::Logger> =
+        Arc::new(dotfiles_cli::logging::Logger::new("test-only-filter"));
+
+    let result = dotfiles_cli::commands::install::run(&global, &opts, &log);
+    assert!(
+        result.is_ok(),
+        "dry-run install with --only symlinks should return Ok: {result:?}"
+    );
+}
+
+/// Calling `install::run` with `--skip packages` in dry-run mode must return
+/// `Ok(())` and skip matching tasks.
+#[test]
+fn install_run_dry_run_with_skip_filter_returns_ok() {
+    use std::sync::Arc;
+
+    let ctx = common::TestContextBuilder::new().build();
+    let root_path = ctx.root_path().to_path_buf();
+    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
+
+    let global = dotfiles_cli::cli::GlobalOpts {
+        root: Some(root_path),
+        profile: Some("base".to_string()),
+        dry_run: true,
+        parallel: false,
+    };
+    let opts = dotfiles_cli::cli::InstallOpts {
+        skip: vec!["packages".to_string()],
+        only: vec![],
+    };
+    let log: Arc<dotfiles_cli::logging::Logger> =
+        Arc::new(dotfiles_cli::logging::Logger::new("test-skip-filter"));
+
+    let result = dotfiles_cli::commands::install::run(&global, &opts, &log);
+    assert!(
+        result.is_ok(),
+        "dry-run install with --skip packages should return Ok: {result:?}"
+    );
+}
+
+/// Calling `install::run` with `--only` matching no task name must return
+/// `Ok(())` (empty task list is not an error).
+#[test]
+fn install_run_dry_run_with_only_no_match_returns_ok() {
+    use std::sync::Arc;
+
+    let ctx = common::TestContextBuilder::new().build();
+    let root_path = ctx.root_path().to_path_buf();
+    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
+
+    let global = dotfiles_cli::cli::GlobalOpts {
+        root: Some(root_path),
+        profile: Some("base".to_string()),
+        dry_run: true,
+        parallel: false,
+    };
+    let opts = dotfiles_cli::cli::InstallOpts {
+        skip: vec![],
+        only: vec!["zzznomatch".to_string()],
+    };
+    let log: Arc<dotfiles_cli::logging::Logger> =
+        Arc::new(dotfiles_cli::logging::Logger::new("test-only-no-match"));
+
+    let result = dotfiles_cli::commands::install::run(&global, &opts, &log);
+    assert!(
+        result.is_ok(),
+        "dry-run install with --only no-match should return Ok: {result:?}"
+    );
+}
+
+/// Calling `install::run` with `--only symlinks` in parallel dry-run mode
+/// must return `Ok(())`.
+#[test]
+fn install_run_dry_run_with_only_filter_parallel_returns_ok() {
+    use std::sync::Arc;
+
+    let ctx = common::TestContextBuilder::new().build();
+    let root_path = ctx.root_path().to_path_buf();
+    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
+
+    let global = dotfiles_cli::cli::GlobalOpts {
+        root: Some(root_path),
+        profile: Some("base".to_string()),
+        dry_run: true,
+        parallel: true,
+    };
+    let opts = dotfiles_cli::cli::InstallOpts {
+        skip: vec![],
+        only: vec!["symlinks".to_string()],
+    };
+    let log: Arc<dotfiles_cli::logging::Logger> =
+        Arc::new(dotfiles_cli::logging::Logger::new("test-only-parallel"));
+
+    let result = dotfiles_cli::commands::install::run(&global, &opts, &log);
+    assert!(
+        result.is_ok(),
+        "parallel dry-run with --only symlinks should return Ok: {result:?}"
+    );
+}
+
+/// Calling `install::run` with both `--skip` and `--only` simultaneously:
+/// `--only` takes precedence (only matching tasks run), `--skip` is ignored.
+#[test]
+fn install_run_dry_run_with_skip_and_only_together() {
+    use std::sync::Arc;
+
+    let ctx = common::TestContextBuilder::new().build();
+    let root_path = ctx.root_path().to_path_buf();
+    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
+
+    let global = dotfiles_cli::cli::GlobalOpts {
+        root: Some(root_path),
+        profile: Some("base".to_string()),
+        dry_run: true,
+        parallel: false,
+    };
+    // When --only is non-empty, --skip is ignored (--only takes precedence).
+    let opts = dotfiles_cli::cli::InstallOpts {
+        skip: vec!["symlinks".to_string()],
+        only: vec!["symlinks".to_string()],
+    };
+    let log: Arc<dotfiles_cli::logging::Logger> =
+        Arc::new(dotfiles_cli::logging::Logger::new("test-skip-and-only"));
+
+    let result = dotfiles_cli::commands::install::run(&global, &opts, &log);
+    assert!(
+        result.is_ok(),
+        "dry-run with --skip and --only should return Ok: {result:?}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Parallel execution: should_run with parallel enabled
 // ---------------------------------------------------------------------------
@@ -655,6 +810,7 @@ fn install_tasks_should_run_with_parallel_enabled() {
         ),
         executor,
         parallel: true,
+        is_ci: false,
     };
 
     let all_tasks = tasks::all_install_tasks();

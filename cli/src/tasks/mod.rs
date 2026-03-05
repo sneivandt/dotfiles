@@ -15,6 +15,7 @@ pub mod systemd_units;
 pub mod update;
 pub mod validation;
 pub mod vscode_extensions;
+pub mod wsl_conf;
 
 /// Implement [`Task::dependencies`] by expanding to the required
 /// `fn dependencies(&self) -> &[TypeId]` method body.
@@ -306,6 +307,7 @@ pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
         Box::new(registry::ApplyRegistry),
         Box::new(vscode_extensions::InstallVsCodeExtensions),
         Box::new(copilot_skills::InstallCopilotSkills),
+        Box::new(wsl_conf::InstallWslConf),
         Box::new(reload_config::ReloadConfig::new(repo_updated)),
     ]
 }
@@ -667,8 +669,8 @@ mod tests {
         let tasks = all_install_tasks();
         assert_eq!(
             tasks.len(),
-            17,
-            "expected 17 install tasks — did you add a new task without updating \
+            18,
+            "expected 18 install tasks — did you add a new task without updating \
              all_install_tasks()? Update the registration list and this test."
         );
     }

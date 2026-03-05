@@ -1,20 +1,28 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
     branches:
       - master
-    paths:
-      - 'cli/**'
-      - 'conf/**'
-      - 'Cargo.toml'
 
 permissions:
   contents: write
 
 jobs:
+  check-ci:
+    name: Check CI succeeded
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: CI passed
+        run: echo "CI workflow passed, proceeding with release."
+
   build-linux:
     name: Build Linux x86_64
+    needs: [check-ci]
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -53,6 +61,7 @@ jobs:
 
   build-windows:
     name: Build Windows x86_64
+    needs: [check-ci]
     runs-on: windows-latest
     steps:
       - name: Check out repository

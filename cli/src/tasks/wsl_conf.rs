@@ -14,8 +14,9 @@ const DESIRED_CONTENT: &str = "[network]\ngenerateResolvConf = true\n";
 
 /// Write /etc/wsl.conf with `generateResolvConf = true` under `[network]`.
 ///
-/// Only runs on Linux.  Writing /etc requires elevated privileges, so the
-/// file is staged to a temp path first and then copied into place via sudo.
+/// Only runs on Linux.  Writing /etc requires elevated privileges when not
+/// running as root, so the task first attempts a direct write and falls back
+/// to staging the file to a temp path and copying into place via sudo.
 #[derive(Debug)]
 pub struct InstallWslConf;
 
@@ -44,13 +45,22 @@ impl Task for InstallWslConf {
 
         ctx.log.info(&format!("writing {DESIRED_KEY} to {target}"));
 
-        // Write to a temp file, then copy into /etc/ with sudo.
-        let tmp = "/tmp/dotfiles-wsl.conf";
-        std::fs::write(tmp, DESIRED_CONTENT)
-            .map_err(|e| anyhow::anyhow!("failed to write temp file {tmp}: {e}"))?;
+        // Try a direct write first (works when running as root).  If that
+        // fails with a permission error, fall back to staging via a temp file
+        // and copying into place with sudo.
+        match std::fs::write(target, DESIRED_CONTENT) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                ctx.log.info("direct write failed, falling back to sudo");
+                let tmp = "/tmp/dotfiles-wsl.conf";
+                std::fs::write(tmp, DESIRED_CONTENT)
+                    .map_err(|e| anyhow::anyhow!("failed to write temp file {tmp}: {e}"))?;
 
-        ctx.executor.run("sudo", &["cp", tmp, target])?;
-        let _ = std::fs::remove_file(tmp);
+                ctx.executor.run("sudo", &["cp", tmp, target])?;
+                let _ = std::fs::remove_file(tmp);
+            }
+            Err(e) => return Err(anyhow::anyhow!("failed to write {target}: {e}")),
+        }
 
         Ok(TaskResult::Ok)
     }

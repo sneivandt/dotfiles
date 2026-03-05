@@ -8,7 +8,8 @@ set -o nounset
 # binary is present, then runs it. The binary handles its own updates.
 # --build: builds the Rust binary from source (requires cargo).
 #
-# All options except --build are forwarded verbatim to the dotfiles binary.
+# All options (including --build) are forwarded verbatim to the dotfiles binary.
+# The binary ignores the unknown --build flag.
 # Commonly used flags: --profile <name>, --dry-run.
 # Advanced flags (--skip, --only, --root, --no-parallel) require invoking
 # the binary directly.
@@ -27,24 +28,15 @@ RETRY_DELAY=2        # seconds between retries
 # dotfiles.ps1: $ConnectTimeout / $TransferTimeout / $RetryCount / $RetryDelay
 
 # --------------------------------------------------------------------------- #
-# Parse arguments — extract --build, pass everything else to the binary
+# Parse arguments — detect --build flag
 # --------------------------------------------------------------------------- #
 BUILD_MODE=false
-_has_args=false
 for arg in "$@"; do
   if [ "$arg" = "--build" ]; then
     BUILD_MODE=true
-  elif [ "$_has_args" = false ]; then
-    set -- "$arg"
-    _has_args=true
-  else
-    set -- "$@" "$arg"
+    break
   fi
 done
-if [ "$_has_args" = false ]; then
-  set --
-fi
-unset _has_args
 
 # --------------------------------------------------------------------------- #
 # Build mode: build from source and run

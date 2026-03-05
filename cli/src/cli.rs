@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "dotfiles",
     about = "Cross-platform dotfiles management engine",
-    version
+    version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
 )]
 pub struct Cli {
     /// Subcommand to execute.
@@ -37,7 +37,7 @@ pub struct GlobalOpts {
     #[arg(long, global = true)]
     pub root: Option<std::path::PathBuf>,
 
-    /// Whether parallel task execution is enabled (disabled by `--no-parallel`).
+    /// Disable parallel task execution
     #[arg(long = "no-parallel", global = true, action = clap::ArgAction::SetFalse)]
     pub parallel: bool,
 }

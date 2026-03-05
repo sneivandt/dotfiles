@@ -77,14 +77,13 @@ fn default_definitions() -> HashMap<String, ProfileDef> {
 /// Returns an error if the profile is not found or the profiles.toml file cannot be parsed.
 pub fn resolve(name: &str, conf_dir: &Path, platform: Platform) -> Result<Profile, ConfigError> {
     let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
-    let available = defs
-        .keys()
-        .map(String::as_str)
-        .collect::<Vec<_>>()
-        .join(", ");
-    let def = defs
-        .get(name)
-        .ok_or_else(|| ConfigError::InvalidProfile(format!("{name} (available: {available})")))?;
+    let mut available_names: Vec<&str> = defs.keys().map(String::as_str).collect();
+    available_names.sort_unstable();
+    let available = available_names.join(", ");
+    let def = defs.get(name).ok_or_else(|| ConfigError::InvalidProfile {
+        name: name.to_string(),
+        available: available.clone(),
+    })?;
 
     // Start with the profile's own include/exclude
     let mut active: Vec<Category> = vec![Category::Base];

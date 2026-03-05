@@ -3,6 +3,7 @@ use crate::engine::mode::ProcessOpts;
 use crate::engine::{
     TaskResult, TaskStats, process_resource_states, process_resources, process_resources_remove,
 };
+use crate::error::ResourceError;
 use crate::resources::{Applicable, Resource, ResourceChange, ResourceState};
 use crate::tasks::test_helpers::{empty_config, make_static_context};
 use std::path::PathBuf;
@@ -27,6 +28,11 @@ impl MockResource {
             remove_result: Ok(ResourceChange::Applied),
             desc: "mock resource".to_string(),
         }
+    }
+
+    fn with_desc(mut self, desc: impl Into<String>) -> Self {
+        self.desc = desc.into();
+        self
     }
 
     fn with_state_error(mut self, err: impl Into<String>) -> Self {
@@ -68,6 +74,46 @@ impl Resource for MockResource {
         self.state_result
             .clone()
             .map_err(|s| anyhow::anyhow!("{s}"))
+    }
+}
+
+/// A mock resource that returns a typed [`ResourceError`] from `apply()`.
+struct TypedErrorResource {
+    error_variant: &'static str,
+}
+
+impl Applicable for TypedErrorResource {
+    fn description(&self) -> String {
+        "typed-error resource".to_string()
+    }
+
+    fn apply(&self) -> anyhow::Result<ResourceChange> {
+        match self.error_variant {
+            "command_failed" => Err(ResourceError::CommandFailed {
+                program: "pacman".into(),
+                message: "exit code 1".into(),
+            }
+            .into()),
+            "permission_denied" => Err(ResourceError::PermissionDenied {
+                path: "/etc/secure".into(),
+            }
+            .into()),
+            "conflicting_state" => Err(ResourceError::ConflictingState {
+                resource: "test".into(),
+                expected: "a".into(),
+                actual: "b".into(),
+            }
+            .into()),
+            "not_supported" => Err(ResourceError::NotSupported {
+                reason: "linux only".into(),
+            }
+            .into()),
+            other => Err(anyhow::anyhow!("unknown error variant: {other}")),
+        }
+    }
+
+    fn remove(&self) -> anyhow::Result<ResourceChange> {
+        Ok(ResourceChange::Applied)
     }
 }
 
@@ -826,4 +872,337 @@ fn process_resource_states_parallel_no_bail_skips_errors() {
     let opts = default_opts(); // no_bail
     let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
     assert!(matches!(result, TaskResult::Ok));
+}
+
+// -----------------------------------------------------------------------
+// categorize_error — exercised via apply_resource with typed ResourceError
+// -----------------------------------------------------------------------
+
+#[test]
+fn apply_resource_command_failed_error_lenient_skips() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = TypedErrorResource {
+        error_variant: "command_failed",
+    };
+    let opts = default_opts();
+
+    let stats = apply::apply_resource(&ctx, &resource, &opts).unwrap();
+    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.changed, 0);
+}
+
+#[test]
+fn apply_resource_permission_denied_error_bail_propagates() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = TypedErrorResource {
+        error_variant: "permission_denied",
+    };
+    let opts = bail_opts();
+
+    let err = apply::apply_resource(&ctx, &resource, &opts);
+    assert!(err.is_err());
+    assert!(err.unwrap_err().to_string().contains("permission denied"));
+}
+
+#[test]
+fn apply_resource_conflicting_state_error_lenient_skips() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = TypedErrorResource {
+        error_variant: "conflicting_state",
+    };
+    let opts = default_opts();
+
+    let stats = apply::apply_resource(&ctx, &resource, &opts).unwrap();
+    assert_eq!(stats.skipped, 1);
+}
+
+#[test]
+fn apply_resource_not_supported_error_bail_propagates() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = TypedErrorResource {
+        error_variant: "not_supported",
+    };
+    let opts = bail_opts();
+
+    let err = apply::apply_resource(&ctx, &resource, &opts);
+    assert!(err.is_err());
+    assert!(err.unwrap_err().to_string().contains("not supported"));
+}
+
+// -----------------------------------------------------------------------
+// TaskStats AddAssign
+// -----------------------------------------------------------------------
+
+#[test]
+fn stats_add_assign_accumulates() {
+    let mut a = TaskStats {
+        changed: 1,
+        already_ok: 2,
+        skipped: 3,
+    };
+    let b = TaskStats {
+        changed: 10,
+        already_ok: 20,
+        skipped: 30,
+    };
+    a += b;
+    assert_eq!(a.changed, 11);
+    assert_eq!(a.already_ok, 22);
+    assert_eq!(a.skipped, 33);
+}
+
+// -----------------------------------------------------------------------
+// process_resource_states — empty list
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resource_states_empty_list() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource_states: Vec<(MockResource, ResourceState)> = vec![];
+    let opts = default_opts();
+
+    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    assert!(matches!(result, TaskResult::Ok));
+}
+
+// -----------------------------------------------------------------------
+// process_resources_remove — empty list
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resources_remove_empty_list() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resources: Vec<MockResource> = vec![];
+
+    let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
+    assert!(matches!(result, TaskResult::Ok));
+}
+
+// -----------------------------------------------------------------------
+// process_resource_states — bail on error
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resource_states_bail_on_error_propagates() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource_states = vec![(
+        MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
+        ResourceState::Missing,
+    )];
+    let opts = bail_opts();
+
+    let result = process_resource_states(&ctx, resource_states, &opts);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("fatal"));
+}
+
+// -----------------------------------------------------------------------
+// process_resource_states — lenient error skipping
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resource_states_lenient_skips_errors() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource_states = vec![
+        (
+            MockResource::new(ResourceState::Missing).with_apply(Err("oops".into())),
+            ResourceState::Missing,
+        ),
+        (
+            MockResource::new(ResourceState::Correct),
+            ResourceState::Correct,
+        ),
+    ];
+    let opts = default_opts();
+
+    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    assert!(matches!(result, TaskResult::Ok));
+}
+
+// -----------------------------------------------------------------------
+// process_resources — lenient error skipping at orchestration level
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resources_lenient_skips_apply_errors() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resources = vec![
+        MockResource::new(ResourceState::Missing).with_apply(Err("oops".into())),
+        MockResource::new(ResourceState::Correct),
+    ];
+    let opts = default_opts();
+
+    let result = process_resources(&ctx, resources, &opts).unwrap();
+    assert!(matches!(result, TaskResult::Ok));
+}
+
+// -----------------------------------------------------------------------
+// Parallel — process_resource_states bail on error
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resource_states_parallel_bail_on_error_propagates() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = parallel_context(config);
+    let resource_states = vec![
+        (
+            MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
+            ResourceState::Missing,
+        ),
+        (
+            MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
+            ResourceState::Missing,
+        ),
+    ];
+    let opts = bail_opts();
+
+    let result = process_resource_states(&ctx, resource_states, &opts);
+    assert!(result.is_err());
+}
+
+// -----------------------------------------------------------------------
+// Parallel — process_resources_remove with state error
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resources_remove_parallel_state_error_propagates() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = parallel_context(config);
+    let resources = vec![
+        MockResource::new(ResourceState::Correct).with_state_error("state failed"),
+        MockResource::new(ResourceState::Correct).with_state_error("state failed"),
+    ];
+
+    let result = process_resources_remove(&ctx, resources, "unlink");
+    assert!(result.is_err());
+}
+
+// -----------------------------------------------------------------------
+// Parallel — process_resources with state error
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resources_parallel_state_error_propagates() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = parallel_context(config);
+    let resources = vec![
+        MockResource::new(ResourceState::Correct).with_state_error("state failed"),
+        MockResource::new(ResourceState::Correct).with_state_error("state failed"),
+    ];
+    let opts = default_opts();
+
+    let result = process_resources(&ctx, resources, &opts);
+    assert!(result.is_err());
+}
+
+// -----------------------------------------------------------------------
+// process_resources_remove — all missing (nothing to remove)
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resources_remove_all_missing_skips_silently() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resources = vec![
+        MockResource::new(ResourceState::Missing),
+        MockResource::new(ResourceState::Incorrect {
+            current: "other".to_string(),
+        }),
+        MockResource::new(ResourceState::Invalid {
+            reason: "bad".to_string(),
+        }),
+    ];
+
+    let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
+    assert!(matches!(result, TaskResult::Ok));
+}
+
+// -----------------------------------------------------------------------
+// process_resources_remove — error during remove propagates
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resources_remove_error_propagates() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resources =
+        vec![MockResource::new(ResourceState::Correct).with_remove(Err("rm failed".into()))];
+
+    let result = process_resources_remove(&ctx, resources, "unlink");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("rm failed"));
+}
+
+// -----------------------------------------------------------------------
+// Resource description propagation
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_single_uses_resource_description() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = MockResource::new(ResourceState::Missing).with_desc("custom desc");
+    let opts = default_opts();
+
+    // Should succeed — verifies description doesn't interfere with processing
+    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
+    assert_eq!(stats.changed, 1);
+}
+
+// -----------------------------------------------------------------------
+// process_resource_states — dry-run
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resource_states_dry_run() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = dry_run_context(config);
+    let resource_states = vec![
+        (
+            MockResource::new(ResourceState::Missing).with_apply(Err("should not call".into())),
+            ResourceState::Missing,
+        ),
+        (
+            MockResource::new(ResourceState::Correct),
+            ResourceState::Correct,
+        ),
+    ];
+    let opts = default_opts();
+
+    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    assert!(matches!(result, TaskResult::DryRun));
+}
+
+// -----------------------------------------------------------------------
+// process_resource_states — parallel dry-run
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resource_states_parallel_dry_run() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (mut ctx, _log) = parallel_context(config);
+    ctx = ctx.with_dry_run(true);
+    let resource_states = vec![
+        (
+            MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
+            ResourceState::Missing,
+        ),
+        (
+            MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
+            ResourceState::Missing,
+        ),
+    ];
+    let opts = default_opts();
+
+    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    assert!(matches!(result, TaskResult::DryRun));
 }

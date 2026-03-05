@@ -68,8 +68,13 @@ pub enum ConfigError {
     /// The requested profile name is not defined in `profiles.toml`.
     ///
     /// Valid profiles are defined in `conf/profiles.toml`.
-    #[error("Invalid profile '{0}'")]
-    InvalidProfile(String),
+    #[error("Invalid profile '{name}' (available: {available})")]
+    InvalidProfile {
+        /// The profile name that was requested.
+        name: String,
+        /// Comma-separated list of valid profile names.
+        available: String,
+    },
 
     /// The TOML file contains a syntax error that prevents parsing.
     #[error("Invalid TOML syntax in {path}: {source}")]
@@ -102,8 +107,14 @@ mod tests {
 
     #[test]
     fn config_error_invalid_profile_display() {
-        let e = ConfigError::InvalidProfile("unknown".to_string());
-        assert_eq!(e.to_string(), "Invalid profile 'unknown'");
+        let e = ConfigError::InvalidProfile {
+            name: "unknown".to_string(),
+            available: "base, desktop".to_string(),
+        };
+        assert_eq!(
+            e.to_string(),
+            "Invalid profile 'unknown' (available: base, desktop)"
+        );
     }
 
     #[test]
@@ -132,7 +143,10 @@ mod tests {
 
     #[test]
     fn config_error_converts_to_anyhow() {
-        let e = ConfigError::InvalidProfile("bad".to_string());
+        let e = ConfigError::InvalidProfile {
+            name: "bad".to_string(),
+            available: "base, desktop".to_string(),
+        };
         let _anyhow_err: anyhow::Error = e.into();
     }
 

@@ -68,3 +68,23 @@ cd cli && cargo fmt --check && cargo clippy --all-targets -- -D warnings && carg
 - User guides, procedures, or troubleshooting → a doc in `docs/`
 
 When in doubt, check skills for technical patterns and docs for procedures.
+
+### Creating New Skills
+
+Skills live in `.github/skills/<skill-name>/SKILL.md`. Every `SKILL.md` starts with YAML frontmatter:
+
+```yaml
+---
+name: skill-name          # kebab-case, must match directory name
+description: >
+  Brief description of what it covers and when to use it.
+metadata:
+  author: sneivandt
+  version: "1.0"
+---
+```
+
+Create a skill when the topic is complex, repeated, or has common pitfalls. Structure:
+overview, core content with headings, code examples from the codebase, rules, and cross-references.
+Aim for under 100 lines (longer is acceptable for complex topics). Write in terms of current state —
+never describe something as "new" or "changed".

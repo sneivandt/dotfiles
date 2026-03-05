@@ -2,8 +2,8 @@
 name: rust-patterns
 description: >
   Rust implementation patterns for the dotfiles core engine: Task trait, Resource
-  trait, Executor, Context, Platform, and ProcessOpts. Use when creating or modifying
-  Rust code in cli/src/. For doc comment conventions, see the rust-docs skill.
+  trait, Executor, Context, Platform, ProcessOpts, and documentation conventions.
+  Use when creating or modifying Rust code in cli/src/.
 metadata:
   author: sneivandt
   version: "2.0"
@@ -518,4 +518,40 @@ execution deterministic.
 - Guard tools with `executor.which()`; return `TaskResult::Skipped(reason)` when not applicable
 - Pass `&*ctx.executor` (deref coercion) to resource constructors and batch query functions — never call `exec::*` free functions directly from tasks or resources
 - Add `#[cfg(test)] mod tests` to every module; use `Platform::new()` in tests
-- See the **rust-docs** skill for documentation conventions (`///`, `# Errors`, `#[must_use]`)
+
+## Documentation Conventions
+
+All public items (modules, structs, enums, traits, functions) require `///` doc comments.
+
+### Standard Sections (in order)
+
+1. **Main description** (first, no header) — brief summary
+2. **`# Examples`** — code examples (compiled as doctests unless annotated)
+3. **`# Errors`** — **required** for all functions returning `Result<T>`
+4. **`# Panics`** — document panic conditions
+5. **`# Safety`** — required for `unsafe` functions
+
+### Example Annotations
+
+| Annotation | When to use |
+|---|---|
+| *(none)* | Rust code — compiled and tested as doctests |
+| `` `ignore `` | Conceptual examples or pseudo-code |
+| `` `ini `` / `` `bash `` / `` `text `` | Non-Rust code |
+
+### `#[must_use]`
+
+Apply on boolean queries (`is_*`, `has_*`, `supports_*`), constructors returning
+`Self`, and pure functions:
+
+```rust
+#[must_use]
+pub const fn supports_systemd(&self) -> bool {
+    self.os == Os::Linux
+}
+```
+
+### Structs, Enums, and Traits
+
+Document all public fields, enum variants, and trait methods. Include `# Errors`
+on every public function returning `Result<T>`.

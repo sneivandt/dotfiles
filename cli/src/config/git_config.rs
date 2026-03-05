@@ -27,12 +27,13 @@ struct GitConfigSection {
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<GitSetting>> {
-    let items = toml_loader::load_section_items(path, |s: GitConfigSection| s.settings)?;
-    Ok(toml_loader::filter_by_categories(
-        items,
+    toml_loader::load_filtered(
+        path,
+        |s: GitConfigSection| s.settings,
+        |e| e,
         active_categories,
         MatchMode::All,
-    ))
+    )
 }
 
 #[cfg(test)]

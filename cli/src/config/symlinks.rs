@@ -39,14 +39,10 @@ struct SymlinkSection {
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Symlink>> {
-    let items = toml_loader::load_section_items(path, |s: SymlinkSection| s.symlinks)?;
-
-    let entries: Vec<SymlinkEntry> =
-        toml_loader::filter_by_categories(items, active_categories, MatchMode::All);
-
-    Ok(entries
-        .into_iter()
-        .map(|entry| match entry {
+    toml_loader::load_filtered(
+        path,
+        |s: SymlinkSection| s.symlinks,
+        |entry| match entry {
             SymlinkEntry::Simple(source) => Symlink {
                 source,
                 target: None,
@@ -55,8 +51,10 @@ pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Symlink>>
                 source,
                 target: Some(target),
             },
-        })
-        .collect())
+        },
+        active_categories,
+        MatchMode::All,
+    )
 }
 
 /// Validate symlink entries and return any warnings.

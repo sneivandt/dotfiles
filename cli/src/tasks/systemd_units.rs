@@ -1,41 +1,30 @@
 //! Task: configure systemd user units.
-use anyhow::Result;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};
+use super::{ProcessOpts, resource_task};
 use crate::resources::systemd_unit::SystemdUnitResource;
 
-/// Enable and start systemd user units.
-#[derive(Debug)]
-pub struct ConfigureSystemd;
-
-impl Task for ConfigureSystemd {
-    fn name(&self) -> &'static str {
-        "Configure systemd units"
-    }
-
-    task_deps![super::symlinks::InstallSymlinks];
-
-    fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.supports_systemd()
-            && !ctx.config_read().units.is_empty()
-            && ctx.executor.which("systemctl")
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        // Reload systemd daemon once before processing (idempotent and fast)
-        if !ctx.dry_run {
-            ctx.log.debug("running systemctl --user daemon-reload");
-            match ctx.executor.run("systemctl", &["--user", "daemon-reload"]) {
-                Ok(_) => ctx.log.debug("daemon-reload succeeded"),
-                Err(e) => ctx.log.debug(&format!("daemon-reload failed: {e}")),
+resource_task! {
+    /// Enable and start systemd user units.
+    pub ConfigureSystemd {
+        name: "Configure systemd units",
+        deps: [super::symlinks::InstallSymlinks],
+        guard: |ctx| {
+            ctx.platform.supports_systemd()
+                && !ctx.config_read().units.is_empty()
+                && ctx.executor.which("systemctl")
+        },
+        setup: |ctx| {
+            if !ctx.dry_run {
+                ctx.log.debug("running systemctl --user daemon-reload");
+                match ctx.executor.run("systemctl", &["--user", "daemon-reload"]) {
+                    Ok(_) => ctx.log.debug("daemon-reload succeeded"),
+                    Err(e) => ctx.log.debug(&format!("daemon-reload failed: {e}")),
+                }
             }
-        }
-
-        let units: Vec<_> = ctx.config_read().units.clone();
-        let resources = units
-            .iter()
-            .map(|entry| SystemdUnitResource::from_entry(entry, &*ctx.executor));
-        process_resources(ctx, resources, &ProcessOpts::install_missing("enable"))
+        },
+        items: |ctx| ctx.config_read().units.clone(),
+        build: |entry, ctx| SystemdUnitResource::from_entry(&entry, &*ctx.executor),
+        opts: ProcessOpts::install_missing("enable"),
     }
 }
 
@@ -49,6 +38,7 @@ mod tests {
     use crate::tasks::test_helpers::{
         empty_config, make_context, make_linux_context, make_platform_context_with_which,
     };
+    use crate::tasks::{Context, Task, TaskResult};
     use std::path::PathBuf;
     use std::sync::Arc;
 

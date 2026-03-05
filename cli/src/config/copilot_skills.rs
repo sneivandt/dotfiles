@@ -26,12 +26,13 @@ struct SkillSection {
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<CopilotSkill>> {
-    let items = toml_loader::load_section_items(path, |s: SkillSection| s.skills)?;
-
-    let urls: Vec<String> =
-        toml_loader::filter_by_categories(items, active_categories, MatchMode::All);
-
-    Ok(urls.into_iter().map(|url| CopilotSkill { url }).collect())
+    toml_loader::load_filtered(
+        path,
+        |s: SkillSection| s.skills,
+        |url| CopilotSkill { url },
+        active_categories,
+        MatchMode::All,
+    )
 }
 
 /// Validate Copilot skill entries and return any warnings.

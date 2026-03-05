@@ -39,21 +39,19 @@ struct SystemdSection {
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<SystemdUnit>> {
-    let items = toml_loader::load_section_items(path, |s: SystemdSection| s.units)?;
-
-    let entries: Vec<UnitEntry> =
-        toml_loader::filter_by_categories(items, active_categories, MatchMode::All);
-
-    Ok(entries
-        .into_iter()
-        .map(|entry| match entry {
+    toml_loader::load_filtered(
+        path,
+        |s: SystemdSection| s.units,
+        |entry| match entry {
             UnitEntry::Simple(name) => SystemdUnit {
                 name,
                 scope: "user".to_string(),
             },
             UnitEntry::WithScope { name, scope } => SystemdUnit { name, scope },
-        })
-        .collect())
+        },
+        active_categories,
+        MatchMode::All,
+    )
 }
 
 /// Valid systemd unit file extensions.

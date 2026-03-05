@@ -1,29 +1,16 @@
 //! Task: enable Windows Developer Mode.
-use anyhow::Result;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
+use super::{ProcessOpts, resource_task};
 use crate::resources::developer_mode::DeveloperModeResource;
 
-/// Enable Windows Developer Mode (allows symlink creation without admin).
-#[derive(Debug)]
-pub struct EnableDeveloperMode;
-
-impl Task for EnableDeveloperMode {
-    fn name(&self) -> &'static str {
-        "Enable developer mode"
-    }
-
-    fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_windows()
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resource = DeveloperModeResource::new();
-        process_resources(
-            ctx,
-            std::iter::once(resource),
-            &ProcessOpts::lenient("enable"),
-        )
+resource_task! {
+    /// Enable Windows Developer Mode (allows symlink creation without admin).
+    pub EnableDeveloperMode {
+        name: "Enable developer mode",
+        guard: |ctx| ctx.platform.is_windows(),
+        items: |_ctx| vec![()],
+        build: |_unit, _ctx| DeveloperModeResource::new(),
+        opts: ProcessOpts::lenient("enable"),
     }
 }
 
@@ -31,6 +18,7 @@ impl Task for EnableDeveloperMode {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::tasks::Task;
     use crate::tasks::test_helpers::{empty_config, make_linux_context, make_windows_context};
     use std::path::PathBuf;
 

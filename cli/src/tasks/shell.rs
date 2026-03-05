@@ -1,34 +1,22 @@
 //! Task: configure the login shell.
-use anyhow::Result;
+
 use std::sync::Arc;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources, task_deps};
+use super::{ProcessOpts, resource_task};
 use crate::resources::shell::DefaultShellResource;
 
-/// Configure the default shell to zsh.
-#[derive(Debug)]
-pub struct ConfigureShell;
-
-impl Task for ConfigureShell {
-    fn name(&self) -> &'static str {
-        "Configure default shell"
-    }
-
-    task_deps![super::packages::InstallPackages];
-
-    fn should_run(&self, ctx: &Context) -> bool {
-        // Skip in CI environments where chsh requires authentication
-        let is_ci = std::env::var("CI").is_ok();
-        ctx.platform.is_linux() && ctx.executor.which("zsh") && !is_ci
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&ctx.executor));
-        process_resources(
-            ctx,
-            std::iter::once(resource),
-            &ProcessOpts::strict("configure"),
-        )
+resource_task! {
+    /// Configure the default shell to zsh.
+    pub ConfigureShell {
+        name: "Configure default shell",
+        deps: [super::packages::InstallPackages],
+        guard: |ctx| {
+            let is_ci = std::env::var("CI").is_ok();
+            ctx.platform.is_linux() && ctx.executor.which("zsh") && !is_ci
+        },
+        items: |_ctx| vec![()],
+        build: |_unit, ctx| DefaultShellResource::new("zsh".to_string(), Arc::clone(&ctx.executor)),
+        opts: ProcessOpts::strict("configure"),
     }
 }
 
@@ -38,6 +26,7 @@ impl Task for ConfigureShell {
 mod tests {
     use super::*;
     use crate::platform::Os;
+    use crate::tasks::Task;
     use crate::tasks::test_helpers::{
         empty_config, make_linux_context, make_platform_context_with_which,
     };

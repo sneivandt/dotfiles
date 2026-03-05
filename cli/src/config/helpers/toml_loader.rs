@@ -52,6 +52,30 @@ where
     Ok(config.into_iter().map(|(k, v)| (k, extract(v))).collect())
 }
 
+/// Load, filter, and map TOML section items in a single step.
+///
+/// Combines [`load_section_items`] and [`filter_by_categories`], then maps
+/// each surviving entry through `map`.  This eliminates the repeated
+/// three-step pattern found in most config loaders.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read or parsed.
+pub fn load_filtered<S, E, T>(
+    path: &Path,
+    extract: impl Fn(S) -> Vec<E>,
+    map: impl Fn(E) -> T,
+    active_categories: &[Category],
+    mode: MatchMode,
+) -> Result<Vec<T>>
+where
+    S: DeserializeOwned,
+{
+    let items = load_section_items(path, extract)?;
+    let entries = filter_by_categories(items, active_categories, mode);
+    Ok(entries.into_iter().map(map).collect())
+}
+
 /// Filter items from a TOML table by category matching.
 ///
 /// This is a helper for config types that need category-based filtering.

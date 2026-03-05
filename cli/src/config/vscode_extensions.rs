@@ -26,12 +26,13 @@ struct ExtensionSection {
 ///
 /// Returns an error if the file cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<VsCodeExtension>> {
-    let items = toml_loader::load_section_items(path, |s: ExtensionSection| s.extensions)?;
-
-    let ids: Vec<String> =
-        toml_loader::filter_by_categories(items, active_categories, MatchMode::All);
-
-    Ok(ids.into_iter().map(|id| VsCodeExtension { id }).collect())
+    toml_loader::load_filtered(
+        path,
+        |s: ExtensionSection| s.extensions,
+        |id| VsCodeExtension { id },
+        active_categories,
+        MatchMode::All,
+    )
 }
 
 /// Validate VS Code extension entries and return any warnings.

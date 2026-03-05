@@ -24,20 +24,28 @@ import qualified Data.Set as S
 import Control.Monad (forM_, unless, when)
 import Graphics.X11.Xlib.Extras
 import Data.List (isInfixOf)
+import Data.Maybe (fromMaybe)
+import System.IO (Handle)
 -- }}}
 -- Startup ---------------------------------------------------------------- {{{
+myStartupHook :: X ()
 myStartupHook = do
   spawn "autocutsel -fork -selection CLIPBOARD"
   spawn "autocutsel -fork -selection PRIMARY"
   refresh
 -- }}}
 -- Theme ------------------------------------------------------------------ {{{
+myBorderWidth :: Dimension
 myBorderWidth        = 3
+myNormalBorderColor :: String
 myNormalBorderColor  = "#1a1a1a"
+myFocusedBorderColor :: String
 myFocusedBorderColor = "#61afef"
+myPinnedBorderColor :: String
 myPinnedBorderColor  = "#b48ead"
 -- }}}
 -- Main ------------------------------------------------------------------- {{{
+main :: IO ()
 main = do
   wsBar <- spawnPipe myWsBar
   xmonad
@@ -65,18 +73,19 @@ myLayoutHook = avoidStruts
              $ mkToggle (single REFLECTX)
              $ mkToggle (single REFLECTY)
              $ mkToggle (single MIRROR)
-             $ lMas ||| lGrd ||| lTal
+             $ master ||| grid ||| tall
                where
-                 gap  = 4
-                 spc  = spacingRaw True (Border gap gap gap gap) True (Border gap gap gap gap) True
-                 inc  = 1/100
-                 asp  = 16/9
-                 grto = toRational $ 2/(1 + sqrt 5)
-                 lMas = named "Master"   $ spc $ Tall 1 inc grto
-                 lGrd = named "Grid"     $ spc $ GridRatio asp
-                 lTal = named "Tall"     $ spc $ Mirror $ Tall 0 inc grto
+                 gap    = 4
+                 gaps   = spacingRaw True (Border gap gap gap gap) True (Border gap gap gap gap) True
+                 delta  = 1/100
+                 aspect = 16/9
+                 ratio  = 3/4
+                 master = named "Master" $ gaps $ Tall 1 delta ratio
+                 grid   = named "Grid"   $ gaps $ GridRatio aspect
+                 tall   = named "Tall"   $ gaps $ Mirror $ Tall 0 delta ratio
 -- }}}
 -- Scratchpads ------------------------------------------------------------ {{{
+scratchpads :: [NamedScratchpad]
 scratchpads = [ NS "terminal" spawnTerm findTerm manageTerm ]
   where
     spawnTerm  = "$XDG_CONFIG_HOME/xmonad/scripts/choose-term.sh --class scratchpad"
@@ -89,6 +98,7 @@ scratchpads = [ NS "terminal" spawnTerm findTerm manageTerm ]
         l = 0.95 - w
 -- }}}
 -- Key Bindings ----------------------------------------------------------- {{{
+myKeys :: [(String, X ())]
 myKeys =
   [
     -- Launcher
@@ -125,24 +135,33 @@ myKeys =
   ++ [("M-" ++ show n, switchWorkspace (show n)) | n <- [1..9 :: Int]]
 -- }}}
 -- Xmobar ----------------------------------------------------------------- {{{
-myLogHook h = dynamicLogWithPP (wsPP { ppOutput = hPutStrLn h }) >> pinLogHook >> pinBorderHook >> atomHook
-myWsBar     = "xmobar $XDG_CONFIG_HOME/xmonad/xmobar.hs"
-wsPP        = xmobarPP
-              { ppTitle   = shorten 64
-              , ppCurrent = \_ -> wrap "<fn=2>" "</fn>" "\xf111"
-              , ppHidden  = \_ -> wrap "<fn=1>" "</fn>" "\xf111"
-              , ppLayout  = \x -> if "Full" `isInfixOf` x
-                                    then "<fn=2><fc=#ff5555>\xf2d0</fc></fn>"
-                                    else case x of
-                                      "Master" -> "<fn=2>\xf0c9</fn>"
-                                      "Tall"   -> "<fn=2>\xf0db</fn>"
-                                      "Grid"   -> "<fn=2>\xf00a</fn>"
-                                      _        -> x
-              , ppSep     = "   "
-              , ppWsSep   = " "
-              }
+myLogHook :: Handle -> X ()
+myLogHook h = do
+  dynamicLogWithPP (wsPP { ppOutput = hPutStrLn h })
+  pinLogHook
+  pinBorderHook
+  atomHook
+
+myWsBar :: String
+myWsBar = "xmobar $XDG_CONFIG_HOME/xmonad/xmobar.hs"
+
+wsPP :: PP
+wsPP = xmobarPP
+  { ppTitle   = shorten 64
+  , ppCurrent = \_ -> wrap "<fn=2>" "</fn>" "\xf111"
+  , ppHidden  = \_ -> wrap "<fn=1>" "</fn>" "\xf111"
+  , ppLayout  = \x -> if "Full" `isInfixOf` x
+                        then "<fn=2><fc=#ff5555>\xf2d0</fc></fn>"
+                        else case x of
+                          "Master" -> "<fn=2>\xf0c9</fn>"
+                          "Tall"   -> "<fn=2>\xf0db</fn>"
+                          "Grid"   -> "<fn=2>\xf00a</fn>"
+                          _        -> x
+  , ppSep     = "   "
+  , ppWsSep   = " "
+  }
 -- }}}
--- Pinned Windows
+-- Pinned Windows --------------------------------------------------------- {{{
 
 -- | Switch workspace and move pinned windows in a single atomic operation
 -- to avoid a double-render (which causes visible resize jumps).
@@ -167,11 +186,9 @@ instance ExtensionClass PinnedWindows where
   initialValue = PinnedWindows S.empty
 
 togglePin :: X ()
-togglePin = withFocused $ \w -> do
-  PinnedWindows pinned <- XS.get
-  if S.member w pinned
-    then XS.put (PinnedWindows (S.delete w pinned))
-    else XS.put (PinnedWindows (S.insert w pinned))
+togglePin = withFocused $ \w ->
+  XS.modify $ \(PinnedWindows s) ->
+    PinnedWindows $ if S.member w s then S.delete w s else S.insert w s
 
 unpin :: Window -> X ()
 unpin w = XS.modify $ \(PinnedWindows s) -> PinnedWindows (S.delete w s)
@@ -181,13 +198,10 @@ pinBorderHook = do
   PinnedWindows pinned <- XS.get
   ws <- gets windowset
   let focused = W.peek ws
-      nbc = myNormalBorderColor
-      fbc = myFocusedBorderColor
-      pbc = myPinnedBorderColor
   withDisplay $ \dpy -> do
-    Just pinnedPixel <- io $ initColor dpy pbc
-    Just normalPixel <- io $ initColor dpy nbc
-    Just focusPixel  <- io $ initColor dpy fbc
+    pinnedPixel <- fromMaybe 0 <$> io (initColor dpy myPinnedBorderColor)
+    normalPixel <- fromMaybe 0 <$> io (initColor dpy myNormalBorderColor)
+    focusPixel  <- fromMaybe 0 <$> io (initColor dpy myFocusedBorderColor)
     forM_ (W.index ws) $ \w ->
       let color
             | Just w == focused = focusPixel

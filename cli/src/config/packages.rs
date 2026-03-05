@@ -39,14 +39,10 @@ struct PackageSection {
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Package>> {
-    let items = toml_loader::load_section_items(path, |s: PackageSection| s.packages)?;
-
-    let entries: Vec<PackageEntry> =
-        toml_loader::filter_by_categories(items, active_categories, MatchMode::All);
-
-    Ok(entries
-        .into_iter()
-        .map(|entry| match entry {
+    toml_loader::load_filtered(
+        path,
+        |s: PackageSection| s.packages,
+        |entry| match entry {
             PackageEntry::Simple(name) => Package {
                 name,
                 is_aur: false,
@@ -55,8 +51,10 @@ pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Package>>
                 name,
                 is_aur: aur.unwrap_or(false),
             },
-        })
-        .collect())
+        },
+        active_categories,
+        MatchMode::All,
+    )
 }
 
 /// Validate package entries and return any warnings.

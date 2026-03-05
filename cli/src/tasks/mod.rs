@@ -63,6 +63,7 @@ pub(crate) use task_deps;
 ///         name: "Human-readable task name",
 ///         deps: [DepType1, DepType2],          // optional
 ///         guard: |ctx| bool_expr,              // optional platform/tool guard
+///         setup: |ctx| { side_effects(); },    // optional pre-processing
 ///         items: |ctx| ctx.config_read().field.clone(),
 ///         build: |item, ctx| Resource::from(&item, &ctx.home),
 ///         opts: ProcessOpts::strict("verb"),
@@ -72,8 +73,9 @@ pub(crate) use task_deps;
 ///
 /// The generated struct implements `Task` with:
 /// - `should_run` returning `false` when the guard fails or items are empty
-/// - `run` cloning the config items, mapping each to a resource via `build`,
-///   and delegating to [`process_resources`]
+/// - `run` optionally running a setup block, cloning the config items,
+///   mapping each to a resource via `build`, and delegating to
+///   [`process_resources`]
 macro_rules! resource_task {
     (
         $(#[$meta:meta])*
@@ -81,6 +83,7 @@ macro_rules! resource_task {
             name: $task_name:expr,
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
+            $(setup: |$setup_ctx:ident| $setup_expr:expr,)?
             items: |$items_ctx:ident| $items_expr:expr,
             build: |$item:ident, $build_ctx:ident| $build_expr:expr,
             opts: $opts:expr $(,)?
@@ -107,6 +110,10 @@ macro_rules! resource_task {
             }
 
             fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
+                $(
+                    let $setup_ctx = ctx;
+                    { $setup_expr }
+                )?
                 let $items_ctx = ctx;
                 let items: Vec<_> = { $items_expr };
                 let resources = items.into_iter().map(|$item| {

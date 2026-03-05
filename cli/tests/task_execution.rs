@@ -105,7 +105,7 @@ fn symlinks_uninstall_materialises_content() {
     let ec = test.make_context("base");
 
     // Install first
-    InstallSymlinks.run(&ec.ctx).unwrap();
+    let _ = InstallSymlinks.run(&ec.ctx).unwrap();
     assert!(
         ec.ctx
             .home
@@ -329,7 +329,7 @@ fn chmod_is_idempotent() {
     std::fs::write(&target, "Host *\n").unwrap();
 
     let task = dotfiles_cli::tasks::chmod::ApplyFilePermissions;
-    task.run(&ec.ctx).unwrap();
+    let _ = task.run(&ec.ctx).unwrap();
     let second = task.run(&ec.ctx).unwrap();
     assert!(matches!(second, TaskResult::Ok));
 

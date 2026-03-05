@@ -66,21 +66,62 @@ pub(super) fn log_file_path(command: &str) -> Option<PathBuf> {
     Some(dotfiles_cache_dir()?.join(format!("{command}.log")))
 }
 
+/// Decompose seconds since the Unix epoch into `(year, month, day, hour, min, sec)`.
+///
+/// Uses Howard Hinnant's civil-from-days algorithm.
+#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+fn civil_from_epoch_secs(epoch_secs: u64) -> (i32, u32, u32, u32, u32, u32) {
+    let day_secs = (epoch_secs % 86_400) as u32;
+    let hour = day_secs / 3600;
+    let min = (day_secs % 3600) / 60;
+    let sec = day_secs % 60;
+
+    let z = (epoch_secs / 86_400) as i64 + 719_468;
+    let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
+    let doe = (z - era * 146_097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = i64::from(yoe) + era * 400 + i64::from(m <= 2);
+
+    (y as i32, m, d, hour, min, sec)
+}
+
 /// Format the current UTC time as `YYYY-MM-DDTHH:MM:SS.ffffffZ` (microsecond precision).
 pub(super) fn format_utc_datetime_us() -> String {
-    chrono::Utc::now()
-        .format("%Y-%m-%dT%H:%M:%S%.6fZ")
-        .to_string()
+    let dur = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let (y, mo, d, h, mi, s) = civil_from_epoch_secs(dur.as_secs());
+    format!(
+        "{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}.{:06}Z",
+        dur.subsec_micros()
+    )
 }
 
 /// Format the current UTC time as `YYYY-MM-DD HH:MM:SS`.
 pub(super) fn format_utc_datetime() -> String {
-    chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let (y, mo, d, h, mi, s) = civil_from_epoch_secs(secs);
+    format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{s:02}")
 }
 
 /// Format the current UTC time as `HH:MM:SS`.
 pub(super) fn format_utc_time() -> String {
-    chrono::Utc::now().format("%H:%M:%S").to_string()
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let day_secs = secs % 86_400;
+    let h = day_secs / 3600;
+    let m = (day_secs % 3600) / 60;
+    let s = day_secs % 60;
+    format!("{h:02}:{m:02}:{s:02}")
 }
 
 #[cfg(test)]

@@ -240,7 +240,7 @@ fn hooks_uninstall_removes_installed_hook() {
         .build();
 
     let ec = test.make_context("base");
-    InstallGitHooks::new().run(&ec.ctx).unwrap();
+    let _ = InstallGitHooks::new().run(&ec.ctx).unwrap();
     assert!(test.root_path().join(".git/hooks/pre-commit").exists());
 
     let result = UninstallGitHooks::new().run(&ec.ctx).unwrap();
@@ -261,7 +261,7 @@ fn hooks_install_skips_data_files_with_extensions() {
         .build();
 
     let ec = test.make_context("base");
-    InstallGitHooks::new().run(&ec.ctx).unwrap();
+    let _ = InstallGitHooks::new().run(&ec.ctx).unwrap();
 
     assert!(
         test.root_path().join(".git/hooks/pre-commit").exists(),

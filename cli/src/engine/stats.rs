@@ -18,6 +18,7 @@ use super::context::Context;
 /// assert!(matches!(dry, TaskResult::DryRun));
 /// ```
 #[derive(Debug, Clone)]
+#[must_use]
 pub enum TaskResult {
     /// Task completed successfully.
     Ok,
@@ -105,7 +106,6 @@ impl TaskStats {
     }
 
     /// Log the summary and return the appropriate `TaskResult`.
-    #[must_use]
     pub fn finish(self, ctx: &Context) -> TaskResult {
         ctx.log.info(&self.summary(ctx.dry_run));
         if ctx.dry_run {

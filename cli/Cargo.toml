@@ -13,7 +13,6 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
-chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 thiserror = "2"
 enable-ansi-support = "0.2"

@@ -255,54 +255,12 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
 /// scheduler unit tests.
 #[test]
 fn install_tasks_form_acyclic_dependency_graph() {
-    use std::collections::HashMap;
+    use dotfiles_cli::engine::graph::has_cycle;
 
     let tasks = tasks::all_install_tasks();
-    let type_to_idx: HashMap<TypeId, usize> = tasks
-        .iter()
-        .enumerate()
-        .map(|(i, t)| (t.task_id(), i))
-        .collect();
-
-    let mut in_degree: Vec<usize> = tasks
-        .iter()
-        .map(|t| {
-            t.dependencies()
-                .iter()
-                .filter(|d| type_to_idx.contains_key(d))
-                .count()
-        })
-        .collect();
-
-    let mut reverse_deps: Vec<Vec<usize>> = vec![Vec::new(); tasks.len()];
-    for (i, t) in tasks.iter().enumerate() {
-        for dep in t.dependencies() {
-            if let Some(&dep_idx) = type_to_idx.get(dep) {
-                reverse_deps[dep_idx].push(i);
-            }
-        }
-    }
-
-    let mut queue: Vec<usize> = in_degree
-        .iter()
-        .enumerate()
-        .filter_map(|(i, &d)| if d == 0 { Some(i) } else { None })
-        .collect();
-    let mut processed = 0usize;
-
-    while let Some(idx) = queue.pop() {
-        processed += 1;
-        for &dep in &reverse_deps[idx] {
-            in_degree[dep] -= 1;
-            if in_degree[dep] == 0 {
-                queue.push(dep);
-            }
-        }
-    }
-
-    assert_eq!(
-        processed,
-        tasks.len(),
+    let task_refs: Vec<&dyn dotfiles_cli::tasks::Task> = tasks.iter().map(Box::as_ref).collect();
+    assert!(
+        !has_cycle(&task_refs),
         "install task dependency graph contains a cycle"
     );
 }

@@ -321,6 +321,7 @@ fn install_tasks_should_run_with_windows_platform() {
     let platform = Platform {
         os: Os::Windows,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
 
@@ -554,6 +555,7 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
     let platform = dotfiles_cli::platform::Platform {
         os: dotfiles_cli::platform::Os::Linux,
         is_arch: false,
+        is_wsl: false,
     };
     let executor: Arc<dyn dotfiles_cli::exec::Executor> =
         Arc::new(dotfiles_cli::exec::SystemExecutor);

@@ -267,6 +267,7 @@ fn uninstall_tasks_should_run_with_windows_platform() {
     let platform = Platform {
         os: Os::Windows,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
 

@@ -1,4 +1,2 @@
 [wsl2]
-networkingMode=mirrored
-dnsTunneling=true
-autoProxy=true
+networkingMode=nat

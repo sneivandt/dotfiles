@@ -222,6 +222,7 @@ The execution engine provides the generic resource processing loop, dependency g
 - `registry` — Apply Windows registry settings
 - `vscode` — Install VS Code extensions
 - `copilot_skills` — Download Copilot CLI skills
+- `wsl_conf` — Write `/etc/wsl.conf` with `generateResolvConf = true` (Linux only, uses sudo)
 
 #### Platform Detection (`platform.rs`)
 

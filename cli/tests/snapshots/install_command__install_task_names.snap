@@ -18,4 +18,5 @@ Configure systemd units
 Apply registry settings
 Install VS Code extensions
 Install Copilot skills
+Install wsl.conf
 Reload configuration

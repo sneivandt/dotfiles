@@ -189,4 +189,129 @@ mod tests {
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("valid hive"));
     }
+
+    #[test]
+    fn validate_detects_empty_key_path() {
+        use crate::platform::{Os, Platform};
+
+        let entries = vec![RegistryEntry {
+            key_path: "  ".to_string(),
+            value_name: "Test".to_string(),
+            value_data: "1".to_string(),
+        }];
+        let warnings = validate(&entries, Platform::new(Os::Windows, false));
+        assert!(
+            warnings.iter().any(|w| w.message.contains("path is empty")),
+            "should warn about empty key path: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn validate_detects_empty_value_name() {
+        use crate::platform::{Os, Platform};
+
+        let entries = vec![RegistryEntry {
+            key_path: "HKCU:\\Console".to_string(),
+            value_name: "  ".to_string(),
+            value_data: "1".to_string(),
+        }];
+        let warnings = validate(&entries, Platform::new(Os::Windows, false));
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.message.contains("value name is empty")),
+            "should warn about empty value name: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn validate_warns_non_hkcu_hive() {
+        use crate::platform::{Os, Platform};
+
+        let entries = vec![RegistryEntry {
+            key_path: "HKLM:\\Software\\Test".to_string(),
+            value_name: "Setting".to_string(),
+            value_data: "1".to_string(),
+        }];
+        let warnings = validate(&entries, Platform::new(Os::Windows, false));
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.message.contains("elevated privileges")),
+            "should warn about non-HKCU hive needing elevation: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn validate_warns_registry_on_non_windows() {
+        use crate::platform::{Os, Platform};
+
+        let entries = vec![RegistryEntry {
+            key_path: "HKCU:\\Console".to_string(),
+            value_name: "FontSize".to_string(),
+            value_data: "14".to_string(),
+        }];
+        let warnings = validate(&entries, Platform::new(Os::Linux, false));
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.message.contains("does not support")),
+            "should warn about registry on non-Windows: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn validate_valid_hkcu_entry_produces_no_warnings() {
+        use crate::platform::{Os, Platform};
+
+        let entries = vec![RegistryEntry {
+            key_path: "HKCU:\\Console".to_string(),
+            value_name: "FontSize".to_string(),
+            value_data: "14".to_string(),
+        }];
+        let warnings = validate(&entries, Platform::new(Os::Windows, false));
+        assert!(
+            warnings.is_empty(),
+            "valid HKCU entry should produce no warnings: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn validate_empty_entries_produces_no_warnings() {
+        use crate::platform::{Os, Platform};
+
+        let warnings = validate(&[], Platform::new(Os::Windows, false));
+        assert!(
+            warnings.is_empty(),
+            "empty entries should produce no warnings"
+        );
+    }
+
+    #[test]
+    fn validate_case_insensitive_hive_prefix() {
+        use crate::platform::{Os, Platform};
+
+        let entries = vec![RegistryEntry {
+            key_path: "hkcu:\\Console".to_string(),
+            value_name: "FontSize".to_string(),
+            value_data: "14".to_string(),
+        }];
+        let warnings = validate(&entries, Platform::new(Os::Windows, false));
+        assert!(
+            warnings.is_empty(),
+            "lowercase hive prefix should be accepted: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn value_to_string_converts_types() {
+        assert_eq!(
+            value_to_string(&toml::Value::String("hello".into())),
+            "hello"
+        );
+        assert_eq!(value_to_string(&toml::Value::Integer(42)), "42");
+        assert_eq!(value_to_string(&toml::Value::Float(2.72)), "2.72");
+        assert_eq!(value_to_string(&toml::Value::Boolean(true)), "1");
+        assert_eq!(value_to_string(&toml::Value::Boolean(false)), "0");
+    }
 }

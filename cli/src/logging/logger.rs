@@ -250,10 +250,10 @@ impl Logger {
     /// No-op if no progress line is currently shown.
     /// Must be called while holding `flush_lock`.
     pub(super) fn clear_progress(&self) {
-        let mut guard = self
-            .progress_rows
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut guard = self.progress_rows.lock().unwrap_or_else(|e| {
+            eprintln!("warning: progress_rows lock was poisoned, recovering");
+            e.into_inner()
+        });
         if *guard > 0 {
             print!("\r\x1b[K");
             std::io::stdout().flush().ok();
@@ -283,10 +283,10 @@ impl Logger {
         };
         print!("  \x1b[2m▹ {display_names}\x1b[0m");
         std::io::stdout().flush().ok();
-        let mut guard = self
-            .progress_rows
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut guard = self.progress_rows.lock().unwrap_or_else(|e| {
+            eprintln!("warning: progress_rows lock was poisoned, recovering");
+            e.into_inner()
+        });
         *guard = 1;
     }
 
@@ -295,10 +295,10 @@ impl Logger {
     /// Acquires the flush lock, erases any previous progress line, adds the
     /// task to the active set, and redraws the status line.
     pub fn notify_task_start(&self, name: &str) {
-        let _guard = self
-            .flush_lock
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self.flush_lock.lock().unwrap_or_else(|e| {
+            eprintln!("warning: flush lock was poisoned, recovering");
+            e.into_inner()
+        });
         self.clear_progress();
         let names = self.active_tasks.lock().map_or_else(
             |_| name.to_string(),

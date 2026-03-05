@@ -69,9 +69,10 @@ fn collect_parallel_stats<T: Send>(
             .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))? += delta;
         Ok(())
     })?;
-    Ok(stats
-        .into_inner()
-        .unwrap_or_else(std::sync::PoisonError::into_inner))
+    Ok(stats.into_inner().unwrap_or_else(|e| {
+        eprintln!("warning: stats mutex was poisoned, recovering");
+        e.into_inner()
+    }))
 }
 
 /// Generic parallel processing helper using Rayon.

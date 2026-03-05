@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - master
+    paths:
+      - 'cli/**'
+      - 'conf/**'
+      - 'symlinks/**'
+      - 'Dockerfile'
+      - 'install.sh'
+      - 'dotfiles.sh'
 
 permissions:
   contents: read

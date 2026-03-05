@@ -13,8 +13,12 @@ use crate::tasks;
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Arc<Logger>) -> Result<()> {
     // Self-update before the task graph.
+    // The guard variable prevents an infinite re-exec loop if the new binary
+    // also triggers a self-update.
     let root = super::install::resolve_root(global)?;
-    if tasks::self_update::pre_update(&root, &**log, global.dry_run)? {
+    if std::env::var_os(super::REEXEC_GUARD_VAR).is_none()
+        && tasks::self_update::pre_update(&root, &**log, global.dry_run)?
+    {
         super::re_exec();
     }
 

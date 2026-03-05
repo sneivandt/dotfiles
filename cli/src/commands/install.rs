@@ -17,8 +17,12 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Arc<Logger>) -> Result
 
     // Self-update before the task graph — if the binary is replaced, re-exec
     // so all tasks run with the updated code and config parsers.
+    // The guard variable prevents an infinite re-exec loop if the new binary
+    // also triggers a self-update.
     let root = resolve_root(global)?;
-    if tasks::self_update::pre_update(&root, &**log, global.dry_run)? {
+    if std::env::var_os(super::REEXEC_GUARD_VAR).is_none()
+        && tasks::self_update::pre_update(&root, &**log, global.dry_run)?
+    {
         super::re_exec();
     }
 

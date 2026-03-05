@@ -101,13 +101,12 @@ impl Context {
     /// The returned `Arc<Config>` is a cheap clone; the read lock is held
     /// only for the duration of the `Arc::clone`.  Callers can hold the
     /// snapshot as long as needed without blocking `ReloadConfig`.
+    #[must_use]
     pub fn config_read(&self) -> Arc<Config> {
-        Arc::clone(
-            &*self
-                .config
-                .read()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        )
+        Arc::clone(&*self.config.read().unwrap_or_else(|e| {
+            eprintln!("warning: config read lock was poisoned, recovering");
+            e.into_inner()
+        }))
     }
 
     /// Root directory of the dotfiles repository.
@@ -173,10 +172,10 @@ impl Context {
     /// Used by [`crate::tasks::reload_config::ReloadConfig`] after a `git pull`
     /// to swap in the freshly-loaded config.
     pub fn config_swap(&self, new_config: Config) {
-        let mut guard = self
-            .config
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut guard = self.config.write().unwrap_or_else(|e| {
+            eprintln!("warning: config write lock was poisoned, recovering");
+            e.into_inner()
+        });
         *guard = Arc::new(new_config);
     }
 }

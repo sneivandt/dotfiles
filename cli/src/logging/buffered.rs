@@ -105,11 +105,10 @@ impl BufferedLog {
     /// interleaved console output when multiple tasks complete concurrently.
     /// After replaying the buffered entries, updates the active task display.
     pub fn flush_and_complete(&self, task_name: &str) {
-        let _guard = self
-            .inner
-            .flush_lock
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self.inner.flush_lock.lock().unwrap_or_else(|e| {
+            eprintln!("warning: flush lock was poisoned, recovering");
+            e.into_inner()
+        });
         self.inner.clear_progress();
         let entries = match self.entries.lock() {
             Ok(guard) => guard.clone(),

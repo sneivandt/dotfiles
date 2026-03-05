@@ -33,14 +33,10 @@ jobs:
       - name: Install Rust toolchain
         run: rustup show active-toolchain
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('cli/Cargo.lock') }}
+          workspaces: "cli -> target"
+          cache-on-failure: true
 
       - name: Build release binary
         run: cargo build --release --manifest-path cli/Cargo.toml
@@ -72,14 +68,10 @@ jobs:
       - name: Install Rust toolchain
         run: rustup show active-toolchain
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('cli/Cargo.lock') }}
+          workspaces: "cli -> target"
+          cache-on-failure: true
 
       - name: Build release binary
         run: cargo build --release --manifest-path cli/Cargo.toml

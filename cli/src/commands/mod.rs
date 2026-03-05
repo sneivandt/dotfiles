@@ -16,10 +16,14 @@ use crate::logging::{Log, Logger, Output};
 use crate::platform::Platform;
 use crate::tasks::{self, Context, Task};
 
+/// Environment variable set before re-exec to prevent infinite self-update loops.
+const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
+
 /// Replace the current process with a fresh invocation of the same binary.
 ///
 /// Called after a self-update has replaced the binary on disk so that the
-/// new version runs all tasks with updated code.
+/// new version runs all tasks with updated code.  Sets [`REEXEC_GUARD_VAR`]
+/// so the new process skips the self-update step.
 pub(crate) fn re_exec() -> ! {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let exe = match std::env::current_exe() {
@@ -33,14 +37,21 @@ pub(crate) fn re_exec() -> ! {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        let err = std::process::Command::new(&exe).args(&args).exec();
+        let err = std::process::Command::new(&exe)
+            .args(&args)
+            .env(REEXEC_GUARD_VAR, "1")
+            .exec();
         eprintln!("\x1b[31mError: failed to re-exec: {err}\x1b[0m");
         std::process::exit(1);
     }
 
     #[cfg(not(unix))]
     {
-        match std::process::Command::new(&exe).args(&args).status() {
+        match std::process::Command::new(&exe)
+            .args(&args)
+            .env(REEXEC_GUARD_VAR, "1")
+            .status()
+        {
             Ok(s) => std::process::exit(s.code().unwrap_or(1)),
             Err(e) => {
                 eprintln!("\x1b[31mError: failed to re-exec: {e}\x1b[0m");

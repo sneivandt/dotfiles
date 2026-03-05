@@ -302,10 +302,9 @@ mod tests {
     fn apply_returns_error_for_url_without_blob_or_tree() {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("skill");
-        // MockExecutor would panic if called; but URL parsing fails before any
+        // TestExecutor would panic if called; but URL parsing fails before any
         // executor call so this tests the validation path only.
-        let executor: Arc<dyn Executor> =
-            Arc::new(crate::resources::test_helpers::MockExecutor::ok(""));
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::test_helpers::TestExecutor::ok(""));
         let resource = CopilotSkillResource::new(
             "https://github.com/owner/repo/main/path".to_string(),
             dest,

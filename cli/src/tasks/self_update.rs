@@ -55,11 +55,7 @@ fn is_cache_fresh(root: &std::path::Path) -> bool {
     let Ok(ts) = ts_str.trim().parse::<u64>() else {
         return false;
     };
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    now.saturating_sub(ts) < CACHE_MAX_AGE
+    unix_timestamp().saturating_sub(ts) < CACHE_MAX_AGE
 }
 
 /// Read the cached release tag (line 1 of the cache file).
@@ -70,40 +66,94 @@ fn cached_version(root: &std::path::Path) -> Option<String> {
 
 /// Write a new cache file with the given tag and current timestamp.
 fn write_cache(root: &std::path::Path, tag: &str) -> Result<()> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let now = unix_timestamp();
     fs::write(cache_path(root), format!("{tag}\n{now}\n")).context("writing version cache file")?;
     Ok(())
 }
 
-/// Build a [`ureq::Agent`] with reasonable timeouts.
-fn http_agent(timeout_secs: u64) -> ureq::Agent {
-    let config = ureq::config::Config::builder()
-        .timeout_global(Some(std::time::Duration::from_secs(timeout_secs)))
-        .build();
-    config.new_agent()
+/// Return the current UTC time as seconds since the Unix epoch.
+///
+/// Returns `0` if the system clock is before the epoch (should never happen
+/// on a properly configured system).
+fn unix_timestamp() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+// ---------------------------------------------------------------------------
+// HTTP abstraction
+// ---------------------------------------------------------------------------
+
+/// Trait for making HTTP GET requests, enabling test injection.
+///
+/// Production code uses [`UreqClient`]; tests inject a mock that returns
+/// predetermined responses without touching the network.
+trait HttpClient: std::fmt::Debug + Send + Sync {
+    /// Perform an HTTP GET request and return the response body as bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on network failures, non-success status codes, or
+    /// response-body read errors.
+    fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Vec<u8>>;
+}
+
+/// Real HTTP client backed by [`ureq`].
+#[derive(Debug)]
+struct UreqClient {
+    /// Global request timeout in seconds.
+    timeout_secs: u64,
+}
+
+impl UreqClient {
+    /// Create a new client with the given timeout.
+    const fn new(timeout_secs: u64) -> Self {
+        Self { timeout_secs }
+    }
+}
+
+impl HttpClient for UreqClient {
+    fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Vec<u8>> {
+        let config = ureq::config::Config::builder()
+            .timeout_global(Some(std::time::Duration::from_secs(self.timeout_secs)))
+            .build();
+        let agent = config.new_agent();
+        let mut req = agent.get(url);
+        for &(k, v) in headers {
+            req = req.header(k, v);
+        }
+        let response = req.call().with_context(|| format!("GET {url}"))?;
+        let mut buf = Vec::new();
+        response
+            .into_body()
+            .into_reader()
+            .read_to_end(&mut buf)
+            .with_context(|| format!("reading response from {url}"))?;
+        Ok(buf)
+    }
+}
+
+/// Build the default HTTP client used by the self-update subsystem.
+const fn default_http_client() -> UreqClient {
+    UreqClient::new(120)
 }
 
 /// Query the GitHub API for the latest release tag.
-fn fetch_latest_tag() -> Result<Option<String>> {
+fn fetch_latest_tag(client: &dyn HttpClient) -> Result<Option<String>> {
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let agent = http_agent(30);
-    let Ok(response) = agent
-        .get(&url)
-        .header("Accept", "application/vnd.github.v3+json")
-        .header("User-Agent", "dotfiles-cli")
-        .call()
-    else {
+    let Ok(body_bytes) = client.get(
+        &url,
+        &[
+            ("Accept", "application/vnd.github.v3+json"),
+            ("User-Agent", "dotfiles-cli"),
+        ],
+    ) else {
         return Ok(None);
     };
 
-    let body: String = response
-        .into_body()
-        .read_to_string()
-        .context("reading GitHub API response")?;
-
+    let body = String::from_utf8_lossy(&body_bytes);
     let parsed: serde_json::Value =
         serde_json::from_str(&body).context("parsing GitHub API JSON response")?;
     Ok(parsed
@@ -113,28 +163,17 @@ fn fetch_latest_tag() -> Result<Option<String>> {
 }
 
 /// Download a URL and return the bytes.
-fn download_bytes(url: &str) -> Result<Vec<u8>> {
-    let agent = http_agent(120);
-    let response = agent
-        .get(url)
-        .header("User-Agent", "dotfiles-cli")
-        .call()
-        .with_context(|| format!("downloading {url}"))?;
-
-    let mut buf = Vec::new();
-    response
-        .into_body()
-        .into_reader()
-        .read_to_end(&mut buf)
-        .with_context(|| format!("reading response from {url}"))?;
-    Ok(buf)
+fn download_bytes(client: &dyn HttpClient, url: &str) -> Result<Vec<u8>> {
+    client
+        .get(url, &[("User-Agent", "dotfiles-cli")])
+        .with_context(|| format!("downloading {url}"))
 }
 
 /// Verify the SHA-256 checksum of `data` against the checksums file for the
 /// given release tag.
-fn verify_checksum(tag: &str, asset: &str, data: &[u8]) -> Result<()> {
+fn verify_checksum(client: &dyn HttpClient, tag: &str, asset: &str, data: &[u8]) -> Result<()> {
     let url = format!("https://github.com/{REPO}/releases/download/{tag}/checksums.sha256");
-    let checksums = download_bytes(&url).context("downloading checksums file")?;
+    let checksums = download_bytes(client, &url).context("downloading checksums file")?;
     let checksums_str = String::from_utf8_lossy(&checksums);
 
     let expected = checksums_str
@@ -251,7 +290,7 @@ enum UpdateCheck {
 /// # Errors
 ///
 /// Returns an error if the cache file cannot be written.
-fn check_for_update(root: &std::path::Path) -> Result<UpdateCheck> {
+fn check_for_update(root: &std::path::Path, client: &dyn HttpClient) -> Result<UpdateCheck> {
     let raw_version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     let current = format!("v{}", raw_version.strip_prefix('v').unwrap_or(raw_version));
     if !is_release_version(&current) {
@@ -261,7 +300,7 @@ fn check_for_update(root: &std::path::Path) -> Result<UpdateCheck> {
     if is_cache_fresh(root) {
         return Ok(UpdateCheck::CacheFresh);
     }
-    let Some(latest) = fetch_latest_tag()? else {
+    let Some(latest) = fetch_latest_tag(client)? else {
         tracing::debug!("fetch_latest_tag returned None, treating as offline");
         return Ok(UpdateCheck::Offline);
     };
@@ -282,11 +321,11 @@ fn check_for_update(root: &std::path::Path) -> Result<UpdateCheck> {
 ///
 /// Returns an error if the download, checksum verification, or binary
 /// replacement fails.
-fn download_and_install(root: &std::path::Path, tag: &str) -> Result<()> {
+fn download_and_install(root: &std::path::Path, tag: &str, client: &dyn HttpClient) -> Result<()> {
     let asset = asset_name();
     let url = format!("https://github.com/{REPO}/releases/download/{tag}/{asset}");
-    let data = download_bytes(&url)?;
-    verify_checksum(tag, asset, &data)?;
+    let data = download_bytes(client, &url)?;
+    verify_checksum(client, tag, asset, &data)?;
     let bin = binary_path(root);
     replace_binary(&bin, &data)?;
     write_cache(root, tag)?;
@@ -311,7 +350,8 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
     if !is_running_from_bin(root) {
         return Ok(false);
     }
-    match check_for_update(root)? {
+    let client = default_http_client();
+    match check_for_update(root, &client)? {
         UpdateCheck::CacheFresh
         | UpdateCheck::Offline
         | UpdateCheck::DevBuild
@@ -323,7 +363,7 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
             }
             log.stage("Self update");
             log.info(&format!("updating: {current} → {latest}"));
-            download_and_install(root, &latest)?;
+            download_and_install(root, &latest, &client)?;
             log.info("binary updated, restarting");
             Ok(true)
         }
@@ -347,7 +387,8 @@ impl Task for UpdateBinary {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let root = ctx.root();
-        match check_for_update(&root)? {
+        let client = default_http_client();
+        match check_for_update(&root, &client)? {
             UpdateCheck::CacheFresh => {
                 ctx.log.info("version cache is fresh, skipping check");
                 Ok(TaskResult::Skipped("cache fresh".to_string()))
@@ -371,7 +412,7 @@ impl Task for UpdateBinary {
                     return Ok(TaskResult::DryRun);
                 }
                 ctx.log.info(&format!("downloading {latest}…"));
-                download_and_install(&root, &latest)?;
+                download_and_install(&root, &latest, &client)?;
                 ctx.log.info(&format!("updated to {latest}"));
                 Ok(TaskResult::Ok)
             }
@@ -515,5 +556,150 @@ mod tests {
         assert!(!is_release_version("v0.1.2-dirty"));
         assert!(!is_release_version("0.1.2-dirty"));
         assert!(!is_release_version(""));
+    }
+
+    // -----------------------------------------------------------------------
+    // MockHttpClient — deterministic HTTP for unit tests
+    // -----------------------------------------------------------------------
+
+    /// A mock HTTP client that returns pre-configured responses from a FIFO queue.
+    #[derive(Debug)]
+    struct MockHttpClient {
+        responses: std::sync::Mutex<std::collections::VecDeque<Result<Vec<u8>>>>,
+    }
+
+    impl MockHttpClient {
+        /// Create a client that returns the given responses in order.
+        fn new(responses: Vec<Result<Vec<u8>>>) -> Self {
+            Self {
+                responses: std::sync::Mutex::new(responses.into()),
+            }
+        }
+    }
+
+    impl HttpClient for MockHttpClient {
+        fn get(&self, _url: &str, _headers: &[(&str, &str)]) -> Result<Vec<u8>> {
+            self.responses
+                .lock()
+                .expect("mutex poisoned")
+                .pop_front()
+                .unwrap_or_else(|| bail!("no more mock responses"))
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // fetch_latest_tag (with mock HTTP)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn fetch_latest_tag_parses_github_response() {
+        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v1.2.3"}"#.to_vec())]);
+        let result = fetch_latest_tag(&client).unwrap();
+        assert_eq!(result, Some("v1.2.3".to_string()));
+    }
+
+    #[test]
+    fn fetch_latest_tag_returns_none_on_network_error() {
+        let client = MockHttpClient::new(vec![Err(anyhow::anyhow!("network error"))]);
+        let result = fetch_latest_tag(&client).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn fetch_latest_tag_returns_none_when_tag_name_missing() {
+        let client = MockHttpClient::new(vec![Ok(br#"{"name": "Release v1.0"}"#.to_vec())]);
+        let result = fetch_latest_tag(&client).unwrap();
+        assert_eq!(result, None);
+    }
+
+    // -----------------------------------------------------------------------
+    // download_bytes (with mock HTTP)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn download_bytes_returns_response_body() {
+        let client = MockHttpClient::new(vec![Ok(b"binary data".to_vec())]);
+        let result = download_bytes(&client, "https://example.com/file").unwrap();
+        assert_eq!(result, b"binary data");
+    }
+
+    #[test]
+    fn download_bytes_propagates_error() {
+        let client = MockHttpClient::new(vec![Err(anyhow::anyhow!("timeout"))]);
+        let result = download_bytes(&client, "https://example.com/file");
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // verify_checksum (with mock HTTP — full flow)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn verify_checksum_succeeds_with_matching_hash() {
+        let data = b"hello world";
+        let mut hasher = Sha256::new();
+        hasher.update(data);
+        let hash = format!("{:x}", hasher.finalize());
+
+        let checksums = format!("{hash}  test-asset\n");
+        let client = MockHttpClient::new(vec![Ok(checksums.into_bytes())]);
+
+        verify_checksum(&client, "v1.0.0", "test-asset", data).unwrap();
+    }
+
+    #[test]
+    fn verify_checksum_fails_with_wrong_hash() {
+        let checksums =
+            "deadbeef0123456789abcdef0123456789abcdef0123456789abcdef01234567  test-asset\n";
+        let client = MockHttpClient::new(vec![Ok(checksums.as_bytes().to_vec())]);
+
+        let result = verify_checksum(&client, "v1.0.0", "test-asset", b"hello");
+        assert!(result.is_err());
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("checksum mismatch"),
+            "expected 'checksum mismatch' in: {msg}"
+        );
+    }
+
+    #[test]
+    fn verify_checksum_fails_when_asset_not_in_checksums() {
+        let checksums = "abc123  other-asset\n";
+        let client = MockHttpClient::new(vec![Ok(checksums.as_bytes().to_vec())]);
+
+        let result = verify_checksum(&client, "v1.0.0", "missing-asset", b"data");
+        assert!(result.is_err());
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("checksum not found"),
+            "expected 'checksum not found' in: {msg}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // download_and_install (with mock HTTP — end-to-end)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn download_and_install_writes_verified_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+
+        let binary_data = b"#!/bin/sh\necho updated";
+        let mut hasher = Sha256::new();
+        hasher.update(binary_data);
+        let hash = format!("{:x}", hasher.finalize());
+        let checksums = format!("{hash}  {}\n", asset_name());
+
+        // Response 1: asset download
+        // Response 2: checksums download
+        let client =
+            MockHttpClient::new(vec![Ok(binary_data.to_vec()), Ok(checksums.into_bytes())]);
+
+        download_and_install(dir.path(), "v1.0.0", &client).unwrap();
+
+        let installed = fs::read(binary_path(dir.path())).unwrap();
+        assert_eq!(installed, binary_data);
     }
 }

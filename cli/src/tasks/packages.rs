@@ -556,7 +556,7 @@ mod tests {
     // run() — batch install paths (pacman/paru)
     // -----------------------------------------------------------------------
 
-    /// Build a context that uses a [`MockExecutor`] with `which=true`.
+    /// Build a context that uses a [`TestExecutor`] with `which=true`.
     ///
     /// This lets tests exercise the `process_packages` batch install path without
     /// being short-circuited by the "tool not found" guard in `run()`.
@@ -566,12 +566,12 @@ mod tests {
         is_arch: bool,
         responses: Vec<(bool, String)>,
     ) -> crate::tasks::Context {
+        use crate::exec::test_helpers::TestExecutor;
         use crate::platform::Platform;
-        use crate::resources::test_helpers::MockExecutor;
         crate::tasks::test_helpers::make_context(
             config,
             Platform::new(os, is_arch),
-            std::sync::Arc::new(MockExecutor::with_responses(responses).with_which(true)),
+            std::sync::Arc::new(TestExecutor::with_responses(responses).with_which(true)),
         )
     }
 

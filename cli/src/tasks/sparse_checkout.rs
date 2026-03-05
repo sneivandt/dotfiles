@@ -199,9 +199,9 @@ impl Task for ConfigureSparseCheckout {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::exec::test_helpers::TestExecutor;
     use crate::fs::MockFileSystemOps;
     use crate::platform::{Os, Platform};
-    use crate::resources::test_helpers::MockExecutor;
     use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -395,7 +395,7 @@ mod tests {
         // `git checkout HEAD -- <files>` step is skipped.  Two git calls remain:
         //   1. git sparse-checkout init --no-cone
         //   2. git read-tree -mu HEAD
-        let executor = MockExecutor::with_responses(vec![
+        let executor = TestExecutor::with_responses(vec![
             (true, String::new()), // sparse-checkout init
             (true, String::new()), // read-tree
         ]);

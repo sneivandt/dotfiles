@@ -35,8 +35,8 @@ resource_task! {
 mod tests {
     use super::*;
     use crate::config::systemd_units::SystemdUnit;
+    use crate::exec::test_helpers::TestExecutor;
     use crate::platform::{Os, Platform};
-    use crate::resources::test_helpers::MockExecutor;
     use crate::tasks::test_helpers::{
         empty_config, make_context, make_linux_context, make_platform_context_with_which,
     };
@@ -88,8 +88,8 @@ mod tests {
     // ConfigureSystemd::run
     // ------------------------------------------------------------------
 
-    /// Build a context backed by `MockExecutor` for `run()` tests.
-    fn make_systemd_context(config: crate::config::Config, executor: MockExecutor) -> Context {
+    /// Build a context backed by `TestExecutor` for `run()` tests.
+    fn make_systemd_context(config: crate::config::Config, executor: TestExecutor) -> Context {
         make_context(config, Platform::new(Os::Linux, false), Arc::new(executor))
     }
 
@@ -100,11 +100,11 @@ mod tests {
             name: "dunst.service".to_string(),
             scope: "user".to_string(),
         });
-        // Ordered responses consumed by the FIFO MockExecutor queue:
+        // Ordered responses consumed by the FIFO TestExecutor queue:
         //   1. run("systemctl", ["--user", "daemon-reload"]) → success
         //   2. run_unchecked("systemctl", ["--user", "is-enabled", "dunst.service"]) → fail (Missing)
         //   3. run_unchecked("systemctl", ["--user", "enable", "--now", "dunst.service"]) → success
-        let executor = MockExecutor::with_responses(vec![
+        let executor = TestExecutor::with_responses(vec![
             (true, String::new()),  // daemon-reload
             (false, String::new()), // is-enabled → not enabled → Missing
             (true, String::new()),  // enable → Applied
@@ -128,7 +128,7 @@ mod tests {
         // In dry-run mode daemon-reload is NOT called (guarded by `!ctx.dry_run`).
         // current_state() still runs to decide whether change would be needed.
         //   1. run_unchecked("systemctl", ["--user", "is-enabled", "dunst.service"]) → fail (Missing)
-        let executor = MockExecutor::with_responses(vec![
+        let executor = TestExecutor::with_responses(vec![
             (false, String::new()), // is-enabled → Missing
         ]);
         let mut ctx = make_systemd_context(config, executor);

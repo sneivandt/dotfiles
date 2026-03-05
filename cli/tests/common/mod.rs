@@ -171,6 +171,8 @@ impl TestContextBuilder {
 
 /// Stub executor for integration tests that don't invoke system commands.
 ///
+/// Mirrors [`TestExecutor::stub()`](dotfiles_cli::exec::test_helpers::TestExecutor::stub)
+/// but lives outside `#[cfg(test)]` so integration test binaries can use it.
 /// Returns `false` for `which()` and panics if any command is actually run.
 #[derive(Debug)]
 pub struct StubExecutor;

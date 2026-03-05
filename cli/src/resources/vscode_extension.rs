@@ -129,7 +129,7 @@ fn run_code_cmd(cmd: &str, args: &[&str], executor: &dyn Executor) -> Result<exe
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::resources::test_helpers::MockExecutor;
+    use crate::exec::test_helpers::TestExecutor;
 
     #[test]
     fn description_returns_extension_id() {
@@ -196,7 +196,7 @@ mod tests {
     #[test]
     fn get_installed_extensions_parses_and_lowercases() {
         let executor =
-            MockExecutor::ok("GitHub.Copilot\nms-python.python\nRust-lang.Rust-analyzer\n");
+            TestExecutor::ok("GitHub.Copilot\nms-python.python\nRust-lang.Rust-analyzer\n");
         let installed = get_installed_extensions("code", &executor).unwrap();
         assert!(installed.contains("github.copilot"));
         assert!(installed.contains("ms-python.python"));
@@ -205,14 +205,14 @@ mod tests {
 
     #[test]
     fn get_installed_extensions_empty_when_command_fails() {
-        let executor = MockExecutor::fail();
+        let executor = TestExecutor::fail();
         let installed = get_installed_extensions("code", &executor).unwrap();
         assert!(installed.is_empty());
     }
 
     #[test]
     fn get_installed_extensions_uses_single_bulk_query() {
-        let executor = MockExecutor::ok("github.copilot-chat\n");
+        let executor = TestExecutor::ok("github.copilot-chat\n");
         let installed = get_installed_extensions("code", &executor).unwrap();
         assert!(
             installed.contains("github.copilot-chat"),

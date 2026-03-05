@@ -169,16 +169,6 @@ pub trait Resource: Applicable {
     }
 }
 
-/// Shared test helpers for resource unit tests.
-///
-/// Re-exports [`TestExecutor`](crate::exec::test_helpers::TestExecutor) as
-/// `MockExecutor` for backward compatibility with existing tests.
-#[cfg(test)]
-pub mod test_helpers {
-    /// Backward-compatible alias for [`TestExecutor`](crate::exec::test_helpers::TestExecutor).
-    pub use crate::exec::test_helpers::TestExecutor as MockExecutor;
-}
-
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {

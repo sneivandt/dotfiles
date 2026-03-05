@@ -370,12 +370,8 @@ pub mod test_helpers {
     use super::Context;
 
     /// Re-export [`TestExecutor`](crate::exec::test_helpers::TestExecutor) for
-    /// backward compatibility.  Code that referenced `WhichExecutor` should
-    /// migrate to `TestExecutor::stub().with_which(value)`.
+    /// convenience.
     pub use crate::exec::test_helpers::TestExecutor;
-
-    /// Backward-compatible alias for [`TestExecutor`].
-    pub type WhichExecutor = TestExecutor;
 
     /// Build a [`Config`] with all lists empty and `root` set to `root`.
     #[must_use]
@@ -482,7 +478,7 @@ pub mod test_helpers {
         }
     }
 
-    /// Build a [`Context`] with the specified OS/arch and default [`WhichExecutor`].
+    /// Build a [`Context`] with the specified OS/arch and default [`TestExecutor`].
     #[must_use]
     pub fn make_platform_context(
         config: Config,
@@ -492,7 +488,7 @@ pub mod test_helpers {
         ContextBuilder::new(config).os(os).arch(is_arch).build()
     }
 
-    /// Build a [`Context`] with the specified OS/arch and a [`WhichExecutor`]
+    /// Build a [`Context`] with the specified OS/arch and a [`TestExecutor`]
     /// that returns the given `which_result`.
     ///
     /// Use this when a task's `should_run` or `run` method gates on tool
@@ -511,7 +507,7 @@ pub mod test_helpers {
             .build()
     }
 
-    /// Build a [`Context`] with a Linux non-arch platform and default [`WhichExecutor`].
+    /// Build a [`Context`] with a Linux non-arch platform and default [`TestExecutor`].
     ///
     /// Convenience shorthand for tests that only need a plain Linux context.
     #[must_use]
@@ -519,7 +515,7 @@ pub mod test_helpers {
         ContextBuilder::new(config).build()
     }
 
-    /// Build a [`Context`] with a Windows platform and default [`WhichExecutor`].
+    /// Build a [`Context`] with a Windows platform and default [`TestExecutor`].
     ///
     /// Convenience shorthand for tests that only need a plain Windows context.
     #[must_use]
@@ -529,7 +525,7 @@ pub mod test_helpers {
             .build()
     }
 
-    /// Build a [`Context`] with an Arch Linux platform and default [`WhichExecutor`].
+    /// Build a [`Context`] with an Arch Linux platform and default [`TestExecutor`].
     ///
     /// Convenience shorthand for tests that target Arch-specific behaviour.
     #[must_use]
@@ -538,7 +534,7 @@ pub mod test_helpers {
     }
 
     /// Build a [`Context`] with a default Linux platform and
-    /// default [`WhichExecutor`], also returning the [`Logger`] so tests can
+    /// default [`TestExecutor`], also returning the [`Logger`] so tests can
     /// inspect recorded task state.
     #[must_use]
     pub fn make_static_context(config: Config) -> (Context, Arc<Logger>) {

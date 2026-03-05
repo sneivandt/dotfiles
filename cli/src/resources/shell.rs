@@ -5,6 +5,31 @@ use std::sync::Arc;
 use super::{Applicable, Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
 
+/// Source for reading the current login shell.
+///
+/// Production code uses [`ShellSource::Environment`] to read the `SHELL`
+/// environment variable at check time.  Tests use [`ShellSource::Fixed`]
+/// to inject a deterministic value without `unsafe` env-var manipulation.
+#[derive(Debug, Clone)]
+enum ShellSource {
+    /// Read from the `SHELL` environment variable at check time.
+    Environment,
+    /// Use a fixed value (for testing).
+    #[cfg(test)]
+    Fixed(Option<String>),
+}
+
+impl ShellSource {
+    /// Return the current shell value.
+    fn current_shell(&self) -> Option<String> {
+        match self {
+            Self::Environment => std::env::var("SHELL").ok(),
+            #[cfg(test)]
+            Self::Fixed(value) => value.clone(),
+        }
+    }
+}
+
 /// A resource for configuring the default login shell.
 #[derive(Debug)]
 pub struct DefaultShellResource {
@@ -12,6 +37,8 @@ pub struct DefaultShellResource {
     target_shell: String,
     /// Executor for running system commands.
     executor: Arc<dyn Executor>,
+    /// Source for the current shell value.
+    shell_source: ShellSource,
 }
 
 impl DefaultShellResource {
@@ -21,7 +48,16 @@ impl DefaultShellResource {
         Self {
             target_shell,
             executor,
+            shell_source: ShellSource::Environment,
         }
+    }
+
+    /// Override the shell source with a fixed value (for testing).
+    #[cfg(test)]
+    #[must_use]
+    fn with_shell(mut self, shell: Option<&str>) -> Self {
+        self.shell_source = ShellSource::Fixed(shell.map(String::from));
+        self
     }
 }
 
@@ -42,7 +78,7 @@ impl Applicable for DefaultShellResource {
 
 impl Resource for DefaultShellResource {
     fn current_state(&self) -> Result<ResourceState> {
-        let current_shell = std::env::var("SHELL").unwrap_or_default();
+        let current_shell = self.shell_source.current_shell().unwrap_or_default();
 
         if current_shell.is_empty() {
             return Ok(ResourceState::Missing);
@@ -63,15 +99,9 @@ impl Resource for DefaultShellResource {
 }
 
 #[cfg(test)]
-#[allow(unsafe_code)] // set_var/remove_var require unsafe since Rust 1.83
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-
-    /// Mutex to serialize tests that mutate the `SHELL` environment variable.
-    /// Without this, tests running in parallel threads race on the same env var.
-    static SHELL_MUTEX: std::sync::LazyLock<std::sync::Mutex<()>> =
-        std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
 
     #[test]
     fn description_includes_shell_name() {
@@ -82,25 +112,19 @@ mod tests {
 
     #[test]
     fn current_state_correct_when_shell_matches() {
-        let _guard = SHELL_MUTEX.lock().expect("mutex poisoned");
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-        let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor));
-        // SAFETY: test-only env var manipulation; serialized via SHELL_MUTEX.
-        unsafe { std::env::set_var("SHELL", "/usr/bin/zsh") };
+        let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor))
+            .with_shell(Some("/usr/bin/zsh"));
         let state = resource.current_state().unwrap();
-        unsafe { std::env::remove_var("SHELL") };
         assert_eq!(state, ResourceState::Correct);
     }
 
     #[test]
     fn current_state_incorrect_when_different_shell_set() {
-        let _guard = SHELL_MUTEX.lock().expect("mutex poisoned");
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-        let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor));
-        // SAFETY: test-only env var manipulation; serialized via SHELL_MUTEX.
-        unsafe { std::env::set_var("SHELL", "/bin/bash") };
+        let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor))
+            .with_shell(Some("/bin/bash"));
         let state = resource.current_state().unwrap();
-        unsafe { std::env::remove_var("SHELL") };
         assert!(
             matches!(state, ResourceState::Incorrect { ref current } if current == "/bin/bash"),
             "expected Incorrect(/bin/bash), got {state:?}"
@@ -109,11 +133,9 @@ mod tests {
 
     #[test]
     fn current_state_missing_when_shell_not_set() {
-        let _guard = SHELL_MUTEX.lock().expect("mutex poisoned");
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-        let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor));
-        // SAFETY: test-only env var manipulation; serialized via SHELL_MUTEX.
-        unsafe { std::env::remove_var("SHELL") };
+        let resource =
+            DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor)).with_shell(None);
         let state = resource.current_state().unwrap();
         assert_eq!(state, ResourceState::Missing);
     }

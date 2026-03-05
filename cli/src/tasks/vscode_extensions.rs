@@ -84,7 +84,7 @@ mod tests {
         config.vscode_extensions.push(VsCodeExtension {
             id: "github.copilot".to_string(),
         });
-        // Default make_linux_context uses WhichExecutor with which_result=false,
+        // Default make_linux_context uses TestExecutor with which_result=false,
         // so find_code_command returns None for both "code-insiders" and "code".
         let ctx = make_linux_context(config);
         let result = InstallVsCodeExtensions.run(&ctx).unwrap();

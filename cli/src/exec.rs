@@ -277,8 +277,8 @@ mod tests {
 
 /// Shared test executor for unit tests.
 ///
-/// Provides a unified [`TestExecutor`] that replaces the previously separate
-/// `MockExecutor` (FIFO response queue) and `WhichExecutor` (stub that panics).
+/// Provides a unified [`TestExecutor`] that covers both stub (panic on call)
+/// and mock (FIFO response queue) use cases.
 #[cfg(test)]
 #[allow(clippy::panic)]
 pub mod test_helpers {
@@ -315,7 +315,7 @@ pub mod test_helpers {
     impl TestExecutor {
         /// Create a stub executor that panics on any `run*()` call.
         ///
-        /// Equivalent to the former `WhichExecutor` / `StubExecutor`.
+        /// Equivalent to the former `StubExecutor` in integration tests.
         #[must_use]
         pub fn stub() -> Self {
             Self {

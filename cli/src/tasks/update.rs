@@ -112,8 +112,8 @@ impl Task for UpdateRepository {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::exec::test_helpers::TestExecutor;
     use crate::platform::{Os, Platform};
-    use crate::resources::test_helpers::MockExecutor;
     use crate::tasks::UpdateSignal;
     use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
     use std::path::PathBuf;
@@ -141,8 +141,8 @@ mod tests {
     // run()
     // -----------------------------------------------------------------------
 
-    /// Build a context that uses a [`MockExecutor`] so we can control git responses.
-    fn make_update_context(config: crate::config::Config, executor: MockExecutor) -> Context {
+    /// Build a context that uses a [`TestExecutor`] so we can control git responses.
+    fn make_update_context(config: crate::config::Config, executor: TestExecutor) -> Context {
         make_context(config, Platform::new(Os::Linux, false), Arc::new(executor))
     }
 
@@ -150,7 +150,7 @@ mod tests {
     fn run_returns_skipped_when_detached_head() {
         let config = empty_config(PathBuf::from("/tmp"));
         // First call (symbolic-ref): fails → detached HEAD
-        let executor = MockExecutor::fail();
+        let executor = TestExecutor::fail();
         let ctx = make_update_context(config, executor);
         let repo_updated = UpdateSignal::new();
         let task = UpdateRepository::new(repo_updated.clone());
@@ -165,7 +165,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         // First call (symbolic-ref): succeeds → on a branch
         // Second call (diff --cached): returns non-empty stdout → staged changes
-        let executor = MockExecutor::with_responses(vec![
+        let executor = TestExecutor::with_responses(vec![
             (true, "refs/heads/main".to_string()),
             (true, "dirty_file.txt".to_string()),
         ]);
@@ -183,7 +183,7 @@ mod tests {
         // First call (symbolic-ref): succeeds → on a branch
         // Second call (diff): empty stdout → no staged changes
         // Third call (pull): "Already up to date."
-        let executor = MockExecutor::with_responses(vec![
+        let executor = TestExecutor::with_responses(vec![
             (true, "refs/heads/main".to_string()),
             (true, String::new()),
             (true, "Already up to date.".to_string()),
@@ -203,7 +203,7 @@ mod tests {
         // First call (symbolic-ref): succeeds → on a branch
         // Second call (diff): empty stdout → no staged changes
         // Third call (pull): update output → repo was updated
-        let executor = MockExecutor::with_responses(vec![
+        let executor = TestExecutor::with_responses(vec![
             (true, "refs/heads/main".to_string()),
             (true, String::new()),
             (true, "Updating abc1234..def5678\nFast-forward".to_string()),
@@ -223,7 +223,7 @@ mod tests {
         // First call (symbolic-ref): succeeds → on a branch
         // Second call (diff): empty stdout → no staged changes
         // Third call (pull): fails
-        let executor = MockExecutor::with_responses(vec![
+        let executor = TestExecutor::with_responses(vec![
             (true, "refs/heads/main".to_string()),
             (true, String::new()),
             (false, String::new()),
@@ -247,7 +247,7 @@ mod tests {
         // diff --cached: empty → no staged changes
         // rev-parse HEAD: abc123
         // rev-parse @{u}: abc123 (same SHA → already up to date)
-        let executor = MockExecutor::with_responses(vec![
+        let executor = TestExecutor::with_responses(vec![
             (true, "refs/heads/main".to_string()),
             (true, String::new()),
             (true, "abc123".to_string()),
@@ -271,7 +271,7 @@ mod tests {
         // diff --cached: empty
         // rev-parse HEAD: abc123
         // rev-parse @{u}: def456 (different SHA → would pull)
-        let executor = MockExecutor::with_responses(vec![
+        let executor = TestExecutor::with_responses(vec![
             (true, "refs/heads/main".to_string()),
             (true, String::new()),
             (true, "abc123".to_string()),

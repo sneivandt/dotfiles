@@ -1,11 +1,9 @@
 //! Symlink configuration loading.
-use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
 use super::ValidationWarning;
-use super::helpers::category_matcher::{Category, MatchMode};
-use super::helpers::toml_loader;
+use super::config_section;
 
 /// A symlink to create: source (in symlinks/) → target (in $HOME).
 #[derive(Debug, Clone)]
@@ -27,42 +25,20 @@ enum SymlinkEntry {
     WithTarget { source: String, target: String },
 }
 
-/// TOML section containing symlinks.
-#[derive(Debug, Deserialize)]
-struct SymlinkSection {
-    symlinks: Vec<SymlinkEntry>,
-}
-
-impl toml_loader::ConfigSection for SymlinkSection {
-    type Entry = SymlinkEntry;
-    type Item = Symlink;
-    const MATCH_MODE: MatchMode = MatchMode::All;
-
-    fn extract(self) -> Vec<SymlinkEntry> {
-        self.symlinks
-    }
-
-    fn map(entry: SymlinkEntry) -> Symlink {
-        match entry {
-            SymlinkEntry::Simple(source) => Symlink {
-                source,
-                target: None,
-            },
-            SymlinkEntry::WithTarget { source, target } => Symlink {
-                source,
-                target: Some(target),
-            },
-        }
-    }
-}
-
-/// Load symlinks from symlinks.toml, filtered by active categories.
-///
-/// # Errors
-///
-/// Returns an error if the file exists but cannot be parsed.
-pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<Symlink>> {
-    toml_loader::load_section::<SymlinkSection>(path, active_categories)
+config_section! {
+    field: "symlinks",
+    entry: SymlinkEntry,
+    item: Symlink,
+    map: |entry| match entry {
+        SymlinkEntry::Simple(source) => Symlink {
+            source,
+            target: None,
+        },
+        SymlinkEntry::WithTarget { source, target } => Symlink {
+            source,
+            target: Some(target),
+        },
+    },
 }
 
 /// Validate symlink entries and return any warnings.
@@ -96,6 +72,7 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<ValidationWarning> {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::config::category_matcher::Category;
     use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
 
     #[test]

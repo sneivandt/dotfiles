@@ -1,11 +1,8 @@
 //! Systemd unit configuration loading.
-use anyhow::Result;
 use serde::Deserialize;
-use std::path::Path;
 
 use super::ValidationWarning;
-use super::helpers::category_matcher::{Category, MatchMode};
-use super::helpers::toml_loader;
+use super::config_section;
 
 /// A systemd unit to enable.
 #[derive(Debug, Clone)]
@@ -27,39 +24,17 @@ enum UnitEntry {
     WithScope { name: String, scope: String },
 }
 
-/// TOML section containing systemd units.
-#[derive(Debug, Deserialize)]
-struct SystemdSection {
-    units: Vec<UnitEntry>,
-}
-
-impl toml_loader::ConfigSection for SystemdSection {
-    type Entry = UnitEntry;
-    type Item = SystemdUnit;
-    const MATCH_MODE: MatchMode = MatchMode::All;
-
-    fn extract(self) -> Vec<UnitEntry> {
-        self.units
-    }
-
-    fn map(entry: UnitEntry) -> SystemdUnit {
-        match entry {
-            UnitEntry::Simple(name) => SystemdUnit {
-                name,
-                scope: "user".to_string(),
-            },
-            UnitEntry::WithScope { name, scope } => SystemdUnit { name, scope },
-        }
-    }
-}
-
-/// Load systemd units from systemd-units.toml, filtered by active categories.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be parsed.
-pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<SystemdUnit>> {
-    toml_loader::load_section::<SystemdSection>(path, active_categories)
+config_section! {
+    field: "units",
+    entry: UnitEntry,
+    item: SystemdUnit,
+    map: |entry| match entry {
+        UnitEntry::Simple(name) => SystemdUnit {
+            name,
+            scope: "user".to_string(),
+        },
+        UnitEntry::WithScope { name, scope } => SystemdUnit { name, scope },
+    },
 }
 
 /// Valid systemd unit file extensions.
@@ -102,6 +77,7 @@ pub fn validate(
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::config::category_matcher::Category;
     use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
 
     #[test]

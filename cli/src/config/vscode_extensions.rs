@@ -1,11 +1,7 @@
 //! VS Code extension configuration loading.
-use anyhow::Result;
-use serde::Deserialize;
-use std::path::Path;
 
 use super::ValidationWarning;
-use super::helpers::category_matcher::{Category, MatchMode};
-use super::helpers::toml_loader;
+use super::config_section;
 
 /// A VS Code extension to install.
 #[derive(Debug, Clone)]
@@ -14,33 +10,11 @@ pub struct VsCodeExtension {
     pub id: String,
 }
 
-/// TOML section containing VS Code extensions.
-#[derive(Debug, Deserialize)]
-struct ExtensionSection {
-    extensions: Vec<String>,
-}
-
-impl toml_loader::ConfigSection for ExtensionSection {
-    type Entry = String;
-    type Item = VsCodeExtension;
-    const MATCH_MODE: MatchMode = MatchMode::All;
-
-    fn extract(self) -> Vec<String> {
-        self.extensions
-    }
-
-    fn map(id: String) -> VsCodeExtension {
-        VsCodeExtension { id }
-    }
-}
-
-/// Load VS Code extensions from vscode-extensions.toml, filtered by active categories.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be parsed.
-pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<VsCodeExtension>> {
-    toml_loader::load_section::<ExtensionSection>(path, active_categories)
+config_section! {
+    field: "extensions",
+    entry: String,
+    item: VsCodeExtension,
+    map: |id| VsCodeExtension { id },
 }
 
 /// Validate VS Code extension entries and return any warnings.
@@ -69,6 +43,7 @@ pub fn validate(extensions: &[VsCodeExtension]) -> Vec<ValidationWarning> {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::config::category_matcher::Category;
     use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
 
     #[test]

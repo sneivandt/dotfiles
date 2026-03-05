@@ -15,6 +15,110 @@ pub mod symlinks;
 pub mod systemd_units;
 pub mod vscode_extensions;
 
+/// Define a [`ConfigSection`](helpers::toml_loader::ConfigSection) implementation
+/// and `load()` function with minimal boilerplate.
+///
+/// Generates an internal section struct, the `ConfigSection` trait impl,
+/// and a public `load()` function that filters by active categories.
+///
+/// # Syntax
+///
+/// ```ignore
+/// // Identity mapping (Entry == Item):
+/// config_section!(field: "settings", ty: GitSetting);
+///
+/// // Explicit mapping (Entry → Item):
+/// config_section! {
+///     field: "symlinks",
+///     entry: SymlinkEntry,
+///     item: Symlink,
+///     map: |entry| match entry {
+///         SymlinkEntry::Simple(s) => Symlink { source: s, target: None },
+///         SymlinkEntry::WithTarget { source, target } => Symlink { source, target: Some(target) },
+///     },
+/// }
+/// ```
+macro_rules! config_section {
+    // Identity mapping (Entry == Item).
+    (field: $field:literal, ty: $ty:ty $(,)?) => {
+        #[derive(Debug, ::serde::Deserialize)]
+        struct Section {
+            #[serde(rename = $field)]
+            entries: Vec<$ty>,
+        }
+
+        impl $crate::config::helpers::toml_loader::ConfigSection for Section {
+            type Entry = $ty;
+            type Item = $ty;
+            const MATCH_MODE: $crate::config::helpers::category_matcher::MatchMode =
+                $crate::config::helpers::category_matcher::MatchMode::All;
+
+            fn extract(self) -> Vec<$ty> {
+                self.entries
+            }
+
+            fn map(entry: $ty) -> $ty {
+                entry
+            }
+        }
+
+        /// Load items from the TOML config file, filtered by active categories.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error if the file exists but cannot be parsed.
+        pub fn load(
+            path: &::std::path::Path,
+            active_categories: &[$crate::config::helpers::category_matcher::Category],
+        ) -> ::anyhow::Result<Vec<$ty>> {
+            $crate::config::helpers::toml_loader::load_section::<Section>(path, active_categories)
+        }
+    };
+
+    // With explicit entry-to-item mapping.
+    (
+        field: $field:literal,
+        entry: $entry:ty,
+        item: $item:ty,
+        map: |$param:ident| $map_expr:expr $(,)?
+    ) => {
+        #[derive(Debug, ::serde::Deserialize)]
+        struct Section {
+            #[serde(rename = $field)]
+            entries: Vec<$entry>,
+        }
+
+        impl $crate::config::helpers::toml_loader::ConfigSection for Section {
+            type Entry = $entry;
+            type Item = $item;
+            const MATCH_MODE: $crate::config::helpers::category_matcher::MatchMode =
+                $crate::config::helpers::category_matcher::MatchMode::All;
+
+            fn extract(self) -> Vec<$entry> {
+                self.entries
+            }
+
+            fn map($param: $entry) -> $item {
+                $map_expr
+            }
+        }
+
+        /// Load items from the TOML config file, filtered by active categories.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error if the file exists but cannot be parsed.
+        pub fn load(
+            path: &::std::path::Path,
+            active_categories: &[$crate::config::helpers::category_matcher::Category],
+        ) -> ::anyhow::Result<Vec<$item>> {
+            $crate::config::helpers::toml_loader::load_section::<Section>(path, active_categories)
+        }
+    };
+}
+
+pub(crate) use config_section;
+
 #[cfg(test)]
 /// Test helpers for config module tests.
 pub mod test_helpers {

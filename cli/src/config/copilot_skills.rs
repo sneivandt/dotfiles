@@ -1,11 +1,7 @@
 //! GitHub Copilot skills configuration loading.
-use anyhow::Result;
-use serde::Deserialize;
-use std::path::Path;
 
 use super::ValidationWarning;
-use super::helpers::category_matcher::{Category, MatchMode};
-use super::helpers::toml_loader;
+use super::config_section;
 
 /// A GitHub Copilot skill URL.
 #[derive(Debug, Clone)]
@@ -14,33 +10,11 @@ pub struct CopilotSkill {
     pub url: String,
 }
 
-/// TOML section containing Copilot skill URLs.
-#[derive(Debug, Deserialize)]
-struct SkillSection {
-    skills: Vec<String>,
-}
-
-impl toml_loader::ConfigSection for SkillSection {
-    type Entry = String;
-    type Item = CopilotSkill;
-    const MATCH_MODE: MatchMode = MatchMode::All;
-
-    fn extract(self) -> Vec<String> {
-        self.skills
-    }
-
-    fn map(url: String) -> CopilotSkill {
-        CopilotSkill { url }
-    }
-}
-
-/// Load Copilot skills from copilot-skills.toml, filtered by active categories.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be parsed.
-pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<CopilotSkill>> {
-    toml_loader::load_section::<SkillSection>(path, active_categories)
+config_section! {
+    field: "skills",
+    entry: String,
+    item: CopilotSkill,
+    map: |url| CopilotSkill { url },
 }
 
 /// Validate Copilot skill entries and return any warnings.
@@ -69,6 +43,7 @@ pub fn validate(skills: &[CopilotSkill]) -> Vec<ValidationWarning> {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::config::category_matcher::Category;
     use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
 
     #[test]

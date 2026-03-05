@@ -1,10 +1,7 @@
 //! Git configuration loading.
-use anyhow::Result;
 use serde::Deserialize;
-use std::path::Path;
 
-use super::helpers::category_matcher::{Category, MatchMode};
-use super::helpers::toml_loader;
+use super::config_section;
 
 /// A git config key-value pair to apply globally.
 #[derive(Debug, Clone, Deserialize)]
@@ -15,39 +12,13 @@ pub struct GitSetting {
     pub value: String,
 }
 
-/// TOML section containing git settings.
-#[derive(Debug, Deserialize)]
-struct GitConfigSection {
-    settings: Vec<GitSetting>,
-}
-
-impl toml_loader::ConfigSection for GitConfigSection {
-    type Entry = GitSetting;
-    type Item = GitSetting;
-    const MATCH_MODE: MatchMode = MatchMode::All;
-
-    fn extract(self) -> Vec<GitSetting> {
-        self.settings
-    }
-
-    fn map(entry: GitSetting) -> GitSetting {
-        entry
-    }
-}
-
-/// Load git settings from git-config.toml, filtered by active categories.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be parsed.
-pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<GitSetting>> {
-    toml_loader::load_section::<GitConfigSection>(path, active_categories)
-}
+config_section!(field: "settings", ty: GitSetting);
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::config::category_matcher::Category;
     use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
 
     #[test]

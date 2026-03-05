@@ -1,11 +1,9 @@
 //! Chmod entry configuration loading.
-use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
 use super::ValidationWarning;
-use super::helpers::category_matcher::{Category, MatchMode};
-use super::helpers::toml_loader;
+use super::config_section;
 
 /// A file permission directive.
 #[derive(Debug, Clone, Deserialize)]
@@ -17,34 +15,7 @@ pub struct ChmodEntry {
     pub path: String,
 }
 
-/// TOML section containing chmod entries.
-#[derive(Debug, Deserialize)]
-struct ChmodSection {
-    permissions: Vec<ChmodEntry>,
-}
-
-impl toml_loader::ConfigSection for ChmodSection {
-    type Entry = ChmodEntry;
-    type Item = ChmodEntry;
-    const MATCH_MODE: MatchMode = MatchMode::All;
-
-    fn extract(self) -> Vec<ChmodEntry> {
-        self.permissions
-    }
-
-    fn map(entry: ChmodEntry) -> ChmodEntry {
-        entry
-    }
-}
-
-/// Load chmod entries from chmod.toml, filtered by active categories.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be parsed.
-pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<ChmodEntry>> {
-    toml_loader::load_section::<ChmodSection>(path, active_categories)
-}
+config_section!(field: "permissions", ty: ChmodEntry);
 
 /// Minimum length for octal mode strings.
 const OCTAL_MODE_MIN_LEN: usize = 3;
@@ -109,6 +80,7 @@ pub fn validate(
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::config::category_matcher::Category;
     use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
 
     #[test]

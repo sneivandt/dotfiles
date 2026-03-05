@@ -73,6 +73,45 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
 }
 
 // ---------------------------------------------------------------------------
+// Shared query helper
+// ---------------------------------------------------------------------------
+
+/// Parse strategy for extracting package names from command output.
+#[derive(Clone, Copy)]
+enum ParseMode {
+    /// Take only the first whitespace-delimited token per line (e.g. pacman).
+    FirstToken,
+    /// Take every whitespace-delimited token per line (e.g. winget).
+    AllTokens,
+}
+
+/// Run a package manager command and collect package names from its output.
+fn query_names(
+    executor: &dyn Executor,
+    cmd: &str,
+    args: &[&str],
+    mode: ParseMode,
+) -> Result<HashSet<String>> {
+    let result = executor.run_unchecked(cmd, args)?;
+    let mut set = HashSet::new();
+    if result.success {
+        for line in result.stdout.lines() {
+            match mode {
+                ParseMode::FirstToken => {
+                    if let Some(name) = line.split_whitespace().next() {
+                        set.insert(name.to_string());
+                    }
+                }
+                ParseMode::AllTokens => {
+                    set.extend(line.split_whitespace().map(String::from));
+                }
+            }
+        }
+    }
+    Ok(set)
+}
+
+// ---------------------------------------------------------------------------
 // Provider implementations
 // ---------------------------------------------------------------------------
 
@@ -86,16 +125,7 @@ impl PackageProvider for PacmanProvider {
     }
 
     fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
-        let result = executor.run_unchecked("pacman", &["-Q"])?;
-        let mut set = HashSet::new();
-        if result.success {
-            for line in result.stdout.lines() {
-                if let Some(name) = line.split_whitespace().next() {
-                    set.insert(name.to_string());
-                }
-            }
-        }
-        Ok(set)
+        query_names(executor, "pacman", &["-Q"], ParseMode::FirstToken)
     }
 
     fn is_installed(&self, name: &str, executor: &dyn Executor) -> Result<bool> {
@@ -165,23 +195,16 @@ impl PackageProvider for WingetProvider {
     }
 
     fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
-        let result = executor.run_unchecked(
+        query_names(
+            executor,
             "winget",
             &[
                 "list",
                 "--accept-source-agreements",
                 "--disable-interactivity",
             ],
-        )?;
-        let mut set = HashSet::new();
-        if result.success {
-            for line in result.stdout.lines() {
-                for token in line.split_whitespace() {
-                    set.insert(token.to_string());
-                }
-            }
-        }
-        Ok(set)
+            ParseMode::AllTokens,
+        )
     }
 
     fn is_installed(&self, name: &str, executor: &dyn Executor) -> Result<bool> {

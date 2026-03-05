@@ -40,17 +40,17 @@ cli/src/
 ├── resources/     # Declarative resource abstraction
 │   ├── mod.rs     # Applicable + Resource traits, ResourceState, ResourceChange
 │   └── *.rs       # Per-type resources (symlink, registry, chmod, etc.)
+├── engine/        # Generic resource processing engine
+│   ├── mod.rs     # process_resources(), process_resource_states(), tests
+│   ├── mode.rs    # ProcessMode, ProcessOpts, ResourceAction
+│   ├── stats.rs   # TaskResult, TaskStats
+│   ├── apply.rs   # Apply/remove logic
+│   ├── context.rs # Context, ContextOpts
+│   ├── graph.rs   # Dependency graph and scheduler
+│   ├── parallel.rs # Parallel execution helpers
+│   └── update_signal.rs # Arc<AtomicBool> signalling
 ├── tasks/         # Task implementations
-│   ├── mod.rs     # Task trait, task_deps!, re-exports from processing/
-│   ├── processing/  # Generic resource processing engine
-│   │   ├── mod.rs   # process_resources(), process_resource_states(), tests
-│   │   ├── mode.rs  # ProcessMode, ProcessOpts, ResourceAction
-│   │   ├── stats.rs # TaskResult, TaskStats
-│   │   ├── apply.rs # Apply/remove logic
-│   │   ├── context.rs # Context, ContextOpts
-│   │   ├── graph.rs # Dependency graph and scheduler
-│   │   ├── parallel.rs # Parallel execution helpers
-│   │   └── update_signal.rs # Arc<AtomicBool> signalling
+│   ├── mod.rs     # Task trait, task_deps!, re-exports from engine/
 │   └── *.rs       # One file per task
 └── commands/      # install.rs, uninstall.rs, test.rs
 ```
@@ -488,15 +488,14 @@ and have no lifetime parameter.
 
 ### Generic Resource Loop
 
-`tasks/mod.rs` provides two helpers that handle the full check→dry-run→apply
-loop so individual tasks don't repeat it (implemented in `tasks/processing.rs`,
-re-exported from `tasks/mod.rs`):
+`engine/mod.rs` provides two helpers that handle the full check→dry-run→apply
+loop so individual tasks don't repeat it (re-exported from `tasks/mod.rs`):
 
 - **`process_resources(ctx, resources, opts)`** — calls `current_state()` per resource.
 - **`process_resource_states(ctx, resource_states, opts)`** — takes pre-computed `(Resource, ResourceState)` pairs for batch-checked resources.
 - **`process_resources_remove(ctx, resources, verb)`** — for uninstall: removes resources in `Correct` state, skips others.
 
-Both `process_resources` and `process_resource_states` are implemented in `tasks/processing.rs`
+Both `process_resources` and `process_resource_states` are implemented in `engine/`
 and re-exported from `tasks/mod.rs`. They accept a `ProcessOpts` value
 that controls which states are fixable and whether errors bail or warn.
 Use these helpers for **all** new resource-based tasks.

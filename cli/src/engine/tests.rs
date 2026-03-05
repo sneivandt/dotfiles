@@ -1,9 +1,9 @@
-use crate::resources::{Applicable, Resource, ResourceChange, ResourceState};
-use crate::tasks::processing::apply;
-use crate::tasks::processing::mode::ProcessOpts;
-use crate::tasks::processing::{
+use crate::engine::apply;
+use crate::engine::mode::ProcessOpts;
+use crate::engine::{
     TaskResult, TaskStats, process_resource_states, process_resources, process_resources_remove,
 };
+use crate::resources::{Applicable, Resource, ResourceChange, ResourceState};
 use crate::tasks::test_helpers::{empty_config, make_static_context};
 use std::path::PathBuf;
 

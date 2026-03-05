@@ -1,5 +1,5 @@
-//! Typed signal shared between [`super::super::update::UpdateRepository`] and
-//! [`super::super::reload_config::ReloadConfig`].
+//! Typed signal shared between [`crate::tasks::update::UpdateRepository`] and
+//! [`crate::tasks::reload_config::ReloadConfig`].
 //!
 //! `UpdateSignal` wraps an `Arc<AtomicBool>` but exposes only the two
 //! operations that matter for this use-case: [`UpdateSignal::mark_updated`]
@@ -31,7 +31,7 @@ impl UpdateSignal {
 
     /// Record that the repository was updated.
     ///
-    /// Called by [`super::super::update::UpdateRepository`] after a successful
+    /// Called by [`crate::tasks::update::UpdateRepository`] after a successful
     /// `git pull` that fetched new commits.
     pub fn mark_updated(&self) {
         self.updated.store(true, Ordering::Release);
@@ -39,7 +39,7 @@ impl UpdateSignal {
 
     /// Returns `true` if [`Self::mark_updated`] has been called.
     ///
-    /// Called by [`super::super::reload_config::ReloadConfig`] to decide whether
+    /// Called by [`crate::tasks::reload_config::ReloadConfig`] to decide whether
     /// a config reload is necessary.
     #[must_use]
     pub fn was_updated(&self) -> bool {

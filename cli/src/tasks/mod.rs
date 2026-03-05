@@ -5,7 +5,6 @@ pub mod developer_mode;
 pub mod git_config;
 pub mod hooks;
 pub mod packages;
-mod processing;
 pub mod registry;
 pub mod reload_config;
 pub mod self_update;
@@ -215,14 +214,14 @@ macro_rules! batch_resource_task {
 
 pub(crate) use batch_resource_task;
 
-// Re-export public items so downstream `use super::` and `use crate::tasks::`
+// Re-export engine types so downstream `use super::` and `use crate::tasks::`
 // continue to work unchanged.
-pub use processing::Context;
-pub use processing::ContextOpts;
-pub(crate) use processing::graph::has_cycle;
-pub use processing::update_signal::UpdateSignal;
+pub use crate::engine::Context;
+pub use crate::engine::ContextOpts;
+pub(crate) use crate::engine::graph::has_cycle;
+pub use crate::engine::update_signal::UpdateSignal;
 #[allow(unused_imports)] // TaskStats is used by doc-tests via the lib crate
-pub use processing::{
+pub use crate::engine::{
     ProcessMode, ProcessOpts, ResourceAction, TaskResult, TaskStats, process_resource_states,
     process_resources, process_resources_remove,
 };

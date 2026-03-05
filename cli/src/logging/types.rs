@@ -67,7 +67,7 @@ pub trait TaskRecorder: Send + Sync {
 
 /// Combined logging interface: user-facing output plus task recording.
 ///
-/// This is the primary trait stored in [`Context`](crate::tasks::Context).
+/// This is the primary trait stored in [`Context`](crate::engine::Context).
 /// It composes [`Output`] (display methods) and [`TaskRecorder`] (structured
 /// task results), allowing callers that need the full interface to accept a
 /// single trait object.

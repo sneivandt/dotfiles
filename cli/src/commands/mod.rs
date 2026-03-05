@@ -80,7 +80,7 @@ impl CommandRunner {
             platform,
             Arc::clone(log) as Arc<dyn Log>,
             executor,
-            crate::tasks::ContextOpts {
+            crate::engine::ContextOpts {
                 dry_run: global.dry_run,
                 parallel: global.parallel,
             },

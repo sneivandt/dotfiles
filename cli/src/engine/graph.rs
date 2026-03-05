@@ -3,7 +3,7 @@
 use std::any::TypeId;
 use std::collections::HashMap;
 
-use super::super::Task;
+use crate::tasks::Task;
 
 /// Detect cycles in the task dependency graph using Kahn's algorithm.
 ///

@@ -5,16 +5,18 @@
 //! and GitHub Copilot skills — all driven by TOML configuration files in
 //! `conf/` and filtered by profile and platform.
 //!
-//! The public API is organised into four layers:
+//! The public API is organised into five layers:
 //!
 //! - **[`config`]** — parse and validate TOML config files
 //! - **[`resources`]** — idempotent `check + apply` primitives (symlinks, packages, …)
+//! - **[`engine`]** — execution engine: context, dependency graph, and resource processing
 //! - **[`tasks`]** — named, dependency-ordered units of work wired to resources
 //! - **[`commands`]** — top-level subcommand orchestration (`install`, `uninstall`, `test`)
 pub mod cli;
 pub mod commands;
 pub mod config;
 pub mod elevation;
+pub mod engine;
 pub mod error;
 pub mod exec;
 pub mod logging;

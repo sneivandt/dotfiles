@@ -52,14 +52,14 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 ## High-Level Architecture
 
 ```
-┌─────────────┐      ┌─────────────┐
+┌──────────────┐      ┌─────────────┐
 │ dotfiles.sh  │      │ dotfiles.ps1│   Thin wrappers
 │  (Linux)     │      │  (Windows)  │   download/build binary
 └──────┬───────┘      └──────┬──────┘
        │                     │
        ▼                     ▼
 ┌──────────────────────────────────────┐
-│         cli/ (Rust binary)          │
+│         cli/ (Rust binary)           │
 │                                      │
 │  cli.rs         — clap argument      │
 │                   parsing            │
@@ -67,9 +67,13 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 │                   test, version      │
 │  config/        — TOML loading &     │
 │                   profile resolution │
+│  engine/        — execution engine,  │
+│                   context, graph     │
+│  resources/     — idempotent check   │
+│                   + apply primitives │
 │  tasks/         — Task trait impls   │
 │  platform.rs    — OS detection       │
-│  logging.rs     — structured logging │
+│  logging/       — structured logging │
 │  exec.rs        — subprocess exec    │
 └──────────────────────────────────────┘
        │
@@ -184,9 +188,22 @@ pub trait Task: Send + Sync + 'static {
 }
 ```
 
-A shared `Context` struct carries the loaded `Config`, `Platform`, `Logger`, and flags (`dry_run`, `parallel`, `home` path). Task-specific dependencies are injected via constructors: `UpdateRepository` and `ReloadConfig` share an `Arc<AtomicBool>` (`repo_updated`) to coordinate config reloading, and hook tasks (`InstallGitHooks`, `UninstallGitHooks`) hold an `Arc<dyn FileSystemOps>` for testable filesystem access.
+A shared `Context` struct (defined in `engine/context.rs`) carries the loaded `Config`, `Platform`, `Logger`, and flags (`dry_run`, `parallel`, `home` path). Task-specific dependencies are injected via constructors: `UpdateRepository` and `ReloadConfig` share an `UpdateSignal` (`engine/update_signal.rs`) to coordinate config reloading, and hook tasks (`InstallGitHooks`, `UninstallGitHooks`) hold an `Arc<dyn FileSystemOps>` for testable filesystem access.
 
 The `execute()` function runs a task, recording the result (`Ok`, `Skipped`, `DryRun`, `Failed`) in the logger.
+
+#### Engine (`engine/`)
+
+The execution engine provides the generic resource processing loop, dependency graph, and shared context used by all tasks. Key components:
+
+- **`context.rs`** — `Context` and `ContextOpts`: shared state (config, platform, logger, flags) threaded through every task
+- **`apply.rs`** — single-resource processing: check state → dry-run → apply/remove
+- **`orchestrate.rs`** — top-level resource orchestration with `process_resources()`, `process_resource_states()`, and `process_resources_remove()`
+- **`mode.rs`** — `ProcessMode` enum (`Strict`, `Lenient`, `InstallMissing`, `FixExisting`) and `ProcessOpts` that control which states are fixable and whether errors bail or warn
+- **`parallel.rs`** — Rayon-based parallel dispatch when `ctx.parallel` is true
+- **`graph.rs`** — dependency graph cycle detection (Kahn's algorithm)
+- **`stats.rs`** — `TaskResult` and `TaskStats` types
+- **`update_signal.rs`** — `Arc<AtomicBool>` signalling between `UpdateRepository` and `ReloadConfig`
 
 **Implemented tasks** (`cli/src/tasks/`, executed as soon as dependencies allow):
 - `developer_mode` — Enable Windows developer mode (required for symlinks)
@@ -240,7 +257,7 @@ fn should_run(&self, ctx: &Context) -> bool {
 
 This is more expressive than `ctx.platform.is_linux()` because it clearly states *why* the platform matters (systemd support) rather than just checking the OS type.
 
-#### Logging (`logging.rs`)
+#### Logging (`logging/`)
 
 Structured logger that:
 - Prints stage headers for each task
@@ -411,7 +428,7 @@ of tasks with unsatisfied dependencies (common on 2-vCPU CI runners).
 Within each task, resource operations (symlinks, packages, registry entries,
 etc.) are also processed in parallel using Rayon's `into_par_iter()`.
 
-- `process_resources()` and `process_resource_states()` in `tasks/processing/` dispatch
+- `process_resources()` and `process_resource_states()` in `engine/` dispatch
   to Rayon's `into_par_iter()` when `ctx.parallel` is `true` and there is more than
   one resource to process
 - A `Mutex<TaskStats>` accumulates changed/skipped counters across threads

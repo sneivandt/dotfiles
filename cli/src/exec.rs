@@ -55,11 +55,17 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
 
     /// Execute a command in a specific directory.
     ///
+    /// The default implementation delegates to
+    /// [`run_in_with_env`](Executor::run_in_with_env) with an empty
+    /// environment slice.
+    ///
     /// # Errors
     ///
     /// Returns an error if the command fails to execute, the directory does not exist,
     /// or the command exits with a non-zero status code.
-    fn run_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult>;
+    fn run_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
+        self.run_in_with_env(dir, program, args, &[])
+    }
 
     /// Execute a command in a specific directory with extra environment variables.
     ///
@@ -104,12 +110,6 @@ impl Executor for SystemExecutor {
         let mut cmd = Command::new(program);
         cmd.args(args);
         execute_checked(cmd, program)
-    }
-
-    fn run_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
-        let mut cmd = Command::new(program);
-        cmd.args(args).current_dir(dir);
-        execute_checked(cmd, &format!("{program} in {}", dir.display()))
     }
 
     fn run_in_with_env(
@@ -392,10 +392,6 @@ pub mod test_helpers {
 
     impl Executor for TestExecutor {
         fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
-            self.next_result()
-        }
-
-        fn run_in(&self, _: &Path, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
             self.next_result()
         }
 

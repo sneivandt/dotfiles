@@ -8,8 +8,8 @@ set -o nounset
 # binary is present, then runs it. The binary handles its own updates.
 # --build: builds the Rust binary from source (requires cargo).
 #
-# All options (including --build) are forwarded verbatim to the dotfiles binary.
-# The binary ignores the unknown --build flag.
+# --build is consumed by this script and stripped before forwarding remaining
+# arguments to the dotfiles binary.
 # Commonly used flags: --profile <name>, --dry-run.
 # Advanced flags (--skip, --only, --root, --no-parallel) require invoking
 # the binary directly.
@@ -46,9 +46,17 @@ if [ "$BUILD_MODE" = true ]; then
     echo "ERROR: cargo not found. Install Rust to use --build mode." >&2
     exit 1
   fi
+  # Strip --build from the argument list before forwarding to the binary.
+  FILTERED_ARGS=""
+  for arg in "$@"; do
+    if [ "$arg" != "--build" ]; then
+      FILTERED_ARGS="$FILTERED_ARGS $arg"
+    fi
+  done
   cd "$DOTFILES_ROOT/cli"
   cargo build --profile dev-opt
-  exec "$DOTFILES_ROOT/cli/target/dev-opt/dotfiles" --root "$DOTFILES_ROOT" "$@"
+  # shellcheck disable=SC2086
+  exec "$DOTFILES_ROOT/cli/target/dev-opt/dotfiles" --root "$DOTFILES_ROOT" $FILTERED_ARGS
 fi
 
 # --------------------------------------------------------------------------- #

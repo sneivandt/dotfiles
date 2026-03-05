@@ -1,4 +1,4 @@
-//! File-system resource helpers and the injectable [`FileSystemOps`] trait.
+//! File-system helpers and the injectable [`FileSystemOps`] trait.
 //!
 //! This module is the single source of truth for filesystem operations:
 //!
@@ -88,7 +88,7 @@ impl FileSystemOps for SystemFileSystemOps {
 /// # Example
 ///
 /// ```ignore
-/// use dotfiles_cli::resources::helpers::fs::MockFileSystemOps;
+/// use dotfiles_cli::fs::MockFileSystemOps;
 /// use std::path::PathBuf;
 ///
 /// let fs = MockFileSystemOps::new()

@@ -6,7 +6,7 @@ use anyhow::{Context as _, Result};
 use super::{
     Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove, task_deps,
 };
-use crate::resources::helpers::fs::{FileSystemOps, SystemFileSystemOps};
+use crate::fs::{FileSystemOps, SystemFileSystemOps};
 use crate::resources::hook::HookFileResource;
 
 /// Discover hook file resources from the `hooks/` directory.
@@ -139,7 +139,7 @@ impl Task for UninstallGitHooks {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::resources::helpers::fs::MockFileSystemOps;
+    use crate::fs::MockFileSystemOps;
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 

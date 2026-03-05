@@ -19,6 +19,7 @@ pub mod elevation;
 pub mod engine;
 pub mod error;
 pub mod exec;
+pub mod fs;
 pub mod logging;
 pub mod platform;
 pub mod resources;

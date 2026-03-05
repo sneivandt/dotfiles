@@ -30,8 +30,8 @@ impl Applicable for HookFileResource {
     }
 
     fn apply(&self) -> Result<ResourceChange> {
-        super::helpers::fs::ensure_parent_dir(&self.target)?;
-        super::helpers::fs::remove_existing(&self.target)?;
+        crate::fs::ensure_parent_dir(&self.target)?;
+        crate::fs::remove_existing(&self.target)?;
 
         // Copy file
         std::fs::copy(&self.source, &self.target)

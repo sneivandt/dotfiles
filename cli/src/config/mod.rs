@@ -1,7 +1,7 @@
 //! Configuration loading and validation for all TOML config files.
 pub mod category_matcher {
     //! Re-export of [`super::helpers::category_matcher`].
-    pub use super::helpers::category_matcher::*;
+    pub use super::helpers::category_matcher::{Category, MatchMode, matches};
 }
 pub mod chmod;
 pub mod copilot_skills;

@@ -3,7 +3,6 @@ pub mod chmod;
 pub mod copilot_skill;
 pub mod developer_mode;
 pub mod git_config;
-pub(crate) mod helpers;
 pub mod hook;
 pub mod package;
 pub mod registry;

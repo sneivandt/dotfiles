@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use super::{Context, Task, TaskResult};
-use crate::resources::helpers::fs::{FileSystemOps, SystemFileSystemOps};
+use crate::fs::{FileSystemOps, SystemFileSystemOps};
 
 /// Default sparse checkout pattern that includes all files at root level.
 const DEFAULT_SPARSE_PATTERN: &str = "/*";
@@ -199,8 +199,8 @@ impl Task for ConfigureSparseCheckout {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::fs::MockFileSystemOps;
     use crate::platform::{Os, Platform};
-    use crate::resources::helpers::fs::MockFileSystemOps;
     use crate::resources::test_helpers::MockExecutor;
     use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
     use std::path::PathBuf;

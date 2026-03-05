@@ -70,7 +70,7 @@ fn collect_parallel_stats<T: Send>(
         Ok(())
     })?;
     Ok(stats.into_inner().unwrap_or_else(|e| {
-        eprintln!("warning: stats mutex was poisoned, recovering");
+        tracing::warn!("stats mutex was poisoned, recovering");
         e.into_inner()
     }))
 }

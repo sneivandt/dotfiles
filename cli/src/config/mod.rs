@@ -310,6 +310,7 @@ impl Config {
         warnings.extend(systemd_units::validate(&self.units, platform));
         warnings.extend(vscode_extensions::validate(&self.vscode_extensions));
         warnings.extend(copilot_skills::validate(&self.copilot_skills));
+        warnings.extend(git_config::validate(&self.git_settings));
         warnings
     }
 }

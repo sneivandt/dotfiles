@@ -52,7 +52,12 @@ pub(crate) fn re_exec() -> ! {
             .env(REEXEC_GUARD_VAR, "1")
             .status()
         {
-            Ok(s) => std::process::exit(s.code().unwrap_or(1)),
+            Ok(s) => {
+                if s.code().is_none() {
+                    eprintln!("\x1b[33mWarning: child process terminated by signal\x1b[0m");
+                }
+                std::process::exit(s.code().unwrap_or(1))
+            }
             Err(e) => {
                 eprintln!("\x1b[31mError: failed to re-exec: {e}\x1b[0m");
                 std::process::exit(1);

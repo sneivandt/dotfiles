@@ -1,5 +1,7 @@
 //! Task: configure systemd user units.
 
+use std::sync::Arc;
+
 use super::{ProcessOpts, resource_task};
 use crate::resources::systemd_unit::SystemdUnitResource;
 
@@ -23,7 +25,7 @@ resource_task! {
             }
         },
         items: |ctx| ctx.config_read().units.clone(),
-        build: |entry, ctx| SystemdUnitResource::from_entry(&entry, &*ctx.executor),
+        build: |entry, ctx| SystemdUnitResource::from_entry(&entry, Arc::clone(&ctx.executor)),
         opts: ProcessOpts::install_missing("enable"),
     }
 }

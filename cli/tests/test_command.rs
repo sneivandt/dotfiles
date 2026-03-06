@@ -17,7 +17,9 @@ mod common;
 
 use dotfiles_cli::config::Config;
 use dotfiles_cli::config::profiles;
+use dotfiles_cli::logging::Logger;
 use dotfiles_cli::platform::{Os, Platform};
+use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
 // Config loading
@@ -782,6 +784,35 @@ fn config_validate_collects_warnings_from_multiple_sources() {
         sources.contains("copilot-skills.toml"),
         "expected a copilot-skills.toml warning"
     );
+}
+
+// ---------------------------------------------------------------------------
+// test command: warning handling
+// ---------------------------------------------------------------------------
+
+/// The `test` command should fail when config validation emits warnings.
+#[test]
+fn test_command_fails_on_config_warnings() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file(
+            "vscode-extensions.toml",
+            "[base]\nextensions = [\"invalid_no_dot\"]\n",
+        )
+        .build();
+
+    std::fs::create_dir_all(ctx.root_path().join(".git")).expect("create .git dir");
+
+    let global = dotfiles_cli::cli::GlobalOpts {
+        root: Some(ctx.root_path().to_path_buf()),
+        profile: Some("base".to_string()),
+        dry_run: true,
+        parallel: false,
+    };
+    let opts = dotfiles_cli::cli::TestOpts {};
+    let log = Arc::new(Logger::new("test-command"));
+
+    let result = dotfiles_cli::commands::test::run(&global, &opts, &log);
+    assert!(result.is_err(), "test command should fail on warnings");
 }
 
 // ---------------------------------------------------------------------------

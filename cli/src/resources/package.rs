@@ -80,8 +80,6 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
 enum ParseMode {
     /// Take only the first whitespace-delimited token per line (e.g. pacman).
     FirstToken,
-    /// Take every whitespace-delimited token per line (e.g. winget).
-    AllTokens,
 }
 
 /// Run a package manager command and collect package names from its output.
@@ -101,13 +99,77 @@ fn query_names(
                         set.insert(name.to_string());
                     }
                 }
-                ParseMode::AllTokens => {
-                    set.extend(line.split_whitespace().map(String::from));
-                }
             }
         }
     }
     Ok(set)
+}
+
+/// Split a padded CLI table row into logical columns.
+///
+/// Single spaces are preserved inside a column; a run of two or more spaces is
+/// treated as a column separator.
+fn split_padded_columns(line: &str) -> Vec<String> {
+    let mut cols = Vec::new();
+    let mut current = String::new();
+    let mut spaces = 0usize;
+
+    for ch in line.chars() {
+        if ch == ' ' {
+            spaces += 1;
+            if spaces < 2 {
+                continue;
+            }
+
+            if !current.trim().is_empty() {
+                cols.push(current.trim().to_string());
+                current.clear();
+            }
+        } else {
+            if spaces == 1 {
+                current.push(' ');
+            }
+            spaces = 0;
+            current.push(ch);
+        }
+    }
+
+    if !current.trim().is_empty() {
+        cols.push(current.trim().to_string());
+    }
+
+    cols
+}
+
+/// Parse package IDs from `winget list` output.
+fn parse_winget_ids(stdout: &str) -> HashSet<String> {
+    let mut ids = HashSet::new();
+    let mut id_index = None;
+
+    for line in stdout.lines() {
+        let cols = split_padded_columns(line);
+        if cols.is_empty() {
+            continue;
+        }
+
+        if id_index.is_none() {
+            id_index = cols.iter().position(|col| col == "Id");
+            continue;
+        }
+
+        if cols.iter().all(|col| col.chars().all(|c| c == '-')) {
+            continue;
+        }
+
+        if let Some(idx) = id_index
+            && let Some(id) = cols.get(idx)
+            && !id.is_empty()
+        {
+            ids.insert(id.clone());
+        }
+    }
+
+    ids
 }
 
 // ---------------------------------------------------------------------------
@@ -194,16 +256,20 @@ impl PackageProvider for WingetProvider {
     }
 
     fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
-        query_names(
-            executor,
+        let result = executor.run_unchecked(
             "winget",
             &[
                 "list",
                 "--accept-source-agreements",
                 "--disable-interactivity",
             ],
-            ParseMode::AllTokens,
-        )
+        )?;
+
+        if !result.success {
+            return Ok(HashSet::new());
+        }
+
+        Ok(parse_winget_ids(&result.stdout))
     }
 
     fn is_installed(&self, name: &str, executor: &dyn Executor) -> Result<bool> {
@@ -503,6 +569,25 @@ mod tests {
         let installed = get_installed_packages(PackageManager::Winget, &executor).unwrap();
         assert!(installed.contains("Git.Git"));
         assert!(installed.contains("Microsoft.PowerShell"));
+        assert!(
+            !installed.contains("Git"),
+            "display names should not be included"
+        );
+    }
+
+    #[test]
+    fn get_installed_winget_ignores_separator_and_extra_columns() {
+        let stdout = concat!(
+            "Name                          Id                           Version        Available Source\n",
+            "-------------------------------------------------------------------------------------\n",
+            "Git                           Git.Git                      2.45.1         2.46.0   winget\n",
+            "Windows Terminal              Microsoft.WindowsTerminal    1.21.2361.0             winget\n",
+        );
+
+        let installed = parse_winget_ids(stdout);
+        assert!(installed.contains("Git.Git"));
+        assert!(installed.contains("Microsoft.WindowsTerminal"));
+        assert_eq!(installed.len(), 2, "only package IDs should be collected");
     }
 
     // ------------------------------------------------------------------

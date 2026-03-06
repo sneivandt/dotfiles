@@ -243,6 +243,72 @@ test_wrapper_forwarded_args()
   fi
 )}
 
+test_wrapper_build_mode_forwards_supported_flags()
+{(
+  log_stage "Testing build-mode forwarding of supported flags"
+
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+
+  cp "$DIR/dotfiles.sh" "$tmpdir/dotfiles.sh"
+  mkdir -p "$tmpdir/cli/target/dev-opt" "$tmpdir/fake-bin"
+
+  cat > "$tmpdir/fake-bin/cargo" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+  chmod +x "$tmpdir/fake-bin/cargo"
+
+  cat > "$tmpdir/cli/target/dev-opt/dotfiles" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@" > "$DOTFILES_ROOT/forwarded-args.txt"
+EOF
+  chmod +x "$tmpdir/cli/target/dev-opt/dotfiles"
+
+  PATH="$tmpdir/fake-bin:$PATH" "$tmpdir/dotfiles.sh" --build install -p desktop -d -v
+
+  expected=$(cat <<EOF
+--root
+$tmpdir
+install
+--profile
+desktop
+--dry-run
+--verbose
+EOF
+)
+  actual=$(cat "$tmpdir/forwarded-args.txt")
+
+  if [ "$actual" = "$expected" ]; then
+    log_verbose "✓ Build mode forwards normalized arguments safely"
+  else
+    printf "%sERROR: Forwarded args mismatch.%s\nExpected:\n%s\nActual:\n%s\n" "${RED}" "${NC}" "$expected" "$actual" >&2
+    return 1
+  fi
+)}
+
+test_wrapper_rejects_advanced_flags()
+{(
+  log_stage "Testing wrapper rejects advanced flags"
+
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+
+  cp "$DIR/dotfiles.sh" "$tmpdir/dotfiles.sh"
+
+  if "$tmpdir/dotfiles.sh" --build install --skip symlink >/dev/null 2>"$tmpdir/stderr.txt"; then
+    printf "%sERROR: Wrapper should reject advanced flags%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+
+  if grep -q "unsupported argument '--skip'" "$tmpdir/stderr.txt"; then
+    log_verbose "✓ Wrapper rejects advanced flags with a clear error"
+  else
+    printf "%sERROR: Wrapper error output unexpected: %s%s\n" "${RED}" "$(cat "$tmpdir/stderr.txt")" "${NC}" >&2
+    return 1
+  fi
+)}
+
 test_wrapper_root_detection()
 {(
   log_stage "Testing DOTFILES_ROOT detection"
@@ -314,6 +380,8 @@ case "$0" in
     test_wrapper_checksum_verification
     test_wrapper_offline_fallback
     test_wrapper_forwarded_args
+    test_wrapper_build_mode_forwards_supported_flags
+    test_wrapper_rejects_advanced_flags
     test_wrapper_root_detection
     test_wrapper_error_handling
     echo "All shell wrapper tests passed"

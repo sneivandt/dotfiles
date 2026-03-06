@@ -27,15 +27,56 @@ RETRY_DELAY=2        # seconds between retries
 # NOTE: Keep these constants in sync with the equivalent values in dotfiles.ps1.
 # dotfiles.ps1: $ConnectTimeout / $TransferTimeout / $RetryCount / $RetryDelay
 
+die() {
+  echo "ERROR: $1" >&2
+  exit 1
+}
+
 # --------------------------------------------------------------------------- #
-# Parse arguments — detect --build flag
+# Parse arguments — validate wrapper-supported flags and detect --build
 # --------------------------------------------------------------------------- #
 BUILD_MODE=false
-for arg in "$@"; do
-  if [ "$arg" = "--build" ]; then
-    BUILD_MODE=true
-    break
-  fi
+ACTION=""
+PROFILE=""
+DRY_RUN=false
+VERBOSE=false
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --build)
+      BUILD_MODE=true
+      ;;
+    install|uninstall|test|version)
+      if [ -n "$ACTION" ]; then
+        die "multiple actions provided: '$ACTION' and '$1'"
+      fi
+      ACTION="$1"
+      ;;
+    -p|--profile)
+      shift
+      if [ "$#" -eq 0 ]; then
+        die "--profile requires a value"
+      fi
+      case "$1" in
+        base|desktop)
+          PROFILE="$1"
+          ;;
+        *)
+          die "invalid profile '$1'"
+          ;;
+      esac
+      ;;
+    -d|--dry-run)
+      DRY_RUN=true
+      ;;
+    -v|--verbose)
+      VERBOSE=true
+      ;;
+    *)
+      die "unsupported argument '$1'. Use the binary directly for advanced flags."
+      ;;
+  esac
+  shift
 done
 
 # --------------------------------------------------------------------------- #
@@ -46,17 +87,22 @@ if [ "$BUILD_MODE" = true ]; then
     echo "ERROR: cargo not found. Install Rust to use --build mode." >&2
     exit 1
   fi
-  # Strip --build from the argument list before forwarding to the binary.
-  FILTERED_ARGS=""
-  for arg in "$@"; do
-    if [ "$arg" != "--build" ]; then
-      FILTERED_ARGS="$FILTERED_ARGS $arg"
-    fi
-  done
   cd "$DOTFILES_ROOT/cli"
   cargo build --profile dev-opt
-  # shellcheck disable=SC2086
-  exec "$DOTFILES_ROOT/cli/target/dev-opt/dotfiles" --root "$DOTFILES_ROOT" $FILTERED_ARGS
+  set -- --root "$DOTFILES_ROOT"
+  if [ -n "$ACTION" ]; then
+    set -- "$@" "$ACTION"
+  fi
+  if [ -n "$PROFILE" ]; then
+    set -- "$@" --profile "$PROFILE"
+  fi
+  if [ "$DRY_RUN" = true ]; then
+    set -- "$@" --dry-run
+  fi
+  if [ "$VERBOSE" = true ]; then
+    set -- "$@" --verbose
+  fi
+  exec "$DOTFILES_ROOT/cli/target/dev-opt/dotfiles" "$@"
 fi
 
 # --------------------------------------------------------------------------- #
@@ -183,4 +229,18 @@ if [ ! -x "$BINARY" ]; then
   download_binary "$latest"
 fi
 
-exec "$BINARY" --root "$DOTFILES_ROOT" "$@"
+set -- --root "$DOTFILES_ROOT"
+if [ -n "$ACTION" ]; then
+  set -- "$@" "$ACTION"
+fi
+if [ -n "$PROFILE" ]; then
+  set -- "$@" --profile "$PROFILE"
+fi
+if [ "$DRY_RUN" = true ]; then
+  set -- "$@" --dry-run
+fi
+if [ "$VERBOSE" = true ]; then
+  set -- "$@" --verbose
+fi
+
+exec "$BINARY" "$@"

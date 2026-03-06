@@ -219,6 +219,54 @@ function Test-ArgumentForwarding {
     }
 }
 
+function Test-InstallArgumentForwarding {
+    Write-TestStage "Testing install argument forwarding through wrapper"
+
+    $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
+    if (-not (Test-Path $wrapper)) {
+        Write-Host "Skipping: wrapper not found" -ForegroundColor Yellow
+        return $true
+    }
+
+    try {
+        $originalGuard = $env:DOTFILES_REEXEC_GUARD
+        $env:DOTFILES_REEXEC_GUARD = '1'
+        $output = & $wrapper install -p base -d 2>&1
+        $text = ($output | Out-String)
+
+        if ($LASTEXITCODE -eq 0 -and $text -match 'profile:\s+base') {
+            Write-TestPass "Install arguments forwarded correctly"
+            return $true
+        }
+
+        Write-TestFail "Install forwarding output unexpected: $text"
+        return $false
+    } catch {
+        Write-TestFail "Install argument forwarding failed: $_"
+        return $false
+    } finally {
+        if ($null -eq $originalGuard) {
+            Remove-Item Env:DOTFILES_REEXEC_GUARD -ErrorAction SilentlyContinue
+        } else {
+            $env:DOTFILES_REEXEC_GUARD = $originalGuard
+        }
+    }
+}
+
+function Test-AdvancedFlagsRejected {
+    Write-TestStage "Testing advanced flags are rejected by wrapper"
+
+    $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
+    try {
+        & $wrapper install -Skip symlinks *> $null
+        Write-TestFail "Wrapper unexpectedly accepted -Skip"
+        return $false
+    } catch {
+        Write-TestPass "Wrapper rejects unsupported advanced flags"
+        return $true
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Test Platform Detection
 # ---------------------------------------------------------------------------
@@ -275,6 +323,8 @@ function Invoke-AllTests {
     $results += Test-ChecksumVerification
     $results += Test-OfflineFallback
     $results += Test-ArgumentForwarding
+    $results += Test-InstallArgumentForwarding
+    $results += Test-AdvancedFlagsRejected
     $results += Test-PlatformDetection
     $results += Test-ErrorHandling
 

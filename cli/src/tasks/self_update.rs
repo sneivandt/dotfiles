@@ -16,6 +16,12 @@ const REPO: &str = "sneivandt/dotfiles";
 /// Maximum age (in seconds) before a version check is performed again.
 const CACHE_MAX_AGE: u64 = 3600;
 
+/// Staging file used on Windows until the wrapper can promote the update.
+const PENDING_BINARY_NAME: &str = ".dotfiles-update.pending";
+
+/// Metadata file that stores the staged version tag.
+const PENDING_VERSION_NAME: &str = ".dotfiles-update.version";
+
 /// Detect the asset name for the current platform.
 const fn asset_name() -> &'static str {
     if cfg!(target_os = "windows") {
@@ -40,6 +46,16 @@ fn binary_path(root: &std::path::Path) -> PathBuf {
 /// Path to the version-check cache file.
 fn cache_path(root: &std::path::Path) -> PathBuf {
     root.join("bin").join(".dotfiles-version-cache")
+}
+
+/// Path to a staged binary update.
+fn pending_binary_path(root: &std::path::Path) -> PathBuf {
+    root.join("bin").join(PENDING_BINARY_NAME)
+}
+
+/// Path to the staged version metadata file.
+fn pending_version_path(root: &std::path::Path) -> PathBuf {
+    root.join("bin").join(PENDING_VERSION_NAME)
 }
 
 /// Check whether the cached version is still fresh (less than [`CACHE_MAX_AGE`]
@@ -201,6 +217,7 @@ fn verify_checksum(client: &dyn HttpClient, tag: &str, asset: &str, data: &[u8])
 }
 
 /// Replace the binary at `path` with `data`, handling platform differences.
+#[cfg_attr(windows, allow(dead_code))]
 fn replace_binary(path: &std::path::Path, data: &[u8]) -> Result<()> {
     let dir = path
         .parent()
@@ -232,6 +249,37 @@ fn replace_binary(path: &std::path::Path, data: &[u8]) -> Result<()> {
     }
 
     fs::rename(&tmp, path).context("moving new binary into place")?;
+    Ok(())
+}
+
+/// Stage an update for later promotion by the wrapper.
+fn stage_binary(root: &std::path::Path, tag: &str, data: &[u8]) -> Result<()> {
+    let pending = pending_binary_path(root);
+    let dir = pending
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("pending binary path has no parent directory"))?;
+    fs::create_dir_all(dir).context("creating bin directory")?;
+
+    let tmp = dir.join(".dotfiles-update.tmp");
+    {
+        let mut f = fs::File::create(&tmp).context("creating temp staged file")?;
+        f.write_all(data).context("writing staged binary data")?;
+        f.flush().context("flushing staged binary data")?;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))
+            .context("setting staged executable permission")?;
+    }
+
+    if pending.exists() {
+        fs::remove_file(&pending).context("removing previous staged binary")?;
+    }
+    fs::rename(&tmp, &pending).context("moving staged binary into place")?;
+    fs::write(pending_version_path(root), format!("{tag}\n"))
+        .context("writing staged update metadata")?;
     Ok(())
 }
 
@@ -326,9 +374,19 @@ fn download_and_install(root: &std::path::Path, tag: &str, client: &dyn HttpClie
     let url = format!("https://github.com/{REPO}/releases/download/{tag}/{asset}");
     let data = download_bytes(client, &url)?;
     verify_checksum(client, tag, asset, &data)?;
-    let bin = binary_path(root);
-    replace_binary(&bin, &data)?;
-    write_cache(root, tag)?;
+
+    #[cfg(windows)]
+    {
+        stage_binary(root, tag, &data)?;
+    }
+
+    #[cfg(not(windows))]
+    {
+        let bin = binary_path(root);
+        replace_binary(&bin, &data)?;
+        write_cache(root, tag)?;
+    }
+
     Ok(())
 }
 
@@ -364,7 +422,13 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
             log.stage("Self update");
             log.info(&format!("updating: {current} → {latest}"));
             download_and_install(root, &latest, &client)?;
+
+            #[cfg(windows)]
+            log.info("binary staged, wrapper restart required");
+
+            #[cfg(not(windows))]
             log.info("binary updated, restarting");
+
             Ok(true)
         }
     }
@@ -537,6 +601,22 @@ mod tests {
     }
 
     #[test]
+    fn stage_binary_writes_pending_files() {
+        let dir = tempfile::tempdir().unwrap();
+
+        stage_binary(dir.path(), "v1.2.3", b"new-binary").unwrap();
+
+        assert_eq!(
+            fs::read(pending_binary_path(dir.path())).unwrap(),
+            b"new-binary"
+        );
+        assert_eq!(
+            fs::read_to_string(pending_version_path(dir.path())).unwrap(),
+            "v1.2.3\n"
+        );
+    }
+
+    #[test]
     fn asset_name_is_non_empty() {
         assert!(!asset_name().is_empty());
     }
@@ -699,7 +779,23 @@ mod tests {
 
         download_and_install(dir.path(), "v1.0.0", &client).unwrap();
 
-        let installed = fs::read(binary_path(dir.path())).unwrap();
-        assert_eq!(installed, binary_data);
+        #[cfg(windows)]
+        {
+            let staged = fs::read(pending_binary_path(dir.path())).unwrap();
+            assert_eq!(staged, binary_data);
+            assert_eq!(
+                fs::read_to_string(pending_version_path(dir.path())).unwrap(),
+                "v1.0.0\n"
+            );
+            assert!(!cache_path(dir.path()).exists());
+        }
+
+        #[cfg(not(windows))]
+        {
+            let installed = fs::read(binary_path(dir.path())).unwrap();
+            assert_eq!(installed, binary_data);
+            let cache = fs::read_to_string(cache_path(dir.path())).unwrap();
+            assert!(cache.starts_with("v1.0.0\n"));
+        }
     }
 }

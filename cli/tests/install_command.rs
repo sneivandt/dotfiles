@@ -7,7 +7,7 @@
 //! Integration tests for the `install` command.
 //!
 //! These tests exercise the full task list produced by [`all_install_tasks`],
-//! the task-name–based filtering applied by the `--skip` and `--only` CLI
+//! the task-selector filtering applied by the `--skip` and `--only` CLI
 //! flags, and the structural properties of the install dependency graph.
 
 mod common;
@@ -17,6 +17,50 @@ use std::collections::HashSet;
 
 use dotfiles_cli::platform::{Os, Platform};
 use dotfiles_cli::tasks;
+
+const TASK_FILTER_STOP_WORDS: &[&str] = &[
+    "install",
+    "configure",
+    "enable",
+    "apply",
+    "update",
+    "reload",
+    "run",
+    "validate",
+];
+
+fn normalized_task_tokens(value: &str) -> Vec<String> {
+    value
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect()
+}
+
+fn normalize_task_filter(value: &str) -> String {
+    normalized_task_tokens(value).join("-")
+}
+
+fn canonical_task_selector(task_name: &str) -> String {
+    let tokens = normalized_task_tokens(task_name);
+    let trimmed: Vec<_> = tokens
+        .iter()
+        .skip_while(|token| TASK_FILTER_STOP_WORDS.contains(&token.as_str()))
+        .cloned()
+        .collect();
+    if trimmed.is_empty() {
+        tokens.join("-")
+    } else {
+        trimmed.join("-")
+    }
+}
+
+fn task_matches_filter(task_name: &str, filter: &str) -> bool {
+    let normalized_filter = normalize_task_filter(filter);
+    !normalized_filter.is_empty()
+        && (normalized_filter == normalize_task_filter(task_name)
+            || normalized_filter == canonical_task_selector(task_name))
+}
 
 // ---------------------------------------------------------------------------
 // Snapshot: full install task list
@@ -98,8 +142,7 @@ fn install_task_dependencies_are_resolvable() {
 // --skip filter
 // ---------------------------------------------------------------------------
 
-/// Tasks whose names contain the skip keyword (case-insensitive) must be
-/// excluded from the filtered list, matching the behaviour of `--skip packages`.
+/// Tasks matching the skip selector must be excluded from the filtered list.
 #[test]
 fn skip_filter_excludes_matching_tasks() {
     let all_tasks = tasks::all_install_tasks();
@@ -107,13 +150,13 @@ fn skip_filter_excludes_matching_tasks() {
 
     let filtered: Vec<&str> = all_tasks
         .iter()
-        .filter(|t| !t.name().to_lowercase().contains(skip_keyword))
+        .filter(|t| !task_matches_filter(t.name(), skip_keyword))
         .map(|t| t.name())
         .collect();
 
     for name in &filtered {
         assert!(
-            !name.to_lowercase().contains(skip_keyword),
+            !task_matches_filter(name, skip_keyword),
             "task '{name}' should have been excluded by --skip {skip_keyword}",
         );
     }
@@ -133,7 +176,7 @@ fn skip_filter_with_no_match_returns_all_tasks() {
 
     let filtered_count = all_tasks
         .iter()
-        .filter(|t| !t.name().to_lowercase().contains(skip_keyword))
+        .filter(|t| !task_matches_filter(t.name(), skip_keyword))
         .count();
 
     assert_eq!(
@@ -146,7 +189,7 @@ fn skip_filter_with_no_match_returns_all_tasks() {
 // --only filter
 // ---------------------------------------------------------------------------
 
-/// Only tasks whose names contain the `--only` keyword should remain.
+/// Only tasks matching the `--only` selector should remain.
 #[test]
 fn only_filter_includes_only_matching_tasks() {
     let all_tasks = tasks::all_install_tasks();
@@ -154,7 +197,7 @@ fn only_filter_includes_only_matching_tasks() {
 
     let filtered: Vec<&str> = all_tasks
         .iter()
-        .filter(|t| t.name().to_lowercase().contains(only_keyword))
+        .filter(|t| task_matches_filter(t.name(), only_keyword))
         .map(|t| t.name())
         .collect();
 
@@ -165,29 +208,26 @@ fn only_filter_includes_only_matching_tasks() {
     );
 }
 
-/// When `--only` matches multiple tasks all of them are included.
+/// Canonical selectors disambiguate similar task names.
 #[test]
-fn only_filter_can_include_multiple_tasks() {
+fn only_filter_disambiguates_update_tasks() {
     let all_tasks = tasks::all_install_tasks();
-    let only_keyword = "git";
-
     let filtered: Vec<&str> = all_tasks
         .iter()
-        .filter(|t| t.name().to_lowercase().contains(only_keyword))
+        .filter(|t| task_matches_filter(t.name(), "repository"))
         .map(|t| t.name())
         .collect();
 
-    // "Configure git" and "Install git hooks" both match
+    assert_eq!(filtered, vec!["Update repository"]);
+
+    let unmatched = all_tasks
+        .iter()
+        .any(|t| task_matches_filter(t.name(), "update"));
+
     assert!(
-        filtered.len() >= 2,
-        "--only git should match at least 'Configure git' and 'Install git hooks'"
+        !unmatched,
+        "ambiguous selectors like 'update' should not match any task"
     );
-    for name in &filtered {
-        assert!(
-            name.to_lowercase().contains(only_keyword),
-            "task '{name}' should not have been included by --only git",
-        );
-    }
 }
 
 /// When `--only` matches nothing the result is an empty list.
@@ -198,7 +238,7 @@ fn only_filter_with_no_match_returns_empty() {
 
     let any_match = all_tasks
         .iter()
-        .any(|t| t.name().to_lowercase().contains(only_keyword));
+        .any(|t| task_matches_filter(t.name(), only_keyword));
 
     assert!(
         !any_match,
@@ -363,17 +403,17 @@ fn skip_with_multiple_keywords_excludes_all_matching() {
     let filtered: Vec<&str> = all_tasks
         .iter()
         .filter(|t| {
-            let name = t.name().to_lowercase();
-            !skip_keywords.iter().any(|kw| name.contains(kw))
+            !skip_keywords
+                .iter()
+                .any(|kw| task_matches_filter(t.name(), kw))
         })
         .map(|t| t.name())
         .collect();
 
     for name in &filtered {
-        let lower = name.to_lowercase();
         for kw in &skip_keywords {
             assert!(
-                !lower.contains(kw),
+                !task_matches_filter(name, kw),
                 "task '{name}' should have been excluded by --skip {kw}",
             );
         }
@@ -388,38 +428,29 @@ fn skip_with_multiple_keywords_excludes_all_matching() {
 // --only filter: multiple keywords
 // ---------------------------------------------------------------------------
 
-/// When multiple keywords are provided, tasks matching any one of them must
+/// When multiple selectors are provided, tasks matching any one of them must
 /// all be included (union, not intersection).
 #[test]
 fn only_with_multiple_keywords_includes_all_matching() {
     let all_tasks = tasks::all_install_tasks();
-    let only_keywords = ["symlinks", "git"];
+    let only_keywords = ["symlinks", "git-hooks"];
 
     let filtered: Vec<&str> = all_tasks
         .iter()
         .filter(|t| {
-            let name = t.name().to_lowercase();
-            only_keywords.iter().any(|kw| name.contains(kw))
+            only_keywords
+                .iter()
+                .any(|kw| task_matches_filter(t.name(), kw))
         })
         .map(|t| t.name())
         .collect();
 
-    // Must include tasks matching each keyword
-    assert!(
-        filtered
-            .iter()
-            .any(|n| n.to_lowercase().contains("symlinks")),
-        "--only with 'symlinks' should include at least one symlink task"
-    );
-    assert!(
-        filtered.iter().any(|n| n.to_lowercase().contains("git")),
-        "--only with 'git' should include at least one git task"
-    );
-    // All included tasks must match at least one keyword
+    assert!(filtered.contains(&"Install symlinks"));
+    assert!(filtered.contains(&"Install git hooks"));
+
     for name in &filtered {
-        let lower = name.to_lowercase();
         assert!(
-            only_keywords.iter().any(|kw| lower.contains(kw)),
+            only_keywords.iter().any(|kw| task_matches_filter(name, kw)),
             "task '{name}' should not have been included"
         );
     }
@@ -750,7 +781,7 @@ fn install_run_dry_run_with_only_filter_parallel_returns_ok() {
 }
 
 /// Calling `install::run` with both `--skip` and `--only` simultaneously:
-/// `--only` takes precedence (only matching tasks run), `--skip` is ignored.
+/// a task must satisfy `--only` and must not match `--skip`.
 #[test]
 fn install_run_dry_run_with_skip_and_only_together() {
     use std::sync::Arc;
@@ -765,7 +796,7 @@ fn install_run_dry_run_with_skip_and_only_together() {
         dry_run: true,
         parallel: false,
     };
-    // When --only is non-empty, --skip is ignored (--only takes precedence).
+    // Matching tasks are still excluded when they also match --skip.
     let opts = dotfiles_cli::cli::InstallOpts {
         skip: vec!["symlinks".to_string()],
         only: vec!["symlinks".to_string()],

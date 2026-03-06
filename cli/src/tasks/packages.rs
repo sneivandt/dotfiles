@@ -10,6 +10,7 @@ use super::{
 };
 use crate::config::packages::Package;
 use crate::resources::Applicable as _;
+use crate::resources::Resource as _;
 use crate::resources::package::{
     PackageManager, PackageResource, batch_install_packages, get_installed_packages,
 };
@@ -325,6 +326,25 @@ fn process_packages(
     packages: &[Package],
     manager: PackageManager,
 ) -> Result<TaskResult> {
+    if manager == PackageManager::Winget {
+        ctx.log.debug(&format!(
+            "checking {} packages with exact winget queries",
+            packages.len()
+        ));
+
+        let resource_states = packages
+            .iter()
+            .map(|pkg| {
+                let resource =
+                    PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor));
+                let state = resource.current_state()?;
+                Ok((resource, state))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        return process_resource_states(ctx, resource_states, &ProcessOpts::lenient("install"));
+    }
+
     ctx.log.debug(&format!(
         "batch-checking {} packages with a single query",
         packages.len()

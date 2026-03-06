@@ -46,7 +46,7 @@ The dotfiles system has three layers:
 2. **Rust binary** (`cli/`) — handles all orchestration: config parsing, profile resolution, symlinks, file permissions natively. Shells out only for package managers and system services.
 3. **Configuration** (`conf/`) — declarative TOML files define what to install per profile.
 
-Binary updates are automatic: on first run, the entry script downloads the binary. On subsequent runs, a version cache ensures no delay if the binary is already current.
+Binary updates are automatic: on first run, the entry script bootstraps the binary. After that, the Rust binary performs update checks and maintains the version cache. On Windows, the PowerShell wrapper also promotes any staged update before relaunching the binary.
 
 ## Usage
 

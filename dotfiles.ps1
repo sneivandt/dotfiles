@@ -42,10 +42,14 @@ $ErrorActionPreference = 'Stop'
 $DotfilesRoot = $PSScriptRoot
 $Repo = "sneivandt/dotfiles"
 $BinDir = Join-Path $DotfilesRoot "bin"
+$VersionCache = Join-Path $BinDir ".dotfiles-version-cache"
 $ConnectTimeout = 10    # seconds — TCP connect timeout (used where supported)
 $TransferTimeout = 120  # seconds — total transfer timeout
 $RetryCount = 3         # number of download attempts
 $RetryDelay = 2         # seconds between retries
+# Keep this in sync with cli/src/commands/mod.rs.
+$RestartExitCode = 75
+$WrapperRestartEnvVar = 'DOTFILES_WRAPPER_RESTART'
 # NOTE: Keep these constants in sync with the equivalent values in dotfiles.sh.
 # dotfiles.sh: CONNECT_TIMEOUT / TRANSFER_TIMEOUT / RETRY_COUNT / RETRY_DELAY
 
@@ -69,6 +73,51 @@ else
     $AssetName = "dotfiles-linux-$arch"
 }
 $Binary = Join-Path $BinDir $BinaryName
+$PendingBinary = Join-Path $BinDir ".dotfiles-update.pending"
+$PendingVersion = Join-Path $BinDir ".dotfiles-update.version"
+
+function Write-VersionCache
+{
+    param ([string]$Version)
+
+    if (-not (Test-Path $BinDir))
+    {
+        New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+    }
+
+    $timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    Set-Content -Path $VersionCache -Value @($Version, $timestamp) -Encoding utf8
+}
+
+function Promote-PendingBinary
+{
+    if (-not (Test-Path $PendingBinary))
+    {
+        return
+    }
+
+    if (-not (Test-Path $BinDir))
+    {
+        New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+    }
+
+    if (Test-Path $Binary)
+    {
+        Remove-Item $Binary -Force
+    }
+
+    Move-Item -Path $PendingBinary -Destination $Binary -Force
+
+    if (Test-Path $PendingVersion)
+    {
+        $version = (Get-Content $PendingVersion -ErrorAction Stop | Select-Object -First 1).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($version))
+        {
+            Write-VersionCache -Version $version
+        }
+        Remove-Item $PendingVersion -Force
+    }
+}
 
 # Build mode: build from source
 if ($Build)
@@ -93,7 +142,8 @@ if ($Build)
 }
 
 # Production mode: bootstrap binary if not present.
-# Subsequent updates are handled by the binary itself.
+# Subsequent update checks are handled by the binary itself; this wrapper also
+# promotes any staged Windows update before relaunch.
 
 # Use -ConnectionTimeoutSeconds if available (PowerShell 7.4+); computed once for all web requests.
 $script:ConnectArgs = if ($PSVersionTable.PSVersion -ge [version]'7.4') {
@@ -217,6 +267,8 @@ function Get-Binary
 }
 
 # Bootstrap: download the latest binary only if no binary is present.
+Promote-PendingBinary
+
 if (-not (Test-Path $Binary))
 {
     $latest = Get-LatestVersion
@@ -228,5 +280,42 @@ if (-not (Test-Path $Binary))
     Get-Binary -Version $latest
 }
 
-& $Binary --root $DotfilesRoot @CliArgs
-exit $LASTEXITCODE
+for ($attempt = 0; $attempt -lt 3; $attempt++)
+{
+    Promote-PendingBinary
+
+    if (-not (Test-Path $Binary))
+    {
+        Write-Error "dotfiles binary not found after update promotion."
+        exit 1
+    }
+
+    $previousWrapperRestart = [Environment]::GetEnvironmentVariable($WrapperRestartEnvVar, 'Process')
+    try
+    {
+        [Environment]::SetEnvironmentVariable($WrapperRestartEnvVar, '1', 'Process')
+        & $Binary --root $DotfilesRoot @CliArgs
+        $exitCode = $LASTEXITCODE
+    }
+    finally
+    {
+        if ($null -eq $previousWrapperRestart)
+        {
+            [Environment]::SetEnvironmentVariable($WrapperRestartEnvVar, $null, 'Process')
+        }
+        else
+        {
+            [Environment]::SetEnvironmentVariable($WrapperRestartEnvVar, $previousWrapperRestart, 'Process')
+        }
+    }
+
+    if ($exitCode -ne $RestartExitCode)
+    {
+        exit $exitCode
+    }
+
+    Write-Verbose "Binary requested wrapper restart after staging an update"
+}
+
+Write-Error "dotfiles requested too many consecutive restarts."
+exit 1

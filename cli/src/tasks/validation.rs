@@ -9,6 +9,40 @@ use std::path::{Path, PathBuf};
 
 use super::{Context, Task, TaskResult};
 
+/// Fail the test command when config validation emits warnings.
+#[derive(Debug)]
+pub struct ValidateConfigWarnings;
+
+impl Task for ValidateConfigWarnings {
+    fn name(&self) -> &'static str {
+        "Validate config warnings"
+    }
+
+    fn should_run(&self, _ctx: &Context) -> bool {
+        true
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let warnings = ctx.config_read().validate(ctx.platform);
+        if warnings.is_empty() {
+            ctx.log.info("no configuration warnings found");
+            return Ok(TaskResult::Ok);
+        }
+
+        for warning in &warnings {
+            ctx.log.error(&format!(
+                "{} [{}]: {}",
+                warning.source, warning.item, warning.message
+            ));
+        }
+
+        anyhow::bail!(
+            "test failed: {} configuration warning(s) found",
+            warnings.len()
+        );
+    }
+}
+
 /// Validate that all symlink source files exist on disk.
 #[derive(Debug)]
 pub struct ValidateSymlinkSources;
@@ -190,17 +224,7 @@ impl Task for RunPSScriptAnalyzer {
         ctx.log
             .info(&format!("checking {} PowerShell scripts", ps_files.len()));
 
-        let file_list: Vec<&str> = ps_files.iter().filter_map(|p| p.to_str()).collect();
-        let paths_arg = file_list.join("','");
-
-        let script = format!(
-            "if (!(Get-Module -ListAvailable PSScriptAnalyzer)) \
-             {{ Write-Host 'PSScriptAnalyzer not installed, skipping'; exit 0 }}; \
-             $results = @('{paths_arg}') | ForEach-Object \
-             {{ Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error }}; \
-             if ($results.Count -gt 0) {{ $results | Format-Table -AutoSize; exit 1 }} \
-             else {{ exit 0 }}"
-        );
+        let script = build_psscriptanalyzer_command(&ps_files);
 
         let result = ctx
             .executor
@@ -264,6 +288,7 @@ pub(crate) fn discover_powershell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
         |path| {
             path.extension()
                 .is_some_and(|e| e == "ps1" || e == "psm1" || e == "psd1")
+                || is_powershell_shebang(path)
         },
         out,
     );
@@ -272,13 +297,27 @@ pub(crate) fn discover_powershell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
 /// Known POSIX-compatible shell interpreter basenames that shellcheck supports.
 const SHELL_INTERPRETERS: &[&[u8]] = &[b"sh", b"bash", b"dash", b"ksh"];
 
+/// Known `PowerShell` interpreter basenames.
+const POWERSHELL_INTERPRETERS: &[&[u8]] = &[b"pwsh", b"powershell"];
+
 /// Check if a file has a POSIX-shell shebang (e.g. `#!/bin/bash`).
 ///
 /// Only matches known shell interpreters to avoid false positives from
 /// interpreters that happen to contain "sh" (e.g. `fish`, `csh`).
 fn is_shell_shebang(path: &Path) -> bool {
-    parse_shebang_interpreter(path)
-        .is_some_and(|name| SHELL_INTERPRETERS.contains(&name.as_slice()))
+    shebang_matches(path, SHELL_INTERPRETERS)
+}
+
+/// Check if a file has a `PowerShell` shebang (e.g. `#!/usr/bin/env pwsh`).
+fn is_powershell_shebang(path: &Path) -> bool {
+    shebang_matches(path, POWERSHELL_INTERPRETERS)
+}
+
+fn shebang_matches(path: &Path, interpreters: &[&[u8]]) -> bool {
+    parse_shebang_interpreter(path).is_some_and(|name| {
+        let trimmed = name.strip_suffix(b".exe").unwrap_or(name.as_slice());
+        interpreters.contains(&trimmed)
+    })
 }
 
 /// Parse shebang line to extract the interpreter name.
@@ -320,6 +359,28 @@ fn log_exec_output(log: &dyn crate::logging::Log, result: &crate::exec::ExecResu
     for line in result.stdout.lines().chain(result.stderr.lines()) {
         log.error(line);
     }
+}
+
+fn build_psscriptanalyzer_command(paths: &[PathBuf]) -> String {
+    let path_literals = paths
+        .iter()
+        .map(|path| powershell_single_quote(&path.to_string_lossy()))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    format!(
+        "$paths = @({path_literals}); \
+         if (!(Get-Module -ListAvailable PSScriptAnalyzer)) \
+         {{ Write-Host 'PSScriptAnalyzer not installed, skipping'; exit 0 }}; \
+         $results = $paths | ForEach-Object \
+         {{ Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error }}; \
+         if ($results.Count -gt 0) {{ $results | Format-Table -AutoSize; exit 1 }} \
+         else {{ exit 0 }}"
+    )
+}
+
+fn powershell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
 #[cfg(test)]
@@ -376,6 +437,28 @@ mod tests {
         let mut found = Vec::new();
         discover_powershell_scripts(dir.path(), &mut found);
         assert_eq!(found.len(), 2);
+    }
+
+    #[test]
+    fn discovers_powershell_shebang_without_extension() {
+        let dir = tempfile::tempdir().expect("tempdir should create");
+        let script = dir.path().join("profile-hook");
+        std::fs::write(&script, "#!/usr/bin/env pwsh\nWrite-Host 'hi'")
+            .expect("write should succeed");
+
+        let mut found = Vec::new();
+        discover_powershell_scripts(dir.path(), &mut found);
+        assert_eq!(found, vec![script]);
+    }
+
+    #[test]
+    fn powershell_command_escapes_single_quotes_in_paths() {
+        let path = PathBuf::from("C:\\Users\\o'connor\\script.ps1");
+        let script = build_psscriptanalyzer_command(&[path]);
+        assert!(
+            script.contains("C:\\Users\\o''connor\\script.ps1"),
+            "single quotes in file paths must be PowerShell-escaped"
+        );
     }
 
     #[test]

@@ -6,6 +6,17 @@ use crate::cli::{GlobalOpts, InstallOpts};
 use crate::logging::Logger;
 use crate::tasks;
 
+const TASK_FILTER_STOP_WORDS: &[&str] = &[
+    "install",
+    "configure",
+    "enable",
+    "apply",
+    "update",
+    "reload",
+    "run",
+    "validate",
+];
+
 /// Run the install command.
 ///
 /// # Errors
@@ -35,14 +46,19 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Arc<Logger>) -> Result
     let filtered: Vec<&dyn tasks::Task> = all_tasks
         .iter()
         .filter(|t| {
-            let name = t.name().to_lowercase();
             // Both --only and --skip can be active simultaneously.
             // A task runs if it matches an --only filter (or no --only was given)
             // AND it doesn't match any --skip filter.
-            let passes_only =
-                opts.only.is_empty() || opts.only.iter().any(|o| name.contains(&o.to_lowercase()));
-            let passes_skip =
-                opts.skip.is_empty() || !opts.skip.iter().any(|s| name.contains(&s.to_lowercase()));
+            let passes_only = opts.only.is_empty()
+                || opts
+                    .only
+                    .iter()
+                    .any(|filter| task_matches_filter(t.name(), filter));
+            let passes_skip = opts.skip.is_empty()
+                || !opts
+                    .skip
+                    .iter()
+                    .any(|filter| task_matches_filter(t.name(), filter));
             passes_only && passes_skip
         })
         .map(Box::as_ref)
@@ -68,14 +84,48 @@ fn warn_unmatched_filters(
     log: &dyn crate::logging::Output,
 ) {
     for filter in filters {
-        let lower = filter.to_lowercase();
-        let matched = tasks
-            .iter()
-            .any(|t| t.name().to_lowercase().contains(&lower));
+        let matched = tasks.iter().any(|t| task_matches_filter(t.name(), filter));
         if !matched {
             log.warn(&format!("{flag} '{filter}' did not match any task"));
         }
     }
+}
+
+fn task_matches_filter(task_name: &str, filter: &str) -> bool {
+    let normalized_filter = normalize_task_filter(filter);
+    if normalized_filter.is_empty() {
+        return false;
+    }
+
+    normalized_filter == normalize_task_filter(task_name)
+        || normalized_filter == canonical_task_selector(task_name)
+}
+
+fn canonical_task_selector(task_name: &str) -> String {
+    let tokens = normalized_task_tokens(task_name);
+    let trimmed: Vec<_> = tokens
+        .iter()
+        .skip_while(|token| TASK_FILTER_STOP_WORDS.contains(&token.as_str()))
+        .cloned()
+        .collect();
+
+    if trimmed.is_empty() {
+        tokens.join("-")
+    } else {
+        trimmed.join("-")
+    }
+}
+
+fn normalize_task_filter(value: &str) -> String {
+    normalized_task_tokens(value).join("-")
+}
+
+fn normalized_task_tokens(value: &str) -> Vec<String> {
+    value
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect()
 }
 
 /// Resolve the dotfiles root directory from CLI arguments or auto-detection.
@@ -193,7 +243,27 @@ mod tests {
         let log = Logger::new("test");
         let all = tasks::all_install_tasks();
 
-        // "symlink" matches "Install symlinks"
-        warn_unmatched_filters(&all, &["symlink".to_string()], "--only", &log);
+        warn_unmatched_filters(&all, &["symlinks".to_string()], "--only", &log);
+    }
+
+    #[test]
+    fn task_matches_filter_uses_canonical_selector() {
+        assert!(task_matches_filter("Install symlinks", "symlinks"));
+        assert!(task_matches_filter("Update repository", "repository"));
+        assert!(task_matches_filter(
+            "Update repository",
+            "update-repository"
+        ));
+        assert!(!task_matches_filter("Update repository", "update"));
+    }
+
+    #[test]
+    fn canonical_task_selector_drops_leading_action_words() {
+        assert_eq!(
+            canonical_task_selector("Install AUR packages"),
+            "aur-packages"
+        );
+        assert_eq!(canonical_task_selector("Configure git"), "git");
+        assert_eq!(canonical_task_selector("Update binary"), "binary");
     }
 }

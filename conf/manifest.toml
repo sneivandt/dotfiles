@@ -26,7 +26,6 @@ paths = [
   "bash_profile",
   "bashrc",
   "config/bash/",
-  "config/nuget/",
   "config/pinentry/",
   "config/powershell/",
   "config/readline/",

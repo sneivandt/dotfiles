@@ -14,6 +14,7 @@ symlinks = [
   "config/git/ignore",
   "config/git/templates",
   "config/nvim",
+  "config/nuget/NuGet.config",
   "ssh/config",
 ]
 
@@ -22,7 +23,6 @@ symlinks = [
   "bash_profile",
   "bashrc",
   "config/bash/prompt",
-  "config/nuget/NuGet.config",
   "config/pinentry/preexec",
   "config/powershell/Microsoft.PowerShell_profile.ps1",
   "config/readline/inputrc",

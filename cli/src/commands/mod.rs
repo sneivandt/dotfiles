@@ -94,7 +94,7 @@ pub(crate) fn re_exec(root: &std::path::Path) -> ! {
 fn re_exec_path(root: &std::path::Path) -> std::path::PathBuf {
     #[cfg(unix)]
     {
-        return root.join("bin").join("dotfiles");
+        root.join("bin").join("dotfiles")
     }
 
     #[cfg(not(unix))]

@@ -72,10 +72,10 @@ pub(crate) use task_deps;
 /// ```
 ///
 /// The generated struct implements `Task` with:
-/// - `should_run` returning `false` when the guard fails or items are empty
-/// - `run` optionally running a setup block, cloning the config items,
-///   mapping each to a resource via `build`, and delegating to
-///   [`process_resources`]
+/// - `should_run` returning `false` only when the guard fails
+/// - `run` evaluating items once; returning `Skipped` when empty, otherwise
+///   running the optional setup block, mapping items to resources via `build`,
+///   and delegating to [`process_resources`]
 macro_rules! resource_task {
     (
         $(#[$meta:meta])*
@@ -105,8 +105,8 @@ macro_rules! resource_task {
                     let $guard_ctx = ctx;
                     if !{ $guard_expr } { return false; }
                 )?
-                let $items_ctx = ctx;
-                !{ $items_expr }.is_empty()
+                let _ = ctx;
+                true
             }
 
             fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
@@ -116,6 +116,9 @@ macro_rules! resource_task {
                 )?
                 let $items_ctx = ctx;
                 let items: Vec<_> = { $items_expr };
+                if items.is_empty() {
+                    return Ok($crate::tasks::TaskResult::Skipped("nothing configured".into()));
+                }
                 let resources = items.into_iter().map(|$item| {
                     let $build_ctx = ctx;
                     $build_expr
@@ -154,10 +157,10 @@ pub(crate) use resource_task;
 /// ```
 ///
 /// The generated struct implements `Task` with:
-/// - `should_run` returning `false` when the guard fails or items are empty
-/// - `run` collecting items, querying state once via `cache`, building
-///   `(Resource, ResourceState)` pairs, and delegating to
-///   [`process_resource_states`]
+/// - `should_run` returning `false` only when the guard fails
+/// - `run` evaluating items once; returning `Skipped` when empty, otherwise
+///   querying bulk state via `cache`, building `(Resource, ResourceState)` pairs,
+///   and delegating to [`process_resource_states`]
 macro_rules! batch_resource_task {
     (
         $(#[$meta:meta])*
@@ -188,13 +191,16 @@ macro_rules! batch_resource_task {
                     let $guard_ctx = ctx;
                     if !{ $guard_expr } { return false; }
                 )?
-                let $items_ctx = ctx;
-                !{ $items_expr }.is_empty()
+                let _ = ctx;
+                true
             }
 
             fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
                 let $items_ctx = ctx;
                 let $cache_items: Vec<_> = { $items_expr };
+                if $cache_items.is_empty() {
+                    return Ok($crate::tasks::TaskResult::Skipped("nothing configured".into()));
+                }
                 ctx.log.debug(&format!(
                     "batch-checking {} resources with a single query",
                     $cache_items.len()

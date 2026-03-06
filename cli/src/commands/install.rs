@@ -32,22 +32,32 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Arc<Logger>) -> Result
     let all_tasks = tasks::all_install_tasks();
     warn_unmatched_filters(&all_tasks, &opts.only, "--only", &**log);
     warn_unmatched_filters(&all_tasks, &opts.skip, "--skip", &**log);
-    runner.run(
-        all_tasks
-            .iter()
-            .filter(|t| {
-                let name = t.name().to_lowercase();
-                // Both --only and --skip can be active simultaneously.
-                // A task runs if it matches an --only filter (or no --only was given)
-                // AND it doesn't match any --skip filter.
-                let passes_only = opts.only.is_empty()
-                    || opts.only.iter().any(|o| name.contains(&o.to_lowercase()));
-                let passes_skip = opts.skip.is_empty()
-                    || !opts.skip.iter().any(|s| name.contains(&s.to_lowercase()));
-                passes_only && passes_skip
-            })
-            .map(Box::as_ref),
-    )
+    let filtered: Vec<&dyn tasks::Task> = all_tasks
+        .iter()
+        .filter(|t| {
+            let name = t.name().to_lowercase();
+            // Both --only and --skip can be active simultaneously.
+            // A task runs if it matches an --only filter (or no --only was given)
+            // AND it doesn't match any --skip filter.
+            let passes_only =
+                opts.only.is_empty() || opts.only.iter().any(|o| name.contains(&o.to_lowercase()));
+            let passes_skip =
+                opts.skip.is_empty() || !opts.skip.iter().any(|s| name.contains(&s.to_lowercase()));
+            passes_only && passes_skip
+        })
+        .map(Box::as_ref)
+        .collect();
+
+    if !opts.only.is_empty() || !opts.skip.is_empty() {
+        let names: Vec<&str> = filtered.iter().map(|t| t.name()).collect();
+        log.debug(&format!(
+            "active filters — running {} task(s): {}",
+            names.len(),
+            names.join(", ")
+        ));
+    }
+
+    runner.run(filtered)
 }
 
 /// Warn about filter values that don't match any known task name.

@@ -112,7 +112,7 @@ pub fn resolve_root(global: &GlobalOpts) -> Result<std::path::PathBuf> {
 
     // Last resort: current directory
     let cwd = std::env::current_dir().context("determining current directory")?;
-    if cwd.join("conf").exists() {
+    if cwd.join("conf").exists() && cwd.join("symlinks").exists() {
         return Ok(cwd);
     }
 

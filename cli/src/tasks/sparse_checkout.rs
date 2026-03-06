@@ -136,6 +136,12 @@ impl Task for ConfigureSparseCheckout {
             return Ok(TaskResult::DryRun);
         }
 
+        if worktree_has_local_changes(ctx)? {
+            ctx.log
+                .warn("local changes detected, skipping sparse checkout reconfiguration");
+            return Ok(TaskResult::Skipped("local changes present".to_string()));
+        }
+
         // Clean up broken git config symlinks that prevent git from running.
         remove_broken_git_symlinks(ctx, &*self.fs_ops);
 
@@ -193,6 +199,16 @@ impl Task for ConfigureSparseCheckout {
 
         Ok(TaskResult::Ok)
     }
+}
+
+fn worktree_has_local_changes(ctx: &Context) -> Result<bool> {
+    let status = ctx.executor.run_in(
+        &ctx.root(),
+        "git",
+        &["status", "--porcelain", "--untracked-files=normal"],
+    )?;
+
+    Ok(!status.stdout.trim().is_empty())
 }
 
 #[cfg(test)]
@@ -384,6 +400,27 @@ mod tests {
     }
 
     #[test]
+    fn run_skips_when_worktree_has_local_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+
+        let mut config = empty_config(dir.path().to_path_buf());
+        config.manifest.excluded_files.push("symlinks".to_string());
+
+        let executor = TestExecutor::with_responses(vec![(
+            true,
+            "M  cli/src/tasks/packages.rs\n".to_string(),
+        )]);
+        let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
+
+        let result = ConfigureSparseCheckout::new().run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Skipped(ref s) if s.contains("local changes present")),
+            "expected local changes skip, got {result:?}"
+        );
+    }
+
+    #[test]
     fn run_writes_sparse_checkout_patterns_and_calls_git() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join(".git")).unwrap();
@@ -392,10 +429,12 @@ mod tests {
         config.manifest.excluded_files.push("symlinks".to_string());
 
         // The excluded file "symlinks" does NOT exist on disk, so the
-        // `git checkout HEAD -- <files>` step is skipped.  Two git calls remain:
-        //   1. git sparse-checkout init --no-cone
-        //   2. git read-tree -mu HEAD
+        // `git checkout HEAD -- <files>` step is skipped. Three git calls remain:
+        //   1. git status --porcelain --untracked-files=normal
+        //   2. git sparse-checkout init --no-cone
+        //   3. git read-tree -mu HEAD
         let executor = TestExecutor::with_responses(vec![
+            (true, String::new()), // git status
             (true, String::new()), // sparse-checkout init
             (true, String::new()), // read-tree
         ]);

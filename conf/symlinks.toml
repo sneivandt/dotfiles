@@ -14,6 +14,7 @@ symlinks = [
   "config/git/ignore",
   "config/git/templates",
   "config/nvim",
+  "ssh/config",
 ]
 
 [linux]
@@ -43,7 +44,6 @@ symlinks = [
   "config/zsh/plugins",
   "config/zsh/prompt.zsh",
   "gnupg/gpg-agent.conf",
-  "ssh/config",
   "vim",
   "zshenv",
   "zshrc",

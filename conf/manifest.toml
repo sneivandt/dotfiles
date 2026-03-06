@@ -39,7 +39,6 @@ paths = [
   "config/wgetrc",
   "config/zsh/",
   "gnupg/",
-  "ssh/",
   "vim/",
   "zshenv",
   "zshrc",

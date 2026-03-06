@@ -463,16 +463,16 @@ fn install_symlinks_is_idempotent() {
         Arc::new(dotfiles_cli::logging::Logger::new("test-idempotent"));
 
     let config = ctx.load_config("base");
-    let task_ctx = dotfiles_cli::tasks::Context {
-        config: Arc::new(std::sync::RwLock::new(Arc::new(config))),
+    let task_ctx = dotfiles_cli::tasks::Context::from_raw(
+        Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
-        log: Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
-        dry_run: false,
-        home: home_dir.path().to_path_buf(),
+        Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        parallel: false,
-        is_ci: false,
-    };
+        false,
+        home_dir.path().to_path_buf(),
+        false,
+        false,
+    );
 
     let task = dotfiles_cli::tasks::symlinks::InstallSymlinks;
 
@@ -563,16 +563,16 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
         Arc::new(dotfiles_cli::logging::Logger::new("test-chmod"));
 
     let config = ctx.load_config_for_platform("base", platform);
-    let task_ctx = dotfiles_cli::tasks::Context {
-        config: Arc::new(std::sync::RwLock::new(Arc::new(config))),
+    let task_ctx = dotfiles_cli::tasks::Context::from_raw(
+        Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
-        log: Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
-        dry_run: false,
-        home: home_dir.path().to_path_buf(),
+        Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        parallel: false,
-        is_ci: false,
-    };
+        false,
+        home_dir.path().to_path_buf(),
+        false,
+        false,
+    );
 
     let result = dotfiles_cli::tasks::chmod::ApplyFilePermissions
         .run(&task_ctx)

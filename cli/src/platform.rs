@@ -56,6 +56,8 @@ pub struct Platform {
     pub os: Os,
     /// Whether the platform is Arch Linux.
     pub is_arch: bool,
+    /// Whether running inside Windows Subsystem for Linux.
+    pub is_wsl: bool,
 }
 
 impl fmt::Display for Platform {
@@ -71,6 +73,7 @@ impl Platform {
         Self {
             os: Self::detect_os(),
             is_arch: Self::detect_arch(),
+            is_wsl: Self::detect_wsl(),
         }
     }
 
@@ -78,7 +81,22 @@ impl Platform {
     #[cfg(test)]
     #[must_use]
     pub const fn new(os: Os, is_arch: bool) -> Self {
-        Self { os, is_arch }
+        Self {
+            os,
+            is_arch,
+            is_wsl: false,
+        }
+    }
+
+    /// Create a platform with WSL flag set (for testing).
+    #[cfg(test)]
+    #[must_use]
+    pub const fn new_wsl() -> Self {
+        Self {
+            os: Os::Linux,
+            is_arch: false,
+            is_wsl: true,
+        }
     }
 
     /// Returns whether this platform is Linux.
@@ -115,6 +133,12 @@ impl Platform {
     #[must_use]
     pub const fn is_arch_linux(&self) -> bool {
         self.is_arch
+    }
+
+    /// Returns whether this platform is Windows Subsystem for Linux.
+    #[must_use]
+    pub const fn is_wsl(&self) -> bool {
+        self.is_wsl
     }
 
     /// Returns whether this platform uses pacman as the primary package manager.
@@ -166,6 +190,19 @@ impl Platform {
     fn detect_arch() -> bool {
         if cfg!(target_os = "linux") {
             std::path::Path::new("/etc/arch-release").exists()
+        } else {
+            false
+        }
+    }
+
+    fn detect_wsl() -> bool {
+        if cfg!(target_os = "linux") {
+            std::fs::read_to_string("/proc/version")
+                .map(|v| {
+                    let lower = v.to_lowercase();
+                    lower.contains("microsoft") || lower.contains("wsl")
+                })
+                .unwrap_or(false)
         } else {
             false
         }
@@ -338,6 +375,16 @@ mod tests {
         assert_eq!(arch.description(), "Arch Linux");
         assert_eq!(generic_linux.description(), "Linux");
         assert_eq!(windows.description(), "Windows");
+    }
+
+    #[test]
+    fn platform_is_wsl() {
+        let wsl = Platform::new_wsl();
+        let linux = Platform::new(Os::Linux, false);
+        let windows = Platform::new(Os::Windows, false);
+        assert!(wsl.is_wsl());
+        assert!(!linux.is_wsl());
+        assert!(!windows.is_wsl());
     }
 
     #[test]

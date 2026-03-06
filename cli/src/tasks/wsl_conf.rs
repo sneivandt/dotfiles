@@ -3,7 +3,6 @@
 use anyhow::Result;
 
 use super::{Context, Task, TaskResult};
-use crate::platform::Os;
 
 /// The single setting this task enforces.
 const DESIRED_KEY: &str = "generateResolvConf = true";
@@ -14,9 +13,10 @@ const DESIRED_CONTENT: &str = "[network]\ngenerateResolvConf = true\n";
 
 /// Write /etc/wsl.conf with `generateResolvConf = true` under `[network]`.
 ///
-/// Only runs on Linux.  Writing /etc requires elevated privileges when not
-/// running as root, so the task first attempts a direct write and falls back
-/// to staging the file to a temp path and copying into place via sudo.
+/// Only runs inside Windows Subsystem for Linux (WSL).  Writing /etc requires
+/// elevated privileges when not running as root, so the task first attempts a
+/// direct write and falls back to staging the file to a temp path and copying
+/// into place via sudo.
 #[derive(Debug)]
 pub struct InstallWslConf;
 
@@ -26,7 +26,7 @@ impl Task for InstallWslConf {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.os == Os::Linux
+        ctx.platform.is_wsl()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -87,21 +87,37 @@ fn is_correct(path: &str) -> bool {
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::platform::Os;
-    use crate::tasks::test_helpers::{empty_config, make_platform_context_with_which};
+    use crate::tasks::test_helpers::{ContextBuilder, empty_config};
     use std::path::PathBuf;
 
     #[test]
     fn should_run_false_on_windows() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_platform_context_with_which(config, Os::Windows, false, true);
+        let ctx = ContextBuilder::new(config)
+            .os(crate::platform::Os::Windows)
+            .which(true)
+            .build();
         assert!(!InstallWslConf.should_run(&ctx));
     }
 
     #[test]
-    fn should_run_true_on_linux() {
+    fn should_run_false_on_linux_non_wsl() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_platform_context_with_which(config, Os::Linux, false, true);
+        let ctx = ContextBuilder::new(config)
+            .os(crate::platform::Os::Linux)
+            .which(true)
+            .build();
+        assert!(!InstallWslConf.should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_true_on_wsl() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = ContextBuilder::new(config)
+            .os(crate::platform::Os::Linux)
+            .wsl(true)
+            .which(true)
+            .build();
         assert!(InstallWslConf.should_run(&ctx));
     }
 

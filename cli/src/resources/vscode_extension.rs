@@ -56,13 +56,18 @@ pub fn get_installed_extensions(
     executor: &dyn Executor,
 ) -> Result<HashSet<String>> {
     let result = run_code_cmd(code_cmd, &["--list-extensions"], executor)?;
+    if !result.success {
+        anyhow::bail!(
+            "code --list-extensions failed (exit {:?}): {}",
+            result.code,
+            result.stderr.trim()
+        );
+    }
     let mut set = HashSet::new();
-    if result.success {
-        for line in result.stdout.lines() {
-            let id = line.trim().to_lowercase();
-            if !id.is_empty() {
-                set.insert(id);
-            }
+    for line in result.stdout.lines() {
+        let id = line.trim().to_lowercase();
+        if !id.is_empty() {
+            set.insert(id);
         }
     }
     Ok(set)
@@ -204,10 +209,13 @@ mod tests {
     }
 
     #[test]
-    fn get_installed_extensions_empty_when_command_fails() {
+    fn get_installed_extensions_returns_error_when_command_fails() {
         let executor = TestExecutor::fail();
-        let installed = get_installed_extensions("code", &executor).unwrap();
-        assert!(installed.is_empty());
+        let result = get_installed_extensions("code", &executor);
+        assert!(
+            result.is_err(),
+            "should return an error when the command fails"
+        );
     }
 
     #[test]

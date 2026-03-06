@@ -35,18 +35,13 @@ pub(crate) const WINDOWS_RESTART_EXIT_CODE: i32 = 75;
 /// Called after a self-update has replaced the binary on disk so that the
 /// new version runs all tasks with updated code.  Sets [`REEXEC_GUARD_VAR`]
 /// so the new process skips the self-update step.
-pub(crate) fn re_exec() -> ! {
+#[allow(unused_variables)]
+pub(crate) fn re_exec(root: &std::path::Path) -> ! {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         let args: Vec<String> = std::env::args().skip(1).collect();
-        let exe = match std::env::current_exe() {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("\x1b[31mError: cannot determine executable path: {e}\x1b[0m");
-                std::process::exit(1);
-            }
-        };
+        let exe = re_exec_path(root);
         let err = std::process::Command::new(&exe)
             .args(&args)
             .env(REEXEC_GUARD_VAR, "1")
@@ -75,13 +70,7 @@ pub(crate) fn re_exec() -> ! {
     #[cfg(all(not(unix), not(windows)))]
     {
         let args: Vec<String> = std::env::args().skip(1).collect();
-        let exe = match std::env::current_exe() {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("\x1b[31mError: cannot determine executable path: {e}\x1b[0m");
-                std::process::exit(1);
-            }
-        };
+        let exe = re_exec_path(root);
         match std::process::Command::new(&exe)
             .args(&args)
             .env(REEXEC_GUARD_VAR, "1")
@@ -98,6 +87,22 @@ pub(crate) fn re_exec() -> ! {
                 std::process::exit(1);
             }
         }
+    }
+}
+
+#[cfg_attr(windows, allow(dead_code, unused_variables))]
+fn re_exec_path(root: &std::path::Path) -> std::path::PathBuf {
+    #[cfg(unix)]
+    {
+        return root.join("bin").join("dotfiles");
+    }
+
+    #[cfg(not(unix))]
+    {
+        std::env::current_exe().unwrap_or_else(|e| {
+            eprintln!("\x1b[31mError: cannot determine executable path: {e}\x1b[0m");
+            std::process::exit(1);
+        })
     }
 }
 
@@ -240,6 +245,18 @@ mod tests {
         assert!(script.contains("& $exe @args;"));
         assert!(script.contains("exit $LASTEXITCODE"));
         assert!(!script.contains("Start-Process -FilePath $exe -ArgumentList $args"));
+    }
+}
+
+#[cfg(all(test, unix))]
+mod unix_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn re_exec_path_uses_installed_binary_path() {
+        let root = Path::new("/repo");
+        assert_eq!(re_exec_path(root), root.join("bin").join("dotfiles"));
     }
 }
 

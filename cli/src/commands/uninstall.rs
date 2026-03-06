@@ -19,7 +19,7 @@ pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Arc<Logger>) -> Res
     if std::env::var_os(super::REEXEC_GUARD_VAR).is_none()
         && tasks::self_update::pre_update(&root, &**log, global.dry_run)?
     {
-        super::re_exec();
+        super::re_exec(&root);
     }
 
     let runner = super::CommandRunner::new(global, log)?;

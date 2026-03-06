@@ -206,16 +206,16 @@ fn uninstall_symlinks_is_idempotent() {
     ));
 
     let config = ctx.load_config("base");
-    let task_ctx = dotfiles_cli::tasks::Context {
-        config: Arc::new(std::sync::RwLock::new(Arc::new(config))),
+    let task_ctx = dotfiles_cli::tasks::Context::from_raw(
+        Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
-        log: Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
-        dry_run: false,
-        home: home_dir.path().to_path_buf(),
+        Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        parallel: false,
-        is_ci: false,
-    };
+        false,
+        home_dir.path().to_path_buf(),
+        false,
+        false,
+    );
 
     // Install the symlink first so there is something to uninstall.
     let install_result = dotfiles_cli::tasks::symlinks::InstallSymlinks

@@ -1,5 +1,5 @@
 # Manifest file for sparse checkout configuration
-# Lists which files belong to exclusion categories: windows, arch, desktop
+# Lists which files belong to exclusion categories: linux, windows, arch, desktop
 #
 # Format: paths relative to symlinks/ directory (prefix not included in paths)
 # These paths are prefixed with symlinks/ when generating sparse checkout patterns
@@ -19,6 +19,31 @@
 # Note: Files in the [base] profile category do not need to be listed here
 # since base files are never excluded - they're included in all profiles.
 # Only list files that should be excluded in certain profiles.
+
+# Linux-specific files (excluded on Windows)
+[linux]
+paths = [
+  "bash_profile",
+  "bashrc",
+  "config/bash/",
+  "config/nuget/",
+  "config/pinentry/",
+  "config/powershell/",
+  "config/readline/",
+  "config/shell/aliases.sh",
+  "config/shell/path.sh",
+  "config/shell/profile.sh",
+  "config/systemd/user/clean-home-tmp.service",
+  "config/systemd/user/clean-home-tmp.timer",
+  "config/tmux/",
+  "config/wgetrc",
+  "config/zsh/",
+  "gnupg/",
+  "ssh/",
+  "vim/",
+  "zshenv",
+  "zshrc",
+]
 
 # Windows-specific files
 [windows]

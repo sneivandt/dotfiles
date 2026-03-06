@@ -1,12 +1,11 @@
 # Symlinks to create in $HOME
-# Each section represents a layer/profile
+# Each section represents a category/profile layer
 # Target will be ~/.<path>
+# Platform categories (linux, windows) are auto-detected; use them to restrict
+# symlinks to a specific platform.
 
 [base]
 symlinks = [
-  "bash_profile",
-  "bashrc",
-  "config/bash/prompt",
   "config/git/ai-pr.sh",
   "config/git/aliases",
   "config/git/attributes",
@@ -14,8 +13,15 @@ symlinks = [
   "config/git/delta",
   "config/git/ignore",
   "config/git/templates",
-  "config/nuget/NuGet.config",
   "config/nvim",
+]
+
+[linux]
+symlinks = [
+  "bash_profile",
+  "bashrc",
+  "config/bash/prompt",
+  "config/nuget/NuGet.config",
   "config/pinentry/preexec",
   "config/powershell/Microsoft.PowerShell_profile.ps1",
   "config/readline/inputrc",

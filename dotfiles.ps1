@@ -89,7 +89,7 @@ function Write-VersionCache
     Set-Content -Path $VersionCache -Value @($Version, $timestamp) -Encoding utf8
 }
 
-function Promote-PendingBinary
+function Install-PendingBinary
 {
     if (-not (Test-Path $PendingBinary))
     {
@@ -267,7 +267,7 @@ function Get-Binary
 }
 
 # Bootstrap: download the latest binary only if no binary is present.
-Promote-PendingBinary
+Install-PendingBinary
 
 if (-not (Test-Path $Binary))
 {
@@ -282,7 +282,7 @@ if (-not (Test-Path $Binary))
 
 for ($attempt = 0; $attempt -lt 3; $attempt++)
 {
-    Promote-PendingBinary
+    Install-PendingBinary
 
     if (-not (Test-Path $Binary))
     {

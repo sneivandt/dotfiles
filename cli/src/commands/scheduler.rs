@@ -727,6 +727,67 @@ mod tests {
         }
     }
 
+    /// Regression test: stage header must not be lost when a task calls
+    /// `ctx.debug_fmt()` during `run()`.
+    ///
+    /// The regression was introduced by `debug_fmt()` using
+    /// `tracing::enabled!(Level::DEBUG)` as a guard.  That macro creates a
+    /// HINT-kind callsite that goes through `Subscriber::enabled()`,
+    /// setting per-layer `FilterState` bits on the calling thread without
+    /// dispatching an event to clean them up.  With a two-layer subscriber
+    /// (INFO-level console + DEBUG-level file), the stale bits caused the
+    /// `Filtered` console layer to silently drop the subsequent
+    /// `tracing::info!(target: "dotfiles::stage", …)` replay.
+    ///
+    /// This test reproduces the production subscriber topology (two layers
+    /// with different filter levels) and asserts that the stage header
+    /// appears in the INFO-filtered output even after `debug_fmt()` was
+    /// called.
+    #[test]
+    fn stage_header_not_lost_after_debug_fmt_call() {
+        // Task that calls ctx.debug_fmt() — simulating what apply.rs does
+        // for per-resource "ok: <desc>" messages.
+        struct DebugFmtTask;
+        impl Task for DebugFmtTask {
+            fn name(&self) -> &'static str {
+                "debug-fmt-task"
+            }
+
+            fn should_run(&self, _ctx: &Context) -> bool {
+                true
+            }
+
+            fn run(&self, ctx: &Context) -> Result<TaskResult> {
+                // This is the call site that the regression broke:
+                // debug_fmt previously used tracing::enabled!(DEBUG) which
+                // left stale FilterState bits that silently dropped the
+                // subsequent stage INFO event replayed by flush_and_complete.
+                ctx.debug_fmt(|| "ok: some/resource".to_string());
+                ctx.log.info("1 changed, 0 already ok");
+                Ok(TaskResult::Ok)
+            }
+        }
+
+        // two_layer_logger() creates the production topology: INFO console
+        // + DEBUG file. This is the topology where the bug manifested.
+        let (log, _tmp, _guard, console_buf) = crate::logging::two_layer_logger();
+        let log = Arc::new(log);
+
+        let ctx = ContextBuilder::new(empty_config(PathBuf::from("/tmp"))).build();
+        let buf = Arc::new(BufferedLog::new(Arc::clone(&log)));
+        let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
+
+        log.notify_task_start("debug-fmt-task");
+        tasks::execute(&DebugFmtTask, &task_ctx);
+        buf.flush_and_complete("debug-fmt-task");
+
+        let captured = String::from_utf8(console_buf.lock().unwrap().clone()).unwrap();
+        assert!(
+            captured.contains("dotfiles::stage"),
+            "stage header must appear in INFO-level output even after debug_fmt() was called;\ncaptured:\n{captured}"
+        );
+    }
+
     #[test]
     fn dependency_ordering_is_respected() {
         let (log, ctx) = make_test_log_and_ctx();

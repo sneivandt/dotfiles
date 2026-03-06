@@ -1,23 +1,28 @@
 name: Publish Docker
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
     branches:
       - master
-    paths:
-      - 'cli/**'
-      - 'conf/**'
-      - 'symlinks/**'
-      - 'Dockerfile'
-      - 'install.sh'
-      - 'dotfiles.sh'
 
 permissions:
   contents: read
 
 jobs:
+  check-ci:
+    name: Check CI succeeded
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: CI passed
+        run: echo "CI workflow passed, proceeding with Docker publish."
+
   push_to_registry:
     name: Push Docker image to Docker Hub
+    needs: [check-ci]
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repo

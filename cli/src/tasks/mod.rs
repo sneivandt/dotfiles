@@ -406,16 +406,16 @@ pub mod test_helpers {
         platform: Platform,
         executor: Arc<dyn Executor>,
     ) -> Context {
-        Context {
-            config: std::sync::Arc::new(std::sync::RwLock::new(std::sync::Arc::new(config))),
+        Context::from_raw(
+            std::sync::Arc::new(std::sync::RwLock::new(std::sync::Arc::new(config))),
             platform,
-            log: Arc::new(Logger::new("test")),
-            dry_run: false,
-            home: PathBuf::from("/home/test"),
+            Arc::new(Logger::new("test")),
             executor,
-            parallel: false,
-            is_ci: false,
-        }
+            false,
+            PathBuf::from("/home/test"),
+            false,
+            false,
+        )
     }
 
     /// Builder for test [`Context`] instances.

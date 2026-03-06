@@ -37,13 +37,14 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Arc<Logger>) -> Result
             .iter()
             .filter(|t| {
                 let name = t.name().to_lowercase();
-                if !opts.only.is_empty() {
-                    return opts.only.iter().any(|o| name.contains(&o.to_lowercase()));
-                }
-                if !opts.skip.is_empty() {
-                    return !opts.skip.iter().any(|s| name.contains(&s.to_lowercase()));
-                }
-                true
+                // Both --only and --skip can be active simultaneously.
+                // A task runs if it matches an --only filter (or no --only was given)
+                // AND it doesn't match any --skip filter.
+                let passes_only = opts.only.is_empty()
+                    || opts.only.iter().any(|o| name.contains(&o.to_lowercase()));
+                let passes_skip = opts.skip.is_empty()
+                    || !opts.skip.iter().any(|s| name.contains(&s.to_lowercase()));
+                passes_only && passes_skip
             })
             .map(Box::as_ref),
     )

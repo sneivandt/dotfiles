@@ -59,10 +59,13 @@ pub enum Command {
 #[derive(Parser, Debug, Clone)]
 pub struct InstallOpts {
     /// Task names to skip (comma-separated, case-insensitive substring match).
+    /// Can be combined with --only: a task runs when it matches an --only filter
+    /// AND does not match any --skip filter.
     #[arg(long, value_delimiter = ',')]
     pub skip: Vec<String>,
 
     /// Run only these task names (comma-separated, case-insensitive substring match).
+    /// Can be combined with --skip: see --skip for details.
     #[arg(long, value_delimiter = ',')]
     pub only: Vec<String>,
 }

@@ -17,9 +17,11 @@ const REPO: &str = "sneivandt/dotfiles";
 const CACHE_MAX_AGE: u64 = 3600;
 
 /// Staging file used on Windows until the wrapper can promote the update.
+#[cfg(windows)]
 const PENDING_BINARY_NAME: &str = ".dotfiles-update.pending";
 
 /// Metadata file that stores the staged version tag.
+#[cfg(windows)]
 const PENDING_VERSION_NAME: &str = ".dotfiles-update.version";
 
 /// Detect the asset name for the current platform.
@@ -49,11 +51,13 @@ fn cache_path(root: &std::path::Path) -> PathBuf {
 }
 
 /// Path to a staged binary update.
+#[cfg(windows)]
 fn pending_binary_path(root: &std::path::Path) -> PathBuf {
     root.join("bin").join(PENDING_BINARY_NAME)
 }
 
 /// Path to the staged version metadata file.
+#[cfg(windows)]
 fn pending_version_path(root: &std::path::Path) -> PathBuf {
     root.join("bin").join(PENDING_VERSION_NAME)
 }
@@ -253,6 +257,7 @@ fn replace_binary(path: &std::path::Path, data: &[u8]) -> Result<()> {
 }
 
 /// Stage an update for later promotion by the wrapper.
+#[cfg(windows)]
 fn stage_binary(root: &std::path::Path, tag: &str, data: &[u8]) -> Result<()> {
     let pending = pending_binary_path(root);
     let dir = pending
@@ -600,6 +605,7 @@ mod tests {
         assert_eq!(fs::read(&bin).unwrap(), b"new");
     }
 
+    #[cfg(windows)]
     #[test]
     fn stage_binary_writes_pending_files() {
         let dir = tempfile::tempdir().unwrap();

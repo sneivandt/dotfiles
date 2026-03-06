@@ -21,11 +21,13 @@ const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
 
 /// Environment variable set by the `PowerShell` wrapper when it can restart the
 /// binary after a staged Windows self-update.
+#[cfg(windows)]
 const WRAPPER_RESTART_ENV_VAR: &str = "DOTFILES_WRAPPER_RESTART";
 
 /// Exit code used on Windows to ask the wrapper to relaunch after a staged update.
 ///
 /// Keep this in sync with `dotfiles.ps1`.
+#[cfg(windows)]
 pub(crate) const WINDOWS_RESTART_EXIT_CODE: i32 = 75;
 
 /// Replace the current process with a fresh invocation of the same binary.
@@ -36,6 +38,7 @@ pub(crate) const WINDOWS_RESTART_EXIT_CODE: i32 = 75;
 pub(crate) fn re_exec() -> ! {
     #[cfg(unix)]
     {
+        use std::os::unix::process::CommandExt;
         let args: Vec<String> = std::env::args().skip(1).collect();
         let exe = match std::env::current_exe() {
             Ok(p) => p,
@@ -44,7 +47,6 @@ pub(crate) fn re_exec() -> ! {
                 std::process::exit(1);
             }
         };
-        use std::os::unix::process::CommandExt;
         let err = std::process::Command::new(&exe)
             .args(&args)
             .env(REEXEC_GUARD_VAR, "1")

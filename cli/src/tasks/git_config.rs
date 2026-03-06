@@ -23,10 +23,13 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn should_run_false_when_no_settings() {
+    fn run_skips_when_no_settings() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        assert!(!ConfigureGit.should_run(&ctx));
+        // no guard; empty items cause run() to return Skipped
+        assert!(ConfigureGit.should_run(&ctx));
+        let result = ConfigureGit.run(&ctx).unwrap();
+        assert!(matches!(result, crate::tasks::TaskResult::Skipped(_)));
     }
 
     #[test]

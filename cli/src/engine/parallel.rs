@@ -1,7 +1,5 @@
 //! Rayon-based parallel resource processing.
 
-use std::sync::Mutex;
-
 use anyhow::Result;
 
 use super::apply::{process_single, remove_single};
@@ -47,9 +45,11 @@ pub(super) fn process_remove_parallel<R: Resource + Send>(
 
 /// Accumulate per-item [`TaskStats`] deltas in parallel using Rayon.
 ///
-/// Runs `work` on each item concurrently; the resulting deltas are added to a
-/// shared `Mutex<TaskStats>`. The accumulated total is returned when all items
-/// have been processed.
+/// Runs `work` on each item concurrently using Rayon's `try_fold` /
+/// `try_reduce` pattern: each thread accumulates a local `TaskStats` without
+/// any synchronisation, and the per-thread results are merged in a tree
+/// reduction at the end.  This avoids the contention of a shared
+/// `Mutex<TaskStats>` without changing observable behaviour.
 ///
 /// The diagnostic thread name is captured once before dispatching and re-set
 /// on each iteration so the log timeline remains accurate even when Rayon
@@ -60,19 +60,17 @@ fn collect_parallel_stats<T: Send>(
 ) -> Result<TaskStats> {
     use rayon::prelude::*;
     let task_name = diag_thread_name();
-    let stats = Mutex::new(TaskStats::new());
-    items.into_par_iter().try_for_each(|item| -> Result<()> {
-        set_diag_thread_name(&task_name);
-        let delta = work(item)?;
-        *stats
-            .lock()
-            .map_err(|e| anyhow::anyhow!("stats mutex poisoned: {e}"))? += delta;
-        Ok(())
-    })?;
-    Ok(stats.into_inner().unwrap_or_else(|e| {
-        tracing::error!("stats mutex was poisoned — a worker thread panicked; recovering stats");
-        e.into_inner()
-    }))
+    items
+        .into_par_iter()
+        .try_fold(TaskStats::default, |mut acc, item| {
+            set_diag_thread_name(&task_name);
+            acc += work(item)?;
+            Ok(acc)
+        })
+        .try_reduce(TaskStats::default, |mut a, b| {
+            a += b;
+            Ok(a)
+        })
 }
 
 /// Generic parallel processing helper using Rayon.

@@ -32,10 +32,13 @@ mod tests {
     }
 
     #[test]
-    fn should_run_false_when_chmod_empty() {
+    fn run_skips_when_chmod_empty() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        assert!(!ApplyFilePermissions.should_run(&ctx));
+        // guard passes on Linux; empty items cause run() to return Skipped
+        assert!(ApplyFilePermissions.should_run(&ctx));
+        let result = ApplyFilePermissions.run(&ctx).unwrap();
+        assert!(matches!(result, crate::tasks::TaskResult::Skipped(_)));
     }
 
     #[test]

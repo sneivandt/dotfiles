@@ -256,6 +256,7 @@ fn config_loads_packages_from_ini() {
     let platform = Platform {
         os: Os::Linux,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     assert_eq!(
@@ -284,6 +285,7 @@ fn config_loads_aur_packages_correctly() {
     let platform = Platform {
         os: Os::Linux,
         is_arch: true,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     assert_eq!(config.packages.len(), 2);
@@ -320,6 +322,7 @@ fn config_validate_warns_on_aur_packages_on_non_arch() {
     let platform = Platform {
         os: Os::Linux,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     let warnings = config.validate(platform);
@@ -349,6 +352,7 @@ fn config_validate_no_warning_for_aur_packages_on_arch() {
     let platform = Platform {
         os: Os::Linux,
         is_arch: true,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     let warnings = config.validate(platform);
@@ -380,6 +384,7 @@ fn config_validate_warns_on_invalid_chmod_mode() {
     let platform = Platform {
         os: Os::Linux,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     let warnings = config.validate(platform);
@@ -403,6 +408,7 @@ fn config_validate_warns_on_absolute_chmod_path() {
     let platform = Platform {
         os: Os::Linux,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     let warnings = config.validate(platform);
@@ -429,6 +435,7 @@ fn config_validate_warns_on_invalid_systemd_unit_extension() {
     let platform = Platform {
         os: Os::Linux,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     let warnings = config.validate(platform);
@@ -458,6 +465,7 @@ fn config_validate_no_warning_for_valid_systemd_unit() {
     let platform = Platform {
         os: Os::Linux,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     let warnings = config.validate(platform);
@@ -579,6 +587,7 @@ fn config_loads_chmod_entries_correctly() {
     let platform = Platform {
         os: Os::Linux,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     assert_eq!(
@@ -619,6 +628,7 @@ fn config_loads_registry_entries_on_windows() {
     let platform = Platform {
         os: Os::Windows,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     assert_eq!(
@@ -645,6 +655,7 @@ fn config_does_not_load_registry_on_linux() {
     let platform = Platform {
         os: Os::Linux,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     assert!(
@@ -670,6 +681,7 @@ fn config_validate_no_warning_for_valid_registry_on_windows() {
     let platform = Platform {
         os: Os::Windows,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     let warnings = config.validate(platform);
@@ -697,6 +709,7 @@ fn config_validate_warns_on_non_hkcu_registry_hive() {
     let platform = Platform {
         os: Os::Windows,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     let warnings = config.validate(platform);
@@ -727,6 +740,7 @@ fn config_validate_warns_on_chmod_entries_on_windows() {
     let platform = Platform {
         os: Os::Windows,
         is_arch: false,
+        is_wsl: false,
     };
     let config = ctx.load_config_for_platform("base", platform);
     let warnings = config.validate(platform);

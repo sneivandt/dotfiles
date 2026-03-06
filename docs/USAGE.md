@@ -192,7 +192,7 @@ The installation process handles different components based on your profile:
 11. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.toml`
 12. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
 13. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.toml`
-14. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (via sudo)
+14. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
 
 ### Windows Installation Steps
 

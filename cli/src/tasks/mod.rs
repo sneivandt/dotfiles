@@ -434,10 +434,12 @@ pub mod test_helpers {
     /// ```
     #[derive(Debug)]
     #[must_use]
+    #[allow(clippy::struct_excessive_bools)]
     pub struct ContextBuilder {
         config: Config,
         os: crate::platform::Os,
         is_arch: bool,
+        is_wsl: bool,
         which_result: bool,
         is_ci: bool,
     }
@@ -449,6 +451,7 @@ pub mod test_helpers {
                 config,
                 os: crate::platform::Os::Linux,
                 is_arch: false,
+                is_wsl: false,
                 which_result: false,
                 is_ci: false,
             }
@@ -463,6 +466,12 @@ pub mod test_helpers {
         /// Set whether the platform is Arch Linux.
         pub fn arch(mut self, is_arch: bool) -> Self {
             self.is_arch = is_arch;
+            self
+        }
+
+        /// Set whether the platform is Windows Subsystem for Linux.
+        pub fn wsl(mut self, is_wsl: bool) -> Self {
+            self.is_wsl = is_wsl;
             self
         }
 
@@ -486,7 +495,11 @@ pub mod test_helpers {
         pub fn build(self) -> Context {
             make_context(
                 self.config,
-                Platform::new(self.os, self.is_arch),
+                Platform {
+                    os: self.os,
+                    is_arch: self.is_arch,
+                    is_wsl: self.is_wsl,
+                },
                 Arc::new(TestExecutor::stub().with_which(self.which_result)),
             )
             .with_ci(self.is_ci)

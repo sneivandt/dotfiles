@@ -33,11 +33,11 @@ pub struct ContextOpts {
 pub struct Context {
     /// Configuration loaded from TOML files.
     ///
-    /// Wrapped in `Arc<RwLock<Arc<Config>>>` so that `ReloadConfig` can
-    /// atomically swap the inner `Arc<Config>` after a `git pull`.
-    /// Readers call [`Context::config_read`] to get an `Arc<Config>`
-    /// snapshot, releasing the lock immediately.
-    pub config: Arc<RwLock<Arc<Config>>>,
+    /// Private — access via [`Context::config_read`] (read) or
+    /// [`Context::config_swap`] (write).  Intentionally not `pub` so that
+    /// callers cannot bypass the poisoning-recovery logic or hold the lock
+    /// longer than necessary.
+    config: Arc<RwLock<Arc<Config>>>,
     /// Detected platform information.
     pub platform: Platform,
     /// Logger for output and task recording.
@@ -111,6 +111,34 @@ impl Context {
             parallel: opts.parallel,
             is_ci,
         })
+    }
+
+    /// Create a [`Context`] directly from its constituent parts.
+    ///
+    /// Intended for test helpers and integration-test scaffolding that supply
+    /// fully-constructed components rather than deriving them from the
+    /// environment.  Prefer [`Context::new`] in production code.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_raw(
+        config: Arc<RwLock<Arc<Config>>>,
+        platform: Platform,
+        log: Arc<dyn Log>,
+        executor: Arc<dyn Executor>,
+        dry_run: bool,
+        home: std::path::PathBuf,
+        parallel: bool,
+        is_ci: bool,
+    ) -> Self {
+        Self {
+            config,
+            platform,
+            log,
+            dry_run,
+            home,
+            executor,
+            parallel,
+            is_ci,
+        }
     }
 
     /// Get a snapshot of the current configuration.
@@ -196,6 +224,21 @@ impl Context {
         }
     }
 
+    /// Log a debug message, evaluating the format string lazily.
+    ///
+    /// Unlike `self.log.debug(&format!(...))`, this method skips the
+    /// allocation entirely when the debug level is disabled (the common case
+    /// in non-verbose runs).
+    ///
+    /// Use this in hot paths (e.g. per-resource loops) that are called for
+    /// hundreds of items per install run.
+    #[inline]
+    pub fn debug_fmt(&self, f: impl FnOnce() -> String) {
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            self.log.debug(&f());
+        }
+    }
+
     /// Atomically replace the shared configuration.
     ///
     /// Used by [`crate::tasks::reload_config::ReloadConfig`] after a `git pull`
@@ -277,7 +320,7 @@ mod tests {
         assert_eq!(ctx2.dry_run, ctx.dry_run);
         assert_eq!(ctx2.home, ctx.home);
         assert_eq!(ctx2.parallel, ctx.parallel);
-        assert!(Arc::ptr_eq(&ctx.config, &ctx2.config));
+        assert!(Arc::ptr_eq(&ctx.config_read(), &ctx2.config_read()));
         assert_eq!(ctx.platform, ctx2.platform);
     }
 }

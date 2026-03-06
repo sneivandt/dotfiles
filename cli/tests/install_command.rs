@@ -802,18 +802,16 @@ fn install_tasks_should_run_with_parallel_enabled() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-parallel"));
 
-    let task_ctx = dotfiles_cli::tasks::Context {
-        config: Arc::new(std::sync::RwLock::new(Arc::new(config))),
+    let task_ctx = dotfiles_cli::tasks::Context::from_raw(
+        Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
-        log: Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
-        dry_run: true,
-        home: std::path::PathBuf::from(
-            std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()),
-        ),
+        Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        parallel: true,
-        is_ci: false,
-    };
+        true,
+        std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())),
+        true,
+        false,
+    );
 
     let all_tasks = tasks::all_install_tasks();
     for task in &all_tasks {

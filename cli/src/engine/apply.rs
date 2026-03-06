@@ -26,11 +26,11 @@ pub(super) fn process_single<R: Applicable>(
     let mut delta = TaskStats::new();
     match opts.mode.action_for(resource_state) {
         ResourceAction::Noop => {
-            ctx.log.debug(&format!("ok: {desc}"));
+            ctx.debug_fmt(|| format!("ok: {desc}"));
             delta.already_ok += 1;
         }
         ResourceAction::Skip(reason) => {
-            ctx.log.debug(&format!("skipping {desc}: {reason}"));
+            ctx.debug_fmt(|| format!("skipping {desc}: {reason}"));
             delta.skipped += 1;
         }
         ResourceAction::Apply => {
@@ -86,7 +86,7 @@ pub(super) fn apply_resource<R: Applicable>(
             if let Some(diag) = ctx.log.diagnostic() {
                 diag.emit(DiagEvent::ResourceResult, &format!("{desc} applied"));
             }
-            ctx.log.debug(&format!("{}: {desc}", opts.verb));
+            ctx.debug_fmt(|| format!("{}: {desc}", opts.verb));
             delta.changed += 1;
         }
         ResourceChange::AlreadyCorrect => {
@@ -139,7 +139,7 @@ pub(super) fn remove_single<R: Applicable>(
             if let Some(diag) = ctx.log.diagnostic() {
                 diag.emit(DiagEvent::ResourceResult, &format!("{desc} removed"));
             }
-            ctx.log.debug(&format!("{verb}: {desc}"));
+            ctx.debug_fmt(|| format!("{verb}: {desc}"));
             delta.changed += 1;
         }
         _ => {

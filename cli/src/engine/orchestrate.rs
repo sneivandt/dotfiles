@@ -33,10 +33,7 @@ pub fn process_resources<R: Resource + Send>(
     );
     let _enter = span.enter();
     if ctx.parallel && resources.len() > 1 {
-        ctx.log.debug(&format!(
-            "processing {} resources in parallel",
-            resources.len()
-        ));
+        ctx.debug_fmt(|| format!("processing {} resources in parallel", resources.len()));
         parallel::process_resources_parallel(ctx, resources, opts)
     } else {
         let mut stats = TaskStats::new();
@@ -71,10 +68,7 @@ pub fn process_resource_states<R: Applicable + Send>(
     );
     let _enter = span.enter();
     if ctx.parallel && resource_states.len() > 1 {
-        ctx.log.debug(&format!(
-            "processing {} resources in parallel",
-            resource_states.len()
-        ));
+        ctx.debug_fmt(|| format!("processing {} resources in parallel", resource_states.len()));
         parallel::process_resource_states_parallel(ctx, resource_states, opts)
     } else {
         let mut stats = TaskStats::new();

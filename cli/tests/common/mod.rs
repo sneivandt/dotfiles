@@ -223,6 +223,18 @@ pub struct ExecutionContext {
     _home: tempfile::TempDir,
 }
 
+impl ExecutionContext {
+    /// Return a copy of this context with dry-run mode enabled.
+    ///
+    /// Uses struct update syntax so the `_home` `TempDir` (held only for its
+    /// drop semantics) is moved without requiring direct field access.
+    #[must_use]
+    pub fn into_dry_run(self) -> Self {
+        let ctx = self.ctx.with_dry_run(true);
+        Self { ctx, ..self }
+    }
+}
+
 impl IntegrationTestContext {
     /// Create a task execution [`Context`] for the given profile.
     ///
@@ -233,16 +245,16 @@ impl IntegrationTestContext {
         let config = self.load_config(profile);
         let home = tempfile::tempdir().expect("create home dir");
         let log = Arc::new(Logger::new("test"));
-        let ctx = Context {
-            config: Arc::new(RwLock::new(Arc::new(config))),
-            platform: Platform::detect(),
-            log: Arc::clone(&log) as Arc<dyn Log>,
-            dry_run: false,
-            home: home.path().to_path_buf(),
-            executor: Arc::new(StubExecutor),
-            parallel: false,
-            is_ci: false,
-        };
+        let ctx = Context::from_raw(
+            Arc::new(RwLock::new(Arc::new(config))),
+            Platform::detect(),
+            Arc::clone(&log) as Arc<dyn Log>,
+            Arc::new(StubExecutor),
+            false,
+            home.path().to_path_buf(),
+            false,
+            false,
+        );
         ExecutionContext {
             ctx,
             log,
@@ -252,8 +264,6 @@ impl IntegrationTestContext {
 
     /// Create a dry-run task execution [`Context`] for the given profile.
     pub fn make_dry_run_context(&self, profile: &str) -> ExecutionContext {
-        let mut ec = self.make_context(profile);
-        ec.ctx.dry_run = true;
-        ec
+        self.make_context(profile).into_dry_run()
     }
 }

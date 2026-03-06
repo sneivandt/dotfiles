@@ -226,17 +226,25 @@ impl Context {
 
     /// Log a debug message, evaluating the format string lazily.
     ///
-    /// Unlike `self.log.debug(&format!(...))`, this method skips the
-    /// allocation entirely when the debug level is disabled (the common case
-    /// in non-verbose runs).
+    /// The closure `f` is called unconditionally; the resulting string is
+    /// forwarded to `self.log.debug`.  The lazy form avoids constructing the
+    /// format string at the call site and instead defers it to this method,
+    /// keeping hot-path call sites clean.
     ///
-    /// Use this in hot paths (e.g. per-resource loops) that are called for
-    /// hundreds of items per install run.
+    /// # Note on `tracing::enabled!`
+    ///
+    /// A previous implementation guarded this method with
+    /// `tracing::enabled!(Level::DEBUG)` to skip the allocation when the
+    /// debug level was disabled.  That check goes through the tracing
+    /// per-layer `FilterState` machinery and leaves stale filter-pass bits
+    /// on the calling thread.  Those bits interfere with the subsequent
+    /// `tracing::info!(target: "dotfiles::stage", …)` call in
+    /// `flush_and_complete`, causing stage headers to be silently dropped
+    /// from the console for any task that called `debug_fmt` during its
+    /// `run()`.  The guard has therefore been removed.
     #[inline]
     pub fn debug_fmt(&self, f: impl FnOnce() -> String) {
-        if tracing::enabled!(tracing::Level::DEBUG) {
-            self.log.debug(&f());
-        }
+        self.log.debug(&f());
     }
 
     /// Atomically replace the shared configuration.

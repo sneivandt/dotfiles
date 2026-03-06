@@ -309,4 +309,71 @@ mod tests {
             "task-b should still be in active tasks"
         );
     }
+
+    /// Regression test: tasks that produce stats output by calling
+    /// `ctx.log.info()` inside `run()` — as `process_resources` does via
+    /// `stats.finish(ctx)` — must have their `==>` stage header replayed
+    /// by `flush_and_complete()`.
+    ///
+    /// Before this was caught, tasks producing `"0 changed, X already ok"`
+    /// output were observed without their stage headers in the console.
+    #[test]
+    fn flush_and_complete_replays_stage_before_info() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
+
+        // Simulate the order execute() + stats.finish(ctx) produce entries:
+        // execute() calls ctx.log.stage() first, then run() calls ctx.log.info()
+        // via stats.finish() before returning Ok.
+        buf.stage("install-task");
+        buf.info("0 changed, 37 already ok");
+
+        buf.flush_and_complete("install-task");
+
+        let path = log.log_path().expect("log path");
+        let contents = fs::read_to_string(path).unwrap();
+
+        let stage_pos = contents
+            .find("==> install-task")
+            .expect("stage header must appear in log after flush_and_complete");
+        let info_pos = contents
+            .find("0 changed, 37 already ok")
+            .expect("stats info must appear in log after flush_and_complete");
+
+        assert!(
+            stage_pos < info_pos,
+            "stage header must come before stats info\nlog:\n{contents}"
+        );
+    }
+
+    /// Regression test: the stage header must appear even when `notify_task_start`
+    /// has been called first (i.e., a progress row is active), as happens in the
+    /// parallel scheduler where `notify_task_start` precedes `execute()`.
+    #[test]
+    fn flush_and_complete_replays_stage_after_progress_clear() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let log = Arc::new(log);
+
+        // Simulate parallel scheduler: notify_task_start before execute().
+        log.notify_task_start("parallel-task");
+
+        let buf = BufferedLog::new(Arc::clone(&log));
+        buf.stage("parallel-task");
+        buf.info("0 changed, 1 already ok");
+
+        buf.flush_and_complete("parallel-task");
+
+        let path = log.log_path().expect("log path");
+        let contents = fs::read_to_string(path).unwrap();
+
+        assert!(
+            contents.contains("==> parallel-task"),
+            "stage header must appear after flush_and_complete even when progress row was active\nlog:\n{contents}"
+        );
+        assert!(
+            contents.contains("0 changed, 1 already ok"),
+            "stats info must appear\nlog:\n{contents}"
+        );
+    }
 }

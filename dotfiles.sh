@@ -21,8 +21,8 @@ CONNECT_TIMEOUT=10   # seconds — TCP connect timeout
 TRANSFER_TIMEOUT=120 # seconds — total transfer timeout
 RETRY_COUNT=3        # number of download attempts
 RETRY_DELAY=2        # seconds between retries
-# NOTE: Keep these constants in sync with the equivalent values in dotfiles.ps1.
-# dotfiles.ps1: $TransferTimeout / $RetryCount / $RetryDelay
+# NOTE: Keep TRANSFER_TIMEOUT / RETRY_COUNT / RETRY_DELAY aligned with the
+# corresponding constants in dotfiles.ps1.
 
 BUILD_MODE=false
 for arg in "$@"; do
@@ -80,7 +80,7 @@ download_with_retry() {
 }
 
 # Verify checksum in a subshell to scope the trap safely.
-verify_checksum() {
+_verify_checksum() {
   _vc_asset="$1"
   _vc_binary="$2"
   tmpfile=$(mktemp)
@@ -128,7 +128,7 @@ download_binary() {
     rm -f "$BINARY"
     exit 1
   fi
-  if ! ( verify_checksum "$asset" "$BINARY" ); then
+  if ! ( _verify_checksum "$asset" "$BINARY" ); then
     rm -f "$BINARY"
     exit 1
   fi

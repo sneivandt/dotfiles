@@ -25,8 +25,8 @@ pub struct Cli {
 /// Options shared across all subcommands.
 #[derive(Parser, Debug, Clone)]
 pub struct GlobalOpts {
-    /// Wrapper-only compatibility flag; accepted so wrappers can passthrough
-    /// all arguments after handling their own build mode.
+    /// Wrapper-only compatibility flag; accepted and ignored so wrappers can
+    /// forward `--build` without extra preprocessing.
     #[arg(long, global = true, hide = true)]
     pub build: bool,
 

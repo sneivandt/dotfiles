@@ -22,8 +22,8 @@ $BinDir = Join-Path $DotfilesRoot "bin"
 $TransferTimeout = 120  # seconds — total transfer timeout
 $RetryCount = 3         # number of download attempts
 $RetryDelay = 2         # seconds between retries
-# Keep these in sync with dotfiles.sh.
-# Keep this in sync with cli/src/commands/mod.rs.
+# Keep TransferTimeout/RetryCount/RetryDelay in sync with dotfiles.sh.
+# Keep RestartExitCode in sync with cli/src/commands/mod.rs.
 $RestartExitCode = 75
 $WrapperRestartEnvVar = 'DOTFILES_WRAPPER_RESTART'
 $Build = $false

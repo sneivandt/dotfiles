@@ -158,7 +158,10 @@ const fn ensure_dir_execute_bits(mode: u32) -> u32 {
     m
 }
 
-/// Strip file execute bits when recursively applying a directory mode.
+/// Strip execute bits from a mode before applying it to regular files during
+/// recursive directory chmod operations.
+///
+/// Returns the mode with user, group, and other execute bits cleared.
 #[cfg(unix)]
 const fn strip_file_execute_bits(mode: u32) -> u32 {
     mode & !0o111

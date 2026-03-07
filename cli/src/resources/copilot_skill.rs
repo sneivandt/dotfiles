@@ -174,7 +174,7 @@ fn skill_dir_has_entries(path: &Path) -> Result<bool> {
         .with_context(|| format!("reading skill directory {}", path.display()))?
         .next()
         .transpose()
-        .with_context(|| format!("reading skill directory {}", path.display()))?
+        .with_context(|| format!("reading entry in skill directory {}", path.display()))?
         .is_some())
 }
 

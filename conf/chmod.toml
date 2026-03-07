@@ -2,9 +2,10 @@
 # Each section represents a profile
 # Format: mode and path (relative to home directory)
 #
-# Note: When applying mode to a directory, chmod -R is used which applies
-# the mode recursively to ALL files and subdirectories. Consider this when
-# setting directory permissions (e.g., 755 will apply to all contents).
+# Note: When applying mode to a directory, directories keep the requested
+# access (with execute bits added where needed for traversal) while regular
+# files in that tree have execute bits cleared unless they are targeted
+# directly by their own chmod entry.
 
 [linux]
 permissions = [

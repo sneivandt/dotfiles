@@ -1,7 +1,7 @@
 //! Configuration loading and validation for all TOML config files.
 pub mod category_matcher {
     //! Re-export of [`super::helpers::category_matcher`].
-    pub use super::helpers::category_matcher::{Category, MatchMode, matches};
+    pub use super::helpers::category_matcher::{Category, matches};
 }
 pub mod chmod;
 pub mod copilot_skills;
@@ -50,8 +50,6 @@ macro_rules! config_section {
         impl $crate::config::helpers::toml_loader::ConfigSection for Section {
             type Entry = $ty;
             type Item = $ty;
-            const MATCH_MODE: $crate::config::helpers::category_matcher::MatchMode =
-                $crate::config::helpers::category_matcher::MatchMode::All;
 
             fn extract(self) -> Vec<$ty> {
                 self.entries
@@ -91,8 +89,6 @@ macro_rules! config_section {
         impl $crate::config::helpers::toml_loader::ConfigSection for Section {
             type Entry = $entry;
             type Item = $item;
-            const MATCH_MODE: $crate::config::helpers::category_matcher::MatchMode =
-                $crate::config::helpers::category_matcher::MatchMode::All;
 
             fn extract(self) -> Vec<$entry> {
                 self.entries

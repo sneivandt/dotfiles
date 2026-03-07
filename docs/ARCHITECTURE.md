@@ -317,9 +317,8 @@ Git's sparse checkout feature controls which files are checked out.
 5. Configure `git sparse-checkout set`
 
 **Pattern logic** (manifest.toml):
-- Uses OR logic for exclusions
-- `[arch-desktop]` means "exclude if arch OR desktop is excluded"
-- Ensures files common to multiple categories are excluded appropriately
+- Uses AND logic for exclusions — consistent with all other config files
+- `[arch-desktop]` means "exclude only if both arch AND desktop are excluded"
 
 ### Error Handling
 

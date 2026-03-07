@@ -6,15 +6,9 @@
 # Directories should end with /
 # Individual files listed explicitly
 #
-# IMPORTANT - OR Logic for Multi-Category Sections:
-# Unlike other config files, this file uses OR logic for multi-category sections.
-# [arch-desktop] means "exclude if arch OR desktop is excluded" (not both required).
-# This ensures files shared by multiple categories are excluded when ANY category is excluded.
-#
-# Examples:
-#   [arch-desktop] - File excluded if EITHER arch OR desktop is excluded
-#   Other config files (symlinks.toml, packages.toml, etc.) use AND logic:
-#   [arch-desktop] - Section included only if BOTH arch AND desktop are active
+# Section names use hyphen-separated categories and follow AND logic, identical to all other
+# config files. A section is excluded only when ALL of its category tags match the excluded set.
+# Example: [arch-desktop] is excluded only if BOTH arch AND desktop are excluded.
 #
 # Note: Files in the [base] profile category do not need to be listed here
 # since base files are never excluded - they're included in all profiles.

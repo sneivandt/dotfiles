@@ -4,7 +4,7 @@ use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::category_matcher::{Category, MatchMode};
+use super::category_matcher::Category;
 
 /// Trait for TOML config sections that follow the standard load-filter-map pattern.
 ///
@@ -20,7 +20,6 @@ use super::category_matcher::{Category, MatchMode};
 /// impl ConfigSection for SkillSection {
 ///     type Entry = String;
 ///     type Item = CopilotSkill;
-///     const MATCH_MODE: MatchMode = MatchMode::All;
 ///     fn extract(self) -> Vec<String> { self.skills }
 ///     fn map(entry: String) -> CopilotSkill { CopilotSkill { url: entry } }
 /// }
@@ -30,8 +29,6 @@ pub trait ConfigSection: DeserializeOwned {
     type Entry;
     /// The final domain type produced after mapping each entry.
     type Item;
-    /// How category tags are combined when filtering sections.
-    const MATCH_MODE: MatchMode;
 
     /// Extract the entry list from this section (e.g. `self.packages`).
     fn extract(self) -> Vec<Self::Entry>;
@@ -52,7 +49,7 @@ pub fn load_section<S: ConfigSection>(
     path: &Path,
     active_categories: &[Category],
 ) -> Result<Vec<S::Item>> {
-    load_filtered(path, S::extract, S::map, active_categories, S::MATCH_MODE)
+    load_filtered(path, S::extract, S::map, active_categories)
 }
 
 /// Load and filter TOML config sections by active categories.
@@ -115,26 +112,23 @@ pub fn load_filtered<S, E, T>(
     extract: impl Fn(S) -> Vec<E>,
     map: impl Fn(E) -> T,
     active_categories: &[Category],
-    mode: MatchMode,
 ) -> Result<Vec<T>>
 where
     S: DeserializeOwned,
 {
     let items = load_section_items(path, extract)?;
-    let entries = filter_by_categories(items, active_categories, mode);
+    let entries = filter_by_categories(items, active_categories);
     Ok(entries.into_iter().map(map).collect())
 }
 
 /// Filter items from a TOML table by category matching.
 ///
-/// This is a helper for config types that need category-based filtering.
-/// The matcher uses the provided `MatchMode` to determine how categories
-/// are combined (AND or OR logic).
+/// A section is included only when all of its category tags are present in
+/// `active_categories` (AND logic).
 #[must_use]
 pub fn filter_by_categories<T>(
     items: Vec<(String, Vec<T>)>,
     active_categories: &[Category],
-    mode: MatchMode,
 ) -> Vec<T> {
     use super::category_matcher::matches;
 
@@ -145,7 +139,7 @@ pub fn filter_by_categories<T>(
                 .split('-')
                 .map(|s| Category::from_tag(s.trim()))
                 .collect();
-            matches(&categories, active_categories, mode)
+            matches(&categories, active_categories)
         })
         .flat_map(|(_, items)| items)
         .collect()
@@ -230,14 +224,14 @@ items = [\"c\"]
     // -----------------------------------------------------------------------
 
     #[test]
-    fn filter_by_categories_any_mode() {
+    fn filter_by_categories_single_match() {
         let items = vec![
             ("base".to_string(), vec!["a", "b"]),
             ("desktop".to_string(), vec!["c"]),
             ("windows".to_string(), vec!["d"]),
         ];
         let active = vec![Category::Base, Category::Desktop];
-        let result = filter_by_categories(items, &active, MatchMode::Any);
+        let result = filter_by_categories(items, &active);
         assert_eq!(result.len(), 3, "base + desktop items");
         assert!(result.contains(&"a"));
         assert!(result.contains(&"b"));
@@ -251,16 +245,16 @@ items = [\"c\"]
             ("arch".to_string(), vec!["b"]),
         ];
         let active = vec![Category::Arch];
-        let result = filter_by_categories(items, &active, MatchMode::All);
+        let result = filter_by_categories(items, &active);
         // "arch-desktop" requires both arch AND desktop; only arch is active
         assert_eq!(result, vec!["b"]);
     }
 
     #[test]
-    fn filter_by_categories_compound_key_all_mode_both_active() {
+    fn filter_by_categories_compound_key_both_active() {
         let items = vec![("arch-desktop".to_string(), vec!["x"])];
         let active = vec![Category::Arch, Category::Desktop];
-        let result = filter_by_categories(items, &active, MatchMode::All);
+        let result = filter_by_categories(items, &active);
         assert_eq!(result, vec!["x"]);
     }
 
@@ -268,7 +262,7 @@ items = [\"c\"]
     fn filter_by_categories_no_match_returns_empty() {
         let items = vec![("windows".to_string(), vec!["a", "b"])];
         let active = vec![Category::Linux];
-        let result = filter_by_categories(items, &active, MatchMode::Any);
+        let result = filter_by_categories(items, &active);
         assert!(result.is_empty());
     }
 
@@ -276,7 +270,7 @@ items = [\"c\"]
     fn filter_by_categories_empty_items() {
         let items: Vec<(String, Vec<&str>)> = vec![];
         let active = vec![Category::Base];
-        let result = filter_by_categories(items, &active, MatchMode::Any);
+        let result = filter_by_categories(items, &active);
         assert!(result.is_empty());
     }
 }

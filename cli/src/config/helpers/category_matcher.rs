@@ -90,48 +90,29 @@ impl Ord for Category {
     }
 }
 
-/// Match mode for category filtering.
-///
-/// Controls whether all or any of a section's categories must be active
-/// for the section to be considered a match.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MatchMode {
-    /// All categories must be active (AND logic).
-    All,
-    /// Any category must be active (OR logic).
-    Any,
-}
-
 /// Check if a section's categories match the active categories.
+///
+/// All of the section's category tags must be present in `active_categories`
+/// for the section to be considered a match (AND logic).
 ///
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::config::category_matcher::{Category, MatchMode, matches};
+/// use dotfiles_cli::config::category_matcher::{Category, matches};
 ///
 /// let section = vec![Category::Arch, Category::Desktop];
-/// let active = vec![Category::Arch, Category::Base];
+/// let active_both = vec![Category::Arch, Category::Desktop];
+/// let active_one = vec![Category::Arch, Category::Base];
 ///
-/// // AND mode: both "arch" and "desktop" must be active
-/// assert!(!matches(&section, &active, MatchMode::All));
-///
-/// // OR mode: at least one of "arch" or "desktop" must be active
-/// assert!(matches(&section, &active, MatchMode::Any));
+/// // Both "arch" and "desktop" must be active
+/// assert!(matches(&section, &active_both));
+/// assert!(!matches(&section, &active_one));
 /// ```
 #[must_use]
-pub fn matches(
-    section_categories: &[Category],
-    active_categories: &[Category],
-    mode: MatchMode,
-) -> bool {
-    match mode {
-        MatchMode::All => section_categories
-            .iter()
-            .all(|cat| active_categories.contains(cat)),
-        MatchMode::Any => section_categories
-            .iter()
-            .any(|cat| active_categories.contains(cat)),
-    }
+pub fn matches(section_categories: &[Category], active_categories: &[Category]) -> bool {
+    section_categories
+        .iter()
+        .all(|cat| active_categories.contains(cat))
 }
 
 #[cfg(test)]
@@ -140,89 +121,54 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_mode_requires_all_categories() {
+    fn requires_all_categories() {
         let section = vec![Category::Arch, Category::Desktop];
         let active_both = vec![Category::Arch, Category::Desktop];
         let active_one = vec![Category::Arch];
 
-        assert!(matches(&section, &active_both, MatchMode::All));
-        assert!(!matches(&section, &active_one, MatchMode::All));
+        assert!(matches(&section, &active_both));
+        assert!(!matches(&section, &active_one));
     }
 
     #[test]
-    fn any_mode_requires_at_least_one_category() {
-        let section = vec![Category::Arch, Category::Desktop];
-        let active_one = vec![Category::Arch];
-        let active_miss = vec![Category::Windows];
-
-        assert!(matches(&section, &active_one, MatchMode::Any));
-        assert!(!matches(&section, &active_miss, MatchMode::Any));
-    }
-
-    #[test]
-    fn all_mode_single_category_match() {
+    fn single_category_match() {
         let section = vec![Category::Base];
         let active = vec![Category::Base, Category::Arch];
 
-        assert!(matches(&section, &active, MatchMode::All));
+        assert!(matches(&section, &active));
     }
 
     #[test]
-    fn all_mode_single_category_no_match() {
+    fn single_category_no_match() {
         let section = vec![Category::Desktop];
         let active = vec![Category::Base, Category::Arch];
 
-        assert!(!matches(&section, &active, MatchMode::All));
+        assert!(!matches(&section, &active));
     }
 
     #[test]
-    fn empty_section_categories_all_mode() {
+    fn empty_section_categories() {
         let section: Vec<Category> = vec![];
         let active = vec![Category::Arch];
 
         // all() on empty iterator returns true (vacuous truth)
-        assert!(matches(&section, &active, MatchMode::All));
+        assert!(matches(&section, &active));
     }
 
     #[test]
-    fn empty_section_categories_any_mode() {
-        let section: Vec<Category> = vec![];
-        let active = vec![Category::Arch];
-
-        // any() on empty iterator returns false
-        assert!(!matches(&section, &active, MatchMode::Any));
-    }
-
-    #[test]
-    fn empty_active_categories_all_mode() {
+    fn empty_active_categories() {
         let section = vec![Category::Arch];
         let active: Vec<Category> = vec![];
 
-        assert!(!matches(&section, &active, MatchMode::All));
+        assert!(!matches(&section, &active));
     }
 
     #[test]
-    fn empty_active_categories_any_mode() {
-        let section = vec![Category::Arch];
-        let active: Vec<Category> = vec![];
-
-        assert!(!matches(&section, &active, MatchMode::Any));
-    }
-
-    #[test]
-    fn both_empty_all_mode() {
+    fn both_empty() {
         let section: Vec<Category> = vec![];
         let active: Vec<Category> = vec![];
 
         // all() on empty iterator returns true (vacuous truth)
-        assert!(matches(&section, &active, MatchMode::All));
-    }
-
-    #[test]
-    fn both_empty_any_mode() {
-        let section: Vec<Category> = vec![];
-        let active: Vec<Category> = vec![];
-
-        assert!(!matches(&section, &active, MatchMode::Any));
+        assert!(matches(&section, &active));
     }
 }

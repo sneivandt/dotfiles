@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::helpers::category_matcher::{Category, MatchMode};
+use super::helpers::category_matcher::Category;
 use super::helpers::toml_loader;
 
 /// Sparse checkout manifest — files to exclude by category.
@@ -20,10 +20,10 @@ struct ManifestSection {
     paths: Vec<String>,
 }
 
-/// Load manifest from manifest.toml using OR exclusion logic.
+/// Load manifest from manifest.toml using AND exclusion logic.
 ///
-/// A file section is excluded if ANY of its category tags match the excluded set.
-/// This is the opposite of other config files which use AND inclusion logic.
+/// A file section is excluded only if ALL of its category tags match the
+/// excluded set — the same logic used by all other config files.
 ///
 /// # Errors
 ///
@@ -33,8 +33,7 @@ pub fn load(path: &Path, excluded_categories: &[Category]) -> Result<Manifest> {
 
     let items: Vec<(String, Vec<String>)> = config.into_iter().map(|(k, v)| (k, v.paths)).collect();
 
-    let excluded_files =
-        toml_loader::filter_by_categories(items, excluded_categories, MatchMode::Any);
+    let excluded_files = toml_loader::filter_by_categories(items, excluded_categories);
 
     Ok(Manifest { excluded_files })
 }
@@ -46,7 +45,7 @@ mod tests {
     use crate::config::test_helpers::write_temp_toml;
 
     #[test]
-    fn or_exclusion_logic() {
+    fn and_exclusion_logic() {
         let (_dir, path) = write_temp_toml(
             r#"[base]
 paths = ["file1"]
@@ -61,20 +60,21 @@ paths = ["file3"]
 paths = ["file4"]
 "#,
         );
-        // Excluding 'windows' should exclude only file3
+        // Excluding 'windows' excludes file3 (single-category match),
+        // but NOT file4 — [arch-desktop] requires BOTH arch AND desktop to be excluded.
         let manifest = load(&path, &[Category::Windows]).unwrap();
         assert_eq!(manifest.excluded_files, vec!["file3"]);
     }
 
     #[test]
-    fn or_logic_multi_category() {
+    fn and_logic_multi_category_both_excluded() {
         let (_dir, path) = write_temp_toml(
             r#"[arch-desktop]
 paths = ["file1"]
 "#,
         );
-        // Excluding just 'arch' should still exclude the section (OR logic)
-        let manifest = load(&path, &[Category::Arch]).unwrap();
+        // Excluding both 'arch' and 'desktop' excludes the section (AND logic)
+        let manifest = load(&path, &[Category::Arch, Category::Desktop]).unwrap();
         assert_eq!(manifest.excluded_files, vec!["file1"]);
     }
 

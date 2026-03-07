@@ -24,7 +24,6 @@ const TASK_FILTER_STOP_WORDS: &[&str] = &[
     "enable",
     "apply",
     "update",
-    "reload",
     "run",
     "validate",
 ];
@@ -57,9 +56,17 @@ fn canonical_task_selector(task_name: &str) -> String {
 
 fn task_matches_filter(task_name: &str, filter: &str) -> bool {
     let normalized_filter = normalize_task_filter(filter);
-    !normalized_filter.is_empty()
-        && (normalized_filter == normalize_task_filter(task_name)
-            || normalized_filter == canonical_task_selector(task_name))
+    if normalized_filter.is_empty() {
+        return false;
+    }
+
+    let canonical_selector = canonical_task_selector(task_name);
+    normalized_filter == normalize_task_filter(task_name)
+        || normalized_filter == canonical_selector
+        || canonical_selector
+            .split('-')
+            .next()
+            .is_some_and(|token| token == normalized_filter)
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +235,19 @@ fn only_filter_disambiguates_update_tasks() {
         !unmatched,
         "ambiguous selectors like 'update' should not match any task"
     );
+}
+
+/// Canonical selector leading tokens should match non-generic task names.
+#[test]
+fn only_filter_matches_reload_task_by_keyword() {
+    let all_tasks = tasks::all_install_tasks();
+    let filtered: Vec<&str> = all_tasks
+        .iter()
+        .filter(|t| task_matches_filter(t.name(), "reload"))
+        .map(|t| t.name())
+        .collect();
+
+    assert_eq!(filtered, vec!["Reload configuration"]);
 }
 
 /// When `--only` matches nothing the result is an empty list.

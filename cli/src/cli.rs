@@ -58,16 +58,17 @@ pub enum Command {
 /// Options for the `install` subcommand.
 #[derive(Parser, Debug, Clone)]
 pub struct InstallOpts {
-    /// Task selectors to skip (comma-separated, case-insensitive exact match).
+    /// Task selectors to skip (comma-separated, case-insensitive selector match).
     ///
-    /// A filter matches either a task's normalized name (`install-symlinks`) or
-    /// its canonical selector (`symlinks`, `git-hooks`, `update-repository`).
+    /// A filter matches either a task's normalized name (`install-symlinks`),
+    /// its canonical selector (`symlinks`, `git-hooks`, `reload-configuration`),
+    /// or the leading token of that canonical selector (`reload`).
     /// Can be combined with --only: a task runs when it matches an --only filter
     /// AND does not match any --skip filter.
     #[arg(long, value_delimiter = ',')]
     pub skip: Vec<String>,
 
-    /// Run only these task selectors (comma-separated, case-insensitive exact match).
+    /// Run only these task selectors (comma-separated, case-insensitive selector match).
     ///
     /// Filters use the same matching rules as `--skip`.
     #[arg(long, value_delimiter = ',')]

@@ -201,7 +201,8 @@ fn verify_checksum(client: &dyn HttpClient, tag: &str, asset: &str, data: &[u8])
         .find_map(|line| {
             let mut parts = line.split_whitespace();
             let hash = parts.next()?;
-            let name = parts.next()?;
+            let name = parts.collect::<Vec<_>>().join(" ");
+            let name = name.strip_prefix('*').unwrap_or(&name);
             if name == asset {
                 Some(hash.to_string())
             } else {
@@ -760,6 +761,19 @@ mod tests {
             msg.contains("checksum not found"),
             "expected 'checksum not found' in: {msg}"
         );
+    }
+
+    #[test]
+    fn verify_checksum_succeeds_when_asset_name_contains_spaces() {
+        let data = b"hello world";
+        let mut hasher = Sha256::new();
+        hasher.update(data);
+        let hash = format!("{:x}", hasher.finalize());
+
+        let checksums = format!("{hash}  release build/test asset\n");
+        let client = MockHttpClient::new(vec![Ok(checksums.into_bytes())]);
+
+        verify_checksum(&client, "v1.0.0", "release build/test asset", data).unwrap();
     }
 
     // -----------------------------------------------------------------------

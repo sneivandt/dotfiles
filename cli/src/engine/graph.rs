@@ -7,13 +7,18 @@ use crate::tasks::Task;
 
 /// Detect cycles in the task dependency graph using Kahn's algorithm.
 ///
-/// Returns `true` if the graph contains at least one cycle.
+/// Returns `true` if the graph contains at least one cycle or if task
+/// identifiers are not unique.
 pub fn has_cycle(tasks: &[&dyn Task]) -> bool {
     let type_to_idx: HashMap<TypeId, usize> = tasks
         .iter()
         .enumerate()
         .map(|(i, t)| (t.task_id(), i))
         .collect();
+
+    if type_to_idx.len() != tasks.len() {
+        return true;
+    }
 
     let mut in_degree: Vec<usize> = tasks
         .iter()
@@ -166,6 +171,45 @@ mod tests {
         assert!(!has_cycle(&tasks));
     }
 
+    struct DuplicateIdA;
+    impl Task for DuplicateIdA {
+        fn name(&self) -> &'static str {
+            "duplicate-a"
+        }
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    struct DuplicateIdB;
+    impl Task for DuplicateIdB {
+        fn name(&self) -> &'static str {
+            "duplicate-b"
+        }
+        fn task_id(&self) -> TypeId {
+            TypeId::of::<DuplicateIdA>()
+        }
+        fn dependencies(&self) -> &[TypeId] {
+            const DEPS: &[TypeId] = &[TypeId::of::<DuplicateIdA>()];
+            DEPS
+        }
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    #[test]
+    fn duplicate_task_ids_are_treated_as_invalid() {
+        let tasks: Vec<&dyn Task> = vec![&DuplicateIdA, &DuplicateIdB];
+        assert!(has_cycle(&tasks));
+    }
+
     // -----------------------------------------------------------------------
     // install order: verify real tasks form a valid DAG
     // -----------------------------------------------------------------------
@@ -174,6 +218,9 @@ mod tests {
     fn install_tasks_have_resolvable_dependencies() {
         use std::collections::HashSet;
         let tasks = crate::tasks::all_install_tasks();
+        let ids: Vec<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
+        let unique: HashSet<TypeId> = ids.iter().copied().collect();
+        assert_eq!(ids.len(), unique.len(), "duplicate task TypeIds found");
         let present: HashSet<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
         for task in &tasks {
             for dep in task.dependencies() {

@@ -144,13 +144,13 @@ impl Platform {
     /// Returns whether this platform uses pacman as the primary package manager.
     #[must_use]
     pub const fn uses_pacman(&self) -> bool {
-        self.os.is_unix_like() && self.is_arch
+        self.os.is_unix_like() && self.is_arch && !self.is_wsl
     }
 
     /// Returns whether this platform supports AUR packages.
     #[must_use]
     pub const fn supports_aur(&self) -> bool {
-        self.is_arch
+        self.is_arch && !self.is_wsl
     }
 
     /// Returns a display-friendly description of the platform.
@@ -171,7 +171,7 @@ impl Platform {
         match category {
             Category::Linux => self.os != Os::Linux,
             Category::Windows => self.os != Os::Windows,
-            Category::Arch => !self.is_arch_linux(),
+            Category::Arch => !self.is_arch_linux() || self.is_wsl(),
             _ => false,
         }
     }
@@ -274,6 +274,20 @@ mod tests {
     fn excludes_category_arch_on_arch() {
         let p = Platform::new(Os::Linux, true);
         assert!(!p.excludes_category(&Category::Arch));
+    }
+
+    #[test]
+    fn wsl_arch_disables_arch_specific_capabilities() {
+        let p = Platform {
+            os: Os::Linux,
+            is_arch: true,
+            is_wsl: true,
+        };
+
+        assert!(!p.uses_pacman());
+        assert!(!p.supports_aur());
+        assert!(p.excludes_category(&Category::Arch));
+        assert!(!p.excludes_category(&Category::Linux));
     }
 
     #[test]

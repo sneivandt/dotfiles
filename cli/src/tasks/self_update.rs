@@ -231,30 +231,38 @@ fn replace_binary(path: &std::path::Path, data: &[u8]) -> Result<()> {
 
     // Write to a temporary file in the same directory for atomic rename.
     let tmp = dir.join(".dotfiles-update.tmp");
-    {
-        let mut f = fs::File::create(&tmp).context("creating temp file")?;
-        f.write_all(data).context("writing binary data")?;
-        f.flush().context("flushing binary data")?;
+    let result = (|| -> Result<()> {
+        {
+            let mut f = fs::File::create(&tmp).context("creating temp file")?;
+            f.write_all(data).context("writing binary data")?;
+            f.flush().context("flushing binary data")?;
+        }
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))
+                .context("setting executable permission")?;
+        }
+
+        // On Windows, the running binary is locked. Rename the current binary out
+        // of the way first, then move the new one into place.
+        #[cfg(windows)]
+        if path.exists() {
+            let old = dir.join(".dotfiles-old.exe");
+            fs::remove_file(&old).ok(); // Remove stale .old from a previous update if present
+            fs::rename(path, &old).context("renaming current binary to .old")?;
+        }
+
+        fs::rename(&tmp, path).context("moving new binary into place")?;
+        Ok(())
+    })();
+
+    if result.is_err() {
+        fs::remove_file(&tmp).ok();
     }
 
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))
-            .context("setting executable permission")?;
-    }
-
-    // On Windows, the running binary is locked. Rename the current binary out
-    // of the way first, then move the new one into place.
-    #[cfg(windows)]
-    if path.exists() {
-        let old = dir.join(".dotfiles-old.exe");
-        fs::remove_file(&old).ok(); // Remove stale .old from a previous update if present
-        fs::rename(path, &old).context("renaming current binary to .old")?;
-    }
-
-    fs::rename(&tmp, path).context("moving new binary into place")?;
-    Ok(())
+    result
 }
 
 /// Stage an update for later promotion by the wrapper.
@@ -384,6 +392,7 @@ fn download_and_install(root: &std::path::Path, tag: &str, client: &dyn HttpClie
     #[cfg(windows)]
     {
         stage_binary(root, tag, &data)?;
+        write_cache(root, tag)?;
     }
 
     #[cfg(not(windows))]
@@ -606,6 +615,17 @@ mod tests {
         assert_eq!(fs::read(&bin).unwrap(), b"new");
     }
 
+    #[test]
+    fn replace_binary_cleans_up_temp_file_on_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("dotfiles");
+        fs::create_dir(&bin).unwrap();
+
+        let result = replace_binary(&bin, b"new");
+        assert!(result.is_err());
+        assert!(!dir.path().join(".dotfiles-update.tmp").exists());
+    }
+
     #[cfg(windows)]
     #[test]
     fn stage_binary_writes_pending_files() {
@@ -807,7 +827,8 @@ mod tests {
                 fs::read_to_string(pending_version_path(dir.path())).unwrap(),
                 "v1.0.0\n"
             );
-            assert!(!cache_path(dir.path()).exists());
+            let cache = fs::read_to_string(cache_path(dir.path())).unwrap();
+            assert!(cache.starts_with("v1.0.0\n"));
         }
 
         #[cfg(not(windows))]

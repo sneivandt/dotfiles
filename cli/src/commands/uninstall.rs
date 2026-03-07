@@ -56,8 +56,8 @@ mod tests {
         let tasks = tasks::all_uninstall_tasks();
         let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
         assert!(
-            names.contains(&"Remove git hooks"),
-            "expected 'Remove git hooks' in {names:?}"
+            names.contains(&"Remove Git hooks"),
+            "expected 'Remove Git hooks' in {names:?}"
         );
     }
 

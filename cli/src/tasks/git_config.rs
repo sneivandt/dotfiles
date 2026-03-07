@@ -6,7 +6,7 @@ use crate::resources::git_config::GitConfigResource;
 resource_task! {
     /// Configure git settings from git-config.toml.
     pub ConfigureGit {
-        name: "Configure git",
+        name: "Configure Git",
         items: |ctx| ctx.config_read().git_settings.clone(),
         build: |s, _ctx| GitConfigResource::new(s.key, s.value),
         opts: ProcessOpts::strict("set git config"),

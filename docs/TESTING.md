@@ -111,7 +111,7 @@ fn test_with_base_fixture() {
 ```
 
 | File | Contents | Used by |
-|---|---|---|
+| --- | --- | --- |
 | `fixtures/base_profile.toml` | `[base]` section with a single `bashrc` symlink | symlink validation tests |
 | `fixtures/desktop_profile.toml` | `[base]` + `[desktop]` sections with one symlink each | desktop profile loading test |
 
@@ -179,7 +179,7 @@ Test different profiles to ensure sparse checkout and configuration work correct
 Runs automatically on pull requests with the following jobs:
 
 | Job | Matrix | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `rust` | fmt, clippy, test | Rust formatting, linting, and unit/integration tests |
 | `lint` | ShellCheck, PSScriptAnalyzer | Static analysis for shell and PowerShell scripts |
 | `validate-config` | 6 config checks | TOML syntax, file references, category consistency |

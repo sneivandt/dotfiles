@@ -250,8 +250,7 @@ mod tests {
         let timer_link = target_dir.join("clean-home-tmp.timer");
         std::os::unix::fs::symlink(symlinks_dir.join("clean-home-tmp.service"), &service_link)
             .unwrap();
-        std::os::unix::fs::symlink(symlinks_dir.join("clean-home-tmp.timer"), &timer_link)
-            .unwrap();
+        std::os::unix::fs::symlink(symlinks_dir.join("clean-home-tmp.timer"), &timer_link).unwrap();
 
         let mut config = empty_config(repo_dir.path().to_path_buf());
         config.symlinks.push(Symlink {

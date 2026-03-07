@@ -803,6 +803,7 @@ fn test_command_fails_on_config_warnings() {
     std::fs::create_dir_all(ctx.root_path().join(".git")).expect("create .git dir");
 
     let global = dotfiles_cli::cli::GlobalOpts {
+        build: false,
         root: Some(ctx.root_path().to_path_buf()),
         profile: Some("base".to_string()),
         dry_run: true,

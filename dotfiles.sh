@@ -8,11 +8,8 @@ set -o nounset
 # binary is present, then runs it. The binary handles its own updates.
 # --build: builds the Rust binary from source (requires cargo).
 #
-# --build is consumed by this script and stripped before forwarding remaining
-# arguments to the dotfiles binary.
-# Commonly used flags: --profile <name>, --dry-run.
-# Advanced flags (--skip, --only, --root, --no-parallel) require invoking
-# the binary directly.
+# The wrapper only handles bootstrap/build concerns and otherwise forwards
+# arguments to the Rust binary unchanged.
 
 DOTFILES_ROOT="$(dirname "$(readlink -f "$0")")"
 export DOTFILES_ROOT
@@ -25,58 +22,14 @@ TRANSFER_TIMEOUT=120 # seconds — total transfer timeout
 RETRY_COUNT=3        # number of download attempts
 RETRY_DELAY=2        # seconds between retries
 # NOTE: Keep these constants in sync with the equivalent values in dotfiles.ps1.
-# dotfiles.ps1: $ConnectTimeout / $TransferTimeout / $RetryCount / $RetryDelay
+# dotfiles.ps1: $TransferTimeout / $RetryCount / $RetryDelay
 
-die() {
-  echo "ERROR: $1" >&2
-  exit 1
-}
-
-# --------------------------------------------------------------------------- #
-# Parse arguments — validate wrapper-supported flags and detect --build
-# --------------------------------------------------------------------------- #
 BUILD_MODE=false
-ACTION=""
-PROFILE=""
-DRY_RUN=false
-VERBOSE=false
-
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --build)
-      BUILD_MODE=true
-      ;;
-    install|uninstall|test|version)
-      if [ -n "$ACTION" ]; then
-        die "multiple actions provided: '$ACTION' and '$1'"
-      fi
-      ACTION="$1"
-      ;;
-    -p|--profile)
-      shift
-      if [ "$#" -eq 0 ]; then
-        die "--profile requires a value"
-      fi
-      case "$1" in
-        base|desktop)
-          PROFILE="$1"
-          ;;
-        *)
-          die "invalid profile '$1'"
-          ;;
-      esac
-      ;;
-    -d|--dry-run)
-      DRY_RUN=true
-      ;;
-    -v|--verbose)
-      VERBOSE=true
-      ;;
-    *)
-      die "unsupported argument '$1'. Use the binary directly for advanced flags."
-      ;;
-  esac
-  shift
+for arg in "$@"; do
+  if [ "$arg" = "--build" ]; then
+    BUILD_MODE=true
+    break
+  fi
 done
 
 # --------------------------------------------------------------------------- #
@@ -89,33 +42,12 @@ if [ "$BUILD_MODE" = true ]; then
   fi
   cd "$DOTFILES_ROOT/cli"
   cargo build --profile dev-opt
-  set -- --root "$DOTFILES_ROOT"
-  if [ -n "$ACTION" ]; then
-    set -- "$@" "$ACTION"
-  fi
-  if [ -n "$PROFILE" ]; then
-    set -- "$@" --profile "$PROFILE"
-  fi
-  if [ "$DRY_RUN" = true ]; then
-    set -- "$@" --dry-run
-  fi
-  if [ "$VERBOSE" = true ]; then
-    set -- "$@" --verbose
-  fi
   exec "$DOTFILES_ROOT/cli/target/dev-opt/dotfiles" "$@"
 fi
 
 # --------------------------------------------------------------------------- #
 # Production mode: ensure binary is present
 # --------------------------------------------------------------------------- #
-
-# Detect CPU architecture
-detect_arch() {
-  case "$(uname -m)" in
-    aarch64|arm64) echo "aarch64" ;;
-    *)             echo "x86_64"  ;;
-  esac
-}
 
 # Download a URL to a file with retries
 # Usage: download_with_retry <url> <output_file>
@@ -147,29 +79,15 @@ download_with_retry() {
   return 1
 }
 
-# Get the latest release tag from GitHub
-get_latest_version() {
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
-      "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
-      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
-  elif command -v wget >/dev/null 2>&1; then
-    wget -qO- --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
-      "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
-      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
-  else
-    echo ""
-  fi
-}
-
 # Verify checksum in a subshell to scope the trap safely.
-_verify_checksum() {
+verify_checksum() {
   _vc_asset="$1"
   _vc_binary="$2"
-  _vc_url="$3"
   tmpfile=$(mktemp)
   trap 'rm -f "$tmpfile"' EXIT
-  if ! download_with_retry "$_vc_url" "$tmpfile"; then
+  if ! download_with_retry \
+    "https://github.com/$REPO/releases/latest/download/checksums.sha256" \
+    "$tmpfile"; then
     echo "ERROR: Failed to download checksum file." >&2
     return 1
   fi
@@ -185,18 +103,19 @@ _verify_checksum() {
   fi
 }
 
-# Download the binary for the given version tag
+# Download the bootstrap binary if needed.
 download_binary() {
-  version="$1"
-  arch=$(detect_arch)
-  asset="dotfiles-linux-$arch"
-  url="https://github.com/$REPO/releases/download/$version/$asset"
+  case "$(uname -m)" in
+    aarch64|arm64) asset="dotfiles-linux-aarch64" ;;
+    *)             asset="dotfiles-linux-x86_64" ;;
+  esac
+  url="https://github.com/$REPO/releases/latest/download/$asset"
 
   mkdir -p "$BIN_DIR"
 
-  echo "Downloading dotfiles $version..."
+  echo "Downloading dotfiles bootstrap binary..."
   if ! download_with_retry "$url" "$BINARY"; then
-    echo "ERROR: Failed to download dotfiles $version after $RETRY_COUNT attempts." >&2
+    echo "ERROR: Failed to download dotfiles after $RETRY_COUNT attempts." >&2
     echo "Check your internet connection or use --build to build from source." >&2
     rm -f "$BINARY"
     exit 1
@@ -204,14 +123,12 @@ download_binary() {
 
   chmod +x "$BINARY"
 
-  # Download and verify checksum
-  checksum_url="https://github.com/$REPO/releases/download/$version/checksums.sha256"
   if ! command -v sha256sum >/dev/null 2>&1; then
     echo "ERROR: sha256sum not found. Cannot verify download integrity." >&2
     rm -f "$BINARY"
     exit 1
   fi
-  if ! ( _verify_checksum "$asset" "$BINARY" "$checksum_url" ); then
+  if ! ( verify_checksum "$asset" "$BINARY" ); then
     rm -f "$BINARY"
     exit 1
   fi
@@ -220,27 +137,7 @@ download_binary() {
 # Bootstrap: download the latest binary only if no binary is present.
 # Subsequent updates are handled by the binary itself.
 if [ ! -x "$BINARY" ]; then
-  latest=$(get_latest_version)
-  if [ -z "$latest" ]; then
-    echo "ERROR: Cannot determine latest version and no local binary found." >&2
-    echo "Use --build to build from source, or check your internet connection." >&2
-    exit 1
-  fi
-  download_binary "$latest"
-fi
-
-set -- --root "$DOTFILES_ROOT"
-if [ -n "$ACTION" ]; then
-  set -- "$@" "$ACTION"
-fi
-if [ -n "$PROFILE" ]; then
-  set -- "$@" --profile "$PROFILE"
-fi
-if [ "$DRY_RUN" = true ]; then
-  set -- "$@" --dry-run
-fi
-if [ "$VERBOSE" = true ]; then
-  set -- "$@" --verbose
+  download_binary
 fi
 
 exec "$BINARY" "$@"

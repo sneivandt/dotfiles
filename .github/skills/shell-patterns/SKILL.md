@@ -27,7 +27,7 @@ export DOTFILES_ROOT
 
 ### Two Modes
 
-1. **Production mode** (default): Downloads latest binary from GitHub Releases, verifies checksum, caches version
+1. **Production mode** (default): Downloads latest binary from GitHub Releases if missing, verifies checksum, then lets the binary self-update
 2. **Build mode** (`--build`): Builds from source with `cargo build --release`, runs directly
 
 ```sh
@@ -38,18 +38,14 @@ if [ "$BUILD_MODE" = true ]; then
 fi
 ```
 
-All arguments except `--build` are validated against an allowlist of recognised
-options (`-p`, `-d`, `-v`, subcommands) and forwarded to the Rust binary.
-Unrecognised flags (e.g. `--skip`, `--only`, `--no-parallel`) are rejected with
-an error — users who need them must invoke the binary directly.
+The wrapper resolves `DOTFILES_ROOT`, handles bootstrap/build concerns, and
+otherwise forwards arguments to the Rust binary unchanged. The Rust CLI owns
+argument validation.
 
 ### Binary Auto-Update
 
-The wrapper checks for updates with a 1-hour cache:
-- Reads cached version from `bin/.dotfiles-version-cache`
-- Compares with GitHub Releases API
-- Downloads and verifies SHA256 checksum if outdated
-- Falls back to existing binary if GitHub is unreachable
+After bootstrap, the Rust binary handles version caching, update checks,
+checksum verification, and re-exec.
 
 ## Entry Point: `dotfiles.ps1`
 
@@ -83,6 +79,5 @@ For everything else (tasks, config, logging), edit the Rust code in `cli/src/`.
 
 - Keep wrapper scripts as short as practical (dotfiles.sh ~180 lines, dotfiles.ps1 ~300 lines)
 - Never add task logic to shell scripts — use `cli/src/tasks/*.rs`
-- The `--root` flag is always passed to the binary by the wrapper
-- Wrapper validates arguments against an allowlist — only `-p`, `-d`, `-v`, and subcommands are forwarded
-- Developer flags (`--skip`, `--only`, `--no-parallel`) require direct binary invocation
+- The wrapper must resolve and export `DOTFILES_ROOT` before launching the binary
+- Wrapper arguments should pass through to the Rust CLI unless the wrapper itself must consume them (for example `--build`)

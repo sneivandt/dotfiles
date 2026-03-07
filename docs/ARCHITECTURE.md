@@ -152,7 +152,7 @@ available only when invoking the binary directly.
 `Config::load()` reads all TOML files from `conf/` and filters sections against the active profile's categories:
 
 | Module | File | Description |
-|---|---|---|
+| --- | --- | --- |
 | `profiles.rs` | `profiles.toml` | Profile resolution and category computation |
 | `helpers/toml_loader.rs` | (all) | Generic TOML loader |
 | `packages.rs` | `packages.toml` | System packages (pacman, AUR, winget) |
@@ -354,7 +354,7 @@ The `test` command validates:
 GitHub Actions CI (`.github/workflows/ci.yml`) runs on pull requests:
 
 | Job | What it checks |
-|---|---|
+| --- | --- |
 | `rust` | Formatting, Clippy linting, and unit/integration tests (matrix) |
 | `lint` | ShellCheck and PSScriptAnalyzer (matrix) |
 | `build` | Release build + smoke test on Linux and Windows (matrix) |

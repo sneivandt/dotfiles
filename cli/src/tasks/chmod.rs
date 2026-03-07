@@ -11,7 +11,7 @@ resource_task! {
         guard: |ctx| ctx.platform.supports_chmod(),
         items: |ctx| ctx.config_read().chmod.clone(),
         build: |entry, ctx| ChmodResource::from_entry(&entry, &ctx.home),
-        opts: ProcessOpts::fix_existing("chmod"),
+        opts: ProcessOpts::fix_existing("apply permissions"),
     }
 }
 
@@ -32,11 +32,10 @@ mod tests {
     }
 
     #[test]
-    fn run_skips_when_chmod_empty() {
+    fn should_run_true_on_linux_when_guard_passes() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        // guard passes on Linux; empty items cause should_run() to return false
-        assert!(!ApplyFilePermissions.should_run(&ctx));
+        assert!(ApplyFilePermissions.should_run(&ctx));
     }
 
     #[test]

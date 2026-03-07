@@ -24,7 +24,6 @@ const TASK_FILTER_STOP_WORDS: &[&str] = &[
     "enable",
     "apply",
     "update",
-    "reload",
     "run",
     "validate",
 ];
@@ -57,9 +56,17 @@ fn canonical_task_selector(task_name: &str) -> String {
 
 fn task_matches_filter(task_name: &str, filter: &str) -> bool {
     let normalized_filter = normalize_task_filter(filter);
-    !normalized_filter.is_empty()
-        && (normalized_filter == normalize_task_filter(task_name)
-            || normalized_filter == canonical_task_selector(task_name))
+    if normalized_filter.is_empty() {
+        return false;
+    }
+
+    let canonical_selector = canonical_task_selector(task_name);
+    normalized_filter == normalize_task_filter(task_name)
+        || normalized_filter == canonical_selector
+        || canonical_selector
+            .split('-')
+            .next()
+            .is_some_and(|token| token == normalized_filter)
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +237,19 @@ fn only_filter_disambiguates_update_tasks() {
     );
 }
 
+/// Canonical selector leading tokens should match non-generic task names.
+#[test]
+fn only_filter_matches_reload_task_by_keyword() {
+    let all_tasks = tasks::all_install_tasks();
+    let filtered: Vec<&str> = all_tasks
+        .iter()
+        .filter(|t| task_matches_filter(t.name(), "reload"))
+        .map(|t| t.name())
+        .collect();
+
+    assert_eq!(filtered, vec!["Reload configuration"]);
+}
+
 /// When `--only` matches nothing the result is an empty list.
 #[test]
 fn only_filter_with_no_match_returns_empty() {
@@ -327,19 +347,19 @@ fn install_task_list_contains_install_git_hooks() {
     let tasks = tasks::all_install_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
-        names.contains(&"Install git hooks"),
-        "expected 'Install git hooks' in install task list, got: {names:?}"
+        names.contains(&"Install Git hooks"),
+        "expected 'Install Git hooks' in install task list, got: {names:?}"
     );
 }
 
-/// The install task list must contain "Configure git".
+/// The install task list must contain "Configure Git".
 #[test]
 fn install_task_list_contains_configure_git() {
     let tasks = tasks::all_install_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
-        names.contains(&"Configure git"),
-        "expected 'Configure git' in install task list, got: {names:?}"
+        names.contains(&"Configure Git"),
+        "expected 'Configure Git' in install task list, got: {names:?}"
     );
 }
 
@@ -446,7 +466,7 @@ fn only_with_multiple_keywords_includes_all_matching() {
         .collect();
 
     assert!(filtered.contains(&"Install symlinks"));
-    assert!(filtered.contains(&"Install git hooks"));
+    assert!(filtered.contains(&"Install Git hooks"));
 
     for name in &filtered {
         assert!(

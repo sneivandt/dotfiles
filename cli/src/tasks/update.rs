@@ -143,7 +143,7 @@ fn dry_run_update_status(
             .run_in_with_env(&ctx.root(), "git", &["rev-parse", "@{u}"], git_env)
     {
         return Ok(if head_sha == upstream.stdout.trim() {
-            DryRunUpdateStatus::Unknown
+            DryRunUpdateStatus::AlreadyCurrent
         } else {
             DryRunUpdateStatus::WouldUpdate
         });
@@ -423,13 +423,13 @@ mod tests {
     }
 
     #[test]
-    fn run_dry_run_returns_dry_run_when_remote_status_is_unknown() {
+    fn run_dry_run_returns_ok_when_cached_upstream_matches_head() {
         let config = empty_config(PathBuf::from("/tmp"));
         // symbolic-ref: success
         // status --porcelain: empty
         // rev-parse HEAD: abc123
         // branch.main.remote lookup fails
-        // rev-parse @{u}: abc123 (cached tracking ref matches, but remote was not verified)
+        // rev-parse @{u}: abc123 (cached tracking ref matches HEAD)
         let executor = TestExecutor::with_responses(vec![
             (true, "refs/heads/main".to_string()),
             (true, String::new()),
@@ -443,8 +443,8 @@ mod tests {
 
         let result = task.run(&ctx).unwrap();
         assert!(
-            matches!(result, TaskResult::DryRun),
-            "expected DryRun when remote status is unknown, got {result:?}"
+            matches!(result, TaskResult::Ok),
+            "expected Ok when cached upstream matches HEAD, got {result:?}"
         );
     }
 }

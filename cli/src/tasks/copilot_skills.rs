@@ -32,11 +32,10 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn run_skips_when_no_skills_configured() {
+    fn should_run_is_true_when_guard_passes_even_without_skills() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        // empty items cause should_run() to return false
-        assert!(!InstallCopilotSkills.should_run(&ctx));
+        assert!(InstallCopilotSkills.should_run(&ctx));
     }
 
     #[test]

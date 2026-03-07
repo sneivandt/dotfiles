@@ -15,7 +15,7 @@ resource_task! {
         },
         items: |_ctx| vec![()],
         build: |_unit, ctx| DefaultShellResource::new("zsh".to_string(), Arc::clone(&ctx.executor)),
-        opts: ProcessOpts::strict("configure"),
+        opts: ProcessOpts::strict("configure shell"),
     }
 }
 

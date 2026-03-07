@@ -12,7 +12,6 @@ const TASK_FILTER_STOP_WORDS: &[&str] = &[
     "enable",
     "apply",
     "update",
-    "reload",
     "run",
     "validate",
 ];
@@ -97,8 +96,14 @@ fn task_matches_filter(task_name: &str, filter: &str) -> bool {
         return false;
     }
 
+    let canonical_selector = canonical_task_selector(task_name);
+
     normalized_filter == normalize_task_filter(task_name)
-        || normalized_filter == canonical_task_selector(task_name)
+        || normalized_filter == canonical_selector
+        || canonical_selector
+            .split('-')
+            .next()
+            .is_some_and(|token| token == normalized_filter)
 }
 
 fn canonical_task_selector(task_name: &str) -> String {
@@ -260,6 +265,7 @@ mod tests {
     fn task_matches_filter_uses_canonical_selector() {
         assert!(task_matches_filter("Install symlinks", "symlinks"));
         assert!(task_matches_filter("Update repository", "repository"));
+        assert!(task_matches_filter("Reload configuration", "reload"));
         assert!(task_matches_filter(
             "Update repository",
             "update-repository"
@@ -273,7 +279,11 @@ mod tests {
             canonical_task_selector("Install AUR packages"),
             "aur-packages"
         );
-        assert_eq!(canonical_task_selector("Configure git"), "git");
+        assert_eq!(canonical_task_selector("Configure Git"), "git");
         assert_eq!(canonical_task_selector("Update binary"), "binary");
+        assert_eq!(
+            canonical_task_selector("Reload configuration"),
+            "reload-configuration"
+        );
     }
 }

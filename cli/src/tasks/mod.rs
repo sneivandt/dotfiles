@@ -73,9 +73,11 @@ pub(crate) use task_deps;
 ///
 /// The generated struct implements `Task` with:
 /// - `should_run` returning `false` only when the guard fails
-/// - `run` evaluating items once; returning `Skipped` when empty, otherwise
-///   running the optional setup block, mapping items to resources via `build`,
-///   and delegating to [`process_resources`]
+/// - `run_if_applicable` evaluating items exactly once per task execution and
+///   returning `None` when no items are configured
+/// - `run` returning [`TaskResult::NotApplicable`] when the guard fails or no
+///   items are configured, otherwise running the optional setup block, mapping
+///   items to resources via `build`, and delegating to [`process_resources`]
 macro_rules! resource_task {
     (
         $(#[$meta:meta])*
@@ -101,23 +103,50 @@ macro_rules! resource_task {
             $($crate::tasks::task_deps![$($dep),+];)?
 
             fn should_run(&self, ctx: &$crate::tasks::Context) -> bool {
+                let _ = ctx;
                 $(
                     let $guard_ctx = ctx;
                     if !{ $guard_expr } { return false; }
                 )?
-                let $items_ctx = ctx;
-                let items: Vec<_> = { $items_expr };
-                if items.is_empty() { return false; }
                 true
             }
 
-            fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
+            fn run_if_applicable(
+                &self,
+                ctx: &$crate::tasks::Context,
+            ) -> ::anyhow::Result<Option<$crate::tasks::TaskResult>> {
+                $(
+                    let $guard_ctx = ctx;
+                    if !{ $guard_expr } { return Ok(None); }
+                )?
+                let $items_ctx = ctx;
+                let items: Vec<_> = { $items_expr };
+                if items.is_empty() {
+                    return Ok(None);
+                }
                 $(
                     let $setup_ctx = ctx;
                     { $setup_expr }
                 )?
+                let resources = items.into_iter().map(|$item| {
+                    let $build_ctx = ctx;
+                    $build_expr
+                });
+                $crate::tasks::process_resources(ctx, resources, &$opts).map(Some)
+            }
+
+            fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
                 let $items_ctx = ctx;
                 let items: Vec<_> = { $items_expr };
+                if items.is_empty() {
+                    return Ok($crate::tasks::TaskResult::NotApplicable(
+                        "nothing configured".to_string(),
+                    ));
+                }
+                $(
+                    let $setup_ctx = ctx;
+                    { $setup_expr }
+                )?
                 let resources = items.into_iter().map(|$item| {
                     let $build_ctx = ctx;
                     $build_expr
@@ -157,9 +186,12 @@ pub(crate) use resource_task;
 ///
 /// The generated struct implements `Task` with:
 /// - `should_run` returning `false` only when the guard fails
-/// - `run` evaluating items once; returning `Skipped` when empty, otherwise
-///   querying bulk state via `cache`, building `(Resource, ResourceState)` pairs,
-///   and delegating to [`process_resource_states`]
+/// - `run_if_applicable` evaluating items exactly once per task execution and
+///   returning `None` when no items are configured
+/// - `run` returning [`TaskResult::NotApplicable`] when the guard fails or no
+///   items are configured, otherwise querying bulk state via `cache`, building
+///   `(Resource, ResourceState)` pairs, and delegating to
+///   [`process_resource_states`]
 macro_rules! batch_resource_task {
     (
         $(#[$meta:meta])*
@@ -186,19 +218,50 @@ macro_rules! batch_resource_task {
             $($crate::tasks::task_deps![$($dep),+];)?
 
             fn should_run(&self, ctx: &$crate::tasks::Context) -> bool {
+                let _ = ctx;
                 $(
                     let $guard_ctx = ctx;
                     if !{ $guard_expr } { return false; }
                 )?
+                true
+            }
+
+            fn run_if_applicable(
+                &self,
+                ctx: &$crate::tasks::Context,
+            ) -> ::anyhow::Result<Option<$crate::tasks::TaskResult>> {
+                $(
+                    let $guard_ctx = ctx;
+                    if !{ $guard_expr } { return Ok(None); }
+                )?
                 let $items_ctx = ctx;
                 let $cache_items: Vec<_> = { $items_expr };
-                if $cache_items.is_empty() { return false; }
-                true
+                if $cache_items.is_empty() {
+                    return Ok(None);
+                }
+                ctx.log.debug(&format!(
+                    "batch-checking {} resources with a single query",
+                    $cache_items.len()
+                ));
+                let $cache_ctx = ctx;
+                let $state_cache = { $cache_expr }?;
+                let resource_states = $cache_items.into_iter().map(|$item| {
+                    let $build_ctx = ctx;
+                    let $state_res = { $build_expr };
+                    let state = { $state_expr };
+                    ($state_res, state)
+                });
+                $crate::tasks::process_resource_states(ctx, resource_states, &$opts).map(Some)
             }
 
             fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
                 let $items_ctx = ctx;
                 let $cache_items: Vec<_> = { $items_expr };
+                if $cache_items.is_empty() {
+                    return Ok($crate::tasks::TaskResult::NotApplicable(
+                        "nothing configured".to_string(),
+                    ));
+                }
                 ctx.log.debug(&format!(
                     "batch-checking {} resources with a single query",
                     $cache_items.len()
@@ -269,6 +332,21 @@ pub trait Task: Send + Sync + 'static {
     /// Whether this task should run on the current platform/profile.
     fn should_run(&self, ctx: &Context) -> bool;
 
+    /// Execute the task when it is applicable, combining the applicability
+    /// check and run step into a single call.
+    ///
+    /// Returning `Ok(None)` means the task is not applicable and should be
+    /// recorded as such without treating the task as a failure. The default
+    /// implementation simply delegates to [`Task::run`]; macros can override it
+    /// to avoid evaluating config twice.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the task fails to execute.
+    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        self.run(ctx).map(Some)
+    }
+
     /// Execute the task.
     ///
     /// # Errors
@@ -335,23 +413,29 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 
     ctx.log.stage(task.name());
 
-    match task.run(ctx) {
-        Ok(TaskResult::Ok) => {
-            ctx.log.record_task(task.name(), TaskStatus::Ok, None);
-        }
-        Ok(TaskResult::NotApplicable(reason)) => {
-            ctx.log.debug(&format!("not applicable: {reason}"));
+    match task.run_if_applicable(ctx) {
+        Ok(None) => {
             ctx.log
                 .record_task(task.name(), TaskStatus::NotApplicable, None);
         }
-        Ok(TaskResult::Skipped(reason)) => {
-            ctx.log.info(&format!("skipped: {reason}"));
-            ctx.log
-                .record_task(task.name(), TaskStatus::Skipped, Some(&reason));
-        }
-        Ok(TaskResult::DryRun) => {
-            ctx.log.record_task(task.name(), TaskStatus::DryRun, None);
-        }
+        Ok(Some(result)) => match result {
+            TaskResult::Ok => {
+                ctx.log.record_task(task.name(), TaskStatus::Ok, None);
+            }
+            TaskResult::NotApplicable(reason) => {
+                ctx.log.debug(&format!("not applicable: {reason}"));
+                ctx.log
+                    .record_task(task.name(), TaskStatus::NotApplicable, None);
+            }
+            TaskResult::Skipped(reason) => {
+                ctx.log.info(&format!("skipped: {reason}"));
+                ctx.log
+                    .record_task(task.name(), TaskStatus::Skipped, Some(&reason));
+            }
+            TaskResult::DryRun => {
+                ctx.log.record_task(task.name(), TaskStatus::DryRun, None);
+            }
+        },
         Err(e) => {
             ctx.log.error(&format!("{}: {e:#}", task.name()));
             ctx.log
@@ -586,8 +670,63 @@ pub mod test_helpers {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::resources::{Applicable, Resource, ResourceChange, ResourceState};
+    use anyhow::Result;
+    use std::cell::Cell;
     use std::path::PathBuf;
     use test_helpers::{empty_config, make_static_context};
+
+    thread_local! {
+        static RESOURCE_TASK_ITEM_EVALS: Cell<usize> = const { Cell::new(0) };
+        static BATCH_TASK_ITEM_EVALS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    #[derive(Debug)]
+    struct DummyResource;
+
+    impl Applicable for DummyResource {
+        fn description(&self) -> String {
+            "dummy".to_string()
+        }
+
+        fn apply(&self) -> Result<ResourceChange> {
+            Ok(ResourceChange::AlreadyCorrect)
+        }
+    }
+
+    impl Resource for DummyResource {
+        fn current_state(&self) -> Result<ResourceState> {
+            Ok(ResourceState::Correct)
+        }
+    }
+
+    resource_task! {
+        /// Test-only task for resource-task macro behaviour.
+        CountingResourceTask {
+            name: "Counting resource task",
+            items: |_ctx| {
+                RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
+                Vec::<()>::new()
+            },
+            build: |_item, _ctx| DummyResource,
+            opts: ProcessOpts::strict("count"),
+        }
+    }
+
+    batch_resource_task! {
+        /// Test-only task for batch-resource-task macro behaviour.
+        CountingBatchTask {
+            name: "Counting batch task",
+            items: |_ctx| {
+                BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
+                Vec::<()>::new()
+            },
+            cache: |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
+            build: |_item, _ctx| DummyResource,
+            state: |_resource, _cache| ResourceState::Correct,
+            opts: ProcessOpts::strict("count"),
+        }
+    }
 
     /// A mock task for testing `execute()`.
     struct MockTask {
@@ -676,6 +815,48 @@ mod tests {
 
         execute(&task, &ctx);
         assert_eq!(log.failure_count(), 0);
+    }
+
+    #[test]
+    fn resource_task_should_run_does_not_evaluate_items() {
+        RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(0));
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _) = make_static_context(config);
+
+        assert!(CountingResourceTask.should_run(&ctx));
+        RESOURCE_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 0));
+    }
+
+    #[test]
+    fn resource_task_run_evaluates_items_once_when_called_directly() {
+        RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(0));
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _) = make_static_context(config);
+
+        let result = CountingResourceTask.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::NotApplicable(_)));
+        RESOURCE_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
+    }
+
+    #[test]
+    fn batch_task_should_run_does_not_evaluate_items() {
+        BATCH_TASK_ITEM_EVALS.with(|count| count.set(0));
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _) = make_static_context(config);
+
+        assert!(CountingBatchTask.should_run(&ctx));
+        BATCH_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 0));
+    }
+
+    #[test]
+    fn batch_task_run_if_applicable_evaluates_items_once() {
+        BATCH_TASK_ITEM_EVALS.with(|count| count.set(0));
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _) = make_static_context(config);
+
+        let result = CountingBatchTask.run_if_applicable(&ctx).unwrap();
+        assert!(result.is_none());
+        BATCH_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
     }
 
     // ------------------------------------------------------------------

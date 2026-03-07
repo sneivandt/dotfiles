@@ -6,7 +6,7 @@ use crate::resources::git_config::GitConfigResource;
 resource_task! {
     /// Configure git settings from git-config.toml.
     pub ConfigureGit {
-        name: "Configure git",
+        name: "Configure Git",
         items: |ctx| ctx.config_read().git_settings.clone(),
         build: |s, _ctx| GitConfigResource::new(s.key, s.value),
         opts: ProcessOpts::strict("set git config"),
@@ -23,11 +23,10 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn run_skips_when_no_settings() {
+    fn should_run_is_true_without_explicit_guard() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        // empty items cause should_run() to return false
-        assert!(!ConfigureGit.should_run(&ctx));
+        assert!(ConfigureGit.should_run(&ctx));
     }
 
     #[test]

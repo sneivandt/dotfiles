@@ -205,7 +205,7 @@ fn worktree_has_local_changes(ctx: &Context) -> Result<bool> {
     let status = ctx.executor.run_in(
         &ctx.root(),
         "git",
-        &["status", "--porcelain", "--untracked-files=normal"],
+        &["status", "--porcelain", "--untracked-files=no"],
     )?;
 
     Ok(!status.stdout.trim().is_empty())
@@ -215,6 +215,7 @@ fn worktree_has_local_changes(ctx: &Context) -> Result<bool> {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::exec::{ExecResult, Executor};
     use crate::exec::test_helpers::TestExecutor;
     use crate::fs::MockFileSystemOps;
     use crate::platform::{Os, Platform};
@@ -420,6 +421,60 @@ mod tests {
         );
     }
 
+    #[derive(Debug)]
+    struct UntrackedAwareExecutor;
+
+    impl Executor for UntrackedAwareExecutor {
+        fn run(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
+            anyhow::bail!("unexpected run() call")
+        }
+
+        fn run_in_with_env(
+            &self,
+            _: &std::path::Path,
+            _: &str,
+            args: &[&str],
+            _: &[(&str, &str)],
+        ) -> Result<ExecResult> {
+            let stdout = if args.contains(&"--untracked-files=no") {
+                String::new()
+            } else {
+                "?? scratch.txt\n".to_string()
+            };
+
+            Ok(ExecResult {
+                stdout,
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        }
+
+        fn run_unchecked(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
+            anyhow::bail!("unexpected run_unchecked() call")
+        }
+
+        fn which(&self, _: &str) -> bool {
+            false
+        }
+
+        fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
+            anyhow::bail!("{program} not found on PATH")
+        }
+    }
+
+    #[test]
+    fn worktree_has_local_changes_ignores_untracked_files() {
+        let config = empty_config(PathBuf::from("/repo"));
+        let ctx = make_context(
+            config,
+            Platform::new(Os::Linux, false),
+            Arc::new(UntrackedAwareExecutor),
+        );
+
+        assert!(!worktree_has_local_changes(&ctx).unwrap());
+    }
+
     #[test]
     fn run_writes_sparse_checkout_patterns_and_calls_git() {
         let dir = tempfile::tempdir().unwrap();
@@ -430,7 +485,7 @@ mod tests {
 
         // The excluded file "symlinks" does NOT exist on disk, so the
         // `git checkout HEAD -- <files>` step is skipped. Three git calls remain:
-        //   1. git status --porcelain --untracked-files=normal
+        //   1. git status --porcelain --untracked-files=no
         //   2. git sparse-checkout init --no-cone
         //   3. git read-tree -mu HEAD
         let executor = TestExecutor::with_responses(vec![

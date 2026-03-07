@@ -67,7 +67,7 @@ function Install-PendingBinary
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    $backupBinary = Join-Path $BinDir ".dotfiles-update.backup"
+    $backupBinary = Join-Path $BinDir ".dotfiles-binary.backup"
     $hadExistingBinary = Test-Path $Binary
 
     if (Test-Path $backupBinary)
@@ -115,7 +115,7 @@ function Install-PendingBinary
             }
         }
 
-        $message = "Failed to promote staged dotfiles update: $($_.Exception.Message)"
+        $message = "Failed to promote downloaded dotfiles binary: $($_.Exception.Message)"
         if ($rollbackError)
         {
             $message += " Rollback failed: $rollbackError"

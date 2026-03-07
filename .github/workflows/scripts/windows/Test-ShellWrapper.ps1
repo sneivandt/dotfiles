@@ -314,8 +314,8 @@ function Test-PendingBinaryPromotionRollback {
     $content = Get-Content $wrapper -Raw
 
     if (
-        $content.Contains('.dotfiles-update.backup') -and
-        $content.Contains('Failed to promote staged dotfiles update') -and
+        $content.Contains('.dotfiles-binary.backup') -and
+        $content.Contains('Failed to promote downloaded dotfiles binary') -and
         $content.Contains('function Invoke-PendingBinaryInstallOrExit')
     ) {
         Write-TestPass "Wrapper includes guarded pending-binary promotion with rollback messaging"

@@ -37,10 +37,12 @@ fn restore_sparse_checkout_file(sparse_file: &Path, previous_patterns: Option<&s
             )
         })
     } else {
-        if sparse_file.exists() {
-            std::fs::remove_file(sparse_file).with_context(|| {
+        if let Err(err) = std::fs::remove_file(sparse_file)
+            && err.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(err).with_context(|| {
                 format!("removing sparse-checkout file at {}", sparse_file.display())
-            })?;
+            });
         }
         Ok(())
     }

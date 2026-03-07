@@ -128,7 +128,7 @@ fn copy_into_place(source: &Path, target: &Path) -> Result<()> {
 /// the temp file into place.
 fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
     // Use a sibling temp name to keep the rename on the same filesystem.
-    let tmp = target.with_extension("dotfiles_tmp");
+    let tmp = sibling_file_tmp_path(target);
     std::fs::copy(source, &tmp)
         .with_context(|| format!("copy {} to {}", source.display(), tmp.display()))?;
 
@@ -145,6 +145,15 @@ fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
         return Err(e).with_context(|| format!("rename {} to {}", tmp.display(), target.display()));
     }
     Ok(())
+}
+
+fn sibling_file_tmp_path(target: &Path) -> PathBuf {
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = target.file_name().map_or_else(
+        || "dotfiles_tmp".to_string(),
+        |name| format!("{}.dotfiles_tmp", name.to_string_lossy()),
+    );
+    parent.join(file_name)
 }
 
 /// Copy a directory: stage into a sibling temp directory, remove the
@@ -443,6 +452,18 @@ mod tests {
         );
         assert!(meta.is_file(), "target should be a regular file");
         assert_eq!(std::fs::read(&target).unwrap(), b"hello dotfiles");
+    }
+
+    #[test]
+    fn file_materialization_temp_paths_are_unique_per_full_name() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let service = temp_dir.path().join("clean-home-tmp.service");
+        let timer = temp_dir.path().join("clean-home-tmp.timer");
+
+        let service_tmp = sibling_file_tmp_path(&service);
+        let timer_tmp = sibling_file_tmp_path(&timer);
+
+        assert_ne!(service_tmp, timer_tmp);
     }
 
     /// After `remove()` on a directory symlink the target must be a real

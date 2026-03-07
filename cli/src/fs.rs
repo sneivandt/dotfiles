@@ -236,10 +236,12 @@ pub fn ensure_parent_dir(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Remove an existing file or symlink at `path`, including broken symlinks.
+/// Remove an existing file, symlink, or empty directory at `path`.
 ///
 /// This is a shared helper for resource `apply()` methods that need to
 /// replace an existing target.  Does nothing if `path` does not exist.
+/// Non-empty directories still return an error instead of being removed
+/// recursively.
 ///
 /// # Errors
 ///

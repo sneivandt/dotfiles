@@ -67,17 +67,124 @@ function Install-PendingBinary
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    if (Test-Path $Binary)
+    $backupBinary = Join-Path $BinDir ".dotfiles-binary.backup"
+    $hadExistingBinary = Test-Path $Binary
+
+    if (Test-Path $backupBinary)
     {
-        Remove-Item $Binary -Force
+        Remove-Item $backupBinary -Force
     }
 
-    Move-Item -Path $PendingBinary -Destination $Binary -Force
-
-    if (Test-Path $PendingVersion)
+    try
     {
-        Remove-Item $PendingVersion -Force
+        if ($hadExistingBinary)
+        {
+            Move-Item -Path $Binary -Destination $backupBinary -Force
+        }
+
+        Move-Item -Path $PendingBinary -Destination $Binary -Force
+
+        if (Test-Path $backupBinary)
+        {
+            Remove-Item $backupBinary -Force
+        }
+
+        if (Test-Path $PendingVersion)
+        {
+            Remove-Item $PendingVersion -Force
+        }
     }
+    catch
+    {
+        $rollbackError = $null
+
+        if (Test-Path $Binary)
+        {
+            Remove-Item $Binary -Force -ErrorAction SilentlyContinue
+        }
+
+        if ($hadExistingBinary -and (Test-Path $backupBinary))
+        {
+            try
+            {
+                Move-Item -Path $backupBinary -Destination $Binary -Force
+            }
+            catch
+            {
+                $rollbackError = $_.Exception.Message
+            }
+        }
+
+        $message = "Failed to promote downloaded dotfiles binary: $($_.Exception.Message)"
+        if ($rollbackError)
+        {
+            $message += " Rollback failed: $rollbackError"
+        }
+
+        throw $message
+    }
+    finally
+    {
+        if ((Test-Path $backupBinary) -and (Test-Path $Binary))
+        {
+            Remove-Item $backupBinary -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Invoke-PendingBinaryInstallOrExit
+{
+    try
+    {
+        Install-PendingBinary
+    }
+    catch
+    {
+        Write-Error $_.Exception.Message
+        exit 1
+    }
+}
+
+function Get-ReleaseTag
+{
+    $latestReleaseUrl = "https://github.com/$Repo/releases/latest"
+
+    try
+    {
+        $releaseResponse = Invoke-WebRequestWithRetry -Url $latestReleaseUrl -Method Head
+    }
+    catch
+    {
+        Write-Error "Failed to resolve latest dotfiles release: $($_.Exception.Message)"
+        exit 1
+    }
+
+    $responseUri = if (
+        ($null -ne $releaseResponse.BaseResponse) -and
+        ($null -ne $releaseResponse.BaseResponse.ResponseUri)
+    )
+    {
+        $releaseResponse.BaseResponse.ResponseUri
+    }
+    else
+    {
+        $null
+    }
+
+    if ($null -eq $responseUri)
+    {
+        Write-Error "Failed to resolve latest dotfiles release tag."
+        exit 1
+    }
+
+    $match = [regex]::Match($responseUri.AbsolutePath, '/releases/tag/(?<tag>[^/]+)$')
+    if (-not $match.Success)
+    {
+        Write-Error "Failed to parse latest dotfiles release tag from $responseUri."
+        exit 1
+    }
+
+    return $match.Groups['tag'].Value
 }
 
 # Build mode: build from source
@@ -112,7 +219,10 @@ function Invoke-WebRequestWithRetry
         [Parameter(Mandatory)]
         [string]$Url,
 
-        [string]$OutFile
+        [string]$OutFile,
+
+        [ValidateSet('Get', 'Head')]
+        [string]$Method = 'Get'
     )
 
     for ($attempt = 1; $attempt -le $RetryCount; $attempt++)
@@ -127,11 +237,11 @@ function Invoke-WebRequestWithRetry
         {
             if ($PSBoundParameters.ContainsKey('OutFile'))
             {
-                Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
+                Invoke-WebRequest -Uri $Url -Method $Method -OutFile $OutFile -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
                 return $null
             }
 
-            return Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec $TransferTimeout
+            return Invoke-WebRequest -Uri $Url -Method $Method -UseBasicParsing -TimeoutSec $TransferTimeout
         }
         catch
         {
@@ -145,14 +255,16 @@ function Invoke-WebRequestWithRetry
 
 function Get-Binary
 {
-    $url = "https://github.com/$Repo/releases/latest/download/$AssetName"
+    $releaseTag = Get-ReleaseTag
+    $releaseBaseUrl = "https://github.com/$Repo/releases/download/$releaseTag"
+    $url = "$releaseBaseUrl/$AssetName"
 
     if (-not (Test-Path $BinDir))
     {
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    Write-Output "Downloading dotfiles bootstrap binary..."
+    Write-Output "Downloading dotfiles bootstrap binary ($releaseTag)..."
     try
     {
         Invoke-WebRequestWithRetry -Url $url -OutFile $Binary
@@ -165,7 +277,7 @@ function Get-Binary
     }
 
     # Download and verify checksum
-    $checksumUrl = "https://github.com/$Repo/releases/latest/download/checksums.sha256"
+    $checksumUrl = "$releaseBaseUrl/checksums.sha256"
     try
     {
         $checksumResponse = Invoke-WebRequestWithRetry -Url $checksumUrl
@@ -208,7 +320,7 @@ function Get-Binary
 }
 
 # Bootstrap: download the latest binary only if no binary is present.
-Install-PendingBinary
+Invoke-PendingBinaryInstallOrExit
 
 if (-not (Test-Path $Binary))
 {
@@ -217,7 +329,7 @@ if (-not (Test-Path $Binary))
 
 for ($attempt = 0; $attempt -lt 3; $attempt++)
 {
-    Install-PendingBinary
+    Invoke-PendingBinaryInstallOrExit
 
     if (-not (Test-Path $Binary))
     {

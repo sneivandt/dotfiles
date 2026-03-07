@@ -11,7 +11,7 @@ resource_task! {
         guard: |ctx| ctx.platform.supports_chmod(),
         items: |ctx| ctx.config_read().chmod.clone(),
         build: |entry, ctx| ChmodResource::from_entry(&entry, &ctx.home),
-        opts: ProcessOpts::fix_existing("chmod"),
+        opts: ProcessOpts::fix_existing("apply permissions"),
     }
 }
 

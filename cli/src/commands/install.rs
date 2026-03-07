@@ -271,7 +271,7 @@ mod tests {
             canonical_task_selector("Install AUR packages"),
             "aur-packages"
         );
-        assert_eq!(canonical_task_selector("Configure git"), "git");
+        assert_eq!(canonical_task_selector("Configure Git"), "git");
         assert_eq!(canonical_task_selector("Update binary"), "binary");
     }
 }

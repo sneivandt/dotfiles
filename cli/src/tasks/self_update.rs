@@ -201,9 +201,9 @@ fn verify_checksum(client: &dyn HttpClient, tag: &str, asset: &str, data: &[u8])
         .find_map(|line| {
             let mut parts = line.split_whitespace();
             let hash = parts.next()?;
-            let name = parts.collect::<Vec<_>>().join(" ");
-            let name = name.strip_prefix('*').unwrap_or(&name);
-            if name == asset {
+            let parsed_name = parts.collect::<Vec<_>>().join(" ");
+            let stripped_name = parsed_name.strip_prefix('*').unwrap_or(&parsed_name);
+            if stripped_name == asset {
                 Some(hash.to_string())
             } else {
                 None

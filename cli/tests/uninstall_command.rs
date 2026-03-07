@@ -108,14 +108,14 @@ fn uninstall_task_list_contains_remove_symlinks() {
     );
 }
 
-/// "Remove git hooks" must be present in the uninstall task list.
+/// "Remove Git hooks" must be present in the uninstall task list.
 #[test]
 fn uninstall_task_list_contains_remove_git_hooks() {
     let tasks = tasks::all_uninstall_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
-        names.contains(&"Remove git hooks"),
-        "expected 'Remove git hooks' in uninstall task list, got: {names:?}"
+        names.contains(&"Remove Git hooks"),
+        "expected 'Remove Git hooks' in uninstall task list, got: {names:?}"
     );
 }
 

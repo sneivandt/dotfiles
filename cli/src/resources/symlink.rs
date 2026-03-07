@@ -124,11 +124,21 @@ fn copy_into_place(source: &Path, target: &Path) -> Result<()> {
     }
 }
 
+/// Build a sibling temporary path by appending `suffix` to the target name.
+fn sibling_temp_path(target: &Path, suffix: &str) -> PathBuf {
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let name = target.file_name().map_or_else(
+        || "dotfiles_tmp".to_string(),
+        |n| format!("{}{suffix}", n.to_string_lossy()),
+    );
+    parent.join(name)
+}
+
 /// Copy a regular file: stage to a temp sibling, remove the symlink, rename
 /// the temp file into place.
 fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
     // Use a sibling temp name to keep the rename on the same filesystem.
-    let tmp = target.with_extension("dotfiles_tmp");
+    let tmp = sibling_temp_path(target, ".dotfiles_tmp");
     std::fs::copy(source, &tmp)
         .with_context(|| format!("copy {} to {}", source.display(), tmp.display()))?;
 
@@ -151,12 +161,7 @@ fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
 /// symlink/junction, then rename the temp directory into place.  Falls back to
 /// a plain copy+delete when the rename crosses a filesystem boundary (EXDEV).
 fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
-    let parent = target.parent().unwrap_or_else(|| Path::new("."));
-    let stem = target.file_name().map_or_else(
-        || "dotfiles_tmp".to_string(),
-        |n| format!("{}_dotfiles_tmp", n.to_string_lossy()),
-    );
-    let tmp = parent.join(&stem);
+    let tmp = sibling_temp_path(target, "_dotfiles_tmp");
 
     let cleanup_dir = || {
         std::fs::remove_dir_all(&tmp).ok(); // Cleanup: ignore if already removed
@@ -341,6 +346,21 @@ mod tests {
         );
         assert!(resource.description().contains("/source"));
         assert!(resource.description().contains("/target"));
+    }
+
+    #[test]
+    fn sibling_temp_path_appends_suffix_without_clobbering_dotfile_name() {
+        let bashrc_tmp = sibling_temp_path(Path::new("/home/test/.bashrc"), ".dotfiles_tmp");
+        let vimrc_tmp = sibling_temp_path(Path::new("/home/test/.vimrc"), ".dotfiles_tmp");
+        let ssh_tmp = sibling_temp_path(Path::new("/home/test/.ssh/config"), ".dotfiles_tmp");
+
+        assert_eq!(bashrc_tmp, PathBuf::from("/home/test/.bashrc.dotfiles_tmp"));
+        assert_eq!(vimrc_tmp, PathBuf::from("/home/test/.vimrc.dotfiles_tmp"));
+        assert_eq!(
+            ssh_tmp,
+            PathBuf::from("/home/test/.ssh/config.dotfiles_tmp")
+        );
+        assert_ne!(bashrc_tmp, vimrc_tmp);
     }
 
     #[test]

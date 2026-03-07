@@ -124,6 +124,28 @@ fn non_base_symlink_sections_have_manifest_sections() {
     );
 }
 
+/// Every section in `manifest.toml` must have a corresponding section in
+/// `symlinks.toml` so that all manifest exclusion rules have matching symlinks.
+#[test]
+fn manifest_sections_have_symlink_sections() {
+    let root = repo_root();
+    let conf = root.join("conf");
+
+    let symlinks = load_symlink_sections(&conf.join("symlinks.toml"));
+    let manifest = load_manifest_sections(&conf.join("manifest.toml"));
+
+    let missing: Vec<&str> = manifest
+        .keys()
+        .filter(|s| !symlinks.contains_key(*s))
+        .map(String::as_str)
+        .collect();
+
+    assert!(
+        missing.is_empty(),
+        "manifest.toml sections missing from symlinks.toml: {missing:?}"
+    );
+}
+
 /// Every symlink source in a non-base section must be covered by a manifest
 /// path in the **same** section (either an exact file match or a directory
 /// prefix match).

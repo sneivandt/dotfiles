@@ -134,6 +134,71 @@ impl Task for ValidateConfigFiles {
     }
 }
 
+/// Validate that `symlinks.toml` and `manifest.toml` have matching category
+/// sections.
+///
+/// Every non-`[base]` section in `symlinks.toml` must appear in
+/// `manifest.toml`, and every section in `manifest.toml` must appear in
+/// `symlinks.toml`.  Drift between the two files causes silent sparse-checkout
+/// misconfiguration.
+#[derive(Debug)]
+pub struct ValidateManifestSync;
+
+impl Task for ValidateManifestSync {
+    fn name(&self) -> &'static str {
+        "Validate manifest sync"
+    }
+
+    fn should_run(&self, _ctx: &Context) -> bool {
+        true
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        use std::collections::{HashMap, HashSet};
+
+        use toml::Value;
+
+        use crate::config::helpers::toml_loader;
+
+        let conf = ctx.root().join("conf");
+        let symlinks_path = conf.join("symlinks.toml");
+        let manifest_path = conf.join("manifest.toml");
+
+        let symlink_raw: HashMap<String, Value> = toml_loader::load_config(&symlinks_path)?;
+        let manifest_raw: HashMap<String, Value> = toml_loader::load_config(&manifest_path)?;
+
+        let symlink_sections: HashSet<String> = symlink_raw.into_keys().collect();
+        let manifest_sections: HashSet<String> = manifest_raw.into_keys().collect();
+
+        let mut warnings: Vec<String> = symlink_sections
+            .iter()
+            .filter(|s| s.as_str() != "base" && !manifest_sections.contains(*s))
+            .map(|s| format!("symlinks.toml has section [{s}] but manifest.toml does not"))
+            .chain(
+                manifest_sections
+                    .iter()
+                    .filter(|s| !symlink_sections.contains(*s))
+                    .map(|s| format!("manifest.toml has section [{s}] but symlinks.toml does not")),
+            )
+            .collect();
+        warnings.sort_unstable();
+
+        if warnings.is_empty() {
+            ctx.log
+                .info("symlinks.toml and manifest.toml sections are in sync");
+            return Ok(TaskResult::Ok);
+        }
+
+        for warning in &warnings {
+            ctx.log.error(warning);
+        }
+        anyhow::bail!(
+            "test failed: {} section(s) differ between symlinks.toml and manifest.toml",
+            warnings.len()
+        );
+    }
+}
+
 /// Run shellcheck on all shell scripts in the repository.
 #[derive(Debug)]
 pub struct RunShellcheck;

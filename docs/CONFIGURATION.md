@@ -195,6 +195,11 @@ permissions = [
 ]
 ```
 
+**Directory behaviour**: When `path` points to a directory, the requested mode
+is applied recursively with directory execute bits preserved for traversal, but
+regular files in that tree have execute bits cleared unless they are configured
+as standalone entries.
+
 ---
 
 ### `vscode-extensions.toml`

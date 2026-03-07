@@ -245,6 +245,10 @@ fn replace_binary(path: &std::path::Path, data: &[u8]) -> Result<()> {
                 .context("setting executable permission")?;
         }
 
+        if path.is_dir() {
+            bail!("binary path points to a directory: {}", path.display());
+        }
+
         // On Windows, the running binary is locked. Rename the current binary out
         // of the way first, then move the new one into place.
         #[cfg(windows)]

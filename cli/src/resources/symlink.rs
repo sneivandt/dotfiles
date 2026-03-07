@@ -484,16 +484,17 @@ mod tests {
     #[test]
     fn create_symlink_mklink_fallback_uses_absolute_target() {
         use crate::exec::ExecResult;
+        use std::sync::Mutex;
 
         /// Executor that records every `run` invocation.
         #[derive(Debug)]
         struct RecordingExecutor {
-            calls: std::cell::RefCell<Vec<Vec<String>>>,
+            calls: Mutex<Vec<Vec<String>>>,
         }
 
         impl Executor for RecordingExecutor {
             fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-                self.calls.borrow_mut().push(
+                self.calls.lock().unwrap().push(
                     std::iter::once(program)
                         .chain(args.iter().copied())
                         .map(String::from)
@@ -507,8 +508,26 @@ mod tests {
                 })
             }
 
+            fn run_in_with_env(
+                &self,
+                _dir: &std::path::Path,
+                program: &str,
+                args: &[&str],
+                _env: &[(&str, &str)],
+            ) -> Result<ExecResult> {
+                self.run(program, args)
+            }
+
             fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
                 self.run(program, args)
+            }
+
+            fn which(&self, _program: &str) -> bool {
+                false
+            }
+
+            fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
+                anyhow::bail!("{program} not found")
             }
         }
 
@@ -516,7 +535,7 @@ mod tests {
         let link = temp_dir.path().join("link");
 
         let recorder = Arc::new(RecordingExecutor {
-            calls: std::cell::RefCell::new(Vec::new()),
+            calls: Mutex::new(Vec::new()),
         });
 
         // Pass a relative non-existent path as target so canonicalize fails
@@ -524,7 +543,7 @@ mod tests {
         let relative = PathBuf::from("nonexistent_dotfiles_target");
         let _ = create_symlink(&relative, &link, &*recorder);
 
-        let calls = recorder.calls.borrow();
+        let calls = recorder.calls.lock().unwrap();
         if let Some(call) = calls.first() {
             // The target argument (last arg in the mklink call) must be absolute.
             if let Some(target_arg) = call.last() {

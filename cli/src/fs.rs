@@ -180,7 +180,12 @@ impl FileSystemOps for MockFileSystemOps {
     }
 
     fn is_file(&self, path: &Path) -> bool {
-        self.files.iter().any(|p| p == path)
+        !self
+            .removed
+            .lock()
+            .expect("mock removed set poisoned")
+            .contains(path)
+            && self.files.iter().any(|p| p == path)
     }
 
     fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>> {
@@ -240,9 +245,14 @@ pub fn ensure_parent_dir(path: &Path) -> Result<()> {
 ///
 /// Returns an error if the path exists but cannot be removed.
 pub fn remove_existing(path: &Path) -> Result<()> {
-    if path.exists() || path.symlink_metadata().is_ok() {
-        std::fs::remove_file(path)
-            .with_context(|| format!("remove existing: {}", path.display()))?;
+    if let Ok(metadata) = path.symlink_metadata() {
+        if metadata.is_dir() {
+            std::fs::remove_dir(path)
+                .with_context(|| format!("remove existing: {}", path.display()))?;
+        } else {
+            std::fs::remove_file(path)
+                .with_context(|| format!("remove existing: {}", path.display()))?;
+        }
     }
     Ok(())
 }
@@ -377,6 +387,15 @@ mod tests {
     }
 
     #[test]
+    fn remove_existing_removes_empty_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let target_dir = dir.path().join("target");
+        std::fs::create_dir(&target_dir).unwrap();
+        remove_existing(&target_dir).unwrap();
+        assert!(!target_dir.exists());
+    }
+
+    #[test]
     fn remove_existing_noop_when_path_absent() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("nonexistent");
@@ -392,5 +411,19 @@ mod tests {
         assert!(link.symlink_metadata().is_ok());
         remove_existing(&link).unwrap();
         assert!(link.symlink_metadata().is_err());
+    }
+
+    #[test]
+    fn mock_is_file_is_false_after_remove() {
+        let fs = MockFileSystemOps::new().with_file("/repo/file");
+        let path = Path::new("/repo/file");
+
+        assert!(fs.exists(path));
+        assert!(fs.is_file(path));
+
+        fs.remove(path).unwrap();
+
+        assert!(!fs.exists(path));
+        assert!(!fs.is_file(path));
     }
 }

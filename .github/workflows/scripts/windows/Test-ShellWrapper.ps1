@@ -283,6 +283,50 @@ function Test-AdvancedFlagForwarding {
 }
 
 # ---------------------------------------------------------------------------
+# Test Wrapper Implementation Guards
+# ---------------------------------------------------------------------------
+
+function Test-VersionPinnedBootstrapUrls {
+    Write-TestStage "Testing wrapper pins binary and checksum downloads to one release tag"
+
+    $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
+    $content = Get-Content $wrapper -Raw
+
+    if (
+        $content.Contains('function Get-ReleaseTag') -and
+        $content.Contains('$latestReleaseUrl = "https://github.com/$Repo/releases/latest"') -and
+        $content.Contains('$releaseBaseUrl = "https://github.com/$Repo/releases/download/$releaseTag"') -and
+        $content.Contains('$url = "$releaseBaseUrl/$AssetName"') -and
+        $content.Contains('$checksumUrl = "$releaseBaseUrl/checksums.sha256"')
+    ) {
+        Write-TestPass "Wrapper resolves one release tag before building download URLs"
+        return $true
+    }
+
+    Write-TestFail "Wrapper does not appear to pin bootstrap downloads to a single release tag"
+    return $false
+}
+
+function Test-PendingBinaryPromotionRollback {
+    Write-TestStage "Testing pending binary promotion has rollback handling"
+
+    $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
+    $content = Get-Content $wrapper -Raw
+
+    if (
+        $content.Contains('.dotfiles-binary.backup') -and
+        $content.Contains('Failed to promote downloaded dotfiles binary') -and
+        $content.Contains('function Invoke-PendingBinaryInstallOrExit')
+    ) {
+        Write-TestPass "Wrapper includes guarded pending-binary promotion with rollback messaging"
+        return $true
+    }
+
+    Write-TestFail "Wrapper is missing guarded pending-binary promotion rollback handling"
+    return $false
+}
+
+# ---------------------------------------------------------------------------
 # Test Platform Detection
 # ---------------------------------------------------------------------------
 
@@ -340,6 +384,8 @@ function Invoke-AllTests {
     $results += Test-ArgumentForwarding
     $results += Test-InstallArgumentForwarding
     $results += Test-AdvancedFlagForwarding
+    $results += Test-VersionPinnedBootstrapUrls
+    $results += Test-PendingBinaryPromotionRollback
     $results += Test-PlatformDetection
     $results += Test-ErrorHandling
 

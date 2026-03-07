@@ -134,13 +134,21 @@ fn normalized_task_tokens(value: &str) -> Vec<String> {
 ///
 /// Returns an error if the root directory cannot be determined or doesn't exist.
 pub fn resolve_root(global: &GlobalOpts) -> Result<std::path::PathBuf> {
-    let cwd = std::env::current_dir().context("determining current directory")?;
-    resolve_root_from_dir(global, &cwd)
+    // current_dir() is only needed as a last resort; obtain it lazily so that
+    // failures (e.g. deleted cwd) don't block the faster lookup paths.
+    let cwd = std::env::current_dir().ok();
+    resolve_root_from_dir(global, cwd.as_deref())
 }
 
-/// Inner implementation of [`resolve_root`] that accepts an explicit current
+/// Inner implementation of [`resolve_root`] that accepts an optional current
 /// directory, making it testable without mutating process-global state.
-fn resolve_root_from_dir(global: &GlobalOpts, cwd: &std::path::Path) -> Result<std::path::PathBuf> {
+///
+/// Pass `Some(path)` to use an explicit directory; pass `None` to skip the
+/// current-directory fallback (the other lookup strategies still apply).
+fn resolve_root_from_dir(
+    global: &GlobalOpts,
+    cwd: Option<&std::path::Path>,
+) -> Result<std::path::PathBuf> {
     if let Some(ref root) = global.root {
         return Ok(root.clone());
     }
@@ -168,7 +176,10 @@ fn resolve_root_from_dir(global: &GlobalOpts, cwd: &std::path::Path) -> Result<s
     }
 
     // Last resort: provided current directory
-    if cwd.join("conf").exists() && cwd.join("symlinks").exists() {
+    if let Some(cwd) = cwd
+        && cwd.join("conf").exists()
+        && cwd.join("symlinks").exists()
+    {
         return Ok(cwd.to_path_buf());
     }
 
@@ -210,7 +221,7 @@ mod tests {
         // Call the inner function directly — no process-global mutation needed.
         // Only check error if DOTFILES_ROOT env var is not set
         if std::env::var("DOTFILES_ROOT").is_err() {
-            let result = resolve_root_from_dir(&global, temp_dir.path());
+            let result = resolve_root_from_dir(&global, Some(temp_dir.path()));
             assert!(result.is_err());
             if let Err(e) = result {
                 assert!(e.to_string().contains("cannot determine dotfiles root"));

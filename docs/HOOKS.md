@@ -46,15 +46,6 @@ To bypass the hook (use with caution):
 git commit --no-verify
 ```
 
-### check-rust.sh - Rust Code Quality
-
-Runs two checks in order when any `.rs` files are staged:
-
-1. **`cargo fmt --check`** — fails the commit if any files are not formatted.
-   Run `cargo fmt --manifest-path cli/Cargo.toml` to fix.
-2. **`cargo clippy -- -D warnings`** — fails the commit if clippy reports any
-   warnings, matching the same lint policy enforced by CI.
-
 #### Customization
 
 The detection patterns are defined in [sensitive-patterns.ini](../hooks/sensitive-patterns.ini), organized into sections by pattern type:
@@ -81,10 +72,19 @@ The INI file uses a simple, clean format with raw regex patterns under section h
 
 Edit `hooks/sensitive-patterns.ini` to add, modify, or remove detection patterns. The section-based organization makes it easy to understand and manage different types of secrets. Changes take effect immediately since the hook file is symlinked.
 
+### check-rust.sh - Rust Code Quality
+
+Runs two checks in order when any `.rs` files are staged:
+
+1. **`cargo fmt --check`** — fails the commit if any files are not formatted.
+   Run `cargo fmt --manifest-path cli/Cargo.toml` to fix.
+2. **`cargo clippy -- -D warnings`** — fails the commit if clippy reports any
+   warnings, matching the same lint policy enforced by CI.
+
 ## File Layout
 
 | File | Installed as git hook | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `pre-commit` | yes | Orchestrator — calls each check script |
 | `check-sensitive.sh` | no | Sensitive data scanning |
 | `check-rust.sh` | no | Rust formatting and clippy linting |

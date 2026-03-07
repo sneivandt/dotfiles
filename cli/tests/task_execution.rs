@@ -482,10 +482,10 @@ fn git_config_dry_run_makes_no_changes() {
 /// excluded — they are not filesystem-only and would panic on the stub.
 const FILESYSTEM_TASKS: &[&str] = &[
     "Install symlinks",
-    "Install git hooks",
+    "Install Git hooks",
     "Apply file permissions",
     "Install Copilot skills",
-    "Configure git",
+    "Configure Git",
 ];
 
 #[test]

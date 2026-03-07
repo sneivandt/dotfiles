@@ -83,7 +83,7 @@ cargo test --manifest-path cli/Cargo.toml
 4. **File Categorization**: If the file should be excluded in certain profiles, add to `conf/manifest.toml`:
    ```toml
    [desktop]
-   paths = ["symlinks/config/mynewconfig"]
+   paths = ["config/mynewconfig"]
    ```
 
 #### Adding New Tasks

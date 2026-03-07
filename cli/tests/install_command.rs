@@ -327,19 +327,19 @@ fn install_task_list_contains_install_git_hooks() {
     let tasks = tasks::all_install_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
-        names.contains(&"Install git hooks"),
-        "expected 'Install git hooks' in install task list, got: {names:?}"
+        names.contains(&"Install Git hooks"),
+        "expected 'Install Git hooks' in install task list, got: {names:?}"
     );
 }
 
-/// The install task list must contain "Configure git".
+/// The install task list must contain "Configure Git".
 #[test]
 fn install_task_list_contains_configure_git() {
     let tasks = tasks::all_install_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
-        names.contains(&"Configure git"),
-        "expected 'Configure git' in install task list, got: {names:?}"
+        names.contains(&"Configure Git"),
+        "expected 'Configure Git' in install task list, got: {names:?}"
     );
 }
 
@@ -446,7 +446,7 @@ fn only_with_multiple_keywords_includes_all_matching() {
         .collect();
 
     assert!(filtered.contains(&"Install symlinks"));
-    assert!(filtered.contains(&"Install git hooks"));
+    assert!(filtered.contains(&"Install Git hooks"));
 
     for name in &filtered {
         assert!(

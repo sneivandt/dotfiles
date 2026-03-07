@@ -73,7 +73,7 @@ impl Default for InstallGitHooks {
 
 impl Task for InstallGitHooks {
     fn name(&self) -> &'static str {
-        "Install git hooks"
+        "Install Git hooks"
     }
 
     task_deps![super::reload_config::ReloadConfig];
@@ -122,7 +122,7 @@ impl Default for UninstallGitHooks {
 
 impl Task for UninstallGitHooks {
     fn name(&self) -> &'static str {
-        "Remove git hooks"
+        "Remove Git hooks"
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

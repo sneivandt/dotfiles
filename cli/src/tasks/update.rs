@@ -213,8 +213,8 @@ fn worktree_has_local_changes(ctx: &Context, git_env: &[(&str, &str)]) -> Result
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::exec::{ExecResult, Executor};
     use crate::exec::test_helpers::TestExecutor;
+    use crate::exec::{ExecResult, Executor};
     use crate::platform::{Os, Platform};
     use crate::tasks::UpdateSignal;
     use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};

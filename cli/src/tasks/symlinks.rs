@@ -118,10 +118,8 @@ mod tests {
     fn install_run_skips_when_no_symlinks_configured() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        // no guard; empty items cause run() to return Skipped
-        assert!(InstallSymlinks.should_run(&ctx));
-        let result = InstallSymlinks.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Skipped(_)));
+        // empty items cause should_run() to return false
+        assert!(!InstallSymlinks.should_run(&ctx));
     }
 
     #[test]

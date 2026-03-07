@@ -26,10 +26,8 @@ mod tests {
     fn run_skips_when_no_settings() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        // no guard; empty items cause run() to return Skipped
-        assert!(ConfigureGit.should_run(&ctx));
-        let result = ConfigureGit.run(&ctx).unwrap();
-        assert!(matches!(result, crate::tasks::TaskResult::Skipped(_)));
+        // empty items cause should_run() to return false
+        assert!(!ConfigureGit.should_run(&ctx));
     }
 
     #[test]

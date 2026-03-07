@@ -47,10 +47,8 @@ mod tests {
     fn run_skips_on_windows_when_registry_empty() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_windows_context(config);
-        // guard passes on Windows; empty items cause run() to return Skipped
-        assert!(ApplyRegistry.should_run(&ctx));
-        let result = ApplyRegistry.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Skipped(_)));
+        // guard passes on Windows; empty items cause should_run() to return false
+        assert!(!ApplyRegistry.should_run(&ctx));
     }
 
     #[test]
@@ -71,11 +69,10 @@ mod tests {
 
     #[test]
     fn run_with_empty_registry_returns_skipped() {
-        // With no registry entries run() returns Skipped rather than Ok.
+        // With no registry entries should_run() returns false.
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_windows_context(config);
-        let result = ApplyRegistry.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Skipped(_)));
+        assert!(!ApplyRegistry.should_run(&ctx));
     }
 
     #[test]

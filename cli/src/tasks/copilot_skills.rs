@@ -35,10 +35,8 @@ mod tests {
     fn run_skips_when_no_skills_configured() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        // no guard; empty items cause run() to return Skipped
-        assert!(InstallCopilotSkills.should_run(&ctx));
-        let result = InstallCopilotSkills.run(&ctx).unwrap();
-        assert!(matches!(result, crate::tasks::TaskResult::Skipped(_)));
+        // empty items cause should_run() to return false
+        assert!(!InstallCopilotSkills.should_run(&ctx));
     }
 
     #[test]

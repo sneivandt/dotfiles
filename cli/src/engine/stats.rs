@@ -10,10 +10,12 @@ use super::context::Context;
 /// use dotfiles_cli::tasks::TaskResult;
 ///
 /// let ok = TaskResult::Ok;
+/// let na = TaskResult::NotApplicable("nothing configured".into());
 /// let skipped = TaskResult::Skipped("not on arch".into());
 /// let dry = TaskResult::DryRun;
 ///
 /// assert!(matches!(ok, TaskResult::Ok));
+/// assert!(matches!(na, TaskResult::NotApplicable(_)));
 /// assert!(matches!(skipped, TaskResult::Skipped(_)));
 /// assert!(matches!(dry, TaskResult::DryRun));
 /// ```
@@ -22,7 +24,9 @@ use super::context::Context;
 pub enum TaskResult {
     /// Task completed successfully.
     Ok,
-    /// Task was skipped (not applicable to this platform/profile).
+    /// Task is not applicable (e.g., no config matched the active profile).
+    NotApplicable(String),
+    /// Task was skipped (e.g., required tool not found).
     Skipped(String),
     /// Task ran in dry-run mode.
     DryRun,

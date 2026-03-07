@@ -105,7 +105,9 @@ macro_rules! resource_task {
                     let $guard_ctx = ctx;
                     if !{ $guard_expr } { return false; }
                 )?
-                let _ = ctx;
+                let $items_ctx = ctx;
+                let items: Vec<_> = { $items_expr };
+                if items.is_empty() { return false; }
                 true
             }
 
@@ -116,9 +118,6 @@ macro_rules! resource_task {
                 )?
                 let $items_ctx = ctx;
                 let items: Vec<_> = { $items_expr };
-                if items.is_empty() {
-                    return Ok($crate::tasks::TaskResult::Skipped("nothing configured".into()));
-                }
                 let resources = items.into_iter().map(|$item| {
                     let $build_ctx = ctx;
                     $build_expr
@@ -191,16 +190,15 @@ macro_rules! batch_resource_task {
                     let $guard_ctx = ctx;
                     if !{ $guard_expr } { return false; }
                 )?
-                let _ = ctx;
+                let $items_ctx = ctx;
+                let $cache_items: Vec<_> = { $items_expr };
+                if $cache_items.is_empty() { return false; }
                 true
             }
 
             fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
                 let $items_ctx = ctx;
                 let $cache_items: Vec<_> = { $items_expr };
-                if $cache_items.is_empty() {
-                    return Ok($crate::tasks::TaskResult::Skipped("nothing configured".into()));
-                }
                 ctx.log.debug(&format!(
                     "batch-checking {} resources with a single query",
                     $cache_items.len()
@@ -340,6 +338,11 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
     match task.run(ctx) {
         Ok(TaskResult::Ok) => {
             ctx.log.record_task(task.name(), TaskStatus::Ok, None);
+        }
+        Ok(TaskResult::NotApplicable(reason)) => {
+            ctx.log.debug(&format!("not applicable: {reason}"));
+            ctx.log
+                .record_task(task.name(), TaskStatus::NotApplicable, None);
         }
         Ok(TaskResult::Skipped(reason)) => {
             ctx.log.info(&format!("skipped: {reason}"));

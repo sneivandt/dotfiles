@@ -74,14 +74,30 @@ impl Task for UpdateRepository {
 
         ctx.log
             .debug(&format!("pulling from {}", ctx.root().display()));
+
+        let pre_sha = ctx
+            .executor
+            .run_in_with_env(&ctx.root(), "git", &["rev-parse", "HEAD"], git_env)?
+            .stdout
+            .trim()
+            .to_string();
+
         let result =
             ctx.executor
                 .run_in_with_env(&ctx.root(), "git", &["pull", "--ff-only"], git_env);
         match result {
             Ok(r) => {
-                let msg = r.stdout.trim().to_string();
-                ctx.log.debug(&format!("git pull output: {msg}"));
-                if msg.contains("Already up to date") {
+                ctx.log
+                    .debug(&format!("git pull output: {}", r.stdout.trim()));
+
+                let post_sha = ctx
+                    .executor
+                    .run_in_with_env(&ctx.root(), "git", &["rev-parse", "HEAD"], git_env)?
+                    .stdout
+                    .trim()
+                    .to_string();
+
+                if pre_sha == post_sha {
                     ctx.log.info("already up to date");
                 } else {
                     self.repo_updated.mark_updated();
@@ -282,11 +298,15 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         // First call (symbolic-ref): succeeds → on a branch
         // Second call (status): empty stdout → clean worktree
-        // Third call (pull): "Already up to date."
+        // Third call (rev-parse HEAD): pre-pull SHA
+        // Fourth call (pull): succeeds
+        // Fifth call (rev-parse HEAD): same SHA → no update
         let executor = TestExecutor::with_responses(vec![
             (true, "refs/heads/main".to_string()),
             (true, String::new()),
-            (true, "Already up to date.".to_string()),
+            (true, "abc123".to_string()),
+            (true, String::new()),
+            (true, "abc123".to_string()),
         ]);
         let ctx = make_update_context(config, executor);
         let repo_updated = UpdateSignal::new();
@@ -302,11 +322,15 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         // First call (symbolic-ref): succeeds → on a branch
         // Second call (status): empty stdout → clean worktree
-        // Third call (pull): update output → repo was updated
+        // Third call (rev-parse HEAD): pre-pull SHA
+        // Fourth call (pull): succeeds with update output
+        // Fifth call (rev-parse HEAD): different SHA → repo updated
         let executor = TestExecutor::with_responses(vec![
             (true, "refs/heads/main".to_string()),
             (true, String::new()),
+            (true, "abc1234".to_string()),
             (true, "Updating abc1234..def5678\nFast-forward".to_string()),
+            (true, "def5678".to_string()),
         ]);
         let ctx = make_update_context(config, executor);
         let repo_updated = UpdateSignal::new();
@@ -322,10 +346,12 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         // First call (symbolic-ref): succeeds → on a branch
         // Second call (status): empty stdout → clean worktree
-        // Third call (pull): fails
+        // Third call (rev-parse HEAD): pre-pull SHA
+        // Fourth call (pull): fails
         let executor = TestExecutor::with_responses(vec![
             (true, "refs/heads/main".to_string()),
             (true, String::new()),
+            (true, "abc123".to_string()),
             (false, String::new()),
         ]);
         let ctx = make_update_context(config, executor);

@@ -134,6 +134,21 @@ fn normalized_task_tokens(value: &str) -> Vec<String> {
 ///
 /// Returns an error if the root directory cannot be determined or doesn't exist.
 pub fn resolve_root(global: &GlobalOpts) -> Result<std::path::PathBuf> {
+    // current_dir() is only needed as a last resort; obtain it lazily so that
+    // failures (e.g. deleted cwd) don't block the faster lookup paths.
+    let cwd = std::env::current_dir().ok();
+    resolve_root_from_dir(global, cwd.as_deref())
+}
+
+/// Inner implementation of [`resolve_root`] that accepts an optional current
+/// directory, making it testable without mutating process-global state.
+///
+/// Pass `Some(path)` to use an explicit directory; pass `None` to skip the
+/// current-directory fallback (the other lookup strategies still apply).
+fn resolve_root_from_dir(
+    global: &GlobalOpts,
+    cwd: Option<&std::path::Path>,
+) -> Result<std::path::PathBuf> {
     if let Some(ref root) = global.root {
         return Ok(root.clone());
     }
@@ -160,10 +175,12 @@ pub fn resolve_root(global: &GlobalOpts) -> Result<std::path::PathBuf> {
         }
     }
 
-    // Last resort: current directory
-    let cwd = std::env::current_dir().context("determining current directory")?;
-    if cwd.join("conf").exists() && cwd.join("symlinks").exists() {
-        return Ok(cwd);
+    // Last resort: provided current directory
+    if let Some(cwd) = cwd
+        && cwd.join("conf").exists()
+        && cwd.join("symlinks").exists()
+    {
+        return Ok(cwd.to_path_buf());
     }
 
     anyhow::bail!("cannot determine dotfiles root. Use --root or set DOTFILES_ROOT env var");
@@ -191,8 +208,8 @@ mod tests {
 
     #[test]
     fn resolve_root_error_when_not_in_repo() {
-        // Use a path that definitely doesn't have conf/symlinks
-        let temp_dir = std::env::temp_dir();
+        // Use a temp dir that definitely doesn't have conf/symlinks
+        let temp_dir = tempfile::tempdir().unwrap();
 
         let global = GlobalOpts {
             root: None,
@@ -201,19 +218,10 @@ mod tests {
             parallel: true,
         };
 
-        // Save and restore current directory
-        let original_dir = std::env::current_dir().ok();
-        std::env::set_current_dir(&temp_dir).ok();
-
-        let result = resolve_root(&global);
-
-        // Restore directory
-        if let Some(dir) = original_dir {
-            std::env::set_current_dir(dir).ok();
-        }
-
+        // Call the inner function directly — no process-global mutation needed.
         // Only check error if DOTFILES_ROOT env var is not set
         if std::env::var("DOTFILES_ROOT").is_err() {
+            let result = resolve_root_from_dir(&global, Some(temp_dir.path()));
             assert!(result.is_err());
             if let Err(e) = result {
                 assert!(e.to_string().contains("cannot determine dotfiles root"));

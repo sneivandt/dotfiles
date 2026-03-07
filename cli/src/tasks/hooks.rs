@@ -76,7 +76,7 @@ impl Task for InstallGitHooks {
         "Install Git hooks"
     }
 
-    task_deps![super::reload_config::ReloadConfig];
+    task_deps![super::update::UpdateRepository];
 
     fn should_run(&self, ctx: &Context) -> bool {
         self.fs_ops.exists(&ctx.hooks_dir()) && self.fs_ops.exists(&ctx.root().join(".git"))
@@ -141,6 +141,7 @@ mod tests {
     use super::*;
     use crate::fs::MockFileSystemOps;
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use std::any::TypeId;
     use std::path::PathBuf;
 
     // ------------------------------------------------------------------
@@ -174,6 +175,15 @@ mod tests {
         let ctx = make_linux_context(config);
         let task = InstallGitHooks::with_fs_ops(Arc::new(fs));
         assert!(task.should_run(&ctx));
+    }
+
+    #[test]
+    fn install_depends_on_update_repository() {
+        let task = InstallGitHooks::with_fs_ops(Arc::new(MockFileSystemOps::new()));
+        assert_eq!(
+            task.dependencies(),
+            &[TypeId::of::<crate::tasks::update::UpdateRepository>()]
+        );
     }
 
     // ------------------------------------------------------------------

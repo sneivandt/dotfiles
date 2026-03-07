@@ -62,7 +62,20 @@ impl Applicable for CopilotSkillResource {
 
 impl Resource for CopilotSkillResource {
     fn current_state(&self) -> Result<ResourceState> {
-        if self.dest.exists() {
+        if !self.dest.exists() {
+            return Ok(ResourceState::Missing);
+        }
+
+        if !self.dest.is_dir() {
+            return Ok(ResourceState::Invalid {
+                reason: format!(
+                    "skill destination is not a directory: {}",
+                    self.dest.display()
+                ),
+            });
+        }
+
+        if skill_dir_has_entries(&self.dest)? {
             Ok(ResourceState::Correct)
         } else {
             Ok(ResourceState::Missing)
@@ -115,49 +128,62 @@ fn download_github_folder(url: &str, dest: &Path, executor: &dyn Executor) -> Re
         std::fs::remove_dir_all(&tmp).context("removing previous skill temp dir")?;
     }
 
-    // Shallow clone with no checkout
-    executor.run(
-        "git",
-        &[
-            "clone",
-            "--filter=blob:none",
-            "--no-checkout",
-            "--depth",
-            "1",
-            "--branch",
-            branch,
-            &repo_url,
-            &tmp.to_string_lossy(),
-        ],
-    )?;
+    let result = (|| -> Result<()> {
+        // Shallow clone with no checkout
+        executor.run(
+            "git",
+            &[
+                "clone",
+                "--filter=blob:none",
+                "--no-checkout",
+                "--depth",
+                "1",
+                "--branch",
+                branch,
+                &repo_url,
+                &tmp.to_string_lossy(),
+            ],
+        )?;
 
-    // Sparse checkout just the target path
-    executor.run_in(&tmp, "git", &["sparse-checkout", "init", "--cone"])?;
-    executor.run_in(&tmp, "git", &["sparse-checkout", "set", &subpath])?;
-    executor.run_in(&tmp, "git", &["checkout"])?;
+        // Sparse checkout just the target path
+        executor.run_in(&tmp, "git", &["sparse-checkout", "init", "--cone"])?;
+        executor.run_in(&tmp, "git", &["sparse-checkout", "set", &subpath])?;
+        executor.run_in(&tmp, "git", &["checkout"])?;
 
-    // Copy result to destination
-    let src = tmp.join(&subpath);
-    if !src.exists() {
-        // Best effort cleanup
-        if let Err(e) = std::fs::remove_dir_all(&tmp) {
-            tracing::warn!("failed to cleanup temp dir {}: {e}", tmp.display());
+        // Copy result to destination
+        let src = tmp.join(&subpath);
+        if !src.exists() {
+            return Err(ResourceError::ConflictingState {
+                resource: format!("skill path {subpath}"),
+                expected: "path exists in repository".to_string(),
+                actual: "path not found after checkout".to_string(),
+            }
+            .into());
         }
-        return Err(ResourceError::ConflictingState {
-            resource: format!("skill path {subpath}"),
-            expected: "path exists in repository".to_string(),
-            actual: "path not found after checkout".to_string(),
-        }
-        .into());
-    }
 
-    crate::fs::copy_dir_recursive(&src, dest, true)?;
+        crate::fs::copy_dir_recursive(&src, dest, true)?;
+        Ok(())
+    })();
 
-    // Best effort cleanup
-    if let Err(e) = std::fs::remove_dir_all(&tmp) {
-        tracing::warn!("failed to cleanup temp dir {}: {e}", tmp.display());
+    cleanup_temp_dir(&tmp);
+    result
+}
+
+fn skill_dir_has_entries(path: &Path) -> Result<bool> {
+    Ok(std::fs::read_dir(path)
+        .with_context(|| format!("reading skill directory {}", path.display()))?
+        .next()
+        .transpose()
+        .with_context(|| format!("reading entry in skill directory {}", path.display()))?
+        .is_some())
+}
+
+fn cleanup_temp_dir(path: &Path) {
+    if path.exists()
+        && let Err(e) = std::fs::remove_dir_all(path)
+    {
+        tracing::warn!("failed to cleanup temp dir {}: {e}", path.display());
     }
-    Ok(())
 }
 
 /// FNV-1a 64-bit hash constants.
@@ -188,6 +214,74 @@ fn simple_hash(s: &str) -> u64 {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::exec::ExecResult;
+    use anyhow::bail;
+
+    #[derive(Debug)]
+    struct CloneFixtureExecutor {
+        skill_subpath: String,
+    }
+
+    impl CloneFixtureExecutor {
+        fn new(skill_subpath: &str) -> Self {
+            Self {
+                skill_subpath: skill_subpath.to_string(),
+            }
+        }
+
+        fn ok_result() -> ExecResult {
+            ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            }
+        }
+    }
+
+    impl Executor for CloneFixtureExecutor {
+        fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+            if program == "git" && args.first() == Some(&"clone") {
+                let dest = PathBuf::from(
+                    args.last()
+                        .copied()
+                        .ok_or_else(|| anyhow::anyhow!("missing clone destination"))?,
+                );
+                let src = dest.join(&self.skill_subpath);
+                std::fs::create_dir_all(&src)?;
+                std::fs::write(src.join("SKILL.md"), "# skill\n")?;
+                return Ok(Self::ok_result());
+            }
+
+            bail!("unexpected run call: {program} {args:?}");
+        }
+
+        fn run_in_with_env(
+            &self,
+            _: &Path,
+            program: &str,
+            _: &[&str],
+            _: &[(&str, &str)],
+        ) -> Result<ExecResult> {
+            if program == "git" {
+                Ok(Self::ok_result())
+            } else {
+                bail!("unexpected run_in_with_env call: {program}");
+            }
+        }
+
+        fn run_unchecked(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
+            Ok(Self::ok_result())
+        }
+
+        fn which(&self, _: &str) -> bool {
+            true
+        }
+
+        fn which_path(&self, program: &str) -> Result<PathBuf> {
+            Ok(PathBuf::from(format!("/usr/bin/{program}")))
+        }
+    }
 
     #[test]
     fn description_returns_url() {
@@ -218,10 +312,29 @@ mod tests {
     }
 
     #[test]
-    fn correct_when_dest_exists() {
+    fn missing_when_dest_is_empty() {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("my-skill");
         std::fs::create_dir(&dest).unwrap();
+
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
+        let resource = CopilotSkillResource::new(
+            "https://github.com/example/skills/tree/main/my-skill".to_string(),
+            dest,
+            Arc::clone(&executor),
+        );
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Missing
+        ));
+    }
+
+    #[test]
+    fn correct_when_dest_has_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("my-skill");
+        std::fs::create_dir(&dest).unwrap();
+        std::fs::write(dest.join("SKILL.md"), "# skill\n").unwrap();
 
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let resource = CopilotSkillResource::new(
@@ -316,6 +429,32 @@ mod tests {
         assert!(
             chain.contains("/blob/ or /tree/"),
             "expected URL format error, got: {chain}"
+        );
+    }
+
+    #[test]
+    fn download_github_folder_cleans_up_temp_dir_on_copy_failure() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let dest = temp_dir.path().join("skill");
+        std::fs::write(&dest, "not a directory").unwrap();
+
+        let url = "https://github.com/example/skills/tree/main/my-skill";
+        let tmp = std::env::temp_dir().join(format!("dotfiles-skill-{:016x}", simple_hash(url)));
+        if tmp.exists() {
+            std::fs::remove_dir_all(&tmp).unwrap();
+        }
+
+        let executor = CloneFixtureExecutor::new("my-skill");
+        let err = download_github_folder(url, &dest, &executor).unwrap_err();
+
+        let chain = format!("{err:#}");
+        assert!(
+            chain.contains("creating directory"),
+            "expected copy failure, got: {chain}"
+        );
+        assert!(
+            !tmp.exists(),
+            "temporary clone directory should be removed on copy failure"
         );
     }
 }

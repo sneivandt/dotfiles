@@ -46,7 +46,11 @@ impl Applicable for ChmodResource {
                 .with_context(|| format!("invalid octal mode: {}", self.mode))?;
 
             if self.target.is_dir() {
-                apply_recursive(&self.target, mode)?;
+                apply_recursive(
+                    &self.target,
+                    ensure_dir_execute_bits(mode),
+                    strip_file_execute_bits(mode),
+                )?;
             } else {
                 let perms = std::fs::Permissions::from_mode(mode);
                 std::fs::set_permissions(&self.target, perms)
@@ -82,6 +86,11 @@ impl Resource for ChmodResource {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            let desired_mode = if self.target.is_dir() {
+                ensure_dir_execute_bits(desired_mode)
+            } else {
+                desired_mode
+            };
             let current_mode =
                 std::fs::metadata(&self.target)?.permissions().mode() & MODE_BITS_MASK;
 
@@ -105,14 +114,10 @@ impl Resource for ChmodResource {
 }
 
 #[cfg(unix)]
-fn apply_recursive(path: &std::path::Path, mode: u32) -> Result<()> {
+fn apply_recursive(path: &std::path::Path, dir_mode: u32, file_mode: u32) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
-    // For directories, ensure the execute bit is set for each permission
-    // triplet that has read access, so directories remain traversable.
-    let dir_mode = ensure_dir_execute_bits(mode);
-
-    let effective_mode = if path.is_dir() { dir_mode } else { mode };
+    let effective_mode = if path.is_dir() { dir_mode } else { file_mode };
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(effective_mode))
         .with_context(|| format!("set permissions on {}", path.display()))?;
 
@@ -123,9 +128,9 @@ fn apply_recursive(path: &std::path::Path, mode: u32) -> Result<()> {
             let entry = entry.with_context(|| format!("reading entry in {}", path.display()))?;
             let entry_path = entry.path();
             if entry_path.is_dir() {
-                apply_recursive(&entry_path, mode)?;
+                apply_recursive(&entry_path, dir_mode, file_mode)?;
             } else {
-                std::fs::set_permissions(&entry_path, std::fs::Permissions::from_mode(mode))
+                std::fs::set_permissions(&entry_path, std::fs::Permissions::from_mode(file_mode))
                     .with_context(|| format!("set permissions on {}", entry_path.display()))?;
             }
         }
@@ -151,6 +156,13 @@ const fn ensure_dir_execute_bits(mode: u32) -> u32 {
         m |= 0o001;
     }
     m
+}
+
+/// Strip execute bits from a mode before applying it to regular files during
+/// recursive directory chmod operations.
+#[cfg(unix)]
+const fn strip_file_execute_bits(mode: u32) -> u32 {
+    mode & !0o111
 }
 
 #[cfg(test)]
@@ -275,5 +287,43 @@ mod tests {
         assert_eq!(ensure_dir_execute_bits(0o755), 0o755);
         // 000 stays 000
         assert_eq!(ensure_dir_execute_bits(0o000), 0o000);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn strip_file_execute_bits_removes_x_bits() {
+        assert_eq!(strip_file_execute_bits(0o700), 0o600);
+        assert_eq!(strip_file_execute_bits(0o755), 0o644);
+        assert_eq!(strip_file_execute_bits(0o644), 0o644);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn chmod_directory_applies_safe_file_mode_recursively() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let nested_dir = temp_dir.path().join("nested");
+        let file = temp_dir.path().join("secret.txt");
+        std::fs::create_dir(&nested_dir).unwrap();
+        std::fs::write(&file, "secret").unwrap();
+
+        let resource = ChmodResource::new(temp_dir.path().to_path_buf(), "700".to_string());
+        let result = resource.apply().unwrap();
+        assert_eq!(result, ResourceChange::Applied);
+
+        let root_mode = std::fs::metadata(temp_dir.path())
+            .unwrap()
+            .permissions()
+            .mode()
+            & MODE_BITS_MASK;
+        let nested_mode =
+            std::fs::metadata(&nested_dir).unwrap().permissions().mode() & MODE_BITS_MASK;
+        let file_mode = std::fs::metadata(&file).unwrap().permissions().mode() & MODE_BITS_MASK;
+
+        assert_eq!(root_mode, 0o700);
+        assert_eq!(nested_mode, 0o700);
+        assert_eq!(file_mode, 0o600);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 }

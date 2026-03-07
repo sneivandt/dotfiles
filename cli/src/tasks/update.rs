@@ -51,9 +51,8 @@ impl Task for UpdateRepository {
             return Ok(TaskResult::Skipped("detached HEAD".to_string()));
         };
 
-        // Refuse to pull when the worktree is dirty (staged, unstaged, or
-        // untracked files). That keeps update failures predictable and avoids
-        // mixing local edits with a repository fast-forward.
+        // Refuse to pull when tracked files are dirty. Untracked files do not
+        // block a fast-forward pull, so they should not prevent updates.
         if worktree_has_local_changes(ctx, git_env)? {
             ctx.log.warn("local changes detected, skipping update");
             return Ok(TaskResult::Skipped("local changes present".to_string()));
@@ -203,7 +202,7 @@ fn worktree_has_local_changes(ctx: &Context, git_env: &[(&str, &str)]) -> Result
     let status = ctx.executor.run_in_with_env(
         &ctx.root(),
         "git",
-        &["status", "--porcelain", "--untracked-files=normal"],
+        &["status", "--porcelain", "--untracked-files=no"],
         git_env,
     )?;
 
@@ -215,6 +214,7 @@ fn worktree_has_local_changes(ctx: &Context, git_env: &[(&str, &str)]) -> Result
 mod tests {
     use super::*;
     use crate::exec::test_helpers::TestExecutor;
+    use crate::exec::{ExecResult, Executor};
     use crate::platform::{Os, Platform};
     use crate::tasks::UpdateSignal;
     use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
@@ -279,18 +279,58 @@ mod tests {
         assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("local changes")));
     }
 
-    #[test]
-    fn run_skips_when_untracked_files_detected() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let executor = TestExecutor::with_responses(vec![
-            (true, "refs/heads/main".to_string()),
-            (true, "?? new-file.txt".to_string()),
-        ]);
-        let ctx = make_update_context(config, executor);
-        let task = UpdateRepository::new(UpdateSignal::new());
+    #[derive(Debug)]
+    struct UntrackedAwareExecutor;
 
-        let result = task.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("local changes")));
+    impl Executor for UntrackedAwareExecutor {
+        fn run(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
+            anyhow::bail!("unexpected run() call")
+        }
+
+        fn run_in_with_env(
+            &self,
+            _: &std::path::Path,
+            _: &str,
+            args: &[&str],
+            _: &[(&str, &str)],
+        ) -> Result<ExecResult> {
+            let stdout = if args.contains(&"--untracked-files=no") {
+                String::new()
+            } else {
+                "?? new-file.txt\n".to_string()
+            };
+
+            Ok(ExecResult {
+                stdout,
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        }
+
+        fn run_unchecked(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
+            anyhow::bail!("unexpected run_unchecked() call")
+        }
+
+        fn which(&self, _: &str) -> bool {
+            false
+        }
+
+        fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
+            anyhow::bail!("{program} not found on PATH")
+        }
+    }
+
+    #[test]
+    fn worktree_has_local_changes_ignores_untracked_files() {
+        let config = empty_config(PathBuf::from("/repo"));
+        let ctx = make_context(
+            config,
+            Platform::new(Os::Linux, false),
+            Arc::new(UntrackedAwareExecutor),
+        );
+
+        assert!(!worktree_has_local_changes(&ctx, &[]).unwrap());
     }
 
     #[test]

@@ -28,6 +28,24 @@ fn is_up_to_date(sparse_file: &Path, patterns_str: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn restore_sparse_checkout_file(sparse_file: &Path, previous_patterns: Option<&str>) -> Result<()> {
+    if let Some(previous) = previous_patterns {
+        std::fs::write(sparse_file, previous).with_context(|| {
+            format!(
+                "restoring sparse-checkout file at {}",
+                sparse_file.display()
+            )
+        })
+    } else {
+        if sparse_file.exists() {
+            std::fs::remove_file(sparse_file).with_context(|| {
+                format!("removing sparse-checkout file at {}", sparse_file.display())
+            })?;
+        }
+        Ok(())
+    }
+}
+
 /// Remove broken symlinks in `~/.config/git/` that point into the dotfiles
 /// repo's `symlinks/` directory.  These become dangling when sparse-checkout
 /// excludes `symlinks/`, which then prevents git from running at all because
@@ -118,6 +136,14 @@ impl Task for ConfigureSparseCheckout {
 
         let patterns_str = build_patterns(&excluded_files);
         let sparse_file = ctx.root().join(".git/info/sparse-checkout");
+        let previous_patterns = if sparse_file.exists() {
+            Some(
+                std::fs::read_to_string(&sparse_file)
+                    .with_context(|| format!("reading {}", sparse_file.display()))?,
+            )
+        } else {
+            None
+        };
 
         // Check if patterns are already up to date (shared by dry-run and real paths)
         if is_up_to_date(&sparse_file, &patterns_str) {
@@ -189,8 +215,18 @@ impl Task for ConfigureSparseCheckout {
 
         ctx.log
             .debug("wrote sparse-checkout file, running read-tree");
-        ctx.executor
-            .run_in(&root, "git", &["read-tree", "-mu", "HEAD"])?;
+        if let Err(err) = ctx
+            .executor
+            .run_in(&root, "git", &["read-tree", "-mu", "HEAD"])
+        {
+            ctx.log
+                .warn("git read-tree failed; restoring previous sparse-checkout configuration");
+            restore_sparse_checkout_file(&sparse_file, previous_patterns.as_deref())?;
+            ctx.executor
+                .run_in(&root, "git", &["read-tree", "-mu", "HEAD"])
+                .context("restoring worktree after failed sparse-checkout update")?;
+            return Err(err.context("applying sparse-checkout patterns"));
+        }
 
         ctx.log.info(&format!(
             "excluded {} files from checkout",
@@ -279,6 +315,17 @@ mod tests {
         let path = dir.path().join("sparse-checkout");
         std::fs::write(&path, "/*").unwrap();
         assert!(!is_up_to_date(&path, "/*\n!/symlinks"));
+    }
+
+    #[test]
+    fn restore_sparse_checkout_file_removes_file_when_previous_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sparse-checkout");
+        std::fs::write(&path, "/*\n!/symlinks").unwrap();
+
+        restore_sparse_checkout_file(&path, None).unwrap();
+
+        assert!(!path.exists());
     }
 
     // -----------------------------------------------------------------------
@@ -512,6 +559,36 @@ mod tests {
             content.contains("!/symlinks"),
             "must include exclusion pattern for 'symlinks'"
         );
+    }
+
+    #[test]
+    fn run_restores_previous_sparse_checkout_file_when_read_tree_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let info_dir = dir.path().join(".git").join("info");
+        std::fs::create_dir_all(&info_dir).unwrap();
+        let sparse_file = info_dir.join("sparse-checkout");
+        let previous_patterns = "/*\n!/old-path";
+        std::fs::write(&sparse_file, previous_patterns).unwrap();
+
+        let mut config = empty_config(dir.path().to_path_buf());
+        config.manifest.excluded_files.push("symlinks".to_string());
+
+        let executor = TestExecutor::with_responses(vec![
+            (true, String::new()),  // git status
+            (true, String::new()),  // sparse-checkout init
+            (false, String::new()), // read-tree fails
+            (true, String::new()),  // rollback read-tree succeeds
+        ]);
+        let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
+
+        let err = ConfigureSparseCheckout::new().run(&ctx).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("applying sparse-checkout patterns"),
+            "expected read-tree failure to be surfaced, got {err:#}"
+        );
+        let restored = std::fs::read_to_string(&sparse_file).unwrap();
+        assert_eq!(restored, previous_patterns);
     }
 
     // -----------------------------------------------------------------------

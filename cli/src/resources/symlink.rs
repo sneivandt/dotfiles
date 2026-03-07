@@ -89,10 +89,13 @@ impl Resource for SymlinkResource {
         // Check if symlink already points to the correct source
         std::fs::read_link(&self.target).map_or_else(
             |_| {
-                // Target doesn't exist or isn't a symlink
-                if self.target.exists() {
+                // Target doesn't exist or isn't a symlink.
+                // Use symlink_metadata() (not exists()) so that dangling symlinks
+                // — which exist on disk but point to a missing file — are detected
+                // as Incorrect rather than Missing.
+                if self.target.symlink_metadata().is_ok() {
                     Ok(ResourceState::Incorrect {
-                        current: "target is a regular file".to_string(),
+                        current: "target is a regular file or dangling symlink".to_string(),
                     })
                 } else {
                     Ok(ResourceState::Missing)
@@ -234,7 +237,15 @@ fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result
             // Use /J (junction) for directories, no flag (symlink) for files.
             // Note: /H creates a hard link which has different semantics.
             let link_str = link.to_string_lossy();
-            let target_str = target.to_string_lossy();
+            // Resolve to absolute path because mklink /J requires absolute targets.
+            let abs_target = if let Ok(p) = std::fs::canonicalize(target) {
+                p
+            } else {
+                std::env::current_dir()
+                    .context("could not determine current directory for mklink fallback")?
+                    .join(target)
+            };
+            let target_str = abs_target.to_string_lossy();
             let mut args: Vec<&str> = vec!["/c", "mklink"];
             if is_dir {
                 args.push("/J");
@@ -434,6 +445,115 @@ mod tests {
 
         let state = resource.current_state().unwrap();
         assert!(matches!(state, ResourceState::Incorrect { .. }));
+    }
+
+    /// A dangling symlink at the target (pointing to a non-existent path) must
+    /// be reported as `Incorrect`, not `Missing`.  `Path::exists()` follows
+    /// symlinks and returns `false` for dangling ones, so we use
+    /// `symlink_metadata()` instead.
+    #[cfg(unix)]
+    #[test]
+    fn symlink_resource_incorrect_when_target_is_dangling_symlink() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source = temp_dir.path().join("source");
+        let target = temp_dir.path().join("target");
+        let nowhere = temp_dir.path().join("does_not_exist");
+        std::fs::write(&source, "content").unwrap();
+        // Create a dangling symlink: target -> nowhere (nowhere doesn't exist)
+        std::os::unix::fs::symlink(&nowhere, &target).unwrap();
+        assert!(!nowhere.exists(), "precondition: nowhere must not exist");
+        assert!(
+            target.symlink_metadata().is_ok(),
+            "precondition: dangling symlink must be present"
+        );
+
+        let resource = SymlinkResource::new(source, target, system_executor());
+
+        let state = resource.current_state().unwrap();
+        assert!(
+            matches!(state, ResourceState::Incorrect { .. }),
+            "dangling symlink should be Incorrect, got {state:?}"
+        );
+    }
+
+    /// On Windows, `mklink /J` requires an absolute path for the junction
+    /// target.  Verify that when the native symlink API fails the fallback
+    /// command receives an absolute path even when a relative path was
+    /// originally supplied.
+    #[cfg(windows)]
+    #[test]
+    fn create_symlink_mklink_fallback_uses_absolute_target() {
+        use crate::exec::ExecResult;
+        use std::sync::Mutex;
+
+        /// Executor that records every `run` invocation.
+        #[derive(Debug)]
+        struct RecordingExecutor {
+            calls: Mutex<Vec<Vec<String>>>,
+        }
+
+        impl Executor for RecordingExecutor {
+            fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+                self.calls.lock().unwrap().push(
+                    std::iter::once(program)
+                        .chain(args.iter().copied())
+                        .map(String::from)
+                        .collect(),
+                );
+                Ok(ExecResult {
+                    success: true,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    code: Some(0),
+                })
+            }
+
+            fn run_in_with_env(
+                &self,
+                _dir: &std::path::Path,
+                program: &str,
+                args: &[&str],
+                _env: &[(&str, &str)],
+            ) -> Result<ExecResult> {
+                self.run(program, args)
+            }
+
+            fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+                self.run(program, args)
+            }
+
+            fn which(&self, _program: &str) -> bool {
+                false
+            }
+
+            fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
+                anyhow::bail!("{program} not found")
+            }
+        }
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let link = temp_dir.path().join("link");
+
+        let recorder = Arc::new(RecordingExecutor {
+            calls: Mutex::new(Vec::new()),
+        });
+
+        // Pass a relative non-existent path as target so canonicalize fails
+        // and the fallback (current_dir().join(target)) is exercised.
+        let relative = PathBuf::from("nonexistent_dotfiles_target");
+        let _ = create_symlink(&relative, &link, &*recorder);
+
+        let calls = recorder.calls.lock().unwrap();
+        if let Some(call) = calls.first() {
+            // The target argument (last arg in the mklink call) must be absolute.
+            if let Some(target_arg) = call.last() {
+                let p = PathBuf::from(target_arg);
+                assert!(
+                    p.is_absolute(),
+                    "mklink target must be absolute, got {target_arg}"
+                );
+            }
+        }
     }
 
     /// After `remove()` the target must be a regular file containing the

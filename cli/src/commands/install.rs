@@ -200,6 +200,7 @@ mod tests {
     #[test]
     fn resolve_root_uses_explicit_root() {
         let global = GlobalOpts {
+            build: false,
             root: Some(PathBuf::from("/explicit/path")),
             profile: None,
             dry_run: false,
@@ -217,6 +218,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
 
         let global = GlobalOpts {
+            build: false,
             root: None,
             profile: None,
             dry_run: false,

@@ -97,16 +97,16 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 POSIX shell script that:
 - Checks for a `--build` flag; if set, runs `cargo build --profile dev-opt` in `cli/` and executes the resulting binary
 - Otherwise, bootstraps the latest published binary when `bin/dotfiles` is missing
-- Verifies the downloaded binary with the published SHA-256 checksum
-- Forwards all remaining arguments to the binary with `--root`
+- Verifies the downloaded bootstrap binary with the published SHA-256 checksum
+- Exports `DOTFILES_ROOT` and forwards the remaining arguments directly to the binary
 
 #### `dotfiles.ps1` (Windows)
 
 PowerShell script with identical logic:
 - `-Build` switch builds from source with `cargo build --profile dev-opt`
 - Otherwise bootstraps `dotfiles-windows-x86_64.exe` from GitHub Releases when missing
-- Verifies checksum and promotes any staged self-update before launch
-- Forwards arguments to the binary
+- Verifies checksum, promotes any staged self-update before launch, and exports `DOTFILES_ROOT`
+- Forwards all other arguments directly to the binary
 
 ### Rust Core (`cli/`)
 

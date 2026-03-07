@@ -25,6 +25,11 @@ pub struct Cli {
 /// Options shared across all subcommands.
 #[derive(Parser, Debug, Clone)]
 pub struct GlobalOpts {
+    /// Wrapper-only compatibility flag; accepted and ignored so wrappers can
+    /// forward `--build` without extra preprocessing.
+    #[arg(long, global = true, hide = true)]
+    pub build: bool,
+
     /// Profile to use (base, desktop)
     #[arg(short, long, global = true)]
     pub profile: Option<String>,
@@ -98,6 +103,13 @@ mod tests {
     fn parse_install_with_profile() {
         let cli = Cli::parse_from(["dotfiles", "--profile", "arch", "install"]);
         assert_eq!(cli.global.profile, Some("arch".to_string()));
+        assert!(matches!(cli.command, Command::Install(_)));
+    }
+
+    #[test]
+    fn parse_hidden_build_passthrough() {
+        let cli = Cli::parse_from(["dotfiles", "install", "--build", "--only", "symlinks"]);
+        assert!(cli.global.build);
         assert!(matches!(cli.command, Command::Install(_)));
     }
 

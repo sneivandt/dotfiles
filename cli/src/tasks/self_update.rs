@@ -417,6 +417,30 @@ fn check_for_update(root: &std::path::Path, client: &dyn HttpClient) -> Result<U
     Ok(UpdateCheck::UpdateAvailable { latest, current })
 }
 
+fn handle_update_check<T, FCacheFresh, FOffline, FDevBuild, FAlreadyCurrent, FUpdateAvailable>(
+    check: UpdateCheck,
+    cache_fresh: FCacheFresh,
+    offline: FOffline,
+    dev_build: FDevBuild,
+    already_current: FAlreadyCurrent,
+    update_available: FUpdateAvailable,
+) -> Result<T>
+where
+    FCacheFresh: FnOnce() -> Result<T>,
+    FOffline: FnOnce() -> Result<T>,
+    FDevBuild: FnOnce() -> Result<T>,
+    FAlreadyCurrent: FnOnce(String) -> Result<T>,
+    FUpdateAvailable: FnOnce(String, String) -> Result<T>,
+{
+    match check {
+        UpdateCheck::CacheFresh => cache_fresh(),
+        UpdateCheck::Offline => offline(),
+        UpdateCheck::DevBuild => dev_build(),
+        UpdateCheck::AlreadyCurrent(tag) => already_current(tag),
+        UpdateCheck::UpdateAvailable { latest, current } => update_available(latest, current),
+    }
+}
+
 /// Run the binary at `path` with `--version` as a basic sanity check.
 ///
 /// Called immediately after a self-update to verify that the new binary
@@ -504,12 +528,13 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
         return Ok(false);
     }
     let client = default_http_client();
-    match check_for_update(root, &client)? {
-        UpdateCheck::CacheFresh
-        | UpdateCheck::Offline
-        | UpdateCheck::DevBuild
-        | UpdateCheck::AlreadyCurrent(_) => Ok(false),
-        UpdateCheck::UpdateAvailable { latest, current } => {
+    handle_update_check(
+        check_for_update(root, &client)?,
+        || Ok(false),
+        || Ok(false),
+        || Ok(false),
+        |_| Ok(false),
+        |latest, current| {
             if dry_run {
                 log.info(&format!("update available: {current} → {latest}"));
                 return Ok(false);
@@ -525,8 +550,8 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
             log.info("binary updated, restarting");
 
             Ok(true)
-        }
-    }
+        },
+    )
 }
 
 /// Update the running dotfiles binary to the latest GitHub release.
@@ -547,25 +572,26 @@ impl Task for UpdateBinary {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let root = ctx.root();
         let client = default_http_client();
-        match check_for_update(&root, &client)? {
-            UpdateCheck::CacheFresh => {
+        handle_update_check(
+            check_for_update(&root, &client)?,
+            || {
                 ctx.log.info("version cache is fresh, skipping check");
                 Ok(TaskResult::Skipped("cache fresh".to_string()))
-            }
-            UpdateCheck::Offline => {
+            },
+            || {
                 ctx.log
                     .warn("could not reach GitHub, skipping binary update");
                 Ok(TaskResult::Skipped("offline".to_string()))
-            }
-            UpdateCheck::DevBuild => {
+            },
+            || {
                 ctx.log.info("dev build, skipping update check");
                 Ok(TaskResult::Skipped("dev build".to_string()))
-            }
-            UpdateCheck::AlreadyCurrent(tag) => {
+            },
+            |tag| {
                 ctx.log.info(&format!("already up to date ({tag})"));
                 Ok(TaskResult::Ok)
-            }
-            UpdateCheck::UpdateAvailable { latest, .. } => {
+            },
+            |latest, _current| {
                 if ctx.dry_run {
                     ctx.log.dry_run(&format!("would update binary to {latest}"));
                     return Ok(TaskResult::DryRun);
@@ -574,8 +600,8 @@ impl Task for UpdateBinary {
                 download_and_install(&root, &latest, &client)?;
                 ctx.log.info(&format!("updated to {latest}"));
                 Ok(TaskResult::Ok)
-            }
-        }
+            },
+        )
     }
 }
 
@@ -650,15 +676,6 @@ mod tests {
         write_cache(dir.path(), "v0.1.99").unwrap();
         let content = fs::read_to_string(bin_dir.join(".dotfiles-version-cache")).unwrap();
         assert!(content.starts_with("v0.1.99\n"));
-    }
-
-    #[test]
-    fn verify_checksum_detects_mismatch() {
-        // This test cannot reach GitHub, so we only test the hash mismatch path.
-        let mut hasher = Sha256::new();
-        hasher.update(b"hello");
-        let actual_hex = format!("{:x}", hasher.finalize());
-        assert!(!actual_hex.is_empty());
     }
 
     #[test]

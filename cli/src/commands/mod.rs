@@ -70,7 +70,10 @@ pub(crate) fn re_exec(root: &std::path::Path) -> ! {
     #[cfg(all(not(unix), not(windows)))]
     {
         let args: Vec<String> = std::env::args().skip(1).collect();
-        let exe = re_exec_path(root);
+        let exe = re_exec_path(root).unwrap_or_else(|err| {
+            eprintln!("\x1b[31mError: cannot determine executable path: {err}\x1b[0m");
+            std::process::exit(1);
+        });
         match std::process::Command::new(&exe)
             .args(&args)
             .env(REEXEC_GUARD_VAR, "1")
@@ -90,20 +93,17 @@ pub(crate) fn re_exec(root: &std::path::Path) -> ! {
     }
 }
 
-#[cfg_attr(windows, allow(dead_code, unused_variables))]
+#[cfg(unix)]
 fn re_exec_path(root: &std::path::Path) -> std::path::PathBuf {
-    #[cfg(unix)]
-    {
-        root.join("bin").join("dotfiles")
-    }
+    root.join("bin").join("dotfiles")
+}
 
-    #[cfg(not(unix))]
-    {
-        std::env::current_exe().unwrap_or_else(|e| {
-            eprintln!("\x1b[31mError: cannot determine executable path: {e}\x1b[0m");
-            std::process::exit(1);
-        })
-    }
+#[cfg(not(unix))]
+#[cfg_attr(windows, allow(dead_code))]
+fn re_exec_path(_root: &std::path::Path) -> Result<std::path::PathBuf> {
+    use anyhow::Context as _;
+
+    std::env::current_exe().context("determining current executable path for re-exec")
 }
 
 #[cfg(windows)]
@@ -260,6 +260,85 @@ mod unix_tests {
     }
 }
 
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::tasks::{
+        TaskResult, task_deps,
+        test_helpers::{empty_config, make_static_context},
+    };
+    use anyhow::Result;
+    use std::path::PathBuf;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    struct CycleTaskA {
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for CycleTaskA {
+        fn name(&self) -> &'static str {
+            "cycle-a"
+        }
+
+        task_deps![CycleTaskB];
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    struct CycleTaskB {
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for CycleTaskB {
+        fn name(&self) -> &'static str {
+            "cycle-b"
+        }
+
+        task_deps![CycleTaskA];
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    #[test]
+    fn run_tasks_to_completion_bails_on_dependency_cycles() {
+        let (ctx, log) = make_static_context(empty_config(PathBuf::from("/repo")));
+        let ctx = ctx.with_parallel(true);
+        let ran_a = Arc::new(AtomicBool::new(false));
+        let ran_b = Arc::new(AtomicBool::new(false));
+        let task_a = CycleTaskA {
+            ran: Arc::clone(&ran_a),
+        };
+        let task_b = CycleTaskB {
+            ran: Arc::clone(&ran_b),
+        };
+
+        let err = run_tasks_to_completion([&task_a as &dyn Task, &task_b as &dyn Task], &ctx, &log)
+            .expect_err("cyclic task graphs should fail fast");
+
+        assert!(format!("{err:#}").contains("dependency cycle detected"));
+        assert!(!ran_a.load(Ordering::SeqCst));
+        assert!(!ran_b.load(Ordering::SeqCst));
+    }
+}
+
 /// Shared orchestration helper that combines setup and task execution.
 ///
 /// Handles platform detection, profile resolution, config loading,
@@ -347,20 +426,16 @@ fn load_config(
     log.stage("Loading configuration");
     let config = Config::load(root, profile, platform)?;
 
-    macro_rules! debug_count {
-        ($field:expr, $label:expr) => {
-            log.debug(&format!("{} {}", $field.len(), $label));
-        };
-    }
+    let debug_count = |count: usize, label: &str| log.debug(&format!("{count} {label}"));
 
-    debug_count!(config.packages, "packages");
-    debug_count!(config.symlinks, "symlinks");
-    debug_count!(config.registry, "registry entries");
-    debug_count!(config.units, "systemd units");
-    debug_count!(config.chmod, "chmod entries");
-    debug_count!(config.vscode_extensions, "vscode extensions");
-    debug_count!(config.copilot_skills, "copilot skills");
-    debug_count!(config.manifest.excluded_files, "manifest exclusions");
+    debug_count(config.packages.len(), "packages");
+    debug_count(config.symlinks.len(), "symlinks");
+    debug_count(config.registry.len(), "registry entries");
+    debug_count(config.units.len(), "systemd units");
+    debug_count(config.chmod.len(), "chmod entries");
+    debug_count(config.vscode_extensions.len(), "vscode extensions");
+    debug_count(config.copilot_skills.len(), "copilot skills");
+    debug_count(config.manifest.excluded_files.len(), "manifest exclusions");
     log.info(&format!(
         "loaded {} packages, {} symlinks",
         config.packages.len(),
@@ -397,7 +472,8 @@ fn load_config(
 ///
 /// # Errors
 ///
-/// Returns an error if one or more tasks recorded a failure.
+/// Returns an error if the task graph contains a dependency cycle or if one or
+/// more tasks recorded a failure.
 pub fn run_tasks_to_completion<'a>(
     tasks: impl IntoIterator<Item = &'a dyn Task>,
     ctx: &Context,
@@ -407,13 +483,10 @@ pub fn run_tasks_to_completion<'a>(
 
     if ctx.parallel && tasks.len() > 1 {
         if tasks::has_cycle(&tasks) {
-            log.warn("dependency cycle detected; falling back to sequential execution");
-            for task in &tasks {
-                tasks::execute(*task, ctx);
-            }
-        } else {
-            scheduler::run_tasks_parallel(&tasks, ctx, log);
+            log.error("dependency cycle detected in task graph");
+            anyhow::bail!("dependency cycle detected in task graph");
         }
+        scheduler::run_tasks_parallel(&tasks, ctx, log);
     } else {
         for task in &tasks {
             tasks::execute(*task, ctx);

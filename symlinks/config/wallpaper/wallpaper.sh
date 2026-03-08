@@ -2,8 +2,8 @@
 set -o errexit
 set -o nounset
 
-if ! command -v jq >/dev/null 2>&1 || ! command -v xdpyinfo >/dev/null 2>&1; then
-  echo "jq or xdpyinfo not found" >&2
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq not found" >&2
   exit 1
 fi
 
@@ -15,17 +15,18 @@ fi
 
 tmpfile="$(mktemp)"
 trap 'rm -f "$tmpfile"' EXIT
-query="abstract+shapes+dark"
 
-# Exclude people and text explicitly in the query to be safe
-query="$query+-people+-women+-men+-model+-text+-quote+-quotes+-typography"
+# Fetch top wallpapers from r/wallpapers for the past month
+response=$(curl -sSL -H "User-Agent: wallpaper-script/1.0" \
+  "https://www.reddit.com/r/wallpapers/top.json?t=month&limit=50")
 
-# Fetch list of wallpapers
-# categories=100 ensures General only (no Anime/People categories)
-# purity=100 ensures SFW only
-response=$(curl -sSL "https://wallhaven.cc/api/v1/search?sorting=random&purity=100&categories=100&atleast=$(xdpyinfo | awk '/dimensions/{print $2}')&q=$query")
-
-url=$(echo "$response" | jq -r '.data as $d | ($d | map(select(.favorites >= 1000))) | if length > 0 then . else $d end | .[].path' | shuf -n 1)
+# Pick the highest upvoted direct image link from the top posts
+# Strip control characters that Reddit sometimes includes in JSON responses
+url=$(printf '%s' "$response" | tr -d '\000-\011\013-\037' | jq -r '
+  [.data.children[].data
+  | select(.post_hint == "image")
+  | select(.url | test("\\.(jpg|jpeg|png)$"; "i"))
+  | .url] | first' )
 
 if [ -n "$url" ] && [ "$url" != "null" ]; then
   if curl -sfSL "$url" > "$tmpfile" && [ -s "$tmpfile" ]; then

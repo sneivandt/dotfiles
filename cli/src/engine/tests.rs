@@ -254,6 +254,29 @@ fn process_single_invalid_increments_skipped() {
 }
 
 #[test]
+fn process_single_unknown_increments_skipped() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = MockResource::new(ResourceState::Unknown {
+        reason: "SHELL not set".to_string(),
+    });
+    let opts = default_opts();
+
+    let stats = apply::process_single(
+        &ctx,
+        &resource,
+        &ResourceState::Unknown {
+            reason: "SHELL not set".to_string(),
+        },
+        &opts,
+    )
+    .unwrap();
+
+    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.changed, 0);
+}
+
+#[test]
 fn process_single_missing_skips_when_fix_missing_false() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
@@ -799,6 +822,27 @@ fn remove_single_invalid_increments_already_ok() {
     .unwrap();
     assert_eq!(stats.already_ok, 1);
     assert_eq!(stats.changed, 0);
+}
+
+#[test]
+fn remove_single_unknown_increments_skipped() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = MockResource::new(ResourceState::Unknown {
+        reason: "detection failed".to_string(),
+    });
+    let stats = apply::remove_single(
+        &ctx,
+        &resource,
+        &ResourceState::Unknown {
+            reason: "detection failed".to_string(),
+        },
+        "unlink",
+    )
+    .unwrap();
+    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.changed, 0);
+    assert_eq!(stats.already_ok, 0);
 }
 
 #[test]

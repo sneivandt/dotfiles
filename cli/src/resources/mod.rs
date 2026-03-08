@@ -120,7 +120,8 @@ pub enum ResourceChange {
     Applied,
     /// Resource was already correct (no change needed).
     AlreadyCorrect,
-    /// Resource was skipped (e.g., missing source file, or target is a protected directory).
+    /// Resource was skipped without applying a change (e.g., missing source
+    /// file, unavailable tool, or protected target directory).
     Skipped {
         /// Reason why the resource was skipped.
         reason: String,

@@ -51,7 +51,7 @@ pub(super) fn process_single<R: Applicable>(
 }
 
 /// Apply a single resource change, returning a stats delta.
-pub(super) fn apply_resource<R: Applicable>(
+fn apply_resource<R: Applicable>(
     ctx: &Context,
     resource: &R,
     opts: &ProcessOpts,
@@ -105,11 +105,7 @@ pub(super) fn apply_resource<R: Applicable>(
                     &format!("{desc} skipped: {reason}"),
                 );
             }
-            if opts.mode.bail_on_error() {
-                anyhow::bail!("failed to {} {desc}: {reason}", opts.verb);
-            }
-            ctx.log
-                .warn(&format!("failed to {} {desc}: {reason}", opts.verb));
+            ctx.log.warn(&format!("skipping {desc}: {reason}"));
             delta.skipped += 1;
         }
     }

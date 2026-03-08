@@ -361,37 +361,37 @@ fn process_single_dry_run_incorrect_increments_changed() {
 }
 
 // -----------------------------------------------------------------------
-// apply_resource
+// process_single (apply path)
 // -----------------------------------------------------------------------
 
 #[test]
-fn apply_resource_applied_increments_changed() {
+fn process_single_apply_applied_increments_changed() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = MockResource::new(ResourceState::Missing);
     let opts = default_opts();
 
-    let stats = apply::apply_resource(&ctx, &resource, &opts).unwrap();
+    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
 
     assert_eq!(stats.changed, 1);
 }
 
 #[test]
-fn apply_resource_already_correct_increments_already_ok() {
+fn process_single_apply_already_correct_increments_already_ok() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource =
         MockResource::new(ResourceState::Missing).with_apply(Ok(ResourceChange::AlreadyCorrect));
     let opts = default_opts();
 
-    let stats = apply::apply_resource(&ctx, &resource, &opts).unwrap();
+    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
 
     assert_eq!(stats.already_ok, 1);
     assert_eq!(stats.changed, 0);
 }
 
 #[test]
-fn apply_resource_skipped_no_bail_increments_skipped() {
+fn process_single_apply_skipped_no_bail_increments_skipped() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource =
@@ -400,52 +400,52 @@ fn apply_resource_skipped_no_bail_increments_skipped() {
         }));
     let opts = default_opts();
 
-    let stats = apply::apply_resource(&ctx, &resource, &opts).unwrap();
+    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
 
     assert_eq!(stats.skipped, 1);
     assert_eq!(stats.changed, 0);
 }
 
 #[test]
-fn apply_resource_error_no_bail_increments_skipped() {
+fn process_single_apply_error_no_bail_increments_skipped() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = MockResource::new(ResourceState::Missing).with_apply(Err("boom".to_string()));
     let opts = default_opts();
 
-    let stats = apply::apply_resource(&ctx, &resource, &opts).unwrap();
+    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
 
     assert_eq!(stats.skipped, 1);
     assert_eq!(stats.changed, 0);
 }
 
 #[test]
-fn apply_resource_bail_on_applied() {
+fn process_single_apply_bail_on_applied() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = MockResource::new(ResourceState::Missing);
     let opts = bail_opts();
 
-    let stats = apply::apply_resource(&ctx, &resource, &opts).unwrap();
+    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
 
     assert_eq!(stats.changed, 1);
 }
 
 #[test]
-fn apply_resource_bail_on_already_correct() {
+fn process_single_apply_bail_on_already_correct() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource =
         MockResource::new(ResourceState::Missing).with_apply(Ok(ResourceChange::AlreadyCorrect));
     let opts = bail_opts();
 
-    let stats = apply::apply_resource(&ctx, &resource, &opts).unwrap();
+    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
 
     assert_eq!(stats.already_ok, 1);
 }
 
 #[test]
-fn apply_resource_bail_on_skipped_returns_error() {
+fn process_single_apply_bail_on_skipped_still_skips() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource =
@@ -454,20 +454,20 @@ fn apply_resource_bail_on_skipped_returns_error() {
         }));
     let opts = bail_opts();
 
-    let err = apply::apply_resource(&ctx, &resource, &opts);
-    assert!(err.is_err());
-    assert!(err.unwrap_err().to_string().contains("denied"));
+    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
+    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.changed, 0);
 }
 
 #[test]
-fn apply_resource_bail_on_error_propagates() {
+fn process_single_apply_bail_on_error_propagates() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource =
         MockResource::new(ResourceState::Missing).with_apply(Err("critical".to_string()));
     let opts = bail_opts();
 
-    let err = apply::apply_resource(&ctx, &resource, &opts);
+    let err = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts);
     assert!(err.is_err());
     assert!(err.unwrap_err().to_string().contains("critical"));
 }
@@ -875,11 +875,11 @@ fn process_resource_states_parallel_no_bail_skips_errors() {
 }
 
 // -----------------------------------------------------------------------
-// categorize_error — exercised via apply_resource with typed ResourceError
+// categorize_error — exercised via process_single with typed ResourceError
 // -----------------------------------------------------------------------
 
 #[test]
-fn apply_resource_command_failed_error_lenient_skips() {
+fn process_single_command_failed_error_lenient_skips() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = TypedErrorResource {
@@ -887,13 +887,13 @@ fn apply_resource_command_failed_error_lenient_skips() {
     };
     let opts = default_opts();
 
-    let stats = apply::apply_resource(&ctx, &resource, &opts).unwrap();
+    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
     assert_eq!(stats.skipped, 1);
     assert_eq!(stats.changed, 0);
 }
 
 #[test]
-fn apply_resource_permission_denied_error_bail_propagates() {
+fn process_single_permission_denied_error_bail_propagates() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = TypedErrorResource {
@@ -901,13 +901,13 @@ fn apply_resource_permission_denied_error_bail_propagates() {
     };
     let opts = bail_opts();
 
-    let err = apply::apply_resource(&ctx, &resource, &opts);
+    let err = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts);
     assert!(err.is_err());
     assert!(err.unwrap_err().to_string().contains("permission denied"));
 }
 
 #[test]
-fn apply_resource_conflicting_state_error_lenient_skips() {
+fn process_single_conflicting_state_error_lenient_skips() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = TypedErrorResource {
@@ -915,12 +915,12 @@ fn apply_resource_conflicting_state_error_lenient_skips() {
     };
     let opts = default_opts();
 
-    let stats = apply::apply_resource(&ctx, &resource, &opts).unwrap();
+    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
     assert_eq!(stats.skipped, 1);
 }
 
 #[test]
-fn apply_resource_not_supported_error_bail_propagates() {
+fn process_single_not_supported_error_bail_propagates() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = TypedErrorResource {
@@ -928,7 +928,7 @@ fn apply_resource_not_supported_error_bail_propagates() {
     };
     let opts = bail_opts();
 
-    let err = apply::apply_resource(&ctx, &resource, &opts);
+    let err = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts);
     assert!(err.is_err());
     assert!(err.unwrap_err().to_string().contains("not supported"));
 }

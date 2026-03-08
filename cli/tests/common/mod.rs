@@ -250,10 +250,12 @@ impl IntegrationTestContext {
             Platform::detect(),
             Arc::clone(&log) as Arc<dyn Log>,
             Arc::new(StubExecutor),
-            false,
             home.path().to_path_buf(),
-            false,
-            false,
+            dotfiles_cli::tasks::ContextOpts {
+                dry_run: false,
+                parallel: false,
+                is_ci: Some(false),
+            },
         );
         ExecutionContext {
             ctx,

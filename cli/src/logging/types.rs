@@ -49,6 +49,16 @@ pub trait Output: Send + Sync {
     fn error(&self, msg: &str);
     /// Log a dry-run action message.
     fn dry_run(&self, msg: &str);
+    /// Return whether debug logging is currently active on this thread.
+    ///
+    /// This intentionally avoids `tracing::enabled!`, which can leave stale
+    /// per-layer filter state behind on replay paths.  The default
+    /// implementation only checks whether a tracing dispatcher has been set,
+    /// which is enough for this codebase because command execution installs a
+    /// DEBUG-capable file layer whenever logging is active.
+    fn debug_enabled(&self) -> bool {
+        tracing::dispatcher::has_been_set()
+    }
     /// Access the high-precision diagnostic log, if available.
     fn diagnostic(&self) -> Option<&DiagnosticLog> {
         None

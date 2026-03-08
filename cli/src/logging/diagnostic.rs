@@ -64,6 +64,8 @@ pub enum DiagEvent {
     TaskDone,
     /// A task was skipped (not applicable).
     TaskSkip,
+    /// A task failed (e.g. returned an error or panicked).
+    TaskFail,
     /// Resource state check.
     ResourceCheck,
     /// Resource apply (mutation).
@@ -88,6 +90,7 @@ impl DiagEvent {
             Self::TaskStart => "TASK_START",
             Self::TaskDone => "TASK_DONE",
             Self::TaskSkip => "TASK_SKIP",
+            Self::TaskFail => "TASK_FAIL",
             Self::ResourceCheck => "RES_CHECK",
             Self::ResourceApply => "RES_APPLY",
             Self::ResourceResult => "RES_RESULT",

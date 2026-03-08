@@ -62,14 +62,30 @@ download_file() {
   fi
 }
 
+# Resolve the latest release tag from the GitHub API.
+# Prints the tag (e.g. "v0.2.0") on success, or an empty string on failure.
+resolve_release_tag() {
+  _api_url="https://api.github.com/repos/$REPO/releases/latest"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
+         "$_api_url" 2>/dev/null | \
+      awk -F'"' '/"tag_name"/{print $4; exit}'
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO- --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
+         "$_api_url" 2>/dev/null | \
+      awk -F'"' '/"tag_name"/{print $4; exit}'
+  fi
+}
+
 # Verify checksum in a subshell to scope the trap safely.
 _verify_checksum() {
-  _vc_asset="$1"
-  _vc_binary="$2"
+  _vc_tag="$1"
+  _vc_asset="$2"
+  _vc_binary="$3"
   tmpfile=$(mktemp)
   trap 'rm -f "$tmpfile"' EXIT
   if ! download_file \
-    "https://github.com/$REPO/releases/latest/download/checksums.sha256" \
+    "https://github.com/$REPO/releases/download/$_vc_tag/checksums.sha256" \
     "$tmpfile"; then
     echo "ERROR: Failed to download checksum file." >&2
     return 1
@@ -98,7 +114,15 @@ download_binary() {
       exit 1
       ;;
   esac
-  url="https://github.com/$REPO/releases/latest/download/$asset"
+
+  tag=$(resolve_release_tag)
+  if [ -z "$tag" ]; then
+    echo "ERROR: Failed to resolve latest release tag." >&2
+    echo "Check your internet connection or use --build to build from source." >&2
+    exit 1
+  fi
+
+  url="https://github.com/$REPO/releases/download/$tag/$asset"
 
   mkdir -p "$BIN_DIR"
 
@@ -115,7 +139,7 @@ download_binary() {
     rm -f "$BINARY"
     exit 1
   fi
-  if ! ( _verify_checksum "$asset" "$BINARY" ); then
+  if ! ( _verify_checksum "$tag" "$asset" "$BINARY" ); then
     rm -f "$BINARY"
     exit 1
   fi

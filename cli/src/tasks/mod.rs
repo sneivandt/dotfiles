@@ -415,6 +415,7 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 
     match task.run_if_applicable(ctx) {
         Ok(None) => {
+            ctx.log.info("nothing configured");
             ctx.log
                 .record_task(task.name(), TaskStatus::NotApplicable, None);
         }

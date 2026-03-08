@@ -102,6 +102,9 @@ impl ProcessMode {
         match state {
             ResourceState::Correct => ResourceAction::Noop,
             ResourceState::Invalid { reason } => ResourceAction::Skip(reason.clone()),
+            ResourceState::Unknown { reason } => {
+                ResourceAction::Skip(format!("state unknown: {reason}"))
+            }
             ResourceState::Missing if self.fix_missing() => ResourceAction::Apply,
             ResourceState::Missing => ResourceAction::Skip("mode skips missing resources".into()),
             ResourceState::Incorrect { .. } if self.fix_incorrect() => ResourceAction::Apply,

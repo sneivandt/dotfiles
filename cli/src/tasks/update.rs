@@ -106,7 +106,7 @@ impl Task for UpdateRepository {
             }
             Err(e) => {
                 ctx.log.warn(&format!("git pull failed: {e:#}"));
-                Ok(TaskResult::Skipped("git pull failed".to_string()))
+                Ok(TaskResult::Failed("git pull failed".to_string()))
             }
         }
     }
@@ -412,7 +412,7 @@ mod tests {
         let task = UpdateRepository::new(repo_updated);
 
         let result = task.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("git pull failed")));
+        assert!(matches!(result, TaskResult::Failed(ref s) if s.contains("git pull failed")));
     }
 
     // -----------------------------------------------------------------------

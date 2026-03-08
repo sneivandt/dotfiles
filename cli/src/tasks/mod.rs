@@ -432,6 +432,11 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
                 ctx.log
                     .record_task(task.name(), TaskStatus::Skipped, Some(&reason));
             }
+            TaskResult::Failed(reason) => {
+                ctx.log.warn(&format!("failed: {reason}"));
+                ctx.log
+                    .record_task(task.name(), TaskStatus::Failed, Some(&reason));
+            }
             TaskResult::DryRun => {
                 ctx.log.record_task(task.name(), TaskStatus::DryRun, None);
             }
@@ -803,6 +808,20 @@ mod tests {
 
         execute(&task, &ctx);
         assert_eq!(log.failure_count(), 0);
+    }
+
+    #[test]
+    fn execute_records_task_result_failed_as_failure() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, log) = make_static_context(config);
+        let task = MockTask {
+            name: "failed-task",
+            should_run: true,
+            result: Ok(TaskResult::Failed("git pull failed".to_string())),
+        };
+
+        execute(&task, &ctx);
+        assert_eq!(log.failure_count(), 1);
     }
 
     #[test]

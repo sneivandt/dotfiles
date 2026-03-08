@@ -67,9 +67,11 @@ pub trait Applicable {
 /// let correct = ResourceState::Correct;
 /// let wrong = ResourceState::Incorrect { current: "/other/path".into() };
 /// let skip = ResourceState::Invalid { reason: "target is a directory".into() };
+/// let unknown = ResourceState::Unknown { reason: "SHELL not set".into() };
 ///
 /// assert_ne!(missing, correct);
 /// assert_eq!(correct, ResourceState::Correct);
+/// assert_ne!(unknown, missing);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResourceState {
@@ -87,6 +89,18 @@ pub enum ResourceState {
         /// Reason why the resource cannot be applied.
         reason: String,
     },
+    /// Resource state cannot be determined (e.g., detection tool unavailable).
+    ///
+    /// Unlike [`Missing`], this variant does not imply the resource needs to be
+    /// created — it means the engine genuinely cannot tell what the current state
+    /// is.  The processing engine skips `Unknown` resources rather than applying
+    /// them, and logs the reason so the operator can investigate.
+    ///
+    /// [`Missing`]: Self::Missing
+    Unknown {
+        /// Reason why the state could not be determined.
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for ResourceState {
@@ -96,6 +110,7 @@ impl std::fmt::Display for ResourceState {
             Self::Correct => write!(f, "correct"),
             Self::Incorrect { current } => write!(f, "incorrect (current: {current})"),
             Self::Invalid { reason } => write!(f, "invalid ({reason})"),
+            Self::Unknown { reason } => write!(f, "unknown ({reason})"),
         }
     }
 }
@@ -229,6 +244,24 @@ mod tests {
             },
         };
         assert!(!resource.needs_change().unwrap());
+    }
+
+    #[test]
+    fn no_change_for_unknown_resource() {
+        let resource = TestResource {
+            state: ResourceState::Unknown {
+                reason: "detection tool unavailable".to_string(),
+            },
+        };
+        assert!(!resource.needs_change().unwrap());
+    }
+
+    #[test]
+    fn unknown_state_display() {
+        let state = ResourceState::Unknown {
+            reason: "env var not set".to_string(),
+        };
+        assert_eq!(state.to_string(), "unknown (env var not set)");
     }
 
     #[test]

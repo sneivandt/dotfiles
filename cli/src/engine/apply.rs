@@ -138,6 +138,14 @@ pub(super) fn remove_single<R: Applicable>(
             ctx.debug_fmt(|| format!("{verb}: {desc}"));
             delta.changed += 1;
         }
+        ResourceState::Unknown { reason } => {
+            // Cannot determine if this resource is ours — skip removal rather
+            // than risking removing something we did not install.
+            ctx.log.warn(&format!(
+                "skipping removal of {desc}: state unknown ({reason})"
+            ));
+            delta.skipped += 1;
+        }
         _ => {
             // Not ours or doesn't exist — skip silently
             delta.already_ok += 1;

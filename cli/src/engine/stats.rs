@@ -12,11 +12,13 @@ use super::context::Context;
 /// let ok = TaskResult::Ok;
 /// let na = TaskResult::NotApplicable("nothing configured".into());
 /// let skipped = TaskResult::Skipped("not on arch".into());
+/// let failed = TaskResult::Failed("git pull failed".into());
 /// let dry = TaskResult::DryRun;
 ///
 /// assert!(matches!(ok, TaskResult::Ok));
 /// assert!(matches!(na, TaskResult::NotApplicable(_)));
 /// assert!(matches!(skipped, TaskResult::Skipped(_)));
+/// assert!(matches!(failed, TaskResult::Failed(_)));
 /// assert!(matches!(dry, TaskResult::DryRun));
 /// ```
 #[derive(Debug, Clone)]
@@ -26,8 +28,21 @@ pub enum TaskResult {
     Ok,
     /// Task is not applicable (e.g., no config matched the active profile).
     NotApplicable(String),
-    /// Task was skipped (e.g., required tool not found).
+    /// Task was explicitly skipped (e.g., running on a different platform, detached HEAD).
+    ///
+    /// Skipped indicates a deliberate decision not to act.  Use [`Failed`] when
+    /// the task attempted work but did not succeed.
+    ///
+    /// [`Failed`]: Self::Failed
     Skipped(String),
+    /// Task attempted work but encountered a non-fatal failure.
+    ///
+    /// Unlike [`Skipped`], this variant means the task tried to do something
+    /// and did not succeed.  The run continues, but the outcome is recorded
+    /// as a failure for visibility.
+    ///
+    /// [`Skipped`]: Self::Skipped
+    Failed(String),
     /// Task ran in dry-run mode.
     DryRun,
 }

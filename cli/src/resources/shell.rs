@@ -79,7 +79,9 @@ impl Applicable for DefaultShellResource {
 impl Resource for DefaultShellResource {
     fn current_state(&self) -> Result<ResourceState> {
         let Some(current_shell) = self.shell_source.current_shell() else {
-            return Ok(ResourceState::Missing);
+            return Ok(ResourceState::Unknown {
+                reason: "SHELL environment variable is not set".into(),
+            });
         };
 
         if current_shell.is_empty() {
@@ -134,12 +136,15 @@ mod tests {
     }
 
     #[test]
-    fn current_state_missing_when_shell_not_set() {
+    fn current_state_unknown_when_shell_not_set() {
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let resource =
             DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor)).with_shell(None);
         let state = resource.current_state().unwrap();
-        assert_eq!(state, ResourceState::Missing);
+        assert!(
+            matches!(state, ResourceState::Unknown { ref reason } if reason.contains("SHELL")),
+            "expected Unknown(SHELL ...), got {state:?}"
+        );
     }
 
     #[test]

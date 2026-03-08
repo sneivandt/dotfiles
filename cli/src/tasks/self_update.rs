@@ -62,6 +62,15 @@ fn pending_version_path(root: &std::path::Path) -> PathBuf {
     root.join("bin").join(PENDING_VERSION_NAME)
 }
 
+/// Path where the old Unix binary is backed up before an in-place update.
+///
+/// The file is written by [`replace_binary`] and restored by
+/// [`download_and_install`] if the post-install smoke test fails.
+#[cfg(unix)]
+fn old_binary_path(root: &std::path::Path) -> PathBuf {
+    root.join("bin").join(".dotfiles.old")
+}
+
 /// Check whether the cached version is still fresh (less than [`CACHE_MAX_AGE`]
 /// seconds old).
 fn is_cache_fresh(root: &std::path::Path) -> bool {
@@ -252,6 +261,16 @@ fn replace_binary(path: &std::path::Path, data: &[u8]) -> Result<()> {
             fs::rename(path, &old).context("renaming current binary to .old")?;
         }
 
+        // On Unix the running binary can be overwritten, but we keep a backup
+        // so that the smoke test in `download_and_install` can restore it on
+        // failure.
+        #[cfg(unix)]
+        if path.exists() {
+            let old = dir.join(".dotfiles.old");
+            fs::remove_file(&old).ok(); // Remove stale .old from a previous update if present
+            fs::rename(path, &old).context("backing up current binary to .old")?;
+        }
+
         fs::rename(&tmp, path).context("moving new binary into place")?;
         Ok(())
     })();
@@ -398,12 +417,40 @@ fn check_for_update(root: &std::path::Path, client: &dyn HttpClient) -> Result<U
     Ok(UpdateCheck::UpdateAvailable { latest, current })
 }
 
+/// Run the binary at `path` with `--version` as a basic sanity check.
+///
+/// Called immediately after a self-update to verify that the new binary
+/// starts correctly.  On failure the caller is expected to restore the
+/// backup created by [`replace_binary`].
+///
+/// # Errors
+///
+/// Returns an error if the process cannot be spawned or exits with a
+/// non-zero status code.
+#[cfg(not(windows))]
+fn smoke_test_binary(path: &std::path::Path) -> Result<()> {
+    let output = std::process::Command::new(path)
+        .arg("--version")
+        .output()
+        .with_context(|| format!("spawning smoke test for {}", path.display()))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        bail!(
+            "new binary failed smoke test (exit {:?}): {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        )
+    }
+}
+
 /// Download the release asset for the given tag and install it.
 ///
 /// # Errors
 ///
-/// Returns an error if the download, checksum verification, or binary
-/// replacement fails.
+/// Returns an error if the download, checksum verification, binary
+/// replacement, or smoke test fails.  On a smoke-test failure the previous
+/// binary is restored from the `.dotfiles.old` backup.
 fn download_and_install(root: &std::path::Path, tag: &str, client: &dyn HttpClient) -> Result<()> {
     let asset = asset_name();
     let url = format!("https://github.com/{REPO}/releases/download/{tag}/{asset}");
@@ -420,6 +467,18 @@ fn download_and_install(root: &std::path::Path, tag: &str, client: &dyn HttpClie
     {
         let bin = binary_path(root);
         replace_binary(&bin, &data)?;
+        if let Err(smoke_err) = smoke_test_binary(&bin) {
+            let old = old_binary_path(root);
+            if old.exists()
+                && let Err(restore_err) = fs::rename(&old, &bin)
+            {
+                tracing::warn!(
+                    "CRITICAL: smoke-test failed and automatic rollback also failed ({restore_err:#}). \
+                     Manual intervention required: restore {old:?} to {bin:?}"
+                );
+            }
+            return Err(smoke_err);
+        }
         write_cache(root, tag)?;
     }
 
@@ -878,5 +937,98 @@ mod tests {
             let cache = fs::read_to_string(cache_path(dir.path())).unwrap();
             assert!(cache.starts_with("v1.0.0\n"));
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Unix backup and rollback
+    // -----------------------------------------------------------------------
+
+    #[cfg(unix)]
+    #[test]
+    fn replace_binary_backs_up_existing_on_unix() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("dotfiles");
+        fs::write(&bin, b"old-content").unwrap();
+
+        replace_binary(&bin, b"new-content").unwrap();
+
+        assert_eq!(fs::read(&bin).unwrap(), b"new-content");
+        assert_eq!(
+            fs::read(dir.path().join(".dotfiles.old")).unwrap(),
+            b"old-content"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn smoke_test_binary_passes_for_valid_binary() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("ok");
+        fs::write(&bin, b"#!/bin/sh\necho v1.0.0\n").unwrap();
+        fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(smoke_test_binary(&bin).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn smoke_test_binary_fails_for_bad_binary() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bad");
+        fs::write(&bin, b"#!/bin/sh\nexit 1\n").unwrap();
+        fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let result = smoke_test_binary(&bin);
+        assert!(result.is_err());
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("smoke test"),
+            "expected 'smoke test' in: {msg}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn download_and_install_restores_on_smoke_test_failure() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+
+        // Write an existing binary that exits 0 on --version.
+        let old_binary = b"#!/bin/sh\necho v0.9.0\n";
+        let bin = binary_path(dir.path());
+        fs::write(&bin, old_binary).unwrap();
+        fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+
+        // A "corrupt" binary that always exits 1.
+        let bad_binary = b"#!/bin/sh\nexit 1\n";
+        let mut hasher = Sha256::new();
+        hasher.update(bad_binary);
+        let hash = format!("{:x}", hasher.finalize());
+        let checksums = format!("{hash}  {}\n", asset_name());
+
+        let client = MockHttpClient::new(vec![Ok(bad_binary.to_vec()), Ok(checksums.into_bytes())]);
+
+        let result = download_and_install(dir.path(), "v1.0.0", &client);
+        assert!(result.is_err(), "expected smoke-test failure");
+
+        // The old binary must be restored.
+        let restored = fs::read(&bin).unwrap();
+        assert_eq!(
+            restored, old_binary,
+            "old binary was not restored after smoke-test failure"
+        );
+
+        // Version cache must NOT have been written.
+        assert!(
+            !cache_path(dir.path()).exists(),
+            "cache should not be written after a failed update"
+        );
     }
 }

@@ -6,5 +6,4 @@
 [base]
 skills = [
   "https://github.com/github/awesome-copilot/blob/main/skills/azure-devops-cli",
-  "https://github.com/microsoft/skills/blob/main/.github/skills/azure-identity-dotnet",
 ]

@@ -214,11 +214,15 @@ fn verify_checksum(client: &dyn HttpClient, tag: &str, asset: &str, data: &[u8])
         })
         .ok_or_else(|| anyhow::anyhow!("checksum not found for {asset}"))?;
 
+    if expected.len() != 64 || !expected.chars().all(|c| c.is_ascii_hexdigit()) {
+        bail!("invalid checksum format for {asset}: expected 64 hex chars, got '{expected}'");
+    }
+
     let mut hasher = Sha256::new();
     hasher.update(data);
     let actual = format!("{:x}", hasher.finalize());
 
-    if actual != expected {
+    if !actual.eq_ignore_ascii_case(&expected) {
         bail!("checksum mismatch for {asset}: expected {expected}, got {actual}");
     }
     Ok(())
@@ -912,6 +916,33 @@ mod tests {
         let client = MockHttpClient::new(vec![Ok(checksums.into_bytes())]);
 
         verify_checksum(&client, "v1.0.0", "release build/test asset", data).unwrap();
+    }
+
+    #[test]
+    fn verify_checksum_succeeds_with_uppercase_hash() {
+        let data = b"hello world";
+        let mut hasher = Sha256::new();
+        hasher.update(data);
+        let hash = format!("{:X}", hasher.finalize());
+
+        let checksums = format!("{hash}  test-asset\n");
+        let client = MockHttpClient::new(vec![Ok(checksums.into_bytes())]);
+
+        verify_checksum(&client, "v1.0.0", "test-asset", data).unwrap();
+    }
+
+    #[test]
+    fn verify_checksum_fails_with_malformed_hash() {
+        let checksums = "tooshort  test-asset\n";
+        let client = MockHttpClient::new(vec![Ok(checksums.as_bytes().to_vec())]);
+
+        let result = verify_checksum(&client, "v1.0.0", "test-asset", b"data");
+        assert!(result.is_err());
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("invalid checksum format"),
+            "expected 'invalid checksum format' in: {msg}"
+        );
     }
 
     // -----------------------------------------------------------------------

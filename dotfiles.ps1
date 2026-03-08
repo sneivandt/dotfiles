@@ -20,9 +20,6 @@ $env:DOTFILES_ROOT = $DotfilesRoot
 $Repo = "sneivandt/dotfiles"
 $BinDir = Join-Path $DotfilesRoot "bin"
 $TransferTimeout = 120  # seconds — total transfer timeout
-# Keep RestartExitCode in sync with cli/src/commands/mod.rs.
-$RestartExitCode = 75
-$WrapperRestartEnvVar = 'DOTFILES_WRAPPER_RESTART'
 $Build = $false
 $CliArgs = @()
 foreach ($arg in $args)
@@ -142,48 +139,6 @@ function Invoke-PendingBinaryInstallOrExit
     }
 }
 
-function Get-ReleaseTag
-{
-    $latestReleaseUrl = "https://github.com/$Repo/releases/latest"
-
-    try
-    {
-        $releaseResponse = Invoke-WebRequest -Uri $latestReleaseUrl -Method Head -UseBasicParsing -TimeoutSec $TransferTimeout
-    }
-    catch
-    {
-        Write-Error "Failed to resolve latest dotfiles release: $($_.Exception.Message)"
-        exit 1
-    }
-
-    $responseUri = if (
-        ($null -ne $releaseResponse.BaseResponse) -and
-        ($null -ne $releaseResponse.BaseResponse.ResponseUri)
-    )
-    {
-        $releaseResponse.BaseResponse.ResponseUri
-    }
-    else
-    {
-        $null
-    }
-
-    if ($null -eq $responseUri)
-    {
-        Write-Error "Failed to resolve latest dotfiles release tag."
-        exit 1
-    }
-
-    $match = [regex]::Match($responseUri.AbsolutePath, '/releases/tag/(?<tag>[^/]+)$')
-    if (-not $match.Success)
-    {
-        Write-Error "Failed to parse latest dotfiles release tag from $responseUri."
-        exit 1
-    }
-
-    return $match.Groups['tag'].Value
-}
-
 # Build mode: build from source
 if ($Build)
 {
@@ -212,8 +167,7 @@ if ($Build)
 
 function Get-Binary
 {
-    $releaseTag = Get-ReleaseTag
-    $releaseBaseUrl = "https://github.com/$Repo/releases/download/$releaseTag"
+    $releaseBaseUrl = "https://github.com/$Repo/releases/latest/download"
     $url = "$releaseBaseUrl/$AssetName"
 
     if (-not (Test-Path $BinDir))
@@ -221,7 +175,7 @@ function Get-Binary
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    Write-Output "Downloading dotfiles bootstrap binary ($releaseTag)..."
+    Write-Output "Downloading dotfiles bootstrap binary..."
     try
     {
         Invoke-WebRequest -Uri $url -Method Get -OutFile $Binary -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
@@ -284,42 +238,5 @@ if (-not (Test-Path $Binary))
     Get-Binary
 }
 
-for ($attempt = 0; $attempt -lt 3; $attempt++)
-{
-    Invoke-PendingBinaryInstallOrExit
-
-    if (-not (Test-Path $Binary))
-    {
-        Write-Error "dotfiles binary not found after update promotion."
-        exit 1
-    }
-
-    $previousWrapperRestart = [Environment]::GetEnvironmentVariable($WrapperRestartEnvVar, 'Process')
-    try
-    {
-        [Environment]::SetEnvironmentVariable($WrapperRestartEnvVar, '1', 'Process')
-        & $Binary @CliArgs
-        $exitCode = $LASTEXITCODE
-    }
-    finally
-    {
-        if ($null -eq $previousWrapperRestart)
-        {
-            [Environment]::SetEnvironmentVariable($WrapperRestartEnvVar, $null, 'Process')
-        }
-        else
-        {
-            [Environment]::SetEnvironmentVariable($WrapperRestartEnvVar, $previousWrapperRestart, 'Process')
-        }
-    }
-
-    if ($exitCode -ne $RestartExitCode)
-    {
-        exit $exitCode
-    }
-
-    Write-Verbose "Binary requested wrapper restart after staging an update"
-}
-
-Write-Error "dotfiles requested too many consecutive restarts."
-exit 1
+& $Binary @CliArgs
+exit $LASTEXITCODE

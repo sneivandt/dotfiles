@@ -812,7 +812,12 @@ fn test_command_fails_on_config_warnings() {
     let opts = dotfiles_cli::cli::TestOpts {};
     let log = Arc::new(Logger::new("test-command"));
 
-    let result = dotfiles_cli::commands::test::run(&global, &opts, &log);
+    let result = dotfiles_cli::commands::test::run(
+        &global,
+        &opts,
+        &log,
+        &dotfiles_cli::engine::CancellationToken::new(),
+    );
     assert!(result.is_err(), "test command should fail on warnings");
 }
 

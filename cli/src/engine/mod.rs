@@ -13,6 +13,8 @@
 
 /// Single-resource processing: check state, apply or remove one resource.
 pub mod apply;
+/// Process-wide cancellation flag for graceful shutdown.
+pub mod cancellation;
 /// Shared execution context for tasks.
 pub mod context;
 /// Task dependency graph and cycle detection.
@@ -24,6 +26,7 @@ mod stats;
 /// Cross-task signalling for config reload.
 pub mod update_signal;
 
+pub use cancellation::CancellationToken;
 pub use context::Context;
 pub use context::ContextOpts;
 pub use mode::{ProcessMode, ProcessOpts, ResourceAction};

@@ -21,7 +21,12 @@ const TASK_FILTER_STOP_WORDS: &[&str] = &[
 /// # Errors
 ///
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
-pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Arc<Logger>) -> Result<()> {
+pub fn run(
+    global: &GlobalOpts,
+    opts: &InstallOpts,
+    log: &Arc<Logger>,
+    token: &crate::engine::CancellationToken,
+) -> Result<()> {
     let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     log.info(&format!("dotfiles {version}"));
 
@@ -36,7 +41,7 @@ pub fn run(global: &GlobalOpts, opts: &InstallOpts, log: &Arc<Logger>) -> Result
         super::re_exec(&root);
     }
 
-    let runner = super::CommandRunner::new(global, log)?;
+    let runner = super::CommandRunner::new(global, log, token)?;
 
     // Filter by --skip and --only
     let all_tasks = tasks::all_install_tasks();

@@ -678,7 +678,12 @@ fn install_run_dry_run_returns_ok() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-dry-run-pipeline"));
 
-    let result = dotfiles_cli::commands::install::run(&global, &opts, &log);
+    let result = dotfiles_cli::commands::install::run(
+        &global,
+        &opts,
+        &log,
+        &dotfiles_cli::engine::CancellationToken::new(),
+    );
     assert!(
         result.is_ok(),
         "dry-run install should return Ok: {result:?}"
@@ -709,7 +714,12 @@ fn install_run_dry_run_with_only_filter_returns_ok() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-only-filter"));
 
-    let result = dotfiles_cli::commands::install::run(&global, &opts, &log);
+    let result = dotfiles_cli::commands::install::run(
+        &global,
+        &opts,
+        &log,
+        &dotfiles_cli::engine::CancellationToken::new(),
+    );
     assert!(
         result.is_ok(),
         "dry-run install with --only symlinks should return Ok: {result:?}"
@@ -740,7 +750,12 @@ fn install_run_dry_run_with_skip_filter_returns_ok() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-skip-filter"));
 
-    let result = dotfiles_cli::commands::install::run(&global, &opts, &log);
+    let result = dotfiles_cli::commands::install::run(
+        &global,
+        &opts,
+        &log,
+        &dotfiles_cli::engine::CancellationToken::new(),
+    );
     assert!(
         result.is_ok(),
         "dry-run install with --skip packages should return Ok: {result:?}"
@@ -771,7 +786,12 @@ fn install_run_dry_run_with_only_no_match_returns_ok() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-only-no-match"));
 
-    let result = dotfiles_cli::commands::install::run(&global, &opts, &log);
+    let result = dotfiles_cli::commands::install::run(
+        &global,
+        &opts,
+        &log,
+        &dotfiles_cli::engine::CancellationToken::new(),
+    );
     assert!(
         result.is_ok(),
         "dry-run install with --only no-match should return Ok: {result:?}"
@@ -802,7 +822,12 @@ fn install_run_dry_run_with_only_filter_parallel_returns_ok() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-only-parallel"));
 
-    let result = dotfiles_cli::commands::install::run(&global, &opts, &log);
+    let result = dotfiles_cli::commands::install::run(
+        &global,
+        &opts,
+        &log,
+        &dotfiles_cli::engine::CancellationToken::new(),
+    );
     assert!(
         result.is_ok(),
         "parallel dry-run with --only symlinks should return Ok: {result:?}"
@@ -834,7 +859,12 @@ fn install_run_dry_run_with_skip_and_only_together() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-skip-and-only"));
 
-    let result = dotfiles_cli::commands::install::run(&global, &opts, &log);
+    let result = dotfiles_cli::commands::install::run(
+        &global,
+        &opts,
+        &log,
+        &dotfiles_cli::engine::CancellationToken::new(),
+    );
     assert!(
         result.is_ok(),
         "dry-run with --skip and --only should return Ok: {result:?}"

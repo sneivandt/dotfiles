@@ -38,6 +38,10 @@ pub fn process_resources<R: Resource + Send>(
     } else {
         let mut stats = TaskStats::new();
         for resource in resources {
+            if ctx.is_cancelled() {
+                ctx.log.warn("cancelled — stopping before next resource");
+                break;
+            }
             let current = resource.current_state()?;
             stats += apply::process_single(ctx, &resource, &current, opts)?;
         }
@@ -73,6 +77,10 @@ pub fn process_resource_states<R: Applicable + Send>(
     } else {
         let mut stats = TaskStats::new();
         for (resource, current) in resource_states {
+            if ctx.is_cancelled() {
+                ctx.log.warn("cancelled — stopping before next resource");
+                break;
+            }
             stats += apply::process_single(ctx, &resource, &current, opts)?;
         }
         Ok(stats.finish(ctx))
@@ -109,6 +117,10 @@ pub fn process_resources_remove<R: Resource + Send>(
     } else {
         let mut stats = TaskStats::new();
         for resource in resources {
+            if ctx.is_cancelled() {
+                ctx.log.warn("cancelled — stopping before next resource");
+                break;
+            }
             let current = resource.current_state()?;
             stats += apply::remove_single(ctx, &resource, &current, verb)?;
         }

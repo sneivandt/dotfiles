@@ -287,21 +287,22 @@ function Test-AdvancedFlagForwarding {
 # ---------------------------------------------------------------------------
 
 function Test-VersionPinnedBootstrapUrls {
-    Write-TestStage "Testing wrapper uses latest/download URLs for binary and checksum"
+    Write-TestStage "Testing wrapper resolves release tag and uses pinned URLs for binary and checksum"
 
     $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
     $content = Get-Content $wrapper -Raw
 
     if (
-        $content.Contains('$releaseBaseUrl = "https://github.com/$Repo/releases/latest/download"') -and
-        $content.Contains('$url = "$releaseBaseUrl/$AssetName"') -and
-        $content.Contains('$checksumUrl = "$releaseBaseUrl/checksums.sha256"')
+        $content.Contains('function Resolve-ReleaseTag') -and
+        $content.Contains('releases/download/$tag') -and
+        $content.Contains('$checksumUrl = "$releaseBaseUrl/checksums.sha256"') -and
+        -not $content.Contains('releases/latest/download')
     ) {
-        Write-TestPass "Wrapper uses releases/latest/download for binary and checksum"
+        Write-TestPass "Wrapper resolves release tag and uses pinned URLs for binary and checksum"
         return $true
     }
 
-    Write-TestFail "Wrapper does not use releases/latest/download for bootstrap downloads"
+    Write-TestFail "Wrapper does not use version-pinned URLs for bootstrap downloads"
     return $false
 }
 

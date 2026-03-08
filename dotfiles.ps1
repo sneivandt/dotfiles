@@ -165,9 +165,31 @@ if ($Build)
 # Subsequent update checks are handled by the binary itself; this wrapper also
 # promotes any staged Windows update before relaunch.
 
+function Resolve-ReleaseTag
+{
+    $url = "https://api.github.com/repos/$Repo/releases/latest"
+    try
+    {
+        $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec $TransferTimeout
+        $json = $response.Content | ConvertFrom-Json
+        return $json.tag_name
+    }
+    catch
+    {
+        return $null
+    }
+}
+
 function Get-Binary
 {
-    $releaseBaseUrl = "https://github.com/$Repo/releases/latest/download"
+    $tag = Resolve-ReleaseTag
+    if (-not $tag)
+    {
+        Write-Error "Failed to resolve latest release tag. Check your internet connection or use -Build to build from source."
+        exit 1
+    }
+
+    $releaseBaseUrl = "https://github.com/$Repo/releases/download/$tag"
     $url = "$releaseBaseUrl/$AssetName"
 
     if (-not (Test-Path $BinDir))

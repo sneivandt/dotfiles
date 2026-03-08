@@ -520,4 +520,40 @@ mod tests {
         );
         assert!(result.contains("[dotfiles]"), "new section must be added");
     }
+
+    // ------------------------------------------------------------------
+    // load_definitions error cases
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn load_definitions_returns_error_on_malformed_toml() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("profiles.toml");
+        std::fs::write(&path, "[base\ninclude = []\n").expect("write invalid toml");
+        let result = load_definitions(&path);
+        assert!(result.is_err(), "malformed TOML should return error");
+    }
+
+    #[test]
+    fn load_definitions_returns_error_on_type_mismatch() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("profiles.toml");
+        std::fs::write(&path, "[base]\ninclude = 42\n").expect("write invalid toml");
+        let result = load_definitions(&path);
+        assert!(
+            result.is_err(),
+            "integer instead of array should return error"
+        );
+    }
+
+    #[test]
+    fn persist_returns_error_when_git_dir_missing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // No .git directory exists
+        let result = persist(dir.path(), "base");
+        assert!(
+            result.is_err(),
+            "persist should fail when .git dir does not exist"
+        );
+    }
 }

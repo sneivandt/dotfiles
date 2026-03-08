@@ -121,4 +121,21 @@ permissions = [
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("'..'"));
     }
+
+    #[test]
+    fn load_returns_error_on_malformed_toml() {
+        let (_dir, path) = write_temp_toml("[base\npermissions = [");
+        let result = load(&path, &[Category::Base]);
+        assert!(result.is_err(), "malformed TOML should return error");
+    }
+
+    #[test]
+    fn load_returns_error_on_type_mismatch() {
+        let (_dir, path) = write_temp_toml("[base]\npermissions = \"not-an-array\"\n");
+        let result = load(&path, &[Category::Base]);
+        assert!(
+            result.is_err(),
+            "string instead of array should return error"
+        );
+    }
 }

@@ -273,4 +273,44 @@ items = [\"c\"]
         let result = filter_by_categories(items, &active);
         assert!(result.is_empty());
     }
+
+    // -----------------------------------------------------------------------
+    // load_section_items — error cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn load_section_items_returns_error_on_malformed_toml() {
+        let (_dir, path) = write_temp_toml("{{invalid toml");
+        let result = load_section_items(&path, |s: Section| s.items);
+        assert!(result.is_err(), "malformed TOML should return error");
+    }
+
+    #[test]
+    fn load_section_items_returns_error_on_type_mismatch() {
+        let (_dir, path) = write_temp_toml("[base]\nitems = 42\n");
+        let result = load_section_items(&path, |s: Section| s.items);
+        assert!(
+            result.is_err(),
+            "integer instead of array should return error"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // load_config — type mismatch
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn load_config_type_mismatch_returns_error() {
+        #[derive(Deserialize)]
+        struct Root {
+            #[allow(dead_code)]
+            key: Vec<String>,
+        }
+        let (_dir, path) = write_temp_toml("key = \"not-an-array\"\n");
+        let result: Result<Root> = load_config(&path);
+        assert!(
+            result.is_err(),
+            "string-to-array mismatch should return error"
+        );
+    }
 }

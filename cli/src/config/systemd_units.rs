@@ -136,4 +136,53 @@ units = [{ name = "some-daemon.service", scope = "system" }]
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("valid systemd extension"));
     }
+
+    #[test]
+    fn load_returns_error_on_malformed_toml() {
+        let (_dir, path) = write_temp_toml("[base\nunits = [\"ssh.service\"");
+        let result = load(&path, &[Category::Base]);
+        assert!(result.is_err(), "malformed TOML should return error");
+    }
+
+    #[test]
+    fn load_returns_error_on_type_mismatch() {
+        let (_dir, path) = write_temp_toml("[base]\nunits = 42\n");
+        let result = load(&path, &[Category::Base]);
+        assert!(
+            result.is_err(),
+            "integer instead of array should return error"
+        );
+    }
+
+    #[test]
+    fn validate_detects_empty_unit_name() {
+        use crate::platform::{Os, Platform};
+
+        let units = vec![SystemdUnit {
+            name: "  ".to_string(),
+            scope: "user".to_string(),
+        }];
+        let warnings = validate(&units, Platform::new(Os::Linux, false));
+        assert!(
+            warnings.iter().any(|w| w.message.contains("empty")),
+            "should warn about empty unit name: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn validate_warns_systemd_on_non_linux() {
+        use crate::platform::{Os, Platform};
+
+        let units = vec![SystemdUnit {
+            name: "test.service".to_string(),
+            scope: "user".to_string(),
+        }];
+        let warnings = validate(&units, Platform::new(Os::Windows, false));
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.message.contains("does not support systemd")),
+            "should warn about systemd on non-Linux: {warnings:?}"
+        );
+    }
 }

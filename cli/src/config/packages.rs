@@ -117,4 +117,36 @@ packages = [{ name = "paru-bin", aur = true }, { name = "yay", aur = true }]
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("not Arch Linux"));
     }
+
+    #[test]
+    fn load_returns_error_on_malformed_toml() {
+        let (_dir, path) = write_temp_toml("[base\npackages = [\"git\"");
+        let result = load(&path, &[Category::Base]);
+        assert!(result.is_err(), "malformed TOML should return error");
+    }
+
+    #[test]
+    fn load_returns_error_on_type_mismatch() {
+        let (_dir, path) = write_temp_toml("[base]\npackages = 42\n");
+        let result = load(&path, &[Category::Base]);
+        assert!(
+            result.is_err(),
+            "integer instead of array should return error"
+        );
+    }
+
+    #[test]
+    fn validate_warns_empty_package_name() {
+        use crate::platform::{Os, Platform};
+
+        let packages = vec![Package {
+            name: "  ".to_string(),
+            is_aur: false,
+        }];
+        let warnings = validate(&packages, Platform::new(Os::Linux, false));
+        assert!(
+            warnings.iter().any(|w| w.message.contains("empty")),
+            "should warn about empty package name: {warnings:?}"
+        );
+    }
 }

@@ -1235,3 +1235,119 @@ fn process_resource_states_parallel_dry_run() {
     let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
     assert!(matches!(result, TaskResult::DryRun));
 }
+
+// -----------------------------------------------------------------------
+// process_single — typed error variants with bail mode
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_single_command_failed_error_bail_propagates() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = TypedErrorResource {
+        error_variant: "command_failed",
+    };
+    let opts = bail_opts();
+
+    let err = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts);
+    assert!(err.is_err());
+    assert!(err.unwrap_err().to_string().contains("exit code 1"));
+}
+
+#[test]
+fn process_single_conflicting_state_error_bail_propagates() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = TypedErrorResource {
+        error_variant: "conflicting_state",
+    };
+    let opts = bail_opts();
+
+    let err = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts);
+    assert!(err.is_err());
+}
+
+#[test]
+fn process_single_permission_denied_error_lenient_skips() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = TypedErrorResource {
+        error_variant: "permission_denied",
+    };
+    let opts = default_opts();
+
+    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
+    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.changed, 0);
+}
+
+#[test]
+fn process_single_not_supported_error_lenient_skips() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = TypedErrorResource {
+        error_variant: "not_supported",
+    };
+    let opts = default_opts();
+
+    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
+    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.changed, 0);
+}
+
+// -----------------------------------------------------------------------
+// remove_single — typed error propagation
+// -----------------------------------------------------------------------
+
+#[test]
+fn remove_single_typed_error_propagates() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource =
+        MockResource::new(ResourceState::Correct).with_remove(Err("permission denied".into()));
+
+    let result = apply::remove_single(&ctx, &resource, &ResourceState::Correct, "unlink");
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("permission denied")
+    );
+}
+
+// -----------------------------------------------------------------------
+// process_resources — multiple sequential failures in lenient mode
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resources_lenient_skips_multiple_apply_errors() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resources = vec![
+        MockResource::new(ResourceState::Missing).with_apply(Err("error1".into())),
+        MockResource::new(ResourceState::Missing).with_apply(Err("error2".into())),
+        MockResource::new(ResourceState::Correct),
+    ];
+    let opts = default_opts();
+
+    let result = process_resources(&ctx, resources, &opts).unwrap();
+    assert!(matches!(result, TaskResult::Ok));
+}
+
+// -----------------------------------------------------------------------
+// process_resources_remove — parallel remove error propagation
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resources_remove_parallel_error_propagates() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = parallel_context(config);
+    let resources = vec![
+        MockResource::new(ResourceState::Correct).with_remove(Err("rm error".into())),
+        MockResource::new(ResourceState::Correct).with_remove(Err("rm error".into())),
+    ];
+
+    let result = process_resources_remove(&ctx, resources, "unlink");
+    assert!(result.is_err());
+}

@@ -86,20 +86,18 @@ impl Resource for ChmodResource {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let desired_mode = if self.target.is_dir() {
-                ensure_dir_execute_bits(desired_mode)
+            if self.target.is_dir() {
+                check_dir_recursive(&self.target, desired_mode)
             } else {
-                desired_mode
-            };
-            let current_mode =
-                std::fs::metadata(&self.target)?.permissions().mode() & MODE_BITS_MASK;
-
-            if current_mode == desired_mode {
-                Ok(ResourceState::Correct)
-            } else {
-                Ok(ResourceState::Incorrect {
-                    current: format!("{current_mode:o}"),
-                })
+                let current_mode =
+                    std::fs::metadata(&self.target)?.permissions().mode() & MODE_BITS_MASK;
+                if current_mode == desired_mode {
+                    Ok(ResourceState::Correct)
+                } else {
+                    Ok(ResourceState::Incorrect {
+                        current: format!("{current_mode:o}"),
+                    })
+                }
             }
         }
 
@@ -111,6 +109,56 @@ impl Resource for ChmodResource {
             })
         }
     }
+}
+
+/// Recursively check a directory and its contents against the desired mode.
+///
+/// Directories are compared with execute bits added (via [`ensure_dir_execute_bits`]),
+/// files are compared with execute bits stripped (via [`strip_file_execute_bits`]),
+/// matching the logic in [`apply_recursive`].
+#[cfg(unix)]
+fn check_dir_recursive(path: &std::path::Path, base_mode: u32) -> Result<ResourceState> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir_mode = ensure_dir_execute_bits(base_mode);
+    let file_mode = strip_file_execute_bits(base_mode);
+
+    let current_mode = std::fs::metadata(path)?.permissions().mode() & MODE_BITS_MASK;
+    if current_mode != dir_mode {
+        return Ok(ResourceState::Incorrect {
+            current: format!("directory {} has mode {current_mode:o}", path.display()),
+        });
+    }
+
+    let entries =
+        std::fs::read_dir(path).with_context(|| format!("reading directory {}", path.display()))?;
+
+    for entry in entries {
+        let entry = entry.with_context(|| format!("reading entry in {}", path.display()))?;
+        let entry_path = entry.path();
+
+        if entry_path.is_symlink() {
+            continue;
+        }
+
+        if entry_path.is_dir() {
+            if let state @ ResourceState::Incorrect { .. } =
+                check_dir_recursive(&entry_path, base_mode)?
+            {
+                return Ok(state);
+            }
+        } else {
+            let current_mode =
+                std::fs::metadata(&entry_path)?.permissions().mode() & MODE_BITS_MASK;
+            if current_mode != file_mode {
+                return Ok(ResourceState::Incorrect {
+                    current: format!("file {} has mode {current_mode:o}", entry_path.display()),
+                });
+            }
+        }
+    }
+
+    Ok(ResourceState::Correct)
 }
 
 #[cfg(unix)]
@@ -127,6 +175,9 @@ fn apply_recursive(path: &std::path::Path, dir_mode: u32, file_mode: u32) -> Res
         {
             let entry = entry.with_context(|| format!("reading entry in {}", path.display()))?;
             let entry_path = entry.path();
+            if entry_path.is_symlink() {
+                continue;
+            }
             if entry_path.is_dir() {
                 apply_recursive(&entry_path, dir_mode, file_mode)?;
             } else {
@@ -326,5 +377,52 @@ mod tests {
         assert_eq!(nested_mode, 0o700);
         assert_eq!(file_mode, 0o600);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn current_state_detects_wrong_file_inside_correct_directory() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file = temp_dir.path().join("secret.txt");
+        std::fs::write(&file, "secret").unwrap();
+
+        // Set the directory to the correct mode (700), but leave the file
+        // at the default mode (644). current_state should detect the file
+        // has wrong permissions even though the root directory is correct.
+        std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let resource = ChmodResource::new(temp_dir.path().to_path_buf(), "700".to_string());
+        let state = resource.current_state().unwrap();
+        assert!(
+            matches!(state, ResourceState::Incorrect { .. }),
+            "expected Incorrect when a file inside has wrong perms, got {state:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn current_state_skips_symlinks_inside_directory() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file = temp_dir.path().join("ok.txt");
+        std::fs::write(&file, "ok").unwrap();
+
+        // Create a symlink pointing to a target that doesn't exist.
+        // The recursive check should skip symlinks entirely.
+        std::os::unix::fs::symlink("/nonexistent", temp_dir.path().join("dangling")).unwrap();
+
+        std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+        let resource = ChmodResource::new(temp_dir.path().to_path_buf(), "700".to_string());
+        assert_eq!(
+            resource.current_state().unwrap(),
+            ResourceState::Correct,
+            "symlinks should be skipped during recursive check"
+        );
     }
 }

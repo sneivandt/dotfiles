@@ -90,14 +90,19 @@ fn query_names(
     mode: ParseMode,
 ) -> Result<HashSet<String>> {
     let result = executor.run_unchecked(cmd, args)?;
+    if !result.success {
+        anyhow::bail!(
+            "{cmd} query failed (exit {:?}): {}",
+            result.code,
+            result.stderr.trim()
+        );
+    }
     let mut set = HashSet::new();
-    if result.success {
-        for line in result.stdout.lines() {
-            match mode {
-                ParseMode::FirstToken => {
-                    if let Some(name) = line.split_whitespace().next() {
-                        set.insert(name.to_string());
-                    }
+    for line in result.stdout.lines() {
+        match mode {
+            ParseMode::FirstToken => {
+                if let Some(name) = line.split_whitespace().next() {
+                    set.insert(name.to_string());
                 }
             }
         }
@@ -266,7 +271,11 @@ impl PackageProvider for WingetProvider {
         )?;
 
         if !result.success {
-            return Ok(HashSet::new());
+            anyhow::bail!(
+                "winget list failed (exit {:?}): {}",
+                result.code,
+                result.stderr.trim()
+            );
         }
 
         Ok(parse_winget_ids(&result.stdout))
@@ -555,10 +564,13 @@ mod tests {
     }
 
     #[test]
-    fn get_installed_pacman_empty_on_failure() {
+    fn get_installed_pacman_returns_error_on_failure() {
         let executor = TestExecutor::fail();
-        let installed = get_installed_packages(PackageManager::Pacman, &executor).unwrap();
-        assert!(installed.is_empty());
+        let result = get_installed_packages(PackageManager::Pacman, &executor);
+        assert!(
+            result.is_err(),
+            "should return an error when the command fails"
+        );
     }
 
     #[test]

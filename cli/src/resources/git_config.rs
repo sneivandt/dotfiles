@@ -64,7 +64,10 @@ impl Applicable for GitConfigResource {
 impl Resource for GitConfigResource {
     fn current_state(&self) -> Result<ResourceState> {
         let config = git2::Config::open_default().context("opening git config")?;
-        self.state_from_config(&config)
+        let global = config
+            .open_level(git2::ConfigLevel::Global)
+            .context("opening global git config for state check")?;
+        self.state_from_config(&global)
     }
 }
 
@@ -122,6 +125,37 @@ mod tests {
         assert!(
             matches!(state, ResourceState::Incorrect { ref current } if current == "true"),
             "expected Incorrect(true), got {state:?}"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // apply_to_config
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn state_checks_global_level_only() {
+        // Simulate a local config shadowing a global value. When a local
+        // config has a different value, current_state should still report
+        // the global-level value since apply() writes to global only.
+        let dir = tempfile::tempdir().unwrap();
+        let global_path = dir.path().join("global");
+        let local_path = dir.path().join("local");
+
+        // Set global to the desired value
+        let mut global_cfg = git2::Config::open(&global_path).unwrap();
+        global_cfg.set_str("core.autocrlf", "false").unwrap();
+
+        // Set local to a different value (this would shadow global in a
+        // merged config)
+        let mut local_cfg = git2::Config::open(&local_path).unwrap();
+        local_cfg.set_str("core.autocrlf", "true").unwrap();
+
+        // state_from_config with only the global config should see "false"
+        let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
+        assert_eq!(
+            resource.state_from_config(&global_cfg).unwrap(),
+            ResourceState::Correct,
+            "checking only global level should report Correct when global matches"
         );
     }
 

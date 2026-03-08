@@ -2,7 +2,7 @@
 Description=dunst
 
 Wants=xsession.target
-After=xsession.target
+After=xsession.target picom.service
 
 ConditionFileIsExecutable=/usr/bin/dunst
 ConditionPathExists=%h/.config/dunst/dunstrc

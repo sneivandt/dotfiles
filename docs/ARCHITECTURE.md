@@ -209,6 +209,7 @@ The execution engine provides the generic resource processing loop, dependency g
 - **`update_signal.rs`** — `Arc<AtomicBool>` signalling between `UpdateRepository` and `ReloadConfig`
 
 **Implemented tasks** (`cli/src/tasks/`, executed as soon as dependencies allow):
+- `self_update` — Update the dotfiles binary from latest GitHub release
 - `developer_mode` — Enable Windows developer mode (required for symlinks)
 - `sparse_checkout` — Configure git sparse checkout
 - `update` — Update repository (`git pull --ff-only`)

@@ -54,7 +54,19 @@ require("lazy").setup({
   -- Color schemes
   { "nanotech/jellybeans.vim" },
   { "morhetz/gruvbox" },
-  { "folke/tokyonight.nvim", lazy = false, priority = 1000 },
+  {
+    "folke/tokyonight.nvim",
+    lazy = false,
+    priority = 1000,
+    config = function()
+      vim.cmd("colorscheme tokyonight-night")
+      vim.cmd("highlight CursorLine guibg=#24283b ctermbg=235")
+      vim.cmd("highlight CursorLineNr guifg=#7aa2f7 gui=bold ctermfg=4")
+      vim.cmd("highlight LineNr guifg=#565f89 ctermfg=239")
+      vim.cmd("highlight SignColumn guibg=#1a1b26 ctermbg=234")
+      vim.cmd("highlight VertSplit guifg=#414868 guibg=#1a1b26 ctermfg=239 ctermbg=234")
+    end,
+  },
 
   -- Neovim-specific plugins (only loaded in Neovim)
   {

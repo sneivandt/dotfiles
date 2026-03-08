@@ -49,8 +49,8 @@ The Dockerfile uses a multi-stage build:
 
 ```dockerfile
 # Stage 1: Build the Rust binary
-FROM ubuntu:latest AS builder
-RUN apt-get update && apt-get install -y ca-certificates curl git
+FROM ubuntu:24.04 AS builder
+RUN apt-get update && apt-get install -y build-essential ca-certificates curl git libssl-dev pkg-config
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 WORKDIR /build
 COPY cli/ cli/
@@ -58,11 +58,13 @@ COPY .git .git
 RUN cargo build --release --manifest-path cli/Cargo.toml && strip cli/target/release/dotfiles
 
 # Stage 2: Runtime image
-FROM ubuntu:latest
+FROM ubuntu:24.04
 RUN apt-get update && apt-get install -y git vim zsh tmux ...
 RUN useradd -m -s /bin/zsh sneivandt
+COPY --chown=sneivandt:sneivandt .git /home/sneivandt/dotfiles/.git
 COPY --chown=sneivandt:sneivandt conf /home/sneivandt/dotfiles/conf
 COPY --chown=sneivandt:sneivandt symlinks /home/sneivandt/dotfiles/symlinks
+COPY --chown=sneivandt:sneivandt hooks /home/sneivandt/dotfiles/hooks
 COPY --from=builder /build/cli/target/release/dotfiles /home/sneivandt/dotfiles/bin/dotfiles
 USER sneivandt
 RUN /home/sneivandt/dotfiles/bin/dotfiles --root /home/sneivandt/dotfiles -p base install

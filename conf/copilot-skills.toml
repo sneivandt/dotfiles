@@ -5,5 +5,5 @@
 
 [base]
 skills = [
-  "https://github.com/github/awesome-copilot/blob/main/skills/azure-devops-cli",
+  "https://github.com/github/awesome-copilot/tree/main/skills/azure-devops-cli",
 ]

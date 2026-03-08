@@ -59,19 +59,15 @@ not valid in unquoted table names.
 
 ```rust
 use crate::config::toml_loader;
-use crate::config::category_matcher::MatchMode;
 
 // Load and filter by category in one step
-let items = toml_loader::filter_by_categories(
-    parsed_sections,
-    active_categories,
-    MatchMode::All  // AND logic (all categories must match)
-);
+let items = toml_loader::filter_by_categories(parsed_sections, active_categories);
 ```
 
-**Match Modes**:
-- `MatchMode::All` — AND logic (default for most config files)
-- `MatchMode::Any` — OR logic (used only for manifest.toml exclusions)
+`filter_by_categories()` always uses AND logic: a section matches only when all
+of its category tags are present in the category slice passed by the caller.
+Most config modules pass `active_categories`; `manifest.rs` passes
+`excluded_categories`.
 
 ## Config Loader Pattern
 
@@ -97,7 +93,7 @@ pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<MyType>> 
         .collect();
 
     // Filter by active categories and flatten
-    Ok(toml_loader::filter_by_categories(sections, active_categories, MatchMode::All))
+    Ok(toml_loader::filter_by_categories(sections, active_categories))
 }
 ```
 
@@ -106,7 +102,7 @@ pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<MyType>> 
 | File | Format | Notes |
 |------|--------|-------|
 | `profiles.toml` | table | Profile definitions with `include`/`exclude` arrays |
-| `manifest.toml` | arrays | Sparse checkout (OR-exclude via `MatchMode::Any`) |
+| `manifest.toml` | arrays | Sparse checkout exclusions using `excluded_categories` with the same AND logic |
 | `symlinks.toml` | arrays | Profile-filtered symlink paths |
 | `packages.toml` | arrays | Simple strings or `{ name, aur }` objects |
 | `systemd-units.toml` | arrays | Systemd unit names |

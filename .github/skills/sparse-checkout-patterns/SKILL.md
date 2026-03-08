@@ -38,9 +38,9 @@ The sparse checkout system allows a single repository to support multiple enviro
 
 Maps files in `symlinks/` directory to exclusion categories. Files listed here will be excluded when their category is excluded by the active profile.
 
-### Section Headers: OR Logic
+### Section Headers: AND Logic
 
-**IMPORTANT**: Unlike other configuration files, `manifest.toml` uses **OR logic** for multi-category sections.
+`manifest.toml` uses the same **AND logic** as the other category-filtered TOML files.
 
 ```toml
 [windows]
@@ -56,13 +56,9 @@ paths = ["config/xmonad/"]
 **Logic Explanation:**
 - `[windows]` - Excluded if `windows` category is excluded
 - `[arch]` - Excluded if `arch` category is excluded
-- `[arch-desktop]` - Excluded if **EITHER** `arch` **OR** `desktop` is excluded (not both required)
+- `[arch-desktop]` - Excluded only if **BOTH** `arch` **AND** `desktop` are excluded
 
-This ensures files shared by multiple categories are excluded when ANY category is excluded, preventing partial checkouts of related files.
-
-**Contrast with Other Config Files:**
-Most other configuration files (e.g., `packages.toml`, `symlinks.toml`) use **AND logic**:
-- `[arch-desktop]` - Section processed only if **BOTH** `arch` **AND** `desktop` are active
+The implementation loads `manifest.toml` through the same category matcher used by the other config loaders. The difference is that manifest filtering checks `excluded_categories`, while most config files check `active_categories`.
 
 ### Path Format
 
@@ -185,7 +181,7 @@ paths = [
 ]
 ```
 
-**Rule**: List a file under multiple categories when it should be excluded if **ANY** of those categories is excluded.
+**Rule**: List a file under multiple categories when it should be excluded only if **ALL** of those categories are excluded.
 
 ## Adding New Files to Manifest
 
@@ -197,7 +193,7 @@ Ask: "Which profiles should NOT have this file?"
 - PowerShell script → `[windows]` (exclude on Linux)
 - Arch package config → `[arch]` (exclude on non-Arch systems)
 - GUI tool config → `[desktop]` (exclude on headless systems)
-- Window manager config → `[arch-desktop]` (exclude unless both arch AND desktop)
+- Window manager config → `[arch-desktop]` (exclude only when both arch AND desktop are excluded)
 
 ### Step 2: Add to Manifest
 
@@ -292,19 +288,19 @@ paths = [
 
 **Important Distinction:**
 
-1. **Sparse Checkout** (manifest.toml with OR logic)
+1. **Sparse Checkout** (manifest.toml with AND logic on `excluded_categories`)
    - Controls which files exist in working directory
-   - Uses OR logic: `["arch.desktop"]` = exclude if arch OR desktop excluded
+   - Uses AND logic: `[arch-desktop]` = exclude only if both `arch` and `desktop` are excluded
 
 2. **Configuration Processing** (packages.toml, symlinks.toml with AND logic)
    - Controls which items are installed/processed
-   - Uses AND logic: `["arch.desktop"]` = process only if arch AND desktop active
+   - Uses AND logic: `[arch-desktop]` = process only if both `arch` and `desktop` are active
 
 **Example:**
 ```toml
-# manifest.toml (OR logic)
+# manifest.toml (AND logic on excluded categories)
 [arch-desktop]
-paths = ["config/xmonad/"]  # Exclude if EITHER arch OR desktop excluded
+paths = ["config/xmonad/"]  # Exclude only if BOTH arch and desktop are excluded
 
 # packages.toml (AND logic)
 [arch-desktop]
@@ -325,7 +321,7 @@ This ensures files are available when their corresponding packages are installed
 ### Files Disappearing Unexpectedly
 
 1. **Check manifest sections**: File may be listed under wrong category
-2. **Review OR logic**: `[arch-desktop]` excludes if EITHER category excluded
+2. **Review AND logic**: `[arch-desktop]` excludes only when every listed category is excluded
 3. **Verify sparse checkout state**: `git sparse-checkout list`
 4. **Check for uncommitted changes**: Sparse checkout requires clean working directory
 
@@ -340,13 +336,13 @@ This ensures files are available when their corresponding packages are installed
 
 When working with sparse checkout and manifest:
 
-1. **Always use OR logic** for manifest.toml sections (unlike other config files)
+1. **Use the same AND logic** as the other category-filtered TOML files
 2. **Include trailing slash** for directories in manifest.toml
 3. **Use hyphen-separated names** for multi-category sections: `[arch-desktop]`
 4. **Paths are relative** to `symlinks/` directory (prefix not included in manifest)
 5. **Base files don't need listing** - only list files that should be excluded
 6. **Test across profiles** after adding new manifest entries
-7. **Use multi-category sections** `[arch-desktop]` when file should be excluded if ANY category is excluded
+7. **Use multi-category sections** `[arch-desktop]` when file should disappear only if every listed category is excluded
 8. **Verify auto-detection** overrides - system enforces OS compatibility automatically
 9. **Clean working directory** required before applying sparse checkout (uncommitted changes cause errors)
 10. **Document category choices** when adding new files to manifest

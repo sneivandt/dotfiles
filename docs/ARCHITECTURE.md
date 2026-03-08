@@ -183,6 +183,9 @@ pub trait Task: Send + Sync + 'static {
     /// Whether this task should run on the current platform/profile.
     fn should_run(&self, ctx: &Context) -> bool;
 
+    /// Combine applicability checks with execution.
+    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>>;
+
     /// Execute the task.
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
 }
@@ -190,7 +193,7 @@ pub trait Task: Send + Sync + 'static {
 
 A shared `Context` struct (defined in `engine/context.rs`) carries the loaded `Config`, `Platform`, `Logger`, and flags (`dry_run`, `parallel`, `home` path). Task-specific dependencies are injected via constructors: `UpdateRepository` and `ReloadConfig` share an `UpdateSignal` (`engine/update_signal.rs`) to coordinate config reloading, and hook tasks (`InstallGitHooks`, `UninstallGitHooks`) hold an `Arc<dyn FileSystemOps>` for testable filesystem access.
 
-The `execute()` function runs a task, recording the result (`Ok`, `Skipped`, `DryRun`, `Failed`) in the logger.
+The `execute()` function first checks `should_run()`, then calls `run_if_applicable()`, recording `Ok`, `NotApplicable`, `Skipped`, `DryRun`, or `Failed` in the logger.
 
 #### Engine (`engine/`)
 

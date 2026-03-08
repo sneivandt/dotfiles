@@ -24,8 +24,8 @@ Platform categories (`linux`, `windows`, `arch`) are auto-detected — users onl
 1. **Profile resolution**: `profiles::resolve()` computes `active_categories` and `excluded_categories`
 2. **Platform auto-detection**: `Platform::excludes_category()` auto-adds/excludes platform categories (`linux`, `windows`, `arch`)
 3. **Always-active**: `base` is always in `active_categories`
-4. **Config filtering**: `toml_loader::filter_by_categories(sections, active, MatchMode::All)` includes sections where ALL categories are active
-5. **Sparse checkout**: `manifest.toml` uses OR-exclude logic to filter repository files
+4. **Config filtering**: `toml_loader::filter_by_categories(sections, active_categories)` includes sections where ALL categories are active
+5. **Sparse checkout**: `manifest.toml` uses the same AND logic, but filters against `excluded_categories`
 
 ## Profile Selection Priority
 
@@ -93,5 +93,5 @@ Profile names are loaded dynamically from `profiles.toml` via `load_definitions(
 - Platform detection always overrides profile config for safety
 - Profile names are `base` or `desktop`; config section categories use hyphens (e.g. `[arch-desktop]`)
 - `active_categories` always contains `Category::Base` plus auto-detected platform categories
-- Use `filter_by_categories(sections, active, MatchMode::All)` for config filtering (AND logic)
-- Use `filter_by_categories(sections, excluded, MatchMode::Any)` for manifest filtering (OR logic)
+- Use `filter_by_categories(sections, active_categories)` for normal config filtering (AND logic)
+- Use `filter_by_categories(sections, excluded_categories)` for manifest filtering; `[arch-desktop]` is excluded only when both categories are excluded

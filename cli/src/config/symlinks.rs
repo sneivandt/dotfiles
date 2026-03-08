@@ -53,7 +53,22 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<ValidationWarning> {
             |s| &s.source,
             |s| {
                 let source_path = symlinks_dir.join(&s.source);
-                vec![
+                let target_checks: Vec<Option<String>> =
+                    s.target.as_ref().map_or_else(Vec::new, |t| {
+                        vec![
+                            check(
+                                Path::new(t).is_absolute() || t.starts_with('/'),
+                                "target path should be relative to $HOME directory",
+                            ),
+                            check(
+                                Path::new(t)
+                                    .components()
+                                    .any(|c| c == std::path::Component::ParentDir),
+                                "target path must not contain '..' components",
+                            ),
+                        ]
+                    });
+                let mut checks = vec![
                     check(
                         !source_path.exists(),
                         format!("source file does not exist: {}", source_path.display()),
@@ -62,7 +77,9 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<ValidationWarning> {
                         Path::new(&s.source).is_absolute() || s.source.starts_with('/'),
                         "source path should be relative to symlinks/ directory",
                     ),
-                ]
+                ];
+                checks.extend(target_checks);
+                checks
             },
         )
         .finish()
@@ -162,5 +179,43 @@ symlinks = [
                 .iter()
                 .any(|w| w.message.contains("does not exist"))
         );
+    }
+
+    #[test]
+    fn validate_detects_absolute_target() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let symlinks_dir = temp_dir.path().join("symlinks");
+        std::fs::create_dir_all(&symlinks_dir).unwrap();
+        std::fs::write(symlinks_dir.join("bashrc"), "").unwrap();
+
+        let symlinks = vec![Symlink {
+            source: "bashrc".to_string(),
+            target: Some("/etc/passwd".to_string()),
+        }];
+
+        let warnings = validate(&symlinks, temp_dir.path());
+        assert_eq!(warnings.len(), 1);
+        assert!(
+            warnings[0]
+                .message
+                .contains("should be relative to $HOME directory")
+        );
+    }
+
+    #[test]
+    fn validate_detects_target_path_traversal() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let symlinks_dir = temp_dir.path().join("symlinks");
+        std::fs::create_dir_all(&symlinks_dir).unwrap();
+        std::fs::write(symlinks_dir.join("bashrc"), "").unwrap();
+
+        let symlinks = vec![Symlink {
+            source: "bashrc".to_string(),
+            target: Some("../../etc/passwd".to_string()),
+        }];
+
+        let warnings = validate(&symlinks, temp_dir.path());
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("'..'"));
     }
 }

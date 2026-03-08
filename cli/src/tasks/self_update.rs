@@ -923,7 +923,10 @@ mod tests {
 
     #[test]
     fn download_and_install_writes_verified_binary() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir_in(
+            std::env::current_dir().expect("failed to get current working directory"),
+        )
+        .expect("failed to create temporary directory in current working directory");
         let bin_dir = dir.path().join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
 
@@ -1021,7 +1024,10 @@ mod tests {
     fn download_and_install_restores_on_smoke_test_failure() {
         use std::os::unix::fs::PermissionsExt;
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir_in(
+            std::env::current_dir().expect("failed to get current working directory"),
+        )
+        .expect("failed to create temporary directory in current working directory");
         let bin_dir = dir.path().join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
 

@@ -40,11 +40,12 @@ mod tests {
 
 ### Testing by Module Type
 
-**Config parsers** — use `parse_sections_from_str()` to avoid file I/O:
+**Config parsers** — use the shared temp-file helpers from `config::test_helpers`:
 ```rust
 #[test]
 fn parse_simple_section() {
-    let sections = parse_sections_from_str("[base]\nitem1\n").unwrap();
+    let (_dir, path) = write_temp_toml("[base]\nitems = [\"item1\"]\n");
+    let sections = load_section_items(&path, |s: Section| s.items).unwrap();
     assert_eq!(sections[0].items, vec!["item1"]);
 }
 ```
@@ -58,27 +59,27 @@ fn target_for_config() {
 }
 ```
 
-**Resources** — construct with `SystemExecutor` for unit tests that don't
-need mocking. Resources that shell out take `&dyn Executor`:
+**Resources** — construct with `Arc<dyn Executor>` for unit tests that don't
+need mocking. Resources that shell out take ownership of an executor handle:
 ```rust
 #[test]
 fn description_includes_manager() {
-    let executor = crate::exec::SystemExecutor;
-    let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, &executor);
+    let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
+    let resource = PackageResource::new("git".to_string(), PackageManager::Pacman, executor);
     assert_eq!(resource.description(), "git (pacman)");
 }
 
 #[test]
 fn from_entry_copies_name() {
-    let executor = crate::exec::SystemExecutor;
+    let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
     let entry = SystemdUnit { name: "dunst.service".to_string() };
-    let resource = SystemdUnitResource::from_entry(&entry, &executor);
+    let resource = SystemdUnitResource::from_entry(&entry, executor);
     assert_eq!(resource.name, "dunst.service");
 }
 ```
 
-Resources that only do filesystem operations (e.g., `SymlinkResource`) do not
-need an executor.
+Even resources that mainly work with the filesystem (for example
+`SymlinkResource`) accept an executor handle for platform-specific fallbacks.
 
 **Tasks** — use helpers from `cli/src/tasks/mod.rs` (in `#[cfg(test)]` scope):
 ```rust
@@ -146,5 +147,5 @@ GitHub Actions: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt -- --che
 
 1. Every new module must include `#[cfg(test)] mod tests`
 2. Test pure functions; use `Platform::new()` and string parsers to avoid I/O
-3. Use `SystemExecutor` when constructing resources in tests that only check descriptions or static state
+3. Use `Arc::new(SystemExecutor)` when constructing executor-backed resources in tests that only check descriptions or static state
 4. Run `cargo clippy` and `cargo fmt` before committing

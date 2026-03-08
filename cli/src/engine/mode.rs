@@ -173,6 +173,11 @@ pub struct ProcessOpts<'a> {
     pub verb: &'a str,
     /// Processing strategy controlling which states are fixable and error behaviour.
     pub mode: ProcessMode,
+    /// Force sequential processing regardless of `ctx.parallel`.
+    ///
+    /// Use for resources that share an exclusive file lock (e.g. git config),
+    /// where parallel writes would race on the lock file.
+    pub sequential: bool,
 }
 
 impl<'a> ProcessOpts<'a> {
@@ -185,6 +190,7 @@ impl<'a> ProcessOpts<'a> {
         Self {
             verb,
             mode: ProcessMode::Strict,
+            sequential: false,
         }
     }
 
@@ -197,6 +203,7 @@ impl<'a> ProcessOpts<'a> {
         Self {
             verb,
             mode: ProcessMode::Lenient,
+            sequential: false,
         }
     }
 
@@ -209,6 +216,7 @@ impl<'a> ProcessOpts<'a> {
         Self {
             verb,
             mode: ProcessMode::InstallMissing,
+            sequential: false,
         }
     }
 
@@ -220,6 +228,17 @@ impl<'a> ProcessOpts<'a> {
         Self {
             verb,
             mode: ProcessMode::FixExisting,
+            sequential: false,
         }
+    }
+
+    /// Force sequential processing regardless of the context parallel flag.
+    ///
+    /// Use for resources that share an exclusive file lock (e.g. git config),
+    /// where parallel writes would race on the lock file.
+    #[must_use]
+    pub const fn sequential(mut self) -> Self {
+        self.sequential = true;
+        self
     }
 }

@@ -9,7 +9,7 @@ resource_task! {
         name: "Configure Git",
         items: |ctx| ctx.config_read().git_settings.clone(),
         build: |s, _ctx| GitConfigResource::new(s.key, s.value),
-        opts: ProcessOpts::strict("set git config"),
+        opts: ProcessOpts::strict("set git config").sequential(),
     }
 }
 

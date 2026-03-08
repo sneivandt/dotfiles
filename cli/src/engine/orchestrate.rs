@@ -32,7 +32,7 @@ pub fn process_resources<R: Resource + Send>(
         count = resources.len()
     );
     let _enter = span.enter();
-    if ctx.parallel && resources.len() > 1 {
+    if ctx.parallel && !opts.sequential && resources.len() > 1 {
         ctx.debug_fmt(|| format!("processing {} resources in parallel", resources.len()));
         parallel::process_resources_parallel(ctx, resources, opts)
     } else {
@@ -67,7 +67,7 @@ pub fn process_resource_states<R: Applicable + Send>(
         count = resource_states.len()
     );
     let _enter = span.enter();
-    if ctx.parallel && resource_states.len() > 1 {
+    if ctx.parallel && !opts.sequential && resource_states.len() > 1 {
         ctx.debug_fmt(|| format!("processing {} resources in parallel", resource_states.len()));
         parallel::process_resource_states_parallel(ctx, resource_states, opts)
     } else {

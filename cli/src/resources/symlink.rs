@@ -140,23 +140,17 @@ fn sibling_temp_path(target: &Path, suffix: &str) -> PathBuf {
 /// Copy a regular file: stage to a temp sibling, remove the symlink, rename
 /// the temp file into place.
 fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
-    // Use a sibling temp name to keep the rename on the same filesystem.
     let tmp = sibling_temp_path(target, ".dotfiles_tmp");
     std::fs::copy(source, &tmp)
         .with_context(|| format!("copy {} to {}", source.display(), tmp.display()))?;
 
-    let cleanup_file = || {
-        std::fs::remove_file(&tmp).ok(); // Cleanup: ignore if already removed
-    };
+    let mut guard = crate::fs::TempPath::new(tmp.clone());
 
-    if let Err(e) = remove_symlink(target) {
-        cleanup_file();
-        return Err(e).with_context(|| format!("remove symlink: {}", target.display()));
-    }
-    if let Err(e) = std::fs::rename(&tmp, target) {
-        cleanup_file();
-        return Err(e).with_context(|| format!("rename {} to {}", tmp.display(), target.display()));
-    }
+    remove_symlink(target).with_context(|| format!("remove symlink: {}", target.display()))?;
+    std::fs::rename(&tmp, target)
+        .with_context(|| format!("rename {} to {}", tmp.display(), target.display()))?;
+
+    guard.persist();
     Ok(())
 }
 
@@ -165,30 +159,23 @@ fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
 /// a plain copy+delete when the rename crosses a filesystem boundary (EXDEV).
 fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
     let tmp = sibling_temp_path(target, "_dotfiles_tmp");
-
-    let cleanup_dir = || {
-        std::fs::remove_dir_all(&tmp).ok(); // Cleanup: ignore if already removed
-    };
+    let mut guard = crate::fs::TempDir::new(tmp.clone());
 
     crate::fs::copy_dir_recursive(source, &tmp, false)
         .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;
 
-    if let Err(e) = remove_symlink(target) {
-        cleanup_dir();
-        return Err(e).with_context(|| format!("remove symlink/junction: {}", target.display()));
-    }
+    remove_symlink(target)
+        .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
 
     // Prefer atomic rename; fall back to copy+delete on cross-filesystem move.
     if std::fs::rename(&tmp, target).is_err() {
-        if let Err(e) = crate::fs::copy_dir_recursive(&tmp, target, false) {
-            cleanup_dir();
-            return Err(e).with_context(|| {
-                format!("cross-fs copy {} to {}", tmp.display(), target.display())
-            });
-        }
+        crate::fs::copy_dir_recursive(&tmp, target, false)
+            .with_context(|| format!("cross-fs copy {} to {}", tmp.display(), target.display()))?;
         std::fs::remove_dir_all(&tmp)
             .with_context(|| format!("remove tmp dir: {}", tmp.display()))?;
     }
+
+    guard.persist();
     Ok(())
 }
 
@@ -331,14 +318,14 @@ fn remove_dir_fallback(path: &Path) -> Result<()> {
         .output()
         .context("failed to run rmdir")?;
     if !output.status.success() {
-        return Err(crate::error::ResourceError::CommandFailed {
-            program: "rmdir".to_string(),
-            message: format!(
+        return Err(crate::error::ResourceError::command_failed(
+            "rmdir",
+            format!(
                 "remove directory/symlink '{}': {}",
                 path.display(),
                 String::from_utf8_lossy(&output.stderr).trim()
             ),
-        }
+        )
         .into());
     }
     Ok(())

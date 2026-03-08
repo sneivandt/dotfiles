@@ -13,15 +13,15 @@ use thiserror::Error;
 /// `ResourceError` variant to enable pattern-matched recovery or
 /// categorised failure reporting in the processing layer.
 ///
+/// Use the factory methods ([`command_failed`](Self::command_failed),
+/// [`not_supported`](Self::not_supported), etc.) for concise construction.
+///
 /// # Examples
 ///
 /// ```
 /// use dotfiles_cli::error::ResourceError;
 ///
-/// let err = ResourceError::CommandFailed {
-///     program: "pacman".into(),
-///     message: "exit code 1".into(),
-/// };
+/// let err = ResourceError::command_failed("pacman", "exit code 1");
 /// assert!(err.to_string().contains("pacman"));
 /// ```
 #[derive(Error, Debug)]
@@ -60,6 +60,45 @@ pub enum ResourceError {
         /// Explanation of why the resource is unsupported.
         reason: String,
     },
+}
+
+impl ResourceError {
+    /// Create a [`CommandFailed`](Self::CommandFailed) error.
+    #[must_use]
+    pub fn command_failed(program: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::CommandFailed {
+            program: program.into(),
+            message: message.into(),
+        }
+    }
+
+    /// Create a [`PermissionDenied`](Self::PermissionDenied) error.
+    #[must_use]
+    pub fn permission_denied(path: impl Into<String>) -> Self {
+        Self::PermissionDenied { path: path.into() }
+    }
+
+    /// Create a [`ConflictingState`](Self::ConflictingState) error.
+    #[must_use]
+    pub fn conflicting_state(
+        resource: impl Into<String>,
+        expected: impl Into<String>,
+        actual: impl Into<String>,
+    ) -> Self {
+        Self::ConflictingState {
+            resource: resource.into(),
+            expected: expected.into(),
+            actual: actual.into(),
+        }
+    }
+
+    /// Create a [`NotSupported`](Self::NotSupported) error.
+    #[must_use]
+    pub fn not_supported(reason: impl Into<String>) -> Self {
+        Self::NotSupported {
+            reason: reason.into(),
+        }
+    }
 }
 
 /// Errors that arise from configuration loading and profile resolution.
@@ -167,30 +206,21 @@ mod tests {
 
     #[test]
     fn resource_error_command_failed_display() {
-        let e = ResourceError::CommandFailed {
-            program: "pacman".to_string(),
-            message: "exit code 1".to_string(),
-        };
+        let e = ResourceError::command_failed("pacman", "exit code 1");
         assert!(e.to_string().contains("pacman"));
         assert!(e.to_string().contains("exit code 1"));
     }
 
     #[test]
     fn resource_error_permission_denied_display() {
-        let e = ResourceError::PermissionDenied {
-            path: "/etc/passwd".to_string(),
-        };
+        let e = ResourceError::permission_denied("/etc/passwd");
         assert!(e.to_string().contains("/etc/passwd"));
         assert!(e.to_string().contains("permission denied"));
     }
 
     #[test]
     fn resource_error_conflicting_state_display() {
-        let e = ResourceError::ConflictingState {
-            resource: "~/.bashrc".to_string(),
-            expected: "symlink".to_string(),
-            actual: "regular file".to_string(),
-        };
+        let e = ResourceError::conflicting_state("~/.bashrc", "symlink", "regular file");
         let msg = e.to_string();
         assert!(msg.contains("~/.bashrc"));
         assert!(msg.contains("symlink"));
@@ -199,18 +229,13 @@ mod tests {
 
     #[test]
     fn resource_error_not_supported_display() {
-        let e = ResourceError::NotSupported {
-            reason: "systemd not available".to_string(),
-        };
+        let e = ResourceError::not_supported("systemd not available");
         assert!(e.to_string().contains("systemd not available"));
     }
 
     #[test]
     fn resource_error_converts_to_anyhow() {
-        let e = ResourceError::CommandFailed {
-            program: "git".to_string(),
-            message: "not found".to_string(),
-        };
+        let e = ResourceError::command_failed("git", "not found");
         let _anyhow_err: anyhow::Error = e.into();
     }
 

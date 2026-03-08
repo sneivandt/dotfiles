@@ -233,53 +233,48 @@ fn replace_binary(path: &std::path::Path, data: &[u8]) -> Result<()> {
     fs::create_dir_all(dir).context("creating bin directory")?;
 
     // Write to a temporary file in the same directory for atomic rename.
-    let tmp = dir.join(".dotfiles-update.tmp");
-    let result = (|| -> Result<()> {
-        {
-            let mut f = fs::File::create(&tmp).context("creating temp file")?;
-            f.write_all(data).context("writing binary data")?;
-            f.flush().context("flushing binary data")?;
-        }
+    let tmp_path = dir.join(".dotfiles-update.tmp");
+    let mut tmp = crate::fs::TempPath::new(tmp_path);
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))
-                .context("setting executable permission")?;
-        }
-
-        if path.is_dir() {
-            bail!("binary path points to a directory: {}", path.display());
-        }
-
-        // On Windows, the running binary is locked. Rename the current binary out
-        // of the way first, then move the new one into place.
-        #[cfg(windows)]
-        if path.exists() {
-            let old = dir.join(".dotfiles-old.exe");
-            fs::remove_file(&old).ok(); // Remove stale .old from a previous update if present
-            fs::rename(path, &old).context("renaming current binary to .old")?;
-        }
-
-        // On Unix the running binary can be overwritten, but we keep a backup
-        // so that the smoke test in `download_and_install` can restore it on
-        // failure.
-        #[cfg(unix)]
-        if path.exists() {
-            let old = dir.join(".dotfiles.old");
-            fs::remove_file(&old).ok(); // Remove stale .old from a previous update if present
-            fs::rename(path, &old).context("backing up current binary to .old")?;
-        }
-
-        fs::rename(&tmp, path).context("moving new binary into place")?;
-        Ok(())
-    })();
-
-    if result.is_err() {
-        fs::remove_file(&tmp).ok();
+    {
+        let mut f = fs::File::create(tmp.path()).context("creating temp file")?;
+        f.write_all(data).context("writing binary data")?;
+        f.flush().context("flushing binary data")?;
     }
 
-    result
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(tmp.path(), fs::Permissions::from_mode(0o755))
+            .context("setting executable permission")?;
+    }
+
+    if path.is_dir() {
+        bail!("binary path points to a directory: {}", path.display());
+    }
+
+    // On Windows, the running binary is locked. Rename the current binary out
+    // of the way first, then move the new one into place.
+    #[cfg(windows)]
+    if path.exists() {
+        let old = dir.join(".dotfiles-old.exe");
+        fs::remove_file(&old).ok(); // Remove stale .old from a previous update if present
+        fs::rename(path, &old).context("renaming current binary to .old")?;
+    }
+
+    // On Unix the running binary can be overwritten, but we keep a backup
+    // so that the smoke test in `download_and_install` can restore it on
+    // failure.
+    #[cfg(unix)]
+    if path.exists() {
+        let old = dir.join(".dotfiles.old");
+        fs::remove_file(&old).ok(); // Remove stale .old from a previous update if present
+        fs::rename(path, &old).context("backing up current binary to .old")?;
+    }
+
+    fs::rename(tmp.path(), path).context("moving new binary into place")?;
+    tmp.persist();
+    Ok(())
 }
 
 /// Stage an update for later promotion by the wrapper.
@@ -291,9 +286,10 @@ fn stage_binary(root: &std::path::Path, tag: &str, data: &[u8]) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("pending binary path has no parent directory"))?;
     fs::create_dir_all(dir).context("creating bin directory")?;
 
-    let tmp = dir.join(".dotfiles-update.tmp");
+    let tmp_path = dir.join(".dotfiles-update.tmp");
+    let mut tmp = crate::fs::TempPath::new(tmp_path);
     {
-        let mut f = fs::File::create(&tmp).context("creating temp staged file")?;
+        let mut f = fs::File::create(tmp.path()).context("creating temp staged file")?;
         f.write_all(data).context("writing staged binary data")?;
         f.flush().context("flushing staged binary data")?;
     }
@@ -301,14 +297,15 @@ fn stage_binary(root: &std::path::Path, tag: &str, data: &[u8]) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))
+        fs::set_permissions(tmp.path(), fs::Permissions::from_mode(0o755))
             .context("setting staged executable permission")?;
     }
 
     if pending.exists() {
         fs::remove_file(&pending).context("removing previous staged binary")?;
     }
-    fs::rename(&tmp, &pending).context("moving staged binary into place")?;
+    fs::rename(tmp.path(), &pending).context("moving staged binary into place")?;
+    tmp.persist();
     fs::write(pending_version_path(root), format!("{tag}\n"))
         .context("writing staged update metadata")?;
     Ok(())

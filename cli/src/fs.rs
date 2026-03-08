@@ -296,6 +296,90 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
     Ok(())
 }
 
+/// RAII guard that removes a temporary file when dropped.
+///
+/// Use this instead of manual cleanup closures when staging content through a
+/// temp file.  Call [`persist`](Self::persist) to prevent deletion (e.g., after
+/// a successful rename).
+///
+/// # Examples
+///
+/// ```ignore
+/// let tmp = TempPath::new(dir.join(".update.tmp"));
+/// std::fs::write(tmp.path(), data)?;
+/// std::fs::rename(tmp.path(), final_path)?;
+/// tmp.persist(); // prevent cleanup since rename succeeded
+/// ```
+#[derive(Debug)]
+pub struct TempPath {
+    path: PathBuf,
+    active: bool,
+}
+
+impl TempPath {
+    /// Create a guard for the given temporary file path.
+    #[must_use]
+    pub const fn new(path: PathBuf) -> Self {
+        Self { path, active: true }
+    }
+
+    /// Borrow the underlying path.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Disarm the guard so the file is **not** removed on drop.
+    pub const fn persist(&mut self) {
+        self.active = false;
+    }
+}
+
+impl Drop for TempPath {
+    fn drop(&mut self) {
+        if self.active {
+            std::fs::remove_file(&self.path).ok();
+        }
+    }
+}
+
+/// RAII guard that recursively removes a temporary directory when dropped.
+///
+/// Analogous to [`TempPath`] but for directory trees.  Call
+/// [`persist`](Self::persist) to prevent deletion.
+#[derive(Debug)]
+pub struct TempDir {
+    path: PathBuf,
+    active: bool,
+}
+
+impl TempDir {
+    /// Create a guard for the given temporary directory path.
+    #[must_use]
+    pub const fn new(path: PathBuf) -> Self {
+        Self { path, active: true }
+    }
+
+    /// Borrow the underlying path.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Disarm the guard so the directory is **not** removed on drop.
+    pub const fn persist(&mut self) {
+        self.active = false;
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        if self.active {
+            std::fs::remove_dir_all(&self.path).ok();
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
@@ -427,5 +511,74 @@ mod tests {
 
         assert!(!fs.exists(path));
         assert!(!fs.is_file(path));
+    }
+
+    // -----------------------------------------------------------------------
+    // TempPath
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn temp_path_removes_file_on_drop() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("tmp_file");
+        std::fs::write(&file, "data").unwrap();
+        assert!(file.exists());
+
+        {
+            let _guard = TempPath::new(file.clone());
+        }
+        assert!(!file.exists(), "file should be removed on drop");
+    }
+
+    #[test]
+    fn temp_path_persist_prevents_removal() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("keep_file");
+        std::fs::write(&file, "data").unwrap();
+
+        {
+            let mut guard = TempPath::new(file.clone());
+            guard.persist();
+        }
+        assert!(file.exists(), "file should remain after persist + drop");
+    }
+
+    #[test]
+    fn temp_path_noop_when_file_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("nonexistent");
+        // Should not panic when the file doesn't exist
+        let _guard = TempPath::new(file);
+    }
+
+    // -----------------------------------------------------------------------
+    // TempDir
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn temp_dir_removes_directory_on_drop() {
+        let dir = tempfile::tempdir().unwrap();
+        let td = dir.path().join("tmp_dir");
+        std::fs::create_dir(&td).unwrap();
+        std::fs::write(td.join("child.txt"), "data").unwrap();
+        assert!(td.exists());
+
+        {
+            let _guard = TempDir::new(td.clone());
+        }
+        assert!(!td.exists(), "directory should be removed on drop");
+    }
+
+    #[test]
+    fn temp_dir_persist_prevents_removal() {
+        let dir = tempfile::tempdir().unwrap();
+        let td = dir.path().join("keep_dir");
+        std::fs::create_dir(&td).unwrap();
+
+        {
+            let mut guard = TempDir::new(td.clone());
+            guard.persist();
+        }
+        assert!(td.exists(), "directory should remain after persist + drop");
     }
 }

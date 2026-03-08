@@ -46,12 +46,10 @@ pub trait Applicable {
     /// Returns an error if the resource cannot be removed, or if removal is not supported
     /// for this resource type.
     fn remove(&self) -> Result<ResourceChange> {
-        Err(crate::error::ResourceError::NotSupported {
-            reason: format!(
-                "operation 'remove' is not supported for resource '{}'",
-                self.description()
-            ),
-        }
+        Err(crate::error::ResourceError::not_supported(format!(
+            "operation 'remove' is not supported for resource '{}'",
+            self.description()
+        ))
         .into())
     }
 }

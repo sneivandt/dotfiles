@@ -8,27 +8,109 @@ use super::{Applicable, Resource, ResourceChange, ResourceState};
 #[cfg(unix)]
 const MODE_BITS_MASK: u32 = 0o7777;
 
+/// A validated octal file permission mode (e.g., `"600"`, `"0755"`).
+///
+/// Parsing validates that the string is 3–4 ASCII octal digits, so
+/// consumers can call [`as_u32`](Self::as_u32) without error handling.
+///
+/// # Examples
+///
+/// ```
+/// use dotfiles_cli::resources::chmod::OctalMode;
+///
+/// let mode = OctalMode::parse("755").unwrap();
+/// assert_eq!(mode.as_u32(), 0o755);
+/// assert_eq!(mode.as_str(), "755");
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OctalMode {
+    raw: String,
+    bits: u32,
+}
+
+/// Minimum length for octal mode strings.
+const OCTAL_MODE_MIN_LEN: usize = 3;
+
+/// Maximum length for octal mode strings.
+const OCTAL_MODE_MAX_LEN: usize = 4;
+
+impl OctalMode {
+    /// Parse and validate an octal mode string.
+    ///
+    /// Accepts 3- or 4-digit strings consisting of octal digits (`0`–`7`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a human-readable error message if the string is invalid.
+    pub fn parse(s: &str) -> std::result::Result<Self, String> {
+        if !s.chars().all(|c| c.is_ascii_digit()) {
+            return Err(format!(
+                "invalid octal mode '{s}': must contain only digits"
+            ));
+        }
+        if s.len() < OCTAL_MODE_MIN_LEN || s.len() > OCTAL_MODE_MAX_LEN {
+            return Err(format!(
+                "invalid mode length '{s}': must be {OCTAL_MODE_MIN_LEN} or {OCTAL_MODE_MAX_LEN} digits"
+            ));
+        }
+        if let Some(c) = s.chars().find(|&c| c > '7') {
+            return Err(format!("invalid octal digit '{c}' in mode '{s}'"));
+        }
+        // Validated above, so this cannot fail.
+        let bits = u32::from_str_radix(s, 8).map_err(|e| e.to_string())?;
+        Ok(Self {
+            raw: s.to_string(),
+            bits,
+        })
+    }
+
+    /// The numeric permission bits.
+    #[must_use]
+    pub const fn as_u32(&self) -> u32 {
+        self.bits
+    }
+
+    /// The original string representation.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.raw
+    }
+}
+
+impl std::fmt::Display for OctalMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.raw)
+    }
+}
+
 /// A file permission resource that can be checked and applied (Unix only).
 #[derive(Debug, Clone)]
 pub struct ChmodResource {
     /// Target file path (absolute).
     pub target: PathBuf,
-    /// Permission mode (e.g., "600", "755").
-    pub mode: String,
+    /// Validated permission mode.
+    pub mode: OctalMode,
 }
 
 impl ChmodResource {
     /// Create a new chmod resource.
     #[must_use]
-    pub const fn new(target: PathBuf, mode: String) -> Self {
+    pub const fn new(target: PathBuf, mode: OctalMode) -> Self {
         Self { target, mode }
     }
 
     /// Create from a config entry and home directory.
-    #[must_use]
-    pub fn from_entry(entry: &crate::config::chmod::ChmodEntry, home: &std::path::Path) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the mode string in the entry is not valid octal.
+    pub fn from_entry(
+        entry: &crate::config::chmod::ChmodEntry,
+        home: &std::path::Path,
+    ) -> Result<Self> {
         let target = home.join(format!(".{}", entry.path));
-        Self::new(target, entry.mode.clone())
+        let mode = OctalMode::parse(&entry.mode).map_err(|msg| anyhow::anyhow!("{msg}"))?;
+        Ok(Self::new(target, mode))
     }
 }
 
@@ -42,8 +124,7 @@ impl Applicable for ChmodResource {
         {
             use std::os::unix::fs::PermissionsExt;
 
-            let mode = u32::from_str_radix(&self.mode, 8)
-                .with_context(|| format!("invalid octal mode: {}", self.mode))?;
+            let mode = self.mode.as_u32();
 
             if self.target.is_dir() {
                 apply_recursive(
@@ -78,9 +159,7 @@ impl Resource for ChmodResource {
             });
         }
 
-        // Parse the desired mode
-        let desired_mode = u32::from_str_radix(&self.mode, 8)
-            .with_context(|| format!("invalid octal mode: {}", self.mode))?;
+        let desired_mode = self.mode.as_u32();
 
         // Get current mode (Unix only)
         #[cfg(unix)]
@@ -227,10 +306,73 @@ const fn strip_file_execute_bits(mode: u32) -> u32 {
 mod tests {
     use super::*;
 
+    /// Shorthand for tests: parse an octal mode or panic.
+    fn mode(s: &str) -> OctalMode {
+        OctalMode::parse(s).unwrap()
+    }
+
+    // -----------------------------------------------------------------------
+    // OctalMode
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn octal_mode_parses_valid_modes() {
+        assert_eq!(OctalMode::parse("644").unwrap().as_u32(), 0o644);
+        assert_eq!(OctalMode::parse("755").unwrap().as_u32(), 0o755);
+        assert_eq!(OctalMode::parse("0644").unwrap().as_u32(), 0o644);
+        assert_eq!(OctalMode::parse("0755").unwrap().as_u32(), 0o755);
+        assert_eq!(OctalMode::parse("600").unwrap().as_u32(), 0o600);
+        assert_eq!(OctalMode::parse("777").unwrap().as_u32(), 0o777);
+    }
+
+    #[test]
+    fn octal_mode_rejects_non_digits() {
+        let err = OctalMode::parse("abc").unwrap_err();
+        assert!(err.contains("must contain only digits"));
+    }
+
+    #[test]
+    fn octal_mode_rejects_invalid_length() {
+        assert!(
+            OctalMode::parse("12")
+                .unwrap_err()
+                .contains("must be 3 or 4 digits")
+        );
+        assert!(
+            OctalMode::parse("12345")
+                .unwrap_err()
+                .contains("must be 3 or 4 digits")
+        );
+    }
+
+    #[test]
+    fn octal_mode_rejects_invalid_octal_digits() {
+        assert!(
+            OctalMode::parse("888")
+                .unwrap_err()
+                .contains("invalid octal digit '8'")
+        );
+        assert!(
+            OctalMode::parse("799")
+                .unwrap_err()
+                .contains("invalid octal digit '9'")
+        );
+    }
+
+    #[test]
+    fn octal_mode_display() {
+        let m = OctalMode::parse("644").unwrap();
+        assert_eq!(m.to_string(), "644");
+        assert_eq!(m.as_str(), "644");
+    }
+
+    // -----------------------------------------------------------------------
+    // ChmodResource
+    // -----------------------------------------------------------------------
+
     #[test]
     fn chmod_resource_description() {
-        let resource =
-            ChmodResource::new(PathBuf::from("/home/user/.ssh/config"), "600".to_string());
+        let resource = ChmodResource::new(PathBuf::from("/home/user/.ssh/config"), mode("600"));
         assert!(resource.description().contains("600"));
         assert!(resource.description().contains(".ssh/config"));
     }
@@ -238,7 +380,7 @@ mod tests {
     #[test]
     fn chmod_resource_invalid_when_target_missing() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let resource = ChmodResource::new(temp_dir.path().join("nonexistent"), "600".to_string());
+        let resource = ChmodResource::new(temp_dir.path().join("nonexistent"), mode("600"));
 
         let state = resource.current_state().unwrap();
         assert!(matches!(state, ResourceState::Invalid { .. }));
@@ -253,11 +395,10 @@ mod tests {
         let file = temp_dir.path().join("test.txt");
         std::fs::write(&file, "test").unwrap();
 
-        // Set to 644
         let perms = std::fs::Permissions::from_mode(0o644);
         std::fs::set_permissions(&file, perms).unwrap();
 
-        let resource = ChmodResource::new(file, "644".to_string());
+        let resource = ChmodResource::new(file, mode("644"));
         let state = resource.current_state().unwrap();
         assert_eq!(state, ResourceState::Correct);
     }
@@ -271,12 +412,10 @@ mod tests {
         let file = temp_dir.path().join("test.txt");
         std::fs::write(&file, "test").unwrap();
 
-        // Set to 644
         let perms = std::fs::Permissions::from_mode(0o644);
         std::fs::set_permissions(&file, perms).unwrap();
 
-        // Check for 600
-        let resource = ChmodResource::new(file, "600".to_string());
+        let resource = ChmodResource::new(file, mode("600"));
         let state = resource.current_state().unwrap();
         match state {
             ResourceState::Incorrect { current } => {
@@ -295,16 +434,13 @@ mod tests {
         let file = temp_dir.path().join("test.txt");
         std::fs::write(&file, "test").unwrap();
 
-        // Set to 644
         let perms = std::fs::Permissions::from_mode(0o644);
         std::fs::set_permissions(&file, perms).unwrap();
 
-        // Apply 600
-        let resource = ChmodResource::new(file.clone(), "600".to_string());
+        let resource = ChmodResource::new(file.clone(), mode("600"));
         let result = resource.apply().unwrap();
         assert_eq!(result, ResourceChange::Applied);
 
-        // Verify the change
         let current_mode = std::fs::metadata(&file).unwrap().permissions().mode() & MODE_BITS_MASK;
         assert_eq!(current_mode, 0o600);
     }
@@ -317,13 +453,23 @@ mod tests {
         };
 
         let home = std::path::Path::new("/home/user");
-        let resource = ChmodResource::from_entry(&entry, home);
+        let resource = ChmodResource::from_entry(&entry, home).unwrap();
 
-        assert_eq!(resource.mode, "600");
+        assert_eq!(resource.mode, mode("600"));
         assert_eq!(
             resource.target,
             std::path::PathBuf::from("/home/user/.ssh/config")
         );
+    }
+
+    #[test]
+    fn from_entry_rejects_invalid_mode() {
+        let entry = crate::config::chmod::ChmodEntry {
+            mode: "999".to_string(),
+            path: "ssh/config".to_string(),
+        };
+        let home = std::path::Path::new("/home/user");
+        assert!(ChmodResource::from_entry(&entry, home).is_err());
     }
 
     #[cfg(unix)]
@@ -360,7 +506,7 @@ mod tests {
         std::fs::create_dir(&nested_dir).unwrap();
         std::fs::write(&file, "secret").unwrap();
 
-        let resource = ChmodResource::new(temp_dir.path().to_path_buf(), "700".to_string());
+        let resource = ChmodResource::new(temp_dir.path().to_path_buf(), mode("700"));
         let result = resource.apply().unwrap();
         assert_eq!(result, ResourceChange::Applied);
 
@@ -388,13 +534,10 @@ mod tests {
         let file = temp_dir.path().join("secret.txt");
         std::fs::write(&file, "secret").unwrap();
 
-        // Set the directory to the correct mode (700), but leave the file
-        // at the default mode (644). current_state should detect the file
-        // has wrong permissions even though the root directory is correct.
         std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-        let resource = ChmodResource::new(temp_dir.path().to_path_buf(), "700".to_string());
+        let resource = ChmodResource::new(temp_dir.path().to_path_buf(), mode("700"));
         let state = resource.current_state().unwrap();
         assert!(
             matches!(state, ResourceState::Incorrect { .. }),
@@ -411,14 +554,12 @@ mod tests {
         let file = temp_dir.path().join("ok.txt");
         std::fs::write(&file, "ok").unwrap();
 
-        // Create a symlink pointing to a target that doesn't exist.
-        // The recursive check should skip symlinks entirely.
         std::os::unix::fs::symlink("/nonexistent", temp_dir.path().join("dangling")).unwrap();
 
         std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
 
-        let resource = ChmodResource::new(temp_dir.path().to_path_buf(), "700".to_string());
+        let resource = ChmodResource::new(temp_dir.path().to_path_buf(), mode("700"));
         assert_eq!(
             resource.current_state().unwrap(),
             ResourceState::Correct,

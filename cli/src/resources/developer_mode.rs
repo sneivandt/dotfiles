@@ -59,9 +59,9 @@ impl Applicable for DeveloperModeResource {
         }
         #[cfg(not(windows))]
         {
-            Err(crate::error::ResourceError::NotSupported {
-                reason: "developer mode is only supported on Windows".to_string(),
-            }
+            Err(crate::error::ResourceError::not_supported(
+                "developer mode is only supported on Windows",
+            )
             .into())
         }
     }

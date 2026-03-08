@@ -89,25 +89,10 @@ impl Applicable for TypedErrorResource {
 
     fn apply(&self) -> anyhow::Result<ResourceChange> {
         match self.error_variant {
-            "command_failed" => Err(ResourceError::CommandFailed {
-                program: "pacman".into(),
-                message: "exit code 1".into(),
-            }
-            .into()),
-            "permission_denied" => Err(ResourceError::PermissionDenied {
-                path: "/etc/secure".into(),
-            }
-            .into()),
-            "conflicting_state" => Err(ResourceError::ConflictingState {
-                resource: "test".into(),
-                expected: "a".into(),
-                actual: "b".into(),
-            }
-            .into()),
-            "not_supported" => Err(ResourceError::NotSupported {
-                reason: "linux only".into(),
-            }
-            .into()),
+            "command_failed" => Err(ResourceError::command_failed("pacman", "exit code 1").into()),
+            "permission_denied" => Err(ResourceError::permission_denied("/etc/secure").into()),
+            "conflicting_state" => Err(ResourceError::conflicting_state("test", "a", "b").into()),
+            "not_supported" => Err(ResourceError::not_supported("linux only").into()),
             other => Err(anyhow::anyhow!("unknown error variant: {other}")),
         }
     }

@@ -177,11 +177,11 @@ fn download_github_folder(url: &str, dest: &Path, executor: &dyn Executor) -> Re
         // Copy result to destination
         let src = tmp.join(&subpath);
         if !src.exists() {
-            return Err(ResourceError::ConflictingState {
-                resource: format!("skill path {subpath}"),
-                expected: "path exists in repository".to_string(),
-                actual: "path not found after checkout".to_string(),
-            }
+            return Err(ResourceError::conflicting_state(
+                format!("skill path {subpath}"),
+                "path exists in repository",
+                "path not found after checkout",
+            )
             .into());
         }
 

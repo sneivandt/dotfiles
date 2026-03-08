@@ -17,35 +17,6 @@ pub struct ChmodEntry {
 
 config_section!(field: "permissions", ty: ChmodEntry);
 
-/// Minimum length for octal mode strings.
-const OCTAL_MODE_MIN_LEN: usize = 3;
-
-/// Maximum length for octal mode strings.
-const OCTAL_MODE_MAX_LEN: usize = 4;
-
-/// Validates an octal mode string (e.g., "644", "0755").
-///
-/// Returns `Some(error_message)` if the mode is invalid, or `None` if valid.
-fn validate_octal_mode(mode: &str) -> Option<String> {
-    if !mode.chars().all(|c| c.is_ascii_digit()) {
-        return Some(format!(
-            "invalid octal mode '{mode}': must contain only digits"
-        ));
-    }
-
-    if mode.len() < OCTAL_MODE_MIN_LEN || mode.len() > OCTAL_MODE_MAX_LEN {
-        return Some(format!(
-            "invalid mode length '{mode}': must be {OCTAL_MODE_MIN_LEN} or {OCTAL_MODE_MAX_LEN} digits"
-        ));
-    }
-
-    if let Some(c) = mode.chars().find(|&c| c > '7') {
-        return Some(format!("invalid octal digit '{c}' in mode '{mode}'"));
-    }
-
-    None
-}
-
 /// Validate chmod entries and return any warnings.
 #[must_use]
 pub fn validate(
@@ -53,6 +24,7 @@ pub fn validate(
     platform: crate::platform::Platform,
 ) -> Vec<ValidationWarning> {
     use super::helpers::validation::{Validator, check};
+    use crate::resources::chmod::OctalMode;
 
     let mut v = Validator::new("chmod.toml");
     v.warn_if(
@@ -65,7 +37,7 @@ pub fn validate(
         |e| &e.path,
         |e| {
             vec![
-                validate_octal_mode(&e.mode),
+                OctalMode::parse(&e.mode).err(),
                 check(
                     Path::new(&e.path).is_absolute() || e.path.starts_with('/'),
                     "path should be relative to $HOME directory",
@@ -129,44 +101,5 @@ permissions = [
         let warnings = validate(&entries, Platform::new(Os::Linux, false));
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("must be 3 or 4 digits"));
-    }
-
-    #[test]
-    fn validate_octal_mode_accepts_valid_modes() {
-        assert_eq!(validate_octal_mode("644"), None);
-        assert_eq!(validate_octal_mode("755"), None);
-        assert_eq!(validate_octal_mode("0644"), None);
-        assert_eq!(validate_octal_mode("0755"), None);
-        assert_eq!(validate_octal_mode("600"), None);
-        assert_eq!(validate_octal_mode("777"), None);
-    }
-
-    #[test]
-    fn validate_octal_mode_rejects_non_digits() {
-        let result = validate_octal_mode("abc");
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("must contain only digits"));
-    }
-
-    #[test]
-    fn validate_octal_mode_rejects_invalid_length() {
-        let result = validate_octal_mode("12");
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("must be 3 or 4 digits"));
-
-        let result = validate_octal_mode("12345");
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("must be 3 or 4 digits"));
-    }
-
-    #[test]
-    fn validate_octal_mode_rejects_invalid_octal_digits() {
-        let result = validate_octal_mode("888");
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("invalid octal digit '8'"));
-
-        let result = validate_octal_mode("799");
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("invalid octal digit '9'"));
     }
 }

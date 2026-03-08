@@ -10,9 +10,22 @@ resource_task! {
         deps: [super::symlinks::InstallSymlinks],
         guard: |ctx| ctx.platform.supports_chmod(),
         items: |ctx| ctx.config_read().chmod.clone(),
-        build: |entry, ctx| ChmodResource::from_entry(&entry, &ctx.home),
+        build: |entry, ctx| build_resource(&entry, &ctx.home),
         opts: ProcessOpts::fix_existing("apply permissions"),
     }
+}
+
+/// Build a [`ChmodResource`] from a config entry.
+///
+/// Mode validity is verified by config validation before tasks run, so a
+/// parse failure here indicates a bug in the validation pipeline.
+#[allow(clippy::expect_used)]
+fn build_resource(
+    entry: &crate::config::chmod::ChmodEntry,
+    home: &std::path::Path,
+) -> ChmodResource {
+    ChmodResource::from_entry(entry, home)
+        .expect("invalid octal mode should have been caught by config validation")
 }
 
 #[cfg(test)]

@@ -449,10 +449,10 @@ pub fn batch_install_packages(resources: &[&PackageResource]) -> Result<()> {
             for resource in &group {
                 let change = resource.apply()?;
                 if let ResourceChange::Skipped { reason } = change {
-                    return Err(crate::error::ResourceError::CommandFailed {
-                        program: provider.name().to_string(),
-                        message: format!("install failed for '{}': {reason}", resource.name),
-                    }
+                    return Err(crate::error::ResourceError::command_failed(
+                        provider.name(),
+                        format!("install failed for '{}': {reason}", resource.name),
+                    )
                     .into());
                 }
             }

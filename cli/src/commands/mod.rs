@@ -267,7 +267,7 @@ mod unix_tests {
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
-mod tests {
+mod task_graph_tests {
     use super::*;
     use crate::tasks::{
         TaskResult, task_deps,

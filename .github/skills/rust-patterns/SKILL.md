@@ -380,8 +380,8 @@ The executor flows top-down through the system:
 
 1. **Commands** create a `Context` via `CommandRunner::new()`, which detects the platform, resolves the profile, loads config, and builds the `Context` directly
 2. **Context** stores `executor: Arc<dyn Executor>`
-3. **Tasks** pass `&*ctx.executor` to resource constructors and batch query functions
-4. **Resources** store `executor: &'a dyn Executor` and call `self.executor.run()` etc.
+3. **Tasks** clone `ctx.executor` into resource constructors and pass `&*ctx.executor` to helper functions that only need a borrowed executor
+4. **Resources** that shell out store `executor: Arc<dyn Executor>` and call `self.executor.run()` etc.
 
 ```rust
 // In commands/install.rs
@@ -391,11 +391,11 @@ runner.run(tasks.iter().map(Box::as_ref))
 
 `CommandRunner::new()` detects the platform, resolves the profile, loads config, and constructs the `Context` directly, then stores the resulting `Context` and `Arc<Logger>`. `CommandRunner::run()` delegates to `run_tasks_to_completion()`.
 
-Resources borrow the executor for the duration of the task. Pass `&*ctx.executor`
-(deref coercion) when constructing resources:
+Resources that shell out own an `Arc<dyn Executor>`. Clone the context executor
+when constructing them:
 
 ```rust
-let resource = PackageResource::new(name, manager, &*ctx.executor);
+let resource = PackageResource::new(name, manager, Arc::clone(&ctx.executor));
 ```
 
 Some free-standing query functions also take the executor:
@@ -411,7 +411,7 @@ let cached = batch_check_values(&resources)?;
 
 ## Config Loader Pattern
 
-Each `config/*.rs` module: `toml_loader::load_section_items(path, extract)` → `toml_loader::filter_by_categories(sections, categories, MatchMode::All)` → map items.
+Each `config/*.rs` module: `toml_loader::load_section_items(path, extract)` → `toml_loader::filter_by_categories(sections, categories)` → map items.
 
 For simple flat lists, use the convenience wrapper `toml_loader::load_section::<S>(path, active_categories)` which combines all three steps via the `ConfigSection` trait.
 

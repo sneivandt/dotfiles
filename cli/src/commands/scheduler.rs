@@ -10,6 +10,48 @@ use std::sync::{Arc, mpsc};
 use crate::logging::{self, BufferedLog, DiagEvent, Log, Logger, TaskStatus};
 use crate::tasks::{self, Context, Task};
 
+/// Execute a single task, catching any panic.
+///
+/// Returns `true` if the task completed without panicking.  On panic the task
+/// is recorded as [`TaskStatus::Failed`], any buffered output is flushed, and
+/// the caller's senders are left un-sent so dependents receive a
+/// [`mpsc::RecvError`] and skip themselves.
+fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> bool {
+    log.notify_task_start(task.name());
+
+    let buf = Arc::new(BufferedLog::new(Arc::clone(log)));
+    let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        tasks::execute(task, &task_ctx);
+    }));
+
+    if let Err(payload) = result {
+        let msg = payload
+            .downcast_ref::<&str>()
+            .map(|s| format!("task panicked: {s}"))
+            .or_else(|| {
+                payload
+                    .downcast_ref::<String>()
+                    .map(|s| format!("task panicked: {s}"))
+            })
+            .unwrap_or_else(|| "task panicked".to_string());
+        if let Some(diag) = log.diagnostic() {
+            diag.emit_task(DiagEvent::TaskFail, task.name(), &msg);
+        }
+        log.record_task(task.name(), TaskStatus::Failed, Some(&msg));
+        buf.flush_and_complete(task.name());
+        return false;
+    }
+
+    if let Some(diag) = log.diagnostic() {
+        diag.emit_task(DiagEvent::TaskDone, task.name(), "");
+    }
+
+    buf.flush_and_complete(task.name());
+    true
+}
+
 /// Run tasks in parallel using a dependency graph.
 ///
 /// Each task is spawned into an OS thread (via `std::thread::scope`) and waits
@@ -123,22 +165,14 @@ pub(super) fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<L
                     );
                 }
 
-                log.notify_task_start(task.name());
-
-                let buf = Arc::new(BufferedLog::new(Arc::clone(log)));
-                let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
-                tasks::execute(task, &task_ctx);
-
-                if let Some(diag) = log.diagnostic() {
-                    diag.emit_task(DiagEvent::TaskDone, task.name(), "");
+                if run_task_guarded(task, ctx, log) {
+                    // Signal all dependent tasks.
+                    for tx in my_senders {
+                        let _ = tx.send(());
+                    }
                 }
-
-                buf.flush_and_complete(task.name());
-
-                // Signal all dependent tasks.
-                for tx in my_senders {
-                    let _ = tx.send(());
-                }
+                // On panic run_task_guarded returns false; my_senders drops
+                // here without sending, propagating RecvError to dependents.
             });
         }
     });
@@ -440,17 +474,21 @@ mod tests {
             ran: Arc::clone(&ran),
         };
 
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_tasks_parallel(&[&panic_task, &dep_task], &ctx, &log);
-        }));
+        run_tasks_parallel(&[&panic_task, &dep_task], &ctx, &log);
 
-        assert!(result.is_err(), "scheduler should propagate the panic");
         assert!(
             !ran.load(Ordering::SeqCst),
             "dependent task should not have run"
         );
+        let entries = log.task_entries();
         assert!(
-            log.task_entries()
+            entries
+                .iter()
+                .any(|e| e.name == "panic-task" && e.status == TaskStatus::Failed),
+            "panicked task should be recorded as Failed"
+        );
+        assert!(
+            entries
                 .iter()
                 .any(|e| e.name == "dep-on-panic" && e.status == TaskStatus::Skipped),
             "dependent task should be recorded as Skipped"
@@ -470,14 +508,17 @@ mod tests {
             ran: Arc::clone(&ran_c),
         };
 
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_tasks_parallel(&[&panic_task, &chain_b, &chain_c], &ctx, &log);
-        }));
+        run_tasks_parallel(&[&panic_task, &chain_b, &chain_c], &ctx, &log);
 
-        assert!(result.is_err(), "scheduler should propagate the panic");
         assert!(!ran_b.load(Ordering::SeqCst), "chain-b should not have run");
         assert!(!ran_c.load(Ordering::SeqCst), "chain-c should not have run");
         let entries = log.task_entries();
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.name == "panic-task" && e.status == TaskStatus::Failed),
+            "panicked task should be recorded as Failed"
+        );
         assert!(
             entries
                 .iter()

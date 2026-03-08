@@ -145,6 +145,46 @@ function Invoke-PendingBinaryInstallOrExit
     }
 }
 
+function Invoke-WebRequestWithRetry
+{
+    param (
+        [Parameter(Mandatory)]
+        [string]$Url,
+
+        [string]$OutFile,
+
+        [ValidateSet('Get', 'Head')]
+        [string]$Method = 'Get'
+    )
+
+    for ($attempt = 1; $attempt -le $RetryCount; $attempt++)
+    {
+        if ($attempt -gt 1)
+        {
+            Write-Output "Retry $attempt/$RetryCount after ${RetryDelay}s..."
+            Start-Sleep -Seconds $RetryDelay
+        }
+
+        try
+        {
+            if ($PSBoundParameters.ContainsKey('OutFile'))
+            {
+                Invoke-WebRequest -Uri $Url -Method $Method -OutFile $OutFile -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
+                return $null
+            }
+
+            return Invoke-WebRequest -Uri $Url -Method $Method -UseBasicParsing -TimeoutSec $TransferTimeout
+        }
+        catch
+        {
+            if ($attempt -eq $RetryCount)
+            {
+                throw
+            }
+        }
+    }
+}
+
 function Get-ReleaseTag
 {
     $latestReleaseUrl = "https://github.com/$Repo/releases/latest"
@@ -212,46 +252,6 @@ if ($Build)
 # Production mode: bootstrap binary if not present.
 # Subsequent update checks are handled by the binary itself; this wrapper also
 # promotes any staged Windows update before relaunch.
-
-function Invoke-WebRequestWithRetry
-{
-    param (
-        [Parameter(Mandatory)]
-        [string]$Url,
-
-        [string]$OutFile,
-
-        [ValidateSet('Get', 'Head')]
-        [string]$Method = 'Get'
-    )
-
-    for ($attempt = 1; $attempt -le $RetryCount; $attempt++)
-    {
-        if ($attempt -gt 1)
-        {
-            Write-Output "Retry $attempt/$RetryCount after ${RetryDelay}s..."
-            Start-Sleep -Seconds $RetryDelay
-        }
-
-        try
-        {
-            if ($PSBoundParameters.ContainsKey('OutFile'))
-            {
-                Invoke-WebRequest -Uri $Url -Method $Method -OutFile $OutFile -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
-                return $null
-            }
-
-            return Invoke-WebRequest -Uri $Url -Method $Method -UseBasicParsing -TimeoutSec $TransferTimeout
-        }
-        catch
-        {
-            if ($attempt -eq $RetryCount)
-            {
-                throw
-            }
-        }
-    }
-}
 
 function Get-Binary
 {

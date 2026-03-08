@@ -16,12 +16,14 @@ Validation happens at two levels: **runtime** (the `test` command) and
 
 ## Runtime: The `test` Command
 
-`commands/test.rs` runs four validation tasks:
+`commands/test.rs` runs six validation tasks:
 
 | Task | What it checks |
 |---|---|
+| `ValidateConfigWarnings` | Fails when `Config::validate()` emits warnings |
 | `ValidateSymlinkSources` | Every symlink source file exists on disk |
 | `ValidateConfigFiles` | Required config files (`profiles.toml`, `symlinks.toml`, `packages.toml`, `manifest.toml`) exist |
+| `ValidateManifestSync` | `symlinks.toml` and `manifest.toml` expose the same non-base category sections |
 | `RunShellcheck` | Shell scripts pass shellcheck (skipped if unavailable) |
 | `RunPSScriptAnalyzer` | PowerShell scripts pass PSScriptAnalyzer (skipped if unavailable) |
 

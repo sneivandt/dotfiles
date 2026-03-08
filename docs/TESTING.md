@@ -139,11 +139,12 @@ The `test` subcommand validates all configuration files at runtime:
 ./dotfiles.sh --build test
 ```
 
-This checks:
-- TOML file syntax and structure
-- Section format
-- Profile definitions
-- File references
+This runs the same validation tasks as `commands/test.rs`, covering:
+- configuration warnings reported by `Config::validate()`
+- symlink source file existence
+- required config file presence
+- `symlinks.toml` / `manifest.toml` section drift
+- shell and `PowerShell` script linting when the corresponding tools are installed
 
 ## Manual Testing
 

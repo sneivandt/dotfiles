@@ -133,10 +133,9 @@ impl Task for InstallParu {
         }
 
         check_prerequisites(ctx)?;
-        let tmp = prepare_build_directory(ctx)?;
-        clone_paru_from_aur(ctx, &tmp)?;
-        build_paru(ctx, &tmp)?;
-        cleanup_build_directory(&tmp);
+        let guard = crate::fs::TempDir::new(prepare_build_directory(ctx)?);
+        clone_paru_from_aur(ctx, guard.path())?;
+        build_paru(ctx, guard.path())?;
 
         ctx.log.info("paru installed successfully");
         Ok(TaskResult::Ok)
@@ -201,16 +200,6 @@ fn build_paru(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
         )
         .context("building paru with makepkg")?;
     Ok(())
-}
-
-/// Remove the build directory (best effort, logs a warning on failure).
-fn cleanup_build_directory(tmp: &std::path::Path) {
-    if let Err(e) = std::fs::remove_dir_all(tmp) {
-        tracing::warn!(
-            "failed to remove paru build directory {}: {e}",
-            tmp.display()
-        );
-    }
 }
 
 // ---------------------------------------------------------------------------

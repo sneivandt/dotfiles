@@ -104,4 +104,21 @@ paths = ["file2"]
             "no categories matched — nothing should be excluded"
         );
     }
+
+    #[test]
+    fn load_returns_error_on_malformed_toml() {
+        let (_dir, path) = write_temp_toml("[base\npaths = [\"file1\"");
+        let result = load(&path, &[Category::Windows]);
+        assert!(result.is_err(), "malformed TOML should return error");
+    }
+
+    #[test]
+    fn load_returns_error_on_type_mismatch() {
+        let (_dir, path) = write_temp_toml("[base]\npaths = \"not-an-array\"\n");
+        let result = load(&path, &[Category::Windows]);
+        assert!(
+            result.is_err(),
+            "string instead of array should return error"
+        );
+    }
 }

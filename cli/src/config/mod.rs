@@ -436,4 +436,53 @@ mod tests {
         let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
         assert!(config.units.is_empty(), "systemd units skipped on windows");
     }
+
+    #[test]
+    fn load_returns_error_on_invalid_packages_toml() {
+        let (dir, profile, platform) =
+            setup_load(linux(), &[("packages.toml", "[base\npackages = [")]);
+        let result = Config::load(dir.path(), &profile, platform);
+        assert!(result.is_err(), "invalid packages.toml should return error");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("packages.toml"),
+            "error should mention the file: {msg}"
+        );
+    }
+
+    #[test]
+    fn load_returns_error_on_invalid_git_config_toml() {
+        let (dir, profile, platform) =
+            setup_load(linux(), &[("git-config.toml", "not valid [[ toml")]);
+        let result = Config::load(dir.path(), &profile, platform);
+        assert!(
+            result.is_err(),
+            "invalid git-config.toml should return error"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("git-config.toml"),
+            "error should mention the file: {msg}"
+        );
+    }
+
+    #[test]
+    fn load_returns_error_on_invalid_manifest_toml() {
+        let (dir, profile, platform) = setup_load(linux(), &[("manifest.toml", "{{invalid}}")]);
+        let result = Config::load(dir.path(), &profile, platform);
+        assert!(result.is_err(), "invalid manifest.toml should return error");
+    }
+
+    #[test]
+    fn load_returns_error_on_type_mismatch_in_symlinks() {
+        let (dir, profile, platform) = setup_load(
+            linux(),
+            &[("symlinks.toml", "[base]\nsymlinks = \"not-an-array\"\n")],
+        );
+        let result = Config::load(dir.path(), &profile, platform);
+        assert!(
+            result.is_err(),
+            "type mismatch in symlinks.toml should return error"
+        );
+    }
 }

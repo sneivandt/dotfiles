@@ -239,6 +239,19 @@ mod tests {
         assert!(task.should_run(&ctx));
     }
 
+    /// In a git worktree the repo root contains a `.git` *file* (not a
+    /// directory) that stores the path to the per-worktree git data.
+    /// `should_run` must return `true` in this layout.
+    #[test]
+    fn should_run_true_when_git_is_a_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".git"), "gitdir: ../.git/worktrees/my-wt\n").unwrap();
+        let config = empty_config(dir.path().to_path_buf());
+        let ctx = make_linux_context(config);
+        let task = UpdateRepository::new(UpdateSignal::new());
+        assert!(task.should_run(&ctx));
+    }
+
     // -----------------------------------------------------------------------
     // run()
     // -----------------------------------------------------------------------

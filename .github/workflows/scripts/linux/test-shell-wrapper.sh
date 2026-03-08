@@ -393,6 +393,24 @@ EOF
   fi
 )}
 
+test_wrapper_release_pinned_urls()
+{(
+  log_stage "Testing wrapper resolves release tag and uses pinned URLs for binary and checksum"
+
+  wrapper="$DIR/dotfiles.sh"
+  content=$(cat "$wrapper")
+
+  # shellcheck disable=SC2016
+  if echo "$content" | grep -q "resolve_release_tag" && \
+     echo "$content" | grep -q 'releases/download/\$tag' && \
+     ! echo "$content" | grep -q 'releases/latest/download'; then
+    log_verbose "✓ Wrapper resolves release tag and uses pinned URLs for binary and checksum"
+  else
+    printf "%sERROR: Wrapper does not use version-pinned URLs for bootstrap downloads%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+)}
+
 test_wrapper_arch_detection()
 {(
   log_stage "Testing architecture detection in download_binary"
@@ -515,6 +533,7 @@ case "$0" in
     test_wrapper_forwards_advanced_flags
     test_wrapper_root_detection
     test_wrapper_error_handling
+    test_wrapper_release_pinned_urls
     test_wrapper_arch_detection
     echo "All shell wrapper tests passed"
     ;;

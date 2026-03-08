@@ -76,11 +76,9 @@ fn collect_parallel_stats<T: Send>(
 /// Generic parallel processing helper using Rayon.
 ///
 /// Accepts a vector of items and a closure that extracts a `(Resource, ResourceState)`
-/// pair from each item. The closure runs in parallel; stats are synchronized via a mutex.
-///
-/// The per-item work (`get_resource_state` and `process_single`) runs **without** the
-/// stats lock held, so all resources can be applied concurrently. The lock is acquired
-/// only for the brief stats counter update after the work completes.
+/// pair from each item. The closure runs in parallel and delegates stats
+/// accumulation to [`collect_parallel_stats`], which keeps per-thread
+/// [`TaskStats`] locally and merges them at the end without a shared lock.
 fn run_parallel<T: Send, R: Applicable + Send>(
     ctx: &Context,
     items: Vec<T>,

@@ -429,12 +429,21 @@ mod tests {
         };
         let skills_dir = PathBuf::from("/home/user/.copilot/skills");
         let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, Arc::clone(&executor));
-        // Non-standard URL: falls back to hash-based name
+        // Non-standard URL: falls back to hash-based name.
+        // Use path operations instead of string comparison to stay platform-independent.
+        assert_eq!(
+            resource.dest.parent(),
+            Some(skills_dir.as_path()),
+            "expected dest to be inside skills_dir, got: {:?}",
+            resource.dest
+        );
         assert!(
             resource
                 .dest
+                .file_name()
+                .unwrap_or_default()
                 .to_string_lossy()
-                .contains("/home/user/.copilot/skills/skill-"),
+                .starts_with("skill-"),
             "expected hash-based fallback, got: {:?}",
             resource.dest
         );

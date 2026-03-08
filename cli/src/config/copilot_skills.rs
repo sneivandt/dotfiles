@@ -80,4 +80,47 @@ skills = ["https://github.com/example/desktop-skill"]
     fn load_missing_file_returns_empty() {
         assert_load_missing_returns_empty(load);
     }
+
+    #[test]
+    fn load_returns_error_on_malformed_toml() {
+        let (_dir, path) = write_temp_toml("[base\nskills = [\"url\"");
+        let result = load(&path, &[Category::Base]);
+        assert!(result.is_err(), "malformed TOML should return error");
+    }
+
+    #[test]
+    fn load_returns_error_on_type_mismatch() {
+        let (_dir, path) = write_temp_toml("[base]\nskills = 42\n");
+        let result = load(&path, &[Category::Base]);
+        assert!(
+            result.is_err(),
+            "integer instead of array should return error"
+        );
+    }
+
+    #[test]
+    fn validate_detects_empty_url() {
+        let skills = vec![CopilotSkill {
+            url: "  ".to_string(),
+        }];
+        let warnings = validate(&skills);
+        assert!(
+            warnings.iter().any(|w| w.message.contains("empty")),
+            "should warn about empty skill URL: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn validate_detects_non_http_url() {
+        let skills = vec![CopilotSkill {
+            url: "ftp://example.com/skill".to_string(),
+        }];
+        let warnings = validate(&skills);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.message.contains("http://") || w.message.contains("https://")),
+            "should warn about non-http URL: {warnings:?}"
+        );
+    }
 }

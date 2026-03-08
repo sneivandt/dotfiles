@@ -314,4 +314,22 @@ mod tests {
         assert_eq!(value_to_string(&toml::Value::Boolean(true)), "1");
         assert_eq!(value_to_string(&toml::Value::Boolean(false)), "0");
     }
+
+    #[test]
+    fn load_returns_error_on_malformed_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.toml");
+        std::fs::write(&path, "[console\npath = \"HKCU:\\\\Test\"").unwrap();
+        let result = load(&path);
+        assert!(result.is_err(), "malformed TOML should return error");
+    }
+
+    #[test]
+    fn load_returns_error_on_missing_path_field() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.toml");
+        std::fs::write(&path, "[console]\n[console.values]\nKey = \"Value\"\n").unwrap();
+        let result = load(&path);
+        assert!(result.is_err(), "missing 'path' field should return error");
+    }
 }

@@ -127,4 +127,18 @@ settings = [{ key = "core.autocrlf", value = "false" }]
     fn validate_empty_settings_produces_no_warnings() {
         assert!(validate(&[]).is_empty());
     }
+
+    #[test]
+    fn load_returns_error_on_malformed_toml() {
+        let (_dir, path) = write_temp_toml("[base\nsettings = [");
+        let result = load(&path, &[Category::Base]);
+        assert!(result.is_err(), "malformed TOML should return error");
+    }
+
+    #[test]
+    fn load_returns_error_on_type_mismatch() {
+        let (_dir, path) = write_temp_toml("[base]\nsettings = [{ key = 123, value = \"ok\" }]\n");
+        let result = load(&path, &[Category::Base]);
+        assert!(result.is_err(), "integer key should fail deserialization");
+    }
 }

@@ -88,4 +88,33 @@ extensions = ["github.copilot-chat"]
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("publisher.name"));
     }
+
+    #[test]
+    fn load_returns_error_on_malformed_toml() {
+        let (_dir, path) = write_temp_toml("[base\nextensions = [\"ext\"");
+        let result = load(&path, &[Category::Base]);
+        assert!(result.is_err(), "malformed TOML should return error");
+    }
+
+    #[test]
+    fn load_returns_error_on_type_mismatch() {
+        let (_dir, path) = write_temp_toml("[base]\nextensions = 42\n");
+        let result = load(&path, &[Category::Base]);
+        assert!(
+            result.is_err(),
+            "integer instead of array should return error"
+        );
+    }
+
+    #[test]
+    fn validate_detects_empty_extension_id() {
+        let extensions = vec![VsCodeExtension {
+            id: "  ".to_string(),
+        }];
+        let warnings = validate(&extensions);
+        assert!(
+            warnings.iter().any(|w| w.message.contains("empty")),
+            "should warn about empty extension ID: {warnings:?}"
+        );
+    }
 }

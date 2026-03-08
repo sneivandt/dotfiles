@@ -866,3 +866,156 @@ fn config_load_returns_error_on_invalid_toml() {
         "Config::load should return Err on invalid TOML, got Ok"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Config loading: error context includes filename
+// ---------------------------------------------------------------------------
+
+/// `Config::load` error messages must identify which file is broken so the
+/// user knows where to look.
+#[test]
+fn config_load_error_context_includes_filename() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("packages.toml", "not valid {{ toml")
+        .build();
+
+    let platform = Platform::detect();
+    let conf_dir = ctx.root_path().join("conf");
+    let profile = profiles::resolve("base", &conf_dir, platform).expect("resolve profile");
+    let result = Config::load(ctx.root_path(), &profile, platform);
+
+    assert!(result.is_err(), "should fail on invalid packages.toml");
+    let msg = format!("{:#}", result.unwrap_err());
+    assert!(
+        msg.contains("packages.toml"),
+        "error should mention the file name: {msg}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Config loading: type mismatch returns Err
+// ---------------------------------------------------------------------------
+
+/// Writing a TOML value with an incompatible type (e.g. integer instead of
+/// array) must produce an error rather than silently ignoring the data.
+#[test]
+fn config_load_returns_error_on_type_mismatch() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("symlinks.toml", "[base]\nsymlinks = 42\n")
+        .build();
+
+    let platform = Platform::detect();
+    let conf_dir = ctx.root_path().join("conf");
+    let profile = profiles::resolve("base", &conf_dir, platform).expect("resolve profile");
+    let result = Config::load(ctx.root_path(), &profile, platform);
+
+    assert!(
+        result.is_err(),
+        "Config::load should return Err on type mismatch, got Ok"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Config loading: invalid profiles.toml returns Err
+// ---------------------------------------------------------------------------
+
+/// Malformed profiles.toml should return an error during profile resolution.
+#[test]
+fn config_load_returns_error_on_invalid_profiles_toml() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let conf = dir.path().join("conf");
+    std::fs::create_dir_all(&conf).expect("create conf dir");
+
+    std::fs::write(conf.join("profiles.toml"), "[base\ninclude = []\n")
+        .expect("write invalid profiles.toml");
+
+    let platform = Platform::detect();
+    let result = profiles::resolve("base", &conf, platform);
+    assert!(
+        result.is_err(),
+        "invalid profiles.toml should cause resolve to fail"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Validation: empty config entries
+// ---------------------------------------------------------------------------
+
+/// Validation should warn about empty values in various config files.
+#[test]
+fn config_validate_warns_on_empty_package_name() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file(
+            "packages.toml",
+            "[base]\npackages = [{ name = \"  \", aur = false }]\n",
+        )
+        .build();
+
+    let config = ctx.load_config("base");
+    let platform = Platform::detect();
+    let warnings = config.validate(platform);
+
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.source == "packages.toml" && w.message.contains("empty")),
+        "expected a packages.toml warning for empty name, got: {warnings:?}"
+    );
+}
+
+/// Validation should warn about empty git config keys.
+#[test]
+fn config_validate_warns_on_empty_git_config_key() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file(
+            "git-config.toml",
+            "[base]\nsettings = [{ key = \"  \", value = \"val\" }]\n",
+        )
+        .build();
+
+    let config = ctx.load_config("base");
+    let warnings = config.validate(Platform::detect());
+
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.source == "git-config.toml" && w.message.contains("key is empty")),
+        "expected a git-config.toml warning for empty key, got: {warnings:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Validation: systemd on non-linux
+// ---------------------------------------------------------------------------
+
+/// Systemd units defined on a Windows platform should produce a warning.
+#[test]
+fn config_validate_warns_on_systemd_units_on_windows() {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("systemd-units.toml", "[base]\nunits = [\"test.service\"]\n")
+        .build();
+
+    // Load on Linux so units are actually parsed (Config::load skips them on Windows).
+    let linux = Platform {
+        os: Os::Linux,
+        is_arch: false,
+        is_wsl: false,
+    };
+    let config = ctx.load_config_for_platform("base", linux);
+
+    // Validate against Windows to trigger the platform-mismatch warning.
+    let windows = Platform {
+        os: Os::Windows,
+        is_arch: false,
+        is_wsl: false,
+    };
+    let warnings = config.validate(windows);
+
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.source == "systemd-units.toml"
+                && w.message.contains("does not support systemd")),
+        "expected a systemd-units.toml warning on Windows, got: {warnings:?}"
+    );
+}

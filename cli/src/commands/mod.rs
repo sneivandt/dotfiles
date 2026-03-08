@@ -19,16 +19,10 @@ use crate::tasks::{self, Context, Task};
 /// Environment variable set before re-exec to prevent infinite self-update loops.
 const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
 
-/// Environment variable set by the `PowerShell` wrapper when it can restart the
-/// binary after a staged Windows self-update.
+/// Exit code used on Windows after staging a self-update so the restart helper
+/// knows the binary exited intentionally.
 #[cfg(windows)]
-const WRAPPER_RESTART_ENV_VAR: &str = "DOTFILES_WRAPPER_RESTART";
-
-/// Exit code used on Windows to ask the wrapper to relaunch after a staged update.
-///
-/// Keep this in sync with `dotfiles.ps1`.
-#[cfg(windows)]
-pub(crate) const WINDOWS_RESTART_EXIT_CODE: i32 = 75;
+const WINDOWS_RESTART_EXIT_CODE: i32 = 75;
 
 /// Replace the current process with a fresh invocation of the same binary.
 ///
@@ -52,18 +46,11 @@ pub(crate) fn re_exec(root: &std::path::Path) -> ! {
 
     #[cfg(windows)]
     {
-        if std::env::var_os(WRAPPER_RESTART_ENV_VAR).is_some() {
-            std::process::exit(WINDOWS_RESTART_EXIT_CODE);
-        }
-
         if let Err(err) = spawn_windows_restart_helper() {
             eprintln!("\x1b[31mError: failed to schedule Windows restart: {err}\x1b[0m");
             std::process::exit(1);
         }
 
-        eprintln!(
-            "\x1b[33mInfo: update staged; relaunching without wrapper support (exit code {WINDOWS_RESTART_EXIT_CODE})\x1b[0m"
-        );
         std::process::exit(WINDOWS_RESTART_EXIT_CODE);
     }
 

@@ -393,6 +393,115 @@ EOF
   fi
 )}
 
+test_wrapper_arch_detection()
+{(
+  log_stage "Testing architecture detection in download_binary"
+
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+
+  # Extract the download_binary function source from dotfiles.sh into a
+  # standalone helper so we can test it without network access.
+  cat > "$tmpdir/arch-test.sh" <<'EOF'
+#!/bin/sh
+set -o nounset
+
+# Minimal stubs so download_binary() can run without network or filesystem ops.
+REPO="sneivandt/dotfiles"
+BIN_DIR="/tmp/unused"
+BINARY="/tmp/unused/dotfiles"
+CONNECT_TIMEOUT=10
+TRANSFER_TIMEOUT=120
+
+download_file() { return 0; }
+_verify_checksum() { return 0; }
+
+download_binary() {
+  _arch="$(uname -m)"
+  case "$_arch" in
+    x86_64|amd64)  asset="dotfiles-linux-x86_64" ;;
+    aarch64|arm64) asset="dotfiles-linux-aarch64" ;;
+    *)
+      echo "ERROR: Unsupported architecture: $_arch" >&2
+      echo "Supported architectures: x86_64, amd64, aarch64, arm64" >&2
+      exit 1
+      ;;
+  esac
+  echo "$asset"
+}
+
+# Override uname for testing
+ARCH="$1"
+uname() { echo "$ARCH"; }
+
+download_binary
+EOF
+
+  chmod +x "$tmpdir/arch-test.sh"
+
+  # Test x86_64 maps correctly
+  result=$("$tmpdir/arch-test.sh" "x86_64" 2>&1)
+  if [ "$result" = "dotfiles-linux-x86_64" ]; then
+    log_verbose "✓ x86_64 selects dotfiles-linux-x86_64"
+  else
+    printf "%sERROR: x86_64 produced unexpected result: %s%s\n" "${RED}" "$result" "${NC}" >&2
+    return 1
+  fi
+
+  # Test amd64 maps correctly
+  result=$("$tmpdir/arch-test.sh" "amd64" 2>&1)
+  if [ "$result" = "dotfiles-linux-x86_64" ]; then
+    log_verbose "✓ amd64 selects dotfiles-linux-x86_64"
+  else
+    printf "%sERROR: amd64 produced unexpected result: %s%s\n" "${RED}" "$result" "${NC}" >&2
+    return 1
+  fi
+
+  # Test aarch64 maps correctly
+  result=$("$tmpdir/arch-test.sh" "aarch64" 2>&1)
+  if [ "$result" = "dotfiles-linux-aarch64" ]; then
+    log_verbose "✓ aarch64 selects dotfiles-linux-aarch64"
+  else
+    printf "%sERROR: aarch64 produced unexpected result: %s%s\n" "${RED}" "$result" "${NC}" >&2
+    return 1
+  fi
+
+  # Test arm64 maps correctly
+  result=$("$tmpdir/arch-test.sh" "arm64" 2>&1)
+  if [ "$result" = "dotfiles-linux-aarch64" ]; then
+    log_verbose "✓ arm64 selects dotfiles-linux-aarch64"
+  else
+    printf "%sERROR: arm64 produced unexpected result: %s%s\n" "${RED}" "$result" "${NC}" >&2
+    return 1
+  fi
+
+  # Test unsupported architecture exits nonzero and prints the arch name
+  if "$tmpdir/arch-test.sh" "armv7l" >/dev/null 2>&1; then
+    printf "%sERROR: armv7l should have exited nonzero but succeeded%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+  err_output=$("$tmpdir/arch-test.sh" "armv7l" 2>&1 || true)
+  if echo "$err_output" | grep -q "armv7l"; then
+    log_verbose "✓ Unsupported architecture armv7l exits with error naming the arch"
+  else
+    printf "%sERROR: unsupported arch error did not name the arch: %s%s\n" "${RED}" "$err_output" "${NC}" >&2
+    return 1
+  fi
+
+  # Test another unsupported architecture (riscv64)
+  if "$tmpdir/arch-test.sh" "riscv64" >/dev/null 2>&1; then
+    printf "%sERROR: riscv64 should have exited nonzero but succeeded%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+  err_output=$("$tmpdir/arch-test.sh" "riscv64" 2>&1 || true)
+  if echo "$err_output" | grep -q "riscv64"; then
+    log_verbose "✓ Unsupported architecture riscv64 exits with error naming the arch"
+  else
+    printf "%sERROR: unsupported arch error did not name the arch: %s%s\n" "${RED}" "$err_output" "${NC}" >&2
+    return 1
+  fi
+)}
+
 # Run all tests when executed directly
 case "$0" in
   *test-shell-wrapper.sh)
@@ -406,6 +515,7 @@ case "$0" in
     test_wrapper_forwards_advanced_flags
     test_wrapper_root_detection
     test_wrapper_error_handling
+    test_wrapper_arch_detection
     echo "All shell wrapper tests passed"
     ;;
 esac

@@ -88,9 +88,15 @@ _verify_checksum() {
 
 # Download the bootstrap binary if needed.
 download_binary() {
-  case "$(uname -m)" in
+  _arch="$(uname -m)"
+  case "$_arch" in
+    x86_64|amd64)  asset="dotfiles-linux-x86_64" ;;
     aarch64|arm64) asset="dotfiles-linux-aarch64" ;;
-    *)             asset="dotfiles-linux-x86_64" ;;
+    *)
+      echo "ERROR: Unsupported architecture: $_arch" >&2
+      echo "Supported architectures: x86_64, amd64, aarch64, arm64" >&2
+      exit 1
+      ;;
   esac
   url="https://github.com/$REPO/releases/latest/download/$asset"
 

@@ -42,6 +42,12 @@ pub fn validate(
                     Path::new(&e.path).is_absolute() || e.path.starts_with('/'),
                     "path should be relative to $HOME directory",
                 ),
+                check(
+                    Path::new(&e.path)
+                        .components()
+                        .any(|c| c == std::path::Component::ParentDir),
+                    "path must not contain '..' components",
+                ),
             ]
         },
     )
@@ -101,5 +107,18 @@ permissions = [
         let warnings = validate(&entries, Platform::new(Os::Linux, false));
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("must be 3 or 4 digits"));
+    }
+
+    #[test]
+    fn validate_detects_path_traversal() {
+        use crate::platform::{Os, Platform};
+
+        let entries = vec![ChmodEntry {
+            mode: "600".to_string(),
+            path: "../../etc/shadow".to_string(),
+        }];
+        let warnings = validate(&entries, Platform::new(Os::Linux, false));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("'..'"));
     }
 }

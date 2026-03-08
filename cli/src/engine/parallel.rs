@@ -36,10 +36,15 @@ pub(super) fn process_remove_parallel<R: Resource + Send>(
     resources: Vec<R>,
     verb: &str,
 ) -> Result<super::stats::TaskResult> {
-    let stats = collect_parallel_stats(resources, |resource| {
-        let current = resource.current_state()?;
-        remove_single(ctx, &resource, &current, verb)
-    })?;
+    let cancelled = ctx.cancelled.clone();
+    let stats = collect_parallel_stats(
+        resources,
+        |resource| {
+            let current = resource.current_state()?;
+            remove_single(ctx, &resource, &current, verb)
+        },
+        move || cancelled.is_cancelled(),
+    )?;
     Ok(stats.finish(ctx))
 }
 
@@ -54,9 +59,13 @@ pub(super) fn process_remove_parallel<R: Resource + Send>(
 /// The diagnostic thread name is captured once before dispatching and re-set
 /// on each iteration so the log timeline remains accurate even when Rayon
 /// reuses threads across work items (a stale name is harmless but misleading).
+///
+/// When `cancelled` returns `true`, new items are skipped so that in-flight
+/// operations can finish cleanly.
 fn collect_parallel_stats<T: Send>(
     items: Vec<T>,
     work: impl Fn(T) -> Result<TaskStats> + Sync + Send,
+    cancelled: impl Fn() -> bool + Sync + Send,
 ) -> Result<TaskStats> {
     use rayon::prelude::*;
     let task_name = diag_thread_name();
@@ -64,6 +73,9 @@ fn collect_parallel_stats<T: Send>(
         .into_par_iter()
         .try_fold(TaskStats::default, |mut acc, item| {
             set_diag_thread_name(&task_name);
+            if cancelled() {
+                return Ok(acc);
+            }
             acc += work(item)?;
             Ok(acc)
         })
@@ -85,9 +97,14 @@ fn run_parallel<T: Send, R: Applicable + Send>(
     opts: &ProcessOpts,
     get_resource_state: impl Fn(T) -> Result<(R, ResourceState)> + Sync,
 ) -> Result<super::stats::TaskResult> {
-    let stats = collect_parallel_stats(items, |item| {
-        let (resource, current) = get_resource_state(item)?;
-        process_single(ctx, &resource, &current, opts)
-    })?;
+    let cancelled = ctx.cancelled.clone();
+    let stats = collect_parallel_stats(
+        items,
+        |item| {
+            let (resource, current) = get_resource_state(item)?;
+            process_single(ctx, &resource, &current, opts)
+        },
+        move || cancelled.is_cancelled(),
+    )?;
     Ok(stats.finish(ctx))
 }

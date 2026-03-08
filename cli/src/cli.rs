@@ -58,6 +58,9 @@ pub enum Command {
     Test(TestOpts),
     /// Print version information
     Version,
+    /// Generate shell completions for the given shell
+    #[command(hide = true)]
+    Completions(CompletionsOpts),
 }
 
 /// Options for the `install` subcommand.
@@ -87,6 +90,14 @@ pub struct UninstallOpts {}
 /// Options for the `test` subcommand.
 #[derive(Parser, Debug, Clone)]
 pub struct TestOpts {}
+
+/// Options for the `completions` subcommand.
+#[derive(Parser, Debug, Clone)]
+pub struct CompletionsOpts {
+    /// Target shell
+    #[arg(value_enum)]
+    pub shell: clap_complete::Shell,
+}
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
@@ -202,5 +213,30 @@ mod tests {
             !cli.global.parallel,
             "--no-parallel should set parallel to false"
         );
+    }
+
+    #[test]
+    fn parse_completions_bash() {
+        let cli = Cli::parse_from(["dotfiles", "completions", "bash"]);
+        assert!(matches!(cli.command, Command::Completions(_)));
+        if let Command::Completions(opts) = cli.command {
+            assert_eq!(opts.shell, clap_complete::Shell::Bash);
+        }
+    }
+
+    #[test]
+    fn parse_completions_zsh() {
+        let cli = Cli::parse_from(["dotfiles", "completions", "zsh"]);
+        if let Command::Completions(opts) = cli.command {
+            assert_eq!(opts.shell, clap_complete::Shell::Zsh);
+        }
+    }
+
+    #[test]
+    fn parse_completions_fish() {
+        let cli = Cli::parse_from(["dotfiles", "completions", "fish"]);
+        if let Command::Completions(opts) = cli.command {
+            assert_eq!(opts.shell, clap_complete::Shell::Fish);
+        }
     }
 }

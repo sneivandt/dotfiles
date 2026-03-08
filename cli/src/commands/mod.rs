@@ -349,7 +349,11 @@ impl CommandRunner {
     ///
     /// Returns an error if setup fails (profile resolution, configuration
     /// loading, or the HOME environment variable is not set).
-    pub fn new(global: &GlobalOpts, log: &Arc<Logger>) -> Result<Self> {
+    pub fn new(
+        global: &GlobalOpts,
+        log: &Arc<Logger>,
+        token: &crate::engine::CancellationToken,
+    ) -> Result<Self> {
         let platform = Platform::detect();
         let root = install::resolve_root(global)?;
         let profile = resolve_profile(global, &root, platform, &**log)?;
@@ -366,7 +370,8 @@ impl CommandRunner {
                 parallel: global.parallel,
                 is_ci: None,
             },
-        )?;
+        )?
+        .with_cancellation(token.clone());
 
         Ok(Self {
             ctx,
@@ -482,6 +487,10 @@ pub fn run_tasks_to_completion<'a>(
         scheduler::run_tasks_parallel(&tasks, ctx, log);
     } else {
         for task in &tasks {
+            if ctx.is_cancelled() {
+                log.warn("cancelled — stopping before next task");
+                break;
+            }
             tasks::execute(*task, ctx);
         }
     }

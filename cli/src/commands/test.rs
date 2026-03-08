@@ -15,9 +15,14 @@ use crate::tasks::validation::{
 /// # Errors
 ///
 /// Returns an error if profile resolution, configuration validation, or script checks fail.
-pub fn run(global: &GlobalOpts, opts: &TestOpts, log: &Arc<Logger>) -> Result<()> {
+pub fn run(
+    global: &GlobalOpts,
+    opts: &TestOpts,
+    log: &Arc<Logger>,
+    token: &crate::engine::CancellationToken,
+) -> Result<()> {
     let _ = opts;
-    let runner = super::CommandRunner::new(global, log)?;
+    let runner = super::CommandRunner::new(global, log, token)?;
     let tasks: Vec<Box<dyn Task>> = vec![
         Box::new(ValidateConfigWarnings),
         Box::new(ValidateSymlinkSources),

@@ -7,6 +7,8 @@ use crate::exec::Executor;
 use crate::logging::Log;
 use crate::platform::Platform;
 
+use super::CancellationToken;
+
 // Note: `Platform` is `Copy` (two small fields), so it is stored by value
 // rather than behind an `Arc`.  This avoids atomic refcount overhead for a
 // type that is cheaper to copy than to reference-count.
@@ -68,6 +70,11 @@ pub struct Context {
     /// this without reading env-globals themselves and tests can inject the
     /// value without mutating process state.
     pub is_ci: bool,
+    /// Token for cooperative cancellation (e.g. Ctrl-C).
+    ///
+    /// Processing loops check this before dispatching each work item so that
+    /// in-flight operations finish cleanly and a partial summary is printed.
+    pub cancelled: CancellationToken,
 }
 
 impl std::fmt::Debug for Context {
@@ -81,6 +88,7 @@ impl std::fmt::Debug for Context {
             .field("executor", &"<dyn Executor>")
             .field("parallel", &self.parallel)
             .field("is_ci", &self.is_ci)
+            .field("cancelled", &self.cancelled)
             .finish()
     }
 }
@@ -121,6 +129,7 @@ impl Context {
             executor,
             parallel: opts.parallel,
             is_ci,
+            cancelled: CancellationToken::new(),
         })
     }
 
@@ -146,6 +155,7 @@ impl Context {
             executor,
             parallel: opts.parallel,
             is_ci: opts.is_ci.unwrap_or(false),
+            cancelled: CancellationToken::new(),
         }
     }
 
@@ -247,6 +257,25 @@ impl Context {
             is_ci,
             ..self.clone()
         }
+    }
+
+    /// Create a copy of this context with the given cancellation token.
+    ///
+    /// Used to wire the signal handler's token into the execution context.
+    #[must_use]
+    pub fn with_cancellation(&self, cancelled: CancellationToken) -> Self {
+        Self {
+            cancelled,
+            ..self.clone()
+        }
+    }
+
+    /// Returns `true` if the process has been asked to shut down.
+    ///
+    /// Convenience wrapper around `self.cancelled.is_cancelled()`.
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.is_cancelled()
     }
 
     /// Log a debug message, evaluating the format string lazily.

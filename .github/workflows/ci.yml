@@ -90,6 +90,15 @@ jobs:
       - run: cargo install cargo-audit --locked
       - run: cargo audit --file cli/Cargo.lock
 
+  deny:
+    name: "Security: Cargo Deny"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: cli/Cargo.toml
+
   # ── Build, Clippy & Test ──────────────────────────────
   build-linux:
     name: "Build: Linux"
@@ -312,6 +321,7 @@ jobs:
       - lint
       - validate-config
       - audit
+      - deny
       - build-linux
       - build-windows
       - integration-linux

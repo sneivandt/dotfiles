@@ -11,7 +11,12 @@ use crate::tasks;
 /// # Errors
 ///
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
-pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Arc<Logger>) -> Result<()> {
+pub fn run(
+    global: &GlobalOpts,
+    _opts: &UninstallOpts,
+    log: &Arc<Logger>,
+    token: &crate::engine::CancellationToken,
+) -> Result<()> {
     // Self-update before the task graph.
     // The guard variable prevents an infinite re-exec loop if the new binary
     // also triggers a self-update.
@@ -22,7 +27,7 @@ pub fn run(global: &GlobalOpts, _opts: &UninstallOpts, log: &Arc<Logger>) -> Res
         super::re_exec(&root);
     }
 
-    let runner = super::CommandRunner::new(global, log)?;
+    let runner = super::CommandRunner::new(global, log, token)?;
     let tasks = tasks::all_uninstall_tasks();
     runner.run(tasks.iter().map(Box::as_ref))
 }

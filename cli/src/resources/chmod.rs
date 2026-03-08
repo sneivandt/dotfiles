@@ -1,5 +1,7 @@
 //! File permission resource (chmod).
-use anyhow::{Context as _, Result};
+#[cfg(unix)]
+use anyhow::Context as _;
+use anyhow::Result;
 use std::path::PathBuf;
 
 use super::{Applicable, Resource, ResourceChange, ResourceState};

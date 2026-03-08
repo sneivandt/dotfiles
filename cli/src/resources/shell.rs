@@ -78,10 +78,12 @@ impl Applicable for DefaultShellResource {
 
 impl Resource for DefaultShellResource {
     fn current_state(&self) -> Result<ResourceState> {
-        let current_shell = self.shell_source.current_shell().unwrap_or_default();
+        let Some(current_shell) = self.shell_source.current_shell() else {
+            return Ok(ResourceState::Missing);
+        };
 
         if current_shell.is_empty() {
-            return Ok(ResourceState::Correct);
+            return Ok(ResourceState::Missing);
         }
 
         let current_name = std::path::Path::new(&current_shell)
@@ -132,11 +134,20 @@ mod tests {
     }
 
     #[test]
-    fn current_state_correct_when_shell_not_set() {
+    fn current_state_missing_when_shell_not_set() {
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let resource =
             DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor)).with_shell(None);
         let state = resource.current_state().unwrap();
-        assert_eq!(state, ResourceState::Correct);
+        assert_eq!(state, ResourceState::Missing);
+    }
+
+    #[test]
+    fn current_state_missing_when_shell_is_empty_string() {
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
+        let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor))
+            .with_shell(Some(""));
+        let state = resource.current_state().unwrap();
+        assert_eq!(state, ResourceState::Missing);
     }
 }

@@ -2,13 +2,11 @@
 # https://embarkstudios.github.io/cargo-deny/
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
+# Unmaintained crates: check workspace deps only (transitive are less actionable)
+unmaintained = "workspace"
 yanked = "warn"
-notice = "warn"
 
 [licenses]
-unlicensed = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
@@ -21,13 +19,12 @@ allow = [
     "Zlib",
     "BSL-1.0",
     "CC0-1.0",
+    "CDLA-Permissive-2.0",
 ]
-copyleft = "deny"
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-deny = []
 
 [sources]
 unknown-registry = "deny"

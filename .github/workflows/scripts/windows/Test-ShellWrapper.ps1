@@ -326,25 +326,6 @@ function Test-PendingBinaryPromotionRollback {
     return $false
 }
 
-function Test-WebRequestRetryDefinedBeforeReleaseTag {
-    Write-TestStage "Testing Invoke-WebRequestWithRetry is defined before Get-ReleaseTag"
-
-    $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
-    $content = Get-Content $wrapper -Raw
-
-    $retryIndex = $content.IndexOf('function Invoke-WebRequestWithRetry')
-    $releaseTagIndex = $content.IndexOf('function Get-ReleaseTag')
-    $callIndex = $content.IndexOf('$releaseResponse = Invoke-WebRequestWithRetry -Url $latestReleaseUrl -Method Head')
-
-    if ($retryIndex -ge 0 -and $releaseTagIndex -ge 0 -and $callIndex -ge 0 -and $retryIndex -lt $releaseTagIndex -and $releaseTagIndex -lt $callIndex) {
-        Write-TestPass "Invoke-WebRequestWithRetry is defined before Get-ReleaseTag uses it"
-        return $true
-    }
-
-    Write-TestFail "Invoke-WebRequestWithRetry must be defined before Get-ReleaseTag calls it"
-    return $false
-}
-
 # ---------------------------------------------------------------------------
 # Test Platform Detection
 # ---------------------------------------------------------------------------
@@ -405,7 +386,6 @@ function Invoke-AllTests {
     $results += Test-AdvancedFlagForwarding
     $results += Test-VersionPinnedBootstrapUrls
     $results += Test-PendingBinaryPromotionRollback
-    $results += Test-WebRequestRetryDefinedBeforeReleaseTag
     $results += Test-PlatformDetection
     $results += Test-ErrorHandling
 

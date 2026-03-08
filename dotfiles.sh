@@ -19,10 +19,6 @@ BIN_DIR="$DOTFILES_ROOT/bin"
 BINARY="$BIN_DIR/dotfiles"
 CONNECT_TIMEOUT=10   # seconds — TCP connect timeout
 TRANSFER_TIMEOUT=120 # seconds — total transfer timeout
-RETRY_COUNT=3        # number of download attempts
-RETRY_DELAY=2        # seconds between retries
-# NOTE: Keep TRANSFER_TIMEOUT / RETRY_COUNT / RETRY_DELAY aligned with the
-# corresponding constants in dotfiles.ps1.
 
 BUILD_MODE=false
 for arg in "$@"; do
@@ -49,34 +45,21 @@ fi
 # Production mode: ensure binary is present
 # --------------------------------------------------------------------------- #
 
-# Download a URL to a file with retries
-# Usage: download_with_retry <url> <output_file>
-download_with_retry() {
-  _dwr_url="$1"
-  _dwr_out="$2"
-  _dwr_attempt=1
-  while [ "$_dwr_attempt" -le "$RETRY_COUNT" ]; do
-    if [ "$_dwr_attempt" -gt 1 ]; then
-      echo "Retry $_dwr_attempt/$RETRY_COUNT after ${RETRY_DELAY}s..." >&2
-      sleep "$RETRY_DELAY"
-    fi
-    if command -v curl >/dev/null 2>&1; then
-      if curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
-           -o "$_dwr_out" "$_dwr_url" 2>/dev/null; then
-        return 0
-      fi
-    elif command -v wget >/dev/null 2>&1; then
-      if wget -qO "$_dwr_out" --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
-           "$_dwr_url" 2>/dev/null; then
-        return 0
-      fi
-    else
-      echo "ERROR: curl or wget required to download binary." >&2
-      exit 1
-    fi
-    _dwr_attempt=$((_dwr_attempt + 1))
-  done
-  return 1
+# Download a URL to a file.
+# Usage: download_file <url> <output_file>
+download_file() {
+  _df_url="$1"
+  _df_out="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
+         -o "$_df_out" "$_df_url" 2>/dev/null
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$_df_out" --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
+         "$_df_url" 2>/dev/null
+  else
+    echo "ERROR: curl or wget required to download binary." >&2
+    exit 1
+  fi
 }
 
 # Verify checksum in a subshell to scope the trap safely.
@@ -85,7 +68,7 @@ _verify_checksum() {
   _vc_binary="$2"
   tmpfile=$(mktemp)
   trap 'rm -f "$tmpfile"' EXIT
-  if ! download_with_retry \
+  if ! download_file \
     "https://github.com/$REPO/releases/latest/download/checksums.sha256" \
     "$tmpfile"; then
     echo "ERROR: Failed to download checksum file." >&2
@@ -114,8 +97,8 @@ download_binary() {
   mkdir -p "$BIN_DIR"
 
   echo "Downloading dotfiles bootstrap binary..."
-  if ! download_with_retry "$url" "$BINARY"; then
-    echo "ERROR: Failed to download dotfiles after $RETRY_COUNT attempts." >&2
+  if ! download_file "$url" "$BINARY"; then
+    echo "ERROR: Failed to download dotfiles binary." >&2
     echo "Check your internet connection or use --build to build from source." >&2
     rm -f "$BINARY"
     exit 1

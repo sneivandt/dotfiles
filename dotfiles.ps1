@@ -20,9 +20,6 @@ $env:DOTFILES_ROOT = $DotfilesRoot
 $Repo = "sneivandt/dotfiles"
 $BinDir = Join-Path $DotfilesRoot "bin"
 $TransferTimeout = 120  # seconds — total transfer timeout
-$RetryCount = 3         # number of download attempts
-$RetryDelay = 2         # seconds between retries
-# Keep TransferTimeout/RetryCount/RetryDelay in sync with dotfiles.sh.
 # Keep RestartExitCode in sync with cli/src/commands/mod.rs.
 $RestartExitCode = 75
 $WrapperRestartEnvVar = 'DOTFILES_WRAPPER_RESTART'
@@ -145,53 +142,13 @@ function Invoke-PendingBinaryInstallOrExit
     }
 }
 
-function Invoke-WebRequestWithRetry
-{
-    param (
-        [Parameter(Mandatory)]
-        [string]$Url,
-
-        [string]$OutFile,
-
-        [ValidateSet('Get', 'Head')]
-        [string]$Method = 'Get'
-    )
-
-    for ($attempt = 1; $attempt -le $RetryCount; $attempt++)
-    {
-        if ($attempt -gt 1)
-        {
-            Write-Output "Retry $attempt/$RetryCount after ${RetryDelay}s..."
-            Start-Sleep -Seconds $RetryDelay
-        }
-
-        try
-        {
-            if ($PSBoundParameters.ContainsKey('OutFile'))
-            {
-                Invoke-WebRequest -Uri $Url -Method $Method -OutFile $OutFile -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
-                return $null
-            }
-
-            return Invoke-WebRequest -Uri $Url -Method $Method -UseBasicParsing -TimeoutSec $TransferTimeout
-        }
-        catch
-        {
-            if ($attempt -eq $RetryCount)
-            {
-                throw
-            }
-        }
-    }
-}
-
 function Get-ReleaseTag
 {
     $latestReleaseUrl = "https://github.com/$Repo/releases/latest"
 
     try
     {
-        $releaseResponse = Invoke-WebRequestWithRetry -Url $latestReleaseUrl -Method Head
+        $releaseResponse = Invoke-WebRequest -Uri $latestReleaseUrl -Method Head -UseBasicParsing -TimeoutSec $TransferTimeout
     }
     catch
     {
@@ -267,12 +224,12 @@ function Get-Binary
     Write-Output "Downloading dotfiles bootstrap binary ($releaseTag)..."
     try
     {
-        Invoke-WebRequestWithRetry -Url $url -OutFile $Binary
+        Invoke-WebRequest -Uri $url -Method Get -OutFile $Binary -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
     }
     catch
     {
         if (Test-Path $Binary) { Remove-Item $Binary -Force }
-        Write-Error "Failed to download dotfiles after $RetryCount attempts. Check your internet connection or use -Build to build from source."
+        Write-Error "Failed to download dotfiles binary. Check your internet connection or use -Build to build from source."
         exit 1
     }
 
@@ -280,7 +237,7 @@ function Get-Binary
     $checksumUrl = "$releaseBaseUrl/checksums.sha256"
     try
     {
-        $checksumResponse = Invoke-WebRequestWithRetry -Url $checksumUrl
+        $checksumResponse = Invoke-WebRequest -Uri $checksumUrl -Method Get -UseBasicParsing -TimeoutSec $TransferTimeout
         $checksumContent = if ($checksumResponse.Content -is [byte[]])
         {
             [System.Text.Encoding]::UTF8.GetString($checksumResponse.Content)

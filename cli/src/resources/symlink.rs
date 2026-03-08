@@ -167,12 +167,23 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
     remove_symlink(target)
         .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
 
-    // Prefer atomic rename; fall back to copy+delete on cross-filesystem move.
-    if std::fs::rename(&tmp, target).is_err() {
-        crate::fs::copy_dir_recursive(&tmp, target, false)
-            .with_context(|| format!("cross-fs copy {} to {}", tmp.display(), target.display()))?;
-        std::fs::remove_dir_all(&tmp)
-            .with_context(|| format!("remove tmp dir: {}", tmp.display()))?;
+    // Prefer atomic rename; fall back to copy+delete only on cross-filesystem move.
+    match std::fs::rename(&tmp, target) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
+            crate::fs::copy_dir_recursive(&tmp, target, false).with_context(|| {
+                format!("cross-fs copy {} to {}", tmp.display(), target.display())
+            })?;
+            std::fs::remove_dir_all(&tmp)
+                .with_context(|| format!("remove tmp dir: {}", tmp.display()))?;
+        }
+        Err(e) => {
+            return Err(anyhow::Error::new(e).context(format!(
+                "rename {} to {}",
+                tmp.display(),
+                target.display()
+            )));
+        }
     }
 
     guard.persist();

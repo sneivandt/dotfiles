@@ -100,6 +100,11 @@ fn re_exec_path(root: &std::path::Path) -> std::path::PathBuf {
 
 #[cfg(not(unix))]
 #[cfg_attr(windows, allow(dead_code))]
+/// Resolve the executable path used for re-exec on non-Unix platforms.
+///
+/// The `root` parameter is retained so the Unix and non-Unix variants share
+/// the same call signature even though non-Unix re-exec always restarts the
+/// current executable.
 fn re_exec_path(_root: &std::path::Path) -> Result<std::path::PathBuf> {
     use anyhow::Context as _;
 
@@ -483,8 +488,9 @@ pub fn run_tasks_to_completion<'a>(
 
     if ctx.parallel && tasks.len() > 1 {
         if tasks::has_cycle(&tasks) {
-            log.error("dependency cycle detected in task graph");
-            anyhow::bail!("dependency cycle detected in task graph");
+            let message = "dependency cycle detected in task graph";
+            log.error(message);
+            anyhow::bail!(message);
         }
         scheduler::run_tasks_parallel(&tasks, ctx, log);
     } else {

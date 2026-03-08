@@ -417,6 +417,11 @@ fn check_for_update(root: &std::path::Path, client: &dyn HttpClient) -> Result<U
     Ok(UpdateCheck::UpdateAvailable { latest, current })
 }
 
+/// Dispatch an [`UpdateCheck`] to the caller-provided handler for that variant.
+///
+/// This centralises the branching over update-check outcomes so callers only
+/// provide the per-variant behaviour they need, keeping `pre_update` and
+/// [`UpdateBinary::run`] in sync when new variants are added.
 fn handle_update_check<T, FCacheFresh, FOffline, FDevBuild, FAlreadyCurrent, FUpdateAvailable>(
     check: UpdateCheck,
     cache_fresh: FCacheFresh,

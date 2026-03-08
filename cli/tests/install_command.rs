@@ -519,10 +519,12 @@ fn install_symlinks_is_idempotent() {
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        false,
         home_dir.path().to_path_buf(),
-        false,
-        false,
+        dotfiles_cli::tasks::ContextOpts {
+            dry_run: false,
+            parallel: false,
+            is_ci: Some(false),
+        },
     );
 
     let task = dotfiles_cli::tasks::symlinks::InstallSymlinks;
@@ -619,10 +621,12 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        false,
         home_dir.path().to_path_buf(),
-        false,
-        false,
+        dotfiles_cli::tasks::ContextOpts {
+            dry_run: false,
+            parallel: false,
+            is_ci: Some(false),
+        },
     );
 
     let result = dotfiles_cli::tasks::chmod::ApplyFilePermissions
@@ -864,10 +868,12 @@ fn install_tasks_should_run_with_parallel_enabled() {
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        true,
         std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())),
-        true,
-        false,
+        dotfiles_cli::tasks::ContextOpts {
+            dry_run: true,
+            parallel: true,
+            is_ci: Some(false),
+        },
     );
 
     let all_tasks = tasks::all_install_tasks();

@@ -28,6 +28,17 @@ pub struct ContextOpts {
     pub is_ci: Option<bool>,
 }
 
+/// Repository-relative paths derived from a single config snapshot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RepoPaths {
+    /// Root directory of the dotfiles repository.
+    pub root: std::path::PathBuf,
+    /// Symlinks source directory.
+    pub symlinks_dir: std::path::PathBuf,
+    /// Hooks source directory.
+    pub hooks_dir: std::path::PathBuf,
+}
+
 /// Shared context for task execution.
 #[derive(Clone)]
 pub struct Context {
@@ -118,26 +129,23 @@ impl Context {
     /// Intended for test helpers and integration-test scaffolding that supply
     /// fully-constructed components rather than deriving them from the
     /// environment.  Prefer [`Context::new`] in production code.
-    #[allow(clippy::too_many_arguments)]
     pub fn from_raw(
         config: Arc<RwLock<Arc<Config>>>,
         platform: Platform,
         log: Arc<dyn Log>,
         executor: Arc<dyn Executor>,
-        dry_run: bool,
         home: std::path::PathBuf,
-        parallel: bool,
-        is_ci: bool,
+        opts: ContextOpts,
     ) -> Self {
         Self {
             config,
             platform,
             log,
-            dry_run,
+            dry_run: opts.dry_run,
             home,
             executor,
-            parallel,
-            is_ci,
+            parallel: opts.parallel,
+            is_ci: opts.is_ci.unwrap_or(false),
         }
     }
 
@@ -149,27 +157,44 @@ impl Context {
     #[must_use]
     pub fn config_read(&self) -> Arc<Config> {
         Arc::clone(&*self.config.read().unwrap_or_else(|e| {
-            eprintln!("warning: config read lock was poisoned, recovering");
+            self.log
+                .warn(&format!("config read lock was poisoned, recovering: {e}"));
             e.into_inner()
         }))
+    }
+
+    /// Repository-relative paths derived from one config snapshot.
+    ///
+    /// Prefer this over multiple calls to [`Context::root`],
+    /// [`Context::symlinks_dir`], and [`Context::hooks_dir`] when the caller
+    /// needs more than one path from the same config version.
+    #[must_use]
+    pub(crate) fn repo_paths(&self) -> RepoPaths {
+        let config = self.config_read();
+        let root = config.root.clone();
+        RepoPaths {
+            symlinks_dir: root.join("symlinks"),
+            hooks_dir: root.join("hooks"),
+            root,
+        }
     }
 
     /// Root directory of the dotfiles repository.
     #[must_use]
     pub fn root(&self) -> std::path::PathBuf {
-        self.config_read().root.clone()
+        self.repo_paths().root
     }
 
     /// Symlinks source directory.
     #[must_use]
     pub fn symlinks_dir(&self) -> std::path::PathBuf {
-        self.config_read().root.join("symlinks")
+        self.repo_paths().symlinks_dir
     }
 
     /// Hooks source directory.
     #[must_use]
     pub fn hooks_dir(&self) -> std::path::PathBuf {
-        self.config_read().root.join("hooks")
+        self.repo_paths().hooks_dir
     }
 
     /// Create a copy of this context with a different logger.
@@ -226,10 +251,9 @@ impl Context {
 
     /// Log a debug message, evaluating the format string lazily.
     ///
-    /// The closure `f` is called unconditionally; the resulting string is
-    /// forwarded to `self.log.debug`.  The lazy form avoids constructing the
-    /// format string at the call site and instead defers it to this method,
-    /// keeping hot-path call sites clean.
+    /// The closure `f` is only evaluated when debug logging is active for the
+    /// current thread, avoiding needless string allocations on true no-op
+    /// paths while still keeping hot-path call sites clean.
     ///
     /// # Note on `tracing::enabled!`
     ///
@@ -244,7 +268,9 @@ impl Context {
     /// `run()`.  The guard has therefore been removed.
     #[inline]
     pub fn debug_fmt(&self, f: impl FnOnce() -> String) {
-        self.log.debug(&f());
+        if self.log.debug_enabled() {
+            self.log.debug(&f());
+        }
     }
 
     /// Atomically replace the shared configuration.
@@ -253,7 +279,8 @@ impl Context {
     /// to swap in the freshly-loaded config.
     pub fn config_swap(&self, new_config: Config) {
         let mut guard = self.config.write().unwrap_or_else(|e| {
-            eprintln!("warning: config write lock was poisoned, recovering");
+            self.log
+                .warn(&format!("config write lock was poisoned, recovering: {e}"));
             e.into_inner()
         });
         *guard = Arc::new(new_config);
@@ -265,8 +292,28 @@ impl Context {
 mod tests {
     use super::*;
     use crate::logging::Logger;
+    use crate::logging::{Output, TaskRecorder, TaskStatus};
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
+
+    #[derive(Debug)]
+    struct SilentLog;
+
+    impl Output for SilentLog {
+        fn stage(&self, _msg: &str) {}
+        fn info(&self, _msg: &str) {}
+        fn debug(&self, _msg: &str) {}
+        fn warn(&self, _msg: &str) {}
+        fn error(&self, _msg: &str) {}
+        fn dry_run(&self, _msg: &str) {}
+        fn debug_enabled(&self) -> bool {
+            false
+        }
+    }
+
+    impl TaskRecorder for SilentLog {
+        fn record_task(&self, _name: &str, _status: TaskStatus, _message: Option<&str>) {}
+    }
 
     #[test]
     fn root_returns_config_root() {
@@ -287,6 +334,16 @@ mod tests {
         let config = empty_config(PathBuf::from("/dotfiles"));
         let ctx = make_linux_context(config);
         assert_eq!(ctx.hooks_dir(), PathBuf::from("/dotfiles/hooks"));
+    }
+
+    #[test]
+    fn repo_paths_returns_all_derived_paths_from_one_snapshot() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config);
+        let paths = ctx.repo_paths();
+        assert_eq!(paths.root, PathBuf::from("/dotfiles"));
+        assert_eq!(paths.symlinks_dir, PathBuf::from("/dotfiles/symlinks"));
+        assert_eq!(paths.hooks_dir, PathBuf::from("/dotfiles/hooks"));
     }
 
     #[test]
@@ -330,5 +387,17 @@ mod tests {
         assert_eq!(ctx2.parallel, ctx.parallel);
         assert!(Arc::ptr_eq(&ctx.config_read(), &ctx2.config_read()));
         assert_eq!(ctx.platform, ctx2.platform);
+    }
+
+    #[test]
+    fn debug_fmt_skips_closure_when_debug_logging_is_disabled() {
+        let config = empty_config(PathBuf::from("/dotfiles"));
+        let ctx = make_linux_context(config).with_log(Arc::new(SilentLog));
+        let called = std::sync::atomic::AtomicBool::new(false);
+        ctx.debug_fmt(|| {
+            called.store(true, std::sync::atomic::Ordering::SeqCst);
+            "debug message".to_string()
+        });
+        assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
     }
 }

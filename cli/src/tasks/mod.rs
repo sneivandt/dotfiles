@@ -504,10 +504,12 @@ pub mod test_helpers {
             platform,
             Arc::new(Logger::new("test")),
             executor,
-            false,
             PathBuf::from("/home/test"),
-            false,
-            false,
+            crate::engine::ContextOpts {
+                dry_run: false,
+                parallel: false,
+                is_ci: Some(false),
+            },
         )
     }
 

@@ -211,10 +211,12 @@ fn uninstall_symlinks_is_idempotent() {
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        false,
         home_dir.path().to_path_buf(),
-        false,
-        false,
+        dotfiles_cli::tasks::ContextOpts {
+            dry_run: false,
+            parallel: false,
+            is_ci: Some(false),
+        },
     );
 
     // Install the symlink first so there is something to uninstall.

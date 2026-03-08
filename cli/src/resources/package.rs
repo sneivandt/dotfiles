@@ -4,7 +4,7 @@
 //! (pacman, paru, winget). Adding support for a new manager requires only a
 //! new implementation of `PackageProvider` and a corresponding variant in
 //! [`PackageManager`].
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -126,9 +126,8 @@ fn split_padded_columns(line: &str) -> Vec<String> {
                 continue;
             }
 
-            if !current.trim().is_empty() {
-                cols.push(current.trim().to_string());
-                current.clear();
+            if !current.is_empty() {
+                cols.push(std::mem::take(&mut current));
             }
         } else {
             if spaces == 1 {
@@ -139,38 +138,67 @@ fn split_padded_columns(line: &str) -> Vec<String> {
         }
     }
 
-    if !current.trim().is_empty() {
-        cols.push(current.trim().to_string());
+    if !current.is_empty() {
+        cols.push(current);
     }
 
     cols
 }
 
+/// Return the byte offset within `line` where the `col_idx`-th padded column starts.
+///
+/// Uses the same two-or-more-spaces-as-separator rule as [`split_padded_columns`].
+fn byte_offset_of_col(line: &str, col_idx: usize) -> Option<usize> {
+    let mut col = 0usize;
+    let mut in_col = false;
+    let mut spaces = 0usize;
+
+    for (i, ch) in line.char_indices() {
+        if ch == ' ' {
+            spaces += 1;
+            if in_col && spaces >= 2 {
+                col += 1;
+                in_col = false;
+            }
+        } else {
+            spaces = 0;
+            if !in_col {
+                if col == col_idx {
+                    return Some(i);
+                }
+                in_col = true;
+            }
+        }
+    }
+    None
+}
+
 /// Parse package IDs from `winget list` output.
 fn parse_winget_ids(stdout: &str) -> HashSet<String> {
     let mut ids = HashSet::new();
-    let mut id_index = None;
+    let mut id_byte_start: Option<usize> = None;
 
     for line in stdout.lines() {
-        let cols = split_padded_columns(line);
-        if cols.is_empty() {
-            continue;
-        }
-
-        if id_index.is_none() {
-            id_index = cols.iter().position(|col| col == "Id");
-            continue;
-        }
-
-        if cols.iter().all(|col| col.chars().all(|c| c == '-')) {
-            continue;
-        }
-
-        if let Some(idx) = id_index
-            && let Some(id) = cols.get(idx)
-            && !id.is_empty()
-        {
-            ids.insert(id.clone());
+        if let Some(start) = id_byte_start {
+            // Skip separator lines (all dashes/spaces).
+            if line.bytes().all(|b| b == b'-' || b == b' ') {
+                continue;
+            }
+            // Extract the Id column value from the known byte offset.
+            if let Some(slice) = line.get(start..) {
+                let id = slice
+                    .find("  ")
+                    .map_or_else(|| slice.trim(), |sep_pos| slice[..sep_pos].trim());
+                if !id.is_empty() {
+                    ids.insert(id.to_string());
+                }
+            }
+        } else {
+            // Locate the header line and record the byte offset of "Id".
+            let cols = split_padded_columns(line);
+            if let Some(id_idx) = cols.iter().position(|c| c == "Id") {
+                id_byte_start = byte_offset_of_col(line, id_idx);
+            }
         }
     }
 
@@ -329,7 +357,7 @@ impl PackageProvider for WingetProvider {
 // ---------------------------------------------------------------------------
 
 /// Supported package managers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PackageManager {
     /// Official Arch Linux packages (pacman).
     Pacman,
@@ -425,35 +453,30 @@ pub fn get_installed_packages(
 /// Returns an error if any package manager command fails, or if a Winget
 /// install is skipped (i.e. the installer reported failure).
 pub fn batch_install_packages(resources: &[&PackageResource]) -> Result<()> {
-    for &manager in &[
-        PackageManager::Pacman,
-        PackageManager::Paru,
-        PackageManager::Winget,
-    ] {
-        let group: Vec<_> = resources.iter().filter(|r| r.manager == manager).collect();
-        if group.is_empty() {
-            continue;
-        }
+    let mut groups: HashMap<PackageManager, Vec<&PackageResource>> = HashMap::new();
+    for resource in resources {
+        groups.entry(resource.manager).or_default().push(resource);
+    }
 
+    for (manager, group) in &groups {
         let provider = manager.provider();
-        let Some(first) = group.first() else {
-            continue;
-        };
-        let executor = &*first.executor;
+        if let Some(first) = group.first() {
+            let executor = &*first.executor;
 
-        if provider.supports_batch() {
-            let names: Vec<&str> = group.iter().map(|r| r.name.as_str()).collect();
-            provider.batch_install(&names, executor)?;
-        } else {
-            // Individual install — propagate skipped installations as errors.
-            for resource in &group {
-                let change = resource.apply()?;
-                if let ResourceChange::Skipped { reason } = change {
-                    return Err(crate::error::ResourceError::command_failed(
-                        provider.name(),
-                        format!("install failed for '{}': {reason}", resource.name),
-                    )
-                    .into());
+            if provider.supports_batch() {
+                let names: Vec<&str> = group.iter().map(|r| r.name.as_str()).collect();
+                provider.batch_install(&names, executor)?;
+            } else {
+                // Individual install — propagate skipped installations as errors.
+                for resource in group {
+                    let change = resource.apply()?;
+                    if let ResourceChange::Skipped { reason } = change {
+                        return Err(crate::error::ResourceError::command_failed(
+                            provider.name(),
+                            format!("install failed for '{}': {reason}", resource.name),
+                        )
+                        .into());
+                    }
                 }
             }
         }

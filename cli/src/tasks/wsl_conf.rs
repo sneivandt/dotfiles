@@ -48,23 +48,35 @@ impl Task for InstallWslConf {
 
         // Try a direct write first (works when running as root).  If that
         // fails with a permission error, fall back to staging via a temp file
-        // and copying into place with sudo.
+        // and copying into place with sudo.  The temp path is unique per
+        // process (PID-stamped) so concurrent runs do not race on the same
+        // file and stale content from a previous failed run cannot interfere.
         match std::fs::write(target, DESIRED_CONTENT) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
                 ctx.log.info("direct write failed, falling back to sudo");
-                let tmp = "/tmp/dotfiles-wsl.conf";
-                std::fs::write(tmp, DESIRED_CONTENT)
+                let tmp = sudo_fallback_tmp_path();
+                std::fs::write(&tmp, DESIRED_CONTENT)
                     .map_err(|e| anyhow::anyhow!("failed to write temp file {tmp}: {e}"))?;
 
-                ctx.executor.run("sudo", &["cp", tmp, target])?;
-                let _ = std::fs::remove_file(tmp);
+                let result = ctx.executor.run("sudo", &["cp", &tmp, target]);
+                let _ = std::fs::remove_file(&tmp);
+                result?;
             }
             Err(e) => return Err(anyhow::anyhow!("failed to write {target}: {e}")),
         }
 
         Ok(TaskResult::Ok)
     }
+}
+
+/// Returns the process-unique temp path used by the sudo fallback.
+///
+/// Using a PID-stamped name prevents two concurrent runs from racing on the
+/// same file and prevents a stale file from a previous failed run from being
+/// copied unexpectedly.
+fn sudo_fallback_tmp_path() -> String {
+    format!("/tmp/dotfiles-wsl-{}.conf", std::process::id())
 }
 
 /// Returns true if /etc/wsl.conf already contains the desired setting.
@@ -144,5 +156,15 @@ mod tests {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(tmp.path(), content).unwrap();
         is_correct(&tmp.path().to_string_lossy())
+    }
+
+    #[test]
+    fn sudo_fallback_tmp_path_contains_pid() {
+        let path = sudo_fallback_tmp_path();
+        let pid = std::process::id().to_string();
+        assert!(
+            path.contains(&pid),
+            "temp path {path:?} must contain the process ID to prevent concurrent-run collisions"
+        );
     }
 }

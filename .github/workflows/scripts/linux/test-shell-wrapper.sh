@@ -393,6 +393,36 @@ EOF
   fi
 )}
 
+test_wrapper_chmod_after_checksum()
+{(
+  log_stage "Testing chmod +x occurs after checksum verification"
+
+  wrapper="$DIR/dotfiles.sh"
+
+  # Extract the line numbers of the two operations inside download_binary so
+  # we can assert that checksum verification precedes chmod +x.  This is a
+  # source-level guard that prevents a TOCTOU regression where a downloaded
+  # binary becomes executable before its integrity has been confirmed.
+  # Match the invocation line (contains a quoted argument) to skip the
+  # function-definition line.
+  verify_line=$(grep -n '_verify_checksum "' "$wrapper" | head -1 | cut -d: -f1)
+  chmod_line=$(grep -n "chmod +x" "$wrapper" | head -1 | cut -d: -f1)
+
+  if [ -z "$verify_line" ] || [ -z "$chmod_line" ]; then
+    printf "%sERROR: Could not locate _verify_checksum or chmod +x in %s%s\n" \
+      "${RED}" "$wrapper" "${NC}" >&2
+    return 1
+  fi
+
+  if [ "$chmod_line" -gt "$verify_line" ]; then
+    log_verbose "✓ chmod +x (line $chmod_line) appears after _verify_checksum (line $verify_line)"
+  else
+    printf "%sERROR: chmod +x (line %s) must come after _verify_checksum (line %s)%s\n" \
+      "${RED}" "$chmod_line" "$verify_line" "${NC}" >&2
+    return 1
+  fi
+)}
+
 test_wrapper_arch_detection()
 {(
   log_stage "Testing architecture detection in download_binary"
@@ -515,6 +545,7 @@ case "$0" in
     test_wrapper_forwards_advanced_flags
     test_wrapper_root_detection
     test_wrapper_error_handling
+    test_wrapper_chmod_after_checksum
     test_wrapper_arch_detection
     echo "All shell wrapper tests passed"
     ;;

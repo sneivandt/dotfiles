@@ -110,8 +110,6 @@ download_binary() {
     exit 1
   fi
 
-  chmod +x "$BINARY"
-
   if ! command -v sha256sum >/dev/null 2>&1; then
     echo "ERROR: sha256sum not found. Cannot verify download integrity." >&2
     rm -f "$BINARY"
@@ -121,6 +119,8 @@ download_binary() {
     rm -f "$BINARY"
     exit 1
   fi
+
+  chmod +x "$BINARY"
 }
 
 # Bootstrap: download the latest binary only if no binary is present.

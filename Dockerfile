@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM ubuntu:latest AS builder
+FROM ubuntu:24.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -24,7 +24,7 @@ COPY .git .git
 RUN cargo build --release --manifest-path cli/Cargo.toml \
     && strip cli/target/release/dotfiles
 
-FROM ubuntu:latest
+FROM ubuntu:24.04
 
 LABEL org.opencontainers.image.title="dotfiles" \
       org.opencontainers.image.description="Cross-platform dotfiles for Linux/Arch/Windows" \
@@ -61,7 +61,6 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
 RUN useradd -m -s /bin/zsh -U sneivandt
 WORKDIR /home/sneivandt
 ENV SHELL=/bin/zsh
-CMD ["/usr/bin/zsh"]
 
 # Install dotfiles
 COPY --chown=sneivandt:sneivandt .git /home/sneivandt/dotfiles/.git
@@ -72,3 +71,4 @@ COPY --from=builder /build/cli/target/release/dotfiles /home/sneivandt/dotfiles/
 USER sneivandt
 RUN /home/sneivandt/dotfiles/bin/dotfiles --root /home/sneivandt/dotfiles -p base install \
     && rm -rf /home/sneivandt/dotfiles/.git
+CMD ["/usr/bin/zsh"]

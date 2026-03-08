@@ -192,20 +192,36 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Compare two paths for equality, handling UNC prefix normalization on Windows.
+/// Compare two paths for equality, canonicalizing when possible.
+///
+/// Attempts `fs::canonicalize` on both paths so that symlinks in the path,
+/// case differences (Windows), and `\\?\` UNC prefixes are resolved before
+/// comparison.  Falls back to raw comparison when canonicalization fails
+/// (e.g., dangling paths).
 fn paths_equal(a: &Path, b: &Path) -> bool {
-    let normalize = |p: &Path| -> PathBuf {
-        #[cfg(windows)]
-        {
-            let s = p.to_string_lossy();
-            if let Some(stripped) = s.strip_prefix(r"\\?\") {
-                return PathBuf::from(stripped);
-            }
-        }
-        p.to_path_buf()
-    };
+    // Fast path: literal match (covers the common case where the symlink was
+    // created by this tool and nothing has changed).
+    if a == b {
+        return true;
+    }
 
-    normalize(a) == normalize(b)
+    // Try canonicalizing both; fall back to original path on failure.
+    let canon_a = std::fs::canonicalize(a).unwrap_or_else(|_| a.to_path_buf());
+    let canon_b = std::fs::canonicalize(b).unwrap_or_else(|_| b.to_path_buf());
+
+    #[cfg(windows)]
+    {
+        // Windows filesystems are case-insensitive; compare with
+        // case-folded Unicode to avoid false mismatches.
+        let sa = canon_a.to_string_lossy().to_lowercase();
+        let sb = canon_b.to_string_lossy().to_lowercase();
+        sa == sb
+    }
+
+    #[cfg(not(windows))]
+    {
+        canon_a == canon_b
+    }
 }
 
 /// Create a symlink at `link` pointing to `target`.
@@ -346,6 +362,33 @@ mod tests {
 
         let path3 = PathBuf::from("/tmp/other");
         assert!(!paths_equal(&path1, &path3));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn paths_equal_resolves_through_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real_file");
+        std::fs::write(&real, "content").unwrap();
+        let link = dir.path().join("link_to_file");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        // Should be equal despite different literal paths
+        assert!(paths_equal(&real, &link));
+    }
+
+    #[test]
+    fn paths_equal_handles_nonexistent_paths() {
+        // When both paths don't exist and are different, should not be equal
+        assert!(!paths_equal(
+            Path::new("/nonexistent/path/a"),
+            Path::new("/nonexistent/path/b")
+        ));
+        // When both are the same nonexistent path, should be equal (fast path)
+        assert!(paths_equal(
+            Path::new("/nonexistent/same"),
+            Path::new("/nonexistent/same")
+        ));
     }
 
     #[test]

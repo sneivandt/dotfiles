@@ -30,18 +30,17 @@ impl CopilotSkillResource {
     }
 
     /// Create from a config entry and skills directory.
+    ///
+    /// Derives the destination directory name from the URL's owner, repo, and
+    /// trailing path segment to avoid collisions between skills from different
+    /// repositories that share the same directory name.
     #[must_use]
     pub fn from_entry(
         entry: &crate::config::copilot_skills::CopilotSkill,
         skills_dir: &Path,
         executor: Arc<dyn Executor>,
     ) -> Self {
-        let dir_name = entry
-            .url
-            .trim_end_matches('/')
-            .rsplit('/')
-            .next()
-            .unwrap_or(&entry.url);
+        let dir_name = unique_skill_dir_name(&entry.url);
         Self::new(entry.url.clone(), skills_dir.join(dir_name), executor)
     }
 }
@@ -81,6 +80,31 @@ impl Resource for CopilotSkillResource {
             Ok(ResourceState::Missing)
         }
     }
+}
+
+/// Derive a unique directory name from a GitHub URL.
+///
+/// Parses `{owner}`, `{repo}`, and the trailing path segment from the URL,
+/// producing `{owner}-{repo}-{name}` to avoid collisions between skills
+/// from different repositories that share the same trailing directory name.
+///
+/// Falls back to an FNV hash of the full URL when parsing fails.
+fn unique_skill_dir_name(url: &str) -> String {
+    let trimmed = url.trim_end_matches('/');
+    let parts: Vec<&str> = trimmed.split('/').collect();
+    if let Some(blob_idx) = parts.iter().position(|&p| p == "blob" || p == "tree") {
+        let owner = parts.get(blob_idx.wrapping_sub(OWNER_OFFSET));
+        let repo = parts.get(blob_idx.wrapping_sub(REPO_OFFSET));
+        let name = trimmed.rsplit('/').next();
+        if let (Some(owner), Some(repo), Some(name)) = (owner, repo, name)
+            && blob_idx >= OWNER_OFFSET
+            && !name.is_empty()
+        {
+            return format!("{owner}-{repo}-{name}");
+        }
+    }
+    // Fallback: use the hash to guarantee uniqueness for non-standard URLs.
+    format!("skill-{:016x}", simple_hash(url))
 }
 
 /// Download a subdirectory from a GitHub blob URL using sparse checkout.
@@ -358,7 +382,7 @@ mod tests {
         let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, Arc::clone(&executor));
         assert_eq!(
             resource.dest,
-            PathBuf::from("/home/user/.copilot/skills/my-skill")
+            PathBuf::from("/home/user/.copilot/skills/example-skills-my-skill")
         );
     }
 
@@ -393,7 +417,7 @@ mod tests {
         // The trailing slash should be stripped so the dir name is "my-skill", not "".
         assert_eq!(
             resource.dest,
-            PathBuf::from("/home/user/.copilot/skills/my-skill")
+            PathBuf::from("/home/user/.copilot/skills/example-skills-my-skill")
         );
     }
 
@@ -405,9 +429,35 @@ mod tests {
         };
         let skills_dir = PathBuf::from("/home/user/.copilot/skills");
         let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, Arc::clone(&executor));
-        assert_eq!(
-            resource.dest,
-            PathBuf::from("/home/user/.copilot/skills/simple-name")
+        // Non-standard URL: falls back to hash-based name
+        assert!(
+            resource
+                .dest
+                .to_string_lossy()
+                .contains("/home/user/.copilot/skills/skill-"),
+            "expected hash-based fallback, got: {:?}",
+            resource.dest
+        );
+    }
+
+    #[test]
+    fn from_entry_different_repos_same_skill_name_produce_different_dirs() {
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
+        let skills_dir = PathBuf::from("/home/user/.copilot/skills");
+
+        let entry_a = crate::config::copilot_skills::CopilotSkill {
+            url: "https://github.com/alice/repo/tree/main/my-skill".to_string(),
+        };
+        let entry_b = crate::config::copilot_skills::CopilotSkill {
+            url: "https://github.com/bob/repo/tree/main/my-skill".to_string(),
+        };
+
+        let res_a = CopilotSkillResource::from_entry(&entry_a, &skills_dir, Arc::clone(&executor));
+        let res_b = CopilotSkillResource::from_entry(&entry_b, &skills_dir, Arc::clone(&executor));
+
+        assert_ne!(
+            res_a.dest, res_b.dest,
+            "skills from different owners must have different destination directories"
         );
     }
 

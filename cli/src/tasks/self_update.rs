@@ -78,12 +78,6 @@ fn is_cache_fresh(root: &std::path::Path) -> bool {
     unix_timestamp().saturating_sub(ts) < CACHE_MAX_AGE
 }
 
-/// Read the cached release tag (line 1 of the cache file).
-fn cached_version(root: &std::path::Path) -> Option<String> {
-    let content = fs::read_to_string(cache_path(root)).ok()?;
-    content.lines().next().map(|s| s.trim().to_string())
-}
-
 /// Write a new cache file with the given tag and current timestamp.
 fn write_cache(root: &std::path::Path, tag: &str) -> Result<()> {
     let now = unix_timestamp();
@@ -321,14 +315,33 @@ fn is_running_from_bin(root: &std::path::Path) -> bool {
 /// Development builds produced by `git describe` (e.g., `v0.1.2-3-gabcdef` or
 /// `c6c5897-dirty`) are not release versions and must not trigger a self-update.
 fn is_release_version(v: &str) -> bool {
+    parse_semver(v).is_some()
+}
+
+/// Parse a version string into `(major, minor, patch)`.
+///
+/// Accepts both `vMAJOR.MINOR.PATCH` and `MAJOR.MINOR.PATCH` formats.
+/// Returns `None` for development builds, pre-release tags, or malformed input.
+fn parse_semver(v: &str) -> Option<(u64, u64, u64)> {
     let v = v.strip_prefix('v').unwrap_or(v);
     let mut parts = v.split('.');
-    let all_digits = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit());
-    matches!(
-        (parts.next(), parts.next(), parts.next(), parts.next()),
-        (Some(major), Some(minor), Some(patch), None)
-            if all_digits(major) && all_digits(minor) && all_digits(patch)
-    )
+    let major = parts.next()?.parse::<u64>().ok()?;
+    let minor = parts.next()?.parse::<u64>().ok()?;
+    let patch = parts.next()?.parse::<u64>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
+/// Return `true` if `latest` is strictly newer than `current`.
+///
+/// Both must be valid semver tags; returns `false` if either cannot be parsed.
+fn is_newer(latest: &str, current: &str) -> bool {
+    match (parse_semver(latest), parse_semver(current)) {
+        (Some(l), Some(c)) => l > c,
+        _ => false,
+    }
 }
 
 /// Result of checking for an available update.
@@ -353,6 +366,9 @@ enum UpdateCheck {
 /// Check whether an update is available by comparing the local cache and
 /// the latest GitHub release.
 ///
+/// Only triggers an update when the latest release is strictly newer than the
+/// running version (semantic version comparison), preventing silent downgrades.
+///
 /// # Errors
 ///
 /// Returns an error if the cache file cannot be written.
@@ -370,11 +386,12 @@ fn check_for_update(root: &std::path::Path, client: &dyn HttpClient) -> Result<U
         tracing::debug!("fetch_latest_tag returned None, treating as offline");
         return Ok(UpdateCheck::Offline);
     };
-    if cached_version(root).as_deref() == Some(latest.as_str()) {
+    if latest == current {
         write_cache(root, &latest)?;
         return Ok(UpdateCheck::AlreadyCurrent(latest));
     }
-    if latest == current {
+    if !is_newer(&latest, &current) {
+        tracing::debug!("latest release {latest} is not newer than current {current}, skipping");
         write_cache(root, &latest)?;
         return Ok(UpdateCheck::AlreadyCurrent(latest));
     }
@@ -566,16 +583,6 @@ mod tests {
     }
 
     #[test]
-    fn cached_version_reads_first_line() {
-        let dir = tempfile::tempdir().unwrap();
-        let bin_dir = dir.path().join("bin");
-        fs::create_dir_all(&bin_dir).unwrap();
-        fs::write(bin_dir.join(".dotfiles-version-cache"), "v0.1.42\n12345\n").unwrap();
-
-        assert_eq!(cached_version(dir.path()), Some("v0.1.42".to_string()));
-    }
-
-    #[test]
     fn write_cache_creates_file() {
         let dir = tempfile::tempdir().unwrap();
         let bin_dir = dir.path().join("bin");
@@ -667,6 +674,35 @@ mod tests {
         assert!(!is_release_version("v0.1.2-dirty"));
         assert!(!is_release_version("0.1.2-dirty"));
         assert!(!is_release_version(""));
+    }
+
+    #[test]
+    fn parse_semver_extracts_version_tuple() {
+        assert_eq!(parse_semver("v1.2.3"), Some((1, 2, 3)));
+        assert_eq!(parse_semver("0.1.0"), Some((0, 1, 0)));
+        assert_eq!(parse_semver("v0.1.163"), Some((0, 1, 163)));
+        assert_eq!(parse_semver("not-a-version"), None);
+        assert_eq!(parse_semver("v0.1.2-dirty"), None);
+        assert_eq!(parse_semver(""), None);
+    }
+
+    #[test]
+    fn is_newer_compares_semantically() {
+        // Newer versions
+        assert!(is_newer("v0.2.0", "v0.1.0"));
+        assert!(is_newer("v1.0.0", "v0.9.9"));
+        assert!(is_newer("v0.1.1", "v0.1.0"));
+
+        // Equal versions
+        assert!(!is_newer("v0.1.0", "v0.1.0"));
+
+        // Older versions (would-be downgrade)
+        assert!(!is_newer("v0.1.0", "v0.2.0"));
+        assert!(!is_newer("v0.9.9", "v1.0.0"));
+
+        // Invalid versions
+        assert!(!is_newer("garbage", "v0.1.0"));
+        assert!(!is_newer("v0.2.0", "garbage"));
     }
 
     // -----------------------------------------------------------------------

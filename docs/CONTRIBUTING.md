@@ -27,7 +27,7 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 Install the Rust toolchain via [rustup](https://rustup.rs/):
 
-- **Linux / macOS**: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- **Linux**: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 - **Windows**: `winget install Rustlang.Rustup`
 
 After installation, ensure `cargo` is on your PATH (open a new terminal if needed). The project targets the **stable** toolchain.
@@ -80,7 +80,16 @@ cargo test --manifest-path cli/Cargo.toml
    units = ["my-service.service"]
    ```
 
-4. **File Categorization**: If the file should be excluded in certain profiles, add to `conf/manifest.toml`:
+4. **Git Configuration**: Add Windows git settings to `conf/git-config.toml`:
+   ```toml
+   [windows]
+   settings = [
+     { key = "core.autocrlf", value = "false" },
+     { key = "core.symlinks", value = "true" },
+   ]
+   ```
+
+5. **File Categorization**: If the file should be excluded in certain profiles, add to `conf/manifest.toml`:
    ```toml
    [desktop]
    paths = ["config/mynewconfig"]

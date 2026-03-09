@@ -1351,3 +1351,109 @@ fn process_resources_remove_parallel_error_propagates() {
     let result = process_resources_remove(&ctx, resources, "unlink");
     assert!(result.is_err());
 }
+
+// -----------------------------------------------------------------------
+// Cancellation — sequential process_resources
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resources_stops_on_cancellation() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    // Cancel before processing begins
+    ctx.cancelled.cancel();
+    // apply() would error if called — cancellation should prevent it
+    let resources = vec![
+        MockResource::new(ResourceState::Missing).with_apply(Err("should not call".into())),
+        MockResource::new(ResourceState::Missing).with_apply(Err("should not call".into())),
+    ];
+    let opts = default_opts();
+
+    let result = process_resources(&ctx, resources, &opts).unwrap();
+    // Finishes with zero stats (no resources processed)
+    assert!(matches!(result, TaskResult::Ok));
+}
+
+// -----------------------------------------------------------------------
+// Cancellation — sequential process_resource_states
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resource_states_stops_on_cancellation() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    ctx.cancelled.cancel();
+    let resource_states = vec![
+        (
+            MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
+            ResourceState::Missing,
+        ),
+        (
+            MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
+            ResourceState::Missing,
+        ),
+    ];
+    let opts = default_opts();
+
+    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    assert!(matches!(result, TaskResult::Ok));
+}
+
+// -----------------------------------------------------------------------
+// Cancellation — sequential process_resources_remove
+// -----------------------------------------------------------------------
+
+#[test]
+fn process_resources_remove_stops_on_cancellation() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    ctx.cancelled.cancel();
+    // remove() would error if called
+    let resources = vec![
+        MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),
+        MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),
+    ];
+
+    let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
+    assert!(matches!(result, TaskResult::Ok));
+}
+
+// -----------------------------------------------------------------------
+// ProcessOpts sequential flag — forces sequential even with parallel ctx
+// -----------------------------------------------------------------------
+
+#[test]
+fn sequential_opts_forces_sequential_processing() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = parallel_context(config);
+    // Use sequential opts — should not dispatch to parallel path
+    let resources = vec![
+        MockResource::new(ResourceState::Correct),
+        MockResource::new(ResourceState::Missing),
+        MockResource::new(ResourceState::Correct),
+    ];
+    let opts = ProcessOpts::strict("install").sequential();
+
+    let result = process_resources(&ctx, resources, &opts).unwrap();
+    assert!(matches!(result, TaskResult::Ok));
+}
+
+#[test]
+fn sequential_opts_forces_sequential_for_resource_states() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = parallel_context(config);
+    let resource_states = vec![
+        (
+            MockResource::new(ResourceState::Correct),
+            ResourceState::Correct,
+        ),
+        (
+            MockResource::new(ResourceState::Missing),
+            ResourceState::Missing,
+        ),
+    ];
+    let opts = ProcessOpts::strict("install").sequential();
+
+    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    assert!(matches!(result, TaskResult::Ok));
+}

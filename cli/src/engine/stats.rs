@@ -142,3 +142,219 @@ impl std::ops::AddAssign for TaskStats {
         self.skipped += other.skipped;
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    // -------------------------------------------------------------------
+    // TaskStats construction
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn new_stats_are_all_zero() {
+        let stats = TaskStats::new();
+        assert_eq!(stats.changed, 0);
+        assert_eq!(stats.already_ok, 0);
+        assert_eq!(stats.skipped, 0);
+    }
+
+    #[test]
+    fn default_stats_are_all_zero() {
+        let stats = TaskStats::default();
+        assert_eq!(stats.changed, 0);
+        assert_eq!(stats.already_ok, 0);
+        assert_eq!(stats.skipped, 0);
+    }
+
+    // -------------------------------------------------------------------
+    // TaskStats::summary
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn summary_all_zeros() {
+        let stats = TaskStats::new();
+        assert_eq!(stats.summary(false), "0 changed, 0 already ok");
+    }
+
+    #[test]
+    fn summary_all_zeros_dry_run() {
+        let stats = TaskStats::new();
+        assert_eq!(stats.summary(true), "0 would change, 0 already ok");
+    }
+
+    #[test]
+    fn summary_changed_only() {
+        let stats = TaskStats {
+            changed: 5,
+            already_ok: 0,
+            skipped: 0,
+        };
+        assert_eq!(stats.summary(false), "5 changed, 0 already ok");
+    }
+
+    #[test]
+    fn summary_already_ok_only() {
+        let stats = TaskStats {
+            changed: 0,
+            already_ok: 10,
+            skipped: 0,
+        };
+        assert_eq!(stats.summary(false), "0 changed, 10 already ok");
+    }
+
+    #[test]
+    fn summary_with_skipped() {
+        let stats = TaskStats {
+            changed: 1,
+            already_ok: 2,
+            skipped: 3,
+        };
+        assert_eq!(stats.summary(false), "1 changed, 2 already ok, 3 skipped");
+    }
+
+    #[test]
+    fn summary_with_skipped_dry_run() {
+        let stats = TaskStats {
+            changed: 1,
+            already_ok: 2,
+            skipped: 3,
+        };
+        assert_eq!(
+            stats.summary(true),
+            "1 would change, 2 already ok, 3 skipped"
+        );
+    }
+
+    #[test]
+    fn summary_hides_skipped_when_zero() {
+        let stats = TaskStats {
+            changed: 3,
+            already_ok: 7,
+            skipped: 0,
+        };
+        let s = stats.summary(false);
+        assert!(!s.contains("skipped"), "should not mention skipped: {s}");
+    }
+
+    // -------------------------------------------------------------------
+    // TaskStats::finish
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn finish_returns_ok_when_not_dry_run() {
+        let config =
+            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::tasks::test_helpers::make_linux_context(config);
+        let stats = TaskStats {
+            changed: 1,
+            already_ok: 0,
+            skipped: 0,
+        };
+        assert!(matches!(stats.finish(&ctx), TaskResult::Ok));
+    }
+
+    #[test]
+    fn finish_returns_dry_run_when_dry_run() {
+        let config =
+            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::tasks::test_helpers::make_linux_context(config).with_dry_run(true);
+        let stats = TaskStats {
+            changed: 1,
+            already_ok: 0,
+            skipped: 0,
+        };
+        assert!(matches!(stats.finish(&ctx), TaskResult::DryRun));
+    }
+
+    // -------------------------------------------------------------------
+    // AddAssign
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn add_assign_accumulates_all_fields() {
+        let mut a = TaskStats {
+            changed: 1,
+            already_ok: 2,
+            skipped: 3,
+        };
+        let b = TaskStats {
+            changed: 10,
+            already_ok: 20,
+            skipped: 30,
+        };
+        a += b;
+        assert_eq!(a.changed, 11);
+        assert_eq!(a.already_ok, 22);
+        assert_eq!(a.skipped, 33);
+    }
+
+    #[test]
+    fn add_assign_with_zero_is_identity() {
+        let mut a = TaskStats {
+            changed: 5,
+            already_ok: 3,
+            skipped: 1,
+        };
+        a += TaskStats::new();
+        assert_eq!(a.changed, 5);
+        assert_eq!(a.already_ok, 3);
+        assert_eq!(a.skipped, 1);
+    }
+
+    // -------------------------------------------------------------------
+    // TaskResult variants
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn task_result_ok_matches() {
+        assert!(matches!(TaskResult::Ok, TaskResult::Ok));
+    }
+
+    #[test]
+    fn task_result_dry_run_matches() {
+        assert!(matches!(TaskResult::DryRun, TaskResult::DryRun));
+    }
+
+    #[test]
+    fn task_result_not_applicable_carries_reason() {
+        let r = TaskResult::NotApplicable("no config".into());
+        match r {
+            TaskResult::NotApplicable(reason) => assert_eq!(reason, "no config"),
+            other => panic!("expected NotApplicable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn task_result_skipped_carries_reason() {
+        let r = TaskResult::Skipped("wrong platform".into());
+        match r {
+            TaskResult::Skipped(reason) => assert_eq!(reason, "wrong platform"),
+            other => panic!("expected Skipped, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn task_result_failed_carries_reason() {
+        let r = TaskResult::Failed("git pull failed".into());
+        match r {
+            TaskResult::Failed(reason) => assert_eq!(reason, "git pull failed"),
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn task_result_debug_format() {
+        let r = TaskResult::Ok;
+        assert_eq!(format!("{r:?}"), "Ok");
+    }
+
+    #[test]
+    fn task_result_clone() {
+        let r = TaskResult::Skipped("reason".into());
+        #[allow(clippy::redundant_clone)]
+        let r2 = r.clone();
+        assert!(matches!(r2, TaskResult::Skipped(_)));
+    }
+}

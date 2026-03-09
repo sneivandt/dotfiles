@@ -6,6 +6,17 @@ This document describes the testing infrastructure and procedures for the dotfil
 
 The project uses Rust's built-in test framework. All tests are run with `cargo test`.
 
+### Choosing the Right Test Command
+
+- **`cargo test --manifest-path cli/Cargo.toml`** runs the Rust unit, integration,
+  and snapshot-backed task list tests.
+- **`./dotfiles.sh test`** runs the dotfiles configuration validation command
+  against the checked-out repository and reports config drift or missing files.
+
+Use `cargo test` when changing Rust code or test fixtures, and use
+`./dotfiles.sh test` when changing files under `conf/`, `symlinks/`, `hooks/`, or
+wrapper scripts.
+
 ### Running Tests
 
 ```bash

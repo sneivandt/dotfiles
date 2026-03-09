@@ -30,7 +30,7 @@ This dotfiles project is actively maintained. Security updates are applied to th
    - Use environment variables for secrets
    - Use `.gitignore` to exclude sensitive files
    - Review commits before pushing
-   - Use `git-secrets` or similar tools to scan for leaked credentials
+   - Keep the built-in `hooks/check-sensitive.sh` pre-commit hook installed so staged changes are scanned for leaked credentials
    - Consider keeping sensitive configs in a private repository
 
 ### Script Execution Risks
@@ -86,7 +86,7 @@ Linux scripts may use `sudo` for:
 ### Before Installation
 
 1. **Fork and review**: Fork the repository and review code before running
-2. **Test in a VM**: Test in a virtual machine or container first
+2. **Test in a VM**: Test in a virtual machine or container first (the provided Docker image is a convenient option)
 3. **Backup**: Backup existing configuration files
 4. **Dry run**: Always test with `-d` (dry-run) first
 
@@ -151,7 +151,6 @@ Host github.com
 
 - [OWASP Cheat Sheet Series](https://cheatsheetseries.owasp.org/)
 - [GitHub Security Best Practices](https://docs.github.com/en/code-security)
-- [git-secrets](https://github.com/awslabs/git-secrets) - Prevent committing secrets
 - [truffleHog](https://github.com/trufflesecurity/trufflehog) - Find secrets in git history
 
 ## See Also

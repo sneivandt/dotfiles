@@ -70,7 +70,7 @@ The INI file uses a simple, clean format with raw regex patterns under section h
 - Testing patterns
 - Pattern guidelines to reduce false positives
 
-Edit `hooks/sensitive-patterns.ini` to add, modify, or remove detection patterns. The section-based organization makes it easy to understand and manage different types of secrets. Changes take effect immediately since the hook file is symlinked.
+Edit `hooks/sensitive-patterns.ini` to add, modify, or remove detection patterns. The section-based organization makes it easy to understand and manage different types of secrets. Re-run the install command after changing hook files or helper scripts so the updated copies are written into `.git/hooks/`.
 
 ### check-rust.sh - Rust Code Quality
 
@@ -115,7 +115,6 @@ The binary copies hook files from `hooks/` into `.git/hooks/`. Re-run the instal
 Hooks are written in POSIX shell (`#!/bin/sh`) and work on:
 - **Linux**: Native shell support
 - **Windows**: Git for Windows includes Git Bash
-- **macOS**: Native shell support
 
 ## See Also
 

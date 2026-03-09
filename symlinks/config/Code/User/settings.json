@@ -56,7 +56,6 @@
     "chat.agent.maxRequests": 50,
     "cmake.configureOnOpen": false,
     "cmake.ignoreCMakeListsMissing": true,
-    "C_Cpp.intelliSenseCachePath": "~/.cache/vscode-cpptools",
     "cSpell.diagnosticLevel": "Hint",
     "debug.inlineValues": "on",
     "debug.toolBarLocation": "docked",
@@ -65,9 +64,7 @@
     "diffEditor.hideUnchangedRegions.minimumLineCount": 10,
     "diffEditor.hideUnchangedRegions.revealLineCount": 20,
     "diffEditor.useInlineViewWhenSpaceIsLimited": true,
-    "docker.extension.enableComposeLanguageServer": false,
     "dotnetAcquisitionExtension.enableTelemetry": false,
-    "editor.bracketPairColorization.enabled": true,
     "editor.accessibilitySupport": "off",
     "editor.fontFamily": "'Source Code Pro', 'Droid Sans Mono', 'Consolas', 'monospace'",
     "editor.fontLigatures": true,
@@ -99,7 +96,7 @@
         "sync": false
     },
     "git.showCommitInput": false,
-    "github.copilot.chat.codesearch.enabled": true,
+    "github.copilot.chat.search.semanticTextResults": true,
     "github.copilot.chat.agent.thinkingTool": true,
     "github.username": "sneivandt",
     "go.toolsManagement.autoUpdate": true,
@@ -119,13 +116,6 @@
         "default": "right",
         "jupyter-notebook": "right"
     },
-    "notifications.excludeList": [
-        "git.missing",
-        "settingsSync.showSyncedNotification",
-        "update.showVisibleNewUpdate",
-        "vscode.extension-editing",
-        "workbench.statusbar.changedSettingsNotification"
-    ],
     "powershell.integratedConsole.showOnStartup": false,
     "powershell.sideBar.CommandExplorerVisibility": false,
     "powershell.startAutomatically": false,

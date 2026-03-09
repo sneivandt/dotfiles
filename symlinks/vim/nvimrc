@@ -26,7 +26,4 @@ lua << EOF
 EOF
 
 " Key mappings for Neovim plugins
-" Only map NvimTreeToggle if nvim-tree is available
-if exists(':NvimTreeToggle')
-  nnoremap <silent><c-e> :NvimTreeToggle<cr>
-endif
+nnoremap <silent><c-e> :NvimTreeToggle<cr>

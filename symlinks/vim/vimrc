@@ -16,9 +16,7 @@ filetype plugin indent on
 " }}}
 " Options------------------------------------------------------------------ {{{
 
-set autoindent
 set backspace=2
-set cindent
 " Use system clipboard (+ register on Linux, * on others)
 set clipboard=unnamedplus,unnamed
 set cmdheight=1
@@ -58,7 +56,6 @@ set showmatch
 set showmode
 set signcolumn=yes
 set smartcase
-set smartindent
 set softtabstop=2
 set splitbelow
 set splitright
@@ -219,7 +216,7 @@ cnoremap <C-v> <C-r>+
 " Folding ----------------------------------------------------------------- {{{
 
 " Toggle fold
-nnoremap f za
+nnoremap <leader>f za
 
 " Focus the current fold
 noremap <leader>z zMzvzz
@@ -301,49 +298,6 @@ augroup END
 "}}}
 " Plugin settings --------------------------------------------------------- {{{
 
-" Airline {{{
-
-let g:airline_powerline_fonts = 0
-
-if !exists('g:airline_symbols')
-    let g:airline_symbols = {}
-endif
-
-let g:airline_symbols.linenr = ''      " Line number symbol
-let g:airline_symbols.branch = ''      " Branch symbol
-let g:airline_symbols.paste = '∥'       " Paste mode symbol
-let g:airline_symbols.whitespace = 'Ξ'  " Whitespace symbol
-let g:airline_symbols.readonly = ''    " Read-only symbol
-let g:airline_left_sep = ''
-let g:airline_left_alt_sep = ''
-let g:airline_right_sep = ''
-let g:airline_right_alt_sep = ''
-
-let g:airline#extensions#default#layout=[[ 'a', 'b', 'c' ], [ 'x', 'z', 'warning' ]]
-
-let g:airline#extensions#tabline#enabled=1
-let g:airline#extensions#tabline#show_buffers=0
-let g:airline#extensions#tabline#tab_min_count=2
-let g:airline#extensions#tabline#tab_nr_type=1
-let g:airline#extensions#tabline#left_sep=''
-let g:airline#extensions#tabline#left_alt_sep=''
-let g:airline#extensions#tabline#right_sep=''
-let g:airline#extensions#tabline#right_alt_sep=''
-let g:airline#extensions#tabline#fnamemod=':t'
-
-let g:airline#extensions#whitespace#enabled=0
-
-" Fast escape in insert mode (not in GUI)
-if ! has('gui_running')
-  set ttimeoutlen=10
-  augroup FastEscape
-    autocmd!
-    au InsertEnter * set timeoutlen=0
-    au InsertLeave * set timeoutlen=1000
-  augroup END
-endif
-
-" }}}
 " FZF {{{
 
 " Use fzf for fuzzy finding (replaces ctrlp)
@@ -447,12 +401,5 @@ let g:go_fmt_command="goimports"
 let g:go_term_mode="split"
 
 " }}}
-
-" }}}
-" Neovim ------------------------------------------------------------------ {{{
-
-if has('nvim')
-  source ~/.config/nvim/nvimrc
-endif
 
 " }}}

@@ -11,10 +11,6 @@ on:
   pull_request:
     branches:
       - master
-    paths-ignore:
-      - '*.md'
-      - 'docs/**'
-      - 'LICENSE'
   workflow_dispatch:
 
 concurrency:

@@ -109,6 +109,11 @@ jobs:
           # Your tests here
 ```
 
+The published runtime image is mainly for isolated install and manual verification
+of the configured environment. Rust-side test execution — including `cargo test`
+and `insta` snapshot updates — still runs in the normal Rust toolchain environment
+used by the repository CI jobs, not inside the runtime container shown above.
+
 ### Development Environment
 
 Create a consistent development environment:

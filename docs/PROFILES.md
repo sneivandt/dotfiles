@@ -131,6 +131,12 @@ exclude = []
 
 Platform categories (`linux`, `windows`, `arch`) are not defined in profiles.toml — they are auto-detected at runtime based on the operating system.
 
+### WSL Behavior
+
+WSL is not a separate profile or category. On WSL, use the normal Linux profiles
+(`base` or `desktop`), and the installer will additionally run the `wsl_conf`
+task when WSL is detected to manage `/etc/wsl.conf`.
+
 ### Profile Syntax
 
 - **Profile names**: Section headers in `profiles.toml` (e.g., `[base]`, `[desktop]`)

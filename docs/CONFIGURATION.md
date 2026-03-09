@@ -271,6 +271,29 @@ path = 'HKCU:\Console\PSReadLine'
 NormalForeground = 0xF
 ```
 
+---
+
+### `git-config.toml`
+**Purpose**: Applies global git configuration settings.
+
+**Format**: Sections represent categories; entries are inline tables with `key` and
+`value` fields.
+
+**Example**:
+```toml
+[windows]
+settings = [
+  { key = "core.autocrlf", value = "false" },
+  { key = "core.symlinks", value = "true" },
+  { key = "credential.helper", value = "manager" },
+]
+```
+
+**How it works**:
+- The `key` should use standard git `section.name` syntax such as `core.autocrlf`
+- The value is written with `git config --global`
+- The current repository uses this for Windows-specific git defaults
+
 ## Adding New Configuration
 
 ### Adding a Package

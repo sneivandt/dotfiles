@@ -249,6 +249,11 @@ function Get-Binary
     if ($IsLinux -or $IsMacOS)
     {
         chmod +x $Binary
+        if ($LASTEXITCODE -ne 0)
+        {
+            Write-Error "Failed to make binary executable"
+            exit 1
+        }
     }
 }
 

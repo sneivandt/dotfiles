@@ -7,6 +7,7 @@
 //! - [`ensure_parent_dir`] / [`remove_existing`] / [`copy_dir_recursive`] —
 //!   shared helper functions for resource `apply()` methods.
 use anyhow::{Context as _, Result};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 /// Abstraction over filesystem queries used by tasks.
@@ -267,13 +268,29 @@ pub fn remove_existing(path: &Path) -> Result<()> {
 /// Symlinks within the source tree are *followed*: the function uses
 /// [`Path::is_dir`] (which follows symlinks) so directory symlinks are
 /// recursed into and their contents materialised rather than copying the
-/// link itself.
+/// link itself.  Circular symlinks are detected via canonical-path tracking
+/// and reported as an error.
 ///
 /// # Errors
 ///
 /// Returns an error if the destination directory cannot be created, a source
-/// entry cannot be read, or a file cannot be copied.
+/// entry cannot be read, a file cannot be copied, or a symlink cycle is
+/// detected.
 pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> {
+    let canonical = src
+        .canonicalize()
+        .with_context(|| format!("canonicalizing {}", src.display()))?;
+    let mut visited = HashSet::new();
+    visited.insert(canonical);
+    copy_dir_recursive_inner(src, dst, skip_git, &mut visited)
+}
+
+fn copy_dir_recursive_inner(
+    src: &Path,
+    dst: &Path,
+    skip_git: bool,
+    visited: &mut HashSet<PathBuf>,
+) -> Result<()> {
     std::fs::create_dir_all(dst)
         .with_context(|| format!("creating directory {}", dst.display()))?;
     for entry in
@@ -286,7 +303,13 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
             if skip_git && entry.file_name() == ".git" {
                 continue;
             }
-            copy_dir_recursive(&src_path, &dst_path, skip_git)?;
+            let canonical = src_path
+                .canonicalize()
+                .with_context(|| format!("canonicalizing {}", src_path.display()))?;
+            if !visited.insert(canonical) {
+                anyhow::bail!("symlink cycle detected at {}", src_path.display());
+            }
+            copy_dir_recursive_inner(&src_path, &dst_path, skip_git, visited)?;
         } else {
             std::fs::copy(&src_path, &dst_path).with_context(|| {
                 format!("copying {} to {}", src_path.display(), dst_path.display())
@@ -436,6 +459,23 @@ mod tests {
         assert!(
             target.join(".git/HEAD").exists(),
             ".git directory should be copied"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn detects_symlink_cycle() {
+        let src = tempfile::tempdir().unwrap();
+        std::fs::write(src.path().join("file.txt"), b"content").unwrap();
+        std::fs::create_dir(src.path().join("sub")).unwrap();
+        std::os::unix::fs::symlink(src.path(), src.path().join("sub/loop")).unwrap();
+
+        let dst = tempfile::tempdir().unwrap();
+        let target = dst.path().join("out");
+        let err = copy_dir_recursive(src.path(), &target, false).unwrap_err();
+        assert!(
+            format!("{err:?}").contains("symlink cycle"),
+            "expected symlink cycle error, got: {err:?}"
         );
     }
 

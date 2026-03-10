@@ -68,6 +68,5 @@ COPY --chown=sneivandt:sneivandt symlinks /home/sneivandt/dotfiles/symlinks
 COPY --chown=sneivandt:sneivandt hooks /home/sneivandt/dotfiles/hooks
 COPY --from=builder /build/cli/target/release/dotfiles /home/sneivandt/dotfiles/bin/dotfiles
 USER sneivandt
-RUN --mount=type=bind,source=.git,target=/home/sneivandt/dotfiles/.git \
-    /home/sneivandt/dotfiles/bin/dotfiles --root /home/sneivandt/dotfiles -p base install
+RUN /home/sneivandt/dotfiles/bin/dotfiles --root /home/sneivandt/dotfiles -p base install
 CMD ["/usr/bin/zsh"]

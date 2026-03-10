@@ -958,16 +958,27 @@ mod tests {
         let bin_dir = dir.path().join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
 
-        let binary_data = b"#!/bin/sh\necho updated";
+        // On Unix, download_and_install calls smoke_test_binary after writing
+        // the binary.  A shell-script payload triggers ETXTBSY on CI runners
+        // where the workspace filesystem restricts interpreter execution.
+        // Use the system `true` binary instead — it always exits 0 and is a
+        // real native executable, just like an actual release asset.
+        #[cfg(unix)]
+        let binary_data: Vec<u8> = {
+            let true_path = which::which("true").expect("'true' binary not found on PATH");
+            fs::read(&true_path).expect("reading 'true' binary")
+        };
+        #[cfg(not(unix))]
+        let binary_data: Vec<u8> = b"#!/bin/sh\necho updated".to_vec();
+
         let mut hasher = Sha256::new();
-        hasher.update(binary_data);
+        hasher.update(&binary_data);
         let hash = format!("{:x}", hasher.finalize());
         let checksums = format!("{hash}  {}\n", asset_name());
 
         // Response 1: asset download
         // Response 2: checksums download
-        let client =
-            MockHttpClient::new(vec![Ok(binary_data.to_vec()), Ok(checksums.into_bytes())]);
+        let client = MockHttpClient::new(vec![Ok(binary_data.clone()), Ok(checksums.into_bytes())]);
 
         download_and_install(dir.path(), "v1.0.0", &client).unwrap();
 

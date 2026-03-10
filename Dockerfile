@@ -63,12 +63,11 @@ WORKDIR /home/sneivandt
 ENV SHELL=/bin/zsh
 
 # Install dotfiles
-COPY --chown=sneivandt:sneivandt .git /home/sneivandt/dotfiles/.git
 COPY --chown=sneivandt:sneivandt conf /home/sneivandt/dotfiles/conf
 COPY --chown=sneivandt:sneivandt symlinks /home/sneivandt/dotfiles/symlinks
 COPY --chown=sneivandt:sneivandt hooks /home/sneivandt/dotfiles/hooks
 COPY --from=builder /build/cli/target/release/dotfiles /home/sneivandt/dotfiles/bin/dotfiles
 USER sneivandt
-RUN /home/sneivandt/dotfiles/bin/dotfiles --root /home/sneivandt/dotfiles -p base install \
-    && rm -rf /home/sneivandt/dotfiles/.git
+RUN --mount=type=bind,source=.git,target=/home/sneivandt/dotfiles/.git \
+    /home/sneivandt/dotfiles/bin/dotfiles --root /home/sneivandt/dotfiles -p base install
 CMD ["/usr/bin/zsh"]

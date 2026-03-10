@@ -193,12 +193,15 @@ fn config_validate_warns_on_invalid_vscode_extension_id() {
     );
 }
 
-/// A Copilot skill URL that does not start with `http://` or `https://` must
+/// A Copilot marketplace entry with an invalid marketplace reference must
 /// produce a validation warning.
 #[test]
-fn config_validate_warns_on_invalid_copilot_skill_url() {
+fn config_validate_warns_on_invalid_copilot_skill_marketplace() {
     let ctx = common::TestContextBuilder::new()
-        .with_config_file("copilot-skills.toml", "[base]\nskills = [\"not-a-url\"]\n")
+        .with_config_file(
+            "copilot-skills.toml",
+            "[base]\nskills = [{ marketplace = \"invalid\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
+        )
         .build();
 
     let config = ctx.load_config("base");
@@ -544,14 +547,14 @@ fn config_loads_vscode_extensions_correctly() {
     );
 }
 
-/// Copilot skill URLs listed in copilot-skills.toml must be loaded into
+/// Copilot plugin entries listed in copilot-skills.toml must be loaded into
 /// `config.copilot_skills`.
 #[test]
 fn config_loads_copilot_skills_correctly() {
     let ctx = common::TestContextBuilder::new()
         .with_config_file(
             "copilot-skills.toml",
-            "[base]\nskills = [\"https://github.com/example/skill-a\", \"https://github.com/example/skill-b\"]\n",
+            "[base]\nskills = [{ marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }, { marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-msbuild\" }]\n",
         )
         .build();
 
@@ -566,13 +569,13 @@ fn config_loads_copilot_skills_correctly() {
         config
             .copilot_skills
             .iter()
-            .any(|s| s.url == "https://github.com/example/skill-a")
+            .any(|s| s.plugin == "dotnet-diag" && s.marketplace == "dotnet/skills")
     );
     assert!(
         config
             .copilot_skills
             .iter()
-            .any(|s| s.url == "https://github.com/example/skill-b")
+            .any(|s| s.plugin == "dotnet-msbuild" && s.marketplace_name == "dotnet-agent-skills")
     );
 }
 
@@ -767,7 +770,10 @@ fn config_validate_collects_warnings_from_multiple_sources() {
             "vscode-extensions.toml",
             "[base]\nextensions = [\"invalid_no_dot\"]\n",
         )
-        .with_config_file("copilot-skills.toml", "[base]\nskills = [\"not-a-url\"]\n")
+        .with_config_file(
+            "copilot-skills.toml",
+            "[base]\nskills = [{ marketplace = \"invalid\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
+        )
         .build();
 
     let config = ctx.load_config("base");

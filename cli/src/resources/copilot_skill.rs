@@ -1,237 +1,224 @@
-//! GitHub Copilot skill resource.
-use anyhow::{Context as _, Result};
-use std::path::{Path, PathBuf};
+//! GitHub Copilot plugin resource.
+use anyhow::{Context as _, Result, bail};
+use std::collections::HashSet;
 use std::sync::Arc;
 
-use super::{Applicable, Resource, ResourceChange, ResourceState};
-use crate::error::ResourceError;
-use crate::exec::Executor;
+use super::{Applicable, ResourceChange, ResourceState};
+use crate::exec::{self, Executor};
 
-/// A GitHub Copilot skill resource that can be checked and installed.
+/// A GitHub Copilot plugin that can be checked and installed.
 #[derive(Debug)]
 pub struct CopilotSkillResource {
-    /// Source URL (GitHub blob/tree URL).
-    pub url: String,
-    /// Destination directory under `~/.copilot/skills/`.
-    pub dest: PathBuf,
-    /// Executor for running git commands.
+    /// Marketplace repository reference used with `gh copilot plugin marketplace add`.
+    pub marketplace: String,
+    /// Marketplace name used with `gh copilot plugin install <plugin>@<marketplace_name>`.
+    pub marketplace_name: String,
+    /// Plugin name to install from the marketplace.
+    pub plugin: String,
+    /// Executor for running Copilot CLI commands.
     executor: Arc<dyn Executor>,
 }
 
-impl CopilotSkillResource {
-    /// Create a new Copilot skill resource.
+/// Cached Copilot CLI state gathered from bulk list commands.
+#[derive(Debug, Clone, Default)]
+pub struct CopilotPluginCache {
+    installed_plugins: HashSet<String>,
+    registered_marketplaces: HashSet<String>,
+}
+
+impl CopilotPluginCache {
+    /// Create an empty cache.
     #[must_use]
-    pub fn new(url: String, dest: PathBuf, executor: Arc<dyn Executor>) -> Self {
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    /// Determine whether a marketplace is already registered.
+    #[must_use]
+    pub fn is_marketplace_registered(&self, marketplace: &str, marketplace_name: &str) -> bool {
+        self.registered_marketplaces
+            .contains(&marketplace.to_lowercase())
+            || self
+                .registered_marketplaces
+                .contains(&marketplace_name.to_lowercase())
+    }
+}
+
+impl CopilotSkillResource {
+    /// Create a new Copilot plugin resource.
+    #[must_use]
+    pub fn new(
+        marketplace: String,
+        marketplace_name: String,
+        plugin: String,
+        executor: Arc<dyn Executor>,
+    ) -> Self {
         Self {
-            url,
-            dest,
+            marketplace,
+            marketplace_name,
+            plugin,
             executor,
         }
     }
 
-    /// Create from a config entry and skills directory.
-    ///
-    /// Derives the destination directory name from the URL's owner, repo, and
-    /// trailing path segment to avoid collisions between skills from different
-    /// repositories that share the same directory name.
+    /// Create from a config entry.
     #[must_use]
     pub fn from_entry(
         entry: &crate::config::copilot_skills::CopilotSkill,
-        skills_dir: &Path,
         executor: Arc<dyn Executor>,
     ) -> Self {
-        let dir_name = unique_skill_dir_name(&entry.url);
-        Self::new(entry.url.clone(), skills_dir.join(dir_name), executor)
+        Self::new(
+            entry.marketplace.clone(),
+            entry.marketplace_name.clone(),
+            entry.plugin.clone(),
+            executor,
+        )
+    }
+
+    /// Determine the resource state from a pre-fetched Copilot CLI cache.
+    #[must_use]
+    pub fn state_from_cache(&self, cache: &CopilotPluginCache) -> ResourceState {
+        if cache.installed_plugins.contains(&self.plugin_spec()) {
+            ResourceState::Correct
+        } else {
+            ResourceState::Missing
+        }
+    }
+
+    /// Return the requested plugin spec in normalized form.
+    #[must_use]
+    pub fn plugin_spec(&self) -> String {
+        format!(
+            "{}@{}",
+            self.plugin.to_lowercase(),
+            self.marketplace_name.to_lowercase()
+        )
     }
 }
 
 impl Applicable for CopilotSkillResource {
     fn description(&self) -> String {
-        self.url.clone()
+        format!("{}@{}", self.plugin, self.marketplace_name)
     }
 
     fn apply(&self) -> Result<ResourceChange> {
-        crate::fs::ensure_parent_dir(&self.dest)?;
+        install_plugin(&self.plugin, &self.marketplace_name, &*self.executor).with_context(
+            || {
+                format!(
+                    "installing Copilot plugin {} from {}",
+                    self.plugin, self.marketplace_name
+                )
+            },
+        )?;
 
-        download_github_folder(&self.url, &self.dest, &*self.executor)
-            .with_context(|| format!("downloading skill from {}", self.url))?;
         Ok(ResourceChange::Applied)
     }
 }
 
-impl Resource for CopilotSkillResource {
-    fn current_state(&self) -> Result<ResourceState> {
-        if !self.dest.exists() {
-            return Ok(ResourceState::Missing);
-        }
+/// Query installed plugins and registered marketplaces in two bulk CLI calls.
+///
+/// # Errors
+///
+/// Returns an error if either Copilot CLI query fails.
+pub fn get_copilot_plugin_state(executor: &dyn Executor) -> Result<CopilotPluginCache> {
+    let installed = run_copilot_checked(
+        &["copilot", "plugin", "list"],
+        executor,
+        "gh copilot plugin list",
+    )?;
+    let marketplaces = run_copilot_checked(
+        &["copilot", "plugin", "marketplace", "list"],
+        executor,
+        "gh copilot plugin marketplace list",
+    )?;
 
-        if !self.dest.is_dir() {
-            return Ok(ResourceState::Invalid {
-                reason: format!(
-                    "skill destination is not a directory: {}",
-                    self.dest.display()
-                ),
-            });
-        }
+    Ok(CopilotPluginCache {
+        installed_plugins: parse_installed_plugins(&installed.stdout),
+        registered_marketplaces: parse_registered_marketplaces(&marketplaces.stdout),
+    })
+}
 
-        if skill_dir_has_entries(&self.dest)? {
-            Ok(ResourceState::Correct)
+/// Register a marketplace with the Copilot CLI.
+///
+/// # Errors
+///
+/// Returns an error if marketplace registration fails.
+pub fn register_marketplace(marketplace: &str, executor: &dyn Executor) -> Result<()> {
+    run_copilot_checked(
+        &["copilot", "plugin", "marketplace", "add", marketplace],
+        executor,
+        &format!("gh copilot plugin marketplace add {marketplace}"),
+    )?;
+    Ok(())
+}
+
+fn install_plugin(plugin: &str, marketplace_name: &str, executor: &dyn Executor) -> Result<()> {
+    let spec = format!("{plugin}@{marketplace_name}");
+    run_copilot_checked(
+        &["copilot", "plugin", "install", &spec],
+        executor,
+        &format!("gh copilot plugin install {spec}"),
+    )?;
+    Ok(())
+}
+
+fn parse_installed_plugins(stdout: &str) -> HashSet<String> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let item = trim_cli_item(line);
+            let spec = item.split_whitespace().next()?;
+            spec.contains('@').then(|| spec.to_lowercase())
+        })
+        .collect()
+}
+
+fn parse_registered_marketplaces(stdout: &str) -> HashSet<String> {
+    let mut marketplaces = HashSet::new();
+
+    for line in stdout.lines() {
+        let item = trim_cli_item(line);
+        let Some((name, repo_part)) = item.split_once(" (GitHub: ") else {
+            continue;
+        };
+        let name = name.trim();
+        let repo = repo_part.trim_end_matches(')').trim();
+        if !name.is_empty() {
+            marketplaces.insert(name.to_lowercase());
+        }
+        if !repo.is_empty() {
+            marketplaces.insert(repo.to_lowercase());
+        }
+    }
+
+    marketplaces
+}
+
+fn trim_cli_item(line: &str) -> &str {
+    line.trim_start_matches(|ch: char| ch.is_whitespace() || matches!(ch, '•' | '◆' | '*' | '-'))
+        .trim()
+}
+
+fn run_copilot_checked(
+    args: &[&str],
+    executor: &dyn Executor,
+    label: &str,
+) -> Result<exec::ExecResult> {
+    let result = run_copilot_cmd(args, executor)?;
+    if !result.success {
+        let detail = if result.stderr.trim().is_empty() {
+            result.stdout.trim()
         } else {
-            Ok(ResourceState::Missing)
-        }
+            result.stderr.trim()
+        };
+        bail!("{label} failed (exit {:?}): {}", result.code, detail);
     }
+    Ok(result)
 }
 
-/// Derive a unique directory name from a GitHub URL.
-///
-/// Parses `{owner}`, `{repo}`, and the trailing path segment from the URL,
-/// producing `{owner}-{repo}-{name}` to avoid collisions between skills
-/// from different repositories that share the same trailing directory name.
-///
-/// Falls back to an FNV hash of the full URL when parsing fails.
-fn unique_skill_dir_name(url: &str) -> String {
-    let trimmed = url.trim_end_matches('/');
-    let parts: Vec<&str> = trimmed.split('/').collect();
-    if let Some(blob_idx) = parts.iter().position(|&p| p == "blob" || p == "tree") {
-        let owner = parts.get(blob_idx.wrapping_sub(OWNER_OFFSET));
-        let repo = parts.get(blob_idx.wrapping_sub(REPO_OFFSET));
-        let name = trimmed.rsplit('/').next();
-        if let (Some(owner), Some(repo), Some(name)) = (owner, repo, name)
-            && blob_idx >= OWNER_OFFSET
-            && !name.is_empty()
-        {
-            return format!("{owner}-{repo}-{name}");
-        }
-    }
-    // Fallback: use the hash to guarantee uniqueness for non-standard URLs.
-    format!("skill-{:016x}", simple_hash(url))
-}
-
-/// Download a subdirectory from a GitHub blob URL using sparse checkout.
-///
-/// Parses URLs like:
-///   `https://github.com/{owner}/{repo}/blob/{branch}/{path}`
-/// and clones only the target folder.
-fn download_github_folder(url: &str, dest: &Path, executor: &dyn Executor) -> Result<()> {
-    let parts: Vec<&str> = url.trim_end_matches('/').split('/').collect();
-    let blob_idx = parts
-        .iter()
-        .position(|&p| p == "blob" || p == "tree")
-        .context("URL must contain /blob/ or /tree/")?;
-
-    // Ensure we have enough parts before blob_idx
-    anyhow::ensure!(
-        blob_idx >= OWNER_OFFSET,
-        "invalid GitHub URL format: too few parts before blob/tree"
-    );
-
-    let owner = parts
-        .get(blob_idx - OWNER_OFFSET)
-        .context("missing owner in URL")?;
-    let repo = parts
-        .get(blob_idx - REPO_OFFSET)
-        .context("missing repo in URL")?;
-    let branch = parts
-        .get(blob_idx + BRANCH_OFFSET)
-        .context("missing branch in URL")?;
-
-    // Use safe slicing instead of unchecked indexing
-    let subpath = parts
-        .get(blob_idx + PATH_OFFSET..)
-        .map(|slice| slice.join("/"))
-        .unwrap_or_default();
-
-    let repo_url = format!("https://github.com/{owner}/{repo}.git");
-
-    // Use a hash of the full URL to avoid temp directory collisions when
-    // skills from different repos share the same directory name.
-    let url_hash = simple_hash(url);
-    let tmp = std::env::temp_dir().join(format!("dotfiles-skill-{url_hash:016x}"));
-
-    if tmp.exists() {
-        std::fs::remove_dir_all(&tmp).context("removing previous skill temp dir")?;
-    }
-
-    let result = (|| -> Result<()> {
-        // Shallow clone with no checkout
-        executor.run(
-            "git",
-            &[
-                "clone",
-                "--filter=blob:none",
-                "--no-checkout",
-                "--depth",
-                "1",
-                "--branch",
-                branch,
-                &repo_url,
-                &tmp.to_string_lossy(),
-            ],
-        )?;
-
-        // Sparse checkout just the target path
-        executor.run_in(&tmp, "git", &["sparse-checkout", "init", "--cone"])?;
-        executor.run_in(&tmp, "git", &["sparse-checkout", "set", &subpath])?;
-        executor.run_in(&tmp, "git", &["checkout"])?;
-
-        // Copy result to destination
-        let src = tmp.join(&subpath);
-        if !src.exists() {
-            return Err(ResourceError::conflicting_state(
-                format!("skill path {subpath}"),
-                "path exists in repository",
-                "path not found after checkout",
-            )
-            .into());
-        }
-
-        crate::fs::copy_dir_recursive(&src, dest, true)?;
-        Ok(())
-    })();
-
-    cleanup_temp_dir(&tmp);
-    result
-}
-
-fn skill_dir_has_entries(path: &Path) -> Result<bool> {
-    Ok(std::fs::read_dir(path)
-        .with_context(|| format!("reading skill directory {}", path.display()))?
-        .next()
-        .transpose()
-        .with_context(|| format!("reading entry in skill directory {}", path.display()))?
-        .is_some())
-}
-
-fn cleanup_temp_dir(path: &Path) {
-    if path.exists()
-        && let Err(e) = std::fs::remove_dir_all(path)
-    {
-        tracing::warn!("failed to cleanup temp dir {}: {e}", path.display());
-    }
-}
-
-/// FNV-1a 64-bit hash constants.
-/// See: <https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function>
-const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
-const FNV_PRIME: u64 = 0x0100_0000_01b3;
-
-/// GitHub URL structure constants for parsing.
-/// Expected format: `https://github.com/{owner}/{repo}/blob/{branch}/{path}`
-const OWNER_OFFSET: usize = 2; // Steps back from blob/tree to owner
-const REPO_OFFSET: usize = 1; // Steps back from blob/tree to repo
-const BRANCH_OFFSET: usize = 1; // Steps forward from blob/tree to branch
-const PATH_OFFSET: usize = 2; // Steps forward from blob/tree to subpath
-
-/// Simple non-cryptographic hash for generating unique temp directory names.
-///
-/// Uses FNV-1a algorithm for fast, collision-resistant hashing of skill URLs.
-fn simple_hash(s: &str) -> u64 {
-    let mut hash = FNV_OFFSET_BASIS;
-    for byte in s.bytes() {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
+/// Run a GitHub CLI Copilot command.
+fn run_copilot_cmd(args: &[&str], executor: &dyn Executor) -> Result<exec::ExecResult> {
+    executor.run_unchecked("gh", args)
 }
 
 #[cfg(test)]
@@ -239,63 +226,74 @@ fn simple_hash(s: &str) -> u64 {
 mod tests {
     use super::*;
     use crate::exec::ExecResult;
-    use anyhow::bail;
+    use std::collections::VecDeque;
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
 
     #[derive(Debug)]
-    struct CloneFixtureExecutor {
-        skill_subpath: String,
+    struct RecordingExecutor {
+        responses: Mutex<VecDeque<ExecResult>>,
+        calls: Mutex<Vec<Vec<String>>>,
     }
 
-    impl CloneFixtureExecutor {
-        fn new(skill_subpath: &str) -> Self {
+    impl RecordingExecutor {
+        fn new(responses: Vec<ExecResult>) -> Self {
             Self {
-                skill_subpath: skill_subpath.to_string(),
+                responses: Mutex::new(responses.into()),
+                calls: Mutex::new(Vec::new()),
             }
         }
 
-        fn ok_result() -> ExecResult {
+        fn success(stdout: &str) -> ExecResult {
             ExecResult {
-                stdout: String::new(),
+                stdout: stdout.to_string(),
                 stderr: String::new(),
                 success: true,
                 code: Some(0),
             }
         }
+
+        fn calls(&self) -> Vec<Vec<String>> {
+            self.calls.lock().unwrap().clone()
+        }
+
+        fn unexpected_error(message: &str) -> anyhow::Error {
+            anyhow::anyhow!(message.to_string())
+        }
     }
 
-    impl Executor for CloneFixtureExecutor {
-        fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-            if program == "git" && args.first() == Some(&"clone") {
-                let dest = PathBuf::from(
-                    args.last()
-                        .copied()
-                        .ok_or_else(|| anyhow::anyhow!("missing clone destination"))?,
-                );
-                let src = dest.join(&self.skill_subpath);
-                std::fs::create_dir_all(&src)?;
-                std::fs::write(src.join("SKILL.md"), "# skill\n")?;
-                return Ok(Self::ok_result());
-            }
-
-            bail!("unexpected run call: {program} {args:?}");
+    impl Executor for RecordingExecutor {
+        fn run(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
+            Err(Self::unexpected_error("unexpected checked executor call"))
         }
 
         fn run_in_with_env(
             &self,
             _: &Path,
-            program: &str,
+            _: &str,
             _: &[&str],
             _: &[(&str, &str)],
         ) -> Result<ExecResult> {
-            if program == "git" {
-                Ok(Self::ok_result())
-            } else {
-                bail!("unexpected run_in_with_env call: {program}");
-            }
+            Err(Self::unexpected_error("unexpected run_in_with_env call"))
         }
 
-        fn run_unchecked(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
-            Ok(Self::ok_result())
+        fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+            self.calls.lock().unwrap().push(
+                std::iter::once(program.to_string())
+                    .chain(args.iter().map(|arg| (*arg).to_string()))
+                    .collect(),
+            );
+            Ok(self
+                .responses
+                .lock()
+                .unwrap()
+                .pop_front()
+                .unwrap_or_else(|| ExecResult {
+                    stdout: String::new(),
+                    stderr: "unexpected call".to_string(),
+                    success: false,
+                    code: Some(1),
+                }))
         }
 
         fn which(&self, _: &str) -> bool {
@@ -308,212 +306,151 @@ mod tests {
     }
 
     #[test]
-    fn description_returns_url() {
+    fn description_returns_plugin_reference() {
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let resource = CopilotSkillResource::new(
-            "https://github.com/example/skills/tree/main/my-skill".to_string(),
-            PathBuf::from("/home/user/.copilot/skills/my-skill"),
+            "dotnet/skills".to_string(),
+            "dotnet-agent-skills".to_string(),
+            "dotnet-diag".to_string(),
             Arc::clone(&executor),
         );
-        assert_eq!(
-            resource.description(),
-            "https://github.com/example/skills/tree/main/my-skill"
-        );
+        assert_eq!(resource.description(), "dotnet-diag@dotnet-agent-skills");
     }
 
     #[test]
-    fn missing_when_dest_does_not_exist() {
+    fn state_from_cache_reports_correct_when_plugin_is_installed() {
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let resource = CopilotSkillResource::new(
-            "https://github.com/example/skills/tree/main/my-skill".to_string(),
-            PathBuf::from("/nonexistent/path/my-skill"),
+            "dotnet/skills".to_string(),
+            "dotnet-agent-skills".to_string(),
+            "dotnet-diag".to_string(),
             Arc::clone(&executor),
         );
-        assert!(matches!(
-            resource.current_state().unwrap(),
-            ResourceState::Missing
-        ));
+
+        let cache = CopilotPluginCache {
+            installed_plugins: HashSet::from(["dotnet-diag@dotnet-agent-skills".to_string()]),
+            registered_marketplaces: HashSet::new(),
+        };
+
+        assert_eq!(resource.state_from_cache(&cache), ResourceState::Correct);
     }
 
     #[test]
-    fn missing_when_dest_is_empty() {
-        let dir = tempfile::tempdir().unwrap();
-        let dest = dir.path().join("my-skill");
-        std::fs::create_dir(&dest).unwrap();
-
+    fn state_from_cache_reports_missing_when_plugin_is_absent() {
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let resource = CopilotSkillResource::new(
-            "https://github.com/example/skills/tree/main/my-skill".to_string(),
-            dest,
+            "dotnet/skills".to_string(),
+            "dotnet-agent-skills".to_string(),
+            "dotnet-diag".to_string(),
             Arc::clone(&executor),
         );
-        assert!(matches!(
-            resource.current_state().unwrap(),
-            ResourceState::Missing
-        ));
+
+        let cache = CopilotPluginCache::empty();
+
+        assert_eq!(resource.state_from_cache(&cache), ResourceState::Missing);
     }
 
     #[test]
-    fn correct_when_dest_has_contents() {
-        let dir = tempfile::tempdir().unwrap();
-        let dest = dir.path().join("my-skill");
-        std::fs::create_dir(&dest).unwrap();
-        std::fs::write(dest.join("SKILL.md"), "# skill\n").unwrap();
-
-        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-        let resource = CopilotSkillResource::new(
-            "https://github.com/example/skills/tree/main/my-skill".to_string(),
-            dest,
-            Arc::clone(&executor),
-        );
-        assert!(matches!(
-            resource.current_state().unwrap(),
-            ResourceState::Correct
-        ));
-    }
-
-    #[test]
-    fn from_entry_derives_dir_name() {
+    fn from_entry_copies_plugin_fields() {
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let entry = crate::config::copilot_skills::CopilotSkill {
-            url: "https://github.com/example/skills/tree/main/my-skill".to_string(),
+            marketplace: "dotnet/skills".to_string(),
+            marketplace_name: "dotnet-agent-skills".to_string(),
+            plugin: "dotnet-msbuild".to_string(),
         };
-        let skills_dir = PathBuf::from("/home/user/.copilot/skills");
-        let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, Arc::clone(&executor));
-        assert_eq!(
-            resource.dest,
-            PathBuf::from("/home/user/.copilot/skills/example-skills-my-skill")
+        let resource = CopilotSkillResource::from_entry(&entry, Arc::clone(&executor));
+        assert_eq!(resource.marketplace, "dotnet/skills");
+        assert_eq!(resource.marketplace_name, "dotnet-agent-skills");
+        assert_eq!(resource.plugin, "dotnet-msbuild");
+    }
+
+    #[test]
+    fn parse_installed_plugins_reads_specs() {
+        let installed = parse_installed_plugins(
+            "Installed plugins:\n  • csharp-dotnet-development@awesome-copilot (v1.0.0)\n  • dotnet-diag@dotnet-agent-skills\n",
         );
+
+        assert!(installed.contains("csharp-dotnet-development@awesome-copilot"));
+        assert!(installed.contains("dotnet-diag@dotnet-agent-skills"));
     }
 
     #[test]
-    fn simple_hash_is_deterministic() {
-        let url = "https://github.com/example/skills/tree/main/my-skill";
-        assert_eq!(simple_hash(url), simple_hash(url));
-    }
-
-    #[test]
-    fn simple_hash_differs_for_different_inputs() {
-        let url1 = "https://github.com/owner1/repo/tree/main/skill-a";
-        let url2 = "https://github.com/owner2/repo/tree/main/skill-b";
-        assert_ne!(simple_hash(url1), simple_hash(url2));
-    }
-
-    #[test]
-    fn simple_hash_empty_string() {
-        // Should not panic; returns the FNV offset basis for empty input
-        let h = simple_hash("");
-        assert_eq!(h, FNV_OFFSET_BASIS);
-    }
-
-    #[test]
-    fn from_entry_trims_trailing_slash_in_url() {
-        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-        let entry = crate::config::copilot_skills::CopilotSkill {
-            url: "https://github.com/example/skills/tree/main/my-skill/".to_string(),
-        };
-        let skills_dir = PathBuf::from("/home/user/.copilot/skills");
-        let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, Arc::clone(&executor));
-        // The trailing slash should be stripped so the dir name is "my-skill", not "".
-        assert_eq!(
-            resource.dest,
-            PathBuf::from("/home/user/.copilot/skills/example-skills-my-skill")
+    fn parse_registered_marketplaces_reads_names_and_repos() {
+        let marketplaces = parse_registered_marketplaces(
+            "✨ Included with GitHub Copilot:\n  ◆ awesome-copilot (GitHub: github/awesome-copilot)\n\nRegistered marketplaces:\n  • dotnet-agent-skills (GitHub: dotnet/skills)\n",
         );
+
+        assert!(marketplaces.contains("awesome-copilot"));
+        assert!(marketplaces.contains("github/awesome-copilot"));
+        assert!(marketplaces.contains("dotnet-agent-skills"));
+        assert!(marketplaces.contains("dotnet/skills"));
     }
 
     #[test]
-    fn from_entry_uses_full_string_when_no_slash_in_url() {
-        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-        let entry = crate::config::copilot_skills::CopilotSkill {
-            url: "simple-name".to_string(),
-        };
-        let skills_dir = PathBuf::from("/home/user/.copilot/skills");
-        let resource = CopilotSkillResource::from_entry(&entry, &skills_dir, Arc::clone(&executor));
-        // Non-standard URL: falls back to hash-based name.
-        // Use path operations instead of string comparison to stay platform-independent.
-        assert_eq!(
-            resource.dest.parent(),
-            Some(skills_dir.as_path()),
-            "expected dest to be inside skills_dir, got: {:?}",
-            resource.dest
-        );
+    fn get_copilot_plugin_state_reads_both_bulk_queries() {
+        let executor = Arc::new(RecordingExecutor::new(vec![
+            RecordingExecutor::success(
+                "Installed plugins:\n  • dotnet-upgrade@dotnet-agent-skills\n",
+            ),
+            RecordingExecutor::success(
+                "Registered marketplaces:\n  • dotnet-agent-skills (GitHub: dotnet/skills)\n",
+            ),
+        ]));
+        let executor_trait: Arc<dyn Executor> = executor.clone();
+
+        let cache = get_copilot_plugin_state(&*executor_trait).unwrap();
+
+        let calls = executor.calls();
+        assert_eq!(calls.len(), 2);
+        assert!(calls[0].join(" ").contains("plugin list"));
+        assert!(calls[1].join(" ").contains("plugin marketplace list"));
         assert!(
-            resource
-                .dest
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .starts_with("skill-"),
-            "expected hash-based fallback, got: {:?}",
-            resource.dest
+            cache
+                .installed_plugins
+                .contains("dotnet-upgrade@dotnet-agent-skills")
+        );
+        assert!(cache.is_marketplace_registered("dotnet/skills", "dotnet-agent-skills"));
+    }
+
+    #[test]
+    fn register_marketplace_runs_add_command() {
+        let executor = Arc::new(RecordingExecutor::new(vec![RecordingExecutor::success(
+            "added\n",
+        )]));
+        let executor_trait: Arc<dyn Executor> = executor.clone();
+
+        register_marketplace("dotnet/skills", &*executor_trait).unwrap();
+
+        let calls = executor.calls();
+        assert_eq!(calls.len(), 1);
+        assert!(
+            calls[0]
+                .join(" ")
+                .contains("plugin marketplace add dotnet/skills")
         );
     }
 
     #[test]
-    fn from_entry_different_repos_same_skill_name_produce_different_dirs() {
-        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-        let skills_dir = PathBuf::from("/home/user/.copilot/skills");
-
-        let entry_a = crate::config::copilot_skills::CopilotSkill {
-            url: "https://github.com/alice/repo/tree/main/my-skill".to_string(),
-        };
-        let entry_b = crate::config::copilot_skills::CopilotSkill {
-            url: "https://github.com/bob/repo/tree/main/my-skill".to_string(),
-        };
-
-        let res_a = CopilotSkillResource::from_entry(&entry_a, &skills_dir, Arc::clone(&executor));
-        let res_b = CopilotSkillResource::from_entry(&entry_b, &skills_dir, Arc::clone(&executor));
-
-        assert_ne!(
-            res_a.dest, res_b.dest,
-            "skills from different owners must have different destination directories"
-        );
-    }
-
-    #[test]
-    fn apply_returns_error_for_url_without_blob_or_tree() {
-        let dir = tempfile::tempdir().unwrap();
-        let dest = dir.path().join("skill");
-        // TestExecutor would panic if called; but URL parsing fails before any
-        // executor call so this tests the validation path only.
-        let executor: Arc<dyn Executor> = Arc::new(crate::exec::test_helpers::TestExecutor::ok(""));
+    fn apply_installs_plugin() {
+        let executor = Arc::new(RecordingExecutor::new(vec![RecordingExecutor::success(
+            "installed\n",
+        )]));
+        let executor_trait: Arc<dyn Executor> = executor.clone();
         let resource = CopilotSkillResource::new(
-            "https://github.com/owner/repo/main/path".to_string(),
-            dest,
-            Arc::clone(&executor),
+            "dotnet/skills".to_string(),
+            "dotnet-agent-skills".to_string(),
+            "dotnet-upgrade".to_string(),
+            executor_trait,
         );
-        let err = resource.apply().unwrap_err();
-        // The error is wrapped by `with_context`, so check the full chain.
-        let chain = format!("{err:#}");
+
+        assert!(matches!(resource.apply().unwrap(), ResourceChange::Applied));
+
+        let calls = executor.calls();
+        assert_eq!(calls.len(), 1);
         assert!(
-            chain.contains("/blob/ or /tree/"),
-            "expected URL format error, got: {chain}"
-        );
-    }
-
-    #[test]
-    fn download_github_folder_cleans_up_temp_dir_on_copy_failure() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let dest = temp_dir.path().join("skill");
-        std::fs::write(&dest, "not a directory").unwrap();
-
-        let url = "https://github.com/example/skills/tree/main/my-skill";
-        let tmp = std::env::temp_dir().join(format!("dotfiles-skill-{:016x}", simple_hash(url)));
-        if tmp.exists() {
-            std::fs::remove_dir_all(&tmp).unwrap();
-        }
-
-        let executor = CloneFixtureExecutor::new("my-skill");
-        let err = download_github_folder(url, &dest, &executor).unwrap_err();
-
-        let chain = format!("{err:#}");
-        assert!(
-            chain.contains("creating directory"),
-            "expected copy failure, got: {chain}"
-        );
-        assert!(
-            !tmp.exists(),
-            "temporary clone directory should be removed on copy failure"
+            calls[0]
+                .join(" ")
+                .contains("plugin install dotnet-upgrade@dotnet-agent-skills")
         );
     }
 }

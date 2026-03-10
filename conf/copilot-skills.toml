@@ -1,9 +1,11 @@
-# GitHub Copilot CLI skill URLs to install
-# Format: GitHub folder URLs
+# GitHub Copilot plugins to install from marketplaces
+# Format: inline tables with marketplace repo, marketplace name, and plugin name
 # Each section represents a profile or combination of profiles
-# Skills are folders downloaded from GitHub to ~/.copilot/skills/
+# Plugins are managed by the Copilot CLI and detected via `gh copilot plugin list`
 
 [base]
 skills = [
-  "https://github.com/github/awesome-copilot/tree/main/skills/azure-devops-cli",
+  { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" },
+  { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" },
+  { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-upgrade" },
 ]

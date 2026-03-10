@@ -1,20 +1,38 @@
-//! GitHub Copilot skills configuration loading.
+//! GitHub Copilot plugin configuration loading.
+
+use serde::Deserialize;
 
 use super::ValidationWarning;
 use super::config_section;
 
-/// A GitHub Copilot skill URL.
+/// A GitHub Copilot plugin to install from a marketplace.
 #[derive(Debug, Clone)]
 pub struct CopilotSkill {
-    /// GitHub blob or tree URL pointing to the skill directory.
-    pub url: String,
+    /// Marketplace repository reference used with `gh copilot plugin marketplace add`.
+    pub marketplace: String,
+    /// Marketplace name used with `gh copilot plugin install <plugin>@<marketplace_name>`.
+    pub marketplace_name: String,
+    /// Plugin name to install from the marketplace.
+    pub plugin: String,
+}
+
+/// TOML Copilot plugin entry.
+#[derive(Debug, Clone, Deserialize)]
+struct CopilotSkillEntry {
+    marketplace: String,
+    marketplace_name: String,
+    plugin: String,
 }
 
 config_section! {
     field: "skills",
-    entry: String,
+    entry: CopilotSkillEntry,
     item: CopilotSkill,
-    map: |url| CopilotSkill { url },
+    map: |entry| CopilotSkill {
+        marketplace: entry.marketplace,
+        marketplace_name: entry.marketplace_name,
+        plugin: entry.plugin,
+    },
 }
 
 /// Validate Copilot skill entries and return any warnings.
@@ -25,13 +43,23 @@ pub fn validate(skills: &[CopilotSkill]) -> Vec<ValidationWarning> {
     Validator::new("copilot-skills.toml")
         .check_each(
             skills,
-            |skill| &skill.url,
+            |skill| &skill.plugin,
             |skill| {
                 vec![
-                    check(skill.url.trim().is_empty(), "skill URL is empty"),
+                    check(skill.plugin.trim().is_empty(), "plugin name is empty"),
                     check(
-                        !skill.url.starts_with("http://") && !skill.url.starts_with("https://"),
-                        "skill URL should start with http:// or https://",
+                        skill.marketplace.trim().is_empty(),
+                        "marketplace reference is empty",
+                    ),
+                    check(
+                        skill.marketplace_name.trim().is_empty(),
+                        "marketplace name is empty",
+                    ),
+                    check(
+                        !skill.marketplace.starts_with("http://")
+                            && !skill.marketplace.starts_with("https://")
+                            && !skill.marketplace.contains('/'),
+                        "marketplace should be an owner/repo reference or http(s) URL",
                     ),
                 ]
             },
@@ -51,29 +79,30 @@ mod tests {
         let (_dir, path) = write_temp_toml(
             r#"[base]
 skills = [
-  "https://github.com/example/skill1",
-  "https://github.com/example/skill2",
+  { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" },
+  { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" },
 ]
 "#,
         );
         let skills: Vec<CopilotSkill> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(skills.len(), 2);
-        assert!(skills[0].url.starts_with("https://"));
+        assert_eq!(skills[0].marketplace, "dotnet/skills");
+        assert_eq!(skills[0].plugin, "dotnet-diag");
     }
 
     #[test]
     fn inactive_category_excluded() {
         let (_dir, path) = write_temp_toml(
             r#"[base]
-skills = ["https://github.com/example/base-skill"]
+skills = [{ marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" }]
 
 [desktop]
-skills = ["https://github.com/example/desktop-skill"]
+skills = [{ marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" }]
 "#,
         );
         let skills: Vec<CopilotSkill> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(skills.len(), 1, "desktop section should not be loaded");
-        assert!(skills[0].url.contains("base-skill"));
+        assert_eq!(skills[0].plugin, "dotnet-diag");
     }
 
     #[test]
@@ -83,7 +112,7 @@ skills = ["https://github.com/example/desktop-skill"]
 
     #[test]
     fn load_returns_error_on_malformed_toml() {
-        let (_dir, path) = write_temp_toml("[base\nskills = [\"url\"");
+        let (_dir, path) = write_temp_toml("[base\nskills = [{ plugin = \"dotnet-diag\" }");
         let result = load(&path, &[Category::Base]);
         assert!(result.is_err(), "malformed TOML should return error");
     }
@@ -99,28 +128,30 @@ skills = ["https://github.com/example/desktop-skill"]
     }
 
     #[test]
-    fn validate_detects_empty_url() {
+    fn validate_detects_empty_plugin_name() {
         let skills = vec![CopilotSkill {
-            url: "  ".to_string(),
+            marketplace: "dotnet/skills".to_string(),
+            marketplace_name: "dotnet-agent-skills".to_string(),
+            plugin: "  ".to_string(),
         }];
         let warnings = validate(&skills);
         assert!(
             warnings.iter().any(|w| w.message.contains("empty")),
-            "should warn about empty skill URL: {warnings:?}"
+            "should warn about empty plugin name: {warnings:?}"
         );
     }
 
     #[test]
-    fn validate_detects_non_http_url() {
+    fn validate_detects_invalid_marketplace_reference() {
         let skills = vec![CopilotSkill {
-            url: "ftp://example.com/skill".to_string(),
+            marketplace: "not-a-marketplace".to_string(),
+            marketplace_name: "dotnet-agent-skills".to_string(),
+            plugin: "dotnet-diag".to_string(),
         }];
         let warnings = validate(&skills);
         assert!(
-            warnings
-                .iter()
-                .any(|w| w.message.contains("http://") || w.message.contains("https://")),
-            "should warn about non-http URL: {warnings:?}"
+            warnings.iter().any(|w| w.message.contains("owner/repo")),
+            "should warn about invalid marketplace reference: {warnings:?}"
         );
     }
 }

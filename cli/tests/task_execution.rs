@@ -436,7 +436,7 @@ fn copilot_skills_dry_run_creates_no_directories() {
     let test = common::TestContextBuilder::new()
         .with_config_file(
             "copilot-skills.toml",
-            "[base]\nskills = [\"https://github.com/user/repo/blob/main/skills/test\"]\n",
+            "[base]\nskills = [{ marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
         )
         .build();
 
@@ -444,7 +444,12 @@ fn copilot_skills_dry_run_creates_no_directories() {
     let result = InstallCopilotSkills.run(&ec.ctx).unwrap();
     assert!(matches!(result, TaskResult::DryRun));
 
-    let skills_dir = ec.ctx.home.join(".copilot/skills");
+    let skills_dir = ec
+        .ctx
+        .home
+        .join(".copilot")
+        .join("state")
+        .join("installed-plugins");
     assert!(
         !skills_dir.exists(),
         "dry-run should not create skills directory"
@@ -497,7 +502,7 @@ fn dry_run_pipeline_produces_no_failures() {
         .with_git_hooks_dir()
         .with_config_file(
             "copilot-skills.toml",
-            "[base]\nskills = [\"https://github.com/user/repo/blob/main/skills/test\"]\n",
+            "[base]\nskills = [{ marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
         )
         .with_config_file(
             "git-config.toml",

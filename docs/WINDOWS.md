@@ -52,7 +52,7 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 | 7 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
 | 8 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
 | 9 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
-| 10 | Copilot Skills | Downloads GitHub Copilot CLI skills from `conf/copilot-skills.toml`. | Skips if skill files already exist. |
+| 10 | Copilot Skills | Registers configured Copilot marketplaces and installs plugins from `conf/copilot-skills.toml`. | Skips if the plugin is already installed. |
 
 Tasks that don't apply to Windows (systemd, shell, chmod, paru) are automatically skipped via platform detection.
 
@@ -204,26 +204,26 @@ The file `conf/vscode-extensions.toml` contains extensions under category sectio
 
 ## GitHub Copilot CLI Skills
 
-The file `conf/copilot-skills.toml` contains GitHub Copilot CLI skill folder URLs organized by category sections (e.g., `[base]`, `[windows]`). Each URL points to a folder in a GitHub repository containing skill definition files.
+The file `conf/copilot-skills.toml` contains GitHub Copilot CLI plugins organized by category sections (e.g., `[base]`, `[windows]`). Each entry specifies the marketplace repository, the marketplace name used by the CLI, and the plugin to install.
 
 **Format**:
 ```toml
 [base]
 skills = [
-  "https://github.com/github/awesome-copilot/blob/main/skills/azure-devops-cli",
-  "https://github.com/microsoft/skills/blob/main/.github/skills/azure-identity-dotnet",
+  { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" },
+  { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" },
 ]
 ```
 
 **How it works**:
-- Skills are downloaded to `$HOME/.copilot/skills/` directory
-- The entire folder (including subdirectories) is downloaded recursively
-- Each file is checked for changes before updating (idempotent)
-- Skills extend GitHub Copilot CLI with additional context and functionality
+- The task runs `gh copilot plugin marketplace add <marketplace>` when the marketplace is not already registered
+- Plugins are installed with `gh copilot plugin install <plugin>@<marketplace_name>`
+- Installed plugins are detected via `gh copilot plugin list`
+- Copilot skips reinstalling plugins that are already present
 
 **Requirements**:
-- GitHub Copilot CLI (`gh copilot`) must be installed
-- Skills are automatically downloaded during installation
+- GitHub CLI with the Copilot extension (`gh copilot`) must be installed
+- Plugins are automatically installed during installation
 
 ## Updating
 

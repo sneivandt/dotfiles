@@ -223,29 +223,24 @@ extensions = ["ms-vscode-remote.remote-wsl"]
 ---
 
 ### `copilot-skills.toml`
-**Purpose**: Lists GitHub Copilot CLI skill folders to download and install.
+**Purpose**: Lists GitHub Copilot CLI plugins to install from marketplaces.
 
-**Format**: Sections represent categories; entries are GitHub folder URLs.
+**Format**: Sections represent categories; entries are inline tables with marketplace metadata.
 
 **Example**:
 ```toml
 [base]
 skills = [
-  "https://github.com/github/awesome-copilot/blob/main/skills/azure-devops-cli",
-  "https://github.com/microsoft/skills/blob/main/.github/skills/azure-identity-dotnet",
+  { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" },
+  { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" },
 ]
 ```
 
 **How it works**:
-- Skills are downloaded to `~/.copilot/skills/` directory
-- Each URL points to a folder in a GitHub repository
-- The entire folder (including subdirectories) is downloaded
-- Folder name is extracted from the URL path
-- Requires `gh` CLI for GitHub Copilot functionality
-
-**URL format**: Both `/blob/` and `/tree/` URLs are supported:
-- `https://github.com/owner/repo/blob/branch/path/to/folder`
-- `https://github.com/owner/repo/tree/branch/path/to/folder`
+- The task ensures the marketplace is registered with `gh copilot plugin marketplace add`
+- Plugins are installed with `gh copilot plugin install <plugin>@<marketplace_name>`
+- Installed plugins are detected via `gh copilot plugin list`
+- Requires GitHub CLI with the Copilot extension (`gh copilot`) on `PATH`
 
 ---
 

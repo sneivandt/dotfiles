@@ -160,7 +160,7 @@ available only when invoking the binary directly.
 | `systemd_units.rs` | `systemd-units.toml` | Systemd units (Linux only) |
 | `chmod.rs` | `chmod.toml` | File permissions |
 | `vscode_extensions.rs` | `vscode-extensions.toml` | VS Code extensions |
-| `copilot_skills.rs` | `copilot-skills.toml` | GitHub Copilot CLI skills |
+| `copilot_skills.rs` | `copilot-skills.toml` | GitHub Copilot CLI plugins from marketplaces |
 | `registry.rs` | `registry.toml` | Windows registry entries |
 | `git_config.rs` | `git-config.toml` | Git configuration settings |
 | `manifest.rs` | `manifest.toml` | Sparse checkout file mappings |

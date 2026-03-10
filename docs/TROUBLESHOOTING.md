@@ -274,58 +274,60 @@ code --install-extension <extension-id>
 
 ### GitHub Copilot Skills Issues
 
-#### Skills not downloaded
-**Symptoms**: GitHub Copilot CLI skills from config not downloaded.
+#### Plugins not installed
+**Symptoms**: GitHub Copilot CLI plugins from config are not installed.
 
 **Solution**:
 ```bash
-# Verify gh CLI is available
+# Verify `gh copilot` is available
 which gh
 gh --version
+gh copilot -- --help
 
-# Verify Copilot extension is installed
-gh extension list | grep copilot
+# Check registered marketplaces
+gh copilot plugin marketplace list
 
-# Check skills directory
-ls -la ~/.copilot/skills/
+# Check installed plugins
+gh copilot plugin list
 
-# Verify skill URLs in conf/copilot-skills.toml
-   cat conf/copilot-skills.toml
+# Verify plugin entries in conf/copilot-skills.toml
+cat conf/copilot-skills.toml
 ```
 
-#### Skill download fails
-**Symptoms**: Error messages during skill download or skills directory empty.
+#### Plugin installation fails
+**Symptoms**: Error messages during plugin installation or plugin directories are missing.
 
 **Possible causes and solutions**:
 
-1. **Invalid GitHub URL format**:
+1. **Invalid marketplace or plugin name**:
    ```bash
-   # Verify URL format (both blob and tree URLs work)
-   # Correct: https://github.com/owner/repo/blob/branch/path/to/folder
-   # Correct: https://github.com/owner/repo/tree/branch/path/to/folder
-   # Incorrect: https://github.com/owner/repo (missing path)
+   # Verify the marketplace can be added manually
+   gh copilot plugin marketplace add dotnet/skills
+
+   # Verify the plugin exists in that marketplace
+   gh copilot plugin marketplace browse dotnet-agent-skills
    ```
 
 2. **Network connectivity issues**:
    ```bash
-   # Test GitHub API access
+   # Test GitHub access
    curl -I https://api.github.com
 
-   # Try downloading skill manually
-   # Visit the URL in a browser to verify it exists
+   # Try installing the plugin manually
+   gh copilot plugin install dotnet-diag@dotnet-agent-skills
    ```
 
 3. **GitHub rate limiting**:
    - Wait a few minutes and try again
-   - Authenticate with GitHub: `gh auth login`
+   - Authenticate with GitHub if required by your `gh copilot` setup
 
-4. **Permissions on skills directory**:
+4. **Copilot CLI state mismatch**:
    ```bash
-   # Check directory permissions
-   ls -ld ~/.copilot/skills/
+   # Re-check the authoritative installed-plugin state
+   gh copilot plugin list
 
-   # Fix if needed
-   chmod 755 ~/.copilot/skills/
+   # Re-check marketplace registration
+   gh copilot plugin marketplace list
    ```
 
 ## Permission Issues

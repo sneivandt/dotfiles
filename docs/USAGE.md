@@ -191,7 +191,7 @@ The installation process handles different components based on your profile:
 10. **Configure Shell** - Sets default shell
 11. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.toml`
 12. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-13. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.toml`
+13. **Install Copilot Skills** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-skills.toml`
 14. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
 
 ### Windows Installation Steps
@@ -205,7 +205,7 @@ The installation process handles different components based on your profile:
 7. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
 8. **Apply Registry Settings** - Configures registry from `conf/registry.toml`
 9. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-10. **Install Copilot Skills** - Downloads GitHub Copilot CLI skills from `conf/copilot-skills.toml`
+10. **Install Copilot Skills** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-skills.toml`
 
 ## Verbose Mode
 

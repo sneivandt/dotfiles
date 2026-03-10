@@ -21,7 +21,7 @@ use super::category_matcher::Category;
 ///     type Entry = String;
 ///     type Item = CopilotSkill;
 ///     fn extract(self) -> Vec<String> { self.skills }
-///     fn map(entry: String) -> CopilotSkill { CopilotSkill { url: entry } }
+///     fn map(entry: String) -> CopilotSkill { CopilotSkill { plugin: entry, marketplace: "owner/repo".into(), marketplace_name: "marketplace".into() } }
 /// }
 /// ```
 pub trait ConfigSection: DeserializeOwned {

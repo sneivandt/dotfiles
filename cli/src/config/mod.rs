@@ -210,7 +210,7 @@ pub struct Config {
     pub chmod: Vec<chmod::ChmodEntry>,
     /// VS Code extensions to install.
     pub vscode_extensions: Vec<vscode_extensions::VsCodeExtension>,
-    /// GitHub Copilot skills to clone.
+    /// GitHub Copilot plugins to install from marketplaces.
     pub copilot_skills: Vec<copilot_skills::CopilotSkill>,
     /// Git configuration settings to apply globally.
     pub git_settings: Vec<git_config::GitSetting>,

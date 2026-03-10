@@ -298,8 +298,10 @@ pub fn resolve_from_args(
     // Persist for next time (skip during dry-run to avoid side effects)
     // Note: dry_run is not available here, so we always persist. The profile
     // selection itself is not a destructive operation — it only records the
-    // user's choice for subsequent runs.
-    persist(root, &name)?;
+    // user's choice for subsequent runs. Persistence is best-effort — if
+    // .git/config is not writable (e.g. a read-only bind mount in a container
+    // build), silently skip rather than aborting the run.
+    persist(root, &name).ok();
 
     Ok(profile)
 }

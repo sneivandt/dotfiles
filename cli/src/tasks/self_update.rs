@@ -1015,17 +1015,25 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn smoke_test_binary_passes_for_valid_binary() {
-        use std::os::unix::fs::PermissionsExt;
-
         let dir = tempfile::tempdir_in(
             std::env::current_dir().expect("failed to get current working directory"),
         )
         .expect("failed to create temporary directory in current working directory");
         let bin = dir.path().join("ok");
-        fs::write(&bin, b"#!/bin/sh\necho v1.0.0\n").unwrap();
-        fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
 
-        assert!(smoke_test_binary(&bin).is_ok(), "binary: {}", bin.display());
+        // Copy an existing native binary (true always exits 0 regardless of arguments,
+        // including --version) rather than writing a shell script that depends on
+        // interpreter execution being permitted in the workspace.
+        let true_path = which::which("true").expect("'true' binary not found on PATH");
+        fs::copy(&true_path, &bin).expect("failed to copy 'true' binary to temp location");
+
+        let result = smoke_test_binary(&bin);
+        assert!(
+            result.is_ok(),
+            "binary: {}, error: {:?}",
+            bin.display(),
+            result.unwrap_err()
+        );
     }
 
     #[cfg(unix)]

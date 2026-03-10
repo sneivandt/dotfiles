@@ -175,13 +175,31 @@ impl Task for ConfigureSparseCheckout {
 
         let root = ctx.root();
 
-        // Enable sparse checkout with non-cone mode for full pattern matching.
-        // Non-cone mode supports negation patterns (e.g., !/<file>) which are
-        // needed to selectively exclude files.
+        // Enable non-cone sparse checkout by setting git config directly.
+        //
+        // Using `git sparse-checkout init --no-cone` is avoided here because it
+        // overwrites the sparse-checkout file with default `/*\n!/*/\n` patterns
+        // and immediately applies them via an internal `git read-tree`, deleting
+        // every repository subdirectory from the working tree.  If the process
+        // that invoked this binary inherited a cwd from inside the repository
+        // (e.g. a CI script running from `.github/workflows/scripts/`), that
+        // directory is deleted and its inode becomes unreachable.  Any child
+        // process spawned later (such as `gh copilot plugin list`) inherits the
+        // stale cwd and fails with `ENOENT: uv_cwd` when Node.js calls
+        // `process.cwd()` during startup.
+        //
+        // Setting the two config keys directly enables sparse checkout in
+        // non-cone mode without modifying the working tree; the subsequent
+        // `git read-tree -mu HEAD` then applies only our intentional patterns.
         ctx.log
-            .debug("initializing sparse checkout (non-cone mode)");
+            .debug("enabling sparse checkout (non-cone mode via git config)");
         ctx.executor
-            .run_in(&root, "git", &["sparse-checkout", "init", "--no-cone"])?;
+            .run_in(&root, "git", &["config", "core.sparseCheckout", "true"])?;
+        ctx.executor.run_in(
+            &root,
+            "git",
+            &["config", "core.sparseCheckoutCone", "false"],
+        )?;
 
         ctx.log.debug(&format!(
             "sparse checkout patterns: 1 inclusion, {} exclusions",
@@ -533,13 +551,15 @@ mod tests {
         config.manifest.excluded_files.push("symlinks".to_string());
 
         // The excluded file "symlinks" does NOT exist on disk, so the
-        // `git checkout HEAD -- <files>` step is skipped. Three git calls remain:
+        // `git checkout HEAD -- <files>` step is skipped. Four git calls remain:
         //   1. git status --porcelain --untracked-files=no
-        //   2. git sparse-checkout init --no-cone
-        //   3. git read-tree -mu HEAD
+        //   2. git config core.sparseCheckout true
+        //   3. git config core.sparseCheckoutCone false
+        //   4. git read-tree -mu HEAD
         let executor = TestExecutor::with_responses(vec![
             (true, String::new()), // git status
-            (true, String::new()), // sparse-checkout init
+            (true, String::new()), // git config sparseCheckout
+            (true, String::new()), // git config sparseCheckoutCone
             (true, String::new()), // read-tree
         ]);
         let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
@@ -577,7 +597,8 @@ mod tests {
 
         let executor = TestExecutor::with_responses(vec![
             (true, String::new()),  // git status
-            (true, String::new()),  // sparse-checkout init
+            (true, String::new()),  // git config sparseCheckout
+            (true, String::new()),  // git config sparseCheckoutCone
             (false, String::new()), // read-tree fails
             (true, String::new()),  // rollback read-tree succeeds
         ]);

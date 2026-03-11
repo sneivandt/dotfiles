@@ -545,7 +545,18 @@ mod tests {
     // run() — batch install paths (pacman/paru)
     // -----------------------------------------------------------------------
 
-    /// Build a context that uses a [`TestExecutor`] with `which=true`.
+    use crate::exec::{ExecResult, MockExecutor};
+
+    fn ok_result(stdout: &str) -> ExecResult {
+        ExecResult {
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            success: true,
+            code: Some(0),
+        }
+    }
+
+    /// Build a context that uses a [`MockExecutor`] with `which=true`.
     ///
     /// This lets tests exercise the `process_packages` batch install path without
     /// being short-circuited by the "tool not found" guard in `run()`.
@@ -553,14 +564,13 @@ mod tests {
         config: crate::config::Config,
         os: Os,
         is_arch: bool,
-        responses: Vec<(bool, String)>,
+        executor: MockExecutor,
     ) -> crate::tasks::Context {
-        use crate::exec::test_helpers::TestExecutor;
         use crate::platform::Platform;
         crate::tasks::test_helpers::make_context(
             config,
             Platform::new(os, is_arch),
-            std::sync::Arc::new(TestExecutor::with_responses(responses).with_which(true)),
+            std::sync::Arc::new(executor),
         )
     }
 
@@ -575,14 +585,21 @@ mod tests {
             name: "vim".to_string(),
             is_aur: false,
         });
-        // Response 1: pacman -Q → vim is installed, git is not
-        // Response 2: sudo pacman -S --needed --noconfirm git → success
-        let ctx = make_package_context(
-            config,
-            Os::Linux,
-            true, // Arch Linux
-            vec![(true, "vim 9.0\n".to_string()), (true, String::new())],
-        );
+        // which("pacman") → true
+        // run_unchecked("pacman", ["-Q"]) → vim installed, git not
+        // run("sudo", ["pacman", "-S", "--needed", "--noconfirm", "git"]) → success
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        mock.expect_which().returning(|_| true);
+        mock.expect_run_unchecked()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(ok_result("vim 9.0\n")));
+        mock.expect_run()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(ok_result("")));
+        let ctx = make_package_context(config, Os::Linux, true, mock);
         let result = InstallPackages.run(&ctx).unwrap();
         assert!(
             matches!(result, TaskResult::Ok),
@@ -597,13 +614,14 @@ mod tests {
             name: "git".to_string(),
             is_aur: false,
         });
-        // Response: pacman -Q → git is installed, no install command expected
-        let ctx = make_package_context(
-            config,
-            Os::Linux,
-            false, // plain Linux (also uses pacman path)
-            vec![(true, "git 2.40\n".to_string())],
-        );
+        // which("pacman") → true
+        // run_unchecked("pacman", ["-Q"]) → git installed → no install needed
+        let mut mock = MockExecutor::new();
+        mock.expect_which().returning(|_| true);
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(ok_result("git 2.40\n")));
+        let ctx = make_package_context(config, Os::Linux, false, mock);
         let result = InstallPackages.run(&ctx).unwrap();
         assert!(
             matches!(result, TaskResult::Ok),
@@ -618,8 +636,14 @@ mod tests {
             name: "git".to_string(),
             is_aur: false,
         });
-        // Response: pacman -Q → nothing installed
-        let mut ctx = make_package_context(config, Os::Linux, true, vec![(true, String::new())]);
+        // which("pacman") → true
+        // run_unchecked("pacman", ["-Q"]) → nothing installed
+        let mut mock = MockExecutor::new();
+        mock.expect_which().returning(|_| true);
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(ok_result("")));
+        let mut ctx = make_package_context(config, Os::Linux, true, mock);
         ctx = ctx.with_dry_run(true);
         let result = InstallPackages.run(&ctx).unwrap();
         assert!(
@@ -635,14 +659,21 @@ mod tests {
             name: "Git.Git".to_string(),
             is_aur: false,
         });
-        // Response 1: winget list (get_installed_packages) → empty (nothing installed)
-        // Response 2: winget install Git.Git (apply via process_resource_states) → success
-        let ctx = make_package_context(
-            config,
-            Os::Windows,
-            false,
-            vec![(true, String::new()), (true, String::new())],
-        );
+        // which("winget") → true
+        // run_unchecked("winget", ["list", ...]) → empty (nothing installed)
+        // run_unchecked("winget", ["install", ...]) → success
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        mock.expect_which().returning(|_| true);
+        mock.expect_run_unchecked()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(ok_result("")));
+        mock.expect_run_unchecked()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(ok_result("")));
+        let ctx = make_package_context(config, Os::Windows, false, mock);
         let result = InstallPackages.run(&ctx).unwrap();
         assert!(
             matches!(result, TaskResult::Ok),

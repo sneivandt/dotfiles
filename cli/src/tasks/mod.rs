@@ -464,15 +464,11 @@ pub mod test_helpers {
     use crate::config::category_matcher::Category;
     use crate::config::manifest::Manifest;
     use crate::config::profiles::Profile;
-    use crate::exec::Executor;
+    use crate::exec::{Executor, MockExecutor};
     use crate::logging::Logger;
     use crate::platform::Platform;
 
     use super::Context;
-
-    /// Re-export [`TestExecutor`](crate::exec::test_helpers::TestExecutor) for
-    /// convenience.
-    pub use crate::exec::test_helpers::TestExecutor;
 
     /// Build a [`Config`] with all lists empty and `root` set to `root`.
     #[must_use]
@@ -517,6 +513,26 @@ pub mod test_helpers {
                 is_ci: Some(false),
             },
         )
+    }
+
+    /// Build a stub [`MockExecutor`] that returns `which_result` for every
+    /// `which()` / `which_path()` call and panics on any `run*()` call.
+    #[must_use]
+    pub fn stub_executor(which_result: bool) -> MockExecutor {
+        let mut mock = MockExecutor::new();
+        mock.expect_which().returning(move |_| which_result);
+        mock.expect_which_path().returning(move |program| {
+            if which_result {
+                #[cfg(windows)]
+                let path = std::path::PathBuf::from(format!(r"C:\Windows\System32\{program}.exe"));
+                #[cfg(not(windows))]
+                let path = std::path::PathBuf::from(format!("/usr/bin/{program}"));
+                Ok(path)
+            } else {
+                anyhow::bail!("{program} not found on PATH")
+            }
+        });
+        mock
     }
 
     /// Builder for test [`Context`] instances.
@@ -601,13 +617,13 @@ pub mod test_helpers {
                     is_arch: self.is_arch,
                     is_wsl: self.is_wsl,
                 },
-                Arc::new(TestExecutor::stub().with_which(self.which_result)),
+                Arc::new(stub_executor(self.which_result)),
             )
             .with_ci(self.is_ci)
         }
     }
 
-    /// Build a [`Context`] with the specified OS/arch and default [`TestExecutor`].
+    /// Build a [`Context`] with the specified OS/arch and default [`MockExecutor`].
     #[must_use]
     pub fn make_platform_context(
         config: Config,
@@ -617,7 +633,7 @@ pub mod test_helpers {
         ContextBuilder::new(config).os(os).arch(is_arch).build()
     }
 
-    /// Build a [`Context`] with the specified OS/arch and a [`TestExecutor`]
+    /// Build a [`Context`] with the specified OS/arch and a [`MockExecutor`]
     /// that returns the given `which_result`.
     ///
     /// Use this when a task's `should_run` or `run` method gates on tool
@@ -636,7 +652,7 @@ pub mod test_helpers {
             .build()
     }
 
-    /// Build a [`Context`] with a Linux non-arch platform and default [`TestExecutor`].
+    /// Build a [`Context`] with a Linux non-arch platform and default [`MockExecutor`].
     ///
     /// Convenience shorthand for tests that only need a plain Linux context.
     #[must_use]
@@ -644,7 +660,7 @@ pub mod test_helpers {
         ContextBuilder::new(config).build()
     }
 
-    /// Build a [`Context`] with a Windows platform and default [`TestExecutor`].
+    /// Build a [`Context`] with a Windows platform and default [`MockExecutor`].
     ///
     /// Convenience shorthand for tests that only need a plain Windows context.
     #[must_use]
@@ -654,7 +670,7 @@ pub mod test_helpers {
             .build()
     }
 
-    /// Build a [`Context`] with an Arch Linux platform and default [`TestExecutor`].
+    /// Build a [`Context`] with an Arch Linux platform and default [`MockExecutor`].
     ///
     /// Convenience shorthand for tests that target Arch-specific behaviour.
     #[must_use]
@@ -663,7 +679,7 @@ pub mod test_helpers {
     }
 
     /// Build a [`Context`] with a default Linux platform and
-    /// default [`TestExecutor`], also returning the [`Logger`] so tests can
+    /// default [`MockExecutor`], also returning the [`Logger`] so tests can
     /// inspect recorded task state.
     #[must_use]
     pub fn make_static_context(config: Config) -> (Context, Arc<Logger>) {

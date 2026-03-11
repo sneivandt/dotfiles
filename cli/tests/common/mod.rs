@@ -171,8 +171,6 @@ impl TestContextBuilder {
 
 /// Stub executor for integration tests that don't invoke system commands.
 ///
-/// Mirrors [`TestExecutor::stub()`](dotfiles_cli::exec::test_helpers::TestExecutor::stub)
-/// but lives outside `#[cfg(test)]` so integration test binaries can use it.
 /// Returns `false` for `which()` and panics if any command is actually run.
 #[derive(Debug)]
 pub struct StubExecutor;
@@ -180,10 +178,6 @@ pub struct StubExecutor;
 #[allow(clippy::panic)]
 impl Executor for StubExecutor {
     fn run(&self, program: &str, args: &[&str]) -> anyhow::Result<ExecResult> {
-        panic!("unexpected executor call in integration test: {program} {args:?}")
-    }
-
-    fn run_in(&self, _: &Path, program: &str, args: &[&str]) -> anyhow::Result<ExecResult> {
         panic!("unexpected executor call in integration test: {program} {args:?}")
     }
 

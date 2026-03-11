@@ -155,7 +155,9 @@ mod tests {
     fn install_should_run_false_when_hooks_dir_missing() {
         let config = empty_config(PathBuf::from("/repo"));
         let ctx = make_linux_context(config);
-        let task = InstallGitHooks::with_fs_ops(Arc::new(MockFileSystemOps::new()));
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists().returning(|_| false);
+        let task = InstallGitHooks::with_fs_ops(Arc::new(mock));
         assert!(!task.should_run(&ctx));
     }
 
@@ -163,26 +165,32 @@ mod tests {
     fn install_should_run_false_when_git_dir_missing() {
         let config = empty_config(PathBuf::from("/repo"));
         // hooks/ exists but .git/ does not
-        let fs = MockFileSystemOps::new().with_existing("/repo/hooks");
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists()
+            .withf(|p| p == std::path::Path::new("/repo/hooks"))
+            .returning(|_| true);
+        mock.expect_exists()
+            .withf(|p| p == std::path::Path::new("/repo/.git"))
+            .returning(|_| false);
         let ctx = make_linux_context(config);
-        let task = InstallGitHooks::with_fs_ops(Arc::new(fs));
+        let task = InstallGitHooks::with_fs_ops(Arc::new(mock));
         assert!(!task.should_run(&ctx));
     }
 
     #[test]
     fn install_should_run_true_when_both_dirs_exist() {
         let config = empty_config(PathBuf::from("/repo"));
-        let fs = MockFileSystemOps::new()
-            .with_existing("/repo/hooks")
-            .with_existing("/repo/.git");
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists().returning(|_| true);
         let ctx = make_linux_context(config);
-        let task = InstallGitHooks::with_fs_ops(Arc::new(fs));
+        let task = InstallGitHooks::with_fs_ops(Arc::new(mock));
         assert!(task.should_run(&ctx));
     }
 
     #[test]
     fn install_depends_on_update_repository() {
-        let task = InstallGitHooks::with_fs_ops(Arc::new(MockFileSystemOps::new()));
+        let mock = MockFileSystemOps::new();
+        let task = InstallGitHooks::with_fs_ops(Arc::new(mock));
         assert_eq!(
             task.dependencies(),
             &[TypeId::of::<crate::tasks::update::UpdateRepository>()]
@@ -197,18 +205,19 @@ mod tests {
     fn uninstall_should_run_false_when_git_hooks_missing() {
         let config = empty_config(PathBuf::from("/repo"));
         let ctx = make_linux_context(config);
-        let task = UninstallGitHooks::with_fs_ops(Arc::new(MockFileSystemOps::new()));
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists().returning(|_| false);
+        let task = UninstallGitHooks::with_fs_ops(Arc::new(mock));
         assert!(!task.should_run(&ctx));
     }
 
     #[test]
     fn uninstall_should_run_true_when_both_dirs_exist() {
         let config = empty_config(PathBuf::from("/repo"));
-        let fs = MockFileSystemOps::new()
-            .with_existing("/repo/hooks")
-            .with_existing("/repo/.git/hooks");
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists().returning(|_| true);
         let ctx = make_linux_context(config);
-        let task = UninstallGitHooks::with_fs_ops(Arc::new(fs));
+        let task = UninstallGitHooks::with_fs_ops(Arc::new(mock));
         assert!(task.should_run(&ctx));
     }
 
@@ -219,21 +228,26 @@ mod tests {
     #[test]
     fn discover_hooks_returns_hook_files_without_extension() {
         let config = empty_config(PathBuf::from("/repo"));
-        let fs = MockFileSystemOps::new()
-            .with_dir_entries(
-                "/repo/hooks",
-                vec![
-                    PathBuf::from("/repo/hooks/pre-commit"),
-                    PathBuf::from("/repo/hooks/commit-msg"),
-                    PathBuf::from("/repo/hooks/hooks.ini"), // should be skipped (has extension)
-                ],
-            )
-            .with_file("/repo/hooks/pre-commit")
-            .with_file("/repo/hooks/commit-msg")
-            .with_file("/repo/hooks/hooks.ini");
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_read_dir().returning(|_| {
+            Ok(vec![
+                PathBuf::from("/repo/hooks/pre-commit"),
+                PathBuf::from("/repo/hooks/commit-msg"),
+                PathBuf::from("/repo/hooks/hooks.ini"), // should be skipped (has extension)
+            ])
+        });
+        mock.expect_is_file()
+            .withf(|p| p == std::path::Path::new("/repo/hooks/pre-commit"))
+            .returning(|_| true);
+        mock.expect_is_file()
+            .withf(|p| p == std::path::Path::new("/repo/hooks/commit-msg"))
+            .returning(|_| true);
+        mock.expect_is_file()
+            .withf(|p| p == std::path::Path::new("/repo/hooks/hooks.ini"))
+            .returning(|_| true);
         let ctx = make_linux_context(config);
 
-        let resources = InstallGitHooks::with_fs_ops(Arc::new(fs))
+        let resources = InstallGitHooks::with_fs_ops(Arc::new(mock))
             .discover(&ctx)
             .unwrap();
         assert_eq!(resources.len(), 2);
@@ -248,19 +262,22 @@ mod tests {
     #[test]
     fn discover_hooks_skips_directories() {
         let config = empty_config(PathBuf::from("/repo"));
-        let fs = MockFileSystemOps::new()
-            .with_dir_entries(
-                "/repo/hooks",
-                vec![
-                    PathBuf::from("/repo/hooks/pre-commit"),
-                    PathBuf::from("/repo/hooks/subdir"), // directory, not a file
-                ],
-            )
-            .with_file("/repo/hooks/pre-commit");
-        // /repo/hooks/subdir is NOT added as a file → is_file returns false for it
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_read_dir().returning(|_| {
+            Ok(vec![
+                PathBuf::from("/repo/hooks/pre-commit"),
+                PathBuf::from("/repo/hooks/subdir"), // directory, not a file
+            ])
+        });
+        mock.expect_is_file()
+            .withf(|p| p == std::path::Path::new("/repo/hooks/pre-commit"))
+            .returning(|_| true);
+        mock.expect_is_file()
+            .withf(|p| p == std::path::Path::new("/repo/hooks/subdir"))
+            .returning(|_| false);
         let ctx = make_linux_context(config);
 
-        let resources = InstallGitHooks::with_fs_ops(Arc::new(fs))
+        let resources = InstallGitHooks::with_fs_ops(Arc::new(mock))
             .discover(&ctx)
             .unwrap();
         assert_eq!(resources.len(), 1);
@@ -269,12 +286,13 @@ mod tests {
     #[test]
     fn discover_hooks_targets_point_to_git_hooks_dir() {
         let config = empty_config(PathBuf::from("/repo"));
-        let fs = MockFileSystemOps::new()
-            .with_dir_entries("/repo/hooks", vec![PathBuf::from("/repo/hooks/pre-commit")])
-            .with_file("/repo/hooks/pre-commit");
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_read_dir()
+            .returning(|_| Ok(vec![PathBuf::from("/repo/hooks/pre-commit")]));
+        mock.expect_is_file().returning(|_| true);
         let ctx = make_linux_context(config);
 
-        let resources = InstallGitHooks::with_fs_ops(Arc::new(fs))
+        let resources = InstallGitHooks::with_fs_ops(Arc::new(mock))
             .discover(&ctx)
             .unwrap();
         assert_eq!(resources.len(), 1);

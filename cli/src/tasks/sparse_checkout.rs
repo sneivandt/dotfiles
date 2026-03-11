@@ -271,8 +271,7 @@ fn worktree_has_local_changes(ctx: &Context) -> Result<bool> {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::exec::test_helpers::TestExecutor;
-    use crate::exec::{ExecResult, Executor};
+    use crate::exec::{ExecResult, Executor, MockExecutor};
     use crate::fs::MockFileSystemOps;
     use crate::platform::{Os, Platform};
     use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
@@ -475,10 +474,15 @@ mod tests {
         let mut config = empty_config(dir.path().to_path_buf());
         config.manifest.excluded_files.push("symlinks".to_string());
 
-        let executor = TestExecutor::with_responses(vec![(
-            true,
-            "M  cli/src/tasks/packages.rs\n".to_string(),
-        )]);
+        let mut executor = MockExecutor::new();
+        executor.expect_run_in().once().returning(|_, _, _| {
+            Ok(ExecResult {
+                stdout: "M  cli/src/tasks/packages.rs\n".to_string(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
         let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
         let result = ConfigureSparseCheckout::new().run(&ctx).unwrap();
@@ -556,12 +560,15 @@ mod tests {
         //   2. git config core.sparseCheckout true
         //   3. git config core.sparseCheckoutCone false
         //   4. git read-tree -mu HEAD
-        let executor = TestExecutor::with_responses(vec![
-            (true, String::new()), // git status
-            (true, String::new()), // git config sparseCheckout
-            (true, String::new()), // git config sparseCheckoutCone
-            (true, String::new()), // read-tree
-        ]);
+        let mut executor = MockExecutor::new();
+        executor.expect_run_in().returning(|_, _, _| {
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
         let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
         let result = ConfigureSparseCheckout::new().run(&ctx).unwrap();
@@ -595,13 +602,72 @@ mod tests {
         let mut config = empty_config(dir.path().to_path_buf());
         config.manifest.excluded_files.push("symlinks".to_string());
 
-        let executor = TestExecutor::with_responses(vec![
-            (true, String::new()),  // git status
-            (true, String::new()),  // git config sparseCheckout
-            (true, String::new()),  // git config sparseCheckoutCone
-            (false, String::new()), // read-tree fails
-            (true, String::new()),  // rollback read-tree succeeds
-        ]);
+        // Calls in order:
+        //   1. git status → clean
+        //   2. git config core.sparseCheckout → success
+        //   3. git config core.sparseCheckoutCone → success
+        //   4. git read-tree → fails
+        //   5. rollback git read-tree → success
+        let mut seq = mockall::Sequence::new();
+        let mut executor = MockExecutor::new();
+        // git status (clean worktree)
+        executor
+            .expect_run_in()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| {
+                Ok(ExecResult {
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            });
+        // git config sparseCheckout
+        executor
+            .expect_run_in()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| {
+                Ok(ExecResult {
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            });
+        // git config sparseCheckoutCone
+        executor
+            .expect_run_in()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| {
+                Ok(ExecResult {
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            });
+        // git read-tree fails
+        executor
+            .expect_run_in()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| anyhow::bail!("mock read-tree failed"));
+        // rollback git read-tree
+        executor
+            .expect_run_in()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| {
+                Ok(ExecResult {
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            });
         let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
         let err = ConfigureSparseCheckout::new().run(&ctx).unwrap_err();
@@ -623,7 +689,9 @@ mod tests {
         // ~/.config/git does not exist → function should return immediately
         let config = empty_config(PathBuf::from("/repo"));
         let ctx = make_linux_context(config);
-        let fs = Arc::new(MockFileSystemOps::new());
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists().returning(|_| false);
+        let fs = Arc::new(mock);
         // Should not panic or remove anything
         remove_broken_git_symlinks(&ctx, &*fs);
     }
@@ -635,17 +703,20 @@ mod tests {
         let ctx = make_linux_context(config);
         let symlink_path = PathBuf::from("/home/test/.config/git/gitconfig");
         let target = PathBuf::from("/repo/symlinks/git/gitconfig");
-        let fs = Arc::new(
-            MockFileSystemOps::new()
-                .with_dir_entries("/home/test/.config/git", vec![symlink_path.clone()])
-                .with_symlink(symlink_path.clone(), target.clone())
-                .with_existing(target), // target exists → not broken
-        );
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists()
+            .withf(|p| p == std::path::Path::new("/home/test/.config/git"))
+            .returning(|_| true);
+        mock.expect_exists()
+            .withf(|p| p == std::path::Path::new("/repo/symlinks/git/gitconfig"))
+            .returning(|_| true); // target exists → not broken
+        mock.expect_read_dir()
+            .returning(move |_| Ok(vec![symlink_path.clone()]));
+        mock.expect_read_link()
+            .returning(move |_| Ok(target.clone()));
+        // expect_remove must NOT be called — mockall will panic if it is
+        let fs = Arc::new(mock);
         remove_broken_git_symlinks(&ctx, &*fs);
-        assert!(
-            fs.exists(&symlink_path),
-            "valid symlink must not be removed"
-        );
     }
 
     #[test]
@@ -655,16 +726,24 @@ mod tests {
         let ctx = make_linux_context(config);
         let symlink_path = PathBuf::from("/home/test/.config/git/gitconfig");
         let target = PathBuf::from("/repo/symlinks/git/gitconfig");
-        let fs = Arc::new(
-            MockFileSystemOps::new()
-                .with_dir_entries("/home/test/.config/git", vec![symlink_path.clone()])
-                .with_symlink(symlink_path.clone(), target), // target not in existing → broken
-        );
+        let read_dir_entry = symlink_path.clone();
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists()
+            .withf(|p| p == std::path::Path::new("/home/test/.config/git"))
+            .returning(|_| true);
+        mock.expect_exists()
+            .withf(|p| p == std::path::Path::new("/repo/symlinks/git/gitconfig"))
+            .returning(|_| false); // target doesn't exist → broken
+        mock.expect_read_dir()
+            .returning(move |_| Ok(vec![read_dir_entry.clone()]));
+        mock.expect_read_link()
+            .returning(move |_| Ok(target.clone()));
+        mock.expect_remove()
+            .withf(move |p| p == symlink_path.as_path())
+            .returning(|_| Ok(()))
+            .times(1);
+        let fs = Arc::new(mock);
         remove_broken_git_symlinks(&ctx, &*fs);
-        assert!(
-            !fs.exists(&symlink_path),
-            "dangling symlink must be removed"
-        );
     }
 
     #[test]
@@ -673,13 +752,17 @@ mod tests {
         let config = empty_config(PathBuf::from("/repo"));
         let ctx = make_linux_context(config);
         let file_path = PathBuf::from("/home/test/.config/git/config");
-        let fs = Arc::new(
-            MockFileSystemOps::new()
-                .with_dir_entries("/home/test/.config/git", vec![file_path.clone()])
-                .with_file(file_path.clone()),
-        );
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists()
+            .withf(|p| p == std::path::Path::new("/home/test/.config/git"))
+            .returning(|_| true);
+        mock.expect_read_dir()
+            .returning(move |_| Ok(vec![file_path.clone()]));
+        mock.expect_read_link()
+            .returning(|_| Err(std::io::Error::from(std::io::ErrorKind::InvalidInput)));
+        // expect_remove must NOT be called
+        let fs = Arc::new(mock);
         remove_broken_git_symlinks(&ctx, &*fs);
-        assert!(fs.exists(&file_path), "regular file must not be removed");
     }
 
     // -----------------------------------------------------------------------
@@ -690,8 +773,9 @@ mod tests {
     fn should_run_false_when_git_dir_missing_via_mock() {
         let config = empty_config(PathBuf::from("/repo"));
         let ctx = make_linux_context(config);
-        let fs = MockFileSystemOps::new(); // no .git registered
-        let task = ConfigureSparseCheckout::with_fs_ops(Arc::new(fs));
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists().returning(|_| false);
+        let task = ConfigureSparseCheckout::with_fs_ops(Arc::new(mock));
         assert!(!task.should_run(&ctx));
     }
 
@@ -699,8 +783,9 @@ mod tests {
     fn should_run_true_when_git_dir_exists_via_mock() {
         let config = empty_config(PathBuf::from("/repo"));
         let ctx = make_linux_context(config);
-        let fs = MockFileSystemOps::new().with_existing("/repo/.git");
-        let task = ConfigureSparseCheckout::with_fs_ops(Arc::new(fs));
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists().returning(|_| true);
+        let task = ConfigureSparseCheckout::with_fs_ops(Arc::new(mock));
         assert!(task.should_run(&ctx));
     }
 }

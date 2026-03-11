@@ -70,7 +70,25 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::exec::test_helpers::TestExecutor;
+    use crate::exec::{ExecResult, MockExecutor};
+
+    fn ok_result() -> ExecResult {
+        ExecResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            success: true,
+            code: Some(0),
+        }
+    }
+
+    fn fail_result() -> ExecResult {
+        ExecResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            success: false,
+            code: Some(1),
+        }
+    }
 
     #[test]
     fn description_returns_unit_name() {
@@ -96,14 +114,25 @@ mod tests {
 
     #[test]
     fn current_state_correct_when_systemctl_reports_enabled() {
-        let executor: Arc<dyn crate::exec::Executor> = Arc::new(TestExecutor::ok("enabled\n"));
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked().once().returning(|_, _| {
+            Ok(ExecResult {
+                stdout: "enabled\n".to_string(),
+                ..ok_result()
+            })
+        });
+        let executor: Arc<dyn crate::exec::Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service".to_string(), executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 
     #[test]
     fn current_state_missing_when_systemctl_fails() {
-        let executor: Arc<dyn crate::exec::Executor> = Arc::new(TestExecutor::fail());
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(fail_result()));
+        let executor: Arc<dyn crate::exec::Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service".to_string(), executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
     }
@@ -114,14 +143,22 @@ mod tests {
 
     #[test]
     fn apply_returns_applied_when_systemctl_succeeds() {
-        let executor: Arc<dyn crate::exec::Executor> = Arc::new(TestExecutor::ok(""));
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(ok_result()));
+        let executor: Arc<dyn crate::exec::Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service".to_string(), executor);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
 
     #[test]
     fn apply_returns_skipped_when_systemctl_fails() {
-        let executor: Arc<dyn crate::exec::Executor> = Arc::new(TestExecutor::fail());
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(fail_result()));
+        let executor: Arc<dyn crate::exec::Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service".to_string(), executor);
         assert!(
             matches!(resource.apply().unwrap(), ResourceChange::Skipped { .. }),

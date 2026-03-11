@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 /// Implement this trait to swap in a mock during unit tests, keeping task
 /// logic independent of real I/O.  The production implementation is
 /// [`SystemFileSystemOps`].
+#[cfg_attr(test, mockall::automock)]
 pub trait FileSystemOps: Send + Sync + std::fmt::Debug {
     /// Returns `true` if `path` exists on the filesystem.
     fn exists(&self, path: &Path) -> bool;
@@ -77,146 +78,6 @@ impl FileSystemOps for SystemFileSystemOps {
         } else {
             std::fs::remove_file(path)
         }
-    }
-}
-
-/// Mock [`FileSystemOps`] for unit tests.
-///
-/// Pre-configure existing paths, regular files, and directory listings using
-/// the builder-style methods, then pass `Arc::new(mock)` to task constructors
-/// that accept a [`FileSystemOps`] (e.g., `InstallGitHooks::with_fs_ops`).
-///
-/// # Example
-///
-/// ```ignore
-/// use dotfiles_cli::fs::MockFileSystemOps;
-/// use std::path::PathBuf;
-///
-/// let fs = MockFileSystemOps::new()
-///     .with_file("/repo/hooks/pre-commit")
-///     .with_dir_entries(
-///         "/repo/hooks",
-///         vec![PathBuf::from("/repo/hooks/pre-commit")],
-///     );
-/// ```
-#[cfg(test)]
-#[derive(Debug, Default)]
-pub struct MockFileSystemOps {
-    existing: Vec<PathBuf>,
-    files: Vec<PathBuf>,
-    dirs: std::collections::HashMap<PathBuf, Vec<PathBuf>>,
-    symlinks: std::collections::HashMap<PathBuf, PathBuf>,
-    removed: std::sync::Mutex<std::collections::HashSet<PathBuf>>,
-}
-
-#[cfg(test)]
-impl MockFileSystemOps {
-    /// Create an empty mock with nothing configured.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Mark `path` as existing without making it a file or directory.
-    #[must_use]
-    pub fn with_existing(mut self, path: impl Into<PathBuf>) -> Self {
-        let p = path.into();
-        if !self.existing.contains(&p) {
-            self.existing.push(p);
-        }
-        self
-    }
-
-    /// Mark `path` as a regular file (also marks it as existing).
-    #[must_use]
-    pub fn with_file(mut self, path: impl Into<PathBuf>) -> Self {
-        let p = path.into();
-        if !self.existing.contains(&p) {
-            self.existing.push(p.clone());
-        }
-        if !self.files.contains(&p) {
-            self.files.push(p);
-        }
-        self
-    }
-
-    /// Set the directory entries returned by [`FileSystemOps::read_dir`] for `dir`.
-    ///
-    /// Also marks `dir` itself as existing.
-    #[must_use]
-    pub fn with_dir_entries(mut self, dir: impl Into<PathBuf>, entries: Vec<PathBuf>) -> Self {
-        let d = dir.into();
-        if !self.existing.contains(&d) {
-            self.existing.push(d.clone());
-        }
-        self.dirs.insert(d, entries);
-        self
-    }
-
-    /// Register `path` as a symbolic link pointing to `target`.
-    ///
-    /// The path is also implicitly marked as existing.
-    #[must_use]
-    pub fn with_symlink(mut self, path: impl Into<PathBuf>, target: impl Into<PathBuf>) -> Self {
-        let p = path.into();
-        let t = target.into();
-        if !self.existing.contains(&p) {
-            self.existing.push(p.clone());
-        }
-        self.symlinks.insert(p, t);
-        self
-    }
-}
-
-#[cfg(test)]
-#[allow(clippy::expect_used)]
-impl FileSystemOps for MockFileSystemOps {
-    fn exists(&self, path: &Path) -> bool {
-        !self
-            .removed
-            .lock()
-            .expect("mock removed set poisoned")
-            .contains(path)
-            && self.existing.iter().any(|p| p == path)
-    }
-
-    fn is_file(&self, path: &Path) -> bool {
-        !self
-            .removed
-            .lock()
-            .expect("mock removed set poisoned")
-            .contains(path)
-            && self.files.iter().any(|p| p == path)
-    }
-
-    fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>> {
-        self.dirs
-            .get(path)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("mock: no entries configured for {}", path.display()))
-    }
-
-    fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {
-        if self
-            .removed
-            .lock()
-            .expect("mock removed set poisoned")
-            .contains(path)
-        {
-            return Err(std::io::Error::from(std::io::ErrorKind::NotFound));
-        }
-        self.symlinks
-            .get(path)
-            .cloned()
-            .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::InvalidInput))
-    }
-
-    fn remove(&self, path: &Path) -> std::io::Result<()> {
-        self.removed
-            .lock()
-            .expect("mock removed set poisoned")
-            .insert(path.to_path_buf());
-        Ok(())
     }
 }
 
@@ -537,20 +398,6 @@ mod tests {
         assert!(link.symlink_metadata().is_ok());
         remove_existing(&link).unwrap();
         assert!(link.symlink_metadata().is_err());
-    }
-
-    #[test]
-    fn mock_is_file_is_false_after_remove() {
-        let fs = MockFileSystemOps::new().with_file("/repo/file");
-        let path = Path::new("/repo/file");
-
-        assert!(fs.exists(path));
-        assert!(fs.is_file(path));
-
-        fs.remove(path).unwrap();
-
-        assert!(!fs.exists(path));
-        assert!(!fs.is_file(path));
     }
 
     // -----------------------------------------------------------------------

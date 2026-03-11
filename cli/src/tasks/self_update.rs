@@ -1032,11 +1032,14 @@ mod tests {
         .expect("failed to create temporary directory in current working directory");
         let bin = dir.path().join("ok");
 
-        // Copy an existing native binary (true always exits 0 regardless of arguments,
-        // including --version) rather than writing a shell script that depends on
-        // interpreter execution being permitted in the workspace.
+        // Symlink to an existing native binary rather than copying it.  Copying
+        // writes a new inode; on some Linux kernel / cgroup configurations the
+        // kernel returns ETXTBSY (text file busy) from execve when a process
+        // tries to execute a file that was just written.  A symlink to an
+        // already-existing executable avoids any write to a new inode entirely.
         let true_path = which::which("true").expect("'true' binary not found on PATH");
-        fs::copy(&true_path, &bin).expect("failed to copy 'true' binary to temp location");
+        std::os::unix::fs::symlink(&true_path, &bin)
+            .expect("failed to create symlink to 'true' binary");
 
         let result = smoke_test_binary(&bin);
         assert!(

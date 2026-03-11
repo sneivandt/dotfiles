@@ -44,6 +44,7 @@ fn execute_checked(mut cmd: Command, label: &str) -> Result<ExecResult> {
 ///
 /// Implement this trait to provide mock executors for unit tests.
 /// The [`SystemExecutor`] implementation delegates to real process spawning.
+#[cfg_attr(test, mockall::automock)]
 pub trait Executor: std::fmt::Debug + Send + Sync {
     /// Execute a command, bailing on non-zero exit.
     ///
@@ -51,7 +52,7 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     ///
     /// Returns an error if the command fails to execute, cannot be found,
     /// or exits with a non-zero status code.
-    fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
+    fn run<'a>(&self, program: &str, args: &'a [&'a str]) -> Result<ExecResult>;
 
     /// Execute a command in a specific directory.
     ///
@@ -63,7 +64,7 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     ///
     /// Returns an error if the command fails to execute, the directory does not exist,
     /// or the command exits with a non-zero status code.
-    fn run_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
+    fn run_in<'a>(&self, dir: &Path, program: &str, args: &'a [&'a str]) -> Result<ExecResult> {
         self.run_in_with_env(dir, program, args, &[])
     }
 
@@ -73,12 +74,12 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     ///
     /// Returns an error if the command fails to execute, the directory does not exist,
     /// or the command exits with a non-zero status code.
-    fn run_in_with_env(
+    fn run_in_with_env<'a>(
         &self,
         dir: &Path,
         program: &str,
-        args: &[&str],
-        env: &[(&str, &str)],
+        args: &'a [&'a str],
+        env: &'a [(&'a str, &'a str)],
     ) -> Result<ExecResult>;
 
     /// Execute a command, allowing non-zero exit.
@@ -87,10 +88,9 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     ///
     /// Returns an error if the command fails to execute or cannot be found,
     /// but does NOT fail on non-zero exit codes (which are captured in the result).
-    fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
+    fn run_unchecked<'a>(&self, program: &str, args: &'a [&'a str]) -> Result<ExecResult>;
 
     /// Check if a program is available on PATH.
-    #[must_use]
     fn which(&self, program: &str) -> bool;
 
     /// Resolve the full path of a program on PATH.
@@ -106,18 +106,18 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
 pub struct SystemExecutor;
 
 impl Executor for SystemExecutor {
-    fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+    fn run<'a>(&self, program: &str, args: &'a [&'a str]) -> Result<ExecResult> {
         let mut cmd = Command::new(program);
         cmd.args(args);
         execute_checked(cmd, program)
     }
 
-    fn run_in_with_env(
+    fn run_in_with_env<'a>(
         &self,
         dir: &Path,
         program: &str,
-        args: &[&str],
-        env: &[(&str, &str)],
+        args: &'a [&'a str],
+        env: &'a [(&'a str, &'a str)],
     ) -> Result<ExecResult> {
         let mut cmd = Command::new(program);
         cmd.args(args).current_dir(dir);
@@ -127,7 +127,7 @@ impl Executor for SystemExecutor {
         execute_checked(cmd, &format!("{program} in {}", dir.display()))
     }
 
-    fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+    fn run_unchecked<'a>(&self, program: &str, args: &'a [&'a str]) -> Result<ExecResult> {
         let output = Command::new(program)
             .args(args)
             .output()
@@ -272,203 +272,5 @@ mod tests {
         #[cfg(not(windows))]
         let result = executor.run_in(&dir, "echo", &["hello"]).unwrap();
         assert!(result.success, "echo in temp dir should succeed");
-    }
-}
-
-/// Shared test executor for unit tests.
-///
-/// Provides a unified [`TestExecutor`] that covers both stub (panic on call)
-/// and mock (FIFO response queue) use cases.
-#[cfg(test)]
-#[allow(clippy::panic)]
-pub mod test_helpers {
-    use super::{ExecResult, Executor};
-    use std::collections::VecDeque;
-    use std::path::Path;
-    use std::sync::{
-        Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
-    };
-
-    /// A unified test executor covering both **stub** and **mock** use cases.
-    ///
-    /// # Modes
-    ///
-    /// | Constructor | Queue | `which()` / `which_path()` | On empty queue |
-    /// |---|---|---|---|
-    /// | [`stub()`](Self::stub) | empty | `false` | **panics** |
-    /// | [`ok()`](Self::ok) | 1 success | `false` | returns error |
-    /// | [`fail()`](Self::fail) | 1 failure | `false` | returns error |
-    /// | [`with_responses()`](Self::with_responses) | custom | `false` | returns error |
-    ///
-    /// Call [`with_which()`](Self::with_which) to set the value returned by
-    /// [`Executor::which`].
-    #[derive(Debug)]
-    pub struct TestExecutor {
-        responses: Mutex<VecDeque<(bool, String)>>,
-        which_result: bool,
-        call_count: Arc<AtomicUsize>,
-        /// When `true`, any `run*()` call with an empty queue panics.
-        panic_on_empty: bool,
-    }
-
-    impl TestExecutor {
-        /// Create a stub executor that panics on any `run*()` call.
-        ///
-        /// Equivalent to the former `StubExecutor` in integration tests.
-        #[must_use]
-        pub fn stub() -> Self {
-            Self {
-                responses: Mutex::new(VecDeque::new()),
-                which_result: false,
-                call_count: Arc::new(AtomicUsize::new(0)),
-                panic_on_empty: true,
-            }
-        }
-
-        /// Create a mock with a single successful response.
-        #[must_use]
-        pub fn ok(stdout: &str) -> Self {
-            Self::with_responses(vec![(true, stdout.to_string())])
-        }
-
-        /// Create a mock with a single failed response (empty stdout).
-        #[must_use]
-        pub fn fail() -> Self {
-            Self::with_responses(vec![(false, String::new())])
-        }
-
-        /// Create a mock from an ordered list of `(success, stdout)` pairs.
-        #[must_use]
-        pub fn with_responses(responses: Vec<(bool, String)>) -> Self {
-            Self {
-                responses: Mutex::new(responses.into()),
-                which_result: false,
-                call_count: Arc::new(AtomicUsize::new(0)),
-                panic_on_empty: false,
-            }
-        }
-
-        /// Set the value returned by every [`Executor::which`] call.
-        #[must_use]
-        pub fn with_which(mut self, result: bool) -> Self {
-            self.which_result = result;
-            self
-        }
-
-        /// Return the total number of `run*()` calls made so far.
-        #[must_use]
-        pub fn call_count(&self) -> usize {
-            self.call_count.load(Ordering::SeqCst)
-        }
-
-        fn next(&self) -> (bool, String) {
-            self.call_count.fetch_add(1, Ordering::SeqCst);
-            self.responses.lock().map_or_else(
-                |_| (false, "mutex poisoned".to_string()),
-                |mut guard| {
-                    guard.pop_front().unwrap_or_else(|| {
-                        assert!(!self.panic_on_empty, "unexpected executor call in test");
-                        (false, "unexpected call".to_string())
-                    })
-                },
-            )
-        }
-
-        fn next_result(&self) -> anyhow::Result<ExecResult> {
-            let (success, stdout) = self.next();
-            if success {
-                Ok(ExecResult {
-                    stdout,
-                    stderr: String::new(),
-                    success: true,
-                    code: Some(0),
-                })
-            } else {
-                anyhow::bail!("mock command failed")
-            }
-        }
-    }
-
-    impl Executor for TestExecutor {
-        fn run(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
-            self.next_result()
-        }
-
-        fn run_in_with_env(
-            &self,
-            _: &Path,
-            _: &str,
-            _: &[&str],
-            _: &[(&str, &str)],
-        ) -> anyhow::Result<ExecResult> {
-            self.next_result()
-        }
-
-        fn run_unchecked(&self, _: &str, _: &[&str]) -> anyhow::Result<ExecResult> {
-            let (success, stdout) = self.next();
-            Ok(ExecResult {
-                stdout,
-                stderr: String::new(),
-                success,
-                code: Some(i32::from(!success)),
-            })
-        }
-
-        fn which(&self, _: &str) -> bool {
-            self.which_result
-        }
-
-        fn which_path(&self, program: &str) -> anyhow::Result<std::path::PathBuf> {
-            if self.which_result {
-                #[cfg(windows)]
-                let path = std::path::PathBuf::from(format!(r"C:\Windows\System32\{program}.exe"));
-                #[cfg(not(windows))]
-                let path = std::path::PathBuf::from(format!("/usr/bin/{program}"));
-                Ok(path)
-            } else {
-                anyhow::bail!("{program} not found on PATH")
-            }
-        }
-    }
-
-    #[cfg(test)]
-    #[allow(clippy::expect_used, clippy::unwrap_used)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn which_path_returns_ok_when_which_result_true() {
-            let executor = TestExecutor::stub().with_which(true);
-            let result = executor.which_path("cargo");
-            assert!(
-                result.is_ok(),
-                "which_path should succeed when which_result is true"
-            );
-            let path = result.unwrap();
-            assert!(
-                path.is_absolute(),
-                "which_path should return an absolute path"
-            );
-            assert!(
-                path.to_string_lossy().contains("cargo"),
-                "which_path should include the program name in the path"
-            );
-        }
-
-        #[test]
-        fn which_path_returns_err_when_which_result_false() {
-            let executor = TestExecutor::stub().with_which(false);
-            let result = executor.which_path("cargo");
-            assert!(
-                result.is_err(),
-                "which_path should fail when which_result is false"
-            );
-            let msg = result.unwrap_err().to_string();
-            assert!(
-                msg.contains("not found on PATH"),
-                "error message should mention 'not found on PATH'"
-            );
-        }
     }
 }

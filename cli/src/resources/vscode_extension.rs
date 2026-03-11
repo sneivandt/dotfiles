@@ -134,7 +134,25 @@ fn run_code_cmd(cmd: &str, args: &[&str], executor: &dyn Executor) -> Result<exe
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::exec::test_helpers::TestExecutor;
+    use crate::exec::{ExecResult, MockExecutor};
+
+    fn ok_result(stdout: &str) -> ExecResult {
+        ExecResult {
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            success: true,
+            code: Some(0),
+        }
+    }
+
+    fn fail_result() -> ExecResult {
+        ExecResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            success: false,
+            code: Some(1),
+        }
+    }
 
     #[test]
     fn description_returns_extension_id() {
@@ -200,9 +218,13 @@ mod tests {
 
     #[test]
     fn get_installed_extensions_parses_and_lowercases() {
-        let executor =
-            TestExecutor::ok("GitHub.Copilot\nms-python.python\nRust-lang.Rust-analyzer\n");
-        let installed = get_installed_extensions("code", &executor).unwrap();
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked().once().returning(|_, _| {
+            Ok(ok_result(
+                "GitHub.Copilot\nms-python.python\nRust-lang.Rust-analyzer\n",
+            ))
+        });
+        let installed = get_installed_extensions("code", &mock).unwrap();
         assert!(installed.contains("github.copilot"));
         assert!(installed.contains("ms-python.python"));
         assert!(installed.contains("rust-lang.rust-analyzer"));
@@ -210,8 +232,11 @@ mod tests {
 
     #[test]
     fn get_installed_extensions_returns_error_when_command_fails() {
-        let executor = TestExecutor::fail();
-        let result = get_installed_extensions("code", &executor);
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(fail_result()));
+        let result = get_installed_extensions("code", &mock);
         assert!(
             result.is_err(),
             "should return an error when the command fails"
@@ -220,16 +245,14 @@ mod tests {
 
     #[test]
     fn get_installed_extensions_uses_single_bulk_query() {
-        let executor = TestExecutor::ok("github.copilot-chat\n");
-        let installed = get_installed_extensions("code", &executor).unwrap();
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .times(1)
+            .returning(|_, _| Ok(ok_result("github.copilot-chat\n")));
+        let installed = get_installed_extensions("code", &mock).unwrap();
         assert!(
             installed.contains("github.copilot-chat"),
             "extension should be found"
-        );
-        assert_eq!(
-            executor.call_count(),
-            1,
-            "get_installed_extensions should call the executor exactly once"
         );
     }
 }

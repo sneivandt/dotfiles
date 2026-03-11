@@ -534,7 +534,7 @@ mod tests {
         }
 
         impl Executor for RecordingExecutor {
-            fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+            fn run<'a>(&self, program: &str, args: &'a [&'a str]) -> Result<ExecResult> {
                 self.calls.lock().unwrap().push(
                     std::iter::once(program)
                         .chain(args.iter().copied())
@@ -549,17 +549,17 @@ mod tests {
                 })
             }
 
-            fn run_in_with_env(
+            fn run_in_with_env<'a>(
                 &self,
                 _dir: &std::path::Path,
                 program: &str,
-                args: &[&str],
-                _env: &[(&str, &str)],
+                args: &'a [&'a str],
+                _env: &'a [(&'a str, &'a str)],
             ) -> Result<ExecResult> {
                 self.run(program, args)
             }
 
-            fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+            fn run_unchecked<'a>(&self, program: &str, args: &'a [&'a str]) -> Result<ExecResult> {
                 self.run(program, args)
             }
 

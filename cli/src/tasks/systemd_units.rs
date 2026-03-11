@@ -35,7 +35,7 @@ resource_task! {
 mod tests {
     use super::*;
     use crate::config::systemd_units::SystemdUnit;
-    use crate::exec::test_helpers::TestExecutor;
+    use crate::exec::{ExecResult, MockExecutor};
     use crate::platform::{Os, Platform};
     use crate::tasks::test_helpers::{
         empty_config, make_context, make_linux_context, make_platform_context_with_which,
@@ -43,6 +43,24 @@ mod tests {
     use crate::tasks::{Context, Task, TaskResult};
     use std::path::PathBuf;
     use std::sync::Arc;
+
+    fn ok_result() -> ExecResult {
+        ExecResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            success: true,
+            code: Some(0),
+        }
+    }
+
+    fn fail_result() -> ExecResult {
+        ExecResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            success: false,
+            code: Some(1),
+        }
+    }
 
     #[test]
     fn should_run_false_on_windows() {
@@ -88,8 +106,8 @@ mod tests {
     // ConfigureSystemd::run
     // ------------------------------------------------------------------
 
-    /// Build a context backed by `TestExecutor` for `run()` tests.
-    fn make_systemd_context(config: crate::config::Config, executor: TestExecutor) -> Context {
+    /// Build a context backed by `MockExecutor` for `run()` tests.
+    fn make_systemd_context(config: crate::config::Config, executor: MockExecutor) -> Context {
         make_context(config, Platform::new(Os::Linux, false), Arc::new(executor))
     }
 
@@ -100,16 +118,25 @@ mod tests {
             name: "dunst.service".to_string(),
             scope: "user".to_string(),
         });
-        // Ordered responses consumed by the FIFO TestExecutor queue:
+        // Ordered expectations:
         //   1. run("systemctl", ["--user", "daemon-reload"]) → success
         //   2. run_unchecked("systemctl", ["--user", "is-enabled", "dunst.service"]) → fail (Missing)
         //   3. run_unchecked("systemctl", ["--user", "enable", "--now", "dunst.service"]) → success
-        let executor = TestExecutor::with_responses(vec![
-            (true, String::new()),  // daemon-reload
-            (false, String::new()), // is-enabled → not enabled → Missing
-            (true, String::new()),  // enable → Applied
-        ]);
-        let ctx = make_systemd_context(config, executor);
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        mock.expect_run()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(ok_result()));
+        mock.expect_run_unchecked()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(fail_result()));
+        mock.expect_run_unchecked()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(ok_result()));
+        let ctx = make_systemd_context(config, mock);
 
         let result = ConfigureSystemd.run(&ctx).unwrap();
         assert!(
@@ -128,10 +155,11 @@ mod tests {
         // In dry-run mode daemon-reload is NOT called (guarded by `!ctx.dry_run`).
         // current_state() still runs to decide whether change would be needed.
         //   1. run_unchecked("systemctl", ["--user", "is-enabled", "dunst.service"]) → fail (Missing)
-        let executor = TestExecutor::with_responses(vec![
-            (false, String::new()), // is-enabled → Missing
-        ]);
-        let mut ctx = make_systemd_context(config, executor);
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(fail_result()));
+        let mut ctx = make_systemd_context(config, mock);
         ctx = ctx.with_dry_run(true);
 
         let result = ConfigureSystemd.run(&ctx).unwrap();

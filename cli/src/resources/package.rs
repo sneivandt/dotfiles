@@ -510,7 +510,25 @@ impl Resource for PackageResource {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::exec::test_helpers::TestExecutor;
+    use crate::exec::{ExecResult, MockExecutor};
+
+    fn ok_result(stdout: &str) -> ExecResult {
+        ExecResult {
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            success: true,
+            code: Some(0),
+        }
+    }
+
+    fn fail_result() -> ExecResult {
+        ExecResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            success: false,
+            code: Some(1),
+        }
+    }
 
     #[test]
     fn description_includes_manager() {
@@ -575,8 +593,11 @@ mod tests {
 
     #[test]
     fn get_installed_pacman_parses_name_version_lines() {
-        let executor = TestExecutor::ok("git 2.39.0\nvim 9.0.0\nbase-devel 1.0\n");
-        let installed = get_installed_packages(PackageManager::Pacman, &executor).unwrap();
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(ok_result("git 2.39.0\nvim 9.0.0\nbase-devel 1.0\n")));
+        let installed = get_installed_packages(PackageManager::Pacman, &mock).unwrap();
         assert!(installed.contains("git"));
         assert!(installed.contains("vim"));
         assert!(installed.contains("base-devel"));
@@ -588,8 +609,11 @@ mod tests {
 
     #[test]
     fn get_installed_pacman_returns_error_on_failure() {
-        let executor = TestExecutor::fail();
-        let result = get_installed_packages(PackageManager::Pacman, &executor);
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Err(anyhow::anyhow!("simulated failure")));
+        let result = get_installed_packages(PackageManager::Pacman, &mock);
         assert!(
             result.is_err(),
             "should return an error when the command fails"
@@ -598,10 +622,13 @@ mod tests {
 
     #[test]
     fn get_installed_winget_parses_id_tokens() {
-        let executor = TestExecutor::ok(
-            "Name          Id                    Version\nGit           Git.Git               2.39.0\nPowerShell    Microsoft.PowerShell  7.3\n",
-        );
-        let installed = get_installed_packages(PackageManager::Winget, &executor).unwrap();
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked().once().returning(|_, _| {
+            Ok(ok_result(
+                "Name          Id                    Version\nGit           Git.Git               2.39.0\nPowerShell    Microsoft.PowerShell  7.3\n",
+            ))
+        });
+        let installed = get_installed_packages(PackageManager::Winget, &mock).unwrap();
         assert!(installed.contains("Git.Git"));
         assert!(installed.contains("Microsoft.PowerShell"));
         assert!(
@@ -631,7 +658,11 @@ mod tests {
 
     #[test]
     fn current_state_pacman_correct_when_query_succeeds() {
-        let executor: Arc<dyn Executor> = Arc::new(TestExecutor::ok("git 2.39.0\n"));
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(ok_result("git 2.39.0\n")));
+        let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = PackageResource::new(
             "git".to_string(),
             PackageManager::Pacman,
@@ -642,7 +673,11 @@ mod tests {
 
     #[test]
     fn current_state_pacman_missing_when_query_fails() {
-        let executor: Arc<dyn Executor> = Arc::new(TestExecutor::fail());
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(fail_result()));
+        let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = PackageResource::new(
             "git".to_string(),
             PackageManager::Pacman,
@@ -653,7 +688,11 @@ mod tests {
 
     #[test]
     fn current_state_winget_correct_when_id_in_output() {
-        let executor: Arc<dyn Executor> = Arc::new(TestExecutor::ok("Git.Git  2.39.0\n"));
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(ok_result("Git.Git  2.39.0\n")));
+        let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = PackageResource::new(
             "Git.Git".to_string(),
             PackageManager::Winget,
@@ -665,7 +704,11 @@ mod tests {
     #[test]
     fn current_state_winget_missing_when_not_in_output() {
         // success=true but ID not present in stdout
-        let executor: Arc<dyn Executor> = Arc::new(TestExecutor::ok("No packages found.\n"));
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(ok_result("No packages found.\n")));
+        let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = PackageResource::new(
             "Git.Git".to_string(),
             PackageManager::Winget,
@@ -680,7 +723,11 @@ mod tests {
 
     #[test]
     fn apply_pacman_returns_applied_on_success() {
-        let executor: Arc<dyn Executor> = Arc::new(TestExecutor::ok(""));
+        let mut mock = MockExecutor::new();
+        mock.expect_run()
+            .once()
+            .returning(|_, _| Ok(ok_result("")));
+        let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = PackageResource::new(
             "git".to_string(),
             PackageManager::Pacman,
@@ -691,7 +738,11 @@ mod tests {
 
     #[test]
     fn apply_paru_returns_applied_on_success() {
-        let executor: Arc<dyn Executor> = Arc::new(TestExecutor::ok(""));
+        let mut mock = MockExecutor::new();
+        mock.expect_run()
+            .once()
+            .returning(|_, _| Ok(ok_result("")));
+        let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = PackageResource::new(
             "paru-bin".to_string(),
             PackageManager::Paru,
@@ -722,7 +773,11 @@ mod tests {
     }
 
     impl crate::exec::Executor for RecordingExecutor {
-        fn run(&self, program: &str, args: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
+        fn run<'a>(
+            &self,
+            program: &str,
+            args: &'a [&'a str],
+        ) -> anyhow::Result<crate::exec::ExecResult> {
             self.calls.lock().unwrap().push((
                 program.to_string(),
                 args.iter().map(|s| (*s).to_string()).collect(),
@@ -735,29 +790,20 @@ mod tests {
             })
         }
 
-        fn run_in(
+        fn run_in_with_env<'a>(
             &self,
             _: &std::path::Path,
             program: &str,
-            args: &[&str],
+            args: &'a [&'a str],
+            _: &'a [(&'a str, &'a str)],
         ) -> anyhow::Result<crate::exec::ExecResult> {
             self.run(program, args)
         }
 
-        fn run_in_with_env(
-            &self,
-            _: &std::path::Path,
-            program: &str,
-            args: &[&str],
-            _: &[(&str, &str)],
-        ) -> anyhow::Result<crate::exec::ExecResult> {
-            self.run(program, args)
-        }
-
-        fn run_unchecked(
+        fn run_unchecked<'a>(
             &self,
             program: &str,
-            args: &[&str],
+            args: &'a [&'a str],
         ) -> anyhow::Result<crate::exec::ExecResult> {
             self.run(program, args)
         }
@@ -869,7 +915,11 @@ mod tests {
 
     #[test]
     fn batch_install_propagates_pacman_error() {
-        let executor: Arc<dyn Executor> = Arc::new(TestExecutor::fail());
+        let mut mock = MockExecutor::new();
+        mock.expect_run()
+            .once()
+            .returning(|_, _| Err(anyhow::anyhow!("simulated failure")));
+        let executor: Arc<dyn Executor> = Arc::new(mock);
         let r1 = PackageResource::new(
             "git".to_string(),
             PackageManager::Pacman,
@@ -880,11 +930,15 @@ mod tests {
 
     #[test]
     fn batch_install_winget_skipped_returns_error() {
-        // TestExecutor::fail() makes run_unchecked return success=false.
+        // MockExecutor::run_unchecked returns success=false.
         // PackageResource::apply() for Winget checks result.success and returns
         // ResourceChange::Skipped on failure — batch_install_packages must
         // convert that into an error.
-        let executor: Arc<dyn Executor> = Arc::new(TestExecutor::fail());
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(fail_result()));
+        let executor: Arc<dyn Executor> = Arc::new(mock);
         let r1 = PackageResource::new(
             "Git.Git".to_string(),
             PackageManager::Winget,

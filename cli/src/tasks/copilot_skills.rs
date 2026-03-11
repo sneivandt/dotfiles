@@ -129,7 +129,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use crate::exec::test_helpers::TestExecutor;
+    use crate::exec::{ExecResult, MockExecutor};
     use crate::platform::{Os, Platform};
     use crate::tasks::test_helpers::make_context;
 
@@ -184,10 +184,17 @@ mod tests {
             marketplace_name: "dotnet-agent-skills".to_string(),
             plugin: "dotnet-msbuild".to_string(),
         });
-        let executor = Arc::new(
-            TestExecutor::with_responses(vec![(true, "GitHub Copilot CLI 0.0.396\n".to_string())])
-                .with_which(true),
-        );
+        let mut executor = MockExecutor::new();
+        executor.expect_which().returning(|_| true);
+        executor.expect_run_unchecked().once().returning(|_, _| {
+            Ok(ExecResult {
+                stdout: "GitHub Copilot CLI 0.0.396\n".to_string(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
+        let executor = Arc::new(executor);
         let platform = Platform {
             os: Os::Linux,
             is_arch: false,

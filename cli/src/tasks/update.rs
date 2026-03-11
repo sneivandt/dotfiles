@@ -213,13 +213,21 @@ fn worktree_has_local_changes(ctx: &Context, git_env: &[(&str, &str)]) -> Result
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::exec::test_helpers::TestExecutor;
-    use crate::exec::{ExecResult, Executor};
+    use crate::exec::{ExecResult, Executor, MockExecutor};
     use crate::platform::{Os, Platform};
     use crate::tasks::UpdateSignal;
     use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
     use std::path::PathBuf;
     use std::sync::Arc;
+
+    fn ok_result(stdout: &str) -> ExecResult {
+        ExecResult {
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            success: true,
+            code: Some(0),
+        }
+    }
 
     #[test]
     fn should_run_false_when_git_dir_missing() {
@@ -256,8 +264,8 @@ mod tests {
     // run()
     // -----------------------------------------------------------------------
 
-    /// Build a context that uses a [`TestExecutor`] so we can control git responses.
-    fn make_update_context(config: crate::config::Config, executor: TestExecutor) -> Context {
+    /// Build a context that uses a [`MockExecutor`] so we can control git responses.
+    fn make_update_context(config: crate::config::Config, executor: MockExecutor) -> Context {
         make_context(config, Platform::new(Os::Linux, false), Arc::new(executor))
     }
 
@@ -265,8 +273,11 @@ mod tests {
     fn run_returns_skipped_when_detached_head() {
         let config = empty_config(PathBuf::from("/tmp"));
         // First call (symbolic-ref): fails → detached HEAD
-        let executor = TestExecutor::fail();
-        let ctx = make_update_context(config, executor);
+        let mut mock = MockExecutor::new();
+        mock.expect_run_in_with_env()
+            .once()
+            .returning(|_, _, _, _| Err(anyhow::anyhow!("simulated failure")));
+        let ctx = make_update_context(config, mock);
         let repo_updated = UpdateSignal::new();
         let task = UpdateRepository::new(repo_updated.clone());
 
@@ -280,11 +291,17 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         // First call (symbolic-ref): succeeds → on a branch
         // Second call (status --porcelain): returns non-empty stdout → local changes
-        let executor = TestExecutor::with_responses(vec![
-            (true, "refs/heads/main".to_string()),
-            (true, "M  dirty_file.txt".to_string()),
-        ]);
-        let ctx = make_update_context(config, executor);
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _, _, _| Ok(ok_result("refs/heads/main")));
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _, _, _| Ok(ok_result("M  dirty_file.txt")));
+        let ctx = make_update_context(config, mock);
         let repo_updated = UpdateSignal::new();
         let task = UpdateRepository::new(repo_updated);
 
@@ -296,16 +313,16 @@ mod tests {
     struct UntrackedAwareExecutor;
 
     impl Executor for UntrackedAwareExecutor {
-        fn run(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
+        fn run<'a>(&self, _: &str, _: &'a [&'a str]) -> Result<ExecResult> {
             anyhow::bail!("unexpected run() call")
         }
 
-        fn run_in_with_env(
+        fn run_in_with_env<'a>(
             &self,
             _: &std::path::Path,
             _: &str,
-            args: &[&str],
-            _: &[(&str, &str)],
+            args: &'a [&'a str],
+            _: &'a [(&'a str, &'a str)],
         ) -> Result<ExecResult> {
             let stdout = if args.contains(&"--untracked-files=no") {
                 String::new()
@@ -321,7 +338,7 @@ mod tests {
             })
         }
 
-        fn run_unchecked(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
+        fn run_unchecked<'a>(&self, _: &str, _: &'a [&'a str]) -> Result<ExecResult> {
             anyhow::bail!("unexpected run_unchecked() call")
         }
 
@@ -349,19 +366,27 @@ mod tests {
     #[test]
     fn run_returns_ok_and_does_not_mark_updated_when_already_up_to_date() {
         let config = empty_config(PathBuf::from("/tmp"));
-        // First call (symbolic-ref): succeeds → on a branch
-        // Second call (status): empty stdout → clean worktree
-        // Third call (rev-parse HEAD): pre-pull SHA
-        // Fourth call (pull): succeeds
-        // Fifth call (rev-parse HEAD): same SHA → no update
-        let executor = TestExecutor::with_responses(vec![
-            (true, "refs/heads/main".to_string()),
-            (true, String::new()),
-            (true, "abc123".to_string()),
-            (true, String::new()),
-            (true, "abc123".to_string()),
-        ]);
-        let ctx = make_update_context(config, executor);
+        // 1. symbolic-ref → on a branch
+        // 2. status → clean worktree
+        // 3. rev-parse HEAD → pre-pull SHA
+        // 4. pull → succeeds
+        // 5. rev-parse HEAD → same SHA → no update
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        for stdout in [
+            "refs/heads/main",
+            "",
+            "abc123",
+            "",
+            "abc123",
+        ] {
+            let s = stdout.to_string();
+            mock.expect_run_in_with_env()
+                .once()
+                .in_sequence(&mut seq)
+                .returning(move |_, _, _, _| Ok(ok_result(&s)));
+        }
+        let ctx = make_update_context(config, mock);
         let repo_updated = UpdateSignal::new();
         let task = UpdateRepository::new(repo_updated.clone());
 
@@ -373,19 +398,27 @@ mod tests {
     #[test]
     fn run_returns_ok_and_marks_updated_when_pull_fetches_new_commits() {
         let config = empty_config(PathBuf::from("/tmp"));
-        // First call (symbolic-ref): succeeds → on a branch
-        // Second call (status): empty stdout → clean worktree
-        // Third call (rev-parse HEAD): pre-pull SHA
-        // Fourth call (pull): succeeds with update output
-        // Fifth call (rev-parse HEAD): different SHA → repo updated
-        let executor = TestExecutor::with_responses(vec![
-            (true, "refs/heads/main".to_string()),
-            (true, String::new()),
-            (true, "abc1234".to_string()),
-            (true, "Updating abc1234..def5678\nFast-forward".to_string()),
-            (true, "def5678".to_string()),
-        ]);
-        let ctx = make_update_context(config, executor);
+        // 1. symbolic-ref → on a branch
+        // 2. status → clean worktree
+        // 3. rev-parse HEAD → pre-pull SHA
+        // 4. pull → succeeds with update output
+        // 5. rev-parse HEAD → different SHA → repo updated
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        for stdout in [
+            "refs/heads/main",
+            "",
+            "abc1234",
+            "Updating abc1234..def5678\nFast-forward",
+            "def5678",
+        ] {
+            let s = stdout.to_string();
+            mock.expect_run_in_with_env()
+                .once()
+                .in_sequence(&mut seq)
+                .returning(move |_, _, _, _| Ok(ok_result(&s)));
+        }
+        let ctx = make_update_context(config, mock);
         let repo_updated = UpdateSignal::new();
         let task = UpdateRepository::new(repo_updated.clone());
 
@@ -397,17 +430,24 @@ mod tests {
     #[test]
     fn run_returns_skipped_when_pull_fails() {
         let config = empty_config(PathBuf::from("/tmp"));
-        // First call (symbolic-ref): succeeds → on a branch
-        // Second call (status): empty stdout → clean worktree
-        // Third call (rev-parse HEAD): pre-pull SHA
-        // Fourth call (pull): fails
-        let executor = TestExecutor::with_responses(vec![
-            (true, "refs/heads/main".to_string()),
-            (true, String::new()),
-            (true, "abc123".to_string()),
-            (false, String::new()),
-        ]);
-        let ctx = make_update_context(config, executor);
+        // 1. symbolic-ref → on a branch
+        // 2. status → clean worktree
+        // 3. rev-parse HEAD → pre-pull SHA
+        // 4. pull → fails
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        for stdout in ["refs/heads/main", "", "abc123"] {
+            let s = stdout.to_string();
+            mock.expect_run_in_with_env()
+                .once()
+                .in_sequence(&mut seq)
+                .returning(move |_, _, _, _| Ok(ok_result(&s)));
+        }
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _, _, _| Err(anyhow::anyhow!("simulated pull failure")));
+        let ctx = make_update_context(config, mock);
         let repo_updated = UpdateSignal::new();
         let task = UpdateRepository::new(repo_updated);
 
@@ -428,15 +468,23 @@ mod tests {
         // branch.main.remote: origin
         // branch.main.merge: refs/heads/main
         // ls-remote origin refs/heads/main: abc123
-        let executor = TestExecutor::with_responses(vec![
-            (true, "refs/heads/main".to_string()),
-            (true, String::new()),
-            (true, "abc123".to_string()),
-            (true, "origin".to_string()),
-            (true, "refs/heads/main".to_string()),
-            (true, "abc123\trefs/heads/main".to_string()),
-        ]);
-        let mut ctx = make_update_context(config, executor);
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        for stdout in [
+            "refs/heads/main",
+            "",
+            "abc123",
+            "origin",
+            "refs/heads/main",
+            "abc123\trefs/heads/main",
+        ] {
+            let s = stdout.to_string();
+            mock.expect_run_in_with_env()
+                .once()
+                .in_sequence(&mut seq)
+                .returning(move |_, _, _, _| Ok(ok_result(&s)));
+        }
+        let mut ctx = make_update_context(config, mock);
         ctx = ctx.with_dry_run(true);
         let task = UpdateRepository::new(UpdateSignal::new());
 
@@ -456,15 +504,23 @@ mod tests {
         // branch.main.remote: origin
         // branch.main.merge: refs/heads/main
         // ls-remote origin refs/heads/main: def456 (different SHA → would pull)
-        let executor = TestExecutor::with_responses(vec![
-            (true, "refs/heads/main".to_string()),
-            (true, String::new()),
-            (true, "abc123".to_string()),
-            (true, "origin".to_string()),
-            (true, "refs/heads/main".to_string()),
-            (true, "def456\trefs/heads/main".to_string()),
-        ]);
-        let mut ctx = make_update_context(config, executor);
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        for stdout in [
+            "refs/heads/main",
+            "",
+            "abc123",
+            "origin",
+            "refs/heads/main",
+            "def456\trefs/heads/main",
+        ] {
+            let s = stdout.to_string();
+            mock.expect_run_in_with_env()
+                .once()
+                .in_sequence(&mut seq)
+                .returning(move |_, _, _, _| Ok(ok_result(&s)));
+        }
+        let mut ctx = make_update_context(config, mock);
         ctx = ctx.with_dry_run(true);
         let task = UpdateRepository::new(UpdateSignal::new());
 
@@ -483,14 +539,26 @@ mod tests {
         // rev-parse HEAD: abc123
         // branch.main.remote lookup fails
         // rev-parse @{u}: abc123 (cached tracking ref matches HEAD)
-        let executor = TestExecutor::with_responses(vec![
-            (true, "refs/heads/main".to_string()),
-            (true, String::new()),
-            (true, "abc123".to_string()),
-            (false, String::new()),
-            (true, "abc123".to_string()),
-        ]);
-        let mut ctx = make_update_context(config, executor);
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        for stdout in ["refs/heads/main", "", "abc123"] {
+            let s = stdout.to_string();
+            mock.expect_run_in_with_env()
+                .once()
+                .in_sequence(&mut seq)
+                .returning(move |_, _, _, _| Ok(ok_result(&s)));
+        }
+        // branch.main.remote lookup fails
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _, _, _| Err(anyhow::anyhow!("no remote config")));
+        // rev-parse @{u}: matches HEAD
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _, _, _| Ok(ok_result("abc123")));
+        let mut ctx = make_update_context(config, mock);
         ctx = ctx.with_dry_run(true);
         let task = UpdateRepository::new(UpdateSignal::new());
 

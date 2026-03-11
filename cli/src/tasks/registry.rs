@@ -1,28 +1,73 @@
 //! Task: apply Windows registry entries.
 
-use super::{ProcessOpts, batch_resource_task};
+use anyhow::Result;
+
+use super::{Context, ProcessOpts, Task, TaskResult, run_batch_resource_task, task_deps};
 use crate::resources::registry::{RegistryResource, batch_check_values};
 
-batch_resource_task! {
-    /// Apply Windows registry settings.
-    pub ApplyRegistry {
-        name: "Apply registry settings",
-        deps: [super::reload_config::ReloadConfig],
-        guard: |ctx| ctx.platform.has_registry(),
-        items: |ctx| ctx.config_read().registry.clone(),
-        cache: |items, _ctx| {
-            let resources: Vec<RegistryResource> = items.iter()
-                .map(RegistryResource::from_entry)
-                .collect();
-            batch_check_values(&resources)
-        },
-        build: |entry, _ctx| RegistryResource::from_entry(&entry),
-        state: |r, cached| {
-            let key = format!("{}\\{}", r.key_path, r.value_name);
-            let val = cached.get(&key).and_then(|v| v.as_deref());
-            r.state_from_cached(val)
-        },
-        opts: ProcessOpts::lenient("set registry"),
+/// Apply Windows registry settings.
+#[derive(Debug)]
+pub struct ApplyRegistry;
+
+impl Task for ApplyRegistry {
+    fn name(&self) -> &'static str {
+        "Apply registry settings"
+    }
+
+    task_deps![super::reload_config::ReloadConfig];
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        ctx.platform.has_registry()
+    }
+
+    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        if !ctx.platform.has_registry() {
+            return Ok(None);
+        }
+        let items: Vec<_> = ctx.config_read().registry.clone();
+        if items.is_empty() {
+            return Ok(None);
+        }
+        run_batch_resource_task(
+            ctx,
+            items,
+            |entries, _ctx| {
+                let resources: Vec<RegistryResource> =
+                    entries.iter().map(RegistryResource::from_entry).collect();
+                batch_check_values(&resources)
+            },
+            |entry, _ctx| RegistryResource::from_entry(&entry),
+            |r, cached| {
+                let key = format!("{}\\{}", r.key_path, r.value_name);
+                let val = cached.get(&key).and_then(|v| v.as_deref());
+                r.state_from_cached(val)
+            },
+            &ProcessOpts::lenient("set registry"),
+        )
+        .map(Some)
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let items: Vec<_> = ctx.config_read().registry.clone();
+        if items.is_empty() {
+            return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
+        }
+        run_batch_resource_task(
+            ctx,
+            items,
+            |entries, _ctx| {
+                let resources: Vec<RegistryResource> =
+                    entries.iter().map(RegistryResource::from_entry).collect();
+                batch_check_values(&resources)
+            },
+            |entry, _ctx| RegistryResource::from_entry(&entry),
+            |r, cached| {
+                let key = format!("{}\\{}", r.key_path, r.value_name);
+                let val = cached.get(&key).and_then(|v| v.as_deref());
+                r.state_from_cached(val)
+            },
+            &ProcessOpts::lenient("set registry"),
+        )
     }
 }
 

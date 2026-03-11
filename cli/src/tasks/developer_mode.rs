@@ -1,16 +1,43 @@
 //! Task: enable Windows Developer Mode.
 
-use super::{ProcessOpts, resource_task};
+use anyhow::Result;
+
+use super::{Context, ProcessOpts, Task, TaskResult, run_resource_task};
 use crate::resources::developer_mode::DeveloperModeResource;
 
-resource_task! {
-    /// Enable Windows Developer Mode (allows symlink creation without admin).
-    pub EnableDeveloperMode {
-        name: "Enable developer mode",
-        guard: |ctx| ctx.platform.is_windows(),
-        items: |_ctx| vec![()],
-        build: |_unit, _ctx| DeveloperModeResource::new(),
-        opts: ProcessOpts::lenient("enable"),
+/// Enable Windows Developer Mode (allows symlink creation without admin).
+#[derive(Debug)]
+pub struct EnableDeveloperMode;
+
+impl Task for EnableDeveloperMode {
+    fn name(&self) -> &'static str {
+        "Enable developer mode"
+    }
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        ctx.platform.is_windows()
+    }
+
+    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        if !ctx.platform.is_windows() {
+            return Ok(None);
+        }
+        run_resource_task(
+            ctx,
+            vec![()],
+            |_unit, _ctx| DeveloperModeResource::new(),
+            &ProcessOpts::lenient("enable"),
+        )
+        .map(Some)
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        run_resource_task(
+            ctx,
+            vec![()],
+            |_unit, _ctx| DeveloperModeResource::new(),
+            &ProcessOpts::lenient("enable"),
+        )
     }
 }
 

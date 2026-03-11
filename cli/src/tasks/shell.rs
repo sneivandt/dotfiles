@@ -2,20 +2,46 @@
 
 use std::sync::Arc;
 
-use super::{ProcessOpts, resource_task};
+use anyhow::Result;
+
+use super::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_deps};
 use crate::resources::shell::DefaultShellResource;
 
-resource_task! {
-    /// Configure the default shell to zsh.
-    pub ConfigureShell {
-        name: "Configure default shell",
-        deps: [super::packages::InstallPackages],
-        guard: |ctx| {
-            ctx.platform.is_linux() && ctx.executor.which("zsh") && !ctx.is_ci
-        },
-        items: |_ctx| vec![()],
-        build: |_unit, ctx| DefaultShellResource::new("zsh".to_string(), Arc::clone(&ctx.executor)),
-        opts: ProcessOpts::strict("configure shell"),
+/// Configure the default shell to zsh.
+#[derive(Debug)]
+pub struct ConfigureShell;
+
+impl Task for ConfigureShell {
+    fn name(&self) -> &'static str {
+        "Configure default shell"
+    }
+
+    task_deps![super::packages::InstallPackages];
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        ctx.platform.is_linux() && ctx.executor.which("zsh") && !ctx.is_ci
+    }
+
+    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        if !(ctx.platform.is_linux() && ctx.executor.which("zsh") && !ctx.is_ci) {
+            return Ok(None);
+        }
+        run_resource_task(
+            ctx,
+            vec![()],
+            |_unit, ctx| DefaultShellResource::new("zsh".to_string(), Arc::clone(&ctx.executor)),
+            &ProcessOpts::strict("configure shell"),
+        )
+        .map(Some)
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        run_resource_task(
+            ctx,
+            vec![()],
+            |_unit, ctx| DefaultShellResource::new("zsh".to_string(), Arc::clone(&ctx.executor)),
+            &ProcessOpts::strict("configure shell"),
+        )
     }
 }
 

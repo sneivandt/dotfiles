@@ -1,15 +1,48 @@
 //! Task: configure Git settings.
 
-use super::{ProcessOpts, resource_task};
+use anyhow::Result;
+
+use super::{Context, ProcessOpts, Task, TaskResult, run_resource_task};
 use crate::resources::git_config::GitConfigResource;
 
-resource_task! {
-    /// Configure git settings from git-config.toml.
-    pub ConfigureGit {
-        name: "Configure Git",
-        items: |ctx| ctx.config_read().git_settings.clone(),
-        build: |s, _ctx| GitConfigResource::new(s.key, s.value),
-        opts: ProcessOpts::strict("set git config").sequential(),
+/// Configure git settings from git-config.toml.
+#[derive(Debug)]
+pub struct ConfigureGit;
+
+impl Task for ConfigureGit {
+    fn name(&self) -> &'static str {
+        "Configure Git"
+    }
+
+    fn should_run(&self, _ctx: &Context) -> bool {
+        true
+    }
+
+    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        let items: Vec<_> = ctx.config_read().git_settings.clone();
+        if items.is_empty() {
+            return Ok(None);
+        }
+        run_resource_task(
+            ctx,
+            items,
+            |s, _ctx| GitConfigResource::new(s.key, s.value),
+            &ProcessOpts::strict("set git config").sequential(),
+        )
+        .map(Some)
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let items: Vec<_> = ctx.config_read().git_settings.clone();
+        if items.is_empty() {
+            return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
+        }
+        run_resource_task(
+            ctx,
+            items,
+            |s, _ctx| GitConfigResource::new(s.key, s.value),
+            &ProcessOpts::strict("set git config").sequential(),
+        )
     }
 }
 

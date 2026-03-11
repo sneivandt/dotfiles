@@ -48,226 +48,6 @@ macro_rules! task_deps {
 
 pub(crate) use task_deps;
 
-/// Define a task that processes config-derived resources with minimal
-/// boilerplate.
-///
-/// Generates a `Debug` struct and a full [`Task`] implementation for the
-/// common pattern: read config items → build resources → process.
-///
-/// # Syntax
-///
-/// ```ignore
-/// resource_task! {
-///     /// Doc comment for the task.
-///     pub StructName {
-///         name: "Human-readable task name",
-///         deps: [DepType1, DepType2],          // optional
-///         guard: |ctx| bool_expr,              // optional platform/tool guard
-///         setup: |ctx| { side_effects(); },    // optional pre-processing
-///         items: |ctx| ctx.config_read().field.clone(),
-///         build: |item, ctx| Resource::from(&item, &ctx.home),
-///         opts: ProcessOpts::strict("verb"),
-///     }
-/// }
-/// ```
-///
-/// The generated struct implements `Task` with:
-/// - `should_run` returning `false` only when the guard fails
-/// - `run_if_applicable` evaluating items exactly once per task execution and
-///   returning `None` when no items are configured
-/// - `run` returning [`TaskResult::NotApplicable`] when the guard fails or no
-///   items are configured, otherwise running the optional setup block, mapping
-///   items to resources via `build`, and delegating to [`process_resources`]
-macro_rules! resource_task {
-    (
-        $(#[$meta:meta])*
-        $vis:vis $name:ident {
-            name: $task_name:expr,
-            $(deps: [$($dep:ty),+ $(,)?],)?
-            $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
-            $(setup: |$setup_ctx:ident| $setup_expr:expr,)?
-            items: |$items_ctx:ident| $items_expr:expr,
-            build: |$item:ident, $build_ctx:ident| $build_expr:expr,
-            opts: $opts:expr $(,)?
-        }
-    ) => {
-        $(#[$meta])*
-        #[derive(Debug)]
-        $vis struct $name;
-
-        impl $crate::tasks::Task for $name {
-            fn name(&self) -> &'static str {
-                $task_name
-            }
-
-            $($crate::tasks::task_deps![$($dep),+];)?
-
-            fn should_run(&self, ctx: &$crate::tasks::Context) -> bool {
-                let _ = ctx;
-                $(
-                    let $guard_ctx = ctx;
-                    if !{ $guard_expr } { return false; }
-                )?
-                true
-            }
-
-            fn run_if_applicable(
-                &self,
-                ctx: &$crate::tasks::Context,
-            ) -> ::anyhow::Result<Option<$crate::tasks::TaskResult>> {
-                $(
-                    let $guard_ctx = ctx;
-                    if !{ $guard_expr } { return Ok(None); }
-                )?
-                let $items_ctx = ctx;
-                let items: Vec<_> = { $items_expr };
-                if items.is_empty() {
-                    return Ok(None);
-                }
-                $(
-                    let $setup_ctx = ctx;
-                    { $setup_expr }
-                )?
-                $crate::tasks::run_resource_task(ctx, items, |$item, $build_ctx| {
-                    $build_expr
-                }, &$opts).map(Some)
-            }
-
-            fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
-                let $items_ctx = ctx;
-                let items: Vec<_> = { $items_expr };
-                if items.is_empty() {
-                    return Ok($crate::tasks::TaskResult::NotApplicable(
-                        "nothing configured".to_string(),
-                    ));
-                }
-                $(
-                    let $setup_ctx = ctx;
-                    { $setup_expr }
-                )?
-                $crate::tasks::run_resource_task(ctx, items, |$item, $build_ctx| {
-                    $build_expr
-                }, &$opts)
-            }
-        }
-    };
-}
-
-pub(crate) use resource_task;
-
-/// Define a task that batch-queries state once and then processes resources
-/// with pre-computed states.
-///
-/// This is the counterpart to [`resource_task!`] for resources whose state
-/// is determined by a single bulk query (e.g., VS Code extensions, registry
-/// entries).
-///
-/// # Syntax
-///
-/// ```ignore
-/// batch_resource_task! {
-///     /// Doc comment for the task.
-///     pub StructName {
-///         name: "Human-readable task name",
-///         deps: [DepType1, DepType2],               // optional
-///         guard: |ctx| bool_expr,                    // optional
-///         items: |ctx| ctx.config_read().field.clone(),
-///         cache: |items, ctx| query_bulk_state(items, ctx),
-///         build: |item, ctx| Resource::from(&item, &ctx.home),
-///         state: |resource, cache| resource.state_from_cache(&cache),
-///         opts: ProcessOpts::lenient("verb"),
-///     }
-/// }
-/// ```
-///
-/// The generated struct implements `Task` with:
-/// - `should_run` returning `false` only when the guard fails
-/// - `run_if_applicable` evaluating items exactly once per task execution and
-///   returning `None` when no items are configured
-/// - `run` returning [`TaskResult::NotApplicable`] when the guard fails or no
-///   items are configured, otherwise querying bulk state via `cache`, building
-///   `(Resource, ResourceState)` pairs, and delegating to
-///   [`process_resource_states`]
-macro_rules! batch_resource_task {
-    (
-        $(#[$meta:meta])*
-        $vis:vis $name:ident {
-            name: $task_name:expr,
-            $(deps: [$($dep:ty),+ $(,)?],)?
-            $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
-            items: |$items_ctx:ident| $items_expr:expr,
-            cache: |$cache_items:ident, $cache_ctx:ident| $cache_expr:expr,
-            build: |$item:ident, $build_ctx:ident| $build_expr:expr,
-            state: |$state_res:ident, $state_cache:ident| $state_expr:expr,
-            opts: $opts:expr $(,)?
-        }
-    ) => {
-        $(#[$meta])*
-        #[derive(Debug)]
-        $vis struct $name;
-
-        impl $crate::tasks::Task for $name {
-            fn name(&self) -> &'static str {
-                $task_name
-            }
-
-            $($crate::tasks::task_deps![$($dep),+];)?
-
-            fn should_run(&self, ctx: &$crate::tasks::Context) -> bool {
-                let _ = ctx;
-                $(
-                    let $guard_ctx = ctx;
-                    if !{ $guard_expr } { return false; }
-                )?
-                true
-            }
-
-            fn run_if_applicable(
-                &self,
-                ctx: &$crate::tasks::Context,
-            ) -> ::anyhow::Result<Option<$crate::tasks::TaskResult>> {
-                $(
-                    let $guard_ctx = ctx;
-                    if !{ $guard_expr } { return Ok(None); }
-                )?
-                let $items_ctx = ctx;
-                let $cache_items: Vec<_> = { $items_expr };
-                if $cache_items.is_empty() {
-                    return Ok(None);
-                }
-                $crate::tasks::run_batch_resource_task(
-                    ctx,
-                    $cache_items,
-                    |$cache_items, $cache_ctx| { $cache_expr },
-                    |$item, $build_ctx| { $build_expr },
-                    |$state_res, $state_cache| { $state_expr },
-                    &$opts,
-                ).map(Some)
-            }
-
-            fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
-                let $items_ctx = ctx;
-                let $cache_items: Vec<_> = { $items_expr };
-                if $cache_items.is_empty() {
-                    return Ok($crate::tasks::TaskResult::NotApplicable(
-                        "nothing configured".to_string(),
-                    ));
-                }
-                $crate::tasks::run_batch_resource_task(
-                    ctx,
-                    $cache_items,
-                    |$cache_items, $cache_ctx| { $cache_expr },
-                    |$item, $build_ctx| { $build_expr },
-                    |$state_res, $state_cache| { $state_expr },
-                    &$opts,
-                )
-            }
-        }
-    };
-}
-
-pub(crate) use batch_resource_task;
-
 // Re-export engine types so downstream `use super::` and `use crate::tasks::`
 // continue to work unchanged.
 pub use crate::engine::Context;
@@ -291,8 +71,7 @@ use crate::resources::ResourceState;
 /// resources, and delegate to [`process_resources`].
 ///
 /// Returns `Ok(TaskResult::NotApplicable("nothing configured"))` when `items`
-/// is empty.  This is the runtime body shared by all tasks generated with
-/// [`resource_task!`].
+/// is empty.
 ///
 /// # Errors
 ///
@@ -318,8 +97,7 @@ where
 /// and delegate to [`process_resource_states`].
 ///
 /// Returns `Ok(TaskResult::NotApplicable("nothing configured"))` when `items`
-/// is empty.  This is the runtime body shared by all tasks generated with
-/// [`batch_resource_task!`].
+/// is empty.
 ///
 /// # Errors
 ///
@@ -389,7 +167,7 @@ pub trait Task: Send + Sync + 'static {
     ///
     /// Returning `Ok(None)` means the task is not applicable and should be
     /// recorded as such without treating the task as a failure. The default
-    /// implementation simply delegates to [`Task::run`]; macros can override it
+    /// implementation simply delegates to [`Task::run`]; tasks can override it
     /// to avoid evaluating config twice.
     ///
     /// # Errors
@@ -760,31 +538,101 @@ mod tests {
         }
     }
 
-    resource_task! {
-        /// Test-only task for resource-task macro behaviour.
-        CountingResourceTask {
-            name: "Counting resource task",
-            items: |_ctx| {
+    /// Test-only task for resource-task function behaviour.
+    #[derive(Debug)]
+    struct CountingResourceTask;
+
+    impl Task for CountingResourceTask {
+        fn name(&self) -> &'static str {
+            "Counting resource task"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+            let items: Vec<()> = {
                 RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
-                Vec::<()>::new()
-            },
-            build: |_item, _ctx| DummyResource,
-            opts: ProcessOpts::strict("count"),
+                Vec::new()
+            };
+            if items.is_empty() {
+                return Ok(None);
+            }
+            run_resource_task(
+                ctx,
+                items,
+                |_item, _ctx| DummyResource,
+                &ProcessOpts::strict("count"),
+            )
+            .map(Some)
+        }
+
+        fn run(&self, ctx: &Context) -> Result<TaskResult> {
+            let items: Vec<()> = {
+                RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
+                Vec::new()
+            };
+            if items.is_empty() {
+                return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
+            }
+            run_resource_task(
+                ctx,
+                items,
+                |_item, _ctx| DummyResource,
+                &ProcessOpts::strict("count"),
+            )
         }
     }
 
-    batch_resource_task! {
-        /// Test-only task for batch-resource-task macro behaviour.
-        CountingBatchTask {
-            name: "Counting batch task",
-            items: |_ctx| {
+    /// Test-only task for batch-resource-task function behaviour.
+    #[derive(Debug)]
+    struct CountingBatchTask;
+
+    impl Task for CountingBatchTask {
+        fn name(&self) -> &'static str {
+            "Counting batch task"
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+            let items: Vec<()> = {
                 BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
-                Vec::<()>::new()
-            },
-            cache: |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
-            build: |_item, _ctx| DummyResource,
-            state: |_resource, _cache| ResourceState::Correct,
-            opts: ProcessOpts::strict("count"),
+                Vec::new()
+            };
+            if items.is_empty() {
+                return Ok(None);
+            }
+            run_batch_resource_task(
+                ctx,
+                items,
+                |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
+                |_item, _ctx| DummyResource,
+                |_resource, _cache| ResourceState::Correct,
+                &ProcessOpts::strict("count"),
+            )
+            .map(Some)
+        }
+
+        fn run(&self, ctx: &Context) -> Result<TaskResult> {
+            let items: Vec<()> = {
+                BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
+                Vec::new()
+            };
+            if items.is_empty() {
+                return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
+            }
+            run_batch_resource_task(
+                ctx,
+                items,
+                |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
+                |_item, _ctx| DummyResource,
+                |_resource, _cache| ResourceState::Correct,
+                &ProcessOpts::strict("count"),
+            )
         }
     }
 

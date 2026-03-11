@@ -1,17 +1,53 @@
 //! Task: apply file permissions.
 
-use super::{ProcessOpts, resource_task};
+use anyhow::Result;
+
+use super::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_deps};
 use crate::resources::chmod::ChmodResource;
 
-resource_task! {
-    /// Apply file permissions from chmod.toml.
-    pub ApplyFilePermissions {
-        name: "Apply file permissions",
-        deps: [super::symlinks::InstallSymlinks],
-        guard: |ctx| ctx.platform.supports_chmod(),
-        items: |ctx| ctx.config_read().chmod.clone(),
-        build: |entry, ctx| build_resource(&entry, &ctx.home),
-        opts: ProcessOpts::fix_existing("apply permissions"),
+/// Apply file permissions from chmod.toml.
+#[derive(Debug)]
+pub struct ApplyFilePermissions;
+
+impl Task for ApplyFilePermissions {
+    fn name(&self) -> &'static str {
+        "Apply file permissions"
+    }
+
+    task_deps![super::symlinks::InstallSymlinks];
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        ctx.platform.supports_chmod()
+    }
+
+    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        if !ctx.platform.supports_chmod() {
+            return Ok(None);
+        }
+        let items: Vec<_> = ctx.config_read().chmod.clone();
+        if items.is_empty() {
+            return Ok(None);
+        }
+        run_resource_task(
+            ctx,
+            items,
+            |entry, ctx| build_resource(&entry, &ctx.home),
+            &ProcessOpts::fix_existing("apply permissions"),
+        )
+        .map(Some)
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let items: Vec<_> = ctx.config_read().chmod.clone();
+        if items.is_empty() {
+            return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
+        }
+        run_resource_task(
+            ctx,
+            items,
+            |entry, ctx| build_resource(&entry, &ctx.home),
+            &ProcessOpts::fix_existing("apply permissions"),
+        )
     }
 }
 

@@ -2,31 +2,69 @@
 
 use std::sync::Arc;
 
-use super::{ProcessOpts, resource_task};
+use anyhow::Result;
+
+use super::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_deps};
 use crate::resources::systemd_unit::SystemdUnitResource;
 
-resource_task! {
-    /// Enable and start systemd user units.
-    pub ConfigureSystemd {
-        name: "Configure systemd units",
-        deps: [super::symlinks::InstallSymlinks],
-        guard: |ctx| {
-            ctx.platform.supports_systemd()
-                && !ctx.config_read().units.is_empty()
-                && ctx.executor.which("systemctl")
-        },
-        setup: |ctx| {
-            if !ctx.dry_run {
-                ctx.log.debug("running systemctl --user daemon-reload");
-                match ctx.executor.run("systemctl", &["--user", "daemon-reload"]) {
-                    Ok(_) => ctx.log.debug("daemon-reload succeeded"),
-                    Err(e) => ctx.log.debug(&format!("daemon-reload failed: {e}")),
-                }
-            }
-        },
-        items: |ctx| ctx.config_read().units.clone(),
-        build: |entry, ctx| SystemdUnitResource::from_entry(&entry, Arc::clone(&ctx.executor)),
-        opts: ProcessOpts::install_missing("enable"),
+/// Enable and start systemd user units.
+#[derive(Debug)]
+pub struct ConfigureSystemd;
+
+impl Task for ConfigureSystemd {
+    fn name(&self) -> &'static str {
+        "Configure systemd units"
+    }
+
+    task_deps![super::symlinks::InstallSymlinks];
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        ctx.platform.supports_systemd()
+            && !ctx.config_read().units.is_empty()
+            && ctx.executor.which("systemctl")
+    }
+
+    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        if !(ctx.platform.supports_systemd()
+            && !ctx.config_read().units.is_empty()
+            && ctx.executor.which("systemctl"))
+        {
+            return Ok(None);
+        }
+        let items: Vec<_> = ctx.config_read().units.clone();
+        daemon_reload_if_live(ctx);
+        run_resource_task(
+            ctx,
+            items,
+            |entry, ctx| SystemdUnitResource::from_entry(&entry, Arc::clone(&ctx.executor)),
+            &ProcessOpts::install_missing("enable"),
+        )
+        .map(Some)
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let items: Vec<_> = ctx.config_read().units.clone();
+        if items.is_empty() {
+            return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
+        }
+        daemon_reload_if_live(ctx);
+        run_resource_task(
+            ctx,
+            items,
+            |entry, ctx| SystemdUnitResource::from_entry(&entry, Arc::clone(&ctx.executor)),
+            &ProcessOpts::install_missing("enable"),
+        )
+    }
+}
+
+/// Run `systemctl --user daemon-reload` unless the context is in dry-run mode.
+fn daemon_reload_if_live(ctx: &Context) {
+    if !ctx.dry_run {
+        ctx.log.debug("running systemctl --user daemon-reload");
+        match ctx.executor.run("systemctl", &["--user", "daemon-reload"]) {
+            Ok(_) => ctx.log.debug("daemon-reload succeeded"),
+            Err(e) => ctx.log.debug(&format!("daemon-reload failed: {e}")),
+        }
     }
 }
 

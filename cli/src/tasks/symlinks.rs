@@ -3,7 +3,9 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources_remove, resource_task};
+use super::{
+    Context, ProcessOpts, Task, TaskResult, process_resources_remove, run_resource_task, task_deps,
+};
 use crate::resources::symlink::SymlinkResource;
 
 /// Build a single [`SymlinkResource`] from a config entry.
@@ -30,20 +32,55 @@ fn build_resources(ctx: &Context) -> Vec<SymlinkResource> {
         .collect()
 }
 
-resource_task! {
-    /// Create symlinks from symlinks/ to $HOME.
-    pub InstallSymlinks {
-        name: "Install symlinks",
-        deps: [
-            super::reload_config::ReloadConfig,
-            super::developer_mode::EnableDeveloperMode,
-        ],
-        items: |ctx| ctx.config_read().symlinks.clone(),
-        build: |s, ctx| {
-            let symlinks_dir = ctx.symlinks_dir();
-            build_resource(&s, &symlinks_dir, &ctx.home, &ctx.executor)
-        },
-        opts: ProcessOpts::strict("link"),
+/// Create symlinks from symlinks/ to $HOME.
+#[derive(Debug)]
+pub struct InstallSymlinks;
+
+impl Task for InstallSymlinks {
+    fn name(&self) -> &'static str {
+        "Install symlinks"
+    }
+
+    task_deps![
+        super::reload_config::ReloadConfig,
+        super::developer_mode::EnableDeveloperMode
+    ];
+
+    fn should_run(&self, _ctx: &Context) -> bool {
+        true
+    }
+
+    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        let items: Vec<_> = ctx.config_read().symlinks.clone();
+        if items.is_empty() {
+            return Ok(None);
+        }
+        run_resource_task(
+            ctx,
+            items,
+            |s, ctx| {
+                let symlinks_dir = ctx.symlinks_dir();
+                build_resource(&s, &symlinks_dir, &ctx.home, &ctx.executor)
+            },
+            &ProcessOpts::strict("link"),
+        )
+        .map(Some)
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let items: Vec<_> = ctx.config_read().symlinks.clone();
+        if items.is_empty() {
+            return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
+        }
+        run_resource_task(
+            ctx,
+            items,
+            |s, ctx| {
+                let symlinks_dir = ctx.symlinks_dir();
+                build_resource(&s, &symlinks_dir, &ctx.home, &ctx.executor)
+            },
+            &ProcessOpts::strict("link"),
+        )
     }
 }
 

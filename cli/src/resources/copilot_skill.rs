@@ -153,8 +153,8 @@ fn parse_copilot_version(output: &str) -> Option<(u64, u64, u64)> {
     let version_str = output
         .split_whitespace()
         .rfind(|token| token.chars().next().is_some_and(|ch| ch.is_ascii_digit()))?;
-    // Strip optional trailing period (e.g. "1.0.3." from update-nag output).
-    let version_str = version_str.trim_end_matches('.');
+    // Trim trailing prose punctuation/suffixes until the token ends in a digit.
+    let version_str = version_str.trim_end_matches(|ch: char| !ch.is_ascii_digit());
     // Strip optional pre-release suffix (e.g. 1.0.4-0 → 1.0.4).
     let version_str = version_str.split('-').next().unwrap_or(version_str);
     let mut parts = version_str.split('.');
@@ -518,6 +518,16 @@ mod tests {
     fn parse_copilot_version_legacy_output() {
         assert_eq!(
             parse_copilot_version("GitHub Copilot CLI 0.0.396"),
+            Some((0, 0, 396))
+        );
+    }
+
+    #[test]
+    fn parse_copilot_version_multiline_output_with_trailing_period() {
+        assert_eq!(
+            parse_copilot_version(
+                "GitHub Copilot CLI 0.0.396.\nRun 'copilot update' to check for updates."
+            ),
             Some((0, 0, 396))
         );
     }

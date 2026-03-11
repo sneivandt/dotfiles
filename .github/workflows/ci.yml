@@ -94,6 +94,8 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           manifest-path: cli/Cargo.toml
+          command: check all
+          log-level: warn
 
   # ── Build, Clippy & Test ──────────────────────────────
   build-linux:

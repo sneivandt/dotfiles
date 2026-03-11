@@ -115,9 +115,12 @@ mod tests {
     #[test]
     fn current_state_correct_when_systemctl_reports_enabled() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
-            .once()
-            .returning(|_, _| Ok(ExecResult { stdout: "enabled\n".to_string(), ..ok_result() }));
+        mock.expect_run_unchecked().once().returning(|_, _| {
+            Ok(ExecResult {
+                stdout: "enabled\n".to_string(),
+                ..ok_result()
+            })
+        });
         let executor: Arc<dyn crate::exec::Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service".to_string(), executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);

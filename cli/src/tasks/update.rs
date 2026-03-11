@@ -373,13 +373,7 @@ mod tests {
         // 5. rev-parse HEAD → same SHA → no update
         let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
-        for stdout in [
-            "refs/heads/main",
-            "",
-            "abc123",
-            "",
-            "abc123",
-        ] {
+        for stdout in ["refs/heads/main", "", "abc123", "", "abc123"] {
             let s = stdout.to_string();
             mock.expect_run_in_with_env()
                 .once()

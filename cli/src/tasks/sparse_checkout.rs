@@ -726,8 +726,7 @@ mod tests {
         let ctx = make_linux_context(config);
         let symlink_path = PathBuf::from("/home/test/.config/git/gitconfig");
         let target = PathBuf::from("/repo/symlinks/git/gitconfig");
-        let sp_clone = symlink_path.clone();
-        let tgt_clone = target.clone();
+        let read_dir_entry = symlink_path.clone();
         let mut mock = MockFileSystemOps::new();
         mock.expect_exists()
             .withf(|p| p == std::path::Path::new("/home/test/.config/git"))
@@ -736,9 +735,9 @@ mod tests {
             .withf(|p| p == std::path::Path::new("/repo/symlinks/git/gitconfig"))
             .returning(|_| false); // target doesn't exist → broken
         mock.expect_read_dir()
-            .returning(move |_| Ok(vec![sp_clone.clone()]));
+            .returning(move |_| Ok(vec![read_dir_entry.clone()]));
         mock.expect_read_link()
-            .returning(move |_| Ok(tgt_clone.clone()));
+            .returning(move |_| Ok(target.clone()));
         mock.expect_remove()
             .withf(move |p| p == symlink_path.as_path())
             .returning(|_| Ok(()))
@@ -753,13 +752,12 @@ mod tests {
         let config = empty_config(PathBuf::from("/repo"));
         let ctx = make_linux_context(config);
         let file_path = PathBuf::from("/home/test/.config/git/config");
-        let fp_clone = file_path.clone();
         let mut mock = MockFileSystemOps::new();
         mock.expect_exists()
             .withf(|p| p == std::path::Path::new("/home/test/.config/git"))
             .returning(|_| true);
         mock.expect_read_dir()
-            .returning(move |_| Ok(vec![fp_clone.clone()]));
+            .returning(move |_| Ok(vec![file_path.clone()]));
         mock.expect_read_link()
             .returning(|_| Err(std::io::Error::from(std::io::ErrorKind::InvalidInput)));
         // expect_remove must NOT be called

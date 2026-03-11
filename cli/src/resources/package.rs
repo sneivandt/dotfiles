@@ -724,9 +724,7 @@ mod tests {
     #[test]
     fn apply_pacman_returns_applied_on_success() {
         let mut mock = MockExecutor::new();
-        mock.expect_run()
-            .once()
-            .returning(|_, _| Ok(ok_result("")));
+        mock.expect_run().once().returning(|_, _| Ok(ok_result("")));
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = PackageResource::new(
             "git".to_string(),
@@ -739,9 +737,7 @@ mod tests {
     #[test]
     fn apply_paru_returns_applied_on_success() {
         let mut mock = MockExecutor::new();
-        mock.expect_run()
-            .once()
-            .returning(|_, _| Ok(ok_result("")));
+        mock.expect_run().once().returning(|_, _| Ok(ok_result("")));
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = PackageResource::new(
             "paru-bin".to_string(),

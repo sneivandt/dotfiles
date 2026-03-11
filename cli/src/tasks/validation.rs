@@ -9,6 +9,11 @@ use std::path::{Path, PathBuf};
 
 use super::{Context, Task, TaskResult};
 
+const SHELLCHECK_SEVERITY_ARG: &str = "--severity=warning";
+const SHELLCHECK_SHELL_ARG: &str = "--shell=sh";
+const SHELLCHECK_ENABLE_ARG: &str = "--enable=avoid-nullary-conditions";
+const SHELLCHECK_EXCLUDE_CODES: &str = "SC1090,SC1091,SC3043,SC2154";
+
 /// Fail the test command when config validation emits warnings.
 #[derive(Debug)]
 pub struct ValidateConfigWarnings;
@@ -238,10 +243,10 @@ impl Task for RunShellcheck {
         ctx.log
             .info(&format!("checking {} shell scripts", scripts.len()));
 
-        let mut args: Vec<&str> = vec!["--severity=warning"];
-        args.extend(scripts.iter().filter_map(|p| p.to_str()));
+        let args = build_shellcheck_args(&scripts);
+        let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
 
-        let result = ctx.executor.run_unchecked("shellcheck", &args)?;
+        let result = ctx.executor.run_unchecked("shellcheck", &arg_refs)?;
         if result.success {
             ctx.log.info("shellcheck passed");
             Ok(TaskResult::Ok)
@@ -448,6 +453,17 @@ fn powershell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
+fn build_shellcheck_args(paths: &[PathBuf]) -> Vec<String> {
+    let mut args = vec![
+        SHELLCHECK_SEVERITY_ARG.to_string(),
+        SHELLCHECK_SHELL_ARG.to_string(),
+        format!("--exclude={SHELLCHECK_EXCLUDE_CODES}"),
+        SHELLCHECK_ENABLE_ARG.to_string(),
+    ];
+    args.extend(paths.iter().map(|path| path.to_string_lossy().into_owned()));
+    args
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
@@ -523,6 +539,26 @@ mod tests {
         assert!(
             script.contains("C:\\Users\\o''connor\\script.ps1"),
             "single quotes in file paths must be PowerShell-escaped"
+        );
+    }
+
+    #[test]
+    fn shellcheck_command_includes_project_defaults() {
+        let args = build_shellcheck_args(&[
+            PathBuf::from("dotfiles.sh"),
+            PathBuf::from("hooks/pre-commit"),
+        ]);
+
+        assert_eq!(
+            args,
+            vec![
+                "--severity=warning".to_string(),
+                "--shell=sh".to_string(),
+                "--exclude=SC1090,SC1091,SC3043,SC2154".to_string(),
+                "--enable=avoid-nullary-conditions".to_string(),
+                "dotfiles.sh".to_string(),
+                "hooks/pre-commit".to_string(),
+            ]
         );
     }
 

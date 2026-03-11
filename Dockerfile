@@ -19,6 +19,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /build
+COPY rust-toolchain.toml rust-toolchain.toml
 COPY cli/ cli/
 COPY .git .git
 RUN cargo build --release --manifest-path cli/Cargo.toml \

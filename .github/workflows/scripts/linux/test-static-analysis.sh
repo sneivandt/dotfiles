@@ -72,7 +72,12 @@ EOF
 
   log_verbose "Checking: $scripts"
   # shellcheck disable=SC2086  # intentional word splitting
-  shellcheck $scripts
+  shellcheck \
+    --severity=warning \
+    --shell=sh \
+    --exclude=SC1090,SC1091,SC3043,SC2154 \
+    --enable=avoid-nullary-conditions \
+    $scripts
 )}
 
 # Execute a specific test when run directly: sh test-static-analysis.sh <function_name>

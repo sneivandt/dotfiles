@@ -233,7 +233,7 @@ cargo build --release --manifest-path cli/Cargo.toml
 ./dotfiles.sh --build install -p desktop -d
 
 # Shell wrapper lint
-shellcheck dotfiles.sh install.sh
+shellcheck --severity=warning --shell=sh --exclude=SC1090,SC1091,SC3043,SC2154 --enable=avoid-nullary-conditions dotfiles.sh install.sh
 ```
 
 ## Best Practices

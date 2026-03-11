@@ -64,6 +64,7 @@
     "diffEditor.hideUnchangedRegions.minimumLineCount": 10,
     "diffEditor.hideUnchangedRegions.revealLineCount": 20,
     "diffEditor.useInlineViewWhenSpaceIsLimited": true,
+    "docker.extension.dockerEngineAvailabilityPrompt": false,
     "dotnetAcquisitionExtension.enableTelemetry": false,
     "editor.accessibilitySupport": "off",
     "editor.fontFamily": "'Source Code Pro', 'Droid Sans Mono', 'Consolas', 'monospace'",

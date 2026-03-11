@@ -16,7 +16,6 @@
     "files.associations": {
         "*.ini": "ini",
         "*.sh": "shellscript",
-        ".shellcheckrc": "properties",
         "dotfiles.sh": "shellscript",
         "install.sh": "shellscript",
         "Xresources": "properties",

@@ -439,7 +439,7 @@ git config core.symlinks true
 **Solution**:
 ```bash
 # Run shellcheck directly to see details
-shellcheck dotfiles.sh install.sh
+shellcheck --severity=warning --shell=sh --exclude=SC1090,SC1091,SC3043,SC2154 --enable=avoid-nullary-conditions dotfiles.sh install.sh
 
 # Fix issues in reported files
 # Common issues:

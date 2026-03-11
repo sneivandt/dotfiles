@@ -30,7 +30,7 @@ Install the Rust toolchain via [rustup](https://rustup.rs/):
 - **Linux**: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 - **Windows**: `winget install Rustlang.Rustup`
 
-After installation, ensure `cargo` is on your PATH (open a new terminal if needed). The project targets the **stable** toolchain.
+After installation, ensure `cargo` is on your PATH (open a new terminal if needed). The repository pins its Rust version in `rust-toolchain.toml`, and `rustup` will automatically select or install that toolchain when you run `cargo` from this repository.
 
 ## Development Workflow
 

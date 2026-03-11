@@ -2,7 +2,6 @@
 # https://embarkstudios.github.io/cargo-deny/
 
 [advisories]
-# Unmaintained crates: check workspace deps only (transitive are less actionable)
 unmaintained = "workspace"
 yanked = "warn"
 
@@ -25,6 +24,11 @@ allow = [
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+deny = []
+# skip = [
+#     # Add entries here to suppress known-OK duplicate versions, e.g.:
+#     # { name = "windows-sys", reason = "..." },
+# ]
 
 [sources]
 unknown-registry = "deny"

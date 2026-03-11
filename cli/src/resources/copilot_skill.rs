@@ -115,6 +115,56 @@ impl Applicable for CopilotSkillResource {
     }
 }
 
+/// Minimum Copilot CLI major version that supports the `plugin` subcommand.
+const MIN_PLUGIN_MAJOR_VERSION: u64 = 1;
+
+/// Query the installed GitHub Copilot CLI version.
+///
+/// Runs `gh copilot --version` and parses the output (e.g. `GitHub Copilot CLI 1.0.4-0`).
+///
+/// # Errors
+///
+/// Returns an error if the command fails.
+pub fn get_copilot_version(executor: &dyn Executor) -> Result<(u64, u64, u64)> {
+    let result = run_copilot_cmd(&["copilot", "--version"], executor)?;
+    if !result.success {
+        bail!("gh copilot --version failed (exit {:?})", result.code);
+    }
+    parse_copilot_version(&result.stdout).ok_or_else(|| {
+        anyhow::anyhow!(
+            "could not parse Copilot CLI version from: {}",
+            result.stdout.trim()
+        )
+    })
+}
+
+/// Return `true` if the installed Copilot CLI version supports plugin subcommands.
+#[must_use]
+pub const fn copilot_supports_plugins(version: (u64, u64, u64)) -> bool {
+    version.0 >= MIN_PLUGIN_MAJOR_VERSION
+}
+
+/// Parse a Copilot CLI version string into `(major, minor, patch)`.
+///
+/// Accepts output like `GitHub Copilot CLI 1.0.4-0` or bare `1.0.4`.
+/// Pre-release suffixes (e.g. `-0`) are stripped before parsing.
+fn parse_copilot_version(output: &str) -> Option<(u64, u64, u64)> {
+    // Find the version part — last whitespace-delimited token that starts with a digit.
+    let version_str = output
+        .split_whitespace()
+        .rfind(|token| token.chars().next().is_some_and(|ch| ch.is_ascii_digit()))?;
+    // Strip optional pre-release suffix (e.g. 1.0.4-0 → 1.0.4).
+    let version_str = version_str.split('-').next().unwrap_or(version_str);
+    let mut parts = version_str.split('.');
+    let major = parts.next()?.parse::<u64>().ok()?;
+    let minor = parts.next()?.parse::<u64>().ok()?;
+    let patch = parts.next()?.parse::<u64>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
 /// Query installed plugins and registered marketplaces in two bulk CLI calls.
 ///
 /// # Errors
@@ -452,5 +502,64 @@ mod tests {
                 .join(" ")
                 .contains("plugin install dotnet-upgrade@dotnet-agent-skills")
         );
+    }
+
+    #[test]
+    fn parse_copilot_version_full_output() {
+        assert_eq!(
+            parse_copilot_version("GitHub Copilot CLI 1.0.4-0"),
+            Some((1, 0, 4))
+        );
+    }
+
+    #[test]
+    fn parse_copilot_version_legacy_output() {
+        assert_eq!(
+            parse_copilot_version("GitHub Copilot CLI 0.0.396"),
+            Some((0, 0, 396))
+        );
+    }
+
+    #[test]
+    fn parse_copilot_version_bare_version() {
+        assert_eq!(parse_copilot_version("1.2.3"), Some((1, 2, 3)));
+    }
+
+    #[test]
+    fn parse_copilot_version_with_prerelease_suffix() {
+        assert_eq!(parse_copilot_version("2.1.0-beta"), Some((2, 1, 0)));
+    }
+
+    #[test]
+    fn parse_copilot_version_invalid_input() {
+        assert_eq!(parse_copilot_version("not a version"), None);
+        assert_eq!(parse_copilot_version(""), None);
+    }
+
+    #[test]
+    fn copilot_supports_plugins_v1() {
+        assert!(copilot_supports_plugins((1, 0, 4)));
+        assert!(copilot_supports_plugins((2, 0, 0)));
+    }
+
+    #[test]
+    fn copilot_does_not_support_plugins_v0() {
+        assert!(!copilot_supports_plugins((0, 0, 396)));
+        assert!(!copilot_supports_plugins((0, 9, 99)));
+    }
+
+    #[test]
+    fn get_copilot_version_runs_version_command() {
+        let executor = Arc::new(RecordingExecutor::new(vec![RecordingExecutor::success(
+            "GitHub Copilot CLI 1.0.4-0\n",
+        )]));
+        let executor_trait: Arc<dyn Executor> = executor.clone();
+
+        let version = get_copilot_version(&*executor_trait).unwrap();
+        assert_eq!(version, (1, 0, 4));
+
+        let calls = executor.calls();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].join(" ").contains("copilot --version"));
     }
 }

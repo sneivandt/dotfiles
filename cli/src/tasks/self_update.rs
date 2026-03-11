@@ -580,10 +580,7 @@ impl Task for UpdateBinary {
         let client = default_http_client();
         handle_update_check(
             check_for_update(&root, &client)?,
-            || {
-                ctx.log.info("version cache is fresh, skipping check");
-                Ok(TaskResult::Skipped("cache fresh".to_string()))
-            },
+            || Ok(TaskResult::Skipped("version cache is fresh".to_string())),
             || {
                 ctx.log
                     .warn("could not reach GitHub, skipping binary update");

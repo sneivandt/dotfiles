@@ -128,11 +128,9 @@ macro_rules! resource_task {
                     let $setup_ctx = ctx;
                     { $setup_expr }
                 )?
-                let resources = items.into_iter().map(|$item| {
-                    let $build_ctx = ctx;
+                $crate::tasks::run_resource_task(ctx, items, |$item, $build_ctx| {
                     $build_expr
-                });
-                $crate::tasks::process_resources(ctx, resources, &$opts).map(Some)
+                }, &$opts).map(Some)
             }
 
             fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
@@ -147,11 +145,9 @@ macro_rules! resource_task {
                     let $setup_ctx = ctx;
                     { $setup_expr }
                 )?
-                let resources = items.into_iter().map(|$item| {
-                    let $build_ctx = ctx;
+                $crate::tasks::run_resource_task(ctx, items, |$item, $build_ctx| {
                     $build_expr
-                });
-                $crate::tasks::process_resources(ctx, resources, &$opts)
+                }, &$opts)
             }
         }
     };
@@ -239,19 +235,14 @@ macro_rules! batch_resource_task {
                 if $cache_items.is_empty() {
                     return Ok(None);
                 }
-                ctx.log.debug(&format!(
-                    "batch-checking {} resources with a single query",
-                    $cache_items.len()
-                ));
-                let $cache_ctx = ctx;
-                let $state_cache = { $cache_expr }?;
-                let resource_states = $cache_items.into_iter().map(|$item| {
-                    let $build_ctx = ctx;
-                    let $state_res = { $build_expr };
-                    let state = { $state_expr };
-                    ($state_res, state)
-                });
-                $crate::tasks::process_resource_states(ctx, resource_states, &$opts).map(Some)
+                $crate::tasks::run_batch_resource_task(
+                    ctx,
+                    $cache_items,
+                    |$cache_items, $cache_ctx| { $cache_expr },
+                    |$item, $build_ctx| { $build_expr },
+                    |$state_res, $state_cache| { $state_expr },
+                    &$opts,
+                ).map(Some)
             }
 
             fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
@@ -262,19 +253,14 @@ macro_rules! batch_resource_task {
                         "nothing configured".to_string(),
                     ));
                 }
-                ctx.log.debug(&format!(
-                    "batch-checking {} resources with a single query",
-                    $cache_items.len()
-                ));
-                let $cache_ctx = ctx;
-                let $state_cache = { $cache_expr }?;
-                let resource_states = $cache_items.into_iter().map(|$item| {
-                    let $build_ctx = ctx;
-                    let $state_res = { $build_expr };
-                    let state = { $state_expr };
-                    ($state_res, state)
-                });
-                $crate::tasks::process_resource_states(ctx, resource_states, &$opts)
+                $crate::tasks::run_batch_resource_task(
+                    ctx,
+                    $cache_items,
+                    |$cache_items, $cache_ctx| { $cache_expr },
+                    |$item, $build_ctx| { $build_expr },
+                    |$state_res, $state_cache| { $state_expr },
+                    &$opts,
+                )
             }
         }
     };
@@ -299,6 +285,72 @@ use std::any::TypeId;
 use anyhow::Result;
 
 use crate::logging::TaskStatus;
+use crate::resources::ResourceState;
+
+/// Execute the standard resource-task pattern: collect config items, build
+/// resources, and delegate to [`process_resources`].
+///
+/// Returns `Ok(TaskResult::NotApplicable("nothing configured"))` when `items`
+/// is empty.  This is the runtime body shared by all tasks generated with
+/// [`resource_task!`].
+///
+/// # Errors
+///
+/// Returns an error if any resource fails to apply and the `opts` mode
+/// requires bailing on errors.
+pub fn run_resource_task<I, R>(
+    ctx: &Context,
+    items: Vec<I>,
+    mut build: impl FnMut(I, &Context) -> R,
+    opts: &ProcessOpts,
+) -> Result<TaskResult>
+where
+    R: crate::resources::Resource + Send,
+{
+    if items.is_empty() {
+        return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
+    }
+    process_resources(ctx, items.into_iter().map(|item| build(item, ctx)), opts)
+}
+
+/// Execute the standard batch-resource-task pattern: collect config items,
+/// run a single bulk-state query, build `(Resource, ResourceState)` pairs,
+/// and delegate to [`process_resource_states`].
+///
+/// Returns `Ok(TaskResult::NotApplicable("nothing configured"))` when `items`
+/// is empty.  This is the runtime body shared by all tasks generated with
+/// [`batch_resource_task!`].
+///
+/// # Errors
+///
+/// Returns an error if the bulk state query fails, or if any resource fails
+/// to apply and the `opts` mode requires bailing.
+pub fn run_batch_resource_task<I, R, C>(
+    ctx: &Context,
+    items: Vec<I>,
+    query_cache: impl FnOnce(&[I], &Context) -> Result<C>,
+    mut build: impl FnMut(I, &Context) -> R,
+    state_for: impl Fn(&R, &C) -> ResourceState,
+    opts: &ProcessOpts,
+) -> Result<TaskResult>
+where
+    R: crate::resources::Applicable + Send,
+{
+    if items.is_empty() {
+        return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
+    }
+    ctx.log.debug(&format!(
+        "batch-checking {} resources with a single query",
+        items.len()
+    ));
+    let cache = query_cache(&items, ctx)?;
+    let resource_states = items.into_iter().map(|item| {
+        let resource = build(item, ctx);
+        let state = state_for(&resource, &cache);
+        (resource, state)
+    });
+    process_resource_states(ctx, resource_states, opts)
+}
 
 /// A named, executable task.
 ///
@@ -879,6 +931,82 @@ mod tests {
         let result = CountingBatchTask.run_if_applicable(&ctx).unwrap();
         assert!(result.is_none());
         BATCH_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
+    }
+
+    // ------------------------------------------------------------------
+    // run_resource_task free function
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn run_resource_task_returns_not_applicable_for_empty_items() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _) = make_static_context(config);
+        let result = run_resource_task(
+            &ctx,
+            Vec::<()>::new(),
+            |(), _ctx| DummyResource,
+            &ProcessOpts::strict("test"),
+        )
+        .unwrap();
+        assert!(matches!(result, TaskResult::NotApplicable(_)));
+    }
+
+    #[test]
+    fn run_resource_task_processes_items() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _) = make_static_context(config);
+        let items = vec![(), ()];
+        let result = run_resource_task(
+            &ctx,
+            items,
+            |(), _ctx| DummyResource,
+            &ProcessOpts::strict("test"),
+        )
+        .unwrap();
+        assert!(
+            matches!(result, TaskResult::Ok),
+            "expected Ok, got {result:?}"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // run_batch_resource_task free function
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn run_batch_resource_task_returns_not_applicable_for_empty_items() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _) = make_static_context(config);
+        let result = run_batch_resource_task(
+            &ctx,
+            Vec::<()>::new(),
+            |_items, _ctx| Ok::<(), anyhow::Error>(()),
+            |_item, _ctx| DummyResource,
+            |_resource, _cache| ResourceState::Correct,
+            &ProcessOpts::strict("test"),
+        )
+        .unwrap();
+        assert!(matches!(result, TaskResult::NotApplicable(_)));
+    }
+
+    #[test]
+    fn run_batch_resource_task_processes_items() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _) = make_static_context(config);
+        let items = vec![(), ()];
+        let result = run_batch_resource_task(
+            &ctx,
+            items,
+            |_items, _ctx| Ok::<(), anyhow::Error>(()),
+            |_item, _ctx| DummyResource,
+            |_resource, _cache| ResourceState::Correct,
+            &ProcessOpts::strict("test"),
+        )
+        .unwrap();
+        assert!(
+            matches!(result, TaskResult::Ok),
+            "expected Ok, got {result:?}"
+        );
     }
 
     // ------------------------------------------------------------------

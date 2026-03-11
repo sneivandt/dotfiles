@@ -58,8 +58,8 @@ Task tests use context builder helpers from `tasks/mod.rs` (available in `#[cfg(
 - `empty_config(root)` — creates a `Config` with all empty vecs
 
 For tasks that use their own `fs_ops` field (e.g., `InstallGitHooks`), inject a
-`MockFileSystemOps` via the task's own constructor, e.g.
-`InstallGitHooks::with_fs_ops(Arc::new(...))`, to avoid touching the real filesystem.
+mockall-generated `MockFileSystemOps` via the task's own constructor, e.g.
+`InstallGitHooks::with_fs_ops(Arc::new(mock))`, to avoid touching the real filesystem.
 
 #### 2. Integration Tests (`cli/tests/`)
 

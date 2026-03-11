@@ -313,21 +313,21 @@ mod tests {
     }
 
     impl Executor for RecordingExecutor {
-        fn run<'a>(&self, _: &str, _: &'a [&'a str]) -> Result<ExecResult> {
+        fn run(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
             Err(Self::unexpected_error("unexpected checked executor call"))
         }
 
-        fn run_in_with_env<'a>(
+        fn run_in_with_env(
             &self,
             _: &Path,
             _: &str,
-            _: &'a [&'a str],
-            _: &'a [(&'a str, &'a str)],
+            _: &[&str],
+            _: &[(&str, &str)],
         ) -> Result<ExecResult> {
             Err(Self::unexpected_error("unexpected run_in_with_env call"))
         }
 
-        fn run_unchecked<'a>(&self, program: &str, args: &'a [&'a str]) -> Result<ExecResult> {
+        fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
             self.calls.lock().unwrap().push(
                 std::iter::once(program.to_string())
                     .chain(args.iter().map(|arg| (*arg).to_string()))

@@ -340,14 +340,13 @@ therefore injected via constructors rather than stored on `Context`:
 
 - **`fs_ops: Arc<dyn FileSystemOps>`** — held by `InstallGitHooks` and
   `UninstallGitHooks`. The production implementation is `SystemFileSystemOps`.
-  In tests, use the `with_fs_ops` constructor to inject `MockFileSystemOps`
-  without touching the real filesystem:
+  In tests, use the `with_fs_ops` constructor to inject a mockall-generated
+  `MockFileSystemOps` without touching the real filesystem:
 
 ```rust
-let task = InstallGitHooks::with_fs_ops(Arc::new(MockFileSystemOps::new()
-    .with_existing("/repo/hooks")
-    .with_existing("/repo/.git")
-));
+let mut mock = MockFileSystemOps::new();
+mock.expect_exists().returning(|_| true);
+let task = InstallGitHooks::with_fs_ops(Arc::new(mock));
 ```
 
 ## Executor Trait

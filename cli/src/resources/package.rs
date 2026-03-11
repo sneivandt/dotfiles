@@ -769,11 +769,7 @@ mod tests {
     }
 
     impl crate::exec::Executor for RecordingExecutor {
-        fn run<'a>(
-            &self,
-            program: &str,
-            args: &'a [&'a str],
-        ) -> anyhow::Result<crate::exec::ExecResult> {
+        fn run(&self, program: &str, args: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
             self.calls.lock().unwrap().push((
                 program.to_string(),
                 args.iter().map(|s| (*s).to_string()).collect(),
@@ -786,20 +782,20 @@ mod tests {
             })
         }
 
-        fn run_in_with_env<'a>(
+        fn run_in_with_env(
             &self,
             _: &std::path::Path,
             program: &str,
-            args: &'a [&'a str],
-            _: &'a [(&'a str, &'a str)],
+            args: &[&str],
+            _: &[(&str, &str)],
         ) -> anyhow::Result<crate::exec::ExecResult> {
             self.run(program, args)
         }
 
-        fn run_unchecked<'a>(
+        fn run_unchecked(
             &self,
             program: &str,
-            args: &'a [&'a str],
+            args: &[&str],
         ) -> anyhow::Result<crate::exec::ExecResult> {
             self.run(program, args)
         }

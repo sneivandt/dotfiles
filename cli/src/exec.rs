@@ -52,7 +52,8 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     ///
     /// Returns an error if the command fails to execute, cannot be found,
     /// or exits with a non-zero status code.
-    fn run<'a>(&self, program: &str, args: &'a [&'a str]) -> Result<ExecResult>;
+    #[cfg_attr(test, mockall::concretize)]
+    fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
 
     /// Execute a command in a specific directory.
     ///
@@ -64,7 +65,8 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     ///
     /// Returns an error if the command fails to execute, the directory does not exist,
     /// or the command exits with a non-zero status code.
-    fn run_in<'a>(&self, dir: &Path, program: &str, args: &'a [&'a str]) -> Result<ExecResult> {
+    #[cfg_attr(test, mockall::concretize)]
+    fn run_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
         self.run_in_with_env(dir, program, args, &[])
     }
 
@@ -74,12 +76,13 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     ///
     /// Returns an error if the command fails to execute, the directory does not exist,
     /// or the command exits with a non-zero status code.
-    fn run_in_with_env<'a>(
+    #[cfg_attr(test, mockall::concretize)]
+    fn run_in_with_env(
         &self,
         dir: &Path,
         program: &str,
-        args: &'a [&'a str],
-        env: &'a [(&'a str, &'a str)],
+        args: &[&str],
+        env: &[(&str, &str)],
     ) -> Result<ExecResult>;
 
     /// Execute a command, allowing non-zero exit.
@@ -88,9 +91,11 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     ///
     /// Returns an error if the command fails to execute or cannot be found,
     /// but does NOT fail on non-zero exit codes (which are captured in the result).
-    fn run_unchecked<'a>(&self, program: &str, args: &'a [&'a str]) -> Result<ExecResult>;
+    #[cfg_attr(test, mockall::concretize)]
+    fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
 
     /// Check if a program is available on PATH.
+    #[cfg_attr(not(test), must_use)]
     fn which(&self, program: &str) -> bool;
 
     /// Resolve the full path of a program on PATH.
@@ -106,18 +111,18 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
 pub struct SystemExecutor;
 
 impl Executor for SystemExecutor {
-    fn run<'a>(&self, program: &str, args: &'a [&'a str]) -> Result<ExecResult> {
+    fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
         let mut cmd = Command::new(program);
         cmd.args(args);
         execute_checked(cmd, program)
     }
 
-    fn run_in_with_env<'a>(
+    fn run_in_with_env(
         &self,
         dir: &Path,
         program: &str,
-        args: &'a [&'a str],
-        env: &'a [(&'a str, &'a str)],
+        args: &[&str],
+        env: &[(&str, &str)],
     ) -> Result<ExecResult> {
         let mut cmd = Command::new(program);
         cmd.args(args).current_dir(dir);
@@ -127,7 +132,7 @@ impl Executor for SystemExecutor {
         execute_checked(cmd, &format!("{program} in {}", dir.display()))
     }
 
-    fn run_unchecked<'a>(&self, program: &str, args: &'a [&'a str]) -> Result<ExecResult> {
+    fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
         let output = Command::new(program)
             .args(args)
             .output()

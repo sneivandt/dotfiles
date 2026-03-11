@@ -177,21 +177,21 @@ pub struct StubExecutor;
 
 #[allow(clippy::panic)]
 impl Executor for StubExecutor {
-    fn run<'a>(&self, program: &str, args: &'a [&'a str]) -> anyhow::Result<ExecResult> {
+    fn run(&self, program: &str, args: &[&str]) -> anyhow::Result<ExecResult> {
         panic!("unexpected executor call in integration test: {program} {args:?}")
     }
 
-    fn run_in_with_env<'a>(
+    fn run_in_with_env(
         &self,
         _: &Path,
         program: &str,
-        args: &'a [&'a str],
-        _: &'a [(&'a str, &'a str)],
+        args: &[&str],
+        _: &[(&str, &str)],
     ) -> anyhow::Result<ExecResult> {
         panic!("unexpected executor call in integration test: {program} {args:?}")
     }
 
-    fn run_unchecked<'a>(&self, program: &str, args: &'a [&'a str]) -> anyhow::Result<ExecResult> {
+    fn run_unchecked(&self, program: &str, args: &[&str]) -> anyhow::Result<ExecResult> {
         panic!("unexpected executor call in integration test: {program} {args:?}")
     }
 

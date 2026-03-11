@@ -313,16 +313,16 @@ mod tests {
     struct UntrackedAwareExecutor;
 
     impl Executor for UntrackedAwareExecutor {
-        fn run<'a>(&self, _: &str, _: &'a [&'a str]) -> Result<ExecResult> {
+        fn run(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
             anyhow::bail!("unexpected run() call")
         }
 
-        fn run_in_with_env<'a>(
+        fn run_in_with_env(
             &self,
             _: &std::path::Path,
             _: &str,
-            args: &'a [&'a str],
-            _: &'a [(&'a str, &'a str)],
+            args: &[&str],
+            _: &[(&str, &str)],
         ) -> Result<ExecResult> {
             let stdout = if args.contains(&"--untracked-files=no") {
                 String::new()
@@ -338,7 +338,7 @@ mod tests {
             })
         }
 
-        fn run_unchecked<'a>(&self, _: &str, _: &'a [&'a str]) -> Result<ExecResult> {
+        fn run_unchecked(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
             anyhow::bail!("unexpected run_unchecked() call")
         }
 

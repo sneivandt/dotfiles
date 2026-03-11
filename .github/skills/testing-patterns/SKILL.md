@@ -95,11 +95,9 @@ empty_config(root_path)              // Config with all empty vecs
 
 // Filesystem injection (for tasks that hold their own fs_ops field)
 // Use the task's own with_fs_ops constructor, not a Context method:
-let task = InstallGitHooks::with_fs_ops(Arc::new(MockFileSystemOps::new()
-    .with_existing("/path")          // path returns true for exists()
-    .with_file("/path/file")         // path returns true for is_file()
-    .with_dir_entries("/dir", vec![..])  // read_dir returns given paths
-));
+let mut mock = MockFileSystemOps::new();
+mock.expect_exists().returning(|_| true);  // all paths exist
+let task = InstallGitHooks::with_fs_ops(Arc::new(mock));
 ```
 
 **CLI** — test parsing with `Cli::parse_from()`:

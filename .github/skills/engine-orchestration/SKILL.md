@@ -20,7 +20,7 @@ The engine has two levels of parallelism: **task-level** (scheduler) and
 
 1. If `ctx.parallel` and more than one task → check for cycles via `graph::has_cycle()` (Kahn's algorithm)
 2. If cycle detected → warn and fall back to sequential execution
-3. Otherwise → `scheduler::run_tasks_parallel()` spawns OS threads
+3. Otherwise → `engine::scheduler::run_tasks_parallel()` spawns OS threads
 
 ### Why OS Threads (Not Rayon)
 

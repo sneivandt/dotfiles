@@ -10,6 +10,7 @@
 //! - [`parallel`] — Rayon-based parallel processing helpers
 //! - [`stats`] — result and statistics types
 //! - [`update_signal`] — cross-task signalling for config reload
+//! - [`scheduler`] — dependency-driven parallel task scheduling
 
 /// Single-resource processing: check state, apply or remove one resource.
 pub mod apply;
@@ -25,6 +26,9 @@ mod parallel;
 mod stats;
 /// Cross-task signalling for config reload.
 pub mod update_signal;
+
+/// Dependency-driven parallel task scheduling.
+pub(crate) mod scheduler;
 
 pub use cancellation::CancellationToken;
 pub use context::Context;

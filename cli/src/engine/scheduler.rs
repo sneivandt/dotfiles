@@ -61,7 +61,7 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> bool {
 /// than the number of tasks with unsatisfied dependencies (common on 2-vCPU CI
 /// runners).  Output is buffered per-task and flushed to the console
 /// immediately on completion.
-pub(super) fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>) {
+pub fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>) {
     let present: HashSet<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
     let resolved_deps: Vec<Vec<TypeId>> = tasks
         .iter()

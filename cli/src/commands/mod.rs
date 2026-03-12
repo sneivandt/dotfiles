@@ -1,6 +1,5 @@
 //! Top-level command handlers for install, uninstall, test, and version.
 pub mod install;
-mod scheduler;
 pub mod test;
 pub mod uninstall;
 pub mod version;
@@ -484,7 +483,7 @@ pub fn run_tasks_to_completion<'a>(
             log.error(message);
             anyhow::bail!(message);
         }
-        scheduler::run_tasks_parallel(&tasks, ctx, log);
+        crate::engine::scheduler::run_tasks_parallel(&tasks, ctx, log);
     } else {
         for task in &tasks {
             if ctx.is_cancelled() {

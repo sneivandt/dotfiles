@@ -42,16 +42,19 @@ cli/src/
 │   ├── mod.rs     # Applicable + Resource traits, ResourceState, ResourceChange
 │   └── *.rs       # Per-type resources (symlink, registry, chmod, etc.)
 ├── engine/        # Generic resource processing engine
-│   ├── mod.rs     # process_resources(), process_resource_states(), tests
+│   ├── mod.rs     # process_resources(), process_resource_states()
 │   ├── mode.rs    # ProcessMode, ProcessOpts, ResourceAction
 │   ├── stats.rs   # TaskResult, TaskStats
 │   ├── apply.rs   # Apply/remove logic
 │   ├── context.rs # Context, ContextOpts
-│   ├── graph.rs   # Dependency graph and scheduler
+│   ├── graph.rs   # Dependency graph cycle detection
+│   ├── scheduler.rs # Parallel task scheduler (OS threads + mpsc)
 │   ├── parallel.rs # Parallel execution helpers
-│   └── update_signal.rs # Arc<AtomicBool> signalling
+│   ├── update_signal.rs # Arc<AtomicBool> signalling
+│   └── tests/     # Engine unit tests
 ├── tasks/         # Task implementations
-│   ├── mod.rs     # Task trait, task_deps!, re-exports from engine/
+│   ├── mod.rs     # Task trait, re-exports from engine/ and helpers/
+│   ├── helpers/   # Macros (task_deps!, resource_task!, batch_resource_task!) and catalog
 │   └── *.rs       # One file per task
 └── commands/      # install.rs, uninstall.rs, test.rs
 ```
@@ -175,7 +178,7 @@ For tasks that batch-query state up front (packages, VS Code extensions,
 registry), build `(Resource, ResourceState)` pairs and use
 `process_resource_states()` instead.
 
-Register in `tasks/mod.rs` by adding `Box::new(tasks::my_module::MyTask)` to
+Register in `tasks/helpers/catalog.rs` by adding `Box::new(crate::tasks::my_module::MyTask)` to
 `all_install_tasks()`.
 
 For **uninstall** tasks, use `process_resources_remove()`:
@@ -497,15 +500,15 @@ and have no lifetime parameter.
 
 ### Generic Resource Loop
 
-`engine/mod.rs` provides two helpers that handle the full check→dry-run→apply
+`engine/orchestrate.rs` provides helpers that handle the full check→dry-run→apply
 loop so individual tasks don't repeat it (re-exported from `tasks/mod.rs`):
 
 - **`process_resources(ctx, resources, opts)`** — calls `current_state()` per resource.
 - **`process_resource_states(ctx, resource_states, opts)`** — takes pre-computed `(Resource, ResourceState)` pairs for batch-checked resources.
 - **`process_resources_remove(ctx, resources, verb)`** — for uninstall: removes resources in `Correct` state, skips others.
 
-Both `process_resources` and `process_resource_states` are implemented in `engine/`
-and re-exported from `tasks/mod.rs`. They accept a `ProcessOpts` value
+Both `process_resources` and `process_resource_states` are implemented in
+`engine/orchestrate.rs` and re-exported from `tasks/mod.rs`. They accept a `ProcessOpts` value
 that controls which states are fixable and whether errors bail or warn.
 Use these helpers for **all** new resource-based tasks.
 

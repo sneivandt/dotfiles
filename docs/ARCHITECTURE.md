@@ -68,7 +68,8 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 │  config/        — TOML loading &     │
 │                   profile resolution │
 │  engine/        — execution engine,  │
-│                   context, graph     │
+│                   context, graph,    │
+│                   scheduler          │
 │  resources/     — idempotent check   │
 │                   + apply primitives │
 │  tasks/         — Task trait impls   │
@@ -205,6 +206,7 @@ The execution engine provides the generic resource processing loop, dependency g
 - **`mode.rs`** — `ProcessMode` enum (`Strict`, `Lenient`, `InstallMissing`, `FixExisting`) and `ProcessOpts` that control which states are fixable and whether errors bail or warn
 - **`parallel.rs`** — Rayon-based parallel dispatch when `ctx.parallel` is true
 - **`graph.rs`** — dependency graph cycle detection (Kahn's algorithm)
+- **`scheduler.rs`** — dependency-driven parallel task scheduling using OS threads and `mpsc` channels
 - **`stats.rs`** — `TaskResult` and `TaskStats` types
 - **`update_signal.rs`** — `Arc<AtomicBool>` signalling between `UpdateRepository` and `ReloadConfig`
 
@@ -380,7 +382,7 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 1. Create a new file in `cli/src/tasks/` implementing the `Task` trait
 2. Add the module to `cli/src/tasks/mod.rs`
-3. Add the task to `all_install_tasks()` in `cli/src/tasks/mod.rs`
+3. Add the task to `all_install_tasks()` in `cli/src/tasks/helpers/catalog.rs`
 
 ### Adding New Configuration Types
 
@@ -401,8 +403,8 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 ### Parallel Task Execution
 
 Tasks are executed in parallel using a dependency-graph scheduler.  Each task
-declares its dependencies using the `task_deps!` macro (exported from
-`tasks/mod.rs`), which implements `Task::dependencies()` returning `TypeId`s of
+declares its dependencies using the `task_deps!` macro (defined in
+`tasks/helpers/macros.rs`, re-exported from `tasks/mod.rs`), which implements `Task::dependencies()` returning `TypeId`s of
 prerequisite task structs.  The scheduler uses `std::thread::scope` to spawn
 one OS thread per task and `mpsc` channels to block each task until its
 dependencies complete.  For each task, a channel is created — dependent tasks

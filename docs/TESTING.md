@@ -52,7 +52,7 @@ mod tests {
 }
 ```
 
-Task tests use context builder helpers from `tasks/mod.rs` (available in `#[cfg(test)]` scope):
+Task tests use context builder helpers defined in `tasks/mod.rs` (available in `#[cfg(test)]` scope):
 - `make_linux_context(config)`, `make_arch_context(config)`, `make_windows_context(config)`
 - `make_platform_context(config, os, is_arch)`, `make_platform_context_with_which(...)`
 - `empty_config(root)` — creates a `Config` with all empty vecs

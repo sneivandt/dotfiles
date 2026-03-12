@@ -3,7 +3,7 @@
 # Each section represents a profile or combination of profiles
 # Plugins are managed by the Copilot CLI and detected via `gh copilot plugin list`
 
-[base]
+[linux]
 skills = [
   { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" },
   { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" },

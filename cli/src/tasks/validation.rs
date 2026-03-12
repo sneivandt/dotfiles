@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 use super::{Context, Task, TaskResult};
 
 const SHELLCHECK_SEVERITY_ARG: &str = "--severity=warning";
-const SHELLCHECK_SHELL_ARG: &str = "--shell=sh";
 const SHELLCHECK_ENABLE_ARG: &str = "--enable=avoid-nullary-conditions";
 const SHELLCHECK_EXCLUDE_CODES: &str = "SC1090,SC1091,SC3043,SC2154";
 
@@ -456,7 +455,6 @@ fn powershell_single_quote(value: &str) -> String {
 fn build_shellcheck_args(paths: &[PathBuf]) -> Vec<String> {
     let mut args = vec![
         SHELLCHECK_SEVERITY_ARG.to_string(),
-        SHELLCHECK_SHELL_ARG.to_string(),
         format!("--exclude={SHELLCHECK_EXCLUDE_CODES}"),
         SHELLCHECK_ENABLE_ARG.to_string(),
     ];
@@ -553,7 +551,6 @@ mod tests {
             args,
             vec![
                 "--severity=warning".to_string(),
-                "--shell=sh".to_string(),
                 "--exclude=SC1090,SC1091,SC3043,SC2154".to_string(),
                 "--enable=avoid-nullary-conditions".to_string(),
                 "dotfiles.sh".to_string(),

@@ -13,3 +13,4 @@
 !symlinks/**
 !dotfiles.sh
 !rust-toolchain.toml
+

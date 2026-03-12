@@ -4,6 +4,7 @@
 [windows]
 settings = [
   { key = "core.autocrlf",     value = "false"   },
+  { key = "core.longpaths",    value = "true"    },
   { key = "core.symlinks",     value = "true"    },
   { key = "credential.helper", value = "manager" },
 ]

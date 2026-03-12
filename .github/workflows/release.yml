@@ -28,6 +28,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Install Rust toolchain
@@ -63,6 +64,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Install Rust toolchain
@@ -95,6 +97,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Generate version tag
@@ -124,7 +127,7 @@ jobs:
           name: ${{ steps.version.outputs.version }}
           body: |
             Automated release from push to master.
-            Commit: ${{ github.sha }}
+            Commit: ${{ github.event.workflow_run.head_sha }}
           files: |
             dotfiles-linux-x86_64
             dotfiles-windows-x86_64.exe

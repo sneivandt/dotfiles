@@ -151,6 +151,7 @@ if ($Build)
     try
     {
         cargo build --profile dev-opt
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         $BuildBinary = Join-Path $DotfilesRoot (Join-Path "cli" (Join-Path "target" (Join-Path "dev-opt" $BinaryName)))
         & $BuildBinary @CliArgs
         exit $LASTEXITCODE

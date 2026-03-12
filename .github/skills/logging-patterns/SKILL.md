@@ -65,7 +65,9 @@ ctx.log.diagnostic();  // Access high-precision diagnostic log (if available)
 All messages (including `debug`) are always written to a persistent log file at
 `$XDG_CACHE_HOME/dotfiles/<command>.log` (default `~/.cache/dotfiles/<command>.log`,
 e.g. `install.log`, `uninstall.log`, `test.log`) with timestamps and ANSI codes
-stripped.  The `debug` method only prints to the terminal when `verbose=true`,
+stripped. On Windows, when `XDG_CACHE_HOME` is not set, the path falls back to
+`%USERPROFILE%\.cache\dotfiles\<command>.log`. The `debug` method only prints
+to the terminal when `verbose=true`,
 but **always** writes to the log file regardless of the verbose flag.
 The log file path is shown in the summary.
 

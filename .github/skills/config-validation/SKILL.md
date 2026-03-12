@@ -36,11 +36,16 @@ returning `Vec<ValidationWarning>`. These are aggregated by `Config::validate()`
 
 ```rust
 pub fn validate(&self, platform: Platform) -> Vec<ValidationWarning> {
+    let root = &self.root;
     let mut warnings = Vec::new();
     warnings.extend(symlinks::validate(&self.symlinks, root));
     warnings.extend(packages::validate(&self.packages, platform));
     warnings.extend(registry::validate(&self.registry, platform));
-    // ... one per config type
+    warnings.extend(chmod::validate(&self.chmod, platform));
+    warnings.extend(systemd_units::validate(&self.units, platform));
+    warnings.extend(vscode_extensions::validate(&self.vscode_extensions));
+    warnings.extend(copilot_skills::validate(&self.copilot_skills));
+    warnings.extend(git_config::validate(&self.git_settings));
     warnings
 }
 ```

@@ -64,10 +64,18 @@ pub trait Task: Send + Sync + 'static {
     fn task_id(&self) -> TypeId { TypeId::of::<Self>() }
     fn dependencies(&self) -> &[TypeId] { &[] }
     fn should_run(&self, ctx: &Context) -> bool;
+    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        self.run(ctx).map(Some)  // default: delegates to run()
+    }
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
 }
 pub enum TaskResult { Ok, Skipped(String), DryRun }
 ```
+
+`run_if_applicable()` combines the `should_run` check and `run` call into a single step,
+returning `Ok(None)` when the task is not applicable. The `resource_task!` and `batch_task!`
+macros override the default to evaluate the config items exactly once, avoiding a second
+config lock acquisition. The executor calls `run_if_applicable()` — never `run()` directly.
 
 ### Task Dependencies
 

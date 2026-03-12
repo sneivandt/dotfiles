@@ -15,10 +15,10 @@ The project uses Rust's built-in test framework, cargo clippy, and cargo fmt.
 ## Running Tests
 
 ```bash
-cargo test                      # All unit + integration tests
-cargo clippy -- -D warnings     # Lint check
-cargo fmt -- --check            # Format check
-./dotfiles.sh test              # Config validation via Rust engine
+cargo test                              # All unit + integration tests
+cargo clippy --all-targets -- -D warnings  # Lint check
+cargo fmt -- --check                    # Format check
+./dotfiles.sh test                      # Config validation via Rust engine
 ```
 
 ## Unit Tests
@@ -139,7 +139,7 @@ Commit `.snap` files alongside code changes.
 
 ## CI/CD
 
-GitHub Actions: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt -- --check`, dry-run profile tests on Linux/Windows. Config validation via `./dotfiles.sh test`.
+GitHub Actions: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt -- --check`, dry-run profile tests on Linux/Windows. Config validation via `./dotfiles.sh test`.
 
 ## Rules
 

@@ -136,6 +136,6 @@ This avoids running one command per package.
 
 1. Always check `ctx.executor.which("pacman")` / `ctx.executor.which("winget")` before calling
 2. Use `--needed --noconfirm` for pacman to ensure idempotency
-3. AUR packages must be prefixed with `aur:` to be tagged correctly
+3. Mark AUR packages with `aur = true` in structured metadata format: `{ name = "pkg", aur = true }`
 4. Use exact package IDs on Windows (case-sensitive)
 5. Return `TaskResult::Skipped` with reason when package manager is missing

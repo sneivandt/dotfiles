@@ -141,7 +141,7 @@ exclude = ["windows", "desktop"]
 - **Idempotency**: Always check if action is needed before taking it
 - **No Trailing Whitespace**: Remove all trailing whitespace from files
 - **Formatting**: Run `cargo fmt` before committing
-- **Linting**: Ensure `cargo clippy -- -D warnings` passes with no warnings
+- **Linting**: Ensure `cargo clippy --all-targets -- -D warnings` passes with no warnings
 
 ### Shell Wrapper Guidelines
 
@@ -260,7 +260,7 @@ chore(ci): update shellcheck version
 
 See the `rust-patterns` and `shell-patterns` skills in `.github/skills/` for detailed coding conventions. Summary:
 
-- **Rust**: `cargo fmt`, `cargo clippy -- -D warnings`, `anyhow::Result` with `.context()`
+- **Rust**: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `anyhow::Result` with `.context()`
 - **Shell**: POSIX `#!/bin/sh`, 2-space indent, minimal logic in wrappers
 - **PowerShell**: 4-space indent, minimal logic in `dotfiles.ps1`
 - **Config files**: One entry per line, comment non-obvious entries

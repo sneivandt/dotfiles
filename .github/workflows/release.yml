@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
@@ -51,7 +51,7 @@ jobs:
         run: cp cli/target/release/dotfiles dotfiles-linux-x86_64
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dotfiles-linux-x86_64
           path: dotfiles-linux-x86_64
@@ -62,7 +62,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
@@ -84,7 +84,7 @@ jobs:
         run: Copy-Item cli\target\release\dotfiles.exe dotfiles-windows-x86_64.exe
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dotfiles-windows-x86_64
           path: dotfiles-windows-x86_64.exe
@@ -95,7 +95,7 @@ jobs:
     needs: [build-linux, build-windows]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0

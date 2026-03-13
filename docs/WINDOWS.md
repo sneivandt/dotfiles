@@ -52,7 +52,7 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 | 7 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
 | 8 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
 | 9 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
-| 10 | Copilot Skills | Registers configured Copilot marketplaces and installs plugins from `conf/copilot-skills.toml`. | Skips if the plugin is already installed. |
+| 10 | Copilot Plugins | Registers configured Copilot marketplaces and installs plugins from `conf/copilot-plugins.toml`. | Skips if the plugin is already installed. |
 
 Tasks that don't apply to Windows (systemd, shell, chmod, paru) are automatically skipped via platform detection.
 
@@ -202,14 +202,14 @@ To add a new link:
 
 The file `conf/vscode-extensions.toml` contains extensions under category sections (`[desktop]`, `[windows]`, etc.). The `extensions` key holds an array of extension IDs. Remove an entry and re-run to keep new installs from occurring (does not uninstall). Add entries to expand your standard environment. The script requires the `code` CLI on PATH (Enable via VS Code: Command Palette → Shell Command: Install 'code' command in PATH).
 
-## GitHub Copilot CLI Skills
+## GitHub Copilot CLI Plugins
 
-The file `conf/copilot-skills.toml` contains GitHub Copilot CLI plugins organized by category sections (e.g., `[base]`, `[windows]`). Each entry specifies the marketplace repository, the marketplace name used by the CLI, and the plugin to install.
+The file `conf/copilot-plugins.toml` contains GitHub Copilot CLI plugins organized by category sections (e.g., `[base]`, `[windows]`). Each entry specifies the marketplace repository, the marketplace name used by the CLI, and the plugin to install.
 
 **Format**:
 ```toml
 [base]
-skills = [
+plugins = [
   { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" },
   { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" },
 ]
@@ -276,7 +276,7 @@ The installation tracks various operations and displays a summary at the end:
 - **Packages installed**: Number of winget packages installed
 - **Symlinks created**: Number of symlinks created in user profile
 - **VS Code extensions installed**: Number of extensions installed
-- **Copilot skills installed**: Number of GitHub Copilot CLI skills downloaded
+- **Copilot plugins installed**: Number of GitHub Copilot CLI plugins downloaded
 - **Registry keys set**: Number of registry values modified
 
 ### Dry-Run Mode
@@ -293,7 +293,7 @@ Example summary output:
 Packages installed: 3
 Symlinks created: 5
 VS Code extensions installed: 2
-Copilot skills installed: 2
+Copilot plugins installed: 2
 Registry keys set: 12
 Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
 ```

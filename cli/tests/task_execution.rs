@@ -16,7 +16,7 @@ mod common;
 use dotfiles_cli::tasks;
 #[cfg(unix)]
 use dotfiles_cli::tasks::chmod::ApplyFilePermissions;
-use dotfiles_cli::tasks::copilot_skills::InstallCopilotSkills;
+use dotfiles_cli::tasks::copilot_plugins::InstallCopilotPlugins;
 use dotfiles_cli::tasks::git_config::ConfigureGit;
 use dotfiles_cli::tasks::hooks::{InstallGitHooks, UninstallGitHooks};
 use dotfiles_cli::tasks::symlinks::InstallSymlinks;
@@ -427,32 +427,32 @@ fn chmod_dry_run_preserves_permissions() {
 }
 
 // ===========================================================================
-// Copilot skills dry-run
+// Copilot plugins dry-run
 // ===========================================================================
 
-/// Dry-run mode must not create any skill directories.
+/// Dry-run mode must not create any plugin directories.
 #[test]
-fn copilot_skills_dry_run_creates_no_directories() {
+fn copilot_plugins_dry_run_creates_no_directories() {
     let test = common::TestContextBuilder::new()
         .with_config_file(
-            "copilot-skills.toml",
-            "[base]\nskills = [{ marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
+            "copilot-plugins.toml",
+            "[base]\nplugins = [{ marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
         )
         .build();
 
     let ec = test.make_dry_run_context("base");
-    let result = InstallCopilotSkills.run(&ec.ctx).unwrap();
+    let result = InstallCopilotPlugins.run(&ec.ctx).unwrap();
     assert!(matches!(result, TaskResult::DryRun));
 
-    let skills_dir = ec
+    let plugins_dir = ec
         .ctx
         .home
         .join(".copilot")
         .join("state")
         .join("installed-plugins");
     assert!(
-        !skills_dir.exists(),
-        "dry-run should not create skills directory"
+        !plugins_dir.exists(),
+        "dry-run should not create plugins directory"
     );
 }
 
@@ -489,7 +489,7 @@ const FILESYSTEM_TASKS: &[&str] = &[
     "Install symlinks",
     "Install Git hooks",
     "Apply file permissions",
-    "Install Copilot skills",
+    "Install Copilot plugins",
     "Configure Git",
 ];
 
@@ -501,8 +501,8 @@ fn dry_run_pipeline_produces_no_failures() {
         .with_hook_source("pre-commit", "#!/bin/sh\nexit 0\n")
         .with_git_hooks_dir()
         .with_config_file(
-            "copilot-skills.toml",
-            "[base]\nskills = [{ marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
+            "copilot-plugins.toml",
+            "[base]\nplugins = [{ marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
         )
         .with_config_file(
             "git-config.toml",

@@ -191,7 +191,7 @@ The installation process handles different components based on your profile:
 10. **Configure Shell** - Sets default shell
 11. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.toml`
 12. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-13. **Install Copilot Skills** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-skills.toml`
+13. **Install Copilot Plugins** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-plugins.toml`
 14. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
 
 ### Windows Installation Steps
@@ -205,7 +205,7 @@ The installation process handles different components based on your profile:
 7. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
 8. **Apply Registry Settings** - Configures registry from `conf/registry.toml`
 9. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-10. **Install Copilot Skills** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-skills.toml`
+10. **Install Copilot Plugins** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-plugins.toml`
 
 ## Verbose Mode
 
@@ -313,7 +313,7 @@ Packages installed: 15
 AUR packages installed: 3
 Symlinks created: 8
 VS Code extensions installed: 5
-Copilot skills installed: 2
+Copilot plugins installed: 2
 Systemd units enabled: 2
 Log file: /home/user/.cache/dotfiles/install.log
 Diagnostic log: /home/user/.cache/dotfiles/install.diag.log
@@ -325,7 +325,7 @@ Diagnostic log: /home/user/.cache/dotfiles/install.diag.log
 Packages installed: 3
 Symlinks created: 5
 VS Code extensions installed: 2
-Copilot skills installed: 2
+Copilot plugins installed: 2
 Registry keys set: 12
 Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
 Diagnostic log: C:\Users\YourName\AppData\Local\dotfiles\install.diag.log

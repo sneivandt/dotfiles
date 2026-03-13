@@ -40,7 +40,7 @@ pub enum ProcessMode {
     /// Install only missing resources, warning on errors.
     ///
     /// Suitable for resources that should not be overwritten when already
-    /// present (e.g. VS Code extensions, systemd units, Copilot skills).
+    /// present (e.g. VS Code extensions, systemd units, Copilot plugins).
     InstallMissing,
     /// Fix only incorrect resources (skip missing), bailing on errors.
     ///
@@ -213,7 +213,7 @@ impl<'a> ProcessOpts<'a> {
     /// Install only missing resources, warning on errors instead of bailing.
     ///
     /// Suitable for resources that should not be overwritten when already
-    /// present (e.g. VS Code extensions, systemd units, Copilot skills).
+    /// present (e.g. VS Code extensions, systemd units, Copilot plugins).
     #[must_use]
     pub const fn install_missing(verb: &'a str) -> Self {
         Self {

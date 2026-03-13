@@ -104,7 +104,7 @@ mod tests {
             "chmod.toml",
             "systemd-units.toml",
             "vscode-extensions.toml",
-            "copilot-skills.toml",
+            "copilot-plugins.toml",
             "git-config.toml",
             "registry.toml",
         ] {

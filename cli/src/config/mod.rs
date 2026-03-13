@@ -4,7 +4,7 @@ pub mod category_matcher {
     pub use super::helpers::category_matcher::{Category, matches};
 }
 pub mod chmod;
-pub mod copilot_skills;
+pub mod copilot_plugins;
 pub mod git_config;
 pub(crate) mod helpers;
 pub mod manifest;
@@ -211,7 +211,7 @@ pub struct Config {
     /// VS Code extensions to install.
     pub vscode_extensions: Vec<vscode_extensions::VsCodeExtension>,
     /// GitHub Copilot plugins to install from marketplaces.
-    pub copilot_skills: Vec<copilot_skills::CopilotSkill>,
+    pub copilot_plugins: Vec<copilot_plugins::CopilotPlugin>,
     /// Git configuration settings to apply globally.
     pub git_settings: Vec<git_config::GitSetting>,
     /// Sparse checkout manifest for file exclusions.
@@ -266,9 +266,9 @@ impl Config {
             vscode_extensions::load,
             active_categories
         );
-        let copilot_skills = load_toml!(
-            "copilot-skills.toml",
-            copilot_skills::load,
+        let copilot_plugins = load_toml!(
+            "copilot-plugins.toml",
+            copilot_plugins::load,
             active_categories
         );
         let git_settings = load_toml!("git-config.toml", git_config::load, active_categories);
@@ -283,7 +283,7 @@ impl Config {
             units,
             chmod: chmod_entries,
             vscode_extensions,
-            copilot_skills,
+            copilot_plugins,
             git_settings,
             manifest,
         })
@@ -305,7 +305,7 @@ impl Config {
         warnings.extend(chmod::validate(&self.chmod, platform));
         warnings.extend(systemd_units::validate(&self.units, platform));
         warnings.extend(vscode_extensions::validate(&self.vscode_extensions));
-        warnings.extend(copilot_skills::validate(&self.copilot_skills));
+        warnings.extend(copilot_plugins::validate(&self.copilot_plugins));
         warnings.extend(git_config::validate(&self.git_settings));
         warnings
     }
@@ -335,7 +335,7 @@ mod tests {
             "systemd-units.toml",
             "chmod.toml",
             "vscode-extensions.toml",
-            "copilot-skills.toml",
+            "copilot-plugins.toml",
             "git-config.toml",
             "manifest.toml",
         ] {
@@ -372,7 +372,7 @@ mod tests {
         assert!(config.units.is_empty());
         assert!(config.chmod.is_empty());
         assert!(config.vscode_extensions.is_empty());
-        assert!(config.copilot_skills.is_empty());
+        assert!(config.copilot_plugins.is_empty());
     }
 
     #[test]

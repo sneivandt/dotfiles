@@ -1,6 +1,6 @@
 //! Named, dependency-ordered tasks that orchestrate resource changes.
 pub mod chmod;
-pub mod copilot_skills;
+pub mod copilot_plugins;
 pub mod developer_mode;
 pub mod git_config;
 mod helpers;
@@ -188,7 +188,7 @@ pub mod test_helpers {
             units: vec![],
             chmod: vec![],
             vscode_extensions: vec![],
-            copilot_skills: vec![],
+            copilot_plugins: vec![],
             git_settings: vec![],
             manifest: Manifest {
                 excluded_files: vec![],

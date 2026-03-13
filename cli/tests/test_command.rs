@@ -196,11 +196,11 @@ fn config_validate_warns_on_invalid_vscode_extension_id() {
 /// A Copilot marketplace entry with an invalid marketplace reference must
 /// produce a validation warning.
 #[test]
-fn config_validate_warns_on_invalid_copilot_skill_marketplace() {
+fn config_validate_warns_on_invalid_copilot_plugin_marketplace() {
     let ctx = common::TestContextBuilder::new()
         .with_config_file(
-            "copilot-skills.toml",
-            "[base]\nskills = [{ marketplace = \"invalid\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
+            "copilot-plugins.toml",
+            "[base]\nplugins = [{ marketplace = \"invalid\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
         )
         .build();
 
@@ -209,8 +209,8 @@ fn config_validate_warns_on_invalid_copilot_skill_marketplace() {
     let warnings = config.validate(platform);
 
     assert!(
-        warnings.iter().any(|w| w.source == "copilot-skills.toml"),
-        "expected a copilot-skills.toml warning, got: {warnings:?}"
+        warnings.iter().any(|w| w.source == "copilot-plugins.toml"),
+        "expected a copilot-plugins.toml warning, got: {warnings:?}"
     );
 }
 
@@ -512,7 +512,7 @@ fn config_validate_warns_on_absolute_symlink_source() {
 }
 
 // ---------------------------------------------------------------------------
-// Config loading: vscode extensions, copilot skills, and chmod
+// Config loading: vscode extensions, copilot plugins, and chmod
 // ---------------------------------------------------------------------------
 
 /// VS Code extensions listed in vscode-extensions.toml must be loaded into
@@ -547,33 +547,33 @@ fn config_loads_vscode_extensions_correctly() {
     );
 }
 
-/// Copilot plugin entries listed in copilot-skills.toml must be loaded into
-/// `config.copilot_skills`.
+/// Copilot plugin entries listed in copilot-plugins.toml must be loaded into
+/// `config.copilot_plugins`.
 #[test]
-fn config_loads_copilot_skills_correctly() {
+fn config_loads_copilot_plugins_correctly() {
     let ctx = common::TestContextBuilder::new()
         .with_config_file(
-            "copilot-skills.toml",
-            "[base]\nskills = [{ marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }, { marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-msbuild\" }]\n",
+            "copilot-plugins.toml",
+            "[base]\nplugins = [{ marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }, { marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-msbuild\" }]\n",
         )
         .build();
 
     let config = ctx.load_config("base");
     assert_eq!(
-        config.copilot_skills.len(),
+        config.copilot_plugins.len(),
         2,
-        "expected 2 Copilot skills, got {}",
-        config.copilot_skills.len()
+        "expected 2 Copilot plugins, got {}",
+        config.copilot_plugins.len()
     );
     assert!(
         config
-            .copilot_skills
+            .copilot_plugins
             .iter()
             .any(|s| s.plugin == "dotnet-diag" && s.marketplace == "dotnet/skills")
     );
     assert!(
         config
-            .copilot_skills
+            .copilot_plugins
             .iter()
             .any(|s| s.plugin == "dotnet-msbuild" && s.marketplace_name == "dotnet-agent-skills")
     );
@@ -771,8 +771,8 @@ fn config_validate_collects_warnings_from_multiple_sources() {
             "[base]\nextensions = [\"invalid_no_dot\"]\n",
         )
         .with_config_file(
-            "copilot-skills.toml",
-            "[base]\nskills = [{ marketplace = \"invalid\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
+            "copilot-plugins.toml",
+            "[base]\nplugins = [{ marketplace = \"invalid\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
         )
         .build();
 
@@ -787,8 +787,8 @@ fn config_validate_collects_warnings_from_multiple_sources() {
         "expected a vscode-extensions.toml warning"
     );
     assert!(
-        sources.contains("copilot-skills.toml"),
-        "expected a copilot-skills.toml warning"
+        sources.contains("copilot-plugins.toml"),
+        "expected a copilot-plugins.toml warning"
     );
 }
 
@@ -857,7 +857,7 @@ fn config_load_returns_error_on_invalid_toml() {
         "chmod.toml",
         "systemd-units.toml",
         "vscode-extensions.toml",
-        "copilot-skills.toml",
+        "copilot-plugins.toml",
         "git-config.toml",
         "registry.toml",
     ] {

@@ -84,7 +84,7 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 │  packages.toml      symlinks.toml          │
 │  profiles.toml      manifest.toml          │
 │  systemd-units.toml vscode-extensions.toml │
-│  registry.toml      copilot-skills.toml    │
+│  registry.toml      copilot-plugins.toml   │
 │  chmod.toml                                │
 └────────────────────────────────────────────┘
 ```
@@ -161,7 +161,7 @@ available only when invoking the binary directly.
 | `systemd_units.rs` | `systemd-units.toml` | Systemd units (Linux only) |
 | `chmod.rs` | `chmod.toml` | File permissions |
 | `vscode_extensions.rs` | `vscode-extensions.toml` | VS Code extensions |
-| `copilot_skills.rs` | `copilot-skills.toml` | GitHub Copilot CLI plugins from marketplaces |
+| `copilot_plugins.rs` | `copilot-plugins.toml` | GitHub Copilot CLI plugins from marketplaces |
 | `registry.rs` | `registry.toml` | Windows registry entries |
 | `git_config.rs` | `git-config.toml` | Git configuration settings |
 | `manifest.rs` | `manifest.toml` | Sparse checkout file mappings |
@@ -227,7 +227,7 @@ The execution engine provides the generic resource processing loop, dependency g
 - `systemd` — Enable systemd units
 - `registry` — Apply Windows registry settings
 - `vscode` — Install VS Code extensions
-- `copilot_skills` — Download Copilot CLI skills
+- `copilot_plugins` — Download Copilot CLI plugins
 - `wsl_conf` — Write `/etc/wsl.conf` with `generateResolvConf = true` (Linux only, uses sudo)
 
 #### Platform Detection (`platform.rs`)

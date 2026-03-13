@@ -272,7 +272,7 @@ code --install-extension <extension-id>
 - Check VS Code marketplace availability
 - Temporarily comment out extensions in `conf/vscode-extensions.toml` to skip them
 
-### GitHub Copilot Skills Issues
+### GitHub Copilot Plugin Issues
 
 #### Plugins not installed
 **Symptoms**: GitHub Copilot CLI plugins from config are not installed.
@@ -290,8 +290,8 @@ gh copilot plugin marketplace list
 # Check installed plugins
 gh copilot plugin list
 
-# Verify plugin entries in conf/copilot-skills.toml
-cat conf/copilot-skills.toml
+# Verify plugin entries in conf/copilot-plugins.toml
+cat conf/copilot-plugins.toml
 ```
 
 #### Plugin installation fails

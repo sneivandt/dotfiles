@@ -28,7 +28,7 @@ use dotfiles_cli::tasks::Context;
 /// - `conf/chmod.toml`              — empty chmod list
 /// - `conf/systemd-units.toml`
 /// - `conf/vscode-extensions.toml`
-/// - `conf/copilot-skills.toml`
+/// - `conf/copilot-plugins.toml`
 /// - `conf/git-config.toml`
 /// - `conf/registry.toml`
 /// - `symlinks/`                    — directory expected by validation tasks
@@ -52,7 +52,7 @@ pub fn setup_minimal_repo(root: &Path) {
         "chmod.toml",
         "systemd-units.toml",
         "vscode-extensions.toml",
-        "copilot-skills.toml",
+        "copilot-plugins.toml",
         "git-config.toml",
         "registry.toml",
     ] {

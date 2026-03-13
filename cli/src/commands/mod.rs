@@ -430,7 +430,7 @@ fn load_config(
     debug_count(config.units.len(), "systemd units");
     debug_count(config.chmod.len(), "chmod entries");
     debug_count(config.vscode_extensions.len(), "vscode extensions");
-    debug_count(config.copilot_skills.len(), "copilot skills");
+    debug_count(config.copilot_plugins.len(), "copilot plugins");
     debug_count(config.manifest.excluded_files.len(), "manifest exclusions");
     log.info(&format!(
         "loaded {} packages, {} symlinks",

@@ -8,7 +8,7 @@ use crate::exec::{self, Executor};
 
 /// A GitHub Copilot plugin that can be checked and installed.
 #[derive(Debug)]
-pub struct CopilotSkillResource {
+pub struct CopilotPluginResource {
     /// Marketplace repository reference used with `gh copilot plugin marketplace add`.
     pub marketplace: String,
     /// Marketplace name used with `gh copilot plugin install <plugin>@<marketplace_name>`.
@@ -44,7 +44,7 @@ impl CopilotPluginCache {
     }
 }
 
-impl CopilotSkillResource {
+impl CopilotPluginResource {
     /// Create a new Copilot plugin resource.
     #[must_use]
     pub fn new(
@@ -64,7 +64,7 @@ impl CopilotSkillResource {
     /// Create from a config entry.
     #[must_use]
     pub fn from_entry(
-        entry: &crate::config::copilot_skills::CopilotSkill,
+        entry: &crate::config::copilot_plugins::CopilotPlugin,
         executor: Arc<dyn Executor>,
     ) -> Self {
         Self::new(
@@ -96,7 +96,7 @@ impl CopilotSkillResource {
     }
 }
 
-impl Applicable for CopilotSkillResource {
+impl Applicable for CopilotPluginResource {
     fn description(&self) -> String {
         format!("{}@{}", self.plugin, self.marketplace_name)
     }
@@ -360,7 +360,7 @@ mod tests {
     #[test]
     fn description_returns_plugin_reference() {
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-        let resource = CopilotSkillResource::new(
+        let resource = CopilotPluginResource::new(
             "dotnet/skills".to_string(),
             "dotnet-agent-skills".to_string(),
             "dotnet-diag".to_string(),
@@ -372,7 +372,7 @@ mod tests {
     #[test]
     fn state_from_cache_reports_correct_when_plugin_is_installed() {
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-        let resource = CopilotSkillResource::new(
+        let resource = CopilotPluginResource::new(
             "dotnet/skills".to_string(),
             "dotnet-agent-skills".to_string(),
             "dotnet-diag".to_string(),
@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn state_from_cache_reports_missing_when_plugin_is_absent() {
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-        let resource = CopilotSkillResource::new(
+        let resource = CopilotPluginResource::new(
             "dotnet/skills".to_string(),
             "dotnet-agent-skills".to_string(),
             "dotnet-diag".to_string(),
@@ -405,12 +405,12 @@ mod tests {
     #[test]
     fn from_entry_copies_plugin_fields() {
         let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-        let entry = crate::config::copilot_skills::CopilotSkill {
+        let entry = crate::config::copilot_plugins::CopilotPlugin {
             marketplace: "dotnet/skills".to_string(),
             marketplace_name: "dotnet-agent-skills".to_string(),
             plugin: "dotnet-msbuild".to_string(),
         };
-        let resource = CopilotSkillResource::from_entry(&entry, Arc::clone(&executor));
+        let resource = CopilotPluginResource::from_entry(&entry, Arc::clone(&executor));
         assert_eq!(resource.marketplace, "dotnet/skills");
         assert_eq!(resource.marketplace_name, "dotnet-agent-skills");
         assert_eq!(resource.plugin, "dotnet-msbuild");
@@ -488,7 +488,7 @@ mod tests {
             "installed\n",
         )]));
         let executor_trait: Arc<dyn Executor> = executor.clone();
-        let resource = CopilotSkillResource::new(
+        let resource = CopilotPluginResource::new(
             "dotnet/skills".to_string(),
             "dotnet-agent-skills".to_string(),
             "dotnet-upgrade".to_string(),

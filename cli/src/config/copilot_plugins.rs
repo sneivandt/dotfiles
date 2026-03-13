@@ -7,7 +7,7 @@ use super::config_section;
 
 /// A GitHub Copilot plugin to install from a marketplace.
 #[derive(Debug, Clone)]
-pub struct CopilotSkill {
+pub struct CopilotPlugin {
     /// Marketplace repository reference used with `gh copilot plugin marketplace add`.
     pub marketplace: String,
     /// Marketplace name used with `gh copilot plugin install <plugin>@<marketplace_name>`.
@@ -18,47 +18,47 @@ pub struct CopilotSkill {
 
 /// TOML Copilot plugin entry.
 #[derive(Debug, Clone, Deserialize)]
-struct CopilotSkillEntry {
+struct CopilotPluginEntry {
     marketplace: String,
     marketplace_name: String,
     plugin: String,
 }
 
 config_section! {
-    field: "skills",
-    entry: CopilotSkillEntry,
-    item: CopilotSkill,
-    map: |entry| CopilotSkill {
+    field: "plugins",
+    entry: CopilotPluginEntry,
+    item: CopilotPlugin,
+    map: |entry| CopilotPlugin {
         marketplace: entry.marketplace,
         marketplace_name: entry.marketplace_name,
         plugin: entry.plugin,
     },
 }
 
-/// Validate Copilot skill entries and return any warnings.
+/// Validate Copilot plugin entries and return any warnings.
 #[must_use]
-pub fn validate(skills: &[CopilotSkill]) -> Vec<ValidationWarning> {
+pub fn validate(plugins: &[CopilotPlugin]) -> Vec<ValidationWarning> {
     use super::helpers::validation::{Validator, check};
 
-    Validator::new("copilot-skills.toml")
+    Validator::new("copilot-plugins.toml")
         .check_each(
-            skills,
-            |skill| &skill.plugin,
-            |skill| {
+            plugins,
+            |plugin| &plugin.plugin,
+            |plugin| {
                 vec![
-                    check(skill.plugin.trim().is_empty(), "plugin name is empty"),
+                    check(plugin.plugin.trim().is_empty(), "plugin name is empty"),
                     check(
-                        skill.marketplace.trim().is_empty(),
+                        plugin.marketplace.trim().is_empty(),
                         "marketplace reference is empty",
                     ),
                     check(
-                        skill.marketplace_name.trim().is_empty(),
+                        plugin.marketplace_name.trim().is_empty(),
                         "marketplace name is empty",
                     ),
                     check(
-                        !skill.marketplace.starts_with("http://")
-                            && !skill.marketplace.starts_with("https://")
-                            && !skill.marketplace.contains('/'),
+                        !plugin.marketplace.starts_with("http://")
+                            && !plugin.marketplace.starts_with("https://")
+                            && !plugin.marketplace.contains('/'),
                         "marketplace should be an owner/repo reference or http(s) URL",
                     ),
                 ]
@@ -75,16 +75,16 @@ mod tests {
     use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
 
     #[test]
-    fn load_base_skills() {
+    fn load_base_plugins() {
         let (_dir, path) = write_temp_toml(
             r#"[base]
-skills = [
+plugins = [
   { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" },
   { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" },
 ]
 "#,
         );
-        let skills: Vec<CopilotSkill> = load(&path, &[Category::Base]).unwrap();
+        let skills: Vec<CopilotPlugin> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(skills.len(), 2);
         assert_eq!(skills[0].marketplace, "dotnet/skills");
         assert_eq!(skills[0].plugin, "dotnet-diag");
@@ -94,13 +94,13 @@ skills = [
     fn inactive_category_excluded() {
         let (_dir, path) = write_temp_toml(
             r#"[base]
-skills = [{ marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" }]
+plugins = [{ marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" }]
 
 [desktop]
-skills = [{ marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" }]
+plugins = [{ marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" }]
 "#,
         );
-        let skills: Vec<CopilotSkill> = load(&path, &[Category::Base]).unwrap();
+        let skills: Vec<CopilotPlugin> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(skills.len(), 1, "desktop section should not be loaded");
         assert_eq!(skills[0].plugin, "dotnet-diag");
     }
@@ -112,14 +112,14 @@ skills = [{ marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skil
 
     #[test]
     fn load_returns_error_on_malformed_toml() {
-        let (_dir, path) = write_temp_toml("[base\nskills = [{ plugin = \"dotnet-diag\" }");
+        let (_dir, path) = write_temp_toml("[base\nplugins = [{ plugin = \"dotnet-diag\" }");
         let result = load(&path, &[Category::Base]);
         assert!(result.is_err(), "malformed TOML should return error");
     }
 
     #[test]
     fn load_returns_error_on_type_mismatch() {
-        let (_dir, path) = write_temp_toml("[base]\nskills = 42\n");
+        let (_dir, path) = write_temp_toml("[base]\nplugins = 42\n");
         let result = load(&path, &[Category::Base]);
         assert!(
             result.is_err(),
@@ -129,12 +129,12 @@ skills = [{ marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skil
 
     #[test]
     fn validate_detects_empty_plugin_name() {
-        let skills = vec![CopilotSkill {
+        let plugins = vec![CopilotPlugin {
             marketplace: "dotnet/skills".to_string(),
             marketplace_name: "dotnet-agent-skills".to_string(),
             plugin: "  ".to_string(),
         }];
-        let warnings = validate(&skills);
+        let warnings = validate(&plugins);
         assert!(
             warnings.iter().any(|w| w.message.contains("empty")),
             "should warn about empty plugin name: {warnings:?}"
@@ -143,12 +143,12 @@ skills = [{ marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skil
 
     #[test]
     fn validate_detects_invalid_marketplace_reference() {
-        let skills = vec![CopilotSkill {
+        let plugins = vec![CopilotPlugin {
             marketplace: "not-a-marketplace".to_string(),
             marketplace_name: "dotnet-agent-skills".to_string(),
             plugin: "dotnet-diag".to_string(),
         }];
-        let warnings = validate(&skills);
+        let warnings = validate(&plugins);
         assert!(
             warnings.iter().any(|w| w.message.contains("owner/repo")),
             "should warn about invalid marketplace reference: {warnings:?}"

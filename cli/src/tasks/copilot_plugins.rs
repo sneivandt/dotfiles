@@ -1,4 +1,4 @@
-//! Task: install GitHub Copilot skills.
+//! Task: install GitHub Copilot plugins.
 
 use anyhow::Result;
 use std::collections::BTreeSet;
@@ -6,24 +6,24 @@ use std::sync::Arc;
 
 use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states, task_deps};
 use crate::resources::ResourceState;
-use crate::resources::copilot_skill::{
-    CopilotPluginCache, CopilotSkillResource, copilot_supports_plugins, get_copilot_plugin_state,
+use crate::resources::copilot_plugin::{
+    CopilotPluginCache, CopilotPluginResource, copilot_supports_plugins, get_copilot_plugin_state,
     get_copilot_version, register_marketplace,
 };
 
-/// Install GitHub Copilot skills.
+/// Install GitHub Copilot plugins.
 #[derive(Debug)]
-pub struct InstallCopilotSkills;
+pub struct InstallCopilotPlugins;
 
-impl Task for InstallCopilotSkills {
+impl Task for InstallCopilotPlugins {
     fn name(&self) -> &'static str {
-        "Install Copilot skills"
+        "Install Copilot plugins"
     }
 
     task_deps![super::reload_config::ReloadConfig];
 
     fn should_run(&self, ctx: &Context) -> bool {
-        !ctx.config_read().copilot_skills.is_empty()
+        !ctx.config_read().copilot_plugins.is_empty()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -68,11 +68,11 @@ impl Task for InstallCopilotSkills {
             false
         };
 
-        let skills: Vec<_> = ctx.config_read().copilot_skills.clone();
+        let plugins: Vec<_> = ctx.config_read().copilot_plugins.clone();
         let cache = if plugins_supported {
             ctx.log.debug(&format!(
                 "batch-checking {} Copilot plugins with a single CLI query",
-                skills.len()
+                plugins.len()
             ));
             get_copilot_plugin_state(&*ctx.executor)?
         } else {
@@ -83,19 +83,21 @@ impl Task for InstallCopilotSkills {
         };
 
         let mut missing_marketplaces = BTreeSet::new();
-        let resource_states: Vec<_> = skills
+        let resource_states: Vec<_> = plugins
             .into_iter()
-            .map(|skill| {
-                let resource = CopilotSkillResource::from_entry(&skill, Arc::clone(&ctx.executor));
+            .map(|plugin| {
+                let resource =
+                    CopilotPluginResource::from_entry(&plugin, Arc::clone(&ctx.executor));
                 let state = if plugins_supported {
                     resource.state_from_cache(&cache)
                 } else {
                     ResourceState::Missing
                 };
                 if matches!(state, ResourceState::Missing)
-                    && !cache.is_marketplace_registered(&skill.marketplace, &skill.marketplace_name)
+                    && !cache
+                        .is_marketplace_registered(&plugin.marketplace, &plugin.marketplace_name)
                 {
-                    missing_marketplaces.insert((skill.marketplace, skill.marketplace_name));
+                    missing_marketplaces.insert((plugin.marketplace, plugin.marketplace_name));
                 }
                 (resource, state)
             })
@@ -113,7 +115,7 @@ impl Task for InstallCopilotSkills {
         process_resource_states(
             ctx,
             resource_states,
-            &ProcessOpts::install_missing("install skill").sequential(),
+            &ProcessOpts::install_missing("install plugin").sequential(),
         )
     }
 }
@@ -122,7 +124,7 @@ impl Task for InstallCopilotSkills {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::config::copilot_skills::CopilotSkill;
+    use crate::config::copilot_plugins::CopilotPlugin;
     use crate::tasks::Task;
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
     use std::any::TypeId;
@@ -134,34 +136,34 @@ mod tests {
     use crate::tasks::test_helpers::make_context;
 
     #[test]
-    fn should_run_is_false_without_skills() {
+    fn should_run_is_false_without_plugins() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        assert!(!InstallCopilotSkills.should_run(&ctx));
+        assert!(!InstallCopilotPlugins.should_run(&ctx));
     }
 
     #[test]
-    fn should_run_true_when_skills_configured() {
+    fn should_run_true_when_plugins_configured() {
         let mut config = empty_config(PathBuf::from("/tmp"));
-        config.copilot_skills.push(CopilotSkill {
+        config.copilot_plugins.push(CopilotPlugin {
             marketplace: "dotnet/skills".to_string(),
             marketplace_name: "dotnet-agent-skills".to_string(),
             plugin: "dotnet-diag".to_string(),
         });
         let ctx = make_linux_context(config);
-        assert!(InstallCopilotSkills.should_run(&ctx));
+        assert!(InstallCopilotPlugins.should_run(&ctx));
     }
 
     #[test]
     fn run_skips_when_gh_cli_not_found() {
         let mut config = empty_config(PathBuf::from("/tmp"));
-        config.copilot_skills.push(CopilotSkill {
+        config.copilot_plugins.push(CopilotPlugin {
             marketplace: "dotnet/skills".to_string(),
             marketplace_name: "dotnet-agent-skills".to_string(),
             plugin: "dotnet-msbuild".to_string(),
         });
         let ctx = make_linux_context(config);
-        let result = InstallCopilotSkills.run(&ctx).unwrap();
+        let result = InstallCopilotPlugins.run(&ctx).unwrap();
         assert!(
             matches!(result, TaskResult::Skipped(ref s) if s.contains("gh CLI not found")),
             "expected 'gh CLI not found' skip, got {result:?}"
@@ -171,7 +173,7 @@ mod tests {
     #[test]
     fn depends_on_reload_config() {
         assert_eq!(
-            InstallCopilotSkills.dependencies(),
+            InstallCopilotPlugins.dependencies(),
             &[TypeId::of::<crate::tasks::reload_config::ReloadConfig>()]
         );
     }
@@ -179,7 +181,7 @@ mod tests {
     #[test]
     fn run_skips_when_copilot_version_too_old() {
         let mut config = empty_config(PathBuf::from("/tmp"));
-        config.copilot_skills.push(CopilotSkill {
+        config.copilot_plugins.push(CopilotPlugin {
             marketplace: "dotnet/skills".to_string(),
             marketplace_name: "dotnet-agent-skills".to_string(),
             plugin: "dotnet-msbuild".to_string(),
@@ -201,7 +203,7 @@ mod tests {
             is_wsl: false,
         };
         let ctx = make_context(config, platform, executor);
-        let result = InstallCopilotSkills.run(&ctx).unwrap();
+        let result = InstallCopilotPlugins.run(&ctx).unwrap();
         assert!(
             matches!(result, TaskResult::Skipped(ref s) if s.contains("does not support plugins")),
             "expected version skip, got {result:?}"

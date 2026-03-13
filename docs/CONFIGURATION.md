@@ -222,7 +222,7 @@ extensions = ["ms-vscode-remote.remote-wsl"]
 
 ---
 
-### `copilot-skills.toml`
+### `copilot-plugins.toml`
 **Purpose**: Lists GitHub Copilot CLI plugins to install from marketplaces.
 
 **Format**: Sections represent categories; entries are inline tables with marketplace metadata.
@@ -230,7 +230,7 @@ extensions = ["ms-vscode-remote.remote-wsl"]
 **Example**:
 ```toml
 [base]
-skills = [
+plugins = [
   { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" },
   { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" },
 ]

@@ -1,6 +1,6 @@
 //! Idempotent resource primitives (check + apply pattern).
 pub mod chmod;
-pub mod copilot_skill;
+pub mod copilot_plugin;
 pub mod developer_mode;
 pub mod git_config;
 pub mod hook;

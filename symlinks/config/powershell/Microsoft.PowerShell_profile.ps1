@@ -105,8 +105,14 @@ if (Get-Command "gh" -ErrorAction SilentlyContinue)
         gh copilot -i suggest $args
     }
 
+    function Invoke-CopilotPluginUpdate
+    {
+        (gh copilot plugin list 2>&1) -match '@' -replace '.*\s' | ForEach-Object { gh copilot plugin update $_ }
+    }
+
     Set-Alias -Name ai -Value Invoke-CopilotChat
     Set-Alias -Name aic -Value Invoke-CopilotSuggest
+    Set-Alias -Name aiup -Value Invoke-CopilotPluginUpdate
 }
 
 # Ensure Cargo (Rust) bin directory is in PATH

@@ -15,13 +15,13 @@ use super::category_matcher::Category;
 ///
 /// ```ignore
 /// #[derive(Debug, Deserialize)]
-/// struct SkillSection { skills: Vec<String> }
+/// struct PluginSection { plugins: Vec<String> }
 ///
-/// impl ConfigSection for SkillSection {
+/// impl ConfigSection for PluginSection {
 ///     type Entry = String;
-///     type Item = CopilotSkill;
-///     fn extract(self) -> Vec<String> { self.skills }
-///     fn map(entry: String) -> CopilotSkill { CopilotSkill { plugin: entry, marketplace: "owner/repo".into(), marketplace_name: "marketplace".into() } }
+///     type Item = CopilotPlugin;
+///     fn extract(self) -> Vec<String> { self.plugins }
+///     fn map(entry: String) -> CopilotPlugin { CopilotPlugin { plugin: entry, marketplace: "owner/repo".into(), marketplace_name: "marketplace".into() } }
 /// }
 /// ```
 pub trait ConfigSection: DeserializeOwned {

@@ -37,7 +37,7 @@ pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
         Box::new(crate::tasks::systemd_units::ConfigureSystemd),
         Box::new(crate::tasks::registry::ApplyRegistry),
         Box::new(crate::tasks::vscode_extensions::InstallVsCodeExtensions),
-        Box::new(crate::tasks::copilot_skills::InstallCopilotSkills),
+        Box::new(crate::tasks::copilot_plugins::InstallCopilotPlugins),
         Box::new(crate::tasks::wsl_conf::InstallWslConf),
         Box::new(crate::tasks::reload_config::ReloadConfig::new(repo_updated)),
     ]

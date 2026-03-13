@@ -206,7 +206,7 @@ Runs automatically on pull requests with the following jobs:
 
 ### Release Pipeline (`.github/workflows/release.yml`)
 
-Triggers on push to `master` when `cli/` or `conf/` change:
+Triggers on push to `main` when `cli/` or `conf/` change:
 1. Builds Linux and Windows release binaries
 2. Generates SHA-256 checksums
 3. Creates a GitHub Release with versioned tag

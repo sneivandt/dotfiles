@@ -2,11 +2,11 @@
 
 ## Supported Versions
 
-This dotfiles project is actively maintained. Security updates are applied to the latest version in the `master` branch.
+This dotfiles project is actively maintained. Security updates are applied to the latest version in the `main` branch.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| master  | :white_check_mark: |
+| main    | :white_check_mark: |
 
 ## Security Considerations
 

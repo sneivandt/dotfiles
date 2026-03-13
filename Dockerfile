@@ -32,7 +32,7 @@ LABEL org.opencontainers.image.title="dotfiles" \
       org.opencontainers.image.authors="Stuart Neivandt" \
       org.opencontainers.image.url="https://github.com/sneivandt/dotfiles" \
       org.opencontainers.image.source="https://github.com/sneivandt/dotfiles" \
-      org.opencontainers.image.documentation="https://github.com/sneivandt/dotfiles/blob/master/README.md" \
+      org.opencontainers.image.documentation="https://github.com/sneivandt/dotfiles/blob/main/README.md" \
       org.opencontainers.image.licenses="MIT"
 
 ENV DEBIAN_FRONTEND=noninteractive

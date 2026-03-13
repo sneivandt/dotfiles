@@ -44,7 +44,7 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 **Challenge**: End users should not need a Rust toolchain installed.
 
 **Solution**:
-- GitHub Actions builds release binaries on every push to `master` that touches `cli/` or `conf/`
+- GitHub Actions builds release binaries on every push to `main` that touches `cli/` or `conf/`
 - The release workflow (`.github/workflows/release.yml`) publishes Linux and Windows binaries with SHA-256 checksums
 - The shell wrappers download the latest release and cache the version for one hour (`bin/.dotfiles-version-cache`)
 - A `--build` flag builds from source for development
@@ -371,7 +371,7 @@ GitHub Actions CI (`.github/workflows/ci.yml`) runs on pull requests:
 
 ### Release Pipeline
 
-GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `master` when `cli/` or `conf/` change:
+GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `main` when `cli/` or `conf/` change:
 1. Builds Linux and Windows release binaries
 2. Generates SHA-256 checksums
 3. Creates a GitHub Release with version tag `v0.1.<run_number>`

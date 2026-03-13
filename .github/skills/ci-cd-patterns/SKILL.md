@@ -15,9 +15,9 @@ Three GitHub Actions workflows in `.github/workflows/`:
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `ci.yml` | Push/PR to master | Build, lint, test, integration checks |
-| `release.yml` | Push to master (cli/conf paths) | Build release binaries, create GitHub Release |
-| `docker-image.yml` | Push to master | Build and push Docker image to Docker Hub |
+| `ci.yml` | Push/PR to main | Build, lint, test, integration checks |
+| `release.yml` | Push to main (cli/conf paths) | Build release binaries, create GitHub Release |
+| `docker-image.yml` | Push to main | Build and push Docker image to Docker Hub |
 
 ## CI Pipeline (`ci.yml`)
 

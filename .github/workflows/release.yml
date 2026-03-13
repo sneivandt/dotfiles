@@ -6,7 +6,7 @@ on:
     types:
       - completed
     branches:
-      - master
+      - main
 
 permissions:
   contents: write
@@ -126,7 +126,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.version }}
           name: ${{ steps.version.outputs.version }}
           body: |
-            Automated release from push to master.
+            Automated release from push to main.
             Commit: ${{ github.event.workflow_run.head_sha }}
           files: |
             dotfiles-linux-x86_64

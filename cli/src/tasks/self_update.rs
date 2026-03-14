@@ -406,13 +406,12 @@ fn check_for_update(root: &std::path::Path, client: &dyn HttpClient) -> Result<U
         tracing::debug!("fetch_latest_tag returned None, treating as offline");
         return Ok(UpdateCheck::Offline);
     };
+    write_cache(root, &latest)?;
     if latest == current {
-        write_cache(root, &latest)?;
         return Ok(UpdateCheck::AlreadyCurrent(latest));
     }
     if !is_newer(&latest, &current) {
         tracing::debug!("latest release {latest} is not newer than current {current}, skipping");
-        write_cache(root, &latest)?;
         return Ok(UpdateCheck::AlreadyCurrent(latest));
     }
     Ok(UpdateCheck::UpdateAvailable { latest, current })

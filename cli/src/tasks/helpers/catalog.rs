@@ -9,6 +9,7 @@ pub fn all_uninstall_tasks() -> Vec<Box<dyn Task>> {
     vec![
         Box::new(crate::tasks::symlinks::UninstallSymlinks),
         Box::new(crate::tasks::hooks::UninstallGitHooks::new()),
+        Box::new(crate::tasks::wrapper::UninstallWrapper),
     ]
 }
 
@@ -39,6 +40,8 @@ pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
         Box::new(crate::tasks::vscode_extensions::InstallVsCodeExtensions),
         Box::new(crate::tasks::copilot_plugins::InstallCopilotPlugins),
         Box::new(crate::tasks::wsl_conf::InstallWslConf),
+        Box::new(crate::tasks::wrapper::InstallWrapper),
+        Box::new(crate::tasks::path::ConfigurePath),
         Box::new(crate::tasks::reload_config::ReloadConfig::new(repo_updated)),
     ]
 }

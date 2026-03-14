@@ -43,7 +43,7 @@ mod tests {
     #[test]
     fn uninstall_tasks_contains_expected_count() {
         let tasks = tasks::all_uninstall_tasks();
-        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks.len(), 3);
     }
 
     #[test]

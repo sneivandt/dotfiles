@@ -39,7 +39,7 @@ fn uninstall_task_names() {
 /// The uninstall task list must contain the expected number of tasks.
 #[test]
 fn uninstall_task_count() {
-    assert_eq!(tasks::all_uninstall_tasks().len(), 2);
+    assert_eq!(tasks::all_uninstall_tasks().len(), 3);
 }
 
 /// Every uninstall task name must be non-empty.

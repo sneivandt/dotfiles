@@ -10,6 +10,9 @@ pub mod shell;
 pub mod symlink;
 pub mod systemd_unit;
 pub mod vscode_extension;
+pub mod wrapper;
+
+pub mod path_entry;
 
 use anyhow::Result;
 

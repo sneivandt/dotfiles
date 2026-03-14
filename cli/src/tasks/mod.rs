@@ -6,6 +6,7 @@ pub mod git_config;
 mod helpers;
 pub mod hooks;
 pub mod packages;
+pub mod path;
 pub mod registry;
 pub mod reload_config;
 pub mod self_update;
@@ -16,6 +17,7 @@ pub mod systemd_units;
 pub mod update;
 pub mod validation;
 pub mod vscode_extensions;
+pub mod wrapper;
 pub mod wsl_conf;
 
 pub use helpers::{all_install_tasks, all_uninstall_tasks};
@@ -611,8 +613,8 @@ mod tests {
         let tasks = all_install_tasks();
         assert_eq!(
             tasks.len(),
-            18,
-            "expected 18 install tasks — did you add a new task without updating \
+            20,
+            "expected 20 install tasks — did you add a new task without updating \
              all_install_tasks()? Update the registration list and this test."
         );
     }
@@ -622,8 +624,8 @@ mod tests {
         let tasks = all_uninstall_tasks();
         assert_eq!(
             tasks.len(),
-            2,
-            "expected 2 uninstall tasks — update all_uninstall_tasks() and this test."
+            3,
+            "expected 3 uninstall tasks — update all_uninstall_tasks() and this test."
         );
     }
 }

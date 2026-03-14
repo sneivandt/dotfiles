@@ -4,3 +4,4 @@ expression: "task_names.join(\"\\n\")"
 ---
 Remove symlinks
 Remove Git hooks
+Uninstall wrapper

@@ -230,7 +230,7 @@ impl Logger {
         }
 
         println!();
-        self.stage("Summary");
+        self.phase("Summary");
 
         let mut ok = 0u32;
         let mut not_applicable = 0u32;

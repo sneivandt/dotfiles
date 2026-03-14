@@ -76,7 +76,7 @@ pub trait Task: Send + Sync + 'static {
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
 }
 pub enum TaskPhase { Bootstrap, Configure }
-pub enum TaskResult { Ok, Skipped(String), DryRun }
+pub enum TaskResult { Ok, NotApplicable(String), Skipped(String), Failed(String), DryRun }
 ```
 
 `run_if_applicable()` combines the `should_run` check and `run` call into a single step,
@@ -111,7 +111,7 @@ it must appear inside `impl Task for …`.
 - Use `task_deps![…]` to declare dependencies — do not write `const DEPS` by hand
 - Only reference concrete task structs
 - Missing dependencies (filtered by `--skip`/`--only`) are silently ignored
-- Cycles are detected at runtime; the scheduler falls back to sequential execution
+- Cycles are detected at runtime; the scheduler bails with an error
 
 ### New Resource-Based Task Template (preferred)
 

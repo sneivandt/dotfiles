@@ -411,8 +411,13 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 ### Parallel Task Execution
 
-Tasks are executed in parallel using a dependency-graph scheduler.  Each task
-declares its dependencies using the `task_deps!` macro (defined in
+Execution is split into two phases: **Bootstrap** (prepare the environment)
+then **Configure** (apply declared state).  `run_tasks_to_completion()` loops
+over `[TaskPhase::Bootstrap, TaskPhase::Configure]`, completing all tasks in
+one phase before starting the next.  Within each phase, tasks are executed in
+parallel using a dependency-graph scheduler.
+
+Each task declares its dependencies using the `task_deps!` macro (defined in
 `tasks/helpers/macros.rs`, re-exported from `tasks/mod.rs`), which implements `Task::dependencies()` returning `TypeId`s of
 prerequisite task structs.  The scheduler uses `std::thread::scope` to spawn
 one OS thread per task and `mpsc` channels to block each task until its
@@ -438,7 +443,7 @@ of tasks with unsatisfied dependencies (common on 2-vCPU CI runners).
 - A dim status line (`▹ task1, task2, ...`) shows which tasks are currently
   running, updated on every task start and completion
 - Cycle detection (Kahn's algorithm) runs before scheduling; if a cycle is
-  found, the scheduler falls back to sequential execution with a warning
+  found, the run is aborted with an error
 - Dependencies that reference `TypeId`s not present in the task list (e.g.
   filtered out by `--skip`/`--only`) are silently ignored
 

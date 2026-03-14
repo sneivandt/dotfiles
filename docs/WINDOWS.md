@@ -41,18 +41,20 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 
 `dotfiles.ps1` downloads (or builds) the Rust binary and forwards all arguments to it. The binary runs the following tasks on Windows:
 
-| Step | Task | Description | Idempotency Cue |
-|------|------|-------------|-----------------|
-| 1 | Developer Mode | Enables Windows developer mode (required for symlink creation). | Skips if already enabled. |
-| 2 | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
-| 3 | Update Repository | Updates the repository from remote (`git pull --ff-only`). | Skips if already up to date. |
-| 4 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
-| 5 | Git Hooks | Installs repository git hooks. | Skips if hooks already installed. |
-| 6 | Packages | Installs missing packages from `conf/packages.toml` using winget. | Skips already-installed packages. |
-| 7 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
-| 8 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
-| 9 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
-| 10 | Copilot Plugins | Registers configured Copilot marketplaces and installs plugins from `conf/copilot-plugins.toml`. | Skips if the plugin is already installed. |
+| Phase | Step | Task | Description | Idempotency Cue |
+|-------|------|------|-------------|-----------------|
+| Bootstrap | 1 | Self-Update | Updates the dotfiles binary from latest GitHub release. | Skips if already up to date. |
+| Bootstrap | 2 | Developer Mode | Enables Windows developer mode (required for symlink creation). | Skips if already enabled. |
+| Bootstrap | 3 | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
+| Bootstrap | 4 | Update Repository | Updates the repository from remote (`git pull --ff-only`). | Skips if already up to date. |
+| Bootstrap | 5 | Git Hooks | Installs repository git hooks. | Skips if hooks already installed. |
+| Bootstrap | 6 | Configure PATH | Ensures dotfiles bin directory is on PATH. | Skips if already on PATH. |
+| Configure | 7 | Packages | Installs missing packages from `conf/packages.toml` using winget. | Skips already-installed packages. |
+| Configure | 8 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
+| Configure | 9 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
+| Configure | 10 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
+| Configure | 11 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
+| Configure | 12 | Copilot Plugins | Registers configured Copilot marketplaces and installs plugins from `conf/copilot-plugins.toml`. | Skips if the plugin is already installed. |
 
 Tasks that don't apply to Windows (systemd, shell, chmod, paru) are automatically skipped via platform detection.
 
@@ -60,7 +62,7 @@ Tasks that don't apply to Windows (systemd, shell, chmod, paru) are automaticall
 
 The repository contains symlinks (e.g., `symlinks/config/nvim` → `../vim`) that are tracked in Git. On Windows, creating actual symlinks during Git operations requires Developer Mode enabled or Administrator privileges.
 
-The binary **automatically configures** Git to enable symlink support, since Developer Mode is enabled as a prior task:
+The binary **automatically configures** Git to enable symlink support, since Developer Mode is enabled during the Bootstrap phase:
 
 ```powershell
 git config core.symlinks true
@@ -269,41 +271,42 @@ This persistent log file includes:
 
 The log file is useful for troubleshooting installation issues or reviewing what changes were made.
 
-### Operation Counters
+### Task Summary
 
-The installation tracks various operations and displays a summary at the end:
+The installation displays a summary of all tasks grouped by phase:
 
-- **Packages installed**: Number of winget packages installed
-- **Symlinks created**: Number of symlinks created in user profile
-- **VS Code extensions installed**: Number of extensions installed
-- **Copilot plugins installed**: Number of GitHub Copilot CLI plugins downloaded
-- **Registry keys set**: Number of registry values modified
+- `✓` — task completed successfully (green)
+- `·` — not applicable on this platform/profile (dim)
+- `○` — deliberately skipped (yellow)
+- `~` — dry-run preview (white)
+- `✗` — task failed (red)
 
 ### Dry-Run Mode
 
 When using `-d` (dry-run), the logging system:
 - Shows what would be done without making changes
-- Tracks counters for operations that would be performed
-- Labels summary with "(would be)" suffix
+- Marks tasks with `~` (dry-run) in the summary
 - Still writes to the log file for review
 
 Example summary output:
 ```
-:: Installation Summary
-Packages installed: 3
-Symlinks created: 5
-VS Code extensions installed: 2
-Copilot plugins installed: 2
-Registry keys set: 12
-Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
-```
+:: Summary
+   Bootstrap
+     ✓ Self-update
+     ✓ Enable developer mode
+     ✓ Configure sparse checkout
+     ✓ Update repository
+     ✓ Install git hooks
+   Configure
+     ✓ Install packages
+     ✓ Install symlinks
+     ✓ Configure Git
+     ✓ Apply registry settings
+     ✓ Install VS Code extensions
+     ✓ Install Copilot plugins
 
-In dry-run mode:
-```
-:: Installation Summary
-Packages installed (would be): 3
-Symlinks created (would be): 5
-Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
+   11 tasks: 11 ok, 0 n/a, 0 skipped, 0 dry-run, 0 failed
+   log: C:\Users\YourName\AppData\Local\dotfiles\install.log
 ```
 
 ## Troubleshooting

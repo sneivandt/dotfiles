@@ -14,12 +14,20 @@ metadata:
 The engine has two levels of parallelism: **task-level** (scheduler) and
 **resource-level** (Rayon). Both are gated by `ctx.parallel`.
 
+## Phase Barrier
+
+`run_tasks_to_completion()` in `commands/mod.rs` enforces a strict two-phase
+execution model: all **Bootstrap** tasks complete before any **Configure** task
+starts.  The function loops over `[TaskPhase::Bootstrap, TaskPhase::Configure]`,
+filtering and dispatching tasks per phase.  Within each phase, tasks run via
+the scheduler (parallel) or sequentially (single task / `--no-parallel`).
+
 ## Task-Level: Scheduler
 
-`commands/mod.rs` dispatches to `run_tasks_to_completion()`:
+Within each phase, `run_tasks_to_completion()` dispatches:
 
 1. If `ctx.parallel` and more than one task → check for cycles via `graph::has_cycle()` (Kahn's algorithm)
-2. If cycle detected → warn and fall back to sequential execution
+2. If cycle detected → bail with an error (abort the run)
 3. Otherwise → `engine::scheduler::run_tasks_parallel()` spawns OS threads
 
 ### Why OS Threads (Not Rayon)
@@ -107,5 +115,5 @@ The scheduler emits structured events to the diagnostic log:
 - Resource parallelism uses Rayon — never OS threads for resource processing
 - Both levels are gated by `ctx.parallel`
 - Tests set `parallel: false` to keep execution deterministic
-- Cycle detection falls back to sequential — never aborts
+- Cycle detection bails with an error — never falls back to sequential
 - `BufferedLog` must be flushed via `flush_and_complete()` after each parallel task

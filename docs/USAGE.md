@@ -179,33 +179,48 @@ The installation process handles different components based on your profile:
 
 ### Linux Installation Steps
 
-1. **Configure Sparse Checkout** - Excludes files based on profile
-2. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
-3. **Configure Git** - Applies git configuration
+**Bootstrap** (prepare the environment):
+
+1. **Self-Update** - Updates the dotfiles binary from latest GitHub release
+2. **Configure Sparse Checkout** - Excludes files based on profile
+3. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
 4. **Install Git Hooks** - Symlinks repository git hooks
-5. **Install Packages** - Installs packages from `conf/packages.toml` using pacman
-6. **Install Paru** - Bootstraps paru AUR helper (Arch Linux only)
-7. **Install AUR Packages** - Installs AUR packages via paru (Arch Linux only)
-8. **Create Symlinks** - Links files from `symlinks/` to `$HOME`
-9. **Set Permissions** - Applies file permissions from `conf/chmod.toml`
-10. **Configure Shell** - Sets default shell
-11. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.toml`
-12. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-13. **Install Copilot Plugins** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-plugins.toml`
-14. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
+5. **Install Wrapper** - Installs `dotfiles` wrapper to `~/.local/bin/`
+6. **Configure PATH** - Ensures `~/.local/bin` is on PATH
+
+**Configure** (apply declared state):
+
+7. **Install Packages** - Installs packages from `conf/packages.toml` using pacman
+8. **Install Paru** - Bootstraps paru AUR helper (Arch Linux only)
+9. **Install AUR Packages** - Installs AUR packages via paru (Arch Linux only)
+10. **Create Symlinks** - Links files from `symlinks/` to `$HOME`
+11. **Set Permissions** - Applies file permissions from `conf/chmod.toml`
+12. **Configure Git** - Applies git configuration
+13. **Configure Shell** - Sets default shell
+14. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.toml`
+15. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
+16. **Install Copilot Plugins** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-plugins.toml`
+17. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
 
 ### Windows Installation Steps
 
-1. **Enable Developer Mode** - Enables Windows developer mode (required for symlinks)
-2. **Configure Sparse Checkout** - Excludes files based on profile
-3. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
-4. **Configure Git** - Sets `core.symlinks=true`, `core.autocrlf=false`, credential helper
+**Bootstrap** (prepare the environment):
+
+1. **Self-Update** - Updates the dotfiles binary from latest GitHub release
+2. **Enable Developer Mode** - Enables Windows developer mode (required for symlinks)
+3. **Configure Sparse Checkout** - Excludes files based on profile
+4. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
 5. **Install Git Hooks** - Symlinks repository git hooks
-6. **Install Packages** - Installs packages using winget
-7. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
-8. **Apply Registry Settings** - Configures registry from `conf/registry.toml`
-9. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-10. **Install Copilot Plugins** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-plugins.toml`
+6. **Configure PATH** - Ensures dotfiles bin directory is on PATH
+
+**Configure** (apply declared state):
+
+7. **Install Packages** - Installs packages using winget
+8. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
+9. **Configure Git** - Sets `core.symlinks=true`, `core.autocrlf=false`, credential helper
+10. **Apply Registry Settings** - Configures registry from `conf/registry.toml`
+11. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
+12. **Install Copilot Plugins** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-plugins.toml`
 
 ## Verbose Mode
 
@@ -304,41 +319,50 @@ details on reading the diagnostic log.
 
 ## Installation Summary
 
-After installation, a summary is displayed:
+After installation, a summary is displayed showing each task grouped by phase:
 
-**Linux example:**
+**Example:**
 ```
-:: Installation Summary
-Packages installed: 15
-AUR packages installed: 3
-Symlinks created: 8
-VS Code extensions installed: 5
-Copilot plugins installed: 2
-Systemd units enabled: 2
-Log file: /home/user/.cache/dotfiles/install.log
-Diagnostic log: /home/user/.cache/dotfiles/install.diag.log
+:: Summary
+   Bootstrap
+     ✓ Self-update
+     ✓ Configure sparse checkout
+     ✓ Update repository
+     ✓ Install git hooks
+     ✓ Install wrapper
+     ✓ Configure PATH
+   Configure
+     ✓ Install symlinks
+     ✓ Configure Git
+     ✓ Install packages
+     · Install AUR packages
+     ○ Configure shell (skipped: not running on Arch)
+     ✓ Enable systemd units
+
+   12 tasks: 8 ok, 1 n/a, 1 skipped, 0 dry-run, 0 failed
+   log: /home/user/.cache/dotfiles/install.log
 ```
 
-**Windows example:**
-```
-:: Installation Summary
-Packages installed: 3
-Symlinks created: 5
-VS Code extensions installed: 2
-Copilot plugins installed: 2
-Registry keys set: 12
-Log file: C:\Users\YourName\AppData\Local\dotfiles\install.log
-Diagnostic log: C:\Users\YourName\AppData\Local\dotfiles\install.diag.log
-```
+**Status icons:**
+- `✓` — task completed successfully (green)
+- `·` — not applicable on this platform/profile (dim)
+- `○` — deliberately skipped (yellow)
+- `~` — dry-run preview (white)
+- `✗` — task failed (red)
 
 **Dry-run summary:**
-Counters show "(would be)" suffix:
+Status icons show `~` for tasks that would have run:
 ```
-:: Installation Summary
-Packages installed (would be): 15
-Symlinks created (would be): 8
-Log file: /home/user/.cache/dotfiles/install.log
-Diagnostic log: /home/user/.cache/dotfiles/install.diag.log
+:: Summary
+   Bootstrap
+     ~ Self-update
+     ~ Configure sparse checkout
+   Configure
+     ~ Install symlinks
+     ~ Configure Git
+
+   4 tasks: 0 ok, 0 n/a, 0 skipped, 4 dry-run, 0 failed
+   log: /home/user/.cache/dotfiles/install.log
 ```
 
 ## Idempotency

@@ -82,6 +82,21 @@ impl Resource for HookFileResource {
             return Ok(ResourceState::Missing);
         }
 
+        // On Unix, verify the installed hook has the executable bit set
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&self.target)
+                .with_context(|| format!("read target metadata: {}", self.target.display()))?
+                .permissions()
+                .mode();
+            if mode & 0o111 == 0 {
+                return Ok(ResourceState::Incorrect {
+                    current: "not executable".to_string(),
+                });
+            }
+        }
+
         // Compare file contents
         let src_content = std::fs::read(&self.source)
             .with_context(|| format!("read source: {}", self.source.display()))?;
@@ -138,8 +153,31 @@ mod tests {
         let content = "#!/bin/sh\necho hi";
         std::fs::write(&src, content).unwrap();
         std::fs::write(&dst, content).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
         let resource = HookFileResource::new(src, dst);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn current_state_not_executable_returns_incorrect() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("hook");
+        let dst = dir.path().join("target");
+        let content = "#!/bin/sh\necho hi";
+        std::fs::write(&src, content).unwrap();
+        std::fs::write(&dst, content).unwrap();
+        std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let resource = HookFileResource::new(src, dst);
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Incorrect { current } if current == "not executable"
+        ));
     }
 
     #[test]

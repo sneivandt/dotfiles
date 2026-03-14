@@ -364,10 +364,19 @@ mod tests {
         std::fs::create_dir(&hooks_dir).unwrap();
         std::fs::write(hooks_dir.join("pre-commit"), "#!/bin/sh\nexit 0").unwrap();
 
-        // Create .git/hooks/ with the hook already installed
+        // Create .git/hooks/ with the hook already installed (executable, as apply() would)
         let git_hooks_dir = dir.path().join(".git").join("hooks");
         std::fs::create_dir_all(&git_hooks_dir).unwrap();
         std::fs::write(git_hooks_dir.join("pre-commit"), "#!/bin/sh\nexit 0").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                git_hooks_dir.join("pre-commit"),
+                std::fs::Permissions::from_mode(0o755),
+            )
+            .unwrap();
+        }
 
         let config = empty_config(dir.path().to_path_buf());
         let ctx = make_linux_context(config);

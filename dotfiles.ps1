@@ -17,6 +17,7 @@
 $ErrorActionPreference = 'Stop'
 $DotfilesRoot = $PSScriptRoot
 $env:DOTFILES_ROOT = $DotfilesRoot
+$env:DOTFILES_WRAPPER = "pwsh"
 $Repo = "sneivandt/dotfiles"
 $BinDir = Join-Path $DotfilesRoot "bin"
 $TransferTimeout = 120  # seconds — total transfer timeout

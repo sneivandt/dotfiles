@@ -229,6 +229,8 @@ The execution engine provides the generic resource processing loop, dependency g
 - `vscode` — Install VS Code extensions
 - `copilot_plugins` — Download Copilot CLI plugins
 - `wsl_conf` — Write `/etc/wsl.conf` with `generateResolvConf = true` (Linux only, uses sudo)
+- `wrapper` — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
+- `path` — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
 
 #### Platform Detection (`platform.rs`)
 

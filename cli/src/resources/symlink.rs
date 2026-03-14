@@ -146,7 +146,9 @@ fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
 
     let mut guard = crate::fs::TempPath::new(tmp.clone());
 
-    remove_symlink(target).with_context(|| format!("remove symlink: {}", target.display()))?;
+    if target.symlink_metadata().is_ok() {
+        remove_symlink(target).with_context(|| format!("remove symlink: {}", target.display()))?;
+    }
     std::fs::rename(&tmp, target)
         .with_context(|| format!("rename {} to {}", tmp.display(), target.display()))?;
 
@@ -164,8 +166,10 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
     crate::fs::copy_dir_recursive(source, &tmp, false)
         .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;
 
-    remove_symlink(target)
-        .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
+    if target.symlink_metadata().is_ok() {
+        remove_symlink(target)
+            .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
+    }
 
     // Prefer atomic rename; fall back to copy+delete only on cross-filesystem move.
     match std::fs::rename(&tmp, target) {
@@ -661,5 +665,68 @@ mod tests {
             std::fs::read(target_dir.join("sub").join("b.txt")).unwrap(),
             b"bbb"
         );
+    }
+
+    /// `remove()` on a file symlink must succeed even when the symlink has
+    /// already been manually deleted — source content is materialized at the
+    /// target path regardless.
+    #[cfg(unix)]
+    #[test]
+    #[allow(clippy::redundant_clone)]
+    fn remove_file_symlink_materializes_content_when_target_already_gone() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("target.txt");
+        std::fs::write(&source, b"hello dotfiles").unwrap();
+
+        let resource = SymlinkResource::new(source.clone(), target.clone(), system_executor());
+        resource.apply().unwrap();
+
+        // Manually remove the symlink before calling remove().
+        std::fs::remove_file(&target).unwrap();
+        assert!(
+            target.symlink_metadata().is_err(),
+            "precondition: target must be absent"
+        );
+
+        // remove() must not error and must materialize source content.
+        resource.remove().unwrap();
+
+        let meta = std::fs::symlink_metadata(&target).unwrap();
+        assert!(!meta.is_symlink(), "target should not be a symlink");
+        assert!(meta.is_file(), "target should be a regular file");
+        assert_eq!(std::fs::read(&target).unwrap(), b"hello dotfiles");
+    }
+
+    /// `remove()` on a directory symlink must succeed even when the symlink
+    /// has already been manually deleted.
+    #[cfg(unix)]
+    #[test]
+    #[allow(clippy::redundant_clone)]
+    fn remove_dir_symlink_materializes_content_when_target_already_gone() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source_dir = temp_dir.path().join("src_dir");
+        let target_dir = temp_dir.path().join("target_dir");
+        std::fs::create_dir(&source_dir).unwrap();
+        std::fs::write(source_dir.join("a.txt"), b"aaa").unwrap();
+
+        let resource =
+            SymlinkResource::new(source_dir.clone(), target_dir.clone(), system_executor());
+        resource.apply().unwrap();
+
+        // Manually remove the symlink before calling remove().
+        std::fs::remove_file(&target_dir).unwrap();
+        assert!(
+            target_dir.symlink_metadata().is_err(),
+            "precondition: target must be absent"
+        );
+
+        // remove() must not error and must materialize source content.
+        resource.remove().unwrap();
+
+        let meta = std::fs::symlink_metadata(&target_dir).unwrap();
+        assert!(!meta.is_symlink(), "target should not be a symlink");
+        assert!(meta.is_dir(), "target should be a real directory");
+        assert_eq!(std::fs::read(target_dir.join("a.txt")).unwrap(), b"aaa");
     }
 }

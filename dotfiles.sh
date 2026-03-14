@@ -13,7 +13,7 @@ set -o nounset
 
 DOTFILES_ROOT="$(dirname "$(readlink -f "$0")")"
 export DOTFILES_ROOT
-DOTFILES_WRAPPER=sh
+DOTFILES_WRAPPER="sh"
 export DOTFILES_WRAPPER
 
 REPO="sneivandt/dotfiles"

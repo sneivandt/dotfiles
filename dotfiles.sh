@@ -90,7 +90,7 @@ _verify_checksum() {
     echo "ERROR: Failed to download checksum file." >&2
     return 1
   fi
-  expected=$(awk -v fname="$_vc_asset" '$2 == fname {print $1}' "$tmpfile")
+  expected=$(awk -v fname="$_vc_asset" '{ name=$2; sub(/^\*/, "", name); if (name == fname) print $1 }' "$tmpfile")
   if [ -z "$expected" ]; then
     echo "ERROR: Checksum not found in checksum file for $_vc_asset." >&2
     return 1

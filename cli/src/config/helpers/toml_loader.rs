@@ -130,16 +130,13 @@ pub fn filter_by_categories<T>(
     items: Vec<(String, Vec<T>)>,
     active_categories: &[Category],
 ) -> Vec<T> {
-    use super::category_matcher::matches;
-
     items
         .into_iter()
         .filter(|(section_name, _)| {
-            let categories: Vec<Category> = section_name
+            section_name
                 .split('-')
                 .map(|s| Category::from_tag(s.trim()))
-                .collect();
-            matches(&categories, active_categories)
+                .all(|cat| active_categories.contains(&cat))
         })
         .flat_map(|(_, items)| items)
         .collect()

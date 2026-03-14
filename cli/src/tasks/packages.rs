@@ -152,7 +152,7 @@ fn check_prerequisites(ctx: &Context) -> Result<()> {
         if !ctx.executor.which(dep) {
             anyhow::bail!("missing prerequisite: {dep}");
         }
-        ctx.log.debug(&format!("prerequisite ok: {dep}"));
+        ctx.debug_fmt(|| format!("prerequisite ok: {dep}"));
     }
     Ok(())
 }
@@ -248,7 +248,7 @@ impl PackageStrategy for BatchInstall {
 
         for r in &resources {
             if installed.contains(&r.name) {
-                ctx.log.debug(&format!("ok: {}", r.description()));
+                ctx.debug_fmt(|| format!("ok: {}", r.description()));
                 stats.already_ok += 1;
             } else {
                 missing.push(r);
@@ -314,10 +314,12 @@ fn process_packages(
     packages: &[Package],
     manager: PackageManager,
 ) -> Result<TaskResult> {
-    ctx.log.debug(&format!(
-        "batch-checking {} packages with a single query",
-        packages.len()
-    ));
+    ctx.debug_fmt(|| {
+        format!(
+            "batch-checking {} packages with a single query",
+            packages.len()
+        )
+    });
     let installed = get_installed_packages(manager, &*ctx.executor)?;
 
     let strategy: &dyn PackageStrategy = match manager {

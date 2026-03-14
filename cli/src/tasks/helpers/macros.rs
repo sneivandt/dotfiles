@@ -220,10 +220,12 @@ macro_rules! batch_resource_task {
                 if $cache_items.is_empty() {
                     return Ok(None);
                 }
-                ctx.log.debug(&format!(
-                    "batch-checking {} resources with a single query",
-                    $cache_items.len()
-                ));
+                ctx.debug_fmt(|| {
+                    format!(
+                        "batch-checking {} resources with a single query",
+                        $cache_items.len()
+                    )
+                });
                 let $cache_ctx = ctx;
                 let $state_cache = { $cache_expr }?;
                 let resource_states = $cache_items.into_iter().map(|$item| {
@@ -243,10 +245,12 @@ macro_rules! batch_resource_task {
                         "nothing configured".to_string(),
                     ));
                 }
-                ctx.log.debug(&format!(
-                    "batch-checking {} resources with a single query",
-                    $cache_items.len()
-                ));
+                ctx.debug_fmt(|| {
+                    format!(
+                        "batch-checking {} resources with a single query",
+                        $cache_items.len()
+                    )
+                });
                 let $cache_ctx = ctx;
                 let $state_cache = { $cache_expr }?;
                 let resource_states = $cache_items.into_iter().map(|$item| {

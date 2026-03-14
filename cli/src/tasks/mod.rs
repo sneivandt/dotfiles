@@ -125,7 +125,7 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
                 ctx.log.record_task(task.name(), TaskStatus::Ok, None);
             }
             TaskResult::NotApplicable(reason) => {
-                ctx.log.debug(&format!("not applicable: {reason}"));
+                ctx.debug_fmt(|| format!("not applicable: {reason}"));
                 ctx.log
                     .record_task(task.name(), TaskStatus::NotApplicable, None);
             }

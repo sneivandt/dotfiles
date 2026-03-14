@@ -39,13 +39,19 @@ impl Category {
     /// ```
     #[must_use]
     pub fn from_tag(s: &str) -> Self {
-        match s.trim().to_lowercase().as_str() {
-            "base" => Self::Base,
-            "linux" => Self::Linux,
-            "windows" => Self::Windows,
-            "arch" => Self::Arch,
-            "desktop" => Self::Desktop,
-            other => Self::Other(other.to_string()),
+        let trimmed = s.trim();
+        if trimmed.eq_ignore_ascii_case("base") {
+            Self::Base
+        } else if trimmed.eq_ignore_ascii_case("linux") {
+            Self::Linux
+        } else if trimmed.eq_ignore_ascii_case("windows") {
+            Self::Windows
+        } else if trimmed.eq_ignore_ascii_case("arch") {
+            Self::Arch
+        } else if trimmed.eq_ignore_ascii_case("desktop") {
+            Self::Desktop
+        } else {
+            Self::Other(trimmed.to_lowercase())
         }
     }
 

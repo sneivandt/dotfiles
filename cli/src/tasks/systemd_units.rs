@@ -20,7 +20,7 @@ resource_task! {
                 ctx.log.debug("running systemctl --user daemon-reload");
                 match ctx.executor.run("systemctl", &["--user", "daemon-reload"]) {
                     Ok(_) => ctx.log.debug("daemon-reload succeeded"),
-                    Err(e) => ctx.log.debug(&format!("daemon-reload failed: {e}")),
+                    Err(e) => ctx.debug_fmt(|| format!("daemon-reload failed: {e}")),
                 }
             }
         },

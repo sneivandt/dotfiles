@@ -215,8 +215,15 @@ impl Context {
     #[must_use]
     pub fn with_log(&self, log: Arc<dyn Log>) -> Self {
         Self {
+            config: self.config.clone(),
+            platform: self.platform,
             log,
-            ..self.clone()
+            dry_run: self.dry_run,
+            home: self.home.clone(),
+            executor: self.executor.clone(),
+            parallel: self.parallel,
+            is_ci: self.is_ci,
+            cancelled: self.cancelled.clone(),
         }
     }
 
@@ -224,8 +231,15 @@ impl Context {
     #[must_use]
     pub fn with_dry_run(&self, dry_run: bool) -> Self {
         Self {
+            config: self.config.clone(),
+            platform: self.platform,
+            log: self.log.clone(),
             dry_run,
-            ..self.clone()
+            home: self.home.clone(),
+            executor: self.executor.clone(),
+            parallel: self.parallel,
+            is_ci: self.is_ci,
+            cancelled: self.cancelled.clone(),
         }
     }
 
@@ -233,8 +247,15 @@ impl Context {
     #[must_use]
     pub fn with_parallel(&self, parallel: bool) -> Self {
         Self {
+            config: self.config.clone(),
+            platform: self.platform,
+            log: self.log.clone(),
+            dry_run: self.dry_run,
+            home: self.home.clone(),
+            executor: self.executor.clone(),
             parallel,
-            ..self.clone()
+            is_ci: self.is_ci,
+            cancelled: self.cancelled.clone(),
         }
     }
 
@@ -242,8 +263,15 @@ impl Context {
     #[must_use]
     pub fn with_home(&self, home: std::path::PathBuf) -> Self {
         Self {
+            config: self.config.clone(),
+            platform: self.platform,
+            log: self.log.clone(),
+            dry_run: self.dry_run,
             home,
-            ..self.clone()
+            executor: self.executor.clone(),
+            parallel: self.parallel,
+            is_ci: self.is_ci,
+            cancelled: self.cancelled.clone(),
         }
     }
 
@@ -254,8 +282,15 @@ impl Context {
     #[must_use]
     pub fn with_ci(&self, is_ci: bool) -> Self {
         Self {
+            config: self.config.clone(),
+            platform: self.platform,
+            log: self.log.clone(),
+            dry_run: self.dry_run,
+            home: self.home.clone(),
+            executor: self.executor.clone(),
+            parallel: self.parallel,
             is_ci,
-            ..self.clone()
+            cancelled: self.cancelled.clone(),
         }
     }
 
@@ -265,8 +300,15 @@ impl Context {
     #[must_use]
     pub fn with_cancellation(&self, cancelled: CancellationToken) -> Self {
         Self {
+            config: self.config.clone(),
+            platform: self.platform,
+            log: self.log.clone(),
+            dry_run: self.dry_run,
+            home: self.home.clone(),
+            executor: self.executor.clone(),
+            parallel: self.parallel,
+            is_ci: self.is_ci,
             cancelled,
-            ..self.clone()
         }
     }
 

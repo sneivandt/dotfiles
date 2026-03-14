@@ -29,12 +29,14 @@ impl Task for InstallVsCodeExtensions {
             return Ok(TaskResult::Skipped("VS Code CLI not found".to_string()));
         };
 
-        ctx.log.debug(&format!("using VS Code CLI: {cmd}"));
+        ctx.debug_fmt(|| format!("using VS Code CLI: {cmd}"));
         let extensions: Vec<_> = ctx.config_read().vscode_extensions.clone();
-        ctx.log.debug(&format!(
-            "batch-checking {} extensions with a single query",
-            extensions.len()
-        ));
+        ctx.debug_fmt(|| {
+            format!(
+                "batch-checking {} extensions with a single query",
+                extensions.len()
+            )
+        });
         let installed = get_installed_extensions(&cmd, &*ctx.executor)?;
 
         process_resource_states(

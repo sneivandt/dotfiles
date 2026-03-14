@@ -109,10 +109,7 @@ pub fn process_resources_remove<R: Resource + Send>(
     let span = tracing::debug_span!("process_resources_remove", verb, count = resources.len());
     let _enter = span.enter();
     if ctx.parallel && resources.len() > 1 {
-        ctx.log.debug(&format!(
-            "processing {} resources in parallel",
-            resources.len()
-        ));
+        ctx.debug_fmt(|| format!("processing {} resources in parallel", resources.len()));
         parallel::process_remove_parallel(ctx, resources, verb)
     } else {
         let mut stats = TaskStats::new();

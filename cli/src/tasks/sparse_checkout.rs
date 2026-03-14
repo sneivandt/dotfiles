@@ -65,12 +65,9 @@ fn remove_broken_git_symlinks(ctx: &Context, fs: &dyn FileSystemOps) {
         if !is_broken_symlink_into(fs, &path, &symlinks_dir) {
             continue;
         }
-        ctx.log.debug(&format!(
-            "removing broken git config symlink: {}",
-            path.display()
-        ));
+        ctx.debug_fmt(|| format!("removing broken git config symlink: {}", path.display()));
         if let Err(e) = fs.remove(&path) {
-            ctx.log.debug(&format!("failed to remove symlink: {e}"));
+            ctx.debug_fmt(|| format!("failed to remove symlink: {e}"));
         }
     }
 }
@@ -201,10 +198,12 @@ impl Task for ConfigureSparseCheckout {
             &["config", "core.sparseCheckoutCone", "false"],
         )?;
 
-        ctx.log.debug(&format!(
-            "sparse checkout patterns: 1 inclusion, {} exclusions",
-            excluded_files.len()
-        ));
+        ctx.debug_fmt(|| {
+            format!(
+                "sparse checkout patterns: 1 inclusion, {} exclusions",
+                excluded_files.len()
+            )
+        });
 
         // Write directly to sparse-checkout file
         let info_dir = root.join(".git/info");
@@ -223,13 +222,15 @@ impl Task for ConfigureSparseCheckout {
             .collect();
         if !excluded.is_empty() {
             checkout_args.extend(&excluded);
-            ctx.log.debug(&format!(
-                "resetting {} excluded files to HEAD before read-tree",
-                excluded.len()
-            ));
+            ctx.debug_fmt(|| {
+                format!(
+                    "resetting {} excluded files to HEAD before read-tree",
+                    excluded.len()
+                )
+            });
             // Best-effort: if checkout fails (e.g. file not in HEAD), proceed anyway
             if let Err(e) = ctx.executor.run_in(&root, "git", &checkout_args) {
-                ctx.log.debug(&format!("git checkout reset failed: {e}"));
+                ctx.debug_fmt(|| format!("git checkout reset failed: {e}"));
             }
         }
 

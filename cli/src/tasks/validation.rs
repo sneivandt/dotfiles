@@ -112,7 +112,7 @@ impl Task for ValidateConfigFiles {
         for config_file in &required {
             let path = conf.join(config_file);
             if path.exists() {
-                ctx.log.debug(&format!("found conf/{config_file}"));
+                ctx.debug_fmt(|| format!("found conf/{config_file}"));
             } else {
                 ctx.log
                     .error(&format!("missing config: conf/{config_file}"));

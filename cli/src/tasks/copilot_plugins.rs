@@ -37,10 +37,12 @@ impl Task for InstallCopilotPlugins {
         let plugins_supported = if gh_available {
             match get_copilot_version(&*ctx.executor) {
                 Ok(version) => {
-                    ctx.log.debug(&format!(
-                        "Copilot CLI version: {}.{}.{}",
-                        version.0, version.1, version.2
-                    ));
+                    ctx.debug_fmt(|| {
+                        format!(
+                            "Copilot CLI version: {}.{}.{}",
+                            version.0, version.1, version.2
+                        )
+                    });
                     if copilot_supports_plugins(version) {
                         true
                     } else {
@@ -70,10 +72,12 @@ impl Task for InstallCopilotPlugins {
 
         let plugins: Vec<_> = ctx.config_read().copilot_plugins.clone();
         let cache = if plugins_supported {
-            ctx.log.debug(&format!(
-                "batch-checking {} Copilot plugins with a single CLI query",
-                plugins.len()
-            ));
+            ctx.debug_fmt(|| {
+                format!(
+                    "batch-checking {} Copilot plugins with a single CLI query",
+                    plugins.len()
+                )
+            });
             get_copilot_plugin_state(&*ctx.executor)?
         } else {
             ctx.log.debug(
@@ -105,9 +109,9 @@ impl Task for InstallCopilotPlugins {
 
         if !ctx.dry_run {
             for (marketplace, marketplace_name) in missing_marketplaces {
-                ctx.log.debug(&format!(
-                    "registering Copilot marketplace {marketplace_name} ({marketplace})"
-                ));
+                ctx.debug_fmt(|| {
+                    format!("registering Copilot marketplace {marketplace_name} ({marketplace})")
+                });
                 register_marketplace(&marketplace, &*ctx.executor)?;
             }
         }

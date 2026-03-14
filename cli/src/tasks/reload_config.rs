@@ -46,11 +46,13 @@ impl Task for ReloadConfig {
                 .context("reloading configuration after repository update")?
         };
 
-        ctx.log.debug(&format!(
-            "{} packages, {} symlinks after reload",
-            new_config.packages.len(),
-            new_config.symlinks.len()
-        ));
+        ctx.debug_fmt(|| {
+            format!(
+                "{} packages, {} symlinks after reload",
+                new_config.packages.len(),
+                new_config.symlinks.len()
+            )
+        });
 
         // Atomically replace the shared config so all downstream tasks see the
         // freshly-loaded values.

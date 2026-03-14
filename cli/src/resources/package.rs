@@ -176,16 +176,20 @@ fn byte_offset_of_col(line: &str, col_idx: usize) -> Option<usize> {
 /// Parse package IDs from `winget list` output.
 fn parse_winget_ids(stdout: &str) -> HashSet<String> {
     let mut ids = HashSet::new();
-    let mut id_byte_start: Option<usize> = None;
+    let mut id_col_idx: Option<usize> = None;
 
     for line in stdout.lines() {
-        if let Some(start) = id_byte_start {
+        if let Some(col_idx) = id_col_idx {
             // Skip separator lines (all dashes/spaces).
             if line.bytes().all(|b| b == b'-' || b == b' ') {
                 continue;
             }
-            // Extract the Id column value from the known byte offset.
-            if let Some(slice) = line.get(start..) {
+            // Re-derive the byte offset for this specific row so that
+            // multi-byte Unicode characters in earlier columns (e.g. the
+            // Name column) do not shift the slice position.
+            if let Some(start) = byte_offset_of_col(line, col_idx)
+                && let Some(slice) = line.get(start..)
+            {
                 let id = slice
                     .find("  ")
                     .map_or_else(|| slice.trim(), |sep_pos| slice[..sep_pos].trim());
@@ -194,10 +198,10 @@ fn parse_winget_ids(stdout: &str) -> HashSet<String> {
                 }
             }
         } else {
-            // Locate the header line and record the byte offset of "Id".
+            // Locate the header line and record the column INDEX of "Id".
             let cols = split_padded_columns(line);
             if let Some(id_idx) = cols.iter().position(|c| c == "Id") {
-                id_byte_start = byte_offset_of_col(line, id_idx);
+                id_col_idx = Some(id_idx);
             }
         }
     }
@@ -650,6 +654,43 @@ mod tests {
         assert!(installed.contains("Git.Git"));
         assert!(installed.contains("Microsoft.WindowsTerminal"));
         assert_eq!(installed.len(), 2, "only package IDs should be collected");
+    }
+
+    #[test]
+    fn get_installed_winget_handles_unicode_in_name_column() {
+        // The Name column contains multi-byte Unicode characters (accented letters,
+        // an em dash, and CJK characters).  The byte offset of the Id column in
+        // each data row differs from the header's byte offset, so the fix of
+        // re-deriving the byte offset per row is required to extract IDs correctly.
+        let stdout = concat!(
+            "Name                          Id                           Version\n",
+            "-------------------------------------------------------------------\n",
+            // CJK characters (中 is 3 bytes each) in Name
+            "中文名称 App                   Unicode.App                  1.0.0\n",
+            // em dash (—, 3 bytes) in Name
+            "App \u{2014} Edition           App.Edition                  2.0.0\n",
+            // accented characters (2 bytes each) in Name
+            "Ünïcödé App                   Unicode.Accented             3.0.0\n",
+        );
+
+        let installed = parse_winget_ids(stdout);
+        assert!(
+            installed.contains("Unicode.App"),
+            "should extract ID from row with CJK characters in Name"
+        );
+        assert!(
+            installed.contains("App.Edition"),
+            "should extract ID from row with em dash in Name"
+        );
+        assert!(
+            installed.contains("Unicode.Accented"),
+            "should extract ID from row with accented characters in Name"
+        );
+        assert_eq!(
+            installed.len(),
+            3,
+            "all three package IDs should be collected"
+        );
     }
 
     // ------------------------------------------------------------------

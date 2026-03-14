@@ -192,8 +192,10 @@ mod tests {
     #[test]
     fn description_includes_dir() {
         let r = make_path_entry(Path::new("/home/user"), false);
+        let expected = Path::new(".local").join("bin");
         assert!(
-            r.description().contains(".local/bin"),
+            r.description()
+                .contains(expected.to_string_lossy().as_ref()),
             "got: {}",
             r.description()
         );

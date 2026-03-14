@@ -1,8 +1,8 @@
 //! CLI wrapper installation resource.
 //!
 //! Installs a small script on the user's `PATH` (`~/.local/bin/dotfiles` on
-//! Unix, `~/.local/bin/dotfiles.ps1` for `PowerShell`) that delegates to the
-//! repository's wrapper script so `dotfiles` can be invoked from anywhere.
+//! both Unix and Windows) that delegates to the repository's wrapper script
+//! so `dotfiles` can be invoked from anywhere.
 use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
@@ -70,7 +70,7 @@ impl WrapperResource {
                 (target, content)
             }
             WrapperType::Pwsh => {
-                let target = bin_dir.join("dotfiles.ps1");
+                let target = bin_dir.join("dotfiles");
                 let content = format!(
                     "# Installed by dotfiles \u{2014} do not edit.\n\
                      if (-not $env:DOTFILES_ROOT) {{ $env:DOTFILES_ROOT = '{root}' }}\n\
@@ -156,8 +156,10 @@ mod tests {
     #[test]
     fn sh_description_includes_target_path() {
         let r = make_sh_resource(Path::new("/repo"), Path::new("/home/user"));
+        let expected = Path::new(".local").join("bin").join("dotfiles");
         assert!(
-            r.description().contains(".local/bin/dotfiles"),
+            r.description()
+                .contains(expected.to_string_lossy().as_ref()),
             "got: {}",
             r.description()
         );
@@ -166,8 +168,10 @@ mod tests {
     #[test]
     fn pwsh_description_includes_target_path() {
         let r = make_pwsh_resource(Path::new("/repo"), Path::new("/home/user"));
+        let expected = Path::new(".local").join("bin").join("dotfiles");
         assert!(
-            r.description().contains(".local/bin/dotfiles.ps1"),
+            r.description()
+                .contains(expected.to_string_lossy().as_ref()),
             "got: {}",
             r.description()
         );
@@ -308,11 +312,8 @@ mod tests {
     }
 
     #[test]
-    fn pwsh_target_is_local_bin_dotfiles_ps1() {
+    fn pwsh_target_is_local_bin_dotfiles() {
         let r = make_pwsh_resource(Path::new("/repo"), Path::new("/home/user"));
-        assert_eq!(
-            r.target,
-            PathBuf::from("/home/user/.local/bin/dotfiles.ps1")
-        );
+        assert_eq!(r.target, PathBuf::from("/home/user/.local/bin/dotfiles"));
     }
 }

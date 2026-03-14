@@ -153,19 +153,35 @@ test_wrapper_checksum_verification()
   # Create test binary file
   echo "fake binary content" > "$tmpdir/dotfiles"
 
-  # Create checksums file
+  # Create checksums file (space-separated format)
   cat > "$tmpdir/checksums.sha256" <<EOF
 abc123  dotfiles-linux-x86_64
 def456  dotfiles-windows-x86_64.exe
 EOF
 
-  # Test checksum extraction
-  expected=$(grep "dotfiles-linux-x86_64" "$tmpdir/checksums.sha256" | awk '{print $1}')
+  # Test checksum extraction (space-separated format)
+  expected=$(awk -v fname="dotfiles-linux-x86_64" '{ name=$2; sub(/^\*/, "", name); if (name == fname) print $1 }' "$tmpdir/checksums.sha256")
 
   if [ "$expected" = "abc123" ]; then
-    log_verbose "✓ Checksum extraction works correctly"
+    log_verbose "✓ Checksum extraction works correctly (space-separated format)"
   else
-    printf "%sERROR: Checksum extraction failed: got '%s'%s\n" "${RED}" "$expected" "${NC}" >&2
+    printf "%sERROR: Checksum extraction failed (space-separated format): got '%s'%s\n" "${RED}" "$expected" "${NC}" >&2
+    return 1
+  fi
+
+  # Create checksums file (binary mode format with * prefix)
+  cat > "$tmpdir/checksums-binary.sha256" <<EOF
+abc123 *dotfiles-linux-x86_64
+def456 *dotfiles-windows-x86_64.exe
+EOF
+
+  # Test checksum extraction (binary mode format with * prefix)
+  expected=$(awk -v fname="dotfiles-linux-x86_64" '{ name=$2; sub(/^\*/, "", name); if (name == fname) print $1 }' "$tmpdir/checksums-binary.sha256")
+
+  if [ "$expected" = "abc123" ]; then
+    log_verbose "✓ Checksum extraction works correctly (binary mode * prefix format)"
+  else
+    printf "%sERROR: Checksum extraction failed (binary mode * prefix format): got '%s'%s\n" "${RED}" "$expected" "${NC}" >&2
     return 1
   fi
 

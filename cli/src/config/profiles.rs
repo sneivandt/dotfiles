@@ -116,108 +116,14 @@ pub fn resolve(name: &str, conf_dir: &Path, platform: Platform) -> Result<Profil
     })
 }
 
-/// Try to read the persisted profile directly from .git/config.
+/// Try to read the profile from the `DOTFILES_PROFILE` environment variable.
 #[must_use]
-pub fn read_persisted(root: &Path) -> Option<String> {
-    let content = std::fs::read_to_string(root.join(".git").join("config")).ok()?;
-    let mut in_dotfiles = false;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') {
-            in_dotfiles = trimmed == "[dotfiles]";
-            continue;
-        }
-        if in_dotfiles
-            && let Some(rest) = trimmed.strip_prefix("profile")
-            && let Some(value) = rest.trim_start().strip_prefix('=')
-        {
-            let v = value.trim().to_string();
-            if !v.is_empty() {
-                return Some(v);
-            }
-        }
-    }
-    None
+pub fn read_from_env() -> Option<String> {
+    parse_env_profile(std::env::var("DOTFILES_PROFILE").ok())
 }
 
-/// Persist the profile selection directly to .git/config.
-///
-/// # Errors
-///
-/// Returns an error if the config file cannot be read or written.
-pub fn persist(root: &Path, name: &str) -> Result<()> {
-    let path = root.join(".git").join("config");
-    let content = if path.exists() {
-        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?
-    } else {
-        String::new()
-    };
-    let new_content = set_git_config_value(&content, "dotfiles", "profile", name);
-    std::fs::write(&path, new_content)
-        .with_context(|| format!("writing {}", path.display()))
-        .context("persisting profile to git config")?;
-    Ok(())
-}
-
-/// Update or insert `key = value` within `[section]` in a git config string.
-fn set_git_config_value(content: &str, section: &str, key: &str, value: &str) -> String {
-    let section_header = format!("[{section}]");
-    let new_line = format!("\t{key} = {value}");
-
-    let lines: Vec<&str> = content.lines().collect();
-    let mut out: Vec<String> = Vec::with_capacity(lines.len() + 2);
-    let mut in_section = false;
-    let mut key_written = false;
-    let mut section_seen = false;
-
-    for line in &lines {
-        let trimmed = line.trim();
-        let entering_new_section = trimmed.starts_with('[');
-
-        if entering_new_section && in_section && !key_written {
-            out.push(new_line.clone());
-            key_written = true;
-        }
-
-        if entering_new_section {
-            in_section = trimmed == section_header;
-            if in_section {
-                section_seen = true;
-            }
-            out.push(line.to_string());
-            continue;
-        }
-
-        if in_section
-            && !key_written
-            && let Some(after_key) = trimmed.strip_prefix(key)
-            && after_key.trim_start().starts_with('=')
-        {
-            out.push(new_line.clone());
-            key_written = true;
-            continue;
-        }
-
-        out.push(line.to_string());
-    }
-
-    if in_section && !key_written {
-        out.push(new_line.clone());
-    }
-
-    if !section_seen {
-        if !out.is_empty() {
-            out.push(String::new());
-        }
-        out.push(section_header);
-        out.push(new_line);
-    }
-
-    let mut result = out.join("\n");
-    if !result.ends_with('\n') {
-        result.push('\n');
-    }
-    result
+fn parse_env_profile(raw: Option<String>) -> Option<String> {
+    raw.filter(|v| !v.is_empty())
 }
 
 /// Interactively prompt the user to select a profile.
@@ -271,7 +177,7 @@ pub fn prompt_interactive(conf_dir: &Path) -> Result<String> {
         .context("selection out of range")
 }
 
-/// Resolve the profile from CLI arg, git config, or interactive prompt.
+/// Resolve the profile from CLI arg, `DOTFILES_PROFILE` env var, or interactive prompt.
 ///
 /// # Errors
 ///
@@ -286,24 +192,13 @@ pub fn resolve_from_args(
 
     let name = if let Some(name) = cli_profile {
         name.to_string()
-    } else if let Some(name) = read_persisted(root) {
+    } else if let Some(name) = read_from_env() {
         name
     } else {
         prompt_interactive(&conf_dir)?
     };
 
-    // Let resolve() validate the profile name against loaded definitions
-    let profile = resolve(&name, &conf_dir, platform)?;
-
-    // Persist for next time (skip during dry-run to avoid side effects)
-    // Note: dry_run is not available here, so we always persist. The profile
-    // selection itself is not a destructive operation — it only records the
-    // user's choice for subsequent runs. Persistence is best-effort — if
-    // .git/config is not writable (e.g. a read-only bind mount in a container
-    // build), silently skip rather than aborting the run.
-    persist(root, &name).ok();
-
-    Ok(profile)
+    resolve(&name, &conf_dir, platform).map_err(Into::into)
 }
 
 #[cfg(test)]
@@ -423,104 +318,25 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // read_persisted
+    // parse_env_profile (backing read_from_env)
     // ------------------------------------------------------------------
 
     #[test]
-    fn read_persisted_returns_profile_name() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let git_dir = dir.path().join(".git");
-        std::fs::create_dir_all(&git_dir).expect("create .git");
-        std::fs::write(git_dir.join("config"), "[dotfiles]\n\tprofile = desktop\n")
-            .expect("write config");
-        assert_eq!(read_persisted(dir.path()), Some("desktop".to_string()));
-    }
-
-    #[test]
-    fn read_persisted_returns_none_when_no_git_config() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        assert_eq!(read_persisted(dir.path()), None);
-    }
-
-    #[test]
-    fn read_persisted_returns_none_when_profile_empty() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let git_dir = dir.path().join(".git");
-        std::fs::create_dir_all(&git_dir).expect("create .git");
-        std::fs::write(git_dir.join("config"), "[dotfiles]\n\tprofile = \n").expect("write config");
-        assert_eq!(read_persisted(dir.path()), None);
-    }
-
-    // ------------------------------------------------------------------
-    // persist
-    // ------------------------------------------------------------------
-
-    #[test]
-    fn persist_creates_section_and_key() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let git_dir = dir.path().join(".git");
-        std::fs::create_dir_all(&git_dir).expect("create .git");
-        std::fs::write(git_dir.join("config"), "[core]\n\tbare = false\n").expect("write config");
-        persist(dir.path(), "base").expect("persist");
-        assert_eq!(read_persisted(dir.path()), Some("base".to_string()));
-    }
-
-    #[test]
-    fn persist_updates_existing_key() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let git_dir = dir.path().join(".git");
-        std::fs::create_dir_all(&git_dir).expect("create .git");
-        std::fs::write(git_dir.join("config"), "[dotfiles]\n\tprofile = base\n")
-            .expect("write config");
-        persist(dir.path(), "desktop").expect("persist");
-        assert_eq!(read_persisted(dir.path()), Some("desktop".to_string()));
-    }
-
-    // ------------------------------------------------------------------
-    // set_git_config_value
-    // ------------------------------------------------------------------
-
-    #[test]
-    fn set_git_config_value_creates_section_in_empty_content() {
-        let result = set_git_config_value("", "dotfiles", "profile", "base");
-        assert!(result.contains("[dotfiles]"), "missing section header");
-        assert!(result.contains("profile = base"), "missing key=value");
-    }
-
-    #[test]
-    fn set_git_config_value_appends_key_to_existing_section() {
-        // Section exists but key is absent — the key should be appended inside it.
-        let content = "[dotfiles]\n\tother = value\n";
-        let result = set_git_config_value(content, "dotfiles", "profile", "desktop");
-        assert!(result.contains("profile = desktop"), "key not inserted");
-        assert!(
-            result.contains("other = value"),
-            "existing key must be preserved"
+    fn parse_env_profile_returns_some_for_valid_name() {
+        assert_eq!(
+            parse_env_profile(Some("desktop".to_string())),
+            Some("desktop".to_string())
         );
     }
 
     #[test]
-    fn set_git_config_value_updates_existing_key() {
-        let content = "[dotfiles]\n\tprofile = base\n";
-        let result = set_git_config_value(content, "dotfiles", "profile", "desktop");
-        assert!(result.contains("profile = desktop"), "key not updated");
-        // The old value must not remain.
-        assert!(
-            !result.contains("profile = base"),
-            "old value should be replaced"
-        );
+    fn parse_env_profile_returns_none_for_none() {
+        assert_eq!(parse_env_profile(None), None);
     }
 
     #[test]
-    fn set_git_config_value_preserves_other_sections() {
-        let content = "[core]\n\tbare = false\n[remote \"origin\"]\n\turl = git@github.com\n";
-        let result = set_git_config_value(content, "dotfiles", "profile", "base");
-        assert!(result.contains("[core]"), "core section must be preserved");
-        assert!(
-            result.contains("bare = false"),
-            "core key must be preserved"
-        );
-        assert!(result.contains("[dotfiles]"), "new section must be added");
+    fn parse_env_profile_returns_none_for_empty_string() {
+        assert_eq!(parse_env_profile(Some(String::new())), None);
     }
 
     // ------------------------------------------------------------------
@@ -545,17 +361,6 @@ mod tests {
         assert!(
             result.is_err(),
             "integer instead of array should return error"
-        );
-    }
-
-    #[test]
-    fn persist_returns_error_when_git_dir_missing() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        // No .git directory exists
-        let result = persist(dir.path(), "base");
-        assert!(
-            result.is_err(),
-            "persist should fail when .git dir does not exist"
         );
     }
 }

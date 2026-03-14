@@ -31,8 +31,6 @@ impl Task for InstallPackages {
         TaskPhase::Configure
     }
 
-    task_deps![crate::tasks::bootstrap::reload_config::ReloadConfig];
-
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.config_read().packages.iter().any(|p| !p.is_aur)
     }
@@ -84,10 +82,7 @@ impl Task for InstallAurPackages {
         TaskPhase::Configure
     }
 
-    task_deps![
-        InstallParu,
-        crate::tasks::bootstrap::reload_config::ReloadConfig
-    ];
+    task_deps![InstallParu];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_aur() && ctx.config_read().packages.iter().any(|p| p.is_aur)

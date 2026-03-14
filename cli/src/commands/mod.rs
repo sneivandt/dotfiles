@@ -13,7 +13,6 @@ use crate::config::Config;
 use crate::config::profiles;
 use crate::logging::{Log, Logger, Output};
 use crate::platform::Platform;
-#[cfg(test)]
 use crate::tasks::TaskPhase;
 use crate::tasks::{self, Context, Task};
 
@@ -265,7 +264,7 @@ mod task_graph_tests {
     use std::path::PathBuf;
     use std::sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     };
 
     struct CycleTaskA {
@@ -337,6 +336,93 @@ mod task_graph_tests {
         assert!(format!("{err:#}").contains("dependency cycle detected"));
         assert!(!ran_a.load(Ordering::SeqCst));
         assert!(!ran_b.load(Ordering::SeqCst));
+    }
+
+    struct BootstrapMarkTask {
+        name: &'static str,
+        completed: Arc<AtomicUsize>,
+    }
+
+    impl Task for BootstrapMarkTask {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Bootstrap
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.completed.fetch_add(1, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    struct ConfigureAfterBootstrapTask {
+        ran: Arc<AtomicBool>,
+        completed_bootstrap: Arc<AtomicUsize>,
+        expected_bootstrap_count: usize,
+    }
+
+    impl Task for ConfigureAfterBootstrapTask {
+        fn name(&self) -> &'static str {
+            "configure-after-bootstrap"
+        }
+
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            let done = self.completed_bootstrap.load(Ordering::SeqCst);
+            if done != self.expected_bootstrap_count {
+                return Ok(TaskResult::Failed(format!(
+                    "configure started before bootstrap completed: {done}/{}",
+                    self.expected_bootstrap_count
+                )));
+            }
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    #[test]
+    fn run_tasks_to_completion_completes_bootstrap_phase_before_configure() {
+        let (ctx, log) = make_static_context(empty_config(PathBuf::from("/repo")));
+        let ctx = ctx.with_parallel(true);
+
+        let completed_bootstrap = Arc::new(AtomicUsize::new(0));
+        let configure_ran = Arc::new(AtomicBool::new(false));
+
+        let bootstrap = BootstrapMarkTask {
+            name: "bootstrap-mark",
+            completed: Arc::clone(&completed_bootstrap),
+        };
+        let configure = ConfigureAfterBootstrapTask {
+            ran: Arc::clone(&configure_ran),
+            completed_bootstrap: Arc::clone(&completed_bootstrap),
+            expected_bootstrap_count: 1,
+        };
+
+        // Intentionally pass configure first to ensure phase gating, not input
+        // order, controls execution.
+        run_tasks_to_completion(
+            [&configure as &dyn Task, &bootstrap as &dyn Task],
+            &ctx,
+            &log,
+        )
+        .expect("phase barriers should run all bootstrap tasks before configure");
+
+        assert_eq!(completed_bootstrap.load(Ordering::SeqCst), 1);
+        assert!(configure_ran.load(Ordering::SeqCst));
     }
 }
 
@@ -466,12 +552,15 @@ fn load_config(
     Ok(config)
 }
 
-/// Execute every task respecting dependency order.
+/// Execute every task respecting phase and dependency order.
 ///
-/// When parallel execution is enabled and more than one task is present,
-/// tasks run as soon as their dependencies complete.  Each task's console
-/// output is buffered and flushed atomically on completion.  A status line
-/// shows which tasks are currently running.
+/// Tasks are run in strict phase order: all [`TaskPhase::Bootstrap`] tasks
+/// complete before any [`TaskPhase::Configure`] task starts.
+///
+/// Within each phase, when parallel execution is enabled and more than one
+/// task is present, tasks run as soon as their dependencies complete.  Each
+/// task's console output is buffered and flushed atomically on completion.
+/// A status line shows which tasks are currently running.
 ///
 /// When parallel execution is disabled (or only one task is present),
 /// tasks execute sequentially in list order.
@@ -486,21 +575,42 @@ pub fn run_tasks_to_completion<'a>(
     log: &Arc<Logger>,
 ) -> Result<()> {
     let tasks: Vec<&dyn Task> = tasks.into_iter().collect();
+    let phases = [TaskPhase::Bootstrap, TaskPhase::Configure];
 
-    if ctx.parallel && tasks.len() > 1 {
-        if tasks::has_cycle(&tasks) {
-            let message = "dependency cycle detected in task graph";
-            log.error(message);
-            anyhow::bail!(message);
+    for phase in phases {
+        if ctx.is_cancelled() {
+            log.warn("cancelled - stopping before next phase");
+            break;
         }
-        crate::engine::scheduler::run_tasks_parallel(&tasks, ctx, log);
-    } else {
-        for task in &tasks {
-            if ctx.is_cancelled() {
-                log.warn("cancelled — stopping before next task");
-                break;
+
+        let phase_tasks: Vec<&dyn Task> = tasks
+            .iter()
+            .copied()
+            .filter(|task| task.phase() == phase)
+            .collect();
+
+        if phase_tasks.is_empty() {
+            continue;
+        }
+
+        log.info("");
+        log.phase(&phase.to_string());
+
+        if ctx.parallel && phase_tasks.len() > 1 {
+            if tasks::has_cycle(&phase_tasks) {
+                let message = format!("dependency cycle detected in {phase} phase task graph");
+                log.error(&message);
+                anyhow::bail!(message);
             }
-            tasks::execute(*task, ctx);
+            crate::engine::scheduler::run_tasks_parallel(&phase_tasks, ctx, log);
+        } else {
+            for task in &phase_tasks {
+                if ctx.is_cancelled() {
+                    log.warn("cancelled - stopping before next task");
+                    break;
+                }
+                tasks::execute(*task, ctx);
+            }
         }
     }
 

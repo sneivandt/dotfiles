@@ -9,9 +9,7 @@ use crate::resources::copilot_plugin::{
     CopilotPluginCache, CopilotPluginResource, copilot_supports_plugins, get_copilot_plugin_state,
     get_copilot_version, register_marketplace,
 };
-use crate::tasks::{
-    Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resource_states, task_deps,
-};
+use crate::tasks::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resource_states};
 
 /// Install GitHub Copilot plugins.
 #[derive(Debug)]
@@ -25,8 +23,6 @@ impl Task for InstallCopilotPlugins {
     fn phase(&self) -> TaskPhase {
         TaskPhase::Configure
     }
-
-    task_deps![crate::tasks::bootstrap::reload_config::ReloadConfig];
 
     fn should_run(&self, ctx: &Context) -> bool {
         !ctx.config_read().copilot_plugins.is_empty()
@@ -137,7 +133,6 @@ mod tests {
     use crate::config::copilot_plugins::CopilotPlugin;
     use crate::tasks::Task;
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
-    use std::any::TypeId;
     use std::path::PathBuf;
     use std::sync::Arc;
 
@@ -177,16 +172,6 @@ mod tests {
         assert!(
             matches!(result, TaskResult::Skipped(ref s) if s.contains("gh CLI not found")),
             "expected 'gh CLI not found' skip, got {result:?}"
-        );
-    }
-
-    #[test]
-    fn depends_on_reload_config() {
-        assert_eq!(
-            InstallCopilotPlugins.dependencies(),
-            &[TypeId::of::<
-                crate::tasks::bootstrap::reload_config::ReloadConfig,
-            >()]
         );
     }
 

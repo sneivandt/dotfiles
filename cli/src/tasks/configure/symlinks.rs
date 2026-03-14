@@ -37,10 +37,6 @@ resource_task! {
     pub InstallSymlinks {
         name: "Install symlinks",
         phase: TaskPhase::Configure,
-        deps: [
-            crate::tasks::bootstrap::reload_config::ReloadConfig,
-            crate::tasks::bootstrap::developer_mode::EnableDeveloperMode,
-        ],
         items: |ctx| ctx.config_read().symlinks.clone(),
         build: |s, ctx| {
             let symlinks_dir = ctx.symlinks_dir();

@@ -8,7 +8,6 @@ batch_resource_task! {
     pub ApplyRegistry {
         name: "Apply registry settings",
         phase: TaskPhase::Configure,
-        deps: [crate::tasks::bootstrap::reload_config::ReloadConfig],
         guard: |ctx| ctx.platform.has_registry(),
         items: |ctx| ctx.config_read().registry.clone(),
         cache: |items, _ctx| {

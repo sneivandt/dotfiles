@@ -2,7 +2,7 @@
 
 use anyhow::{Context as _, Result};
 
-use super::{Context, Task, TaskResult, UpdateSignal, task_deps};
+use crate::tasks::{Context, Task, TaskPhase, TaskResult, UpdateSignal, task_deps};
 
 /// Re-parse all configuration files after `UpdateRepository` has pulled the
 /// latest changes.
@@ -31,7 +31,11 @@ impl Task for ReloadConfig {
         "Reload configuration"
     }
 
-    task_deps![super::update::UpdateRepository];
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Bootstrap
+    }
+
+    task_deps![crate::tasks::bootstrap::update::UpdateRepository];
 
     fn should_run(&self, _ctx: &Context) -> bool {
         self.repo_updated.was_updated()

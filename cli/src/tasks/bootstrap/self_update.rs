@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 
 use crate::logging::Output;
 
-use super::{Context, Task, TaskResult};
+use crate::tasks::{Context, Task, TaskPhase, TaskResult};
 
 /// GitHub repository used for release lookups.
 const REPO: &str = "sneivandt/dotfiles";
@@ -566,6 +566,10 @@ pub struct UpdateBinary;
 impl Task for UpdateBinary {
     fn name(&self) -> &'static str {
         "Update binary"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Bootstrap
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

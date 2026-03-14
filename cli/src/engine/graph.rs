@@ -69,7 +69,7 @@ pub fn has_cycle(tasks: &[&dyn Task]) -> bool {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::tasks::{Context, TaskResult};
+    use crate::tasks::{Context, TaskPhase, TaskResult};
 
     use anyhow::Result;
 
@@ -83,6 +83,9 @@ mod tests {
             impl Task for $name {
                 fn name(&self) -> &str {
                     $display
+                }
+                fn phase(&self) -> TaskPhase {
+                    TaskPhase::Configure
                 }
                 fn dependencies(&self) -> &[TypeId] {
                     const DEPS: &[TypeId] = $deps;
@@ -123,6 +126,9 @@ mod tests {
     impl Task for MissingDepTask {
         fn name(&self) -> &'static str {
             "missing-dep"
+        }
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
         }
         fn dependencies(&self) -> &[TypeId] {
             // Points to a TypeId that won't be present in the task list
@@ -176,6 +182,9 @@ mod tests {
         fn name(&self) -> &'static str {
             "duplicate-a"
         }
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
+        }
         fn should_run(&self, _ctx: &Context) -> bool {
             true
         }
@@ -188,6 +197,9 @@ mod tests {
     impl Task for DuplicateIdB {
         fn name(&self) -> &'static str {
             "duplicate-b"
+        }
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
         }
         fn task_id(&self) -> TypeId {
             TypeId::of::<DuplicateIdA>()

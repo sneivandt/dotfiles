@@ -8,6 +8,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, mpsc};
 
 use crate::logging::{self, BufferedLog, DiagEvent, Log, Logger, TaskStatus};
+#[cfg(test)]
+use crate::tasks::TaskPhase;
 use crate::tasks::{self, Context, Task};
 
 /// Execute a single task, catching any panic.
@@ -39,7 +41,7 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> bool {
         if let Some(diag) = log.diagnostic() {
             diag.emit_task(DiagEvent::TaskFail, task.name(), &msg);
         }
-        log.record_task(task.name(), TaskStatus::Failed, Some(&msg));
+        log.record_task(task.name(), task.phase(), TaskStatus::Failed, Some(&msg));
         buf.flush_and_complete(task.name());
         return false;
     }
@@ -149,6 +151,7 @@ pub fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>)
                     }
                     log.record_task(
                         task.name(),
+                        task.phase(),
                         TaskStatus::Skipped,
                         Some("dependency did not complete"),
                     );
@@ -209,6 +212,10 @@ mod tests {
             "flag-task"
         }
 
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
+        }
+
         fn should_run(&self, _ctx: &Context) -> bool {
             true
         }
@@ -227,6 +234,10 @@ mod tests {
     impl Task for PanicTask {
         fn name(&self) -> &'static str {
             "panic-task"
+        }
+
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -249,6 +260,10 @@ mod tests {
     impl Task for DepOnPanicTask {
         fn name(&self) -> &'static str {
             "dep-on-panic"
+        }
+
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -275,6 +290,10 @@ mod tests {
             "chain-b"
         }
 
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
+        }
+
         fn should_run(&self, _ctx: &Context) -> bool {
             true
         }
@@ -294,6 +313,10 @@ mod tests {
     impl Task for ChainC {
         fn name(&self) -> &'static str {
             "chain-c"
+        }
+
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -324,6 +347,10 @@ mod tests {
             "flag-task-2"
         }
 
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
+        }
+
         fn should_run(&self, _ctx: &Context) -> bool {
             true
         }
@@ -344,6 +371,10 @@ mod tests {
     impl Task for DepOnFlagTask {
         fn name(&self) -> &'static str {
             "dep-on-flag"
+        }
+
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -370,6 +401,10 @@ mod tests {
             "diamond-a"
         }
 
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
+        }
+
         fn should_run(&self, _ctx: &Context) -> bool {
             true
         }
@@ -389,6 +424,10 @@ mod tests {
             "diamond-b"
         }
 
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
+        }
+
         fn should_run(&self, _ctx: &Context) -> bool {
             true
         }
@@ -406,6 +445,10 @@ mod tests {
     impl Task for DiamondD {
         fn name(&self) -> &'static str {
             "diamond-d"
+        }
+
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -430,6 +473,10 @@ mod tests {
     impl Task for DepOnMissing {
         fn name(&self) -> &'static str {
             "dep-on-missing"
+        }
+
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -653,6 +700,10 @@ mod tests {
             "stats-task"
         }
 
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
+        }
+
         fn should_run(&self, _ctx: &Context) -> bool {
             true
         }
@@ -673,6 +724,10 @@ mod tests {
     impl Task for NamedStatsTask {
         fn name(&self) -> &'static str {
             self.name
+        }
+
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
         }
 
         fn should_run(&self, _: &Context) -> bool {
@@ -816,6 +871,10 @@ mod tests {
         impl Task for DebugFmtTask {
             fn name(&self) -> &'static str {
                 "debug-fmt-task"
+            }
+
+            fn phase(&self) -> TaskPhase {
+                TaskPhase::Configure
             }
 
             fn should_run(&self, _ctx: &Context) -> bool {

@@ -10,7 +10,7 @@ metadata:
 
 # Package Management
 
-System packages are declared in `conf/packages.toml`, loaded by `cli/src/config/packages.rs`, and installed by tasks in `cli/src/tasks/packages.rs`.
+System packages are declared in `conf/packages.toml`, loaded by `cli/src/config/packages.rs`, and installed by tasks in `cli/src/tasks/configure/packages.rs`.
 
 ## Configuration
 

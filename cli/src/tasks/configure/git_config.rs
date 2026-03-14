@@ -1,12 +1,13 @@
 //! Task: configure Git settings.
 
-use super::{ProcessOpts, resource_task};
 use crate::resources::git_config::GitConfigResource;
+use crate::tasks::{ProcessOpts, TaskPhase, resource_task};
 
 resource_task! {
     /// Configure git settings from git-config.toml.
     pub ConfigureGit {
         name: "Configure Git",
+        phase: TaskPhase::Configure,
         items: |ctx| ctx.config_read().git_settings.clone(),
         build: |s, _ctx| GitConfigResource::new(s.key, s.value),
         opts: ProcessOpts::strict("set git config").sequential(),

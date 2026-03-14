@@ -2,14 +2,15 @@
 
 use std::sync::Arc;
 
-use super::{ProcessOpts, resource_task};
 use crate::resources::systemd_unit::SystemdUnitResource;
+use crate::tasks::{ProcessOpts, TaskPhase, resource_task};
 
 resource_task! {
     /// Enable and start systemd user units.
     pub ConfigureSystemd {
         name: "Configure systemd units",
-        deps: [super::symlinks::InstallSymlinks],
+        phase: TaskPhase::Configure,
+        deps: [crate::tasks::configure::symlinks::InstallSymlinks],
         guard: |ctx| {
             ctx.platform.supports_systemd()
                 && !ctx.config_read().units.is_empty()

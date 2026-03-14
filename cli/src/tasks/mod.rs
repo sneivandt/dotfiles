@@ -1,24 +1,16 @@
 //! Named, dependency-ordered tasks that orchestrate resource changes.
-pub mod chmod;
-pub mod copilot_plugins;
-pub mod developer_mode;
-pub mod git_config;
+//!
+//! Tasks are organised into two phases:
+//!
+//! - **Bootstrap** (`tasks::bootstrap`) — manage the dotfiles system itself
+//!   (binary updates, repo sync, sparse checkout, config reload).
+//! - **Configure** (`tasks::configure`) — apply declared state to the system
+//!   (symlinks, packages, registry, hooks, etc.).
+
+pub mod bootstrap;
+pub mod configure;
 mod helpers;
-pub mod hooks;
-pub mod packages;
-pub mod path;
-pub mod registry;
-pub mod reload_config;
-pub mod self_update;
-pub mod shell;
-pub mod sparse_checkout;
-pub mod symlinks;
-pub mod systemd_units;
-pub mod update;
 pub mod validation;
-pub mod vscode_extensions;
-pub mod wrapper;
-pub mod wsl_conf;
 
 pub use helpers::{all_install_tasks, all_uninstall_tasks};
 pub(crate) use helpers::{batch_resource_task, resource_task, task_deps};
@@ -36,10 +28,33 @@ pub use crate::engine::{
 };
 
 use std::any::TypeId;
+use std::fmt;
 
 use anyhow::Result;
 
 use crate::logging::TaskStatus;
+
+/// Execution phase of a task.
+///
+/// Bootstrap tasks run first and prepare the environment (binary update,
+/// repository sync, config reload).  Configure tasks run second and apply
+/// the declared system state (symlinks, packages, registry, etc.).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TaskPhase {
+    /// Manage the dotfiles system itself.
+    Bootstrap,
+    /// Apply declared state to the system.
+    Configure,
+}
+
+impl fmt::Display for TaskPhase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Bootstrap => f.write_str("Bootstrap"),
+            Self::Configure => f.write_str("Configure"),
+        }
+    }
+}
 
 /// A named, executable task.
 ///
@@ -49,6 +64,9 @@ use crate::logging::TaskStatus;
 pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
+
+    /// Execution phase: [`TaskPhase::Bootstrap`] or [`TaskPhase::Configure`].
+    fn phase(&self) -> TaskPhase;
 
     /// The concrete `TypeId` of this task, used as a dependency identifier.
     ///
@@ -105,12 +123,13 @@ pub trait Task: Send + Sync + 'static {
 pub fn execute(task: &dyn Task, ctx: &Context) {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
+    let phase = task.phase();
 
     if !task.should_run(ctx) {
         ctx.log
             .debug(&format!("skipping task: {} (not applicable)", task.name()));
         ctx.log
-            .record_task(task.name(), TaskStatus::NotApplicable, None);
+            .record_task(task.name(), phase, TaskStatus::NotApplicable, None);
         return;
     }
 
@@ -120,35 +139,41 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
         Ok(None) => {
             ctx.log.info("nothing configured");
             ctx.log
-                .record_task(task.name(), TaskStatus::NotApplicable, None);
+                .record_task(task.name(), phase, TaskStatus::NotApplicable, None);
         }
         Ok(Some(result)) => match result {
             TaskResult::Ok => {
-                ctx.log.record_task(task.name(), TaskStatus::Ok, None);
+                ctx.log
+                    .record_task(task.name(), phase, TaskStatus::Ok, None);
             }
             TaskResult::NotApplicable(reason) => {
                 ctx.debug_fmt(|| format!("not applicable: {reason}"));
                 ctx.log
-                    .record_task(task.name(), TaskStatus::NotApplicable, None);
+                    .record_task(task.name(), phase, TaskStatus::NotApplicable, None);
             }
             TaskResult::Skipped(reason) => {
                 ctx.log.info(&format!("skipped: {reason}"));
                 ctx.log
-                    .record_task(task.name(), TaskStatus::Skipped, Some(&reason));
+                    .record_task(task.name(), phase, TaskStatus::Skipped, Some(&reason));
             }
             TaskResult::Failed(reason) => {
                 ctx.log.warn(&format!("failed: {reason}"));
                 ctx.log
-                    .record_task(task.name(), TaskStatus::Failed, Some(&reason));
+                    .record_task(task.name(), phase, TaskStatus::Failed, Some(&reason));
             }
             TaskResult::DryRun => {
-                ctx.log.record_task(task.name(), TaskStatus::DryRun, None);
+                ctx.log
+                    .record_task(task.name(), phase, TaskStatus::DryRun, None);
             }
         },
         Err(e) => {
             ctx.log.error(&format!("{}: {e:#}", task.name()));
-            ctx.log
-                .record_task(task.name(), TaskStatus::Failed, Some(&format!("{e:#}")));
+            ctx.log.record_task(
+                task.name(),
+                phase,
+                TaskStatus::Failed,
+                Some(&format!("{e:#}")),
+            );
         }
     }
 }
@@ -431,6 +456,7 @@ mod tests {
         /// Test-only task for resource-task macro behaviour.
         CountingResourceTask {
             name: "Counting resource task",
+            phase: TaskPhase::Configure,
             items: |_ctx| {
                 RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
                 Vec::<()>::new()
@@ -444,6 +470,7 @@ mod tests {
         /// Test-only task for batch-resource-task macro behaviour.
         CountingBatchTask {
             name: "Counting batch task",
+            phase: TaskPhase::Configure,
             items: |_ctx| {
                 BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
                 Vec::<()>::new()
@@ -465,6 +492,9 @@ mod tests {
     impl Task for MockTask {
         fn name(&self) -> &str {
             self.name
+        }
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
         }
         fn should_run(&self, _ctx: &Context) -> bool {
             self.should_run

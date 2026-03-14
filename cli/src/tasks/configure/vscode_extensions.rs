@@ -2,9 +2,11 @@
 use anyhow::Result;
 use std::sync::Arc;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states, task_deps};
 use crate::resources::vscode_extension::{
     VsCodeExtensionResource, find_code_command, get_installed_extensions,
+};
+use crate::tasks::{
+    Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resource_states, task_deps,
 };
 
 /// Install VS Code extensions.
@@ -16,7 +18,11 @@ impl Task for InstallVsCodeExtensions {
         "Install VS Code extensions"
     }
 
-    task_deps![super::reload_config::ReloadConfig];
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Configure
+    }
+
+    task_deps![crate::tasks::bootstrap::reload_config::ReloadConfig];
 
     fn should_run(&self, ctx: &Context) -> bool {
         !ctx.config_read().vscode_extensions.is_empty()

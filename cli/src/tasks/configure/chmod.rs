@@ -1,13 +1,14 @@
 //! Task: apply file permissions.
 
-use super::{ProcessOpts, resource_task};
 use crate::resources::chmod::ChmodResource;
+use crate::tasks::{ProcessOpts, TaskPhase, resource_task};
 
 resource_task! {
     /// Apply file permissions from chmod.toml.
     pub ApplyFilePermissions {
         name: "Apply file permissions",
-        deps: [super::symlinks::InstallSymlinks],
+        phase: TaskPhase::Configure,
+        deps: [crate::tasks::configure::symlinks::InstallSymlinks],
         guard: |ctx| ctx.platform.supports_chmod(),
         items: |ctx| ctx.config_read().chmod.clone(),
         build: |entry, ctx| build_resource(&entry, &ctx.home),

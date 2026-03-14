@@ -8,8 +8,10 @@
 //! variable (set by the wrapper scripts themselves), falling back to
 //! platform detection when the variable is absent.
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove};
 use crate::resources::wrapper::{WrapperResource, WrapperType};
+use crate::tasks::{
+    Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, process_resources_remove,
+};
 
 /// Install the CLI wrapper script in `~/.local/bin`.
 #[derive(Debug)]
@@ -18,6 +20,10 @@ pub struct InstallWrapper;
 impl Task for InstallWrapper {
     fn name(&self) -> &'static str {
         "Install wrapper"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Bootstrap
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -42,6 +48,10 @@ pub struct UninstallWrapper;
 impl Task for UninstallWrapper {
     fn name(&self) -> &'static str {
         "Uninstall wrapper"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Bootstrap
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {

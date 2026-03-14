@@ -346,7 +346,7 @@ impl Context {
 
     /// Atomically replace the shared configuration.
     ///
-    /// Used by [`crate::tasks::reload_config::ReloadConfig`] after a `git pull`
+    /// Used by [`crate::tasks::bootstrap::reload_config::ReloadConfig`] after a `git pull`
     /// to swap in the freshly-loaded config.
     pub fn config_swap(&self, new_config: Config) {
         let mut guard = self.config.write().unwrap_or_else(|e| {
@@ -364,6 +364,7 @@ mod tests {
     use super::*;
     use crate::logging::Logger;
     use crate::logging::{Output, TaskRecorder, TaskStatus};
+    use crate::tasks::TaskPhase;
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 
@@ -383,7 +384,14 @@ mod tests {
     }
 
     impl TaskRecorder for SilentLog {
-        fn record_task(&self, _name: &str, _status: TaskStatus, _message: Option<&str>) {}
+        fn record_task(
+            &self,
+            _name: &str,
+            _phase: TaskPhase,
+            _status: TaskStatus,
+            _message: Option<&str>,
+        ) {
+        }
     }
 
     #[test]

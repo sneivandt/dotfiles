@@ -1,13 +1,14 @@
 //! Task: apply Windows registry entries.
 
-use super::{ProcessOpts, batch_resource_task};
 use crate::resources::registry::{RegistryResource, batch_check_values};
+use crate::tasks::{ProcessOpts, TaskPhase, batch_resource_task};
 
 batch_resource_task! {
     /// Apply Windows registry settings.
     pub ApplyRegistry {
         name: "Apply registry settings",
-        deps: [super::reload_config::ReloadConfig],
+        phase: TaskPhase::Configure,
+        deps: [crate::tasks::bootstrap::reload_config::ReloadConfig],
         guard: |ctx| ctx.platform.has_registry(),
         items: |ctx| ctx.config_read().registry.clone(),
         cache: |items, _ctx| {

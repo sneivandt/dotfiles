@@ -3,8 +3,8 @@ use anyhow::{Context as _, Result};
 use std::path::Path;
 use std::sync::Arc;
 
-use super::{Context, Task, TaskResult};
 use crate::fs::{FileSystemOps, SystemFileSystemOps};
+use crate::tasks::{Context, Task, TaskPhase, TaskResult};
 
 /// Default sparse checkout pattern that includes all files at root level.
 const DEFAULT_SPARSE_PATTERN: &str = "/*";
@@ -118,6 +118,10 @@ impl Default for ConfigureSparseCheckout {
 impl Task for ConfigureSparseCheckout {
     fn name(&self) -> &'static str {
         "Configure sparse checkout"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Bootstrap
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

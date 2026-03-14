@@ -1,11 +1,14 @@
 //! Core logging types: task entries, status, and the [`Log`] trait.
 use super::diagnostic::DiagnosticLog;
+use crate::tasks::TaskPhase;
 
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]
 pub struct TaskEntry {
     /// Human-readable task name.
     pub name: String,
+    /// Execution phase of the task.
+    pub phase: TaskPhase,
     /// Final status of the task.
     pub status: TaskStatus,
     /// Optional detail message (e.g., skip reason or error description).
@@ -72,7 +75,7 @@ pub trait Output: Send + Sync {
 /// independently.
 pub trait TaskRecorder: Send + Sync {
     /// Record a task result for the summary.
-    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>);
+    fn record_task(&self, name: &str, phase: TaskPhase, status: TaskStatus, message: Option<&str>);
 }
 
 /// Combined logging interface: user-facing output plus task recording.
@@ -107,12 +110,27 @@ mod tests {
     fn task_entry_clone() {
         let entry = TaskEntry {
             name: "test-task".to_string(),
+            phase: TaskPhase::Configure,
             status: TaskStatus::Ok,
             message: Some("all good".to_string()),
         };
         let cloned = entry.clone();
         assert_eq!(cloned.name, entry.name);
+        assert_eq!(cloned.phase, entry.phase);
         assert_eq!(cloned.status, entry.status);
         assert_eq!(cloned.message, entry.message);
+    }
+
+    #[test]
+    fn task_phase_display() {
+        assert_eq!(TaskPhase::Bootstrap.to_string(), "Bootstrap");
+        assert_eq!(TaskPhase::Configure.to_string(), "Configure");
+    }
+
+    #[test]
+    fn task_phase_equality() {
+        assert_eq!(TaskPhase::Bootstrap, TaskPhase::Bootstrap);
+        assert_eq!(TaskPhase::Configure, TaskPhase::Configure);
+        assert_ne!(TaskPhase::Bootstrap, TaskPhase::Configure);
     }
 }

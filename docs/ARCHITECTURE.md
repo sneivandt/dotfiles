@@ -175,6 +175,9 @@ pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
 
+    /// Which phase this task belongs to (Bootstrap or Configure).
+    fn phase(&self) -> TaskPhase;
+
     /// Stable TypeId for dependency matching.
     fn task_id(&self) -> TypeId { TypeId::of::<Self>() }
 
@@ -210,27 +213,31 @@ The execution engine provides the generic resource processing loop, dependency g
 - **`stats.rs`** — `TaskResult` and `TaskStats` types
 - **`update_signal.rs`** — `Arc<AtomicBool>` signalling between `UpdateRepository` and `ReloadConfig`
 
-**Implemented tasks** (`cli/src/tasks/`, executed as soon as dependencies allow):
+**Implemented tasks** (executed as soon as dependencies allow):
+
+Bootstrap phase (`cli/src/tasks/bootstrap/`):
 - `self_update` — Update the dotfiles binary from latest GitHub release
 - `developer_mode` — Enable Windows developer mode (required for symlinks)
-- `sparse_checkout` — Configure git sparse checkout
 - `update` — Update repository (`git pull --ff-only`)
+- `sparse_checkout` — Configure git sparse checkout
 - `reload_config` — Reload config from disk after `update` pulls new commits
-- `git_config` — Configure git settings (Windows: autocrlf, symlinks, credential helper)
 - `hooks` — Install git hooks
+- `wrapper` — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
+- `path` — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
+
+Configure phase (`cli/src/tasks/configure/`):
 - `packages` — Install system packages (pacman or winget)
 - `paru` — Bootstrap paru AUR helper (Arch Linux only)
 - `aur_packages` — Install AUR packages via paru (Arch Linux only)
 - `symlinks` — Create symlinks
 - `chmod` — Apply file permissions
+- `git_config` — Configure git settings (Windows: autocrlf, symlinks, credential helper)
 - `shell` — Configure default shell
 - `systemd` — Enable systemd units
 - `registry` — Apply Windows registry settings
 - `vscode` — Install VS Code extensions
 - `copilot_plugins` — Download Copilot CLI plugins
 - `wsl_conf` — Write `/etc/wsl.conf` with `generateResolvConf = true` (Linux only, uses sudo)
-- `wrapper` — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
-- `path` — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
 
 #### Platform Detection (`platform.rs`)
 
@@ -343,7 +350,7 @@ Task failures are caught by `tasks::execute()` and recorded as `TaskStatus::Fail
 
 ### Rust Tests
 
-- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/toml_loader.rs`, `tasks/*.rs`)
+- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/toml_loader.rs`, `tasks/bootstrap/*.rs`, `tasks/configure/*.rs`)
 - **Integration tests**: Separate test binaries in `cli/tests/` (`install_command.rs`, `uninstall_command.rs`, `test_command.rs`), using `IntegrationTestContext` and `TestContextBuilder` helpers from `cli/tests/common/mod.rs`
 - **Snapshot tests**: Task list snapshots via the `insta` crate (`cli/tests/snapshots/`). Update with `INSTA_UPDATE=unseen cargo test` or `cargo insta review`
 
@@ -382,8 +389,8 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 ### Adding New Tasks
 
-1. Create a new file in `cli/src/tasks/` implementing the `Task` trait
-2. Add the module to `cli/src/tasks/mod.rs`
+1. Create a new file in `cli/src/tasks/bootstrap/` (for bootstrap-phase tasks) or `cli/src/tasks/configure/` (for configure-phase tasks) implementing the `Task` trait
+2. Add the module to `cli/src/tasks/bootstrap/mod.rs` or `cli/src/tasks/configure/mod.rs`
 3. Add the task to `all_install_tasks()` in `cli/src/tasks/helpers/catalog.rs`
 
 ### Adding New Configuration Types
@@ -391,7 +398,7 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 1. Create TOML file in `conf/`
 2. Add a config parser in `cli/src/config/`
 3. Add the field to the `Config` struct and load it in `Config::load()`
-4. Create a task in `cli/src/tasks/` that consumes the config
+4. Create a task in `cli/src/tasks/configure/` that consumes the config
 5. Document in CONFIGURATION.md
 
 ### Adding Custom Profiles

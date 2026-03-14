@@ -4,11 +4,13 @@ use anyhow::Result;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resource_states, task_deps};
 use crate::resources::ResourceState;
 use crate::resources::copilot_plugin::{
     CopilotPluginCache, CopilotPluginResource, copilot_supports_plugins, get_copilot_plugin_state,
     get_copilot_version, register_marketplace,
+};
+use crate::tasks::{
+    Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resource_states, task_deps,
 };
 
 /// Install GitHub Copilot plugins.
@@ -20,7 +22,11 @@ impl Task for InstallCopilotPlugins {
         "Install Copilot plugins"
     }
 
-    task_deps![super::reload_config::ReloadConfig];
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Configure
+    }
+
+    task_deps![crate::tasks::bootstrap::reload_config::ReloadConfig];
 
     fn should_run(&self, ctx: &Context) -> bool {
         !ctx.config_read().copilot_plugins.is_empty()
@@ -178,7 +184,9 @@ mod tests {
     fn depends_on_reload_config() {
         assert_eq!(
             InstallCopilotPlugins.dependencies(),
-            &[TypeId::of::<crate::tasks::reload_config::ReloadConfig>()]
+            &[TypeId::of::<
+                crate::tasks::bootstrap::reload_config::ReloadConfig,
+            >()]
         );
     }
 

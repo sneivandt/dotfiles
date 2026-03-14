@@ -3,8 +3,10 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources_remove, resource_task};
 use crate::resources::symlink::SymlinkResource;
+use crate::tasks::{
+    Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources_remove, resource_task,
+};
 
 /// Build a single [`SymlinkResource`] from a config entry.
 fn build_resource(
@@ -34,9 +36,10 @@ resource_task! {
     /// Create symlinks from symlinks/ to $HOME.
     pub InstallSymlinks {
         name: "Install symlinks",
+        phase: TaskPhase::Configure,
         deps: [
-            super::reload_config::ReloadConfig,
-            super::developer_mode::EnableDeveloperMode,
+            crate::tasks::bootstrap::reload_config::ReloadConfig,
+            crate::tasks::bootstrap::developer_mode::EnableDeveloperMode,
         ],
         items: |ctx| ctx.config_read().symlinks.clone(),
         build: |s, ctx| {
@@ -54,6 +57,10 @@ pub struct UninstallSymlinks;
 impl Task for UninstallSymlinks {
     fn name(&self) -> &'static str {
         "Remove symlinks"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Configure
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

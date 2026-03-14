@@ -58,7 +58,7 @@ ctx.log.debug(msg);    // Only when verbose=true on terminal
 ctx.log.warn(msg);     // Yellow to stderr
 ctx.log.error(msg);    // Red to stderr
 ctx.log.dry_run(msg);  // Yellow "[DRY RUN]" prefix
-ctx.log.record_task(name, status, message);  // Record task result for summary
+ctx.log.record_task(name, phase, status, message);  // Record task result for summary
 ctx.log.diagnostic();  // Access high-precision diagnostic log (if available)
 ```
 
@@ -86,12 +86,12 @@ The log file path is shown in the summary.
 pub fn execute(task: &dyn Task, ctx: &Context) {
     if !task.should_run(ctx) {
         ctx.log.debug(&format!("skipping task: {} (not applicable)", task.name()));
-        ctx.log.record_task(task.name(), TaskStatus::NotApplicable, None);
+        ctx.log.record_task(task.name(), task.phase(), TaskStatus::NotApplicable, None);
         return;
     }
     ctx.log.stage(task.name());
     match task.run(ctx) {
-        Ok(TaskResult::Ok) => ctx.log.record_task(task.name(), TaskStatus::Ok, None),
+        Ok(TaskResult::Ok) => ctx.log.record_task(task.name(), task.phase(), TaskStatus::Ok, None),
         // ... Skipped, DryRun, Err handled similarly
     }
 }

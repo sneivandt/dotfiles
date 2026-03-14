@@ -30,7 +30,7 @@ Platform categories (`linux`, `windows`, `arch`) are auto-detected — users onl
 ## Profile Selection Priority
 
 ```
-CLI `-p` (`--profile`) > git config dotfiles.profile > interactive prompt
+CLI `-p` (`--profile`) > DOTFILES_PROFILE env var > git config dotfiles.profile > interactive prompt
 ```
 
 Implemented in `profiles::resolve_from_args()`:
@@ -38,16 +38,21 @@ Implemented in `profiles::resolve_from_args()`:
 pub fn resolve_from_args(cli_profile: Option<&str>, root: &Path, platform: Platform) -> Result<Profile> {
     let conf_dir = root.join("conf");
     let name = if let Some(name) = cli_profile { name.to_string() }
+    else if let Some(name) = read_from_env() { name }
     else if let Some(name) = read_persisted(root) { name }
-    else { prompt_interactive(&conf_dir)? };
+    else {
+        let name = prompt_interactive(&conf_dir)?;
+        let _ = persist(root, &name); // best-effort
+        name
+    };
     // ...
 }
 ```
 
-The selected profile is persisted to `.git/config` by writing to it directly via
-file I/O (`profiles::persist()` uses a custom `set_git_config_value()` helper).
-Running `git config --local dotfiles.profile <name>` manually produces the same
-result.
+When the profile is selected via the interactive prompt it is persisted to the
+repository's local git config (`dotfiles.profile`) via `profiles::persist()`,
+which uses `git2` to write directly — no `git` subprocess needed. Running
+`git config --local dotfiles.profile <name>` manually produces the same result.
 
 ## Profile Data Structure
 

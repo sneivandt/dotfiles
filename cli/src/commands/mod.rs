@@ -13,6 +13,8 @@ use crate::config::Config;
 use crate::config::profiles;
 use crate::logging::{Log, Logger, Output};
 use crate::platform::Platform;
+#[cfg(test)]
+use crate::tasks::TaskPhase;
 use crate::tasks::{self, Context, Task};
 
 /// Environment variable set before re-exec to prevent infinite self-update loops.
@@ -275,6 +277,10 @@ mod task_graph_tests {
             "cycle-a"
         }
 
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
+        }
+
         task_deps![CycleTaskB];
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -294,6 +300,10 @@ mod task_graph_tests {
     impl Task for CycleTaskB {
         fn name(&self) -> &'static str {
             "cycle-b"
+        }
+
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Configure
         }
 
         task_deps![CycleTaskA];

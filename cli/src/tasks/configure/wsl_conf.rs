@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use super::{Context, Task, TaskResult};
+use crate::tasks::{Context, Task, TaskPhase, TaskResult};
 
 /// The single setting this task enforces.
 const DESIRED_KEY: &str = "generateResolvConf = true";
@@ -23,6 +23,10 @@ pub struct InstallWslConf;
 impl Task for InstallWslConf {
     fn name(&self) -> &'static str {
         "Install wsl.conf"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Configure
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

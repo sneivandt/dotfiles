@@ -22,7 +22,7 @@ pub fn run(
     // also triggers a self-update.
     let root = super::install::resolve_root(global)?;
     if std::env::var_os(super::REEXEC_GUARD_VAR).is_none()
-        && tasks::self_update::pre_update(&root, &**log, global.dry_run)?
+        && tasks::bootstrap::self_update::pre_update(&root, &**log, global.dry_run)?
     {
         super::re_exec(&root);
     }

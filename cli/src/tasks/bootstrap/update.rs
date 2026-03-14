@@ -1,7 +1,7 @@
 //! Task: update the dotfiles repository.
 use anyhow::Result;
 
-use super::{Context, Task, TaskResult, UpdateSignal, task_deps};
+use crate::tasks::{Context, Task, TaskPhase, TaskResult, UpdateSignal, task_deps};
 
 /// Pull latest changes from the remote repository.
 #[derive(Debug)]
@@ -26,7 +26,11 @@ impl Task for UpdateRepository {
         "Update repository"
     }
 
-    task_deps![super::sparse_checkout::ConfigureSparseCheckout];
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Bootstrap
+    }
+
+    task_deps![crate::tasks::bootstrap::sparse_checkout::ConfigureSparseCheckout];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.root().join(".git").exists()

@@ -42,6 +42,7 @@ pub(crate) use task_deps;
 ///     /// Doc comment for the task.
 ///     pub StructName {
 ///         name: "Human-readable task name",
+///         phase: TaskPhase::Configure,
 ///         deps: [DepType1, DepType2],          // optional
 ///         guard: |ctx| bool_expr,              // optional platform/tool guard
 ///         setup: |ctx| { side_effects(); },    // optional pre-processing
@@ -53,6 +54,7 @@ pub(crate) use task_deps;
 /// ```
 ///
 /// The generated struct implements `Task` with:
+/// - `phase` returning the specified [`TaskPhase`]
 /// - `should_run` returning `false` only when the guard fails
 /// - `run_if_applicable` evaluating items exactly once per task execution and
 ///   returning `None` when no items are configured
@@ -64,6 +66,7 @@ macro_rules! resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
+            phase: $phase:expr,
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
             $(setup: |$setup_ctx:ident| $setup_expr:expr,)?
@@ -79,6 +82,10 @@ macro_rules! resource_task {
         impl $crate::tasks::Task for $name {
             fn name(&self) -> &'static str {
                 $task_name
+            }
+
+            fn phase(&self) -> $crate::tasks::TaskPhase {
+                $phase
             }
 
             $($crate::tasks::task_deps![$($dep),+];)?
@@ -154,6 +161,7 @@ pub(crate) use resource_task;
 ///     /// Doc comment for the task.
 ///     pub StructName {
 ///         name: "Human-readable task name",
+///         phase: TaskPhase::Configure,
 ///         deps: [DepType1, DepType2],               // optional
 ///         guard: |ctx| bool_expr,                    // optional
 ///         items: |ctx| ctx.config_read().field.clone(),
@@ -166,6 +174,7 @@ pub(crate) use resource_task;
 /// ```
 ///
 /// The generated struct implements `Task` with:
+/// - `phase` returning the specified [`TaskPhase`]
 /// - `should_run` returning `false` only when the guard fails
 /// - `run_if_applicable` evaluating items exactly once per task execution and
 ///   returning `None` when no items are configured
@@ -178,6 +187,7 @@ macro_rules! batch_resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
+            phase: $phase:expr,
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
             items: |$items_ctx:ident| $items_expr:expr,
@@ -194,6 +204,10 @@ macro_rules! batch_resource_task {
         impl $crate::tasks::Task for $name {
             fn name(&self) -> &'static str {
                 $task_name
+            }
+
+            fn phase(&self) -> $crate::tasks::TaskPhase {
+                $phase
             }
 
             $($crate::tasks::task_deps![$($dep),+];)?

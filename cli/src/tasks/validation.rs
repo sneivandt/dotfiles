@@ -7,7 +7,7 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-use super::{Context, Task, TaskResult};
+use super::{Context, Task, TaskPhase, TaskResult};
 
 const SHELLCHECK_SEVERITY_ARG: &str = "--severity=warning";
 const SHELLCHECK_ENABLE_ARG: &str = "--enable=avoid-nullary-conditions";
@@ -20,6 +20,10 @@ pub struct ValidateConfigWarnings;
 impl Task for ValidateConfigWarnings {
     fn name(&self) -> &'static str {
         "Validate config warnings"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Configure
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -54,6 +58,10 @@ pub struct ValidateSymlinkSources;
 impl Task for ValidateSymlinkSources {
     fn name(&self) -> &'static str {
         "Validate symlink sources"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Configure
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -93,6 +101,10 @@ pub struct ValidateConfigFiles;
 impl Task for ValidateConfigFiles {
     fn name(&self) -> &'static str {
         "Validate config files"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Configure
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -151,6 +163,10 @@ pub struct ValidateManifestSync;
 impl Task for ValidateManifestSync {
     fn name(&self) -> &'static str {
         "Validate manifest sync"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Configure
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -212,6 +228,10 @@ impl Task for RunShellcheck {
         "Shellcheck"
     }
 
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Configure
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.executor.which("shellcheck")
     }
@@ -263,6 +283,10 @@ pub struct RunPSScriptAnalyzer;
 impl Task for RunPSScriptAnalyzer {
     fn name(&self) -> &'static str {
         "PSScriptAnalyzer"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Configure
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

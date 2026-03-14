@@ -5,13 +5,14 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 
-use super::{
-    Context, ProcessOpts, Task, TaskResult, TaskStats, process_resource_states, task_deps,
-};
 use crate::config::packages::Package;
 use crate::resources::Applicable as _;
 use crate::resources::package::{
     PackageManager, PackageResource, batch_install_packages, get_installed_packages,
+};
+use crate::tasks::{
+    Context, ProcessOpts, Task, TaskPhase, TaskResult, TaskStats, process_resource_states,
+    task_deps,
 };
 
 /// Default number of parallel jobs for makepkg if nproc detection fails.
@@ -26,7 +27,11 @@ impl Task for InstallPackages {
         "Install packages"
     }
 
-    task_deps![super::reload_config::ReloadConfig];
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Configure
+    }
+
+    task_deps![crate::tasks::bootstrap::reload_config::ReloadConfig];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.config_read().packages.iter().any(|p| !p.is_aur)
@@ -75,7 +80,14 @@ impl Task for InstallAurPackages {
         "Install AUR packages"
     }
 
-    task_deps![InstallParu, super::reload_config::ReloadConfig];
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Configure
+    }
+
+    task_deps![
+        InstallParu,
+        crate::tasks::bootstrap::reload_config::ReloadConfig
+    ];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_aur() && ctx.config_read().packages.iter().any(|p| p.is_aur)
@@ -114,6 +126,10 @@ pub struct InstallParu;
 impl Task for InstallParu {
     fn name(&self) -> &'static str {
         "Install paru"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Configure
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

@@ -11,6 +11,7 @@ use super::types::{Output, TaskEntry, TaskRecorder, TaskStatus};
 use super::utils::{dotfiles_cache_dir, log_file_path, terminal_columns};
 #[cfg(test)]
 use super::utils::{dotfiles_cache_subdir, log_file_path_in};
+use crate::tasks::TaskPhase;
 
 /// Generate an inherent `pub fn $name(&self, msg: &str)` method on `Logger`
 /// that optionally emits to the diagnostic log and then forwards to the given
@@ -178,10 +179,17 @@ impl Logger {
     );
 
     /// Record a task result for the summary.
-    pub fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
+    pub fn record_task(
+        &self,
+        name: &str,
+        phase: TaskPhase,
+        status: TaskStatus,
+        message: Option<&str>,
+    ) {
         if let Ok(mut guard) = self.tasks.lock() {
             guard.push(TaskEntry {
                 name: name.to_string(),
+                phase,
                 status,
                 message: message.map(String::from),
             });
@@ -206,7 +214,7 @@ impl Logger {
         })
     }
 
-    /// Print the summary of all recorded tasks.
+    /// Print the summary of all recorded tasks, grouped by phase.
     pub fn print_summary(&self) {
         let tasks = match self.tasks.lock() {
             Ok(guard) => guard.clone(),
@@ -225,36 +233,44 @@ impl Logger {
         let mut dry_run = 0u32;
         let mut failed = 0u32;
 
-        for task in &tasks {
-            let (icon, color) = match task.status {
-                TaskStatus::Ok => {
-                    ok += 1;
-                    ("✓", "\x1b[32m")
-                }
-                TaskStatus::NotApplicable => {
-                    not_applicable += 1;
-                    ("·", "\x1b[2m")
-                }
-                TaskStatus::Skipped => {
-                    skipped += 1;
-                    ("○", "\x1b[33m")
-                }
-                TaskStatus::DryRun => {
-                    dry_run += 1;
-                    ("~", "\x1b[37m")
-                }
-                TaskStatus::Failed => {
-                    failed += 1;
-                    ("✗", "\x1b[31m")
-                }
-            };
+        let phases = [TaskPhase::Bootstrap, TaskPhase::Configure];
+        for phase in &phases {
+            let phase_tasks: Vec<&TaskEntry> = tasks.iter().filter(|t| t.phase == *phase).collect();
+            if phase_tasks.is_empty() {
+                continue;
+            }
+            self.info(&format!("\x1b[1m{phase}\x1b[0m"));
+            for task in &phase_tasks {
+                let (icon, color) = match task.status {
+                    TaskStatus::Ok => {
+                        ok += 1;
+                        ("✓", "\x1b[32m")
+                    }
+                    TaskStatus::NotApplicable => {
+                        not_applicable += 1;
+                        ("·", "\x1b[2m")
+                    }
+                    TaskStatus::Skipped => {
+                        skipped += 1;
+                        ("○", "\x1b[33m")
+                    }
+                    TaskStatus::DryRun => {
+                        dry_run += 1;
+                        ("~", "\x1b[37m")
+                    }
+                    TaskStatus::Failed => {
+                        failed += 1;
+                        ("✗", "\x1b[31m")
+                    }
+                };
 
-            let suffix = task
-                .message
-                .as_ref()
-                .map_or_else(String::new, |msg| format!(" ({msg})"));
+                let suffix = task
+                    .message
+                    .as_ref()
+                    .map_or_else(String::new, |msg| format!(" ({msg})"));
 
-            self.info(&format!("{color}{icon} {}{suffix}\x1b[0m", task.name));
+                self.info(&format!("{color}  {icon} {}{suffix}\x1b[0m", task.name));
+            }
         }
 
         println!();
@@ -343,8 +359,8 @@ impl Output for Logger {
 }
 
 impl TaskRecorder for Logger {
-    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
-        self.record_task(name, status, message);
+    fn record_task(&self, name: &str, phase: TaskPhase, status: TaskStatus, message: Option<&str>) {
+        self.record_task(name, phase, status, message);
     }
 }
 
@@ -353,6 +369,7 @@ impl TaskRecorder for Logger {
 mod tests {
     use super::*;
     use crate::logging::isolated_logger;
+    use crate::tasks::TaskPhase;
     use std::fs;
     use std::sync::Arc;
 
@@ -365,7 +382,7 @@ mod tests {
     #[test]
     fn record_task_ok() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task("symlinks", TaskStatus::Ok, None);
+        log.record_task("symlinks", TaskPhase::Configure, TaskStatus::Ok, None);
         let tasks = log.task_entries();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].name, "symlinks");
@@ -375,7 +392,12 @@ mod tests {
     #[test]
     fn record_task_with_message() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task("packages", TaskStatus::Skipped, Some("not on arch"));
+        log.record_task(
+            "packages",
+            TaskPhase::Configure,
+            TaskStatus::Skipped,
+            Some("not on arch"),
+        );
         assert_eq!(
             log.task_entries()[0].message,
             Some("not on arch".to_string())
@@ -385,9 +407,9 @@ mod tests {
     #[test]
     fn record_multiple_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task("a", TaskStatus::Ok, None);
-        log.record_task("b", TaskStatus::Failed, Some("error"));
-        log.record_task("c", TaskStatus::DryRun, None);
+        log.record_task("a", TaskPhase::Configure, TaskStatus::Ok, None);
+        log.record_task("b", TaskPhase::Configure, TaskStatus::Failed, Some("error"));
+        log.record_task("c", TaskPhase::Configure, TaskStatus::DryRun, None);
         assert_eq!(log.task_entries().len(), 3);
     }
 
@@ -395,9 +417,9 @@ mod tests {
     fn has_failures_detects_failed_task() {
         let (log, _tmp, _guard) = isolated_logger();
         assert!(!log.has_failures());
-        log.record_task("a", TaskStatus::Ok, None);
+        log.record_task("a", TaskPhase::Configure, TaskStatus::Ok, None);
         assert!(!log.has_failures());
-        log.record_task("b", TaskStatus::Failed, Some("error"));
+        log.record_task("b", TaskPhase::Configure, TaskStatus::Failed, Some("error"));
         assert!(log.has_failures());
     }
 
@@ -425,10 +447,20 @@ mod tests {
     fn failure_count_returns_correct_count() {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.failure_count(), 0);
-        log.record_task("a", TaskStatus::Ok, None);
-        log.record_task("b", TaskStatus::Failed, Some("error 1"));
-        log.record_task("c", TaskStatus::Failed, Some("error 2"));
-        log.record_task("d", TaskStatus::Skipped, None);
+        log.record_task("a", TaskPhase::Configure, TaskStatus::Ok, None);
+        log.record_task(
+            "b",
+            TaskPhase::Configure,
+            TaskStatus::Failed,
+            Some("error 1"),
+        );
+        log.record_task(
+            "c",
+            TaskPhase::Configure,
+            TaskStatus::Failed,
+            Some("error 2"),
+        );
+        log.record_task("d", TaskPhase::Configure, TaskStatus::Skipped, None);
         assert_eq!(log.failure_count(), 2);
     }
 
@@ -436,7 +468,7 @@ mod tests {
     fn log_trait_delegates_to_logger() {
         let (log, _tmp, _guard) = isolated_logger();
         let log_ref: &dyn Log = &log;
-        log_ref.record_task("via-trait", TaskStatus::Ok, None);
+        log_ref.record_task("via-trait", TaskPhase::Configure, TaskStatus::Ok, None);
         assert_eq!(log.task_entries().len(), 1);
     }
 

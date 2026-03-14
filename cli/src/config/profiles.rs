@@ -126,6 +126,37 @@ fn parse_env_profile(raw: Option<String>) -> Option<String> {
     raw.filter(|v| !v.is_empty())
 }
 
+/// Try to read the persisted profile from the repository's local git config
+/// (`dotfiles.profile`).
+#[must_use]
+pub fn read_persisted(root: &Path) -> Option<String> {
+    let repo = git2::Repository::discover(root).ok()?;
+    let config = repo.config().ok()?;
+    let local = config.open_level(git2::ConfigLevel::Local).ok()?;
+    local
+        .get_string("dotfiles.profile")
+        .ok()
+        .filter(|v| !v.is_empty())
+}
+
+/// Persist the profile name to the repository's local git config so future
+/// runs don't need to prompt interactively.
+///
+/// # Errors
+///
+/// Returns an error if the repository cannot be discovered or the config
+/// cannot be written.
+pub fn persist(root: &Path, name: &str) -> Result<()> {
+    let repo = git2::Repository::discover(root).context("finding git repository")?;
+    let config = repo.config().context("opening git config")?;
+    let mut local = config
+        .open_level(git2::ConfigLevel::Local)
+        .context("opening local git config")?;
+    local
+        .set_str("dotfiles.profile", name)
+        .context("persisting profile to git config")
+}
+
 /// Interactively prompt the user to select a profile.
 ///
 /// Profile names and descriptions are read from `conf/profiles.toml`.
@@ -177,7 +208,12 @@ pub fn prompt_interactive(conf_dir: &Path) -> Result<String> {
         .context("selection out of range")
 }
 
-/// Resolve the profile from CLI arg, `DOTFILES_PROFILE` env var, or interactive prompt.
+/// Resolve the profile from CLI arg, `DOTFILES_PROFILE` env var, persisted
+/// git config, or interactive prompt.
+///
+/// When the profile is obtained via interactive prompt it is persisted to the
+/// repository's local git config (`dotfiles.profile`) so future runs skip
+/// the prompt automatically.
 ///
 /// # Errors
 ///
@@ -194,8 +230,14 @@ pub fn resolve_from_args(
         name.to_string()
     } else if let Some(name) = read_from_env() {
         name
+    } else if let Some(name) = read_persisted(root) {
+        name
     } else {
-        prompt_interactive(&conf_dir)?
+        let name = prompt_interactive(&conf_dir)?;
+        if let Err(e) = persist(root, &name) {
+            eprintln!("warning: could not persist profile to git config: {e}");
+        }
+        name
     };
 
     resolve(&name, &conf_dir, platform).map_err(Into::into)
@@ -362,5 +404,50 @@ mod tests {
             result.is_err(),
             "integer instead of array should return error"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // persist / read_persisted
+    // ------------------------------------------------------------------
+
+    fn init_test_repo() -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = git2::Repository::init(dir.path()).expect("git init");
+        let root = repo.workdir().unwrap().to_path_buf();
+        (dir, root)
+    }
+
+    #[test]
+    fn persist_and_read_persisted_round_trip() {
+        let (dir, root) = init_test_repo();
+        persist(&root, "desktop").expect("persist should succeed");
+        let name = read_persisted(&root);
+        assert_eq!(name, Some("desktop".to_string()));
+        drop(dir);
+    }
+
+    #[test]
+    fn read_persisted_returns_none_when_unset() {
+        let (dir, root) = init_test_repo();
+        let name = read_persisted(&root);
+        assert_eq!(name, None);
+        drop(dir);
+    }
+
+    #[test]
+    fn persist_overwrites_previous_value() {
+        let (dir, root) = init_test_repo();
+        persist(&root, "base").expect("first persist");
+        persist(&root, "desktop").expect("second persist");
+        let name = read_persisted(&root);
+        assert_eq!(name, Some("desktop".to_string()));
+        drop(dir);
+    }
+
+    #[test]
+    fn read_persisted_returns_none_outside_git_repo() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let name = read_persisted(dir.path());
+        assert_eq!(name, None);
     }
 }

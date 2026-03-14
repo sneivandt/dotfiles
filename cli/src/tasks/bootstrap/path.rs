@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use super::{Context, ProcessOpts, Task, TaskResult, process_resources};
 use crate::resources::path_entry::PathEntryResource;
+use crate::tasks::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources};
 
 /// Ensure `~/.local/bin` is on the user's `PATH`.
 #[derive(Debug)]
@@ -14,7 +14,11 @@ impl Task for ConfigurePath {
         "Configure PATH"
     }
 
-    super::task_deps![super::wrapper::InstallWrapper];
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Bootstrap
+    }
+
+    crate::tasks::task_deps![crate::tasks::bootstrap::wrapper::InstallWrapper];
 
     fn should_run(&self, _ctx: &Context) -> bool {
         true

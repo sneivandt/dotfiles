@@ -28,7 +28,7 @@ const PENDING_VERSION_NAME: &str = ".dotfiles-update.version";
 const fn asset_name() -> &'static str {
     if cfg!(target_os = "windows") {
         "dotfiles-windows-x86_64.exe"
-    } else if cfg!(target_arch = "aarch64") {
+    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
         "dotfiles-linux-aarch64"
     } else {
         "dotfiles-linux-x86_64"

@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
-        run: rustup show active-toolchain
+        run: rustup show
       - run: cargo fmt --check --manifest-path cli/Cargo.toml
 
   # ── Script Linting ────────────────────────────────────
@@ -79,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
-        run: rustup show active-toolchain
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "cli -> target"
@@ -104,7 +104,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
-        run: rustup show active-toolchain
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "cli -> target"
@@ -129,7 +129,7 @@ jobs:
       - name: Disable Windows Defender real-time monitoring
         run: Set-MpPreference -DisableRealtimeMonitoring $true
       - name: Install Rust toolchain
-        run: rustup show active-toolchain
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "cli -> target"

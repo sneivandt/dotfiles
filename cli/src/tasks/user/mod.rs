@@ -1,6 +1,6 @@
-//! Configure tasks — apply declared state to the system.
+//! User tasks — apply declared state to the system.
 //!
-//! These tasks run after bootstrap completes and handle symlinks, packages,
+//! These tasks run after the system phase completes and handle symlinks, packages,
 //! git settings, hooks, file permissions, shell configuration, systemd units,
 //! registry entries, editor extensions, and other system configuration.
 

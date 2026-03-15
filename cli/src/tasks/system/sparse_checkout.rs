@@ -121,7 +121,7 @@ impl Task for ConfigureSparseCheckout {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Bootstrap
+        TaskPhase::System
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

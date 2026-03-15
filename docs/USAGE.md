@@ -179,7 +179,7 @@ The installation process handles different components based on your profile:
 
 ### Linux Installation Steps
 
-**Bootstrap** (prepare the environment):
+**System** (prepare the environment):
 
 1. **Self-Update** - Updates the dotfiles binary from latest GitHub release
 2. **Configure Sparse Checkout** - Excludes files based on profile
@@ -188,7 +188,7 @@ The installation process handles different components based on your profile:
 5. **Install Wrapper** - Installs `dotfiles` wrapper to `~/.local/bin/`
 6. **Configure PATH** - Ensures `~/.local/bin` is on PATH
 
-**Configure** (apply declared state):
+**User** (apply declared state):
 
 7. **Install Packages** - Installs packages from `conf/packages.toml` using pacman
 8. **Install Paru** - Bootstraps paru AUR helper (Arch Linux only)
@@ -204,7 +204,7 @@ The installation process handles different components based on your profile:
 
 ### Windows Installation Steps
 
-**Bootstrap** (prepare the environment):
+**System** (prepare the environment):
 
 1. **Self-Update** - Updates the dotfiles binary from latest GitHub release
 2. **Enable Developer Mode** - Enables Windows developer mode (required for symlinks)
@@ -213,7 +213,7 @@ The installation process handles different components based on your profile:
 5. **Install Git Hooks** - Symlinks repository git hooks
 6. **Configure PATH** - Ensures dotfiles bin directory is on PATH
 
-**Configure** (apply declared state):
+**User** (apply declared state):
 
 7. **Install Packages** - Installs packages using winget
 8. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
@@ -324,14 +324,14 @@ After installation, a summary is displayed showing each task grouped by phase:
 **Example:**
 ```
 :: Summary
-   Bootstrap
+   System
      ✓ Self-update
      ✓ Configure sparse checkout
      ✓ Update repository
      ✓ Install git hooks
      ✓ Install wrapper
      ✓ Configure PATH
-   Configure
+   User
      ✓ Install symlinks
      ✓ Configure Git
      ✓ Install packages
@@ -354,10 +354,10 @@ After installation, a summary is displayed showing each task grouped by phase:
 Status icons show `~` for tasks that would have run:
 ```
 :: Summary
-   Bootstrap
+   System
      ~ Self-update
      ~ Configure sparse checkout
-   Configure
+   User
      ~ Install symlinks
      ~ Configure Git
 

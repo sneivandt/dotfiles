@@ -21,7 +21,7 @@ impl Task for InstallCopilotPlugins {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Configure
+        TaskPhase::User
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

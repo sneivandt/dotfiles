@@ -220,7 +220,7 @@ fn uninstall_symlinks_is_idempotent() {
     );
 
     // Install the symlink first so there is something to uninstall.
-    let install_result = dotfiles_cli::tasks::configure::symlinks::InstallSymlinks
+    let install_result = dotfiles_cli::tasks::user::symlinks::InstallSymlinks
         .run(&task_ctx)
         .expect("install run");
     assert!(
@@ -229,7 +229,7 @@ fn uninstall_symlinks_is_idempotent() {
     );
 
     // First uninstall: symlink must be materialised to a regular file.
-    let result1 = dotfiles_cli::tasks::configure::symlinks::UninstallSymlinks
+    let result1 = dotfiles_cli::tasks::user::symlinks::UninstallSymlinks
         .run(&task_ctx)
         .expect("first uninstall run");
     assert!(
@@ -245,7 +245,7 @@ fn uninstall_symlinks_is_idempotent() {
     );
 
     // Second uninstall: must succeed (idempotency — target is no longer a symlink).
-    let result2 = dotfiles_cli::tasks::configure::symlinks::UninstallSymlinks
+    let result2 = dotfiles_cli::tasks::user::symlinks::UninstallSymlinks
         .run(&task_ctx)
         .expect("second uninstall run");
     assert!(

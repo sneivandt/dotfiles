@@ -38,7 +38,7 @@ Unit tests live alongside the code they test in `cli/src/`. Examples:
 - `platform.rs` — Platform detection and category exclusion logic
 - `cli.rs` — CLI argument parsing and command structure
 - `config/toml_loader.rs` — TOML file parsing
-- `tasks/bootstrap/*.rs`, `tasks/configure/*.rs` — Task `should_run` logic and helper functions
+- `tasks/system/*.rs`, `tasks/user/*.rs` — Task `should_run` logic and helper functions
 
 ```rust
 #[cfg(test)]

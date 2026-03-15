@@ -36,7 +36,7 @@ resource_task! {
     /// Create symlinks from symlinks/ to $HOME.
     pub InstallSymlinks {
         name: "Install symlinks",
-        phase: TaskPhase::Configure,
+        phase: TaskPhase::User,
         items: |ctx| ctx.config_read().symlinks.clone(),
         build: |s, ctx| {
             let symlinks_dir = ctx.symlinks_dir();
@@ -56,7 +56,7 @@ impl Task for UninstallSymlinks {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Configure
+        TaskPhase::User
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

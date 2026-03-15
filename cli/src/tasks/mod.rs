@@ -2,14 +2,14 @@
 //!
 //! Tasks are organised into two phases:
 //!
-//! - **Bootstrap** (`tasks::bootstrap`) — manage the dotfiles system itself
+//! - **System** (`tasks::system`) — manage the dotfiles system itself
 //!   (binary updates, repo sync, sparse checkout, config reload).
-//! - **Configure** (`tasks::configure`) — apply declared state to the system
+//! - **User** (`tasks::user`) — apply declared state to the user environment
 //!   (symlinks, packages, registry, hooks, etc.).
 
-pub mod bootstrap;
-pub mod configure;
 mod helpers;
+pub mod system;
+pub mod user;
 pub mod validation;
 
 pub use helpers::{all_install_tasks, all_uninstall_tasks};
@@ -36,22 +36,22 @@ use crate::logging::TaskStatus;
 
 /// Execution phase of a task.
 ///
-/// Bootstrap tasks run first and prepare the environment (binary update,
-/// repository sync, config reload).  Configure tasks run second and apply
+/// System tasks run first and prepare the environment (binary update,
+/// repository sync, config reload).  User tasks run second and apply
 /// the declared system state (symlinks, packages, registry, etc.).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TaskPhase {
     /// Manage the dotfiles system itself.
-    Bootstrap,
-    /// Apply declared state to the system.
-    Configure,
+    System,
+    /// Apply declared state to the user environment.
+    User,
 }
 
 impl fmt::Display for TaskPhase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Bootstrap => f.write_str("Bootstrap"),
-            Self::Configure => f.write_str("Configure"),
+            Self::System => f.write_str("System"),
+            Self::User => f.write_str("User"),
         }
     }
 }
@@ -65,7 +65,7 @@ pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
 
-    /// Execution phase: [`TaskPhase::Bootstrap`] or [`TaskPhase::Configure`].
+    /// Execution phase: [`TaskPhase::System`] or [`TaskPhase::User`].
     fn phase(&self) -> TaskPhase;
 
     /// The concrete `TypeId` of this task, used as a dependency identifier.
@@ -456,7 +456,7 @@ mod tests {
         /// Test-only task for resource-task macro behaviour.
         CountingResourceTask {
             name: "Counting resource task",
-            phase: TaskPhase::Configure,
+            phase: TaskPhase::User,
             items: |_ctx| {
                 RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
                 Vec::<()>::new()
@@ -470,7 +470,7 @@ mod tests {
         /// Test-only task for batch-resource-task macro behaviour.
         CountingBatchTask {
             name: "Counting batch task",
-            phase: TaskPhase::Configure,
+            phase: TaskPhase::User,
             items: |_ctx| {
                 BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
                 Vec::<()>::new()
@@ -494,7 +494,7 @@ mod tests {
             self.name
         }
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Configure
+            TaskPhase::User
         }
         fn should_run(&self, _ctx: &Context) -> bool {
             self.should_run

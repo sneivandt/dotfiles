@@ -10,7 +10,7 @@ metadata:
 
 # Git Hooks Patterns
 
-The project uses git hooks for pre-commit security scanning. Hook installation is handled by `cli/src/tasks/bootstrap/hooks.rs` which implements the `Task` trait.
+The project uses git hooks for pre-commit security scanning. Hook installation is handled by `cli/src/tasks/system/hooks.rs` which implements the `Task` trait.
 
 ## Overview
 
@@ -23,7 +23,7 @@ Hooks live in `hooks/` and are copied to `.git/hooks/` by the Rust engine.
 
 ## Hook Installation Task
 
-The `InstallGitHooks` task in `cli/src/tasks/bootstrap/hooks.rs` holds its own
+The `InstallGitHooks` task in `cli/src/tasks/system/hooks.rs` holds its own
 `fs_ops` field for injectable filesystem access:
 
 ```rust
@@ -41,7 +41,7 @@ impl InstallGitHooks {
 
 impl Task for InstallGitHooks {
     fn name(&self) -> &'static str { "Install git hooks" }
-    task_deps![crate::tasks::bootstrap::reload_config::ReloadConfig];
+    task_deps![crate::tasks::system::reload_config::ReloadConfig];
     fn should_run(&self, ctx: &Context) -> bool {
         self.fs_ops.exists(&ctx.hooks_dir()) && self.fs_ops.exists(&ctx.root().join(".git"))
     }

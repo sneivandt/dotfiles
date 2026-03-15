@@ -9,8 +9,8 @@ resource_task! {
     /// Enable and start systemd user units.
     pub ConfigureSystemd {
         name: "Configure systemd units",
-        phase: TaskPhase::Configure,
-        deps: [crate::tasks::configure::symlinks::InstallSymlinks],
+        phase: TaskPhase::User,
+        deps: [crate::tasks::user::symlinks::InstallSymlinks],
         guard: |ctx| {
             ctx.platform.supports_systemd()
                 && !ctx.config_read().units.is_empty()

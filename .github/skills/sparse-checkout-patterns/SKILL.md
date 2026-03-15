@@ -89,7 +89,7 @@ Files in the `[base]` profile category **do not** need to be listed in `manifest
 
 ### Implementation Location
 
-**Implementation**: `cli/src/tasks/bootstrap/sparse_checkout.rs`
+**Implementation**: `cli/src/tasks/system/sparse_checkout.rs`
 
 This function:
 1. Resolves the profile to exclude categories
@@ -156,7 +156,7 @@ The system automatically enforces compatibility overrides:
 - Always exclude `windows` category (regardless of profile)
 - Non-Arch Linux: Always exclude `arch` category
 
-**Implementation** (in `cli/src/tasks/bootstrap/sparse_checkout.rs`):
+**Implementation** (in `cli/src/tasks/system/sparse_checkout.rs`):
 
 The Rust engine calls `Platform::excludes_category()` to determine which categories are incompatible with the current OS. These overrides are applied before generating sparse checkout patterns, preventing incompatible files from appearing even with a manually-selected profile.
 
@@ -358,5 +358,5 @@ When working with sparse checkout and manifest:
 
 - **`conf/manifest.toml`** - File-to-category mappings
 - **`conf/profiles.toml`** - Profile-to-exclude-category mappings
-- **`cli/src/tasks/bootstrap/sparse_checkout.rs`** - Sparse checkout task implementation
+- **`cli/src/tasks/system/sparse_checkout.rs`** - Sparse checkout task implementation
 - **`.git/info/sparse-checkout`** - Git's sparse checkout configuration (generated)

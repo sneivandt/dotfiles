@@ -1,4 +1,4 @@
-//! Bootstrap tasks — manage the dotfiles system itself.
+//! System tasks — manage the dotfiles system itself.
 //!
 //! These tasks run first and handle binary updates, repository sync,
 //! sparse checkout configuration, config reloading, and platform prerequisites.

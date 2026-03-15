@@ -28,7 +28,7 @@ impl Task for InstallPackages {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Configure
+        TaskPhase::User
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -79,7 +79,7 @@ impl Task for InstallAurPackages {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Configure
+        TaskPhase::User
     }
 
     task_deps![InstallParu];
@@ -124,7 +124,7 @@ impl Task for InstallParu {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Configure
+        TaskPhase::User
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

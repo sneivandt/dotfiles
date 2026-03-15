@@ -68,7 +68,8 @@ pub fn load_section<S: ConfigSection>(
 pub fn load_config<T: DeserializeOwned>(path: &Path) -> Result<T> {
     if !path.exists() {
         // Return empty config for missing files by deserializing empty TOML
-        return toml::from_str("").context("Failed to create empty config");
+        return toml::from_str("")
+            .with_context(|| format!("Failed to create empty config: {}", path.display()));
     }
 
     let content = std::fs::read_to_string(path)
@@ -181,6 +182,10 @@ mod tests {
         assert!(
             msg.contains("Failed to parse TOML config"),
             "error should mention parse failure: {msg}"
+        );
+        assert!(
+            msg.contains(path.to_str().unwrap_or("")),
+            "error should include the file path: {msg}"
         );
     }
 

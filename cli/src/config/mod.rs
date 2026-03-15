@@ -230,19 +230,20 @@ impl Config {
         let active_categories = &profile.active_categories;
         let excluded_categories = &profile.excluded_categories;
 
-        // Macro to build the path and attach the filename to any parse error,
+        // Macro to build the path and attach the full path to any parse error,
         // removing the duplication of writing each filename twice.
         macro_rules! load_toml {
             // Two-argument form: loaders that do not filter by category (e.g. registry).
-            ($file:literal, $loader:expr) => {
-                $loader(&conf.join($file))
-                    .with_context(|| format!("Invalid syntax in {}", $file))?
-            };
+            ($file:literal, $loader:expr) => {{
+                let path = conf.join($file);
+                $loader(&path).with_context(|| format!("Invalid syntax in {}", path.display()))?
+            }};
             // Three-argument form: loaders that accept a category slice for filtering.
-            ($file:literal, $loader:expr, $cats:expr) => {
-                $loader(&conf.join($file), $cats)
-                    .with_context(|| format!("Invalid syntax in {}", $file))?
-            };
+            ($file:literal, $loader:expr, $cats:expr) => {{
+                let path = conf.join($file);
+                $loader(&path, $cats)
+                    .with_context(|| format!("Invalid syntax in {}", path.display()))?
+            }};
         }
 
         let packages = load_toml!("packages.toml", packages::load, active_categories);
@@ -444,9 +445,10 @@ mod tests {
         let result = Config::load(dir.path(), &profile, platform);
         assert!(result.is_err(), "invalid packages.toml should return error");
         let msg = result.unwrap_err().to_string();
+        let expected_path = dir.path().join("conf").join("packages.toml");
         assert!(
-            msg.contains("packages.toml"),
-            "error should mention the file: {msg}"
+            msg.contains(expected_path.to_str().unwrap_or("packages.toml")),
+            "error should mention the full path: {msg}"
         );
     }
 
@@ -460,9 +462,10 @@ mod tests {
             "invalid git-config.toml should return error"
         );
         let msg = result.unwrap_err().to_string();
+        let expected_path = dir.path().join("conf").join("git-config.toml");
         assert!(
-            msg.contains("git-config.toml"),
-            "error should mention the file: {msg}"
+            msg.contains(expected_path.to_str().unwrap_or("git-config.toml")),
+            "error should mention the full path: {msg}"
         );
     }
 

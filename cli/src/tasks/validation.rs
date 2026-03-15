@@ -417,7 +417,9 @@ fn shebang_matches(path: &Path, interpreters: &[&[u8]]) -> bool {
 ///
 /// Returns the interpreter name from a shebang line, handling:
 /// - Direct paths: `#!/bin/bash` → `bash`
+/// - Non-standard paths: `#!/usr/local/bin/bash` → `bash`
 /// - Env wrappers: `#!/usr/bin/env bash` → `bash`
+/// - Env with flags: `#!/usr/bin/env -S bash` → `bash`
 /// - With arguments: `#!/bin/sh -e` → `sh`
 fn parse_shebang_interpreter(path: &Path) -> Option<Vec<u8>> {
     let first_line = read_first_line(path);
@@ -425,10 +427,25 @@ fn parse_shebang_interpreter(path: &Path) -> Option<Vec<u8>> {
         return None;
     }
     let shebang = first_line.get(2..).unwrap_or(&[]);
-    shebang
-        .split(|&b| b == b' ' || b == b'/' || b == b'\t')
-        .find(|s| !s.is_empty() && *s != b"usr" && *s != b"bin" && *s != b"env")
-        .map(<[u8]>::to_vec)
+    // Split the shebang line into whitespace-separated tokens.
+    let mut tokens = shebang
+        .split(|&b| b == b' ' || b == b'\t')
+        .filter(|s| !s.is_empty());
+    // The first token is the interpreter path (e.g. `/usr/bin/env` or `/bin/bash`).
+    let prog_path = tokens.next()?;
+    // Extract the basename — the last `/`-separated component.
+    let prog = prog_path
+        .rsplit(|&b| b == b'/')
+        .next()
+        .filter(|s| !s.is_empty())?;
+    let prog = prog.strip_suffix(b".exe").unwrap_or(prog);
+    if prog == b"env" {
+        // With `env`, skip option flags (tokens starting with `-`) and take
+        // the first non-flag argument as the actual interpreter name.
+        tokens.find(|s| !s.starts_with(b"-")).map(<[u8]>::to_vec)
+    } else {
+        Some(prog.to_vec())
+    }
 }
 
 /// Read the first line of a file (up to 256 bytes).
@@ -660,6 +677,44 @@ mod tests {
         let mut found = Vec::new();
         discover_shell_scripts(dir.path(), &mut found);
         assert_eq!(found.len(), 3, "should detect shell scripts with arguments");
+    }
+
+    #[test]
+    fn shebang_detects_non_standard_install_paths() {
+        let dir = tempfile::tempdir().expect("tempdir should create");
+
+        // Non-standard paths like /usr/local/bin or /opt/homebrew/bin (macOS)
+        // must still correctly resolve the interpreter name.
+        for (name, shebang) in [
+            ("a", "#!/usr/local/bin/bash\n"),
+            ("b", "#!/opt/homebrew/bin/bash\n"),
+            ("c", "#!/usr/local/bin/sh\n"),
+        ] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, shebang).expect("write should succeed");
+        }
+
+        let mut found = Vec::new();
+        discover_shell_scripts(dir.path(), &mut found);
+        assert_eq!(
+            found.len(),
+            3,
+            "should detect shell scripts with non-standard install paths"
+        );
+    }
+
+    #[test]
+    fn shebang_detects_env_with_flags() {
+        let dir = tempfile::tempdir().expect("tempdir should create");
+
+        // `env -S` is used to pass arguments through env on some systems.
+        let path = dir.path().join("script");
+        std::fs::write(&path, "#!/usr/bin/env -S bash -e\necho hi\n")
+            .expect("write should succeed");
+
+        let mut found = Vec::new();
+        discover_shell_scripts(dir.path(), &mut found);
+        assert_eq!(found.len(), 1, "should detect shell scripts with env -S");
     }
 
     #[test]

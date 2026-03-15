@@ -249,9 +249,16 @@ test_wrapper_forwarded_args()
     return 0
   fi
 
-  # Test that arguments are properly forwarded
-  # The binary should understand --help flag
-  if "$BINARY_PATH" --help >/dev/null 2>&1; then
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+
+  cp "$DIR/dotfiles.sh" "$tmpdir/dotfiles.sh"
+  mkdir -p "$tmpdir/bin"
+  cp "$BINARY_PATH" "$tmpdir/bin/dotfiles"
+  chmod +x "$tmpdir/bin/dotfiles"
+
+  # Validate wrapper argument forwarding by executing through dotfiles.sh.
+  if "$tmpdir/dotfiles.sh" version >/dev/null 2>&1; then
     log_verbose "✓ Arguments forwarded correctly"
   else
     printf "%sERROR: Argument forwarding failed%s\n" "${RED}" "${NC}" >&2

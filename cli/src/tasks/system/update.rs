@@ -58,7 +58,6 @@ impl Task for UpdateRepository {
         // Refuse to pull when tracked files are dirty. Untracked files do not
         // block a fast-forward pull, so they should not prevent updates.
         if worktree_has_local_changes(ctx, git_env)? {
-            ctx.log.warn("local changes detected, skipping update");
             return Ok(TaskResult::Skipped("local changes present".to_string()));
         }
 

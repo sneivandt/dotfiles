@@ -516,19 +516,23 @@ fn load_config(
 
     let debug_count = |count: usize, label: &str| log.debug(&format!("{count} {label}"));
 
-    debug_count(config.packages.len(), "packages");
-    debug_count(config.symlinks.len(), "symlinks");
-    debug_count(config.registry.len(), "registry entries");
-    debug_count(config.units.len(), "systemd units");
-    debug_count(config.chmod.len(), "chmod entries");
-    debug_count(config.vscode_extensions.len(), "vscode extensions");
-    debug_count(config.copilot_plugins.len(), "copilot plugins");
-    debug_count(config.manifest.excluded_files.len(), "manifest exclusions");
-    log.info(&format!(
-        "loaded {} packages, {} symlinks",
-        config.packages.len(),
-        config.symlinks.len()
-    ));
+    let counts = [
+        (config.packages.len(), "packages"),
+        (config.symlinks.len(), "symlinks"),
+        (config.registry.len(), "registry entries"),
+        (config.units.len(), "systemd units"),
+        (config.chmod.len(), "chmod entries"),
+        (config.vscode_extensions.len(), "vscode extensions"),
+        (config.copilot_plugins.len(), "copilot plugins"),
+        (config.manifest.excluded_files.len(), "manifest exclusions"),
+    ];
+
+    for (count, label) in &counts {
+        debug_count(*count, label);
+    }
+
+    let types_loaded = counts.iter().filter(|(count, _)| *count > 0).count();
+    log.info(&format!("loaded {types_loaded} config types"));
 
     // Validate configuration and display warnings
     let warnings = config.validate(platform);

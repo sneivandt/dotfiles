@@ -166,8 +166,6 @@ impl Task for ConfigureSparseCheckout {
         }
 
         if worktree_has_local_changes(ctx)? {
-            ctx.log
-                .warn("local changes detected, skipping sparse checkout reconfiguration");
             return Ok(TaskResult::Skipped("local changes present".to_string()));
         }
 

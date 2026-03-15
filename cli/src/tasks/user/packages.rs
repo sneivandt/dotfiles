@@ -134,6 +134,9 @@ impl Task for InstallParu {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if ctx.executor.which("paru") {
             ctx.log.debug("paru already in PATH");
+            if ctx.dry_run {
+                return Ok(TaskResult::DryRun);
+            }
             return Ok(TaskResult::Ok);
         }
 
@@ -532,8 +535,21 @@ mod tests {
         ctx = ctx.with_dry_run(true);
         let result = InstallParu.run(&ctx).unwrap();
         assert!(
-            matches!(result, TaskResult::Ok),
-            "expected Ok when paru already installed in dry-run mode (no change needed), got {result:?}"
+            matches!(result, TaskResult::DryRun),
+            "expected DryRun when paru already installed in dry-run mode, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn install_paru_run_returns_dry_run_when_not_installed_in_dry_run() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        // which_result=false ⇒ paru missing in PATH
+        let mut ctx = make_platform_context_with_which(config, Os::Linux, true, false);
+        ctx = ctx.with_dry_run(true);
+        let result = InstallParu.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::DryRun),
+            "expected DryRun when paru missing in dry-run mode, got {result:?}"
         );
     }
 

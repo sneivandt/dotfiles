@@ -94,7 +94,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FileLayer {
         let line = match (level, target) {
             (tracing::Level::INFO, "dotfiles::stage") => format!("[{ts}] ==> {msg}"),
             (tracing::Level::INFO, "dotfiles::phase") => {
-                format!("[{ts}] >>> [phase] {msg}")
+                format!("[{ts}] :: [phase] {msg}")
             }
             (tracing::Level::INFO, "dotfiles::dry_run") => format!("[{ts}]     [dry run] {msg}"),
             (tracing::Level::ERROR, _) => format!("[{ts}]     [error] {msg}"),
@@ -139,7 +139,7 @@ where
                 writeln!(writer, "\x1b[1;34m==>\x1b[0m \x1b[1m{msg}\x1b[0m")
             }
             tracing::Level::INFO if target == "dotfiles::phase" => {
-                writeln!(writer, "\x1b[1;36m==>\x1b[0m \x1b[1;36m{msg}\x1b[0m")
+                writeln!(writer, "\x1b[1;36m::\x1b[0m \x1b[1;36m{msg}\x1b[0m")
             }
             tracing::Level::INFO if target == "dotfiles::dry_run" => {
                 writeln!(writer, "  \x1b[33m[DRY RUN]\x1b[0m {msg}")
@@ -248,7 +248,7 @@ mod tests {
         tracing::info!(target: "dotfiles::phase", "System");
         let content = fs::read_to_string(&path).unwrap();
         assert!(
-            content.contains(">>> [phase] System"),
+            content.contains(":: [phase] System"),
             "phase should include phase tag: {content}"
         );
     }

@@ -312,10 +312,10 @@ impl Logger {
 
         self.info(&format!("{active} tasks: {}{na_suffix}", parts.join(", "),));
 
+        self.info(&format!("\x1b[2mcompleted in {elapsed_str}\x1b[0m"));
         if let Some(path) = &self.log_file {
             self.info(&format!("\x1b[2mlog: {}\x1b[0m", path.display()));
         }
-        self.info(&format!("\x1b[2mcompleted in {elapsed_str}\x1b[0m"));
     }
 
     /// Erase the in-progress status line from the console.

@@ -79,7 +79,7 @@ impl PathEntryResource {
 
         let strategy = if platform.is_windows() {
             PathStrategy::WindowsRegistry {
-                dir: dir.to_str().unwrap_or_default().to_string(),
+                dir: dir.to_string_lossy().into_owned(),
                 executor,
             }
         } else {

@@ -7,7 +7,7 @@ resource_task! {
     /// Enable Windows Developer Mode (allows symlink creation without admin).
     pub EnableDeveloperMode {
         name: "Enable developer mode",
-        phase: TaskPhase::Bootstrap,
+        phase: TaskPhase::System,
         guard: |ctx| ctx.platform.is_windows(),
         items: |_ctx| vec![()],
         build: |_unit, _ctx| DeveloperModeResource::new(),

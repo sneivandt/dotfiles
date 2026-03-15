@@ -97,14 +97,14 @@ cargo test --manifest-path cli/Cargo.toml
 
 #### Adding New Tasks
 
-1. Create a new file in `cli/src/tasks/bootstrap/` (for bootstrap-phase tasks) or `cli/src/tasks/configure/` (for configure-phase tasks) implementing the `Task` trait:
+1. Create a new file in `cli/src/tasks/system/` (for system-phase tasks) or `cli/src/tasks/user/` (for user-phase tasks) implementing the `Task` trait:
    ```rust
    #[derive(Debug)]
    pub struct MyNewTask;
 
    impl Task for MyNewTask {
        fn name(&self) -> &str { "My New Task" }
-       fn phase(&self) -> TaskPhase { TaskPhase::Configure }
+       fn phase(&self) -> TaskPhase { TaskPhase::User }
 
        fn should_run(&self, ctx: &Context) -> bool {
            ctx.platform.supports_systemd()  // use capability methods when possible
@@ -116,7 +116,7 @@ cargo test --manifest-path cli/Cargo.toml
        }
    }
    ```
-2. Add the module to `cli/src/tasks/bootstrap/mod.rs` or `cli/src/tasks/configure/mod.rs`
+2. Add the module to `cli/src/tasks/system/mod.rs` or `cli/src/tasks/user/mod.rs`
 3. Add the task to `all_install_tasks()` in `cli/src/tasks/helpers/catalog.rs`
 
 #### Adding New Configuration Types
@@ -124,7 +124,7 @@ cargo test --manifest-path cli/Cargo.toml
 1. Create TOML file in `conf/`
 2. Add a parser module in `cli/src/config/` (follow existing patterns like `packages.rs`)
 3. Add the field to the `Config` struct and load it in `Config::load()`
-4. Create a task in `cli/src/tasks/configure/` that consumes the config
+4. Create a task in `cli/src/tasks/user/` that consumes the config
 
 #### Creating New Profiles
 
@@ -138,7 +138,7 @@ exclude = ["windows", "desktop"]
 ### Rust Code Guidelines
 
 - **Error Handling**: Use `anyhow::Result` with `.context()` for all fallible operations
-- **Task Pattern**: Implement the `Task` trait in `cli/src/tasks/bootstrap/` or `cli/src/tasks/configure/`; use `should_run()` for platform/profile gating
+- **Task Pattern**: Implement the `Task` trait in `cli/src/tasks/system/` or `cli/src/tasks/user/`; use `should_run()` for platform/profile gating
 - **Idempotency**: Always check if action is needed before taking it
 - **No Trailing Whitespace**: Remove all trailing whitespace from files
 - **Formatting**: Run `cargo fmt` before committing

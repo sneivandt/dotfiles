@@ -23,7 +23,7 @@ impl Task for ValidateConfigWarnings {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Configure
+        TaskPhase::User
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -61,7 +61,7 @@ impl Task for ValidateSymlinkSources {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Configure
+        TaskPhase::User
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -104,7 +104,7 @@ impl Task for ValidateConfigFiles {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Configure
+        TaskPhase::User
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -166,7 +166,7 @@ impl Task for ValidateManifestSync {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Configure
+        TaskPhase::User
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -229,7 +229,7 @@ impl Task for RunShellcheck {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Configure
+        TaskPhase::User
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -286,7 +286,7 @@ impl Task for RunPSScriptAnalyzer {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Configure
+        TaskPhase::User
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

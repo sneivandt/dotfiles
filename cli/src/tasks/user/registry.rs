@@ -7,7 +7,7 @@ batch_resource_task! {
     /// Apply Windows registry settings.
     pub ApplyRegistry {
         name: "Apply registry settings",
-        phase: TaskPhase::Configure,
+        phase: TaskPhase::User,
         guard: |ctx| ctx.platform.has_registry(),
         items: |ctx| ctx.config_read().registry.clone(),
         cache: |items, _ctx| {

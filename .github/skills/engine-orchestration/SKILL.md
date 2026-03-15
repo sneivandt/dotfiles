@@ -17,8 +17,8 @@ The engine has two levels of parallelism: **task-level** (scheduler) and
 ## Phase Barrier
 
 `run_tasks_to_completion()` in `commands/mod.rs` enforces a strict two-phase
-execution model: all **Bootstrap** tasks complete before any **Configure** task
-starts.  The function loops over `[TaskPhase::Bootstrap, TaskPhase::Configure]`,
+execution model: all **System** tasks complete before any **User** task
+starts.  The function loops over `[TaskPhase::System, TaskPhase::User]`,
 filtering and dispatching tasks per phase.  Within each phase, tasks run via
 the scheduler (parallel) or sequentially (single task / `--no-parallel`).
 

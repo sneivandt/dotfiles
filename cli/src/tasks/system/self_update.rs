@@ -569,7 +569,7 @@ impl Task for UpdateBinary {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Bootstrap
+        TaskPhase::System
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

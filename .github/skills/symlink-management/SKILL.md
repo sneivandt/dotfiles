@@ -29,7 +29,7 @@ Source files in `symlinks/` have **no leading dots**.
 
 ## Target Path
 
-`compute_target()` in `tasks/configure/symlinks.rs` always prepends a dot:
+`compute_target()` in `tasks/user/symlinks.rs` always prepends a dot:
 
 ```rust
 fn compute_target(home: &Path, source: &str) -> PathBuf {
@@ -57,8 +57,8 @@ pub struct InstallSymlinks;
 impl Task for InstallSymlinks {
     fn name(&self) -> &str { "Install symlinks" }
     task_deps![
-        crate::tasks::bootstrap::reload_config::ReloadConfig,
-        crate::tasks::bootstrap::developer_mode::EnableDeveloperMode,
+        crate::tasks::system::reload_config::ReloadConfig,
+        crate::tasks::system::developer_mode::EnableDeveloperMode,
     ];
     fn should_run(&self, ctx: &Context) -> bool { !ctx.config_read().symlinks.is_empty() }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

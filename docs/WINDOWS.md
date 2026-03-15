@@ -43,18 +43,18 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 
 | Phase | Step | Task | Description | Idempotency Cue |
 |-------|------|------|-------------|-----------------|
-| Bootstrap | 1 | Self-Update | Updates the dotfiles binary from latest GitHub release. | Skips if already up to date. |
-| Bootstrap | 2 | Developer Mode | Enables Windows developer mode (required for symlink creation). | Skips if already enabled. |
-| Bootstrap | 3 | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
-| Bootstrap | 4 | Update Repository | Updates the repository from remote (`git pull --ff-only`). | Skips if already up to date. |
-| Bootstrap | 5 | Git Hooks | Installs repository git hooks. | Skips if hooks already installed. |
-| Bootstrap | 6 | Configure PATH | Ensures dotfiles bin directory is on PATH. | Skips if already on PATH. |
-| Configure | 7 | Packages | Installs missing packages from `conf/packages.toml` using winget. | Skips already-installed packages. |
-| Configure | 8 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
-| Configure | 9 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
-| Configure | 10 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
-| Configure | 11 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
-| Configure | 12 | Copilot Plugins | Registers configured Copilot marketplaces and installs plugins from `conf/copilot-plugins.toml`. | Skips if the plugin is already installed. |
+| System | 1 | Self-Update | Updates the dotfiles binary from latest GitHub release. | Skips if already up to date. |
+| System | 2 | Developer Mode | Enables Windows developer mode (required for symlink creation). | Skips if already enabled. |
+| System | 3 | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
+| System | 4 | Update Repository | Updates the repository from remote (`git pull --ff-only`). | Skips if already up to date. |
+| System | 5 | Git Hooks | Installs repository git hooks. | Skips if hooks already installed. |
+| System | 6 | Configure PATH | Ensures dotfiles bin directory is on PATH. | Skips if already on PATH. |
+| User | 7 | Packages | Installs missing packages from `conf/packages.toml` using winget. | Skips already-installed packages. |
+| User | 8 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
+| User | 9 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
+| User | 10 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
+| User | 11 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
+| User | 12 | Copilot Plugins | Registers configured Copilot marketplaces and installs plugins from `conf/copilot-plugins.toml`. | Skips if the plugin is already installed. |
 
 Tasks that don't apply to Windows (systemd, shell, chmod, paru) are automatically skipped via platform detection.
 
@@ -62,7 +62,7 @@ Tasks that don't apply to Windows (systemd, shell, chmod, paru) are automaticall
 
 The repository contains symlinks (e.g., `symlinks/config/nvim` → `../vim`) that are tracked in Git. On Windows, creating actual symlinks during Git operations requires Developer Mode enabled or Administrator privileges.
 
-The binary **automatically configures** Git to enable symlink support, since Developer Mode is enabled during the Bootstrap phase:
+The binary **automatically configures** Git to enable symlink support, since Developer Mode is enabled during the System phase:
 
 ```powershell
 git config core.symlinks true
@@ -291,13 +291,13 @@ When using `-d` (dry-run), the logging system:
 Example summary output:
 ```
 :: Summary
-   Bootstrap
+   System
      ✓ Self-update
      ✓ Enable developer mode
      ✓ Configure sparse checkout
      ✓ Update repository
      ✓ Install git hooks
-   Configure
+   User
      ✓ Install packages
      ✓ Install symlinks
      ✓ Configure Git

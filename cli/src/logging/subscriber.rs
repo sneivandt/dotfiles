@@ -245,10 +245,10 @@ mod tests {
     #[test]
     fn file_layer_formats_phase_with_phase_tag() {
         let (path, _tmp, _guard) = isolated_file_layer();
-        tracing::info!(target: "dotfiles::phase", "Bootstrap");
+        tracing::info!(target: "dotfiles::phase", "System");
         let content = fs::read_to_string(&path).unwrap();
         assert!(
-            content.contains(">>> [phase] Bootstrap"),
+            content.contains(">>> [phase] System"),
             "phase should include phase tag: {content}"
         );
     }

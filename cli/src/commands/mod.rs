@@ -277,7 +277,7 @@ mod task_graph_tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Configure
+            TaskPhase::User
         }
 
         task_deps![CycleTaskB];
@@ -302,7 +302,7 @@ mod task_graph_tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Configure
+            TaskPhase::User
         }
 
         task_deps![CycleTaskA];
@@ -338,18 +338,18 @@ mod task_graph_tests {
         assert!(!ran_b.load(Ordering::SeqCst));
     }
 
-    struct BootstrapMarkTask {
+    struct SystemMarkTask {
         name: &'static str,
         completed: Arc<AtomicUsize>,
     }
 
-    impl Task for BootstrapMarkTask {
+    impl Task for SystemMarkTask {
         fn name(&self) -> &'static str {
             self.name
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Bootstrap
+            TaskPhase::System
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -362,19 +362,19 @@ mod task_graph_tests {
         }
     }
 
-    struct ConfigureAfterBootstrapTask {
+    struct UserAfterSystemTask {
         ran: Arc<AtomicBool>,
-        completed_bootstrap: Arc<AtomicUsize>,
-        expected_bootstrap_count: usize,
+        completed_system: Arc<AtomicUsize>,
+        expected_system_count: usize,
     }
 
-    impl Task for ConfigureAfterBootstrapTask {
+    impl Task for UserAfterSystemTask {
         fn name(&self) -> &'static str {
-            "configure-after-bootstrap"
+            "user-after-system"
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Configure
+            TaskPhase::User
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -383,11 +383,11 @@ mod task_graph_tests {
 
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
             self.ran.store(true, Ordering::SeqCst);
-            let done = self.completed_bootstrap.load(Ordering::SeqCst);
-            if done != self.expected_bootstrap_count {
+            let done = self.completed_system.load(Ordering::SeqCst);
+            if done != self.expected_system_count {
                 return Ok(TaskResult::Failed(format!(
-                    "configure started before bootstrap completed: {done}/{}",
-                    self.expected_bootstrap_count
+                    "user started before system completed: {done}/{}",
+                    self.expected_system_count
                 )));
             }
             Ok(TaskResult::Ok)
@@ -395,34 +395,34 @@ mod task_graph_tests {
     }
 
     #[test]
-    fn run_tasks_to_completion_completes_bootstrap_phase_before_configure() {
+    fn run_tasks_to_completion_completes_system_phase_before_user() {
         let (ctx, log) = make_static_context(empty_config(PathBuf::from("/repo")));
         let ctx = ctx.with_parallel(true);
 
-        let completed_bootstrap = Arc::new(AtomicUsize::new(0));
-        let configure_ran = Arc::new(AtomicBool::new(false));
+        let completed_system = Arc::new(AtomicUsize::new(0));
+        let user_ran = Arc::new(AtomicBool::new(false));
 
-        let bootstrap = BootstrapMarkTask {
-            name: "bootstrap-mark",
-            completed: Arc::clone(&completed_bootstrap),
+        let system = SystemMarkTask {
+            name: "system-mark",
+            completed: Arc::clone(&completed_system),
         };
-        let configure = ConfigureAfterBootstrapTask {
-            ran: Arc::clone(&configure_ran),
-            completed_bootstrap: Arc::clone(&completed_bootstrap),
-            expected_bootstrap_count: 1,
+        let user = UserAfterSystemTask {
+            ran: Arc::clone(&user_ran),
+            completed_system: Arc::clone(&completed_system),
+            expected_system_count: 1,
         };
 
-        // Intentionally pass configure first to ensure phase gating, not input
+        // Intentionally pass user first to ensure phase gating, not input
         // order, controls execution.
         run_tasks_to_completion(
-            [&configure as &dyn Task, &bootstrap as &dyn Task],
+            [&user as &dyn Task, &system as &dyn Task],
             &ctx,
             &log,
         )
-        .expect("phase barriers should run all bootstrap tasks before configure");
+        .expect("phase barriers should run all system tasks before user");
 
-        assert_eq!(completed_bootstrap.load(Ordering::SeqCst), 1);
-        assert!(configure_ran.load(Ordering::SeqCst));
+        assert_eq!(completed_system.load(Ordering::SeqCst), 1);
+        assert!(user_ran.load(Ordering::SeqCst));
     }
 }
 
@@ -554,8 +554,8 @@ fn load_config(
 
 /// Execute every task respecting phase and dependency order.
 ///
-/// Tasks are run in strict phase order: all [`TaskPhase::Bootstrap`] tasks
-/// complete before any [`TaskPhase::Configure`] task starts.
+/// Tasks are run in strict phase order: all [`TaskPhase::System`] tasks
+/// complete before any [`TaskPhase::User`] task starts.
 ///
 /// Within each phase, when parallel execution is enabled and more than one
 /// task is present, tasks run as soon as their dependencies complete.  Each
@@ -575,7 +575,7 @@ pub fn run_tasks_to_completion<'a>(
     log: &Arc<Logger>,
 ) -> Result<()> {
     let tasks: Vec<&dyn Task> = tasks.into_iter().collect();
-    let phases = [TaskPhase::Bootstrap, TaskPhase::Configure];
+    let phases = [TaskPhase::System, TaskPhase::User];
 
     for phase in phases {
         if ctx.is_cancelled() {

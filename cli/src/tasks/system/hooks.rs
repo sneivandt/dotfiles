@@ -79,10 +79,10 @@ impl Task for InstallGitHooks {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Bootstrap
+        TaskPhase::System
     }
 
-    task_deps![crate::tasks::bootstrap::update::UpdateRepository];
+    task_deps![crate::tasks::system::update::UpdateRepository];
 
     fn should_run(&self, ctx: &Context) -> bool {
         let paths = ctx.repo_paths();
@@ -133,7 +133,7 @@ impl Task for UninstallGitHooks {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Bootstrap
+        TaskPhase::System
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -203,7 +203,7 @@ mod tests {
         assert_eq!(
             task.dependencies(),
             &[TypeId::of::<
-                crate::tasks::bootstrap::update::UpdateRepository,
+                crate::tasks::system::update::UpdateRepository,
             >()]
         );
     }

@@ -85,7 +85,7 @@ mod tests {
                     $display
                 }
                 fn phase(&self) -> TaskPhase {
-                    TaskPhase::Configure
+                    TaskPhase::User
                 }
                 fn dependencies(&self) -> &[TypeId] {
                     const DEPS: &[TypeId] = $deps;
@@ -128,7 +128,7 @@ mod tests {
             "missing-dep"
         }
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Configure
+            TaskPhase::User
         }
         fn dependencies(&self) -> &[TypeId] {
             // Points to a TypeId that won't be present in the task list
@@ -183,7 +183,7 @@ mod tests {
             "duplicate-a"
         }
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Configure
+            TaskPhase::User
         }
         fn should_run(&self, _ctx: &Context) -> bool {
             true
@@ -199,7 +199,7 @@ mod tests {
             "duplicate-b"
         }
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Configure
+            TaskPhase::User
         }
         fn task_id(&self) -> TypeId {
             TypeId::of::<DuplicateIdA>()

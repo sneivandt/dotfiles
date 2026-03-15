@@ -202,9 +202,7 @@ mod tests {
         let task = InstallGitHooks::with_fs_ops(Arc::new(mock));
         assert_eq!(
             task.dependencies(),
-            &[TypeId::of::<
-                crate::tasks::system::update::UpdateRepository,
-            >()]
+            &[TypeId::of::<crate::tasks::system::update::UpdateRepository>()]
         );
     }
 

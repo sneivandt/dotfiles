@@ -414,12 +414,8 @@ mod task_graph_tests {
 
         // Intentionally pass user first to ensure phase gating, not input
         // order, controls execution.
-        run_tasks_to_completion(
-            [&user as &dyn Task, &system as &dyn Task],
-            &ctx,
-            &log,
-        )
-        .expect("phase barriers should run all system tasks before user");
+        run_tasks_to_completion([&user as &dyn Task, &system as &dyn Task], &ctx, &log)
+            .expect("phase barriers should run all system tasks before user");
 
         assert_eq!(completed_system.load(Ordering::SeqCst), 1);
         assert!(user_ran.load(Ordering::SeqCst));

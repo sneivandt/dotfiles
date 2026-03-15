@@ -7,9 +7,9 @@
 //! - **User** (`tasks::user`) — apply declared state to the user environment
 //!   (symlinks, packages, registry, hooks, etc.).
 
+mod helpers;
 pub mod system;
 pub mod user;
-mod helpers;
 pub mod validation;
 
 pub use helpers::{all_install_tasks, all_uninstall_tasks};

@@ -453,18 +453,8 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.failure_count(), 0);
         log.record_task("a", TaskPhase::User, TaskStatus::Ok, None);
-        log.record_task(
-            "b",
-            TaskPhase::User,
-            TaskStatus::Failed,
-            Some("error 1"),
-        );
-        log.record_task(
-            "c",
-            TaskPhase::User,
-            TaskStatus::Failed,
-            Some("error 2"),
-        );
+        log.record_task("b", TaskPhase::User, TaskStatus::Failed, Some("error 1"));
+        log.record_task("c", TaskPhase::User, TaskStatus::Failed, Some("error 2"));
         log.record_task("d", TaskPhase::User, TaskStatus::Skipped, None);
         assert_eq!(log.failure_count(), 2);
     }

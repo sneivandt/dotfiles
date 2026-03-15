@@ -2,14 +2,14 @@
 
 # Zsh completion for the dotfiles CLI (Rust binary).
 #
-# Commands:  install, uninstall, test, version
-# Global:    -v/--verbose, -p/--profile, -d/--dry-run, --root
+# Commands:  install, uninstall, test, version, help
+# Global:    -v/--verbose, -p/--profile, -d/--dry-run, --root, --no-parallel
 # Install:   --skip, --only
 # Wrapper:   --build  (dotfiles.sh only)
 
 _dotfiles_get_profiles() {
   local -a profiles
-  local profile_file="${0:A:h:h:h:h:h}/conf/profiles.ini"
+  local profile_file="${0:A:h:h:h:h:h}/conf/profiles.toml"
 
   local -A profile_desc
   profile_desc[base]="Minimal core shell configuration"
@@ -43,8 +43,8 @@ _dotfiles() {
     '(-p --profile)'{-p,--profile}'[Profile to use]:profile:_dotfiles_get_profiles'
     '(-d --dry-run)'{-d,--dry-run}'[Preview changes without applying]'
     '--root[Override dotfiles root directory]:directory:_directories'
+    '--no-parallel[Disable parallel task execution]'
     '--build[Build from source instead of downloading binary (dotfiles.sh only)]'
-    '(- *)'{-h,--help}'[Display help]'
   )
 
   local -a commands
@@ -53,6 +53,7 @@ _dotfiles() {
     'uninstall:Remove installed dotfiles'
     'test:Run self-tests and validation'
     'version:Print version information'
+    'help:Print this message or the help of the given subcommand(s)'
   )
 
   _arguments -s -S -C \
@@ -70,6 +71,11 @@ _dotfiles() {
           _arguments -s -S \
             '--skip[Skip specific tasks]:tasks:' \
             '--only[Run only specific tasks]:tasks:' \
+            "$global_options[@]"
+          ;;
+        help)
+          _arguments -s -S \
+            '1:command:(install uninstall test version help)' \
             "$global_options[@]"
           ;;
         uninstall|test|version)

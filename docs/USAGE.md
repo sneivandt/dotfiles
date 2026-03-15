@@ -460,14 +460,14 @@ cd dotfiles
 
 ## Advanced Binary Options
 
-The following flags are available when invoking the binary directly (`bin/dotfiles`)
-and are intended for development and debugging. They are **not** exposed by the
-wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`).
+The following flags are available via the wrapper scripts or the binary directly.
+The wrappers forward all arguments unchanged to the binary, so these work with
+`dotfiles.sh` / `dotfiles.ps1` as well.
 
 ```bash
-./bin/dotfiles --root /path/to/dotfiles install --skip packages,fonts
-./bin/dotfiles --root /path/to/dotfiles install --only symlinks
-./bin/dotfiles --root /path/to/dotfiles --no-parallel install
+./dotfiles.sh install --skip packages,fonts
+./dotfiles.sh install --only symlinks
+./dotfiles.sh --no-parallel install
 ```
 
 - **`--skip TASKS`** - Skip specific tasks (comma-separated)

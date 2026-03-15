@@ -178,8 +178,10 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
             crate::fs::copy_dir_recursive(&tmp, target, false).with_context(|| {
                 format!("cross-fs copy {} to {}", tmp.display(), target.display())
             })?;
-            std::fs::remove_dir_all(&tmp)
-                .with_context(|| format!("remove tmp dir: {}", tmp.display()))?;
+            // Disarm the guard before cleanup so it doesn't try to remove on drop.
+            guard.persist();
+            // Best-effort cleanup; failure here is non-fatal since target is correct.
+            let _ = std::fs::remove_dir_all(&tmp);
         }
         Err(e) => {
             return Err(anyhow::Error::new(e).context(format!(

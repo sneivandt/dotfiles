@@ -446,7 +446,8 @@ where
     }
 }
 
-/// Run the binary at `path` with `--version` as a basic sanity check.
+/// Run the binary at `path` with the `version` subcommand as a basic sanity
+/// check.
 ///
 /// Called immediately after a self-update to verify that the new binary
 /// starts correctly.  On failure the caller is expected to restore the
@@ -459,7 +460,7 @@ where
 #[cfg(not(windows))]
 fn smoke_test_binary(path: &std::path::Path) -> Result<()> {
     let output = std::process::Command::new(path)
-        .arg("--version")
+        .arg("version")
         .output()
         .with_context(|| format!("spawning smoke test for {}", path.display()))?;
     if output.status.success() {
@@ -1027,9 +1028,9 @@ mod tests {
     #[test]
     fn smoke_test_binary_passes_for_valid_binary() {
         // Use the system `true` binary directly: it always exits 0 regardless
-        // of arguments (including --version) and avoids ETXTBSY that arises
-        // when copying then immediately exec-ing a file on the workspace
-        // filesystem in some CI environments.
+        // of arguments (including the `version` subcommand) and avoids ETXTBSY
+        // that arises when copying then immediately exec-ing a file on the
+        // workspace filesystem in some CI environments.
         let true_path = which::which("true").expect("'true' binary not found on PATH");
 
         let result = smoke_test_binary(&true_path);
@@ -1072,7 +1073,7 @@ mod tests {
         let bin_dir = dir.path().join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
 
-        // Write an existing binary that exits 0 on --version.
+        // Write an existing binary that exits 0 on `version` subcommand.
         let old_binary = b"#!/bin/sh\necho v0.9.0\n";
         let bin = binary_path(dir.path());
         fs::write(&bin, old_binary).unwrap();

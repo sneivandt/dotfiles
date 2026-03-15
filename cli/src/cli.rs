@@ -6,7 +6,15 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "dotfiles",
     about = "Cross-platform dotfiles management engine",
-    version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+    version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
+    disable_version_flag = true,
+    help_template = "\
+{name} {version}
+{about-with-newline}
+{usage-heading} {usage}
+
+{all-args}{after-help}
+"
 )]
 pub struct Cli {
     /// Subcommand to execute.

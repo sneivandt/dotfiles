@@ -125,8 +125,16 @@ impl TaskStats {
     }
 
     /// Log the summary and return the appropriate `TaskResult`.
+    ///
+    /// Only prints to the console when something actually changed (or was
+    /// skipped).  Quiet idempotent runs reduce noise on no-op invocations.
     pub fn finish(self, ctx: &Context) -> TaskResult {
-        ctx.log.info(&self.summary(ctx.dry_run));
+        let msg = self.summary(ctx.dry_run);
+        if self.changed > 0 || self.skipped > 0 {
+            ctx.log.info(&msg);
+        } else {
+            ctx.log.debug(&msg);
+        }
         if ctx.dry_run {
             TaskResult::DryRun
         } else {

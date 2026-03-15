@@ -591,11 +591,11 @@ impl Task for UpdateBinary {
                 Ok(TaskResult::Skipped("offline".to_string()))
             },
             || {
-                ctx.log.info("dev build, skipping update check");
+                ctx.log.debug("dev build, skipping update check");
                 Ok(TaskResult::Skipped("dev build".to_string()))
             },
             |tag| {
-                ctx.log.info(&format!("already up to date ({tag})"));
+                ctx.log.debug(&format!("already up to date ({tag})"));
                 Ok(TaskResult::Ok)
             },
             |latest, _current| {

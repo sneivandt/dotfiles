@@ -134,7 +134,6 @@ impl Task for InstallParu {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if ctx.executor.which("paru") {
             ctx.log.debug("paru already in PATH");
-            ctx.log.info("paru already installed");
             return Ok(TaskResult::Ok);
         }
 

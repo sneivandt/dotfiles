@@ -150,7 +150,7 @@ impl Task for ConfigureSparseCheckout {
 
         // Check if patterns are already up to date (shared by dry-run and real paths)
         if is_up_to_date(&sparse_file, &patterns_str) {
-            ctx.log.info(&format!(
+            ctx.log.debug(&format!(
                 "already configured ({} files excluded)",
                 excluded_files.len()
             ));

@@ -65,7 +65,7 @@ impl Task for UpdateRepository {
         if ctx.dry_run {
             match dry_run_update_status(ctx, git_env, &head_ref)? {
                 DryRunUpdateStatus::AlreadyCurrent => {
-                    ctx.log.info("already up to date");
+                    ctx.log.debug("already up to date");
                     return Ok(TaskResult::Ok);
                 }
                 DryRunUpdateStatus::WouldUpdate | DryRunUpdateStatus::Unknown => {
@@ -101,7 +101,7 @@ impl Task for UpdateRepository {
                     .to_string();
 
                 if pre_sha == post_sha {
-                    ctx.log.info("already up to date");
+                    ctx.log.debug("already up to date");
                 } else {
                     self.repo_updated.mark_updated();
                     ctx.log.info("repository updated");

@@ -2,7 +2,7 @@
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::diagnostic::{DiagEvent, DiagnosticLog};
 #[cfg(test)]
@@ -78,6 +78,8 @@ pub struct Logger {
     pub(super) progress_rows: Mutex<u16>,
     /// High-precision diagnostic log; `None` when the cache dir is unavailable.
     pub(super) diagnostic: Option<DiagnosticLog>,
+    /// Instant when the logger was created, used for elapsed time in summary.
+    start: Instant,
 }
 
 impl Logger {
@@ -97,6 +99,7 @@ impl Logger {
             progress_rows: Mutex::new(0),
             diagnostic: dotfiles_cache_dir()
                 .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
+            start,
         }
     }
 
@@ -118,6 +121,7 @@ impl Logger {
             progress_rows: Mutex::new(0),
             diagnostic: dotfiles_cache_subdir(cache_dir)
                 .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
+            start,
         }
     }
 
@@ -241,19 +245,25 @@ impl Logger {
         let phases = [TaskPhase::System, TaskPhase::User];
         for phase in &phases {
             let phase_tasks: Vec<&TaskEntry> = tasks.iter().filter(|t| t.phase == *phase).collect();
-            if phase_tasks.is_empty() {
+            // Only show phases that have visible (non-n/a) tasks.
+            let has_visible = phase_tasks
+                .iter()
+                .any(|t| t.status != TaskStatus::NotApplicable);
+            if !has_visible {
+                // Still count n/a tasks even when not displayed.
+                not_applicable += phase_tasks.len() as u32;
                 continue;
             }
             self.info(&format!("\x1b[1m{phase}\x1b[0m"));
             for task in &phase_tasks {
                 let (icon, color) = match task.status {
+                    TaskStatus::NotApplicable => {
+                        not_applicable += 1;
+                        continue;
+                    }
                     TaskStatus::Ok => {
                         ok += 1;
                         ("✓", "\x1b[32m")
-                    }
-                    TaskStatus::NotApplicable => {
-                        not_applicable += 1;
-                        ("·", "\x1b[2m")
                     }
                     TaskStatus::Skipped => {
                         skipped += 1;
@@ -279,14 +289,33 @@ impl Logger {
         }
 
         println!();
-        let total = ok + not_applicable + skipped + dry_run + failed;
-        self.info(&format!(
-            "{total} tasks: \x1b[32m{ok} ok\x1b[0m, \x1b[2m{not_applicable} n/a\x1b[0m, \x1b[33m{skipped} skipped\x1b[0m, \x1b[37m{dry_run} dry-run\x1b[0m, \x1b[31m{failed} failed\x1b[0m"
-        ));
+        let active = ok + skipped + dry_run + failed;
+        let mut parts: Vec<String> = vec![format!("\x1b[32m{ok} ok\x1b[0m")];
+        if skipped > 0 {
+            parts.push(format!("\x1b[33m{skipped} skipped\x1b[0m"));
+        }
+        if dry_run > 0 {
+            parts.push(format!("\x1b[37m{dry_run} dry-run\x1b[0m"));
+        }
+        if failed > 0 {
+            parts.push(format!("\x1b[31m{failed} failed\x1b[0m"));
+        }
+
+        let na_suffix = if not_applicable > 0 {
+            format!(" \x1b[2m({not_applicable} not applicable)\x1b[0m")
+        } else {
+            String::new()
+        };
+
+        let elapsed = self.start.elapsed();
+        let elapsed_str = format_elapsed(elapsed);
+
+        self.info(&format!("{active} tasks: {}{na_suffix}", parts.join(", "),));
 
         if let Some(path) = &self.log_file {
             self.info(&format!("\x1b[2mlog: {}\x1b[0m", path.display()));
         }
+        self.info(&format!("\x1b[2mcompleted in {elapsed_str}\x1b[0m"));
     }
 
     /// Erase the in-progress status line from the console.
@@ -366,6 +395,18 @@ impl Output for Logger {
 impl TaskRecorder for Logger {
     fn record_task(&self, name: &str, phase: TaskPhase, status: TaskStatus, message: Option<&str>) {
         self.record_task(name, phase, status, message);
+    }
+}
+
+/// Format a duration as a human-readable string (e.g., "1.2s", "2m 5s").
+fn format_elapsed(d: Duration) -> String {
+    let secs = d.as_secs();
+    if secs < 60 {
+        format!("{:.1}s", d.as_secs_f64())
+    } else {
+        let mins = secs / 60;
+        let remaining = secs % 60;
+        format!("{mins}m {remaining}s")
     }
 }
 
@@ -598,5 +639,27 @@ mod tests {
             active.contains(&"my-task".to_string()),
             "active_tasks should contain 'my-task'"
         );
+    }
+
+    // -------------------------------------------------------------------
+    // format_elapsed
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn format_elapsed_sub_second() {
+        let d = Duration::from_millis(450);
+        assert_eq!(format_elapsed(d), "0.5s");
+    }
+
+    #[test]
+    fn format_elapsed_seconds() {
+        let d = Duration::from_secs_f64(3.7);
+        assert_eq!(format_elapsed(d), "3.7s");
+    }
+
+    #[test]
+    fn format_elapsed_minutes() {
+        let d = Duration::from_secs(125);
+        assert_eq!(format_elapsed(d), "2m 5s");
     }
 }

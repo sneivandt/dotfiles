@@ -38,7 +38,7 @@ impl Task for InstallWslConf {
 
         // Already correct — skip.
         if is_correct(target) {
-            ctx.log.info("already configured, no action needed");
+            ctx.log.debug("already configured, no action needed");
             return Ok(TaskResult::Ok);
         }
 

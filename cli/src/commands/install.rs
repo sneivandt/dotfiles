@@ -1,5 +1,5 @@
 //! Install command implementation.
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use std::sync::Arc;
 
 use crate::cli::{GlobalOpts, InstallOpts};
@@ -179,8 +179,7 @@ fn resolve_root_from_dir(
         ];
         for candidate in &candidates {
             if candidate.join("conf").exists() && candidate.join("symlinks").exists() {
-                return std::fs::canonicalize(candidate)
-                    .context("canonicalizing dotfiles root path");
+                return crate::fs::canonicalize(candidate);
             }
         }
     }

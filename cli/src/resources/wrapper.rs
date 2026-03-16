@@ -74,6 +74,7 @@ impl WrapperResource {
                 let content = format!(
                     "# Installed by dotfiles \u{2014} do not edit.\n\
                      if (-not $env:DOTFILES_ROOT) {{ $env:DOTFILES_ROOT = '{root}' }}\n\
+                     Set-ExecutionPolicy Bypass -Scope Process -Force\n\
                      & \"$env:DOTFILES_ROOT{sep}dotfiles.ps1\" @args\n\
                      exit $LASTEXITCODE\n",
                     root = dotfiles_root.display(),
@@ -197,6 +198,10 @@ mod tests {
     fn pwsh_content_uses_dotfiles_root_env() {
         let r = make_pwsh_resource(Path::new("/repo"), Path::new("/home/user"));
         assert!(r.content.contains("$env:DOTFILES_ROOT = '/repo'"));
+        assert!(
+            r.content
+                .contains("Set-ExecutionPolicy Bypass -Scope Process -Force")
+        );
         assert!(r.content.contains("dotfiles.ps1\" @args"));
         assert!(r.content.contains("exit $LASTEXITCODE"));
     }

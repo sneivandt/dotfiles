@@ -15,7 +15,7 @@
 #>
 
 $ErrorActionPreference = 'Stop'
-$DotfilesRoot = $PSScriptRoot
+$DotfilesRoot = $PSScriptRoot -replace '^\\\\\?\\', ''
 $env:DOTFILES_ROOT = $DotfilesRoot
 $env:DOTFILES_WRAPPER = "pwsh"
 $Repo = "sneivandt/dotfiles"
@@ -208,6 +208,12 @@ function Get-Binary
     {
         if (Test-Path $Binary) { Remove-Item $Binary -Force }
         Write-Error "Failed to download dotfiles binary. Check your internet connection or use -Build to build from source."
+        exit 1
+    }
+
+    if (-not (Test-Path $Binary))
+    {
+        Write-Error "Download did not produce a binary at '$Binary'. Check your internet connection or use -Build to build from source."
         exit 1
     }
 

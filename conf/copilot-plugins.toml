@@ -8,4 +8,11 @@ plugins = [
   { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" },
   { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" },
   { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-upgrade" },
+  { marketplace = "github/awesome-copilot", marketplace_name = "awesome-copilot", plugin = "automate-this" },
+  { marketplace = "github/awesome-copilot", marketplace_name = "awesome-copilot", plugin = "awesome-copilot" },
+  { marketplace = "github/awesome-copilot", marketplace_name = "awesome-copilot", plugin = "azure-cloud-development" },
+  { marketplace = "github/awesome-copilot", marketplace_name = "awesome-copilot", plugin = "context-engineering" },
+  { marketplace = "github/awesome-copilot", marketplace_name = "awesome-copilot", plugin = "project-planning" },
+  { marketplace = "github/awesome-copilot", marketplace_name = "awesome-copilot", plugin = "security-best-practices" },
+  { marketplace = "github/awesome-copilot", marketplace_name = "awesome-copilot", plugin = "software-engineering-team" },
 ]

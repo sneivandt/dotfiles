@@ -107,7 +107,7 @@ if (Get-Command "gh" -ErrorAction SilentlyContinue)
 
     function Invoke-CopilotPluginUpdate
     {
-        (gh copilot plugin list 2>&1) -match '@' -replace '.*\s' | ForEach-Object { gh copilot plugin update $_ }
+        [regex]::Matches((gh copilot plugin list 2>&1), '\S+@\S+') | ForEach-Object { gh copilot plugin update $_.Value }
     }
 
     Set-Alias -Name ai -Value Invoke-CopilotChat

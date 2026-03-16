@@ -82,7 +82,7 @@ if command -v gh >/dev/null 2>&1; then
   alias aic="gh copilot -i suggest"
   # Update all installed Copilot plugins
   aiup() {
-    gh copilot plugin list 2>&1 | awk '/@/{print $NF}' | while read -r spec; do
+    gh copilot plugin list 2>&1 | grep -oP '\S+@\S+' | while read -r spec; do
       gh copilot plugin update "$spec"
     done
   }

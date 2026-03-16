@@ -70,7 +70,7 @@ impl WrapperResource {
                 (target, content)
             }
             WrapperType::Pwsh => {
-                let target = bin_dir.join("dotfiles");
+                let target = bin_dir.join("dotfiles.ps1");
                 let content = format!(
                     "# Installed by dotfiles \u{2014} do not edit.\n\
                      if (-not $env:DOTFILES_ROOT) {{ $env:DOTFILES_ROOT = '{root}' }}\n\
@@ -312,8 +312,11 @@ mod tests {
     }
 
     #[test]
-    fn pwsh_target_is_local_bin_dotfiles() {
+    fn pwsh_target_is_local_bin_dotfiles_ps1() {
         let r = make_pwsh_resource(Path::new("/repo"), Path::new("/home/user"));
-        assert_eq!(r.target, PathBuf::from("/home/user/.local/bin/dotfiles"));
+        assert_eq!(
+            r.target,
+            PathBuf::from("/home/user/.local/bin/dotfiles.ps1")
+        );
     }
 }

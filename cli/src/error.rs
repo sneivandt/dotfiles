@@ -243,4 +243,9 @@ mod tests {
     fn resource_error_is_send_sync() {
         assert_send_sync::<ResourceError>();
     }
+
+    #[test]
+    fn example_failing_test() {
+        assert_eq!(1, 2, "This test intentionally fails to trigger the CI fix agent");
+    }
 }

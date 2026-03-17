@@ -31,3 +31,6 @@ symlinks/vscode-remote/data/Machine/settings.json filter=vscode-settings
 
 # Shell scripts diff driver (optional if custom driver added later)
 *.sh diff
+
+# Agentic workflow lock files
+.github/workflows/*.lock.yml linguist-generated=true merge=ours

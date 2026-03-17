@@ -42,7 +42,7 @@ pub(crate) use task_deps;
 ///     /// Doc comment for the task.
 ///     pub StructName {
 ///         name: "Human-readable task name",
-///         phase: TaskPhase::User,
+///         phase: TaskPhase::Apply,
 ///         deps: [DepType1, DepType2],          // optional
 ///         guard: |ctx| bool_expr,              // optional platform/tool guard
 ///         setup: |ctx| { side_effects(); },    // optional pre-processing
@@ -161,7 +161,7 @@ pub(crate) use resource_task;
 ///     /// Doc comment for the task.
 ///     pub StructName {
 ///         name: "Human-readable task name",
-///         phase: TaskPhase::User,
+///         phase: TaskPhase::Apply,
 ///         deps: [DepType1, DepType2],               // optional
 ///         guard: |ctx| bool_expr,                    // optional
 ///         items: |ctx| ctx.config_read().field.clone(),

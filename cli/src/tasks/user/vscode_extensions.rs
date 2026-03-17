@@ -17,7 +17,7 @@ impl Task for InstallVsCodeExtensions {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::User
+        TaskPhase::Apply
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

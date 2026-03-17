@@ -27,7 +27,7 @@ impl Task for UpdateRepository {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::System
+        TaskPhase::Repository
     }
 
     task_deps![crate::tasks::system::sparse_checkout::ConfigureSparseCheckout];

@@ -23,7 +23,7 @@ impl Task for InstallWrapper {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::System
+        TaskPhase::Bootstrap
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -51,7 +51,7 @@ impl Task for UninstallWrapper {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::System
+        TaskPhase::Bootstrap
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {

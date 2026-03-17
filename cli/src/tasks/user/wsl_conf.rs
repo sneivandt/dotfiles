@@ -26,7 +26,7 @@ impl Task for InstallWslConf {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::User
+        TaskPhase::Apply
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

@@ -32,7 +32,7 @@ impl Task for ReloadConfig {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::System
+        TaskPhase::Repository
     }
 
     task_deps![crate::tasks::system::update::UpdateRepository];

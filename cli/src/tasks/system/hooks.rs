@@ -79,7 +79,7 @@ impl Task for InstallGitHooks {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::System
+        TaskPhase::Repository
     }
 
     task_deps![crate::tasks::system::update::UpdateRepository];
@@ -133,7 +133,7 @@ impl Task for UninstallGitHooks {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::System
+        TaskPhase::Repository
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

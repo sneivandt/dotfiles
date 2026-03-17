@@ -1,11 +1,13 @@
 //! Named, dependency-ordered tasks that orchestrate resource changes.
 //!
-//! Tasks are organised into two phases:
+//! Tasks are organised into three phases:
 //!
-//! - **System** (`tasks::system`) — manage the dotfiles system itself
-//!   (binary updates, repo sync, sparse checkout, config reload).
-//! - **User** (`tasks::user`) — apply declared state to the user environment
-//!   (symlinks, packages, registry, hooks, etc.).
+//! - **Bootstrap** (`tasks::system`) — prepare the dotfiles tool itself
+//!   (binary update, wrapper installation, PATH configuration).
+//! - **Repository** (`tasks::system`) — synchronise the dotfiles repository
+//!   (sparse checkout, pull, config reload, hooks).
+//! - **Apply** (`tasks::user`) — apply declared state to the user environment
+//!   (symlinks, packages, registry, etc.).
 
 mod helpers;
 pub mod system;
@@ -36,22 +38,27 @@ use crate::logging::TaskStatus;
 
 /// Execution phase of a task.
 ///
-/// System tasks run first and prepare the environment (binary update,
-/// repository sync, config reload).  User tasks run second and apply
-/// the declared system state (symlinks, packages, registry, etc.).
+/// Bootstrap tasks run first to prepare the tool itself (binary update,
+/// wrapper installation, PATH configuration).  Repository tasks run
+/// second to synchronise the dotfiles repository (sparse checkout,
+/// pull, config reload, hooks).  Apply tasks run last to converge the
+/// user environment to its declared state (symlinks, packages, etc.).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TaskPhase {
-    /// Manage the dotfiles system itself.
-    System,
+    /// Prepare the dotfiles tool itself.
+    Bootstrap,
+    /// Synchronise the dotfiles repository.
+    Repository,
     /// Apply declared state to the user environment.
-    User,
+    Apply,
 }
 
 impl fmt::Display for TaskPhase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::System => f.write_str("System"),
-            Self::User => f.write_str("User"),
+            Self::Bootstrap => f.write_str("Bootstrap"),
+            Self::Repository => f.write_str("Repository"),
+            Self::Apply => f.write_str("Apply"),
         }
     }
 }
@@ -65,7 +72,7 @@ pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
 
-    /// Execution phase: [`TaskPhase::System`] or [`TaskPhase::User`].
+    /// Execution phase: [`TaskPhase::Bootstrap`], [`TaskPhase::Repository`], or [`TaskPhase::Apply`].
     fn phase(&self) -> TaskPhase;
 
     /// The concrete `TypeId` of this task, used as a dependency identifier.
@@ -133,40 +140,42 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
         return;
     }
 
-    ctx.log.stage(task.name());
-
     match task.run_if_applicable(ctx) {
         Ok(None) => {
             ctx.log.debug("nothing configured");
             ctx.log
                 .record_task(task.name(), phase, TaskStatus::NotApplicable, None);
         }
-        Ok(Some(result)) => match result {
-            TaskResult::Ok => {
-                ctx.log
-                    .record_task(task.name(), phase, TaskStatus::Ok, None);
+        Ok(Some(result)) => {
+            ctx.log.stage(task.name());
+            match result {
+                TaskResult::Ok => {
+                    ctx.log
+                        .record_task(task.name(), phase, TaskStatus::Ok, None);
+                }
+                TaskResult::NotApplicable(reason) => {
+                    ctx.debug_fmt(|| format!("not applicable: {reason}"));
+                    ctx.log
+                        .record_task(task.name(), phase, TaskStatus::NotApplicable, None);
+                }
+                TaskResult::Skipped(reason) => {
+                    ctx.log.info(&format!("skipped: {reason}"));
+                    ctx.log
+                        .record_task(task.name(), phase, TaskStatus::Skipped, Some(&reason));
+                }
+                TaskResult::Failed(reason) => {
+                    ctx.log.warn(&format!("failed: {reason}"));
+                    ctx.log
+                        .record_task(task.name(), phase, TaskStatus::Failed, Some(&reason));
+                }
+                TaskResult::DryRun => {
+                    ctx.log
+                        .record_task(task.name(), phase, TaskStatus::DryRun, None);
+                }
             }
-            TaskResult::NotApplicable(reason) => {
-                ctx.debug_fmt(|| format!("not applicable: {reason}"));
-                ctx.log
-                    .record_task(task.name(), phase, TaskStatus::NotApplicable, None);
-            }
-            TaskResult::Skipped(reason) => {
-                ctx.log.info(&format!("skipped: {reason}"));
-                ctx.log
-                    .record_task(task.name(), phase, TaskStatus::Skipped, Some(&reason));
-            }
-            TaskResult::Failed(reason) => {
-                ctx.log.warn(&format!("failed: {reason}"));
-                ctx.log
-                    .record_task(task.name(), phase, TaskStatus::Failed, Some(&reason));
-            }
-            TaskResult::DryRun => {
-                ctx.log
-                    .record_task(task.name(), phase, TaskStatus::DryRun, None);
-            }
-        },
+        }
         Err(e) => {
+            ctx.log.stage(task.name());
             ctx.log.error(&format!("{}: {e:#}", task.name()));
             ctx.log.record_task(
                 task.name(),
@@ -456,7 +465,7 @@ mod tests {
         /// Test-only task for resource-task macro behaviour.
         CountingResourceTask {
             name: "Counting resource task",
-            phase: TaskPhase::User,
+            phase: TaskPhase::Apply,
             items: |_ctx| {
                 RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
                 Vec::<()>::new()
@@ -470,7 +479,7 @@ mod tests {
         /// Test-only task for batch-resource-task macro behaviour.
         CountingBatchTask {
             name: "Counting batch task",
-            phase: TaskPhase::User,
+            phase: TaskPhase::Apply,
             items: |_ctx| {
                 BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
                 Vec::<()>::new()
@@ -494,7 +503,7 @@ mod tests {
             self.name
         }
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
         fn should_run(&self, _ctx: &Context) -> bool {
             self.should_run

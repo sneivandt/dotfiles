@@ -4,7 +4,6 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    branches: [main]
 if: "${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.event == 'pull_request' }}"
 permissions:
   contents: read
@@ -21,6 +20,8 @@ safe-outputs:
   create-pull-request:
     max: 1
   add-comment:
+    max: 1
+  noop:
     max: 1
   missing-tool:
     create-issue: true

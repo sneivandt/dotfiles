@@ -657,8 +657,8 @@ mod tests {
         let tasks = all_install_tasks();
         assert_eq!(
             tasks.len(),
-            20,
-            "expected 20 install tasks — did you add a new task without updating \
+            21,
+            "expected 21 install tasks — did you add a new task without updating \
              all_install_tasks()? Update the registration list and this test."
         );
     }

@@ -52,6 +52,10 @@ impl WrapperResource {
     /// repository root (used to build the path to the real wrapper), and
     /// `home` is the user's home directory (the install target is
     /// `$HOME/.local/bin/`).
+    ///
+    /// On Unix this produces an extensionless shell script.  On Windows
+    /// it produces a `.cmd` shim that delegates to the repository's
+    /// `dotfiles.ps1`, which is discoverable via `PATHEXT`.
     #[must_use]
     pub fn new(wrapper_type: WrapperType, dotfiles_root: &Path, home: &Path) -> Self {
         let bin_dir = home.join(".local").join("bin");
@@ -70,13 +74,13 @@ impl WrapperResource {
                 (target, content)
             }
             WrapperType::Pwsh => {
-                let target = bin_dir.join("dotfiles.ps1");
+                let target = bin_dir.join("dotfiles.cmd");
                 let content = format!(
-                    "# Installed by dotfiles \u{2014} do not edit.\n\
-                     if (-not $env:DOTFILES_ROOT) {{ $env:DOTFILES_ROOT = '{root}' }}\n\
-                     Set-ExecutionPolicy Bypass -Scope Process -Force\n\
-                     & \"$env:DOTFILES_ROOT{sep}dotfiles.ps1\" @args\n\
-                     exit $LASTEXITCODE\n",
+                    "@echo off\r\n\
+                     rem Installed by dotfiles \u{2014} do not edit.\r\n\
+                     if not defined DOTFILES_ROOT set \"DOTFILES_ROOT={root}\"\r\n\
+                     powershell.exe -NoProfile -ExecutionPolicy Bypass \
+                     -File \"%DOTFILES_ROOT%{sep}dotfiles.ps1\" %*\r\n",
                     root = dotfiles_root.display(),
                     sep = std::path::MAIN_SEPARATOR,
                 );
@@ -195,15 +199,20 @@ mod tests {
     }
 
     #[test]
-    fn pwsh_content_uses_dotfiles_root_env() {
+    fn pwsh_content_delegates_to_repo_wrapper() {
         let r = make_pwsh_resource(Path::new("/repo"), Path::new("/home/user"));
-        assert!(r.content.contains("$env:DOTFILES_ROOT = '/repo'"));
         assert!(
-            r.content
-                .contains("Set-ExecutionPolicy Bypass -Scope Process -Force")
+            r.content.starts_with("@echo off"),
+            "cmd shim must start with @echo off"
         );
-        assert!(r.content.contains("dotfiles.ps1\" @args"));
-        assert!(r.content.contains("exit $LASTEXITCODE"));
+        assert!(
+            r.content.contains("DOTFILES_ROOT=/repo"),
+            "cmd shim must set DOTFILES_ROOT"
+        );
+        assert!(
+            r.content.contains("dotfiles.ps1"),
+            "cmd shim must delegate to dotfiles.ps1"
+        );
     }
 
     // ── State detection ──────────────────────────────────────────────
@@ -317,11 +326,11 @@ mod tests {
     }
 
     #[test]
-    fn pwsh_target_is_local_bin_dotfiles_ps1() {
+    fn pwsh_target_is_local_bin_dotfiles_cmd() {
         let r = make_pwsh_resource(Path::new("/repo"), Path::new("/home/user"));
         assert_eq!(
             r.target,
-            PathBuf::from("/home/user/.local/bin/dotfiles.ps1")
+            PathBuf::from("/home/user/.local/bin/dotfiles.cmd")
         );
     }
 }

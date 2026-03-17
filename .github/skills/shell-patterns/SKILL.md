@@ -10,7 +10,7 @@ metadata:
 
 # Shell Wrapper Patterns
 
-Shell scripts in this project are **thin wrappers** (~150 lines) that bootstrap the Rust binary. All task logic lives in `cli/src/tasks/system/` and `cli/src/tasks/user/`.
+Shell scripts in this project are **thin wrappers** (~150 lines) that bootstrap the Rust binary. All task logic lives in `cli/src/tasks/bootstrap/`, `cli/src/tasks/repository/`, and `cli/src/tasks/apply/`.
 
 ## Entry Point: `dotfiles.sh`
 
@@ -78,7 +78,7 @@ For everything else (tasks, config, logging), edit the Rust code in `cli/src/`.
 ## Rules
 
 - Keep wrapper scripts as short as practical (dotfiles.sh ~180 lines, dotfiles.ps1 ~300 lines)
-- Never add task logic to shell scripts — use `cli/src/tasks/system/` or `cli/src/tasks/user/`
+- Never add task logic to shell scripts — use `cli/src/tasks/bootstrap/`, `cli/src/tasks/repository/`, or `cli/src/tasks/apply/`
 - The wrapper must resolve and export `DOTFILES_ROOT` before launching the binary
 - The wrapper must export `DOTFILES_WRAPPER` (`sh` or `pwsh`) so the CLI knows which wrapper invoked it
 - Wrapper arguments should pass through to the Rust CLI unless the wrapper itself must consume them (for example `--build`)

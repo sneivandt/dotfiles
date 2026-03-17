@@ -98,7 +98,7 @@ the manual `const DEPS` boilerplate:
 use crate::tasks::{Context, Task, TaskPhase, TaskResult, task_deps};
 
 impl Task for InstallSymlinks {
-    task_deps![crate::tasks::system::update::UpdateRepository, crate::tasks::system::developer_mode::EnableDeveloperMode];
+    task_deps![crate::tasks::repository::update::UpdateRepository, crate::tasks::bootstrap::developer_mode::EnableDeveloperMode];
     // ...
 }
 ```
@@ -133,7 +133,7 @@ resource_task! {
     pub MyTask {
         name: "My task",
         phase: TaskPhase::Apply,
-        deps: [crate::tasks::system::some_dependency::SomeDependency],  // optional
+        deps: [crate::tasks::repository::some_dependency::SomeDependency],  // optional
         guard: |ctx| ctx.platform.supports_systemd(),     // optional
         items: |ctx| ctx.config_read().items.clone(),
         build: |item, ctx| MyResource::from_entry(&item, &ctx.home),
@@ -151,7 +151,7 @@ Import `resource_task` and `TaskPhase` from `crate::tasks::` alongside `ProcessO
 `should_run` or `run` must also import `crate::tasks::Task` to bring the
 trait into scope.
 
-See `tasks/user/git_config.rs` (no deps, no guard) and `tasks/user/chmod.rs` (deps + guard)
+See `tasks/apply/git_config.rs` (no deps, no guard) and `tasks/apply/chmod.rs` (deps + guard)
 for real examples.
 
 #### Manual `Task` impl (for complex or non-standard tasks)
@@ -167,7 +167,7 @@ pub struct MyTask;
 impl Task for MyTask {
     fn name(&self) -> &str { "My task" }
     fn phase(&self) -> TaskPhase { TaskPhase::Apply }
-    task_deps![crate::tasks::system::some_dependency::SomeDependency]; // omit if no dependencies
+    task_deps![crate::tasks::repository::some_dependency::SomeDependency]; // omit if no dependencies
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_systemd() && !ctx.config_read().items.is_empty()
     }
@@ -184,7 +184,7 @@ For tasks that batch-query state up front (packages, VS Code extensions,
 registry), build `(Resource, ResourceState)` pairs and use
 `process_resource_states()` instead.
 
-Register in `tasks/helpers/catalog.rs` by adding `Box::new(crate::tasks::user::my_module::MyTask)` to
+Register in `tasks/helpers/catalog.rs` by adding `Box::new(crate::tasks::apply::my_module::MyTask)` to
 `all_install_tasks()`.
 
 For **uninstall** tasks, use `process_resources_remove()`:

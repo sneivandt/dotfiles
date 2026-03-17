@@ -97,7 +97,7 @@ cargo test --manifest-path cli/Cargo.toml
 
 #### Adding New Tasks
 
-1. Create a new file in `cli/src/tasks/system/` (for bootstrap/repository-phase tasks) or `cli/src/tasks/user/` (for apply-phase tasks) implementing the `Task` trait:
+1. Create a new file in `cli/src/tasks/bootstrap/`, `cli/src/tasks/repository/`, or `cli/src/tasks/apply/` implementing the `Task` trait:
    ```rust
    #[derive(Debug)]
    pub struct MyNewTask;
@@ -116,7 +116,7 @@ cargo test --manifest-path cli/Cargo.toml
        }
    }
    ```
-2. Add the module to `cli/src/tasks/system/mod.rs` or `cli/src/tasks/user/mod.rs`
+2. Add the module to `cli/src/tasks/bootstrap/mod.rs`, `cli/src/tasks/repository/mod.rs`, or `cli/src/tasks/apply/mod.rs`
 3. Add the task to `all_install_tasks()` in `cli/src/tasks/helpers/catalog.rs`
 
 #### Adding New Configuration Types
@@ -124,7 +124,7 @@ cargo test --manifest-path cli/Cargo.toml
 1. Create TOML file in `conf/`
 2. Add a parser module in `cli/src/config/` (follow existing patterns like `packages.rs`)
 3. Add the field to the `Config` struct and load it in `Config::load()`
-4. Create a task in `cli/src/tasks/user/` that consumes the config
+4. Create a task in `cli/src/tasks/apply/` that consumes the config
 
 #### Creating New Profiles
 
@@ -138,7 +138,7 @@ exclude = ["windows", "desktop"]
 ### Rust Code Guidelines
 
 - **Error Handling**: Use `anyhow::Result` with `.context()` for all fallible operations
-- **Task Pattern**: Implement the `Task` trait in `cli/src/tasks/system/` or `cli/src/tasks/user/`; use `should_run()` for platform/profile gating
+- **Task Pattern**: Implement the `Task` trait in `cli/src/tasks/bootstrap/`, `cli/src/tasks/repository/`, or `cli/src/tasks/apply/`; use `should_run()` for platform/profile gating
 - **Idempotency**: Always check if action is needed before taking it
 - **No Trailing Whitespace**: Remove all trailing whitespace from files
 - **Formatting**: Run `cargo fmt` before committing

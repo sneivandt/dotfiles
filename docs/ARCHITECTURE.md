@@ -175,7 +175,7 @@ pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
 
-    /// Which phase this task belongs to (System or User).
+    /// Which phase this task belongs to (Bootstrap, Repository, or Apply).
     fn phase(&self) -> TaskPhase;
 
     /// Stable TypeId for dependency matching.
@@ -215,17 +215,19 @@ The execution engine provides the generic resource processing loop, dependency g
 
 **Implemented tasks** (executed as soon as dependencies allow):
 
-System phase (`cli/src/tasks/system/`):
+Bootstrap phase (`cli/src/tasks/system/`):
 - `self_update` — Update the dotfiles binary from latest GitHub release
 - `developer_mode` — Enable Windows developer mode (required for symlinks)
+- `wrapper` — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
+- `path` — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
+
+Repository phase (`cli/src/tasks/system/`):
 - `update` — Update repository (`git pull --ff-only`)
 - `sparse_checkout` — Configure git sparse checkout
 - `reload_config` — Reload config from disk after `update` pulls new commits
 - `hooks` — Install git hooks
-- `wrapper` — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
-- `path` — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
 
-User phase (`cli/src/tasks/user/`):
+Apply phase (`cli/src/tasks/user/`):
 - `packages` — Install system packages (pacman or winget)
 - `paru` — Bootstrap paru AUR helper (Arch Linux only)
 - `aur_packages` — Install AUR packages via paru (Arch Linux only)
@@ -411,11 +413,12 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 ### Parallel Task Execution
 
-Execution is split into two phases: **System** (prepare the environment)
-then **User** (apply declared state).  `run_tasks_to_completion()` loops
-over `[TaskPhase::System, TaskPhase::User]`, completing all tasks in
-one phase before starting the next.  Within each phase, tasks are executed in
-parallel using a dependency-graph scheduler.
+Execution is split into three phases: **Bootstrap** (prepare the tool
+itself), **Repository** (synchronise the dotfiles repository), then
+**Apply** (apply declared state).  `run_tasks_to_completion()` loops
+over `[TaskPhase::Bootstrap, TaskPhase::Repository, TaskPhase::Apply]`,
+completing all tasks in one phase before starting the next.  Within each
+phase, tasks are executed in parallel using a dependency-graph scheduler.
 
 Each task declares its dependencies using the `task_deps!` macro (defined in
 `tasks/helpers/macros.rs`, re-exported from `tasks/mod.rs`), which implements `Task::dependencies()` returning `TypeId`s of

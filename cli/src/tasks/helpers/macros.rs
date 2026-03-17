@@ -116,6 +116,7 @@ macro_rules! resource_task {
                     let $setup_ctx = ctx;
                     { $setup_expr }
                 )?
+                ctx.log.stage($task_name);
                 let resources = items.into_iter().map(|$item| {
                     let $build_ctx = ctx;
                     $build_expr
@@ -242,6 +243,7 @@ macro_rules! batch_resource_task {
                 });
                 let $cache_ctx = ctx;
                 let $state_cache = { $cache_expr }?;
+                ctx.log.stage($task_name);
                 let resource_states = $cache_items.into_iter().map(|$item| {
                     let $build_ctx = ctx;
                     let $state_res = { $build_expr };

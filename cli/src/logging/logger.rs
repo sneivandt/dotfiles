@@ -242,7 +242,11 @@ impl Logger {
         let mut dry_run = 0u32;
         let mut failed = 0u32;
 
-        let phases = [TaskPhase::System, TaskPhase::User];
+        let phases = [
+            TaskPhase::Bootstrap,
+            TaskPhase::Repository,
+            TaskPhase::Apply,
+        ];
         for phase in &phases {
             let phase_tasks: Vec<&TaskEntry> = tasks.iter().filter(|t| t.phase == *phase).collect();
             // Only show phases that have visible (non-n/a) tasks.
@@ -428,7 +432,7 @@ mod tests {
     #[test]
     fn record_task_ok() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task("symlinks", TaskPhase::User, TaskStatus::Ok, None);
+        log.record_task("symlinks", TaskPhase::Apply, TaskStatus::Ok, None);
         let tasks = log.task_entries();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].name, "symlinks");
@@ -440,7 +444,7 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
         log.record_task(
             "packages",
-            TaskPhase::User,
+            TaskPhase::Apply,
             TaskStatus::Skipped,
             Some("not on arch"),
         );
@@ -453,9 +457,9 @@ mod tests {
     #[test]
     fn record_multiple_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task("a", TaskPhase::User, TaskStatus::Ok, None);
-        log.record_task("b", TaskPhase::User, TaskStatus::Failed, Some("error"));
-        log.record_task("c", TaskPhase::User, TaskStatus::DryRun, None);
+        log.record_task("a", TaskPhase::Apply, TaskStatus::Ok, None);
+        log.record_task("b", TaskPhase::Apply, TaskStatus::Failed, Some("error"));
+        log.record_task("c", TaskPhase::Apply, TaskStatus::DryRun, None);
         assert_eq!(log.task_entries().len(), 3);
     }
 
@@ -463,9 +467,9 @@ mod tests {
     fn has_failures_detects_failed_task() {
         let (log, _tmp, _guard) = isolated_logger();
         assert!(!log.has_failures());
-        log.record_task("a", TaskPhase::User, TaskStatus::Ok, None);
+        log.record_task("a", TaskPhase::Apply, TaskStatus::Ok, None);
         assert!(!log.has_failures());
-        log.record_task("b", TaskPhase::User, TaskStatus::Failed, Some("error"));
+        log.record_task("b", TaskPhase::Apply, TaskStatus::Failed, Some("error"));
         assert!(log.has_failures());
     }
 
@@ -493,10 +497,10 @@ mod tests {
     fn failure_count_returns_correct_count() {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.failure_count(), 0);
-        log.record_task("a", TaskPhase::User, TaskStatus::Ok, None);
-        log.record_task("b", TaskPhase::User, TaskStatus::Failed, Some("error 1"));
-        log.record_task("c", TaskPhase::User, TaskStatus::Failed, Some("error 2"));
-        log.record_task("d", TaskPhase::User, TaskStatus::Skipped, None);
+        log.record_task("a", TaskPhase::Apply, TaskStatus::Ok, None);
+        log.record_task("b", TaskPhase::Apply, TaskStatus::Failed, Some("error 1"));
+        log.record_task("c", TaskPhase::Apply, TaskStatus::Failed, Some("error 2"));
+        log.record_task("d", TaskPhase::Apply, TaskStatus::Skipped, None);
         assert_eq!(log.failure_count(), 2);
     }
 
@@ -504,7 +508,7 @@ mod tests {
     fn log_trait_delegates_to_logger() {
         let (log, _tmp, _guard) = isolated_logger();
         let log_ref: &dyn Log = &log;
-        log_ref.record_task("via-trait", TaskPhase::User, TaskStatus::Ok, None);
+        log_ref.record_task("via-trait", TaskPhase::Apply, TaskStatus::Ok, None);
         assert_eq!(log.task_entries().len(), 1);
     }
 

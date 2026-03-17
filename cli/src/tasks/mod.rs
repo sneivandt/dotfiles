@@ -103,13 +103,15 @@ pub trait Task: Send + Sync + 'static {
     ///
     /// Returning `Ok(None)` means the task is not applicable and should be
     /// recorded as such without treating the task as a failure. The default
-    /// implementation simply delegates to [`Task::run`]; macros can override it
-    /// to avoid evaluating config twice.
+    /// implementation emits a stage header and delegates to [`Task::run`];
+    /// macros can override it to emit the stage header only when items are
+    /// present, avoiding `==>` output for tasks with nothing configured.
     ///
     /// # Errors
     ///
     /// Returns an error if the task fails to execute.
     fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        ctx.log.stage(self.name());
         self.run(ctx).map(Some)
     }
 
@@ -146,36 +148,32 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
             ctx.log
                 .record_task(task.name(), phase, TaskStatus::NotApplicable, None);
         }
-        Ok(Some(result)) => {
-            ctx.log.stage(task.name());
-            match result {
-                TaskResult::Ok => {
-                    ctx.log
-                        .record_task(task.name(), phase, TaskStatus::Ok, None);
-                }
-                TaskResult::NotApplicable(reason) => {
-                    ctx.debug_fmt(|| format!("not applicable: {reason}"));
-                    ctx.log
-                        .record_task(task.name(), phase, TaskStatus::NotApplicable, None);
-                }
-                TaskResult::Skipped(reason) => {
-                    ctx.log.info(&format!("skipped: {reason}"));
-                    ctx.log
-                        .record_task(task.name(), phase, TaskStatus::Skipped, Some(&reason));
-                }
-                TaskResult::Failed(reason) => {
-                    ctx.log.warn(&format!("failed: {reason}"));
-                    ctx.log
-                        .record_task(task.name(), phase, TaskStatus::Failed, Some(&reason));
-                }
-                TaskResult::DryRun => {
-                    ctx.log
-                        .record_task(task.name(), phase, TaskStatus::DryRun, None);
-                }
+        Ok(Some(result)) => match result {
+            TaskResult::Ok => {
+                ctx.log
+                    .record_task(task.name(), phase, TaskStatus::Ok, None);
             }
-        }
+            TaskResult::NotApplicable(reason) => {
+                ctx.debug_fmt(|| format!("not applicable: {reason}"));
+                ctx.log
+                    .record_task(task.name(), phase, TaskStatus::NotApplicable, None);
+            }
+            TaskResult::Skipped(reason) => {
+                ctx.log.info(&format!("skipped: {reason}"));
+                ctx.log
+                    .record_task(task.name(), phase, TaskStatus::Skipped, Some(&reason));
+            }
+            TaskResult::Failed(reason) => {
+                ctx.log.warn(&format!("failed: {reason}"));
+                ctx.log
+                    .record_task(task.name(), phase, TaskStatus::Failed, Some(&reason));
+            }
+            TaskResult::DryRun => {
+                ctx.log
+                    .record_task(task.name(), phase, TaskStatus::DryRun, None);
+            }
+        },
         Err(e) => {
-            ctx.log.stage(task.name());
             ctx.log.error(&format!("{}: {e:#}", task.name()));
             ctx.log.record_task(
                 task.name(),

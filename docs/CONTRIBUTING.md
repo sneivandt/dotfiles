@@ -97,14 +97,14 @@ cargo test --manifest-path cli/Cargo.toml
 
 #### Adding New Tasks
 
-1. Create a new file in `cli/src/tasks/system/` (for system-phase tasks) or `cli/src/tasks/user/` (for user-phase tasks) implementing the `Task` trait:
+1. Create a new file in `cli/src/tasks/system/` (for bootstrap/repository-phase tasks) or `cli/src/tasks/user/` (for apply-phase tasks) implementing the `Task` trait:
    ```rust
    #[derive(Debug)]
    pub struct MyNewTask;
 
    impl Task for MyNewTask {
        fn name(&self) -> &str { "My New Task" }
-       fn phase(&self) -> TaskPhase { TaskPhase::User }
+       fn phase(&self) -> TaskPhase { TaskPhase::Apply }
 
        fn should_run(&self, ctx: &Context) -> bool {
            ctx.platform.supports_systemd()  // use capability methods when possible

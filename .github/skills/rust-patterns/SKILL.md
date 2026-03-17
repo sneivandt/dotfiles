@@ -132,7 +132,7 @@ resource_task! {
     /// Install my resources from config.
     pub MyTask {
         name: "My task",
-        phase: TaskPhase::User,
+        phase: TaskPhase::Apply,
         deps: [crate::tasks::system::some_dependency::SomeDependency],  // optional
         guard: |ctx| ctx.platform.supports_systemd(),     // optional
         items: |ctx| ctx.config_read().items.clone(),
@@ -166,7 +166,7 @@ use crate::resources::my_resource::MyResource;
 pub struct MyTask;
 impl Task for MyTask {
     fn name(&self) -> &str { "My task" }
-    fn phase(&self) -> TaskPhase { TaskPhase::User }
+    fn phase(&self) -> TaskPhase { TaskPhase::Apply }
     task_deps![crate::tasks::system::some_dependency::SomeDependency]; // omit if no dependencies
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_systemd() && !ctx.config_read().items.is_empty()

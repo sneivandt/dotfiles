@@ -5,7 +5,7 @@ on:
     workflows: ["CI"]
     types: [completed]
   bots:
-    - "copilot-swe-agent[bot]"
+    - "Copilot"
 if: "${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.event == 'pull_request' }}"
 permissions:
   contents: read

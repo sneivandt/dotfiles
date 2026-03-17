@@ -23,12 +23,12 @@
 #
 # Automatically fix CI failures on pull requests targeting main by analyzing logs and pushing a fix commit.
 #
-# gh-aw-metadata: {"schema_version":"v2","frontmatter_hash":"a481de644454e1fabde0f17ae785b94a423225855240f24c1e521dd305415a58","compiler_version":"v0.60.0","strict":true}
+# gh-aw-metadata: {"schema_version":"v2","frontmatter_hash":"f38a203e08c7de953ba1456575fed6c7813869770a3d48402cecaf8fa945fd0c","compiler_version":"v0.60.0","strict":true}
 
 name: "CI Fix Agent"
 "on":
   # bots: # Bots processed as bot check in pre-activation job
-  # - copilot-swe-agent[bot] # Bots processed as bot check in pre-activation job
+  # - Copilot # Bots processed as bot check in pre-activation job
   workflow_run:
     # zizmor: ignore[dangerous-triggers] - workflow_run trigger is secured with role and fork validation
     types:
@@ -1017,7 +1017,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           GH_AW_REQUIRED_ROLES: admin,maintainer,write
-          GH_AW_ALLOWED_BOTS: copilot-swe-agent[bot]
+          GH_AW_ALLOWED_BOTS: Copilot
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

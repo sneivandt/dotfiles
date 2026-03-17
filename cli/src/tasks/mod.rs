@@ -136,6 +136,9 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
     let phase = task.phase();
 
     if !task.should_run(ctx) {
+        if ctx.log.debug_enabled() {
+            ctx.log.stage(task.name());
+        }
         ctx.log
             .debug(&format!("skipping task: {} (not applicable)", task.name()));
         ctx.log
@@ -145,6 +148,9 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 
     match task.run_if_applicable(ctx) {
         Ok(None) => {
+            if ctx.log.debug_enabled() {
+                ctx.log.stage(task.name());
+            }
             ctx.log.debug("nothing configured");
             ctx.log
                 .record_task(task.name(), phase, TaskStatus::NotApplicable, None);

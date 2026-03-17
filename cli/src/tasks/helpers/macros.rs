@@ -112,11 +112,11 @@ macro_rules! resource_task {
                 if items.is_empty() {
                     return Ok(None);
                 }
+                ctx.log.stage($task_name);
                 $(
                     let $setup_ctx = ctx;
                     { $setup_expr }
                 )?
-                ctx.log.stage($task_name);
                 let resources = items.into_iter().map(|$item| {
                     let $build_ctx = ctx;
                     $build_expr
@@ -235,6 +235,7 @@ macro_rules! batch_resource_task {
                 if $cache_items.is_empty() {
                     return Ok(None);
                 }
+                ctx.log.stage($task_name);
                 ctx.debug_fmt(|| {
                     format!(
                         "batch-checking {} resources with a single query",
@@ -243,7 +244,6 @@ macro_rules! batch_resource_task {
                 });
                 let $cache_ctx = ctx;
                 let $state_cache = { $cache_expr }?;
-                ctx.log.stage($task_name);
                 let resource_states = $cache_items.into_iter().map(|$item| {
                     let $build_ctx = ctx;
                     let $state_res = { $build_expr };

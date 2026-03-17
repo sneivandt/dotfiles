@@ -26,9 +26,9 @@ mod common;
 mod unix_e2e {
     use super::common;
     use dotfiles_cli::tasks;
-    use dotfiles_cli::tasks::system::hooks::InstallGitHooks;
-    use dotfiles_cli::tasks::user::chmod::ApplyFilePermissions;
-    use dotfiles_cli::tasks::user::symlinks::InstallSymlinks;
+    use dotfiles_cli::tasks::apply::chmod::ApplyFilePermissions;
+    use dotfiles_cli::tasks::apply::symlinks::InstallSymlinks;
+    use dotfiles_cli::tasks::repository::hooks::InstallGitHooks;
 
     // -----------------------------------------------------------------------
     // Helpers

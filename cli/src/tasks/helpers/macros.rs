@@ -42,7 +42,7 @@ pub(crate) use task_deps;
 ///     /// Doc comment for the task.
 ///     pub StructName {
 ///         name: "Human-readable task name",
-///         phase: TaskPhase::User,
+///         phase: TaskPhase::Apply,
 ///         deps: [DepType1, DepType2],          // optional
 ///         guard: |ctx| bool_expr,              // optional platform/tool guard
 ///         setup: |ctx| { side_effects(); },    // optional pre-processing
@@ -116,6 +116,7 @@ macro_rules! resource_task {
                     let $setup_ctx = ctx;
                     { $setup_expr }
                 )?
+                ctx.log.stage($task_name);
                 let resources = items.into_iter().map(|$item| {
                     let $build_ctx = ctx;
                     $build_expr
@@ -161,7 +162,7 @@ pub(crate) use resource_task;
 ///     /// Doc comment for the task.
 ///     pub StructName {
 ///         name: "Human-readable task name",
-///         phase: TaskPhase::User,
+///         phase: TaskPhase::Apply,
 ///         deps: [DepType1, DepType2],               // optional
 ///         guard: |ctx| bool_expr,                    // optional
 ///         items: |ctx| ctx.config_read().field.clone(),
@@ -242,6 +243,7 @@ macro_rules! batch_resource_task {
                 });
                 let $cache_ctx = ctx;
                 let $state_cache = { $cache_expr }?;
+                ctx.log.stage($task_name);
                 let resource_states = $cache_items.into_iter().map(|$item| {
                     let $build_ctx = ctx;
                     let $state_res = { $build_expr };

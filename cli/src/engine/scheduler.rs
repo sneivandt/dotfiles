@@ -213,7 +213,7 @@ mod tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -237,7 +237,7 @@ mod tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -263,7 +263,7 @@ mod tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -291,7 +291,7 @@ mod tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -316,7 +316,7 @@ mod tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -348,7 +348,7 @@ mod tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -374,7 +374,7 @@ mod tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -402,7 +402,7 @@ mod tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -425,7 +425,7 @@ mod tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -448,7 +448,7 @@ mod tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -476,7 +476,7 @@ mod tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -701,7 +701,7 @@ mod tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -727,7 +727,7 @@ mod tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
 
         fn should_run(&self, _: &Context) -> bool {
@@ -874,7 +874,7 @@ mod tests {
             }
 
             fn phase(&self) -> TaskPhase {
-                TaskPhase::User
+                TaskPhase::Apply
             }
 
             fn should_run(&self, _ctx: &Context) -> bool {

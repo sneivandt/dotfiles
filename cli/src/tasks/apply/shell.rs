@@ -9,8 +9,8 @@ resource_task! {
     /// Configure the default shell to zsh.
     pub ConfigureShell {
         name: "Configure default shell",
-        phase: TaskPhase::User,
-        deps: [crate::tasks::user::packages::InstallPackages],
+        phase: TaskPhase::Apply,
+        deps: [crate::tasks::apply::packages::InstallPackages],
         guard: |ctx| {
             ctx.platform.is_linux() && ctx.executor.which("zsh") && !ctx.is_ci
         },

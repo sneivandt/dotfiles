@@ -27,10 +27,10 @@ impl Task for UpdateRepository {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::System
+        TaskPhase::Repository
     }
 
-    task_deps![crate::tasks::system::sparse_checkout::ConfigureSparseCheckout];
+    task_deps![crate::tasks::repository::sparse_checkout::ConfigureSparseCheckout];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.root().join(".git").exists()

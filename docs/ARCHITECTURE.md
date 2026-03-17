@@ -175,7 +175,7 @@ pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
 
-    /// Which phase this task belongs to (System or User).
+    /// Which phase this task belongs to (Bootstrap, Repository, or Apply).
     fn phase(&self) -> TaskPhase;
 
     /// Stable TypeId for dependency matching.
@@ -215,17 +215,19 @@ The execution engine provides the generic resource processing loop, dependency g
 
 **Implemented tasks** (executed as soon as dependencies allow):
 
-System phase (`cli/src/tasks/system/`):
+Bootstrap phase (`cli/src/tasks/bootstrap/`):
 - `self_update` — Update the dotfiles binary from latest GitHub release
 - `developer_mode` — Enable Windows developer mode (required for symlinks)
+- `wrapper` — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
+- `path` — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
+
+Repository phase (`cli/src/tasks/repository/`):
 - `update` — Update repository (`git pull --ff-only`)
 - `sparse_checkout` — Configure git sparse checkout
 - `reload_config` — Reload config from disk after `update` pulls new commits
 - `hooks` — Install git hooks
-- `wrapper` — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
-- `path` — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
 
-User phase (`cli/src/tasks/user/`):
+Apply phase (`cli/src/tasks/apply/`):
 - `packages` — Install system packages (pacman or winget)
 - `paru` — Bootstrap paru AUR helper (Arch Linux only)
 - `aur_packages` — Install AUR packages via paru (Arch Linux only)
@@ -350,7 +352,7 @@ Task failures are caught by `tasks::execute()` and recorded as `TaskStatus::Fail
 
 ### Rust Tests
 
-- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/toml_loader.rs`, `tasks/system/*.rs`, `tasks/user/*.rs`)
+- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/toml_loader.rs`, `tasks/bootstrap/*.rs`, `tasks/repository/*.rs`, `tasks/apply/*.rs`)
 - **Integration tests**: Separate test binaries in `cli/tests/` (`install_command.rs`, `uninstall_command.rs`, `test_command.rs`), using `IntegrationTestContext` and `TestContextBuilder` helpers from `cli/tests/common/mod.rs`
 - **Snapshot tests**: Task list snapshots via the `insta` crate (`cli/tests/snapshots/`). Update with `INSTA_UPDATE=unseen cargo test` or `cargo insta review`
 
@@ -389,8 +391,8 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 ### Adding New Tasks
 
-1. Create a new file in `cli/src/tasks/system/` (for system-phase tasks) or `cli/src/tasks/user/` (for user-phase tasks) implementing the `Task` trait
-2. Add the module to `cli/src/tasks/system/mod.rs` or `cli/src/tasks/user/mod.rs`
+1. Create a new file in `cli/src/tasks/bootstrap/`, `cli/src/tasks/repository/` (for bootstrap/repository-phase tasks), or `cli/src/tasks/apply/` (for apply-phase tasks) implementing the `Task` trait
+2. Add the module to `cli/src/tasks/bootstrap/mod.rs`, `cli/src/tasks/repository/mod.rs`, or `cli/src/tasks/apply/mod.rs`
 3. Add the task to `all_install_tasks()` in `cli/src/tasks/helpers/catalog.rs`
 
 ### Adding New Configuration Types
@@ -398,7 +400,7 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 1. Create TOML file in `conf/`
 2. Add a config parser in `cli/src/config/`
 3. Add the field to the `Config` struct and load it in `Config::load()`
-4. Create a task in `cli/src/tasks/user/` that consumes the config
+4. Create a task in `cli/src/tasks/apply/` that consumes the config
 5. Document in CONFIGURATION.md
 
 ### Adding Custom Profiles
@@ -411,11 +413,12 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 ### Parallel Task Execution
 
-Execution is split into two phases: **System** (prepare the environment)
-then **User** (apply declared state).  `run_tasks_to_completion()` loops
-over `[TaskPhase::System, TaskPhase::User]`, completing all tasks in
-one phase before starting the next.  Within each phase, tasks are executed in
-parallel using a dependency-graph scheduler.
+Execution is split into three phases: **Bootstrap** (prepare the tool
+itself), **Repository** (synchronise the dotfiles repository), then
+**Apply** (apply declared state).  `run_tasks_to_completion()` loops
+over `[TaskPhase::Bootstrap, TaskPhase::Repository, TaskPhase::Apply]`,
+completing all tasks in one phase before starting the next.  Within each
+phase, tasks are executed in parallel using a dependency-graph scheduler.
 
 Each task declares its dependencies using the `task_deps!` macro (defined in
 `tasks/helpers/macros.rs`, re-exported from `tasks/mod.rs`), which implements `Task::dependencies()` returning `TypeId`s of

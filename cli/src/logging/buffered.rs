@@ -161,7 +161,7 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
         let log = Arc::new(log);
         let buf = BufferedLog::new(Arc::clone(&log));
-        buf.record_task("task-a", TaskPhase::User, TaskStatus::Ok, None);
+        buf.record_task("task-a", TaskPhase::Apply, TaskStatus::Ok, None);
         assert_eq!(log.task_entries().len(), 1);
         assert_eq!(log.task_entries()[0].name, "task-a");
     }

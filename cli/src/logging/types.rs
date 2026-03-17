@@ -110,7 +110,7 @@ mod tests {
     fn task_entry_clone() {
         let entry = TaskEntry {
             name: "test-task".to_string(),
-            phase: TaskPhase::User,
+            phase: TaskPhase::Apply,
             status: TaskStatus::Ok,
             message: Some("all good".to_string()),
         };
@@ -123,14 +123,18 @@ mod tests {
 
     #[test]
     fn task_phase_display() {
-        assert_eq!(TaskPhase::System.to_string(), "System");
-        assert_eq!(TaskPhase::User.to_string(), "User");
+        assert_eq!(TaskPhase::Bootstrap.to_string(), "Bootstrap");
+        assert_eq!(TaskPhase::Repository.to_string(), "Repository");
+        assert_eq!(TaskPhase::Apply.to_string(), "Apply");
     }
 
     #[test]
     fn task_phase_equality() {
-        assert_eq!(TaskPhase::System, TaskPhase::System);
-        assert_eq!(TaskPhase::User, TaskPhase::User);
-        assert_ne!(TaskPhase::System, TaskPhase::User);
+        assert_eq!(TaskPhase::Bootstrap, TaskPhase::Bootstrap);
+        assert_eq!(TaskPhase::Repository, TaskPhase::Repository);
+        assert_eq!(TaskPhase::Apply, TaskPhase::Apply);
+        assert_ne!(TaskPhase::Bootstrap, TaskPhase::Repository);
+        assert_ne!(TaskPhase::Bootstrap, TaskPhase::Apply);
+        assert_ne!(TaskPhase::Repository, TaskPhase::Apply);
     }
 }

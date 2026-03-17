@@ -1,15 +1,18 @@
 //! Named, dependency-ordered tasks that orchestrate resource changes.
 //!
-//! Tasks are organised into two phases:
+//! Tasks are organised into three phases:
 //!
-//! - **System** (`tasks::system`) — manage the dotfiles system itself
-//!   (binary updates, repo sync, sparse checkout, config reload).
-//! - **User** (`tasks::user`) — apply declared state to the user environment
-//!   (symlinks, packages, registry, hooks, etc.).
+//! - **Bootstrap** (`tasks::bootstrap`) — prepare the dotfiles tool itself
+//!   (binary update, wrapper installation, PATH configuration).
+//! - **Repository** (`tasks::repository`) — synchronise the dotfiles repository
+//!   (sparse checkout, pull, config reload, hooks).
+//! - **Apply** (`tasks::apply`) — apply declared state to the user environment
+//!   (symlinks, packages, registry, etc.).
 
+pub mod apply;
+pub mod bootstrap;
 mod helpers;
-pub mod system;
-pub mod user;
+pub mod repository;
 pub mod validation;
 
 pub use helpers::{all_install_tasks, all_uninstall_tasks};
@@ -36,22 +39,27 @@ use crate::logging::TaskStatus;
 
 /// Execution phase of a task.
 ///
-/// System tasks run first and prepare the environment (binary update,
-/// repository sync, config reload).  User tasks run second and apply
-/// the declared system state (symlinks, packages, registry, etc.).
+/// Bootstrap tasks run first to prepare the tool itself (binary update,
+/// wrapper installation, PATH configuration).  Repository tasks run
+/// second to synchronise the dotfiles repository (sparse checkout,
+/// pull, config reload, hooks).  Apply tasks run last to converge the
+/// user environment to its declared state (symlinks, packages, etc.).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TaskPhase {
-    /// Manage the dotfiles system itself.
-    System,
+    /// Prepare the dotfiles tool itself.
+    Bootstrap,
+    /// Synchronise the dotfiles repository.
+    Repository,
     /// Apply declared state to the user environment.
-    User,
+    Apply,
 }
 
 impl fmt::Display for TaskPhase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::System => f.write_str("System"),
-            Self::User => f.write_str("User"),
+            Self::Bootstrap => f.write_str("Bootstrap"),
+            Self::Repository => f.write_str("Repository"),
+            Self::Apply => f.write_str("Apply"),
         }
     }
 }
@@ -65,7 +73,7 @@ pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
 
-    /// Execution phase: [`TaskPhase::System`] or [`TaskPhase::User`].
+    /// Execution phase: [`TaskPhase::Bootstrap`], [`TaskPhase::Repository`], or [`TaskPhase::Apply`].
     fn phase(&self) -> TaskPhase;
 
     /// The concrete `TypeId` of this task, used as a dependency identifier.
@@ -96,13 +104,15 @@ pub trait Task: Send + Sync + 'static {
     ///
     /// Returning `Ok(None)` means the task is not applicable and should be
     /// recorded as such without treating the task as a failure. The default
-    /// implementation simply delegates to [`Task::run`]; macros can override it
-    /// to avoid evaluating config twice.
+    /// implementation emits a stage header and delegates to [`Task::run`];
+    /// macros can override it to emit the stage header only when items are
+    /// present, avoiding `==>` output for tasks with nothing configured.
     ///
     /// # Errors
     ///
     /// Returns an error if the task fails to execute.
     fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        ctx.log.stage(self.name());
         self.run(ctx).map(Some)
     }
 
@@ -132,8 +142,6 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
             .record_task(task.name(), phase, TaskStatus::NotApplicable, None);
         return;
     }
-
-    ctx.log.stage(task.name());
 
     match task.run_if_applicable(ctx) {
         Ok(None) => {
@@ -456,7 +464,7 @@ mod tests {
         /// Test-only task for resource-task macro behaviour.
         CountingResourceTask {
             name: "Counting resource task",
-            phase: TaskPhase::User,
+            phase: TaskPhase::Apply,
             items: |_ctx| {
                 RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
                 Vec::<()>::new()
@@ -470,7 +478,7 @@ mod tests {
         /// Test-only task for batch-resource-task macro behaviour.
         CountingBatchTask {
             name: "Counting batch task",
-            phase: TaskPhase::User,
+            phase: TaskPhase::Apply,
             items: |_ctx| {
                 BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
                 Vec::<()>::new()
@@ -494,7 +502,7 @@ mod tests {
             self.name
         }
         fn phase(&self) -> TaskPhase {
-            TaskPhase::User
+            TaskPhase::Apply
         }
         fn should_run(&self, _ctx: &Context) -> bool {
             self.should_run

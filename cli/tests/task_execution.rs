@@ -14,14 +14,14 @@
 mod common;
 
 use dotfiles_cli::tasks;
-use dotfiles_cli::tasks::system::hooks::{InstallGitHooks, UninstallGitHooks};
 #[cfg(unix)]
-use dotfiles_cli::tasks::user::chmod::ApplyFilePermissions;
-use dotfiles_cli::tasks::user::copilot_plugins::InstallCopilotPlugins;
-use dotfiles_cli::tasks::user::git_config::ConfigureGit;
-use dotfiles_cli::tasks::user::symlinks::InstallSymlinks;
+use dotfiles_cli::tasks::apply::chmod::ApplyFilePermissions;
+use dotfiles_cli::tasks::apply::copilot_plugins::InstallCopilotPlugins;
+use dotfiles_cli::tasks::apply::git_config::ConfigureGit;
+use dotfiles_cli::tasks::apply::symlinks::InstallSymlinks;
 #[cfg(unix)]
-use dotfiles_cli::tasks::user::symlinks::UninstallSymlinks;
+use dotfiles_cli::tasks::apply::symlinks::UninstallSymlinks;
+use dotfiles_cli::tasks::repository::hooks::{InstallGitHooks, UninstallGitHooks};
 use dotfiles_cli::tasks::{Task, TaskResult};
 
 // ===========================================================================
@@ -301,7 +301,7 @@ fn chmod_applies_permissions_from_config() {
     std::fs::write(&target, "Host *\n").unwrap();
     std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-    let task = dotfiles_cli::tasks::user::chmod::ApplyFilePermissions;
+    let task = dotfiles_cli::tasks::apply::chmod::ApplyFilePermissions;
     let result = task.run(&ec.ctx).unwrap();
     assert!(matches!(result, TaskResult::Ok));
 
@@ -328,7 +328,7 @@ fn chmod_is_idempotent() {
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "Host *\n").unwrap();
 
-    let task = dotfiles_cli::tasks::user::chmod::ApplyFilePermissions;
+    let task = dotfiles_cli::tasks::apply::chmod::ApplyFilePermissions;
     let _ = task.run(&ec.ctx).unwrap();
     let second = task.run(&ec.ctx).unwrap();
     assert!(matches!(second, TaskResult::Ok));

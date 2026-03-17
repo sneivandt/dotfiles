@@ -31,10 +31,12 @@ test_zsh_completion()
   completion="$DIR/symlinks/config/zsh/completions/_dotfiles"
   [ -f "$completion" ] || { printf "%sERROR: completion file missing: %s%s\n" "${RED}" "$completion" "${NC}" >&2; return 1; }
 
-  zsh -c "source '$completion'" >/dev/null 2>&1 || { printf "%sERROR: completion failed to load%s\n" "${RED}" "${NC}" >&2; return 1; }
+  # The generated completion file calls `compdef`, which requires the zsh
+  # completion system to be initialised first.
+  zsh -c "autoload -Uz compinit; compinit -u; source '$completion'" >/dev/null 2>&1 || { printf "%sERROR: completion failed to load%s\n" "${RED}" "${NC}" >&2; return 1; }
   log_verbose "Completion file loads OK"
 
-  zsh -c "source '$completion' && typeset -f _dotfiles >/dev/null" 2>&1 || { printf "%sERROR: _dotfiles not defined%s\n" "${RED}" "${NC}" >&2; return 1; }
+  zsh -c "autoload -Uz compinit; compinit -u; source '$completion' && typeset -f _dotfiles >/dev/null" 2>&1 || { printf "%sERROR: _dotfiles not defined%s\n" "${RED}" "${NC}" >&2; return 1; }
   log_verbose "Completion functions defined"
 
   # Check profile count matches profiles.toml

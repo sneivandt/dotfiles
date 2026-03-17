@@ -8,6 +8,7 @@ Configure sparse checkout
 Update repository
 Configure Git
 Install Git hooks
+Generate shell completions
 Install packages
 Install paru
 Install AUR packages

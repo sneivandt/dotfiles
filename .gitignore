@@ -43,3 +43,6 @@ id_ed25519
 id_ed25519.pub
 *.pem
 *.ppk
+
+# Generated shell completions (produced by the "Generate shell completions" install task)
+symlinks/config/zsh/completions/_dotfiles

@@ -29,6 +29,7 @@ pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
         )),
         Box::new(crate::tasks::apply::git_config::ConfigureGit),
         Box::new(crate::tasks::repository::hooks::InstallGitHooks::new()),
+        Box::new(crate::tasks::repository::completions::GenerateCompletions),
         Box::new(crate::tasks::apply::packages::InstallPackages),
         Box::new(crate::tasks::apply::packages::InstallParu),
         Box::new(crate::tasks::apply::packages::InstallAurPackages),

@@ -475,6 +475,32 @@ The wrappers forward all arguments unchanged to the binary, so these work with
 - **`--root DIR`** - Override dotfiles root directory (set automatically by wrapper scripts)
 - **`--no-parallel`** - Disable parallel execution of resource operations
 
+## Shell Completions
+
+Tab completions for the `dotfiles` CLI are generated automatically during
+the **Repository** phase of every `install` run (Linux only).  The generated
+script is written to:
+
+```
+symlinks/config/zsh/completions/_dotfiles
+```
+
+Because `~/.config/zsh/completions` is a symlink managed by the dotfiles
+setup itself, the completions become available to zsh as soon as they are
+written — no manual steps are required after `install`.
+
+To regenerate completions without running a full install:
+
+```bash
+./dotfiles.sh install --only completions
+```
+
+To print a completion script for a specific shell without installing:
+
+```bash
+dotfiles completions zsh   # or: bash, fish, elvish, powershell
+```
+
 ## See Also
 
 - [Profile System](PROFILES.md) - Understanding profiles in detail

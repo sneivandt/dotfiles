@@ -18,8 +18,12 @@ network:
   allowed:
     - defaults
     - rust
+checkout:
+  fetch: ["*"]
+  fetch-depth: 0
 safe-outputs:
-  create-pull-request:
+  push-to-pull-request-branch:
+    target: "*"
     max: 1
   add-comment:
     max: 1
@@ -101,24 +105,18 @@ After making changes, verify correctness:
 - For TOML changes: check that the file parses correctly
 - For shell scripts: review against ShellCheck rules
 
-### 5. Create a Fix PR
+### 5. Push Fix to the PR Branch
 
-Use the `create-pull-request` safe output to create a pull request with your fix.
+Use the `push-to-pull-request-branch` safe output to push your fix directly to the existing PR's branch.
 
-- **Branch name**: `fix/ci-<PR number>`
-- **Title**: `fix: resolve CI failure on #<PR number>`
-- **Body**: Include:
-  - Which CI job(s) failed and why
-  - What you changed to fix it
-  - A reference to the original PR (e.g., "Fixes CI for #<number>")
-- **Base branch**: The PR's head branch (push the fix to the PR's branch so it shows up in the original PR). Determine this from the PR metadata you fetched in step 1.
+Specify the PR number you identified in step 1 so the fix commit lands on the PR's head branch.
 
 ### 6. Comment on the Original PR
 
 Use the `add-comment` safe output to post a comment on the original PR explaining:
 - Which CI job failed
 - What the root cause was
-- That a fix has been pushed (with a link to the fix PR if targeting a different branch)
+- What was changed to fix it
 
 ## Guidelines
 

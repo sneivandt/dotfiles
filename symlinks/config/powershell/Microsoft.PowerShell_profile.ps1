@@ -115,6 +115,13 @@ if (Get-Command "gh" -ErrorAction SilentlyContinue)
     Set-Alias -Name aiup -Value Invoke-CopilotPluginUpdate
 }
 
+# Ensure local bin directory is in PATH
+$localBinDir = Join-Path $HOME ".local\bin"
+if ((Test-Path $localBinDir) -and ($env:Path -notlike "*$localBinDir*"))
+{
+    $env:Path += ";$localBinDir"
+}
+
 # Ensure Cargo (Rust) bin directory is in PATH
 $cargoDir = Join-Path $HOME ".cargo\bin"
 if ((Test-Path $cargoDir) -and ($env:Path -notlike "*$cargoDir*"))

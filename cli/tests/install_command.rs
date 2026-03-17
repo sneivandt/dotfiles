@@ -527,7 +527,7 @@ fn install_symlinks_is_idempotent() {
         },
     );
 
-    let task = dotfiles_cli::tasks::user::symlinks::InstallSymlinks;
+    let task = dotfiles_cli::tasks::apply::symlinks::InstallSymlinks;
 
     // First run: must succeed and create the symlink.
     let result1 = task.run(&task_ctx).expect("first install run");
@@ -629,7 +629,7 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
         },
     );
 
-    let result = dotfiles_cli::tasks::user::chmod::ApplyFilePermissions
+    let result = dotfiles_cli::tasks::apply::chmod::ApplyFilePermissions
         .run(&task_ctx)
         .expect("apply file permissions run");
     assert!(

@@ -18,7 +18,7 @@ impl Task for ConfigurePath {
         TaskPhase::Bootstrap
     }
 
-    crate::tasks::task_deps![crate::tasks::system::wrapper::InstallWrapper];
+    crate::tasks::task_deps![crate::tasks::bootstrap::wrapper::InstallWrapper];
 
     fn should_run(&self, _ctx: &Context) -> bool {
         true

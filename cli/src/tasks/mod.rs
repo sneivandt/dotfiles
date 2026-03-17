@@ -2,16 +2,17 @@
 //!
 //! Tasks are organised into three phases:
 //!
-//! - **Bootstrap** (`tasks::system`) — prepare the dotfiles tool itself
+//! - **Bootstrap** (`tasks::bootstrap`) — prepare the dotfiles tool itself
 //!   (binary update, wrapper installation, PATH configuration).
-//! - **Repository** (`tasks::system`) — synchronise the dotfiles repository
+//! - **Repository** (`tasks::repository`) — synchronise the dotfiles repository
 //!   (sparse checkout, pull, config reload, hooks).
-//! - **Apply** (`tasks::user`) — apply declared state to the user environment
+//! - **Apply** (`tasks::apply`) — apply declared state to the user environment
 //!   (symlinks, packages, registry, etc.).
 
+pub mod apply;
+pub mod bootstrap;
 mod helpers;
-pub mod system;
-pub mod user;
+pub mod repository;
 pub mod validation;
 
 pub use helpers::{all_install_tasks, all_uninstall_tasks};

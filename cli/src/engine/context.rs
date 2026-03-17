@@ -346,7 +346,7 @@ impl Context {
 
     /// Atomically replace the shared configuration.
     ///
-    /// Used by [`crate::tasks::system::reload_config::ReloadConfig`] after a `git pull`
+    /// Used by [`crate::tasks::repository::reload_config::ReloadConfig`] after a `git pull`
     /// to swap in the freshly-loaded config.
     pub fn config_swap(&self, new_config: Config) {
         let mut guard = self.config.write().unwrap_or_else(|e| {

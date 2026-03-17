@@ -7,9 +7,9 @@ use crate::tasks::Task;
 #[must_use]
 pub fn all_uninstall_tasks() -> Vec<Box<dyn Task>> {
     vec![
-        Box::new(crate::tasks::user::symlinks::UninstallSymlinks),
-        Box::new(crate::tasks::system::hooks::UninstallGitHooks::new()),
-        Box::new(crate::tasks::system::wrapper::UninstallWrapper),
+        Box::new(crate::tasks::apply::symlinks::UninstallSymlinks),
+        Box::new(crate::tasks::repository::hooks::UninstallGitHooks::new()),
+        Box::new(crate::tasks::bootstrap::wrapper::UninstallWrapper),
     ]
 }
 
@@ -21,28 +21,28 @@ pub fn all_uninstall_tasks() -> Vec<Box<dyn Task>> {
 pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
     let repo_updated = UpdateSignal::new();
     vec![
-        Box::new(crate::tasks::system::self_update::UpdateBinary),
-        Box::new(crate::tasks::system::developer_mode::EnableDeveloperMode),
-        Box::new(crate::tasks::system::sparse_checkout::ConfigureSparseCheckout::new()),
-        Box::new(crate::tasks::system::update::UpdateRepository::new(
+        Box::new(crate::tasks::bootstrap::self_update::UpdateBinary),
+        Box::new(crate::tasks::bootstrap::developer_mode::EnableDeveloperMode),
+        Box::new(crate::tasks::repository::sparse_checkout::ConfigureSparseCheckout::new()),
+        Box::new(crate::tasks::repository::update::UpdateRepository::new(
             repo_updated.clone(),
         )),
-        Box::new(crate::tasks::user::git_config::ConfigureGit),
-        Box::new(crate::tasks::system::hooks::InstallGitHooks::new()),
-        Box::new(crate::tasks::user::packages::InstallPackages),
-        Box::new(crate::tasks::user::packages::InstallParu),
-        Box::new(crate::tasks::user::packages::InstallAurPackages),
-        Box::new(crate::tasks::user::symlinks::InstallSymlinks),
-        Box::new(crate::tasks::user::chmod::ApplyFilePermissions),
-        Box::new(crate::tasks::user::shell::ConfigureShell),
-        Box::new(crate::tasks::user::systemd_units::ConfigureSystemd),
-        Box::new(crate::tasks::user::registry::ApplyRegistry),
-        Box::new(crate::tasks::user::vscode_extensions::InstallVsCodeExtensions),
-        Box::new(crate::tasks::user::copilot_plugins::InstallCopilotPlugins),
-        Box::new(crate::tasks::user::wsl_conf::InstallWslConf),
-        Box::new(crate::tasks::system::wrapper::InstallWrapper),
-        Box::new(crate::tasks::system::path::ConfigurePath),
-        Box::new(crate::tasks::system::reload_config::ReloadConfig::new(
+        Box::new(crate::tasks::apply::git_config::ConfigureGit),
+        Box::new(crate::tasks::repository::hooks::InstallGitHooks::new()),
+        Box::new(crate::tasks::apply::packages::InstallPackages),
+        Box::new(crate::tasks::apply::packages::InstallParu),
+        Box::new(crate::tasks::apply::packages::InstallAurPackages),
+        Box::new(crate::tasks::apply::symlinks::InstallSymlinks),
+        Box::new(crate::tasks::apply::chmod::ApplyFilePermissions),
+        Box::new(crate::tasks::apply::shell::ConfigureShell),
+        Box::new(crate::tasks::apply::systemd_units::ConfigureSystemd),
+        Box::new(crate::tasks::apply::registry::ApplyRegistry),
+        Box::new(crate::tasks::apply::vscode_extensions::InstallVsCodeExtensions),
+        Box::new(crate::tasks::apply::copilot_plugins::InstallCopilotPlugins),
+        Box::new(crate::tasks::apply::wsl_conf::InstallWslConf),
+        Box::new(crate::tasks::bootstrap::wrapper::InstallWrapper),
+        Box::new(crate::tasks::bootstrap::path::ConfigurePath),
+        Box::new(crate::tasks::repository::reload_config::ReloadConfig::new(
             repo_updated,
         )),
     ]

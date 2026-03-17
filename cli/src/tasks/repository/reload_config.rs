@@ -35,7 +35,7 @@ impl Task for ReloadConfig {
         TaskPhase::Repository
     }
 
-    task_deps![crate::tasks::system::update::UpdateRepository];
+    task_deps![crate::tasks::repository::update::UpdateRepository];
 
     fn should_run(&self, _ctx: &Context) -> bool {
         self.repo_updated.was_updated()

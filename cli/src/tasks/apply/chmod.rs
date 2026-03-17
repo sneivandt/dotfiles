@@ -8,7 +8,7 @@ resource_task! {
     pub ApplyFilePermissions {
         name: "Apply file permissions",
         phase: TaskPhase::Apply,
-        deps: [crate::tasks::user::symlinks::InstallSymlinks],
+        deps: [crate::tasks::apply::symlinks::InstallSymlinks],
         guard: |ctx| ctx.platform.supports_chmod(),
         items: |ctx| ctx.config_read().chmod.clone(),
         build: |entry, ctx| build_resource(&entry, &ctx.home),

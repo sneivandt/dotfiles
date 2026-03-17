@@ -243,4 +243,9 @@ mod tests {
     fn resource_error_is_send_sync() {
         assert_send_sync::<ResourceError>();
     }
+
+    #[test]
+    fn trivial_example_test() {
+        assert_eq!(1, 2);
+    }
 }

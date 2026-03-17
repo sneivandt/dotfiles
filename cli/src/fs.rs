@@ -493,4 +493,9 @@ mod tests {
         }
         assert!(td.exists(), "directory should remain after persist + drop");
     }
+
+    #[test]
+    fn example_failing_test_for_ci_fix_agent() {
+        assert_eq!(1, 2, "this test is intentionally broken to trigger the CI fix agent");
+    }
 }

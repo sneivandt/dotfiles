@@ -28,7 +28,7 @@ docker run --rm -it dotfiles:local
 The official image is automatically built and published to Docker Hub:
 - **Repository**: [sneivandt/dotfiles](https://hub.docker.com/r/sneivandt/dotfiles)
 - **Trigger**: Pushes to `main` branch
-- **Workflow**: `.github/workflows/docker-image.yml`
+- **Workflow**: `.github/workflows/docker.yml`
 
 ### Pulling the Image
 
@@ -400,7 +400,7 @@ docker run --rm -it sneivandt/dotfiles
 The project includes automated Docker image publishing:
 
 ```yaml
-# .github/workflows/docker-image.yml
+# .github/workflows/docker.yml
 name: Publish Docker
 
 on:

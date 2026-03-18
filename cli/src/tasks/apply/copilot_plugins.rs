@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use crate::resources::ResourceState;
 use crate::resources::copilot_plugin::{
-    CopilotPluginCache, CopilotPluginResource, copilot_supports_plugins, get_copilot_plugin_state,
-    get_copilot_version, register_marketplace,
+    CopilotPluginCache, CopilotPluginResource, copilot_supports_plugins, query_copilot_state,
+    register_marketplace,
 };
 use crate::tasks::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resource_states};
 
@@ -35,32 +35,32 @@ impl Task for InstallCopilotPlugins {
             return Ok(TaskResult::Skipped("gh CLI not found".to_string()));
         }
 
-        // Check whether the installed Copilot CLI supports plugin subcommands.
-        let plugins_supported = if gh_available {
-            match get_copilot_version(&*ctx.executor) {
-                Ok(version) => {
-                    ctx.debug_fmt(|| {
-                        format!(
-                            "Copilot CLI version: {}.{}.{}",
-                            version.0, version.1, version.2
-                        )
-                    });
-                    if copilot_supports_plugins(version) {
-                        true
-                    } else {
-                        let msg = format!(
-                            "Copilot CLI {}.{}.{} does not support plugins (requires >= 1.0.0)",
-                            version.0, version.1, version.2
-                        );
-                        if !ctx.dry_run {
-                            return Ok(TaskResult::Skipped(msg));
-                        }
-                        ctx.log.debug(&msg);
-                        false
-                    }
-                }
-                Err(e) => {
-                    let msg = format!("could not determine Copilot CLI version: {e}");
+        // Run version check and plugin/marketplace list queries in parallel
+        // (~1s wall-clock instead of ~3s sequential).
+        let (version_result, cache_result) = if gh_available {
+            query_copilot_state(&*ctx.executor)
+        } else {
+            (
+                Err(anyhow::anyhow!("gh not available")),
+                Ok(CopilotPluginCache::empty()),
+            )
+        };
+
+        let plugins_supported = match version_result {
+            Ok(version) => {
+                ctx.debug_fmt(|| {
+                    format!(
+                        "Copilot CLI version: {}.{}.{}",
+                        version.0, version.1, version.2
+                    )
+                });
+                if copilot_supports_plugins(version) {
+                    true
+                } else {
+                    let msg = format!(
+                        "Copilot CLI {}.{}.{} does not support plugins (requires >= 1.0.0)",
+                        version.0, version.1, version.2
+                    );
                     if !ctx.dry_run {
                         return Ok(TaskResult::Skipped(msg));
                     }
@@ -68,19 +68,20 @@ impl Task for InstallCopilotPlugins {
                     false
                 }
             }
-        } else {
-            false
+            Err(e) => {
+                let msg = format!("could not determine Copilot CLI version: {e}");
+                if !ctx.dry_run {
+                    return Ok(TaskResult::Skipped(msg));
+                }
+                ctx.log.debug(&msg);
+                false
+            }
         };
 
         let plugins: Vec<_> = ctx.config_read().copilot_plugins.clone();
         let cache = if plugins_supported {
-            ctx.debug_fmt(|| {
-                format!(
-                    "batch-checking {} Copilot plugins with a single CLI query",
-                    plugins.len()
-                )
-            });
-            get_copilot_plugin_state(&*ctx.executor)?
+            ctx.debug_fmt(|| format!("batch-checking {} Copilot plugins", plugins.len()));
+            cache_result?
         } else {
             ctx.log.debug(
                 "Copilot plugin commands unavailable; assuming plugins are missing for dry-run",
@@ -185,7 +186,7 @@ mod tests {
         });
         let mut executor = MockExecutor::new();
         executor.expect_which().returning(|_| true);
-        executor.expect_run_unchecked().once().returning(|_, _| {
+        executor.expect_run_unchecked().times(3).returning(|_, _| {
             Ok(ExecResult {
                 stdout: "GitHub Copilot CLI 0.0.396\n".to_string(),
                 stderr: String::new(),

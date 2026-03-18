@@ -192,10 +192,11 @@ fn copy_dir_recursive_inner(
             let canonical = src_path
                 .canonicalize()
                 .with_context(|| format!("canonicalizing {}", src_path.display()))?;
-            if !visited.insert(canonical) {
+            if !visited.insert(canonical.clone()) {
                 anyhow::bail!("symlink cycle detected at {}", src_path.display());
             }
             copy_dir_recursive_inner(&src_path, &dst_path, skip_git, visited)?;
+            visited.remove(&canonical);
         } else {
             std::fs::copy(&src_path, &dst_path).with_context(|| {
                 format!("copying {} to {}", src_path.display(), dst_path.display())
@@ -345,6 +346,35 @@ mod tests {
         assert!(
             target.join(".git/HEAD").exists(),
             ".git directory should be copied"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn allows_multiple_symlinks_to_same_target() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+
+        // Create a shared target directory.
+        let shared = tempfile::tempdir().unwrap();
+        std::fs::write(shared.path().join("shared.txt"), b"shared").unwrap();
+
+        // Two branches each symlink to the same shared directory.
+        std::fs::create_dir(src.path().join("a")).unwrap();
+        std::os::unix::fs::symlink(shared.path(), src.path().join("a/link")).unwrap();
+        std::fs::create_dir(src.path().join("b")).unwrap();
+        std::os::unix::fs::symlink(shared.path(), src.path().join("b/link")).unwrap();
+
+        let target = dst.path().join("out");
+        copy_dir_recursive(src.path(), &target, false).unwrap();
+
+        assert_eq!(
+            std::fs::read(target.join("a/link/shared.txt")).unwrap(),
+            b"shared"
+        );
+        assert_eq!(
+            std::fs::read(target.join("b/link/shared.txt")).unwrap(),
+            b"shared"
         );
     }
 

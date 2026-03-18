@@ -81,7 +81,16 @@ impl Task for InstallCopilotPlugins {
         let plugins: Vec<_> = ctx.config_read().copilot_plugins.clone();
         let cache = if plugins_supported {
             ctx.debug_fmt(|| format!("batch-checking {} Copilot plugins", plugins.len()));
-            cache_result?
+            match cache_result {
+                Ok(c) => c,
+                Err(e) if ctx.dry_run => {
+                    ctx.log.debug(&format!(
+                        "could not fetch plugin cache (dry-run): {e}; assuming plugins are missing"
+                    ));
+                    CopilotPluginCache::empty()
+                }
+                Err(e) => return Err(e),
+            }
         } else {
             ctx.log.debug(
                 "Copilot plugin commands unavailable; assuming plugins are missing for dry-run",

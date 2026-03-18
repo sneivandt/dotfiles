@@ -248,7 +248,7 @@ jobs:
       - name: Install dotfiles with base profile
         run: |
           chmod +x bin/dotfiles
-          ./bin/dotfiles --root . -p base install -v
+          ./bin/dotfiles --root . -p base install -v --skip copilot-plugins
       - name: Test ${{ matrix.application }}
         run: |
           export DIR="$(pwd)"

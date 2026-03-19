@@ -123,46 +123,43 @@ impl BufferedLog {
     ///
     /// Acquires the flush lock on the backing [`Logger`] to prevent
     /// interleaved console output when multiple tasks complete concurrently.
-    /// After replaying the buffered entries, updates the active task display.
+    /// After replaying the buffered entries, updates the active task display
+    /// by delegating to [`Logger::notify_task_done`].
     ///
     /// In non-verbose mode the task-result line (a [`TaskResult`](LogEntry::TaskResult)
     /// entry appended by [`execute`](crate::tasks::execute)) is replayed
     /// *before* the detail entries so that the compact result header appears
     /// above any per-resource output (e.g. dry-run lines).
     pub fn flush_and_complete(&self, task_name: &str) {
-        let _guard = self.inner.flush_lock.lock().unwrap_or_else(|e| {
-            eprintln!("warning: flush lock was poisoned, recovering");
-            e.into_inner()
-        });
-        self.inner.clear_progress();
-        let entries = match self.entries.lock() {
-            Ok(guard) => guard.clone(),
-            Err(_) => return,
-        };
-        if self.inner.is_verbose() {
-            for entry in &entries {
-                entry.replay();
-            }
-        } else {
-            // Replay task-result header(s) first, then detail entries.
-            for entry in &entries {
-                if matches!(entry, LogEntry::TaskResult(_)) {
+        {
+            let _guard = self.inner.flush_lock.lock().unwrap_or_else(|e| {
+                eprintln!("warning: flush lock was poisoned, recovering");
+                e.into_inner()
+            });
+            self.inner.clear_progress();
+            let entries = match self.entries.lock() {
+                Ok(guard) => guard.clone(),
+                Err(_) => return,
+            };
+            if self.inner.is_verbose() {
+                for entry in &entries {
                     entry.replay();
                 }
-            }
-            for entry in &entries {
-                if !matches!(entry, LogEntry::TaskResult(_)) {
-                    entry.replay();
+            } else {
+                // Replay task-result header(s) first, then detail entries.
+                for entry in &entries {
+                    if matches!(entry, LogEntry::TaskResult(_)) {
+                        entry.replay();
+                    }
+                }
+                for entry in &entries {
+                    if !matches!(entry, LogEntry::TaskResult(_)) {
+                        entry.replay();
+                    }
                 }
             }
         }
-        let remaining = self.inner.active_tasks.lock().ok().and_then(|mut active| {
-            active.retain(|n| n != task_name);
-            (!active.is_empty()).then(|| active.join(", "))
-        });
-        if let Some(names) = remaining {
-            self.inner.draw_progress(&names);
-        }
+        self.inner.notify_task_done(task_name);
     }
 }
 

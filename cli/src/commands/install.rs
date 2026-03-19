@@ -43,8 +43,9 @@ pub fn run(
 
     let runner = super::CommandRunner::new(global, log, token)?;
 
-    // Filter by --skip and --only
-    let all_tasks = tasks::all_install_tasks();
+    // Build the full task list: static tasks + dynamic overlay script tasks.
+    let mut all_tasks = tasks::all_install_tasks();
+    all_tasks.extend(runner.overlay_script_tasks());
     warn_unmatched_filters(&all_tasks, &opts.only, "--only", &**log);
     warn_unmatched_filters(&all_tasks, &opts.skip, "--skip", &**log);
     let filtered: Vec<&dyn tasks::Task> = all_tasks
@@ -208,6 +209,7 @@ mod tests {
             root: Some(PathBuf::from("/explicit/path")),
             profile: None,
             dry_run: false,
+            overlay: None,
             parallel: true,
         };
 
@@ -226,6 +228,7 @@ mod tests {
             root: None,
             profile: None,
             dry_run: false,
+            overlay: None,
             parallel: true,
         };
 

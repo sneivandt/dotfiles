@@ -84,7 +84,7 @@ fn config_loads_with_missing_optional_files() {
 
     let platform = Platform::detect();
     let profile = profiles::resolve("base", &conf, platform).expect("resolve profile");
-    let config = Config::load(root.path(), &profile, platform).expect("load config");
+    let config = Config::load(root.path(), &profile, platform, None).expect("load config");
     assert!(config.symlinks.is_empty());
     assert!(config.packages.is_empty());
 }
@@ -813,6 +813,7 @@ fn test_command_fails_on_config_warnings() {
         root: Some(ctx.root_path().to_path_buf()),
         profile: Some("base".to_string()),
         dry_run: true,
+        overlay: None,
         parallel: false,
     };
     let opts = dotfiles_cli::cli::TestOpts {};
@@ -866,7 +867,7 @@ fn config_load_returns_error_on_invalid_toml() {
 
     let platform = Platform::detect();
     let profile = profiles::resolve("base", &conf, platform).expect("resolve profile");
-    let result = Config::load(dir.path(), &profile, platform);
+    let result = Config::load(dir.path(), &profile, platform, None);
     assert!(
         result.is_err(),
         "Config::load should return Err on invalid TOML, got Ok"
@@ -888,7 +889,7 @@ fn config_load_error_context_includes_filename() {
     let platform = Platform::detect();
     let conf_dir = ctx.root_path().join("conf");
     let profile = profiles::resolve("base", &conf_dir, platform).expect("resolve profile");
-    let result = Config::load(ctx.root_path(), &profile, platform);
+    let result = Config::load(ctx.root_path(), &profile, platform, None);
 
     assert!(result.is_err(), "should fail on invalid packages.toml");
     let msg = format!("{:#}", result.unwrap_err());
@@ -913,7 +914,7 @@ fn config_load_returns_error_on_type_mismatch() {
     let platform = Platform::detect();
     let conf_dir = ctx.root_path().join("conf");
     let profile = profiles::resolve("base", &conf_dir, platform).expect("resolve profile");
-    let result = Config::load(ctx.root_path(), &profile, platform);
+    let result = Config::load(ctx.root_path(), &profile, platform, None);
 
     assert!(
         result.is_err(),

@@ -11,6 +11,7 @@ This project manages dotfiles and system configuration using a profile-based spa
 - **Idempotent**: Every run converges to the declared state without side effects
 - **Cross-Platform**: Single Rust binary; thin POSIX shell and PowerShell wrappers
 - **Declarative**: Configuration lives in `conf/` TOML files, deserialized via Serde
+- **Extensible**: A private overlay repository can inject additional config and custom script tasks
 
 ## Architecture
 
@@ -23,7 +24,7 @@ This project manages dotfiles and system configuration using a profile-based spa
 | Skills | `.github/skills/` | Agent-specific coding patterns |
 | Docs | `docs/` | Human-readable guides and reference |
 
-The Rust binary uses **clap** for CLI parsing and **anyhow** for error handling. It handles all file operations natively and only shells out for package managers (`pacman`, `paru`, `winget`) and service management (`systemctl`).
+The Rust binary uses **clap** for CLI parsing and **anyhow** for error handling. It handles all file operations natively and only shells out for package managers (`pacman`, `paru`, `winget`), service management (`systemctl`), and overlay scripts.
 
 See `docs/ARCHITECTURE.md` for the full system design.
 

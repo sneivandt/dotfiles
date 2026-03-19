@@ -46,8 +46,13 @@ impl Task for ReloadConfig {
         // window where the lock is held for writing across I/O.
         let new_config = {
             let old = ctx.config_read();
-            crate::config::Config::load(&old.root, &old.profile, ctx.platform)
-                .context("reloading configuration after repository update")?
+            crate::config::Config::load(
+                &old.root,
+                &old.profile,
+                ctx.platform,
+                old.overlay.as_deref(),
+            )
+            .context("reloading configuration after repository update")?
         };
 
         ctx.debug_fmt(|| {

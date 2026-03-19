@@ -8,9 +8,11 @@ pub mod copilot_plugins;
 pub mod git_config;
 pub(crate) mod helpers;
 pub mod manifest;
+pub mod overlay;
 pub mod packages;
 pub mod profiles;
 pub mod registry;
+pub mod scripts;
 pub mod symlinks;
 pub mod systemd_units;
 pub mod vscode_extensions;
@@ -196,6 +198,8 @@ impl ValidationWarning {
 pub struct Config {
     /// Root directory of the dotfiles repository.
     pub root: PathBuf,
+    /// Optional path to a private overlay repository.
+    pub overlay: Option<PathBuf>,
     /// The resolved profile, used to reload configuration after repository updates.
     pub profile: profiles::Profile,
     /// Packages to install via system package managers.
@@ -216,15 +220,23 @@ pub struct Config {
     pub git_settings: Vec<git_config::GitSetting>,
     /// Sparse checkout manifest for file exclusions.
     pub manifest: manifest::Manifest,
+    /// Custom scripts from the overlay repository.
+    pub scripts: Vec<scripts::ScriptEntry>,
 }
 
 impl Config {
-    /// Load all configuration for the given profile from the conf/ directory.
+    /// Load all configuration for the given profile from the conf/ directory,
+    /// optionally merging additional configuration from an overlay repository.
     ///
     /// # Errors
     ///
     /// Returns an error if any configuration file cannot be parsed.
-    pub fn load(root: &Path, profile: &profiles::Profile, platform: Platform) -> Result<Self> {
+    pub fn load(
+        root: &Path,
+        profile: &profiles::Profile,
+        platform: Platform,
+        overlay: Option<&Path>,
+    ) -> Result<Self> {
         let conf = root.join("conf");
 
         let active_categories = &profile.active_categories;
@@ -275,8 +287,9 @@ impl Config {
         let git_settings = load_toml!("git-config.toml", git_config::load, active_categories);
         let manifest = load_toml!("manifest.toml", manifest::load, excluded_categories);
 
-        Ok(Self {
+        let mut config = Self {
             root: root.to_path_buf(),
+            overlay: overlay.map(Path::to_path_buf),
             profile: profile.clone(),
             packages,
             symlinks,
@@ -287,7 +300,101 @@ impl Config {
             copilot_plugins,
             git_settings,
             manifest,
-        })
+            scripts: Vec::new(),
+        };
+
+        // Merge overlay configuration if an overlay path is provided.
+        if let Some(overlay_root) = overlay {
+            config.merge_overlay(overlay_root, active_categories, platform)?;
+        }
+
+        Ok(config)
+    }
+
+    /// Merge configuration from an overlay repository into this config.
+    ///
+    /// Overlay TOML files use the same format as the main `conf/` files and
+    /// are appended to the existing lists.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any overlay configuration file cannot be parsed.
+    fn merge_overlay(
+        &mut self,
+        overlay_root: &Path,
+        active_categories: &[category_matcher::Category],
+        platform: Platform,
+    ) -> Result<()> {
+        let overlay_conf = overlay_root.join("conf");
+
+        // Overlay macro — load from the overlay conf directory if the file
+        // exists.
+        macro_rules! load_overlay {
+            ($file:literal, $loader:expr, $cats:expr) => {{
+                let path = overlay_conf.join($file);
+                if path.exists() {
+                    $loader(&path, $cats)
+                        .with_context(|| format!("Invalid syntax in overlay {}", path.display()))?
+                } else {
+                    Vec::new()
+                }
+            }};
+            ($file:literal, $loader:expr) => {{
+                let path = overlay_conf.join($file);
+                if path.exists() {
+                    $loader(&path)
+                        .with_context(|| format!("Invalid syntax in overlay {}", path.display()))?
+                } else {
+                    Vec::new()
+                }
+            }};
+        }
+
+        self.packages.extend(load_overlay!(
+            "packages.toml",
+            packages::load,
+            active_categories
+        ));
+        self.symlinks.extend(load_overlay!(
+            "symlinks.toml",
+            symlinks::load,
+            active_categories
+        ));
+        if platform.has_registry() {
+            self.registry
+                .extend(load_overlay!("registry.toml", registry::load));
+        }
+        if platform.supports_systemd() {
+            self.units.extend(load_overlay!(
+                "systemd-units.toml",
+                systemd_units::load,
+                active_categories
+            ));
+        }
+        self.chmod
+            .extend(load_overlay!("chmod.toml", chmod::load, active_categories));
+        self.vscode_extensions.extend(load_overlay!(
+            "vscode-extensions.toml",
+            vscode_extensions::load,
+            active_categories
+        ));
+        self.copilot_plugins.extend(load_overlay!(
+            "copilot-plugins.toml",
+            copilot_plugins::load,
+            active_categories
+        ));
+        self.git_settings.extend(load_overlay!(
+            "git-config.toml",
+            git_config::load,
+            active_categories
+        ));
+        self.scripts.extend(load_overlay!(
+            "scripts.toml",
+            scripts::load,
+            active_categories
+        ));
+
+        Ok(())
     }
 
     /// Validate the configuration and return any warnings.
@@ -366,7 +473,8 @@ mod tests {
     #[test]
     fn load_with_empty_config_files() {
         let (dir, profile, platform) = setup_load(linux(), &[]);
-        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
+        let config =
+            Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
         assert!(config.packages.is_empty());
         assert!(config.symlinks.is_empty());
         assert!(config.registry.is_empty());
@@ -385,7 +493,8 @@ mod tests {
                 "[base]\nsymlinks = [\".bashrc\", \".vimrc\"]\n",
             )],
         );
-        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
+        let config =
+            Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
         assert_eq!(config.symlinks.len(), 2);
         assert_eq!(config.symlinks[0].source, ".bashrc");
         assert_eq!(config.symlinks[1].source, ".vimrc");
@@ -397,14 +506,16 @@ mod tests {
             linux(),
             &[("packages.toml", "[base]\npackages = [\"git\", \"curl\"]\n")],
         );
-        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
+        let config =
+            Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
         assert_eq!(config.packages.len(), 2);
     }
 
     #[test]
     fn load_stores_root_path() {
         let (dir, profile, platform) = setup_load(linux(), &[]);
-        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
+        let config =
+            Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
         assert_eq!(config.root, dir.path());
     }
 
@@ -417,7 +528,8 @@ mod tests {
                 "[test]\npath = \"HKCU:\\\\Test\"\n[test.values]\nKey = \"Value\"\n",
             )],
         );
-        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
+        let config =
+            Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
         assert!(config.registry.is_empty(), "registry skipped on linux");
     }
 
@@ -427,14 +539,16 @@ mod tests {
             linux(),
             &[("systemd-units.toml", "[base]\nunits = [\"ssh.service\"]\n")],
         );
-        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
+        let config =
+            Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
         assert_eq!(config.units.len(), 1);
     }
 
     #[test]
     fn load_skips_systemd_units_on_windows() {
         let (dir, profile, platform) = setup_load(windows(), &[]);
-        let config = Config::load(dir.path(), &profile, platform).expect("load should succeed");
+        let config =
+            Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
         assert!(config.units.is_empty(), "systemd units skipped on windows");
     }
 
@@ -442,7 +556,7 @@ mod tests {
     fn load_returns_error_on_invalid_packages_toml() {
         let (dir, profile, platform) =
             setup_load(linux(), &[("packages.toml", "[base\npackages = [")]);
-        let result = Config::load(dir.path(), &profile, platform);
+        let result = Config::load(dir.path(), &profile, platform, None);
         assert!(result.is_err(), "invalid packages.toml should return error");
         let msg = result.unwrap_err().to_string();
         let expected_path = dir.path().join("conf").join("packages.toml");
@@ -456,7 +570,7 @@ mod tests {
     fn load_returns_error_on_invalid_git_config_toml() {
         let (dir, profile, platform) =
             setup_load(linux(), &[("git-config.toml", "not valid [[ toml")]);
-        let result = Config::load(dir.path(), &profile, platform);
+        let result = Config::load(dir.path(), &profile, platform, None);
         assert!(
             result.is_err(),
             "invalid git-config.toml should return error"
@@ -472,7 +586,7 @@ mod tests {
     #[test]
     fn load_returns_error_on_invalid_manifest_toml() {
         let (dir, profile, platform) = setup_load(linux(), &[("manifest.toml", "{{invalid}}")]);
-        let result = Config::load(dir.path(), &profile, platform);
+        let result = Config::load(dir.path(), &profile, platform, None);
         assert!(result.is_err(), "invalid manifest.toml should return error");
     }
 
@@ -482,7 +596,7 @@ mod tests {
             linux(),
             &[("symlinks.toml", "[base]\nsymlinks = \"not-an-array\"\n")],
         );
-        let result = Config::load(dir.path(), &profile, platform);
+        let result = Config::load(dir.path(), &profile, platform, None);
         assert!(
             result.is_err(),
             "type mismatch in symlinks.toml should return error"

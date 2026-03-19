@@ -165,6 +165,8 @@ available only when invoking the binary directly.
 | `registry.rs` | `registry.toml` | Windows registry entries |
 | `git_config.rs` | `git-config.toml` | Git configuration settings |
 | `manifest.rs` | `manifest.toml` | Sparse checkout file mappings |
+| `overlay.rs` | — | Overlay path resolution and persistence |
+| `scripts.rs` | `scripts.toml` | Custom script entries from overlay repo |
 
 #### Tasks (`tasks/`)
 
@@ -226,6 +228,7 @@ Repository phase (`cli/src/tasks/repository/`):
 - `sparse_checkout` — Configure git sparse checkout
 - `reload_config` — Reload config from disk after `update` pulls new commits
 - `hooks` — Install git hooks
+- `overlay_scripts` — Discover overlay script definitions and log script count
 
 Apply phase (`cli/src/tasks/apply/`):
 - `packages` — Install system packages (pacman or winget)
@@ -240,6 +243,21 @@ Apply phase (`cli/src/tasks/apply/`):
 - `vscode` — Install VS Code extensions
 - `copilot_plugins` — Download Copilot CLI plugins
 - `wsl_conf` — Write `/etc/wsl.conf` with `generateResolvConf = true` (Linux only, uses sudo)
+
+#### Overlay System
+
+An overlay repository provides private configuration extensions that are merged
+with the main dotfiles config.  The overlay path is resolved from (in order):
+`--overlay` CLI flag → `DOTFILES_OVERLAY` env var → `dotfiles.overlay` git
+config.  When an overlay is set:
+
+1. `Config::load()` reads any `conf/*.toml` files from the overlay directory
+   and appends their entries to the main config lists
+2. `scripts.toml` in the overlay defines custom script tasks
+3. Each script entry produces a dynamic `OverlayScriptTask` that appears in
+   the task output like any built-in task
+4. Scripts follow a convention-based interface: no args (apply), `--check`
+   (verify state, exit 0 = correct), `--remove` (undo)
 
 #### Platform Detection (`platform.rs`)
 
@@ -402,6 +420,13 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 3. Add the field to the `Config` struct and load it in `Config::load()`
 4. Create a task in `cli/src/tasks/apply/` that consumes the config
 5. Document in CONFIGURATION.md
+
+### Adding Overlay Scripts
+
+1. Create a script in the overlay repository's `scripts/` directory
+2. Implement the convention interface: no args (apply), `--check` (exit 0 if correct), `--remove` (undo)
+3. Add the entry to `conf/scripts.toml` in the overlay repository
+4. Use `--overlay /path/to/overlay` to activate
 
 ### Adding Custom Profiles
 

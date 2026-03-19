@@ -19,7 +19,7 @@ and apply system state. Each resource file implements either `Resource`
 
 | Trait | When | Examples |
 |---|---|---|
-| `Resource` (implies `Applicable`) | Resource can independently check its own state | `SymlinkResource`, `ChmodResource`, `GitConfigResource`, `HookFileResource`, `WrapperResource`, `PathEntryResource` |
+| `Resource` (implies `Applicable`) | Resource can independently check its own state | `SymlinkResource`, `ChmodResource`, `GitConfigResource`, `HookFileResource`, `WrapperResource`, `PathEntryResource`, `ScriptResource` |
 | `Applicable` only | State requires a single bulk query shared across instances | `VsCodeExtensionResource`, `PackageResource` |
 
 ## Self-Checking Resource Template

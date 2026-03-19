@@ -5,7 +5,7 @@ description: >
   Use when working with console output, task recording, or summary reporting.
 metadata:
   author: sneivandt
-  version: "3.0"
+  version: "4.0"
 ---
 
 # Logging Patterns
@@ -17,14 +17,19 @@ console.
 
 ## Initialisation
 
-Call `logging::init_subscriber(verbose)` **once** at program startup (before
-creating the `Logger`) to register the global tracing subscriber:
+Call `logging::init_subscriber(verbose, command)` **once** at program startup,
+then create the `Logger` and sync its verbose flag:
 
 ```rust
 // main.rs
-logging::init_subscriber(args.verbose);
-let log = Arc::new(logging::Logger::new(command_name));
+logging::init_subscriber(args.verbose, command_name);
+let mut log = logging::Logger::new(command_name);
+log.set_verbose(args.verbose);
+let log = Arc::new(log);
 ```
+
+`set_verbose` updates both the `Logger` field and the global `AtomicBool` in
+the subscriber module so that the console formatter and the logger stay in sync.
 
 The subscriber routes `WARN`/`ERROR` to stderr and `INFO`/`DEBUG` to stdout.
 When `verbose=false` the subscriber filters out `DEBUG` events on the terminal;
@@ -35,7 +40,8 @@ debug messages are **always** written to the log file regardless.
 `ctx.log` is an `Arc<dyn Log>`. The `Log` trait is composed from two sub-traits:
 
 - **`Output`** — user-facing display methods (`stage`, `info`, `debug`, `warn`,
-  `error`, `dry_run`, `diagnostic`)
+  `error`, `dry_run`, `always`, `task_result`, `emit_task_result`, `is_verbose`,
+  `diagnostic`)
 - **`TaskRecorder`** — structured task result recording (`record_task`)
 
 `Log` is defined as `Log: Output + TaskRecorder` with a blanket implementation
@@ -52,31 +58,38 @@ Both `Logger` (sequential) and `BufferedLog` (parallel) implement `Output` and
   (e.g., `resolve_profile()`, `load_config()`).
 
 ```rust
-ctx.log.stage(msg);    // Bold blue "==>" header
-ctx.log.info(msg);     // Indented message
-ctx.log.debug(msg);    // Only when verbose=true on terminal
-ctx.log.warn(msg);     // Yellow to stderr
-ctx.log.error(msg);    // Red to stderr
-ctx.log.dry_run(msg);  // Yellow "[DRY RUN]" prefix
+ctx.log.stage(msg);       // Bold blue "==>" header (verbose-only on console)
+ctx.log.info(msg);        // Indented message (verbose-only on console)
+ctx.log.debug(msg);       // Only when verbose=true on terminal
+ctx.log.warn(msg);        // Yellow to stderr
+ctx.log.error(msg);       // Red to stderr
+ctx.log.dry_run(msg);     // Dry-run preview line
+ctx.log.always(msg);      // Always visible on console AND log file
+ctx.log.task_result(msg);  // Always visible on console, omitted from log file
+ctx.log.emit_task_result(name, &status, message);  // Formatted task-result line
+ctx.log.is_verbose();     // Check current verbose mode
 ctx.log.record_task(name, phase, status, message);  // Record task result for summary
-ctx.log.diagnostic();  // Access high-precision diagnostic log (if available)
+ctx.log.diagnostic();     // Access high-precision diagnostic log (if available)
 ```
 
 All messages (including `debug`) are always written to a persistent log file at
 `$XDG_CACHE_HOME/dotfiles/<command>.log` (default `~/.cache/dotfiles/<command>.log`,
 e.g. `install.log`, `uninstall.log`, `test.log`) with timestamps and ANSI codes
 stripped. On Windows, when `XDG_CACHE_HOME` is not set, the path falls back to
-`%USERPROFILE%\.cache\dotfiles\<command>.log`. The `debug` method only prints
-to the terminal when `verbose=true`,
-but **always** writes to the log file regardless of the verbose flag.
+`%USERPROFILE%\.cache\dotfiles\<command>.log`. The log file is always written
+in verbose mode — all messages appear regardless of the console verbose flag.
 The log file path is shown in the summary.
 
-| Method | Use For |
-|--------|---------|
-| `stage` | Major section headers (one per task) |
-| `info` | Summary counts ("12 symlinks created") |
-| `debug` | Per-item detail (verbose only on terminal, always in log file) |
-| `dry_run` | Preview of what would happen |
+| Method | Console (verbose) | Console (non-verbose) | Log file |
+|--------|-------------------|----------------------|----------|
+| `stage` | Shown | Suppressed | Always |
+| `info` | Shown | Suppressed | Always |
+| `debug` | Shown | Suppressed | Always |
+| `warn` | Shown | Shown | Always |
+| `error` | Shown | Shown | Always |
+| `dry_run` | Shown | Shown | Always |
+| `always` | Shown | Shown | Always |
+| `task_result` | Shown | Shown | Omitted |
 
 ## Task Recording & Summary
 
@@ -97,7 +110,10 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 }
 ```
 
-`log.print_summary()` shows totals at end of run. Don't call `record_task` inside tasks.
+`log.print_summary()` shows totals at end of run. In verbose mode the summary
+includes a full per-task breakdown grouped by phase; in non-verbose mode only
+the totals line is shown (individual results were already emitted inline as
+tasks completed). Don't call `record_task` inside tasks.
 
 ## Pattern in Task::run()
 
@@ -120,13 +136,35 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 }
 ```
 
+## Verbose vs Non-Verbose Mode
+
+When `verbose=false`:
+- `stage` and `info` messages are suppressed on the console
+- `tasks::execute()` emits compact inline task-result lines via `emit_task_result()`
+- The summary shows only totals (no per-phase task breakdown)
+- The progress line shows a count ("3 tasks running…") instead of task names
+
+When `verbose=true`:
+- All messages appear on the console as usual
+- The summary includes a full per-task breakdown grouped by phase
+- The progress line shows individual task names
+
+The **log file** always receives full output regardless of the verbose setting.
+The **`task_result`** target is the exception: it is console-only and never
+written to the log file (since the `stage` headers and detail lines already
+provide this information in the file).
+
 ## Rules
 
 1. Access logger via `ctx.log` — never create a second `Logger`
 2. Use `debug` for per-item detail; `info` for summary counts
-3. Check `ctx.dry_run` before side effects; use `ctx.log.dry_run()` for preview
-4. Return `TaskResult::DryRun` in dry-run mode
-5. Task recording is automatic via `tasks::execute()` — don't call `record_task` in tasks
+3. Use `always` for structural output that must appear regardless of verbose mode
+   (version, profile, summary totals)
+4. Use `task_result` (via `emit_task_result`) for inline task completion lines
+   (console-only)
+5. Check `ctx.dry_run` before side effects; use `ctx.log.dry_run()` for preview
+6. Return `TaskResult::DryRun` in dry-run mode
+7. Task recording is automatic via `tasks::execute()` — don't call `record_task` in tasks
 
 ## Parallel Task Logging
 

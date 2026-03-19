@@ -21,6 +21,10 @@ enum LogEntry {
     Error(String),
     /// A dry-run entry.
     DryRun(String),
+    /// An always-visible entry.
+    Always(String),
+    /// A compact task-result entry (console-only).
+    TaskResult(String),
 }
 
 impl LogEntry {
@@ -36,6 +40,8 @@ impl LogEntry {
             Self::Warn(msg) => tracing::warn!("{msg}"),
             Self::Error(msg) => tracing::error!("{msg}"),
             Self::DryRun(msg) => tracing::info!(target: "dotfiles::dry_run", "{msg}"),
+            Self::Always(msg) => tracing::info!(target: "dotfiles::always", "{msg}"),
+            Self::TaskResult(msg) => tracing::info!(target: "dotfiles::task_result", "{msg}"),
         }
     }
 }
@@ -95,8 +101,21 @@ impl BufferedLog {
             Ok(guard) => guard.clone(),
             Err(_) => return,
         };
-        for entry in &entries {
-            entry.replay();
+        if self.inner.is_verbose() {
+            for entry in &entries {
+                entry.replay();
+            }
+        } else {
+            for entry in &entries {
+                if matches!(entry, LogEntry::TaskResult(_)) {
+                    entry.replay();
+                }
+            }
+            for entry in &entries {
+                if !matches!(entry, LogEntry::TaskResult(_)) {
+                    entry.replay();
+                }
+            }
         }
     }
 
@@ -105,6 +124,11 @@ impl BufferedLog {
     /// Acquires the flush lock on the backing [`Logger`] to prevent
     /// interleaved console output when multiple tasks complete concurrently.
     /// After replaying the buffered entries, updates the active task display.
+    ///
+    /// In non-verbose mode the task-result line (a [`TaskResult`](LogEntry::TaskResult)
+    /// entry appended by [`execute`](crate::tasks::execute)) is replayed
+    /// *before* the detail entries so that the compact result header appears
+    /// above any per-resource output (e.g. dry-run lines).
     pub fn flush_and_complete(&self, task_name: &str) {
         let _guard = self.inner.flush_lock.lock().unwrap_or_else(|e| {
             eprintln!("warning: flush lock was poisoned, recovering");
@@ -115,8 +139,22 @@ impl BufferedLog {
             Ok(guard) => guard.clone(),
             Err(_) => return,
         };
-        for entry in &entries {
-            entry.replay();
+        if self.inner.is_verbose() {
+            for entry in &entries {
+                entry.replay();
+            }
+        } else {
+            // Replay task-result header(s) first, then detail entries.
+            for entry in &entries {
+                if matches!(entry, LogEntry::TaskResult(_)) {
+                    entry.replay();
+                }
+            }
+            for entry in &entries {
+                if !matches!(entry, LogEntry::TaskResult(_)) {
+                    entry.replay();
+                }
+            }
         }
         let remaining = self.inner.active_tasks.lock().ok().and_then(|mut active| {
             active.retain(|n| n != task_name);
@@ -136,6 +174,12 @@ impl Output for BufferedLog {
         warn    => Warn    => Warn,
         error   => Error   => Error,
         dry_run => DryRun  => DryRun,
+        always  => Always  => Info,
+        task_result => TaskResult => Info,
+    }
+
+    fn is_verbose(&self) -> bool {
+        self.inner.is_verbose()
     }
 
     fn diagnostic(&self) -> Option<&DiagnosticLog> {

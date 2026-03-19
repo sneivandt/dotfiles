@@ -56,7 +56,7 @@ dotfiles.sh [--build] version
 - **`--build`** - Build and run from source (requires `cargo`)
 - **`-p, --profile PROFILE`** - Use specific profile (base, desktop)
 - **`-v, --verbose`** - Enable verbose logging
-- **`-d, --dry-run`** - Preview changes without modifying system (auto-enables verbose)
+- **`-d, --dry-run`** - Preview changes without modifying system
 
 ### Windows (`dotfiles.ps1`)
 
@@ -124,7 +124,6 @@ git pull
 ```bash
 ./dotfiles.sh install -p desktop -d
 # Shows what would be done without making changes
-# Verbose mode is automatically enabled
 ```
 
 **Windows:**
@@ -231,19 +230,31 @@ Enable verbose logging to see detailed operation information:
 ```
 
 **Verbose output includes:**
-- Files being processed
+- Stage headers for each task (`==>` markers)
+- Per-item detail (symlinks, packages, etc.)
 - Operations being skipped (with reasons)
-- Detailed package installation progress
-- Symlink creation details
-- All configuration processing
+- Full per-task summary grouped by phase
 
-**Example verbose output:**
+**Default (non-verbose) output** shows compact inline task-result lines as each
+task completes, followed by a totals line:
+
 ```
-:: Installing packages
-   Skipping git: already installed
-   Skipping base-devel: already installed
-   Installing alacritty...
-   Package installed: alacritty
+  dotfiles v0.1.317
+  profile: desktop
+
+:: Bootstrap
+  ✓ Configure sparse checkout
+  ○ Update repository — local changes present
+  ~ Install Git hooks
+
+:: Apply
+  ~ Install symlinks
+  ~ Install packages
+  ~ Configure systemd units
+
+  15 tasks: 2 ok, 1 skipped, 12 dry-run (6 not applicable)
+  completed in 1.3s
+  log: /home/user/.cache/dotfiles/install.log
 ```
 
 ## Parallel Execution
@@ -273,15 +284,13 @@ Preview what would be done without making changes:
 **Dry-run mode:**
 - Shows all operations that would be performed
 - Doesn't modify system state
-- Automatically enables verbose mode
 - Useful for testing configuration changes
 - Safe to run without privileges
 
-**Example dry-run output:**
-```
-Would install package: alacritty
-Would create symlink: /home/user/.config/alacritty
-Would enable systemd unit: picom.service
+Combine with `-v` for full detail on every resource:
+
+```bash
+./dotfiles.sh install -d -v
 ```
 
 ## Logging
@@ -290,17 +299,17 @@ All operations are logged to persistent log files:
 
 **Linux:**
 - Location: `${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/install.log`
-- Includes: Timestamps, operations, verbose details, summary
+- Includes: Timestamps, operations, full detail, summary
 
 **Windows:**
 - Location: `%LOCALAPPDATA%\dotfiles\install.log`
-- Includes: Timestamps, operations, verbose details, summary
+- Includes: Timestamps, operations, full detail, summary
 
 **Log contents:**
 - Installation timestamp
 - Selected profile
 - All operations performed
-- Verbose details (even when not shown on console)
+- Full verbose-level detail (always, regardless of console verbose flag)
 - Summary statistics
 - Error messages and warnings
 
@@ -319,51 +328,39 @@ details on reading the diagnostic log.
 
 ## Installation Summary
 
-After installation, a summary is displayed showing each task grouped by phase:
+After installation, a summary is displayed. In **non-verbose** mode (default),
+compact task-result lines are shown inline as tasks complete, followed by totals.
 
-**Example:**
+In **verbose** mode (`-v`), a full per-task breakdown grouped by phase is
+appended:
+
+**Example (verbose):**
 ```
 :: Summary
-   System
-     ✓ Self-update
+   Bootstrap
      ✓ Configure sparse checkout
-     ✓ Update repository
-     ✓ Install git hooks
-     ✓ Install wrapper
-     ✓ Configure PATH
-   User
-     ✓ Install symlinks
-     ✓ Configure Git
-     ✓ Install packages
-     · Install AUR packages
-     ○ Configure shell (skipped: not running on Arch)
-     ✓ Enable systemd units
+     ○ Update repository (local changes present)
+     ~ Install Git hooks
+     ~ Configure PATH
+   Repository
+     ✓ Generate shell completions
+   Apply
+     ~ Install symlinks
+     ~ Install packages
+     ~ Configure systemd units
 
-   12 tasks: 8 ok, 1 n/a, 1 skipped, 0 dry-run, 0 failed
-   log: /home/user/.cache/dotfiles/install.log
+  15 tasks: 2 ok, 1 skipped, 12 dry-run (6 not applicable)
+  completed in 1.3s
+  log: /home/user/.cache/dotfiles/install.log
 ```
 
 **Status icons:**
 - `✓` — task completed successfully (green)
-- `·` — not applicable on this platform/profile (dim)
 - `○` — deliberately skipped (yellow)
-- `~` — dry-run preview (white)
+- `~` — dry-run preview (magenta)
 - `✗` — task failed (red)
 
-**Dry-run summary:**
-Status icons show `~` for tasks that would have run:
-```
-:: Summary
-   System
-     ~ Self-update
-     ~ Configure sparse checkout
-   User
-     ~ Install symlinks
-     ~ Configure Git
-
-   4 tasks: 0 ok, 0 n/a, 0 skipped, 4 dry-run, 0 failed
-   log: /home/user/.cache/dotfiles/install.log
-```
+Not-applicable tasks are omitted from the summary display.
 
 ## Idempotency
 

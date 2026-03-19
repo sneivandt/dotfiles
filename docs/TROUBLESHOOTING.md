@@ -556,7 +556,7 @@ docker logs <container-id>
 
 The installer writes two log files per run:
 
-- **Main log** (`~/.cache/dotfiles/<command>.log`) — human-readable log with timestamps, matching what you see on the terminal (including debug messages even when not running verbose)
+- **Main log** (`~/.cache/dotfiles/<command>.log`) — human-readable log with timestamps, always written at full verbose detail regardless of the console verbose flag
 - **Diagnostic log** (`~/.cache/dotfiles/<command>.diag.log`) — microsecond-precision chronological log of all events, including parallel execution
 
 Both paths are shown at the end of the installation summary.

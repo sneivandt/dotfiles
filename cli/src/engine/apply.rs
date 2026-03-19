@@ -36,9 +36,9 @@ pub(super) fn process_single<R: Applicable>(
         ResourceAction::Apply => {
             if ctx.dry_run {
                 let msg = if let ResourceState::Incorrect { ref current } = *resource_state {
-                    format!("would {} {desc} (currently {current})", opts.verb)
+                    format!("  would {} {desc} (currently {current})", opts.verb)
                 } else {
-                    format!("would {}: {desc}", opts.verb)
+                    format!("  would {}: {desc}", opts.verb)
                 };
                 ctx.log.dry_run(&msg);
                 delta.changed += 1;
@@ -86,7 +86,7 @@ fn apply_resource<R: Applicable>(
             if let Some(diag) = ctx.log.diagnostic() {
                 diag.emit(DiagEvent::ResourceResult, &format!("{desc} applied"));
             }
-            ctx.debug_fmt(|| format!("{}: {desc}", opts.verb));
+            ctx.log.always(&format!("    {}: {desc}", opts.verb));
             delta.changed += 1;
         }
         ResourceChange::AlreadyCorrect => {
@@ -124,7 +124,7 @@ pub(super) fn remove_single<R: Applicable>(
     match current {
         ResourceState::Correct => {
             if ctx.dry_run {
-                ctx.log.dry_run(&format!("would {verb}: {desc}"));
+                ctx.log.dry_run(&format!("  would {verb}: {desc}"));
                 delta.changed += 1;
                 return Ok(delta);
             }
@@ -135,7 +135,7 @@ pub(super) fn remove_single<R: Applicable>(
             if let Some(diag) = ctx.log.diagnostic() {
                 diag.emit(DiagEvent::ResourceResult, &format!("{desc} removed"));
             }
-            ctx.debug_fmt(|| format!("{verb}: {desc}"));
+            ctx.log.always(&format!("    {verb}: {desc}"));
             delta.changed += 1;
         }
         ResourceState::Unknown { reason } => {

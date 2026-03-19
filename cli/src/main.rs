@@ -54,7 +54,9 @@ fn main() -> ExitCode {
         cli::Command::Version | cli::Command::Completions(_) => "version",
     };
     logging::init_subscriber(args.verbose, command_name);
-    let log = std::sync::Arc::new(logging::Logger::new(command_name));
+    let mut log = logging::Logger::new(command_name);
+    log.set_verbose(args.verbose);
+    let log = std::sync::Arc::new(log);
 
     let result = match args.command {
         cli::Command::Install(opts) => commands::install::run(&args.global, &opts, &log, &token),

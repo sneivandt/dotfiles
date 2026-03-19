@@ -80,6 +80,8 @@ pub struct Logger {
     pub(super) diagnostic: Option<DiagnosticLog>,
     /// Instant when the logger was created, used for elapsed time in summary.
     start: Instant,
+    /// Whether verbose output is enabled (show all stage headers and info).
+    verbose: bool,
 }
 
 impl Logger {
@@ -100,7 +102,17 @@ impl Logger {
             diagnostic: dotfiles_cache_dir()
                 .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
             start,
+            verbose: true,
         }
+    }
+
+    /// Set the verbose mode on this logger.
+    ///
+    /// Also updates the global [`subscriber`](super::subscriber) flag so the
+    /// console formatter and file layer stay in sync.
+    pub fn set_verbose(&mut self, verbose: bool) {
+        self.verbose = verbose;
+        super::subscriber::set_verbose(verbose);
     }
 
     /// Create a new logger using an explicit cache base directory.
@@ -122,12 +134,18 @@ impl Logger {
             diagnostic: dotfiles_cache_subdir(cache_dir)
                 .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
             start,
+            verbose: true,
         }
     }
 
     /// Return the diagnostic log, if available.
     pub const fn diagnostic(&self) -> Option<&DiagnosticLog> {
         self.diagnostic.as_ref()
+    }
+
+    /// Return whether verbose output mode is enabled.
+    pub const fn is_verbose(&self) -> bool {
+        self.verbose
     }
 
     /// Return the log file path, if available.
@@ -187,6 +205,16 @@ impl Logger {
         dry_run, DryRun, tracing::info, target: "dotfiles::dry_run"
     );
 
+    log_method!(
+        /// Log a message that always appears on the console regardless of verbose setting.
+        always, Info, tracing::info, target: "dotfiles::always"
+    );
+
+    log_method!(
+        /// Log a compact task-result line (console-only, omitted from the log file).
+        task_result, Info, tracing::info, target: "dotfiles::task_result"
+    );
+
     /// Record a task result for the summary.
     pub fn record_task(
         &self,
@@ -233,73 +261,69 @@ impl Logger {
             return;
         }
 
-        println!();
-        self.phase("Summary");
-
         let mut ok = 0u32;
         let mut not_applicable = 0u32;
         let mut skipped = 0u32;
         let mut dry_run = 0u32;
         let mut failed = 0u32;
 
-        let phases = [
-            TaskPhase::Bootstrap,
-            TaskPhase::Repository,
-            TaskPhase::Apply,
-        ];
-        for phase in &phases {
-            let phase_tasks: Vec<&TaskEntry> = tasks.iter().filter(|t| t.phase == *phase).collect();
-            // Only show phases that have visible (non-n/a) tasks.
-            let has_visible = phase_tasks
-                .iter()
-                .any(|t| t.status != TaskStatus::NotApplicable);
-            if !has_visible {
-                // Still count n/a tasks even when not displayed.
-                not_applicable += phase_tasks.len() as u32;
-                continue;
-            }
-            self.info(&format!("\x1b[1m{phase}\x1b[0m"));
-            for task in &phase_tasks {
-                let (icon, color) = match task.status {
-                    TaskStatus::NotApplicable => {
-                        not_applicable += 1;
-                        continue;
-                    }
-                    TaskStatus::Ok => {
-                        ok += 1;
-                        ("✓", "\x1b[32m")
-                    }
-                    TaskStatus::Skipped => {
-                        skipped += 1;
-                        ("○", "\x1b[33m")
-                    }
-                    TaskStatus::DryRun => {
-                        dry_run += 1;
-                        ("~", "\x1b[37m")
-                    }
-                    TaskStatus::Failed => {
-                        failed += 1;
-                        ("✗", "\x1b[31m")
-                    }
-                };
-
-                let suffix = task
-                    .message
-                    .as_ref()
-                    .map_or_else(String::new, |msg| format!(" ({msg})"));
-
-                self.info(&format!("{color}  {icon} {}{suffix}\x1b[0m", task.name));
+        for task in &tasks {
+            match task.status {
+                TaskStatus::Ok => ok += 1,
+                TaskStatus::NotApplicable => not_applicable += 1,
+                TaskStatus::Skipped => skipped += 1,
+                TaskStatus::DryRun => dry_run += 1,
+                TaskStatus::Failed => failed += 1,
             }
         }
 
-        println!();
+        // In verbose mode, show the full per-task breakdown.
+        if self.verbose {
+            println!();
+            self.phase("Summary");
+
+            let phases = [
+                TaskPhase::Bootstrap,
+                TaskPhase::Repository,
+                TaskPhase::Apply,
+            ];
+            for phase in &phases {
+                let phase_tasks: Vec<&TaskEntry> =
+                    tasks.iter().filter(|t| t.phase == *phase).collect();
+                let has_visible = phase_tasks
+                    .iter()
+                    .any(|t| t.status != TaskStatus::NotApplicable);
+                if !has_visible {
+                    continue;
+                }
+                self.info(&format!("\x1b[1m{phase}\x1b[0m"));
+                for task in &phase_tasks {
+                    let (icon, color) = match task.status {
+                        TaskStatus::NotApplicable => continue,
+                        TaskStatus::Ok => ("\u{2713}", "\x1b[32m"),
+                        TaskStatus::Skipped => ("\u{25cb}", "\x1b[33m"),
+                        TaskStatus::DryRun => ("~", "\x1b[35m"),
+                        TaskStatus::Failed => ("\u{2717}", "\x1b[31m"),
+                    };
+
+                    let suffix = task
+                        .message
+                        .as_ref()
+                        .map_or_else(String::new, |msg| format!(" ({msg})"));
+
+                    self.info(&format!("{color}  {icon} {}{suffix}\x1b[0m", task.name));
+                }
+            }
+        }
+
+        self.always("");
         let active = ok + skipped + dry_run + failed;
         let mut parts: Vec<String> = vec![format!("\x1b[32m{ok} ok\x1b[0m")];
         if skipped > 0 {
             parts.push(format!("\x1b[33m{skipped} skipped\x1b[0m"));
         }
         if dry_run > 0 {
-            parts.push(format!("\x1b[37m{dry_run} dry-run\x1b[0m"));
+            parts.push(format!("\x1b[35m{dry_run} dry-run\x1b[0m"));
         }
         if failed > 0 {
             parts.push(format!("\x1b[31m{failed} failed\x1b[0m"));
@@ -314,11 +338,14 @@ impl Logger {
         let elapsed = self.start.elapsed();
         let elapsed_str = format_elapsed(elapsed);
 
-        self.info(&format!("{active} tasks: {}{na_suffix}", parts.join(", "),));
+        self.always(&format!(
+            "  {active} tasks: {}{na_suffix}",
+            parts.join(", "),
+        ));
 
-        self.info(&format!("\x1b[2mcompleted in {elapsed_str}\x1b[0m"));
+        self.always(&format!("  \x1b[2mcompleted in {elapsed_str}\x1b[0m"));
         if let Some(path) = &self.log_file {
-            self.info(&format!("\x1b[2mlog: {}\x1b[0m", path.display()));
+            self.always(&format!("  \x1b[2mlog: {}\x1b[0m", path.display()));
         }
     }
 
@@ -381,7 +408,11 @@ impl Logger {
             |_| name.to_string(),
             |mut active| {
                 active.push(name.to_string());
-                active.join(", ")
+                if self.verbose {
+                    active.join(", ")
+                } else {
+                    format!("{} tasks running\u{2026}", active.len())
+                }
             },
         );
         self.draw_progress(&names);
@@ -389,7 +420,20 @@ impl Logger {
 }
 
 impl Output for Logger {
-    forward_log_methods!(stage, info, debug, warn, error, dry_run);
+    forward_log_methods!(
+        stage,
+        info,
+        debug,
+        warn,
+        error,
+        dry_run,
+        always,
+        task_result
+    );
+
+    fn is_verbose(&self) -> bool {
+        self.verbose
+    }
 
     fn diagnostic(&self) -> Option<&DiagnosticLog> {
         self.diagnostic.as_ref()
@@ -624,12 +668,8 @@ mod tests {
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();
         assert!(
-            contents.contains("[dry run]"),
-            "dry run tag should appear in log file"
-        );
-        assert!(
             contents.contains(&marker),
-            "dry run message should appear in log file"
+            "dry run message should appear in log file: {contents}"
         );
     }
 

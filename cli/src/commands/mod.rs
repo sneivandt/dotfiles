@@ -495,7 +495,7 @@ fn resolve_profile(
 ) -> Result<profiles::Profile> {
     log.stage("Resolving profile");
     let profile = profiles::resolve_from_args(global.profile.as_deref(), root, platform)?;
-    log.info(&format!("profile: {}", profile.name));
+    log.always(&format!("  profile: {}", profile.name));
     Ok(profile)
 }
 
@@ -596,7 +596,7 @@ pub fn run_tasks_to_completion<'a>(
             continue;
         }
 
-        log.info("");
+        log.always("");
         log.phase(&phase.to_string());
 
         if ctx.parallel && phase_tasks.len() > 1 {

@@ -159,6 +159,9 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
             TaskResult::Ok => {
                 ctx.log
                     .record_task(task.name(), phase, TaskStatus::Ok, None);
+                if !ctx.log.is_verbose() {
+                    ctx.log.emit_task_result(task.name(), &TaskStatus::Ok, None);
+                }
             }
             TaskResult::NotApplicable(reason) => {
                 ctx.debug_fmt(|| format!("not applicable: {reason}"));
@@ -169,15 +172,27 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
                 ctx.log.info(&format!("skipped: {reason}"));
                 ctx.log
                     .record_task(task.name(), phase, TaskStatus::Skipped, Some(&reason));
+                if !ctx.log.is_verbose() {
+                    ctx.log
+                        .emit_task_result(task.name(), &TaskStatus::Skipped, Some(&reason));
+                }
             }
             TaskResult::Failed(reason) => {
                 ctx.log.warn(&format!("failed: {reason}"));
                 ctx.log
                     .record_task(task.name(), phase, TaskStatus::Failed, Some(&reason));
+                if !ctx.log.is_verbose() {
+                    ctx.log
+                        .emit_task_result(task.name(), &TaskStatus::Failed, Some(&reason));
+                }
             }
             TaskResult::DryRun => {
                 ctx.log
                     .record_task(task.name(), phase, TaskStatus::DryRun, None);
+                if !ctx.log.is_verbose() {
+                    ctx.log
+                        .emit_task_result(task.name(), &TaskStatus::DryRun, None);
+                }
             }
         },
         Err(e) => {
@@ -188,6 +203,10 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
                 TaskStatus::Failed,
                 Some(&format!("{e:#}")),
             );
+            if !ctx.log.is_verbose() {
+                ctx.log
+                    .emit_task_result(task.name(), &TaskStatus::Failed, Some(&format!("{e:#}")));
+            }
         }
     }
 }

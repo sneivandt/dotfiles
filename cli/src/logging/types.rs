@@ -52,6 +52,34 @@ pub trait Output: Send + Sync {
     fn error(&self, msg: &str);
     /// Log a dry-run action message.
     fn dry_run(&self, msg: &str);
+    /// Log a message that always appears on the console regardless of verbose
+    /// setting.  Used for structural output (version, profile, summary).
+    fn always(&self, msg: &str);
+    /// Log a compact task-result line (console-only, omitted from the log file).
+    fn task_result(&self, msg: &str);
+    /// Whether verbose output mode is enabled.
+    ///
+    /// When `false`, stage headers and plain info messages are suppressed on
+    /// the console and replaced by compact inline task-result lines.
+    fn is_verbose(&self) -> bool {
+        true
+    }
+    /// Emit a compact inline task-result line.
+    ///
+    /// Default implementation formats icon + name + optional detail and
+    /// routes through [`always`](Self::always).  `NotApplicable` tasks are
+    /// silently ignored.
+    fn emit_task_result(&self, name: &str, status: &TaskStatus, message: Option<&str>) {
+        let (icon, color) = match status {
+            TaskStatus::Ok => ("\u{2713}", "\x1b[32m"),
+            TaskStatus::Skipped => ("\u{25cb}", "\x1b[33m"),
+            TaskStatus::Failed => ("\u{2717}", "\x1b[31m"),
+            TaskStatus::DryRun => ("~", "\x1b[35m"),
+            TaskStatus::NotApplicable => return,
+        };
+        let suffix = message.map_or_else(String::new, |msg| format!(" \u{2014} {msg}"));
+        self.task_result(&format!("{color}  {icon} {name}{suffix}\x1b[0m"));
+    }
     /// Return whether debug logging is currently active on this thread.
     ///
     /// This intentionally avoids `tracing::enabled!`, which can leave stale

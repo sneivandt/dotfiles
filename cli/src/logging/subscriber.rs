@@ -2,8 +2,23 @@
 use std::fs;
 use std::io::Write as _;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::utils::{format_utc_datetime, format_utc_time, log_file_path, strip_ansi};
+
+/// Whether verbose console output is enabled.
+///
+/// Set once by [`init_subscriber`] and checked by [`DotfilesFormatter`] to
+/// decide whether stage headers and plain info messages appear on the console.
+static VERBOSE: AtomicBool = AtomicBool::new(true);
+
+/// Update the global verbose flag.
+///
+/// Called by [`Logger::set_verbose`](super::logger::Logger::set_verbose) so
+/// that the formatter and file layer stay in sync with the logger.
+pub(super) fn set_verbose(verbose: bool) {
+    VERBOSE.store(verbose, Ordering::Relaxed);
+}
 
 /// Extracts the `message` field from a [`tracing::Event`].
 #[derive(Default)]
@@ -92,15 +107,15 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FileLayer {
         let ts = format_utc_time();
 
         let line = match (level, target) {
+            (tracing::Level::INFO, "dotfiles::task_result") => return,
             (tracing::Level::INFO, "dotfiles::stage") => format!("[{ts}] ==> {msg}"),
             (tracing::Level::INFO, "dotfiles::phase") => {
-                format!("[{ts}] :: [phase] {msg}")
+                format!("[{ts}] :: {msg}")
             }
-            (tracing::Level::INFO, "dotfiles::dry_run") => format!("[{ts}]     [dry run] {msg}"),
-            (tracing::Level::ERROR, _) => format!("[{ts}]     [error] {msg}"),
-            (tracing::Level::WARN, _) => format!("[{ts}]     [warn] {msg}"),
-            (tracing::Level::DEBUG, _) => format!("[{ts}]     [debug] {msg}"),
-            _ => format!("[{ts}]     {msg}"),
+            (tracing::Level::ERROR, _) => format!("[{ts}]  [error] {msg}"),
+            (tracing::Level::WARN, _) => format!("[{ts}]  [warn] {msg}"),
+            (tracing::Level::DEBUG, _) => format!("[{ts}]  [debug] {msg}"),
+            _ => format!("[{ts}]  {msg}"),
         };
 
         if let Ok(mut f) = self.file.lock() {
@@ -135,16 +150,32 @@ where
         match level {
             tracing::Level::ERROR => writeln!(writer, "\x1b[31mERROR\x1b[0m {msg}"),
             tracing::Level::WARN => writeln!(writer, "\x1b[33mWARN\x1b[0m  {msg}"),
+            tracing::Level::INFO if target == "dotfiles::always" => {
+                writeln!(writer, "{msg}")
+            }
+            tracing::Level::INFO if target == "dotfiles::task_result" => {
+                writeln!(writer, "{msg}")
+            }
             tracing::Level::INFO if target == "dotfiles::stage" => {
-                writeln!(writer, "\x1b[1;34m==>\x1b[0m \x1b[1m{msg}\x1b[0m")
+                if VERBOSE.load(Ordering::Relaxed) {
+                    writeln!(writer, "\x1b[1;34m==>\x1b[0m \x1b[1m{msg}\x1b[0m")
+                } else {
+                    Ok(())
+                }
             }
             tracing::Level::INFO if target == "dotfiles::phase" => {
-                writeln!(writer, "\x1b[1;36m::\x1b[0m \x1b[1;36m{msg}\x1b[0m")
+                writeln!(writer, "\x1b[1;34m::\x1b[0m \x1b[1;34m{msg}\x1b[0m")
             }
             tracing::Level::INFO if target == "dotfiles::dry_run" => {
-                writeln!(writer, "  \x1b[33m[DRY RUN]\x1b[0m {msg}")
+                writeln!(writer, "  {msg}")
             }
-            tracing::Level::INFO => writeln!(writer, "  {msg}"),
+            tracing::Level::INFO => {
+                if VERBOSE.load(Ordering::Relaxed) {
+                    writeln!(writer, "  {msg}")
+                } else {
+                    Ok(())
+                }
+            }
             _ => writeln!(writer, "  \x1b[2m{msg}\x1b[0m"),
         }
     }
@@ -162,6 +193,8 @@ pub fn init_subscriber(verbose: bool, command: &str) {
         Layer as _, filter::LevelFilter, fmt, layer::SubscriberExt as _,
         util::SubscriberInitExt as _,
     };
+
+    VERBOSE.store(verbose, Ordering::Relaxed);
 
     let console_level = if verbose {
         LevelFilter::DEBUG
@@ -248,19 +281,20 @@ mod tests {
         tracing::info!(target: "dotfiles::phase", "Bootstrap");
         let content = fs::read_to_string(&path).unwrap();
         assert!(
-            content.contains(":: [phase] Bootstrap"),
-            "phase should include phase tag: {content}"
+            content.contains(":: Bootstrap"),
+            "phase should include phase marker: {content}"
         );
     }
 
     #[test]
-    fn file_layer_formats_dry_run_tag() {
+    fn file_layer_formats_dry_run_without_tag() {
         let (path, _tmp, _guard) = isolated_file_layer();
         tracing::info!(target: "dotfiles::dry_run", "would link");
         let content = fs::read_to_string(&path).unwrap();
+        let line = content.lines().find(|l| l.contains("would link")).unwrap();
         assert!(
-            content.contains("[dry run] would link"),
-            "dry_run should have [dry run] tag: {content}"
+            !line.contains("[dry run]"),
+            "dry_run should not have [dry run] tag in file: {line}"
         );
     }
 

@@ -28,7 +28,7 @@ pub fn run(
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
     let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
-    log.info(&format!("dotfiles {version}"));
+    log.always(&format!("  dotfiles {version}"));
 
     // Self-update before the task graph — if the binary is replaced, re-exec
     // so all tasks run with the updated code and config parsers.

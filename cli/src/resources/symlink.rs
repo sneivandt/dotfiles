@@ -51,6 +51,21 @@ impl Applicable for SymlinkResource {
     }
 
     fn remove(&self) -> Result<ResourceChange> {
+        // Refuse to overwrite a target that is not a symlink/junction.  If the
+        // user replaced the managed symlink with their own real file or directory
+        // we must not silently destroy their content during uninstall.
+        match self.target.symlink_metadata() {
+            Ok(meta) if !meta.is_symlink() => {
+                return Ok(ResourceChange::Skipped {
+                    reason: format!(
+                        "target is not a symlink and will not be overwritten: {}",
+                        self.target.display()
+                    ),
+                });
+            }
+            _ => {}
+        }
+
         // Copy source content into place, then remove the symlink, so the user
         // retains the file/directory after uninstall instead of losing it.
         copy_into_place(&self.source, &self.target).with_context(|| {
@@ -146,9 +161,28 @@ fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
 
     let mut guard = crate::fs::TempPath::new(tmp.clone());
 
-    if target.symlink_metadata().is_ok() {
-        remove_symlink(target).with_context(|| format!("remove symlink: {}", target.display()))?;
+    match target.symlink_metadata() {
+        Ok(meta) if meta.is_symlink() => {
+            remove_symlink(target)
+                .with_context(|| format!("remove symlink: {}", target.display()))?;
+        }
+        Ok(_) => {
+            // Target exists but is not a symlink — refuse to overwrite to
+            // prevent data loss.
+            return Err(anyhow::anyhow!(
+                "refusing to overwrite non-symlink target: {}",
+                target.display()
+            ));
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Target is absent; nothing to remove before rename.
+        }
+        Err(e) => {
+            return Err(anyhow::Error::new(e))
+                .with_context(|| format!("stat {}", target.display()));
+        }
     }
+
     std::fs::rename(&tmp, target)
         .with_context(|| format!("rename {} to {}", tmp.display(), target.display()))?;
 
@@ -166,9 +200,26 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
     crate::fs::copy_dir_recursive(source, &tmp, false)
         .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;
 
-    if target.symlink_metadata().is_ok() {
-        remove_symlink(target)
-            .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
+    match target.symlink_metadata() {
+        Ok(meta) if meta.is_symlink() => {
+            remove_symlink(target)
+                .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
+        }
+        Ok(_) => {
+            // Target exists but is not a symlink — refuse to overwrite to
+            // prevent data loss.
+            return Err(anyhow::anyhow!(
+                "refusing to overwrite non-symlink target: {}",
+                target.display()
+            ));
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Target is absent; nothing to remove before rename.
+        }
+        Err(e) => {
+            return Err(anyhow::Error::new(e))
+                .with_context(|| format!("stat {}", target.display()));
+        }
     }
 
     // Prefer atomic rename; fall back to copy+delete only on cross-filesystem move.
@@ -730,5 +781,62 @@ mod tests {
         assert!(!meta.is_symlink(), "target should not be a symlink");
         assert!(meta.is_dir(), "target should be a real directory");
         assert_eq!(std::fs::read(target_dir.join("a.txt")).unwrap(), b"aaa");
+    }
+
+    /// `remove()` must not overwrite a real file at the target path — doing so
+    /// would destroy user data.  The result must be `Skipped` and the original
+    /// file content must remain intact.
+    #[test]
+    fn remove_does_not_overwrite_real_file() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("target.txt");
+        std::fs::write(&source, b"source content").unwrap();
+        // Write a real file (not a symlink) at target, simulating a user-managed file.
+        std::fs::write(&target, b"user content").unwrap();
+
+        let resource = SymlinkResource::new(source, target.clone(), system_executor());
+        let result = resource.remove().unwrap();
+
+        assert!(
+            matches!(result, ResourceChange::Skipped { .. }),
+            "remove() must skip a non-symlink target to prevent data loss, got {result:?}"
+        );
+        // User content must be completely intact.
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"user content",
+            "real file content must not be modified"
+        );
+    }
+
+    /// `remove()` must not overwrite a real directory at the target path —
+    /// doing so would destroy user data.  The result must be `Skipped` and the
+    /// directory contents must remain intact.
+    #[cfg(unix)]
+    #[test]
+    fn remove_does_not_overwrite_real_directory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source_dir = temp_dir.path().join("src_dir");
+        let target_dir = temp_dir.path().join("target_dir");
+        std::fs::create_dir(&source_dir).unwrap();
+        std::fs::write(source_dir.join("source.txt"), b"source content").unwrap();
+        // Create a real directory (not a symlink) at target.
+        std::fs::create_dir(&target_dir).unwrap();
+        std::fs::write(target_dir.join("user.txt"), b"user content").unwrap();
+
+        let resource = SymlinkResource::new(source_dir, target_dir.clone(), system_executor());
+        let result = resource.remove().unwrap();
+
+        assert!(
+            matches!(result, ResourceChange::Skipped { .. }),
+            "remove() must skip a non-symlink target directory to prevent data loss, got {result:?}"
+        );
+        // User content must be completely intact.
+        assert_eq!(
+            std::fs::read(target_dir.join("user.txt")).unwrap(),
+            b"user content",
+            "real directory content must not be modified"
+        );
     }
 }

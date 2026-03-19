@@ -190,8 +190,12 @@ pub fn get_copilot_plugin_state(executor: &dyn Executor) -> Result<CopilotPlugin
     })
 }
 
-/// Query Copilot CLI version, installed plugins, and registered marketplaces
-/// in parallel.
+/// Query Copilot CLI version, installed plugins, and registered marketplaces.
+///
+/// The version check runs first so that any on-demand binary installation
+/// finishes before the list queries execute (avoids ETXTBSY / "text file
+/// busy" on Linux when multiple `gh copilot` invocations race to install the
+/// binary). The two list queries then run in parallel.
 ///
 /// Returns the version result and the plugin cache result independently so the
 /// caller can handle a version-check failure without blocking on the
@@ -199,8 +203,11 @@ pub fn get_copilot_plugin_state(executor: &dyn Executor) -> Result<CopilotPlugin
 pub fn query_copilot_state(
     executor: &dyn Executor,
 ) -> (Result<(u64, u64, u64)>, Result<CopilotPluginCache>) {
-    std::thread::scope(|s| {
-        let version_handle = s.spawn(|| get_copilot_version(executor));
+    // Run version check first — this may trigger Copilot binary installation.
+    let version = get_copilot_version(executor);
+
+    // Now run list queries in parallel (binary is already installed).
+    let cache = std::thread::scope(|s| {
         let plugin_handle = s.spawn(|| {
             run_copilot_checked(
                 &["copilot", "plugin", "list"],
@@ -216,11 +223,7 @@ pub fn query_copilot_state(
             )
         });
 
-        let version = version_handle
-            .join()
-            .unwrap_or_else(|_| Err(anyhow::anyhow!("version check thread panicked")));
-
-        let cache = match (plugin_handle.join(), marketplace_handle.join()) {
+        match (plugin_handle.join(), marketplace_handle.join()) {
             (Ok(Ok(installed)), Ok(Ok(marketplaces))) => Ok(CopilotPluginCache {
                 installed_plugins: parse_installed_plugins(&installed.stdout),
                 registered_marketplaces: parse_registered_marketplaces(&marketplaces.stdout),
@@ -228,10 +231,10 @@ pub fn query_copilot_state(
             (Ok(Err(e)), _) | (_, Ok(Err(e))) => Err(e),
             (Err(_), _) => Err(anyhow::anyhow!("plugin list thread panicked")),
             (_, Err(_)) => Err(anyhow::anyhow!("marketplace list thread panicked")),
-        };
+        }
+    });
 
-        (version, cache)
-    })
+    (version, cache)
 }
 
 /// Register a marketplace with the Copilot CLI.

@@ -140,8 +140,17 @@ fn build_windows_restart_helper_script(
                  for ($attempt = 0; $attempt -lt 50; $attempt++) {{ \
                      Start-Sleep -Milliseconds 200; \
                      try {{ \
-                         if (Test-Path $exe) {{ Remove-Item $exe -Force }}; \
-                         Move-Item -Path $pending -Destination $exe -Force; \
+                         if (Test-Path $pending) {{ \
+                             $backup = $exe + '.bak'; \
+                             if (Test-Path $exe) {{ Move-Item -Path $exe -Destination $backup -Force }}; \
+                             try {{ \
+                                 Move-Item -Path $pending -Destination $exe -Force \
+                             }} catch {{ \
+                                 if (Test-Path $backup) {{ Move-Item -Path $backup -Destination $exe -Force }}; \
+                                 throw \
+                             }}; \
+                             if (Test-Path $backup) {{ Remove-Item $backup -Force }} \
+                         }}; \
                          if (Test-Path $pendingVersion) {{ \
                              $version = (Get-Content $pendingVersion -ErrorAction Stop | Select-Object -First 1).Trim(); \
                              if (-not [string]::IsNullOrWhiteSpace($version)) {{ \
@@ -237,6 +246,47 @@ mod tests {
         assert!(script.contains("& $exe @args;"));
         assert!(script.contains("exit $LASTEXITCODE"));
         assert!(!script.contains("Start-Process -FilePath $exe -ArgumentList $args"));
+    }
+
+    #[test]
+    fn windows_restart_helper_script_uses_safe_atomic_update() {
+        let script = build_windows_restart_helper_script(
+            Path::new("C:\\Program Files\\dotfiles.exe"),
+            Path::new("C:\\Program Files\\.dotfiles-update.pending"),
+            Path::new("C:\\Program Files\\.dotfiles-update.version"),
+            Path::new("C:\\Program Files\\.dotfiles-version-cache"),
+            &["--root".to_string()],
+        );
+
+        // The exe must NOT be deleted directly before the pending file is moved.
+        assert!(
+            !script.contains("Remove-Item $exe"),
+            "script must not delete $exe before the pending file is in place"
+        );
+
+        // The backup must be created (by moving $exe) before the pending move.
+        let backup_pos = script
+            .find("Move-Item -Path $exe -Destination $backup")
+            .expect("script must back up $exe before moving $pending");
+        let move_pending_pos = script
+            .find("Move-Item -Path $pending -Destination $exe")
+            .expect("script must move $pending to $exe");
+        assert!(
+            backup_pos < move_pending_pos,
+            "backup of $exe must precede the move of $pending into place"
+        );
+
+        // On failure, the backup must be restored before rethrowing.
+        assert!(
+            script.contains("Move-Item -Path $backup -Destination $exe -Force"),
+            "script must restore $exe from backup on failure"
+        );
+
+        // On success, the backup must be cleaned up.
+        assert!(
+            script.contains("Remove-Item $backup -Force"),
+            "script must remove the backup after a successful update"
+        );
     }
 }
 

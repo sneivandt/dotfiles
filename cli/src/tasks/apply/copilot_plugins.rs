@@ -35,8 +35,8 @@ impl Task for InstallCopilotPlugins {
             return Ok(TaskResult::Skipped("gh CLI not found".to_string()));
         }
 
-        // Run version check and plugin/marketplace list queries in parallel
-        // (~1s wall-clock instead of ~3s sequential).
+        // Run version check first (may trigger binary install), then
+        // plugin/marketplace list queries in parallel.
         let (version_result, cache_result) = if gh_available {
             query_copilot_state(&*ctx.executor)
         } else {

@@ -88,7 +88,7 @@ impl IntegrationTestContext {
         let conf_dir = self.root.path().join("conf");
         let profile =
             profiles::resolve(profile_name, &conf_dir, platform).expect("resolve profile");
-        Config::load(self.root.path(), &profile, platform).expect("load config")
+        Config::load(self.root.path(), &profile, platform, None).expect("load config")
     }
 
     /// Load configuration for the given profile using the provided platform.
@@ -100,7 +100,7 @@ impl IntegrationTestContext {
         let conf_dir = self.root.path().join("conf");
         let profile =
             profiles::resolve(profile_name, &conf_dir, platform).expect("resolve profile");
-        Config::load(self.root.path(), &profile, platform).expect("load config")
+        Config::load(self.root.path(), &profile, platform, None).expect("load config")
     }
 }
 

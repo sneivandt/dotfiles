@@ -19,6 +19,7 @@ Apply registry settings
 Install VS Code extensions
 Install Copilot plugins
 Install wsl.conf
+Load overlay scripts
 Install wrapper
 Configure PATH
 Reload configuration

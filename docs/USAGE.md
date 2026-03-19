@@ -55,6 +55,7 @@ dotfiles.sh [--build] version
 - **`version`** - Print version information
 - **`--build`** - Build and run from source (requires `cargo`)
 - **`-p, --profile PROFILE`** - Use specific profile (base, desktop)
+- **`--overlay DIR`** - Use a private overlay repository for additional configuration
 - **`-v, --verbose`** - Enable verbose logging
 - **`-d, --dry-run`** - Preview changes without modifying system
 
@@ -72,6 +73,7 @@ dotfiles.sh [--build] version
 
 - **`-Build`** - Build and run from source (requires `cargo`)
 - **`-p PROFILE`** - Use specific profile (base, desktop)
+- **`--overlay DIR`** - Use a private overlay repository for additional configuration
 - **`-d`** - Preview changes without applying (dry-run)
 - **`-Verbose`** - Enable verbose logging
 
@@ -198,8 +200,8 @@ The installation process handles different components based on your profile:
 13. **Configure Shell** - Sets default shell
 14. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.toml`
 15. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-16. **Install Copilot Plugins** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-plugins.toml`
-17. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
+16. **Install Copilot Plugins** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-plugins.toml`14. **Overlay Scripts** - Runs custom scripts loaded from the overlay repository (when `--overlay` is set)17. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
+18. **Overlay Scripts** - Runs custom scripts loaded from the overlay repository (when `--overlay` is set)
 
 ### Windows Installation Steps
 
@@ -407,6 +409,60 @@ git config --local --get dotfiles.profile
 git config --local dotfiles.profile base
 ```
 
+## Overlay Repository
+
+An overlay repository provides private, additional configuration that is
+merged with the main dotfiles config.  This is useful for work machine
+configuration that should not be checked into a public dotfiles repo.
+
+**Setting the overlay path:**
+```bash
+# Via CLI flag
+./dotfiles.sh install --overlay /path/to/overlay
+
+# Via environment variable
+export DOTFILES_OVERLAY=/path/to/overlay
+./dotfiles.sh install
+```
+
+**Windows:**
+```powershell
+.\dotfiles.ps1 install --overlay C:\Code\dotfiles-private
+```
+
+The overlay path is persisted in `dotfiles.overlay` git config, so you only
+need to specify `--overlay` once:
+
+```bash
+# First run: specify overlay
+./dotfiles.sh install --overlay ~/dotfiles-work
+
+# Subsequent runs: overlay is remembered
+./dotfiles.sh install
+```
+
+**What an overlay can provide:**
+- **TOML config files** in `conf/` — merged with main config (packages,
+  symlinks, extensions, etc.)
+- **Custom scripts** in `scripts/` — defined in `conf/scripts.toml` with a
+  convention-based interface (`--check`, `--remove`, no args for apply)
+
+Each overlay script appears as its own task in the output:
+
+```
+:: Repository
+  ✓ Reload configuration
+  ✓ Load overlay scripts
+
+:: Apply
+  ✓ Install symlinks
+  ✓ Install private files   ← overlay script task
+  ✓ Install packages
+```
+
+See [Configuration Reference](CONFIGURATION.md#overlay-configuration) for
+the overlay file format.
+
 ## Examples by Use Case
 
 ### Minimal Server (Arch Linux)
@@ -469,6 +525,7 @@ The wrappers forward all arguments unchanged to the binary, so these work with
 
 - **`--skip TASKS`** - Skip specific tasks (comma-separated)
 - **`--only TASKS`** - Run only specific tasks (comma-separated)
+- **`--overlay DIR`** - Use a private overlay repository
 - **`--root DIR`** - Override dotfiles root directory (set automatically by wrapper scripts)
 - **`--no-parallel`** - Disable parallel execution of resource operations
 

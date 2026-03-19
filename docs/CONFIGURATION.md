@@ -289,6 +289,62 @@ settings = [
 - The value is written with `git config --global`
 - The current repository uses this for Windows-specific git defaults
 
+---
+
+## Overlay Configuration
+
+An **overlay repository** provides private configuration extensions that are
+merged with the main dotfiles config at runtime.  Any standard `conf/*.toml`
+file placed in the overlay’s `conf/` directory is loaded and its entries are
+appended to the main config lists.
+
+The overlay path is resolved from (in priority order):
+1. `--overlay` CLI flag
+2. `DOTFILES_OVERLAY` environment variable
+3. `dotfiles.overlay` in the repo’s local git config
+
+### `scripts.toml` (Overlay)
+
+**Purpose**: Defines custom script tasks that run during the Apply phase.
+
+**Location**: `<overlay>/conf/scripts.toml`
+
+**Format**: Sections represent categories; entries are inline tables with `name`, `path`, and optional `description`.
+
+**Example**:
+```toml
+[linux]
+scripts = [
+  { name = "Setup work SSH", path = "scripts/ssh.sh" },
+]
+```
+
+**How it works**:
+- Each entry becomes a separate task that appears in the output like any built-in task
+- The `path` is relative to the overlay repository root
+- Scripts follow a convention-based interface:
+  - **No arguments**: Apply the desired state
+  - **`--check`**: Verify state (exit 0 = correct, non-zero = needs apply)
+  - **`--remove`**: Undo the applied state
+- `.ps1` scripts are invoked via `powershell` (Windows) or `pwsh` (other platforms)
+- `.sh` scripts are invoked via `sh`
+- Scripts run with `-NonInteractive` to prevent interactive prompts
+
+### Overlay TOML File Merging
+
+Any TOML file that exists in both the main `conf/` and the overlay `conf/`
+directory is merged by **appending** the overlay entries to the main config.
+This works for all standard config types:
+
+```
+<overlay>/conf/packages.toml      → appended to packages list
+<overlay>/conf/symlinks.toml      → appended to symlinks list
+<overlay>/conf/vscode-extensions.toml → appended to extensions list
+... etc.
+```
+
+The same category filtering rules apply to overlay sections.
+
 ## Adding New Configuration
 
 ### Adding a Package

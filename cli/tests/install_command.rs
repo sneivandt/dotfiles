@@ -91,7 +91,7 @@ fn install_task_names() {
 /// The install task list must contain exactly the expected number of tasks.
 #[test]
 fn install_task_count() {
-    assert_eq!(tasks::all_install_tasks().len(), 20);
+    assert_eq!(tasks::all_install_tasks().len(), 21);
 }
 
 /// Every task name must be non-empty.
@@ -669,6 +669,7 @@ fn install_run_dry_run_returns_ok() {
         root: Some(root_path),
         profile: Some("base".to_string()),
         dry_run: true,
+        overlay: None,
         parallel: false,
     };
     let opts = dotfiles_cli::cli::InstallOpts {
@@ -705,6 +706,7 @@ fn install_run_dry_run_with_only_filter_returns_ok() {
         root: Some(root_path),
         profile: Some("base".to_string()),
         dry_run: true,
+        overlay: None,
         parallel: false,
     };
     let opts = dotfiles_cli::cli::InstallOpts {
@@ -741,6 +743,7 @@ fn install_run_dry_run_with_skip_filter_returns_ok() {
         root: Some(root_path),
         profile: Some("base".to_string()),
         dry_run: true,
+        overlay: None,
         parallel: false,
     };
     let opts = dotfiles_cli::cli::InstallOpts {
@@ -777,6 +780,7 @@ fn install_run_dry_run_with_only_no_match_returns_ok() {
         root: Some(root_path),
         profile: Some("base".to_string()),
         dry_run: true,
+        overlay: None,
         parallel: false,
     };
     let opts = dotfiles_cli::cli::InstallOpts {
@@ -813,6 +817,7 @@ fn install_run_dry_run_with_only_filter_parallel_returns_ok() {
         root: Some(root_path),
         profile: Some("base".to_string()),
         dry_run: true,
+        overlay: None,
         parallel: true,
     };
     let opts = dotfiles_cli::cli::InstallOpts {
@@ -849,6 +854,7 @@ fn install_run_dry_run_with_skip_and_only_together() {
         root: Some(root_path),
         profile: Some("base".to_string()),
         dry_run: true,
+        overlay: None,
         parallel: false,
     };
     // Matching tasks are still excluded when they also match --skip.

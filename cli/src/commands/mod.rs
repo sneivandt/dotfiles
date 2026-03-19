@@ -497,8 +497,9 @@ impl CommandRunner {
     ) -> Result<Self> {
         let platform = Platform::detect();
         let root = install::resolve_root(global)?;
+        let overlay = resolve_overlay(global, &root, &**log);
         let profile = resolve_profile(global, &root, platform, &**log)?;
-        let config = load_config(&root, &profile, platform, &**log)?;
+        let config = load_config(&root, &profile, platform, overlay.as_deref(), &**log)?;
 
         let executor: Arc<dyn crate::exec::Executor> = Arc::new(crate::exec::SystemExecutor);
         let ctx = Context::new(
@@ -517,6 +518,19 @@ impl CommandRunner {
         Ok(Self {
             ctx,
             log: Arc::clone(log),
+        })
+    }
+
+    /// Create dynamic overlay script tasks from the loaded configuration.
+    ///
+    /// Returns one [`OverlayScriptTask`](crate::tasks::apply::overlay_scripts::OverlayScriptTask)
+    /// per script entry in the overlay config.  Returns an empty list when no
+    /// overlay is configured.
+    #[must_use]
+    pub fn overlay_script_tasks(&self) -> Vec<Box<dyn Task>> {
+        let config = self.ctx.config_read();
+        config.overlay.as_ref().map_or_else(Vec::new, |root| {
+            crate::tasks::apply::overlay_scripts::overlay_script_tasks(&config.scripts, root)
         })
     }
 
@@ -549,6 +563,20 @@ fn resolve_profile(
     Ok(profile)
 }
 
+/// Resolve the overlay path from CLI args, `DOTFILES_OVERLAY` env var, or
+/// persisted git config, logging the result.
+fn resolve_overlay(
+    global: &GlobalOpts,
+    root: &std::path::Path,
+    log: &dyn Output,
+) -> Option<std::path::PathBuf> {
+    let overlay = crate::config::overlay::resolve_from_args(global.overlay.as_deref(), root);
+    if let Some(ref path) = overlay {
+        log.always(&format!("  overlay: {}", path.display()));
+    }
+    overlay
+}
+
 /// Load configuration for the given root, profile, and platform, emitting
 /// debug counts and any validation warnings.
 ///
@@ -559,10 +587,11 @@ fn load_config(
     root: &std::path::Path,
     profile: &profiles::Profile,
     platform: Platform,
+    overlay: Option<&std::path::Path>,
     log: &dyn Output,
 ) -> Result<Config> {
     log.stage("Loading configuration");
-    let config = Config::load(root, profile, platform)?;
+    let config = Config::load(root, profile, platform, overlay)?;
 
     let debug_count = |count: usize, label: &str| log.debug(&format!("{count} {label}"));
 
@@ -575,6 +604,7 @@ fn load_config(
         (config.vscode_extensions.len(), "vscode extensions"),
         (config.copilot_plugins.len(), "copilot plugins"),
         (config.manifest.excluded_files.len(), "manifest exclusions"),
+        (config.scripts.len(), "overlay scripts"),
     ];
 
     for (count, label) in &counts {

@@ -51,6 +51,10 @@ pub struct GlobalOpts {
     #[arg(long, global = true)]
     pub root: Option<std::path::PathBuf>,
 
+    /// Path to a private overlay repository with additional configuration
+    #[arg(long, global = true)]
+    pub overlay: Option<std::path::PathBuf>,
+
     /// Disable parallel task execution
     #[arg(long = "no-parallel", global = true, action = clap::ArgAction::SetFalse)]
     pub parallel: bool,

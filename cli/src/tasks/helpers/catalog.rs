@@ -40,6 +40,7 @@ pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
         Box::new(crate::tasks::apply::vscode_extensions::InstallVsCodeExtensions),
         Box::new(crate::tasks::apply::copilot_plugins::InstallCopilotPlugins),
         Box::new(crate::tasks::apply::wsl_conf::InstallWslConf),
+        Box::new(crate::tasks::apply::overlay_scripts::LoadOverlayScripts),
         Box::new(crate::tasks::bootstrap::wrapper::InstallWrapper),
         Box::new(crate::tasks::bootstrap::path::ConfigurePath),
         Box::new(crate::tasks::repository::reload_config::ReloadConfig::new(

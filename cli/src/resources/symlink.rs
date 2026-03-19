@@ -132,8 +132,9 @@ impl Resource for SymlinkResource {
 /// Copy `source` into `target`, replacing the symlink that currently lives at
 /// `target`.  Files are staged to a sibling temp path first so that the window
 /// where `target` is absent is as small as possible.  Directories are handled
-/// recursively; any symlinks *within* the source tree are followed (their
-/// content is copied, not the link itself).
+/// recursively via [`crate::fs::copy_dir_recursive`]; symlinks within the
+/// source tree are recreated as symlinks rather than followed, preventing
+/// unintended traversal outside the source tree.
 fn copy_into_place(source: &Path, target: &Path) -> Result<()> {
     if source.is_dir() {
         copy_dir_into_place(source, target)

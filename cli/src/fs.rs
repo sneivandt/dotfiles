@@ -7,7 +7,6 @@
 //! - [`ensure_parent_dir`] / [`remove_existing`] / [`copy_dir_recursive`] —
 //!   shared helper functions for resource `apply()` methods.
 use anyhow::{Context as _, Result};
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 /// Abstraction over filesystem queries used by tasks.
@@ -151,32 +150,22 @@ pub fn remove_existing(path: &Path) -> Result<()> {
 /// When `skip_git` is `true`, `.git` directories are skipped — useful when
 /// copying from a cloned repository where Git metadata is unwanted.
 ///
-/// Symlinks within the source tree are *followed*: the function uses
-/// [`Path::is_dir`] (which follows symlinks) so directory symlinks are
-/// recursed into and their contents materialised rather than copying the
-/// link itself.  Circular symlinks are detected via canonical-path tracking
-/// and reported as an error.
+/// Symlinks within the source tree are **not followed**: each symlink is
+/// recreated in `dst` pointing to the same link target (on Unix), or skipped
+/// on non-Unix platforms where creating symlinks requires elevated privileges.
+/// This prevents unexpected traversal of symlinks that point outside the
+/// intended source tree.
 ///
 /// # Errors
 ///
 /// Returns an error if the destination directory cannot be created, a source
-/// entry cannot be read, a file cannot be copied, or a symlink cycle is
-/// detected.
+/// entry cannot be read, a file cannot be copied, or (on Unix) a symlink
+/// cannot be recreated.
 pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> {
-    let canonical = src
-        .canonicalize()
-        .with_context(|| format!("canonicalizing {}", src.display()))?;
-    let mut visited = HashSet::new();
-    visited.insert(canonical);
-    copy_dir_recursive_inner(src, dst, skip_git, &mut visited)
+    copy_dir_recursive_inner(src, dst, skip_git)
 }
 
-fn copy_dir_recursive_inner(
-    src: &Path,
-    dst: &Path,
-    skip_git: bool,
-    visited: &mut HashSet<PathBuf>,
-) -> Result<()> {
+fn copy_dir_recursive_inner(src: &Path, dst: &Path, skip_git: bool) -> Result<()> {
     std::fs::create_dir_all(dst)
         .with_context(|| format!("creating directory {}", dst.display()))?;
     for entry in
@@ -185,18 +174,37 @@ fn copy_dir_recursive_inner(
         let entry = entry.with_context(|| format!("reading entry in {}", src.display()))?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
+
+        // Use symlink_metadata() so we detect symlinks without following them.
+        let meta = src_path
+            .symlink_metadata()
+            .with_context(|| format!("reading metadata for {}", src_path.display()))?;
+
+        if meta.file_type().is_symlink() {
+            // Recreate the symlink in dst rather than following it, preventing
+            // traversal of symlinks that point outside the intended source tree.
+            #[cfg(unix)]
+            {
+                let link_target = std::fs::read_link(&src_path)
+                    .with_context(|| format!("reading symlink {}", src_path.display()))?;
+                std::os::unix::fs::symlink(&link_target, &dst_path).with_context(|| {
+                    format!(
+                        "creating symlink {} -> {}",
+                        dst_path.display(),
+                        link_target.display()
+                    )
+                })?;
+            }
+            #[cfg(not(unix))]
+            {
+                // Symlink creation on Windows requires elevated privileges or
+                // Developer Mode; skip symlinks to avoid unsafe traversal.
+            }
+        } else if meta.is_dir() {
             if skip_git && entry.file_name() == ".git" {
                 continue;
             }
-            let canonical = src_path
-                .canonicalize()
-                .with_context(|| format!("canonicalizing {}", src_path.display()))?;
-            if !visited.insert(canonical.clone()) {
-                anyhow::bail!("symlink cycle detected at {}", src_path.display());
-            }
-            copy_dir_recursive_inner(&src_path, &dst_path, skip_git, visited)?;
-            visited.remove(&canonical);
+            copy_dir_recursive_inner(&src_path, &dst_path, skip_git)?;
         } else {
             std::fs::copy(&src_path, &dst_path).with_context(|| {
                 format!("copying {} to {}", src_path.display(), dst_path.display())
@@ -351,15 +359,15 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn allows_multiple_symlinks_to_same_target() {
+    fn recreates_symlinks_in_destination() {
         let src = tempfile::tempdir().unwrap();
         let dst = tempfile::tempdir().unwrap();
 
-        // Create a shared target directory.
+        // Create a shared target directory that both symlinks point at.
         let shared = tempfile::tempdir().unwrap();
         std::fs::write(shared.path().join("shared.txt"), b"shared").unwrap();
 
-        // Two branches each symlink to the same shared directory.
+        // Two branches each have a symlink to the same external directory.
         std::fs::create_dir(src.path().join("a")).unwrap();
         std::os::unix::fs::symlink(shared.path(), src.path().join("a/link")).unwrap();
         std::fs::create_dir(src.path().join("b")).unwrap();
@@ -368,30 +376,81 @@ mod tests {
         let target = dst.path().join("out");
         copy_dir_recursive(src.path(), &target, false).unwrap();
 
+        // Symlinks are recreated in dst (not followed/inlined).
+        let meta_a = target.join("a/link").symlink_metadata().unwrap();
+        assert!(
+            meta_a.file_type().is_symlink(),
+            "a/link should be a symlink"
+        );
+        let meta_b = target.join("b/link").symlink_metadata().unwrap();
+        assert!(
+            meta_b.file_type().is_symlink(),
+            "b/link should be a symlink"
+        );
+        // The recreated symlinks still point at the same external location.
         assert_eq!(
-            std::fs::read(target.join("a/link/shared.txt")).unwrap(),
-            b"shared"
+            std::fs::read_link(target.join("a/link")).unwrap(),
+            shared.path()
         );
         assert_eq!(
-            std::fs::read(target.join("b/link/shared.txt")).unwrap(),
-            b"shared"
+            std::fs::read_link(target.join("b/link")).unwrap(),
+            shared.path()
         );
     }
 
     #[cfg(unix)]
     #[test]
-    fn detects_symlink_cycle() {
+    fn does_not_traverse_symlink_cycles() {
         let src = tempfile::tempdir().unwrap();
         std::fs::write(src.path().join("file.txt"), b"content").unwrap();
         std::fs::create_dir(src.path().join("sub")).unwrap();
+        // Create a symlink that would form a cycle if followed.
         std::os::unix::fs::symlink(src.path(), src.path().join("sub/loop")).unwrap();
 
         let dst = tempfile::tempdir().unwrap();
         let target = dst.path().join("out");
-        let err = copy_dir_recursive(src.path(), &target, false).unwrap_err();
+
+        // The copy should succeed: the cycle-forming symlink is recreated as
+        // a symlink rather than followed, so no infinite recursion occurs.
+        copy_dir_recursive(src.path(), &target, false).unwrap();
+
+        assert!(target.join("file.txt").exists());
+        assert!(target.join("sub").is_dir());
+        let loop_meta = target.join("sub/loop").symlink_metadata().unwrap();
         assert!(
-            format!("{err:?}").contains("symlink cycle"),
-            "expected symlink cycle error, got: {err:?}"
+            loop_meta.file_type().is_symlink(),
+            "sub/loop should be recreated as a symlink"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn does_not_copy_external_symlink_directory_contents() {
+        let external = tempfile::tempdir().unwrap();
+        std::fs::write(external.path().join("secret.txt"), b"secret").unwrap();
+
+        let src = tempfile::tempdir().unwrap();
+        std::fs::write(src.path().join("local.txt"), b"local").unwrap();
+        // Symlink inside src pointing outside the source tree.
+        std::os::unix::fs::symlink(external.path(), src.path().join("ext_link")).unwrap();
+
+        let dst = tempfile::tempdir().unwrap();
+        let target = dst.path().join("out");
+        copy_dir_recursive(src.path(), &target, false).unwrap();
+
+        // Local file is copied normally.
+        assert_eq!(std::fs::read(target.join("local.txt")).unwrap(), b"local");
+
+        // The external symlink is recreated as a symlink — not inlined as a
+        // real directory containing the external contents.
+        let ext_meta = target.join("ext_link").symlink_metadata().unwrap();
+        assert!(
+            ext_meta.file_type().is_symlink(),
+            "ext_link should be recreated as a symlink, not a real directory"
+        );
+        assert_eq!(
+            std::fs::read_link(target.join("ext_link")).unwrap(),
+            external.path()
         );
     }
 

@@ -34,9 +34,9 @@ pub const fn is_elevated() -> bool {
 /// Uses `PowerShell` `Start-Process -Verb RunAs` to trigger the UAC prompt.
 /// On success, an elevated window opens and the current process exits.
 ///
-/// The PowerShell script is Base64-encoded as UTF-16LE and passed via
+/// The `PowerShell` script is Base64-encoded as UTF-16LE and passed via
 /// `-EncodedCommand` so the outer command string is never parsed by
-/// PowerShell, eliminating any risk of argument injection from args that
+/// `PowerShell`, eliminating any risk of argument injection from args that
 /// contain special characters such as single quotes, newlines, or commas.
 ///
 /// # Errors

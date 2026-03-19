@@ -215,7 +215,7 @@ fn powershell_array_literal(values: &[String]) -> String {
 }
 
 #[cfg(all(test, windows))]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use std::path::Path;

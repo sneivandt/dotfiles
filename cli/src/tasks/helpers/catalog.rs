@@ -21,7 +21,6 @@ pub fn all_uninstall_tasks() -> Vec<Box<dyn Task>> {
 pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
     let repo_updated = UpdateSignal::new();
     vec![
-        Box::new(crate::tasks::bootstrap::self_update::UpdateBinary),
         Box::new(crate::tasks::bootstrap::developer_mode::EnableDeveloperMode),
         Box::new(crate::tasks::repository::sparse_checkout::ConfigureSparseCheckout::new()),
         Box::new(crate::tasks::repository::update::UpdateRepository::new(

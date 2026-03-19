@@ -158,7 +158,7 @@ where
             }
             tracing::Level::INFO if target == "dotfiles::stage" => {
                 if VERBOSE.load(Ordering::Relaxed) {
-                    writeln!(writer, "\x1b[1;34m==>\x1b[0m \x1b[1m{msg}\x1b[0m")
+                    writeln!(writer, "\x1b[1m{msg}\x1b[0m")
                 } else {
                     Ok(())
                 }

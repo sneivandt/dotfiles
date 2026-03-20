@@ -104,7 +104,7 @@ POSIX shell script that:
 #### `dotfiles.ps1` (Windows)
 
 PowerShell script with identical logic:
-- `-Build` switch builds from source with `cargo build --profile dev-opt`
+- `--build` flag builds from source with `cargo build --profile dev-opt`
 - Otherwise bootstraps `dotfiles-windows-x86_64.exe` from GitHub Releases when missing
 - Verifies checksum, promotes any staged self-update before launch, and exports `DOTFILES_ROOT`
 - Forwards all other arguments directly to the binary

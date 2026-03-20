@@ -24,7 +24,7 @@ function Write-TestFail {
 # ---------------------------------------------------------------------------
 
 function Test-BuildMode {
-    Write-TestStage "Testing dotfiles.ps1 -Build mode"
+    Write-TestStage "Testing dotfiles.ps1 --build mode"
 
     if ($env:BINARY_PATH -and (Test-Path $env:BINARY_PATH)) {
         Write-Host "Skipping: pre-built binary available, build tested separately" -ForegroundColor Yellow
@@ -37,7 +37,7 @@ function Test-BuildMode {
     }
 
     try {
-        $output = & "$PSScriptRoot\..\..\..\..\dotfiles.ps1" -Build -Action version 2>&1
+        $output = & "$PSScriptRoot\..\..\..\..\dotfiles.ps1" --build -Action version 2>&1
         if ($output -match 'dotfiles') {
             Write-TestPass "Build mode successfully builds and runs binary"
             return $true

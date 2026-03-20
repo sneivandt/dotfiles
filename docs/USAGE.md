@@ -63,15 +63,15 @@ dotfiles.sh [--build] version
 
 **Synopsis:**
 ```powershell
-.\dotfiles.ps1 [-Build] install -p desktop [-d] [-v]
-.\dotfiles.ps1 [-Build] uninstall [-d]
-.\dotfiles.ps1 [-Build] test
-.\dotfiles.ps1 [-Build] version
+.\dotfiles.ps1 [--build] install -p desktop [-d] [-v]
+.\dotfiles.ps1 [--build] uninstall [-d]
+.\dotfiles.ps1 [--build] test
+.\dotfiles.ps1 [--build] version
 ```
 
 **Parameters:**
 
-- **`-Build`** - Build and run from source (requires `cargo`)
+- **`--build`** - Build and run from source (requires `cargo`)
 - **`-p PROFILE`** - Use specific profile (base, desktop)
 - **`--overlay DIR`** - Use a private overlay repository for additional configuration
 - **`-d`** - Preview changes without applying (dry-run)

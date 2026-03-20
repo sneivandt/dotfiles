@@ -2,16 +2,16 @@
 .SYNOPSIS
     PowerShell entry point for dotfiles management engine.
 .DESCRIPTION
-    Thin wrapper that downloads (or builds with -Build) the dotfiles Rust binary
+    Thin wrapper that downloads (or builds with --build) the dotfiles Rust binary
     and forwards all other arguments to it. Works on both Windows and Linux (pwsh).
 
     Default: downloads the latest published binary from GitHub Releases if no
     binary is present, then runs it. The binary handles its own updates.
-    -Build:  builds the Rust binary from source (requires cargo).
+    --build: builds the Rust binary from source (requires cargo).
 .EXAMPLE
     PS> .\dotfiles.ps1 install --profile base --dry-run --only symlinks
 .EXAMPLE
-    PS> .\dotfiles.ps1 -Build install --profile desktop
+    PS> .\dotfiles.ps1 --build install --profile desktop
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -25,7 +25,7 @@ $Build = $false
 $CliArgs = @()
 foreach ($arg in $args)
 {
-    if ($arg -in @('-Build', '--build'))
+    if ($arg -eq '--build')
     {
         $Build = $true
         continue
@@ -145,7 +145,7 @@ if ($Build)
 {
     if (-not (Get-Command cargo -ErrorAction SilentlyContinue))
     {
-        Write-Error "cargo not found. Install Rust to use -Build mode."
+        Write-Error "cargo not found. Install Rust to use --build mode."
         exit 1
     }
     Push-Location (Join-Path $DotfilesRoot "cli")
@@ -187,7 +187,7 @@ function Get-Binary
     $tag = Resolve-ReleaseTag
     if (-not $tag)
     {
-        Write-Error "Failed to resolve latest release tag. Check your internet connection or use -Build to build from source."
+        Write-Error "Failed to resolve latest release tag. Check your internet connection or use --build to build from source."
         exit 1
     }
 
@@ -207,13 +207,13 @@ function Get-Binary
     catch
     {
         if (Test-Path $Binary) { Remove-Item $Binary -Force }
-        Write-Error "Failed to download dotfiles binary. Check your internet connection or use -Build to build from source."
+        Write-Error "Failed to download dotfiles binary. Check your internet connection or use --build to build from source."
         exit 1
     }
 
     if (-not (Test-Path $Binary))
     {
-        Write-Error "Download did not produce a binary at '$Binary'. Check your internet connection or use -Build to build from source."
+        Write-Error "Download did not produce a binary at '$Binary'. Check your internet connection or use --build to build from source."
         exit 1
     }
 

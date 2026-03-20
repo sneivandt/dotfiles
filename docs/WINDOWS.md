@@ -32,7 +32,7 @@ cd dotfiles
 .\dotfiles.ps1 install -p desktop -v
 
 # Build and run from source (development)
-.\dotfiles.ps1 -Build install -p desktop
+.\dotfiles.ps1 --build install -p desktop
 ```
 
 Re‑run the script at any time; operations are skipped when already satisfied (extensions installed, registry values unchanged, symlinks existing).

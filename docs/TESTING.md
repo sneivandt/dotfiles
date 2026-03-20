@@ -181,7 +181,7 @@ Test different profiles to ensure sparse checkout and configuration work correct
 ./dotfiles.sh --build install -p desktop -d
 
 # Test desktop profile (on Windows)
-.\dotfiles.ps1 -Build install -p desktop -d
+.\dotfiles.ps1 --build install -p desktop -d
 ```
 
 ## Continuous Integration

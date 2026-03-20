@@ -50,7 +50,7 @@ checksum verification, and re-exec.
 ## Entry Point: `dotfiles.ps1`
 
 Windows PowerShell wrapper with identical logic:
-- `-Build` switch for build-from-source mode
+- `--build` flag for build-from-source mode
 - Downloads `dotfiles-windows-x86_64.exe` from releases
 - Same caching and checksum verification
 

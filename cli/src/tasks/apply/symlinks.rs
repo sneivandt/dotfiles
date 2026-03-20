@@ -11,10 +11,11 @@ use crate::tasks::{
 /// Build a single [`SymlinkResource`] from a config entry.
 fn build_resource(
     s: &crate::config::symlinks::Symlink,
-    symlinks_dir: &Path,
+    repo_root: &Path,
     home: &Path,
     executor: &Arc<dyn crate::exec::Executor>,
 ) -> SymlinkResource {
+    let symlinks_dir = crate::config::symlinks::resolve_symlinks_dir(s, repo_root);
     let target = s.target.as_ref().map_or_else(
         || compute_target(home, &s.source),
         |explicit| home.join(explicit),
@@ -24,11 +25,11 @@ fn build_resource(
 
 /// Build [`SymlinkResource`] instances from the loaded config.
 fn build_resources(ctx: &Context) -> Vec<SymlinkResource> {
-    let symlinks_dir = ctx.symlinks_dir();
+    let repo_root = ctx.root();
     ctx.config_read()
         .symlinks
         .iter()
-        .map(|s| build_resource(s, &symlinks_dir, &ctx.home, &ctx.executor))
+        .map(|s| build_resource(s, &repo_root, &ctx.home, &ctx.executor))
         .collect()
 }
 
@@ -39,8 +40,8 @@ resource_task! {
         phase: TaskPhase::Apply,
         items: |ctx| ctx.config_read().symlinks.clone(),
         build: |s, ctx| {
-            let symlinks_dir = ctx.symlinks_dir();
-            build_resource(&s, &symlinks_dir, &ctx.home, &ctx.executor)
+            let repo_root = ctx.root();
+            build_resource(&s, &repo_root, &ctx.home, &ctx.executor)
         },
         opts: ProcessOpts::strict("link"),
     }
@@ -130,6 +131,7 @@ mod tests {
         config.symlinks.push(Symlink {
             source: "bashrc".to_string(),
             target: None,
+            origin: None,
         });
         let ctx = make_linux_context(config);
         assert!(InstallSymlinks.should_run(&ctx));
@@ -152,6 +154,7 @@ mod tests {
         config.symlinks.push(Symlink {
             source: "bashrc".to_string(),
             target: None,
+            origin: None,
         });
         let ctx = make_linux_context(config);
         assert!(UninstallSymlinks.should_run(&ctx));
@@ -176,6 +179,7 @@ mod tests {
         config.symlinks.push(Symlink {
             source: "bashrc".to_string(),
             target: None,
+            origin: None,
         });
         let ctx = make_linux_context(config);
         let ctx = ctx.with_home(home_dir.path().to_path_buf());
@@ -212,6 +216,7 @@ mod tests {
         config.symlinks.push(Symlink {
             source: "bashrc".to_string(),
             target: None,
+            origin: None,
         });
         let ctx = make_linux_context(config);
         let ctx = ctx.with_home(home_dir.path().to_path_buf());
@@ -259,10 +264,12 @@ mod tests {
         config.symlinks.push(Symlink {
             source: "config/systemd/user/clean-home-tmp.service".to_string(),
             target: None,
+            origin: None,
         });
         config.symlinks.push(Symlink {
             source: "config/systemd/user/clean-home-tmp.timer".to_string(),
             target: None,
+            origin: None,
         });
         let ctx = make_linux_context(config)
             .with_home(home_dir.path().to_path_buf())

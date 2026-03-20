@@ -259,7 +259,8 @@ impl Config {
         }
 
         let packages = load_toml!("packages.toml", packages::load, active_categories);
-        let symlinks = load_toml!("symlinks.toml", symlinks::load, active_categories);
+        let mut symlinks = load_toml!("symlinks.toml", symlinks::load, active_categories);
+        symlinks::set_origin(&mut symlinks, root);
 
         let registry = if platform.has_registry() {
             load_toml!("registry.toml", registry::load)
@@ -355,11 +356,12 @@ impl Config {
             packages::load,
             active_categories
         ));
-        self.symlinks.extend(load_overlay!(
-            "symlinks.toml",
-            symlinks::load,
-            active_categories
-        ));
+        self.symlinks.extend({
+            let mut overlay_symlinks =
+                load_overlay!("symlinks.toml", symlinks::load, active_categories);
+            symlinks::set_origin(&mut overlay_symlinks, overlay_root);
+            overlay_symlinks
+        });
         if platform.has_registry() {
             self.registry
                 .extend(load_overlay!("registry.toml", registry::load));

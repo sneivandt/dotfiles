@@ -72,10 +72,11 @@ impl Task for ValidateSymlinkSources {
         let config = ctx.config_read();
         let symlinks = config.symlinks.clone();
 
-        let symlinks_dir = ctx.symlinks_dir();
+        let repo_root = ctx.root();
         let mut missing = 0u32;
 
         for symlink in &symlinks {
+            let symlinks_dir = crate::config::symlinks::resolve_symlinks_dir(symlink, &repo_root);
             let source = symlinks_dir.join(&symlink.source);
             if !source.exists() {
                 ctx.log

@@ -1,6 +1,6 @@
 //! Symlink configuration loading.
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::ValidationWarning;
 use super::config_section;
@@ -12,6 +12,10 @@ pub struct Symlink {
     pub source: String,
     /// Explicit target path relative to `$HOME`; derived by convention when absent.
     pub target: Option<String>,
+    /// Root of the repository that owns this symlink entry.
+    /// Used to resolve `source` against `<origin>/symlinks/`.
+    /// Set after loading — `None` until `set_origin` is called.
+    pub origin: Option<PathBuf>,
 }
 
 /// A single entry in a symlinks section — either a plain source path or a
@@ -33,12 +37,34 @@ config_section! {
         SymlinkEntry::Simple(source) => Symlink {
             source,
             target: None,
+            origin: None,
         },
         SymlinkEntry::WithTarget { source, target } => Symlink {
             source,
             target: Some(target),
+            origin: None,
         },
     },
+}
+
+/// Set the `origin` field on every symlink entry to the given root.
+pub fn set_origin(symlinks: &mut [Symlink], root: &Path) {
+    for s in symlinks {
+        s.origin = Some(root.to_path_buf());
+    }
+}
+
+/// Resolve the symlinks directory for a single entry.
+///
+/// Returns `<origin>/symlinks/` when `origin` is set, otherwise falls back to
+/// `<fallback>/symlinks/`.
+#[must_use]
+pub fn resolve_symlinks_dir(symlink: &Symlink, fallback: &Path) -> PathBuf {
+    symlink
+        .origin
+        .as_deref()
+        .unwrap_or(fallback)
+        .join("symlinks")
 }
 
 /// Validate symlink entries and return any warnings.
@@ -46,12 +72,12 @@ config_section! {
 pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<ValidationWarning> {
     use super::helpers::validation::{Validator, check};
 
-    let symlinks_dir = root.join("symlinks");
     Validator::new("symlinks.toml")
         .check_each(
             symlinks,
             |s| &s.source,
             |s| {
+                let symlinks_dir = resolve_symlinks_dir(s, root);
                 let source_path = symlinks_dir.join(&s.source);
                 let target_checks: Vec<Option<String>> =
                     s.target.as_ref().map_or_else(Vec::new, |t| {
@@ -152,6 +178,7 @@ symlinks = [
         let symlinks = vec![Symlink {
             source: "nonexistent.txt".to_string(),
             target: None,
+            origin: None,
         }];
 
         let warnings = validate(&symlinks, temp_dir.path());
@@ -165,6 +192,7 @@ symlinks = [
         let symlinks = vec![Symlink {
             source: "/absolute/path".to_string(),
             target: None,
+            origin: None,
         }];
 
         let warnings = validate(&symlinks, temp_dir.path());
@@ -191,6 +219,7 @@ symlinks = [
         let symlinks = vec![Symlink {
             source: "bashrc".to_string(),
             target: Some("/etc/passwd".to_string()),
+            origin: None,
         }];
 
         let warnings = validate(&symlinks, temp_dir.path());
@@ -212,6 +241,7 @@ symlinks = [
         let symlinks = vec![Symlink {
             source: "bashrc".to_string(),
             target: Some("../../etc/passwd".to_string()),
+            origin: None,
         }];
 
         let warnings = validate(&symlinks, temp_dir.path());

@@ -28,7 +28,11 @@ pub fn run(
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
     let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
-    log.always(&format!("  dotfiles {version}"));
+    if std::env::var_os(super::REEXEC_GUARD_VAR).is_some() {
+        log.always(&format!("  updated to {version}"));
+    } else {
+        log.always(&format!("  dotfiles {version}"));
+    }
 
     // Self-update before the task graph — if the binary is replaced, re-exec
     // so all tasks run with the updated code and config parsers.

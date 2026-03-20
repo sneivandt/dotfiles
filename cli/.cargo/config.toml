@@ -1,0 +1,6 @@
+[net]
+retry = 3
+
+[term]
+quiet = false
+color = "auto"

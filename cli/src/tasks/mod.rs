@@ -287,7 +287,7 @@ pub mod test_helpers {
         mock.expect_which_path().returning(move |program| {
             if which_result {
                 #[cfg(windows)]
-                let path = std::path::PathBuf::from(format!(r"C:\Windows\System32\{program}.exe"));
+                let path = PathBuf::from(format!(r"C:\Windows\System32\{program}.exe"));
                 #[cfg(not(windows))]
                 let path = PathBuf::from(format!("/usr/bin/{program}"));
                 Ok(path)

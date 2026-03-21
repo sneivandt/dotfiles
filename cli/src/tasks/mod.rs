@@ -125,11 +125,24 @@ pub trait Task: Send + Sync + 'static {
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
 }
 
+/// Record and optionally emit a compact task-result line.
+fn record(ctx: &Context, name: &str, phase: TaskPhase, status: TaskStatus, msg: Option<&str>) {
+    ctx.log.record_task(name, phase, status, msg);
+    if !ctx.log.is_verbose() {
+        ctx.log.emit_task_result(name, &status, msg);
+    }
+}
+
 /// Execute a task, recording the result in the logger.
 ///
 /// Each task invocation is wrapped in a [`tracing::info_span`] so that
 /// the log file and diagnostic output include structured context about
 /// which task produced each message.
+///
+/// If cancellation has been requested (Ctrl-C) and a task returns
+/// [`TaskResult::Failed`] or an error, the failure is downgraded to
+/// [`TaskStatus::Skipped`] with an "interrupted" message so the
+/// summary does not count signal-induced failures.
 pub fn execute(task: &dyn Task, ctx: &Context) {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
@@ -156,13 +169,7 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
                 .record_task(task.name(), phase, TaskStatus::NotApplicable, None);
         }
         Ok(Some(result)) => match result {
-            TaskResult::Ok => {
-                ctx.log
-                    .record_task(task.name(), phase, TaskStatus::Ok, None);
-                if !ctx.log.is_verbose() {
-                    ctx.log.emit_task_result(task.name(), &TaskStatus::Ok, None);
-                }
-            }
+            TaskResult::Ok => record(ctx, task.name(), phase, TaskStatus::Ok, None),
             TaskResult::NotApplicable(reason) => {
                 ctx.debug_fmt(|| format!("not applicable: {reason}"));
                 ctx.log
@@ -170,42 +177,44 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
             }
             TaskResult::Skipped(reason) => {
                 ctx.log.info(&format!("skipped: {reason}"));
-                ctx.log
-                    .record_task(task.name(), phase, TaskStatus::Skipped, Some(&reason));
-                if !ctx.log.is_verbose() {
-                    ctx.log
-                        .emit_task_result(task.name(), &TaskStatus::Skipped, Some(&reason));
-                }
+                record(ctx, task.name(), phase, TaskStatus::Skipped, Some(&reason));
             }
             TaskResult::Failed(reason) => {
-                ctx.log.warn(&format!("failed: {reason}"));
-                ctx.log
-                    .record_task(task.name(), phase, TaskStatus::Failed, Some(&reason));
-                if !ctx.log.is_verbose() {
-                    ctx.log
-                        .emit_task_result(task.name(), &TaskStatus::Failed, Some(&reason));
+                if ctx.is_cancelled() {
+                    ctx.log.warn(&format!("interrupted: {reason}"));
+                    record(
+                        ctx,
+                        task.name(),
+                        phase,
+                        TaskStatus::Skipped,
+                        Some("interrupted"),
+                    );
+                } else {
+                    ctx.log.warn(&format!("failed: {reason}"));
+                    record(ctx, task.name(), phase, TaskStatus::Failed, Some(&reason));
                 }
             }
-            TaskResult::DryRun => {
-                ctx.log
-                    .record_task(task.name(), phase, TaskStatus::DryRun, None);
-                if !ctx.log.is_verbose() {
-                    ctx.log
-                        .emit_task_result(task.name(), &TaskStatus::DryRun, None);
-                }
-            }
+            TaskResult::DryRun => record(ctx, task.name(), phase, TaskStatus::DryRun, None),
         },
         Err(e) => {
-            ctx.log.error(&format!("{}: {e:#}", task.name()));
-            ctx.log.record_task(
-                task.name(),
-                phase,
-                TaskStatus::Failed,
-                Some(&format!("{e:#}")),
-            );
-            if !ctx.log.is_verbose() {
-                ctx.log
-                    .emit_task_result(task.name(), &TaskStatus::Failed, Some(&format!("{e:#}")));
+            if ctx.is_cancelled() {
+                ctx.log.warn(&format!("interrupted: {}", task.name()));
+                record(
+                    ctx,
+                    task.name(),
+                    phase,
+                    TaskStatus::Skipped,
+                    Some("interrupted"),
+                );
+            } else {
+                ctx.log.error(&format!("{}: {e:#}", task.name()));
+                record(
+                    ctx,
+                    task.name(),
+                    phase,
+                    TaskStatus::Failed,
+                    Some(&format!("{e:#}")),
+                );
             }
         }
     }

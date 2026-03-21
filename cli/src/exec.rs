@@ -3,6 +3,22 @@ use anyhow::{Context, Result, bail};
 use std::path::Path;
 use std::process::{Command, Output};
 
+/// Create a new [`Command`] with platform-appropriate defaults.
+///
+/// On Unix the child is placed in its own process group so that a
+/// `SIGINT` from Ctrl-C reaches only the Rust process (via the
+/// cooperative cancellation token) and does not kill child processes
+/// that are still running.
+fn new_command(program: &str) -> Command {
+    let mut cmd = Command::new(program);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        cmd.process_group(0);
+    }
+    cmd
+}
+
 /// Result of a command execution.
 #[derive(Debug)]
 pub struct ExecResult {
@@ -112,7 +128,7 @@ pub struct SystemExecutor;
 
 impl Executor for SystemExecutor {
     fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-        let mut cmd = Command::new(program);
+        let mut cmd = new_command(program);
         cmd.args(args);
         execute_checked(cmd, program)
     }
@@ -124,7 +140,7 @@ impl Executor for SystemExecutor {
         args: &[&str],
         env: &[(&str, &str)],
     ) -> Result<ExecResult> {
-        let mut cmd = Command::new(program);
+        let mut cmd = new_command(program);
         cmd.args(args).current_dir(dir);
         for (k, v) in env {
             cmd.env(k, v);
@@ -133,7 +149,7 @@ impl Executor for SystemExecutor {
     }
 
     fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-        let output = Command::new(program)
+        let output = new_command(program)
             .args(args)
             .output()
             .with_context(|| format!("failed to execute: {program}"))?;

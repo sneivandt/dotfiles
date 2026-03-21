@@ -148,6 +148,13 @@ augroup VimBuffers
 augroup END
 
 " }}}
+" Terminal reset ---------------------------------------------------------- {{{
+
+augroup VimTermReset
+  autocmd!
+  " Disable termguicolors before exiting to prevent color bleed into the shell
+  autocmd VimLeave * set notermguicolors
+augroup END
 
 " }}}
 " Mappings ---------------------------------------------------------------- {{{

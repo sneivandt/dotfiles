@@ -75,6 +75,8 @@ impl FileLayer {
 
     /// Shared implementation: write a header and open the file for appending.
     fn create_at(path: &std::path::Path) -> Option<Self> {
+        use std::io::Write as _;
+
         let version =
             option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
         let header = format!(
@@ -83,8 +85,8 @@ impl FileLayer {
              ==========================================\n",
             format_utc_datetime(),
         );
-        fs::write(path, header).ok()?;
-        let file = fs::OpenOptions::new().append(true).open(path).ok()?;
+        let mut file = fs::File::create(path).ok()?;
+        file.write_all(header.as_bytes()).ok()?;
         Some(Self {
             file: Mutex::new(file),
         })

@@ -458,10 +458,7 @@ mod tests {
         let resource = ChmodResource::from_entry(&entry, home).unwrap();
 
         assert_eq!(resource.mode, mode("600"));
-        assert_eq!(
-            resource.target,
-            std::path::PathBuf::from("/home/user/.ssh/config")
-        );
+        assert_eq!(resource.target, PathBuf::from("/home/user/.ssh/config"));
     }
 
     #[test]

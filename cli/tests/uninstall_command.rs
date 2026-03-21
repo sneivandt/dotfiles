@@ -132,18 +132,18 @@ fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
     let ctx = ctx_builder.build();
     let config = ctx.load_config("base");
 
-    let platform = dotfiles_cli::platform::Platform::detect();
+    let platform = Platform::detect();
     let executor: Arc<dyn dotfiles_cli::exec::Executor> =
         Arc::new(dotfiles_cli::exec::SystemExecutor);
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-uninstall"));
 
-    let task_ctx = dotfiles_cli::tasks::Context::new(
+    let task_ctx = tasks::Context::new(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        dotfiles_cli::tasks::ContextOpts {
+        tasks::ContextOpts {
             dry_run: true,
             parallel: false,
             is_ci: None,
@@ -167,7 +167,7 @@ fn uninstall_tasks_form_acyclic_dependency_graph() {
     use dotfiles_cli::engine::graph::has_cycle;
 
     let tasks = tasks::all_uninstall_tasks();
-    let task_refs: Vec<&dyn dotfiles_cli::tasks::Task> = tasks.iter().map(Box::as_ref).collect();
+    let task_refs: Vec<&dyn tasks::Task> = tasks.iter().map(Box::as_ref).collect();
     assert!(
         !has_cycle(&task_refs),
         "uninstall task dependency graph contains a cycle"
@@ -198,7 +198,7 @@ fn uninstall_symlinks_is_idempotent() {
 
     let home_dir = tempfile::tempdir().expect("create temp home dir");
 
-    let platform = dotfiles_cli::platform::Platform::detect();
+    let platform = Platform::detect();
     let executor: Arc<dyn dotfiles_cli::exec::Executor> =
         Arc::new(dotfiles_cli::exec::SystemExecutor);
     let log: Arc<dotfiles_cli::logging::Logger> = Arc::new(dotfiles_cli::logging::Logger::new(
@@ -206,13 +206,13 @@ fn uninstall_symlinks_is_idempotent() {
     ));
 
     let config = ctx.load_config("base");
-    let task_ctx = dotfiles_cli::tasks::Context::from_raw(
+    let task_ctx = tasks::Context::from_raw(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
         home_dir.path().to_path_buf(),
-        dotfiles_cli::tasks::ContextOpts {
+        tasks::ContextOpts {
             dry_run: false,
             parallel: false,
             is_ci: Some(false),
@@ -220,20 +220,20 @@ fn uninstall_symlinks_is_idempotent() {
     );
 
     // Install the symlink first so there is something to uninstall.
-    let install_result = dotfiles_cli::tasks::apply::symlinks::InstallSymlinks
+    let install_result = tasks::apply::symlinks::InstallSymlinks
         .run(&task_ctx)
         .expect("install run");
     assert!(
-        matches!(install_result, dotfiles_cli::tasks::TaskResult::Ok),
+        matches!(install_result, tasks::TaskResult::Ok),
         "install run should succeed"
     );
 
     // First uninstall: symlink must be materialised to a regular file.
-    let result1 = dotfiles_cli::tasks::apply::symlinks::UninstallSymlinks
+    let result1 = tasks::apply::symlinks::UninstallSymlinks
         .run(&task_ctx)
         .expect("first uninstall run");
     assert!(
-        matches!(result1, dotfiles_cli::tasks::TaskResult::Ok),
+        matches!(result1, tasks::TaskResult::Ok),
         "first uninstall run should succeed"
     );
 
@@ -245,11 +245,11 @@ fn uninstall_symlinks_is_idempotent() {
     );
 
     // Second uninstall: must succeed (idempotency — target is no longer a symlink).
-    let result2 = dotfiles_cli::tasks::apply::symlinks::UninstallSymlinks
+    let result2 = tasks::apply::symlinks::UninstallSymlinks
         .run(&task_ctx)
         .expect("second uninstall run");
     assert!(
-        matches!(result2, dotfiles_cli::tasks::TaskResult::Ok),
+        matches!(result2, tasks::TaskResult::Ok),
         "second uninstall run should succeed (idempotency guarantee)"
     );
 }
@@ -278,12 +278,12 @@ fn uninstall_tasks_should_run_with_windows_platform() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-uninstall-windows"));
 
-    let task_ctx = dotfiles_cli::tasks::Context::new(
+    let task_ctx = tasks::Context::new(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        dotfiles_cli::tasks::ContextOpts {
+        tasks::ContextOpts {
             dry_run: true,
             parallel: false,
             is_ci: None,

@@ -164,6 +164,7 @@ pub fn persist(root: &Path, name: &str) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if profiles cannot be loaded or user input cannot be read.
+#[allow(clippy::print_stdout)]
 pub fn prompt_interactive(conf_dir: &Path) -> Result<String> {
     let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
 
@@ -234,6 +235,7 @@ pub fn resolve_from_args(
         name
     } else {
         let name = prompt_interactive(&conf_dir)?;
+        #[allow(clippy::print_stderr)]
         if let Err(e) = persist(root, &name) {
             eprintln!("warning: could not persist profile to git config: {e}");
         }

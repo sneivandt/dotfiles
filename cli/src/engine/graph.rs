@@ -44,7 +44,7 @@ pub fn has_cycle(tasks: &[&dyn Task]) -> bool {
     let mut queue: Vec<usize> = in_degree
         .iter()
         .enumerate()
-        .filter_map(|(i, &d)| if d == 0 { Some(i) } else { None })
+        .filter_map(|(i, &d)| (d == 0).then_some(i))
         .collect();
     let mut processed = 0usize;
 

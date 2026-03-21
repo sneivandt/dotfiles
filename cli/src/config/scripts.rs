@@ -77,10 +77,7 @@ scripts = [
             description: None,
         };
         let resolved = resolve_script_path(&entry, std::path::Path::new("/overlay"));
-        assert_eq!(
-            resolved,
-            std::path::PathBuf::from("/overlay/scripts/test.ps1")
-        );
+        assert_eq!(resolved, PathBuf::from("/overlay/scripts/test.ps1"));
     }
 
     #[test]

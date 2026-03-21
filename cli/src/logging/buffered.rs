@@ -130,6 +130,7 @@ impl BufferedLog {
     /// entry appended by [`execute`](crate::tasks::execute)) is replayed
     /// *before* the detail entries so that the compact result header appears
     /// above any per-resource output (e.g. dry-run lines).
+    #[allow(clippy::print_stderr)]
     pub fn flush_and_complete(&self, task_name: &str) {
         {
             let _guard = self.inner.flush_lock.lock().unwrap_or_else(|e| {

@@ -93,7 +93,11 @@ pub(super) fn log_file_path_in(command: &str, base: &std::path::Path) -> Option<
 /// Decompose seconds since the Unix epoch into `(year, month, day, hour, min, sec)`.
 ///
 /// Uses Howard Hinnant's civil-from-days algorithm.
-#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation
+)]
 fn civil_from_epoch_secs(epoch_secs: u64) -> (i32, u32, u32, u32, u32, u32) {
     let day_secs = (epoch_secs % 86_400) as u32;
     let hour = day_secs / 3600;

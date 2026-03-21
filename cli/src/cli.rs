@@ -98,11 +98,11 @@ pub struct InstallOpts {
 
 /// Options for the `uninstall` subcommand.
 #[derive(Parser, Debug, Clone)]
-pub struct UninstallOpts {}
+pub struct UninstallOpts;
 
 /// Options for the `test` subcommand.
 #[derive(Parser, Debug, Clone)]
-pub struct TestOpts {}
+pub struct TestOpts;
 
 /// Options for the `completions` subcommand.
 #[derive(Parser, Debug, Clone)]

@@ -265,7 +265,7 @@ pub mod test_helpers {
         executor: Arc<dyn Executor>,
     ) -> Context {
         Context::from_raw(
-            std::sync::Arc::new(std::sync::RwLock::new(std::sync::Arc::new(config))),
+            Arc::new(std::sync::RwLock::new(Arc::new(config))),
             platform,
             Arc::new(Logger::new("test")),
             executor,
@@ -289,7 +289,7 @@ pub mod test_helpers {
                 #[cfg(windows)]
                 let path = std::path::PathBuf::from(format!(r"C:\Windows\System32\{program}.exe"));
                 #[cfg(not(windows))]
-                let path = std::path::PathBuf::from(format!("/usr/bin/{program}"));
+                let path = PathBuf::from(format!("/usr/bin/{program}"));
                 Ok(path)
             } else {
                 anyhow::bail!("{program} not found on PATH")

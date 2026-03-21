@@ -349,7 +349,7 @@ mod tests {
             false
         }
 
-        fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
+        fn which_path(&self, program: &str) -> Result<PathBuf> {
             anyhow::bail!("{program} not found on PATH")
         }
     }

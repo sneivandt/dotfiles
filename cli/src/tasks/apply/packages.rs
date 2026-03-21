@@ -277,7 +277,7 @@ impl PackageStrategy for BatchInstall {
                 ctx.log
                     .dry_run(&format!("would install: {}", r.description()));
             }
-            stats.changed = missing.len() as u32;
+            stats.changed = u32::try_from(missing.len()).unwrap_or(u32::MAX);
             return Ok(stats.finish(ctx));
         }
 
@@ -285,9 +285,9 @@ impl PackageStrategy for BatchInstall {
             .debug(&format!("batch-installing {} packages", missing.len()));
         if let Err(e) = batch_install_packages(&missing) {
             ctx.log.warn(&format!("batch install failed: {e:#}"));
-            stats.skipped = missing.len() as u32;
+            stats.skipped = u32::try_from(missing.len()).unwrap_or(u32::MAX);
         } else {
-            stats.changed = missing.len() as u32;
+            stats.changed = u32::try_from(missing.len()).unwrap_or(u32::MAX);
         }
 
         Ok(stats.finish(ctx))
@@ -593,7 +593,7 @@ mod tests {
         os: Os,
         is_arch: bool,
         executor: MockExecutor,
-    ) -> crate::tasks::Context {
+    ) -> Context {
         use crate::platform::Platform;
         crate::tasks::test_helpers::make_context(
             config,

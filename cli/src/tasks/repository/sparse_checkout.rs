@@ -505,7 +505,7 @@ mod tests {
 
         fn run_in_with_env(
             &self,
-            _: &std::path::Path,
+            _: &Path,
             _: &str,
             args: &[&str],
             _: &[(&str, &str)],
@@ -532,7 +532,7 @@ mod tests {
             false
         }
 
-        fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
+        fn which_path(&self, program: &str) -> Result<PathBuf> {
             anyhow::bail!("{program} not found on PATH")
         }
     }
@@ -708,10 +708,10 @@ mod tests {
         let target = PathBuf::from("/repo/symlinks/git/gitconfig");
         let mut mock = MockFileSystemOps::new();
         mock.expect_exists()
-            .withf(|p| p == std::path::Path::new("/home/test/.config/git"))
+            .withf(|p| p == Path::new("/home/test/.config/git"))
             .returning(|_| true);
         mock.expect_exists()
-            .withf(|p| p == std::path::Path::new("/repo/symlinks/git/gitconfig"))
+            .withf(|p| p == Path::new("/repo/symlinks/git/gitconfig"))
             .returning(|_| true); // target exists → not broken
         mock.expect_read_dir()
             .returning(move |_| Ok(vec![symlink_path.clone()]));
@@ -732,10 +732,10 @@ mod tests {
         let read_dir_entry = symlink_path.clone();
         let mut mock = MockFileSystemOps::new();
         mock.expect_exists()
-            .withf(|p| p == std::path::Path::new("/home/test/.config/git"))
+            .withf(|p| p == Path::new("/home/test/.config/git"))
             .returning(|_| true);
         mock.expect_exists()
-            .withf(|p| p == std::path::Path::new("/repo/symlinks/git/gitconfig"))
+            .withf(|p| p == Path::new("/repo/symlinks/git/gitconfig"))
             .returning(|_| false); // target doesn't exist → broken
         mock.expect_read_dir()
             .returning(move |_| Ok(vec![read_dir_entry.clone()]));
@@ -757,7 +757,7 @@ mod tests {
         let file_path = PathBuf::from("/home/test/.config/git/config");
         let mut mock = MockFileSystemOps::new();
         mock.expect_exists()
-            .withf(|p| p == std::path::Path::new("/home/test/.config/git"))
+            .withf(|p| p == Path::new("/home/test/.config/git"))
             .returning(|_| true);
         mock.expect_read_dir()
             .returning(move |_| Ok(vec![file_path.clone()]));

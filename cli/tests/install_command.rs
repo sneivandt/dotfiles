@@ -279,18 +279,18 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
     let ctx = ctx_builder.build();
     let config = ctx.load_config("base");
 
-    let platform = dotfiles_cli::platform::Platform::detect();
+    let platform = Platform::detect();
     let executor: Arc<dyn dotfiles_cli::exec::Executor> =
         Arc::new(dotfiles_cli::exec::SystemExecutor);
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-install"));
 
-    let task_ctx = dotfiles_cli::tasks::Context::new(
+    let task_ctx = tasks::Context::new(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        dotfiles_cli::tasks::ContextOpts {
+        tasks::ContextOpts {
             dry_run: true,
             parallel: false,
             is_ci: None,
@@ -319,7 +319,7 @@ fn install_tasks_form_acyclic_dependency_graph() {
     use dotfiles_cli::engine::graph::has_cycle;
 
     let tasks = tasks::all_install_tasks();
-    let task_refs: Vec<&dyn dotfiles_cli::tasks::Task> = tasks.iter().map(Box::as_ref).collect();
+    let task_refs: Vec<&dyn tasks::Task> = tasks.iter().map(Box::as_ref).collect();
     assert!(
         !has_cycle(&task_refs),
         "install task dependency graph contains a cycle"
@@ -390,12 +390,12 @@ fn install_tasks_should_run_with_windows_platform() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-windows"));
 
-    let task_ctx = dotfiles_cli::tasks::Context::new(
+    let task_ctx = tasks::Context::new(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        dotfiles_cli::tasks::ContextOpts {
+        tasks::ContextOpts {
             dry_run: true,
             parallel: false,
             is_ci: None,
@@ -507,32 +507,32 @@ fn install_symlinks_is_idempotent() {
     // real home directory.
     let home_dir = tempfile::tempdir().expect("create temp home dir");
 
-    let platform = dotfiles_cli::platform::Platform::detect();
+    let platform = Platform::detect();
     let executor: Arc<dyn dotfiles_cli::exec::Executor> =
         Arc::new(dotfiles_cli::exec::SystemExecutor);
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-idempotent"));
 
     let config = ctx.load_config("base");
-    let task_ctx = dotfiles_cli::tasks::Context::from_raw(
+    let task_ctx = tasks::Context::from_raw(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
         home_dir.path().to_path_buf(),
-        dotfiles_cli::tasks::ContextOpts {
+        tasks::ContextOpts {
             dry_run: false,
             parallel: false,
             is_ci: Some(false),
         },
     );
 
-    let task = dotfiles_cli::tasks::apply::symlinks::InstallSymlinks;
+    let task = tasks::apply::symlinks::InstallSymlinks;
 
     // First run: must succeed and create the symlink.
     let result1 = task.run(&task_ctx).expect("first install run");
     assert!(
-        matches!(result1, dotfiles_cli::tasks::TaskResult::Ok),
+        matches!(result1, tasks::TaskResult::Ok),
         "first install run should succeed"
     );
 
@@ -542,7 +542,7 @@ fn install_symlinks_is_idempotent() {
     let resource = dotfiles_cli::resources::symlink::SymlinkResource::new(
         source,
         target,
-        std::sync::Arc::new(dotfiles_cli::exec::SystemExecutor),
+        Arc::new(dotfiles_cli::exec::SystemExecutor),
     );
 
     // After the first run every resource must be Correct.  This is the
@@ -558,7 +558,7 @@ fn install_symlinks_is_idempotent() {
     // Second run: must succeed without changing anything.
     let result2 = task.run(&task_ctx).expect("second install run");
     assert!(
-        matches!(result2, dotfiles_cli::tasks::TaskResult::Ok),
+        matches!(result2, tasks::TaskResult::Ok),
         "second install run should succeed"
     );
 
@@ -605,8 +605,8 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
     std::fs::set_permissions(&ssh_config, std::fs::Permissions::from_mode(0o644))
         .expect("set initial permissions");
 
-    let platform = dotfiles_cli::platform::Platform {
-        os: dotfiles_cli::platform::Os::Linux,
+    let platform = Platform {
+        os: Os::Linux,
         is_arch: false,
         is_wsl: false,
     };
@@ -616,24 +616,24 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
         Arc::new(dotfiles_cli::logging::Logger::new("test-chmod"));
 
     let config = ctx.load_config_for_platform("base", platform);
-    let task_ctx = dotfiles_cli::tasks::Context::from_raw(
+    let task_ctx = tasks::Context::from_raw(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
         home_dir.path().to_path_buf(),
-        dotfiles_cli::tasks::ContextOpts {
+        tasks::ContextOpts {
             dry_run: false,
             parallel: false,
             is_ci: Some(false),
         },
     );
 
-    let result = dotfiles_cli::tasks::apply::chmod::ApplyFilePermissions
+    let result = tasks::apply::chmod::ApplyFilePermissions
         .run(&task_ctx)
         .expect("apply file permissions run");
     assert!(
-        matches!(result, dotfiles_cli::tasks::TaskResult::Ok),
+        matches!(result, tasks::TaskResult::Ok),
         "apply file permissions should succeed"
     );
 
@@ -893,19 +893,19 @@ fn install_tasks_should_run_with_parallel_enabled() {
     let ctx = ctx_builder.build();
     let config = ctx.load_config("base");
 
-    let platform = dotfiles_cli::platform::Platform::detect();
+    let platform = Platform::detect();
     let executor: Arc<dyn dotfiles_cli::exec::Executor> =
         Arc::new(dotfiles_cli::exec::SystemExecutor);
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-parallel"));
 
-    let task_ctx = dotfiles_cli::tasks::Context::from_raw(
+    let task_ctx = tasks::Context::from_raw(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
         std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())),
-        dotfiles_cli::tasks::ContextOpts {
+        tasks::ContextOpts {
             dry_run: true,
             parallel: true,
             is_ci: Some(false),

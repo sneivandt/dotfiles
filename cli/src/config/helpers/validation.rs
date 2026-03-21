@@ -86,9 +86,5 @@ impl Validator {
 /// ```
 #[must_use]
 pub fn check(condition: bool, message: impl Into<String>) -> Option<String> {
-    if condition {
-        Some(message.into())
-    } else {
-        None
-    }
+    condition.then(|| message.into())
 }

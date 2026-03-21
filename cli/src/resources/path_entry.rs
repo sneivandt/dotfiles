@@ -180,7 +180,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn make_path_entry(home: &Path, on_path: bool) -> PathEntryResource {
-        let executor: Arc<dyn crate::exec::Executor> = Arc::new(crate::exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let platform = crate::platform::Platform {
             os: crate::platform::Os::Linux,
             is_arch: false,

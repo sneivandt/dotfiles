@@ -809,13 +809,13 @@ mod tests {
         }
     }
 
-    impl crate::exec::Executor for RecordingExecutor {
-        fn run(&self, program: &str, args: &[&str]) -> anyhow::Result<crate::exec::ExecResult> {
+    impl Executor for RecordingExecutor {
+        fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
             self.calls.lock().unwrap().push((
                 program.to_string(),
                 args.iter().map(|s| (*s).to_string()).collect(),
             ));
-            Ok(crate::exec::ExecResult {
+            Ok(ExecResult {
                 stdout: String::new(),
                 stderr: String::new(),
                 success: true,
@@ -829,15 +829,11 @@ mod tests {
             program: &str,
             args: &[&str],
             _: &[(&str, &str)],
-        ) -> anyhow::Result<crate::exec::ExecResult> {
+        ) -> Result<ExecResult> {
             self.run(program, args)
         }
 
-        fn run_unchecked(
-            &self,
-            program: &str,
-            args: &[&str],
-        ) -> anyhow::Result<crate::exec::ExecResult> {
+        fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
             self.run(program, args)
         }
 
@@ -845,7 +841,7 @@ mod tests {
             false
         }
 
-        fn which_path(&self, program: &str) -> anyhow::Result<std::path::PathBuf> {
+        fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
             anyhow::bail!("{program} not found on PATH")
         }
     }

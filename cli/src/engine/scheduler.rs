@@ -749,7 +749,7 @@ mod tests {
     /// stage headers in the console output.
     #[test]
     fn stage_header_present_when_info_logged_in_run() {
-        let (log, _tmp, _guard) = crate::logging::isolated_logger();
+        let (log, _tmp, _guard) = logging::isolated_logger();
         let log = Arc::new(log);
 
         let ctx = ContextBuilder::new(empty_config(PathBuf::from("/tmp"))).build();
@@ -783,7 +783,7 @@ mod tests {
     /// already ok"` output, none of which should be missing their `==>` header.
     #[test]
     fn stage_headers_present_for_multiple_concurrent_stats_tasks() {
-        let (log, _tmp, _guard) = crate::logging::isolated_logger();
+        let (log, _tmp, _guard) = logging::isolated_logger();
         let log = Arc::new(log);
 
         let tasks_to_run: &[(&str, u32)] = &[
@@ -896,7 +896,7 @@ mod tests {
         // DEBUG-filtered file (simulates the diagnostic log). This is the
         // topology where the `FilterState` corruption originally manifested.
         let captured: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-        let (log, _tmp, _guard) = crate::logging::isolated_logger();
+        let (log, _tmp, _guard) = logging::isolated_logger();
         let log = Arc::new(log);
         let info_layer = TargetCapture(Arc::clone(&captured)).with_filter(LevelFilter::INFO);
         let subscriber = tracing_subscriber::registry().with(info_layer);

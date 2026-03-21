@@ -4,6 +4,7 @@ use std::process::ExitCode;
 use clap::{CommandFactory, Parser};
 use dotfiles_cli::{cli, commands, engine, logging};
 
+#[allow(clippy::print_stderr)]
 fn main() -> ExitCode {
     enable_ansi_support::enable_ansi_support().ok(); // best-effort; no-op on non-Windows
     let args = cli::Cli::parse();

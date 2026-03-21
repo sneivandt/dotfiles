@@ -206,11 +206,7 @@ fn verify_checksum(client: &dyn HttpClient, tag: &str, asset: &str, data: &[u8])
             let hash = parts.next()?;
             let parsed_name = parts.collect::<Vec<_>>().join(" ");
             let stripped_name = parsed_name.strip_prefix('*').unwrap_or(&parsed_name);
-            if stripped_name == asset {
-                Some(hash.to_string())
-            } else {
-                None
-            }
+            (stripped_name == asset).then(|| hash.to_string())
         })
         .ok_or_else(|| anyhow::anyhow!("checksum not found for {asset}"))?;
 

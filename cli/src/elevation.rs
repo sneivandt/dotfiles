@@ -140,6 +140,7 @@ fn powershell_encode_command(script: &str) -> String {
 /// Encode `bytes` as standard Base64 (RFC 4648) without line wrapping.
 #[cfg(any(windows, test))]
 fn base64_encode(bytes: &[u8]) -> String {
+    #[allow(clippy::cast_possible_truncation)] // n & 63 fits in u8
     fn encode_6bit(n: u32) -> char {
         match n & 63 {
             v @ 0..=25 => char::from(b'A' + v as u8),
@@ -168,7 +169,8 @@ fn base64_encode(bytes: &[u8]) -> String {
     out
 }
 
-#[cfg(all(test, not(windows)))]
+#[cfg(test)]
+#[cfg(not(windows))]
 mod tests {
     use super::*;
 

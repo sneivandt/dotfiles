@@ -29,7 +29,7 @@ const WINDOWS_RESTART_EXIT_CODE: i32 = 75;
 /// Called after a self-update has replaced the binary on disk so that the
 /// new version runs all tasks with updated code.  Sets [`REEXEC_GUARD_VAR`]
 /// so the new process skips the self-update step.
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::print_stderr)]
 pub(crate) fn re_exec(root: &std::path::Path) -> ! {
     #[cfg(unix)]
     {
@@ -290,7 +290,8 @@ mod tests {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
+#[cfg(unix)]
 mod unix_tests {
     use super::*;
     use std::path::Path;
@@ -530,7 +531,7 @@ impl CommandRunner {
     pub fn overlay_script_tasks(&self) -> Vec<Box<dyn Task>> {
         let config = self.ctx.config_read();
         config.overlay.as_ref().map_or_else(Vec::new, |root| {
-            crate::tasks::apply::overlay_scripts::overlay_script_tasks(&config.scripts, root)
+            tasks::apply::overlay_scripts::overlay_script_tasks(&config.scripts, root)
         })
     }
 

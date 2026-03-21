@@ -92,14 +92,14 @@ mod tests {
 
     #[test]
     fn description_returns_unit_name() {
-        let executor: Arc<dyn crate::exec::Executor> = Arc::new(crate::exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let resource = SystemdUnitResource::new("clean-home-tmp.timer".to_string(), executor);
         assert_eq!(resource.description(), "clean-home-tmp.timer");
     }
 
     #[test]
     fn from_entry_copies_name() {
-        let executor: Arc<dyn crate::exec::Executor> = Arc::new(crate::exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
         let entry = crate::config::systemd_units::SystemdUnit {
             name: "dunst.service".to_string(),
             scope: "user".to_string(),
@@ -121,7 +121,7 @@ mod tests {
                 ..ok_result()
             })
         });
-        let executor: Arc<dyn crate::exec::Executor> = Arc::new(mock);
+        let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service".to_string(), executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
@@ -132,7 +132,7 @@ mod tests {
         mock.expect_run_unchecked()
             .once()
             .returning(|_, _| Ok(fail_result()));
-        let executor: Arc<dyn crate::exec::Executor> = Arc::new(mock);
+        let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service".to_string(), executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
     }
@@ -147,7 +147,7 @@ mod tests {
         mock.expect_run_unchecked()
             .once()
             .returning(|_, _| Ok(ok_result()));
-        let executor: Arc<dyn crate::exec::Executor> = Arc::new(mock);
+        let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service".to_string(), executor);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
@@ -158,7 +158,7 @@ mod tests {
         mock.expect_run_unchecked()
             .once()
             .returning(|_, _| Ok(fail_result()));
-        let executor: Arc<dyn crate::exec::Executor> = Arc::new(mock);
+        let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service".to_string(), executor);
         assert!(
             matches!(resource.apply().unwrap(), ResourceChange::Skipped { .. }),

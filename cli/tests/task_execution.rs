@@ -301,7 +301,7 @@ fn chmod_applies_permissions_from_config() {
     std::fs::write(&target, "Host *\n").unwrap();
     std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-    let task = dotfiles_cli::tasks::apply::chmod::ApplyFilePermissions;
+    let task = ApplyFilePermissions;
     let result = task.run(&ec.ctx).unwrap();
     assert!(matches!(result, TaskResult::Ok));
 
@@ -328,7 +328,7 @@ fn chmod_is_idempotent() {
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "Host *\n").unwrap();
 
-    let task = dotfiles_cli::tasks::apply::chmod::ApplyFilePermissions;
+    let task = ApplyFilePermissions;
     let _ = task.run(&ec.ctx).unwrap();
     let second = task.run(&ec.ctx).unwrap();
     assert!(matches!(second, TaskResult::Ok));

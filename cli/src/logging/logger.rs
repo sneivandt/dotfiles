@@ -84,6 +84,7 @@ pub struct Logger {
     verbose: bool,
 }
 
+#[allow(clippy::print_stdout, clippy::print_stderr)]
 impl Logger {
     /// Create a new logger.
     ///

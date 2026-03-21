@@ -44,6 +44,7 @@ pub const fn is_elevated() -> bool {
 /// Returns an error if the user cancels the UAC prompt or the elevated
 /// process fails to start.
 #[cfg(windows)]
+#[allow(clippy::print_stderr)]
 pub fn elevate_and_exit(executor: &dyn crate::exec::Executor) -> anyhow::Result<()> {
     use anyhow::{Context, bail};
 
@@ -91,6 +92,7 @@ pub fn elevate_and_exit(executor: &dyn crate::exec::Executor) -> anyhow::Result<
 /// On Windows, if the process is elevated, prints a prompt and waits for
 /// the user to press Enter. No-op on non-Windows or non-elevated processes.
 #[cfg(windows)]
+#[allow(clippy::print_stderr)]
 pub fn wait_if_elevated() {
     if is_elevated() {
         eprintln!();

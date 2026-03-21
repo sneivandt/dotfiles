@@ -10,6 +10,7 @@ use std::process::{Command, Output};
 /// cooperative cancellation token) and does not kill child processes
 /// that are still running.
 fn new_command(program: &str) -> Command {
+    #[allow(unused_mut)]
     let mut cmd = Command::new(program);
     #[cfg(unix)]
     {

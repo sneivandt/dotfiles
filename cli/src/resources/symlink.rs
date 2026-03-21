@@ -37,10 +37,21 @@ impl Applicable for SymlinkResource {
     fn apply(&self) -> Result<ResourceChange> {
         crate::fs::ensure_parent_dir(&self.target)?;
 
-        // Remove existing target if it's a symlink or file
-        if self.target.exists() || self.target.symlink_metadata().is_ok() {
-            remove_symlink(&self.target)
-                .with_context(|| format!("remove existing: {}", self.target.display()))?;
+        // Attempt to remove any existing target; ignore NotFound since the
+        // path may already be absent.  This avoids a TOCTOU race between a
+        // separate existence check and the removal.
+        match remove_symlink(&self.target) {
+            Ok(()) => {}
+            Err(e)
+                if e.downcast_ref::<std::io::Error>()
+                    .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound) =>
+            {
+                // Path was already absent — nothing to remove.
+            }
+            Err(e) => {
+                return Err(e)
+                    .with_context(|| format!("remove existing: {}", self.target.display()));
+            }
         }
 
         // Create the symlink
@@ -281,8 +292,7 @@ fn paths_equal(a: &Path, b: &Path) -> bool {
 }
 
 /// Create a symlink at `link` pointing to `target`.
-#[cfg_attr(not(windows), allow(unused_variables))]
-fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
+fn create_symlink(target: &Path, link: &Path, _executor: &dyn Executor) -> Result<()> {
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(target, link).with_context(|| {
@@ -296,7 +306,6 @@ fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result
 
     #[cfg(windows)]
     {
-        // Try native symlink API first
         let is_dir = target.is_dir();
         let result = if is_dir {
             std::os::windows::fs::symlink_dir(target, link)
@@ -304,28 +313,13 @@ fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result
             std::os::windows::fs::symlink_file(target, link)
         };
 
-        if result.is_err() {
-            // Fall back to mklink via cmd.exe (requires admin or dev mode)
-            // Use /J (junction) for directories, no flag (symlink) for files.
-            // Note: /H creates a hard link which has different semantics.
-            let link_str = link.to_string_lossy();
-            // Resolve to absolute path because mklink /J requires absolute targets.
-            let abs_target = if let Ok(p) = std::fs::canonicalize(target) {
-                p
-            } else {
-                std::env::current_dir()
-                    .context("could not determine current directory for mklink fallback")?
-                    .join(target)
-            };
-            let target_str = abs_target.to_string_lossy();
-            let mut args: Vec<&str> = vec!["/c", "mklink"];
-            if is_dir {
-                args.push("/J");
-            }
-            args.push(&link_str);
-            args.push(&target_str);
-            executor.run("cmd", &args)?;
-        }
+        result.with_context(|| {
+            format!(
+                "creating symlink {} -> {} (enable Developer Mode or run as administrator)",
+                link.display(),
+                target.display()
+            )
+        })?;
     }
 
     Ok(())
@@ -339,8 +333,15 @@ fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result
 /// If `remove_dir` still fails with OS error 5 (access denied), we fall back
 /// to `cmd /c rmdir` which runs in a separate process.
 fn remove_symlink(path: &Path) -> Result<()> {
-    let meta = std::fs::symlink_metadata(path)
-        .with_context(|| format!("reading metadata: {}", path.display()))?;
+    let meta = match std::fs::symlink_metadata(path) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(e.into()),
+        Err(e) => {
+            return Err(
+                anyhow::Error::new(e).context(format!("reading metadata: {}", path.display()))
+            );
+        }
+    };
     if is_dir_like(&meta) {
         match std::fs::remove_dir(path) {
             Ok(()) => {}
@@ -573,86 +574,6 @@ mod tests {
             matches!(state, ResourceState::Incorrect { .. }),
             "dangling symlink should be Incorrect, got {state:?}"
         );
-    }
-
-    /// On Windows, `mklink /J` requires an absolute path for the junction
-    /// target.  Verify that when the native symlink API fails the fallback
-    /// command receives an absolute path even when a relative path was
-    /// originally supplied.
-    #[cfg(windows)]
-    #[test]
-    fn create_symlink_mklink_fallback_uses_absolute_target() {
-        use crate::exec::ExecResult;
-        use std::sync::Mutex;
-
-        /// Executor that records every `run` invocation.
-        #[derive(Debug)]
-        struct RecordingExecutor {
-            calls: Mutex<Vec<Vec<String>>>,
-        }
-
-        impl Executor for RecordingExecutor {
-            fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-                self.calls.lock().unwrap().push(
-                    std::iter::once(program)
-                        .chain(args.iter().copied())
-                        .map(String::from)
-                        .collect(),
-                );
-                Ok(ExecResult {
-                    success: true,
-                    stdout: String::new(),
-                    stderr: String::new(),
-                    code: Some(0),
-                })
-            }
-
-            fn run_in_with_env(
-                &self,
-                _dir: &std::path::Path,
-                program: &str,
-                args: &[&str],
-                _env: &[(&str, &str)],
-            ) -> Result<ExecResult> {
-                self.run(program, args)
-            }
-
-            fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-                self.run(program, args)
-            }
-
-            fn which(&self, _program: &str) -> bool {
-                false
-            }
-
-            fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
-                anyhow::bail!("{program} not found")
-            }
-        }
-
-        let temp_dir = tempfile::tempdir().unwrap();
-        let link = temp_dir.path().join("link");
-
-        let recorder = Arc::new(RecordingExecutor {
-            calls: Mutex::new(Vec::new()),
-        });
-
-        // Pass a relative non-existent path as target so canonicalize fails
-        // and the fallback (current_dir().join(target)) is exercised.
-        let relative = PathBuf::from("nonexistent_dotfiles_target");
-        let _ = create_symlink(&relative, &link, &*recorder);
-
-        let calls = recorder.calls.lock().unwrap();
-        if let Some(call) = calls.first() {
-            // The target argument (last arg in the mklink call) must be absolute.
-            if let Some(target_arg) = call.last() {
-                let p = PathBuf::from(target_arg);
-                assert!(
-                    p.is_absolute(),
-                    "mklink target must be absolute, got {target_arg}"
-                );
-            }
-        }
     }
 
     /// After `remove()` the target must be a regular file containing the

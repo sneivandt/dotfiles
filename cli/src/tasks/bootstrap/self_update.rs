@@ -460,16 +460,18 @@ where
 /// non-zero status code.
 #[cfg(not(windows))]
 fn smoke_test_binary(path: &std::path::Path) -> Result<()> {
-    const ETXTBSY: i32 = 26;
     const MAX_RETRIES: u32 = 5;
+    const BASE_DELAY_MS: u64 = 50;
 
     let mut attempts = 0;
     let output = loop {
         match std::process::Command::new(path).arg("version").output() {
             Ok(output) => break output,
-            Err(e) if e.raw_os_error() == Some(ETXTBSY) && attempts < MAX_RETRIES => {
+            Err(e) if e.kind() == std::io::ErrorKind::ResourceBusy && attempts < MAX_RETRIES => {
                 attempts += 1;
-                std::thread::sleep(std::time::Duration::from_millis(50 * u64::from(attempts)));
+                std::thread::sleep(std::time::Duration::from_millis(
+                    BASE_DELAY_MS * u64::from(attempts),
+                ));
             }
             Err(e) => {
                 return Err(anyhow::Error::from(e))

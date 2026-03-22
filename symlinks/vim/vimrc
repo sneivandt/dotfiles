@@ -348,6 +348,12 @@ let g:fzf_action = {
 " Layout - use bottom split that closes after selection
 let g:fzf_layout = { 'down': '~40%' }
 
+" Close fzf window when leaving the buffer
+augroup FzfAutoClose
+  autocmd!
+  autocmd FileType fzf autocmd BufLeave <buffer> close
+augroup END
+
 " }}}
 " Dispatch {{{
 

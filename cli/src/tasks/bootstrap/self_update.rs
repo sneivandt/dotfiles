@@ -449,16 +449,37 @@ where
 /// starts correctly.  On failure the caller is expected to restore the
 /// backup created by [`replace_binary`].
 ///
+/// On Linux, `exec` can transiently fail with `ETXTBSY` ("Text file busy")
+/// right after writing a binary when the kernel hasn't fully released the
+/// inode.  This is a known race on certain CI filesystems (e.g. overlayfs).
+/// The function retries a few times with a short sleep to work around it.
+///
 /// # Errors
 ///
 /// Returns an error if the process cannot be spawned or exits with a
 /// non-zero status code.
 #[cfg(not(windows))]
 fn smoke_test_binary(path: &std::path::Path) -> Result<()> {
-    let output = std::process::Command::new(path)
-        .arg("version")
-        .output()
-        .with_context(|| format!("spawning smoke test for {}", path.display()))?;
+    const MAX_RETRIES: u32 = 5;
+    const BASE_DELAY_MS: u64 = 50;
+
+    let mut attempts = 0;
+    let output = loop {
+        match std::process::Command::new(path).arg("version").output() {
+            Ok(output) => break output,
+            Err(e) if e.kind() == std::io::ErrorKind::ResourceBusy && attempts < MAX_RETRIES => {
+                attempts += 1;
+                std::thread::sleep(std::time::Duration::from_millis(
+                    BASE_DELAY_MS * u64::from(attempts),
+                ));
+            }
+            Err(e) => {
+                return Err(anyhow::Error::from(e))
+                    .with_context(|| format!("spawning smoke test for {}", path.display()));
+            }
+        }
+    };
+
     if output.status.success() {
         Ok(())
     } else {

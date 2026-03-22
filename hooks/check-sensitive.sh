@@ -55,8 +55,10 @@ while IFS= read -r file; do
   numbered_adds=$(echo "$diff_output" | awk '
     /^@@ / {
       # Parse +start from @@ -a,b +c,d @@
-      split($3, a, /[,+]/)
-      lineno = a[2]
+      s = $3
+      sub(/^\+/, "", s)
+      sub(/,.*/, "", s)
+      lineno = s + 0
       next
     }
     /^\+/ && !/^\+\+\+/ {

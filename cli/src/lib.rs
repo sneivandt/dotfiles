@@ -10,7 +10,7 @@
 //! - **[`config`]** — parse and validate TOML config files
 //! - **[`resources`]** — idempotent `check + apply` primitives (symlinks, packages, …)
 //! - **[`engine`]** — execution engine: context, dependency graph, and resource processing
-//! - **[`tasks`]** — named, dependency-ordered units of work wired to resources
+//! - **[`phases`]** — named, dependency-ordered units of work wired to resources
 //! - **[`commands`]** — top-level subcommand orchestration (`install`, `uninstall`, `test`)
 pub mod cli;
 pub mod commands;
@@ -21,6 +21,6 @@ pub mod error;
 pub mod exec;
 pub mod fs;
 pub mod logging;
+pub mod phases;
 pub mod platform;
 pub mod resources;
-pub mod tasks;

@@ -4,11 +4,11 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 
 use crate::fs::{FileSystemOps, SystemFileSystemOps};
-use crate::resources::hook::HookFileResource;
-use crate::tasks::{
+use crate::phases::{
     Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, process_resources_remove,
     task_deps,
 };
+use crate::resources::hook::HookFileResource;
 
 /// Discover hook file resources from the `hooks/` directory.
 ///
@@ -82,7 +82,7 @@ impl Task for InstallGitHooks {
         TaskPhase::Repository
     }
 
-    task_deps![crate::tasks::repository::update::UpdateRepository];
+    task_deps![crate::phases::repository::update::UpdateRepository];
 
     fn should_run(&self, ctx: &Context) -> bool {
         let paths = ctx.repo_paths();
@@ -152,7 +152,7 @@ impl Task for UninstallGitHooks {
 mod tests {
     use super::*;
     use crate::fs::MockFileSystemOps;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use crate::phases::test_helpers::{empty_config, make_linux_context};
     use std::any::TypeId;
     use std::path::PathBuf;
 
@@ -203,7 +203,7 @@ mod tests {
         assert_eq!(
             task.dependencies(),
             &[TypeId::of::<
-                crate::tasks::repository::update::UpdateRepository,
+                crate::phases::repository::update::UpdateRepository,
             >()]
         );
     }

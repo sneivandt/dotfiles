@@ -4,8 +4,8 @@ mod stats;
 
 use crate::engine::mode::ProcessOpts;
 use crate::error::ResourceError;
+use crate::phases::test_helpers::make_static_context;
 use crate::resources::{Applicable, Resource, ResourceChange, ResourceState};
-use crate::tasks::test_helpers::make_static_context;
 
 // -----------------------------------------------------------------------
 // Test doubles
@@ -108,7 +108,7 @@ impl Applicable for TypedErrorResource {
 pub fn test_context(
     config: crate::config::Config,
 ) -> (
-    crate::tasks::Context,
+    crate::phases::Context,
     std::sync::Arc<crate::logging::Logger>,
 ) {
     make_static_context(config)
@@ -117,7 +117,7 @@ pub fn test_context(
 pub fn dry_run_context(
     config: crate::config::Config,
 ) -> (
-    crate::tasks::Context,
+    crate::phases::Context,
     std::sync::Arc<crate::logging::Logger>,
 ) {
     let (mut ctx, log) = test_context(config);
@@ -128,7 +128,7 @@ pub fn dry_run_context(
 pub fn parallel_context(
     config: crate::config::Config,
 ) -> (
-    crate::tasks::Context,
+    crate::phases::Context,
     std::sync::Arc<crate::logging::Logger>,
 ) {
     let (mut ctx, log) = test_context(config);

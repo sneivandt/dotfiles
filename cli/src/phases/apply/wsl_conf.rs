@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::tasks::{Context, Task, TaskPhase, TaskResult};
+use crate::phases::{Context, Task, TaskPhase, TaskResult};
 
 /// The single setting this task enforces.
 const DESIRED_KEY: &str = "generateResolvConf = true";
@@ -104,7 +104,7 @@ fn is_correct(path: &str) -> bool {
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::tasks::test_helpers::{ContextBuilder, empty_config};
+    use crate::phases::test_helpers::{ContextBuilder, empty_config};
     use std::path::PathBuf;
 
     #[test]

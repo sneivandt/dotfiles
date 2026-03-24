@@ -6,13 +6,13 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 
 use crate::config::packages::Package;
+use crate::phases::{
+    Context, ProcessOpts, Task, TaskPhase, TaskResult, TaskStats, process_resource_states,
+    task_deps,
+};
 use crate::resources::Applicable as _;
 use crate::resources::package::{
     PackageManager, PackageResource, batch_install_packages, get_installed_packages,
-};
-use crate::tasks::{
-    Context, ProcessOpts, Task, TaskPhase, TaskResult, TaskStats, process_resource_states,
-    task_deps,
 };
 
 /// Default number of parallel jobs for makepkg if nproc detection fails.
@@ -350,13 +350,13 @@ mod tests {
 
     use crate::config::packages::Package;
     use crate::exec::Executor;
-    use crate::platform::Os;
-    use crate::resources::Applicable;
-    use crate::resources::package::{PackageManager, PackageResource};
-    use crate::tasks::test_helpers::{
+    use crate::phases::test_helpers::{
         empty_config, make_arch_context, make_linux_context, make_platform_context_with_which,
         make_windows_context,
     };
+    use crate::platform::Os;
+    use crate::resources::Applicable;
+    use crate::resources::package::{PackageManager, PackageResource};
     use std::path::PathBuf;
 
     #[test]
@@ -595,7 +595,7 @@ mod tests {
         executor: MockExecutor,
     ) -> Context {
         use crate::platform::Platform;
-        crate::tasks::test_helpers::make_context(
+        crate::phases::test_helpers::make_context(
             config,
             Platform::new(os, is_arch),
             std::sync::Arc::new(executor),

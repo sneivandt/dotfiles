@@ -2,8 +2,8 @@ use crate::engine::mode::ProcessOpts;
 use crate::engine::{
     TaskResult, process_resource_states, process_resources, process_resources_remove,
 };
+use crate::phases::test_helpers::empty_config;
 use crate::resources::ResourceState;
-use crate::tasks::test_helpers::empty_config;
 use std::path::PathBuf;
 
 use super::{

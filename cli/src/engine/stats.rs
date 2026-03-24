@@ -7,7 +7,7 @@ use super::context::Context;
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::tasks::TaskResult;
+/// use dotfiles_cli::phases::TaskResult;
 ///
 /// let ok = TaskResult::Ok;
 /// let na = TaskResult::NotApplicable("nothing configured".into());
@@ -54,7 +54,7 @@ pub enum TaskResult {
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::tasks::TaskStats;
+/// use dotfiles_cli::phases::TaskStats;
 ///
 /// let mut stats = TaskStats::new();
 /// stats.changed = 3;
@@ -67,7 +67,7 @@ pub enum TaskResult {
 /// When items are skipped, the summary includes the count:
 ///
 /// ```
-/// use dotfiles_cli::tasks::TaskStats;
+/// use dotfiles_cli::phases::TaskStats;
 ///
 /// let stats = TaskStats { changed: 1, already_ok: 2, skipped: 3 };
 /// assert_eq!(stats.summary(false), "1 changed, 2 already ok, 3 skipped");
@@ -88,7 +88,7 @@ impl TaskStats {
     /// # Examples
     ///
     /// ```
-    /// use dotfiles_cli::tasks::TaskStats;
+    /// use dotfiles_cli::phases::TaskStats;
     ///
     /// let stats = TaskStats::new();
     /// assert_eq!(stats.changed, 0);
@@ -105,7 +105,7 @@ impl TaskStats {
     /// # Examples
     ///
     /// ```
-    /// use dotfiles_cli::tasks::TaskStats;
+    /// use dotfiles_cli::phases::TaskStats;
     ///
     /// let stats = TaskStats { changed: 5, already_ok: 12, skipped: 0 };
     /// assert_eq!(stats.summary(false), "5 changed, 12 already ok");
@@ -253,8 +253,8 @@ mod tests {
     #[test]
     fn finish_returns_ok_when_not_dry_run() {
         let config =
-            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::tasks::test_helpers::make_linux_context(config);
+            crate::phases::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::phases::test_helpers::make_linux_context(config);
         let stats = TaskStats {
             changed: 1,
             already_ok: 0,
@@ -266,8 +266,8 @@ mod tests {
     #[test]
     fn finish_returns_dry_run_when_dry_run() {
         let config =
-            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::tasks::test_helpers::make_linux_context(config).with_dry_run(true);
+            crate::phases::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::phases::test_helpers::make_linux_context(config).with_dry_run(true);
         let stats = TaskStats {
             changed: 1,
             already_ok: 0,

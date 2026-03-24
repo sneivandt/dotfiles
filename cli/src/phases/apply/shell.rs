@@ -2,15 +2,15 @@
 
 use std::sync::Arc;
 
+use crate::phases::{ProcessOpts, TaskPhase, resource_task};
 use crate::resources::shell::DefaultShellResource;
-use crate::tasks::{ProcessOpts, TaskPhase, resource_task};
 
 resource_task! {
     /// Configure the default shell to zsh.
     pub ConfigureShell {
         name: "Configure default shell",
         phase: TaskPhase::Apply,
-        deps: [crate::tasks::apply::packages::InstallPackages],
+        deps: [crate::phases::apply::packages::InstallPackages],
         guard: |ctx| {
             ctx.platform.is_linux() && ctx.executor.which("zsh") && !ctx.is_ci
         },
@@ -24,11 +24,11 @@ resource_task! {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::platform::Os;
-    use crate::tasks::Task;
-    use crate::tasks::test_helpers::{
+    use crate::phases::Task;
+    use crate::phases::test_helpers::{
         ContextBuilder, empty_config, make_linux_context, make_platform_context_with_which,
     };
+    use crate::platform::Os;
     use std::path::PathBuf;
 
     #[test]

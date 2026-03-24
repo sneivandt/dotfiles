@@ -27,7 +27,7 @@ Validation happens at two levels: **runtime** (the `test` command) and
 | `RunShellcheck` | Shell scripts pass shellcheck (skipped if unavailable) |
 | `RunPSScriptAnalyzer` | PowerShell scripts pass PSScriptAnalyzer (skipped if unavailable) |
 
-All live in `cli/src/tasks/validation.rs` and implement the `Task` trait.
+All live in `cli/src/phases/validation.rs` and implement the `Task` trait.
 
 ## Per-Module `validate()` Functions
 
@@ -116,4 +116,4 @@ The `is_covered_by()` helper handles directory prefix matching (trailing `/`).
 - Every config module should have a `validate()` function
 - Wire new validators into `Config::validate()` in `config/mod.rs`
 - Config drift tests read real files — keep them self-contained with private TOML types
-- Validation tasks in `tasks/validation.rs` follow the standard `Task` trait pattern
+- Validation tasks in `phases/validation.rs` follow the standard `Task` trait pattern

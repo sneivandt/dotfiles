@@ -1,7 +1,7 @@
 use crate::engine::apply;
 use crate::engine::mode::ProcessOpts;
+use crate::phases::test_helpers::empty_config;
 use crate::resources::{ResourceChange, ResourceState};
-use crate::tasks::test_helpers::empty_config;
 use std::path::PathBuf;
 
 use super::{

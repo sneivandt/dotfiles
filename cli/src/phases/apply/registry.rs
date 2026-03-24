@@ -1,7 +1,7 @@
 //! Task: apply Windows registry entries.
 
+use crate::phases::{ProcessOpts, TaskPhase, batch_resource_task};
 use crate::resources::registry::{RegistryResource, batch_check_values};
-use crate::tasks::{ProcessOpts, TaskPhase, batch_resource_task};
 
 batch_resource_task! {
     /// Apply Windows registry settings.
@@ -31,9 +31,9 @@ batch_resource_task! {
 mod tests {
     use super::*;
     use crate::config::registry::RegistryEntry;
-    use crate::tasks::Task;
-    use crate::tasks::TaskResult;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context, make_windows_context};
+    use crate::phases::Task;
+    use crate::phases::TaskResult;
+    use crate::phases::test_helpers::{empty_config, make_linux_context, make_windows_context};
     use std::path::PathBuf;
 
     #[test]

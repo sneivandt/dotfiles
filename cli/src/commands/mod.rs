@@ -12,9 +12,9 @@ use crate::cli::GlobalOpts;
 use crate::config::Config;
 use crate::config::profiles;
 use crate::logging::{Log, Logger, Output};
+use crate::phases::TaskPhase;
+use crate::phases::{self, Context, Task};
 use crate::platform::Platform;
-use crate::tasks::TaskPhase;
-use crate::tasks::{self, Context, Task};
 
 /// Environment variable set before re-exec to prevent infinite self-update loops.
 const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
@@ -311,7 +311,7 @@ mod unix_tests {
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod task_graph_tests {
     use super::*;
-    use crate::tasks::{
+    use crate::phases::{
         TaskResult, task_deps,
         test_helpers::{empty_config, make_static_context},
     };
@@ -528,14 +528,14 @@ impl CommandRunner {
 
     /// Create dynamic overlay script tasks from the loaded configuration.
     ///
-    /// Returns one [`OverlayScriptTask`](crate::tasks::apply::overlay_scripts::OverlayScriptTask)
+    /// Returns one [`OverlayScriptTask`](crate::phases::apply::overlay_scripts::OverlayScriptTask)
     /// per script entry in the overlay config.  Returns an empty list when no
     /// overlay is configured.
     #[must_use]
     pub fn overlay_script_tasks(&self) -> Vec<Box<dyn Task>> {
         let config = self.ctx.config_read();
         config.overlay.as_ref().map_or_else(Vec::new, |root| {
-            tasks::apply::overlay_scripts::overlay_script_tasks(&config.scripts, root)
+            phases::apply::overlay_scripts::overlay_script_tasks(&config.scripts, root)
         })
     }
 
@@ -685,7 +685,7 @@ pub fn run_tasks_to_completion<'a>(
         log.phase(&phase.to_string());
 
         if ctx.parallel && phase_tasks.len() > 1 {
-            if tasks::has_cycle(&phase_tasks) {
+            if phases::has_cycle(&phase_tasks) {
                 let message = format!("dependency cycle detected in {phase} phase task graph");
                 log.error(&message);
                 anyhow::bail!(message);
@@ -697,7 +697,7 @@ pub fn run_tasks_to_completion<'a>(
                     log.warn("cancelled - stopping before next task");
                     break;
                 }
-                tasks::execute(*task, ctx);
+                phases::execute(*task, ctx);
             }
         }
     }

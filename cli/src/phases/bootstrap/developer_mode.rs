@@ -1,7 +1,7 @@
 //! Task: enable Windows Developer Mode.
 
+use crate::phases::{ProcessOpts, TaskPhase, resource_task};
 use crate::resources::developer_mode::DeveloperModeResource;
-use crate::tasks::{ProcessOpts, TaskPhase, resource_task};
 
 resource_task! {
     /// Enable Windows Developer Mode (allows symlink creation without admin).
@@ -19,8 +19,8 @@ resource_task! {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::tasks::Task;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context, make_windows_context};
+    use crate::phases::Task;
+    use crate::phases::test_helpers::{empty_config, make_linux_context, make_windows_context};
     use std::path::PathBuf;
 
     #[test]

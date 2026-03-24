@@ -3,10 +3,10 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::resources::symlink::SymlinkResource;
-use crate::tasks::{
+use crate::phases::{
     Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources_remove, resource_task,
 };
+use crate::resources::symlink::SymlinkResource;
 
 /// Build a single [`SymlinkResource`] from a config entry.
 fn build_resource(
@@ -86,7 +86,7 @@ fn compute_target(home: &Path, source: &str) -> std::path::PathBuf {
 mod tests {
     use super::*;
     use crate::config::symlinks::Symlink;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use crate::phases::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 
     // ------------------------------------------------------------------

@@ -8,10 +8,10 @@
 //! variable (set by the wrapper scripts themselves), falling back to
 //! platform detection when the variable is absent.
 
-use crate::resources::wrapper::{WrapperResource, WrapperType};
-use crate::tasks::{
+use crate::phases::{
     Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, process_resources_remove,
 };
+use crate::resources::wrapper::{WrapperResource, WrapperType};
 
 /// Install the CLI wrapper script in `~/.local/bin`.
 #[derive(Debug)]
@@ -69,9 +69,9 @@ impl Task for UninstallWrapper {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::phases::Task;
+    use crate::phases::test_helpers::{ContextBuilder, empty_config};
     use crate::platform::Os;
-    use crate::tasks::Task;
-    use crate::tasks::test_helpers::{ContextBuilder, empty_config};
     use std::path::PathBuf;
 
     #[test]

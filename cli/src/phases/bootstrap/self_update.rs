@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 
 use crate::logging::Output;
 
-use crate::tasks::{Context, Task, TaskPhase, TaskResult};
+use crate::phases::{Context, Task, TaskPhase, TaskResult};
 
 /// GitHub repository used for release lookups.
 const REPO: &str = "sneivandt/dotfiles";
@@ -637,7 +637,7 @@ impl Task for UpdateBinary {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use crate::phases::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 
     #[test]

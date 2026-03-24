@@ -1,7 +1,7 @@
 //! Task: configure Git settings.
 
+use crate::phases::{ProcessOpts, TaskPhase, resource_task};
 use crate::resources::git_config::GitConfigResource;
-use crate::tasks::{ProcessOpts, TaskPhase, resource_task};
 
 resource_task! {
     /// Configure git settings from git-config.toml.
@@ -19,8 +19,8 @@ resource_task! {
 mod tests {
     use super::*;
     use crate::config::git_config::GitSetting;
-    use crate::tasks::Task;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use crate::phases::Task;
+    use crate::phases::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 
     #[test]

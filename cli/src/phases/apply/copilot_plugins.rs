@@ -4,12 +4,12 @@ use anyhow::Result;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use crate::phases::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resource_states};
 use crate::resources::ResourceState;
 use crate::resources::copilot_plugin::{
     CopilotPluginCache, CopilotPluginResource, copilot_supports_plugins, query_copilot_state,
     register_marketplace,
 };
-use crate::tasks::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resource_states};
 
 /// Install GitHub Copilot plugins.
 #[derive(Debug)]
@@ -141,14 +141,14 @@ impl Task for InstallCopilotPlugins {
 mod tests {
     use super::*;
     use crate::config::copilot_plugins::CopilotPlugin;
-    use crate::tasks::Task;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use crate::phases::Task;
+    use crate::phases::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
     use std::sync::Arc;
 
     use crate::exec::{ExecResult, MockExecutor};
+    use crate::phases::test_helpers::make_context;
     use crate::platform::{Os, Platform};
-    use crate::tasks::test_helpers::make_context;
 
     #[test]
     fn should_run_is_false_without_plugins() {

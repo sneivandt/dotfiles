@@ -2,7 +2,7 @@
 
 use anyhow::{Context as _, Result};
 
-use crate::tasks::{Context, Task, TaskPhase, TaskResult, UpdateSignal, task_deps};
+use crate::phases::{Context, Task, TaskPhase, TaskResult, UpdateSignal, task_deps};
 
 /// Re-parse all configuration files after `UpdateRepository` has pulled the
 /// latest changes.
@@ -35,7 +35,7 @@ impl Task for ReloadConfig {
         TaskPhase::Repository
     }
 
-    task_deps![crate::tasks::repository::update::UpdateRepository];
+    task_deps![crate::phases::repository::update::UpdateRepository];
 
     fn should_run(&self, _ctx: &Context) -> bool {
         self.repo_updated.was_updated()
@@ -76,8 +76,8 @@ impl Task for ReloadConfig {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::tasks::UpdateSignal;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use crate::phases::UpdateSignal;
+    use crate::phases::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 
     #[test]

@@ -79,18 +79,18 @@ macro_rules! resource_task {
         #[derive(Debug)]
         $vis struct $name;
 
-        impl $crate::tasks::Task for $name {
+        impl $crate::phases::Task for $name {
             fn name(&self) -> &'static str {
                 $task_name
             }
 
-            fn phase(&self) -> $crate::tasks::TaskPhase {
+            fn phase(&self) -> $crate::phases::TaskPhase {
                 $phase
             }
 
-            $($crate::tasks::task_deps![$($dep),+];)?
+            $($crate::phases::task_deps![$($dep),+];)?
 
-            fn should_run(&self, ctx: &$crate::tasks::Context) -> bool {
+            fn should_run(&self, ctx: &$crate::phases::Context) -> bool {
                 let _ = ctx;
                 $(
                     let $guard_ctx = ctx;
@@ -101,8 +101,8 @@ macro_rules! resource_task {
 
             fn run_if_applicable(
                 &self,
-                ctx: &$crate::tasks::Context,
-            ) -> ::anyhow::Result<Option<$crate::tasks::TaskResult>> {
+                ctx: &$crate::phases::Context,
+            ) -> ::anyhow::Result<Option<$crate::phases::TaskResult>> {
                 $(
                     let $guard_ctx = ctx;
                     if !{ $guard_expr } { return Ok(None); }
@@ -121,14 +121,14 @@ macro_rules! resource_task {
                     let $build_ctx = ctx;
                     $build_expr
                 });
-                $crate::tasks::process_resources(ctx, resources, &$opts).map(Some)
+                $crate::phases::process_resources(ctx, resources, &$opts).map(Some)
             }
 
-            fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
+            fn run(&self, ctx: &$crate::phases::Context) -> ::anyhow::Result<$crate::phases::TaskResult> {
                 let $items_ctx = ctx;
                 let items: Vec<_> = { $items_expr };
                 if items.is_empty() {
-                    return Ok($crate::tasks::TaskResult::NotApplicable(
+                    return Ok($crate::phases::TaskResult::NotApplicable(
                         "nothing configured".to_string(),
                     ));
                 }
@@ -140,7 +140,7 @@ macro_rules! resource_task {
                     let $build_ctx = ctx;
                     $build_expr
                 });
-                $crate::tasks::process_resources(ctx, resources, &$opts)
+                $crate::phases::process_resources(ctx, resources, &$opts)
             }
         }
     };
@@ -202,18 +202,18 @@ macro_rules! batch_resource_task {
         #[derive(Debug)]
         $vis struct $name;
 
-        impl $crate::tasks::Task for $name {
+        impl $crate::phases::Task for $name {
             fn name(&self) -> &'static str {
                 $task_name
             }
 
-            fn phase(&self) -> $crate::tasks::TaskPhase {
+            fn phase(&self) -> $crate::phases::TaskPhase {
                 $phase
             }
 
-            $($crate::tasks::task_deps![$($dep),+];)?
+            $($crate::phases::task_deps![$($dep),+];)?
 
-            fn should_run(&self, ctx: &$crate::tasks::Context) -> bool {
+            fn should_run(&self, ctx: &$crate::phases::Context) -> bool {
                 let _ = ctx;
                 $(
                     let $guard_ctx = ctx;
@@ -224,8 +224,8 @@ macro_rules! batch_resource_task {
 
             fn run_if_applicable(
                 &self,
-                ctx: &$crate::tasks::Context,
-            ) -> ::anyhow::Result<Option<$crate::tasks::TaskResult>> {
+                ctx: &$crate::phases::Context,
+            ) -> ::anyhow::Result<Option<$crate::phases::TaskResult>> {
                 $(
                     let $guard_ctx = ctx;
                     if !{ $guard_expr } { return Ok(None); }
@@ -250,14 +250,14 @@ macro_rules! batch_resource_task {
                     let state = { $state_expr };
                     ($state_res, state)
                 });
-                $crate::tasks::process_resource_states(ctx, resource_states, &$opts).map(Some)
+                $crate::phases::process_resource_states(ctx, resource_states, &$opts).map(Some)
             }
 
-            fn run(&self, ctx: &$crate::tasks::Context) -> ::anyhow::Result<$crate::tasks::TaskResult> {
+            fn run(&self, ctx: &$crate::phases::Context) -> ::anyhow::Result<$crate::phases::TaskResult> {
                 let $items_ctx = ctx;
                 let $cache_items: Vec<_> = { $items_expr };
                 if $cache_items.is_empty() {
-                    return Ok($crate::tasks::TaskResult::NotApplicable(
+                    return Ok($crate::phases::TaskResult::NotApplicable(
                         "nothing configured".to_string(),
                     ));
                 }
@@ -275,7 +275,7 @@ macro_rules! batch_resource_task {
                     let state = { $state_expr };
                     ($state_res, state)
                 });
-                $crate::tasks::process_resource_states(ctx, resource_states, &$opts)
+                $crate::phases::process_resource_states(ctx, resource_states, &$opts)
             }
         }
     };

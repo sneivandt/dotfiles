@@ -1,6 +1,6 @@
 //! Core logging types: task entries, status, and the [`Log`] trait.
 use super::diagnostic::DiagnosticLog;
-use crate::tasks::TaskPhase;
+use crate::phases::TaskPhase;
 
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]

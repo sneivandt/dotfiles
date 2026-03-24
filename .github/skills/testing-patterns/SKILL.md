@@ -81,7 +81,7 @@ fn from_entry_copies_name() {
 Even resources that mainly work with the filesystem (for example
 `SymlinkResource`) accept an executor handle for platform-specific fallbacks.
 
-**Tasks** — use helpers defined in `cli/src/tasks/mod.rs` (in `#[cfg(test)]` scope):
+**Tasks** — use helpers defined in `cli/src/phases/mod.rs` (in `#[cfg(test)]` scope):
 ```rust
 // Context helpers
 make_linux_context(config)           // Linux context

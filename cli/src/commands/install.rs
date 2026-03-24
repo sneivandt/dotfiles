@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::cli::{GlobalOpts, InstallOpts};
 use crate::logging::Logger;
-use crate::tasks;
+use crate::phases;
 
 const TASK_FILTER_STOP_WORDS: &[&str] = &[
     "install",
@@ -40,7 +40,7 @@ pub fn run(
     // also triggers a self-update.
     let root = resolve_root(global)?;
     if std::env::var_os(super::REEXEC_GUARD_VAR).is_none()
-        && tasks::bootstrap::self_update::pre_update(&root, &**log, global.dry_run)?
+        && phases::bootstrap::self_update::pre_update(&root, &**log, global.dry_run)?
     {
         super::re_exec(&root);
     }
@@ -48,11 +48,11 @@ pub fn run(
     let runner = super::CommandRunner::new(global, log, token)?;
 
     // Build the full task list: static tasks + dynamic overlay script tasks.
-    let mut all_tasks = tasks::all_install_tasks();
+    let mut all_tasks = phases::all_install_tasks();
     all_tasks.extend(runner.overlay_script_tasks());
     warn_unmatched_filters(&all_tasks, &opts.only, "--only", &**log);
     warn_unmatched_filters(&all_tasks, &opts.skip, "--skip", &**log);
-    let filtered: Vec<&dyn tasks::Task> = all_tasks
+    let filtered: Vec<&dyn phases::Task> = all_tasks
         .iter()
         .filter(|t| {
             // Both --only and --skip can be active simultaneously.
@@ -87,7 +87,7 @@ pub fn run(
 
 /// Warn about filter values that don't match any known task name.
 fn warn_unmatched_filters(
-    tasks: &[Box<dyn tasks::Task>],
+    tasks: &[Box<dyn phases::Task>],
     filters: &[String],
     flag: &str,
     log: &dyn crate::logging::Output,
@@ -255,7 +255,7 @@ mod tests {
     fn warn_unmatched_filters_warns_on_no_match() {
         use crate::logging::Logger;
         let log = Logger::new("test");
-        let all = tasks::all_install_tasks();
+        let all = phases::all_install_tasks();
 
         // "xyznonexistent" should not match any task
         warn_unmatched_filters(&all, &["xyznonexistent".to_string()], "--only", &log);
@@ -267,7 +267,7 @@ mod tests {
     fn warn_unmatched_filters_silent_on_valid_match() {
         use crate::logging::Logger;
         let log = Logger::new("test");
-        let all = tasks::all_install_tasks();
+        let all = phases::all_install_tasks();
 
         warn_unmatched_filters(&all, &["symlinks".to_string()], "--only", &log);
     }

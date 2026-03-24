@@ -14,8 +14,8 @@ use dotfiles_cli::config::Config;
 use dotfiles_cli::config::profiles;
 use dotfiles_cli::exec::{ExecResult, Executor};
 use dotfiles_cli::logging::{Log, Logger};
+use dotfiles_cli::phases::Context;
 use dotfiles_cli::platform::Platform;
-use dotfiles_cli::tasks::Context;
 
 /// Write the minimal set of TOML config files required by the dotfiles engine
 /// into `root`.
@@ -245,7 +245,7 @@ impl IntegrationTestContext {
             Arc::clone(&log) as Arc<dyn Log>,
             Arc::new(StubExecutor),
             home.path().to_path_buf(),
-            dotfiles_cli::tasks::ContextOpts {
+            dotfiles_cli::phases::ContextOpts {
                 dry_run: false,
                 parallel: false,
                 is_ci: Some(false),

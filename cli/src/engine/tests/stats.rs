@@ -1,5 +1,5 @@
 use crate::engine::{TaskResult, TaskStats};
-use crate::tasks::test_helpers::empty_config;
+use crate::phases::test_helpers::empty_config;
 use std::path::PathBuf;
 
 use super::{dry_run_context, test_context};

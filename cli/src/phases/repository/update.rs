@@ -1,7 +1,7 @@
 //! Task: update the dotfiles repository.
 use anyhow::Result;
 
-use crate::tasks::{Context, Task, TaskPhase, TaskResult, UpdateSignal, task_deps};
+use crate::phases::{Context, Task, TaskPhase, TaskResult, UpdateSignal, task_deps};
 
 /// Pull latest changes from the remote repository.
 #[derive(Debug)]
@@ -30,7 +30,7 @@ impl Task for UpdateRepository {
         TaskPhase::Repository
     }
 
-    task_deps![crate::tasks::repository::sparse_checkout::ConfigureSparseCheckout];
+    task_deps![crate::phases::repository::sparse_checkout::ConfigureSparseCheckout];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.root().join(".git").exists()
@@ -217,9 +217,9 @@ fn worktree_has_local_changes(ctx: &Context, git_env: &[(&str, &str)]) -> Result
 mod tests {
     use super::*;
     use crate::exec::{ExecResult, Executor, MockExecutor};
+    use crate::phases::UpdateSignal;
+    use crate::phases::test_helpers::{empty_config, make_context, make_linux_context};
     use crate::platform::{Os, Platform};
-    use crate::tasks::UpdateSignal;
-    use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
     use std::path::PathBuf;
     use std::sync::Arc;
 

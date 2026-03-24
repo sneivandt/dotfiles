@@ -2,10 +2,10 @@
 use anyhow::Result;
 use std::sync::Arc;
 
+use crate::phases::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resource_states};
 use crate::resources::vscode_extension::{
     VsCodeExtensionResource, find_code_command, get_installed_extensions,
 };
-use crate::tasks::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resource_states};
 
 /// Install VS Code extensions.
 #[derive(Debug)]
@@ -62,7 +62,7 @@ impl Task for InstallVsCodeExtensions {
 mod tests {
     use super::*;
     use crate::config::vscode_extensions::VsCodeExtension;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use crate::phases::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 
     #[test]

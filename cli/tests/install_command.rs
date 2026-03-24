@@ -15,8 +15,8 @@ mod common;
 use std::any::TypeId;
 use std::collections::HashSet;
 
+use dotfiles_cli::phases;
 use dotfiles_cli::platform::{Os, Platform};
-use dotfiles_cli::tasks;
 
 const TASK_FILTER_STOP_WORDS: &[&str] = &[
     "install",
@@ -79,7 +79,7 @@ fn task_matches_filter(task_name: &str, filter: &str) -> bool {
 /// an install task will cause it to fail, prompting a deliberate snapshot update.
 #[test]
 fn install_task_names() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = phases::all_install_tasks();
     let task_names: Vec<&str> = all_tasks.iter().map(|t| t.name()).collect();
     insta::assert_snapshot!("install_task_names", task_names.join("\n"));
 }
@@ -91,13 +91,13 @@ fn install_task_names() {
 /// The install task list must contain exactly the expected number of tasks.
 #[test]
 fn install_task_count() {
-    assert_eq!(tasks::all_install_tasks().len(), 21);
+    assert_eq!(phases::all_install_tasks().len(), 21);
 }
 
 /// Every task name must be non-empty.
 #[test]
 fn install_task_names_are_non_empty() {
-    for task in tasks::all_install_tasks() {
+    for task in phases::all_install_tasks() {
         assert!(!task.name().is_empty(), "install task has an empty name");
     }
 }
@@ -105,7 +105,7 @@ fn install_task_names_are_non_empty() {
 /// No two install tasks may share the same name.
 #[test]
 fn install_task_names_are_unique() {
-    let tasks = tasks::all_install_tasks();
+    let tasks = phases::all_install_tasks();
     let mut seen: HashSet<&str> = HashSet::new();
     for task in &tasks {
         assert!(
@@ -119,7 +119,7 @@ fn install_task_names_are_unique() {
 /// No two install tasks may share the same [`TypeId`].
 #[test]
 fn install_task_type_ids_are_unique() {
-    let tasks = tasks::all_install_tasks();
+    let tasks = phases::all_install_tasks();
     let ids: HashSet<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
     assert_eq!(
         ids.len(),
@@ -132,7 +132,7 @@ fn install_task_type_ids_are_unique() {
 /// task in the same list (i.e., no dangling dependency references).
 #[test]
 fn install_task_dependencies_are_resolvable() {
-    let tasks = tasks::all_install_tasks();
+    let tasks = phases::all_install_tasks();
     let present: HashSet<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
     for task in &tasks {
         for dep in task.dependencies() {
@@ -152,7 +152,7 @@ fn install_task_dependencies_are_resolvable() {
 /// Tasks matching the skip selector must be excluded from the filtered list.
 #[test]
 fn skip_filter_excludes_matching_tasks() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = phases::all_install_tasks();
     let skip_keyword = "packages";
 
     let filtered: Vec<&str> = all_tasks
@@ -177,7 +177,7 @@ fn skip_filter_excludes_matching_tasks() {
 /// When the skip keyword does not match any task name the full list is returned.
 #[test]
 fn skip_filter_with_no_match_returns_all_tasks() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = phases::all_install_tasks();
     let skip_keyword = "zzznomatch";
     let total = all_tasks.len();
 
@@ -199,7 +199,7 @@ fn skip_filter_with_no_match_returns_all_tasks() {
 /// Only tasks matching the `--only` selector should remain.
 #[test]
 fn only_filter_includes_only_matching_tasks() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = phases::all_install_tasks();
     let only_keyword = "symlinks";
 
     let filtered: Vec<&str> = all_tasks
@@ -218,7 +218,7 @@ fn only_filter_includes_only_matching_tasks() {
 /// Canonical selectors disambiguate similar task names.
 #[test]
 fn only_filter_disambiguates_update_tasks() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = phases::all_install_tasks();
     let filtered: Vec<&str> = all_tasks
         .iter()
         .filter(|t| task_matches_filter(t.name(), "repository"))
@@ -240,7 +240,7 @@ fn only_filter_disambiguates_update_tasks() {
 /// Canonical selector leading tokens should match non-generic task names.
 #[test]
 fn only_filter_matches_reload_task_by_keyword() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = phases::all_install_tasks();
     let filtered: Vec<&str> = all_tasks
         .iter()
         .filter(|t| task_matches_filter(t.name(), "reload"))
@@ -253,7 +253,7 @@ fn only_filter_matches_reload_task_by_keyword() {
 /// When `--only` matches nothing the result is an empty list.
 #[test]
 fn only_filter_with_no_match_returns_empty() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = phases::all_install_tasks();
     let only_keyword = "zzznomatch";
 
     let any_match = all_tasks
@@ -285,12 +285,12 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-install"));
 
-    let task_ctx = tasks::Context::new(
+    let task_ctx = phases::Context::new(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        tasks::ContextOpts {
+        phases::ContextOpts {
             dry_run: true,
             parallel: false,
             is_ci: None,
@@ -298,7 +298,7 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
     )
     .expect("create context");
 
-    let tasks = tasks::all_install_tasks();
+    let tasks = phases::all_install_tasks();
     // Calling should_run on every task must not panic.
     for task in &tasks {
         let _ = task.should_run(&task_ctx);
@@ -318,8 +318,8 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
 fn install_tasks_form_acyclic_dependency_graph() {
     use dotfiles_cli::engine::graph::has_cycle;
 
-    let tasks = tasks::all_install_tasks();
-    let task_refs: Vec<&dyn tasks::Task> = tasks.iter().map(Box::as_ref).collect();
+    let tasks = phases::all_install_tasks();
+    let task_refs: Vec<&dyn phases::Task> = tasks.iter().map(Box::as_ref).collect();
     assert!(
         !has_cycle(&task_refs),
         "install task dependency graph contains a cycle"
@@ -333,7 +333,7 @@ fn install_tasks_form_acyclic_dependency_graph() {
 /// The install task list must contain "Install symlinks".
 #[test]
 fn install_task_list_contains_install_symlinks() {
-    let tasks = tasks::all_install_tasks();
+    let tasks = phases::all_install_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
         names.contains(&"Install symlinks"),
@@ -344,7 +344,7 @@ fn install_task_list_contains_install_symlinks() {
 /// The install task list must contain "Install git hooks".
 #[test]
 fn install_task_list_contains_install_git_hooks() {
-    let tasks = tasks::all_install_tasks();
+    let tasks = phases::all_install_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
         names.contains(&"Install Git hooks"),
@@ -355,7 +355,7 @@ fn install_task_list_contains_install_git_hooks() {
 /// The install task list must contain "Configure Git".
 #[test]
 fn install_task_list_contains_configure_git() {
-    let tasks = tasks::all_install_tasks();
+    let tasks = phases::all_install_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
         names.contains(&"Configure Git"),
@@ -390,12 +390,12 @@ fn install_tasks_should_run_with_windows_platform() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-windows"));
 
-    let task_ctx = tasks::Context::new(
+    let task_ctx = phases::Context::new(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        tasks::ContextOpts {
+        phases::ContextOpts {
             dry_run: true,
             parallel: false,
             is_ci: None,
@@ -403,7 +403,7 @@ fn install_tasks_should_run_with_windows_platform() {
     )
     .expect("create context");
 
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = phases::all_install_tasks();
     for task in &all_tasks {
         let _ = task.should_run(&task_ctx);
     }
@@ -417,7 +417,7 @@ fn install_tasks_should_run_with_windows_platform() {
 /// be excluded.
 #[test]
 fn skip_with_multiple_keywords_excludes_all_matching() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = phases::all_install_tasks();
     let skip_keywords = ["packages", "registry"];
 
     let filtered: Vec<&str> = all_tasks
@@ -452,7 +452,7 @@ fn skip_with_multiple_keywords_excludes_all_matching() {
 /// all be included (union, not intersection).
 #[test]
 fn only_with_multiple_keywords_includes_all_matching() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = phases::all_install_tasks();
     let only_keywords = ["symlinks", "git-hooks"];
 
     let filtered: Vec<&str> = all_tasks
@@ -495,8 +495,8 @@ fn only_with_multiple_keywords_includes_all_matching() {
 fn install_symlinks_is_idempotent() {
     use std::sync::Arc;
 
+    use dotfiles_cli::phases::Task;
     use dotfiles_cli::resources::Resource;
-    use dotfiles_cli::tasks::Task;
 
     let ctx = common::TestContextBuilder::new()
         .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")
@@ -514,25 +514,25 @@ fn install_symlinks_is_idempotent() {
         Arc::new(dotfiles_cli::logging::Logger::new("test-idempotent"));
 
     let config = ctx.load_config("base");
-    let task_ctx = tasks::Context::from_raw(
+    let task_ctx = phases::Context::from_raw(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
         home_dir.path().to_path_buf(),
-        tasks::ContextOpts {
+        phases::ContextOpts {
             dry_run: false,
             parallel: false,
             is_ci: Some(false),
         },
     );
 
-    let task = tasks::apply::symlinks::InstallSymlinks;
+    let task = phases::apply::symlinks::InstallSymlinks;
 
     // First run: must succeed and create the symlink.
     let result1 = task.run(&task_ctx).expect("first install run");
     assert!(
-        matches!(result1, tasks::TaskResult::Ok),
+        matches!(result1, phases::TaskResult::Ok),
         "first install run should succeed"
     );
 
@@ -558,7 +558,7 @@ fn install_symlinks_is_idempotent() {
     // Second run: must succeed without changing anything.
     let result2 = task.run(&task_ctx).expect("second install run");
     assert!(
-        matches!(result2, tasks::TaskResult::Ok),
+        matches!(result2, phases::TaskResult::Ok),
         "second install run should succeed"
     );
 
@@ -586,7 +586,7 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
     use std::os::unix::fs::PermissionsExt;
     use std::sync::Arc;
 
-    use dotfiles_cli::tasks::Task;
+    use dotfiles_cli::phases::Task;
 
     let ctx = common::TestContextBuilder::new()
         .with_config_file(
@@ -616,24 +616,24 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
         Arc::new(dotfiles_cli::logging::Logger::new("test-chmod"));
 
     let config = ctx.load_config_for_platform("base", platform);
-    let task_ctx = tasks::Context::from_raw(
+    let task_ctx = phases::Context::from_raw(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
         home_dir.path().to_path_buf(),
-        tasks::ContextOpts {
+        phases::ContextOpts {
             dry_run: false,
             parallel: false,
             is_ci: Some(false),
         },
     );
 
-    let result = tasks::apply::chmod::ApplyFilePermissions
+    let result = phases::apply::chmod::ApplyFilePermissions
         .run(&task_ctx)
         .expect("apply file permissions run");
     assert!(
-        matches!(result, tasks::TaskResult::Ok),
+        matches!(result, phases::TaskResult::Ok),
         "apply file permissions should succeed"
     );
 
@@ -899,20 +899,20 @@ fn install_tasks_should_run_with_parallel_enabled() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-parallel"));
 
-    let task_ctx = tasks::Context::from_raw(
+    let task_ctx = phases::Context::from_raw(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
         std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())),
-        tasks::ContextOpts {
+        phases::ContextOpts {
             dry_run: true,
             parallel: true,
             is_ci: Some(false),
         },
     );
 
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = phases::all_install_tasks();
     for task in &all_tasks {
         let _ = task.should_run(&task_ctx);
     }

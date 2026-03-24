@@ -2,15 +2,15 @@
 
 use std::sync::Arc;
 
+use crate::phases::{ProcessOpts, TaskPhase, resource_task};
 use crate::resources::systemd_unit::SystemdUnitResource;
-use crate::tasks::{ProcessOpts, TaskPhase, resource_task};
 
 resource_task! {
     /// Enable and start systemd user units.
     pub ConfigureSystemd {
         name: "Configure systemd units",
         phase: TaskPhase::Apply,
-        deps: [crate::tasks::apply::symlinks::InstallSymlinks],
+        deps: [crate::phases::apply::symlinks::InstallSymlinks],
         guard: |ctx| {
             ctx.platform.supports_systemd()
                 && !ctx.config_read().units.is_empty()
@@ -37,11 +37,11 @@ mod tests {
     use super::*;
     use crate::config::systemd_units::SystemdUnit;
     use crate::exec::{ExecResult, MockExecutor};
-    use crate::platform::{Os, Platform};
-    use crate::tasks::test_helpers::{
+    use crate::phases::test_helpers::{
         empty_config, make_context, make_linux_context, make_platform_context_with_which,
     };
-    use crate::tasks::{Context, Task, TaskResult};
+    use crate::phases::{Context, Task, TaskResult};
+    use crate::platform::{Os, Platform};
     use std::path::PathBuf;
     use std::sync::Arc;
 

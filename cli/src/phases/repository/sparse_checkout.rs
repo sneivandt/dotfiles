@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::fs::{FileSystemOps, SystemFileSystemOps};
-use crate::tasks::{Context, Task, TaskPhase, TaskResult};
+use crate::phases::{Context, Task, TaskPhase, TaskResult};
 
 /// Default sparse checkout pattern that includes all files at root level.
 const DEFAULT_SPARSE_PATTERN: &str = "/*";
@@ -276,8 +276,8 @@ mod tests {
     use super::*;
     use crate::exec::{ExecResult, Executor, MockExecutor};
     use crate::fs::MockFileSystemOps;
+    use crate::phases::test_helpers::{empty_config, make_context, make_linux_context};
     use crate::platform::{Os, Platform};
-    use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
     use std::path::PathBuf;
     use std::sync::Arc;
 

@@ -52,7 +52,7 @@ cli/src/
 │   ├── parallel.rs # Parallel execution helpers
 │   ├── update_signal.rs # Arc<AtomicBool> signalling
 │   └── tests/     # Engine unit tests
-├── tasks/         # Task implementations
+├── phases/        # Phase task implementations
 │   ├── mod.rs     # Task trait, TaskPhase, re-exports from engine/ and helpers/
 │   ├── helpers/   # Macros (task_deps!, resource_task!, batch_resource_task!) and catalog
 │   ├── system/ # System-phase tasks (self_update, update, sparse_checkout, hooks, etc.)
@@ -95,15 +95,15 @@ Use the `task_deps!` macro to implement `fn dependencies()` — it eliminates
 the manual `const DEPS` boilerplate:
 
 ```rust
-use crate::tasks::{Context, Task, TaskPhase, TaskResult, task_deps};
+use crate::phases::{Context, Task, TaskPhase, TaskResult, task_deps};
 
 impl Task for InstallSymlinks {
-    task_deps![crate::tasks::repository::update::UpdateRepository, crate::tasks::bootstrap::developer_mode::EnableDeveloperMode];
+    task_deps![crate::phases::repository::update::UpdateRepository, crate::phases::bootstrap::developer_mode::EnableDeveloperMode];
     // ...
 }
 ```
 
-Import `task_deps` from `crate::tasks::` alongside the other task helpers.  The macro
+Import `task_deps` from `crate::phases::` alongside the other task helpers.  The macro
 expands to the `fn dependencies(&self) -> &[std::any::TypeId]` method body, so
 it must appear inside `impl Task for …`.
 
@@ -125,7 +125,7 @@ For tasks that read config items, map each to a resource, and process them,
 the `resource_task!` macro eliminates all boilerplate:
 
 ```rust
-use crate::tasks::{ProcessOpts, TaskPhase, resource_task};
+use crate::phases::{ProcessOpts, TaskPhase, resource_task};
 use crate::resources::my_resource::MyResource;
 
 resource_task! {
@@ -133,7 +133,7 @@ resource_task! {
     pub MyTask {
         name: "My task",
         phase: TaskPhase::Apply,
-        deps: [crate::tasks::repository::some_dependency::SomeDependency],  // optional
+        deps: [crate::phases::repository::some_dependency::SomeDependency],  // optional
         guard: |ctx| ctx.platform.supports_systemd(),     // optional
         items: |ctx| ctx.config_read().items.clone(),
         build: |item, ctx| MyResource::from_entry(&item, &ctx.home),
@@ -147,11 +147,11 @@ The macro generates a `Debug` struct and a full `Task` implementation:
 - `run` clones the config items, maps each to a resource via `build`, and
   delegates to `process_resources`
 
-Import `resource_task` and `TaskPhase` from `crate::tasks::` alongside `ProcessOpts`. Tests that call
-`should_run` or `run` must also import `crate::tasks::Task` to bring the
+Import `resource_task` and `TaskPhase` from `crate::phases::` alongside `ProcessOpts`. Tests that call
+`should_run` or `run` must also import `crate::phases::Task` to bring the
 trait into scope.
 
-See `tasks/apply/git_config.rs` (no deps, no guard) and `tasks/apply/chmod.rs` (deps + guard)
+See `phases/apply/git_config.rs` (no deps, no guard) and `phases/apply/chmod.rs` (deps + guard)
 for real examples.
 
 #### Manual `Task` impl (for complex or non-standard tasks)
@@ -160,14 +160,14 @@ When a task needs custom logic beyond the macro (e.g., batch-querying state,
 conditional skipping, or non-resource work), write the impl manually:
 
 ```rust
-use crate::tasks::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, task_deps};
+use crate::phases::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, task_deps};
 use crate::resources::my_resource::MyResource;
 
 pub struct MyTask;
 impl Task for MyTask {
     fn name(&self) -> &str { "My task" }
     fn phase(&self) -> TaskPhase { TaskPhase::Apply }
-    task_deps![crate::tasks::repository::some_dependency::SomeDependency]; // omit if no dependencies
+    task_deps![crate::phases::repository::some_dependency::SomeDependency]; // omit if no dependencies
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_systemd() && !ctx.config_read().items.is_empty()
     }
@@ -184,7 +184,7 @@ For tasks that batch-query state up front (packages, VS Code extensions,
 registry), build `(Resource, ResourceState)` pairs and use
 `process_resource_states()` instead.
 
-Register in `tasks/helpers/catalog.rs` by adding `Box::new(crate::tasks::apply::my_module::MyTask)` to
+Register in `phases/catalog.rs` by adding `Box::new(crate::phases::apply::my_module::MyTask)` to
 `all_install_tasks()`.
 
 For **uninstall** tasks, use `process_resources_remove()`:
@@ -507,14 +507,14 @@ and have no lifetime parameter.
 ### Generic Resource Loop
 
 `engine/orchestrate.rs` provides helpers that handle the full check→dry-run→apply
-loop so individual tasks don't repeat it (re-exported from `tasks/mod.rs`):
+loop so individual tasks don't repeat it (re-exported from `phases/mod.rs`):
 
 - **`process_resources(ctx, resources, opts)`** — calls `current_state()` per resource.
 - **`process_resource_states(ctx, resource_states, opts)`** — takes pre-computed `(Resource, ResourceState)` pairs for batch-checked resources.
 - **`process_resources_remove(ctx, resources, verb)`** — for uninstall: removes resources in `Correct` state, skips others.
 
 Both `process_resources` and `process_resource_states` are implemented in
-`engine/orchestrate.rs` and re-exported from `tasks/mod.rs`. They accept a `ProcessOpts` value
+`engine/orchestrate.rs` and re-exported from `phases/mod.rs`. They accept a `ProcessOpts` value
 that controls which states are fixable and whether errors bail or warn.
 Use these helpers for **all** new resource-based tasks.
 
@@ -528,7 +528,7 @@ execution deterministic.
 
 ## Rules
 
-- All task logic in `cli/src/tasks/*.rs` — never in shell scripts
+- All task logic in `cli/src/phases/*.rs` — never in shell scripts
 - Every task: `name`, `should_run`, `run`; check `ctx.dry_run` before side effects
 - **Use `task_deps![…]`** inside `impl Task` to declare dependencies — never write `const DEPS` by hand
 - **Use `process_resources()` / `process_resource_states()`** for resource-based tasks — do not duplicate the state-match loop

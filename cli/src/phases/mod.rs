@@ -1,24 +1,25 @@
 //! Named, dependency-ordered tasks that orchestrate resource changes.
 //!
-//! Tasks are organised into three phases:
+//! Phases are organised into three sub-modules:
 //!
-//! - **Bootstrap** (`tasks::bootstrap`) — prepare the dotfiles tool itself
+//! - **Bootstrap** (`phases::bootstrap`) — prepare the dotfiles tool itself
 //!   (binary update, wrapper installation, PATH configuration).
-//! - **Repository** (`tasks::repository`) — synchronise the dotfiles repository
+//! - **Repository** (`phases::repository`) — synchronise the dotfiles repository
 //!   (sparse checkout, pull, config reload, hooks).
-//! - **Apply** (`tasks::apply`) — apply declared state to the user environment
+//! - **Apply** (`phases::apply`) — apply declared state to the user environment
 //!   (symlinks, packages, registry, etc.).
 
 pub mod apply;
 pub mod bootstrap;
-mod helpers;
+mod catalog;
+mod macros;
 pub mod repository;
 pub mod validation;
 
-pub use helpers::{all_install_tasks, all_uninstall_tasks};
-pub(crate) use helpers::{batch_resource_task, resource_task, task_deps};
+pub use catalog::{all_install_tasks, all_uninstall_tasks};
+pub(crate) use macros::{batch_resource_task, resource_task, task_deps};
 
-// Re-export engine types so downstream `use super::` and `use crate::tasks::`
+// Re-export engine types so downstream `use super::` and `use crate::phases::`
 // continue to work unchanged.
 pub use crate::engine::Context;
 pub use crate::engine::ContextOpts;

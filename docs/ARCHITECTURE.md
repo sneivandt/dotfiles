@@ -72,7 +72,7 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 │                   scheduler          │
 │  resources/     — idempotent check   │
 │                   + apply primitives │
-│  tasks/         — Task trait impls   │
+│  phases/        — Phase task impls   │
 │  platform.rs    — OS detection       │
 │  logging/       — structured logging │
 │  exec.rs        — subprocess exec    │
@@ -144,7 +144,7 @@ available only when invoking the binary directly.
 
 #### Commands (`commands/`)
 
-- **`install.rs`** — Uses `CommandRunner` to resolve the profile, load `Config`, build the task list, filter by `--skip`/`--only`, and execute each task via `tasks::execute()`
+- **`install.rs`** — Uses `CommandRunner` to resolve the profile, load `Config`, build the task list, filter by `--skip`/`--only`, and execute each task via `phases::execute()`
 - **`uninstall.rs`** — Removes managed symlinks
 - **`test.rs`** — Runs configuration validation
 
@@ -168,7 +168,7 @@ available only when invoking the binary directly.
 | `overlay.rs` | — | Overlay path resolution and persistence |
 | `scripts.rs` | `scripts.toml` | Custom script entries from overlay repo |
 
-#### Tasks (`tasks/`)
+#### Tasks (`phases/`)
 
 Each task implements the `Task` trait:
 
@@ -217,20 +217,20 @@ The execution engine provides the generic resource processing loop, dependency g
 
 **Implemented tasks** (executed as soon as dependencies allow):
 
-Bootstrap phase (`cli/src/tasks/bootstrap/`):
+Bootstrap phase (`cli/src/phases/bootstrap/`):
 - `self_update` — Update the dotfiles binary from latest GitHub release
 - `developer_mode` — Enable Windows developer mode (required for symlinks)
 - `wrapper` — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
 - `path` — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
 
-Repository phase (`cli/src/tasks/repository/`):
+Repository phase (`cli/src/phases/repository/`):
 - `update` — Update repository (`git pull --ff-only`)
 - `sparse_checkout` — Configure git sparse checkout
 - `reload_config` — Reload config from disk after `update` pulls new commits
 - `hooks` — Install git hooks
 - `overlay_scripts` — Discover overlay script definitions and log script count
 
-Apply phase (`cli/src/tasks/apply/`):
+Apply phase (`cli/src/phases/apply/`):
 - `packages` — Install system packages (pacman or winget)
 - `paru` — Bootstrap paru AUR helper (Arch Linux only)
 - `aur_packages` — Install AUR packages via paru (Arch Linux only)
@@ -364,13 +364,13 @@ packages::load(&conf.join("packages.toml"), active_categories)
     .context("loading packages.toml")?;
 ```
 
-Task failures are caught by `tasks::execute()` and recorded as `TaskStatus::Failed` — the binary continues executing remaining tasks and reports all failures in the summary.
+Task failures are caught by `phases::execute()` and recorded as `TaskStatus::Failed` — the binary continues executing remaining tasks and reports all failures in the summary.
 
 ## Testing Architecture
 
 ### Rust Tests
 
-- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/toml_loader.rs`, `tasks/bootstrap/*.rs`, `tasks/repository/*.rs`, `tasks/apply/*.rs`)
+- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/toml_loader.rs`, `phases/bootstrap/*.rs`, `phases/repository/*.rs`, `phases/apply/*.rs`)
 - **Integration tests**: Separate test binaries in `cli/tests/` (`install_command.rs`, `uninstall_command.rs`, `test_command.rs`), using `IntegrationTestContext` and `TestContextBuilder` helpers from `cli/tests/common/mod.rs`
 - **Snapshot tests**: Task list snapshots via the `insta` crate (`cli/tests/snapshots/`). Update with `INSTA_UPDATE=unseen cargo test` or `cargo insta review`
 
@@ -409,16 +409,16 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `ma
 
 ### Adding New Tasks
 
-1. Create a new file in `cli/src/tasks/bootstrap/`, `cli/src/tasks/repository/` (for bootstrap/repository-phase tasks), or `cli/src/tasks/apply/` (for apply-phase tasks) implementing the `Task` trait
-2. Add the module to `cli/src/tasks/bootstrap/mod.rs`, `cli/src/tasks/repository/mod.rs`, or `cli/src/tasks/apply/mod.rs`
-3. Add the task to `all_install_tasks()` in `cli/src/tasks/helpers/catalog.rs`
+1. Create a new file in `cli/src/phases/bootstrap/`, `cli/src/phases/repository/` (for bootstrap/repository-phase tasks), or `cli/src/phases/apply/` (for apply-phase tasks) implementing the `Task` trait
+2. Add the module to `cli/src/phases/bootstrap/mod.rs`, `cli/src/phases/repository/mod.rs`, or `cli/src/phases/apply/mod.rs`
+3. Add the task to `all_install_tasks()` in `cli/src/phases/catalog.rs`
 
 ### Adding New Configuration Types
 
 1. Create TOML file in `conf/`
 2. Add a config parser in `cli/src/config/`
 3. Add the field to the `Config` struct and load it in `Config::load()`
-4. Create a task in `cli/src/tasks/apply/` that consumes the config
+4. Create a task in `cli/src/phases/apply/` that consumes the config
 5. Document in CONFIGURATION.md
 
 ### Adding Overlay Scripts
@@ -446,7 +446,7 @@ completing all tasks in one phase before starting the next.  Within each
 phase, tasks are executed in parallel using a dependency-graph scheduler.
 
 Each task declares its dependencies using the `task_deps!` macro (defined in
-`tasks/helpers/macros.rs`, re-exported from `tasks/mod.rs`), which implements `Task::dependencies()` returning `TypeId`s of
+`phases/macros.rs`, re-exported from `phases/mod.rs`), which implements `Task::dependencies()` returning `TypeId`s of
 prerequisite task structs.  The scheduler uses `std::thread::scope` to spawn
 one OS thread per task and `mpsc` channels to block each task until its
 dependencies complete.  For each task, a channel is created — dependent tasks

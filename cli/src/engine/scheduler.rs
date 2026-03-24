@@ -9,8 +9,8 @@ use std::sync::{Arc, mpsc};
 
 use crate::logging::{self, BufferedLog, DiagEvent, Log, Logger, TaskStatus};
 #[cfg(test)]
-use crate::tasks::TaskPhase;
-use crate::tasks::{self, Context, Task};
+use crate::phases::TaskPhase;
+use crate::phases::{self, Context, Task};
 
 /// Execute a single task, catching any panic.
 ///
@@ -25,7 +25,7 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> bool {
     let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        tasks::execute(task, &task_ctx);
+        phases::execute(task, &task_ctx);
     }));
 
     if let Err(payload) = result {
@@ -191,8 +191,8 @@ mod tests {
     use anyhow::Result;
 
     use super::*;
-    use crate::tasks::test_helpers::{ContextBuilder, empty_config};
-    use crate::tasks::{TaskResult, task_deps};
+    use crate::phases::test_helpers::{ContextBuilder, empty_config};
+    use crate::phases::{TaskResult, task_deps};
 
     fn make_test_log_and_ctx() -> (Arc<Logger>, Context) {
         let log = Arc::new(Logger::new("test"));
@@ -758,7 +758,7 @@ mod tests {
 
         // Exactly mirrors what run_tasks_parallel does per task thread.
         log.notify_task_start("stats-task");
-        tasks::execute(&StatsTask, &task_ctx);
+        phases::execute(&StatsTask, &task_ctx);
         buf.flush_and_complete("stats-task");
 
         let path = log.log_path().expect("log path");
@@ -804,7 +804,7 @@ mod tests {
             let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
 
             log.notify_task_start(name);
-            tasks::execute(&task_named, &task_ctx);
+            phases::execute(&task_named, &task_ctx);
             buf.flush_and_complete(name);
         }
 
@@ -907,7 +907,7 @@ mod tests {
         let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
 
         log.notify_task_start("debug-fmt-task");
-        tasks::execute(&DebugFmtTask, &task_ctx);
+        phases::execute(&DebugFmtTask, &task_ctx);
         buf.flush_and_complete("debug-fmt-task");
 
         let targets = captured

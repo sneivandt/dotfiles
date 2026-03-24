@@ -13,9 +13,9 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::config::scripts::ScriptEntry;
+use crate::phases::{Context, Task, TaskPhase, TaskResult, task_deps};
 use crate::resources::script::ScriptResource;
 use crate::resources::{Resource, ResourceChange, ResourceState};
-use crate::tasks::{Context, Task, TaskPhase, TaskResult, task_deps};
 
 // ---------------------------------------------------------------------------
 // Static task: Load overlay scripts
@@ -38,7 +38,7 @@ impl Task for LoadOverlayScripts {
         TaskPhase::Repository
     }
 
-    task_deps![crate::tasks::repository::reload_config::ReloadConfig];
+    task_deps![crate::phases::repository::reload_config::ReloadConfig];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.config_read().overlay.is_some()
@@ -193,8 +193,8 @@ pub fn overlay_script_tasks(
 mod tests {
     use super::*;
     use crate::config::scripts::ScriptEntry;
-    use crate::tasks::Task;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use crate::phases::Task;
+    use crate::phases::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 
     #[test]

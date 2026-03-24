@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use super::diagnostic::{DiagEvent, DiagnosticLog};
 use super::logger::Logger;
 use super::types::{Output, TaskRecorder, TaskStatus};
-use crate::tasks::TaskPhase;
+use crate::phases::TaskPhase;
 
 /// A single buffered log entry, replayed when flushed.
 #[derive(Debug, Clone)]
@@ -127,7 +127,7 @@ impl BufferedLog {
     /// by delegating to [`Logger::notify_task_done`].
     ///
     /// In non-verbose mode the task-result line (a [`TaskResult`](LogEntry::TaskResult)
-    /// entry appended by [`execute`](crate::tasks::execute)) is replayed
+    /// entry appended by [`execute`](crate::phases::execute)) is replayed
     /// *before* the detail entries so that the compact result header appears
     /// above any per-resource output (e.g. dry-run lines).
     #[allow(clippy::print_stderr)]

@@ -11,7 +11,7 @@ use super::types::{Output, TaskEntry, TaskRecorder, TaskStatus};
 use super::utils::{dotfiles_cache_dir, log_file_path, terminal_columns};
 #[cfg(test)]
 use super::utils::{dotfiles_cache_subdir, log_file_path_in};
-use crate::tasks::TaskPhase;
+use crate::phases::TaskPhase;
 
 /// Generate an inherent `pub fn $name(&self, msg: &str)` method on `Logger`
 /// that optionally emits to the diagnostic log and then forwards to the given
@@ -494,7 +494,7 @@ fn format_elapsed(d: Duration) -> String {
 mod tests {
     use super::*;
     use crate::logging::isolated_logger;
-    use crate::tasks::TaskPhase;
+    use crate::phases::TaskPhase;
     use std::fs;
 
     #[test]

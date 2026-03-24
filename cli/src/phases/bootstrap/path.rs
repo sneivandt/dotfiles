@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
+use crate::phases::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources};
 use crate::resources::path_entry::PathEntryResource;
-use crate::tasks::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources};
 
 /// Ensure `~/.local/bin` is on the user's `PATH`.
 #[derive(Debug)]
@@ -18,7 +18,7 @@ impl Task for ConfigurePath {
         TaskPhase::Bootstrap
     }
 
-    crate::tasks::task_deps![crate::tasks::bootstrap::wrapper::InstallWrapper];
+    crate::phases::task_deps![crate::phases::bootstrap::wrapper::InstallWrapper];
 
     fn should_run(&self, _ctx: &Context) -> bool {
         true
@@ -38,9 +38,9 @@ impl Task for ConfigurePath {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::phases::Task;
+    use crate::phases::test_helpers::{ContextBuilder, empty_config};
     use crate::platform::Os;
-    use crate::tasks::Task;
-    use crate::tasks::test_helpers::{ContextBuilder, empty_config};
     use std::path::PathBuf;
 
     #[test]

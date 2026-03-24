@@ -3,7 +3,7 @@ use anyhow::{Context as _, Result};
 use clap::CommandFactory;
 
 use crate::cli::Cli;
-use crate::tasks::{Context, Task, TaskPhase, TaskResult, task_deps};
+use crate::phases::{Context, Task, TaskPhase, TaskResult, task_deps};
 
 /// Filename of the generated zsh completion script.
 const ZSH_COMPLETION_FILENAME: &str = "_dotfiles";
@@ -29,7 +29,7 @@ impl Task for GenerateCompletions {
         TaskPhase::Repository
     }
 
-    task_deps![crate::tasks::repository::update::UpdateRepository];
+    task_deps![crate::phases::repository::update::UpdateRepository];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.is_linux()
@@ -79,9 +79,9 @@ impl Task for GenerateCompletions {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::phases::Task;
+    use crate::phases::test_helpers::{ContextBuilder, empty_config, make_linux_context};
     use crate::platform::Os;
-    use crate::tasks::Task;
-    use crate::tasks::test_helpers::{ContextBuilder, empty_config, make_linux_context};
     use std::path::PathBuf;
 
     // ------------------------------------------------------------------
@@ -110,7 +110,7 @@ mod tests {
     fn depends_on_update_repository() {
         use std::any::TypeId;
         assert!(GenerateCompletions.dependencies().contains(&TypeId::of::<
-            crate::tasks::repository::update::UpdateRepository,
+            crate::phases::repository::update::UpdateRepository,
         >()));
     }
 

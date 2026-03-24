@@ -11,7 +11,7 @@ use crate::resources::ResourceState;
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::tasks::ProcessMode;
+/// use dotfiles_cli::phases::ProcessMode;
 ///
 /// let strict = ProcessMode::Strict;
 /// assert!(strict.fix_incorrect() && strict.fix_missing() && strict.bail_on_error());
@@ -80,7 +80,7 @@ impl ProcessMode {
     ///
     /// ```
     /// use dotfiles_cli::resources::ResourceState;
-    /// use dotfiles_cli::tasks::{ProcessMode, ResourceAction};
+    /// use dotfiles_cli::phases::{ProcessMode, ResourceAction};
     ///
     /// assert_eq!(
     ///     ProcessMode::Strict.action_for(&ResourceState::Missing),
@@ -124,7 +124,7 @@ impl ProcessMode {
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::tasks::ResourceAction;
+/// use dotfiles_cli::phases::ResourceAction;
 ///
 /// let apply = ResourceAction::Apply;
 /// let noop = ResourceAction::Noop;
@@ -152,7 +152,7 @@ pub enum ResourceAction {
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::tasks::ProcessOpts;
+/// use dotfiles_cli::phases::ProcessOpts;
 ///
 /// // Fix everything, bail on errors (strict):
 /// let opts = ProcessOpts::strict("link");

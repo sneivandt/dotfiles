@@ -1,14 +1,14 @@
 //! Task: apply file permissions.
 
+use crate::phases::{ProcessOpts, TaskPhase, resource_task};
 use crate::resources::chmod::ChmodResource;
-use crate::tasks::{ProcessOpts, TaskPhase, resource_task};
 
 resource_task! {
     /// Apply file permissions from chmod.toml.
     pub ApplyFilePermissions {
         name: "Apply file permissions",
         phase: TaskPhase::Apply,
-        deps: [crate::tasks::apply::symlinks::InstallSymlinks],
+        deps: [crate::phases::apply::symlinks::InstallSymlinks],
         guard: |ctx| ctx.platform.supports_chmod(),
         items: |ctx| ctx.config_read().chmod.clone(),
         build: |entry, ctx| build_resource(&entry, &ctx.home),
@@ -34,8 +34,8 @@ fn build_resource(
 mod tests {
     use super::*;
     use crate::config::chmod::ChmodEntry;
-    use crate::tasks::Task;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context, make_windows_context};
+    use crate::phases::Task;
+    use crate::phases::test_helpers::{empty_config, make_linux_context, make_windows_context};
     use std::path::PathBuf;
 
     #[test]

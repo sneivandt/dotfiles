@@ -75,10 +75,17 @@ impl WrapperResource {
             }
             WrapperType::Pwsh => {
                 let target = bin_dir.join("dotfiles.cmd");
+                // Probe for pwsh (PowerShell 7+) at runtime, falling back to
+                // Windows PowerShell if unavailable.
                 let content = format!(
                     "@echo off\r\n\
                      rem Installed by dotfiles \u{2014} do not edit.\r\n\
                      if not defined DOTFILES_ROOT set \"DOTFILES_ROOT={root}\"\r\n\
+                     where /q pwsh && (\r\n\
+                         pwsh -NoProfile -ExecutionPolicy Bypass \
+                     -File \"%DOTFILES_ROOT%{sep}dotfiles.ps1\" %*\r\n\
+                         exit /b %ERRORLEVEL%\r\n\
+                     )\r\n\
                      powershell.exe -NoProfile -ExecutionPolicy Bypass \
                      -File \"%DOTFILES_ROOT%{sep}dotfiles.ps1\" %*\r\n",
                     root = dotfiles_root.display(),
@@ -212,6 +219,19 @@ mod tests {
         assert!(
             r.content.contains("dotfiles.ps1"),
             "cmd shim must delegate to dotfiles.ps1"
+        );
+    }
+
+    #[test]
+    fn pwsh_content_probes_for_pwsh_at_runtime() {
+        let r = make_pwsh_resource(Path::new("/repo"), Path::new("/home/user"));
+        assert!(
+            r.content.contains("where /q pwsh"),
+            "cmd shim must probe for pwsh at runtime"
+        );
+        assert!(
+            r.content.contains("powershell.exe"),
+            "cmd shim must fall back to powershell.exe"
         );
     }
 

@@ -136,6 +136,7 @@ pub fn filter_by_categories<T>(
         .filter(|(section_name, _)| {
             section_name
                 .split('-')
+                .filter(|s| !s.trim().is_empty())
                 .map(|s| Category::from_tag(s.trim()))
                 .all(|cat| active_categories.contains(&cat))
         })

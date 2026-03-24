@@ -47,7 +47,6 @@ mod native {
     }
 
     /// Write a registry value, creating the key if it does not exist.
-    #[allow(clippy::cast_possible_truncation)]
     pub fn write_value(key_path: &str, value_name: &str, value_data: &str) -> Result<()> {
         let (root, subkey) = parse_path(key_path)?;
         let (key, _) = root
@@ -59,7 +58,10 @@ mod native {
             .or_else(|| value_data.strip_prefix("0X"))
             && let Ok(n) = u64::from_str_radix(hex, 16)
         {
-            key.set_value(value_name, &(n as u32))
+            let dword = u32::try_from(n).with_context(|| {
+                format!("hex value 0x{hex} ({n}) exceeds DWORD range for {key_path}\\{value_name}")
+            })?;
+            key.set_value(value_name, &dword)
                 .with_context(|| format!("setting {key_path}\\{value_name}"))?;
             return Ok(());
         }

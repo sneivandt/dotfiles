@@ -84,25 +84,29 @@ fn is_cache_fresh(root: &std::path::Path) -> bool {
     let Ok(ts) = ts_str.trim().parse::<u64>() else {
         return false;
     };
-    unix_timestamp().saturating_sub(ts) < CACHE_MAX_AGE
+    let Some(now) = unix_timestamp() else {
+        return false;
+    };
+    now.saturating_sub(ts) < CACHE_MAX_AGE
 }
 
 /// Write a new cache file with the given tag and current timestamp.
 fn write_cache(root: &std::path::Path, tag: &str) -> Result<()> {
-    let now = unix_timestamp();
+    let now = unix_timestamp().unwrap_or(0);
     fs::write(cache_path(root), format!("{tag}\n{now}\n")).context("writing version cache file")?;
     Ok(())
 }
 
 /// Return the current UTC time as seconds since the Unix epoch.
 ///
-/// Returns `0` if the system clock is before the epoch (should never happen
-/// on a properly configured system).
-fn unix_timestamp() -> u64 {
+/// Returns `None` if the system clock is before the epoch, ensuring callers
+/// treat this as a stale/missing timestamp rather than a "fresh" zero value.
+fn unix_timestamp() -> Option<u64> {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
-        .unwrap_or(0)
+        .ok()
+        .filter(|&t| t > 0)
 }
 
 // ---------------------------------------------------------------------------
@@ -317,8 +321,8 @@ fn is_running_from_bin(root: &std::path::Path) -> bool {
         return false;
     };
     let expected = binary_path(root);
-    let resolved_exe = fs::canonicalize(&exe).unwrap_or(exe);
-    let resolved_expected = fs::canonicalize(&expected).unwrap_or(expected);
+    let resolved_exe = crate::fs::canonicalize(&exe).unwrap_or(exe);
+    let resolved_expected = crate::fs::canonicalize(&expected).unwrap_or(expected);
     let matched = resolved_exe == resolved_expected;
     tracing::debug!(
         "is_running_from_bin: resolved_exe={resolved_exe:?} resolved_expected={resolved_expected:?} match={matched}"

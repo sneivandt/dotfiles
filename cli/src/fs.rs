@@ -114,7 +114,10 @@ pub fn canonicalize(path: &Path) -> Result<PathBuf> {
     #[cfg(windows)]
     {
         let s = canonical.to_string_lossy();
-        if let Some(stripped) = s.strip_prefix(r"\\?\") {
+        if let Some(unc) = s.strip_prefix(r"\\?\UNC\") {
+            // UNC extended-length path: \\?\UNC\server\share → \\server\share
+            return Ok(PathBuf::from(format!(r"\\{unc}")));
+        } else if let Some(stripped) = s.strip_prefix(r"\\?\") {
             return Ok(PathBuf::from(stripped));
         }
     }
@@ -195,10 +198,31 @@ fn copy_dir_recursive_inner(src: &Path, dst: &Path, skip_git: bool) -> Result<()
                     )
                 })?;
             }
-            #[cfg(not(unix))]
+            #[cfg(windows)]
             {
-                // Symlink creation on Windows requires elevated privileges or
-                // Developer Mode; skip symlinks to avoid unsafe traversal.
+                // On Windows, attempt to recreate the symlink.  This requires
+                // either Developer Mode or elevated privileges; if it fails we
+                // log a warning and continue rather than silently dropping the
+                // entry.
+                let link_target = std::fs::read_link(&src_path)
+                    .with_context(|| format!("reading symlink {}", src_path.display()))?;
+                let result = if link_target.is_dir() || src_path.is_dir() {
+                    std::os::windows::fs::symlink_dir(&link_target, &dst_path)
+                } else {
+                    std::os::windows::fs::symlink_file(&link_target, &dst_path)
+                };
+                if let Err(e) = result {
+                    tracing::warn!(
+                        "skipping symlink {} -> {}: {e} (enable Developer Mode or run as administrator)",
+                        dst_path.display(),
+                        link_target.display(),
+                    );
+                }
+            }
+            #[cfg(not(any(unix, windows)))]
+            {
+                // Unsupported platform — skip symlinks silently.
+                let _ = (&src_path, &dst_path);
             }
         } else if meta.is_dir() {
             if skip_git && entry.file_name() == ".git" {

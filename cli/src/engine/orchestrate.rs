@@ -118,7 +118,16 @@ pub fn process_resources_remove<R: Resource + Send>(
                 ctx.log.warn("cancelled — stopping before next resource");
                 break;
             }
-            let current = resource.current_state()?;
+            let current = match resource.current_state() {
+                Ok(current) => current,
+                Err(e) => {
+                    ctx.log.warn(&format!(
+                        "failed to check state for {}: {e}",
+                        resource.description()
+                    ));
+                    continue;
+                }
+            };
             stats += apply::remove_single(ctx, &resource, &current, verb)?;
         }
         Ok(stats.finish(ctx))

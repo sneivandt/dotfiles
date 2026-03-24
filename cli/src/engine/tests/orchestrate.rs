@@ -210,15 +210,16 @@ fn process_resources_current_state_error_propagates() {
 }
 
 #[test]
-fn process_resources_remove_current_state_error_propagates() {
+fn process_resources_remove_current_state_error_skips_gracefully() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resources =
         vec![MockResource::new(ResourceState::Missing).with_state_error("state failed")];
 
+    // State errors during removal are now logged as warnings and the
+    // resource is skipped, matching the apply path's resilient behaviour.
     let result = process_resources_remove(&ctx, resources, "unlink");
-    assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("state failed"));
+    assert!(result.is_ok());
 }
 
 // -----------------------------------------------------------------------
@@ -445,7 +446,7 @@ fn process_resource_states_parallel_bail_on_error_propagates() {
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_resources_remove_parallel_state_error_propagates() {
+fn process_resources_remove_parallel_state_error_skips_gracefully() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = parallel_context(config);
     let resources = vec![
@@ -453,8 +454,10 @@ fn process_resources_remove_parallel_state_error_propagates() {
         MockResource::new(ResourceState::Correct).with_state_error("state failed"),
     ];
 
+    // State errors during parallel removal are now logged as warnings and the
+    // resource is skipped, matching the apply path's resilient behaviour.
     let result = process_resources_remove(&ctx, resources, "unlink");
-    assert!(result.is_err());
+    assert!(result.is_ok());
 }
 
 // -----------------------------------------------------------------------

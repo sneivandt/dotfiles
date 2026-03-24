@@ -73,7 +73,13 @@ impl ScriptResource {
 
         match ext {
             "ps1" => {
-                let shell = if cfg!(windows) { "powershell" } else { "pwsh" };
+                // Prefer pwsh (PowerShell 7+) when available, matching the
+                // behaviour of elevation.rs and commands/mod.rs.
+                let shell = if self.executor.which("pwsh") {
+                    "pwsh"
+                } else {
+                    "powershell"
+                };
                 (
                     shell,
                     vec![
@@ -276,14 +282,28 @@ mod tests {
 
     #[test]
     fn interpreter_uses_powershell_for_ps1_scripts() {
-        let mock = Arc::new(MockExecutor::new());
+        // Mock executor does not find pwsh on PATH, so falls back to powershell
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .withf(|p: &str| p == "pwsh")
+            .returning(|_| false);
+        let mock = Arc::new(mock);
         let resource = make_script_resource("test", Path::new("/scripts/test.ps1"), mock);
         let (interpreter, args) = resource.interpreter_args();
-        if cfg!(windows) {
-            assert_eq!(interpreter, "powershell");
-        } else {
-            assert_eq!(interpreter, "pwsh");
-        }
+        assert_eq!(interpreter, "powershell");
+        assert!(args.contains(&"-File"));
+    }
+
+    #[test]
+    fn interpreter_prefers_pwsh_for_ps1_scripts_when_available() {
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .withf(|p: &str| p == "pwsh")
+            .returning(|_| true);
+        let mock = Arc::new(mock);
+        let resource = make_script_resource("test", Path::new("/scripts/test.ps1"), mock);
+        let (interpreter, args) = resource.interpreter_args();
+        assert_eq!(interpreter, "pwsh");
         assert!(args.contains(&"-File"));
     }
 

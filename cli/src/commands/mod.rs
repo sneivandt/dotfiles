@@ -116,7 +116,11 @@ fn spawn_windows_restart_helper() -> Result<()> {
         build_windows_restart_helper_script(&exe, &pending, &pending_version, &cache, &args);
 
     std::process::Command::new(preferred_powershell())
-        .args(["-NoProfile", "-Command", &helper_script])
+        .args([
+            "-NoProfile",
+            "-EncodedCommand",
+            &crate::elevation::powershell_encode_command(&helper_script),
+        ])
         .spawn()
         .context("spawning restart helper")?;
 

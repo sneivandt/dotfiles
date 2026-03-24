@@ -40,7 +40,19 @@ pub(super) fn process_remove_parallel<R: Resource + Send>(
     let stats = collect_parallel_stats(
         resources,
         |resource| {
-            let current = resource.current_state()?;
+            let current = match resource.current_state() {
+                Ok(state) => state,
+                Err(e) => {
+                    // Log the error and skip this resource rather than aborting
+                    // the entire batch, matching the apply path's resilient
+                    // behaviour.
+                    ctx.log.warn(&format!(
+                        "failed to check state for {}: {e}",
+                        resource.description()
+                    ));
+                    return Ok(TaskStats::default());
+                }
+            };
             remove_single(ctx, &resource, &current, verb)
         },
         move || cancelled.is_cancelled(),

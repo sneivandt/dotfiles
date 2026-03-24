@@ -134,7 +134,7 @@ fn powershell_arg_list(args: &[String]) -> String {
 /// Encode a `PowerShell` script string as Base64 UTF-16LE, suitable for the
 /// `PowerShell` `-EncodedCommand` parameter.
 #[cfg(any(windows, test))]
-fn powershell_encode_command(script: &str) -> String {
+pub(crate) fn powershell_encode_command(script: &str) -> String {
     let utf16_le: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
     base64_encode(&utf16_le)
 }

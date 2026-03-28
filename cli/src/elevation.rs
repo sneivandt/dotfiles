@@ -135,40 +135,10 @@ fn powershell_arg_list(args: &[String]) -> String {
 /// `PowerShell` `-EncodedCommand` parameter.
 #[cfg(any(windows, test))]
 pub(crate) fn powershell_encode_command(script: &str) -> String {
+    use base64::Engine as _;
+
     let utf16_le: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
-    base64_encode(&utf16_le)
-}
-
-/// Encode `bytes` as standard Base64 (RFC 4648) without line wrapping.
-#[cfg(any(windows, test))]
-fn base64_encode(bytes: &[u8]) -> String {
-    #[allow(clippy::cast_possible_truncation)] // n & 63 fits in u8
-    fn encode_6bit(n: u32) -> char {
-        match n & 63 {
-            v @ 0..=25 => char::from(b'A' + v as u8),
-            v @ 26..=51 => char::from(b'a' + v as u8 - 26),
-            v @ 52..=61 => char::from(b'0' + v as u8 - 52),
-            62 => '+',
-            _ => '/',
-        }
-    }
-
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let b0 = u32::from(chunk.first().copied().unwrap_or(0));
-        let b1 = u32::from(chunk.get(1).copied().unwrap_or(0));
-        let b2 = u32::from(chunk.get(2).copied().unwrap_or(0));
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        out.push(encode_6bit(n >> 18));
-        out.push(encode_6bit(n >> 12));
-        out.push(if chunk.len() > 1 {
-            encode_6bit(n >> 6)
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 { encode_6bit(n) } else { '=' });
-    }
-    out
+    base64::engine::general_purpose::STANDARD.encode(utf16_le)
 }
 
 #[cfg(test)]
@@ -305,36 +275,5 @@ mod escaping_tests {
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
         );
-    }
-
-    // --- base64_encode ---
-
-    #[test]
-    fn base64_encode_empty() {
-        assert_eq!(base64_encode(&[]), "");
-    }
-
-    #[test]
-    fn base64_encode_one_byte() {
-        // 0x00 -> 000000 00|0000 -> "AA=="
-        assert_eq!(base64_encode(&[0x00]), "AA==");
-    }
-
-    #[test]
-    fn base64_encode_two_bytes() {
-        // 0x00 0x00 -> "AAA="
-        assert_eq!(base64_encode(&[0x00, 0x00]), "AAA=");
-    }
-
-    #[test]
-    fn base64_encode_three_bytes() {
-        // 0x00 0x00 0x00 -> "AAAA"
-        assert_eq!(base64_encode(&[0x00, 0x00, 0x00]), "AAAA");
-    }
-
-    #[test]
-    fn base64_encode_known_value() {
-        // "Man" -> "TWFu" (standard RFC 4648 test vector)
-        assert_eq!(base64_encode(b"Man"), "TWFu");
     }
 }

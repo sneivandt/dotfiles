@@ -74,6 +74,7 @@ impl FileLayer {
     }
 
     /// Shared implementation: write a header and open the file for appending.
+    #[allow(clippy::print_stderr)]
     fn create_at(path: &std::path::Path) -> Option<Self> {
         use std::io::Write as _;
 
@@ -85,8 +86,17 @@ impl FileLayer {
              ==========================================\n",
             format_utc_datetime(),
         );
-        let mut file = fs::File::create(path).ok()?;
-        file.write_all(header.as_bytes()).ok()?;
+        let mut file = match fs::File::create(path) {
+            Ok(f) => f,
+            Err(err) => {
+                eprintln!("Warning: failed to initialize log file: {err}");
+                return None;
+            }
+        };
+        if let Err(err) = file.write_all(header.as_bytes()) {
+            eprintln!("Warning: failed to initialize log file: {err}");
+            return None;
+        }
         Some(Self {
             file: Mutex::new(file),
         })

@@ -101,28 +101,14 @@ pub fn ensure_parent_dir(path: &Path) -> Result<()> {
 ///
 /// On Windows, [`std::fs::canonicalize`] returns paths prefixed with `\\?\`,
 /// which breaks many tools (e.g. `Invoke-WebRequest -OutFile`). This helper
-/// strips that prefix so paths remain compatible with typical Windows
-/// tooling.
+/// uses [`dunce::canonicalize`] to strip that prefix so paths remain
+/// compatible with typical Windows tooling.
 ///
 /// # Errors
 ///
 /// Returns an error if the path does not exist or cannot be resolved.
 pub fn canonicalize(path: &Path) -> Result<PathBuf> {
-    let canonical = std::fs::canonicalize(path)
-        .with_context(|| format!("canonicalizing {}", path.display()))?;
-
-    #[cfg(windows)]
-    {
-        let s = canonical.to_string_lossy();
-        if let Some(unc) = s.strip_prefix(r"\\?\UNC\") {
-            // UNC extended-length path: \\?\UNC\server\share → \\server\share
-            return Ok(PathBuf::from(format!(r"\\{unc}")));
-        } else if let Some(stripped) = s.strip_prefix(r"\\?\") {
-            return Ok(PathBuf::from(stripped));
-        }
-    }
-
-    Ok(canonical)
+    dunce::canonicalize(path).with_context(|| format!("canonicalizing {}", path.display()))
 }
 
 /// Remove an existing file, symlink, or empty directory at `path`.

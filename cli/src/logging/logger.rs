@@ -2,6 +2,7 @@
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 
 use super::diagnostic::{DiagEvent, DiagnosticLog};
@@ -75,7 +76,7 @@ pub struct Logger {
     /// row, so the only valid values are `0` and `1`.  This avoids multi-row
     /// cursor arithmetic that can erase real output when the terminal width
     /// differs from the `COLUMNS` environment variable.
-    pub(super) progress_rows: Mutex<u16>,
+    pub(super) progress_rows: AtomicU16,
     /// High-precision diagnostic log; `None` when the cache dir is unavailable.
     pub(super) diagnostic: Option<DiagnosticLog>,
     /// Instant when the logger was created, used for elapsed time in summary.
@@ -99,7 +100,7 @@ impl Logger {
             log_file: log_file_path(command),
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
-            progress_rows: Mutex::new(0),
+            progress_rows: AtomicU16::new(0),
             diagnostic: dotfiles_cache_dir()
                 .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
             start,
@@ -131,7 +132,7 @@ impl Logger {
             log_file: log_file_path_in(command, cache_dir),
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
-            progress_rows: Mutex::new(0),
+            progress_rows: AtomicU16::new(0),
             diagnostic: dotfiles_cache_subdir(cache_dir)
                 .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
             start,
@@ -164,10 +165,7 @@ impl Logger {
     /// Return the current value of `progress_rows` (test-only).
     #[cfg(test)]
     pub(crate) fn progress_rows_count(&self) -> u16 {
-        *self
-            .progress_rows
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.progress_rows.load(Ordering::Relaxed)
     }
 
     log_method!(
@@ -355,14 +353,10 @@ impl Logger {
     /// No-op if no progress line is currently shown.
     /// Must be called while holding `flush_lock`.
     pub(super) fn clear_progress(&self) {
-        let mut guard = self.progress_rows.lock().unwrap_or_else(|e| {
-            eprintln!("warning: progress_rows lock was poisoned, recovering");
-            e.into_inner()
-        });
-        if *guard > 0 {
+        if self.progress_rows.load(Ordering::Relaxed) > 0 {
             print!("\r\x1b[K");
             std::io::stdout().flush().ok();
-            *guard = 0;
+            self.progress_rows.store(0, Ordering::Relaxed);
         }
     }
 
@@ -388,11 +382,7 @@ impl Logger {
         };
         print!("  \x1b[2m▹ {display_names}\x1b[0m");
         std::io::stdout().flush().ok();
-        let mut guard = self.progress_rows.lock().unwrap_or_else(|e| {
-            eprintln!("warning: progress_rows lock was poisoned, recovering");
-            e.into_inner()
-        });
-        *guard = 1;
+        self.progress_rows.store(1, Ordering::Relaxed);
     }
 
     /// Record that a parallel task has started.

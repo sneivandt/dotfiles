@@ -16,6 +16,7 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 ctrlc = "3.5"
+dunce = "1"
 thiserror = "2"
 enable-ansi-support = "0.2"
 git2 = "0.20.4"

@@ -17,7 +17,7 @@ symlinks = [
   "config/git/ignore",
   "config/git/templates",
   "config/nvim",
-  "config/nuget/NuGet.config",
+  "config/nuget/nuget.config",
   "ssh/config",
 ]
 

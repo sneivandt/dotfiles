@@ -13,7 +13,7 @@ const DEFAULT_SPARSE_PATTERN: &str = "/*";
 fn build_patterns(excluded_files: &[String]) -> String {
     let mut patterns = vec![DEFAULT_SPARSE_PATTERN.to_string()];
     for file in excluded_files {
-        patterns.push(format!("!/{file}"));
+        patterns.push(format!("!/symlinks/{file}"));
     }
     patterns.join("\n")
 }
@@ -293,14 +293,17 @@ mod tests {
 
     #[test]
     fn build_patterns_single_exclusion() {
-        let patterns = build_patterns(&["symlinks".to_string()]);
-        assert_eq!(patterns, "/*\n!/symlinks");
+        let patterns = build_patterns(&["AppData/".to_string()]);
+        assert_eq!(patterns, "/*\n!/symlinks/AppData/");
     }
 
     #[test]
     fn build_patterns_multiple_exclusions() {
-        let patterns = build_patterns(&["symlinks".to_string(), "conf".to_string()]);
-        assert_eq!(patterns, "/*\n!/symlinks\n!/conf");
+        let patterns = build_patterns(&["AppData/".to_string(), "config/git/windows".to_string()]);
+        assert_eq!(
+            patterns,
+            "/*\n!/symlinks/AppData/\n!/symlinks/config/git/windows"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -439,10 +442,10 @@ mod tests {
         // Write the exact patterns that build_patterns would produce
         let info_dir = dir.path().join(".git").join("info");
         std::fs::create_dir_all(&info_dir).unwrap();
-        std::fs::write(info_dir.join("sparse-checkout"), "/*\n!/symlinks").unwrap();
+        std::fs::write(info_dir.join("sparse-checkout"), "/*\n!/symlinks/AppData/").unwrap();
 
         let mut config = empty_config(dir.path().to_path_buf());
-        config.manifest.excluded_files.push("symlinks".to_string());
+        config.manifest.excluded_files.push("AppData/".to_string());
         let ctx = make_linux_context(config);
 
         let result = ConfigureSparseCheckout::new().run(&ctx).unwrap();

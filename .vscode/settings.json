@@ -14,8 +14,6 @@
     },
     // File associations
     "files.associations": {
-        "*.ini": "ini",
-        "*.sh": "shellscript",
         "dotfiles.sh": "shellscript",
         "install.sh": "shellscript",
         "Xresources": "properties",
@@ -28,7 +26,6 @@
         "xinitrc": "shellscript",
         "nvimrc": "lua",
         "vimrc": "lua",
-        "sensitive-patterns.ini": "plaintext",
         "**/skills/*/SKILL.md": "markdown"
     },
     // Formatting - enforce no trailing whitespace

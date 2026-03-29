@@ -24,9 +24,45 @@ This project manages dotfiles and system configuration using a profile-based spa
 | Skills | `.github/skills/` | Agent-specific coding patterns |
 | Docs | `docs/` | Human-readable guides and reference |
 
-The Rust binary uses **clap** for CLI parsing and **anyhow** for error handling. It handles all file operations natively and only shells out for package managers (`pacman`, `paru`, `winget`), service management (`systemctl`), and overlay scripts.
+The engine has five internal layers: `config/` (TOML parsing) → `resources/` (idempotent primitives) → `engine/` (parallel execution) → `phases/` (dependency-ordered tasks) → `commands/` (CLI entry points). See `docs/ARCHITECTURE.md` for the full system design.
 
-See `docs/ARCHITECTURE.md` for the full system design.
+## Key Files
+
+| File | Purpose |
+|---|---|
+| `cli/src/lib.rs` | Module structure and public API docs — start here |
+| `cli/src/cli.rs` | clap-based CLI args and `GlobalOpts` |
+| `cli/src/phases/mod.rs` | `Task` trait definition and macros (`resource_task!`, `task_deps!`) |
+| `cli/src/phases/catalog.rs` | Task registry (`all_install_tasks()` / `all_uninstall_tasks()`) |
+| `cli/src/resources/mod.rs` | `Applicable` and `Resource` traits — the idempotent primitives |
+| `cli/src/engine/orchestrate.rs` | `process_resources()` — the core execution workhorse |
+| `cli/src/config/mod.rs` | `config_section!` macro and config loading |
+| `cli/src/error.rs` | `ResourceError` and `ConfigError` domain types |
+
+## Conventions
+
+### Strict Lints
+
+The project enforces pedantic + nursery Clippy lints and explicitly denies `panic`, `unwrap_used`, `expect_used`, `todo`, and `dbg_macro`. Never use `.unwrap()` or `.expect()` — use `?` with `anyhow::Result` or return typed errors from `cli/src/error.rs`.
+
+### Macro-Driven Tasks
+
+Tasks are defined via the `resource_task!` macro in `cli/src/phases/`, not by hand-implementing the `Task` trait. Dependencies use `task_deps!`. Config sections use `config_section!`. See the `resource-implementation` and `rust-patterns` skills.
+
+### Two Resource Traits
+
+- `Applicable`: core operations (describe, apply, remove)
+- `Resource`: extends `Applicable` with `current_state()` for state checking
+
+The split exists because some resources need bulk state queries before individual apply.
+
+### Category Filtering
+
+Every config item is category-aware. Platform categories (linux, windows, arch) are auto-detected; profile categories (base, desktop) are user-selected. Items matching is AND logic within a category group. See `cli/src/config/helpers/category_matcher.rs`.
+
+### Re-exec on Self-Update
+
+After the binary updates itself, it re-execs with a guard env var (`DOTFILES_REEXEC_GUARD`) to prevent infinite loops.
 
 ## Working with This Codebase
 
@@ -44,7 +80,7 @@ See `docs/ARCHITECTURE.md` for the full system design.
 cd cli && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
-**Integration tests** run alongside unit tests via `cargo test` and exercise config parsing, symlinking, and dry-run behaviour.
+Integration tests use `IntegrationTestContext` from `cli/tests/common/` and exercise config parsing, symlinking, and dry-run behaviour. Snapshot tests use `insta` — update with `INSTA_UPDATE=unseen cargo test`. See `docs/TESTING.md` for details.
 
 **Dry-run** — preview changes without applying:
 ```bash
@@ -62,6 +98,8 @@ cd cli && cargo fmt --check && cargo clippy --all-targets -- -D warnings && carg
 - **`.github/copilot-instructions.md`** — this file (universal agent guidance)
 - **`.github/skills/`** — agent-specific technical patterns and conventions
 - **`docs/`** — human-readable guides (also useful for agents needing context)
+
+Key references: `docs/ARCHITECTURE.md` (system design), `docs/CONTRIBUTING.md` (development workflow), `docs/TESTING.md` (test strategy), `docs/PROFILES.md` (profile system), `docs/CONFIGURATION.md` (TOML format).
 
 **Where to put new content:**
 - Universal agent rules or project overview → this file

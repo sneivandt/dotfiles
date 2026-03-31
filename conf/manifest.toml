@@ -24,7 +24,6 @@ paths = [
   "bashrc",
   "config/bash/",
   "config/pinentry/",
-  "config/powershell/",
   "config/readline/",
   "config/shell/aliases.sh",
   "config/shell/path.sh",

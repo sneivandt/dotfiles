@@ -1,7 +1,7 @@
 //! Command execution abstractions.
 use anyhow::{Context, Result, bail};
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 /// Create a new [`Command`] with platform-appropriate defaults.
 ///
@@ -45,8 +45,12 @@ impl From<Output> for ExecResult {
 }
 
 /// Execute a command and return the result, bailing on non-zero exit.
+///
+/// Stdin is inherited from the parent process so that interactive programs
+/// (such as `sudo` prompting for a password) can read from the terminal.
 fn execute_checked(mut cmd: Command, label: &str) -> Result<ExecResult> {
     let output = cmd
+        .stdin(Stdio::inherit())
         .output()
         .with_context(|| format!("failed to execute: {label}"))?;
     let result = ExecResult::from(output);
@@ -152,6 +156,7 @@ impl Executor for SystemExecutor {
     fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
         let output = new_command(program)
             .args(args)
+            .stdin(Stdio::inherit())
             .output()
             .with_context(|| format!("failed to execute: {program}"))?;
         Ok(ExecResult::from(output))

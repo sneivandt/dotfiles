@@ -23,6 +23,7 @@ paths = [
   "bash_profile",
   "bashrc",
   "config/bash/",
+  "config/nvim",
   "config/pinentry/",
   "config/readline/",
   "config/shell/aliases.sh",

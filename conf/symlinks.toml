@@ -16,7 +16,6 @@ symlinks = [
   "config/git/delta",
   "config/git/ignore",
   "config/git/templates",
-  "config/nvim",
   "config/nuget/nuget.config",
   "ssh/config",
 ]
@@ -24,6 +23,7 @@ symlinks = [
 [linux]
 symlinks = [
   "bash_profile",
+  "config/nvim",
   "bashrc",
   "config/bash/prompt",
   "config/pinentry/preexec",

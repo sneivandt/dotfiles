@@ -25,7 +25,6 @@ paths = [
   "config/bash/",
   "config/nvim",
   "config/pinentry/",
-  "config/powershell/Microsoft.PowerShell_profile.ps1",
   "config/readline/",
   "config/shell/aliases.sh",
   "config/shell/path.sh",

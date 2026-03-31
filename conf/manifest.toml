@@ -87,6 +87,7 @@ paths = [
   "config/systemd/user/volume.service",
   "config/systemd/user/wallpaper.service",
   "config/systemd/user/xautolock.service",
+  "config/systemd/user/wayland-session.target",
   "config/systemd/user/xsession.target",
   "config/user-dirs.dirs",
   "config/volume/",
@@ -96,4 +97,5 @@ paths = [
   "xinitrc",
   "Xresources",
   "zprofile",
+  "local/bin/start-session",
 ]

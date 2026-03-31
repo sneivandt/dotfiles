@@ -1,0 +1,35 @@
+#!/bin/sh
+# Start the preferred graphical session.
+# Tries Wayland (Hyprland) by default; falls back to X11 (startx) on failure.
+#
+# Override variables:
+#   FORCE_X11=1             Always use X11 instead of Wayland.
+#   PREFERRED_SESSION=x11   Alias for FORCE_X11=1 behaviour.
+
+log() { printf '%s\n' "$*" >&2; }
+
+start_x11() {
+    log "Starting X11 session (startx)..."
+    exec startx
+}
+
+start_wayland() {
+    if command -v Hyprland >/dev/null 2>&1; then
+        log "Starting Wayland session (Hyprland)..."
+        dbus-run-session Hyprland
+    else
+        log "Hyprland not found."
+        return 1
+    fi
+}
+
+if [ "${FORCE_X11:-0}" = "1" ] || [ "${PREFERRED_SESSION:-}" = "x11" ]; then
+    start_x11
+fi
+
+if start_wayland; then
+    exit 0
+fi
+
+log "Wayland session failed; falling back to X11."
+start_x11

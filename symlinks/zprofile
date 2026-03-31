@@ -4,5 +4,7 @@
 [ -n "$ZPROFILE_LOADED" ] && return
 ZPROFILE_LOADED=1
 
-# Start X Windows on tty1 if not already running
-[ -z "$DISPLAY" ] && [ "$XDG_VTNR" -eq 1 ] && exec startx
+# Start graphical session on tty1 if not already in one
+if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" -eq 1 ]; then
+    exec "$HOME/.local/bin/start-session"
+fi

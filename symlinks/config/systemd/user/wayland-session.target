@@ -1,0 +1,5 @@
+[Unit]
+Description=Wayland running
+
+BindsTo=graphical-session.target
+After=graphical-session.target

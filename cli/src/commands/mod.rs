@@ -642,6 +642,57 @@ fn load_config(
 /// task starts.
 ///
 /// Within each phase, when parallel execution is enabled and more than one
+/// Prime the sudo credential cache so that later parallel tasks can run
+/// privileged commands without an interactive prompt.
+///
+/// Runs `sudo -v` which validates (and caches) the user's credentials.
+///
+/// Returns `true` if credentials were successfully cached, `false` on any
+/// failure (sudo not found, user cancelled the prompt, wrong password, etc.).
+#[cfg(unix)]
+fn prime_sudo(ctx: &Context, log: &Arc<Logger>) -> bool {
+    use std::process::Stdio;
+
+    if !ctx.executor.which("sudo") {
+        log.warn("sudo not found on PATH");
+        return false;
+    }
+    log.debug("priming sudo credential cache");
+    // Flush stdout so the phase header is visible before the password prompt.
+    std::io::Write::flush(&mut std::io::stdout()).ok();
+    // Connect sudo directly to /dev/tty so the password prompt and keyboard
+    // input work correctly regardless of how the Rust process's stdio is
+    // configured (the tracing subscriber splits stdout/stderr).
+    let tty_in = std::fs::File::open("/dev/tty");
+    let tty_out = std::fs::OpenOptions::new().write(true).open("/dev/tty");
+    let mut cmd = std::process::Command::new("sudo");
+    cmd.arg("-v");
+    if let Ok(f) = tty_in {
+        cmd.stdin(Stdio::from(f));
+    }
+    if let Ok(f) = tty_out {
+        cmd.stderr(Stdio::from(f));
+    }
+    match cmd.status() {
+        Ok(status) if status.success() => true,
+        Ok(_) => {
+            log.error("sudo credential priming failed");
+            false
+        }
+        Err(e) => {
+            log.error(&format!("failed to run sudo: {e:#}"));
+            false
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn prime_sudo(_ctx: &Context, _log: &Arc<Logger>) -> bool {
+    true
+}
+
+/// Execute the full three-phase task pipeline.
+///
 /// task is present, tasks run as soon as their dependencies complete.  Each
 /// task's console output is buffered and flushed atomically on completion.
 /// A status line shows which tasks are currently running.
@@ -671,7 +722,7 @@ pub fn run_tasks_to_completion<'a>(
             break;
         }
 
-        let phase_tasks: Vec<&dyn Task> = tasks
+        let mut phase_tasks: Vec<&dyn Task> = tasks
             .iter()
             .copied()
             .filter(|task| task.phase() == phase)
@@ -683,6 +734,39 @@ pub fn run_tasks_to_completion<'a>(
 
         log.always("");
         log.phase(&phase.to_string());
+
+        // Before parallel dispatch, prime the sudo credential cache if any
+        // task in this phase will need root privileges.  This avoids an
+        // interactive password prompt appearing mid-way through interleaved
+        // parallel output.  If priming fails, record sudo-dependent tasks as
+        // failed and exclude them from this phase's dispatch.
+        let sudo_failed = ctx.parallel
+            && !ctx.dry_run
+            && phase_tasks.len() > 1
+            && phase_tasks.iter().any(|t| t.needs_sudo(ctx))
+            && !prime_sudo(ctx, log);
+
+        if sudo_failed {
+            let reason = "sudo credentials unavailable";
+            phase_tasks.retain(|task| {
+                if task.needs_sudo(ctx) {
+                    log.record_task(
+                        task.name(),
+                        task.phase(),
+                        crate::logging::TaskStatus::Skipped,
+                        Some(reason),
+                    );
+                    log.emit_task_result(
+                        task.name(),
+                        &crate::logging::TaskStatus::Skipped,
+                        Some(reason),
+                    );
+                    false
+                } else {
+                    true
+                }
+            });
+        }
 
         if ctx.parallel && phase_tasks.len() > 1 {
             if phases::has_cycle(&phase_tasks) {

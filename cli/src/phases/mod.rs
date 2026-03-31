@@ -117,6 +117,15 @@ pub trait Task: Send + Sync + 'static {
         self.run(ctx).map(Some)
     }
 
+    /// Whether this task will need sudo/root privileges based on current state.
+    ///
+    /// Called before parallel dispatch to allow the runner to prime the
+    /// credential cache (`sudo -v`) so that interactive prompts do not
+    /// collide with parallel output.  The default returns `false`.
+    fn needs_sudo(&self, _ctx: &Context) -> bool {
+        false
+    }
+
     /// Execute the task.
     ///
     /// # Errors

@@ -35,6 +35,29 @@ impl Task for InstallPackages {
         ctx.config_read().packages.iter().any(|p| !p.is_aur)
     }
 
+    fn needs_sudo(&self, ctx: &Context) -> bool {
+        if !ctx.platform.uses_pacman() || ctx.dry_run {
+            return false;
+        }
+        if !ctx.executor.which("pacman") {
+            return false;
+        }
+        let packages: Vec<Package> = ctx
+            .config_read()
+            .packages
+            .iter()
+            .filter(|p| !p.is_aur)
+            .cloned()
+            .collect();
+        if packages.is_empty() {
+            return false;
+        }
+        let Ok(installed) = get_installed_packages(PackageManager::Pacman, &*ctx.executor) else {
+            return false;
+        };
+        packages.iter().any(|p| !installed.contains(&p.name))
+    }
+
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let packages: Vec<Package> = ctx
             .config_read()
@@ -88,6 +111,29 @@ impl Task for InstallAurPackages {
         ctx.platform.supports_aur() && ctx.config_read().packages.iter().any(|p| p.is_aur)
     }
 
+    fn needs_sudo(&self, ctx: &Context) -> bool {
+        if !ctx.platform.supports_aur() || ctx.dry_run {
+            return false;
+        }
+        if !ctx.executor.which("paru") {
+            return false;
+        }
+        let packages: Vec<Package> = ctx
+            .config_read()
+            .packages
+            .iter()
+            .filter(|p| p.is_aur)
+            .cloned()
+            .collect();
+        if packages.is_empty() {
+            return false;
+        }
+        let Ok(installed) = get_installed_packages(PackageManager::Paru, &*ctx.executor) else {
+            return false;
+        };
+        packages.iter().any(|p| !installed.contains(&p.name))
+    }
+
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let packages: Vec<Package> = ctx
             .config_read()
@@ -129,6 +175,11 @@ impl Task for InstallParu {
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.uses_pacman()
+    }
+
+    fn needs_sudo(&self, ctx: &Context) -> bool {
+        // makepkg -si calls sudo internally to install the built package
+        ctx.platform.uses_pacman() && !ctx.dry_run && !ctx.executor.which("paru")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

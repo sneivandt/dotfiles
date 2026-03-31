@@ -687,7 +687,7 @@ fn prime_sudo(ctx: &Context, log: &Arc<Logger>) -> bool {
 }
 
 #[cfg(not(unix))]
-fn prime_sudo(_ctx: &Context, _log: &Arc<Logger>) -> bool {
+const fn prime_sudo(_ctx: &Context, _log: &Arc<Logger>) -> bool {
     true
 }
 

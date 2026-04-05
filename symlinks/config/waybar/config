@@ -22,8 +22,8 @@
     },
 
     "pulseaudio": {
-        "format": "\uf028  {volume}%",
-        "format-muted": "\uf6a9  0%",
+        "format": "\uf028 {volume}%",
+        "format-muted": "\uf6a9 0%",
         "on-click": "pactl set-sink-mute @DEFAULT_SINK@ toggle",
         "tooltip": false
     },

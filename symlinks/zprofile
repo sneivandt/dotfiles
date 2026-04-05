@@ -7,4 +7,13 @@ ZPROFILE_LOADED=1
 # Start graphical session on tty1 if not already running
 if uwsm check may-start 2>/dev/null; then
   exec uwsm start hyprland-uwsm.desktop
+elif uwsm check is-active 2>/dev/null; then
+  # Previous session targets still deactivating — wait and retry
+  echo "Waiting for previous graphical session to stop..."
+  while uwsm check is-active 2>/dev/null; do
+    sleep 0.5
+  done
+  if uwsm check may-start 2>/dev/null; then
+    exec uwsm start hyprland-uwsm.desktop
+  fi
 fi

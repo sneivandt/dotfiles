@@ -61,10 +61,17 @@ symlinks = [
 
 [arch-desktop]
 symlinks = [
+  "config/chromium/chromium-flags.conf",
   "config/dunst/dunstrc",
   "config/flameshot/flameshot.ini",
+  "config/gammastep/config.ini",
   "config/gtk-2.0/gtkrc-2.0",
   "config/gtk-3.0/settings.ini",
+  "config/hypr/hyprland.conf",
+  "config/hypr/hypridle.conf",
+  "config/hypr/hyprlock.conf",
+  "config/hypr/hyprpaper.conf",
+  "config/hypr/scripts",
   "config/lock.sh",
   "config/picom/picom.conf",
   "config/redshift.conf",
@@ -80,6 +87,10 @@ symlinks = [
   "config/user-dirs.dirs",
   "config/volume",
   "config/wallpaper",
+  "config/waybar/config",
+  "config/waybar/style.css",
+  "config/wofi/config",
+  "config/wofi/style.css",
   "config/xmonad/scripts",
   "config/xmonad/xmobar.hs",
   "config/xmonad/xmonad.hs",

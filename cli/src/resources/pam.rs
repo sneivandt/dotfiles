@@ -174,23 +174,18 @@ mod tests {
 
     #[test]
     fn state_missing_when_file_not_found() {
-        let temp = tempfile::tempdir().unwrap();
-        let mut mock = MockExecutor::new();
-        mock.expect_which().returning(|_| false);
-        let resource = PamConfigResource {
-            name: temp
-                .path()
-                .join("nonexistent")
-                .to_string_lossy()
-                .to_string(),
-            executor: Arc::new(mock),
-        };
-        // Override target_path by using a name that won't exist as /etc/pam.d/<name>
-        // Instead, test the logic directly with a non-existent path.
+        let mock = MockExecutor::new();
+        let resource = PamConfigResource::new(
+            "dotfiles-nonexistent-test-service".to_string(),
+            Arc::new(mock),
+        );
         let state = resource.current_state();
-        // On most systems /etc/pam.d/<random-temp-path> won't exist, so this
-        // should be Missing. If it errors (permission denied), that's also acceptable.
+        // /etc/pam.d/dotfiles-nonexistent-test-service won't exist on any system.
         assert!(state.is_ok(), "current_state should not error: {state:?}");
+        assert!(
+            matches!(state.unwrap(), ResourceState::Missing),
+            "expected Missing for non-existent PAM service"
+        );
     }
 
     #[test]

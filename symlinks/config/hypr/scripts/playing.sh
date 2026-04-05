@@ -2,7 +2,7 @@
 set -o errexit
 set -o nounset
 
-# Playing indicator for waybar — same logic as xmonad playing.sh
+# Playing indicator for waybar
 if [ "$(playerctl status --player=spotify 2>/dev/null || true)" = "Playing" ]; then
   metadata="$(playerctl metadata --player=spotify --format '{{ artist }} - {{ album }} - {{ title }}')"
   case "$metadata" in

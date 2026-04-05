@@ -5,19 +5,6 @@
 ZPROFILE_LOADED=1
 
 # Start graphical session on tty1 if not already running
-if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" -eq 1 ]; then
-  echo ""
-  echo "  Select session:"
-  echo "    1) Hyprland  (Wayland)"
-  echo "    2) xmonad    (X11)"
-  echo "    3) shell"
-  echo ""
-  printf "  Choice [1]: "
-  read -r _session_choice
-  case "${_session_choice:-1}" in
-    1) exec Hyprland ;;
-    2) exec startx ;;
-    3) ;;
-  esac
-  unset _session_choice
+if uwsm check may-start 2>/dev/null; then
+  exec uwsm start hyprland-uwsm.desktop
 fi

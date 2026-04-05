@@ -13,6 +13,6 @@ include = []
 exclude = ["desktop"]
 
 [desktop]
-description = "Full graphical desktop (Arch: Hyprland/Wayland + xmonad/X11 fallback)"
+description = "Full graphical desktop (Arch: Hyprland/Wayland)"
 include = ["desktop"]
 exclude = []

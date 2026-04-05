@@ -66,7 +66,6 @@ paths = [
   "config/shell/aliases-desktop.sh",
   "config/shell/profile-desktop.sh",
   "vscode-remote/",
-  "local/share/terminfo/",
 ]
 
 # Desktop-specific files that also require Arch Linux
@@ -80,25 +79,13 @@ paths = [
   "config/gtk-3.0/",
   "config/hypr/",
   "config/lock.sh",
-  "config/picom/",
-  "config/redshift.conf",
-  "config/rofi/",
   "config/shell/profile-arch-desktop.sh",
   "config/systemd/user/dunst.service",
-  "config/systemd/user/picom.service",
-  "config/systemd/user/redshift.service.d/",
   "config/systemd/user/volume.service",
-  "config/systemd/user/wallpaper.service",
-  "config/systemd/user/xautolock.service",
-  "config/systemd/user/xsession.target",
   "config/user-dirs.dirs",
   "config/volume/",
   "config/wallpaper/",
   "config/waybar/",
   "config/wofi/",
-  "config/xmonad/",
-  "Xdefaults",
-  "xinitrc",
-  "Xresources",
   "zprofile",
 ]

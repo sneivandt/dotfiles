@@ -1,8 +1,8 @@
 [Unit]
 Description=dunst
 
-Wants=xsession.target
-After=xsession.target picom.service
+Wants=graphical-session.target
+After=graphical-session.target
 
 ConditionFileIsExecutable=/usr/bin/dunst
 ConditionPathExists=%h/.config/dunst/dunstrc
@@ -15,4 +15,4 @@ Restart=always
 RestartSec=5
 
 [Install]
-WantedBy=xsession.target
+WantedBy=graphical-session.target

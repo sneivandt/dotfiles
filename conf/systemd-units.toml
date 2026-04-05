@@ -9,9 +9,5 @@ units = [
 [arch-desktop]
 units = [
   "dunst.service",
-  "picom.service",
-  "redshift.service",
   "volume.service",
-  "wallpaper.service",
-  "xautolock.service",
 ]

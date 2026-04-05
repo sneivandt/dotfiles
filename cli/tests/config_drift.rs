@@ -181,8 +181,38 @@ fn non_base_symlink_sources_covered_by_manifest() {
     );
 }
 
+/// Returns paths excluded by sparse checkout (relative to `symlinks/`).
+///
+/// Reads `.git/info/sparse-checkout` and collects negated patterns that start
+/// with `!/symlinks/`, stripping the prefix so they match manifest paths.
+fn sparse_checkout_excluded_paths(root: &Path) -> Vec<String> {
+    let sc_path = root.join(".git/info/sparse-checkout");
+    let Ok(content) = std::fs::read_to_string(sc_path) else {
+        return Vec::new();
+    };
+    content
+        .lines()
+        .filter_map(|line| line.strip_prefix("!/symlinks/"))
+        .map(String::from)
+        .collect()
+}
+
+/// Returns `true` when `path` is excluded by one of the sparse checkout
+/// negation patterns (exact match or directory prefix).
+fn is_excluded_by_sparse(path: &str, excluded: &[String]) -> bool {
+    excluded.iter().any(|ex| {
+        ex.strip_suffix('/').map_or_else(
+            || path == ex,
+            |dir| path == dir || path.starts_with(ex.as_str()),
+        )
+    })
+}
+
 /// Every path listed in `manifest.toml` must correspond to an existing
 /// file or directory inside `symlinks/`.
+///
+/// Paths excluded by sparse checkout are skipped — they are intentionally
+/// absent on this machine.
 #[test]
 fn manifest_paths_exist_in_symlinks_dir() {
     let root = repo_root();
@@ -190,11 +220,15 @@ fn manifest_paths_exist_in_symlinks_dir() {
     let conf = root.join("conf");
 
     let manifest = load_manifest_sections(&conf.join("manifest.toml"));
+    let excluded = sparse_checkout_excluded_paths(&root);
 
     let mut missing: Vec<String> = Vec::new();
 
     for (section, paths) in &manifest {
         for path in paths {
+            if is_excluded_by_sparse(path, &excluded) {
+                continue;
+            }
             let full = symlinks_dir.join(path);
             if !full.exists() {
                 missing.push(format!("[{section}] {path}"));

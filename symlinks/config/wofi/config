@@ -1,5 +1,6 @@
 show=drun
 width=560
+height=460
 lines=10
 term=alacritty
 allow_images=true

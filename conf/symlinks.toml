@@ -73,17 +73,9 @@ symlinks = [
   "config/hypr/hyprpaper.conf",
   "config/hypr/scripts",
   "config/lock.sh",
-  "config/picom/picom.conf",
-  "config/redshift.conf",
-  "config/rofi/config.rasi",
   "config/shell/profile-arch-desktop.sh",
   "config/systemd/user/dunst.service",
-  "config/systemd/user/picom.service",
-  "config/systemd/user/redshift.service.d/xsession.conf",
   "config/systemd/user/volume.service",
-  "config/systemd/user/wallpaper.service",
-  "config/systemd/user/xautolock.service",
-  "config/systemd/user/xsession.target",
   "config/user-dirs.dirs",
   "config/volume",
   "config/wallpaper",
@@ -91,12 +83,6 @@ symlinks = [
   "config/waybar/style.css",
   "config/wofi/config",
   "config/wofi/style.css",
-  "config/xmonad/scripts",
-  "config/xmonad/xmobar.hs",
-  "config/xmonad/xmonad.hs",
-  "Xdefaults",
-  "xinitrc",
-  "Xresources",
   "zprofile",
 ]
 
@@ -116,7 +102,6 @@ symlinks = [
   "config/idea/idea.properties",
   "config/shell/aliases-desktop.sh",
   "config/shell/profile-desktop.sh",
-  "local/share/terminfo/r/rxvt-unicode-256color",
   "vscode-remote/data/Machine/settings.json",
 ]
 

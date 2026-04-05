@@ -1,0 +1,42 @@
+/* Waybar — dark theme
+ * Background: #121212  Foreground: #d0d0d0
+ * Active: #61afef       Accent: #b48ead
+ */
+
+* {
+    font-family: "Source Code Pro", "Font Awesome 6 Free";
+    font-size: 14px;
+    min-height: 0;
+}
+
+window#waybar {
+    background-color: rgba(18, 18, 18, 0.94);
+    color: #d0d0d0;
+}
+
+#workspaces button {
+    padding: 0 4px;
+    font-size: 22px;
+    color: #d0d0d0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+
+#workspaces button.urgent {
+    color: #b48ead;
+}
+
+#window {
+    padding: 0 10px;
+}
+
+#clock,
+#pulseaudio,
+#custom-playing {
+    padding: 0 10px;
+}
+
+#pulseaudio.muted {
+    color: #666666;
+}

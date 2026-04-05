@@ -1,0 +1,13 @@
+show=drun
+width=560
+lines=10
+term=alacritty
+allow_images=true
+image_size=32
+insensitive=true
+prompt=
+columns=1
+hide_scroll=true
+matching=fuzzy
+no_actions=true
+layer=overlay

@@ -1,0 +1,40 @@
+{
+    "layer": "top",
+    "position": "top",
+    "height": 26,
+    "modules-left": ["hyprland/workspaces", "hyprland/window"],
+    "modules-center": [],
+    "modules-right": ["custom/playing", "pulseaudio", "clock"],
+
+    "hyprland/workspaces": {
+        "format": "{icon}",
+        "format-icons": {
+            "active": "●",
+            "default": "○"
+        },
+        "on-click": "activate",
+        "sort-by-number": true
+    },
+
+    "hyprland/window": {
+        "max-length": 80
+    },
+
+    "pulseaudio": {
+        "format": "\uf028  {volume}%",
+        "format-muted": "\uf6a9 muted",
+        "on-click": "pactl set-sink-mute @DEFAULT_SINK@ toggle",
+        "tooltip": false
+    },
+
+    "clock": {
+        "format": "\uf073 {:%a %d %b %Y}",
+        "tooltip": false
+    },
+
+    "custom/playing": {
+        "exec": "~/.config/hypr/scripts/playing.sh",
+        "interval": 5,
+        "format": "{}"
+    }
+}

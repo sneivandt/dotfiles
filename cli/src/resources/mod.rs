@@ -5,6 +5,7 @@ pub mod developer_mode;
 pub mod git_config;
 pub mod hook;
 pub mod package;
+pub mod pam;
 pub mod registry;
 pub mod script;
 pub mod shell;

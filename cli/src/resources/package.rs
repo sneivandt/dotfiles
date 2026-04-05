@@ -232,7 +232,7 @@ impl PackageProvider for PacmanProvider {
     }
 
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
-        executor.run("sudo", &["pacman", "-S", "--needed", "--noconfirm", name])?;
+        executor.run("sudo", &["pacman", "-Sy", "--needed", "--noconfirm", name])?;
         Ok(ResourceChange::Applied)
     }
 
@@ -241,7 +241,7 @@ impl PackageProvider for PacmanProvider {
     }
 
     fn batch_install(&self, names: &[&str], executor: &dyn Executor) -> Result<()> {
-        let mut args = vec!["pacman", "-S", "--needed", "--noconfirm"];
+        let mut args = vec!["pacman", "-Sy", "--needed", "--noconfirm"];
         args.extend(names);
         executor.run("sudo", &args)?;
         Ok(())
@@ -874,7 +874,7 @@ mod tests {
         let (prog, args) = &calls[0];
         assert_eq!(prog, "sudo");
         assert_eq!(args[0], "pacman");
-        assert_eq!(args[1], "-S");
+        assert_eq!(args[1], "-Sy");
         assert_eq!(args[2], "--needed");
         assert_eq!(args[3], "--noconfirm");
         assert!(args.contains(&"git".to_string()), "git must be in args");
@@ -927,6 +927,7 @@ mod tests {
         let pacman_calls = pacman_exec.recorded_calls();
         assert_eq!(pacman_calls.len(), 1);
         assert_eq!(pacman_calls[0].0, "sudo");
+        assert!(pacman_calls[0].1.contains(&"-Sy".to_string()));
         assert!(pacman_calls[0].1.contains(&"git".to_string()));
 
         // Paru batch uses paru_exec

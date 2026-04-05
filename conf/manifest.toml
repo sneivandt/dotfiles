@@ -72,10 +72,13 @@ paths = [
 # Desktop-specific files that also require Arch Linux
 [arch-desktop]
 paths = [
+  "config/chromium/",
   "config/dunst/",
   "config/flameshot/",
+  "config/gammastep/",
   "config/gtk-2.0/",
   "config/gtk-3.0/",
+  "config/hypr/",
   "config/lock.sh",
   "config/picom/",
   "config/redshift.conf",
@@ -91,6 +94,8 @@ paths = [
   "config/user-dirs.dirs",
   "config/volume/",
   "config/wallpaper/",
+  "config/waybar/",
+  "config/wofi/",
   "config/xmonad/",
   "Xdefaults",
   "xinitrc",

@@ -9,6 +9,7 @@ pub mod copilot_plugins;
 pub mod git_config;
 pub mod overlay_scripts;
 pub mod packages;
+pub mod pam;
 pub mod registry;
 pub mod shell;
 pub mod symlinks;

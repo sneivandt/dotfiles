@@ -23,13 +23,12 @@ pub use types::{Log, Output, TaskEntry, TaskRecorder, TaskStatus};
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 pub(crate) fn isolated_logger() -> (Logger, tempfile::TempDir, tracing::dispatcher::DefaultGuard) {
-    use tracing_subscriber::{Layer as _, filter::LevelFilter, layer::SubscriberExt as _};
+    use tracing_subscriber::layer::SubscriberExt as _;
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
     let file_layer =
         subscriber::FileLayer::new_in("test", tmp.path()).expect("failed to create file layer");
     let log = Logger::new_in("test", tmp.path());
-    let subscriber =
-        tracing_subscriber::registry().with(file_layer.with_filter(LevelFilter::DEBUG));
+    let subscriber = tracing_subscriber::registry().with(file_layer);
     let guard = tracing::dispatcher::set_default(&tracing::Dispatch::new(subscriber));
     (log, tmp, guard)
 }

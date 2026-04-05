@@ -235,7 +235,7 @@ pub fn init_subscriber(verbose: bool, command: &str) {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use tracing_subscriber::{Layer as _, filter::LevelFilter, layer::SubscriberExt as _};
+    use tracing_subscriber::layer::SubscriberExt as _;
 
     /// Create a [`FileLayer`] in a temp directory and return the log file path,
     /// temp dir (must outlive the layer), and a tracing dispatcher guard.
@@ -249,7 +249,7 @@ mod tests {
             FileLayer::new_in("test", tmp.path()).expect("FileLayer::new_in should succeed");
         let path = super::super::utils::log_file_path_in("test", tmp.path())
             .expect("log path should resolve");
-        let subscriber = tracing_subscriber::registry().with(layer.with_filter(LevelFilter::DEBUG));
+        let subscriber = tracing_subscriber::registry().with(layer);
         let guard = tracing::dispatcher::set_default(&tracing::Dispatch::new(subscriber));
         (path, tmp, guard)
     }

@@ -115,44 +115,65 @@ impl Applicable for CopilotPluginResource {
     }
 }
 
-/// Minimum Copilot CLI major version that supports the `plugin` subcommand.
-const MIN_PLUGIN_MAJOR_VERSION: u64 = 1;
-
-/// Query the installed GitHub Copilot CLI version.
+/// Query the installed GitHub Copilot CLI extension version.
 ///
-/// Runs `gh copilot --version` and parses the output (e.g. `GitHub Copilot CLI 1.0.4-0`).
+/// Runs `gh extension list` and extracts the version for the `gh copilot`
+/// extension (e.g. `v1.2.0`).
 ///
 /// # Errors
 ///
-/// Returns an error if the command fails.
+/// Returns an error if the command fails or the extension is not found.
 pub fn get_copilot_version(executor: &dyn Executor) -> Result<(u64, u64, u64)> {
-    let result = run_copilot_cmd(&["copilot", "--version"], executor)?;
+    let result = executor.run_unchecked("gh", &["extension", "list"])?;
     if !result.success {
-        bail!("gh copilot --version failed (exit {:?})", result.code);
+        bail!("gh extension list failed (exit {:?})", result.code);
     }
-    parse_copilot_version(&result.stdout).ok_or_else(|| {
-        anyhow::anyhow!(
-            "could not parse Copilot CLI version from: {}",
-            result.stdout.trim()
-        )
-    })
+    // Find the line for the copilot extension and parse its version.
+    for line in result.stdout.lines() {
+        let lower = line.to_lowercase();
+        if (lower.contains("copilot") || lower.contains("gh-copilot"))
+            && let Some(version) = parse_copilot_version(line)
+        {
+            return Ok(version);
+        }
+    }
+    bail!(
+        "could not find Copilot extension version in: {}",
+        result.stdout.trim()
+    )
 }
 
-/// Return `true` if the installed Copilot CLI version supports plugin subcommands.
-#[must_use]
-pub const fn copilot_supports_plugins(version: (u64, u64, u64)) -> bool {
-    version.0 >= MIN_PLUGIN_MAJOR_VERSION
-}
-
-/// Parse a Copilot CLI version string into `(major, minor, patch)`.
+/// Return `true` if the installed Copilot CLI supports `plugin` subcommands.
 ///
-/// Accepts output like `GitHub Copilot CLI 1.0.4-0` or bare `1.0.4`.
-/// Pre-release suffixes (e.g. `-0`) are stripped before parsing.
+/// Runs `gh copilot plugin list` and treats a successful exit (or any output
+/// that is not the "Invalid command format" error) as confirmation that the
+/// subcommand is available.
+pub fn copilot_supports_plugins(executor: &dyn Executor) -> bool {
+    let Ok(result) = run_copilot_cmd(&["copilot", "plugin", "list"], executor) else {
+        return false;
+    };
+    if !result.success {
+        // The old CLI prints "Invalid command format" when it doesn't know
+        // about the `plugin` subcommand.
+        return !result.stderr.contains("Invalid command format");
+    }
+    true
+}
+
+/// Parse a version string into `(major, minor, patch)`.
+///
+/// Accepts formats like `v1.2.0`, `1.0.4-0`, bare `1.0.4`, or a line from
+/// `gh extension list` such as `gh copilot  github/gh-copilot  v1.2.0`.
+/// A leading `v` prefix and pre-release suffixes (e.g. `-0`) are stripped.
 fn parse_copilot_version(output: &str) -> Option<(u64, u64, u64)> {
-    // Find the version part — last whitespace-delimited token that starts with a digit.
-    let version_str = output
-        .split_whitespace()
-        .rfind(|token| token.chars().next().is_some_and(|ch| ch.is_ascii_digit()))?;
+    // Find the version part — last whitespace-delimited token that contains a
+    // dot and starts with a digit or `v` + digit.
+    let version_str = output.split_whitespace().rfind(|token| {
+        let t = token.strip_prefix('v').unwrap_or(token);
+        t.contains('.') && t.chars().next().is_some_and(|ch| ch.is_ascii_digit())
+    })?;
+    // Strip optional leading `v` (e.g. v1.2.0 → 1.2.0).
+    let version_str = version_str.strip_prefix('v').unwrap_or(version_str);
     // Trim trailing prose punctuation/suffixes until the token ends in a digit.
     let version_str = version_str.trim_end_matches(|ch: char| !ch.is_ascii_digit());
     // Strip optional pre-release suffix (e.g. 1.0.4-0 → 1.0.4).
@@ -188,53 +209,6 @@ pub fn get_copilot_plugin_state(executor: &dyn Executor) -> Result<CopilotPlugin
         installed_plugins: parse_installed_plugins(&installed.stdout),
         registered_marketplaces: parse_registered_marketplaces(&marketplaces.stdout),
     })
-}
-
-/// Query Copilot CLI version, installed plugins, and registered marketplaces.
-///
-/// The version check runs first so that any on-demand binary installation
-/// finishes before the list queries execute (avoids ETXTBSY / "text file
-/// busy" on Linux when multiple `gh copilot` invocations race to install the
-/// binary). The two list queries then run in parallel.
-///
-/// Returns the version result and the plugin cache result independently so the
-/// caller can handle a version-check failure without blocking on the
-/// (already-completed) list queries.
-pub fn query_copilot_state(
-    executor: &dyn Executor,
-) -> (Result<(u64, u64, u64)>, Result<CopilotPluginCache>) {
-    // Run version check first — this may trigger Copilot binary installation.
-    let version = get_copilot_version(executor);
-
-    // Now run list queries in parallel (binary is already installed).
-    let cache = std::thread::scope(|s| {
-        let plugin_handle = s.spawn(|| {
-            run_copilot_checked(
-                &["copilot", "plugin", "list"],
-                executor,
-                "gh copilot plugin list",
-            )
-        });
-        let marketplace_handle = s.spawn(|| {
-            run_copilot_checked(
-                &["copilot", "plugin", "marketplace", "list"],
-                executor,
-                "gh copilot plugin marketplace list",
-            )
-        });
-
-        match (plugin_handle.join(), marketplace_handle.join()) {
-            (Ok(Ok(installed)), Ok(Ok(marketplaces))) => Ok(CopilotPluginCache {
-                installed_plugins: parse_installed_plugins(&installed.stdout),
-                registered_marketplaces: parse_registered_marketplaces(&marketplaces.stdout),
-            }),
-            (Ok(Err(e)), _) | (_, Ok(Err(e))) => Err(e),
-            (Err(_), _) => Err(anyhow::anyhow!("plugin list thread panicked")),
-            (_, Err(_)) => Err(anyhow::anyhow!("marketplace list thread panicked")),
-        }
-    });
-
-    (version, cache)
 }
 
 /// Register a marketplace with the Copilot CLI.
@@ -554,28 +528,18 @@ mod tests {
     }
 
     #[test]
-    fn parse_copilot_version_full_output() {
+    fn parse_copilot_version_extension_list_line() {
         assert_eq!(
-            parse_copilot_version("GitHub Copilot CLI 1.0.4-0"),
-            Some((1, 0, 4))
+            parse_copilot_version("gh copilot\tgithub/gh-copilot\tv1.2.0"),
+            Some((1, 2, 0))
         );
     }
 
     #[test]
-    fn parse_copilot_version_legacy_output() {
+    fn parse_copilot_version_extension_list_spaces() {
         assert_eq!(
-            parse_copilot_version("GitHub Copilot CLI 0.0.396"),
-            Some((0, 0, 396))
-        );
-    }
-
-    #[test]
-    fn parse_copilot_version_multiline_output_with_trailing_period() {
-        assert_eq!(
-            parse_copilot_version(
-                "GitHub Copilot CLI 0.0.396.\nRun 'copilot update' to check for updates."
-            ),
-            Some((0, 0, 396))
+            parse_copilot_version("gh copilot  github/gh-copilot  v1.2.0"),
+            Some((1, 2, 0))
         );
     }
 
@@ -585,18 +549,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_copilot_version_with_prerelease_suffix() {
-        assert_eq!(parse_copilot_version("2.1.0-beta"), Some((2, 1, 0)));
+    fn parse_copilot_version_v_prefix() {
+        assert_eq!(parse_copilot_version("v2.1.0"), Some((2, 1, 0)));
     }
 
     #[test]
-    fn parse_copilot_version_with_trailing_period_and_update_nag() {
-        assert_eq!(
-            parse_copilot_version(
-                "GitHub Copilot CLI 1.0.3.\nRun 'copilot update' to check for updates."
-            ),
-            Some((1, 0, 3))
-        );
+    fn parse_copilot_version_with_prerelease_suffix() {
+        assert_eq!(parse_copilot_version("v2.1.0-beta"), Some((2, 1, 0)));
     }
 
     #[test]
@@ -606,29 +565,37 @@ mod tests {
     }
 
     #[test]
-    fn copilot_supports_plugins_v1() {
-        assert!(copilot_supports_plugins((1, 0, 4)));
-        assert!(copilot_supports_plugins((2, 0, 0)));
-    }
-
-    #[test]
-    fn copilot_does_not_support_plugins_v0() {
-        assert!(!copilot_supports_plugins((0, 0, 396)));
-        assert!(!copilot_supports_plugins((0, 9, 99)));
-    }
-
-    #[test]
-    fn get_copilot_version_runs_version_command() {
+    fn copilot_supports_plugins_when_list_succeeds() {
         let executor = Arc::new(RecordingExecutor::new(vec![RecordingExecutor::success(
-            "GitHub Copilot CLI 1.0.4-0\n",
+            "Installed plugins:\n",
+        )]));
+        assert!(copilot_supports_plugins(&*executor as &dyn Executor));
+    }
+
+    #[test]
+    fn copilot_does_not_support_plugins_when_invalid_command() {
+        let executor = Arc::new(RecordingExecutor::new(vec![ExecResult {
+            stdout: String::new(),
+            stderr: "error: Invalid command format.\n\nDid you mean: copilot -i \"plugin list\"?"
+                .to_string(),
+            success: false,
+            code: Some(1),
+        }]));
+        assert!(!copilot_supports_plugins(&*executor as &dyn Executor));
+    }
+
+    #[test]
+    fn get_copilot_version_runs_extension_list() {
+        let executor = Arc::new(RecordingExecutor::new(vec![RecordingExecutor::success(
+            "NAME        REPO               VERSION\ngh copilot  github/gh-copilot  v1.2.0\n",
         )]));
         let executor_trait: Arc<dyn Executor> = executor.clone();
 
         let version = get_copilot_version(&*executor_trait).unwrap();
-        assert_eq!(version, (1, 0, 4));
+        assert_eq!(version, (1, 2, 0));
 
         let calls = executor.calls();
         assert_eq!(calls.len(), 1);
-        assert!(calls[0].join(" ").contains("copilot --version"));
+        assert!(calls[0].join(" ").contains("extension list"));
     }
 }

@@ -1,17 +1,14 @@
 [Unit]
-Description=Set initial volume to 80% and unmute
-Wants=graphical-session.target
-After=graphical-session.target pulseaudio.service pipewire-pulse.service
+Description=Set initial volume and unmute
+After=pipewire-pulse.service pulseaudio.service
 ConditionFileIsExecutable=%h/.config/volume/init-volume.sh
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# Give PulseAudio time to restore its state, then override it
+# Give PulseAudio/PipeWire time to restore its state, then override it
 ExecStartPre=/usr/bin/sleep 3
 ExecStart=%h/.config/volume/init-volume.sh
-Restart=on-failure
-RestartSec=5
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=default.target

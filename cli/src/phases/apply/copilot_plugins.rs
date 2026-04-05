@@ -7,8 +7,8 @@ use std::sync::Arc;
 use crate::phases::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resource_states};
 use crate::resources::ResourceState;
 use crate::resources::copilot_plugin::{
-    CopilotPluginCache, CopilotPluginResource, copilot_supports_plugins, query_copilot_state,
-    register_marketplace,
+    CopilotPluginCache, CopilotPluginResource, copilot_supports_plugins, get_copilot_plugin_state,
+    get_copilot_version, register_marketplace,
 };
 
 /// Install GitHub Copilot plugins.
@@ -35,53 +35,43 @@ impl Task for InstallCopilotPlugins {
             return Ok(TaskResult::Skipped("gh CLI not found".to_string()));
         }
 
-        // Run version check first (may trigger binary install), then
-        // plugin/marketplace list queries in parallel.
-        let (version_result, cache_result) = if gh_available {
-            query_copilot_state(&*ctx.executor)
-        } else {
-            (
-                Err(anyhow::anyhow!("gh not available")),
-                Ok(CopilotPluginCache::empty()),
-            )
-        };
-
-        let plugins_supported = match version_result {
-            Ok(version) => {
-                ctx.debug_fmt(|| {
+        // Log the extension version if available.
+        if gh_available {
+            match get_copilot_version(&*ctx.executor) {
+                Ok(version) => ctx.debug_fmt(|| {
                     format!(
-                        "Copilot CLI version: {}.{}.{}",
+                        "Copilot extension version: {}.{}.{}",
                         version.0, version.1, version.2
                     )
-                });
-                if copilot_supports_plugins(version) {
-                    true
-                } else {
-                    let msg = format!(
-                        "Copilot CLI {}.{}.{} does not support plugins (requires >= 1.0.0)",
-                        version.0, version.1, version.2
-                    );
-                    if !ctx.dry_run {
-                        return Ok(TaskResult::Skipped(msg));
-                    }
-                    ctx.log.debug(&msg);
-                    false
-                }
+                }),
+                Err(e) => ctx.log.debug(&format!(
+                    "could not determine Copilot extension version: {e}"
+                )),
             }
-            Err(e) => {
-                let msg = format!("could not determine Copilot CLI version: {e}");
-                if !ctx.dry_run {
-                    return Ok(TaskResult::Skipped(msg));
-                }
-                ctx.log.debug(&msg);
-                false
-            }
+        }
+
+        // Probe whether the `plugin` subcommand is available.
+        let plugins_supported = if gh_available {
+            copilot_supports_plugins(&*ctx.executor)
+        } else {
+            false
         };
+
+        if !plugins_supported && !ctx.dry_run {
+            return Ok(TaskResult::Skipped(
+                "Copilot CLI does not support plugin subcommands".to_string(),
+            ));
+        }
+        if !plugins_supported {
+            ctx.log.debug(
+                "Copilot plugin commands unavailable; assuming plugins are missing for dry-run",
+            );
+        }
 
         let plugins: Vec<_> = ctx.config_read().copilot_plugins.clone();
         let cache = if plugins_supported {
             ctx.debug_fmt(|| format!("batch-checking {} Copilot plugins", plugins.len()));
-            match cache_result {
+            match get_copilot_plugin_state(&*ctx.executor) {
                 Ok(c) => c,
                 Err(e) if ctx.dry_run => {
                     ctx.log.debug(&format!(
@@ -92,9 +82,6 @@ impl Task for InstallCopilotPlugins {
                 Err(e) => return Err(e),
             }
         } else {
-            ctx.log.debug(
-                "Copilot plugin commands unavailable; assuming plugins are missing for dry-run",
-            );
             CopilotPluginCache::empty()
         };
 
@@ -186,7 +173,7 @@ mod tests {
     }
 
     #[test]
-    fn run_skips_when_copilot_version_too_old() {
+    fn run_skips_when_plugin_subcommand_unavailable() {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.copilot_plugins.push(CopilotPlugin {
             marketplace: "dotnet/skills".to_string(),
@@ -195,12 +182,33 @@ mod tests {
         });
         let mut executor = MockExecutor::new();
         executor.expect_which().returning(|_| true);
-        executor.expect_run_unchecked().times(3).returning(|_, _| {
+        // First call: gh extension list (version check)
+        executor.expect_run_unchecked().times(1).returning(|_, args| {
+            if args.contains(&"extension") {
+                Ok(ExecResult {
+                    stdout: "NAME        REPO               VERSION\ngh copilot  github/gh-copilot  v1.2.0\n".to_string(),
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            } else {
+                // Second call: gh copilot plugin list (probe)
+                Ok(ExecResult {
+                    stdout: String::new(),
+                    stderr: "error: Invalid command format.\n\nDid you mean: copilot -i \"plugin list\"?".to_string(),
+                    success: false,
+                    code: Some(1),
+                })
+            }
+        });
+        executor.expect_run_unchecked().times(1).returning(|_, _| {
             Ok(ExecResult {
-                stdout: "GitHub Copilot CLI 0.0.396\n".to_string(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
+                stdout: String::new(),
+                stderr:
+                    "error: Invalid command format.\n\nDid you mean: copilot -i \"plugin list\"?"
+                        .to_string(),
+                success: false,
+                code: Some(1),
             })
         });
         let executor = Arc::new(executor);
@@ -212,8 +220,8 @@ mod tests {
         let ctx = make_context(config, platform, executor);
         let result = InstallCopilotPlugins.run(&ctx).unwrap();
         assert!(
-            matches!(result, TaskResult::Skipped(ref s) if s.contains("does not support plugins")),
-            "expected version skip, got {result:?}"
+            matches!(result, TaskResult::Skipped(ref s) if s.contains("does not support plugin")),
+            "expected plugin support skip, got {result:?}"
         );
     }
 }

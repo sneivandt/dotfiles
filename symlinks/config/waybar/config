@@ -23,7 +23,7 @@
 
     "pulseaudio": {
         "format": "\uf028  {volume}%",
-        "format-muted": "\uf6a9 muted",
+        "format-muted": "\uf6a9  0%",
         "on-click": "pactl set-sink-mute @DEFAULT_SINK@ toggle",
         "tooltip": false
     },
@@ -36,6 +36,6 @@
     "custom/playing": {
         "exec": "~/.config/hypr/scripts/playing.sh",
         "interval": 5,
-        "format": "{}"
+        "format": "\uf001 {}"
     }
 }

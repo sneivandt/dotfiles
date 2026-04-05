@@ -78,7 +78,6 @@ paths = [
   "config/gtk-2.0/",
   "config/gtk-3.0/",
   "config/hypr/",
-  "config/lock.sh",
   "config/shell/profile-arch-desktop.sh",
   "config/systemd/user/dunst.service",
   "config/systemd/user/volume.service",

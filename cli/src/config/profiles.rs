@@ -61,7 +61,7 @@ fn default_definitions() -> HashMap<String, ProfileDef> {
     map.insert(
         "desktop".to_string(),
         ProfileDef {
-            description: Some("Full graphical desktop (Arch + X11)".to_string()),
+            description: Some("Full graphical desktop (Arch + Hyprland/Wayland)".to_string()),
             include: vec!["desktop".to_string()],
             exclude: vec![],
         },

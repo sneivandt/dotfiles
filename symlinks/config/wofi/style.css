@@ -17,6 +17,9 @@ window {
 
 #outer-box {
     background-color: #121212;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    padding: 8px;
 }
 
 #inner-box {
@@ -27,7 +30,9 @@ window {
     background-color: #1a1a1a;
     color: #d0d0d0;
     border: 1px solid #2a2a2a;
+    border-radius: 8px;
     padding: 10px 14px;
+    margin-bottom: 8px;
     font-size: 14px;
 }
 
@@ -38,6 +43,11 @@ window {
 #scroll {
     margin: 0;
     overflow-y: auto;
+}
+
+#entry {
+    padding: 6px 10px;
+    border-radius: 8px;
 }
 
 #entry:selected {
@@ -53,5 +63,5 @@ window {
 }
 
 #img {
-    margin-right: 4px;
+    margin-right: 8px;
 }

@@ -9,8 +9,12 @@ then
   exec /usr/bin/pinentry-curses "$@"
 fi
 
-if [ -f /usr/lib/libgtk-x11-2.0.so.0 ] \
-  && [ -x /usr/bin/pinentry-gnome3 ]
+if [ -x /usr/bin/pinentry-qt ]
+then
+  exec /usr/bin/pinentry-qt "$@"
+fi
+
+if [ -x /usr/bin/pinentry-gnome3 ]
 then
   exec /usr/bin/pinentry-gnome3 "$@"
 fi

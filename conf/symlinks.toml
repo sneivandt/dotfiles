@@ -72,7 +72,6 @@ symlinks = [
   "config/hypr/hyprlock.conf",
   "config/hypr/hyprpaper.conf",
   "config/hypr/scripts",
-  "config/lock.sh",
   "config/shell/profile-arch-desktop.sh",
   "config/systemd/user/dunst.service",
   "config/systemd/user/volume.service",

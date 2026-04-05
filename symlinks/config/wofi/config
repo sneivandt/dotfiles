@@ -12,3 +12,4 @@ hide_scroll=true
 matching=fuzzy
 no_actions=true
 layer=overlay
+dynamic_lines=false

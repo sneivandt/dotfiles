@@ -4,6 +4,10 @@
  * Accent: #b48ead      Muted: #555555
  */
 
+* {
+    box-sizing: border-box;
+}
+
 window {
     background-color: transparent;
     font-family: "Source Code Pro";
@@ -12,27 +16,17 @@ window {
 }
 
 #outer-box {
-    min-width: 536px;
-    min-height: 436px;
-}
-
-#outer-box {
     background-color: #121212;
-    border: 2px solid #2a2a2a;
-    border-radius: 12px;
-    padding: 12px;
 }
 
 #inner-box {
     background-color: transparent;
-    margin-top: 8px;
 }
 
 #input {
     background-color: #1a1a1a;
     color: #d0d0d0;
     border: 1px solid #2a2a2a;
-    border-radius: 8px;
     padding: 10px 14px;
     font-size: 14px;
 }
@@ -43,12 +37,7 @@ window {
 
 #scroll {
     margin: 0;
-}
-
-#entry {
-    padding: 8px 10px;
-    border-radius: 8px;
-    margin: 2px 0;
+    overflow-y: auto;
 }
 
 #entry:selected {
@@ -57,7 +46,6 @@ window {
 
 #text {
     color: #d0d0d0;
-    margin-left: 8px;
 }
 
 #text:selected {

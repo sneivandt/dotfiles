@@ -48,7 +48,7 @@ Use **hyphen-separated** table names for multi-category sections (AND logic):
 ```toml
 # Hyphen-separated categories
 [arch-desktop]
-packages = ["rofi", "picom"]
+packages = ["wofi", "dunst"]
 ```
 
 The TOML loader splits section names on `-` to extract category tags.

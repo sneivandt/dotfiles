@@ -296,8 +296,6 @@ Enable GPU access for testing desktop configurations:
 ```bash
 docker run --rm -it \
   --gpus all \
-  -e DISPLAY=$DISPLAY \
-  -v /tmp/.X11-unix:/tmp/.X11-unix \
   sneivandt/dotfiles
 ```
 

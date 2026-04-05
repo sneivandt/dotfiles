@@ -19,7 +19,7 @@ Symlinks connect config files from `symlinks/` to `$HOME`. Config in `conf/symli
 config/nvim
 config/git/config
 [arch,desktop]
-config/xmonad
+config/hypr
 [windows]
 { source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }
 "config/git/windows"

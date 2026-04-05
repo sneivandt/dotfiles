@@ -16,14 +16,11 @@
     "files.associations": {
         "dotfiles.sh": "shellscript",
         "install.sh": "shellscript",
-        "Xresources": "properties",
-        "Xdefaults": "properties",
         "bash_profile": "shellscript",
         "bashrc": "shellscript",
         "zprofile": "shellscript",
         "zshenv": "shellscript",
         "zshrc": "shellscript",
-        "xinitrc": "shellscript",
         "nvimrc": "lua",
         "vimrc": "lua",
         "**/skills/*/SKILL.md": "markdown"

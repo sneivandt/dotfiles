@@ -50,7 +50,7 @@ paths = ["AppData/"]
 paths = ["config/pacman.conf"]
 
 [arch-desktop]
-paths = ["config/xmonad/"]
+paths = ["config/hypr/"]
 ```
 
 **Logic Explanation:**
@@ -176,7 +176,7 @@ Use hyphen-separated categories for files that belong to multiple contexts:
 ```toml
 [arch-desktop]
 paths = [
-  "config/xmonad/",          # Arch desktop window manager
+  "config/hypr/",             # Arch desktop window manager
   "config/dunst/",            # Arch desktop notifications
 ]
 ```
@@ -278,9 +278,8 @@ paths = [
 ```toml
 [arch-desktop]
 paths = [
-  "config/xmonad/",          # Window manager (needs both Arch and desktop)
+  "config/hypr/",            # Window manager (needs both Arch and desktop)
   "config/dunst/",           # Notification daemon
-  "xinitrc",                 # X11 initialization
 ]
 ```
 
@@ -300,11 +299,11 @@ paths = [
 ```toml
 # manifest.toml (AND logic on excluded categories)
 [arch-desktop]
-paths = ["config/xmonad/"]  # Exclude only if BOTH arch and desktop are excluded
+paths = ["config/hypr/"]    # Exclude only if BOTH arch and desktop are excluded
 
 # packages.toml (AND logic)
 [arch-desktop]
-packages = ["xmonad"]       # Install only if BOTH arch AND desktop active
+packages = ["hyprland"]     # Install only if BOTH arch AND desktop active
 ```
 
 This ensures files are available when their corresponding packages are installed.

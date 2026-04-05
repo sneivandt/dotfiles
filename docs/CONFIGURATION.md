@@ -55,7 +55,7 @@ Platform categories (`linux`, `windows`, `arch`) are auto-detected based on the 
 **Example**:
 ```toml
 [desktop]
-description = "Full graphical desktop (Arch + X11)"
+description = "Full graphical desktop (Arch: Hyprland/Wayland)"
 include = ["desktop"]
 exclude = []
 ```
@@ -110,8 +110,8 @@ symlinks = [
 
 [arch-desktop]
 symlinks = [
-  "xinitrc",
-  "config/xmonad/xmonad.hs",
+  "config/hypr/hyprland.conf",
+  "config/dunst/dunstrc",
 ]
 
 [windows]
@@ -168,7 +168,7 @@ units = ["clean-home-tmp.timer"]
 [arch-desktop]
 units = [
   "dunst.service",
-  "picom.service",
+  "volume.service",
 ]
 ```
 
@@ -421,7 +421,7 @@ Configuration requiring multiple categories (on an Arch Linux system with the `d
 ```toml
 # profiles.toml
 [desktop]
-description = "Full graphical desktop (Arch + X11)"
+description = "Full graphical desktop (Arch: Hyprland/Wayland)"
 include = ["desktop"]
 exclude = []
 
@@ -437,15 +437,15 @@ packages = ["code"]
 
 [arch-desktop]
 packages = [
-  "xorg-server",
-  "xmonad",
+  "hyprland",
+  "waybar",
 ]
 
 # symlinks.toml
 [arch-desktop]
 symlinks = [
-  "xinitrc",
-  "config/xmonad/xmonad.hs",
+  "config/hypr/hyprland.conf",
+  "config/dunst/dunstrc",
 ]
 ```
 

@@ -86,7 +86,7 @@ These items are processed when the `arch` category is NOT excluded.
 ```toml
 [arch-desktop]
 packages = [
-  "xmonad",
+  "hyprland",
   "alacritty",
 ]
 ```

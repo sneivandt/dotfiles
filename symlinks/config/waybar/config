@@ -28,7 +28,7 @@
     },
 
     "clock": {
-        "format": "\uf073 {:%a %d %b %Y}",
+        "format": "\uf073 {:%d %b %H:%M}",
         "tooltip": false
     },
 

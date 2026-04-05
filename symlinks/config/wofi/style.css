@@ -1,0 +1,64 @@
+/* Wofi — dark theme
+ * Background: #121212  Surface: #1a1a1a
+ * Foreground: #d0d0d0  Active: #61afef
+ * Accent: #b48ead      Muted: #555555
+ */
+
+window {
+    background-color: transparent;
+    font-family: "Source Code Pro";
+    font-size: 13px;
+    color: #d0d0d0;
+}
+
+#outer-box {
+    background-color: #121212;
+    border: 2px solid #2a2a2a;
+    border-radius: 12px;
+    padding: 12px;
+}
+
+#inner-box {
+    background-color: transparent;
+    margin-top: 8px;
+}
+
+#input {
+    background-color: #1a1a1a;
+    color: #d0d0d0;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+}
+
+#input:focus {
+    border-color: #61afef;
+}
+
+#scroll {
+    margin: 0;
+}
+
+#entry {
+    padding: 8px 10px;
+    border-radius: 8px;
+    margin: 2px 0;
+}
+
+#entry:selected {
+    background-color: rgba(97, 175, 239, 0.12);
+}
+
+#text {
+    color: #d0d0d0;
+    margin-left: 8px;
+}
+
+#text:selected {
+    color: #61afef;
+}
+
+#img {
+    margin-right: 4px;
+}

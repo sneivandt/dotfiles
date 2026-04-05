@@ -10,6 +10,7 @@ pub(crate) mod helpers;
 pub mod manifest;
 pub mod overlay;
 pub mod packages;
+pub mod pam;
 pub mod profiles;
 pub mod registry;
 pub mod scripts;
@@ -218,6 +219,8 @@ pub struct Config {
     pub copilot_plugins: Vec<copilot_plugins::CopilotPlugin>,
     /// Git configuration settings to apply globally.
     pub git_settings: Vec<git_config::GitSetting>,
+    /// PAM service configurations to install.
+    pub pam: Vec<pam::PamEntry>,
     /// Sparse checkout manifest for file exclusions.
     pub manifest: manifest::Manifest,
     /// Custom scripts from the overlay repository.
@@ -286,6 +289,7 @@ impl Config {
             active_categories
         );
         let git_settings = load_toml!("git-config.toml", git_config::load, active_categories);
+        let pam_entries = load_toml!("pam.toml", pam::load, active_categories);
         let manifest = load_toml!("manifest.toml", manifest::load, excluded_categories);
 
         let mut config = Self {
@@ -300,6 +304,7 @@ impl Config {
             vscode_extensions,
             copilot_plugins,
             git_settings,
+            pam: pam_entries,
             manifest,
             scripts: Vec::new(),
         };
@@ -390,6 +395,8 @@ impl Config {
             git_config::load,
             active_categories
         ));
+        self.pam
+            .extend(load_overlay!("pam.toml", pam::load, active_categories));
         self.scripts.extend(load_overlay!(
             "scripts.toml",
             scripts::load,
@@ -417,6 +424,7 @@ impl Config {
         warnings.extend(vscode_extensions::validate(&self.vscode_extensions));
         warnings.extend(copilot_plugins::validate(&self.copilot_plugins));
         warnings.extend(git_config::validate(&self.git_settings));
+        warnings.extend(pam::validate(&self.pam, platform));
         warnings
     }
 }
@@ -447,6 +455,7 @@ mod tests {
             "vscode-extensions.toml",
             "copilot-plugins.toml",
             "git-config.toml",
+            "pam.toml",
             "manifest.toml",
         ] {
             std::fs::write(conf.join(file), "").expect("write empty toml");

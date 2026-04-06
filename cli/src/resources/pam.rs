@@ -41,12 +41,6 @@ impl PamConfigResource {
         Self { name, executor }
     }
 
-    /// Create from a config entry.
-    #[must_use]
-    pub fn from_entry(entry: &crate::config::pam::PamEntry, executor: Arc<dyn Executor>) -> Self {
-        Self::new(entry.name.clone(), executor)
-    }
-
     /// The absolute path to the PAM config file.
     fn target_path(&self) -> String {
         format!("/etc/pam.d/{}", self.name)
@@ -196,15 +190,5 @@ mod tests {
         assert!(PAM_TEMPLATE.contains("session"));
         assert!(PAM_TEMPLATE.contains("system-auth"));
         assert!(PAM_TEMPLATE.ends_with('\n'));
-    }
-
-    #[test]
-    fn from_entry_creates_resource() {
-        let entry = crate::config::pam::PamEntry {
-            name: "hyprlock".to_string(),
-        };
-        let mock = MockExecutor::new();
-        let resource = PamConfigResource::from_entry(&entry, Arc::new(mock));
-        assert_eq!(resource.name, "hyprlock");
     }
 }

@@ -270,7 +270,6 @@ pub mod test_helpers {
             vscode_extensions: vec![],
             copilot_plugins: vec![],
             git_settings: vec![],
-            pam: vec![],
             manifest: Manifest {
                 excluded_files: vec![],
             },

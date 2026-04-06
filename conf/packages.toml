@@ -46,7 +46,7 @@ packages = [
   "alacritty",
   "alsa-utils",
   "chromium",
-  "dunst",
+  "mako",
   "flameshot",
   "gammastep",
   "grim",

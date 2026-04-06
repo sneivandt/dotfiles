@@ -8,6 +8,10 @@ units = [
 
 [arch-desktop]
 units = [
-  "dunst.service",
+  "gammastep.service",
+  "hypridle.service",
+  "hyprpaper.service",
+  "mako.service",
   "volume.service",
+  "waybar.service",
 ]

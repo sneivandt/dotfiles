@@ -62,7 +62,6 @@ symlinks = [
 [arch-desktop]
 symlinks = [
   "config/chromium/chromium-flags.conf",
-  "config/dunst/dunstrc",
   "config/flameshot/flameshot.ini",
   "config/gammastep/config.ini",
   "config/gtk-2.0/gtkrc-2.0",
@@ -72,9 +71,14 @@ symlinks = [
   "config/hypr/hyprlock.conf",
   "config/hypr/hyprpaper.conf",
   "config/hypr/scripts",
+  "config/mako/config",
   "config/shell/profile-arch-desktop.sh",
-  "config/systemd/user/dunst.service",
+  "config/systemd/user/gammastep.service",
+  "config/systemd/user/hypridle.service",
+  "config/systemd/user/hyprpaper.service",
+  "config/systemd/user/mako.service",
   "config/systemd/user/volume.service",
+  "config/systemd/user/waybar.service",
   "config/user-dirs.dirs",
   "config/volume",
   "config/wallpaper",

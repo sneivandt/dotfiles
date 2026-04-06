@@ -1,0 +1,17 @@
+[Unit]
+Description=Waybar status bar
+
+Wants=graphical-session.target
+After=graphical-session.target
+
+ConditionFileIsExecutable=/usr/bin/waybar
+
+[Service]
+Type=simple
+
+ExecStart=/usr/bin/waybar
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

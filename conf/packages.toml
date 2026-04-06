@@ -54,6 +54,7 @@ packages = [
   "hypridle",
   "hyprlock",
   "hyprpaper",
+  "playerctl",
   "uwsm",
   "otf-font-awesome",
   "papirus-icon-theme",

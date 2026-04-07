@@ -22,7 +22,7 @@ then
   bindkey '\e[3;5~' kill-word          # Ctrl + Delete
   bindkey '\e[1;5D' backward-word      # Ctrl + Left
   bindkey '\e[1;5C' forward-word       # Ctrl + Right
-elif [[ "$TERM" == (xterm*) ]]
+elif [[ "$TERM" == (xterm*|alacritty*) ]]
 then
   bindkey '\e[H'    beginning-of-line  # Home
   bindkey '\e[F'    end-of-line        # End

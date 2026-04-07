@@ -71,6 +71,7 @@ paths = [
 # Desktop-specific files that also require Arch Linux
 [arch-desktop]
 paths = [
+  "config/alacritty/",
   "config/chromium/",
   "config/flameshot/",
   "config/gammastep/",

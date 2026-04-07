@@ -1,13 +1,12 @@
 [Unit]
 Description=Set initial volume and unmute
-After=pipewire-pulse.service pulseaudio.service
+After=pipewire.service pulseaudio.service
+Wants=pulseaudio.service
 ConditionFileIsExecutable=%h/.config/volume/init-volume.sh
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# Give PulseAudio/PipeWire time to restore its state, then override it
-ExecStartPre=/usr/bin/sleep 3
 ExecStart=%h/.config/volume/init-volume.sh
 
 [Install]

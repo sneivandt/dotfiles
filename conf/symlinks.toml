@@ -61,6 +61,7 @@ symlinks = [
 
 [arch-desktop]
 symlinks = [
+  "config/alacritty/alacritty.toml",
   "config/chromium/chromium-flags.conf",
   "config/flameshot/flameshot.ini",
   "config/gammastep/config.ini",

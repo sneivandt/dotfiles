@@ -1,0 +1,17 @@
+[Unit]
+Description=Mako notification daemon
+
+Wants=graphical-session.target
+After=graphical-session.target
+
+ConditionFileIsExecutable=/usr/bin/mako
+
+[Service]
+Type=simple
+
+ExecStart=/usr/bin/mako
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=Hyprpaper wallpaper daemon
+
+Wants=graphical-session.target
+After=graphical-session.target
+
+ConditionFileIsExecutable=/usr/bin/hyprpaper
+ConditionPathExists=%h/.config/hypr/hyprpaper.conf
+
+[Service]
+Type=simple
+
+ExecStart=/usr/bin/hyprpaper
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

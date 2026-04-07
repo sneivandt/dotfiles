@@ -1,0 +1,18 @@
+[Unit]
+Description=Gammastep color temperature adjustment
+
+Wants=graphical-session.target
+After=graphical-session.target
+
+ConditionFileIsExecutable=/usr/bin/gammastep
+ConditionPathExists=%h/.config/gammastep/config.ini
+
+[Service]
+Type=simple
+
+ExecStart=/usr/bin/gammastep -c %h/.config/gammastep/config.ini
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

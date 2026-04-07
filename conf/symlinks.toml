@@ -79,6 +79,7 @@ symlinks = [
   "config/systemd/user/mako.service",
   "config/systemd/user/volume.service",
   "config/systemd/user/waybar.service",
+  "config/user-dirs.conf",
   "config/user-dirs.dirs",
   "config/volume",
   "config/wallpaper",

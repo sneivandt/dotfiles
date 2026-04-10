@@ -8,7 +8,11 @@
 //! 1. Every non-base section in `symlinks.toml` has a matching section in
 //!    `manifest.toml` so sparse checkout can exclude the right files.
 //! 2. Every symlink source path in a non-base section is covered by at least
-//!    one manifest path in the same section (exact match or directory prefix).
+//!    one manifest path in the same section **or any manifest section whose
+//!    category tags are a subset** (i.e. the manifest section always applies
+//!    whenever the symlink section applies).  For example, a symlink in
+//!    `[linux-desktop]` may be covered by the `[desktop]` manifest because
+//!    the desktop manifest is always present when linux-desktop is active.
 //! 3. Every path listed in `manifest.toml` actually exists in `symlinks/`.
 
 use serde::Deserialize;
@@ -97,6 +101,34 @@ fn is_covered_by(source: &str, manifest_paths: &[String]) -> bool {
     })
 }
 
+/// Parses a section name into its set of category tags.
+///
+/// Section names are hyphen-separated category tags, e.g. `linux-desktop`
+/// produces `{"linux", "desktop"}`.
+fn section_tags(section: &str) -> std::collections::HashSet<&str> {
+    section.split('-').collect()
+}
+
+/// Returns `true` when `source` in `section` is covered by any manifest
+/// section that always applies whenever `section` applies.
+///
+/// A manifest section `Y` always applies when symlink section `X` applies
+/// if Y's tags are a subset of X's tags.  For example, `[desktop]` always
+/// applies when `[linux-desktop]` is active, so vscode config files whose
+/// sparse-checkout entry lives under `[desktop]` still satisfy coverage for
+/// `[linux-desktop]` symlinks.
+fn is_covered_by_any_section(
+    section: &str,
+    source: &str,
+    manifest: &HashMap<String, Vec<String>>,
+) -> bool {
+    let symlink_tags = section_tags(section);
+    manifest.iter().any(|(msection, mpaths)| {
+        let manifest_tags = section_tags(msection);
+        manifest_tags.is_subset(&symlink_tags) && is_covered_by(source, mpaths)
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -147,8 +179,8 @@ fn manifest_sections_have_symlink_sections() {
 }
 
 /// Every symlink source in a non-base section must be covered by a manifest
-/// path in the **same** section (either an exact file match or a directory
-/// prefix match).
+/// path in the same section or any manifest section whose category tags are a
+/// strict subset (i.e. always active when the symlink section is active).
 #[test]
 fn non_base_symlink_sources_covered_by_manifest() {
     let root = repo_root();
@@ -163,12 +195,8 @@ fn non_base_symlink_sources_covered_by_manifest() {
         if section == "base" {
             continue;
         }
-        let Some(manifest_paths) = manifest.get(section) else {
-            // Missing section is caught by the sibling test.
-            continue;
-        };
         for source in sources {
-            if !is_covered_by(source, manifest_paths) {
+            if !is_covered_by_any_section(section, source, &manifest) {
                 uncovered.push(format!("[{section}] {source}"));
             }
         }

@@ -48,6 +48,13 @@ MemberForeground = 0xE                 # Member/property color (bright yellow)
 EmphasisForeground = 0xD               # Emphasis/selection color (bright magenta)
 ErrorForeground = 0x4                  # Error text color (dark red)
 
+# Desktop window focus settings
+[desktop]
+path = 'HKCU:\Control Panel\Desktop'
+
+[desktop.values]
+ForegroundLockTimeout = 0              # Disable foreground lock timeout (allow focus stealing)
+
 # Regional date/time formatting
 [international]
 path = 'HKCU:\Control Panel\International'
@@ -96,6 +103,9 @@ ShowCortanaButton = 0                  # Hide Cortana button from taskbar
 ShowSecondsInSystemClock = 1           # Show seconds in system clock
 Start_TrackDocs = 0                    # Don't track recently opened documents
 Start_TrackProgs = 0                   # Don't track recently used programs
+SnapAssist = 0                         # Disable Snap Assist suggestions
+EnableSnapAssistFlyout = 0             # Disable Snap Assist flyout layout
+SnapFill = 0                           # Disable Snap Fill (auto-resize to fill gaps)
 
 # People/contacts taskbar button
 [explorer_people]

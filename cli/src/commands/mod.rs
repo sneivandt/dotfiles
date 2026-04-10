@@ -634,14 +634,6 @@ fn load_config(
     Ok(config)
 }
 
-/// Execute every task respecting phase and dependency order.
-///
-/// Tasks are run in strict phase order: all [`TaskPhase::Bootstrap`]
-/// tasks complete before any [`TaskPhase::Repository`] task starts,
-/// and all Repository tasks complete before any [`TaskPhase::Apply`]
-/// task starts.
-///
-/// Within each phase, when parallel execution is enabled and more than one
 /// Prime the sudo credential cache so that later parallel tasks can run
 /// privileged commands without an interactive prompt.
 ///
@@ -659,7 +651,7 @@ fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
         return false;
     }
     log.debug("priming sudo credential cache");
-    log.info(&format!("sudo is required for: {}", task_names.join(", ")));
+    log.always(&format!("sudo is required for: {}", task_names.join(", ")));
     // Flush stdout so the phase header is visible before the password prompt.
     std::io::Write::flush(&mut std::io::stdout()).ok();
     // Connect sudo directly to /dev/tty so the password prompt and keyboard

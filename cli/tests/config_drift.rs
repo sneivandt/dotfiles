@@ -211,10 +211,24 @@ fn non_base_symlink_sources_covered_by_manifest() {
 
 /// Returns paths excluded by sparse checkout (relative to `symlinks/`).
 ///
-/// Reads `.git/info/sparse-checkout` and collects negated patterns that start
-/// with `!/symlinks/`, stripping the prefix so they match manifest paths.
+/// Reads `info/sparse-checkout` from the git directory and collects negated
+/// patterns that start with `!/symlinks/`, stripping the prefix so they match
+/// manifest paths.  Handles both normal repos (`.git/` is a directory) and
+/// worktrees (`.git` is a file containing `gitdir: <path>`).
 fn sparse_checkout_excluded_paths(root: &Path) -> Vec<String> {
-    let sc_path = root.join(".git/info/sparse-checkout");
+    let dot_git = root.join(".git");
+    let git_dir = if dot_git.is_file() {
+        // Worktree: .git is a file like "gitdir: /path/to/.git/worktrees/name"
+        let content = std::fs::read_to_string(&dot_git).unwrap_or_default();
+        content
+            .strip_prefix("gitdir: ")
+            .and_then(|s| s.strip_suffix('\n').or(Some(s)))
+            .map(|s| PathBuf::from(s.trim()))
+            .unwrap_or(dot_git)
+    } else {
+        dot_git
+    };
+    let sc_path = git_dir.join("info/sparse-checkout");
     let Ok(content) = std::fs::read_to_string(sc_path) else {
         return Vec::new();
     };

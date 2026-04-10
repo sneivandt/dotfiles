@@ -93,6 +93,10 @@ symlinks = [
 
 [desktop]
 symlinks = [
+  "config/Agents - Insiders/User/keybindings.json",
+  "config/Agents - Insiders/User/settings.json",
+  "config/Agents/User/keybindings.json",
+  "config/Agents/User/settings.json",
   "config/Code - Insiders/User/keybindings.json",
   "config/Code - Insiders/User/settings.json",
   "config/Code/User/keybindings.json",
@@ -105,9 +109,13 @@ symlinks = [
   "config/idea/config/options/ide.general.xml",
   "config/idea/config/options/keymap.xml",
   "config/idea/idea.properties",
+  "vscode-remote/data/Machine/settings.json",
+]
+
+[linux-desktop]
+symlinks = [
   "config/shell/aliases-desktop.sh",
   "config/shell/profile-desktop.sh",
-  "vscode-remote/data/Machine/settings.json",
 ]
 
 [windows]
@@ -115,6 +123,10 @@ symlinks = [
   "config/git/windows",
   "wslconfig",
   { source = "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json", target = "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json" },
+  { source = "AppData/Roaming/Agents - Insiders/User/keybindings.json", target = "AppData/Roaming/Agents - Insiders/User/keybindings.json" },
+  { source = "AppData/Roaming/Agents - Insiders/User/settings.json", target = "AppData/Roaming/Agents - Insiders/User/settings.json" },
+  { source = "AppData/Roaming/Agents/User/keybindings.json", target = "AppData/Roaming/Agents/User/keybindings.json" },
+  { source = "AppData/Roaming/Agents/User/settings.json", target = "AppData/Roaming/Agents/User/settings.json" },
   { source = "AppData/Roaming/Code - Insiders/User/keybindings.json", target = "AppData/Roaming/Code - Insiders/User/keybindings.json" },
   { source = "AppData/Roaming/Code - Insiders/User/settings.json", target = "AppData/Roaming/Code - Insiders/User/settings.json" },
   { source = "AppData/Roaming/Code/User/keybindings.json", target = "AppData/Roaming/Code/User/keybindings.json" },

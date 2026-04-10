@@ -54,9 +54,7 @@
     },
     "breadcrumbs.enabled": true,
     "chat.agent.enabled": true,
-    "chat.agent.maxRequests": 100,
-    "chat.viewSessions.enabled": true,
-    "chat.viewSessions.orientation": "stacked",
+    "chat.agent.maxRequests": 50,
     "cmake.configureOnOpen": false,
     "cmake.ignoreCMakeListsMissing": true,
     "cSpell.diagnosticLevel": "Hint",
@@ -150,5 +148,6 @@
     "workbench.iconTheme": "vs-seti",
     "workbench.startupEditor": "none",
     "workbench.tips.enabled": false,
-    "workbench.tree.enableStickyScroll": false
+    "workbench.tree.enableStickyScroll": false,
+    "chat.viewSessions.orientation": "stacked"
 }

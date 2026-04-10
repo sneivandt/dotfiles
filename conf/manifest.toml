@@ -60,12 +60,19 @@ paths = [
 # Desktop-specific files
 [desktop]
 paths = [
+  "config/Agents/",
+  "config/Agents - Insiders/",
   "config/Code/",
   "config/Code - Insiders/",
   "config/idea/",
+  "vscode-remote/",
+]
+
+# Desktop-specific files that also require Linux
+[linux-desktop]
+paths = [
   "config/shell/aliases-desktop.sh",
   "config/shell/profile-desktop.sh",
-  "vscode-remote/",
 ]
 
 # Desktop-specific files that also require Arch Linux

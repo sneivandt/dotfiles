@@ -58,9 +58,11 @@ pub(crate) use task_deps;
 /// - `should_run` returning `false` only when the guard fails
 /// - `run_if_applicable` evaluating items exactly once per task execution and
 ///   returning `None` when no items are configured
-/// - `run` returning [`TaskResult::NotApplicable`] when the guard fails or no
-///   items are configured, otherwise running the optional setup block, mapping
-///   items to resources via `build`, and delegating to [`process_resources`]
+/// - `run` returning [`TaskResult::NotApplicable`] when no items are
+///   configured, otherwise running the optional setup block, mapping items
+///   to resources via `build`, and delegating to [`process_resources`].
+///   **Note:** `run` does not re-check the guard — callers must ensure
+///   [`should_run`] is consulted first (as [`execute`] does).
 macro_rules! resource_task {
     (
         $(#[$meta:meta])*
@@ -179,10 +181,12 @@ pub(crate) use resource_task;
 /// - `should_run` returning `false` only when the guard fails
 /// - `run_if_applicable` evaluating items exactly once per task execution and
 ///   returning `None` when no items are configured
-/// - `run` returning [`TaskResult::NotApplicable`] when the guard fails or no
-///   items are configured, otherwise querying bulk state via `cache`, building
+/// - `run` returning [`TaskResult::NotApplicable`] when no items are
+///   configured, otherwise querying bulk state via `cache`, building
 ///   `(Resource, ResourceState)` pairs, and delegating to
-///   [`process_resource_states`]
+///   [`process_resource_states`].
+///   **Note:** `run` does not re-check the guard — callers must ensure
+///   [`should_run`] is consulted first (as [`execute`] does).
 macro_rules! batch_resource_task {
     (
         $(#[$meta:meta])*

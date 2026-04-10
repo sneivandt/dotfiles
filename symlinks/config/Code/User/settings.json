@@ -1,4 +1,5 @@
 {
+    "@azure.argTenant": "",
     "accessibility.signalOptions.volume": 0,
     "accessibility.signals.lineHasError": {
         "sound": "off"

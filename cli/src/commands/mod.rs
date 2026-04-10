@@ -645,12 +645,13 @@ fn load_config(
 /// Prime the sudo credential cache so that later parallel tasks can run
 /// privileged commands without an interactive prompt.
 ///
-/// Runs `sudo -v` which validates (and caches) the user's credentials.
+/// Logs which tasks require sudo (from `task_names`) before prompting, then
+/// runs `sudo -v` which validates (and caches) the user's credentials.
 ///
 /// Returns `true` if credentials were successfully cached, `false` on any
 /// failure (sudo not found, user cancelled the prompt, wrong password, etc.).
 #[cfg(unix)]
-fn prime_sudo(ctx: &Context, log: &Arc<Logger>) -> bool {
+fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
     use std::process::Stdio;
 
     if !ctx.executor.which("sudo") {
@@ -658,6 +659,7 @@ fn prime_sudo(ctx: &Context, log: &Arc<Logger>) -> bool {
         return false;
     }
     log.debug("priming sudo credential cache");
+    log.info(&format!("sudo is required for: {}", task_names.join(", ")));
     // Flush stdout so the phase header is visible before the password prompt.
     std::io::Write::flush(&mut std::io::stdout()).ok();
     // Connect sudo directly to /dev/tty so the password prompt and keyboard
@@ -687,7 +689,7 @@ fn prime_sudo(ctx: &Context, log: &Arc<Logger>) -> bool {
 }
 
 #[cfg(not(unix))]
-const fn prime_sudo(_ctx: &Context, _log: &Arc<Logger>) -> bool {
+const fn prime_sudo(_ctx: &Context, _log: &Arc<Logger>, _task_names: &[&str]) -> bool {
     true
 }
 
@@ -740,11 +742,16 @@ pub fn run_tasks_to_completion<'a>(
         // interactive password prompt appearing mid-way through interleaved
         // parallel output.  If priming fails, record sudo-dependent tasks as
         // failed and exclude them from this phase's dispatch.
-        let sudo_failed = ctx.parallel
-            && !ctx.dry_run
-            && phase_tasks.len() > 1
-            && phase_tasks.iter().any(|t| t.needs_sudo(ctx))
-            && !prime_sudo(ctx, log);
+        let sudo_task_names: Vec<&str> = if ctx.parallel && !ctx.dry_run && phase_tasks.len() > 1 {
+            phase_tasks
+                .iter()
+                .filter(|t| t.needs_sudo(ctx))
+                .map(|t| t.name())
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let sudo_failed = !sudo_task_names.is_empty() && !prime_sudo(ctx, log, &sudo_task_names);
 
         if sudo_failed {
             let reason = "sudo credentials unavailable";

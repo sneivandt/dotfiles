@@ -659,6 +659,21 @@ fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
         return false;
     }
     log.debug("priming sudo credential cache");
+
+    // Check whether credentials are already cached (non-interactive).
+    let already_cached = std::process::Command::new("sudo")
+        .args(["-n", "-v"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+
+    if already_cached {
+        log.debug("sudo credentials already cached");
+        return true;
+    }
+
     log.info(&format!("sudo is required for: {}", task_names.join(", ")));
     // Flush stdout so the phase header is visible before the password prompt.
     std::io::Write::flush(&mut std::io::stdout()).ok();

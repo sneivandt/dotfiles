@@ -6,7 +6,6 @@
 extensions = [
   "docker.docker",
   "github.codespaces",
-  "github.copilot-chat",
   "github.vscode-pull-request-github",
   "golang.go",
   "ms-azuretools.vscode-azure-github-copilot",

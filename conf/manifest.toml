@@ -57,7 +57,15 @@ paths = [
   "config/zsh/functions/update-mirrors",
 ]
 
-# Desktop-specific files
+# Desktop-specific files (excluded on non-desktop)
+#
+# Note: these paths cover VSCode config dirs that are also symlinked from
+# [linux-desktop] and [windows].  The manifest entry lives here (not in those
+# sub-sections) because the files must be present in the sparse checkout for
+# *any* desktop environment.  The validation test understands cross-section
+# coverage: a [linux-desktop] symlink is considered covered if its source
+# path is matched by any manifest section whose tags are a subset of
+# "linux-desktop" — [desktop] qualifies because desktop ⊆ {linux, desktop}.
 [desktop]
 paths = [
   "config/Agents/",

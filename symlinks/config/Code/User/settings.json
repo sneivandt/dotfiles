@@ -126,6 +126,7 @@
     "powershell.startAutomatically": false,
     "redhat.telemetry.enabled": false,
     "scm.showHistoryGraph": false,
+    "security.promptForLocalFileProtocolHandling": false,
     "search.showLineNumbers": true,
     "search.smartCase": true,
     "search.useGlobalIgnoreFiles": true,

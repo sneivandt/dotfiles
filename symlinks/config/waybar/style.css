@@ -27,6 +27,10 @@ window#waybar {
     color: #b48ead;
 }
 
+window#waybar.fullscreen #workspaces button.active {
+    color: #61afef;
+}
+
 #window {
     padding: 0 10px;
 }

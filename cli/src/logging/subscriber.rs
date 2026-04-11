@@ -115,7 +115,8 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FileLayer {
 
         let mut extractor = MessageExtractor::default();
         event.record(&mut extractor);
-        let msg = strip_ansi(&extractor.message);
+        let raw = strip_ansi(&extractor.message);
+        let msg = raw.trim_start();
         let ts = format_utc_time();
 
         let line = match (level, target) {
@@ -124,9 +125,9 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FileLayer {
             (tracing::Level::INFO, "dotfiles::phase") => {
                 format!("[{ts}] :: {msg}")
             }
-            (tracing::Level::ERROR, _) => format!("[{ts}]  [error] {msg}"),
-            (tracing::Level::WARN, _) => format!("[{ts}]  [warn] {msg}"),
-            _ => format!("[{ts}]  {msg}"),
+            (tracing::Level::ERROR, _) => format!("[{ts}] [error] {msg}"),
+            (tracing::Level::WARN, _) => format!("[{ts}] [warn] {msg}"),
+            _ => format!("[{ts}] {msg}"),
         };
 
         if let Ok(mut f) = self.file.lock() {
@@ -395,6 +396,33 @@ mod tests {
         assert!(
             line.starts_with('['),
             "event line should start with timestamp bracket: {line}"
+        );
+    }
+
+    #[test]
+    fn file_layer_strips_leading_whitespace() {
+        let (path, _tmp, _guard) = isolated_file_layer();
+        tracing::info!("  padded info");
+        tracing::debug!("    deep indent");
+        tracing::warn!("  padded warn");
+        let content = fs::read_to_string(&path).unwrap();
+
+        let info_line = content.lines().find(|l| l.contains("padded info")).unwrap();
+        assert!(
+            info_line.ends_with("] padded info"),
+            "leading whitespace should be stripped from info: {info_line}"
+        );
+
+        let debug_line = content.lines().find(|l| l.contains("deep indent")).unwrap();
+        assert!(
+            debug_line.ends_with("] deep indent"),
+            "leading whitespace should be stripped from debug: {debug_line}"
+        );
+
+        let warn_line = content.lines().find(|l| l.contains("padded warn")).unwrap();
+        assert!(
+            warn_line.ends_with("[warn] padded warn"),
+            "leading whitespace should be stripped from warn: {warn_line}"
         );
     }
 }

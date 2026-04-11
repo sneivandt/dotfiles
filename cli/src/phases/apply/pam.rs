@@ -9,7 +9,11 @@ use crate::phases::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_r
 use crate::resources::pam::PamConfigResource;
 
 /// The PAM service name to configure on Arch Linux desktop systems.
-const HYPRLOCK_SERVICE: &str = "hyprlock";
+///
+/// Uses a custom name so the dotfiles-managed file does not conflict with
+/// the package-owned `/etc/pam.d/hyprlock`.  The hyprlock config points
+/// `auth:pam:module` at this name instead.
+const HYPRLOCK_SERVICE: &str = "hyprlock-custom";
 
 /// Install PAM configuration files for services that need standard
 /// `system-auth` includes (e.g. screen lockers).

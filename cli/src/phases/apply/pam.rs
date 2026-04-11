@@ -6,6 +6,7 @@ use anyhow::Result;
 
 use crate::config::category_matcher::Category;
 use crate::phases::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources};
+use crate::resources::Resource;
 use crate::resources::pam::PamConfigResource;
 
 /// The PAM service name to configure on Arch Linux desktop systems.
@@ -49,7 +50,16 @@ impl Task for ConfigurePam {
         if ctx.dry_run {
             return false;
         }
-        Self::is_arch_desktop(ctx)
+        if !Self::is_arch_desktop(ctx) {
+            return false;
+        }
+        // Only request sudo when the file actually needs changes.
+        let resource =
+            PamConfigResource::new(HYPRLOCK_SERVICE.to_string(), Arc::clone(&ctx.executor));
+        !matches!(
+            resource.current_state(),
+            Ok(crate::resources::ResourceState::Correct)
+        )
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

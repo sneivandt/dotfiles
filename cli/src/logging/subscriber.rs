@@ -126,7 +126,6 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FileLayer {
             }
             (tracing::Level::ERROR, _) => format!("[{ts}]  [error] {msg}"),
             (tracing::Level::WARN, _) => format!("[{ts}]  [warn] {msg}"),
-            (tracing::Level::DEBUG, _) => format!("[{ts}]  [debug] {msg}"),
             _ => format!("[{ts}]  {msg}"),
         };
 
@@ -333,13 +332,17 @@ mod tests {
     }
 
     #[test]
-    fn file_layer_formats_debug_tag() {
+    fn file_layer_formats_debug_without_tag() {
         let (path, _tmp, _guard) = isolated_file_layer();
         tracing::debug!("extra detail");
         let content = fs::read_to_string(&path).unwrap();
+        let line = content
+            .lines()
+            .find(|l| l.contains("extra detail"))
+            .unwrap();
         assert!(
-            content.contains("[debug] extra detail"),
-            "debug should have [debug] tag: {content}"
+            !line.contains("[debug]"),
+            "debug should not have [debug] tag: {line}"
         );
     }
 

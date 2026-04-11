@@ -761,6 +761,15 @@ pub fn run_tasks_to_completion<'a>(
         let sudo_failed = !sudo_task_names.is_empty() && !prime_sudo(ctx, log, &sudo_task_names);
 
         if sudo_failed {
+            // If the user interrupted the sudo prompt (Ctrl+C), the
+            // cancellation token is now set.  Honour it immediately so we
+            // don't dispatch a batch of non-sudo tasks the user didn't
+            // ask for.
+            if ctx.is_cancelled() {
+                log.warn("cancelled - stopping before next phase");
+                break;
+            }
+
             let reason = "sudo credentials unavailable";
             phase_tasks.retain(|task| {
                 if task.needs_sudo(ctx) {

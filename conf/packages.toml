@@ -47,7 +47,6 @@ packages = [
   "alsa-utils",
   "chromium",
   "mako",
-  "flameshot",
   "gammastep",
   "grim",
   "hyprland",

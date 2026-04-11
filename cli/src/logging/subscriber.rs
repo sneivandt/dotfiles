@@ -119,15 +119,19 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FileLayer {
         let msg = raw.trim_start();
         let ts = format_utc_time();
 
-        let line = match (level, target) {
-            (tracing::Level::INFO, "dotfiles::task_result") => return,
-            (tracing::Level::INFO, "dotfiles::stage") => format!("[{ts}] ==> {msg}"),
-            (tracing::Level::INFO, "dotfiles::phase") => {
-                format!("[{ts}] :: {msg}")
+        let line = if msg.is_empty() {
+            format!("[{ts}]")
+        } else {
+            match (level, target) {
+                (tracing::Level::INFO, "dotfiles::task_result") => return,
+                (tracing::Level::INFO, "dotfiles::stage") => format!("[{ts}] ==> {msg}"),
+                (tracing::Level::INFO, "dotfiles::phase") => {
+                    format!("[{ts}] :: {msg}")
+                }
+                (tracing::Level::ERROR, _) => format!("[{ts}] [error] {msg}"),
+                (tracing::Level::WARN, _) => format!("[{ts}] [warn] {msg}"),
+                _ => format!("[{ts}] {msg}"),
             }
-            (tracing::Level::ERROR, _) => format!("[{ts}] [error] {msg}"),
-            (tracing::Level::WARN, _) => format!("[{ts}] [warn] {msg}"),
-            _ => format!("[{ts}] {msg}"),
         };
 
         if let Ok(mut f) = self.file.lock() {
@@ -423,6 +427,23 @@ mod tests {
         assert!(
             warn_line.ends_with("[warn] padded warn"),
             "leading whitespace should be stripped from warn: {warn_line}"
+        );
+    }
+
+    #[test]
+    fn file_layer_empty_message_has_no_trailing_space() {
+        let (path, _tmp, _guard) = isolated_file_layer();
+        tracing::info!("");
+        let content = fs::read_to_string(&path).unwrap();
+        // Find the last non-header line (the empty-message event)
+        let event_line = content
+            .lines()
+            .last()
+            .expect("should have at least one line");
+        // Should be just the timestamp bracket with no trailing space
+        assert!(
+            event_line.ends_with(']'),
+            "empty message line should end with ']', got: {event_line:?}"
         );
     }
 }

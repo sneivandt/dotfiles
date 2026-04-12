@@ -10,21 +10,31 @@
 }
 
 window#waybar {
-    background-color: rgba(18, 18, 18, 0.94);
+    background-color: rgba(18, 18, 18, 0.92);
     color: #d0d0d0;
 }
 
 #workspaces button {
-    padding: 0 1px;
-    font-size: 22px;
+    padding: 0 4px;
+    margin: 4px 2px;
+    font-size: 20px;
     color: #d0d0d0;
     background: transparent;
-    border: none;
-    border-radius: 0;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+#workspaces button.active {
+    color: #d0d0d0;
 }
 
 #workspaces button.urgent {
     color: #b48ead;
+}
+
+#workspaces button:hover {
+    color: #d0d0d0;
+    background: rgba(255, 255, 255, 0.06);
 }
 
 window#waybar.fullscreen #workspaces button.active {
@@ -32,13 +42,25 @@ window#waybar.fullscreen #workspaces button.active {
 }
 
 #window {
-    padding: 0 10px;
+    padding: 0 12px;
+    color: #888888;
 }
 
 #clock,
 #pulseaudio,
 #custom-playing {
-    padding: 0 10px;
+    padding: 2px 12px;
+    margin: 4px 2px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+#clock {
+    color: #d0d0d0;
+}
+
+#custom-playing {
+    color: #b48ead;
 }
 
 #pulseaudio.muted {

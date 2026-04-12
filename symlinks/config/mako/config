@@ -1,21 +1,49 @@
 # Mako notification daemon configuration
 # Migrated from dunst — Wayland-native replacement
 
-font=Source Code Pro 10
-background-color=#1a1a1a
-text-color=#d0d0d0
-border-color=#61afef
-border-size=2
-border-radius=4
-width=300
-# Maximum notification height before scrolling
-height=300
-margin=50,30
-padding=10
-anchor=top-right
-default-timeout=10000
+# Typography
+font=Source Code Pro 11
 
+# Geometry
+width=380
+height=200
+margin=12,12
+padding=14
+anchor=top-right
+border-size=2
+border-radius=10
+max-visible=3
+layer=overlay
+
+# Colors (normal)
+background-color=#1e1e2e
+text-color=#cdd6f4
+border-color=#61afef
+
+# Icons
+max-icon-size=48
+icon-location=left
+
+# Behaviour
+default-timeout=8000
+group-by=app-name
+
+# Progress bar (e.g. volume, brightness)
+[category=progress]
+border-color=#89b4fa
+default-timeout=2000
+group-by=category
+
+# Low urgency — subdued styling
+[urgency=low]
+background-color=#1e1e2e
+text-color=#a6adc8
+border-color=#45475a
+default-timeout=5000
+
+# Critical urgency — prominent red, stays until dismissed
 [urgency=critical]
-background-color=#e06c75
-text-color=#ffffff
+background-color=#302030
+text-color=#f38ba8
+border-color=#f38ba8
 default-timeout=0

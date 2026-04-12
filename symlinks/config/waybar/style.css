@@ -37,8 +37,13 @@ window#waybar.fullscreen #workspaces button.active {
 
 #clock,
 #pulseaudio,
-#custom-playing {
+#custom-playing,
+#custom-notifications {
     padding: 0 10px;
+}
+
+#custom-notifications.has-notifications {
+    color: #f9e2af;
 }
 
 #pulseaudio.muted {

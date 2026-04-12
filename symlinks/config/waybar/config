@@ -4,7 +4,7 @@
     "height": 26,
     "modules-left": ["hyprland/workspaces", "hyprland/window"],
     "modules-center": [],
-    "modules-right": ["custom/notifications", "custom/playing", "pulseaudio", "clock"],
+    "modules-right": ["custom/playing", "pulseaudio", "clock"],
 
     "hyprland/workspaces": {
         "format": "{icon}",
@@ -37,14 +37,5 @@
         "exec": "~/.config/hypr/scripts/playing.sh",
         "interval": 5,
         "format": "\uf001 {}"
-    },
-
-    "custom/notifications": {
-        "exec": "~/.config/hypr/scripts/notifications.sh",
-        "return-type": "json",
-        "interval": 2,
-        "format": "\uf0f3 {}",
-        "on-click": "makoctl dismiss --all",
-        "tooltip": true
     }
 }

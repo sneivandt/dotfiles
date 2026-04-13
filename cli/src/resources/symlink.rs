@@ -382,6 +382,7 @@ fn remove_dir_fallback(path: &Path) -> Result<()> {
     let output = std::process::Command::new("cmd")
         .arg("/c")
         .arg("rmdir")
+        .arg("/s")
         .arg("/q")
         .arg(path)
         .creation_flags(CREATE_NO_WINDOW)

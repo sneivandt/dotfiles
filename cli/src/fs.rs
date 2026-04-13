@@ -140,8 +140,9 @@ pub fn remove_existing(path: &Path) -> Result<()> {
 /// copying from a cloned repository where Git metadata is unwanted.
 ///
 /// Symlinks within the source tree are **not followed**: each symlink is
-/// recreated in `dst` pointing to the same link target (on Unix), or skipped
-/// on non-Unix platforms where creating symlinks requires elevated privileges.
+/// recreated in `dst` pointing to the same link target.  On Unix this always
+/// succeeds; on Windows it requires Developer Mode or elevated privileges and
+/// logs a warning (rather than failing) when the privilege check is not met.
 /// This prevents unexpected traversal of symlinks that point outside the
 /// intended source tree.
 ///
@@ -190,9 +191,20 @@ fn copy_dir_recursive_inner(src: &Path, dst: &Path, skip_git: bool) -> Result<()
                 // either Developer Mode or elevated privileges; if it fails we
                 // log a warning and continue rather than silently dropping the
                 // entry.
+                //
+                // Use the symlink's own metadata (`meta`, from
+                // `symlink_metadata()`) to decide whether this is a directory
+                // or file symlink.  On Windows, directory symlinks carry
+                // FILE_ATTRIBUTE_DIRECTORY on the reparse point itself, so
+                // `meta.is_dir()` is reliable even for dangling symlinks and
+                // symlinks with relative targets that do not exist in the
+                // current working directory.  This avoids the previous
+                // approach of calling `link_target.is_dir()` or
+                // `src_path.is_dir()`, both of which follow the link and
+                // return `false` when the target is absent or relative.
                 let link_target = std::fs::read_link(&src_path)
                     .with_context(|| format!("reading symlink {}", src_path.display()))?;
-                let result = if link_target.is_dir() || src_path.is_dir() {
+                let result = if meta.is_dir() {
                     std::os::windows::fs::symlink_dir(&link_target, &dst_path)
                 } else {
                     std::os::windows::fs::symlink_file(&link_target, &dst_path)

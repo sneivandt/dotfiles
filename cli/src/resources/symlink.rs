@@ -65,7 +65,8 @@ impl Applicable for SymlinkResource {
         // Classify the target explicitly so that unexpected metadata errors
         // do not fall through to `copy_into_place` (which would materialize
         // the source into place — the wrong thing to do for a transient
-        // stat failure or a target that was already removed).
+        // stat failure).  A missing target is fine: we still materialize so
+        // the user retains the file/directory after uninstall.
         match self.target.symlink_metadata() {
             Ok(meta) if meta.is_symlink() => {
                 // Proceed with the normal materialize-then-remove path below.
@@ -81,8 +82,9 @@ impl Applicable for SymlinkResource {
                 });
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                // Nothing to remove; treat as already-correct.
-                return Ok(ResourceChange::AlreadyCorrect);
+                // Target already absent: still materialize source content into
+                // place so the user ends up with the real file/directory after
+                // uninstall, matching the behaviour when the symlink is present.
             }
             Err(e) => {
                 return Err(anyhow::Error::new(e)

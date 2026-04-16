@@ -235,6 +235,7 @@ fn append_user_path_windows(dir: &str) -> Result<()> {
 }
 
 #[cfg(not(windows))]
+#[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
 fn append_user_path_windows(_dir: &str) -> Result<()> {
     Ok(())
 }
@@ -313,6 +314,7 @@ fn broadcast_environment_change(executor: &dyn Executor) -> Result<()> {
 }
 
 #[cfg(not(windows))]
+#[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
 fn broadcast_environment_change(_executor: &dyn Executor) -> Result<()> {
     Ok(())
 }

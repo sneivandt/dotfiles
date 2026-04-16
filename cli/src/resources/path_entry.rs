@@ -45,10 +45,19 @@ enum PathStrategy {
         line: String,
     },
     /// Modify the Windows user `PATH` via the registry.
+    ///
+    /// Writes directly via the `winreg` crate to preserve the original
+    /// value type (`REG_EXPAND_SZ` vs `REG_SZ`).  Using
+    /// `[Environment]::SetEnvironmentVariable` would silently coerce the
+    /// user's `PATH` to `REG_SZ`, baking the current expansion of tokens
+    /// like `%USERPROFILE%\bin` into permanent literals — a data-destroying
+    /// transformation with no in-band recovery.
     WindowsRegistry {
         /// Directory string to add to `PATH`.
         dir: String,
-        /// Executor for running `PowerShell`.
+        /// Executor for broadcasting the environment change to other
+        /// processes after the registry write.
+        #[cfg_attr(not(windows), allow(dead_code))]
         executor: Arc<dyn Executor>,
     },
 }
@@ -129,14 +138,13 @@ impl Applicable for PathEntryResource {
                 Ok(ResourceChange::Applied)
             }
             PathStrategy::WindowsRegistry { dir, executor } => {
-                let script = format!(
-                    "$d='{dir}';$p=[Environment]::GetEnvironmentVariable('Path','User');\
-                     if(-not($p -and ($p -split ';' -contains $d)))\
-                     {{[Environment]::SetEnvironmentVariable('Path',\
-                     $(if($p){{\"$p;$d\"}}else{{$d}}),'User')}}",
-                    dir = dir.replace('\'', "''"),
-                );
-                executor.run("powershell", &["-NoProfile", "-Command", &script])?;
+                append_user_path_windows(dir)?;
+                // Best-effort broadcast of the environment change so already-
+                // running shells / Explorer pick up the new PATH without a
+                // logoff.  SetEnvironmentVariable would do this automatically
+                // but also silently rewrites the value type, which is exactly
+                // what we are avoiding here — so we broadcast ourselves.
+                let _ = broadcast_environment_change(&**executor);
                 Ok(ResourceChange::Applied)
             }
         }
@@ -167,8 +175,146 @@ impl Resource for PathEntryResource {
             return Ok(ResourceState::Correct);
         }
 
+        // On Windows, also check the persisted user PATH in the registry —
+        // it may already contain the directory even if the current process's
+        // environment block does not.
+        #[cfg(windows)]
+        if let PathStrategy::WindowsRegistry { ref dir, .. } = self.strategy
+            && user_path_contains(dir).unwrap_or(false)
+        {
+            return Ok(ResourceState::Correct);
+        }
+
         Ok(ResourceState::Missing)
     }
+}
+
+/// Append `dir` to the Windows user `PATH` in the registry, preserving the
+/// original value type (`REG_EXPAND_SZ` by default).
+///
+/// This is a no-op on non-Windows targets.
+#[cfg(windows)]
+fn append_user_path_windows(dir: &str) -> Result<()> {
+    use winreg::RegKey;
+    use winreg::RegValue;
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_EXPAND_SZ};
+
+    let env = RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey_with_flags("Environment", KEY_READ | KEY_WRITE)
+        .context("opening HKCU\\Environment")?;
+
+    let (existing_value, existing_vtype) = match env.get_raw_value("Path") {
+        Ok(v) => {
+            let s = decode_reg_string(&v.bytes);
+            let vtype = v.vtype;
+            (s, vtype)
+        }
+        Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => (String::new(), REG_EXPAND_SZ),
+        Err(e) => {
+            return Err(anyhow::Error::from(e).context("reading HKCU\\Environment\\Path"));
+        }
+    };
+
+    if path_contains_entry(&existing_value, dir) {
+        return Ok(());
+    }
+
+    let new_value = if existing_value.is_empty() {
+        dir.to_string()
+    } else {
+        format!("{existing_value};{dir}")
+    };
+
+    let new_raw = RegValue {
+        bytes: encode_reg_string(&new_value),
+        vtype: existing_vtype,
+    };
+    env.set_raw_value("Path", &new_raw)
+        .context("writing HKCU\\Environment\\Path")?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn append_user_path_windows(_dir: &str) -> Result<()> {
+    Ok(())
+}
+
+/// Return `true` when `dir` already appears as a `;`-separated entry in
+/// `path` (case-insensitive on Windows).
+#[cfg(windows)]
+fn path_contains_entry(path: &str, dir: &str) -> bool {
+    path.split(';').any(|entry| entry.eq_ignore_ascii_case(dir))
+}
+
+/// Return `true` when the persisted user `PATH` in the registry already
+/// contains `dir`.
+#[cfg(windows)]
+fn user_path_contains(dir: &str) -> Result<bool> {
+    use winreg::RegKey;
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+
+    let env =
+        match RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags("Environment", KEY_READ) {
+            Ok(k) => k,
+            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(e) => {
+                return Err(anyhow::Error::from(e).context("opening HKCU\\Environment"));
+            }
+        };
+    match env.get_raw_value("Path") {
+        Ok(v) => Ok(path_contains_entry(&decode_reg_string(&v.bytes), dir)),
+        Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(anyhow::Error::from(e).context("reading HKCU\\Environment\\Path")),
+    }
+}
+
+/// Decode a UTF-16LE registry string payload, stripping any trailing NUL.
+#[cfg(windows)]
+fn decode_reg_string(bytes: &[u8]) -> String {
+    let wide: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|c| {
+            // chunks_exact guarantees len == 2.
+            let lo = *c.first().unwrap_or(&0);
+            let hi = *c.get(1).unwrap_or(&0);
+            u16::from_le_bytes([lo, hi])
+        })
+        .collect();
+    String::from_utf16_lossy(&wide)
+        .trim_end_matches('\0')
+        .to_string()
+}
+
+/// Encode `value` as a NUL-terminated UTF-16LE byte buffer suitable for a
+/// `REG_SZ` / `REG_EXPAND_SZ` registry value.
+#[cfg(windows)]
+fn encode_reg_string(value: &str) -> Vec<u8> {
+    let mut out: Vec<u8> = value.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    out.extend_from_slice(&[0, 0]);
+    out
+}
+
+/// Broadcast `WM_SETTINGCHANGE` for the `"Environment"` setting so that
+/// Explorer and other top-level windows re-read their environment block.
+///
+/// Performed by a tiny `PowerShell` helper so we avoid an `unsafe` FFI
+/// dependency in this crate.  Any failure is ignored — broadcasting is a
+/// best-effort convenience, not a correctness requirement.
+#[cfg(windows)]
+fn broadcast_environment_change(executor: &dyn Executor) -> Result<()> {
+    const BROADCAST_SCRIPT: &str = "Add-Type -Namespace Win32 -Name NativeMethods -MemberDefinition '[System.Runtime.InteropServices.DllImport(\"user32.dll\", SetLastError=true, CharSet=System.Runtime.InteropServices.CharSet.Auto)] public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.UIntPtr lpdwResult);'; $r = [System.UIntPtr]::Zero; [void][Win32.NativeMethods]::SendMessageTimeout([System.IntPtr]0xffff, 0x001A, [System.UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$r)";
+    let shell = if executor.which("pwsh") {
+        "pwsh"
+    } else {
+        "powershell"
+    };
+    executor.run(shell, &["-NoProfile", "-Command", BROADCAST_SCRIPT])?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn broadcast_environment_change(_executor: &dyn Executor) -> Result<()> {
+    Ok(())
 }
 
 #[cfg(test)]

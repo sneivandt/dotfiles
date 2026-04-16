@@ -62,11 +62,17 @@ impl Applicable for SymlinkResource {
     }
 
     fn remove(&self) -> Result<ResourceChange> {
-        // Refuse to overwrite a target that is not a symlink/junction.  If the
-        // user replaced the managed symlink with their own real file or directory
-        // we must not silently destroy their content during uninstall.
+        // Classify the target explicitly so that unexpected metadata errors
+        // do not fall through to `copy_into_place` (which would materialize
+        // the source into place — the wrong thing to do for a transient
+        // stat failure or a target that was already removed).
         match self.target.symlink_metadata() {
-            Ok(meta) if !meta.is_symlink() => {
+            Ok(meta) if meta.is_symlink() => {
+                // Proceed with the normal materialize-then-remove path below.
+            }
+            Ok(_) => {
+                // Target exists but is not a symlink: refuse to overwrite to
+                // protect user data that replaced the managed symlink.
                 return Ok(ResourceChange::Skipped {
                     reason: format!(
                         "target is not a symlink and will not be overwritten: {}",
@@ -74,7 +80,14 @@ impl Applicable for SymlinkResource {
                     ),
                 });
             }
-            _ => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // Nothing to remove; treat as already-correct.
+                return Ok(ResourceChange::AlreadyCorrect);
+            }
+            Err(e) => {
+                return Err(anyhow::Error::new(e)
+                    .context(format!("stat target: {}", self.target.display())));
+            }
         }
 
         // Copy source content into place, then remove the symlink, so the user

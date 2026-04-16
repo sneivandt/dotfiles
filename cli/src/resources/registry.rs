@@ -6,6 +6,7 @@ use anyhow::Context as _;
 use anyhow::Result;
 
 use super::{Applicable, Resource, ResourceChange, ResourceState};
+use crate::config::registry::RegistryValueType;
 
 /// Native Windows registry access via the `winreg` crate.
 #[cfg(windows)]
@@ -14,6 +15,8 @@ mod native {
     use winreg::RegKey;
     use winreg::enums::{HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
     use winreg::enums::{REG_DWORD, REG_EXPAND_SZ, REG_SZ};
+
+    use crate::config::registry::RegistryValueType;
 
     /// Parse a `PowerShell`-style registry path into a root key and subkey.
     fn parse_path(key_path: &str) -> Result<(RegKey, &str)> {
@@ -46,35 +49,62 @@ mod native {
         }
     }
 
-    /// Write a registry value, creating the key if it does not exist.
-    pub fn write_value(key_path: &str, value_name: &str, value_data: &str) -> Result<()> {
+    /// Write a registry value using the declared type from the config.
+    pub fn write_value(
+        key_path: &str,
+        value_name: &str,
+        value_data: &str,
+        value_type: RegistryValueType,
+    ) -> Result<()> {
         let (root, subkey) = parse_path(key_path)?;
         let (key, _) = root
             .create_subkey(subkey)
             .with_context(|| format!("creating {key_path}"))?;
-        // Hex integer → DWORD
+
+        match value_type {
+            RegistryValueType::Dword => {
+                let dword = parse_dword(value_data).with_context(|| {
+                    format!("parsing DWORD for {key_path}\\{value_name}: {value_data}")
+                })?;
+                key.set_value(value_name, &dword)
+                    .with_context(|| format!("setting {key_path}\\{value_name}"))?;
+            }
+            RegistryValueType::String => {
+                key.set_value(value_name, &value_data)
+                    .with_context(|| format!("setting {key_path}\\{value_name}"))?;
+            }
+            RegistryValueType::ExpandString => {
+                use winreg::RegValue;
+                let mut bytes: Vec<u8> = value_data
+                    .encode_utf16()
+                    .flat_map(u16::to_le_bytes)
+                    .collect();
+                bytes.extend_from_slice(&[0, 0]);
+                let raw = RegValue {
+                    bytes,
+                    vtype: REG_EXPAND_SZ,
+                };
+                key.set_raw_value(value_name, &raw)
+                    .with_context(|| format!("setting {key_path}\\{value_name}"))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Parse a decimal or `0x`-prefixed hex string into a `u32`.
+    fn parse_dword(value_data: &str) -> Result<u32> {
         if let Some(hex) = value_data
             .strip_prefix("0x")
             .or_else(|| value_data.strip_prefix("0X"))
-            && let Ok(n) = u64::from_str_radix(hex, 16)
         {
-            let dword = u32::try_from(n).with_context(|| {
-                format!("hex value 0x{hex} ({n}) exceeds DWORD range for {key_path}\\{value_name}")
-            })?;
-            key.set_value(value_name, &dword)
-                .with_context(|| format!("setting {key_path}\\{value_name}"))?;
-            return Ok(());
+            let n = u64::from_str_radix(hex, 16)
+                .with_context(|| format!("invalid hex DWORD: {value_data}"))?;
+            return u32::try_from(n)
+                .with_context(|| format!("hex DWORD exceeds u32 range: {value_data}"));
         }
-        // Decimal integer → DWORD
-        if let Ok(n) = value_data.parse::<u32>() {
-            key.set_value(value_name, &n)
-                .with_context(|| format!("setting {key_path}\\{value_name}"))?;
-            return Ok(());
-        }
-        // String → REG_SZ
-        key.set_value(value_name, &value_data)
-            .with_context(|| format!("setting {key_path}\\{value_name}"))?;
-        Ok(())
+        value_data
+            .parse::<u32>()
+            .with_context(|| format!("invalid decimal DWORD: {value_data}"))
     }
 
     /// Convert a raw registry value to a string representation.
@@ -112,16 +142,24 @@ pub struct RegistryResource {
     pub value_name: String,
     /// Value data (as string).
     pub value_data: String,
+    /// Declared registry value type.
+    pub value_type: RegistryValueType,
 }
 
 impl RegistryResource {
     /// Create a new registry resource.
     #[must_use]
-    pub const fn new(key_path: String, value_name: String, value_data: String) -> Self {
+    pub const fn new(
+        key_path: String,
+        value_name: String,
+        value_data: String,
+        value_type: RegistryValueType,
+    ) -> Self {
         Self {
             key_path,
             value_name,
             value_data,
+            value_type,
         }
     }
 
@@ -132,6 +170,7 @@ impl RegistryResource {
             entry.key_path.clone(),
             entry.value_name.clone(),
             entry.value_data.clone(),
+            entry.value_type,
         )
     }
 
@@ -199,8 +238,13 @@ impl Applicable for RegistryResource {
     fn apply(&self) -> Result<ResourceChange> {
         #[cfg(windows)]
         {
-            native::write_value(&self.key_path, &self.value_name, &self.value_data)
-                .with_context(|| format!("set registry: {}\\{}", self.key_path, self.value_name))?;
+            native::write_value(
+                &self.key_path,
+                &self.value_name,
+                &self.value_data,
+                self.value_type,
+            )
+            .with_context(|| format!("set registry: {}\\{}", self.key_path, self.value_name))?;
             Ok(ResourceChange::Applied)
         }
         #[cfg(not(windows))]
@@ -259,6 +303,7 @@ mod tests {
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "14".to_string(),
+            RegistryValueType::Dword,
         );
         assert_eq!(resource.description(), "HKCU:\\Console\\FontSize = 14");
     }
@@ -282,12 +327,14 @@ mod tests {
             key_path: "HKCU:\\Test".to_string(),
             value_name: "TestValue".to_string(),
             value_data: "123".to_string(),
+            value_type: RegistryValueType::Dword,
         };
 
         let resource = RegistryResource::from_entry(&entry);
         assert_eq!(resource.key_path, "HKCU:\\Test");
         assert_eq!(resource.value_name, "TestValue");
         assert_eq!(resource.value_data, "123");
+        assert_eq!(resource.value_type, RegistryValueType::Dword);
     }
 
     #[test]
@@ -296,6 +343,7 @@ mod tests {
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "14".to_string(),
+            RegistryValueType::Dword,
         );
         let state = resource.state_from_cached(Some("14"));
         assert_eq!(state, ResourceState::Correct);
@@ -307,6 +355,7 @@ mod tests {
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "14".to_string(),
+            RegistryValueType::Dword,
         );
         let state = resource.state_from_cached(Some("20"));
         assert!(matches!(state, ResourceState::Incorrect { .. }));
@@ -318,6 +367,7 @@ mod tests {
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "14".to_string(),
+            RegistryValueType::Dword,
         );
         let state = resource.state_from_cached(None);
         assert_eq!(state, ResourceState::Missing);
@@ -329,6 +379,7 @@ mod tests {
             "HKCU:\\Console".to_string(),
             "FontSize".to_string(),
             "0x0E".to_string(),
+            RegistryValueType::Dword,
         );
         // 0x0E = 14 decimal
         let state = resource.state_from_cached(Some("14"));

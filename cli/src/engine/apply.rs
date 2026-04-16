@@ -131,12 +131,34 @@ pub(super) fn remove_single<R: Applicable>(
             if let Some(diag) = ctx.log.diagnostic() {
                 diag.emit(DiagEvent::ResourceRemove, &format!("{verb} {desc}"));
             }
-            resource.remove()?;
-            if let Some(diag) = ctx.log.diagnostic() {
-                diag.emit(DiagEvent::ResourceResult, &format!("{desc} removed"));
+            match resource.remove()? {
+                ResourceChange::Applied => {
+                    if let Some(diag) = ctx.log.diagnostic() {
+                        diag.emit(DiagEvent::ResourceResult, &format!("{desc} removed"));
+                    }
+                    ctx.log.always(&format!("    {verb}: {desc}"));
+                    delta.changed += 1;
+                }
+                ResourceChange::AlreadyCorrect => {
+                    if let Some(diag) = ctx.log.diagnostic() {
+                        diag.emit(
+                            DiagEvent::ResourceResult,
+                            &format!("{desc} already_correct"),
+                        );
+                    }
+                    delta.already_ok += 1;
+                }
+                ResourceChange::Skipped { reason } => {
+                    if let Some(diag) = ctx.log.diagnostic() {
+                        diag.emit(
+                            DiagEvent::ResourceResult,
+                            &format!("{desc} skipped: {reason}"),
+                        );
+                    }
+                    ctx.log.warn(&format!("skipping {desc}: {reason}"));
+                    delta.skipped += 1;
+                }
             }
-            ctx.log.always(&format!("    {verb}: {desc}"));
-            delta.changed += 1;
         }
         ResourceState::Unknown { reason } => {
             // Cannot determine if this resource is ours — skip removal rather

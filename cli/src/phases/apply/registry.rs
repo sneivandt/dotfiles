@@ -57,6 +57,7 @@ mod tests {
             key_path: r"HKCU:\Console".to_string(),
             value_name: "QuickEdit".to_string(),
             value_data: "1".to_string(),
+            value_type: crate::config::registry::RegistryValueType::Dword,
         });
         let ctx = make_windows_context(config);
         assert!(ApplyRegistry.should_run(&ctx));
@@ -86,6 +87,7 @@ mod tests {
             key_path: r"HKCU:\Console".to_string(),
             value_name: "QuickEdit".to_string(),
             value_data: "1".to_string(),
+            value_type: crate::config::registry::RegistryValueType::Dword,
         });
         // Use a Windows-platform context so the task logic runs (should_run
         // would normally gate this, but run() is called directly in unit tests).

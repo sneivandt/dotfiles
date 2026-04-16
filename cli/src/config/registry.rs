@@ -7,6 +7,22 @@ use std::path::Path;
 use super::ValidationWarning;
 use super::helpers::toml_loader;
 
+/// Declared type for a registry value.
+///
+/// The type is determined at config load time from the TOML value so that
+/// writers never have to guess from the string form of `value_data`.  Without
+/// this, a plain string like `"42"` would be silently written as `REG_DWORD`
+/// and a user could not express a numeric-looking `REG_SZ` value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegistryValueType {
+    /// 32-bit unsigned integer (`REG_DWORD`).
+    Dword,
+    /// Null-terminated Unicode string (`REG_SZ`).
+    String,
+    /// Unicode string with unexpanded environment references (`REG_EXPAND_SZ`).
+    ExpandString,
+}
+
 /// A Windows registry entry.
 #[derive(Debug, Clone)]
 pub struct RegistryEntry {
@@ -14,8 +30,10 @@ pub struct RegistryEntry {
     pub key_path: String,
     /// Value name.
     pub value_name: String,
-    /// Value data.
+    /// Value data as a string (decimal for `DWORD`, literal text for strings).
     pub value_data: String,
+    /// Declared registry value type.
+    pub value_type: RegistryValueType,
 }
 
 /// TOML registry section with path and values.
@@ -28,7 +46,12 @@ struct RegistrySection {
 /// Load registry settings from registry.toml.
 ///
 /// Each top-level section contains a `path` field (registry key path)
-/// and a `values` table with key-value pairs. Values are converted to strings.
+/// and a `values` table with key-value pairs.  The TOML value's type
+/// determines the registry value type:
+///
+/// - TOML integer / boolean → `REG_DWORD`.
+/// - TOML string starting with `0x` (parseable as hex) → `REG_DWORD`.
+/// - Any other TOML string → `REG_SZ` (use explicit integers for `DWORD`).
 ///
 /// # Errors
 ///
@@ -41,25 +64,39 @@ pub fn load(path: &Path) -> Result<Vec<RegistryEntry>> {
         .flat_map(|(_, section)| {
             let key_path = section.path;
             section.values.into_iter().map(move |(name, value)| {
-                let value_data = value_to_string(&value);
+                let (value_data, value_type) = classify_value(&value);
                 RegistryEntry {
                     key_path: key_path.clone(),
                     value_name: name,
                     value_data,
+                    value_type,
                 }
             })
         })
         .collect())
 }
 
-/// Convert a TOML value to a string representation for registry data.
-fn value_to_string(value: &toml::Value) -> String {
+/// Classify a TOML value into its registry representation.
+fn classify_value(value: &toml::Value) -> (String, RegistryValueType) {
     match value {
-        toml::Value::String(s) => s.clone(),
-        toml::Value::Integer(i) => i.to_string(),
-        toml::Value::Float(f) => f.to_string(),
-        toml::Value::Boolean(b) => if *b { "1" } else { "0" }.to_string(),
-        _ => value.to_string(),
+        toml::Value::Integer(i) => (i.to_string(), RegistryValueType::Dword),
+        toml::Value::Boolean(b) => {
+            let s = if *b { "1" } else { "0" };
+            (s.to_string(), RegistryValueType::Dword)
+        }
+        toml::Value::String(s) => {
+            if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X"))
+                && !hex.is_empty()
+                && hex.chars().all(|c| c.is_ascii_hexdigit())
+                && u64::from_str_radix(hex, 16).is_ok()
+            {
+                (s.clone(), RegistryValueType::Dword)
+            } else {
+                (s.clone(), RegistryValueType::String)
+            }
+        }
+        toml::Value::Float(f) => (f.to_string(), RegistryValueType::String),
+        _ => (value.to_string(), RegistryValueType::String),
     }
 }
 
@@ -184,6 +221,7 @@ mod tests {
             key_path: "INVALID:\\Key".to_string(),
             value_name: "Test".to_string(),
             value_data: "1".to_string(),
+            value_type: RegistryValueType::Dword,
         }];
         let warnings = validate(&entries, Platform::new(Os::Windows, false));
         assert_eq!(warnings.len(), 1);
@@ -198,6 +236,7 @@ mod tests {
             key_path: "  ".to_string(),
             value_name: "Test".to_string(),
             value_data: "1".to_string(),
+            value_type: RegistryValueType::Dword,
         }];
         let warnings = validate(&entries, Platform::new(Os::Windows, false));
         assert!(
@@ -214,6 +253,7 @@ mod tests {
             key_path: "HKCU:\\Console".to_string(),
             value_name: "  ".to_string(),
             value_data: "1".to_string(),
+            value_type: RegistryValueType::Dword,
         }];
         let warnings = validate(&entries, Platform::new(Os::Windows, false));
         assert!(
@@ -232,6 +272,7 @@ mod tests {
             key_path: "HKLM:\\Software\\Test".to_string(),
             value_name: "Setting".to_string(),
             value_data: "1".to_string(),
+            value_type: RegistryValueType::Dword,
         }];
         let warnings = validate(&entries, Platform::new(Os::Windows, false));
         assert!(
@@ -250,6 +291,7 @@ mod tests {
             key_path: "HKCU:\\Console".to_string(),
             value_name: "FontSize".to_string(),
             value_data: "14".to_string(),
+            value_type: RegistryValueType::Dword,
         }];
         let warnings = validate(&entries, Platform::new(Os::Linux, false));
         assert!(
@@ -268,6 +310,7 @@ mod tests {
             key_path: "HKCU:\\Console".to_string(),
             value_name: "FontSize".to_string(),
             value_data: "14".to_string(),
+            value_type: RegistryValueType::Dword,
         }];
         let warnings = validate(&entries, Platform::new(Os::Windows, false));
         assert!(
@@ -295,6 +338,7 @@ mod tests {
             key_path: "hkcu:\\Console".to_string(),
             value_name: "FontSize".to_string(),
             value_data: "14".to_string(),
+            value_type: RegistryValueType::Dword,
         }];
         let warnings = validate(&entries, Platform::new(Os::Windows, false));
         assert!(
@@ -304,15 +348,33 @@ mod tests {
     }
 
     #[test]
-    fn value_to_string_converts_types() {
+    fn classify_value_covers_types() {
         assert_eq!(
-            value_to_string(&toml::Value::String("hello".into())),
-            "hello"
+            classify_value(&toml::Value::String("hello".into())),
+            ("hello".to_string(), RegistryValueType::String)
         );
-        assert_eq!(value_to_string(&toml::Value::Integer(42)), "42");
-        assert_eq!(value_to_string(&toml::Value::Float(2.72)), "2.72");
-        assert_eq!(value_to_string(&toml::Value::Boolean(true)), "1");
-        assert_eq!(value_to_string(&toml::Value::Boolean(false)), "0");
+        assert_eq!(
+            classify_value(&toml::Value::Integer(42)),
+            ("42".to_string(), RegistryValueType::Dword)
+        );
+        assert_eq!(
+            classify_value(&toml::Value::Boolean(true)),
+            ("1".to_string(), RegistryValueType::Dword)
+        );
+        assert_eq!(
+            classify_value(&toml::Value::Boolean(false)),
+            ("0".to_string(), RegistryValueType::Dword)
+        );
+        assert_eq!(
+            classify_value(&toml::Value::String("0x0E".into())),
+            ("0x0E".to_string(), RegistryValueType::Dword)
+        );
+        // Strings that merely look numeric remain REG_SZ — use TOML integers
+        // if you want a DWORD.
+        assert_eq!(
+            classify_value(&toml::Value::String("42".into())),
+            ("42".to_string(), RegistryValueType::String)
+        );
     }
 
     #[test]

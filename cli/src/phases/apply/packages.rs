@@ -335,11 +335,13 @@ impl PackageStrategy for BatchInstall {
         ctx.log
             .debug(&format!("batch-installing {} packages", missing.len()));
         if let Err(e) = batch_install_packages(&missing) {
-            ctx.log.warn(&format!("batch install failed: {e:#}"));
+            let reason = format!("batch install failed: {e:#}");
+            ctx.log.warn(&reason);
             stats.skipped = u32::try_from(missing.len()).unwrap_or(u32::MAX);
-        } else {
-            stats.changed = u32::try_from(missing.len()).unwrap_or(u32::MAX);
+            let _ = stats.finish(ctx);
+            return Ok(TaskResult::Failed(reason));
         }
+        stats.changed = u32::try_from(missing.len()).unwrap_or(u32::MAX);
 
         Ok(stats.finish(ctx))
     }
@@ -728,6 +730,35 @@ mod tests {
         assert!(
             matches!(result, TaskResult::DryRun),
             "expected DryRun, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn install_packages_returns_failed_when_batch_install_fails() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.packages.push(Package {
+            name: "git".to_string(),
+            is_aur: false,
+        });
+        // which("pacman") → true
+        // run_unchecked("pacman", ["-Q"]) → git not installed
+        // run("sudo", ["pacman", ...]) → error (simulating locked db)
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        mock.expect_which().returning(|_| true);
+        mock.expect_run_unchecked()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(ok_result("")));
+        mock.expect_run()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _| Err(anyhow::anyhow!("sudo failed (exit 1)")));
+        let ctx = make_package_context(config, Os::Linux, true, mock);
+        let result = InstallPackages.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Failed(_)),
+            "expected Failed when batch install fails, got {result:?}"
         );
     }
 

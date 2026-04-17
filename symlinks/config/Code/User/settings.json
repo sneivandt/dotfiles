@@ -143,7 +143,7 @@
     "terminal.integrated.shellIntegration.enabled": true,
     "terminal.integrated.stickyScroll.enabled": false,
     "terminal.integrated.tabs.showActions": "never",
-    "update.mode": "none",
+    "update.mode": "manual",
     "update.showReleaseNotes": false,
     "window.openFoldersInNewWindow": "on",
     "window.title": "${dirty}${activeEditorLong}${separator}${rootName}${separator}${appName}",

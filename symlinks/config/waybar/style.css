@@ -43,7 +43,7 @@ window#waybar.fullscreen #workspaces button.active {
 
 #window {
     padding: 0 12px;
-    color: #888888;
+    color: #d0d0d0;
 }
 
 #clock,

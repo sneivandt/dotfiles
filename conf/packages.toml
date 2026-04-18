@@ -79,5 +79,5 @@ packages = [
   "Microsoft.VisualStudioCode",
   "Microsoft.WindowsTerminal",
   "OpenJS.NodeJS",
-  "Python.Python.3.12",
+  "Python.Python.3.14",
 ]

@@ -1,23 +1,67 @@
 # Dotfiles ✨
 
-Cross-platform dotfiles management system powered by a Rust core engine, with profile-based configuration for Linux, Arch Linux, and Windows.
+A personal, cross-platform dotfiles setup — and a **reference implementation** you're encouraged to fork, study, and remix into your own.
 
-**Key Features:**
-- 🦀 Rust core engine — fast, reliable, cross-platform binary
-- 🎯 Profile-based configuration
-- 🔗 Git sparse checkout for environment-specific files
-- 📦 Declarative package and symlink management via TOML config
-- 🔄 Idempotent installation (safe to re-run)
-- 📡 Automatic binary updates from GitHub Releases
-- 🤖 GitHub Copilot Agent Skills for development guidance
-- 🧪 Comprehensive Rust test suite and CI
-- 🐳 Docker image for isolated testing
+This repository is my own working dotfiles, but it's structured so the engine, conventions, and patterns can be lifted into your setup. Take what you like, throw out what you don't, and make it yours.
 
 [![Release](https://github.com/sneivandt/dotfiles/actions/workflows/release.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/release.yml)
 [![Publish Docker](https://github.com/sneivandt/dotfiles/actions/workflows/docker.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/docker.yml)
 [![CI](https://github.com/sneivandt/dotfiles/actions/workflows/ci.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/ci.yml)
 
-## Quick Start
+## Why fork this?
+
+Most dotfiles repos are either *just config files* or *a tangle of bash glue*. This one tries to be a solid **chassis** you can build your own setup on:
+
+- 🦀 **Rust core engine** — a single fast, typed, well-tested binary handles all orchestration. No fragile bootstrap scripts to debug at 2 AM.
+- 🎯 **Profile-based** — one repo, many machines. Pick `base` for a minimal server or `desktop` for a full workstation; auto-detects Linux / Arch / Windows on top.
+- 🔗 **Sparse checkout** — only the files relevant to the active profile land on disk.
+- 📦 **Declarative TOML config** — packages, symlinks, systemd units, VS Code extensions, git config, registry keys, file permissions — all in `conf/*.toml`, no imperative scripts.
+- 🔄 **Idempotent** — every command converges to the declared state. Safe to re-run, safe to dry-run (`-d`).
+- 🪟 **Cross-platform for real** — Linux *and* Windows, from the same config, same binary.
+- 📡 **Self-updating** — entry scripts pull the latest binary from GitHub Releases automatically.
+- 🧪 **Tested in CI** — `cargo test`, `clippy`, `shellcheck`, and per-profile integration tests run on every change.
+- 🐳 **Disposable Docker sandbox** to try things without touching your host.
+
+If you've ever wanted dotfiles that feel more like a small piece of well-engineered software than a pile of shell scripts, this is meant to be a starting point.
+
+## Try it in 30 seconds (no commitment)
+
+Spin up the Docker image to poke around without touching your host:
+
+```bash
+docker run --rm -it sneivandt/dotfiles
+```
+
+## Fork and make it yours
+
+1. **Fork the repo** (or use "Use this template") and clone it.
+2. **Rebrand it.** A handful of files still reference the original owner — repo slug for self-update, git identity, CI fixtures, Docker labels.
+   - **With GitHub Copilot in VS Code:** run the [`fork-rebrand`](.github/prompts/fork-rebrand.prompt.md) prompt and let an agent do it for you.
+   - **Manually:** grep for `sneivandt` and replace each hit with your own owner / repo / image name; update name and email in `symlinks/config/git/config`.
+3. **Make it yours.** Drop your own dotfiles into `symlinks/`, then edit `conf/*.toml` to declare what should be installed and where (see [Configuration](#configuration) and [Profiles](#profiles)).
+4. **Verify and ship.** Run `cd cli && cargo test`, then push a tag — CI builds Linux + Windows binaries so your other machines can bootstrap from a `curl | sh`-style flow.
+
+You don't have to keep the Rust engine — but if you do, you mostly just edit TOML and drop files into `symlinks/`. Adding a new tool is usually a one-line config change, not a new shell function.
+
+### Things worth stealing even if you don't fork the whole thing
+
+- The `Resource` / `Applicable` trait pattern in `cli/src/resources/` for idempotent system operations.
+- The `resource_task!` / `task_deps!` macros for declarative task graphs.
+- The category-based AND-matching scheme (`[arch-desktop]`, `[linux]`) for cross-platform config.
+- The sparse-checkout + manifest pattern for slimming down what hits each machine.
+- The GitHub Copilot agent skills in `.github/skills/` — domain-specific guidance that makes AI-assisted edits actually safe.
+
+## How it works
+
+Three layers, by design:
+
+1. **Entry scripts** (`dotfiles.sh`, `dotfiles.ps1`) — thin wrappers. They download the latest binary from your GitHub Releases (or build from source with `--build`) and forward all arguments.
+2. **Rust binary** (`cli/`) — does all the real work: config parsing, profile resolution, symlinks, file permissions, package management. Shells out only when it must (package managers, systemd).
+3. **Configuration** (`conf/`) — declarative TOML. This is the part you'll edit most.
+
+Binary updates happen automatically after the first bootstrap. On Windows, the PowerShell wrapper additionally promotes any staged update before relaunching.
+
+## Quick start (using this repo as-is)
 
 ### Linux
 ```bash
@@ -32,21 +76,6 @@ git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
 .\dotfiles.ps1 install -p desktop
 ```
-
-### Docker
-```bash
-docker run --rm -it sneivandt/dotfiles
-```
-
-## How It Works
-
-The dotfiles system has three layers:
-
-1. **Entry scripts** (`dotfiles.sh`, `dotfiles.ps1`) — thin wrappers that download the latest binary from GitHub Releases (or build from source with `--build`) and forward all arguments.
-2. **Rust binary** (`cli/`) — handles all orchestration: config parsing, profile resolution, symlinks, file permissions natively. Shells out only for package managers and system services.
-3. **Configuration** (`conf/`) — declarative TOML files define what to install per profile.
-
-Binary updates are automatic: on first run, the entry script bootstraps the binary. After that, the Rust binary performs update checks and maintains the version cache. On Windows, the PowerShell wrapper also promotes any staged update before relaunching the binary.
 
 ## Usage
 
@@ -84,7 +113,7 @@ Profiles control which files are included and which components are installed:
 | `base` | Minimal core shell configuration |
 | `desktop` | Full configuration including desktop tools |
 
-Platform categories (`linux`, `windows`, `arch`) are auto-detected based on the running OS.
+Platform categories (`linux`, `windows`, `arch`) are auto-detected based on the running OS. In your fork, define whatever profiles match your fleet — `work`, `server`, `vm`, `gaming`, etc.
 
 See the [Profile System Guide](docs/PROFILES.md) for details.
 

@@ -48,7 +48,8 @@ window#waybar.fullscreen #workspaces button.active {
 
 #clock,
 #pulseaudio,
-#custom-playing {
+#custom-playing,
+#custom-stocks {
     padding: 2px 12px;
     margin: 4px 2px;
     border-radius: 6px;
@@ -61,6 +62,10 @@ window#waybar.fullscreen #workspaces button.active {
 
 #custom-playing {
     color: #b48ead;
+}
+
+#custom-stocks {
+    color: #d0d0d0;
 }
 
 #pulseaudio.muted {

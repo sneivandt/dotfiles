@@ -4,7 +4,7 @@
     "height": 26,
     "modules-left": ["hyprland/workspaces", "hyprland/window"],
     "modules-center": [],
-    "modules-right": ["custom/playing", "pulseaudio", "clock"],
+    "modules-right": ["custom/playing", "custom/stocks", "pulseaudio", "clock"],
 
     "hyprland/workspaces": {
         "format": "{icon}",
@@ -23,7 +23,7 @@
 
     "pulseaudio": {
         "format": "\uf028 {volume:3}%",
-        "format-muted": "\uf6a9   0%",
+        "format-muted": "\uf028   0%",
         "on-click": "pactl set-sink-mute @DEFAULT_SINK@ toggle",
         "tooltip": false
     },
@@ -37,5 +37,12 @@
         "exec": "~/.config/hypr/scripts/playing.sh",
         "interval": 5,
         "format": "\uf001 {}"
+    },
+
+    "custom/stocks": {
+        "exec": "~/.config/hypr/scripts/stocks.sh",
+        "interval": 300,
+        "return-type": "json",
+        "tooltip": false
     }
 }

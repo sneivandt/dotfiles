@@ -20,5 +20,6 @@ permissions = [
   { mode = "755", path = "config/hypr/scripts/choose-editor.sh" },
   { mode = "755", path = "config/hypr/scripts/playing.sh" },
   { mode = "755", path = "config/hypr/scripts/screenshot.sh" },
+  { mode = "755", path = "config/hypr/scripts/stocks.sh" },
   { mode = "755", path = "config/volume/init-volume.sh" },
 ]

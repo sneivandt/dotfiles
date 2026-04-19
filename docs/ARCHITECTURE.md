@@ -85,7 +85,7 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 │  profiles.toml      manifest.toml          │
 │  systemd-units.toml vscode-extensions.toml │
 │  registry.toml      copilot-plugins.toml   │
-│  chmod.toml                                │
+│  chmod.toml         git-config.toml        │
 └────────────────────────────────────────────┘
 ```
 
@@ -227,7 +227,8 @@ Repository phase (`cli/src/phases/repository/`):
 - `update` — Update repository (`git pull --ff-only`)
 - `sparse_checkout` — Configure git sparse checkout
 - `reload_config` — Reload config from disk after `update` pulls new commits
-- `hooks` — Install git hooks
+- `hooks` — Install git hooks (copies `hooks/*` into `.git/hooks/`)
+- `completions` — Generate the zsh completion script into `symlinks/config/zsh/completions/`
 - `overlay_scripts` — Discover overlay script definitions and log script count
 
 Apply phase (`cli/src/phases/apply/`):
@@ -242,7 +243,8 @@ Apply phase (`cli/src/phases/apply/`):
 - `registry` — Apply Windows registry settings
 - `vscode` — Install VS Code extensions
 - `copilot_plugins` — Download Copilot CLI plugins
-- `wsl_conf` — Write `/etc/wsl.conf` with `generateResolvConf = true` (Linux only, uses sudo)
+- `pam` — Install custom PAM service files (Arch Linux + desktop, uses sudo)
+- `wsl_conf` — Write `/etc/wsl.conf` with `generateResolvConf = true` (Linux/WSL only, uses sudo)
 
 #### Overlay System
 

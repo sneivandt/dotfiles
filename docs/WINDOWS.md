@@ -47,14 +47,18 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 | System | 2 | Developer Mode | Enables Windows developer mode (required for symlink creation). | Skips if already enabled. |
 | System | 3 | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
 | System | 4 | Update Repository | Updates the repository from remote (`git pull --ff-only`). | Skips if already up to date. |
-| System | 5 | Git Hooks | Installs repository git hooks. | Skips if hooks already installed. |
+| System | 5 | Git Hooks | Copies repository git hooks into `.git/hooks/`. | Skips if hooks already match. |
 | System | 6 | Configure PATH | Ensures dotfiles bin directory is on PATH. | Skips if already on PATH. |
-| User | 7 | Packages | Installs missing packages from `conf/packages.toml` using winget. | Skips already-installed packages. |
-| User | 8 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
-| User | 9 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
-| User | 10 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
-| User | 11 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
-| User | 12 | Copilot Plugins | Registers configured Copilot marketplaces and installs plugins from `conf/copilot-plugins.toml`. | Skips if the plugin is already installed. |
+| System | 7 | Install Wrapper | Installs the `dotfiles` wrapper script so the CLI is on PATH from any directory. | Skips if wrapper is already up to date. |
+| User | 8 | Packages | Installs missing packages from `conf/packages.toml` using winget. | Skips already-installed packages. |
+| User | 9 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
+| User | 10 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
+| User | 11 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
+| User | 12 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
+| User | 13 | Copilot Plugins | Registers configured Copilot marketplaces and installs plugins from `conf/copilot-plugins.toml`. | Skips if the plugin is already installed. |
+
+Tasks run in parallel where dependencies allow, so the numbering above reflects logical
+grouping rather than strict execution order.
 
 Tasks that don't apply to Windows (systemd, shell, chmod, paru) are automatically skipped via platform detection.
 
@@ -273,13 +277,16 @@ The log file is useful for troubleshooting installation issues or reviewing what
 
 ### Task Summary
 
-The installation displays a summary of all tasks grouped by phase:
+In **non-verbose** mode (default), compact task-result lines are shown inline as
+each task completes, followed by a totals line. Status icons:
 
 - `✓` — task completed successfully (green)
-- `·` — not applicable on this platform/profile (dim)
 - `○` — deliberately skipped (yellow)
-- `~` — dry-run preview (white)
+- `~` — dry-run preview (magenta)
 - `✗` — task failed (red)
+
+Not-applicable tasks are omitted from the summary display. In **verbose** mode
+(`-v`), a full per-task breakdown grouped by phase is appended.
 
 ### Dry-Run Mode
 
@@ -290,23 +297,28 @@ When using `-d` (dry-run), the logging system:
 
 Example summary output:
 ```
-:: Summary
-   System
-     ✓ Self-update
-     ✓ Enable developer mode
-     ✓ Configure sparse checkout
-     ✓ Update repository
-     ✓ Install git hooks
-   User
-     ✓ Install packages
-     ✓ Install symlinks
-     ✓ Configure Git
-     ✓ Apply registry settings
-     ✓ Install VS Code extensions
-     ✓ Install Copilot plugins
+:: Bootstrap
+  ✓ Self-update
+  ✓ Enable developer mode
+  ~ Install wrapper
+  ~ Configure PATH
 
-   11 tasks: 11 ok, 0 n/a, 0 skipped, 0 dry-run, 0 failed
-   log: C:\Users\YourName\AppData\Local\dotfiles\install.log
+:: Repository
+  ✓ Configure sparse checkout
+  ✓ Update repository
+  ~ Install Git hooks
+
+:: Apply
+  ~ Install packages
+  ~ Install symlinks
+  ~ Configure Git
+  ~ Apply registry settings
+  ~ Install VS Code extensions
+  ~ Install Copilot plugins
+
+  13 tasks: 2 ok, 11 dry-run
+  completed in 0.8s
+  log: C:\Users\YourName\AppData\Local\dotfiles\install.log
 ```
 
 ## Troubleshooting

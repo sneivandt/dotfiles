@@ -40,11 +40,12 @@ Always include a trailing comma after the last array element.
 | File | Key field | Notes |
 |---|---|---|
 | `packages.toml` | `packages` | String or `{ name, aur }` |
-| `symlinks.toml` | `symlinks` | `{ src, dest }` |
-| `systemd-units.toml` | `units` | `{ name, type }` |
+| `symlinks.toml` | `symlinks` | String, or `{ source, target }` for paths that must not get a `.` prefix |
+| `systemd-units.toml` | `units` | String (full unit filename, e.g. `dunst.service`) |
 | `vscode-extensions.toml` | `extensions` | String (publisher.name) |
-| `git-config.toml` | `entries` | `{ key, value }` |
-| `chmod.toml` | `entries` | `{ path, mode }` |
-| `registry.toml` | `entries` | `{ path, name, type, value }` (Windows) |
+| `copilot-plugins.toml` | `plugins` | `{ marketplace, marketplace_name, plugin }` |
+| `git-config.toml` | `settings` | `{ key, value }` |
+| `chmod.toml` | `permissions` | `{ mode, path }` |
+| `registry.toml` | n/a (nested) | Logical section with `path` plus `[section.values]` subtable (Windows) |
 
 See the `toml-configuration` skill for the full config loader pattern and Rust deserialization.

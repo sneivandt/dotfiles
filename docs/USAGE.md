@@ -185,23 +185,29 @@ The installation process handles different components based on your profile:
 1. **Self-Update** - Updates the dotfiles binary from latest GitHub release
 2. **Configure Sparse Checkout** - Excludes files based on profile
 3. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
-4. **Install Git Hooks** - Symlinks repository git hooks
+4. **Install Git Hooks** - Copies repository git hooks into `.git/hooks/`
 5. **Install Wrapper** - Installs `dotfiles` wrapper to `~/.local/bin/`
 6. **Configure PATH** - Ensures `~/.local/bin` is on PATH
+7. **Generate Shell Completions** - Writes the zsh completion script into the managed `symlinks/config/zsh/completions/` directory
 
 **User** (apply declared state):
 
-7. **Install Packages** - Installs packages from `conf/packages.toml` using pacman
-8. **Install Paru** - Bootstraps paru AUR helper (Arch Linux only)
-9. **Install AUR Packages** - Installs AUR packages via paru (Arch Linux only)
-10. **Create Symlinks** - Links files from `symlinks/` to `$HOME`
-11. **Set Permissions** - Applies file permissions from `conf/chmod.toml`
-12. **Configure Git** - Applies git configuration
-13. **Configure Shell** - Sets default shell
-14. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.toml`
-15. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-16. **Install Copilot Plugins** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-plugins.toml`14. **Overlay Scripts** - Runs custom scripts loaded from the overlay repository (when `--overlay` is set)17. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
-18. **Overlay Scripts** - Runs custom scripts loaded from the overlay repository (when `--overlay` is set)
+8. **Install Packages** - Installs packages from `conf/packages.toml` using pacman
+9. **Install Paru** - Bootstraps paru AUR helper (Arch Linux only)
+10. **Install AUR Packages** - Installs AUR packages via paru (Arch Linux only)
+11. **Create Symlinks** - Links files from `symlinks/` to `$HOME`
+12. **Set Permissions** - Applies file permissions from `conf/chmod.toml`
+13. **Configure Git** - Applies git configuration
+14. **Configure Shell** - Sets default shell
+15. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.toml`
+16. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
+17. **Install Copilot Plugins** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-plugins.toml`
+18. **Configure PAM Services** - Installs custom PAM service files (Arch Linux + desktop profile only, uses sudo)
+19. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
+20. **Overlay Scripts** - Runs custom scripts loaded from the overlay repository (when `--overlay` is set)
+
+Tasks run in parallel where dependencies allow, so the numbering above reflects logical
+grouping rather than strict execution order.
 
 ### Windows Installation Steps
 
@@ -211,17 +217,21 @@ The installation process handles different components based on your profile:
 2. **Enable Developer Mode** - Enables Windows developer mode (required for symlinks)
 3. **Configure Sparse Checkout** - Excludes files based on profile
 4. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
-5. **Install Git Hooks** - Symlinks repository git hooks
+5. **Install Git Hooks** - Copies repository git hooks into `.git/hooks/`
 6. **Configure PATH** - Ensures dotfiles bin directory is on PATH
+7. **Install Wrapper** - Installs the platform `dotfiles` wrapper script so the CLI is on PATH from any directory
 
 **User** (apply declared state):
 
-7. **Install Packages** - Installs packages using winget
-8. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
-9. **Configure Git** - Sets `core.symlinks=true`, `core.autocrlf=false`, credential helper
-10. **Apply Registry Settings** - Configures registry from `conf/registry.toml`
-11. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-12. **Install Copilot Plugins** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-plugins.toml`
+8. **Install Packages** - Installs packages using winget
+9. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
+10. **Configure Git** - Sets `core.symlinks=true`, `core.autocrlf=false`, credential helper
+11. **Apply Registry Settings** - Configures registry from `conf/registry.toml`
+12. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
+13. **Install Copilot Plugins** - Registers configured marketplaces and installs GitHub Copilot CLI plugins from `conf/copilot-plugins.toml`
+
+Tasks run in parallel where dependencies allow, so the numbering above reflects logical
+grouping rather than strict execution order.
 
 ## Verbose Mode
 

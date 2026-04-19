@@ -145,6 +145,7 @@
     "terminal.integrated.tabs.showActions": "never",
     "update.mode": "manual",
     "update.showReleaseNotes": false,
+    "vsicons.dontShowNewVersionMessage": true,
     "window.openFoldersInNewWindow": "on",
     "window.title": "${dirty}${activeEditorLong}${separator}${rootName}${separator}${appName}",
     "workbench.colorTheme": "Visual Studio Dark",

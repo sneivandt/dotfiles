@@ -280,114 +280,86 @@ fn build_paru(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// Package installation strategies
+// Package installation
 // ---------------------------------------------------------------------------
 
-/// Strategy for installing packages within a single package-manager scope.
+/// Install missing packages in a single package-manager invocation.
 ///
-/// Implementations decide **how** missing packages are installed (one-by-one
-/// vs. a single batch command) while [`process_packages`] handles the shared
-/// query-installed-first-then-delegate workflow.
-trait PackageStrategy {
-    /// Install the given packages, using `installed` to skip already-present
-    /// packages.
-    fn install(
-        &self,
-        ctx: &Context,
-        packages: &[Package],
-        installed: &HashSet<String>,
-    ) -> Result<TaskResult>;
-}
-
-/// Batch strategy (Pacman / Paru): collect all missing packages and install
-/// them in **one** package-manager invocation.  This is faster and lets the
-/// solver resolve cross-package dependencies across the full set.
-struct BatchInstall {
+/// Faster than per-package installs and lets the solver resolve cross-package
+/// dependencies across the full set.  Used for managers whose
+/// [`PackageProvider::supports_batch`](crate::resources::package::PackageProvider::supports_batch)
+/// returns `true` (Pacman, Paru).
+fn batch_install(
+    ctx: &Context,
+    packages: &[Package],
+    installed: &HashSet<String>,
     manager: PackageManager,
-}
+) -> TaskResult {
+    let resources: Vec<PackageResource> = packages
+        .iter()
+        .map(|pkg| PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor)))
+        .collect();
 
-impl PackageStrategy for BatchInstall {
-    fn install(
-        &self,
-        ctx: &Context,
-        packages: &[Package],
-        installed: &HashSet<String>,
-    ) -> Result<TaskResult> {
-        let resources: Vec<PackageResource> = packages
-            .iter()
-            .map(|pkg| {
-                PackageResource::new(pkg.name.clone(), self.manager, Arc::clone(&ctx.executor))
-            })
-            .collect();
+    let mut stats = TaskStats::new();
+    let mut missing = Vec::new();
 
-        let mut stats = TaskStats::new();
-        let mut missing = Vec::new();
-
-        for r in &resources {
-            if installed.contains(&r.name) {
-                ctx.debug_fmt(|| format!("ok: {}", r.description()));
-                stats.already_ok += 1;
-            } else {
-                missing.push(r);
-            }
+    for r in &resources {
+        if installed.contains(&r.name) {
+            ctx.debug_fmt(|| format!("ok: {}", r.description()));
+            stats.already_ok += 1;
+        } else {
+            missing.push(r);
         }
+    }
 
-        if missing.is_empty() {
-            return Ok(stats.finish(ctx));
-        }
+    if missing.is_empty() {
+        return stats.finish(ctx);
+    }
 
-        if ctx.dry_run {
-            for r in &missing {
-                ctx.log
-                    .dry_run(&format!("would install: {}", r.description()));
-            }
-            stats.changed = u32::try_from(missing.len()).unwrap_or(u32::MAX);
-            return Ok(stats.finish(ctx));
-        }
-
-        ctx.log
-            .debug(&format!("batch-installing {} packages", missing.len()));
-        if let Err(e) = batch_install_packages(&missing) {
-            let reason = format!("batch install failed: {e:#}");
-            ctx.log.warn(&reason);
-            stats.skipped = u32::try_from(missing.len()).unwrap_or(u32::MAX);
-            let _ = stats.finish(ctx);
-            return Ok(TaskResult::Failed(reason));
+    if ctx.dry_run {
+        for r in &missing {
+            ctx.log
+                .dry_run(&format!("would install: {}", r.description()));
         }
         stats.changed = u32::try_from(missing.len()).unwrap_or(u32::MAX);
-
-        Ok(stats.finish(ctx))
+        return stats.finish(ctx);
     }
+
+    ctx.log
+        .debug(&format!("batch-installing {} packages", missing.len()));
+    if let Err(e) = batch_install_packages(&missing) {
+        let reason = format!("batch install failed: {e:#}");
+        ctx.log.warn(&reason);
+        stats.skipped = u32::try_from(missing.len()).unwrap_or(u32::MAX);
+        let _ = stats.finish(ctx);
+        return TaskResult::Failed(reason);
+    }
+    stats.changed = u32::try_from(missing.len()).unwrap_or(u32::MAX);
+
+    stats.finish(ctx)
 }
 
-/// Individual strategy (Winget): install each package separately so that one
-/// failure does not prevent the remainder from being attempted.
-struct IndividualInstall {
+/// Install packages one at a time so that one failure does not prevent the
+/// remainder from being attempted.  Used for managers whose
+/// [`PackageProvider::supports_batch`](crate::resources::package::PackageProvider::supports_batch)
+/// returns `false` (Winget).
+fn individual_install(
+    ctx: &Context,
+    packages: &[Package],
+    installed: &HashSet<String>,
     manager: PackageManager,
+) -> Result<TaskResult> {
+    let resource_states = packages.iter().map(|pkg| {
+        let resource = PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor));
+        let state = resource.state_from_installed(installed);
+        (resource, state)
+    });
+    process_resource_states(ctx, resource_states, &ProcessOpts::lenient("install"))
 }
 
-impl PackageStrategy for IndividualInstall {
-    fn install(
-        &self,
-        ctx: &Context,
-        packages: &[Package],
-        installed: &HashSet<String>,
-    ) -> Result<TaskResult> {
-        let resource_states = packages.iter().map(|pkg| {
-            let resource =
-                PackageResource::new(pkg.name.clone(), self.manager, Arc::clone(&ctx.executor));
-            let state = resource.state_from_installed(installed);
-            (resource, state)
-        });
-        process_resource_states(ctx, resource_states, &ProcessOpts::lenient("install"))
-    }
-}
-
-/// Process a list of packages using the appropriate strategy for the given
-/// package manager.
-///
-/// Queries all installed packages **once**, then delegates to either
-/// [`BatchInstall`] (Pacman / Paru) or [`IndividualInstall`] (Winget).
+/// Process a list of packages by querying installed state once and dispatching
+/// to either [`batch_install`] or [`individual_install`] based on whether the
+/// underlying provider supports batch installation.
 fn process_packages(
     ctx: &Context,
     packages: &[Package],
@@ -401,11 +373,11 @@ fn process_packages(
     });
     let installed = get_installed_packages(manager, &*ctx.executor)?;
 
-    let strategy: &dyn PackageStrategy = match manager {
-        PackageManager::Winget => &IndividualInstall { manager },
-        _ => &BatchInstall { manager },
-    };
-    strategy.install(ctx, packages, &installed)
+    if manager.provider().supports_batch() {
+        Ok(batch_install(ctx, packages, &installed, manager))
+    } else {
+        individual_install(ctx, packages, &installed, manager)
+    }
 }
 
 #[cfg(test)]

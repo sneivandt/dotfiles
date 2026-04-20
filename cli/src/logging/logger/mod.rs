@@ -1,15 +1,29 @@
 //! Structured logger with dry-run awareness and summary collection.
-use std::io::Write as _;
+//!
+//! The implementation is split across submodules by responsibility:
+//! - This file: [`Logger`] struct, constructors, accessors, message-emitting
+//!   methods (info/debug/warn/error/stage/etc.), task recording, and the
+//!   [`Output`] / [`TaskRecorder`] trait impls.
+//! - [`summary`]: end-of-run [`print_summary`](Logger::print_summary).
+//! - [`progress`]: in-progress status line rendering
+//!   ([`clear_progress`](Logger::clear_progress) / [`draw_progress`](Logger::draw_progress)).
+//! - [`notifications`]: parallel-task lifecycle hooks
+//!   ([`notify_task_start`](Logger::notify_task_start) / [`notify_task_done`](Logger::notify_task_done)).
+
+mod notifications;
+mod progress;
+mod summary;
+
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU16, Ordering};
-use std::time::{Duration, Instant};
+use std::sync::atomic::AtomicU16;
+#[cfg(test)]
+use std::sync::atomic::Ordering;
+use std::time::Instant;
 
 use super::diagnostic::{DiagEvent, DiagnosticLog};
-#[cfg(test)]
-use super::types::Log;
 use super::types::{Output, TaskEntry, TaskRecorder, TaskStatus};
-use super::utils::{dotfiles_cache_dir, log_file_path, terminal_columns};
+use super::utils::{dotfiles_cache_dir, log_file_path};
 #[cfg(test)]
 use super::utils::{dotfiles_cache_subdir, log_file_path_in};
 use crate::phases::TaskPhase;
@@ -64,8 +78,8 @@ macro_rules! forward_log_methods {
 /// with timestamps and ANSI codes stripped, regardless of the verbose flag.
 #[derive(Debug)]
 pub struct Logger {
-    tasks: Mutex<Vec<TaskEntry>>,
-    log_file: Option<PathBuf>,
+    pub(super) tasks: Mutex<Vec<TaskEntry>>,
+    pub(super) log_file: Option<PathBuf>,
     /// Serializes console output from parallel task flushes.
     pub(super) flush_lock: Mutex<()>,
     /// Names of tasks currently executing in parallel.
@@ -80,18 +94,17 @@ pub struct Logger {
     /// High-precision diagnostic log; `None` when the cache dir is unavailable.
     pub(super) diagnostic: Option<DiagnosticLog>,
     /// Instant when the logger was created, used for elapsed time in summary.
-    start: Instant,
+    pub(super) start: Instant,
     /// Whether verbose output is enabled (show all stage headers and info).
-    verbose: bool,
+    pub(super) verbose: bool,
 }
 
-#[allow(clippy::print_stdout, clippy::print_stderr)]
 impl Logger {
     /// Create a new logger.
     ///
     /// Stores the log file path for display in the run summary.  The log file
-    /// itself is created and initialised by [`init_subscriber`](super::subscriber::init_subscriber) via
-    /// [`FileLayer`](super::subscriber::FileLayer); this constructor does not write to the file.
+    /// itself is created and initialised by [`init_subscriber`](super::super::subscriber::init_subscriber) via
+    /// [`FileLayer`](super::super::subscriber::FileLayer); this constructor does not write to the file.
     #[must_use]
     pub fn new(command: &str) -> Self {
         let start = Instant::now();
@@ -110,7 +123,7 @@ impl Logger {
 
     /// Set the verbose mode on this logger.
     ///
-    /// Also updates the global [`subscriber`](super::subscriber) flag so the
+    /// Also updates the global [`subscriber`](super::super::subscriber) flag so the
     /// console formatter and file layer stay in sync.
     pub fn set_verbose(&mut self, verbose: bool) {
         self.verbose = verbose;
@@ -195,7 +208,7 @@ impl Logger {
 
     log_method!(
         /// Log a debug message (suppressed on console unless verbose; always
-        /// written to the log file via the [`FileLayer`](super::subscriber::FileLayer)).
+        /// written to the log file via the [`FileLayer`](super::super::subscriber::FileLayer)).
         debug, Debug, tracing::debug
     );
 
@@ -249,195 +262,6 @@ impl Logger {
                 .count()
         })
     }
-
-    /// Print the summary of all recorded tasks, grouped by phase.
-    pub fn print_summary(&self) {
-        let tasks = match self.tasks.lock() {
-            Ok(guard) => guard.clone(),
-            Err(_) => return,
-        };
-        if tasks.is_empty() {
-            return;
-        }
-
-        let mut ok = 0u32;
-        let mut not_applicable = 0u32;
-        let mut skipped = 0u32;
-        let mut dry_run = 0u32;
-        let mut failed = 0u32;
-
-        for task in &tasks {
-            match task.status {
-                TaskStatus::Ok => ok += 1,
-                TaskStatus::NotApplicable => not_applicable += 1,
-                TaskStatus::Skipped => skipped += 1,
-                TaskStatus::DryRun => dry_run += 1,
-                TaskStatus::Failed => failed += 1,
-            }
-        }
-
-        // In verbose mode, show the full per-task breakdown.
-        if self.verbose {
-            println!();
-            self.phase("Summary");
-
-            let phases = [
-                TaskPhase::Bootstrap,
-                TaskPhase::Repository,
-                TaskPhase::Apply,
-            ];
-            for phase in &phases {
-                let phase_tasks: Vec<&TaskEntry> =
-                    tasks.iter().filter(|t| t.phase == *phase).collect();
-                let has_visible = phase_tasks
-                    .iter()
-                    .any(|t| t.status != TaskStatus::NotApplicable);
-                if !has_visible {
-                    continue;
-                }
-                self.info(&format!("\x1b[1m{phase}\x1b[0m"));
-                for task in &phase_tasks {
-                    let (icon, color) = match task.status {
-                        TaskStatus::NotApplicable => continue,
-                        TaskStatus::Ok => ("\u{2713}", "\x1b[32m"),
-                        TaskStatus::Skipped => ("\u{25cb}", "\x1b[33m"),
-                        TaskStatus::DryRun => ("~", "\x1b[35m"),
-                        TaskStatus::Failed => ("\u{2717}", "\x1b[31m"),
-                    };
-
-                    let suffix = task
-                        .message
-                        .as_ref()
-                        .map_or_else(String::new, |msg| format!(" ({msg})"));
-
-                    self.info(&format!("{color}  {icon} {}{suffix}\x1b[0m", task.name));
-                }
-            }
-        }
-
-        self.always("");
-        let active = ok + skipped + dry_run + failed;
-        let mut parts: Vec<String> = vec![format!("\x1b[32m{ok} ok\x1b[0m")];
-        if skipped > 0 {
-            parts.push(format!("\x1b[33m{skipped} skipped\x1b[0m"));
-        }
-        if dry_run > 0 {
-            parts.push(format!("\x1b[35m{dry_run} dry-run\x1b[0m"));
-        }
-        if failed > 0 {
-            parts.push(format!("\x1b[31m{failed} failed\x1b[0m"));
-        }
-
-        let na_suffix = if not_applicable > 0 {
-            format!(" \x1b[2m({not_applicable} not applicable)\x1b[0m")
-        } else {
-            String::new()
-        };
-
-        let elapsed = self.start.elapsed();
-        let elapsed_str = format_elapsed(elapsed);
-
-        self.always(&format!(
-            "  {active} tasks: {}{na_suffix}",
-            parts.join(", "),
-        ));
-
-        self.always(&format!("  \x1b[2mcompleted in {elapsed_str}\x1b[0m"));
-        if let Some(path) = &self.log_file {
-            self.always(&format!("  \x1b[2mlog: {}\x1b[0m", path.display()));
-        }
-    }
-
-    /// Erase the in-progress status line from the console.
-    ///
-    /// No-op if no progress line is currently shown.
-    /// Must be called while holding `flush_lock`.
-    pub(super) fn clear_progress(&self) {
-        if self.progress_rows.load(Ordering::Relaxed) > 0 {
-            print!("\r\x1b[K");
-            std::io::stdout().flush().ok();
-            self.progress_rows.store(0, Ordering::Relaxed);
-        }
-    }
-
-    /// Print an in-progress status line to the console and mark it as shown.
-    ///
-    /// The task-name list is truncated to fit within a single terminal row so
-    /// that [`clear_progress`](Self::clear_progress) never needs cursor-up
-    /// movement (which is fragile when the terminal width is unknown).
-    ///
-    /// Must be called while holding `flush_lock`.
-    pub(super) fn draw_progress(&self, names: &str) {
-        let cols = terminal_columns();
-        let prefix_width = 4;
-        let max_name_chars = cols.saturating_sub(prefix_width);
-        let display_names = if names.chars().count() > max_name_chars {
-            let truncated: String = names
-                .chars()
-                .take(max_name_chars.saturating_sub(1))
-                .collect();
-            format!("{truncated}…")
-        } else {
-            names.to_string()
-        };
-        print!("  \x1b[2m▹ {display_names}\x1b[0m");
-        std::io::stdout().flush().ok();
-        self.progress_rows.store(1, Ordering::Relaxed);
-    }
-
-    /// Record that a parallel task has started.
-    ///
-    /// Acquires the flush lock, erases any previous progress line, adds the
-    /// task to the active set, and redraws the status line.
-    pub fn notify_task_start(&self, name: &str) {
-        let _guard = self.flush_lock.lock().unwrap_or_else(|e| {
-            eprintln!("warning: flush lock was poisoned, recovering");
-            e.into_inner()
-        });
-        self.clear_progress();
-        let names = self.active_tasks.lock().map_or_else(
-            |_| name.to_string(),
-            |mut active| {
-                active.push(name.to_string());
-                if self.verbose {
-                    active.join(", ")
-                } else {
-                    format!("{} tasks running\u{2026}", active.len())
-                }
-            },
-        );
-        self.draw_progress(&names);
-    }
-
-    /// Record that a parallel task has completed (successfully or otherwise).
-    ///
-    /// Acquires the flush lock, removes `name` from the active set, and
-    /// redraws the progress line with the remaining tasks.  If no tasks
-    /// remain active the progress line is cleared and `progress_rows` is
-    /// set to `0`.
-    ///
-    /// Must be called while **not** already holding `flush_lock` to avoid
-    /// deadlocking.
-    pub fn notify_task_done(&self, name: &str) {
-        let _guard = self.flush_lock.lock().unwrap_or_else(|e| {
-            eprintln!("warning: flush lock was poisoned, recovering");
-            e.into_inner()
-        });
-        self.clear_progress();
-        let remaining = self.active_tasks.lock().ok().and_then(|mut active| {
-            active.retain(|n| n != name);
-            if active.is_empty() {
-                None
-            } else if self.verbose {
-                Some(active.join(", "))
-            } else {
-                Some(format!("{} tasks running\u{2026}", active.len()))
-            }
-        });
-        if let Some(names) = remaining {
-            self.draw_progress(&names);
-        }
-    }
 }
 
 impl Output for Logger {
@@ -467,23 +291,12 @@ impl TaskRecorder for Logger {
     }
 }
 
-/// Format a duration as a human-readable string (e.g., "1.2s", "2m 5s").
-fn format_elapsed(d: Duration) -> String {
-    let secs = d.as_secs();
-    if secs < 60 {
-        format!("{:.1}s", d.as_secs_f64())
-    } else {
-        let mins = secs / 60;
-        let remaining = secs % 60;
-        format!("{mins}m {remaining}s")
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use crate::logging::isolated_logger;
+    use crate::logging::types::Log;
     use crate::phases::TaskPhase;
     use std::fs;
 
@@ -577,24 +390,6 @@ mod tests {
     }
 
     #[test]
-    fn progress_rows_zero_initially() {
-        let (log, _tmp, _guard) = isolated_logger();
-        assert_eq!(log.progress_rows_count(), 0);
-    }
-
-    #[test]
-    fn draw_progress_caps_rows_to_one() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let long_names = "a".repeat(500);
-        log.draw_progress(&long_names);
-        assert_eq!(
-            log.progress_rows_count(),
-            1,
-            "progress_rows should always be 1 even for very long names"
-        );
-    }
-
-    #[test]
     fn diagnostic_log_accessible_via_trait() {
         let (log, _tmp, _guard) = isolated_logger();
         let log_ref: &dyn Log = &log;
@@ -679,127 +474,5 @@ mod tests {
             contents.contains(&marker),
             "dry run message should appear in log file: {contents}"
         );
-    }
-
-    #[test]
-    #[allow(clippy::significant_drop_tightening)]
-    fn notify_task_start_adds_to_active_tasks() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start("my-task");
-        let active = log.active_tasks.lock().unwrap();
-        assert!(
-            active.contains(&"my-task".to_string()),
-            "active_tasks should contain 'my-task'"
-        );
-    }
-
-    #[test]
-    fn notify_task_start_sets_progress_rows_to_one() {
-        let (log, _tmp, _guard) = isolated_logger();
-        assert_eq!(log.progress_rows_count(), 0, "progress_rows starts at 0");
-        log.notify_task_start("task-a");
-        assert_eq!(
-            log.progress_rows_count(),
-            1,
-            "progress_rows should be 1 after first notify_task_start"
-        );
-    }
-
-    #[test]
-    #[allow(clippy::significant_drop_tightening)]
-    fn notify_task_done_removes_from_active_tasks() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start("my-task");
-        log.notify_task_done("my-task");
-        let active = log.active_tasks.lock().unwrap();
-        assert!(
-            !active.contains(&"my-task".to_string()),
-            "active_tasks should not contain 'my-task' after notify_task_done"
-        );
-    }
-
-    #[test]
-    fn notify_task_done_clears_progress_when_last_task_completes() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start("task-a");
-        assert_eq!(
-            log.progress_rows_count(),
-            1,
-            "progress_rows should be 1 after start"
-        );
-        log.notify_task_done("task-a");
-        assert_eq!(
-            log.progress_rows_count(),
-            0,
-            "progress_rows should be 0 after last task completes"
-        );
-    }
-
-    #[test]
-    fn notify_task_done_keeps_progress_when_tasks_remain() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start("task-a");
-        log.notify_task_start("task-b");
-        log.notify_task_done("task-a");
-        assert_eq!(
-            log.progress_rows_count(),
-            1,
-            "progress_rows should still be 1 when task-b is still active"
-        );
-    }
-
-    #[test]
-    #[allow(clippy::significant_drop_tightening)]
-    fn notify_task_done_multiple_tasks_all_complete() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start("task-a");
-        log.notify_task_start("task-b");
-        log.notify_task_done("task-a");
-        {
-            let active = log.active_tasks.lock().unwrap();
-            assert!(
-                !active.contains(&"task-a".to_string()),
-                "task-a should be removed"
-            );
-            assert!(
-                active.contains(&"task-b".to_string()),
-                "task-b should still be present"
-            );
-        }
-        log.notify_task_done("task-b");
-        {
-            let active = log.active_tasks.lock().unwrap();
-            assert!(
-                active.is_empty(),
-                "active_tasks should be empty after both tasks complete"
-            );
-        }
-        assert_eq!(
-            log.progress_rows_count(),
-            0,
-            "progress_rows should be 0 after all tasks complete"
-        );
-    }
-
-    // -------------------------------------------------------------------
-    // format_elapsed
-    // -------------------------------------------------------------------
-
-    #[test]
-    fn format_elapsed_sub_second() {
-        let d = Duration::from_millis(450);
-        assert_eq!(format_elapsed(d), "0.5s");
-    }
-
-    #[test]
-    fn format_elapsed_seconds() {
-        let d = Duration::from_secs_f64(3.7);
-        assert_eq!(format_elapsed(d), "3.7s");
-    }
-
-    #[test]
-    fn format_elapsed_minutes() {
-        let d = Duration::from_secs(125);
-        assert_eq!(format_elapsed(d), "2m 5s");
     }
 }

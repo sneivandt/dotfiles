@@ -10,6 +10,26 @@ use super::parallel;
 use super::stats::{TaskResult, TaskStats};
 use crate::resources::{Applicable, Resource, ResourceState};
 
+/// Run `process_one` over `items` sequentially, honouring cancellation.
+///
+/// Centralises the cancellation-aware fold used by every sequential code path.
+/// `process_one` returns the per-item [`TaskStats`] delta (or an error that is
+/// propagated immediately).
+fn run_sequential<T, F>(ctx: &Context, items: Vec<T>, mut process_one: F) -> Result<TaskResult>
+where
+    F: FnMut(&Context, T) -> Result<TaskStats>,
+{
+    let mut stats = TaskStats::new();
+    for item in items {
+        if ctx.is_cancelled() {
+            ctx.log.warn("cancelled — stopping before next resource");
+            break;
+        }
+        stats += process_one(ctx, item)?;
+    }
+    Ok(stats.finish(ctx))
+}
+
 /// Process resources by checking each one's current state and applying as needed.
 ///
 /// For tasks where each resource can independently determine its own state via
@@ -34,19 +54,12 @@ pub fn process_resources<R: Resource + Send>(
     let _enter = span.enter();
     if ctx.parallel && !opts.sequential && resources.len() > 1 {
         ctx.debug_fmt(|| format!("processing {} resources in parallel", resources.len()));
-        parallel::process_resources_parallel(ctx, resources, opts)
-    } else {
-        let mut stats = TaskStats::new();
-        for resource in resources {
-            if ctx.is_cancelled() {
-                ctx.log.warn("cancelled — stopping before next resource");
-                break;
-            }
-            let current = resource.current_state()?;
-            stats += apply::process_single(ctx, &resource, &current, opts)?;
-        }
-        Ok(stats.finish(ctx))
+        return parallel::process_resources_parallel(ctx, resources, opts);
     }
+    run_sequential(ctx, resources, |ctx, resource| {
+        let current = resource.current_state()?;
+        apply::process_single(ctx, &resource, &current, opts)
+    })
 }
 
 /// Process resources with pre-computed states.
@@ -73,18 +86,11 @@ pub fn process_resource_states<R: Applicable + Send>(
     let _enter = span.enter();
     if ctx.parallel && !opts.sequential && resource_states.len() > 1 {
         ctx.debug_fmt(|| format!("processing {} resources in parallel", resource_states.len()));
-        parallel::process_resource_states_parallel(ctx, resource_states, opts)
-    } else {
-        let mut stats = TaskStats::new();
-        for (resource, current) in resource_states {
-            if ctx.is_cancelled() {
-                ctx.log.warn("cancelled — stopping before next resource");
-                break;
-            }
-            stats += apply::process_single(ctx, &resource, &current, opts)?;
-        }
-        Ok(stats.finish(ctx))
+        return parallel::process_resource_states_parallel(ctx, resource_states, opts);
     }
+    run_sequential(ctx, resource_states, |ctx, (resource, current)| {
+        apply::process_single(ctx, &resource, &current, opts)
+    })
 }
 
 /// Process resources for removal.
@@ -110,26 +116,19 @@ pub fn process_resources_remove<R: Resource + Send>(
     let _enter = span.enter();
     if ctx.parallel && resources.len() > 1 {
         ctx.debug_fmt(|| format!("processing {} resources in parallel", resources.len()));
-        parallel::process_remove_parallel(ctx, resources, verb)
-    } else {
-        let mut stats = TaskStats::new();
-        for resource in resources {
-            if ctx.is_cancelled() {
-                ctx.log.warn("cancelled — stopping before next resource");
-                break;
-            }
-            let current = match resource.current_state() {
-                Ok(current) => current,
-                Err(e) => {
-                    ctx.log.warn(&format!(
-                        "failed to check state for {}: {e}",
-                        resource.description()
-                    ));
-                    continue;
-                }
-            };
-            stats += apply::remove_single(ctx, &resource, &current, verb)?;
-        }
-        Ok(stats.finish(ctx))
+        return parallel::process_remove_parallel(ctx, resources, verb);
     }
+    run_sequential(ctx, resources, |ctx, resource| {
+        let current = match resource.current_state() {
+            Ok(current) => current,
+            Err(e) => {
+                ctx.log.warn(&format!(
+                    "failed to check state for {}: {e}",
+                    resource.description()
+                ));
+                return Ok(TaskStats::new());
+            }
+        };
+        apply::remove_single(ctx, &resource, &current, verb)
+    })
 }

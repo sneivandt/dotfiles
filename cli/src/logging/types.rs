@@ -1,5 +1,5 @@
 //! Core logging types: task entries, status, and the [`Log`] trait.
-use super::diagnostic::DiagnosticLog;
+use super::diagnostic::{DiagEvent, DiagnosticLog};
 use crate::phases::TaskPhase;
 
 /// Task execution result for summary reporting.
@@ -93,6 +93,26 @@ pub trait Output: Send + Sync {
     /// Access the high-precision diagnostic log, if available.
     fn diagnostic(&self) -> Option<&DiagnosticLog> {
         None
+    }
+    /// Emit a diagnostic event when the diagnostic log is enabled.
+    ///
+    /// This is a convenience wrapper around
+    /// [`DiagnosticLog::emit`](super::DiagnosticLog::emit) that no-ops when
+    /// no diagnostic log is configured, so call sites do not need to
+    /// `if let Some(diag) = ...` themselves.
+    fn diag(&self, event: DiagEvent, message: &str) {
+        if let Some(diag) = self.diagnostic() {
+            diag.emit(event, message);
+        }
+    }
+    /// Emit a task-scoped diagnostic event when the diagnostic log is enabled.
+    ///
+    /// Convenience wrapper around
+    /// [`DiagnosticLog::emit_task`](super::DiagnosticLog::emit_task).
+    fn diag_task(&self, event: DiagEvent, task: &str, message: &str) {
+        if let Some(diag) = self.diagnostic() {
+            diag.emit_task(event, task, message);
+        }
     }
 }
 

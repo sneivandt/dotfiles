@@ -7,7 +7,7 @@ use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, mpsc};
 
-use crate::logging::{self, BufferedLog, DiagEvent, Log, Logger, TaskStatus};
+use crate::logging::{self, BufferedLog, DiagEvent, Log, Logger, Output as _, TaskStatus};
 #[cfg(test)]
 use crate::phases::TaskPhase;
 use crate::phases::{self, Context, Task};
@@ -38,17 +38,13 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> bool {
                     .map(|s| format!("task panicked: {s}"))
             })
             .unwrap_or_else(|| "task panicked".to_string());
-        if let Some(diag) = log.diagnostic() {
-            diag.emit_task(DiagEvent::TaskFail, task.name(), &msg);
-        }
+        log.diag_task(DiagEvent::TaskFail, task.name(), &msg);
         log.record_task(task.name(), task.phase(), TaskStatus::Failed, Some(&msg));
         buf.flush_and_complete(task.name());
         return false;
     }
 
-    if let Some(diag) = log.diagnostic() {
-        diag.emit_task(DiagEvent::TaskDone, task.name(), "");
-    }
+    log.diag_task(DiagEvent::TaskDone, task.name(), "");
 
     buf.flush_and_complete(task.name());
     true
@@ -142,13 +138,11 @@ pub fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>)
                 let deps_ok = rx.is_none_or(|rx| (0..deps.len()).all(|_| rx.recv().is_ok()));
 
                 if !deps_ok {
-                    if let Some(diag) = log.diagnostic() {
-                        diag.emit_task(
-                            DiagEvent::TaskSkip,
-                            task.name(),
-                            "skipped: dependency did not complete",
-                        );
-                    }
+                    log.diag_task(
+                        DiagEvent::TaskSkip,
+                        task.name(),
+                        "skipped: dependency did not complete",
+                    );
                     log.record_task(
                         task.name(),
                         task.phase(),
@@ -160,13 +154,11 @@ pub fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>)
                     return;
                 }
 
-                if let Some(diag) = log.diagnostic() {
-                    diag.emit_task(
-                        DiagEvent::TaskStart,
-                        task.name(),
-                        "deps satisfied, executing",
-                    );
-                }
+                log.diag_task(
+                    DiagEvent::TaskStart,
+                    task.name(),
+                    "deps satisfied, executing",
+                );
 
                 if run_task_guarded(task, ctx, log) {
                     // Signal all dependent tasks.

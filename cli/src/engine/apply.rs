@@ -17,12 +17,10 @@ pub(super) fn process_single<R: Applicable>(
     opts: &ProcessOpts,
 ) -> Result<TaskStats> {
     let desc = resource.description();
-    if let Some(diag) = ctx.log.diagnostic() {
-        diag.emit(
-            DiagEvent::ResourceCheck,
-            &format!("{desc} state={resource_state}"),
-        );
-    }
+    ctx.log.diag(
+        DiagEvent::ResourceCheck,
+        &format!("{desc} state={resource_state}"),
+    );
     let mut delta = TaskStats::new();
     match opts.mode.action_for(resource_state) {
         ResourceAction::Noop => {
@@ -57,20 +55,17 @@ fn apply_resource<R: Applicable>(
     opts: &ProcessOpts,
 ) -> Result<TaskStats> {
     let desc = resource.description();
-    if let Some(diag) = ctx.log.diagnostic() {
-        diag.emit(DiagEvent::ResourceApply, &format!("{} {desc}", opts.verb));
-    }
+    ctx.log
+        .diag(DiagEvent::ResourceApply, &format!("{} {desc}", opts.verb));
     let mut delta = TaskStats::new();
     let change = match resource.apply() {
         Ok(change) => change,
         Err(e) => {
             let category = categorize_error(&e);
-            if let Some(diag) = ctx.log.diagnostic() {
-                diag.emit(
-                    DiagEvent::ResourceResult,
-                    &format!("{desc} error [{category}]: {e}"),
-                );
-            }
+            ctx.log.diag(
+                DiagEvent::ResourceResult,
+                &format!("{desc} error [{category}]: {e}"),
+            );
             if opts.mode.bail_on_error() {
                 return Err(e);
             }
@@ -83,28 +78,23 @@ fn apply_resource<R: Applicable>(
 
     match change {
         ResourceChange::Applied => {
-            if let Some(diag) = ctx.log.diagnostic() {
-                diag.emit(DiagEvent::ResourceResult, &format!("{desc} applied"));
-            }
+            ctx.log
+                .diag(DiagEvent::ResourceResult, &format!("{desc} applied"));
             ctx.log.always(&format!("    {}: {desc}", opts.verb));
             delta.changed += 1;
         }
         ResourceChange::AlreadyCorrect => {
-            if let Some(diag) = ctx.log.diagnostic() {
-                diag.emit(
-                    DiagEvent::ResourceResult,
-                    &format!("{desc} already_correct"),
-                );
-            }
+            ctx.log.diag(
+                DiagEvent::ResourceResult,
+                &format!("{desc} already_correct"),
+            );
             delta.already_ok += 1;
         }
         ResourceChange::Skipped { reason } => {
-            if let Some(diag) = ctx.log.diagnostic() {
-                diag.emit(
-                    DiagEvent::ResourceResult,
-                    &format!("{desc} skipped: {reason}"),
-                );
-            }
+            ctx.log.diag(
+                DiagEvent::ResourceResult,
+                &format!("{desc} skipped: {reason}"),
+            );
             ctx.log.warn(&format!("skipping {desc}: {reason}"));
             delta.skipped += 1;
         }
@@ -128,33 +118,27 @@ pub(super) fn remove_single<R: Applicable>(
                 delta.changed += 1;
                 return Ok(delta);
             }
-            if let Some(diag) = ctx.log.diagnostic() {
-                diag.emit(DiagEvent::ResourceRemove, &format!("{verb} {desc}"));
-            }
+            ctx.log
+                .diag(DiagEvent::ResourceRemove, &format!("{verb} {desc}"));
             match resource.remove()? {
                 ResourceChange::Applied => {
-                    if let Some(diag) = ctx.log.diagnostic() {
-                        diag.emit(DiagEvent::ResourceResult, &format!("{desc} removed"));
-                    }
+                    ctx.log
+                        .diag(DiagEvent::ResourceResult, &format!("{desc} removed"));
                     ctx.log.always(&format!("    {verb}: {desc}"));
                     delta.changed += 1;
                 }
                 ResourceChange::AlreadyCorrect => {
-                    if let Some(diag) = ctx.log.diagnostic() {
-                        diag.emit(
-                            DiagEvent::ResourceResult,
-                            &format!("{desc} already_correct"),
-                        );
-                    }
+                    ctx.log.diag(
+                        DiagEvent::ResourceResult,
+                        &format!("{desc} already_correct"),
+                    );
                     delta.already_ok += 1;
                 }
                 ResourceChange::Skipped { reason } => {
-                    if let Some(diag) = ctx.log.diagnostic() {
-                        diag.emit(
-                            DiagEvent::ResourceResult,
-                            &format!("{desc} skipped: {reason}"),
-                        );
-                    }
+                    ctx.log.diag(
+                        DiagEvent::ResourceResult,
+                        &format!("{desc} skipped: {reason}"),
+                    );
                     ctx.log.warn(&format!("skipping {desc}: {reason}"));
                     delta.skipped += 1;
                 }

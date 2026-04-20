@@ -1,9 +1,9 @@
 //! Task: apply Windows registry entries.
 
-use crate::phases::{ProcessOpts, TaskPhase, batch_resource_task};
+use crate::phases::{ProcessOpts, TaskPhase, resource_task};
 use crate::resources::registry::{RegistryResource, batch_check_values};
 
-batch_resource_task! {
+resource_task! {
     /// Apply Windows registry settings.
     pub ApplyRegistry {
         name: "Apply registry settings",

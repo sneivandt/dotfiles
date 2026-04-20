@@ -18,6 +18,64 @@ use crate::resources::package::{
 /// Default number of parallel jobs for makepkg if nproc detection fails.
 const DEFAULT_NPROC: &str = "4";
 
+// ---------------------------------------------------------------------------
+// Shared helpers — filter, manager detection, and sudo prediction
+// ---------------------------------------------------------------------------
+
+/// Collect packages matching the AUR/native filter from the loaded config.
+fn select_packages(ctx: &Context, is_aur: bool) -> Vec<Package> {
+    ctx.config_read()
+        .packages
+        .iter()
+        .filter(|p| p.is_aur == is_aur)
+        .cloned()
+        .collect()
+}
+
+/// Resolve the package manager for native (non-AUR) installs based on platform
+/// and tool availability.
+///
+/// Returns `Ok(manager)` when one is usable, or `Err(reason)` describing why
+/// the task should skip.
+fn resolve_native_manager(ctx: &Context) -> Result<PackageManager, String> {
+    if ctx.platform.is_linux() {
+        ctx.log.debug("using pacman package manager");
+        if !ctx.executor.which("pacman") {
+            return Err("pacman not found".to_string());
+        }
+        Ok(PackageManager::Pacman)
+    } else {
+        ctx.log.debug("using winget package manager");
+        if !ctx.executor.which("winget") {
+            return Err("winget not found".to_string());
+        }
+        Ok(PackageManager::Winget)
+    }
+}
+
+/// Predict whether an install of `packages` via `manager` will require sudo.
+///
+/// Returns `false` (no sudo prompt) when:
+/// - the manager tool is missing,
+/// - the package list is empty, or
+/// - the installed-packages query fails (we cannot prove anything is missing).
+///
+/// Otherwise returns `true` iff at least one configured package is not yet
+/// installed — i.e. a sudo-using install command will actually run.
+fn predict_sudo(ctx: &Context, manager: PackageManager, tool: &str, packages: &[Package]) -> bool {
+    if !ctx.executor.which(tool) || packages.is_empty() {
+        return false;
+    }
+    let Ok(installed) = get_installed_packages(manager, &*ctx.executor) else {
+        return false;
+    };
+    packages.iter().any(|p| !installed.contains(&p.name))
+}
+
+// ---------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------
+
 /// Install system packages via pacman or winget.
 #[derive(Debug)]
 pub struct InstallPackages;
@@ -39,34 +97,16 @@ impl Task for InstallPackages {
         if !ctx.platform.uses_pacman() || ctx.dry_run {
             return false;
         }
-        if !ctx.executor.which("pacman") {
-            return false;
-        }
-        let packages: Vec<Package> = ctx
-            .config_read()
-            .packages
-            .iter()
-            .filter(|p| !p.is_aur)
-            .cloned()
-            .collect();
-        if packages.is_empty() {
-            return false;
-        }
-        let Ok(installed) = get_installed_packages(PackageManager::Pacman, &*ctx.executor) else {
-            return false;
-        };
-        packages.iter().any(|p| !installed.contains(&p.name))
+        predict_sudo(
+            ctx,
+            PackageManager::Pacman,
+            "pacman",
+            &select_packages(ctx, false),
+        )
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let packages: Vec<Package> = ctx
-            .config_read()
-            .packages
-            .iter()
-            .filter(|p| !p.is_aur)
-            .cloned()
-            .collect();
-
+        let packages = select_packages(ctx, false);
         if packages.is_empty() {
             return Ok(TaskResult::Skipped("no packages to install".to_string()));
         }
@@ -74,18 +114,9 @@ impl Task for InstallPackages {
         ctx.log
             .debug(&format!("{} non-AUR packages to process", packages.len()));
 
-        let manager = if ctx.platform.is_linux() {
-            ctx.log.debug("using pacman package manager");
-            if !ctx.executor.which("pacman") {
-                return Ok(TaskResult::Skipped("pacman not found".to_string()));
-            }
-            PackageManager::Pacman
-        } else {
-            ctx.log.debug("using winget package manager");
-            if !ctx.executor.which("winget") {
-                return Ok(TaskResult::Skipped("winget not found".to_string()));
-            }
-            PackageManager::Winget
+        let manager = match resolve_native_manager(ctx) {
+            Ok(m) => m,
+            Err(reason) => return Ok(TaskResult::Skipped(reason)),
         };
 
         process_packages(ctx, &packages, manager)
@@ -115,34 +146,16 @@ impl Task for InstallAurPackages {
         if !ctx.platform.supports_aur() || ctx.dry_run {
             return false;
         }
-        if !ctx.executor.which("paru") {
-            return false;
-        }
-        let packages: Vec<Package> = ctx
-            .config_read()
-            .packages
-            .iter()
-            .filter(|p| p.is_aur)
-            .cloned()
-            .collect();
-        if packages.is_empty() {
-            return false;
-        }
-        let Ok(installed) = get_installed_packages(PackageManager::Paru, &*ctx.executor) else {
-            return false;
-        };
-        packages.iter().any(|p| !installed.contains(&p.name))
+        predict_sudo(
+            ctx,
+            PackageManager::Paru,
+            "paru",
+            &select_packages(ctx, true),
+        )
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let packages: Vec<Package> = ctx
-            .config_read()
-            .packages
-            .iter()
-            .filter(|p| p.is_aur)
-            .cloned()
-            .collect();
-
+        let packages = select_packages(ctx, true);
         if packages.is_empty() {
             return Ok(TaskResult::Skipped("no AUR packages".to_string()));
         }

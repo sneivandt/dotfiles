@@ -17,7 +17,7 @@ pub mod repository;
 pub mod validation;
 
 pub use catalog::{all_install_tasks, all_uninstall_tasks};
-pub(crate) use macros::{batch_resource_task, resource_task, task_deps};
+pub(crate) use macros::{resource_task, task_deps};
 
 // Re-export engine types so downstream `use super::` and `use crate::phases::`
 // continue to work unchanged.
@@ -520,7 +520,7 @@ mod tests {
         }
     }
 
-    batch_resource_task! {
+    resource_task! {
         /// Test-only task for batch-resource-task macro behaviour.
         CountingBatchTask {
             name: "Counting batch task",

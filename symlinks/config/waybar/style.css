@@ -10,13 +10,19 @@
 }
 
 window#waybar {
-    background-color: rgba(18, 18, 18, 0.92);
+    background-color: transparent;
     color: #d0d0d0;
+}
+
+#workspaces {
+    padding: 0 6px;
+    margin: 4px 2px;
+    border-radius: 6px;
+    background: rgba(18, 18, 18, 0.92);
 }
 
 #workspaces button {
     padding: 0 1px;
-    margin: 4px 0px;
     font-size: 20px;
     color: #d0d0d0;
     background: transparent;
@@ -41,9 +47,22 @@ window#waybar.fullscreen #workspaces button.active {
     color: #61afef;
 }
 
-#window {
-    padding: 0 12px;
+#window,
+#custom-window {
+    padding: 2px 12px;
+    margin: 4px 2px;
+    border-radius: 6px;
+    background: rgba(18, 18, 18, 0.92);
     color: #d0d0d0;
+}
+
+window#waybar #window.empty,
+window#waybar #custom-window.empty {
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    border: none;
+    min-width: 0;
 }
 
 #clock,
@@ -53,7 +72,7 @@ window#waybar.fullscreen #workspaces button.active {
     padding: 2px 12px;
     margin: 4px 2px;
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(18, 18, 18, 0.92);
 }
 
 #clock {

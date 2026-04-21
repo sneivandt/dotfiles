@@ -2,7 +2,7 @@
     "layer": "top",
     "position": "top",
     "height": 26,
-    "modules-left": ["hyprland/workspaces", "hyprland/window"],
+    "modules-left": ["hyprland/workspaces", "custom/window"],
     "modules-center": [],
     "modules-right": ["custom/playing", "custom/stocks", "pulseaudio", "clock"],
 
@@ -16,8 +16,9 @@
         "sort-by-number": true
     },
 
-    "hyprland/window": {
-        "max-length": 80,
+    "custom/window": {
+        "exec": "~/.config/hypr/scripts/window-title.py",
+        "return-type": "json",
         "tooltip": false
     },
 

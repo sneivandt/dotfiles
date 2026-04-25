@@ -55,6 +55,7 @@
     "breadcrumbs.enabled": true,
     "chat.agent.enabled": true,
     "chat.agent.maxRequests": 100,
+    "chat.unifiedAgentsBar.enabled": true,
     "chat.viewSessions.enabled": true,
     "chat.viewSessions.orientation": "stacked",
     "cmake.configureOnOpen": false,

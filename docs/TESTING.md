@@ -210,8 +210,8 @@ Runs automatically on pull requests with the following jobs:
 
 ### Release Pipeline (`.github/workflows/release.yml`)
 
-Triggers on push to `main` when `cli/` or `conf/` change:
-1. Builds Linux and Windows release binaries
+Triggers automatically when the CI workflow completes successfully on `main`:
+1. Builds Linux (x86_64, aarch64) and Windows (x86_64) release binaries
 2. Generates SHA-256 checksums
 3. Creates a GitHub Release with versioned tag
 

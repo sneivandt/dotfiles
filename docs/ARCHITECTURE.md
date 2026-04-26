@@ -44,8 +44,8 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 **Challenge**: End users should not need a Rust toolchain installed.
 
 **Solution**:
-- GitHub Actions builds release binaries on every push to `main` that touches `cli/` or `conf/`
-- The release workflow (`.github/workflows/release.yml`) publishes Linux and Windows binaries with SHA-256 checksums
+- GitHub Actions builds release binaries whenever a CI run on `main` completes successfully
+- The release workflow (`.github/workflows/release.yml`) publishes Linux (x86_64, aarch64) and Windows binaries with SHA-256 checksums
 - The shell wrappers download the latest release and cache the version for one hour (`bin/.dotfiles-version-cache`)
 - A `--build` flag builds from source for development
 
@@ -408,8 +408,8 @@ GitHub Actions CI (`.github/workflows/ci.yml`) runs on pull requests:
 
 ### Release Pipeline
 
-GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `main` when `cli/` or `conf/` change:
-1. Builds Linux and Windows release binaries
+GitHub Actions release (`.github/workflows/release.yml`) triggers automatically when the CI workflow completes successfully on `main`:
+1. Builds Linux (x86_64, aarch64) and Windows (x86_64) release binaries
 2. Generates SHA-256 checksums
 3. Creates a GitHub Release with version tag `v0.1.<run_number>`
 
@@ -497,8 +497,7 @@ etc.) are also processed in parallel using Rayon's `into_par_iter()`.
 - The `Logger` uses `Mutex<Vec<TaskEntry>>` internally for thread-safe task recording
 
 **To disable** both task-level and resource-level parallelism (e.g. for
-debugging), pass `--no-parallel` directly to the binary — this flag is not
-exposed by the wrapper scripts (see
+debugging), pass `--no-parallel` to the wrapper scripts or the binary directly (see
 [Advanced Binary Options](USAGE.md#advanced-binary-options)).
 
 `process_resources_remove()` (used by uninstall tasks) also dispatches to parallel

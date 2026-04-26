@@ -108,7 +108,7 @@ pub const fn wait_if_elevated() {}
 /// Wrap `value` in `PowerShell` single quotes, doubling any embedded single
 /// quotes so the value is interpreted literally by `PowerShell`.
 #[cfg(any(windows, test))]
-fn powershell_single_quote(value: &str) -> String {
+pub(crate) fn powershell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
@@ -117,7 +117,7 @@ fn powershell_single_quote(value: &str) -> String {
 /// Each element is individually single-quoted via [`powershell_single_quote`].
 /// Returns `"@()"` for an empty slice.
 #[cfg(any(windows, test))]
-fn powershell_arg_list(args: &[String]) -> String {
+pub(crate) fn powershell_arg_list(args: &[String]) -> String {
     if args.is_empty() {
         "@()".to_string()
     } else {
@@ -139,6 +139,27 @@ pub(crate) fn powershell_encode_command(script: &str) -> String {
 
     let utf16_le: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
     base64::engine::general_purpose::STANDARD.encode(utf16_le)
+}
+
+/// Detect which `PowerShell` executable is available on the current system.
+///
+/// Prefers `pwsh` (PowerShell 7+) when it is installed and functional;
+/// falls back to `powershell` (Windows PowerShell 5.1) otherwise.
+#[cfg(windows)]
+pub(crate) fn preferred_powershell() -> &'static str {
+    use std::process::Stdio;
+
+    if std::process::Command::new("pwsh")
+        .args(["-NoProfile", "-Command", "exit 0"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+    {
+        "pwsh"
+    } else {
+        "powershell"
+    }
 }
 
 #[cfg(test)]

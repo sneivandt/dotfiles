@@ -115,7 +115,7 @@ fn spawn_windows_restart_helper() -> Result<()> {
     let helper_script =
         build_windows_restart_helper_script(&exe, &pending, &pending_version, &cache, &args);
 
-    std::process::Command::new(preferred_powershell())
+    std::process::Command::new(crate::elevation::preferred_powershell())
         .args([
             "-NoProfile",
             "-EncodedCommand",
@@ -171,51 +171,14 @@ fn build_windows_restart_helper_script(
                      }} \
                  }}; \
                  exit 1",
-        exe = powershell_single_quote(&exe.display().to_string()),
-        pending = powershell_single_quote(&pending.display().to_string()),
-        pending_version = powershell_single_quote(&pending_version.display().to_string()),
-        cache = powershell_single_quote(&cache.display().to_string()),
-        args = powershell_array_literal(args),
+        exe = crate::elevation::powershell_single_quote(&exe.display().to_string()),
+        pending = crate::elevation::powershell_single_quote(&pending.display().to_string()),
+        pending_version =
+            crate::elevation::powershell_single_quote(&pending_version.display().to_string()),
+        cache = crate::elevation::powershell_single_quote(&cache.display().to_string()),
+        args = crate::elevation::powershell_arg_list(args),
         guard = REEXEC_GUARD_VAR,
     )
-}
-
-#[cfg(windows)]
-fn preferred_powershell() -> &'static str {
-    use std::process::Stdio;
-
-    if std::process::Command::new("pwsh")
-        .args(["-NoProfile", "-Command", "exit 0"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
-    {
-        "pwsh"
-    } else {
-        "powershell"
-    }
-}
-
-#[cfg(windows)]
-fn powershell_single_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
-}
-
-#[cfg(windows)]
-fn powershell_array_literal(values: &[String]) -> String {
-    if values.is_empty() {
-        "@()".to_string()
-    } else {
-        format!(
-            "@({})",
-            values
-                .iter()
-                .map(|value| powershell_single_quote(value))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    }
 }
 
 #[cfg(all(test, windows))]
@@ -223,18 +186,6 @@ fn powershell_array_literal(values: &[String]) -> String {
 mod tests {
     use super::*;
     use std::path::Path;
-
-    #[test]
-    fn powershell_array_literal_preserves_spaces_and_quotes() {
-        let args = vec![
-            "C:\\Temp\\Path With Space".to_string(),
-            "O'Brien".to_string(),
-        ];
-
-        let literal = powershell_array_literal(&args);
-
-        assert_eq!(literal, "@('C:\\Temp\\Path With Space', 'O''Brien')");
-    }
 
     #[test]
     fn windows_restart_helper_script_relaunches_with_splatting_and_guard() {

@@ -149,7 +149,7 @@
     "vsicons.dontShowNewVersionMessage": true,
     "window.openFoldersInNewWindow": "on",
     "window.title": "${dirty}${activeEditorLong}${separator}${rootName}${separator}${appName}",
-    "workbench.colorTheme": "Visual Studio Dark",
+    "workbench.colorTheme": "Dark 2026",
     "workbench.iconTheme": "vs-seti",
     "workbench.startupEditor": "none",
     "workbench.tips.enabled": false,

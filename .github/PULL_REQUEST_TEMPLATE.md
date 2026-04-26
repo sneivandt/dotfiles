@@ -42,12 +42,12 @@
 
 ## Documentation
 - [ ] Updated README.md if needed
-- [ ] Updated WINDOWS.md if needed
-- [ ] Updated conf/README.md if needed
+- [ ] Updated docs/WINDOWS.md if needed
+- [ ] Updated docs/CONFIGURATION.md if needed
 - [ ] Code comments added/updated for complex logic
 
 ## Checklist
-- [ ] Rust code passes `cargo fmt --check` and `cargo clippy -- -D warnings`
+- [ ] Rust code passes `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`
 - [ ] Shell wrappers follow POSIX sh compatibility
 - [ ] All new tasks are idempotent
 - [ ] Added items to TOML config files rather than hardcoding

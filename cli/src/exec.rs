@@ -111,6 +111,22 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     #[cfg_attr(test, mockall::concretize)]
     fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
 
+    /// Execute a command in a specific directory, allowing non-zero exit.
+    ///
+    /// The default implementation ignores `dir` and delegates to
+    /// [`run_unchecked`](Executor::run_unchecked); concrete executors should
+    /// override it to actually run the command in `dir`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the command fails to execute or cannot be found,
+    /// but does NOT fail on non-zero exit codes (which are captured in the result).
+    #[cfg_attr(test, mockall::concretize)]
+    fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
+        let _ = dir;
+        self.run_unchecked(program, args)
+    }
+
     /// Check if a program is available on PATH.
     #[cfg_attr(not(test), must_use)]
     fn which(&self, program: &str) -> bool;
@@ -154,6 +170,15 @@ impl Executor for SystemExecutor {
             .args(args)
             .output()
             .with_context(|| format!("failed to execute: {program}"))?;
+        Ok(ExecResult::from(output))
+    }
+
+    fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
+        let output = new_command(program)
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .with_context(|| format!("failed to execute: {program} in {}", dir.display()))?;
         Ok(ExecResult::from(output))
     }
 

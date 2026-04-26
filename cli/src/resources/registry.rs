@@ -92,6 +92,11 @@ mod native {
     }
 
     /// Parse a decimal or `0x`-prefixed hex string into a `u32`.
+    ///
+    /// Negative decimal values are accepted and reinterpreted as their
+    /// two's-complement `u32` bit pattern (e.g. `-1` becomes `0xFFFFFFFF`),
+    /// matching how the Windows registry tooling commonly represents signed
+    /// flag values.
     fn parse_dword(value_data: &str) -> Result<u32> {
         if let Some(hex) = value_data
             .strip_prefix("0x")
@@ -102,9 +107,17 @@ mod native {
             return u32::try_from(n)
                 .with_context(|| format!("hex DWORD exceeds u32 range: {value_data}"));
         }
-        value_data
-            .parse::<u32>()
-            .with_context(|| format!("invalid decimal DWORD: {value_data}"))
+        if let Ok(unsigned) = value_data.parse::<u32>() {
+            return Ok(unsigned);
+        }
+        if let Ok(signed) = value_data.parse::<i32>() {
+            #[allow(
+                clippy::cast_sign_loss,
+                reason = "intentional two's-complement reinterpretation for DWORD"
+            )]
+            return Ok(signed as u32);
+        }
+        anyhow::bail!("invalid decimal DWORD: {value_data}")
     }
 
     /// Convert a raw registry value to a string representation.
@@ -277,22 +290,46 @@ impl Resource for RegistryResource {
 /// Compare registry values, handling numeric values specially.
 #[cfg_attr(not(windows), allow(dead_code, reason = "used conditionally via cfg"))]
 fn value_matches(current: &str, expected_data: &str) -> bool {
-    // Handle hex values
-    if let Some(hex) = expected_data
-        .strip_prefix("0x")
-        .or_else(|| expected_data.strip_prefix("0X"))
-        && let Ok(expected_num) = u64::from_str_radix(hex, 16)
-    {
-        return current.parse::<u64>().ok() == Some(expected_num);
+    // Compare as DWORD bit-patterns when both sides parse that way.  This
+    // ensures that a stored `4294967295` matches a desired `-1` or
+    // `0xFFFFFFFF` (all three are the same `u32` bit pattern).
+    if let (Some(c), Some(e)) = (
+        parse_dword_for_compare(current),
+        parse_dword_for_compare(expected_data),
+    ) {
+        return c == e;
     }
 
-    // Try numeric comparison
-    if let Ok(expected_num) = expected_data.parse::<i64>() {
-        return current.parse::<i64>().ok() == Some(expected_num);
-    }
-
-    // Fall back to string comparison
+    // Fall back to string comparison for non-numeric values.
     current == expected_data
+}
+
+/// Parse a value as a 32-bit register word for comparison.
+///
+/// Accepts unsigned decimal, signed decimal (reinterpreted as two's-complement
+/// `u32`), and `0x`-prefixed hex.  Returns `None` for anything that does not
+/// fit a `u32` bit pattern.
+#[cfg_attr(not(windows), allow(dead_code, reason = "used conditionally via cfg"))]
+fn parse_dword_for_compare(value: &str) -> Option<u32> {
+    if let Some(hex) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    {
+        return u64::from_str_radix(hex, 16)
+            .ok()
+            .and_then(|n| u32::try_from(n).ok());
+    }
+    if let Ok(unsigned) = value.parse::<u32>() {
+        return Some(unsigned);
+    }
+    if let Ok(signed) = value.parse::<i32>() {
+        #[allow(
+            clippy::cast_sign_loss,
+            reason = "intentional two's-complement reinterpretation for DWORD"
+        )]
+        return Some(signed as u32);
+    }
+    None
 }
 
 #[cfg(test)]

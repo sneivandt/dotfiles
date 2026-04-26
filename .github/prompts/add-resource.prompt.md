@@ -30,5 +30,8 @@ established patterns by completing these steps:
    cd cli && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
    ```
 
-Read the `resource-implementation`, `rust-patterns`, and `toml-configuration` skills before starting.
+Read the `resource-implementation`, `rust-patterns`, `toml-configuration`, and
+`engine-orchestration` skills before starting. The last is important if your
+task has dependencies on other tasks.
+
 Never use `.unwrap()` or `.expect()` — use `?` with `anyhow::Result`.

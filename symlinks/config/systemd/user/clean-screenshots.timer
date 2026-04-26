@@ -1,0 +1,10 @@
+[Unit]
+Description=Clean %h/screenshots every day
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

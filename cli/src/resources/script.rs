@@ -146,7 +146,7 @@ impl ScriptResource {
 
         let result = self
             .executor
-            .run_unchecked(interpreter, &args)
+            .run_unchecked_in(&self.working_dir, interpreter, &args)
             .with_context(|| format!("dry-run script: {}", self.name))?;
 
         Ok(result.stdout)
@@ -211,7 +211,7 @@ impl Resource for ScriptResource {
 
         let result = self
             .executor
-            .run_unchecked(interpreter, &args)
+            .run_unchecked_in(&self.working_dir, interpreter, &args)
             .with_context(|| format!("checking script state: {}", self.name))?;
 
         if result.success {

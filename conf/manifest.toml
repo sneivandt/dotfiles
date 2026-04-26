@@ -95,6 +95,8 @@ paths = [
   "config/mako/",
   "config/shell/profile-arch-desktop.sh",
   "config/spotify-flags.conf",
+  "config/systemd/user/clean-screenshots.service",
+  "config/systemd/user/clean-screenshots.timer",
   "config/systemd/user/gammastep.service",
   "config/systemd/user/hypridle.service",
   "config/systemd/user/hyprpaper.service",
@@ -106,6 +108,6 @@ paths = [
   "config/volume/",
   "config/wallpaper/",
   "config/waybar/",
-  "config/wofi/",
+  "config/fuzzel/",
   "zprofile",
 ]

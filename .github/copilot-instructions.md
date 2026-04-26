@@ -32,7 +32,8 @@ The engine has five internal layers: `config/` (TOML parsing) → `resources/` (
 |---|---|
 | `cli/src/lib.rs` | Module structure and public API docs — start here |
 | `cli/src/cli.rs` | clap-based CLI args and `GlobalOpts` |
-| `cli/src/phases/mod.rs` | `Task` trait definition and macros (`resource_task!`, `task_deps!`) |
+| `cli/src/phases/mod.rs` | `Task` trait definition |
+| `cli/src/phases/macros.rs` | `resource_task!` and `task_deps!` macros |
 | `cli/src/phases/catalog.rs` | Task registry (`all_install_tasks()` / `all_uninstall_tasks()`) |
 | `cli/src/resources/mod.rs` | `Applicable` and `Resource` traits — the idempotent primitives |
 | `cli/src/engine/orchestrate.rs` | `process_resources()` — the core execution workhorse |

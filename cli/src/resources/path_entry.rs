@@ -248,9 +248,69 @@ fn append_user_path_windows(_dir: &str) -> Result<()> {
 
 /// Return `true` when `dir` already appears as a `;`-separated entry in
 /// `path` (case-insensitive on Windows).
+///
+/// Each entry in `path` is expanded for `%VAR%` tokens before comparison so
+/// that an existing `%USERPROFILE%\.local\bin` correctly matches an absolute
+/// `C:\Users\foo\.local\bin`.  Without this, repeated runs would keep
+/// appending duplicate entries to the user `PATH`.
 #[cfg(windows)]
 fn path_contains_entry(path: &str, dir: &str) -> bool {
-    path.split(';').any(|entry| entry.eq_ignore_ascii_case(dir))
+    let target = normalize_path_entry(&expand_env_vars(dir));
+    path.split(';')
+        .map(|entry| normalize_path_entry(&expand_env_vars(entry)))
+        .any(|entry| entry.eq_ignore_ascii_case(&target))
+}
+
+/// Expand `%VAR%` tokens in `value` against the current process environment.
+///
+/// Unknown variables are left as-is.  Lone `%` characters that do not form a
+/// matched pair are passed through unchanged.
+#[cfg(windows)]
+#[allow(
+    clippy::arithmetic_side_effects,
+    reason = "byte offsets returned by `find` on `%` (1 byte) are bounded by string length"
+)]
+fn expand_env_vars(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(start) = rest.find('%') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        if let Some(end) = after.find('%') {
+            let name = &after[..end];
+            if !name.is_empty()
+                && let Some(val) = std::env::var_os(name)
+            {
+                out.push_str(&val.to_string_lossy());
+                rest = &after[end + 1..];
+                continue;
+            }
+            // No matching env var: keep literal `%NAME%`.
+            out.push('%');
+            out.push_str(name);
+            out.push('%');
+            rest = &after[end + 1..];
+        } else {
+            // Trailing `%` with no closing pair: keep as literal.
+            out.push('%');
+            out.push_str(after);
+            rest = "";
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Normalize a path entry for comparison: trim surrounding whitespace,
+/// strip a trailing path separator, and unify forward / backward slashes.
+#[cfg(windows)]
+fn normalize_path_entry(entry: &str) -> String {
+    let trimmed = entry.trim();
+    let unified: String = trimmed
+        .chars()
+        .map(|c| if c == '/' { '\\' } else { c })
+        .collect();
+    unified.trim_end_matches('\\').to_string()
 }
 
 /// Return `true` when the persisted user `PATH` in the registry already

@@ -1,0 +1,11 @@
+[Unit]
+Description=Clean %h/screenshots
+
+ConditionFileIsExecutable=/usr/bin/find
+ConditionPathIsDirectory=%h/screenshots
+
+[Service]
+Type=oneshot
+IOSchedulingClass=idle
+CPUSchedulingPolicy=idle
+ExecStart=/usr/bin/find %h/screenshots -mindepth 1 -type f -mtime +30 -delete

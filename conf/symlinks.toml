@@ -74,6 +74,8 @@ symlinks = [
   "config/mako/config",
   "config/shell/profile-arch-desktop.sh",
   "config/spotify-flags.conf",
+  "config/systemd/user/clean-screenshots.service",
+  "config/systemd/user/clean-screenshots.timer",
   "config/systemd/user/gammastep.service",
   "config/systemd/user/hypridle.service",
   "config/systemd/user/hyprpaper.service",
@@ -86,8 +88,7 @@ symlinks = [
   "config/wallpaper",
   "config/waybar/config",
   "config/waybar/style.css",
-  "config/wofi/config",
-  "config/wofi/style.css",
+  "config/fuzzel/fuzzel.ini",
   "zprofile",
 ]
 

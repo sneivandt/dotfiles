@@ -188,10 +188,12 @@ GitHub Actions automatically runs on pull requests:
 - Rust formatting (`cargo fmt --check`)
 - Rust linting (`cargo clippy`)
 - Rust tests (`cargo test`)
+- Security audit (`cargo audit`, `cargo deny`)
 - Release builds (Linux and Windows)
 - Integration tests (dry-run install per profile)
+- Install/uninstall round-trip tests
 - Shell wrapper linting (shellcheck on `dotfiles.sh` and `install.sh`)
-- Docker image build
+- Application tests (git, zsh, vim, nvim)
 - Git hooks tests
 
 ## Commit Guidelines

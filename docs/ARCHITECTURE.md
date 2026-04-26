@@ -44,8 +44,8 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 **Challenge**: End users should not need a Rust toolchain installed.
 
 **Solution**:
-- GitHub Actions builds release binaries on every push to `main` that touches `cli/` or `conf/`
-- The release workflow (`.github/workflows/release.yml`) publishes Linux and Windows binaries with SHA-256 checksums
+- GitHub Actions builds release binaries whenever a CI run on `main` completes successfully
+- The release workflow (`.github/workflows/release.yml`) publishes Linux (x86_64, aarch64) and Windows binaries with SHA-256 checksums
 - The shell wrappers download the latest release and cache the version for one hour (`bin/.dotfiles-version-cache`)
 - A `--build` flag builds from source for development
 
@@ -138,9 +138,7 @@ Install options:
   --only TASK,...   Run only specific tasks
 ```
 
-The wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`) expose only `-p`, `-d`, `-v`,
-and `--build`. Flags like `--skip`, `--only`, `--root`, and `--no-parallel` are
-available only when invoking the binary directly.
+The wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`) handle only the `--build` flag and then forward all remaining arguments to the binary unchanged. All binary flags — including `-p`, `-d`, `-v`, `--skip`, `--only`, `--root`, and `--no-parallel` — are available when invoking via the wrappers.
 
 #### Commands (`commands/`)
 
@@ -218,7 +216,7 @@ The execution engine provides the generic resource processing loop, dependency g
 **Implemented tasks** (executed as soon as dependencies allow):
 
 Bootstrap phase (`cli/src/phases/bootstrap/`):
-- `self_update` — Update the dotfiles binary from latest GitHub release
+- `self_update` — Updates the dotfiles binary from the latest GitHub release. Runs **before** the task graph (directly from `install.rs`) so all subsequent tasks use the latest code. If the binary is replaced, the process re-execs itself with a guard variable (`DOTFILES_REEXEC_GUARD`) to prevent an infinite loop.
 - `developer_mode` — Enable Windows developer mode (required for symlinks)
 - `wrapper` — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
 - `path` — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
@@ -229,7 +227,7 @@ Repository phase (`cli/src/phases/repository/`):
 - `reload_config` — Reload config from disk after `update` pulls new commits
 - `hooks` — Install git hooks (copies `hooks/*` into `.git/hooks/`)
 - `completions` — Generate the zsh completion script into `symlinks/config/zsh/completions/`
-- `overlay_scripts` — Discover overlay script definitions and log script count
+- `overlay_scripts` — Discover overlay script definitions and log script count (implemented in `apply/overlay_scripts.rs` despite using the Repository phase)
 
 Apply phase (`cli/src/phases/apply/`):
 - `packages` — Install system packages (pacman or winget)
@@ -392,18 +390,26 @@ GitHub Actions CI (`.github/workflows/ci.yml`) runs on pull requests:
 
 | Job | What it checks |
 | --- | --- |
-| `rust` | Formatting, Clippy linting, and unit/integration tests (matrix) |
-| `lint` | ShellCheck and PSScriptAnalyzer (matrix) |
-| `build` | Release build + smoke test on Linux and Windows (matrix) |
-| `integration` | Dry-run install per profile and platform (matrix) |
+| `rust-fmt` | Rust format check (`cargo fmt --check`) |
+| `lint` | ShellCheck and PSScriptAnalyzer (matrix: ShellCheck, PSScriptAnalyzer) |
+| `validate-config` | 6 config checks: TOML syntax, file references, category consistency, empty sections |
+| `audit` | Cargo security audit (vulnerability scan) |
+| `deny` | Cargo deny: license and advisory policy |
+| `build-linux` | Linux build + Clippy + unit/integration tests |
+| `build-windows` | Windows build + Clippy + unit/integration tests |
+| `integration-linux` | Dry-run install and validation per profile on Linux (matrix: base, desktop) |
+| `integration-windows` | Dry-run install and validation per profile on Windows (matrix: base, desktop) |
+| `test-install-uninstall` | Install/uninstall round-trip (Linux) |
+| `test-install-uninstall-windows` | Install/uninstall round-trip (Windows) |
 | `test-applications` | Git, zsh, vim, nvim behavior (matrix) |
-| `test-docker` | Docker image build + smoke test |
-| `test-git-hooks` | Pre-commit sensitive data detection and Rust formatting/clippy linting |
+| `test-git-hooks` | Pre-commit sensitive data detection |
+| `test-shell-wrapper-linux` | Linux wrapper script (`dotfiles.sh`) validation |
+| `test-shell-wrapper-windows` | Windows wrapper script (`dotfiles.ps1`) validation |
 
 ### Release Pipeline
 
-GitHub Actions release (`.github/workflows/release.yml`) triggers on push to `main` when `cli/` or `conf/` change:
-1. Builds Linux and Windows release binaries
+GitHub Actions release (`.github/workflows/release.yml`) triggers automatically when the CI workflow completes successfully on `main`:
+1. Builds Linux (x86_64, aarch64) and Windows (x86_64) release binaries
 2. Generates SHA-256 checksums
 3. Creates a GitHub Release with version tag `v0.1.<run_number>`
 
@@ -491,8 +497,7 @@ etc.) are also processed in parallel using Rayon's `into_par_iter()`.
 - The `Logger` uses `Mutex<Vec<TaskEntry>>` internally for thread-safe task recording
 
 **To disable** both task-level and resource-level parallelism (e.g. for
-debugging), pass `--no-parallel` directly to the binary — this flag is not
-exposed by the wrapper scripts (see
+debugging), pass `--no-parallel` to the wrapper scripts or the binary directly (see
 [Advanced Binary Options](USAGE.md#advanced-binary-options)).
 
 `process_resources_remove()` (used by uninstall tasks) also dispatches to parallel

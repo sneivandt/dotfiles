@@ -192,22 +192,26 @@ Runs automatically on pull requests with the following jobs:
 
 | Job | Matrix | Purpose |
 | --- | --- | --- |
-| `rust` | fmt, clippy, test | Rust formatting, linting, and unit/integration tests |
+| `rust-fmt` | — | Rust format check (`cargo fmt --check`) |
 | `lint` | ShellCheck, PSScriptAnalyzer | Static analysis for shell and PowerShell scripts |
-| `validate-config` | 6 config checks | TOML syntax, file references, category consistency |
-| `build` | Linux, Windows | Release binary build + smoke test |
-| `integration` | base/Linux, desktop/Linux, base/Windows | Dry-run install and validation per profile |
+| `validate-config` | — | 6 config checks: TOML syntax, file references, category consistency, empty sections |
+| `audit` | — | Cargo security audit (vulnerability scan via `cargo-audit`) |
+| `deny` | — | Cargo deny: license and advisory policy check |
+| `build-linux` | — | Linux release build + Clippy + unit/integration tests |
+| `build-windows` | — | Windows release build + Clippy + unit/integration tests |
+| `integration-linux` | base, desktop | Dry-run install and config validation per profile on Linux |
+| `integration-windows` | base, desktop | Dry-run install and config validation per profile on Windows |
+| `test-install-uninstall` | — | Install/uninstall round-trip test (Linux) |
+| `test-install-uninstall-windows` | — | Install/uninstall round-trip test (Windows) |
 | `test-applications` | git, zsh, vim, nvim | Application-specific behavior tests |
-| `test-paru` | — | AUR helper bootstrap validation (Arch container) |
-| `test-docker` | — | Docker image build + smoke test |
 | `test-git-hooks` | — | Pre-commit sensitive data detection |
-| `test-shell-wrapper-linux` | — | Linux wrapper script validation |
-| `test-shell-wrapper-windows` | — | Windows wrapper script validation |
+| `test-shell-wrapper-linux` | — | Linux wrapper script (`dotfiles.sh`) validation |
+| `test-shell-wrapper-windows` | — | Windows wrapper script (`dotfiles.ps1`) validation |
 
 ### Release Pipeline (`.github/workflows/release.yml`)
 
-Triggers on push to `main` when `cli/` or `conf/` change:
-1. Builds Linux and Windows release binaries
+Triggers automatically when the CI workflow completes successfully on `main`:
+1. Builds Linux (x86_64, aarch64) and Windows (x86_64) release binaries
 2. Generates SHA-256 checksums
 3. Creates a GitHub Release with versioned tag
 

@@ -35,10 +35,9 @@ pub fn run(
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
-    use std::any::TypeId;
     use std::collections::HashSet;
 
-    use crate::phases;
+    use crate::phases::{self, TaskId};
 
     #[test]
     fn uninstall_tasks_contains_expected_count() {
@@ -77,20 +76,20 @@ mod tests {
     #[test]
     fn uninstall_tasks_have_unique_type_ids() {
         let tasks = phases::all_uninstall_tasks();
-        let ids: Vec<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
-        let unique: HashSet<TypeId> = ids.iter().copied().collect();
-        assert_eq!(ids.len(), unique.len(), "duplicate task TypeIds found");
+        let ids: Vec<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
+        let unique: HashSet<TaskId> = ids.iter().copied().collect();
+        assert_eq!(ids.len(), unique.len(), "duplicate task TaskIds found");
     }
 
     #[test]
     fn uninstall_tasks_have_resolvable_dependencies() {
         let tasks = phases::all_uninstall_tasks();
-        let present: HashSet<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
+        let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
         for task in &tasks {
             for dep in task.dependencies() {
                 assert!(
                     present.contains(dep),
-                    "task '{}' depends on a TypeId not in the uninstall task list",
+                    "task '{}' depends on a TaskId not in the uninstall task list",
                     task.name()
                 );
             }

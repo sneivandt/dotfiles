@@ -12,10 +12,10 @@
 
 mod common;
 
-use std::any::TypeId;
 use std::collections::HashSet;
 
 use dotfiles_cli::phases;
+use dotfiles_cli::phases::TaskId;
 use dotfiles_cli::platform::{Os, Platform};
 
 const TASK_FILTER_STOP_WORDS: &[&str] = &[
@@ -116,15 +116,15 @@ fn install_task_names_are_unique() {
     }
 }
 
-/// No two install tasks may share the same [`TypeId`].
+/// No two install tasks may share the same [`TaskId`].
 #[test]
 fn install_task_type_ids_are_unique() {
     let tasks = phases::all_install_tasks();
-    let ids: HashSet<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
+    let ids: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
     assert_eq!(
         ids.len(),
         tasks.len(),
-        "install task list contains duplicate TypeIds"
+        "install task list contains duplicate TaskIds"
     );
 }
 
@@ -133,7 +133,7 @@ fn install_task_type_ids_are_unique() {
 #[test]
 fn install_task_dependencies_are_resolvable() {
     let tasks = phases::all_install_tasks();
-    let present: HashSet<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
+    let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
     for task in &tasks {
         for dep in task.dependencies() {
             assert!(

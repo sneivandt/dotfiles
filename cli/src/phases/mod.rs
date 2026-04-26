@@ -38,6 +38,42 @@ use anyhow::Result;
 
 use crate::logging::TaskStatus;
 
+/// Unique identifier for a task in the dependency graph.
+///
+/// Static task types use [`TaskId::Type`], derived from the Rust type system,
+/// which is globally unique at compile time.  Dynamically created tasks — such
+/// as [`OverlayScriptTask`](crate::phases::apply::overlay_scripts::OverlayScriptTask)
+/// where multiple instances of the same struct appear in the same task list —
+/// use [`TaskId::Dynamic`] with a hash computed from instance-specific data so
+/// that each instance has a distinct identity.
+///
+/// # Examples
+///
+/// ```
+/// use std::any::TypeId;
+/// use dotfiles_cli::phases::TaskId;
+///
+/// // Type-based ID (the usual case):
+/// let id = TaskId::Type(TypeId::of::<u32>());
+///
+/// // Instance-based ID (for dynamic tasks):
+/// let id = TaskId::Dynamic(42);
+///
+/// assert_ne!(id, TaskId::Type(TypeId::of::<u32>()));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TaskId {
+    /// Type-derived identifier for static singleton task structs.
+    ///
+    /// Produced automatically by the default `task_id()` implementation.
+    Type(TypeId),
+    /// Instance-derived identifier for dynamically created tasks.
+    ///
+    /// Used when multiple instances of the same struct appear in the task
+    /// list (e.g. one `OverlayScriptTask` per configured script).
+    Dynamic(u64),
+}
+
 /// Execution phase of a task.
 ///
 /// Bootstrap tasks run first to prepare the tool itself (binary update,
@@ -68,7 +104,7 @@ impl fmt::Display for TaskPhase {
 /// A named, executable task.
 ///
 /// The `'static` bound is required so that each task struct has a stable
-/// [`TypeId`] which the scheduler uses to match dependency declarations
+/// [`TaskId`] which the scheduler uses to match dependency declarations
 /// (see [`Task::task_id`] and [`Task::dependencies`]).
 pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
@@ -77,23 +113,29 @@ pub trait Task: Send + Sync + 'static {
     /// Execution phase: [`TaskPhase::Bootstrap`], [`TaskPhase::Repository`], or [`TaskPhase::Apply`].
     fn phase(&self) -> TaskPhase;
 
-    /// The concrete `TypeId` of this task, used as a dependency identifier.
+    /// The unique identifier of this task, used by the scheduler to build the
+    /// dependency graph.
     ///
-    /// The default implementation uses `TypeId::of::<Self>()` which is correct
-    /// for all concrete (non-generic) task structs.
-    fn task_id(&self) -> TypeId {
-        TypeId::of::<Self>()
+    /// The default implementation returns `TaskId::Type(TypeId::of::<Self>())`
+    /// which is correct for all concrete singleton task structs.  Dynamic tasks
+    /// (multiple instances of the same struct in a single task list) must
+    /// override this method to return `TaskId::Dynamic(hash)` with an
+    /// instance-specific hash so each instance has a distinct identity.
+    fn task_id(&self) -> TaskId {
+        TaskId::Type(TypeId::of::<Self>())
     }
 
     /// Tasks that must complete before this task starts.
     ///
-    /// Return `TypeId`s of the concrete task structs that this task depends on.
+    /// Returns [`TaskId`]s of the concrete task structs this task depends on.
     /// The scheduler uses this information to build a dependency graph and
     /// execute independent tasks in parallel.  The default implementation
     /// returns an empty slice (no dependencies).
     ///
-    /// Use `TypeId::of::<TaskStruct>()` to reference a dependency.
-    fn dependencies(&self) -> &[TypeId] {
+    /// Use the [`task_deps!`] macro to implement this method — it eliminates
+    /// the manual `const DEPS` boilerplate and automatically wraps each type
+    /// in [`TaskId::Type`].
+    fn dependencies(&self) -> &[TaskId] {
         &[]
     }
 

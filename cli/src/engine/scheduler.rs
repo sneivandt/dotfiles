@@ -3,14 +3,13 @@
 //! Provides [`run_tasks_parallel`] for executing tasks concurrently using OS
 //! threads.
 
-use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, mpsc};
 
 use crate::logging::{self, BufferedLog, DiagEvent, Log, Logger, Output as _, TaskStatus};
 #[cfg(test)]
 use crate::phases::TaskPhase;
-use crate::phases::{self, Context, Task};
+use crate::phases::{self, Context, Task, TaskId};
 
 /// Execute a single task, catching any panic.
 ///
@@ -60,8 +59,8 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> bool {
 /// runners).  Output is buffered per-task and flushed to the console
 /// immediately on completion.
 pub fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>) {
-    let present: HashSet<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
-    let resolved_deps: Vec<Vec<TypeId>> = tasks
+    let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
+    let resolved_deps: Vec<Vec<TaskId>> = tasks
         .iter()
         .map(|t| {
             t.dependencies()
@@ -72,9 +71,9 @@ pub fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>)
         })
         .collect();
 
-    // Build TypeId → name and TypeId → index maps for diagnostics and channel wiring.
-    let id_to_name: HashMap<TypeId, &str> = tasks.iter().map(|t| (t.task_id(), t.name())).collect();
-    let id_to_idx: HashMap<TypeId, usize> = tasks
+    // Build TaskId → name and TaskId → index maps for diagnostics and channel wiring.
+    let id_to_name: HashMap<TaskId, &str> = tasks.iter().map(|t| (t.task_id(), t.name())).collect();
+    let id_to_idx: HashMap<TaskId, usize> = tasks
         .iter()
         .enumerate()
         .map(|(i, t)| (t.task_id(), i))

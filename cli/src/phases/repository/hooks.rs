@@ -153,7 +153,6 @@ mod tests {
     use super::*;
     use crate::fs::MockFileSystemOps;
     use crate::phases::test_helpers::{empty_config, make_linux_context};
-    use std::any::TypeId;
     use std::path::PathBuf;
 
     // ------------------------------------------------------------------
@@ -202,9 +201,9 @@ mod tests {
         let task = InstallGitHooks::with_fs_ops(Arc::new(mock));
         assert_eq!(
             task.dependencies(),
-            &[TypeId::of::<
+            &[crate::phases::TaskId::Type(std::any::TypeId::of::<
                 crate::phases::repository::update::UpdateRepository,
-            >()]
+            >())]
         );
     }
 

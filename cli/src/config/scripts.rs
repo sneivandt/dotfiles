@@ -10,6 +10,7 @@ use super::config_section;
 
 /// A custom script entry loaded from `scripts.toml`.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ScriptEntry {
     /// Human-readable name for this script task.
     pub name: String,
@@ -97,5 +98,33 @@ scripts = [
         let entries = load(&path, &[Category::Base]).expect("load should succeed");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "Base script");
+    }
+
+    #[test]
+    fn load_returns_error_on_unknown_field_in_entry() {
+        let content = r#"
+[base]
+scripts = [
+    { name = "Setup", path = "scripts/setup.sh", typo_field = "oops" },
+]
+"#;
+        let (_dir, path) = write_temp_toml(content);
+        let result = load(&path, &[Category::Base]);
+        assert!(
+            result.is_err(),
+            "unknown field 'typo_field' in ScriptEntry should return an error"
+        );
+    }
+
+    #[test]
+    fn load_returns_error_on_unknown_section_field() {
+        // Wrong field name in the section: "script" instead of "scripts".
+        let content = "[base]\nscript = [{ name = \"Setup\", path = \"scripts/setup.sh\" }]\n";
+        let (_dir, path) = write_temp_toml(content);
+        let result = load(&path, &[Category::Base]);
+        assert!(
+            result.is_err(),
+            "unknown section field 'script' should return an error"
+        );
     }
 }

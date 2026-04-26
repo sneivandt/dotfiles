@@ -44,6 +44,7 @@ macro_rules! config_section {
     // Identity mapping (Entry == Item).
     (field: $field:literal, ty: $ty:ty $(,)?) => {
         #[derive(Debug, ::serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct Section {
             #[serde(rename = $field)]
             entries: Vec<$ty>,
@@ -83,6 +84,7 @@ macro_rules! config_section {
         map: |$param:ident| $map_expr:expr $(,)?
     ) => {
         #[derive(Debug, ::serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct Section {
             #[serde(rename = $field)]
             entries: Vec<$entry>,

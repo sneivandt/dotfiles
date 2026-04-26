@@ -108,6 +108,21 @@ impl Task for OverlayScriptTask {
         TaskPhase::Apply
     }
 
+    /// Returns a per-instance [`TaskId::Dynamic`] derived from the script's
+    /// name and path.
+    ///
+    /// Multiple `OverlayScriptTask` instances share the same Rust type, so
+    /// the default `TypeId`-based identity would collide in the dependency
+    /// graph.  Using a hash of the instance data gives each script a distinct
+    /// identity while keeping it deterministic across runs.
+    fn task_id(&self) -> crate::phases::TaskId {
+        use std::hash::{DefaultHasher, Hash, Hasher};
+        let mut h = DefaultHasher::new();
+        self.entry.name.hash(&mut h);
+        self.entry.path.hash(&mut h);
+        crate::phases::TaskId::Dynamic(h.finish())
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.config_read().overlay.is_some()
     }
@@ -268,5 +283,44 @@ mod tests {
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[0].name(), "A");
         assert_eq!(tasks[1].name(), "B");
+    }
+
+    #[test]
+    fn overlay_script_tasks_have_unique_task_ids() {
+        // Multiple OverlayScriptTask instances must produce distinct TaskIds so
+        // the parallel scheduler does not report a false "dependency cycle".
+        use crate::phases::TaskId;
+        use std::collections::HashSet;
+
+        let scripts = vec![
+            ScriptEntry {
+                name: "A".to_string(),
+                path: "a.sh".to_string(),
+                description: None,
+            },
+            ScriptEntry {
+                name: "B".to_string(),
+                path: "b.ps1".to_string(),
+                description: None,
+            },
+            ScriptEntry {
+                name: "C".to_string(),
+                path: "c.sh".to_string(),
+                description: None,
+            },
+        ];
+        let tasks = overlay_script_tasks(&scripts, std::path::Path::new("/overlay"));
+        let ids: Vec<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
+        let unique: HashSet<TaskId> = ids.iter().copied().collect();
+        assert_eq!(
+            ids.len(),
+            unique.len(),
+            "all overlay script task IDs must be distinct"
+        );
+        // Each id must be the Dynamic variant.
+        assert!(
+            ids.iter().all(|id| matches!(id, TaskId::Dynamic(_))),
+            "overlay script tasks should use TaskId::Dynamic, not TaskId::Type"
+        );
     }
 }

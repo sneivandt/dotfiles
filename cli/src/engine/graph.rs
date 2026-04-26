@@ -1,22 +1,21 @@
 //! Task dependency graph utilities.
 
-use std::any::TypeId;
 use std::collections::HashMap;
 
-use crate::phases::Task;
+use crate::phases::{Task, TaskId};
 
 /// Detect cycles in the task dependency graph using Kahn's algorithm.
 ///
 /// Returns `true` if the graph contains at least one cycle or if task
 /// identifiers are not unique.
 pub fn has_cycle(tasks: &[&dyn Task]) -> bool {
-    let type_to_idx: HashMap<TypeId, usize> = tasks
+    let id_to_idx: HashMap<TaskId, usize> = tasks
         .iter()
         .enumerate()
         .map(|(i, t)| (t.task_id(), i))
         .collect();
 
-    if type_to_idx.len() != tasks.len() {
+    if id_to_idx.len() != tasks.len() {
         return true;
     }
 
@@ -25,7 +24,7 @@ pub fn has_cycle(tasks: &[&dyn Task]) -> bool {
         .map(|t| {
             t.dependencies()
                 .iter()
-                .filter(|d| type_to_idx.contains_key(d))
+                .filter(|d| id_to_idx.contains_key(d))
                 .count()
         })
         .collect();
@@ -33,7 +32,7 @@ pub fn has_cycle(tasks: &[&dyn Task]) -> bool {
     let mut reverse_deps: Vec<Vec<usize>> = vec![Vec::new(); tasks.len()];
     for (i, t) in tasks.iter().enumerate() {
         for dep in t.dependencies() {
-            if let Some(&dep_idx) = type_to_idx.get(dep)
+            if let Some(&dep_idx) = id_to_idx.get(dep)
                 && let Some(rd) = reverse_deps.get_mut(dep_idx)
             {
                 rd.push(i);
@@ -69,12 +68,14 @@ pub fn has_cycle(tasks: &[&dyn Task]) -> bool {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use crate::phases::{Context, TaskPhase, TaskResult};
+    use std::any::TypeId;
+
+    use crate::phases::{Context, TaskId, TaskPhase, TaskResult};
 
     use anyhow::Result;
 
     // -----------------------------------------------------------------------
-    // Mock tasks — each is a distinct type so TypeId-based deps work.
+    // Mock tasks — each is a distinct type so TaskId-based deps work.
     // -----------------------------------------------------------------------
 
     macro_rules! mock_task {
@@ -87,8 +88,8 @@ mod tests {
                 fn phase(&self) -> TaskPhase {
                     TaskPhase::Apply
                 }
-                fn dependencies(&self) -> &[TypeId] {
-                    const DEPS: &[TypeId] = $deps;
+                fn dependencies(&self) -> &[TaskId] {
+                    const DEPS: &[TaskId] = $deps;
                     DEPS
                 }
                 fn should_run(&self, _ctx: &Context) -> bool {
@@ -108,18 +109,25 @@ mod tests {
 
     // Chain: DepA → DepB → DepC
     mock_task!(DepA, "dep-a", &[]);
-    mock_task!(DepB, "dep-b", &[TypeId::of::<DepA>()]);
-    mock_task!(DepC, "dep-c", &[TypeId::of::<DepB>()]);
+    mock_task!(DepB, "dep-b", &[TaskId::Type(TypeId::of::<DepA>())]);
+    mock_task!(DepC, "dep-c", &[TaskId::Type(TypeId::of::<DepB>())]);
 
     // Diamond: DiaA → DiaB + DiaC → DiaD
     mock_task!(DiaA, "dia-a", &[]);
-    mock_task!(DiaB, "dia-b", &[TypeId::of::<DiaA>()]);
-    mock_task!(DiaC, "dia-c", &[TypeId::of::<DiaA>()]);
-    mock_task!(DiaD, "dia-d", &[TypeId::of::<DiaB>(), TypeId::of::<DiaC>()]);
+    mock_task!(DiaB, "dia-b", &[TaskId::Type(TypeId::of::<DiaA>())]);
+    mock_task!(DiaC, "dia-c", &[TaskId::Type(TypeId::of::<DiaA>())]);
+    mock_task!(
+        DiaD,
+        "dia-d",
+        &[
+            TaskId::Type(TypeId::of::<DiaB>()),
+            TaskId::Type(TypeId::of::<DiaC>())
+        ]
+    );
 
     // Cyclic: CycA → CycB → CycA
-    mock_task!(CycA, "cyc-a", &[TypeId::of::<CycB>()]);
-    mock_task!(CycB, "cyc-b", &[TypeId::of::<CycA>()]);
+    mock_task!(CycA, "cyc-a", &[TaskId::Type(TypeId::of::<CycB>())]);
+    mock_task!(CycB, "cyc-b", &[TaskId::Type(TypeId::of::<CycA>())]);
 
     // Missing dep
     struct MissingDepTask;
@@ -130,9 +138,9 @@ mod tests {
         fn phase(&self) -> TaskPhase {
             TaskPhase::Apply
         }
-        fn dependencies(&self) -> &[TypeId] {
-            // Points to a TypeId that won't be present in the task list
-            const DEPS: &[TypeId] = &[TypeId::of::<DepC>()];
+        fn dependencies(&self) -> &[TaskId] {
+            // Points to a TaskId that won't be present in the task list
+            const DEPS: &[TaskId] = &[TaskId::Type(TypeId::of::<DepC>())];
             DEPS
         }
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -201,11 +209,12 @@ mod tests {
         fn phase(&self) -> TaskPhase {
             TaskPhase::Apply
         }
-        fn task_id(&self) -> TypeId {
-            TypeId::of::<DuplicateIdA>()
+        fn task_id(&self) -> TaskId {
+            // Deliberately returns DuplicateIdA's TypeId to simulate a collision.
+            TaskId::Type(TypeId::of::<DuplicateIdA>())
         }
-        fn dependencies(&self) -> &[TypeId] {
-            const DEPS: &[TypeId] = &[TypeId::of::<DuplicateIdA>()];
+        fn dependencies(&self) -> &[TaskId] {
+            const DEPS: &[TaskId] = &[TaskId::Type(TypeId::of::<DuplicateIdA>())];
             DEPS
         }
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -230,15 +239,15 @@ mod tests {
     fn install_tasks_have_resolvable_dependencies() {
         use std::collections::HashSet;
         let tasks = crate::phases::all_install_tasks();
-        let ids: Vec<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
-        let unique: HashSet<TypeId> = ids.iter().copied().collect();
-        assert_eq!(ids.len(), unique.len(), "duplicate task TypeIds found");
-        let present: HashSet<TypeId> = tasks.iter().map(|t| t.task_id()).collect();
+        let ids: Vec<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
+        let unique: HashSet<TaskId> = ids.iter().copied().collect();
+        assert_eq!(ids.len(), unique.len(), "duplicate task TaskIds found");
+        let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
         for task in &tasks {
             for dep in task.dependencies() {
                 assert!(
                     present.contains(dep),
-                    "task '{}' depends on a TypeId not in the task list",
+                    "task '{}' depends on a TaskId not in the task list",
                     task.name()
                 );
             }

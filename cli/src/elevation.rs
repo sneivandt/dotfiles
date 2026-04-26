@@ -143,8 +143,8 @@ pub(crate) fn powershell_encode_command(script: &str) -> String {
 
 /// Detect which `PowerShell` executable is available on the current system.
 ///
-/// Prefers `pwsh` (PowerShell 7+) when it is installed and functional;
-/// falls back to `powershell` (Windows PowerShell 5.1) otherwise.
+/// Prefers `pwsh` (`PowerShell` 7+) when it is installed and functional;
+/// falls back to `powershell` (Windows `PowerShell` 5.1) otherwise.
 #[cfg(windows)]
 pub(crate) fn preferred_powershell() -> &'static str {
     use std::process::Stdio;

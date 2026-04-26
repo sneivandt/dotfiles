@@ -6,6 +6,7 @@ use super::config_section;
 
 /// A git config key-value pair to apply globally.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GitSetting {
     /// Config key (e.g. `"core.autocrlf"`).
     pub key: String,
@@ -140,5 +141,29 @@ settings = [{ key = "core.autocrlf", value = "false" }]
         let (_dir, path) = write_temp_toml("[base]\nsettings = [{ key = 123, value = \"ok\" }]\n");
         let result = load(&path, &[Category::Base]);
         assert!(result.is_err(), "integer key should fail deserialization");
+    }
+
+    #[test]
+    fn load_returns_error_on_unknown_field_in_entry() {
+        let (_dir, path) = write_temp_toml(
+            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\", typo = \"x\" }]\n",
+        );
+        let result = load(&path, &[Category::Base]);
+        assert!(
+            result.is_err(),
+            "unknown field 'typo' in GitSetting should return an error"
+        );
+    }
+
+    #[test]
+    fn load_returns_error_on_unknown_section_field() {
+        // Wrong field name in the section: "setting" instead of "settings".
+        let (_dir, path) =
+            write_temp_toml("[base]\nsetting = [{ key = \"core.autocrlf\", value = \"false\" }]\n");
+        let result = load(&path, &[Category::Base]);
+        assert!(
+            result.is_err(),
+            "unknown section field 'setting' should return an error"
+        );
     }
 }

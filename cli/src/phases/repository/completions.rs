@@ -108,10 +108,10 @@ mod tests {
 
     #[test]
     fn depends_on_update_repository() {
-        use std::any::TypeId;
-        assert!(GenerateCompletions.dependencies().contains(&TypeId::of::<
-            crate::phases::repository::update::UpdateRepository,
-        >()));
+        use crate::phases::TaskId;
+        assert!(GenerateCompletions.dependencies().contains(&TaskId::Type(
+            std::any::TypeId::of::<crate::phases::repository::update::UpdateRepository>()
+        )));
     }
 
     // ------------------------------------------------------------------

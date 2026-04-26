@@ -1,9 +1,10 @@
 /// Implement [`Task::dependencies`] by expanding to the required
-/// `fn dependencies(&self) -> &[TypeId]` method body.
+/// `fn dependencies(&self) -> &[TaskId]` method body.
 ///
 /// The `const DEPS` intermediate is required because [`std::any::TypeId::of`]
 /// is a `const fn` — placing it in a `const` ensures the slice has a
-/// `'static` lifetime as required by the return type.
+/// `'static` lifetime as required by the return type.  Each type is
+/// wrapped in [`TaskId::Type`] automatically.
 ///
 /// # Examples
 ///
@@ -12,8 +13,10 @@
 /// ```
 macro_rules! task_deps {
     [$($dep:ty),+ $(,)?] => {
-        fn dependencies(&self) -> &[std::any::TypeId] {
-            const DEPS: &[std::any::TypeId] = &[$(std::any::TypeId::of::<$dep>()),+];
+        fn dependencies(&self) -> &[$crate::phases::TaskId] {
+            const DEPS: &[$crate::phases::TaskId] = &[
+                $($crate::phases::TaskId::Type(std::any::TypeId::of::<$dep>())),+
+            ];
             DEPS
         }
     };

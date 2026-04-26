@@ -43,7 +43,7 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 
 | Phase | Step | Task | Description | Idempotency Cue |
 |-------|------|------|-------------|-----------------|
-| System | 1 | Self-Update | Updates the dotfiles binary from latest GitHub release. | Skips if already up to date. |
+| System | 1 | Self-Update | Updates the dotfiles binary from latest GitHub release (runs before the task scheduler; re-execs if updated). | Skips if already up to date. |
 | System | 2 | Developer Mode | Enables Windows developer mode (required for symlink creation). | Skips if already enabled. |
 | System | 3 | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
 | System | 4 | Update Repository | Updates the repository from remote (`git pull --ff-only`). | Skips if already up to date. |
@@ -298,7 +298,6 @@ When using `-d` (dry-run), the logging system:
 Example summary output:
 ```
 :: Bootstrap
-  ✓ Self-update
   ✓ Enable developer mode
   ~ Install wrapper
   ~ Configure PATH
@@ -316,7 +315,7 @@ Example summary output:
   ~ Install VS Code extensions
   ~ Install Copilot plugins
 
-  13 tasks: 2 ok, 11 dry-run
+  12 tasks: 2 ok, 10 dry-run
   completed in 0.8s
   log: C:\Users\YourName\AppData\Local\dotfiles\install.log
 ```

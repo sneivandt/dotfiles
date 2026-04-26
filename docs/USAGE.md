@@ -182,7 +182,7 @@ The installation process handles different components based on your profile:
 
 **System** (prepare the environment):
 
-1. **Self-Update** - Updates the dotfiles binary from latest GitHub release
+1. **Self-Update** - Updates the dotfiles binary from latest GitHub release (runs before the task scheduler; re-execs the process if a new binary is installed)
 2. **Configure Sparse Checkout** - Excludes files based on profile
 3. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
 4. **Install Git Hooks** - Copies repository git hooks into `.git/hooks/`
@@ -213,7 +213,7 @@ grouping rather than strict execution order.
 
 **System** (prepare the environment):
 
-1. **Self-Update** - Updates the dotfiles binary from latest GitHub release
+1. **Self-Update** - Updates the dotfiles binary from latest GitHub release (runs before the task scheduler; re-execs the process if a new binary is installed)
 2. **Enable Developer Mode** - Enables Windows developer mode (required for symlinks)
 3. **Configure Sparse Checkout** - Excludes files based on profile
 4. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
@@ -255,9 +255,15 @@ task completes, followed by a totals line:
   profile: desktop
 
 :: Bootstrap
+  ~ Install wrapper
+  ~ Configure PATH
+
+:: Repository
   ✓ Configure sparse checkout
   ○ Update repository — local changes present
   ~ Install Git hooks
+  ✓ Reload configuration
+  ~ Generate shell completions
 
 :: Apply
   ~ Install symlinks
@@ -350,12 +356,14 @@ appended:
 ```
 :: Summary
    Bootstrap
+     ~ Install wrapper
+     ~ Configure PATH
+   Repository
      ✓ Configure sparse checkout
      ○ Update repository (local changes present)
      ~ Install Git hooks
-     ~ Configure PATH
-   Repository
-     ✓ Generate shell completions
+     ✓ Reload configuration
+     ~ Generate shell completions
    Apply
      ~ Install symlinks
      ~ Install packages

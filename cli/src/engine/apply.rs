@@ -48,6 +48,48 @@ pub(super) fn process_single<R: Applicable>(
     Ok(delta)
 }
 
+/// Record the outcome of a single resource change, updating `delta` and
+/// emitting the appropriate log events.
+///
+/// `verb` is the human-facing action word used in the always-visible log
+/// line (e.g. `"link"` or `"unlink"`).  `applied_label` is the
+/// past-tense word used in the diagnostic trace (`"applied"` or
+/// `"removed"`).
+fn record_resource_change(
+    ctx: &Context,
+    delta: &mut TaskStats,
+    change: ResourceChange,
+    desc: &str,
+    verb: &str,
+    applied_label: &str,
+) {
+    match change {
+        ResourceChange::Applied => {
+            ctx.log.diag(
+                DiagEvent::ResourceResult,
+                &format!("{desc} {applied_label}"),
+            );
+            ctx.log.always(&format!("    {verb}: {desc}"));
+            delta.changed += 1;
+        }
+        ResourceChange::AlreadyCorrect => {
+            ctx.log.diag(
+                DiagEvent::ResourceResult,
+                &format!("{desc} already_correct"),
+            );
+            delta.already_ok += 1;
+        }
+        ResourceChange::Skipped { reason } => {
+            ctx.log.diag(
+                DiagEvent::ResourceResult,
+                &format!("{desc} skipped: {reason}"),
+            );
+            ctx.log.warn(&format!("skipping {desc}: {reason}"));
+            delta.skipped += 1;
+        }
+    }
+}
+
 /// Apply a single resource change, returning a stats delta.
 fn apply_resource<R: Applicable>(
     ctx: &Context,
@@ -76,29 +118,7 @@ fn apply_resource<R: Applicable>(
         }
     };
 
-    match change {
-        ResourceChange::Applied => {
-            ctx.log
-                .diag(DiagEvent::ResourceResult, &format!("{desc} applied"));
-            ctx.log.always(&format!("    {}: {desc}", opts.verb));
-            delta.changed += 1;
-        }
-        ResourceChange::AlreadyCorrect => {
-            ctx.log.diag(
-                DiagEvent::ResourceResult,
-                &format!("{desc} already_correct"),
-            );
-            delta.already_ok += 1;
-        }
-        ResourceChange::Skipped { reason } => {
-            ctx.log.diag(
-                DiagEvent::ResourceResult,
-                &format!("{desc} skipped: {reason}"),
-            );
-            ctx.log.warn(&format!("skipping {desc}: {reason}"));
-            delta.skipped += 1;
-        }
-    }
+    record_resource_change(ctx, &mut delta, change, &desc, opts.verb, "applied");
     Ok(delta)
 }
 
@@ -120,29 +140,8 @@ pub(super) fn remove_single<R: Applicable>(
             }
             ctx.log
                 .diag(DiagEvent::ResourceRemove, &format!("{verb} {desc}"));
-            match resource.remove()? {
-                ResourceChange::Applied => {
-                    ctx.log
-                        .diag(DiagEvent::ResourceResult, &format!("{desc} removed"));
-                    ctx.log.always(&format!("    {verb}: {desc}"));
-                    delta.changed += 1;
-                }
-                ResourceChange::AlreadyCorrect => {
-                    ctx.log.diag(
-                        DiagEvent::ResourceResult,
-                        &format!("{desc} already_correct"),
-                    );
-                    delta.already_ok += 1;
-                }
-                ResourceChange::Skipped { reason } => {
-                    ctx.log.diag(
-                        DiagEvent::ResourceResult,
-                        &format!("{desc} skipped: {reason}"),
-                    );
-                    ctx.log.warn(&format!("skipping {desc}: {reason}"));
-                    delta.skipped += 1;
-                }
-            }
+            let change = resource.remove()?;
+            record_resource_change(ctx, &mut delta, change, &desc, verb, "removed");
         }
         ResourceState::Unknown { reason } => {
             // Cannot determine if this resource is ours — skip removal rather

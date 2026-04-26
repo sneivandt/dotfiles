@@ -261,6 +261,20 @@ mod escaping_tests {
     }
 
     #[test]
+    fn arg_list_combines_spaces_and_single_quotes() {
+        // Covers the combination of path-with-spaces and name-with-single-quote
+        // in the same call — both quoting rules must apply simultaneously.
+        let args = vec![
+            "C:\\Temp\\Path With Space".to_string(),
+            "O'Brien".to_string(),
+        ];
+        assert_eq!(
+            powershell_arg_list(&args),
+            "@('C:\\Temp\\Path With Space', 'O''Brien')"
+        );
+    }
+
+    #[test]
     fn arg_list_handles_newline_inside_arg() {
         let args = vec!["foo\nbar".to_string()];
         assert_eq!(powershell_arg_list(&args), "@('foo\nbar')");

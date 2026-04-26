@@ -69,7 +69,12 @@ pub(super) fn is_running_from_bin(root: &Path) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
 

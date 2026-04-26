@@ -7,7 +7,7 @@ use super::config_section;
 
 /// A file permission directive.
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)] // fields used on unix only (tasks/chmod.rs)
+#[allow(dead_code, reason = "used conditionally via cfg")] // fields used on unix only (tasks/chmod.rs)
 pub struct ChmodEntry {
     /// Permission mode (e.g., "600", "755").
     pub mode: String,
@@ -55,7 +55,12 @@ pub fn validate(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::config::category_matcher::Category;

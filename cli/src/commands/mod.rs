@@ -29,7 +29,11 @@ const WINDOWS_RESTART_EXIT_CODE: i32 = 75;
 /// Called after a self-update has replaced the binary on disk so that the
 /// new version runs all tasks with updated code.  Sets [`REEXEC_GUARD_VAR`]
 /// so the new process skips the self-update step.
-#[allow(unused_variables, clippy::print_stderr)]
+#[allow(
+    unused_variables,
+    clippy::print_stderr,
+    reason = "intentional user-facing output"
+)]
 pub(crate) fn re_exec(root: &std::path::Path) -> ! {
     #[cfg(unix)]
     {
@@ -86,7 +90,7 @@ fn re_exec_path(root: &std::path::Path) -> std::path::PathBuf {
 }
 
 #[cfg(not(unix))]
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(windows, allow(dead_code, reason = "used conditionally via cfg"))]
 /// Resolve the executable path used for re-exec on non-Unix platforms.
 ///
 /// The `root` parameter is retained so the Unix and non-Unix variants share
@@ -182,7 +186,11 @@ fn build_windows_restart_helper_script(
 }
 
 #[cfg(all(test, windows))]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use std::path::Path;
@@ -259,7 +267,11 @@ mod unix_tests {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "test code uses panicking helpers"
+)]
 mod task_graph_tests {
     use super::*;
     use crate::phases::{
@@ -619,7 +631,7 @@ fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
 
     log.always(&format!("sudo is required for: {}", task_names.join(", ")));
     // Flush stdout so the phase header is visible before the password prompt.
-    std::io::Write::flush(&mut std::io::stdout()).ok();
+    drop(std::io::Write::flush(&mut std::io::stdout()));
     // Connect sudo directly to /dev/tty so the password prompt and keyboard
     // input work correctly regardless of how the Rust process's stdio is
     // configured (the tracing subscriber splits stdout/stderr).

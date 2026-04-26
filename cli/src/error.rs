@@ -135,7 +135,7 @@ pub enum ConfigError {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
+#[allow(clippy::expect_used, reason = "test code uses panicking helpers")]
 mod tests {
     use super::*;
     use std::io;

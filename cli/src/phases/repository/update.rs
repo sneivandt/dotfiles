@@ -39,7 +39,7 @@ impl Task for UpdateRepository {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         // Pass HOME so git finds the correct global config when running elevated
         // on Windows (elevated token can have a different home path).
-        let home_str = ctx.home.to_string_lossy().to_string();
+        let home_str = ctx.home.to_string_lossy().into_owned();
         let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
 
         // Skip when not on a branch (e.g. detached HEAD in CI checkouts).
@@ -213,7 +213,12 @@ fn worktree_has_local_changes(ctx: &Context, git_env: &[(&str, &str)]) -> Result
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::exec::{ExecResult, Executor, MockExecutor};

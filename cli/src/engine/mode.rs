@@ -247,7 +247,12 @@ impl<'a> ProcessOpts<'a> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::panic,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
 

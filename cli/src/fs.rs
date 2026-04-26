@@ -278,7 +278,7 @@ impl TempPath {
 impl Drop for TempPath {
     fn drop(&mut self) {
         if self.active {
-            std::fs::remove_file(&self.path).ok();
+            drop(std::fs::remove_file(&self.path));
         }
     }
 }
@@ -315,13 +315,17 @@ impl TempDir {
 impl Drop for TempDir {
     fn drop(&mut self) {
         if self.active {
-            std::fs::remove_dir_all(&self.path).ok();
+            drop(std::fs::remove_dir_all(&self.path));
         }
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
 

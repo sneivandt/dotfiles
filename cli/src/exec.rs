@@ -10,7 +10,7 @@ use std::process::{Command, Output};
 /// cooperative cancellation token) and does not kill child processes
 /// that are still running.
 fn new_command(program: &str) -> Command {
-    #[allow(unused_mut)]
+    #[allow(unused_mut, reason = "platform-specific mutability")]
     let mut cmd = Command::new(program);
     #[cfg(unix)]
     {
@@ -167,7 +167,12 @@ impl Executor for SystemExecutor {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
 

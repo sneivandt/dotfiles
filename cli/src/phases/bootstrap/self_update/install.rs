@@ -1,4 +1,8 @@
 //! Filesystem operations for installing or staging an updated binary, plus
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "counters and validated math; bounded by config sizes"
+)]
 //! the post-install smoke test and end-to-end download orchestration.
 
 use std::fs;
@@ -16,7 +20,7 @@ use super::paths::{binary_path, old_binary_path};
 use super::paths::{pending_binary_path, pending_version_path};
 
 /// Replace the binary at `path` with `data`, handling platform differences.
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(windows, allow(dead_code, reason = "used conditionally via cfg"))]
 pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
     let dir = path
         .parent()
@@ -48,7 +52,7 @@ pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
     #[cfg(windows)]
     if path.exists() {
         let old = dir.join(".dotfiles-old.exe");
-        fs::remove_file(&old).ok();
+        drop(fs::remove_file(&old));
         fs::rename(path, &old).context("renaming current binary to .old")?;
     }
 
@@ -58,7 +62,7 @@ pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
     #[cfg(unix)]
     if path.exists() {
         let old = dir.join(".dotfiles.old");
-        fs::remove_file(&old).ok();
+        drop(fs::remove_file(&old));
         fs::rename(path, &old).context("backing up current binary to .old")?;
     }
 
@@ -188,7 +192,12 @@ pub(super) fn download_and_install(root: &Path, tag: &str, client: &dyn HttpClie
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
@@ -271,7 +280,7 @@ mod tests {
 
         let mut hasher = Sha256::new();
         hasher.update(&binary_data);
-        let hash = format!("{:x}", hasher.finalize());
+        let hash = super::super::hex_encode(&hasher.finalize());
         let checksums = format!("{hash}  {}\n", asset_name());
 
         let client = MockHttpClient::new(vec![Ok(binary_data.clone()), Ok(checksums.into_bytes())]);
@@ -368,7 +377,7 @@ mod tests {
         let bad_binary = b"#!/bin/sh\nexit 1\n";
         let mut hasher = Sha256::new();
         hasher.update(bad_binary);
-        let hash = format!("{:x}", hasher.finalize());
+        let hash = super::super::hex_encode(&hasher.finalize());
         let checksums = format!("{hash}  {}\n", asset_name());
 
         let client = MockHttpClient::new(vec![Ok(bad_binary.to_vec()), Ok(checksums.into_bytes())]);

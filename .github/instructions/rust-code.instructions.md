@@ -10,9 +10,16 @@ applyTo: "cli/src/**/*.rs"
 
 ## Strict Lints
 
-The project denies `panic`, `unwrap_used`, `expect_used`, `todo`, and `dbg_macro`.
+The project denies `panic`, `unwrap_used`, `expect_used`, `todo`, `dbg_macro`,
+`arithmetic_side_effects`, `let_underscore_drop`, `unused_result_ok`,
+`allow_attributes_without_reason`, and `unreachable_pub` (among others — see
+`cli/Cargo.toml` for the full list).
+
 Never use `.unwrap()` or `.expect()` — propagate with `?` using `anyhow::Result`,
 or return typed errors from `cli/src/error.rs` (`ResourceError`, `ConfigError`).
+
+Every `#[allow(...)]` must include a `reason = "..."` argument. Never use bare
+`let _ = expr;` — see the `error-handling-patterns` skill.
 
 ## Error Handling
 

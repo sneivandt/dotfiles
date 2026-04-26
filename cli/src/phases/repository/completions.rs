@@ -76,7 +76,12 @@ impl Task for GenerateCompletions {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::phases::Task;
@@ -150,14 +155,14 @@ mod tests {
         let ctx = make_linux_context(config);
 
         // First run writes the file.
-        let _ = GenerateCompletions.run(&ctx).unwrap();
+        drop(GenerateCompletions.run(&ctx).unwrap());
         let mtime1 = std::fs::metadata(completions_dir.join(ZSH_COMPLETION_FILENAME))
             .unwrap()
             .modified()
             .unwrap();
 
         // Second run should be a no-op (same content → same mtime).
-        let _ = GenerateCompletions.run(&ctx).unwrap();
+        drop(GenerateCompletions.run(&ctx).unwrap());
         let mtime2 = std::fs::metadata(completions_dir.join(ZSH_COMPLETION_FILENAME))
             .unwrap()
             .modified()

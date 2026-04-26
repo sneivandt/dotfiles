@@ -1,3 +1,7 @@
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "counters and validated math; bounded by config sizes"
+)]
 //! Single-resource processing: check state, apply or remove one resource.
 
 use anyhow::Result;

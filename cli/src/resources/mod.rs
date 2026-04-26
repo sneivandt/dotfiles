@@ -179,7 +179,7 @@ pub trait Resource: Applicable {
     ///
     /// Returns an error if the current state cannot be determined (propagates errors from
     /// `current_state()`).
-    #[allow(dead_code)] // Part of trait contract; used in tests
+    #[allow(dead_code, reason = "part of trait contract; used by test modules")]
     fn needs_change(&self) -> Result<bool> {
         Ok(matches!(
             self.current_state()?,
@@ -189,7 +189,12 @@ pub trait Resource: Applicable {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
 

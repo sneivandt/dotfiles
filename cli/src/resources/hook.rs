@@ -25,7 +25,7 @@ impl Applicable for HookFileResource {
     fn description(&self) -> String {
         self.target.file_name().map_or_else(
             || self.target.display().to_string(),
-            |n| n.to_string_lossy().to_string(),
+            |n| n.to_string_lossy().into_owned(),
         )
     }
 
@@ -114,7 +114,12 @@ impl Resource for HookFileResource {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
 

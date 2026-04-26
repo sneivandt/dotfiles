@@ -131,7 +131,10 @@ pub mod test_helpers {
     ///
     /// Panics if the temp directory or file cannot be created.
     #[must_use]
-    #[allow(clippy::expect_used)]
+    #[allow(
+        clippy::expect_used,
+        reason = "panicking allowed at this trust boundary"
+    )]
     pub fn write_temp_toml(content: &str) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let path = dir.path().join("test.toml");
@@ -147,7 +150,10 @@ pub mod test_helpers {
     /// # Panics
     ///
     /// Panics if the temp directory cannot be created or the loader fails.
-    #[allow(clippy::expect_used)]
+    #[allow(
+        clippy::expect_used,
+        reason = "panicking allowed at this trust boundary"
+    )]
     pub fn assert_load_missing_returns_empty<T>(
         loader: impl Fn(
             &std::path::Path,
@@ -424,7 +430,12 @@ impl Config {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::config::category_matcher::Category;

@@ -1,3 +1,7 @@
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "counters and validated math; bounded by config sizes"
+)]
 //! Profile definition and resolution.
 use anyhow::{Context as _, Result, bail};
 use serde::Deserialize;
@@ -164,7 +168,7 @@ pub fn persist(root: &Path, name: &str) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if profiles cannot be loaded or user input cannot be read.
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "intentional user-facing output")]
 pub fn prompt_interactive(conf_dir: &Path) -> Result<String> {
     let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
 
@@ -227,15 +231,15 @@ pub fn resolve_from_args(
 ) -> Result<Profile> {
     let conf_dir = root.join("conf");
 
-    let name = if let Some(name) = cli_profile {
-        name.to_string()
-    } else if let Some(name) = read_from_env() {
-        name
-    } else if let Some(name) = read_persisted(root) {
+    let name = if let Some(name) = cli_profile
+        .map(str::to_owned)
+        .or_else(read_from_env)
+        .or_else(|| read_persisted(root))
+    {
         name
     } else {
         let name = prompt_interactive(&conf_dir)?;
-        #[allow(clippy::print_stderr)]
+        #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
         if let Err(e) = persist(root, &name) {
             eprintln!("warning: could not persist profile to git config: {e}");
         }
@@ -246,7 +250,12 @@ pub fn resolve_from_args(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::config::category_matcher::Category;

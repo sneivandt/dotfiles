@@ -1,4 +1,8 @@
 //! Top-level resource orchestration: check state, dispatch to sequential or
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "counters and validated math; bounded by config sizes"
+)]
 //! parallel processing, and collect stats.
 
 use anyhow::Result;

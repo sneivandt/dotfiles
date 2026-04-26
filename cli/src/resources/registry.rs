@@ -33,7 +33,7 @@ mod native {
     }
 
     /// Read a registry value and return it as a string.
-    pub fn read_value(key_path: &str, value_name: &str) -> Result<Option<String>> {
+    pub(super) fn read_value(key_path: &str, value_name: &str) -> Result<Option<String>> {
         let (root, subkey) = parse_path(key_path)?;
         let key = match root.open_subkey(subkey) {
             Ok(k) => k,
@@ -50,7 +50,7 @@ mod native {
     }
 
     /// Write a registry value using the declared type from the config.
-    pub fn write_value(
+    pub(super) fn write_value(
         key_path: &str,
         value_name: &str,
         value_data: &str,
@@ -81,7 +81,7 @@ mod native {
                     .collect();
                 bytes.extend_from_slice(&[0, 0]);
                 let raw = RegValue {
-                    bytes,
+                    bytes: bytes.into(),
                     vtype: REG_EXPAND_SZ,
                 };
                 key.set_raw_value(value_name, &raw)
@@ -108,7 +108,10 @@ mod native {
     }
 
     /// Convert a raw registry value to a string representation.
-    #[allow(clippy::indexing_slicing)] // chunks_exact guarantees exact sizes
+    #[allow(
+        clippy::indexing_slicing,
+        reason = "panicking allowed at this trust boundary"
+    )] // chunks_exact guarantees exact sizes
     fn raw_value_to_string(val: &winreg::RegValue) -> String {
         match val.vtype {
             REG_DWORD if val.bytes.len() >= 4 => {
@@ -134,7 +137,7 @@ mod native {
 ///
 /// Uses the `winreg` crate for native registry access on Windows.
 #[derive(Debug)]
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code, reason = "used conditionally via cfg"))]
 pub struct RegistryResource {
     /// Registry key path (e.g., "HKCU:\Console").
     pub key_path: String,
@@ -220,7 +223,7 @@ pub fn batch_check_values(
 ///
 /// This function never returns an error on non-Windows platforms.
 #[cfg(not(windows))]
-#[allow(clippy::unnecessary_wraps)]
+#[allow(clippy::unnecessary_wraps, reason = "matches trait signature")]
 pub fn batch_check_values(
     _resources: &[RegistryResource],
 ) -> Result<HashMap<String, Option<String>>> {
@@ -272,7 +275,7 @@ impl Resource for RegistryResource {
 }
 
 /// Compare registry values, handling numeric values specially.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code, reason = "used conditionally via cfg"))]
 fn value_matches(current: &str, expected_data: &str) -> bool {
     // Handle hex values
     if let Some(hex) = expected_data
@@ -293,7 +296,12 @@ fn value_matches(current: &str, expected_data: &str) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
 

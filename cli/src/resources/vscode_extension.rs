@@ -21,10 +21,14 @@ pub struct VsCodeExtensionResource {
 impl VsCodeExtensionResource {
     /// Create a new VS Code extension resource.
     #[must_use]
-    pub fn new(id: String, code_cmd: String, executor: Arc<dyn Executor>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        code_cmd: impl Into<String>,
+        executor: Arc<dyn Executor>,
+    ) -> Self {
         Self {
-            id,
-            code_cmd,
+            id: id.into(),
+            code_cmd: code_cmd.into(),
             executor,
         }
     }
@@ -131,7 +135,12 @@ fn run_code_cmd(cmd: &str, args: &[&str], executor: &dyn Executor) -> Result<exe
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::exec::{ExecResult, MockExecutor};

@@ -18,8 +18,11 @@ pub struct SystemdUnitResource {
 impl SystemdUnitResource {
     /// Create a new systemd unit resource.
     #[must_use]
-    pub fn new(name: String, executor: Arc<dyn Executor>) -> Self {
-        Self { name, executor }
+    pub fn new(name: impl Into<String>, executor: Arc<dyn Executor>) -> Self {
+        Self {
+            name: name.into(),
+            executor,
+        }
     }
 
     /// Create from a config entry.
@@ -65,7 +68,12 @@ impl Resource for SystemdUnitResource {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use std::sync::Arc;
 

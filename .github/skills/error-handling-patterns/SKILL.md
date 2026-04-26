@@ -59,18 +59,21 @@ Task failures don't abort the run. `tasks::execute()` catches errors and records
 
 ### Intentionally Ignored Errors
 
-Use `.ok()` with a comment, not `let _ =`:
-
-```rust
-fs::remove_file(&path).ok(); // Cleanup: ignore if already removed
-```
-
-For operations that can legitimately fail but deserve logging, use `if let Err`:
+The `let_underscore_drop` and `unused_result_ok` lints forbid both `let _ =
+result` and bare `result.ok();`. Always handle the error explicitly — either
+log it, or `drop(...)` an infallible value:
 
 ```rust
 if let Err(e) = fs::remove_file(&path) {
-    ctx.log.debug(&format!("Could not remove {}: {e}", path.display()));
+    tracing::debug!("could not remove {}: {e}", path.display());
 }
+```
+
+For a value that genuinely needs to be discarded (not a `Result`), use `drop()`
+so the intent is explicit:
+
+```rust
+drop(some_owned_resource);
 ```
 
 ## Idempotency in Tasks

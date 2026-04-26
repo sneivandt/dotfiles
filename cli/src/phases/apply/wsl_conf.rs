@@ -64,7 +64,7 @@ impl Task for InstallWslConf {
                     .map_err(|e| anyhow::anyhow!("failed to write temp file {tmp}: {e}"))?;
 
                 let result = ctx.executor.run("sudo", &["cp", &tmp, target]);
-                let _ = std::fs::remove_file(&tmp);
+                drop(std::fs::remove_file(&tmp));
                 result?;
             }
             Err(e) => return Err(anyhow::anyhow!("failed to write {target}: {e}")),
@@ -101,7 +101,11 @@ fn is_correct(path: &str) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::phases::test_helpers::{ContextBuilder, empty_config};

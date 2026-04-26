@@ -1,3 +1,7 @@
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "counters and validated math; bounded by config sizes"
+)]
 //! Task dependency graph utilities.
 
 use std::collections::HashMap;
@@ -65,7 +69,12 @@ pub fn has_cycle(tasks: &[&dyn Task]) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use std::any::TypeId;

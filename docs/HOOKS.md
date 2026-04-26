@@ -72,14 +72,20 @@ The INI file uses a simple, clean format with raw regex patterns under section h
 
 Edit `hooks/sensitive-patterns.ini` to add, modify, or remove detection patterns. The section-based organization makes it easy to understand and manage different types of secrets. Re-run the install command after changing hook files or helper scripts so the updated copies are written into `.git/hooks/`.
 
-### check-rust.sh - Rust Code Quality
+### check-rust.sh - Code Quality
 
-Runs two checks in order when any `.rs` files are staged:
+Runs the following checks against staged files:
 
-1. **`cargo fmt --check`** — fails the commit if any files are not formatted.
+1. **`cargo fmt --check`** — fails the commit if any `.rs` files are not formatted.
    Run `cargo fmt --manifest-path cli/Cargo.toml` to fix.
-2. **`cargo clippy -- -D warnings`** — fails the commit if clippy reports any
-   warnings, matching the same lint policy enforced by CI.
+2. **`cargo clippy -- -D warnings`** (host target) — fails the commit if clippy
+   reports any warnings, matching the same lint policy enforced by CI.
+3. **`cargo clippy --target x86_64-pc-windows-gnu -- -D warnings`** — catches
+   Windows-only `cfg` arms, `winreg` references, and platform-gated import
+   drift before they hit CI. Skipped with a notice when the target is not
+   installed (`rustup target add x86_64-pc-windows-gnu` plus a mingw-w64 gcc).
+4. **PSScriptAnalyzer** — lints staged `.ps1`/`.psm1` files when `pwsh` and the
+   module are available. Skipped with a notice otherwise.
 
 ## File Layout
 

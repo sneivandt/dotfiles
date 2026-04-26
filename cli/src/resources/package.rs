@@ -4,6 +4,11 @@
 //! (pacman, paru, winget). Adding support for a new manager requires only a
 //! new implementation of `PackageProvider` and a corresponding variant in
 //! [`PackageManager`].
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "counters and validated math; bounded by config sizes"
+)]
+
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -511,7 +516,12 @@ impl Resource for PackageResource {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::exec::{ExecResult, MockExecutor};

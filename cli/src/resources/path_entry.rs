@@ -57,7 +57,7 @@ enum PathStrategy {
         dir: String,
         /// Executor for broadcasting the environment change to other
         /// processes after the registry write.
-        #[cfg_attr(not(windows), allow(dead_code))]
+        #[cfg_attr(not(windows), allow(dead_code, reason = "used conditionally via cfg"))]
         executor: Arc<dyn Executor>,
     },
 }
@@ -144,7 +144,9 @@ impl Applicable for PathEntryResource {
                 // logoff.  SetEnvironmentVariable would do this automatically
                 // but also silently rewrites the value type, which is exactly
                 // what we are avoiding here — so we broadcast ourselves.
-                let _ = broadcast_environment_change(&**executor);
+                if let Err(e) = broadcast_environment_change(&**executor) {
+                    tracing::debug!("best-effort PATH broadcast failed: {e}");
+                }
                 Ok(ResourceChange::Applied)
             }
         }
@@ -226,7 +228,7 @@ fn append_user_path_windows(dir: &str) -> Result<()> {
     };
 
     let new_raw = RegValue {
-        bytes: encode_reg_string(&new_value),
+        bytes: encode_reg_string(&new_value).into(),
         vtype: existing_vtype,
     };
     env.set_raw_value("Path", &new_raw)
@@ -235,7 +237,11 @@ fn append_user_path_windows(dir: &str) -> Result<()> {
 }
 
 #[cfg(not(windows))]
-#[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
+#[allow(
+    clippy::unnecessary_wraps,
+    clippy::missing_const_for_fn,
+    reason = "matches trait signature"
+)]
 fn append_user_path_windows(_dir: &str) -> Result<()> {
     Ok(())
 }
@@ -314,13 +320,22 @@ fn broadcast_environment_change(executor: &dyn Executor) -> Result<()> {
 }
 
 #[cfg(not(windows))]
-#[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
+#[allow(
+    clippy::unnecessary_wraps,
+    clippy::missing_const_for_fn,
+    reason = "matches trait signature"
+)]
 fn broadcast_environment_change(_executor: &dyn Executor) -> Result<()> {
     Ok(())
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use std::path::Path;

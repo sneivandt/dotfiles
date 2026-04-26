@@ -23,9 +23,112 @@ fn is_up_to_date(sparse_file: &Path, patterns_str: &str) -> bool {
     if !sparse_file.exists() {
         return false;
     }
+    std::fs::read_to_string(sparse_file).is_ok_and(|current| current.trim() == patterns_str.trim())
+}
+
+/// Read the existing sparse-checkout file contents, if any.
+///
+/// Returns `Ok(None)` when the file does not exist.
+fn read_existing_patterns(sparse_file: &Path) -> Result<Option<String>> {
+    if !sparse_file.exists() {
+        return Ok(None);
+    }
     std::fs::read_to_string(sparse_file)
-        .map(|current| current.trim() == patterns_str.trim())
-        .unwrap_or(false)
+        .map(Some)
+        .with_context(|| format!("reading {}", sparse_file.display()))
+}
+
+/// Enable non-cone sparse checkout by setting git config directly.
+///
+/// Using `git sparse-checkout init --no-cone` is avoided here because it
+/// overwrites the sparse-checkout file with default `/*\n!/*/\n` patterns
+/// and immediately applies them via an internal `git read-tree`, deleting
+/// every repository subdirectory from the working tree.  If the process
+/// that invoked this binary inherited a cwd from inside the repository
+/// (e.g. a CI script running from `.github/workflows/scripts/`), that
+/// directory is deleted and its inode becomes unreachable.  Any child
+/// process spawned later (such as `gh copilot plugin list`) inherits the
+/// stale cwd and fails with `ENOENT: uv_cwd` when Node.js calls
+/// `process.cwd()` during startup.
+///
+/// Setting the two config keys directly enables sparse checkout in
+/// non-cone mode without modifying the working tree; the subsequent
+/// `git read-tree -mu HEAD` then applies only our intentional patterns.
+fn enable_sparse_checkout_config(ctx: &Context, root: &Path) -> Result<()> {
+    ctx.log
+        .debug("enabling sparse checkout (non-cone mode via git config)");
+    ctx.executor
+        .run_in(root, "git", &["config", "core.sparseCheckout", "true"])?;
+    ctx.executor
+        .run_in(root, "git", &["config", "core.sparseCheckoutCone", "false"])?;
+    Ok(())
+}
+
+/// Write the patterns string to `.git/info/sparse-checkout`, creating the
+/// parent directory if needed.
+fn write_sparse_patterns(sparse_file: &Path, patterns_str: &str) -> Result<()> {
+    if let Some(info_dir) = sparse_file.parent()
+        && !info_dir.exists()
+    {
+        std::fs::create_dir_all(info_dir).context("creating .git/info directory")?;
+    }
+    std::fs::write(sparse_file, patterns_str).context("writing sparse-checkout file")?;
+    Ok(())
+}
+
+/// Reset excluded files to HEAD so a subsequent `read-tree` doesn't fail with
+/// "not uptodate. Cannot merge." when the working tree is dirty.
+///
+/// Best-effort: failures are logged at debug level and otherwise ignored
+/// (e.g. when an excluded file isn't tracked in HEAD).
+fn reset_excluded_to_head(ctx: &Context, root: &Path, excluded_files: &[String]) {
+    let excluded: Vec<&str> = excluded_files
+        .iter()
+        .filter(|f| root.join(f).exists())
+        .map(String::as_str)
+        .collect();
+    if excluded.is_empty() {
+        return;
+    }
+    let mut checkout_args = vec!["checkout", "HEAD", "--"];
+    checkout_args.extend(&excluded);
+    ctx.debug_fmt(|| {
+        format!(
+            "resetting {} excluded files to HEAD before read-tree",
+            excluded.len()
+        )
+    });
+    if let Err(e) = ctx.executor.run_in(root, "git", &checkout_args) {
+        ctx.debug_fmt(|| format!("git checkout reset failed: {e}"));
+    }
+}
+
+/// Run `git read-tree -mu HEAD` to apply the new sparse-checkout patterns.
+///
+/// On failure, restore the previous sparse-checkout file contents and run
+/// `read-tree` again to put the working tree back to a consistent state,
+/// then return the original error.
+fn apply_read_tree_with_restore(
+    ctx: &Context,
+    root: &Path,
+    sparse_file: &Path,
+    previous_patterns: Option<&str>,
+) -> Result<()> {
+    ctx.log
+        .debug("wrote sparse-checkout file, running read-tree");
+    if let Err(err) = ctx
+        .executor
+        .run_in(root, "git", &["read-tree", "-mu", "HEAD"])
+    {
+        ctx.log
+            .warn("git read-tree failed; restoring previous sparse-checkout configuration");
+        restore_sparse_checkout_file(sparse_file, previous_patterns)?;
+        ctx.executor
+            .run_in(root, "git", &["read-tree", "-mu", "HEAD"])
+            .context("restoring worktree after failed sparse-checkout update")?;
+        return Err(err.context("applying sparse-checkout patterns"));
+    }
+    Ok(())
 }
 
 fn restore_sparse_checkout_file(sparse_file: &Path, previous_patterns: Option<&str>) -> Result<()> {
@@ -139,16 +242,7 @@ impl Task for ConfigureSparseCheckout {
 
         let patterns_str = build_patterns(&excluded_files);
         let sparse_file = ctx.root().join(".git/info/sparse-checkout");
-        let previous_patterns = if sparse_file.exists() {
-            Some(
-                std::fs::read_to_string(&sparse_file)
-                    .with_context(|| format!("reading {}", sparse_file.display()))?,
-            )
-        } else {
-            None
-        };
 
-        // Check if patterns are already up to date (shared by dry-run and real paths)
         if is_up_to_date(&sparse_file, &patterns_str) {
             ctx.log.debug(&format!(
                 "already configured ({} files excluded)",
@@ -169,36 +263,14 @@ impl Task for ConfigureSparseCheckout {
             return Ok(TaskResult::Skipped("local changes present".to_string()));
         }
 
+        let previous_patterns = read_existing_patterns(&sparse_file)?;
+
         // Clean up broken git config symlinks that prevent git from running.
         remove_broken_git_symlinks(ctx, &*self.fs_ops);
 
         let root = ctx.root();
 
-        // Enable non-cone sparse checkout by setting git config directly.
-        //
-        // Using `git sparse-checkout init --no-cone` is avoided here because it
-        // overwrites the sparse-checkout file with default `/*\n!/*/\n` patterns
-        // and immediately applies them via an internal `git read-tree`, deleting
-        // every repository subdirectory from the working tree.  If the process
-        // that invoked this binary inherited a cwd from inside the repository
-        // (e.g. a CI script running from `.github/workflows/scripts/`), that
-        // directory is deleted and its inode becomes unreachable.  Any child
-        // process spawned later (such as `gh copilot plugin list`) inherits the
-        // stale cwd and fails with `ENOENT: uv_cwd` when Node.js calls
-        // `process.cwd()` during startup.
-        //
-        // Setting the two config keys directly enables sparse checkout in
-        // non-cone mode without modifying the working tree; the subsequent
-        // `git read-tree -mu HEAD` then applies only our intentional patterns.
-        ctx.log
-            .debug("enabling sparse checkout (non-cone mode via git config)");
-        ctx.executor
-            .run_in(&root, "git", &["config", "core.sparseCheckout", "true"])?;
-        ctx.executor.run_in(
-            &root,
-            "git",
-            &["config", "core.sparseCheckoutCone", "false"],
-        )?;
+        enable_sparse_checkout_config(ctx, &root)?;
 
         ctx.debug_fmt(|| {
             format!(
@@ -207,49 +279,9 @@ impl Task for ConfigureSparseCheckout {
             )
         });
 
-        // Write directly to sparse-checkout file
-        let info_dir = root.join(".git/info");
-        if !info_dir.exists() {
-            std::fs::create_dir_all(&info_dir).context("creating .git/info directory")?;
-        }
-        std::fs::write(&sparse_file, &patterns_str).context("writing sparse-checkout file")?;
-
-        // Reset excluded files to HEAD so read-tree doesn't fail with
-        // "not uptodate. Cannot merge." when the working tree is dirty.
-        let mut checkout_args = vec!["checkout", "HEAD", "--"];
-        let excluded: Vec<&str> = excluded_files
-            .iter()
-            .filter(|f| root.join(f).exists())
-            .map(String::as_str)
-            .collect();
-        if !excluded.is_empty() {
-            checkout_args.extend(&excluded);
-            ctx.debug_fmt(|| {
-                format!(
-                    "resetting {} excluded files to HEAD before read-tree",
-                    excluded.len()
-                )
-            });
-            // Best-effort: if checkout fails (e.g. file not in HEAD), proceed anyway
-            if let Err(e) = ctx.executor.run_in(&root, "git", &checkout_args) {
-                ctx.debug_fmt(|| format!("git checkout reset failed: {e}"));
-            }
-        }
-
-        ctx.log
-            .debug("wrote sparse-checkout file, running read-tree");
-        if let Err(err) = ctx
-            .executor
-            .run_in(&root, "git", &["read-tree", "-mu", "HEAD"])
-        {
-            ctx.log
-                .warn("git read-tree failed; restoring previous sparse-checkout configuration");
-            restore_sparse_checkout_file(&sparse_file, previous_patterns.as_deref())?;
-            ctx.executor
-                .run_in(&root, "git", &["read-tree", "-mu", "HEAD"])
-                .context("restoring worktree after failed sparse-checkout update")?;
-            return Err(err.context("applying sparse-checkout patterns"));
-        }
+        write_sparse_patterns(&sparse_file, &patterns_str)?;
+        reset_excluded_to_head(ctx, &root, &excluded_files);
+        apply_read_tree_with_restore(ctx, &root, &sparse_file, previous_patterns.as_deref())?;
 
         ctx.log.info(&format!(
             "excluded {} files from checkout",
@@ -271,7 +303,12 @@ fn worktree_has_local_changes(ctx: &Context) -> Result<bool> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::exec::{ExecResult, Executor, MockExecutor};

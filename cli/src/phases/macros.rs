@@ -1,10 +1,10 @@
-/// Implement [`Task::dependencies`] by expanding to the required
+/// Implement [`Task::dependencies`](crate::phases::Task::dependencies) by expanding to the required
 /// `fn dependencies(&self) -> &[TaskId]` method body.
 ///
 /// The `const DEPS` intermediate is required because [`std::any::TypeId::of`]
 /// is a `const fn` — placing it in a `const` ensures the slice has a
 /// `'static` lifetime as required by the return type.  Each type is
-/// wrapped in [`TaskId::Type`] automatically.
+/// wrapped in [`TaskId::Type`](crate::phases::TaskId::Type) automatically.
 ///
 /// # Examples
 ///
@@ -27,7 +27,7 @@ pub(crate) use task_deps;
 /// Define a task that processes config-derived resources with minimal
 /// boilerplate.
 ///
-/// Generates a `Debug` struct and a full [`Task`] implementation for the
+/// Generates a `Debug` struct and a full [`Task`](crate::phases::Task) implementation for the
 /// common pattern: read config items → build resources → process.
 ///
 /// Two variants are supported:
@@ -96,7 +96,7 @@ macro_rules! resource_task {
         $vis struct $name;
 
         impl $name {
-            #[allow(clippy::shadow_unrelated)]
+            #[allow(clippy::shadow_unrelated, reason = "macro hygiene")]
             fn run_batch(
                 ctx: &$crate::phases::Context,
             ) -> ::anyhow::Result<$crate::phases::TaskResult> {

@@ -57,7 +57,7 @@ pub fn persist(root: &Path, overlay_path: &Path) -> Result<()> {
 ///
 /// Returns `None` if no overlay is configured.
 #[must_use]
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stderr, reason = "intentional user-facing output")]
 pub fn resolve_from_args(cli_overlay: Option<&Path>, root: &Path) -> Option<PathBuf> {
     if let Some(path) = cli_overlay {
         let path = path.to_path_buf();
@@ -75,7 +75,12 @@ pub fn resolve_from_args(cli_overlay: Option<&Path>, root: &Path) -> Option<Path
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
 

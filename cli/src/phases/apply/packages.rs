@@ -1,3 +1,7 @@
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "counters and validated math; bounded by config sizes"
+)]
 //! Tasks: install system packages.
 
 use std::collections::HashSet;
@@ -331,7 +335,7 @@ fn batch_install(
         let reason = format!("batch install failed: {e:#}");
         ctx.log.warn(&reason);
         stats.skipped = u32::try_from(missing.len()).unwrap_or(u32::MAX);
-        let _ = stats.finish(ctx);
+        drop(stats.finish(ctx));
         return TaskResult::Failed(reason);
     }
     stats.changed = u32::try_from(missing.len()).unwrap_or(u32::MAX);
@@ -381,7 +385,12 @@ fn process_packages(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use std::sync::Arc;

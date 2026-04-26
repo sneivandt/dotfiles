@@ -19,13 +19,13 @@ clap_complete = "4"
 ctrlc = "3.5"
 dunce = "1"
 thiserror = "2"
-enable-ansi-support = "0.2"
+enable-ansi-support = "0.3"
 git2 = "0.20.4"
 rayon = "1.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
-toml = "0.8"
+sha2 = "0.11"
+toml = "1"
 tracing = "0.1"
 ureq = "3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -34,18 +34,24 @@ terminal_size = "0.4.3"
 
 [dev-dependencies]
 insta = { version = "1", features = ["yaml"] }
-mockall = "0.13"
+mockall = "0.14"
 tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]
-winreg = "0.55"
+winreg = "0.56"
 
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
 cargo = { level = "deny", priority = -1 }
 multiple_crate_versions = "allow"
+# `unreachable_pub` (rust lint) and `redundant_pub_crate` give contradictory
+# advice for `pub(crate) mod foo; pub fn bar` patterns. We prefer
+# `pub(crate)` everywhere internal so consumers can see the true API surface.
+redundant_pub_crate = "allow"
 # Restriction lints (opt-in individually)
+allow_attributes_without_reason = "deny"
+arithmetic_side_effects = "deny"
 dbg_macro = "deny"
 empty_structs_with_brackets = "deny"
 expect_used = "deny"
@@ -65,15 +71,25 @@ undocumented_unsafe_blocks = "deny"
 unimplemented = "deny"
 unnecessary_self_imports = "deny"
 unreachable = "deny"
+unused_result_ok = "deny"
 unwrap_used = "deny"
 verbose_file_reads = "deny"
 
 [lints.rust]
 unsafe_code = "deny"
+let_underscore_drop = "deny"
 missing_debug_implementations = "deny"
 missing_docs = "deny"
 trivial_numeric_casts = "deny"
+unreachable_pub = "deny"
 unused_qualifications = "deny"
+
+[lints.rustdoc]
+broken_intra_doc_links = "deny"
+invalid_codeblock_attributes = "deny"
+invalid_html_tags = "deny"
+bare_urls = "deny"
+unescaped_backticks = "deny"
 
 [profile.dev-opt]
 inherits = "dev"

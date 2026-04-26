@@ -24,7 +24,7 @@ use super::category_matcher::Category;
 ///     fn map(entry: String) -> CopilotPlugin { CopilotPlugin { plugin: entry, marketplace: "owner/repo".into(), marketplace_name: "marketplace".into() } }
 /// }
 /// ```
-pub trait ConfigSection: DeserializeOwned {
+pub(crate) trait ConfigSection: DeserializeOwned {
     /// The raw deserialized entry type stored in the TOML section.
     type Entry;
     /// The final domain type produced after mapping each entry.
@@ -45,7 +45,7 @@ pub trait ConfigSection: DeserializeOwned {
 /// # Errors
 ///
 /// Returns an error if the file cannot be read or parsed.
-pub fn load_section<S: ConfigSection>(
+pub(crate) fn load_section<S: ConfigSection>(
     path: &Path,
     active_categories: &[Category],
 ) -> Result<Vec<S::Item>> {
@@ -65,7 +65,7 @@ pub fn load_section<S: ConfigSection>(
 /// # Errors
 ///
 /// Returns an error if the file cannot be read or parsed.
-pub fn load_config<T: DeserializeOwned>(path: &Path) -> Result<T> {
+pub(crate) fn load_config<T: DeserializeOwned>(path: &Path) -> Result<T> {
     if !path.exists() {
         // Return empty config for missing files by deserializing empty TOML
         return toml::from_str("")
@@ -88,7 +88,7 @@ pub fn load_config<T: DeserializeOwned>(path: &Path) -> Result<T> {
 /// # Errors
 ///
 /// Returns an error if the file cannot be read or parsed.
-pub fn load_section_items<S, T>(
+pub(crate) fn load_section_items<S, T>(
     path: &Path,
     extract: impl Fn(S) -> Vec<T>,
 ) -> Result<Vec<(String, Vec<T>)>>
@@ -108,7 +108,7 @@ where
 /// # Errors
 ///
 /// Returns an error if the file cannot be read or parsed.
-pub fn load_filtered<S, E, T>(
+pub(crate) fn load_filtered<S, E, T>(
     path: &Path,
     extract: impl Fn(S) -> Vec<E>,
     map: impl Fn(E) -> T,
@@ -127,7 +127,7 @@ where
 /// A section is included only when all of its category tags are present in
 /// `active_categories` (AND logic).
 #[must_use]
-pub fn filter_by_categories<T>(
+pub(crate) fn filter_by_categories<T>(
     items: Vec<(String, Vec<T>)>,
     active_categories: &[Category],
 ) -> Vec<T> {
@@ -145,7 +145,12 @@ pub fn filter_by_categories<T>(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::config::test_helpers::write_temp_toml;
@@ -306,7 +311,7 @@ items = [\"c\"]
     fn load_config_type_mismatch_returns_error() {
         #[derive(Deserialize)]
         struct Root {
-            #[allow(dead_code)]
+            #[allow(dead_code, reason = "used conditionally via cfg")]
             key: Vec<String>,
         }
         let (_dir, path) = write_temp_toml("key = \"not-an-array\"\n");

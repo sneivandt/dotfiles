@@ -3,6 +3,10 @@
 //! These tasks verify configuration integrity and run linters on shell and
 //! `PowerShell` scripts.  They are used by [`crate::commands::test::run`] but
 //! live in the `tasks` module so they follow the same `Task` trait pattern
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "counters and validated math; bounded by config sizes"
+)]
 //! as all other tasks and are independently testable.
 use anyhow::Result;
 use std::path::{Path, PathBuf};
@@ -505,7 +509,12 @@ fn build_shellcheck_args(paths: &[PathBuf]) -> Vec<String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use std::io::Write;

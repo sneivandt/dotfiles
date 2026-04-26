@@ -20,10 +20,14 @@ pub struct SymlinkResource {
 impl SymlinkResource {
     /// Create a new symlink resource.
     #[must_use]
-    pub fn new(source: PathBuf, target: PathBuf, executor: Arc<dyn Executor>) -> Self {
+    pub fn new(
+        source: impl Into<PathBuf>,
+        target: impl Into<PathBuf>,
+        executor: Arc<dyn Executor>,
+    ) -> Self {
         Self {
-            source,
-            target,
+            source: source.into(),
+            target: target.into(),
             executor,
         }
     }
@@ -119,8 +123,7 @@ impl Resource for SymlinkResource {
             && self
                 .target
                 .symlink_metadata()
-                .map(|m| !m.is_symlink())
-                .unwrap_or(false)
+                .is_ok_and(|m| !m.is_symlink())
         {
             return Ok(ResourceState::Invalid {
                 reason: "target is a real directory".to_string(),
@@ -259,7 +262,9 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
             // Disarm the guard before cleanup so it doesn't try to remove on drop.
             guard.persist();
             // Best-effort cleanup; failure here is non-fatal since target is correct.
-            let _ = std::fs::remove_dir_all(&tmp);
+            if let Err(e) = std::fs::remove_dir_all(&tmp) {
+                tracing::debug!("best-effort cleanup of {} failed: {e}", tmp.display());
+            }
         }
         Err(e) => {
             return Err(anyhow::Error::new(e).context(format!(
@@ -418,7 +423,12 @@ fn remove_dir_fallback(path: &Path) -> Result<()> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::exec::SystemExecutor;
@@ -595,7 +605,7 @@ mod tests {
     /// After `remove()` the target must be a regular file containing the
     /// original source content, not a symlink.
     #[test]
-    #[allow(clippy::redundant_clone)]
+    #[allow(clippy::redundant_clone, reason = "clone keeps test intent explicit")]
     fn remove_file_symlink_materializes_content() {
         let temp_dir = tempfile::tempdir().unwrap();
         let source = temp_dir.path().join("source.txt");
@@ -624,7 +634,7 @@ mod tests {
     /// After `remove()` on a directory symlink the target must be a real
     /// directory containing copies of all source files.
     #[test]
-    #[allow(clippy::redundant_clone)]
+    #[allow(clippy::redundant_clone, reason = "clone keeps test intent explicit")]
     fn remove_dir_symlink_materializes_directory() {
         let temp_dir = tempfile::tempdir().unwrap();
         let source_dir = temp_dir.path().join("src_dir");
@@ -663,7 +673,7 @@ mod tests {
     /// target path regardless.
     #[cfg(unix)]
     #[test]
-    #[allow(clippy::redundant_clone)]
+    #[allow(clippy::redundant_clone, reason = "clone keeps test intent explicit")]
     fn remove_file_symlink_materializes_content_when_target_already_gone() {
         let temp_dir = tempfile::tempdir().unwrap();
         let source = temp_dir.path().join("source.txt");
@@ -693,7 +703,7 @@ mod tests {
     /// has already been manually deleted.
     #[cfg(unix)]
     #[test]
-    #[allow(clippy::redundant_clone)]
+    #[allow(clippy::redundant_clone, reason = "clone keeps test intent explicit")]
     fn remove_dir_symlink_materializes_content_when_target_already_gone() {
         let temp_dir = tempfile::tempdir().unwrap();
         let source_dir = temp_dir.path().join("src_dir");

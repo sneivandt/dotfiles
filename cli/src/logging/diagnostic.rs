@@ -111,7 +111,7 @@ impl DiagEvent {
 #[derive(Debug)]
 pub struct DiagnosticLog {
     file: Mutex<fs::File>,
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg_attr(not(test), allow(dead_code, reason = "used conditionally via cfg"))]
     path: PathBuf,
     start: Instant,
 }
@@ -160,7 +160,7 @@ impl DiagnosticLog {
         let clean = strip_ansi(message);
         let line = format!("+{elapsed_us:>12} {wall} [{thread_name}] {tag:<12} {clean}\n");
         if let Ok(mut f) = self.file.lock() {
-            f.write_all(line.as_bytes()).ok();
+            drop(f.write_all(line.as_bytes()));
         }
     }
 
@@ -181,7 +181,12 @@ impl DiagnosticLog {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use std::fs;

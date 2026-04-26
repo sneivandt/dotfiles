@@ -118,10 +118,9 @@ impl ScriptResource {
         let script_str = self.script_path.display().to_string();
         args.push(&script_str);
 
-        let args_refs: Vec<&str> = args.clone();
         let result = self
             .executor
-            .run_in(&self.working_dir, interpreter, &args_refs)
+            .run_in(&self.working_dir, interpreter, &args)
             .with_context(|| format!("running script: {}", self.name))?;
 
         Ok((ResourceChange::Applied, result.stdout))
@@ -145,10 +144,9 @@ impl ScriptResource {
         args.push(&script_str);
         args.push("--dryrun");
 
-        let args_refs: Vec<&str> = args.clone();
         let result = self
             .executor
-            .run_unchecked(interpreter, &args_refs)
+            .run_unchecked(interpreter, &args)
             .with_context(|| format!("dry-run script: {}", self.name))?;
 
         Ok(result.stdout)
@@ -171,9 +169,8 @@ impl Applicable for ScriptResource {
         let script_str = self.script_path.display().to_string();
         args.push(&script_str);
 
-        let args_refs: Vec<&str> = args.clone();
         self.executor
-            .run_in(&self.working_dir, interpreter, &args_refs)
+            .run_in(&self.working_dir, interpreter, &args)
             .with_context(|| format!("running script: {}", self.name))?;
 
         Ok(ResourceChange::Applied)
@@ -191,9 +188,8 @@ impl Applicable for ScriptResource {
         args.push(&script_str);
         args.push("--remove");
 
-        let args_refs: Vec<&str> = args.clone();
         self.executor
-            .run_in(&self.working_dir, interpreter, &args_refs)
+            .run_in(&self.working_dir, interpreter, &args)
             .with_context(|| format!("removing script: {}", self.name))?;
 
         Ok(ResourceChange::Applied)
@@ -213,10 +209,9 @@ impl Resource for ScriptResource {
         args.push(&script_str);
         args.push("--check");
 
-        let args_refs: Vec<&str> = args.clone();
         let result = self
             .executor
-            .run_unchecked(interpreter, &args_refs)
+            .run_unchecked(interpreter, &args)
             .with_context(|| format!("checking script state: {}", self.name))?;
 
         if result.success {
@@ -228,7 +223,12 @@ impl Resource for ScriptResource {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::exec::MockExecutor;

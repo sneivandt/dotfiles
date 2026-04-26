@@ -5,7 +5,7 @@
 // repeating filesystem boilerplate.
 //
 // Used by all integration test binaries that declare `mod common;`.
-#![allow(dead_code)]
+#![allow(dead_code, reason = "used conditionally via cfg")]
 
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -33,7 +33,7 @@ use dotfiles_cli::platform::Platform;
 /// - `conf/registry.toml`
 /// - `symlinks/`                    — directory expected by validation tasks
 /// - `hooks/`                       — directory expected by validation tasks
-pub fn setup_minimal_repo(root: &Path) {
+pub(crate) fn setup_minimal_repo(root: &Path) {
     let conf = root.join("conf");
     std::fs::create_dir_all(&conf).expect("create conf dir");
     std::fs::create_dir_all(root.join("symlinks")).expect("create symlinks dir");
@@ -64,26 +64,26 @@ pub fn setup_minimal_repo(root: &Path) {
 ///
 /// The directory is automatically deleted when dropped (via the underlying
 /// [`tempfile::TempDir`]).
-pub struct IntegrationTestContext {
+pub(crate) struct IntegrationTestContext {
     /// Temporary directory containing the test dotfiles repository.
     pub root: tempfile::TempDir,
 }
 
 impl IntegrationTestContext {
     /// Create a new context with a minimal but valid repository structure.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let root = tempfile::tempdir().expect("create temp dir");
         setup_minimal_repo(root.path());
         Self { root }
     }
 
     /// Path to the repository root.
-    pub fn root_path(&self) -> &Path {
+    pub(crate) fn root_path(&self) -> &Path {
         self.root.path()
     }
 
     /// Load configuration for the given profile using the current platform.
-    pub fn load_config(&self, profile_name: &str) -> Config {
+    pub(crate) fn load_config(&self, profile_name: &str) -> Config {
         let platform = Platform::detect();
         let conf_dir = self.root.path().join("conf");
         let profile =
@@ -96,7 +96,11 @@ impl IntegrationTestContext {
     /// Use this variant in tests that need to control platform-specific behaviour
     /// (e.g. registry loading on Windows, AUR warnings on non-Arch Linux) without
     /// depending on the host OS the test suite runs on.
-    pub fn load_config_for_platform(&self, profile_name: &str, platform: Platform) -> Config {
+    pub(crate) fn load_config_for_platform(
+        &self,
+        profile_name: &str,
+        platform: Platform,
+    ) -> Config {
         let conf_dir = self.root.path().join("conf");
         let profile =
             profiles::resolve(profile_name, &conf_dir, platform).expect("resolve profile");
@@ -108,13 +112,13 @@ impl IntegrationTestContext {
 ///
 /// Allows individual tests to customise the repository before the context
 /// is finalised without modifying the shared setup.
-pub struct TestContextBuilder {
+pub(crate) struct TestContextBuilder {
     ctx: IntegrationTestContext,
 }
 
 impl TestContextBuilder {
     /// Begin building a new context backed by a minimal repository.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             ctx: IntegrationTestContext::new(),
         }
@@ -122,7 +126,7 @@ impl TestContextBuilder {
 
     /// Write `content` to `conf/<filename>` in the test repository,
     /// overwriting any file written by [`setup_minimal_repo`].
-    pub fn with_config_file(self, filename: &str, content: &str) -> Self {
+    pub(crate) fn with_config_file(self, filename: &str, content: &str) -> Self {
         let path = self.ctx.root.path().join("conf").join(filename);
         std::fs::write(path, content).expect("write config file");
         self
@@ -130,7 +134,7 @@ impl TestContextBuilder {
 
     /// Create a source file inside the `symlinks/` directory so that
     /// symlink validation does not complain about missing sources.
-    pub fn with_symlink_source(self, source: &str) -> Self {
+    pub(crate) fn with_symlink_source(self, source: &str) -> Self {
         let path = self.ctx.root.path().join("symlinks").join(source);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).expect("create symlink source parent");
@@ -140,7 +144,7 @@ impl TestContextBuilder {
     }
 
     /// Create a source file with specific content inside the `symlinks/` directory.
-    pub fn with_symlink_source_content(self, source: &str, content: &str) -> Self {
+    pub(crate) fn with_symlink_source_content(self, source: &str, content: &str) -> Self {
         let path = self.ctx.root.path().join("symlinks").join(source);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).expect("create symlink source parent");
@@ -150,21 +154,21 @@ impl TestContextBuilder {
     }
 
     /// Create a hook file (no extension) inside the `hooks/` directory.
-    pub fn with_hook_source(self, name: &str, content: &str) -> Self {
+    pub(crate) fn with_hook_source(self, name: &str, content: &str) -> Self {
         let path = self.ctx.root.path().join("hooks").join(name);
         std::fs::write(path, content).expect("write hook source file");
         self
     }
 
     /// Create a `.git/hooks/` directory in the test repository.
-    pub fn with_git_hooks_dir(self) -> Self {
+    pub(crate) fn with_git_hooks_dir(self) -> Self {
         std::fs::create_dir_all(self.ctx.root.path().join(".git/hooks"))
             .expect("create .git/hooks dir");
         self
     }
 
     /// Finish building and return the configured context.
-    pub fn build(self) -> IntegrationTestContext {
+    pub(crate) fn build(self) -> IntegrationTestContext {
         self.ctx
     }
 }
@@ -173,9 +177,9 @@ impl TestContextBuilder {
 ///
 /// Returns `false` for `which()` and panics if any command is actually run.
 #[derive(Debug)]
-pub struct StubExecutor;
+pub(crate) struct StubExecutor;
 
-#[allow(clippy::panic)]
+#[allow(clippy::panic, reason = "panicking allowed at this trust boundary")]
 impl Executor for StubExecutor {
     fn run(&self, program: &str, args: &[&str]) -> anyhow::Result<ExecResult> {
         panic!("unexpected executor call in integration test: {program} {args:?}")
@@ -208,7 +212,7 @@ impl Executor for StubExecutor {
 ///
 /// Returned by [`IntegrationTestContext::make_context`] to bundle the
 /// task [`Context`] with ownership of the temporary home directory.
-pub struct ExecutionContext {
+pub(crate) struct ExecutionContext {
     /// Task execution context.
     pub ctx: Context,
     /// Logger for inspecting task outcomes.
@@ -223,7 +227,7 @@ impl ExecutionContext {
     /// Uses struct update syntax so the `_home` `TempDir` (held only for its
     /// drop semantics) is moved without requiring direct field access.
     #[must_use]
-    pub fn into_dry_run(self) -> Self {
+    pub(crate) fn into_dry_run(self) -> Self {
         let ctx = self.ctx.with_dry_run(true);
         Self { ctx, ..self }
     }
@@ -235,7 +239,7 @@ impl IntegrationTestContext {
     /// Sets up a temporary home directory and a [`StubExecutor`] so that
     /// filesystem-only tasks (symlinks, hooks, chmod) can execute without
     /// invoking external commands.
-    pub fn make_context(&self, profile: &str) -> ExecutionContext {
+    pub(crate) fn make_context(&self, profile: &str) -> ExecutionContext {
         let config = self.load_config(profile);
         let home = tempfile::tempdir().expect("create home dir");
         let log = Arc::new(Logger::new("test"));
@@ -259,7 +263,7 @@ impl IntegrationTestContext {
     }
 
     /// Create a dry-run task execution [`Context`] for the given profile.
-    pub fn make_dry_run_context(&self, profile: &str) -> ExecutionContext {
+    pub(crate) fn make_dry_run_context(&self, profile: &str) -> ExecutionContext {
         self.make_context(profile).into_dry_run()
     }
 }

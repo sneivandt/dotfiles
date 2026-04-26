@@ -8,7 +8,7 @@ use crate::exec::Executor;
 /// Source for reading the current login shell.
 ///
 /// Production code uses [`ShellSource::Environment`] to read the `SHELL`
-/// environment variable at check time.  Tests use [`ShellSource::Fixed`]
+/// environment variable at check time.  Tests use `ShellSource::Fixed`
 /// to inject a deterministic value without `unsafe` env-var manipulation.
 #[derive(Debug, Clone)]
 enum ShellSource {
@@ -103,7 +103,12 @@ impl Resource for DefaultShellResource {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
 

@@ -2,7 +2,8 @@
     clippy::expect_used,
     clippy::unwrap_used,
     clippy::wildcard_imports,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    reason = "panicking allowed at this trust boundary"
 )]
 //! Integration tests that exercise task execution against a real filesystem.
 //!
@@ -105,7 +106,7 @@ fn symlinks_uninstall_materialises_content() {
     let ec = test.make_context("base");
 
     // Install first
-    let _ = InstallSymlinks.run(&ec.ctx).unwrap();
+    drop(InstallSymlinks.run(&ec.ctx).unwrap());
     assert!(
         ec.ctx
             .home
@@ -240,7 +241,7 @@ fn hooks_uninstall_removes_installed_hook() {
         .build();
 
     let ec = test.make_context("base");
-    let _ = InstallGitHooks::new().run(&ec.ctx).unwrap();
+    drop(InstallGitHooks::new().run(&ec.ctx).unwrap());
     assert!(test.root_path().join(".git/hooks/pre-commit").exists());
 
     let result = UninstallGitHooks::new().run(&ec.ctx).unwrap();
@@ -261,7 +262,7 @@ fn hooks_install_skips_data_files_with_extensions() {
         .build();
 
     let ec = test.make_context("base");
-    let _ = InstallGitHooks::new().run(&ec.ctx).unwrap();
+    drop(InstallGitHooks::new().run(&ec.ctx).unwrap());
 
     assert!(
         test.root_path().join(".git/hooks/pre-commit").exists(),
@@ -329,7 +330,7 @@ fn chmod_is_idempotent() {
     std::fs::write(&target, "Host *\n").unwrap();
 
     let task = ApplyFilePermissions;
-    let _ = task.run(&ec.ctx).unwrap();
+    drop(task.run(&ec.ctx).unwrap());
     let second = task.run(&ec.ctx).unwrap();
     assert!(matches!(second, TaskResult::Ok));
 

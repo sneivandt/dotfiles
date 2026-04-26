@@ -21,7 +21,7 @@ pub use types::{Log, Output, TaskEntry, TaskRecorder, TaskStatus};
 /// for the duration of the test — dropping it restores the previous
 /// thread-local dispatcher.
 #[cfg(test)]
-#[allow(clippy::expect_used)]
+#[allow(clippy::expect_used, reason = "test code uses panicking helpers")]
 pub(crate) fn isolated_logger() -> (Logger, tempfile::TempDir, tracing::dispatcher::DefaultGuard) {
     use tracing_subscriber::layer::SubscriberExt as _;
     let tmp = tempfile::tempdir().expect("failed to create temp dir");

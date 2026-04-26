@@ -1,3 +1,7 @@
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "counters and validated math; bounded by config sizes"
+)]
 //! Utility functions for path resolution, ANSI stripping, and time formatting.
 use std::fs;
 use std::path::PathBuf;
@@ -96,7 +100,8 @@ pub(super) fn log_file_path_in(command: &str, base: &std::path::Path) -> Option<
 #[allow(
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    reason = "ranges validated by surrounding logic"
 )]
 fn civil_from_epoch_secs(epoch_secs: u64) -> (i32, u32, u32, u32, u32, u32) {
     let day_secs = (epoch_secs % 86_400) as u32;
@@ -153,7 +158,12 @@ pub(super) fn format_utc_time() -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
 

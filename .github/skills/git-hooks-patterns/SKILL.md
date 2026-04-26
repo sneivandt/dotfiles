@@ -85,7 +85,7 @@ Categories: `api-keys`, `passwords`, `tokens`, `aws`, `private-keys`, `github`, 
 The `hooks/pre-commit` script is a POSIX shell (`#!/bin/sh`) orchestrator that
 delegates to dedicated scripts:
 1. Runs `hooks/check-sensitive.sh` which reads patterns from `hooks/sensitive-patterns.ini` and scans `git diff --cached` for matches
-2. Runs `hooks/check-rust.sh` which runs `cargo fmt --check` and `cargo clippy -- -D warnings` when `.rs` files are staged
+2. Runs `hooks/check-rust.sh` which runs `cargo fmt --check` and `cargo clippy -- -D warnings` (host plus optional `x86_64-pc-windows-gnu` target) when `.rs` files are staged, and PSScriptAnalyzer when `.ps1`/`.psm1` files are staged
 3. Prints error and aborts if either check fails
 
 ### Bypassing

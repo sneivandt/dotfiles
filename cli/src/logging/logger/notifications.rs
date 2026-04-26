@@ -6,7 +6,7 @@
 
 use super::Logger;
 
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stderr, reason = "intentional user-facing output")]
 impl Logger {
     /// Record that a parallel task has started.
     ///
@@ -64,12 +64,16 @@ impl Logger {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use crate::logging::isolated_logger;
 
     #[test]
-    #[allow(clippy::significant_drop_tightening)]
+    #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
     fn notify_task_start_adds_to_active_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
         log.notify_task_start("my-task");
@@ -93,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::significant_drop_tightening)]
+    #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
     fn notify_task_done_removes_from_active_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
         log.notify_task_start("my-task");
@@ -136,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::significant_drop_tightening)]
+    #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
     fn notify_task_done_multiple_tasks_all_complete() {
         let (log, _tmp, _guard) = isolated_logger();
         log.notify_task_start("task-a");

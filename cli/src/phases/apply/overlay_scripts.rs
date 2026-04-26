@@ -108,7 +108,7 @@ impl Task for OverlayScriptTask {
         TaskPhase::Apply
     }
 
-    /// Returns a per-instance [`TaskId::Dynamic`] derived from the script's
+    /// Returns a per-instance [`TaskId::Dynamic`](crate::phases::TaskId::Dynamic) derived from the script's
     /// name and path.
     ///
     /// Multiple `OverlayScriptTask` instances share the same Rust type, so
@@ -204,7 +204,12 @@ pub fn overlay_script_tasks(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::config::scripts::ScriptEntry;

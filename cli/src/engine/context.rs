@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use crate::config::Config;
 use crate::exec::Executor;
@@ -110,12 +110,9 @@ impl Context {
         let home = if cfg!(target_os = "windows") {
             std::env::var("USERPROFILE")
                 .or_else(|_| std::env::var("HOME"))
-                .map_err(|_| {
-                    anyhow::anyhow!("neither USERPROFILE nor HOME environment variable is set")
-                })?
+                .context("neither USERPROFILE nor HOME environment variable is set")?
         } else {
-            std::env::var("HOME")
-                .map_err(|_| anyhow::anyhow!("HOME environment variable is not set"))?
+            std::env::var("HOME").context("HOME environment variable is not set")?
         };
 
         let is_ci = opts.is_ci.unwrap_or_else(|| std::env::var("CI").is_ok());
@@ -359,7 +356,11 @@ impl Context {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::logging::Logger;

@@ -42,7 +42,9 @@ pub fn resolve_from_args(cli_profile: Option<&str>, root: &Path, platform: Platf
     else if let Some(name) = read_persisted(root) { name }
     else {
         let name = prompt_interactive(&conf_dir)?;
-        let _ = persist(root, &name); // best-effort
+        if let Err(e) = persist(root, &name) {
+            eprintln!("warning: could not persist profile to git config: {e}");
+        }
         name
     };
     // ...

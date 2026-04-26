@@ -58,7 +58,7 @@ pub fn validate(
     );
     v.check_each(units, |u| &u.name, |u| {
         // Note: systemd unit extensions are case-sensitive on Linux
-        #[allow(clippy::case_sensitive_file_extension_comparisons)]
+        #[allow(clippy::case_sensitive_file_extension_comparisons, reason = "extensions are ASCII-only")]
         let has_valid_ext = VALID_UNIT_EXTENSIONS
             .iter()
             .any(|ext| u.name.ends_with(ext));
@@ -74,7 +74,12 @@ pub fn validate(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::config::category_matcher::Category;

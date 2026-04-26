@@ -1,3 +1,7 @@
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "counters and validated math; bounded by config sizes"
+)]
 //! Result and statistics types for task execution.
 
 use super::context::Context;
@@ -152,7 +156,12 @@ impl std::ops::AddAssign for TaskStats {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::panic,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
 
@@ -361,7 +370,7 @@ mod tests {
     #[test]
     fn task_result_clone() {
         let r = TaskResult::Skipped("reason".into());
-        #[allow(clippy::redundant_clone)]
+        #[allow(clippy::redundant_clone, reason = "clone keeps test intent explicit")]
         let r2 = r.clone();
         assert!(matches!(r2, TaskResult::Skipped(_)));
     }

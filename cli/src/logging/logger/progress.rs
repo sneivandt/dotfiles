@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use super::Logger;
 use crate::logging::utils::terminal_columns;
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "intentional user-facing output")]
 impl Logger {
     /// Erase the in-progress status line from the console.
     ///
@@ -15,7 +15,7 @@ impl Logger {
     pub(in crate::logging) fn clear_progress(&self) {
         if self.progress_rows.load(Ordering::Relaxed) > 0 {
             print!("\r\x1b[K");
-            std::io::stdout().flush().ok();
+            drop(std::io::stdout().flush());
             self.progress_rows.store(0, Ordering::Relaxed);
         }
     }
@@ -41,13 +41,17 @@ impl Logger {
             names.to_string()
         };
         print!("  \x1b[2m▹ {display_names}\x1b[0m");
-        std::io::stdout().flush().ok();
+        drop(std::io::stdout().flush());
         self.progress_rows.store(1, Ordering::Relaxed);
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use crate::logging::isolated_logger;
 

@@ -1,6 +1,6 @@
 //! Dependency-driven parallel task scheduling.
 //!
-//! Provides [`run_tasks_parallel`] for executing tasks concurrently using OS
+//! Provides [`run_tasks_parallel`](crate::engine::scheduler::run_tasks_parallel) for executing tasks concurrently using OS
 //! threads.
 
 use std::collections::{HashMap, HashSet};
@@ -58,7 +58,7 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> bool {
 /// than the number of tasks with unsatisfied dependencies (common on 2-vCPU CI
 /// runners).  Output is buffered per-task and flushed to the console
 /// immediately on completion.
-pub fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>) {
+pub(crate) fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>) {
     let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
     let resolved_deps: Vec<Vec<TaskId>> = tasks
         .iter()
@@ -173,7 +173,12 @@ pub fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>)
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -235,7 +240,7 @@ mod tests {
             true
         }
 
-        #[allow(clippy::panic)]
+        #[allow(clippy::panic, reason = "panicking allowed at this trust boundary")]
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
             panic!("simulated failure");
         }

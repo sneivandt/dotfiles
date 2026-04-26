@@ -16,7 +16,7 @@ use crate::config::ValidationWarning;
 ///     })
 ///     .finish();
 /// ```
-pub struct Validator {
+pub(crate) struct Validator {
     source: &'static str,
     warnings: Vec<ValidationWarning>,
 }
@@ -24,7 +24,7 @@ pub struct Validator {
 impl Validator {
     /// Create a new validator for the given config source file.
     #[must_use]
-    pub const fn new(source: &'static str) -> Self {
+    pub(crate) const fn new(source: &'static str) -> Self {
         Self {
             source,
             warnings: Vec::new(),
@@ -32,13 +32,13 @@ impl Validator {
     }
 
     /// Push a standalone warning not tied to a specific item.
-    pub fn warn(&mut self, item: impl Into<String>, message: impl Into<String>) {
+    pub(crate) fn warn(&mut self, item: impl Into<String>, message: impl Into<String>) {
         self.warnings
             .push(ValidationWarning::new(self.source, item, message));
     }
 
     /// Push a warning if the condition is `true`.
-    pub fn warn_if(
+    pub(crate) fn warn_if(
         &mut self,
         condition: bool,
         item: impl Into<String>,
@@ -54,7 +54,7 @@ impl Validator {
     /// `item_label` extracts the human-readable identifier for warnings.
     /// `check_fn` returns an iterator of optional error messages — each
     /// `Some(message)` becomes a warning.
-    pub fn check_each<T>(
+    pub(crate) fn check_each<T>(
         mut self,
         items: &[T],
         item_label: impl Fn(&T) -> &str,
@@ -72,7 +72,7 @@ impl Validator {
 
     /// Consume the builder and return the collected warnings.
     #[must_use]
-    pub fn finish(self) -> Vec<ValidationWarning> {
+    pub(crate) fn finish(self) -> Vec<ValidationWarning> {
         self.warnings
     }
 }
@@ -85,6 +85,6 @@ impl Validator {
 /// check(name.is_empty(), "name is empty")
 /// ```
 #[must_use]
-pub fn check(condition: bool, message: impl Into<String>) -> Option<String> {
+pub(crate) fn check(condition: bool, message: impl Into<String>) -> Option<String> {
     condition.then(|| message.into())
 }

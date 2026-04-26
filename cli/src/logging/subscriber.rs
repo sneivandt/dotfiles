@@ -74,7 +74,7 @@ impl FileLayer {
     }
 
     /// Shared implementation: write a header and open the file for appending.
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
     fn create_at(path: &std::path::Path) -> Option<Self> {
         use std::io::Write as _;
 
@@ -135,7 +135,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FileLayer {
         };
 
         if let Ok(mut f) = self.file.lock() {
-            writeln!(f, "{line}").ok();
+            drop(writeln!(f, "{line}"));
         }
     }
 }
@@ -236,7 +236,12 @@ pub fn init_subscriber(verbose: bool, command: &str) {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use tracing_subscriber::layer::SubscriberExt as _;

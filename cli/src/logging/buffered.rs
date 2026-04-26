@@ -76,7 +76,7 @@ macro_rules! buffer_log_methods {
 /// parallel tasks do not interleave their console output.  The captured
 /// entries are replayed in order when `flush_and_complete` is called.
 ///
-/// [`record_task`](Log::record_task) is forwarded directly to the underlying
+/// [`record_task`](crate::logging::TaskRecorder::record_task) is forwarded directly to the underlying
 /// [`Logger`] because the summary collection is already thread-safe.
 #[derive(Debug)]
 pub struct BufferedLog {
@@ -130,7 +130,7 @@ impl BufferedLog {
     /// entry appended by [`execute`](crate::phases::execute)) is replayed
     /// *before* the detail entries so that the compact result header appears
     /// above any per-resource output (e.g. dry-run lines).
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
     pub fn flush_and_complete(&self, task_name: &str) {
         {
             let _guard = self.inner.flush_lock.lock().unwrap_or_else(|e| {
@@ -192,7 +192,12 @@ impl TaskRecorder for BufferedLog {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::logging::isolated_logger;
@@ -338,7 +343,7 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::significant_drop_tightening)]
+    #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
     fn buffered_flush_and_complete_with_remaining_task() {
         let (log, _tmp, _guard) = isolated_logger();
         let log = Arc::new(log);

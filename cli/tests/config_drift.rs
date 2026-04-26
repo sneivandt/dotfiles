@@ -1,4 +1,9 @@
-#![allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "panicking allowed at this trust boundary"
+)]
 //! Integration tests that verify the manifest and symlinks configurations
 //! stay in sync.
 //!
@@ -35,7 +40,7 @@ enum SymlinkEntry {
     Simple(String),
     WithTarget {
         source: String,
-        #[allow(dead_code)]
+        #[allow(dead_code, reason = "used conditionally via cfg")]
         target: String,
     },
 }

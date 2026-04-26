@@ -81,7 +81,9 @@ impl Applicable for PamConfigResource {
             .with_context(|| format!("write temp PAM file: {tmp}"))?;
 
         let result = self.executor.run("sudo", &["cp", &tmp, &target]);
-        let _ = std::fs::remove_file(&tmp);
+        if let Err(e) = std::fs::remove_file(&tmp) {
+            tracing::debug!("best-effort cleanup of {tmp} failed: {e}");
+        }
         result?;
 
         Ok(ResourceChange::Applied)
@@ -129,7 +131,12 @@ impl Resource for PamConfigResource {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::exec::MockExecutor;

@@ -7,6 +7,10 @@
 //! - **Repository** (`phases::repository`) — synchronise the dotfiles repository
 //!   (sparse checkout, pull, config reload, hooks).
 //! - **Apply** (`phases::apply`) — apply declared state to the user environment
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "counters and validated math; bounded by config sizes"
+)]
 //!   (symlinks, packages, registry, etc.).
 
 pub mod apply;
@@ -25,7 +29,8 @@ pub use crate::engine::Context;
 pub use crate::engine::ContextOpts;
 pub(crate) use crate::engine::graph::has_cycle;
 pub use crate::engine::update_signal::UpdateSignal;
-#[allow(unused_imports)] // TaskStats is used by doc-tests via the lib crate
+#[allow(unused_imports, reason = "re-exported for doc-tests")]
+// TaskStats is used by doc-tests via the lib crate
 pub use crate::engine::{
     ProcessMode, ProcessOpts, ResourceAction, TaskResult, TaskStats, process_resource_states,
     process_resources, process_resources_remove,
@@ -277,7 +282,7 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 /// Provides common mock types and factory functions so each task test module
 /// does not have to duplicate boilerplate.
 #[cfg(test)]
-#[allow(clippy::panic)]
+#[allow(clippy::panic, reason = "test code uses panicking helpers")]
 pub mod test_helpers {
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -294,7 +299,10 @@ pub mod test_helpers {
 
     /// Build a [`Config`] with all lists empty and `root` set to `root`.
     #[must_use]
-    #[allow(clippy::expect_used)]
+    #[allow(
+        clippy::expect_used,
+        reason = "panicking allowed at this trust boundary"
+    )]
     pub fn empty_config(root: PathBuf) -> Config {
         Config {
             root,
@@ -375,7 +383,7 @@ pub mod test_helpers {
     /// ```
     #[derive(Debug)]
     #[must_use]
-    #[allow(clippy::struct_excessive_bools)]
+    #[allow(clippy::struct_excessive_bools, reason = "test fixture")]
     pub struct ContextBuilder {
         config: Config,
         os: crate::platform::Os,
@@ -515,7 +523,12 @@ pub mod test_helpers {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::resources::{Applicable, Resource, ResourceChange, ResourceState};

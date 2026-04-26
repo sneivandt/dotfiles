@@ -103,8 +103,8 @@ impl Logger {
     /// Create a new logger.
     ///
     /// Stores the log file path for display in the run summary.  The log file
-    /// itself is created and initialised by [`init_subscriber`](super::super::subscriber::init_subscriber) via
-    /// [`FileLayer`](super::super::subscriber::FileLayer); this constructor does not write to the file.
+    /// itself is created and initialised by [`init_subscriber`](super::subscriber::init_subscriber) via
+    /// [`FileLayer`](super::subscriber::FileLayer); this constructor does not write to the file.
     #[must_use]
     pub fn new(command: &str) -> Self {
         let start = Instant::now();
@@ -123,7 +123,7 @@ impl Logger {
 
     /// Set the verbose mode on this logger.
     ///
-    /// Also updates the global [`subscriber`](super::super::subscriber) flag so the
+    /// Also updates the global [`subscriber`](super::subscriber) flag so the
     /// console formatter and file layer stay in sync.
     pub fn set_verbose(&mut self, verbose: bool) {
         self.verbose = verbose;
@@ -208,7 +208,7 @@ impl Logger {
 
     log_method!(
         /// Log a debug message (suppressed on console unless verbose; always
-        /// written to the log file via the [`FileLayer`](super::super::subscriber::FileLayer)).
+        /// written to the log file via the [`FileLayer`](super::subscriber::FileLayer)).
         debug, Debug, tracing::debug
     );
 
@@ -247,7 +247,7 @@ impl Logger {
 
     /// Return `true` if any recorded task has failed.
     #[must_use]
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "used conditionally via cfg")]
     pub fn has_failures(&self) -> bool {
         self.failure_count() > 0
     }
@@ -292,7 +292,12 @@ impl TaskRecorder for Logger {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::logging::isolated_logger;

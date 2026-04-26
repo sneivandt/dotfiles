@@ -2,7 +2,8 @@
     clippy::expect_used,
     clippy::unwrap_used,
     clippy::wildcard_imports,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    reason = "panicking allowed at this trust boundary"
 )]
 //! Integration tests for the `test` command — config validation.
 //!

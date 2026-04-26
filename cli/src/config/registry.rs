@@ -60,8 +60,8 @@ pub fn load(path: &Path) -> Result<Vec<RegistryEntry>> {
     let config: HashMap<String, RegistrySection> = toml_loader::load_config(path)?;
 
     Ok(config
-        .into_iter()
-        .flat_map(|(_, section)| {
+        .into_values()
+        .flat_map(|section| {
             let key_path = section.path;
             section.values.into_iter().map(move |(name, value)| {
                 let (value_data, value_type) = classify_value(&value);
@@ -139,7 +139,12 @@ pub fn validate(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
 

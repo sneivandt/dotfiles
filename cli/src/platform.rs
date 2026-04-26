@@ -197,12 +197,10 @@ impl Platform {
 
     fn detect_wsl() -> bool {
         if cfg!(target_os = "linux") {
-            std::fs::read_to_string("/proc/version")
-                .map(|v| {
-                    let lower = v.to_lowercase();
-                    lower.contains("microsoft") || lower.contains("wsl")
-                })
-                .unwrap_or(false)
+            std::fs::read_to_string("/proc/version").is_ok_and(|v| {
+                let lower = v.to_lowercase();
+                lower.contains("microsoft") || lower.contains("wsl")
+            })
         } else {
             false
         }
@@ -210,7 +208,12 @@ impl Platform {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::config::category_matcher::Category;

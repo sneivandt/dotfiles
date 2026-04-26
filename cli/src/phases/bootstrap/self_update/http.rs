@@ -120,7 +120,7 @@ pub(super) fn verify_checksum(
 
     let mut hasher = Sha256::new();
     hasher.update(data);
-    let actual = format!("{:x}", hasher.finalize());
+    let actual = super::hex_encode(&hasher.finalize());
 
     if !actual.eq_ignore_ascii_case(&expected) {
         bail!("checksum mismatch for {asset}: expected {expected}, got {actual}");
@@ -133,19 +133,24 @@ pub(super) fn verify_checksum(
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 pub(super) mod test_support {
     use super::*;
 
     /// A mock HTTP client that returns pre-configured responses from a FIFO queue.
     #[derive(Debug)]
-    pub struct MockHttpClient {
+    pub(crate) struct MockHttpClient {
         responses: std::sync::Mutex<std::collections::VecDeque<Result<Vec<u8>>>>,
     }
 
     impl MockHttpClient {
         /// Create a client that returns the given responses in order.
-        pub fn new(responses: Vec<Result<Vec<u8>>>) -> Self {
+        pub(crate) fn new(responses: Vec<Result<Vec<u8>>>) -> Self {
             Self {
                 responses: std::sync::Mutex::new(responses.into()),
             }
@@ -164,7 +169,12 @@ pub(super) mod test_support {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::test_support::MockHttpClient;
     use super::*;
@@ -209,7 +219,7 @@ mod tests {
         let data = b"hello world";
         let mut hasher = Sha256::new();
         hasher.update(data);
-        let hash = format!("{:x}", hasher.finalize());
+        let hash = super::super::hex_encode(&hasher.finalize());
 
         let checksums = format!("{hash}  test-asset\n");
         let client = MockHttpClient::new(vec![Ok(checksums.into_bytes())]);
@@ -251,7 +261,7 @@ mod tests {
         let data = b"hello world";
         let mut hasher = Sha256::new();
         hasher.update(data);
-        let hash = format!("{:x}", hasher.finalize());
+        let hash = super::super::hex_encode(&hasher.finalize());
 
         let checksums = format!("{hash}  release build/test asset\n");
         let client = MockHttpClient::new(vec![Ok(checksums.into_bytes())]);
@@ -264,7 +274,7 @@ mod tests {
         let data = b"hello world";
         let mut hasher = Sha256::new();
         hasher.update(data);
-        let hash = format!("{:X}", hasher.finalize());
+        let hash = super::super::hex_encode_upper(&hasher.finalize());
 
         let checksums = format!("{hash}  test-asset\n");
         let client = MockHttpClient::new(vec![Ok(checksums.into_bytes())]);

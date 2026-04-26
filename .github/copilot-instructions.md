@@ -43,7 +43,7 @@ The engine has five internal layers: `config/` (TOML parsing) → `resources/` (
 
 ### Strict Lints
 
-The project enforces pedantic + nursery Clippy lints and explicitly denies `panic`, `unwrap_used`, `expect_used`, `todo`, and `dbg_macro`. Never use `.unwrap()` or `.expect()` — use `?` with `anyhow::Result` or return typed errors from `cli/src/error.rs`.
+The project enforces pedantic + nursery Clippy lints and explicitly denies `panic`, `unwrap_used`, `expect_used`, `todo`, `dbg_macro`, `arithmetic_side_effects`, `let_underscore_drop`, `unused_result_ok`, `allow_attributes_without_reason`, and `unreachable_pub`. Never use `.unwrap()` or `.expect()` — use `?` with `anyhow::Result` or return typed errors from `cli/src/error.rs`. Every `#[allow(...)]` must include a `reason = "..."` argument.
 
 ### Macro-Driven Tasks
 
@@ -80,6 +80,12 @@ After the binary updates itself, it re-execs with a guard env var (`DOTFILES_REE
 cd cli && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
+**Cross-platform verification** — Windows-only CI failures are a recurring issue. After any Rust change, also run:
+```bash
+cd cli && cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings
+```
+This catches missing `#[cfg(windows)]` arms, broken `winreg` references, and platform-gated import drift before they hit CI. The pre-commit hook runs this automatically when the toolchain is installed (`rustup target add x86_64-pc-windows-gnu` + a mingw-w64 gcc). When the target is unavailable and not appropriate to install, say so explicitly in the response. See the `cross-platform-verification` skill for details.
+
 Integration tests use `IntegrationTestContext` from `cli/tests/common/` and exercise config parsing, symlinking, and dry-run behaviour. Snapshot tests use `insta` — update with `INSTA_UPDATE=unseen cargo test`. See `docs/TESTING.md` for details.
 
 **Dry-run** — preview changes without applying:
@@ -107,23 +113,3 @@ Key references: `docs/ARCHITECTURE.md` (system design), `docs/CONTRIBUTING.md` (
 - User guides, procedures, or troubleshooting → a doc in `docs/`
 
 When in doubt, check skills for technical patterns and docs for procedures.
-
-### Creating New Skills
-
-Skills live in `.github/skills/<skill-name>/SKILL.md`. Every `SKILL.md` starts with YAML frontmatter:
-
-```yaml
----
-name: skill-name          # kebab-case, must match directory name
-description: >
-  Brief description of what it covers and when to use it.
-metadata:
-  author: sneivandt
-  version: "1.0"
----
-```
-
-Create a skill when the topic is complex, repeated, or has common pitfalls. Structure:
-overview, core content with headings, code examples from the codebase, rules, and cross-references.
-Aim for under 100 lines (longer is acceptable for complex topics). Write in terms of current state —
-never describe something as "new" or "changed".

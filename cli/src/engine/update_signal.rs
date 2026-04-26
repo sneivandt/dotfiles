@@ -2,8 +2,8 @@
 //! [`crate::phases::repository::reload_config::ReloadConfig`].
 //!
 //! `UpdateSignal` wraps an `Arc<AtomicBool>` but exposes only the two
-//! operations that matter for this use-case: [`UpdateSignal::mark_updated`]
-//! (called by `UpdateRepository`) and [`UpdateSignal::was_updated`] (called
+//! operations that matter for this use-case: [`UpdateSignal::mark_updated`](crate::engine::update_signal::UpdateSignal::mark_updated)
+//! (called by `UpdateRepository`) and [`UpdateSignal::was_updated`](crate::engine::update_signal::UpdateSignal::was_updated) (called
 //! by `ReloadConfig`).  This makes the cross-task coupling explicit and
 //! self-documenting while remaining zero-cost at runtime.
 

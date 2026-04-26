@@ -303,7 +303,8 @@ const fn strip_file_execute_bits(mode: u32) -> u32 {
     clippy::expect_used,
     clippy::unwrap_used,
     clippy::indexing_slicing,
-    clippy::panic
+    clippy::panic,
+    reason = "test code uses panicking helpers"
 )]
 mod tests {
     use super::*;

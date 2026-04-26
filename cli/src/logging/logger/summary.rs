@@ -1,6 +1,10 @@
 //! End-of-run summary printing for [`Logger`].
 //!
 //! Renders the per-phase task breakdown (verbose mode only) followed by a
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "counters and validated math; bounded by config sizes"
+)]
 //! single-line aggregate count and the elapsed time.
 
 use std::time::Duration;
@@ -9,7 +13,7 @@ use super::Logger;
 use crate::logging::types::{TaskEntry, TaskStatus};
 use crate::phases::TaskPhase;
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "intentional user-facing output")]
 impl Logger {
     /// Print the summary of all recorded tasks, grouped by phase.
     pub fn print_summary(&self) {
@@ -123,7 +127,11 @@ fn format_elapsed(d: Duration) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
 

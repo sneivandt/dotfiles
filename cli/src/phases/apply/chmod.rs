@@ -20,7 +20,10 @@ resource_task! {
 ///
 /// Mode validity is verified by config validation before tasks run, so a
 /// parse failure here indicates a bug in the validation pipeline.
-#[allow(clippy::expect_used)]
+#[allow(
+    clippy::expect_used,
+    reason = "panicking allowed at this trust boundary"
+)]
 fn build_resource(
     entry: &crate::config::chmod::ChmodEntry,
     home: &std::path::Path,
@@ -30,7 +33,12 @@ fn build_resource(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests {
     use super::*;
     use crate::config::chmod::ChmodEntry;

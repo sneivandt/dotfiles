@@ -12,7 +12,7 @@ use crate::resources::{Applicable, Resource, ResourceChange, ResourceState};
 // -----------------------------------------------------------------------
 
 /// A configurable mock resource for testing the processing pipeline.
-pub struct MockResource {
+pub(super) struct MockResource {
     state_result: Result<ResourceState, String>,
     apply_result: Result<ResourceChange, String>,
     remove_result: Result<ResourceChange, String>,
@@ -20,7 +20,7 @@ pub struct MockResource {
 }
 
 impl MockResource {
-    pub fn new(state: ResourceState) -> Self {
+    pub(super) fn new(state: ResourceState) -> Self {
         Self {
             state_result: Ok(state),
             apply_result: Ok(ResourceChange::Applied),
@@ -29,22 +29,22 @@ impl MockResource {
         }
     }
 
-    pub fn with_desc(mut self, desc: impl Into<String>) -> Self {
+    pub(super) fn with_desc(mut self, desc: impl Into<String>) -> Self {
         self.desc = desc.into();
         self
     }
 
-    pub fn with_state_error(mut self, err: impl Into<String>) -> Self {
+    pub(super) fn with_state_error(mut self, err: impl Into<String>) -> Self {
         self.state_result = Err(err.into());
         self
     }
 
-    pub fn with_apply(mut self, result: Result<ResourceChange, String>) -> Self {
+    pub(super) fn with_apply(mut self, result: Result<ResourceChange, String>) -> Self {
         self.apply_result = result;
         self
     }
 
-    pub fn with_remove(mut self, result: Result<ResourceChange, String>) -> Self {
+    pub(super) fn with_remove(mut self, result: Result<ResourceChange, String>) -> Self {
         self.remove_result = result;
         self
     }
@@ -77,7 +77,7 @@ impl Resource for MockResource {
 }
 
 /// A mock resource that returns a typed [`ResourceError`] from `apply()`.
-pub struct TypedErrorResource {
+pub(super) struct TypedErrorResource {
     pub error_variant: &'static str,
 }
 
@@ -105,7 +105,7 @@ impl Applicable for TypedErrorResource {
 // Helpers
 // -----------------------------------------------------------------------
 
-pub fn test_context(
+pub(super) fn test_context(
     config: crate::config::Config,
 ) -> (
     crate::phases::Context,
@@ -114,7 +114,7 @@ pub fn test_context(
     make_static_context(config)
 }
 
-pub fn dry_run_context(
+pub(super) fn dry_run_context(
     config: crate::config::Config,
 ) -> (
     crate::phases::Context,
@@ -125,7 +125,7 @@ pub fn dry_run_context(
     (ctx, log)
 }
 
-pub fn parallel_context(
+pub(super) fn parallel_context(
     config: crate::config::Config,
 ) -> (
     crate::phases::Context,
@@ -136,10 +136,10 @@ pub fn parallel_context(
     (ctx, log)
 }
 
-pub fn default_opts() -> ProcessOpts<'static> {
+pub(super) fn default_opts() -> ProcessOpts<'static> {
     ProcessOpts::lenient("install")
 }
 
-pub fn bail_opts() -> ProcessOpts<'static> {
+pub(super) fn bail_opts() -> ProcessOpts<'static> {
     ProcessOpts::strict("install")
 }

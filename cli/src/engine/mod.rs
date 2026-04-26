@@ -38,5 +38,10 @@ pub use orchestrate::{process_resource_states, process_resources, process_resour
 pub use stats::{TaskResult, TaskStats};
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
 mod tests;

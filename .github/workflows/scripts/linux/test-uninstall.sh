@@ -49,7 +49,7 @@ test_install_uninstall_base_profile()
 
   # Run install
   log_verbose "Running install..."
-  "$BINARY_PATH" --root "$DIR" -p base install --skip copilot-plugins
+  "$BINARY_PATH" --root "$DIR" -p base install --skip apm
   log_verbose "Install complete"
 
   # Verify representative symlinks were created

@@ -55,7 +55,7 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 | User | 10 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
 | User | 11 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
 | User | 12 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
-| User | 13 | Copilot Plugins | Registers configured Copilot marketplaces and installs plugins from `conf/copilot-plugins.toml`. | Skips if the plugin is already installed. |
+| User | 13 | APM Packages | Runs `apm install -g --target copilot` to deploy AI plugin manifests defined in `symlinks/apm/apm.yml` (linked to `~/.apm/apm.yml`) globally under `~/.copilot/`. | Idempotent via APM's lockfile. |
 
 Tasks run in parallel where dependencies allow, so the numbering above reflects logical
 grouping rather than strict execution order.
@@ -208,28 +208,28 @@ To add a new link:
 
 The file `conf/vscode-extensions.toml` contains extensions under category sections (`[desktop]`, `[windows]`, etc.). The `extensions` key holds an array of extension IDs. Remove an entry and re-run to keep new installs from occurring (does not uninstall). Add entries to expand your standard environment. The script requires the `code` CLI on PATH (Enable via VS Code: Command Palette → Shell Command: Install 'code' command in PATH).
 
-## GitHub Copilot CLI Plugins
+## AI Plugins (Microsoft APM)
 
-The file `conf/copilot-plugins.toml` contains GitHub Copilot CLI plugins organized by category sections (e.g., `[base]`, `[windows]`). Each entry specifies the marketplace repository, the marketplace name used by the CLI, and the plugin to install.
+The file `symlinks/apm/apm.yml` is a [Microsoft APM](https://github.com/microsoft/apm) manifest. It is symlinked to `~/.apm/apm.yml` so APM consumes it at user scope and deploys AI tooling (Copilot, Claude, Cursor, etc.) plugin sources globally — nothing is written into this repository.
 
 **Format**:
-```toml
-[base]
-plugins = [
-  { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" },
-  { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" },
-]
+```yaml
+name: dotfiles
+version: 1.0.0
+dependencies:
+  apm:
+    - dotnet/skills/plugins/dotnet-diag
+    - github/awesome-copilot/plugins/awesome-copilot
 ```
 
 **How it works**:
-- The task runs `gh copilot plugin marketplace add <marketplace>` when the marketplace is not already registered
-- Plugins are installed with `gh copilot plugin install <plugin>@<marketplace_name>`
-- Installed plugins are detected via `gh copilot plugin list`
-- Copilot skips reinstalling plugins that are already present
+- `Install symlinks` links `symlinks/apm/apm.yml` → `~/.apm/apm.yml`
+- `Install APM packages` then runs `apm install -g --target copilot`
+- Idempotency is provided by APM itself via its lockfile / no-op behaviour
+- Plugin primitives are deployed to `~/.copilot/`, `~/.claude/`, `~/.cursor/`, etc.
 
 **Requirements**:
-- GitHub CLI with the Copilot extension (`gh copilot`) must be installed
-- Plugins are automatically installed during installation
+- The `apm` binary must be on PATH (`Microsoft.APM` via winget on Windows; `apm-bin` AUR package on Arch Linux — both are listed in `conf/packages.toml`)
 
 ## Updating
 
@@ -313,7 +313,7 @@ Example summary output:
   ~ Configure Git
   ~ Apply registry settings
   ~ Install VS Code extensions
-  ~ Install Copilot plugins
+  ~ Install APM packages
 
   12 tasks: 2 ok, 10 dry-run
   completed in 0.8s

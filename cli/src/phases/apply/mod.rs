@@ -4,8 +4,8 @@
 //! packages, git settings, file permissions, shell configuration, systemd units,
 //! registry entries, editor extensions, and other system configuration.
 
+pub mod apm;
 pub mod chmod;
-pub mod copilot_plugins;
 pub mod git_config;
 pub mod overlay_scripts;
 pub mod packages;

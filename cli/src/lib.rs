@@ -2,8 +2,8 @@
 //!
 //! Cross-platform tool for declarative dotfile installation: symlinks,
 //! packages, permissions, systemd units, registry entries, VS Code extensions,
-//! and GitHub Copilot plugins — all driven by TOML configuration files in
-//! `conf/` and filtered by profile and platform.
+//! and AI plugin manifests (via Microsoft APM) — all driven by TOML
+//! configuration files in `conf/` and filtered by profile and platform.
 //!
 //! The public API is organised into five layers:
 //!

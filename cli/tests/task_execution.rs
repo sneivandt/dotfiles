@@ -17,7 +17,6 @@ mod common;
 use dotfiles_cli::phases;
 #[cfg(unix)]
 use dotfiles_cli::phases::apply::chmod::ApplyFilePermissions;
-use dotfiles_cli::phases::apply::copilot_plugins::InstallCopilotPlugins;
 use dotfiles_cli::phases::apply::git_config::ConfigureGit;
 use dotfiles_cli::phases::apply::symlinks::InstallSymlinks;
 #[cfg(unix)]
@@ -428,36 +427,6 @@ fn chmod_dry_run_preserves_permissions() {
 }
 
 // ===========================================================================
-// Copilot plugins dry-run
-// ===========================================================================
-
-/// Dry-run mode must not create any plugin directories.
-#[test]
-fn copilot_plugins_dry_run_creates_no_directories() {
-    let test = common::TestContextBuilder::new()
-        .with_config_file(
-            "copilot-plugins.toml",
-            "[base]\nplugins = [{ marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
-        )
-        .build();
-
-    let ec = test.make_dry_run_context("base");
-    let result = InstallCopilotPlugins.run(&ec.ctx).unwrap();
-    assert!(matches!(result, TaskResult::DryRun));
-
-    let plugins_dir = ec
-        .ctx
-        .home
-        .join(".copilot")
-        .join("state")
-        .join("installed-plugins");
-    assert!(
-        !plugins_dir.exists(),
-        "dry-run should not create plugins directory"
-    );
-}
-
-// ===========================================================================
 // Git config dry-run
 // ===========================================================================
 
@@ -490,7 +459,6 @@ const FILESYSTEM_TASKS: &[&str] = &[
     "Install symlinks",
     "Install Git hooks",
     "Apply file permissions",
-    "Install Copilot plugins",
     "Configure Git",
 ];
 
@@ -501,10 +469,6 @@ fn dry_run_pipeline_produces_no_failures() {
         .with_symlink_source("bashrc")
         .with_hook_source("pre-commit", "#!/bin/sh\nexit 0\n")
         .with_git_hooks_dir()
-        .with_config_file(
-            "copilot-plugins.toml",
-            "[base]\nplugins = [{ marketplace = \"dotnet/skills\", marketplace_name = \"dotnet-agent-skills\", plugin = \"dotnet-diag\" }]\n",
-        )
         .with_config_file(
             "git-config.toml",
             "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n",

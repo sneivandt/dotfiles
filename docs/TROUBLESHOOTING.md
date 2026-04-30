@@ -272,63 +272,27 @@ code --install-extension <extension-id>
 - Check VS Code marketplace availability
 - Temporarily comment out extensions in `conf/vscode-extensions.toml` to skip them
 
-### GitHub Copilot Plugin Issues
+### Microsoft APM (AI Plugins) Issues
 
-#### Plugins not installed
-**Symptoms**: GitHub Copilot CLI plugins from config are not installed.
+#### `apm` not found
+**Symptoms**: `Install APM packages` task fails with `apm not found in PATH`.
+
+**Solution**:
+- Windows: `winget install Microsoft.APM`
+- Arch Linux: install the `apm-bin` AUR package (included in `conf/packages.toml`)
+- Verify: `apm --version`
+
+#### Plugins not deployed
+**Symptoms**: Files under `.github/`, `.claude/`, `.cursor/`, etc. are missing or out of date.
 
 **Solution**:
 ```bash
-# Verify `gh copilot` is available
-which gh
-gh --version
-gh copilot -- --help
+# Run APM directly at user scope
+apm install -g --target copilot
 
-# Check registered marketplaces
-gh copilot plugin marketplace list
-
-# Check installed plugins
-gh copilot plugin list
-
-# Verify plugin entries in conf/copilot-plugins.toml
-cat conf/copilot-plugins.toml
+# Inspect the manifest (deployed location)
+cat ~/.apm/apm.yml
 ```
-
-#### Plugin installation fails
-**Symptoms**: Error messages during plugin installation or plugin directories are missing.
-
-**Possible causes and solutions**:
-
-1. **Invalid marketplace or plugin name**:
-   ```bash
-   # Verify the marketplace can be added manually
-   gh copilot plugin marketplace add dotnet/skills
-
-   # Verify the plugin exists in that marketplace
-   gh copilot plugin marketplace browse dotnet-agent-skills
-   ```
-
-2. **Network connectivity issues**:
-   ```bash
-   # Test GitHub access
-   curl -I https://api.github.com
-
-   # Try installing the plugin manually
-   gh copilot plugin install dotnet-diag@dotnet-agent-skills
-   ```
-
-3. **GitHub rate limiting**:
-   - Wait a few minutes and try again
-   - Authenticate with GitHub if required by your `gh copilot` setup
-
-4. **Copilot CLI state mismatch**:
-   ```bash
-   # Re-check the authoritative installed-plugin state
-   gh copilot plugin list
-
-   # Re-check marketplace registration
-   gh copilot plugin marketplace list
-   ```
 
 ## Permission Issues
 

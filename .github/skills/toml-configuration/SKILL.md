@@ -109,7 +109,6 @@ pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<MyType>> 
 | `chmod.toml` | arrays | Objects with `mode` and `path` fields |
 | `vscode-extensions.toml` | arrays | Extension IDs |
 | `registry.toml` | tables | `path` field + `values` table for registry keys |
-| `copilot-plugins.toml` | arrays | Plugin entries |
 | `scripts.toml` | arrays | Overlay script entries with `name`, `path`, optional `description` |
 
 ## TOML Format Examples

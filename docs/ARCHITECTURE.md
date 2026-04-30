@@ -84,8 +84,8 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 │  packages.toml      symlinks.toml          │
 │  profiles.toml      manifest.toml          │
 │  systemd-units.toml vscode-extensions.toml │
-│  registry.toml      copilot-plugins.toml   │
-│  chmod.toml         git-config.toml        │
+│  registry.toml      chmod.toml             │
+│  git-config.toml                           │
 └────────────────────────────────────────────┘
 ```
 
@@ -159,7 +159,6 @@ The wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`) handle only the `--build` f
 | `systemd_units.rs` | `systemd-units.toml` | Systemd units (Linux only) |
 | `chmod.rs` | `chmod.toml` | File permissions |
 | `vscode_extensions.rs` | `vscode-extensions.toml` | VS Code extensions |
-| `copilot_plugins.rs` | `copilot-plugins.toml` | GitHub Copilot CLI plugins from marketplaces |
 | `registry.rs` | `registry.toml` | Windows registry entries |
 | `git_config.rs` | `git-config.toml` | Git configuration settings |
 | `manifest.rs` | `manifest.toml` | Sparse checkout file mappings |
@@ -240,7 +239,7 @@ Apply phase (`cli/src/phases/apply/`):
 - `systemd` — Enable systemd units
 - `registry` — Apply Windows registry settings
 - `vscode` — Install VS Code extensions
-- `copilot_plugins` — Download Copilot CLI plugins
+- `apm` — Install AI plugin manifests via Microsoft APM (`apm install -g --target copilot`, reads `~/.apm/apm.yml` symlinked from `symlinks/apm/apm.yml`)
 - `pam` — Install custom PAM service files (Arch Linux + desktop, uses sudo)
 - `wsl_conf` — Write `/etc/wsl.conf` with `generateResolvConf = true` (Linux/WSL only, uses sudo)
 

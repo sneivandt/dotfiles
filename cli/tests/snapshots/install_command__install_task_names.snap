@@ -17,7 +17,7 @@ Configure default shell
 Configure systemd units
 Apply registry settings
 Install VS Code extensions
-Install Copilot plugins
+Install APM packages
 Configure PAM services
 Install wsl.conf
 Load overlay scripts

@@ -222,28 +222,6 @@ extensions = ["ms-vscode-remote.remote-wsl"]
 
 ---
 
-### `copilot-plugins.toml`
-**Purpose**: Lists GitHub Copilot CLI plugins to install from marketplaces.
-
-**Format**: Sections represent categories; entries are inline tables with marketplace metadata.
-
-**Example**:
-```toml
-[base]
-plugins = [
-  { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-diag" },
-  { marketplace = "dotnet/skills", marketplace_name = "dotnet-agent-skills", plugin = "dotnet-msbuild" },
-]
-```
-
-**How it works**:
-- The task ensures the marketplace is registered with `gh copilot plugin marketplace add`
-- Plugins are installed with `gh copilot plugin install <plugin>@<marketplace_name>`
-- Installed plugins are detected via `gh copilot plugin list`
-- Requires GitHub CLI with the Copilot extension (`gh copilot`) on `PATH`
-
----
-
 ### `registry.toml`
 **Purpose**: Configures Windows registry settings.
 

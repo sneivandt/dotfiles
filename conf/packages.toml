@@ -38,6 +38,7 @@ packages = [
   "zsh-autosuggestions",
   "zsh-completions",
   "zsh-syntax-highlighting",
+  { name = "apm-bin", aur = true },
   { name = "powershell-bin", aur = true },
 ]
 
@@ -74,6 +75,7 @@ packages = [
   "Chocolatey.Chocolatey",
   "Git.Git",
   "jqlang.jq",
+  "Microsoft.APM",
   "Microsoft.PowerShell",
   "Microsoft.Teams",
   "Microsoft.VisualStudioCode",

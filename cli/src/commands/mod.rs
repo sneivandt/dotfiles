@@ -570,7 +570,6 @@ fn load_config(
         (config.units.len(), "systemd units"),
         (config.chmod.len(), "chmod entries"),
         (config.vscode_extensions.len(), "vscode extensions"),
-        (config.copilot_plugins.len(), "copilot plugins"),
         (config.manifest.excluded_files.len(), "manifest exclusions"),
         (config.scripts.len(), "overlay scripts"),
     ];

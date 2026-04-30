@@ -127,7 +127,6 @@ Configuration is defined in `conf/*.toml` files using TOML format:
 - **`packages.toml`** - System packages to install
 - **`systemd-units.toml`** - Systemd units to enable
 - **`vscode-extensions.toml`** - VS Code extensions
-- **`copilot-plugins.toml`** - GitHub Copilot CLI plugins
 - **`git-config.toml`** - Git configuration settings
 - **`registry.toml`** - Windows registry settings
 - **`chmod.toml`** - File permissions

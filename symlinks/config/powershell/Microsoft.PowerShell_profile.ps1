@@ -105,14 +105,8 @@ if (Get-Command "gh" -ErrorAction SilentlyContinue)
         gh copilot -i suggest $args
     }
 
-    function Invoke-CopilotPluginUpdate
-    {
-        [regex]::Matches((gh copilot plugin list 2>&1), '\S+@\S+') | ForEach-Object { gh copilot plugin update $_.Value }
-    }
-
     Set-Alias -Name ai -Value Invoke-CopilotChat
     Set-Alias -Name aic -Value Invoke-CopilotSuggest
-    Set-Alias -Name aiup -Value Invoke-CopilotPluginUpdate
 }
 
 # Ensure local bin directory is in PATH

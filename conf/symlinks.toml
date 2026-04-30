@@ -9,7 +9,7 @@
 
 [base]
 symlinks = [
-  { source = "apm/apm.yml", target = ".apm/apm.yml" },
+  "apm/apm.yml",
   "config/git/ai-pr.sh",
   "config/git/aliases",
   "config/git/attributes",

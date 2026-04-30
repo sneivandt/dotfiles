@@ -67,7 +67,7 @@ read_toml_section_array() {
               echo "$rhs" | sed 's/[][{}]//g' | tr ',' '\n' | while IFS='' read -r item; do
                 item="$(echo "$item" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
                 # Extract first quoted string
-                val="$(echo "$item" | sed -n 's/.*"\([^"]*\)".*/\1/p')"
+                val="$(echo "$item" | sed -n 's/[^"]*"\([^"]*\)".*/\1/p')"
                 [ -n "$val" ] && echo "$val"
               done
               return 0
@@ -84,7 +84,7 @@ read_toml_section_array() {
           *']'*) return 0 ;;
         esac
         # Extract first quoted string from array element
-        val="$(echo "$line" | sed -n 's/.*"\([^"]*\)".*/\1/p')"
+        val="$(echo "$line" | sed -n 's/[^"]*"\([^"]*\)".*/\1/p')"
         [ -n "$val" ] && echo "$val"
       fi
     fi

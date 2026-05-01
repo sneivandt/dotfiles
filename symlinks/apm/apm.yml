@@ -10,5 +10,7 @@ dependencies:
     - github/awesome-copilot/plugins/azure-cloud-development
     - github/awesome-copilot/plugins/context-engineering
     - github/awesome-copilot/plugins/project-planning
+    - github/awesome-copilot/skills/md-to-docx
+    - github/awesome-copilot/skills/markdown-to-html
     - github/awesome-copilot/plugins/security-best-practices
     - github/awesome-copilot/plugins/software-engineering-team

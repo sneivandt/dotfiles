@@ -55,14 +55,59 @@ impl Task for InstallApmPackages {
         let cwd = ctx.home.clone();
         ctx.debug_fmt(|| {
             format!(
-                "running `apm install -g --target copilot` in {}",
+                "running `apm install -g --target copilot` in {} (interactive credential \
+                 prompts disabled)",
                 cwd.display()
             )
         });
-        ctx.executor
-            .run_in(&cwd, "apm", &["install", "-g", "--target", "copilot"])?;
-        Ok(TaskResult::Ok)
+        // Disable interactive credential prompts from git and Git Credential
+        // Manager so a missing GitHub token causes apm install to fail fast
+        // instead of blocking on a popup.
+        let env: &[(&str, &str)] = &[
+            ("GIT_TERMINAL_PROMPT", "0"),
+            ("GCM_INTERACTIVE", "Never"),
+            ("GCM_GUI_PROMPT", "false"),
+        ];
+        match ctx.executor.run_in_with_env(
+            &cwd,
+            "apm",
+            &["install", "-g", "--target", "copilot"],
+            env,
+        ) {
+            Ok(_) => Ok(TaskResult::Ok),
+            Err(err) => {
+                let msg = format!("{err:#}");
+                if looks_like_auth_failure(&msg) {
+                    let reason = "apm install requires GitHub authentication; run \
+                                  `gh auth login` or set GH_TOKEN/GITHUB_TOKEN and re-run"
+                        .to_string();
+                    ctx.log
+                        .warn(&format!("skipping: {reason} (details: {})", msg.trim()));
+                    Ok(TaskResult::Skipped(reason))
+                } else {
+                    Err(err)
+                }
+            }
+        }
     }
+}
+
+/// Heuristic: does an `apm install` failure message indicate a missing or
+/// invalid GitHub credential rather than a real installation error?
+fn looks_like_auth_failure(message: &str) -> bool {
+    let lowered = message.to_lowercase();
+    [
+        "authentication",
+        "could not read username",
+        "could not read password",
+        "terminal prompts disabled",
+        "401",
+        "403",
+        "fatal: authentication failed",
+        "credential",
+    ]
+    .iter()
+    .any(|needle| lowered.contains(needle))
 }
 
 #[cfg(test)]

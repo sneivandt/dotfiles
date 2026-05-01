@@ -55,7 +55,7 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 | User | 10 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
 | User | 11 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
 | User | 12 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
-| User | 13 | APM Packages | Runs `apm install -g --target copilot,vscode` to deploy AI plugin manifests defined in `symlinks/apm/apm.yml` (linked to `~/.apm/apm.yml`) globally under `~/.copilot/` and `~/.vscode/`. | Idempotent via APM's lockfile. |
+| User | 13 | APM Packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml`, then runs `apm install -g --target copilot,vscode` to deploy AI plugin manifests globally under `~/.copilot/` and `~/.vscode/`. | Idempotent via APM's lockfile. |
 
 Tasks run in parallel where dependencies allow, so the numbering above reflects logical
 grouping rather than strict execution order.
@@ -210,7 +210,7 @@ The file `conf/vscode-extensions.toml` contains extensions under category sectio
 
 ## AI Plugins (Microsoft APM)
 
-The file `symlinks/apm/apm.yml` is a [Microsoft APM](https://github.com/microsoft/apm) manifest. It is symlinked to `~/.apm/apm.yml` so APM consumes it at user scope and deploys AI tooling (Copilot, Claude, Cursor, etc.) plugin sources globally — nothing is written into this repository.
+The file `symlinks/apm/config/base.yml` is a [Microsoft APM](https://github.com/microsoft/apm) manifest fragment. It is symlinked to `~/.apm/config/base.yml`. The `apm` task merges every `~/.apm/config/*.yml` (including overlay-supplied fragments) into a generated `~/.apm/apm.yml`, then APM consumes it at user scope and deploys AI tooling (Copilot, Claude, Cursor, etc.) plugin sources globally — nothing is written into this repository.
 
 **Format**:
 ```yaml
@@ -223,7 +223,7 @@ dependencies:
 ```
 
 **How it works**:
-- `Install symlinks` links `symlinks/apm/apm.yml` → `~/.apm/apm.yml`
+- `Install symlinks` links `symlinks/apm/config/base.yml` → `~/.apm/config/base.yml`
 - `Install APM packages` then runs `apm install -g --target copilot,vscode`
 - Idempotency is provided by APM itself via its lockfile / no-op behaviour
 - Plugin primitives are deployed to `~/.copilot/`, `~/.claude/`, `~/.cursor/`, etc.

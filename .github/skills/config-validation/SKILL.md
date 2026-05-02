@@ -4,9 +4,6 @@ description: >
   Configuration validation system: the Validator builder, per-module validate()
   functions, the test command, and config drift integration tests. Use when
   adding validation rules or extending the test command.
-metadata:
-  author: sneivandt
-  version: "1.0"
 ---
 
 # Config Validation

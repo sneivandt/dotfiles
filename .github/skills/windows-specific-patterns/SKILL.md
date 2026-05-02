@@ -3,9 +3,6 @@ name: windows-specific-patterns
 description: >
   Windows-specific implementation patterns and considerations beyond general PowerShell patterns.
   Use when working with Windows features, registry, admin privileges, or Windows-specific architecture.
-metadata:
-  author: sneivandt
-  version: "2.0"
 ---
 
 # Windows-Specific Patterns

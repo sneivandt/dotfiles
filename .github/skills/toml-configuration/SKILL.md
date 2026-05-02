@@ -3,9 +3,6 @@ name: toml-configuration
 description: >
   Guide for working with TOML configuration files in the dotfiles project.
   Use when creating, modifying, or parsing TOML files in conf/ directory.
-metadata:
-  author: sneivandt
-  version: "3.0"
 ---
 
 # TOML Configuration Guide

@@ -3,9 +3,6 @@ name: package-management
 description: >
   Package installation patterns for the dotfiles project.
   Use when working with system packages on Linux (pacman/AUR) or Windows (winget).
-metadata:
-  author: sneivandt
-  version: "2.0"
 ---
 
 # Package Management

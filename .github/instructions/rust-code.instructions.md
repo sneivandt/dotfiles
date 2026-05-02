@@ -47,9 +47,21 @@ Two traits exist in `cli/src/resources/mod.rs`:
 Config modules in `cli/src/config/` use the `config_section!` macro.
 Category filtering uses AND logic within groups. See the `toml-configuration` skill.
 
+## Documentation
+
+All public items require `///` doc comments. Sections in order:
+
+1. **Main description** — brief summary (no header)
+2. **`# Examples`** — compiled as doctests unless annotated `ignore`/`bash`/`text`
+3. **`# Errors`** — **required** for every function returning `Result<T>`
+4. **`# Panics`** — document any panic conditions
+5. **`# Safety`** — required for `unsafe` functions
+
+Document all public fields, enum variants, and trait methods.
+
 ## Style
 
-- `#[must_use]` on constructors and pure functions
+- `#[must_use]` on constructors, boolean queries (`is_*`, `has_*`, `supports_*`), and pure functions
 - `const fn` where possible
 - Derive `Debug` on all public types
 - No trailing whitespace

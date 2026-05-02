@@ -3,9 +3,6 @@ name: git-hooks-patterns
 description: >
   Git hooks patterns and sensitive data detection for the dotfiles project.
   Use when working with git hooks, pre-commit checks, or security scanning.
-metadata:
-  author: sneivandt
-  version: "2.0"
 ---
 
 # Git Hooks Patterns

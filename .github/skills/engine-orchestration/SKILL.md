@@ -4,9 +4,6 @@ description: >
   Task scheduling and resource parallelism in the dotfiles engine. Use when
   working with task dependencies, parallel execution, the scheduler, or
   the Rayon-based resource processing pipeline.
-metadata:
-  author: sneivandt
-  version: "1.0"
 ---
 
 # Engine Orchestration
@@ -92,6 +89,59 @@ if ctx.parallel && resources.len() > 1 {
 Resources must implement `Send` for parallel processing. Because
 `Executor: Sync`, all resources holding `&dyn Executor` satisfy `Send`
 automatically.
+
+## Resource Processing Helpers
+
+`engine/orchestrate.rs` provides three helpers that drive the
+check→dry-run→apply loop so individual tasks don't repeat it. They are
+re-exported from `phases/mod.rs`:
+
+- **`process_resources(ctx, resources, opts)`** — calls `current_state()` on each resource.
+- **`process_resource_states(ctx, resource_states, opts)`** — takes pre-computed `(Resource, ResourceState)` pairs for batch-checked resources (packages, VS Code extensions).
+- **`process_resources_remove(ctx, resources, verb)`** — uninstall counterpart: removes resources in `Correct` state, skips others.
+
+Use these helpers for **all** new resource-based tasks. They handle dry-run
+checks, error categorisation, parallel dispatch, and stats accumulation.
+
+### ProcessMode
+
+`ProcessMode` makes the intent of each processing strategy explicit:
+
+| Mode | `fix_incorrect()` | `fix_missing()` | `bail_on_error()` | Typical use |
+|---|---|---|---|---|
+| `Strict` | yes | yes | yes | symlinks, hooks, git config |
+| `Lenient` | yes | yes | no | packages, registry, developer mode |
+| `InstallMissing` | no | yes | no | VS Code extensions, systemd units |
+| `FixExisting` | yes | no | yes | chmod (files may not exist yet) |
+
+### ResourceAction
+
+`ProcessMode::action_for(&ResourceState)` returns a `ResourceAction` — the
+explicit decision of what to do with a resource:
+
+```rust
+pub enum ResourceAction {
+    Apply,          // Create or update the resource
+    Noop,           // Already correct, nothing to do
+    Skip(String),   // Skip with a reason (invalid, mode disallows, etc.)
+}
+```
+
+The processing loop (`process_single`) matches on `ResourceAction` instead of
+nesting matches on `ResourceState` and mode flags, making the lifecycle state
+machine explicit and independently testable.
+
+### ProcessOpts
+
+`ProcessOpts` pairs a `ProcessMode` with a human-readable `verb` for log messages.
+Use named constructors:
+
+```rust
+ProcessOpts::strict("link")            // fix Missing+Incorrect, bail on errors
+ProcessOpts::lenient("install")        // fix Missing+Incorrect, warn on errors
+ProcessOpts::install_missing("enable") // only fix Missing, warn on errors
+ProcessOpts::fix_existing("chmod")     // only fix Incorrect, bail on errors
+```
 
 ## Dependency Graph
 

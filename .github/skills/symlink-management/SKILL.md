@@ -3,9 +3,6 @@ name: symlink-management
 description: >
   Detailed symlink conventions and management for the dotfiles project.
   Use when creating, modifying, or troubleshooting symlinks.
-metadata:
-  author: sneivandt
-  version: "2.0"
 ---
 
 # Symlink Management

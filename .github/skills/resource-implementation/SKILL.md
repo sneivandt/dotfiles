@@ -4,9 +4,6 @@ description: >
   Patterns for implementing concrete Resource and Applicable types in
   cli/src/resources/. Use when adding a new resource or modifying existing
   resource behaviour.
-metadata:
-  author: sneivandt
-  version: "1.0"
 ---
 
 # Resource Implementation
@@ -14,6 +11,37 @@ metadata:
 Resources in `cli/src/resources/` are the declarative primitives that check
 and apply system state. Each resource file implements either `Resource`
 (self-checking) or `Applicable` (bulk-checked).
+
+## Trait Definitions
+
+```rust
+/// Base trait — implement for resources whose state is determined by a bulk
+/// external query (e.g. VS Code extensions, packages).
+pub trait Applicable {
+    fn description(&self) -> String;
+    fn apply(&self) -> Result<ResourceChange>;
+    fn remove(&self) -> Result<ResourceChange>; // default: unimplemented
+}
+
+/// Extended trait — implement for resources that can independently check
+/// their own state (e.g. symlinks, registry entries, file permissions).
+pub trait Resource: Applicable {
+    fn current_state(&self) -> Result<ResourceState>;
+    fn needs_change(&self) -> Result<bool>; // default: Missing|Incorrect → true
+}
+
+pub enum ResourceState {
+    Missing,
+    Correct,
+    Incorrect { current: String },
+    Invalid { reason: String },
+}
+pub enum ResourceChange {
+    Applied,
+    AlreadyCorrect,
+    Skipped { reason: String },
+}
+```
 
 ## Which Trait to Implement
 

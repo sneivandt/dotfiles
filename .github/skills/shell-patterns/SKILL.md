@@ -3,9 +3,6 @@ name: shell-patterns
 description: >
   Patterns for the thin shell wrapper scripts (dotfiles.sh and hooks).
   Use when modifying the entry point scripts or POSIX shell hooks.
-metadata:
-  author: sneivandt
-  version: "2.0"
 ---
 
 # Shell Wrapper Patterns

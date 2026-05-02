@@ -5,9 +5,6 @@ description: >
   without waiting for CI. Use after any change to cli/src/, dotfiles.sh, or
   dotfiles.ps1 — especially when adding cfg gates, touching paths, symlinks,
   registry, or platform-specific imports.
-metadata:
-  author: sneivandt
-  version: "1.0"
 ---
 
 # Cross-Platform Verification

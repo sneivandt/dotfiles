@@ -4,9 +4,6 @@ description: >
   CI/CD pipeline structure, release workflow, and integration test scripts.
   Use when modifying GitHub Actions workflows, adding CI jobs, or changing
   the release/binary distribution process.
-metadata:
-  author: sneivandt
-  version: "1.0"
 ---
 
 # CI/CD Patterns

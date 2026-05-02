@@ -3,9 +3,6 @@ name: testing-patterns
 description: >
   Testing conventions and validation patterns for the dotfiles project.
   Use when creating tests, running validation, or setting up CI/CD.
-metadata:
-  author: sneivandt
-  version: "2.0"
 ---
 
 # Testing Patterns
@@ -139,7 +136,10 @@ Commit `.snap` files alongside code changes.
 
 ## CI/CD
 
-GitHub Actions: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt -- --check`, dry-run profile tests on Linux/Windows. Config validation via `./dotfiles.sh test`.
+GitHub Actions runs `cargo test`, `cargo clippy --all-targets -- -D warnings`,
+`cargo fmt -- --check`, and dry-run profile tests on Linux/Windows. Config
+validation runs via `./dotfiles.sh test`. See the **`ci-cd-patterns`** skill
+for pipeline structure and adding new jobs.
 
 ## Rules
 

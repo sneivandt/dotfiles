@@ -4,9 +4,6 @@ description: >
   Rust implementation patterns for the dotfiles core engine: Task trait, Resource
   trait, Executor, Context, Platform, ProcessOpts, and documentation conventions.
   Use when creating or modifying Rust code in cli/src/.
-metadata:
-  author: sneivandt
-  version: "2.0"
 ---
 
 # Rust Patterns
@@ -200,53 +197,10 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 
 ### ProcessMode, ResourceAction, and ProcessOpts
 
-`ProcessMode` is an enum that makes the intent of each processing strategy
-explicit:
-
-| Mode | `fix_incorrect()` | `fix_missing()` | `bail_on_error()` | Typical use |
-|---|---|---|---|---|
-| `Strict` | yes | yes | yes | symlinks, hooks, git config |
-| `Lenient` | yes | yes | no | packages, registry, developer mode |
-| `InstallMissing` | no | yes | no | VS Code extensions, systemd units |
-| `FixExisting` | yes | no | yes | chmod (files may not exist yet) |
-
-#### ResourceAction (lifecycle state machine)
-
-`ProcessMode::action_for(&ResourceState)` returns a `ResourceAction` — the
-explicit decision of what to do with a resource:
-
-```rust
-pub enum ResourceAction {
-    Apply,          // Create or update the resource
-    Noop,           // Already correct, nothing to do
-    Skip(String),   // Skip with a reason (invalid, mode disallows, etc.)
-}
-```
-
-The processing loop (`process_single`) matches on `ResourceAction` instead of
-nesting matches on `ResourceState` and mode flags:
-
-```rust
-match opts.mode.action_for(&resource_state) {
-    ResourceAction::Noop  => { /* already ok */ },
-    ResourceAction::Skip(reason) => { /* log skip */ },
-    ResourceAction::Apply => { /* apply change */ },
-}
-```
-
-This makes the lifecycle state machine explicit and independently testable.
-
-#### ProcessOpts
-
-`ProcessOpts` pairs a `ProcessMode` with a human-readable `verb` for log messages.
-Use named constructors:
-
-```rust
-ProcessOpts::strict("link")           // fix Missing+Incorrect, bail on errors
-ProcessOpts::lenient("install")       // fix Missing+Incorrect, warn on errors
-ProcessOpts::install_missing("enable") // only fix Missing, warn on errors
-ProcessOpts::fix_existing("chmod")    // only fix Incorrect, bail on errors
-```
+`ProcessOpts` controls per-state behaviour for `process_resources()` and
+friends. See the **`engine-orchestration`** skill for the full table of modes,
+the `ResourceAction` lifecycle enum, and the `ProcessOpts::strict|lenient|...`
+constructors.
 
 ### Non-Resource Task Template
 
@@ -437,94 +391,14 @@ Use `anyhow::Result`, `?`, `.context("msg")?`, `bail!("msg")`. No `unwrap()` in 
 
 ## Resource Abstraction
 
-The `resources/` module provides a two-level trait hierarchy for checking and applying system state:
+The `resources/` module provides a two-level trait hierarchy (`Applicable` /
+`Resource`) for checking and applying system state. Tasks consume resources
+via the `process_resources()` helper family.
 
-```rust
-/// Base trait — implement for resources whose state is determined by a bulk
-/// external query (e.g. VS Code extensions, packages).
-pub trait Applicable {
-    fn description(&self) -> String;
-    fn apply(&self) -> Result<ResourceChange>;
-    fn remove(&self) -> Result<ResourceChange>; // default: unimplemented
-}
-
-/// Extended trait — implement for resources that can independently check
-/// their own state (e.g. symlinks, registry entries, file permissions).
-pub trait Resource: Applicable {
-    fn current_state(&self) -> Result<ResourceState>;
-    fn needs_change(&self) -> Result<bool>; // default: Missing|Incorrect → true
-}
-
-pub enum ResourceState { Missing, Correct, Incorrect { current: String }, Invalid { reason: String } }
-pub enum ResourceChange { Applied, AlreadyCorrect, Skipped { reason: String } }
-```
-
-**Which trait to implement:**
-- **`Resource`** (implies `Applicable`) — when the resource can check its own state individually (symlinks, chmod, registry, git config, hooks).
-- **`Applicable` only** — when state is determined via a single external bulk query shared across all instances (VS Code extensions, packages). These use `process_resource_states()` with pre-computed `(impl Applicable, ResourceState)` pairs.
-
-Tasks use `Resource` / `Applicable` implementors (e.g., `SymlinkResource`, `RegistryResource`) to check state and apply changes. New declarative resources go in `resources/*.rs`.
-
-### Resource Struct Pattern
-
-Resources that shell out take a borrowed executor, giving them a lifetime parameter.
-The `Executor: Debug` supertrait allows `#[derive(Debug)]` on all resources.
-Resources are not `Clone` (trait objects are not cloneable).
-
-```rust
-#[derive(Debug)]
-pub struct MyResource<'a> {
-    pub name: String,
-    executor: &'a dyn Executor,
-}
-
-impl<'a> MyResource<'a> {
-    #[must_use]
-    pub const fn new(name: String, executor: &'a dyn Executor) -> Self {
-        Self { name, executor }
-    }
-
-    /// Create from a config entry.
-    #[must_use]
-    pub fn from_entry(entry: &config::MyEntry, executor: &'a dyn Executor) -> Self {
-        Self::new(entry.name.clone(), executor)
-    }
-}
-
-impl Resource for MyResource<'_> {
-    // ...
-    fn current_state(&self) -> Result<ResourceState> {
-        let result = self.executor.run_unchecked("tool", &["check", &self.name])?;
-        // ...
-    }
-}
-```
-
-Resources that use native crates or only filesystem operations (e.g., `SymlinkResource`,
-`ChmodResource`, `GitConfigResource`, `RegistryResource`) do not need an executor
-and have no lifetime parameter.
-
-### Generic Resource Loop
-
-`engine/orchestrate.rs` provides helpers that handle the full check→dry-run→apply
-loop so individual tasks don't repeat it (re-exported from `phases/mod.rs`):
-
-- **`process_resources(ctx, resources, opts)`** — calls `current_state()` per resource.
-- **`process_resource_states(ctx, resource_states, opts)`** — takes pre-computed `(Resource, ResourceState)` pairs for batch-checked resources.
-- **`process_resources_remove(ctx, resources, verb)`** — for uninstall: removes resources in `Correct` state, skips others.
-
-Both `process_resources` and `process_resource_states` are implemented in
-`engine/orchestrate.rs` and re-exported from `phases/mod.rs`. They accept a `ProcessOpts` value
-that controls which states are fixable and whether errors bail or warn.
-Use these helpers for **all** new resource-based tasks.
-
-**Parallel execution:** When `ctx.parallel` is `true` and there is more than one
-resource, both helpers automatically dispatch to Rayon's parallel iterator.
-Task-level parallelism uses OS threads (via `std::thread::scope`) so blocking
-on `mpsc::Receiver::recv()` does not exhaust the Rayon thread pool. Resources
-must implement `Send`; because `Executor: Sync`, all resources holding `&dyn Executor`
-satisfy this automatically. Tests set `parallel: false` in their `Context` to keep
-execution deterministic.
+For trait definitions, `ResourceState`/`ResourceChange` enums, resource struct
+templates, and the bulk-checked pattern, see the **`resource-implementation`**
+skill. For the `process_resources()` helpers and parallel dispatch, see the
+**`engine-orchestration`** skill.
 
 ## Rules
 
@@ -537,39 +411,4 @@ execution deterministic.
 - Pass `&*ctx.executor` (deref coercion) to resource constructors and batch query functions — never call `exec::*` free functions directly from tasks or resources
 - Add `#[cfg(test)] mod tests` to every module; use `Platform::new()` in tests
 
-## Documentation Conventions
 
-All public items (modules, structs, enums, traits, functions) require `///` doc comments.
-
-### Standard Sections (in order)
-
-1. **Main description** (first, no header) — brief summary
-2. **`# Examples`** — code examples (compiled as doctests unless annotated)
-3. **`# Errors`** — **required** for all functions returning `Result<T>`
-4. **`# Panics`** — document panic conditions
-5. **`# Safety`** — required for `unsafe` functions
-
-### Example Annotations
-
-| Annotation | When to use |
-|---|---|
-| *(none)* | Rust code — compiled and tested as doctests |
-| `` `ignore `` | Conceptual examples or pseudo-code |
-| `` `ini `` / `` `bash `` / `` `text `` | Non-Rust code |
-
-### `#[must_use]`
-
-Apply on boolean queries (`is_*`, `has_*`, `supports_*`), constructors returning
-`Self`, and pure functions:
-
-```rust
-#[must_use]
-pub const fn supports_systemd(&self) -> bool {
-    self.os == Os::Linux
-}
-```
-
-### Structs, Enums, and Traits
-
-Document all public fields, enum variants, and trait methods. Include `# Errors`
-on every public function returning `Result<T>`.

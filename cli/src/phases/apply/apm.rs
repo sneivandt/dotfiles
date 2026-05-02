@@ -27,6 +27,7 @@ impl Task for InstallApmPackages {
 
     task_deps![
         super::packages::InstallPackages,
+        super::packages::InstallAurPackages,
         super::symlinks::InstallSymlinks
     ];
 

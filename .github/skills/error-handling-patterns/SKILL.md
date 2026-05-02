@@ -3,9 +3,6 @@ name: error-handling-patterns
 description: >
   Idempotency and error handling conventions, which are core design principles.
   Use when implementing tasks that modify system state, handle errors, or support dry-run mode.
-metadata:
-  author: sneivandt
-  version: "3.0"
 ---
 
 # Error Handling Patterns
@@ -93,13 +90,10 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 }
 ```
 
-`ProcessOpts` controls behaviour per state variant via a `ProcessMode` enum:
-- `Strict` — fix missing + incorrect, bail on errors (symlinks, hooks, git config)
-- `Lenient` — fix missing + incorrect, warn on errors (packages, registry)
-- `InstallMissing` — only fix missing, warn on errors
-- `FixExisting` — only fix incorrect, bail on errors
-
-See the `rust-patterns` skill for full `ProcessMode` / `ProcessOpts` reference.
+`ProcessOpts` controls behaviour per state variant via a `ProcessMode` enum
+(`Strict`, `Lenient`, `InstallMissing`, `FixExisting`). See the
+**`engine-orchestration`** skill for the full mode table and constructor
+helpers.
 
 ### Custom Tasks (non-resource)
 
@@ -152,3 +146,4 @@ Both verify checksums after downloading binaries and fall back to existing binar
 
 - **`rust-patterns`** skill — Task trait and Context struct
 - **`logging-patterns`** skill — Logger API and task recording
+- **`engine-orchestration`** skill — `ProcessMode` / `ProcessOpts` reference

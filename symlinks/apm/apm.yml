@@ -2,15 +2,26 @@ name: dotfiles
 version: 1.0.0
 dependencies:
   apm:
+    # .NET tooling
     - dotnet/skills/plugins/dotnet-diag
     - dotnet/skills/plugins/dotnet-msbuild
     - dotnet/skills/plugins/dotnet-upgrade
-    - github/awesome-copilot/plugins/automate-this
+
+    # Copilot meta / workflow
     - github/awesome-copilot/plugins/awesome-copilot
-    - github/awesome-copilot/plugins/azure-cloud-development
     - github/awesome-copilot/plugins/context-engineering
+    - github/awesome-copilot/plugins/automate-this
+
+    # Planning & process
     - github/awesome-copilot/plugins/project-planning
+    - github/awesome-copilot/plugins/software-engineering-team
+
+    # Cloud / infrastructure
+    - github/awesome-copilot/plugins/azure-cloud-development
+
+    # Cross-cutting code quality
+    - github/awesome-copilot/plugins/security-best-practices
+
+    # Document conversion skills
     - github/awesome-copilot/skills/md-to-docx
     - github/awesome-copilot/skills/markdown-to-html
-    - github/awesome-copilot/plugins/security-best-practices
-    - github/awesome-copilot/plugins/software-engineering-team

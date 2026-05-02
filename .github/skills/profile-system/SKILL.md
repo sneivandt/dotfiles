@@ -3,9 +3,6 @@ name: profile-system
 description: >
   Understanding the profile-based configuration system in the dotfiles project.
   Use when working with profiles, sparse checkout, or multi-environment support.
-metadata:
-  author: sneivandt
-  version: "2.0"
 ---
 
 # Profile System

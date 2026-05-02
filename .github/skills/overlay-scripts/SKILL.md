@@ -4,9 +4,6 @@ description: >
   Overlay repository system and convention-based script tasks. Use when
   working with private overlay config, custom script resources, or the
   dynamic task injection mechanism.
-metadata:
-  author: sneivandt
-  version: "1.0"
 ---
 
 # Overlay Scripts

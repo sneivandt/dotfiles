@@ -1,192 +1,166 @@
 # Dotfiles ✨
 
-A personal, cross-platform dotfiles setup — and a **reference implementation** you're encouraged to fork, study, and remix into your own.
-
-This repository is my own working dotfiles, but it's structured so the engine, conventions, and patterns can be lifted into your setup. Take what you like, throw out what you don't, and make it yours.
-
 [![Release](https://github.com/sneivandt/dotfiles/actions/workflows/release.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/release.yml)
 [![Publish Docker](https://github.com/sneivandt/dotfiles/actions/workflows/docker.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/docker.yml)
 [![CI](https://github.com/sneivandt/dotfiles/actions/workflows/ci.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/ci.yml)
 
-## Why fork this?
+A cross-platform dotfiles manager built on a **Rust engine** with declarative TOML configuration. This is my personal setup, designed as a **reference chassis**. Fork it, rebrand it, and make it yours.
 
-Most dotfiles repos are either *just config files* or *a tangle of bash glue*. This one tries to be a solid **chassis** you can build your own setup on:
+## What you get
 
-- 🦀 **Rust core engine** — a single fast, typed, well-tested binary handles all orchestration. No fragile bootstrap scripts to debug at 2 AM.
-- 🎯 **Profile-based** — one repo, many machines. Pick `base` for a minimal server or `desktop` for a full workstation; auto-detects Linux / Arch / Windows on top.
-- 🔗 **Sparse checkout** — only the files relevant to the active profile land on disk.
-- 📦 **Declarative TOML config** — packages, symlinks, systemd units, VS Code extensions, git config, registry keys, file permissions — all in `conf/*.toml`, no imperative scripts.
-- 🔄 **Idempotent** — every command converges to the declared state. Safe to re-run, safe to dry-run (`-d`).
-- 🪟 **Cross-platform for real** — Linux *and* Windows, from the same config, same binary.
-- 📡 **Self-updating** — entry scripts pull the latest binary from GitHub Releases automatically.
-- 🧪 **Tested in CI** — `cargo test`, `clippy`, `shellcheck`, and per-profile integration tests run on every change.
-- 🐳 **Disposable Docker sandbox** to try things without touching your host.
+- 🦀 **Rust engine:** a single compiled binary orchestrates everything; no fragile shell pipelines to debug
+- 🎯 **Profile-based:** one repo, many machines; pick `base` for a minimal shell or `desktop` for a full workstation; Linux / Arch / Windows is auto-detected on top
+- 📦 **Declarative TOML:** packages, symlinks, systemd units, VS Code extensions, git config, registry keys, and file permissions are all one-liners in `conf/*.toml`, no new shell functions
+- 🔄 **Idempotent:** every run converges to the declared state; safe to re-run anytime, preview with `-d`
+- 🔗 **Sparse checkout:** only files relevant to the active profile ever land on disk
+- 📡 **Self-updating:** entry scripts download the latest binary from GitHub Releases automatically; you never manage the binary manually
+- 🪟 **Truly cross-platform:** Linux and Windows share the same config and the same binary
+- 🧪 **CI tested:** `cargo test`, `clippy`, `shellcheck`, and per-profile integration tests on every push
+- 🐳 **Docker sandbox:** try the full setup without touching your host
 
-If you've ever wanted dotfiles that feel more like a small piece of well-engineered software than a pile of shell scripts, this is meant to be a starting point.
+## Try it first
 
-## Try it in 30 seconds (no commitment)
-
-Spin up the Docker image to poke around without touching your host:
+Spin up the Docker image to explore before installing anything:
 
 ```bash
 docker run --rm -it sneivandt/dotfiles
 ```
 
-## Fork and make it yours
+## Install
 
-1. **Fork the repo** (or use "Use this template") and clone it.
-2. **Rebrand it.** A handful of files still reference the original owner — repo slug for self-update, git identity, CI fixtures, Docker labels.
-   - **With GitHub Copilot in VS Code:** run the [`fork-rebrand`](.github/prompts/fork-rebrand.prompt.md) prompt and let an agent do it for you.
-   - **Manually:** grep for `sneivandt` and replace each hit with your own owner / repo / image name; update name and email in `symlinks/config/git/config`.
-3. **Make it yours.** Drop your own dotfiles into `symlinks/`, then edit `conf/*.toml` to declare what should be installed and where (see [Configuration](#configuration) and [Profiles](#profiles)).
-4. **Verify and ship.** Run `cd cli && cargo test`, then push a tag — CI builds Linux + Windows binaries so your other machines can bootstrap from a `curl | sh`-style flow.
+**Prerequisites:** git. Rust is only needed if using `--build` to compile from source.
 
-You don't have to keep the Rust engine — but if you do, you mostly just edit TOML and drop files into `symlinks/`. Adding a new tool is usually a one-line config change, not a new shell function.
+### Agent-first (recommended)
 
-### Things worth stealing even if you don't fork the whole thing
+Fork and set up this repo as your own by giving your AI agent (GitHub Copilot, Claude, Cursor, etc.) this prompt:
 
-- The `Resource` / `Applicable` trait pattern in `cli/src/resources/` for idempotent system operations.
-- The `resource_task!` / `task_deps!` macros for declarative task graphs.
-- The category-based AND-matching scheme (`[arch-desktop]`, `[linux]`) for cross-platform config.
-- The sparse-checkout + manifest pattern for slimming down what hits each machine.
-- The GitHub Copilot agent skills in `.github/skills/` — domain-specific guidance that makes AI-assisted edits actually safe.
+```
+Adopt https://github.com/sneivandt/dotfiles as my personal dotfiles repo.
+GitHub username: [YOUR_USERNAME], git name: [YOUR_NAME], git email: [YOUR_EMAIL].
 
-## How it works
+1. Fork and clone it.
+2. Run .github/prompts/fork-rebrand.prompt.md to rebrand it to my repo.
+3. Ask me what I want installed and configured, then update symlinks/ and conf/*.toml.
+4. Install: ./dotfiles.sh install -p desktop  (or .\dotfiles.ps1 on Windows)
+```
 
-Three layers, by design:
+### Manual install
 
-1. **Entry scripts** (`dotfiles.sh`, `dotfiles.ps1`) — thin wrappers. They download the latest binary from your GitHub Releases (or build from source with `--build`) and forward all arguments.
-2. **Rust binary** (`cli/`) — does all the real work: config parsing, profile resolution, symlinks, file permissions, package management. Shells out only when it must (package managers, systemd).
-3. **Configuration** (`conf/`) — declarative TOML. This is the part you'll edit most.
-
-Binary updates happen automatically after the first bootstrap. On Windows, the PowerShell wrapper additionally promotes any staged update before relaunching.
-
-## Quick start (using this repo as-is)
-
-### Linux
+**Linux:**
 ```bash
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
-./dotfiles.sh install  # Prompts for profile selection
+./dotfiles.sh install        # interactive profile prompt on first run
 ```
 
-### Windows
+**Windows (PowerShell):**
 ```powershell
 git clone https://github.com/sneivandt/dotfiles.git
 cd dotfiles
 .\dotfiles.ps1 install -p desktop
 ```
 
-## Usage
+## Common commands
 
+**Linux:**
 ```bash
-# Install with profile
-./dotfiles.sh install -p desktop
-
-# Preview changes (dry-run)
-./dotfiles.sh install -d
-
-# Verbose output
-./dotfiles.sh install -v
-
-# Uninstall (remove symlinks)
-./dotfiles.sh uninstall
-
-# Run validation tests
-./dotfiles.sh test
-
-# Print version
-./dotfiles.sh version
-
-# Build and run from source (development)
-./dotfiles.sh --build install -p base
+./dotfiles.sh install -p desktop   # install with explicit profile
+./dotfiles.sh install -d           # dry-run (preview without applying)
+./dotfiles.sh install -v           # verbose output
+./dotfiles.sh uninstall            # remove symlinks
+./dotfiles.sh test                 # validate configuration
+./dotfiles.sh version              # print binary version
+./dotfiles.sh --build install -d   # build from source and dry-run
 ```
 
-For detailed usage, see the [Usage Guide](docs/USAGE.md).
+**Windows (PowerShell):**
+```powershell
+.\dotfiles.ps1 install -p desktop
+.\dotfiles.ps1 install -d
+```
+
+See the [Usage Guide](docs/USAGE.md) for the full reference.
 
 ## Profiles
 
-Profiles control which files are included and which components are installed:
+Choose one profile per machine. Platform categories are detected automatically.
 
-| Profile | Description |
-|---------|-------------|
-| `base` | Minimal core shell configuration |
-| `desktop` | Full configuration including desktop tools |
+| Profile | Best for |
+|---------|----------|
+| `base` | Servers, WSL, minimal shell environments |
+| `desktop` | Workstations with GUI tools (Arch: Hyprland/Wayland) |
 
-Platform categories (`linux`, `windows`, `arch`) are auto-detected based on the running OS. In your fork, define whatever profiles match your fleet — `work`, `server`, `vm`, `gaming`, etc.
+The `linux`, `windows`, and `arch` platform categories are auto-detected and layer on top of whichever profile you pick. In your own fork you can define any profiles you like: `work`, `server`, `vm`, `gaming`, etc.
 
 See the [Profile System Guide](docs/PROFILES.md) for details.
 
 ## Configuration
 
-Configuration is defined in `conf/*.toml` files using TOML format:
+Everything declarative lives in `conf/*.toml`:
 
-- **`profiles.toml`** - Profile definitions
-- **`manifest.toml`** - File-to-category mappings for sparse checkout
-- **`symlinks.toml`** - Files to symlink to `$HOME`
-- **`packages.toml`** - System packages to install
-- **`systemd-units.toml`** - Systemd units to enable
-- **`vscode-extensions.toml`** - VS Code extensions
-- **`git-config.toml`** - Git configuration settings
-- **`registry.toml`** - Windows registry settings
-- **`chmod.toml`** - File permissions
+| File | Controls |
+|------|----------|
+| `profiles.toml` | Profile definitions |
+| `manifest.toml` | Sparse-checkout file-to-category mappings |
+| `symlinks.toml` | Files symlinked into `$HOME` |
+| `packages.toml` | System packages (pacman, AUR, winget) |
+| `systemd-units.toml` | Systemd units to enable |
+| `vscode-extensions.toml` | VS Code extensions |
+| `git-config.toml` | Git settings |
+| `registry.toml` | Windows registry keys |
+| `chmod.toml` | File permissions |
 
-See the [Configuration Reference](docs/CONFIGURATION.md) for detailed format documentation.
+See the [Configuration Reference](docs/CONFIGURATION.md) for the full TOML format.
+
+## How it works
+
+Three layers, kept deliberately thin:
+
+1. **Entry scripts** (`dotfiles.sh` / `dotfiles.ps1`): download the binary from GitHub Releases (or build with `--build`) and forward arguments.
+2. **Rust binary** (`cli/`): parses config, resolves profiles, applies symlinks, packages, and settings. Shells out only when it must (package managers, systemd).
+3. **Configuration** (`conf/`): the part you edit. Everything else follows from the TOML.
+
+## Making it yours
+
+The [`fork-rebrand`](.github/prompts/fork-rebrand.prompt.md) agent prompt automates most of this. Or follow the steps manually:
+
+1. **Fork** the repo (or "Use this template") and clone it.
+2. **Rebrand:** update the self-update URL, git identity, CI fixture, and Docker labels to point at your repo. The `fork-rebrand` prompt handles all of this automatically. Manually: replace all occurrences of `sneivandt` in the repo and update your name and email in `symlinks/config/git/config`.
+3. **Add your dotfiles:** drop your config files into `symlinks/`. Whatever is there gets symlinked into `$HOME` on install.
+4. **Declare your tools:** edit `conf/*.toml` to list the packages, extensions, and settings you want on each machine.
+5. **Push a tag:** CI builds Linux + Windows binaries; any new machine can bootstrap from a single command.
 
 ## Development
 
-```bash
-# Build the Rust binary
-cd cli && cargo build
-
-# Run tests
-cargo test
-
-# Lint
-cargo clippy -- -D warnings
-
-# Format
-cargo fmt
-
-# Run from source
-./dotfiles.sh --build install -p base -d
-```
-
-See [Contributing](docs/CONTRIBUTING.md) for development guidelines.
-
-## Testing
+Run all commands from the `cli/` directory:
 
 ```bash
-# Rust tests (unit + integration)
-cd cli && cargo test
-
-# Validate configuration
-./dotfiles.sh test
+cargo build                      # build
+cargo test                       # unit + integration tests
+cargo clippy -- -D warnings      # lint
+cargo fmt                        # format
 ```
 
-The CI workflow validates: `cargo fmt`, `cargo clippy`, `cargo test`, build on Linux and Windows, shellcheck on wrapper scripts, integration tests per profile.
-
-See [Testing Documentation](docs/TESTING.md) for details.
-
-## Docker
+To build from source and preview changes against your actual config:
 
 ```bash
-docker run --rm -it sneivandt/dotfiles
-docker buildx build -t dotfiles:local .
+./dotfiles.sh --build install -d # run from repo root
 ```
 
-Published image: [`sneivandt/dotfiles`](https://hub.docker.com/r/sneivandt/dotfiles)
+See [Contributing](docs/CONTRIBUTING.md) for the full development workflow.
 
 ## Documentation
 
-- **[Usage Guide](docs/USAGE.md)** - Installation and usage instructions
-- **[Profile System](docs/PROFILES.md)** - Understanding and using profiles
-- **[Configuration Reference](docs/CONFIGURATION.md)** - Configuration file formats
-- **[Architecture](docs/ARCHITECTURE.md)** - Rust engine design and structure
-- **[Contributing](docs/CONTRIBUTING.md)** - Development workflow and guidelines
-- **[Testing](docs/TESTING.md)** - Testing procedures and CI
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
-- **[Windows Usage](docs/WINDOWS.md)** - Windows-specific documentation
-- **[Docker](docs/DOCKER.md)** - Docker image usage and building
-- **[Git Hooks](docs/HOOKS.md)** - Repository git hooks
-- **[Security](docs/SECURITY.md)** - Security policy and best practices
+| Guide | What's in it |
+|-------|--------------|
+| [Usage Guide](docs/USAGE.md) | All commands and flags |
+| [Profile System](docs/PROFILES.md) | How profiles and categories work |
+| [Configuration Reference](docs/CONFIGURATION.md) | TOML format details |
+| [Architecture](docs/ARCHITECTURE.md) | Rust engine design |
+| [Contributing](docs/CONTRIBUTING.md) | Development workflow |
+| [Testing](docs/TESTING.md) | Test strategy and CI |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes |
+| [Windows Usage](docs/WINDOWS.md) | Windows-specific notes |
+| [Docker](docs/DOCKER.md) | Sandbox usage |
+| [Git Hooks](docs/HOOKS.md) | Repository hooks |
+| [Security](docs/SECURITY.md) | Security policy |

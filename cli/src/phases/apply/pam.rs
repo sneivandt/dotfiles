@@ -31,6 +31,22 @@ impl ConfigurePam {
                 .active_categories
                 .contains(&Category::Desktop)
     }
+
+    /// Returns `true` when `service` needs a privileged PAM file update.
+    fn needs_sudo_for_service(ctx: &Context, service: &str) -> bool {
+        if ctx.dry_run {
+            return false;
+        }
+        if !Self::is_arch_desktop(ctx) {
+            return false;
+        }
+        // Only request sudo when the file actually needs changes.
+        let resource = PamConfigResource::new(service.to_string(), Arc::clone(&ctx.executor));
+        !matches!(
+            resource.current_state(),
+            Ok(crate::resources::ResourceState::Correct)
+        )
+    }
 }
 
 impl Task for ConfigurePam {
@@ -47,19 +63,7 @@ impl Task for ConfigurePam {
     }
 
     fn needs_sudo(&self, ctx: &Context) -> bool {
-        if ctx.dry_run {
-            return false;
-        }
-        if !Self::is_arch_desktop(ctx) {
-            return false;
-        }
-        // Only request sudo when the file actually needs changes.
-        let resource =
-            PamConfigResource::new(HYPRLOCK_SERVICE.to_string(), Arc::clone(&ctx.executor));
-        !matches!(
-            resource.current_state(),
-            Ok(crate::resources::ResourceState::Correct)
-        )
+        Self::needs_sudo_for_service(ctx, HYPRLOCK_SERVICE)
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -154,7 +158,10 @@ mod tests {
     #[test]
     fn needs_sudo_true_on_arch_desktop() {
         let ctx = make_arch_desktop_context();
-        assert!(ConfigurePam.needs_sudo(&ctx));
+        assert!(ConfigurePam::needs_sudo_for_service(
+            &ctx,
+            "dotfiles-test-nonexistent-service"
+        ));
     }
 
     #[test]

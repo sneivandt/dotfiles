@@ -111,6 +111,12 @@ impl Logger {
         if let Some(path) = &self.log_file {
             self.always(&format!("  \x1b[2mlog: {}\x1b[0m", path.display()));
         }
+        if let Some(diag) = &self.diagnostic {
+            self.always(&format!(
+                "  \x1b[2mdiagnostic log: {}\x1b[0m",
+                diag.path().display()
+            ));
+        }
     }
 }
 

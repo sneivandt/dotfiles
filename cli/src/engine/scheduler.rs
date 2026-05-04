@@ -43,8 +43,6 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> bool {
         return false;
     }
 
-    log.diag_task(DiagEvent::TaskDone, task.name(), "");
-
     buf.flush_and_complete(task.name());
     true
 }
@@ -137,27 +135,20 @@ pub(crate) fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<L
                 let deps_ok = rx.is_none_or(|rx| (0..deps.len()).all(|_| rx.recv().is_ok()));
 
                 if !deps_ok {
+                    let reason = "dependency did not complete";
                     log.diag_task(
                         DiagEvent::TaskSkip,
                         task.name(),
-                        "skipped: dependency did not complete",
+                        &format!("skipped: {reason}"),
                     );
-                    log.record_task(
-                        task.name(),
-                        task.phase(),
-                        TaskStatus::Skipped,
-                        Some("dependency did not complete"),
-                    );
+                    log.record_task(task.name(), task.phase(), TaskStatus::Skipped, Some(reason));
+                    if !log.is_verbose() {
+                        log.emit_task_result(task.name(), &TaskStatus::Skipped, Some(reason));
+                    }
                     // my_senders is dropped here without sending, propagating
                     // RecvError to any tasks that depend on this one.
                     return;
                 }
-
-                log.diag_task(
-                    DiagEvent::TaskStart,
-                    task.name(),
-                    "deps satisfied, executing",
-                );
 
                 if run_task_guarded(task, ctx, log) {
                     // Signal all dependent tasks.

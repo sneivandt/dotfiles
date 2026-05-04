@@ -173,8 +173,7 @@ impl DiagnosticLog {
         }
     }
 
-    /// Return the path of the diagnostic log file (test-only).
-    #[cfg(test)]
+    /// Return the path of the diagnostic log file.
     pub(crate) fn path(&self) -> &std::path::Path {
         &self.path
     }

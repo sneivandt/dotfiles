@@ -44,8 +44,10 @@ pub const fn is_elevated() -> bool {
 /// Returns an error if the user cancels the UAC prompt or the elevated
 /// process fails to start.
 #[cfg(windows)]
-#[allow(clippy::print_stderr, reason = "intentional user-facing output")]
-pub fn elevate_and_exit(executor: &dyn crate::exec::Executor) -> anyhow::Result<()> {
+pub fn elevate_and_exit(
+    executor: &dyn crate::exec::Executor,
+    log: &dyn crate::logging::Output,
+) -> anyhow::Result<()> {
     use anyhow::{Context, bail};
 
     let exe = std::env::current_exe().context("failed to determine current executable path")?;
@@ -65,7 +67,7 @@ pub fn elevate_and_exit(executor: &dyn crate::exec::Executor) -> anyhow::Result<
         "powershell"
     };
 
-    eprintln!("Not running as administrator. Requesting elevation...");
+    log.always("Not running as administrator. Requesting elevation...");
 
     let status = std::process::Command::new(ps_exe)
         .args([
@@ -77,7 +79,7 @@ pub fn elevate_and_exit(executor: &dyn crate::exec::Executor) -> anyhow::Result<
         .context("failed to start elevated process")?;
 
     if status.success() {
-        eprintln!("Elevated window opened.");
+        log.always("Elevated window opened.");
         std::process::exit(0);
     }
 

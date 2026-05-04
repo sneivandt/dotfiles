@@ -50,11 +50,37 @@ fn execute_checked(mut cmd: Command, label: &str) -> Result<ExecResult> {
         .output()
         .with_context(|| format!("failed to execute: {label}"))?;
     let result = ExecResult::from(output);
+    log_command_output(label, &result);
     if !result.success {
         let code = result.code.unwrap_or(-1);
-        bail!("{label} failed (exit {code}): {}", result.stderr.trim());
+        bail!("{label} failed (exit {code}): {}", failure_output(&result));
     }
     Ok(result)
+}
+
+/// Log captured child-process output at debug level.
+fn log_command_output(label: &str, result: &ExecResult) {
+    log_stream(label, "stdout", &result.stdout);
+    log_stream(label, "stderr", &result.stderr);
+}
+
+/// Log one captured output stream line-by-line.
+fn log_stream(label: &str, stream: &str, output: &str) {
+    for line in output.lines().filter(|line| !line.trim().is_empty()) {
+        tracing::debug!(target: "dotfiles::exec", "{label} {stream}: {line}");
+    }
+}
+
+/// Format stdout/stderr for a failed command error message.
+fn failure_output(result: &ExecResult) -> String {
+    let stdout = result.stdout.trim();
+    let stderr = result.stderr.trim();
+    match (stdout.is_empty(), stderr.is_empty()) {
+        (true, true) => "no output".to_string(),
+        (false, true) => format!("stdout: {stdout}"),
+        (true, false) => stderr.to_string(),
+        (false, false) => format!("stdout: {stdout}; stderr: {stderr}"),
+    }
 }
 
 /// Trait for executing system commands, enabling test injection.
@@ -170,7 +196,9 @@ impl Executor for SystemExecutor {
             .args(args)
             .output()
             .with_context(|| format!("failed to execute: {program}"))?;
-        Ok(ExecResult::from(output))
+        let result = ExecResult::from(output);
+        log_command_output(program, &result);
+        Ok(result)
     }
 
     fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
@@ -179,7 +207,9 @@ impl Executor for SystemExecutor {
             .current_dir(dir)
             .output()
             .with_context(|| format!("failed to execute: {program} in {}", dir.display()))?;
-        Ok(ExecResult::from(output))
+        let result = ExecResult::from(output);
+        log_command_output(&format!("{program} in {}", dir.display()), &result);
+        Ok(result)
     }
 
     fn which(&self, program: &str) -> bool {

@@ -6,8 +6,8 @@ use anyhow::Result;
 
 use crate::config::category_matcher::Category;
 use crate::phases::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources};
-use crate::resources::Resource;
 use crate::resources::pam::PamConfigResource;
+use crate::resources::{Resource, ResourceState};
 
 /// The PAM service name to configure on Arch Linux desktop systems.
 ///
@@ -30,6 +30,11 @@ impl ConfigurePam {
                 .profile
                 .active_categories
                 .contains(&Category::Desktop)
+    }
+
+    /// Returns `true` when a checked PAM resource state requires elevated writes.
+    const fn state_needs_sudo(state: &Result<ResourceState>) -> bool {
+        !matches!(state, Ok(ResourceState::Correct))
     }
 }
 
@@ -56,10 +61,7 @@ impl Task for ConfigurePam {
         // Only request sudo when the file actually needs changes.
         let resource =
             PamConfigResource::new(HYPRLOCK_SERVICE.to_string(), Arc::clone(&ctx.executor));
-        !matches!(
-            resource.current_state(),
-            Ok(crate::resources::ResourceState::Correct)
-        )
+        Self::state_needs_sudo(&resource.current_state())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -152,9 +154,22 @@ mod tests {
     }
 
     #[test]
-    fn needs_sudo_true_on_arch_desktop() {
-        let ctx = make_arch_desktop_context();
-        assert!(ConfigurePam.needs_sudo(&ctx));
+    fn needs_sudo_true_when_pam_state_is_missing() {
+        assert!(ConfigurePam::state_needs_sudo(&Ok(ResourceState::Missing)));
+    }
+
+    #[test]
+    fn needs_sudo_true_when_pam_state_is_incorrect() {
+        assert!(ConfigurePam::state_needs_sudo(&Ok(
+            ResourceState::Incorrect {
+                current: "wrong template".to_string(),
+            },
+        )));
+    }
+
+    #[test]
+    fn needs_sudo_false_when_pam_state_is_correct() {
+        assert!(!ConfigurePam::state_needs_sudo(&Ok(ResourceState::Correct)));
     }
 
     #[test]

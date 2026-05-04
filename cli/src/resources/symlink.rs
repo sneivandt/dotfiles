@@ -41,6 +41,23 @@ impl Applicable for SymlinkResource {
     fn apply(&self) -> Result<ResourceChange> {
         crate::fs::ensure_parent_dir(&self.target)?;
 
+        match self.target.symlink_metadata() {
+            Ok(meta) if !meta.is_symlink() => {
+                return Ok(ResourceChange::Skipped {
+                    reason: format!(
+                        "target exists and is not a symlink: {}",
+                        self.target.display()
+                    ),
+                });
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(anyhow::Error::new(e)
+                    .context(format!("stat target: {}", self.target.display())));
+            }
+        }
+
         // Attempt to remove any existing target; ignore NotFound since the
         // path may already be absent.  This avoids a TOCTOU race between a
         // separate existence check and the removal.
@@ -118,32 +135,21 @@ impl Resource for SymlinkResource {
             });
         }
 
-        // Check if target is a real directory (not a symlink)
-        if self.target.is_dir()
-            && self
-                .target
-                .symlink_metadata()
-                .is_ok_and(|m| !m.is_symlink())
-        {
-            return Ok(ResourceState::Invalid {
-                reason: "target is a real directory".to_string(),
-            });
-        }
-
         // Check if symlink already points to the correct source
         std::fs::read_link(&self.target).map_or_else(
-            |_| {
-                // Target doesn't exist or isn't a symlink.
-                // Use symlink_metadata() (not exists()) so that dangling symlinks
-                // — which exist on disk but point to a missing file — are detected
-                // as Incorrect rather than Missing.
-                if self.target.symlink_metadata().is_ok() {
-                    Ok(ResourceState::Incorrect {
-                        current: "target is a regular file or dangling symlink".to_string(),
-                    })
-                } else {
-                    Ok(ResourceState::Missing)
-                }
+            |_| match self.target.symlink_metadata() {
+                Ok(meta) if meta.is_symlink() => Ok(ResourceState::Incorrect {
+                    current: "target is a dangling symlink".to_string(),
+                }),
+                Ok(_) => Ok(ResourceState::Invalid {
+                    reason: format!(
+                        "target exists and is not a symlink: {}",
+                        self.target.display()
+                    ),
+                }),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ResourceState::Missing),
+                Err(e) => Err(anyhow::Error::new(e)
+                    .context(format!("stat target: {}", self.target.display()))),
             },
             |existing| {
                 if paths_equal(&existing, &self.source) {
@@ -560,7 +566,7 @@ mod tests {
     }
 
     #[test]
-    fn symlink_resource_incorrect_when_target_is_regular_file() {
+    fn symlink_resource_invalid_when_target_is_regular_file() {
         let temp_dir = tempfile::tempdir().unwrap();
         let source = temp_dir.path().join("source");
         let target = temp_dir.path().join("target");
@@ -570,7 +576,26 @@ mod tests {
         let resource = SymlinkResource::new(source, target, system_executor());
 
         let state = resource.current_state().unwrap();
-        assert!(matches!(state, ResourceState::Incorrect { .. }));
+        assert!(matches!(state, ResourceState::Invalid { .. }));
+    }
+
+    #[test]
+    fn symlink_resource_apply_preserves_regular_file_target() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source = temp_dir.path().join("source");
+        let target = temp_dir.path().join("target");
+        std::fs::write(&source, "managed content").unwrap();
+        std::fs::write(&target, "user content").unwrap();
+
+        let resource = SymlinkResource::new(source, target.clone(), system_executor());
+
+        let result = resource.apply().unwrap();
+        assert!(matches!(result, ResourceChange::Skipped { .. }));
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "user content");
+        assert!(
+            !std::fs::symlink_metadata(&target).unwrap().is_symlink(),
+            "regular file target must not be replaced by a symlink"
+        );
     }
 
     /// A dangling symlink at the target (pointing to a non-existent path) must

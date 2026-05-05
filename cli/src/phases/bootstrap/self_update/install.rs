@@ -118,12 +118,22 @@ pub(super) fn stage_binary(root: &Path, tag: &str, data: &[u8]) -> Result<()> {
 pub(super) fn smoke_test_binary(path: &Path) -> Result<()> {
     const MAX_RETRIES: u32 = 5;
     const BASE_DELAY_MS: u64 = 50;
+    /// `ETXTBSY` ("Text file busy"): kernel still has the binary open for
+    /// writing.  Not always exposed via [`std::io::ErrorKind`] depending on
+    /// libc version, so match the raw OS error code as well.
+    const ETXTBSY: i32 = 26;
 
+    fn is_transient_busy(e: &std::io::Error) -> bool {
+        matches!(
+            e.kind(),
+            std::io::ErrorKind::ResourceBusy | std::io::ErrorKind::ExecutableFileBusy
+        ) || e.raw_os_error() == Some(ETXTBSY)
+    }
     let mut attempts = 0;
     let output = loop {
         match std::process::Command::new(path).arg("version").output() {
             Ok(output) => break output,
-            Err(e) if e.kind() == std::io::ErrorKind::ResourceBusy && attempts < MAX_RETRIES => {
+            Err(e) if is_transient_busy(&e) && attempts < MAX_RETRIES => {
                 attempts += 1;
                 std::thread::sleep(std::time::Duration::from_millis(
                     BASE_DELAY_MS * u64::from(attempts),

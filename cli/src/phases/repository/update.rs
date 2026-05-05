@@ -77,6 +77,16 @@ impl Task for UpdateRepository {
         ctx.log
             .debug(&format!("pulling from {}", ctx.root().display()));
 
+        // Fetch first so divergence can be evaluated without invoking `git pull`,
+        // which fails noisily when the local branch has diverged from upstream.
+        if let Err(e) =
+            ctx.executor
+                .run_in_with_env(&ctx.root(), "git", &["fetch", "--quiet"], git_env)
+        {
+            ctx.log.warn(&format!("git fetch failed: {e:#}"));
+            return Ok(TaskResult::Failed("git fetch failed".to_string()));
+        }
+
         let pre_sha = ctx
             .executor
             .run_in_with_env(&ctx.root(), "git", &["rev-parse", "HEAD"], git_env)?
@@ -84,32 +94,66 @@ impl Task for UpdateRepository {
             .trim()
             .to_string();
 
-        let result =
-            ctx.executor
-                .run_in_with_env(&ctx.root(), "git", &["pull", "--ff-only"], git_env);
+        let upstream_sha =
+            match ctx
+                .executor
+                .run_in_with_env(&ctx.root(), "git", &["rev-parse", "@{u}"], git_env)
+            {
+                Ok(r) => r.stdout.trim().to_string(),
+                Err(e) => {
+                    ctx.log.warn(&format!("no upstream tracking branch: {e:#}"));
+                    return Ok(TaskResult::Skipped(
+                        "no upstream tracking branch".to_string(),
+                    ));
+                }
+            };
+
+        if pre_sha == upstream_sha {
+            ctx.log.debug("already up to date");
+            return Ok(TaskResult::Ok);
+        }
+
+        // Detect a diverged or local-only branch by counting commits on HEAD
+        // that are not on upstream. A non-zero count means `git pull --ff-only`
+        // would fail; skip rather than report a hard failure.
+        let ahead = ctx
+            .executor
+            .run_in_with_env(
+                &ctx.root(),
+                "git",
+                &["rev-list", "--count", "@{u}..HEAD"],
+                git_env,
+            )?
+            .stdout
+            .trim()
+            .parse::<u64>()
+            .unwrap_or(0);
+
+        if ahead > 0 {
+            ctx.log
+                .info("local branch diverged from upstream, skipping pull");
+            return Ok(TaskResult::Skipped(
+                "local branch diverged from upstream".to_string(),
+            ));
+        }
+
+        let result = ctx.executor.run_in_with_env(
+            &ctx.root(),
+            "git",
+            &["merge", "--ff-only", "@{u}"],
+            git_env,
+        );
         match result {
             Ok(r) => {
                 ctx.log
-                    .debug(&format!("git pull output: {}", r.stdout.trim()));
-
-                let post_sha = ctx
-                    .executor
-                    .run_in_with_env(&ctx.root(), "git", &["rev-parse", "HEAD"], git_env)?
-                    .stdout
-                    .trim()
-                    .to_string();
-
-                if pre_sha == post_sha {
-                    ctx.log.debug("already up to date");
-                } else {
-                    self.repo_updated.mark_updated();
-                    ctx.log.info("repository updated");
-                }
+                    .debug(&format!("git merge output: {}", r.stdout.trim()));
+                self.repo_updated.mark_updated();
+                ctx.log.info("repository updated");
                 Ok(TaskResult::Ok)
             }
             Err(e) => {
-                ctx.log.warn(&format!("git pull failed: {e:#}"));
-                Ok(TaskResult::Failed("git pull failed".to_string()))
+                ctx.log.warn(&format!("git merge --ff-only failed: {e:#}"));
+                Ok(TaskResult::Failed("git merge --ff-only failed".to_string()))
             }
         }
     }
@@ -376,12 +420,12 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         // 1. symbolic-ref → on a branch
         // 2. status → clean worktree
-        // 3. rev-parse HEAD → pre-pull SHA
-        // 4. pull → succeeds
-        // 5. rev-parse HEAD → same SHA → no update
+        // 3. fetch → ok
+        // 4. rev-parse HEAD → SHA
+        // 5. rev-parse @{u} → same SHA → already up to date
         let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
-        for stdout in ["refs/heads/main", "", "abc123", "", "abc123"] {
+        for stdout in ["refs/heads/main", "", "", "abc123", "abc123"] {
             let s = stdout.to_string();
             mock.expect_run_in_with_env()
                 .once()
@@ -402,17 +446,21 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         // 1. symbolic-ref → on a branch
         // 2. status → clean worktree
-        // 3. rev-parse HEAD → pre-pull SHA
-        // 4. pull → succeeds with update output
-        // 5. rev-parse HEAD → different SHA → repo updated
+        // 3. fetch → ok
+        // 4. rev-parse HEAD → pre-merge SHA
+        // 5. rev-parse @{u} → newer SHA
+        // 6. rev-list --count @{u}..HEAD → 0 (not ahead)
+        // 7. merge --ff-only → succeeds
         let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
         for stdout in [
             "refs/heads/main",
             "",
+            "",
             "abc1234",
-            "Updating abc1234..def5678\nFast-forward",
             "def5678",
+            "0",
+            "Updating abc1234..def5678\nFast-forward",
         ] {
             let s = stdout.to_string();
             mock.expect_run_in_with_env()
@@ -430,15 +478,41 @@ mod tests {
     }
 
     #[test]
-    fn run_returns_skipped_when_pull_fails() {
+    fn run_returns_skipped_when_local_branch_diverged() {
         let config = empty_config(PathBuf::from("/tmp"));
         // 1. symbolic-ref → on a branch
         // 2. status → clean worktree
-        // 3. rev-parse HEAD → pre-pull SHA
-        // 4. pull → fails
+        // 3. fetch → ok
+        // 4. rev-parse HEAD → SHA
+        // 5. rev-parse @{u} → different SHA
+        // 6. rev-list --count @{u}..HEAD → 2 (local commits ahead → diverged)
         let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
-        for stdout in ["refs/heads/main", "", "abc123"] {
+        for stdout in ["refs/heads/main", "", "", "abc1234", "def5678", "2"] {
+            let s = stdout.to_string();
+            mock.expect_run_in_with_env()
+                .once()
+                .in_sequence(&mut seq)
+                .returning(move |_, _, _, _| Ok(ok_result(&s)));
+        }
+        let ctx = make_update_context(config, mock);
+        let repo_updated = UpdateSignal::new();
+        let task = UpdateRepository::new(repo_updated.clone());
+
+        let result = task.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("diverged")));
+        assert!(!repo_updated.was_updated());
+    }
+
+    #[test]
+    fn run_returns_failed_when_fetch_fails() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        // 1. symbolic-ref → on a branch
+        // 2. status → clean worktree
+        // 3. fetch → fails
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        for stdout in ["refs/heads/main", ""] {
             let s = stdout.to_string();
             mock.expect_run_in_with_env()
                 .once()
@@ -448,13 +522,13 @@ mod tests {
         mock.expect_run_in_with_env()
             .once()
             .in_sequence(&mut seq)
-            .returning(|_, _, _, _| Err(anyhow::anyhow!("simulated pull failure")));
+            .returning(|_, _, _, _| Err(anyhow::anyhow!("simulated fetch failure")));
         let ctx = make_update_context(config, mock);
         let repo_updated = UpdateSignal::new();
         let task = UpdateRepository::new(repo_updated);
 
         let result = task.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Failed(ref s) if s.contains("git pull failed")));
+        assert!(matches!(result, TaskResult::Failed(ref s) if s.contains("git fetch failed")));
     }
 
     // -----------------------------------------------------------------------

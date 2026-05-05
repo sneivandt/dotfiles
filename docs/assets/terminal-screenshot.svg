@@ -21,7 +21,7 @@
   <circle cx="84" cy="39" r="6" fill="#28c840"/>
   <text x="480" y="44" text-anchor="middle" fill="#cbd5e1" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="13" font-weight="600">user@workstation: ~</text>
   <text x="34" y="78" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#94a3b8">~</tspan></text>
-  <text x="34" y="96" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">$ </tspan><tspan fill="#86efac">dotfiles</tspan><tspan fill="#e2e8f0"> install -p desktop -d</tspan></text>
+  <text x="34" y="96" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">$ </tspan><tspan fill="#86efac">dotfiles</tspan><tspan fill="#e2e8f0"> install -d</tspan></text>
   <text x="34" y="114" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">  dotfiles v0.1.x</tspan></text>
   <text x="34" y="132" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">  profile: desktop</tspan></text>
   <text x="34" y="150" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>

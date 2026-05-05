@@ -41,7 +41,7 @@ use std::fmt;
 
 use anyhow::Result;
 
-use crate::logging::TaskStatus;
+use crate::logging::{DiagEvent, TaskStatus};
 
 /// Unique identifier for a task in the dependency graph.
 ///
@@ -206,6 +206,8 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
     let phase = task.phase();
 
     if !task.should_run(ctx) {
+        ctx.log
+            .diag_task(DiagEvent::TaskSkip, task.name(), "not applicable");
         if ctx.log.debug_enabled() {
             ctx.log.stage(task.name());
         }
@@ -216,8 +218,12 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
         return;
     }
 
+    ctx.log
+        .diag_task(DiagEvent::TaskStart, task.name(), "executing");
     match task.run_if_applicable(ctx) {
         Ok(None) => {
+            ctx.log
+                .diag_task(DiagEvent::TaskSkip, task.name(), "nothing configured");
             if ctx.log.debug_enabled() {
                 ctx.log.stage(task.name());
             }
@@ -226,18 +232,25 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
                 .record_task(task.name(), phase, TaskStatus::NotApplicable, None);
         }
         Ok(Some(result)) => match result {
-            TaskResult::Ok => record(ctx, task.name(), phase, TaskStatus::Ok, None),
+            TaskResult::Ok => {
+                ctx.log.diag_task(DiagEvent::TaskDone, task.name(), "");
+                record(ctx, task.name(), phase, TaskStatus::Ok, None);
+            }
             TaskResult::NotApplicable(reason) => {
+                ctx.log.diag_task(DiagEvent::TaskSkip, task.name(), &reason);
                 ctx.debug_fmt(|| format!("not applicable: {reason}"));
                 ctx.log
                     .record_task(task.name(), phase, TaskStatus::NotApplicable, None);
             }
             TaskResult::Skipped(reason) => {
+                ctx.log.diag_task(DiagEvent::TaskSkip, task.name(), &reason);
                 ctx.log.info(&format!("skipped: {reason}"));
                 record(ctx, task.name(), phase, TaskStatus::Skipped, Some(&reason));
             }
             TaskResult::Failed(reason) => {
                 if ctx.is_cancelled() {
+                    ctx.log
+                        .diag_task(DiagEvent::TaskSkip, task.name(), "interrupted");
                     ctx.log.warn(&format!("interrupted: {reason}"));
                     record(
                         ctx,
@@ -247,14 +260,21 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
                         Some("interrupted"),
                     );
                 } else {
+                    ctx.log.diag_task(DiagEvent::TaskFail, task.name(), &reason);
                     ctx.log.warn(&format!("failed: {reason}"));
                     record(ctx, task.name(), phase, TaskStatus::Failed, Some(&reason));
                 }
             }
-            TaskResult::DryRun => record(ctx, task.name(), phase, TaskStatus::DryRun, None),
+            TaskResult::DryRun => {
+                ctx.log
+                    .diag_task(DiagEvent::TaskDone, task.name(), "dry-run");
+                record(ctx, task.name(), phase, TaskStatus::DryRun, None);
+            }
         },
         Err(e) => {
             if ctx.is_cancelled() {
+                ctx.log
+                    .diag_task(DiagEvent::TaskSkip, task.name(), "interrupted");
                 ctx.log.warn(&format!("interrupted: {}", task.name()));
                 record(
                     ctx,
@@ -264,6 +284,8 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
                     Some("interrupted"),
                 );
             } else {
+                ctx.log
+                    .diag_task(DiagEvent::TaskFail, task.name(), &format!("{e:#}"));
                 ctx.log.error(&format!("{}: {e:#}", task.name()));
                 record(
                     ctx,

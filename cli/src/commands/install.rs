@@ -42,7 +42,7 @@ pub fn run(
     if std::env::var_os(super::REEXEC_GUARD_VAR).is_none()
         && phases::bootstrap::self_update::pre_update(&root, &**log, global.dry_run)?
     {
-        super::re_exec(&root);
+        super::re_exec(&root, &**log);
     }
 
     let runner = super::CommandRunner::new(global, log, token)?;

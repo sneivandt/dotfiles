@@ -29,12 +29,8 @@ const WINDOWS_RESTART_EXIT_CODE: i32 = 75;
 /// Called after a self-update has replaced the binary on disk so that the
 /// new version runs all tasks with updated code.  Sets [`REEXEC_GUARD_VAR`]
 /// so the new process skips the self-update step.
-#[allow(
-    unused_variables,
-    clippy::print_stderr,
-    reason = "intentional user-facing output"
-)]
-pub(crate) fn re_exec(root: &std::path::Path) -> ! {
+#[allow(unused_variables, reason = "root is platform-specific re-exec context")]
+pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -44,14 +40,14 @@ pub(crate) fn re_exec(root: &std::path::Path) -> ! {
             .args(&args)
             .env(REEXEC_GUARD_VAR, "1")
             .exec();
-        eprintln!("\x1b[31mError: failed to re-exec: {err}\x1b[0m");
+        log.error(&format!("failed to re-exec: {err}"));
         std::process::exit(1);
     }
 
     #[cfg(windows)]
     {
         if let Err(err) = spawn_windows_restart_helper() {
-            eprintln!("\x1b[31mError: failed to schedule Windows restart: {err}\x1b[0m");
+            log.error(&format!("failed to schedule Windows restart: {err}"));
             std::process::exit(1);
         }
 
@@ -62,7 +58,7 @@ pub(crate) fn re_exec(root: &std::path::Path) -> ! {
     {
         let args: Vec<String> = std::env::args().skip(1).collect();
         let exe = re_exec_path(root).unwrap_or_else(|err| {
-            eprintln!("\x1b[31mError: cannot determine executable path: {err}\x1b[0m");
+            log.error(&format!("cannot determine executable path: {err}"));
             std::process::exit(1);
         });
         match std::process::Command::new(&exe)
@@ -72,12 +68,12 @@ pub(crate) fn re_exec(root: &std::path::Path) -> ! {
         {
             Ok(s) => {
                 if s.code().is_none() {
-                    eprintln!("\x1b[33mWarning: child process terminated by signal\x1b[0m");
+                    log.warn("child process terminated by signal");
                 }
                 std::process::exit(s.code().unwrap_or(1))
             }
             Err(e) => {
-                eprintln!("\x1b[31mError: failed to re-exec: {e}\x1b[0m");
+                log.error(&format!("failed to re-exec: {e}"));
                 std::process::exit(1);
             }
         }

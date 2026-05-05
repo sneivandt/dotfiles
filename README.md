@@ -6,6 +6,8 @@
 
 A cross-platform dotfiles manager built on a **Rust engine** with declarative TOML configuration. This is my personal setup, designed as a **reference chassis**. Fork it, rebrand it, and make it yours.
 
+![Generated terminal preview of a dotfiles dry-run install](docs/assets/terminal-screenshot.svg)
+
 ## What you get
 
 - 🦀 **Rust engine:** a single compiled binary orchestrates everything; no fragile shell pipelines to debug

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="582" viewBox="0 0 960 582" role="img" aria-labelledby="title desc">
+  <title id="title">dotfiles terminal preview</title>
+  <desc id="desc">Generated terminal output from the dotfiles CLI dry-run install command.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#111827"/>
+      <stop offset="48%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#271033"/>
+    </linearGradient>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020617" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <rect width="100%" height="100%" rx="28" fill="url(#bg)"/>
+  <rect x="18" y="18" width="924" height="546" rx="14" fill="#020617" opacity="0.94" filter="url(#shadow)"/>
+  <path d="M32 18h896a14 14 0 0 1 14 14v28H18V32a14 14 0 0 1 14-14z" fill="#1f2937"/>
+  <line x1="18" y1="60" x2="942" y2="60" stroke="#334155" stroke-opacity="0.75"/>
+  <circle cx="44" cy="39" r="6" fill="#ff5f57"/>
+  <circle cx="64" cy="39" r="6" fill="#ffbd2e"/>
+  <circle cx="84" cy="39" r="6" fill="#28c840"/>
+  <text x="480" y="44" text-anchor="middle" fill="#cbd5e1" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="13" font-weight="600">user@workstation: ~</text>
+  <text x="34" y="78" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#94a3b8">~</tspan></text>
+  <text x="34" y="96" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">$ </tspan><tspan fill="#86efac">dotfiles</tspan><tspan fill="#e2e8f0"> install -p desktop -d</tspan></text>
+  <text x="34" y="114" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">  dotfiles v0.1.x</tspan></text>
+  <text x="34" y="132" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">  profile: desktop</tspan></text>
+  <text x="34" y="150" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>
+  <text x="34" y="168" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#60a5fa">:: Bootstrap</tspan></text>
+  <text x="34" y="186" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#d8b4fe">  ~ Install wrapper</tspan></text>
+  <text x="34" y="204" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#d8b4fe">  ~ Configure PATH</tspan></text>
+  <text x="34" y="222" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>
+  <text x="34" y="240" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#60a5fa">:: Repository</tspan></text>
+  <text x="34" y="258" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Configure sparse checkout</tspan></text>
+  <text x="34" y="276" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Update repository</tspan></text>
+  <text x="34" y="294" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Install Git hooks</tspan></text>
+  <text x="34" y="312" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Generate shell completions</tspan></text>
+  <text x="34" y="330" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>
+  <text x="34" y="348" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#60a5fa">:: Apply</tspan></text>
+  <text x="34" y="366" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#d8b4fe">  ~ Install symlinks</tspan></text>
+  <text x="34" y="384" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">    would link: ~/.zshrc -&gt; ./symlinks/zshrc</tspan></text>
+  <text x="34" y="402" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">    would link: ~/.config/nvim -&gt; ./symlinks/config/nvim</tspan></text>
+  <text x="34" y="420" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">    would link: ~/.config/tmux -&gt; ./symlinks/config/tmux</tspan></text>
+  <text x="34" y="438" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#d8b4fe">  ~ Install packages</tspan></text>
+  <text x="34" y="456" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#d8b4fe">  ~ Configure systemd units</tspan></text>
+  <text x="34" y="474" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#d8b4fe">  ~ Install VS Code extensions</tspan></text>
+  <text x="34" y="492" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>
+  <text x="34" y="510" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">  15 tasks: </tspan><tspan fill="#86efac">4 ok</tspan><tspan fill="#e2e8f0">, </tspan><tspan fill="#d8b4fe">11 dry-run</tspan><tspan fill="#64748b"> (6 not applicable)</tspan></text>
+  <text x="34" y="528" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#64748b">  completed in 0.4s</tspan></text>
+  <text x="34" y="546" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#64748b">  log: ~/.cache/dotfiles/install.log</tspan></text>
+</svg>

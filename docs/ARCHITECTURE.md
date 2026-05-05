@@ -239,7 +239,7 @@ Apply phase (`cli/src/phases/apply/`):
 - `systemd` — Enable systemd units
 - `registry` — Apply Windows registry settings
 - `vscode` — Install VS Code extensions
-- `apm` — Install AI plugin manifests via Microsoft APM (`apm install -g --target copilot`, reads `~/.apm/apm.yml` symlinked from `symlinks/apm/apm.yml`)
+- `apm` — Install AI plugin manifests via Microsoft APM (`apm install -g --target copilot,vscode`, reads `~/.apm/apm.yml` symlinked from `symlinks/apm/apm.yml`)
 - `pam` — Install custom PAM service files (Arch Linux + desktop, uses sudo)
 - `wsl_conf` — Write `/etc/wsl.conf` with `generateResolvConf = true` (Linux/WSL only, uses sudo)
 

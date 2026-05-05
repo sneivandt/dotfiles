@@ -3,16 +3,17 @@
 //! See <https://github.com/microsoft/apm>.  The dotfiles repo ships an
 //! `apm/apm.yml` under `symlinks/` which is linked to `~/.apm/apm.yml` by the
 //! [`InstallSymlinks`](super::symlinks::InstallSymlinks) task.  This task
-//! shells out to `apm install -g --target copilot` so the manifest is consumed
-//! at user scope and primitives deploy globally to the Copilot target
-//! (`~/.copilot/`) rather than into this repository.  Idempotency is provided
-//! by APM itself via its lockfile.
+//! shells out to `apm install -g --target copilot,vscode` so the manifest is
+//! consumed at user scope and primitives deploy globally to both the Copilot
+//! target (`~/.copilot/`) and the VS Code target (`~/.vscode/`) rather than
+//! into this repository.  Idempotency is provided by APM itself via its
+//! lockfile.
 
 use anyhow::Result;
 
 use crate::phases::{Context, Task, TaskPhase, TaskResult, task_deps};
 
-/// Install AI plugin manifests via Microsoft APM (`apm install -g --target copilot`).
+/// Install AI plugin manifests via Microsoft APM (`apm install -g --target copilot,vscode`).
 #[derive(Debug)]
 pub struct InstallApmPackages;
 
@@ -56,7 +57,7 @@ impl Task for InstallApmPackages {
         let cwd = ctx.home.clone();
         ctx.debug_fmt(|| {
             format!(
-                "running `apm install -g --target copilot` in {} (interactive credential \
+                "running `apm install -g --target copilot,vscode` in {} (interactive credential \
                  prompts disabled)",
                 cwd.display()
             )
@@ -72,10 +73,13 @@ impl Task for InstallApmPackages {
         match ctx.executor.run_in_with_env(
             &cwd,
             "apm",
-            &["install", "-g", "--target", "copilot"],
+            &["install", "-g", "--target", "copilot,vscode"],
             env,
         ) {
-            Ok(_) => Ok(TaskResult::Ok),
+            Ok(result) => {
+                report_apm_output(ctx, &result.stdout, &result.stderr);
+                Ok(TaskResult::Ok)
+            }
             Err(err) => {
                 let msg = format!("{err:#}");
                 if looks_like_auth_failure(&msg) {
@@ -90,6 +94,33 @@ impl Task for InstallApmPackages {
                 }
             }
         }
+    }
+}
+
+/// Surface `apm install` output to the user so they can see what was
+/// installed (or that nothing changed).  APM provides idempotency itself
+/// via its lockfile, so we have to relay its output to give the user any
+/// visibility into the install — otherwise the task is silent on success.
+fn report_apm_output(ctx: &Context, stdout: &str, stderr: &str) {
+    let mut emitted = false;
+    for line in stdout.lines() {
+        let trimmed = line.trim_end();
+        if trimmed.trim().is_empty() {
+            continue;
+        }
+        ctx.log.info(trimmed);
+        emitted = true;
+    }
+    for line in stderr.lines() {
+        let trimmed = line.trim_end();
+        if trimmed.trim().is_empty() {
+            continue;
+        }
+        ctx.log.warn(trimmed);
+        emitted = true;
+    }
+    if !emitted {
+        ctx.log.info("apm install completed (no output)");
     }
 }
 

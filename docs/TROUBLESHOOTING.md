@@ -288,7 +288,7 @@ code --install-extension <extension-id>
 **Solution**:
 ```bash
 # Run APM directly at user scope
-apm install -g --target copilot
+apm install -g --target copilot,vscode
 
 # Inspect the manifest (deployed location)
 cat ~/.apm/apm.yml

@@ -308,6 +308,9 @@ impl Config {
             config.merge_overlay(overlay_root, active_categories, platform)?;
         }
 
+        config.symlinks = symlinks::expand_glob_patterns(&config.symlinks, root)
+            .context("expanding symlink glob patterns")?;
+
         Ok(config)
     }
 
@@ -496,6 +499,37 @@ mod tests {
         assert_eq!(config.symlinks.len(), 2);
         assert_eq!(config.symlinks[0].source, ".bashrc");
         assert_eq!(config.symlinks[1].source, ".vimrc");
+    }
+
+    #[test]
+    fn load_expands_overlay_symlink_globs() {
+        let (dir, profile, platform) = setup_load(linux(), &[]);
+        let overlay = tempfile::tempdir().expect("create overlay dir");
+        let overlay_conf = overlay.path().join("conf");
+        std::fs::create_dir_all(&overlay_conf).expect("create overlay conf");
+        std::fs::write(
+            overlay_conf.join("symlinks.toml"),
+            "[base]\nsymlinks = [{ source = \"skills/*\", target = \".copilot/skills/*\" }]\n",
+        )
+        .expect("write overlay symlinks");
+        std::fs::create_dir_all(
+            overlay
+                .path()
+                .join("symlinks")
+                .join("skills")
+                .join("authz-oncall"),
+        )
+        .expect("create overlay skill");
+
+        let config = Config::load(dir.path(), &profile, platform, Some(overlay.path()))
+            .expect("load should succeed");
+        assert_eq!(config.symlinks.len(), 1);
+        assert_eq!(config.symlinks[0].source, "skills/authz-oncall");
+        assert_eq!(
+            config.symlinks[0].target.as_deref(),
+            Some(".copilot/skills/authz-oncall")
+        );
+        assert_eq!(config.symlinks[0].origin.as_deref(), Some(overlay.path()));
     }
 
     #[test]

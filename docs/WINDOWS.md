@@ -204,6 +204,8 @@ To add a new link:
 2. Add the path to the `[windows]` section in `conf/symlinks.toml`. Use a plain string for Unix-style paths (dot prefix applied automatically) or `{ source, target }` for Windows paths that need no dot prefix.
 3. Re-run `./dotfiles.ps1`.
 
+Symlink entries also support a full path-segment `*` glob. Each `*` in `source` captures one path segment and each `*` in an explicit `target` is replaced by the matching capture, for example `{ source = "copilot/skills/*", target = ".copilot/skills/*" }`.
+
 ## VS Code Extensions
 
 The file `conf/vscode-extensions.toml` contains extensions under category sections (`[desktop]`, `[windows]`, etc.). The `extensions` key holds an array of extension IDs. Remove an entry and re-run to keep new installs from occurring (does not uninstall). Add entries to expand your standard environment. The script requires the `code` CLI on PATH (Enable via VS Code: Command Palette → Shell Command: Install 'code' command in PATH).

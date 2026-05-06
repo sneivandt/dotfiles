@@ -65,8 +65,12 @@ cargo test --manifest-path cli/Cargo.toml
 1. **Symlinks**: Add files to `symlinks/` directory, then add entries to `conf/symlinks.toml`:
    ```toml
    [base]
-   symlinks = ["config/mynewconfig"]
+   symlinks = [
+     "config/mynewconfig",
+     { source = "apm/plugins/*", target = ".copilot/skills/*" },
+   ]
    ```
+   Use a full path-segment `*` when a directory should expand into one symlink per direct child.
 
 2. **Packages**: Add to appropriate section in `conf/packages.toml`:
    ```toml

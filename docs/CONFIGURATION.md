@@ -117,6 +117,7 @@ symlinks = [
 [windows]
 symlinks = [
   { source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" },
+  { source = "apm/plugins/*", target = ".copilot/skills/*" },
   "config/git/windows",
 ]
 ```
@@ -125,8 +126,11 @@ symlinks = [
 - Source files are located in `symlinks/<path>` at repository root
 - By default, targets are created at `~/.<path>` (a dot is prepended)
 - For paths that must not receive a dot prefix (e.g. Windows `AppData\`, `Documents\`), use `{ source = "...", target = "..." }` to specify the target explicitly
+- Directory globs are supported when `*` is a complete path segment. Each matched source segment is substituted into the corresponding `*` in `target`.
+- Globs are expanded during config load and preserve overlay ownership, so overlay entries link back to `<overlay>/symlinks/...` rather than the main repo.
 - Example: `config/nvim` → `~/.config/nvim` symlinked to `<repo>/symlinks/config/nvim`
 - Example: `{ source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }` → `~/AppData/Roaming/Code/User/settings.json`
+- Example: `{ source = "apm/plugins/*", target = ".copilot/skills/*" }` links each direct child of `<repo>/symlinks/apm/plugins/` into `~/.copilot/skills/<child>`
 
 ---
 

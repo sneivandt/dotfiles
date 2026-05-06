@@ -40,7 +40,7 @@ Always include a trailing comma after the last array element.
 | File | Key field | Notes |
 |---|---|---|
 | `packages.toml` | `packages` | String or `{ name, aur }` |
-| `symlinks.toml` | `symlinks` | String, or `{ source, target }` for paths that must not get a `.` prefix |
+| `symlinks.toml` | `symlinks` | String, or `{ source, target }` for paths that must not get a `.` prefix. A complete path segment of `*` is supported for directory globs, with matching `*` substitution in `target`. |
 | `systemd-units.toml` | `units` | String (full unit filename, e.g. `dunst.service`) |
 | `vscode-extensions.toml` | `extensions` | String (publisher.name) |
 | `git-config.toml` | `settings` | `{ key, value }` |

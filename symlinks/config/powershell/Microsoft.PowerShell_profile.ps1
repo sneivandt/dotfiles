@@ -122,3 +122,14 @@ if ((Test-Path $cargoDir) -and ($env:Path -notlike "*$cargoDir*"))
 {
     $env:Path += ";$cargoDir"
 }
+
+# Load additional profile scripts from profile.d directory
+$profileDir = Join-Path $HOME ".config\powershell\profile.d"
+if (Test-Path $profileDir)
+{
+    Get-ChildItem -Path $profileDir -Filter "*.ps1" -File |
+        Sort-Object -Property FullName |
+        ForEach-Object {
+            . $_.FullName
+        }
+}

@@ -4,11 +4,15 @@ set -o nounset
 
 # Stock/crypto ticker for waybar.
 # Fetches quotes from Yahoo Finance and caches them to limit API calls.
-# Outputs Waybar JSON with Pango markup (red/green % change).
+# Outputs Waybar JSON with Pango markup (price plus red/green % change).
 
-symbols="SPY MSFT BTC-USD"
+quotes='
+%5EGSPC|S&amp;P|
+MSFT|MSFT|$
+BTC-USD|BTC|$
+'
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/waybar-stocks"
-cache_file="$cache_dir/quotes.json"
+cache_file="$cache_dir/quotes-sp500-prices.json"
 cache_ttl=300
 
 mkdir -p "$cache_dir"
@@ -25,7 +29,11 @@ if [ "$((now - mtime))" -lt "$cache_ttl" ] && [ -s "$cache_file" ]; then
 fi
 
 parts=""
-for sym in $symbols; do
+while IFS='|' read -r sym label price_prefix; do
+  if [ -z "$sym" ]; then
+    continue
+  fi
+
   json=$(curl -fsS --max-time 4 -H "User-Agent: Mozilla/5.0" \
     "https://query1.finance.yahoo.com/v8/finance/chart/$sym?interval=1d&range=1d" 2>/dev/null || true)
   if [ -z "$json" ]; then
@@ -37,13 +45,12 @@ for sym in $symbols; do
     continue
   fi
 
-  label=$(echo "$sym" | sed 's/-USD$//')
-  formatted=$(awk -v p="$price" -v c="$prev" -v l="$label" '
+  formatted=$(awk -v p="$price" -v c="$prev" -v l="$label" -v prefix="$price_prefix" '
     BEGIN {
       pct = (p - c) / c * 100;
       color = (pct >= 0) ? "#a3be8c" : "#bf616a";
       sign  = (pct >= 0) ? "+" : "";
-      printf "%s <span color=\"%s\">%s%.2f%%</span>", l, color, sign, pct;
+      printf "%s %s%.2f <span color=\"%s\">%s%.2f%%</span>", l, prefix, p, color, sign, pct;
     }')
 
   if [ -z "$parts" ]; then
@@ -51,7 +58,9 @@ for sym in $symbols; do
   else
     parts="$parts  $formatted"
   fi
-done
+done <<EOF
+$quotes
+EOF
 
 if [ -z "$parts" ]; then
   printf '{"text":"","tooltip":""}'

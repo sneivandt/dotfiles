@@ -41,6 +41,7 @@ cli/src/
 ├── engine/        # Generic resource processing engine
 │   ├── mod.rs     # process_resources(), process_resource_states()
 │   ├── mode.rs    # ProcessMode, ProcessOpts, ResourceAction
+│   ├── plan.rs    # ApplyChange / RemoveChange plan-diff types
 │   ├── stats.rs   # TaskResult, TaskStats
 │   ├── apply.rs   # Apply/remove logic
 │   ├── context.rs # Context, ContextOpts
@@ -199,12 +200,13 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 }
 ```
 
-### ProcessMode, ResourceAction, and ProcessOpts
+### ProcessMode, Resource Plans, and ProcessOpts
 
 `ProcessOpts` controls per-state behaviour for `process_resources()` and
 friends. See the **`engine-orchestration`** skill for the full table of modes,
-the `ResourceAction` lifecycle enum, and the `ProcessOpts::strict|lenient|...`
-constructors.
+the typed apply/remove plan layer, and the `ProcessOpts::strict|lenient|...`
+constructors. The apply layer should execute `ApplyChange` / `RemoveChange`
+plans rather than duplicating `ResourceState` branching.
 
 ### Non-Resource Task Template
 

@@ -99,15 +99,16 @@ automatically.
 ## Resource Processing Helpers
 
 `engine/orchestrate.rs` provides three helpers that drive the
-check→dry-run→apply loop so individual tasks don't repeat it. They are
-re-exported from `phases/mod.rs`:
+check→plan/diff→dry-run/apply loop so individual tasks don't repeat it. They
+are re-exported from `phases/mod.rs`:
 
 - **`process_resources(ctx, resources, opts)`** — calls `current_state()` on each resource.
 - **`process_resource_states(ctx, resource_states, opts)`** — takes pre-computed `(Resource, ResourceState)` pairs for batch-checked resources (packages, VS Code extensions).
 - **`process_resources_remove(ctx, resources, verb)`** — uninstall counterpart: removes resources in `Correct` state, skips others.
 
-Use these helpers for **all** new resource-based tasks. They handle dry-run
-checks, error categorisation, parallel dispatch, and stats accumulation.
+Use these helpers for **all** new resource-based tasks. They build typed
+`ApplyChange` / `RemoveChange` plans, then handle dry-run checks, error
+categorisation, parallel dispatch, and stats accumulation.
 
 ### ProcessMode
 
@@ -120,22 +121,20 @@ checks, error categorisation, parallel dispatch, and stats accumulation.
 | `InstallMissing` | no | yes | no | VS Code extensions, systemd units |
 | `FixExisting` | yes | no | yes | chmod (files may not exist yet) |
 
-### ResourceAction
+### Resource Plans
 
-`ProcessMode::action_for(&ResourceState)` returns a `ResourceAction` — the
-explicit decision of what to do with a resource:
+`ProcessMode::action_for(&ResourceState)` returns a low-level `ResourceAction`.
+`engine/plan.rs` wraps that decision with the resource description and renderable
+metadata:
 
 ```rust
-pub enum ResourceAction {
-    Apply,          // Create or update the resource
-    Noop,           // Already correct, nothing to do
-    Skip(String),   // Skip with a reason (invalid, mode disallows, etc.)
-}
+ApplyChange::from_state(description, state, opts);
+RemoveChange::from_state(description, state, "unlink");
 ```
 
-The processing loop (`process_single`) matches on `ResourceAction` instead of
-nesting matches on `ResourceState` and mode flags, making the lifecycle state
-machine explicit and independently testable.
+The processing loop (`process_single` / `remove_single`) executes these plans
+instead of nesting matches on `ResourceState` and mode flags. This keeps the
+lifecycle state machine explicit, side-effect-free, and independently testable.
 
 ### ProcessOpts
 

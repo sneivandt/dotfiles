@@ -7,7 +7,8 @@
 use anyhow::Result;
 
 use super::context::Context;
-use super::mode::{ProcessOpts, ResourceAction};
+use super::mode::ProcessOpts;
+use super::plan::{ApplyChange, ApplyOperation, RemoveChange, RemoveOperation};
 use super::stats::TaskStats;
 use crate::error::ResourceError;
 use crate::logging::DiagEvent;
@@ -20,33 +21,34 @@ pub(super) fn process_single<R: Applicable>(
     resource_state: &ResourceState,
     opts: &ProcessOpts,
 ) -> Result<TaskStats> {
-    let desc = resource.description();
+    let plan = ApplyChange::from_state(resource.description(), resource_state, opts);
     ctx.log.diag(
         DiagEvent::ResourceCheck,
-        &format!("{desc} state={resource_state}"),
+        &format!("{} state={resource_state}", plan.description()),
     );
     let mut delta = TaskStats::new();
-    match opts.mode.action_for(resource_state) {
-        ResourceAction::Noop => {
-            ctx.debug_fmt(|| format!("ok: {desc}"));
+    match plan.operation() {
+        ApplyOperation::Noop => {
+            ctx.debug_fmt(|| format!("ok: {}", plan.description()));
             delta.already_ok += 1;
         }
-        ResourceAction::Skip(reason) => {
-            ctx.debug_fmt(|| format!("skipping {desc}: {reason}"));
+        ApplyOperation::Skip { reason } => {
+            ctx.debug_fmt(|| format!("skipping {}: {reason}", plan.description()));
             delta.skipped += 1;
         }
-        ResourceAction::Apply => {
+        ApplyOperation::Apply {
+            verb,
+            bail_on_error,
+            ..
+        } => {
             if ctx.dry_run {
-                let msg = if let ResourceState::Incorrect { ref current } = *resource_state {
-                    format!("  would {} {desc} (currently {current})", opts.verb)
-                } else {
-                    format!("  would {}: {desc}", opts.verb)
-                };
-                ctx.log.dry_run(&msg);
+                if let Some(message) = plan.dry_run_message() {
+                    ctx.log.dry_run(&message);
+                }
                 delta.changed += 1;
                 return Ok(delta);
             }
-            delta += apply_resource(ctx, resource, opts)?;
+            delta += apply_resource(ctx, resource, plan.description(), verb, *bail_on_error)?;
         }
     }
     Ok(delta)
@@ -98,11 +100,12 @@ fn record_resource_change(
 fn apply_resource<R: Applicable>(
     ctx: &Context,
     resource: &R,
-    opts: &ProcessOpts,
+    desc: &str,
+    verb: &str,
+    bail_on_error: bool,
 ) -> Result<TaskStats> {
-    let desc = resource.description();
     ctx.log
-        .diag(DiagEvent::ResourceApply, &format!("{} {desc}", opts.verb));
+        .diag(DiagEvent::ResourceApply, &format!("{verb} {desc}"));
     let mut delta = TaskStats::new();
     let change = match resource.apply() {
         Ok(change) => change,
@@ -112,17 +115,16 @@ fn apply_resource<R: Applicable>(
                 DiagEvent::ResourceResult,
                 &format!("{desc} error [{category}]: {e}"),
             );
-            if opts.mode.bail_on_error() {
+            if bail_on_error {
                 return Err(e);
             }
-            ctx.log
-                .warn(&format!("failed to {} {desc}: {e}", opts.verb));
+            ctx.log.warn(&format!("failed to {verb} {desc}: {e}"));
             delta.skipped += 1;
             return Ok(delta);
         }
     };
 
-    record_resource_change(ctx, &mut delta, change, &desc, opts.verb, "applied");
+    record_resource_change(ctx, &mut delta, change, desc, verb, "applied");
     Ok(delta)
 }
 
@@ -133,29 +135,34 @@ pub(super) fn remove_single<R: Applicable>(
     current: &ResourceState,
     verb: &str,
 ) -> Result<TaskStats> {
-    let desc = resource.description();
+    let plan = RemoveChange::from_state(resource.description(), current, verb);
     let mut delta = TaskStats::new();
-    match current {
-        ResourceState::Correct => {
+    match plan.operation() {
+        RemoveOperation::Remove { verb } => {
             if ctx.dry_run {
-                ctx.log.dry_run(&format!("  would {verb}: {desc}"));
+                if let Some(message) = plan.dry_run_message() {
+                    ctx.log.dry_run(&message);
+                }
                 delta.changed += 1;
                 return Ok(delta);
             }
-            ctx.log
-                .diag(DiagEvent::ResourceRemove, &format!("{verb} {desc}"));
+            ctx.log.diag(
+                DiagEvent::ResourceRemove,
+                &format!("{verb} {}", plan.description()),
+            );
             let change = resource.remove()?;
-            record_resource_change(ctx, &mut delta, change, &desc, verb, "removed");
+            record_resource_change(ctx, &mut delta, change, plan.description(), verb, "removed");
         }
-        ResourceState::Unknown { reason } => {
+        RemoveOperation::Skip { reason } => {
             // Cannot determine if this resource is ours — skip removal rather
             // than risking removing something we did not install.
             ctx.log.warn(&format!(
-                "skipping removal of {desc}: state unknown ({reason})"
+                "skipping removal of {}: {reason}",
+                plan.description()
             ));
             delta.skipped += 1;
         }
-        _ => {
+        RemoveOperation::Noop => {
             // Not ours or doesn't exist — skip silently
             delta.already_ok += 1;
         }

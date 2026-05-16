@@ -8,6 +8,7 @@
 //! - [`mode`] — processing strategy and action types
 //! - [`orchestrate`] — top-level resource orchestration (sequential / parallel dispatch)
 //! - [`parallel`] — Rayon-based parallel processing helpers
+//! - [`plan`] — pure resource plan/diff construction
 //! - [`stats`] — result and statistics types
 //! - [`update_signal`] — cross-task signalling for config reload
 //! - [`scheduler`] — dependency-driven parallel task scheduling
@@ -23,6 +24,7 @@ pub mod graph;
 mod mode;
 mod orchestrate;
 mod parallel;
+pub(crate) mod plan;
 mod stats;
 /// Cross-task signalling for config reload.
 pub mod update_signal;

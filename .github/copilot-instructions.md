@@ -37,6 +37,7 @@ The engine has five internal layers: `config/` (TOML parsing) → `resources/` (
 | `cli/src/phases/catalog.rs` | Task registry (`all_install_tasks()` / `all_uninstall_tasks()`) |
 | `cli/src/resources/mod.rs` | `Applicable` and `Resource` traits — the idempotent primitives |
 | `cli/src/engine/orchestrate.rs` | `process_resources()` — the core execution workhorse |
+| `cli/src/engine/plan.rs` | Pure resource plan/diff construction before mutation |
 | `cli/src/config/mod.rs` | `config_section!` macro and config loading |
 | `cli/src/error.rs` | `ResourceError` and `ConfigError` domain types |
 

@@ -203,7 +203,8 @@ The `execute()` function first checks `should_run()`, then calls `run_if_applica
 The execution engine provides the generic resource processing loop, dependency graph, and shared context used by all tasks. Key components:
 
 - **`context.rs`** — `Context` and `ContextOpts`: shared state (config, platform, logger, flags) threaded through every task
-- **`apply.rs`** — single-resource processing: check state → dry-run → apply/remove
+- **`plan.rs`** — pure resource plan/diff construction from `ResourceState` + `ProcessOpts`
+- **`apply.rs`** — single-resource plan execution: log/dry-run → apply/remove → stats
 - **`orchestrate.rs`** — top-level resource orchestration with `process_resources()`, `process_resource_states()`, and `process_resources_remove()`
 - **`mode.rs`** — `ProcessMode` enum (`Strict`, `Lenient`, `InstallMissing`, `FixExisting`) and `ProcessOpts` that control which states are fixable and whether errors bail or warn
 - **`parallel.rs`** — Rayon-based parallel dispatch when `ctx.parallel` is true

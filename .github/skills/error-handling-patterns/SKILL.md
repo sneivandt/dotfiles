@@ -79,7 +79,7 @@ drop(some_owned_resource);
 
 For tasks that manage declarative resources (`Resource` trait), use the generic
 `process_resources()` / `process_resource_states()` helpers. They enforce the
-correct check→dry-run→apply order automatically:
+correct check→plan/diff→dry-run/apply order automatically:
 
 ```rust
 fn run(&self, ctx: &Context) -> Result<TaskResult> {

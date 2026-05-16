@@ -25,3 +25,8 @@ dependencies:
     # Document conversion skills
     - github/awesome-copilot/skills/md-to-docx
     - github/awesome-copilot/skills/markdown-to-html
+
+    # Local plugins
+    - ~/.apm/plugins/dot-code
+    - ~/.apm/plugins/dot-doc
+    - ~/.apm/plugins/dot-skill

@@ -10,6 +10,7 @@
 [base]
 symlinks = [
   "apm/config/base.yml",
+  "apm/plugins/*",
   "config/git/ai-pr.sh",
   "config/git/aliases",
   "config/git/attributes",

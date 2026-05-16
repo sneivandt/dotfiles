@@ -1,6 +1,8 @@
 [user]
   name = sneivandt
   email = sneivandt@users.noreply.github.com
+[github]
+  user = sneivandt
 [url "git@github.com:"]
   pushInsteadOf = https://github.com/
 [core]

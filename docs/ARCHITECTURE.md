@@ -257,7 +257,8 @@ config.  When an overlay is set:
 3. Each script entry produces a dynamic `OverlayScriptTask` that appears in
    the task output like any built-in task
 4. Scripts follow a convention-based interface: no args (apply), `--check`
-   (verify state, exit 0 = correct), `--remove` (undo)
+   (exit 0 = correct, exit 1 = apply needed), `--dryrun` (preview), and
+   `--remove` (undo)
 
 #### Platform Detection (`platform.rs`)
 
@@ -432,7 +433,7 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers automatically 
 ### Adding Overlay Scripts
 
 1. Create a script in the overlay repository's `scripts/` directory
-2. Implement the convention interface: no args (apply), `--check` (exit 0 if correct), `--remove` (undo)
+2. Implement the convention interface: no args (apply), `--check` (exit 0 if correct, exit 1 if apply is needed), `--dryrun` (preview), `--remove` (undo)
 3. Add the entry to `conf/scripts.toml` in the overlay repository
 4. Use `--overlay /path/to/overlay` to activate
 

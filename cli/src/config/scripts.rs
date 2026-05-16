@@ -3,8 +3,9 @@
 //! Scripts are defined in `scripts.toml` inside an overlay repository.
 //! Each script entry specifies a name, a path to a script file relative to
 //! the overlay root, and an optional description.
+use anyhow::{Result, bail};
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 use super::config_section;
 
@@ -24,9 +25,35 @@ pub struct ScriptEntry {
 config_section!(field: "scripts", ty: ScriptEntry);
 
 /// Resolve the absolute path for a script entry relative to the overlay root.
-#[must_use]
-pub fn resolve_script_path(entry: &ScriptEntry, overlay_root: &std::path::Path) -> PathBuf {
-    overlay_root.join(&entry.path)
+///
+/// # Errors
+///
+/// Returns an error when the configured script path is absolute or contains
+/// parent-directory traversal.
+pub fn resolve_script_path(entry: &ScriptEntry, overlay_root: &Path) -> Result<PathBuf> {
+    validate_relative_script_path(entry)?;
+    Ok(overlay_root.join(&entry.path))
+}
+
+fn validate_relative_script_path(entry: &ScriptEntry) -> Result<()> {
+    let path = Path::new(&entry.path);
+    if path.as_os_str().is_empty() {
+        bail!("script path for '{}' is empty", entry.name);
+    }
+
+    for component in path.components() {
+        match component {
+            Component::Normal(_) | Component::CurDir => {}
+            Component::ParentDir => {
+                bail!("script path for '{}' must not contain '..'", entry.name);
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                bail!("script path for '{}' must be relative", entry.name);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -82,8 +109,33 @@ scripts = [
             path: "scripts/test.ps1".to_string(),
             description: None,
         };
-        let resolved = resolve_script_path(&entry, std::path::Path::new("/overlay"));
+        let resolved = resolve_script_path(&entry, Path::new("/overlay"))
+            .expect("relative script path should resolve");
         assert_eq!(resolved, PathBuf::from("/overlay/scripts/test.ps1"));
+    }
+
+    #[test]
+    fn resolve_script_path_rejects_absolute_paths() {
+        let entry = ScriptEntry {
+            name: "test".to_string(),
+            path: "/tmp/test.ps1".to_string(),
+            description: None,
+        };
+        let err = resolve_script_path(&entry, Path::new("/overlay"))
+            .expect_err("absolute script path should be rejected");
+        assert!(err.to_string().contains("must be relative"));
+    }
+
+    #[test]
+    fn resolve_script_path_rejects_parent_directory_traversal() {
+        let entry = ScriptEntry {
+            name: "test".to_string(),
+            path: "scripts/../test.ps1".to_string(),
+            description: None,
+        };
+        let err = resolve_script_path(&entry, Path::new("/overlay"))
+            .expect_err("parent-directory traversal should be rejected");
+        assert!(err.to_string().contains("must not contain '..'"));
     }
 
     #[test]

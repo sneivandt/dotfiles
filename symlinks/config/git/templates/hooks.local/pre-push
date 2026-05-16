@@ -1,20 +1,35 @@
 #!/bin/sh
 
-user=$(git config user.name)
+github_user=$(git config github.user 2>/dev/null || git config github.username 2>/dev/null || true)
 remote=$(git config --get remote.origin.url)
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+remote_owner=
 
-# Skip for github repos you own
+# Skip for GitHub repos you own.
 case $remote in
-  *"git@github.com:$user/"* | *"https://github.com/$user"/*)
-    exit
+  git@github.com:*)
+    remote_owner=${remote#git@github.com:}
+    remote_owner=${remote_owner%%/*}
+    ;;
+  https://github.com/*)
+    remote_owner=${remote#https://github.com/}
+    remote_owner=${remote_owner%%/*}
+    ;;
+  ssh://git@github.com/*)
+    remote_owner=${remote#ssh://git@github.com/}
+    remote_owner=${remote_owner%%/*}
     ;;
 esac
+
+if [ -n "$github_user" ] && [ "$remote_owner" = "$github_user" ]
+then
+  exit 0
+fi
 
 # Block pushing to master or main or develop
 if [ "$branch" = "master" ] || [ "$branch" = "main" ] || [ "$branch" = "develop" ]
 then
   echo "You are on branch $branch. Are you sure you want to push to this branch?"
-  echo "If so, push with -n to bypass this pre-push hook."
+  echo "If so, push with --no-verify to bypass this pre-push hook."
   exit 1
 fi

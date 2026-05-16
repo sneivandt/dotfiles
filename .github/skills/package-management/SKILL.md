@@ -83,7 +83,7 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
 ```
 
 Concrete implementations:
-- `PacmanProvider` — `pacman -S --needed --noconfirm`
+- `PacmanProvider` — `pacman -Syu --needed --noconfirm`
 - `ParuProvider` — `paru -S --needed --noconfirm` (delegates `query_installed` to `PacmanProvider`)
 - `WingetProvider` — `winget install --id --exact` (no batch support)
 
@@ -133,7 +133,7 @@ This avoids running one command per package.
 ## Rules
 
 1. Always check `ctx.executor.which("pacman")` / `ctx.executor.which("winget")` before calling
-2. Use `--needed --noconfirm` for pacman to ensure idempotency
+2. Use `-Syu --needed --noconfirm` for pacman to synchronize before installing and keep installs idempotent
 3. Mark AUR packages with `aur = true` in structured metadata format: `{ name = "pkg", aur = true }`
 4. Use exact package IDs on Windows (case-sensitive)
 5. Return `TaskResult::Skipped` with reason when package manager is missing

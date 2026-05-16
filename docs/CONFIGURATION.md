@@ -97,7 +97,7 @@ paths = [
 ### `symlinks.toml`
 **Purpose**: Defines symlinks to create in `$HOME`.
 
-**Format**: Sections represent categories; entries are paths relative to `$HOME` (without leading dot).
+**Format**: Sections represent categories; entries are source paths relative to `symlinks/` (without leading dot).
 
 **Example**:
 ```toml
@@ -124,6 +124,7 @@ symlinks = [
 
 **How it works**:
 - Source files are located in `symlinks/<path>` at repository root
+- Source and explicit target paths must be relative and must not contain `..` components
 - By default, targets are created at `~/.<path>` (a dot is prepended)
 - For paths that must not receive a dot prefix (e.g. Windows `AppData\`, `Documents\`), use `{ source = "...", target = "..." }` to specify the target explicitly
 - Directory globs are supported when `*` is a complete path segment. Each matched source segment is substituted into the corresponding `*` in `target`.
@@ -160,9 +161,9 @@ packages = [
 ---
 
 ### `systemd-units.toml`
-**Purpose**: Lists systemd user units to enable and start.
+**Purpose**: Lists systemd user or system units to enable and start.
 
-**Format**: Sections represent categories; entries are unit filenames.
+**Format**: Sections represent categories; entries are unit filenames or inline tables with `name` and `scope`. Plain strings default to `scope = "user"`; explicit scope must be `"user"` or `"system"`.
 
 **Example**:
 ```toml
@@ -173,10 +174,11 @@ units = ["clean-home-tmp.timer"]
 units = [
   "dunst.service",
   "volume.service",
+  { name = "sshd.service", scope = "system" },
 ]
 ```
 
-**Note**: Unit files should exist in `symlinks/config/systemd/user/` and be symlinked before enabling.
+**Note**: User unit files should exist in `symlinks/config/systemd/user/` and be symlinked before enabling. System-scope units are enabled with `sudo systemctl` and must already be available to systemd.
 
 ---
 
@@ -306,9 +308,10 @@ scripts = [
 - The `path` is relative to the overlay repository root
 - Scripts follow a convention-based interface:
   - **No arguments**: Apply the desired state
-  - **`--check`**: Verify state (exit 0 = correct, non-zero = needs apply)
+  - **`--check`**: Verify state (exit 0 = correct, exit 1 = needs apply, any other non-zero exit = check failure)
+  - **`--dryrun`**: Preview what apply would do without mutating state
   - **`--remove`**: Undo the applied state
-- `.ps1` scripts are invoked via `powershell` (Windows) or `pwsh` (other platforms)
+- `.ps1` scripts are invoked via `pwsh` when available; Windows falls back to `powershell`, while non-Windows platforms require `pwsh`
 - `.sh` scripts are invoked via `sh`
 - Scripts run with `-NonInteractive` to prevent interactive prompts
 

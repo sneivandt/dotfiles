@@ -15,6 +15,8 @@ pub struct SymlinkResource {
     pub target: PathBuf,
     /// Executor used for subprocess fallbacks (e.g. mklink on Windows).
     executor: Arc<dyn Executor>,
+    /// Configuration validation error that makes this resource unsafe to apply.
+    validation_error: Option<String>,
 }
 
 impl SymlinkResource {
@@ -29,7 +31,15 @@ impl SymlinkResource {
             source: source.into(),
             target: target.into(),
             executor,
+            validation_error: None,
         }
+    }
+
+    /// Attach a configuration validation error to prevent unsafe application.
+    #[must_use]
+    pub fn with_validation_error(mut self, validation_error: Option<String>) -> Self {
+        self.validation_error = validation_error;
+        self
     }
 }
 
@@ -111,6 +121,12 @@ impl Applicable for SymlinkResource {
 
 impl Resource for SymlinkResource {
     fn current_state(&self) -> Result<ResourceState> {
+        if let Some(reason) = &self.validation_error {
+            return Ok(ResourceState::Invalid {
+                reason: reason.clone(),
+            });
+        }
+
         // Check if source exists
         if !self.source.exists() {
             return Ok(ResourceState::Invalid {
@@ -208,6 +224,7 @@ fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
 /// a plain copy+delete when the rename crosses a filesystem boundary (EXDEV).
 fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
     let tmp = sibling_temp_path(target, "_dotfiles_tmp");
+    remove_stale_temp_dir(&tmp)?;
     let mut guard = crate::fs::TempDir::new(tmp.clone());
 
     crate::fs::copy_dir_recursive(source, &tmp, false)
@@ -259,6 +276,26 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
     }
 
     guard.persist();
+    Ok(())
+}
+
+fn remove_stale_temp_dir(tmp: &Path) -> Result<()> {
+    let meta = match tmp.symlink_metadata() {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => {
+            return Err(anyhow::Error::new(e))
+                .with_context(|| format!("stat temp path: {}", tmp.display()));
+        }
+    };
+
+    if meta.file_type().is_symlink() || !meta.is_dir() {
+        std::fs::remove_file(tmp)
+            .with_context(|| format!("remove stale temp file: {}", tmp.display()))?;
+    } else {
+        std::fs::remove_dir_all(tmp)
+            .with_context(|| format!("remove stale temp dir: {}", tmp.display()))?;
+    }
     Ok(())
 }
 
@@ -481,6 +518,28 @@ mod tests {
             PathBuf::from("/home/test/.ssh/config.dotfiles_tmp")
         );
         assert_ne!(bashrc_tmp, vimrc_tmp);
+    }
+
+    #[test]
+    fn copy_dir_into_place_removes_stale_temp_directory_before_copying() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source = temp_dir.path().join("source");
+        let target = temp_dir.path().join("target");
+        let stale_tmp = sibling_temp_path(&target, "_dotfiles_tmp");
+
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("kept.txt"), "fresh").unwrap();
+        std::fs::create_dir(&stale_tmp).unwrap();
+        std::fs::write(stale_tmp.join("stale.txt"), "stale").unwrap();
+
+        copy_dir_into_place(&source, &target).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(target.join("kept.txt")).unwrap(),
+            "fresh"
+        );
+        assert!(!target.join("stale.txt").exists());
+        assert!(!stale_tmp.exists());
     }
 
     #[test]

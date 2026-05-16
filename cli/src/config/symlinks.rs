@@ -3,7 +3,7 @@ use anyhow::{Context as _, Result, bail};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use super::ValidationWarning;
 use super::config_section;
@@ -117,6 +117,7 @@ fn expand_one(symlink: &Symlink, fallback: &Path) -> Result<Vec<Symlink>> {
         }
         return Ok(vec![symlink.clone()]);
     }
+    validate_paths(symlink)?;
     if symlink.target.is_some() && source_wildcards != target_wildcards {
         bail!(
             "source pattern '{}' has {source_wildcards} wildcard(s), but target pattern '{}' has {target_wildcards}",
@@ -164,6 +165,41 @@ fn expand_one(symlink: &Symlink, fallback: &Path) -> Result<Vec<Symlink>> {
         .collect::<Result<Vec<_>>>()?;
     expanded.sort_by(|left, right| left.source.cmp(&right.source));
     Ok(expanded)
+}
+
+fn validate_relative_config_path(kind: &str, path: &str) -> Result<()> {
+    if path.is_empty() {
+        bail!("{kind} path must not be empty");
+    }
+    if is_absolute_like(path) {
+        bail!("{kind} path '{path}' must be relative");
+    }
+    if has_parent_component(path) {
+        bail!("{kind} path '{path}' must not contain '..' components");
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_paths(symlink: &Symlink) -> Result<()> {
+    validate_relative_config_path("source", &symlink.source)?;
+    if let Some(target) = &symlink.target {
+        validate_relative_config_path("target", target)?;
+    }
+    Ok(())
+}
+
+fn is_absolute_like(path: &str) -> bool {
+    Path::new(path).is_absolute()
+        || path.starts_with('/')
+        || path.starts_with('\\')
+        || path.as_bytes().get(1).is_some_and(|b| *b == b':')
+}
+
+fn has_parent_component(path: &str) -> bool {
+    Path::new(path)
+        .components()
+        .any(|c| matches!(c, Component::ParentDir))
+        || path.split(['/', '\\']).any(|segment| segment == "..")
 }
 
 fn validate_supported_pattern(kind: &str, pattern: &str) -> Result<()> {
@@ -316,13 +352,11 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<ValidationWarning> {
                     s.target.as_ref().map_or_else(Vec::new, |t| {
                         vec![
                             check(
-                                Path::new(t).is_absolute() || t.starts_with('/'),
+                                is_absolute_like(t),
                                 "target path should be relative to $HOME directory",
                             ),
                             check(
-                                Path::new(t)
-                                    .components()
-                                    .any(|c| c == std::path::Component::ParentDir),
+                                has_parent_component(t),
                                 "target path must not contain '..' components",
                             ),
                         ]
@@ -333,8 +367,12 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<ValidationWarning> {
                         format!("source file does not exist: {}", source_path.display()),
                     ),
                     check(
-                        Path::new(&s.source).is_absolute() || s.source.starts_with('/'),
+                        is_absolute_like(&s.source),
                         "source path should be relative to symlinks/ directory",
+                    ),
+                    check(
+                        has_parent_component(&s.source),
+                        "source path must not contain '..' components",
                     ),
                 ];
                 checks.extend(target_checks);
@@ -445,6 +483,35 @@ symlinks = [
                 .iter()
                 .any(|w| w.message.contains("does not exist"))
         );
+    }
+
+    #[test]
+    fn validate_detects_source_path_traversal() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let symlinks = vec![Symlink {
+            source: "../outside".to_string(),
+            target: None,
+            origin: None,
+        }];
+
+        let warnings = validate(&symlinks, temp_dir.path());
+        assert!(
+            warnings.iter().any(|w| w.message.contains("'..'")),
+            "expected traversal warning, got: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn expand_glob_patterns_rejects_glob_path_traversal() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let symlinks = vec![Symlink {
+            source: "../*".to_string(),
+            target: Some("../../outside".to_string()),
+            origin: None,
+        }];
+
+        let err = expand_glob_patterns(&symlinks, temp_dir.path()).unwrap_err();
+        assert!(err.to_string().contains("must not contain '..'"));
     }
 
     #[test]

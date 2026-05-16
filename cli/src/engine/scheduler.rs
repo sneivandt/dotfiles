@@ -181,10 +181,11 @@ mod tests {
     use crate::phases::test_helpers::{ContextBuilder, empty_config};
     use crate::phases::{TaskResult, task_deps};
 
-    fn make_test_log_and_ctx() -> (Arc<Logger>, Context) {
+    fn make_test_log_and_ctx() -> (Arc<Logger>, Context, logging::TestDispatchLock) {
+        let dispatch_lock = logging::test_dispatch_lock();
         let log = Arc::new(Logger::new("test"));
         let ctx = ContextBuilder::new(empty_config(PathBuf::from("/tmp"))).build();
-        (log, ctx)
+        (log, ctx, dispatch_lock)
     }
 
     // -----------------------------------------------------------------------
@@ -485,7 +486,7 @@ mod tests {
 
     #[test]
     fn independent_task_runs_normally() {
-        let (log, ctx) = make_test_log_and_ctx();
+        let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
         let ran = Arc::new(AtomicBool::new(false));
         let task = FlagTask {
             ran: Arc::clone(&ran),
@@ -501,7 +502,7 @@ mod tests {
 
     #[test]
     fn dependent_task_is_skipped_when_dependency_panics() {
-        let (log, ctx) = make_test_log_and_ctx();
+        let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
         let ran = Arc::new(AtomicBool::new(false));
         let panic_task = PanicTask;
         let dep_task = DepOnPanicTask {
@@ -531,7 +532,7 @@ mod tests {
 
     #[test]
     fn failure_propagates_through_dependency_chain() {
-        let (log, ctx) = make_test_log_and_ctx();
+        let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
         let ran_b = Arc::new(AtomicBool::new(false));
         let ran_c = Arc::new(AtomicBool::new(false));
         let panic_task = PanicTask;
@@ -569,7 +570,7 @@ mod tests {
 
     #[test]
     fn multiple_independent_tasks_all_run() {
-        let (log, ctx) = make_test_log_and_ctx();
+        let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
         let ran_1 = Arc::new(AtomicBool::new(false));
         let ran_2 = Arc::new(AtomicBool::new(false));
         let task_1 = FlagTask {
@@ -593,7 +594,7 @@ mod tests {
 
     #[test]
     fn task_runs_after_dependency_completes() {
-        let (log, ctx) = make_test_log_and_ctx();
+        let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
         let ran_flag = Arc::new(AtomicBool::new(false));
         let ran_dep = Arc::new(AtomicBool::new(false));
         let flag_task = FlagTask {
@@ -617,7 +618,7 @@ mod tests {
 
     #[test]
     fn diamond_dependency_all_tasks_run() {
-        let (log, ctx) = make_test_log_and_ctx();
+        let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
         let ran_a = Arc::new(AtomicBool::new(false));
         let ran_b = Arc::new(AtomicBool::new(false));
         let ran_d = Arc::new(AtomicBool::new(false));
@@ -643,7 +644,7 @@ mod tests {
 
     #[test]
     fn empty_task_list_completes_without_panic() {
-        let (log, ctx) = make_test_log_and_ctx();
+        let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
         let empty: Vec<&dyn Task> = vec![];
         run_tasks_parallel(&empty, &ctx, &log);
         // No panic = success
@@ -651,7 +652,7 @@ mod tests {
 
     #[test]
     fn dependency_not_in_list_is_ignored() {
-        let (log, ctx) = make_test_log_and_ctx();
+        let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
         let ran = Arc::new(AtomicBool::new(false));
         let task = DepOnMissing {
             ran: Arc::clone(&ran),
@@ -909,7 +910,7 @@ mod tests {
 
     #[test]
     fn dependency_ordering_is_respected() {
-        let (log, ctx) = make_test_log_and_ctx();
+        let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
 
         // Use the existing FlagTask → DepOnFlagTask relationship:
         // FlagTask must run before DepOnFlagTask. Verify using order of

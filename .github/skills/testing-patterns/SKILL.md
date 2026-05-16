@@ -69,7 +69,10 @@ fn description_includes_manager() {
 #[test]
 fn from_entry_copies_name() {
     let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-    let entry = SystemdUnit { name: "dunst.service".to_string() };
+    let entry = SystemdUnit {
+        name: "dunst.service".to_string(),
+        scope: "user".to_string(),
+    };
     let resource = SystemdUnitResource::from_entry(&entry, executor);
     assert_eq!(resource.name, "dunst.service");
 }

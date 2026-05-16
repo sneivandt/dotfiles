@@ -134,7 +134,7 @@ impl Task for OverlayScriptTask {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let resource =
-            ScriptResource::from_entry(&self.entry, &self.overlay_root, Arc::clone(&ctx.executor));
+            ScriptResource::from_entry(&self.entry, &self.overlay_root, Arc::clone(&ctx.executor))?;
 
         let state = resource.current_state()?;
         match state {

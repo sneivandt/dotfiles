@@ -63,33 +63,36 @@ impl WrapperResource {
         let (target, content) = match wrapper_type {
             WrapperType::Sh => {
                 let target = bin_dir.join("dotfiles");
+                let root = sh_single_quote(&dotfiles_root.display().to_string());
                 let content = format!(
                     "#!/bin/sh\n\
-                     # Installed by dotfiles \u{2014} do not edit.\n\
-                     DOTFILES_ROOT=\"${{DOTFILES_ROOT:-{root}}}\"\n\
-                     export DOTFILES_ROOT\n\
-                     exec \"$DOTFILES_ROOT/dotfiles.sh\" \"$@\"\n",
-                    root = dotfiles_root.display()
+                      # Installed by dotfiles \u{2014} do not edit.\n\
+                      if [ -z \"${{DOTFILES_ROOT:-}}\" ]; then\n\
+                      \tDOTFILES_ROOT={root}\n\
+                      fi\n\
+                      export DOTFILES_ROOT\n\
+                      exec \"$DOTFILES_ROOT/dotfiles.sh\" \"$@\"\n"
                 );
                 (target, content)
             }
             WrapperType::Pwsh => {
                 let target = bin_dir.join("dotfiles.cmd");
+                let root = cmd_set_value_escape(&dotfiles_root.display().to_string());
+                let sep = std::path::MAIN_SEPARATOR;
                 // Probe for pwsh (PowerShell 7+) at runtime, falling back to
                 // Windows PowerShell if unavailable.
                 let content = format!(
                     "@echo off\r\n\
-                     rem Installed by dotfiles \u{2014} do not edit.\r\n\
-                     if not defined DOTFILES_ROOT set \"DOTFILES_ROOT={root}\"\r\n\
-                     where /q pwsh && (\r\n\
-                         pwsh -NoProfile -ExecutionPolicy Bypass \
-                     -File \"%DOTFILES_ROOT%{sep}dotfiles.ps1\" %*\r\n\
-                         exit /b %ERRORLEVEL%\r\n\
-                     )\r\n\
-                     powershell.exe -NoProfile -ExecutionPolicy Bypass \
-                     -File \"%DOTFILES_ROOT%{sep}dotfiles.ps1\" %*\r\n",
-                    root = dotfiles_root.display(),
-                    sep = std::path::MAIN_SEPARATOR,
+                      rem Installed by dotfiles \u{2014} do not edit.\r\n\
+                      if not defined DOTFILES_ROOT set \"DOTFILES_ROOT={root}\"\r\n\
+                      where /q pwsh\r\n\
+                      if errorlevel 1 goto dotfiles_windows_powershell\r\n\
+                      pwsh -NoProfile -ExecutionPolicy Bypass \
+                      -File \"%DOTFILES_ROOT%{sep}dotfiles.ps1\" %*\r\n\
+                      exit /b %ERRORLEVEL%\r\n\
+                      :dotfiles_windows_powershell\r\n\
+                      powershell.exe -NoProfile -ExecutionPolicy Bypass \
+                      -File \"%DOTFILES_ROOT%{sep}dotfiles.ps1\" %*\r\n"
                 );
                 (target, content)
             }
@@ -97,6 +100,14 @@ impl WrapperResource {
 
         Self { target, content }
     }
+}
+
+fn sh_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn cmd_set_value_escape(value: &str) -> String {
+    value.replace('%', "%%")
 }
 
 impl Applicable for WrapperResource {
@@ -200,13 +211,22 @@ mod tests {
     fn sh_content_contains_shebang_and_dotfiles_root() {
         let r = make_sh_resource(Path::new("/repo"), Path::new("/home/user"));
         assert!(r.content.starts_with("#!/bin/sh\n"));
-        assert!(
-            r.content
-                .contains("DOTFILES_ROOT=\"${DOTFILES_ROOT:-/repo}\"")
-        );
+        assert!(r.content.contains("DOTFILES_ROOT='/repo'"));
         assert!(
             r.content
                 .contains("exec \"$DOTFILES_ROOT/dotfiles.sh\" \"$@\"")
+        );
+    }
+
+    #[test]
+    fn sh_content_single_quotes_dotfiles_root() {
+        let r = make_sh_resource(
+            Path::new("/repo with 'quote/$HOME"),
+            Path::new("/home/user"),
+        );
+        assert!(
+            r.content
+                .contains("DOTFILES_ROOT='/repo with '\\''quote/$HOME'")
         );
     }
 
@@ -237,6 +257,22 @@ mod tests {
         assert!(
             r.content.contains("powershell.exe"),
             "cmd shim must fall back to powershell.exe"
+        );
+    }
+
+    #[test]
+    fn pwsh_content_escapes_percent_in_default_root() {
+        let r = make_pwsh_resource(
+            Path::new(r"C:\Users\%USERNAME%\dotfiles"),
+            Path::new("/home/user"),
+        );
+        assert!(
+            r.content.contains(r"C:\Users\%%USERNAME%%\dotfiles"),
+            "cmd shim must escape percent signs in set assignments"
+        );
+        assert!(
+            !r.content.contains("&& ("),
+            "cmd shim should not wrap invocation in a parenthesized block"
         );
     }
 

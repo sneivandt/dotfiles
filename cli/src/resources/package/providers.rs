@@ -144,7 +144,7 @@ impl PackageProvider for PacmanProvider {
     }
 
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
-        executor.run("sudo", &["pacman", "-Sy", "--needed", "--noconfirm", name])?;
+        executor.run("sudo", &["pacman", "-Syu", "--needed", "--noconfirm", name])?;
         Ok(ResourceChange::Applied)
     }
 
@@ -153,7 +153,7 @@ impl PackageProvider for PacmanProvider {
     }
 
     fn batch_install(&self, names: &[&str], executor: &dyn Executor) -> Result<()> {
-        let mut args = vec!["pacman", "-Sy", "--needed", "--noconfirm"];
+        let mut args = vec!["pacman", "-Syu", "--needed", "--noconfirm"];
         args.extend(names);
         executor.run("sudo", &args)?;
         Ok(())

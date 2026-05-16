@@ -199,7 +199,7 @@ The installation process handles different components based on your profile:
 12. **Set Permissions** - Applies file permissions from `conf/chmod.toml`
 13. **Configure Git** - Applies git configuration
 14. **Configure Shell** - Sets default shell
-15. **Enable Systemd Units** - Enables and starts user units from `conf/systemd-units.toml`
+15. **Enable Systemd Units** - Enables and starts user or system units from `conf/systemd-units.toml`
 16. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
 17. **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml`, then runs `apm install -g --target copilot,vscode` to deploy AI plugin manifests globally under `~/.copilot/` and `~/.vscode/` ([Microsoft APM](https://github.com/microsoft/apm))
 18. **Configure PAM Services** - Installs custom PAM service files (Arch Linux + desktop profile only, uses sudo)
@@ -463,7 +463,7 @@ need to specify `--overlay` once:
 - **TOML config files** in `conf/` — merged with main config (packages,
   symlinks, extensions, etc.)
 - **Custom scripts** in `scripts/` — defined in `conf/scripts.toml` with a
-  convention-based interface (`--check`, `--remove`, no args for apply)
+  convention-based interface (`--check`, `--dryrun`, `--remove`, no args for apply)
 
 Each overlay script appears as its own task in the output:
 

@@ -107,7 +107,7 @@ TOML, and `toml_loader::load_required_config()` when a file must exist.
 | `manifest.toml` | arrays | Sparse checkout exclusions using `excluded_categories` with the same AND logic |
 | `symlinks.toml` | arrays | Profile-filtered symlink paths |
 | `packages.toml` | arrays | Simple strings or `{ name, aur }` objects |
-| `systemd-units.toml` | arrays | Systemd unit names |
+| `systemd-units.toml` | arrays | Systemd unit names; strings default to user scope, objects can set `scope` |
 | `chmod.toml` | arrays | Objects with `mode` and `path` fields |
 | `vscode-extensions.toml` | arrays | Extension IDs |
 | `registry.toml` | tables | `path` field + `values` table for registry keys |
@@ -119,11 +119,18 @@ TOML, and `toml_loader::load_required_config()` when a file must exist.
 
 ```toml
 [base]
-units = ["sshd", "docker"]
+units = ["clean-home-tmp.timer"]
 
 [arch-desktop]
-units = ["gdm"]
+units = [
+  "dunst.service",
+  { name = "sshd.service", scope = "system" },
+]
 ```
+
+Plain systemd unit strings default to `scope = "user"`. Use
+`{ name = "...", scope = "system" }` only for units that should be managed via
+`sudo systemctl`; valid scopes are `user` and `system`.
 
 ### Structured Objects (chmod.toml)
 

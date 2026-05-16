@@ -65,6 +65,10 @@ pub fn validate(
         vec![
             check(u.name.trim().is_empty(), "unit name is empty"),
             check(
+                !matches!(u.scope.as_str(), "user" | "system"),
+                "unit scope should be 'user' or 'system'",
+            ),
+            check(
                 !has_valid_ext,
                 "unit name should end with a valid systemd extension (.service, .timer, .socket, etc.)",
             ),
@@ -188,6 +192,22 @@ units = [{ name = "some-daemon.service", scope = "system" }]
                 .iter()
                 .any(|w| w.message.contains("does not support systemd")),
             "should warn about systemd on non-Linux: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn validate_warns_on_invalid_scope() {
+        use crate::platform::{Os, Platform};
+
+        let units = vec![SystemdUnit {
+            name: "example.service".to_string(),
+            scope: "global".to_string(),
+        }];
+
+        let warnings = validate(&units, Platform::new(Os::Linux, false));
+        assert!(
+            warnings.iter().any(|w| w.message.contains("scope")),
+            "should warn about invalid scope: {warnings:?}"
         );
     }
 }

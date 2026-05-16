@@ -251,7 +251,7 @@ mod tests {
     fn isolated_file_layer() -> (
         std::path::PathBuf,
         tempfile::TempDir,
-        tracing::dispatcher::DefaultGuard,
+        super::super::TestDispatchGuard,
     ) {
         let tmp = tempfile::tempdir().expect("failed to create temp dir");
         let layer =
@@ -259,7 +259,8 @@ mod tests {
         let path = super::super::utils::log_file_path_in("test", tmp.path())
             .expect("log path should resolve");
         let subscriber = tracing_subscriber::registry().with(layer);
-        let guard = tracing::dispatcher::set_default(&tracing::Dispatch::new(subscriber));
+        let dispatch = tracing::Dispatch::new(subscriber);
+        let guard = super::super::test_dispatch_guard(&dispatch);
         (path, tmp, guard)
     }
 

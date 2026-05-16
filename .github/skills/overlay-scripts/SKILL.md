@@ -38,25 +38,27 @@ if let Some(overlay_root) = overlay {
 
 ## Script Convention
 
-Scripts in the overlay follow a three-mode interface:
+Scripts in the overlay follow a four-mode interface:
 
 | Invocation | Purpose | Expected behaviour |
 |---|---|---|
 | No args | **Apply** | Create/install the desired state |
-| `--check` | **Check** | Exit 0 if correct, non-zero if needs apply |
+| `--check` | **Check** | Exit 0 if correct, exit 1 if needs apply; other non-zero exits are check failures |
+| `--dryrun` | **Dry-run** | Preview what apply would do without mutating state |
 | `--remove` | **Remove** | Undo the applied state |
 
 ### PowerShell scripts (`.ps1`)
 
 ```powershell
-param([switch]$Check, [switch]$Remove)
+param([switch]$Check, [switch]$DryRun, [switch]$Remove)
 
 if ($Check)  { <# verify state, exit 0/1 #> }
+elseif ($DryRun) { <# print planned changes without mutating #> }
 elseif ($Remove) { <# undo #> }
 else { <# apply #> }
 ```
 
-Invoked with: `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File`
+Invoked with: `pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File` when available. Windows falls back to `powershell`; non-Windows platforms require `pwsh`.
 
 ### Shell scripts (`.sh`)
 
@@ -64,6 +66,7 @@ Invoked with: `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Fi
 #!/bin/sh
 case "$1" in
   --check)  # verify state, exit 0/1 ;;
+  --dryrun) # print planned changes without mutating ;;
   --remove) # undo ;;
   *)        # apply ;;
 esac
@@ -77,6 +80,7 @@ Invoked with: `sh`
 `Applicable` and `Resource`:
 
 - `current_state()` — runs `--check`, maps exit code to `Correct`/`Missing`
+- `dry_run_output()` — runs `--dryrun` and propagates failures
 - `apply()` — runs script with no args
 - `remove()` — runs script with `--remove`
 - Returns `Skipped`/`Invalid` when the script file is missing
@@ -126,12 +130,15 @@ scripts = [
 ```
 
 Parsed by `cli/src/config/scripts.rs` using the `config_section!` macro.
-Paths are relative to the overlay root.
+Paths are relative to the overlay root and must not be absolute or contain `..`
+components.
 
 ## Rules
 
-- Scripts must handle all three modes: apply, `--check`, `--remove`
-- `--check` must exit 0 when state is correct, non-zero otherwise
+- Scripts must handle all four modes: apply, `--check`, `--dryrun`, `--remove`
+- Script paths must be relative to the overlay root and must not contain `..`
+- `--check` must exit 0 when state is correct, exit 1 when apply is needed, and any other non-zero exit for check failures
+- `--dryrun` must not mutate state and must exit non-zero on preview failures
 - PowerShell scripts run with `-NonInteractive` to prevent prompts
 - Use `[System.IO.Directory]::Delete()` for directory symlinks in
   PowerShell (avoids `Remove-Item` confirmation prompts)

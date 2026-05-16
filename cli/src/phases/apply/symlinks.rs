@@ -20,7 +20,11 @@ fn build_resource(
         || compute_target(home, &s.source),
         |explicit| home.join(explicit),
     );
+    let validation_error = crate::config::symlinks::validate_paths(s)
+        .err()
+        .map(|e| e.to_string());
     SymlinkResource::new(symlinks_dir.join(&s.source), target, Arc::clone(executor))
+        .with_validation_error(validation_error)
 }
 
 /// Build [`SymlinkResource`] instances from the loaded config.
@@ -200,6 +204,50 @@ mod tests {
         );
         let target = std::fs::read_link(&link).unwrap();
         assert_eq!(target, symlinks_dir.join("bashrc"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn install_run_skips_source_path_traversal() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let home_dir = tempfile::tempdir().unwrap();
+        let outside = repo_dir.path().join("outside");
+        std::fs::write(&outside, "outside").unwrap();
+
+        let mut config = empty_config(repo_dir.path().to_path_buf());
+        config.symlinks.push(Symlink {
+            source: "../outside".to_string(),
+            target: Some("escaped-source".to_string()),
+            origin: None,
+        });
+        let ctx = make_linux_context(config).with_home(home_dir.path().to_path_buf());
+
+        let result = InstallSymlinks.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+        assert!(!home_dir.path().join("escaped-source").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn install_run_skips_target_path_traversal() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let home_dir = tempfile::tempdir().unwrap();
+        let symlinks_dir = repo_dir.path().join("symlinks");
+        std::fs::create_dir(&symlinks_dir).unwrap();
+        std::fs::write(symlinks_dir.join("bashrc"), "# bash config").unwrap();
+        let outside_target = home_dir.path().join("..").join("outside-target");
+
+        let mut config = empty_config(repo_dir.path().to_path_buf());
+        config.symlinks.push(Symlink {
+            source: "bashrc".to_string(),
+            target: Some("../outside-target".to_string()),
+            origin: None,
+        });
+        let ctx = make_linux_context(config).with_home(home_dir.path().to_path_buf());
+
+        let result = InstallSymlinks.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+        assert!(!outside_target.exists());
     }
 
     #[cfg(unix)]

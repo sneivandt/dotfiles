@@ -23,6 +23,9 @@ config/hypr
 ```
 
 Source files in `symlinks/` have **no leading dots**.
+Source and explicit target paths must be relative and must not contain `..`
+components; invalid paths are reported as unsafe configuration instead of being
+applied.
 
 ## Target Path
 
@@ -94,6 +97,7 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 ## Rules
 
 - No leading dots in `symlinks.toml` or `symlinks/` paths
+- Source and explicit target paths must be relative and must not contain `..`
 - Use directory symlinks for entire config dirs, file symlinks for selective management
 - Don't create symlinks inside already-symlinked directories
 - Source files filtered by sparse checkout are silently skipped

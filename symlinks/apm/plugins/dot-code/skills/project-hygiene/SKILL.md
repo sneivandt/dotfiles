@@ -1,9 +1,9 @@
 ---
-name: change-follow-up
+name: project-hygiene
 description: Use after code, configuration, workflow, or tooling changes to check whether related docs, tests, skills, prompts, config, schemas, CI, or validation commands need updates.
 ---
 
-# Change Follow-Up
+# Project Hygiene
 
 Use this skill after changing code, configuration, workflows, or tooling.
 

@@ -13,25 +13,26 @@ use super::stats::TaskStats;
 use crate::logging::{diag_thread_name, set_diag_thread_name};
 use crate::resources::{Applicable, Resource, ResourceState};
 
-/// Process resources in parallel using Rayon.
-pub(super) fn process_resources_parallel<R: Resource + Send>(
+/// Process resource-like items in parallel using Rayon.
+///
+/// The caller supplies `get_resource_state` so self-checking resources and
+/// pre-computed `(resource, state)` pairs share the same parallel apply path.
+pub(super) fn process_apply_parallel<T: Send, R: Applicable + Send>(
     ctx: &Context,
-    resources: Vec<R>,
+    items: Vec<T>,
     opts: &ProcessOpts,
+    get_resource_state: impl Fn(T) -> Result<(R, ResourceState)> + Sync + Send,
 ) -> Result<super::stats::TaskResult> {
-    run_parallel(ctx, resources, opts, |resource| {
-        let state = resource.current_state()?;
-        Ok((resource, state))
-    })
-}
-
-/// Process resources with pre-computed states in parallel using Rayon.
-pub(super) fn process_resource_states_parallel<R: Applicable + Send>(
-    ctx: &Context,
-    resource_states: Vec<(R, ResourceState)>,
-    opts: &ProcessOpts,
-) -> Result<super::stats::TaskResult> {
-    run_parallel(ctx, resource_states, opts, Ok)
+    let cancelled = ctx.cancelled.clone();
+    let stats = collect_parallel_stats(
+        items,
+        |item| {
+            let (resource, current) = get_resource_state(item)?;
+            process_single(ctx, &resource, &current, opts)
+        },
+        move || cancelled.is_cancelled(),
+    )?;
+    Ok(stats.finish(ctx))
 }
 
 /// Remove resources in parallel using Rayon.
@@ -99,28 +100,4 @@ fn collect_parallel_stats<T: Send>(
             a += b;
             Ok(a)
         })
-}
-
-/// Generic parallel processing helper using Rayon.
-///
-/// Accepts a vector of items and a closure that extracts a `(Resource, ResourceState)`
-/// pair from each item. The closure runs in parallel and delegates stats
-/// accumulation to [`collect_parallel_stats`], which keeps per-thread
-/// [`TaskStats`] locally and merges them at the end without a shared lock.
-fn run_parallel<T: Send, R: Applicable + Send>(
-    ctx: &Context,
-    items: Vec<T>,
-    opts: &ProcessOpts,
-    get_resource_state: impl Fn(T) -> Result<(R, ResourceState)> + Sync,
-) -> Result<super::stats::TaskResult> {
-    let cancelled = ctx.cancelled.clone();
-    let stats = collect_parallel_stats(
-        items,
-        |item| {
-            let (resource, current) = get_resource_state(item)?;
-            process_single(ctx, &resource, &current, opts)
-        },
-        move || cancelled.is_cancelled(),
-    )?;
-    Ok(stats.finish(ctx))
 }

@@ -1,10 +1,10 @@
 //! TOML configuration file parsing with category filtering.
 use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::Path;
 
-use super::category_matcher::Category;
+use super::category_matcher::{Category, matches, parse_section_key};
 
 /// Trait for TOML config sections that follow the standard load-filter-map pattern.
 ///
@@ -65,18 +65,44 @@ pub(crate) fn load_section<S: ConfigSection>(
 /// # Errors
 ///
 /// Returns an error if the file cannot be read or parsed.
-pub(crate) fn load_config<T: DeserializeOwned>(path: &Path) -> Result<T> {
+pub(crate) fn load_optional_config<T: DeserializeOwned>(path: &Path) -> Result<T> {
     if !path.exists() {
         // Return empty config for missing files by deserializing empty TOML
         return toml::from_str("")
             .with_context(|| format!("Failed to create empty config: {}", path.display()));
     }
 
+    load_required_config(path)
+}
+
+/// Load a required TOML config file.
+///
+/// Unlike [`load_optional_config`], this helper reports a missing file as an
+/// error. Use it when the caller owns the policy decision that the file must
+/// exist.
+///
+/// # Errors
+///
+/// Returns an error if the file is missing, cannot be read, or cannot be parsed.
+pub(crate) fn load_required_config<T: DeserializeOwned>(path: &Path) -> Result<T> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read config file: {}", path.display()))?;
 
     toml::from_str(&content)
         .with_context(|| format!("Failed to parse TOML config: {}", path.display()))
+}
+
+/// Load an optional TOML config file.
+///
+/// Missing files deserialize as empty TOML for backwards-compatible config
+/// sections. New call sites should choose this function explicitly rather than
+/// relying on a generic loader to decide the missing-file policy.
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be read or parsed.
+pub(crate) fn load_config<T: DeserializeOwned>(path: &Path) -> Result<T> {
+    load_optional_config(path)
 }
 
 /// Load a TOML config file where each top-level section contains a single
@@ -95,7 +121,7 @@ pub(crate) fn load_section_items<S, T>(
 where
     S: DeserializeOwned,
 {
-    let config: HashMap<String, S> = load_config(path)?;
+    let config: BTreeMap<String, S> = load_optional_config(path)?;
     Ok(config.into_iter().map(|(k, v)| (k, extract(v))).collect())
 }
 
@@ -133,13 +159,7 @@ pub(crate) fn filter_by_categories<T>(
 ) -> Vec<T> {
     items
         .into_iter()
-        .filter(|(section_name, _)| {
-            section_name
-                .split('-')
-                .filter(|s| !s.trim().is_empty())
-                .map(|s| Category::from_tag(s.trim()))
-                .all(|cat| active_categories.contains(&cat))
-        })
+        .filter(|(section_name, _)| matches(&parse_section_key(section_name), active_categories))
         .flat_map(|(_, items)| items)
         .collect()
 }
@@ -164,7 +184,7 @@ mod tests {
     fn load_config_missing_file_returns_empty_hashmap() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("nonexistent.toml");
-        let result: HashMap<String, String> = load_config(&path).unwrap();
+        let result: BTreeMap<String, String> = load_optional_config(&path).unwrap();
         assert!(result.is_empty());
     }
 
@@ -175,14 +195,14 @@ mod tests {
             key: String,
         }
         let (_dir, path) = write_temp_toml("key = \"value\"\n");
-        let root: Root = load_config(&path).unwrap();
+        let root: Root = load_required_config(&path).unwrap();
         assert_eq!(root.key, "value");
     }
 
     #[test]
     fn load_config_invalid_toml_returns_error() {
         let (_dir, path) = write_temp_toml("not valid {{{{ toml");
-        let result: Result<HashMap<String, String>> = load_config(&path);
+        let result: Result<BTreeMap<String, String>> = load_optional_config(&path);
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -192,6 +212,17 @@ mod tests {
         assert!(
             msg.contains(path.to_str().unwrap_or("")),
             "error should include the file path: {msg}"
+        );
+    }
+
+    #[test]
+    fn load_required_config_missing_file_returns_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("nonexistent.toml");
+        let result: Result<BTreeMap<String, String>> = load_required_config(&path);
+        assert!(
+            result.is_err(),
+            "required config should reject missing file"
         );
     }
 
@@ -315,7 +346,7 @@ items = [\"c\"]
             key: Vec<String>,
         }
         let (_dir, path) = write_temp_toml("key = \"not-an-array\"\n");
-        let result: Result<Root> = load_config(&path);
+        let result: Result<Root> = load_optional_config(&path);
         assert!(
             result.is_err(),
             "string-to-array mismatch should return error"

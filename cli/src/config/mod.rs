@@ -173,6 +173,138 @@ use anyhow::{Context as _, Result};
 
 use crate::platform::Platform;
 
+const PACKAGES_TOML: &str = "packages.toml";
+const SYMLINKS_TOML: &str = "symlinks.toml";
+const REGISTRY_TOML: &str = "registry.toml";
+const SYSTEMD_UNITS_TOML: &str = "systemd-units.toml";
+const CHMOD_TOML: &str = "chmod.toml";
+const VSCODE_EXTENSIONS_TOML: &str = "vscode-extensions.toml";
+const GIT_CONFIG_TOML: &str = "git-config.toml";
+const MANIFEST_TOML: &str = "manifest.toml";
+const SCRIPTS_TOML: &str = "scripts.toml";
+
+#[derive(Debug, Clone, Copy)]
+enum ConfigSource {
+    Main,
+    Overlay,
+}
+
+#[derive(Debug)]
+struct ConfigLoader {
+    conf_dir: PathBuf,
+    source: ConfigSource,
+}
+
+impl ConfigLoader {
+    fn main(root: &Path) -> Self {
+        Self {
+            conf_dir: root.join("conf"),
+            source: ConfigSource::Main,
+        }
+    }
+
+    fn overlay(root: &Path) -> Self {
+        Self {
+            conf_dir: root.join("conf"),
+            source: ConfigSource::Overlay,
+        }
+    }
+
+    fn path(&self, file: &str) -> PathBuf {
+        self.conf_dir.join(file)
+    }
+
+    fn error_context(&self, path: &Path) -> String {
+        match self.source {
+            ConfigSource::Main => format!("Invalid syntax in {}", path.display()),
+            ConfigSource::Overlay => format!("Invalid syntax in overlay {}", path.display()),
+        }
+    }
+
+    fn load<T>(&self, file: &str, loader: impl FnOnce(&Path) -> Result<T>) -> Result<T> {
+        let path = self.path(file);
+        loader(&path).with_context(|| self.error_context(&path))
+    }
+
+    fn load_filtered<T>(
+        &self,
+        file: &str,
+        loader: impl FnOnce(&Path, &[category_matcher::Category]) -> Result<T>,
+        categories: &[category_matcher::Category],
+    ) -> Result<T> {
+        let path = self.path(file);
+        loader(&path, categories).with_context(|| self.error_context(&path))
+    }
+
+    fn load_overlay<T: Default>(
+        &self,
+        file: &str,
+        loader: impl FnOnce(&Path) -> Result<T>,
+    ) -> Result<T> {
+        let path = self.path(file);
+        if path.exists() {
+            loader(&path).with_context(|| self.error_context(&path))
+        } else {
+            Ok(T::default())
+        }
+    }
+
+    fn load_overlay_filtered<T: Default>(
+        &self,
+        file: &str,
+        loader: impl FnOnce(&Path, &[category_matcher::Category]) -> Result<T>,
+        categories: &[category_matcher::Category],
+    ) -> Result<T> {
+        let path = self.path(file);
+        if path.exists() {
+            loader(&path, categories).with_context(|| self.error_context(&path))
+        } else {
+            Ok(T::default())
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ConfigValidator<'a> {
+    config: &'a Config,
+    platform: Platform,
+    warnings: Vec<ValidationWarning>,
+}
+
+impl<'a> ConfigValidator<'a> {
+    const fn new(config: &'a Config, platform: Platform) -> Self {
+        Self {
+            config,
+            platform,
+            warnings: Vec::new(),
+        }
+    }
+
+    fn validate_all(self) -> Self {
+        self.validate_with(|config, _platform| symlinks::validate(&config.symlinks, &config.root))
+            .validate_with(|config, platform| packages::validate(&config.packages, platform))
+            .validate_with(|config, platform| registry::validate(&config.registry, platform))
+            .validate_with(|config, platform| chmod::validate(&config.chmod, platform))
+            .validate_with(|config, platform| systemd_units::validate(&config.units, platform))
+            .validate_with(|config, _platform| {
+                vscode_extensions::validate(&config.vscode_extensions)
+            })
+            .validate_with(|config, _platform| git_config::validate(&config.git_settings))
+    }
+
+    fn validate_with(
+        mut self,
+        validate: impl FnOnce(&Config, Platform) -> Vec<ValidationWarning>,
+    ) -> Self {
+        self.warnings.extend(validate(self.config, self.platform));
+        self
+    }
+
+    fn finish(self) -> Vec<ValidationWarning> {
+        self.warnings
+    }
+}
+
 /// A validation warning detected during configuration loading.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationWarning {
@@ -242,51 +374,36 @@ impl Config {
         platform: Platform,
         overlay: Option<&Path>,
     ) -> Result<Self> {
-        let conf = root.join("conf");
-
         let active_categories = &profile.active_categories;
         let excluded_categories = &profile.excluded_categories;
+        let loader = ConfigLoader::main(root);
 
-        // Macro to build the path and attach the full path to any parse error,
-        // removing the duplication of writing each filename twice.
-        macro_rules! load_toml {
-            // Two-argument form: loaders that do not filter by category (e.g. registry).
-            ($file:literal, $loader:expr) => {{
-                let path = conf.join($file);
-                $loader(&path).with_context(|| format!("Invalid syntax in {}", path.display()))?
-            }};
-            // Three-argument form: loaders that accept a category slice for filtering.
-            ($file:literal, $loader:expr, $cats:expr) => {{
-                let path = conf.join($file);
-                $loader(&path, $cats)
-                    .with_context(|| format!("Invalid syntax in {}", path.display()))?
-            }};
-        }
-
-        let packages = load_toml!("packages.toml", packages::load, active_categories);
-        let mut symlinks = load_toml!("symlinks.toml", symlinks::load, active_categories);
+        let packages = loader.load_filtered(PACKAGES_TOML, packages::load, active_categories)?;
+        let mut symlinks =
+            loader.load_filtered(SYMLINKS_TOML, symlinks::load, active_categories)?;
         symlinks::set_origin(&mut symlinks, root);
 
         let registry = if platform.has_registry() {
-            load_toml!("registry.toml", registry::load)
+            loader.load(REGISTRY_TOML, registry::load)?
         } else {
             Vec::new()
         };
 
         let units = if platform.supports_systemd() {
-            load_toml!("systemd-units.toml", systemd_units::load, active_categories)
+            loader.load_filtered(SYSTEMD_UNITS_TOML, systemd_units::load, active_categories)?
         } else {
             Vec::new()
         };
 
-        let chmod_entries = load_toml!("chmod.toml", chmod::load, active_categories);
-        let vscode_extensions = load_toml!(
-            "vscode-extensions.toml",
+        let chmod_entries = loader.load_filtered(CHMOD_TOML, chmod::load, active_categories)?;
+        let vscode_extensions = loader.load_filtered(
+            VSCODE_EXTENSIONS_TOML,
             vscode_extensions::load,
-            active_categories
-        );
-        let git_settings = load_toml!("git-config.toml", git_config::load, active_categories);
-        let manifest = load_toml!("manifest.toml", manifest::load, excluded_categories);
+            active_categories,
+        )?;
+        let git_settings =
+            loader.load_filtered(GIT_CONFIG_TOML, git_config::load, active_categories)?;
+        let manifest = loader.load_filtered(MANIFEST_TOML, manifest::load, excluded_categories)?;
 
         let mut config = Self {
             root: root.to_path_buf(),
@@ -328,70 +445,50 @@ impl Config {
         active_categories: &[category_matcher::Category],
         platform: Platform,
     ) -> Result<()> {
-        let overlay_conf = overlay_root.join("conf");
+        let loader = ConfigLoader::overlay(overlay_root);
 
-        // Overlay macro — load from the overlay conf directory if the file
-        // exists.
-        macro_rules! load_overlay {
-            ($file:literal, $loader:expr, $cats:expr) => {{
-                let path = overlay_conf.join($file);
-                if path.exists() {
-                    $loader(&path, $cats)
-                        .with_context(|| format!("Invalid syntax in overlay {}", path.display()))?
-                } else {
-                    Vec::new()
-                }
-            }};
-            ($file:literal, $loader:expr) => {{
-                let path = overlay_conf.join($file);
-                if path.exists() {
-                    $loader(&path)
-                        .with_context(|| format!("Invalid syntax in overlay {}", path.display()))?
-                } else {
-                    Vec::new()
-                }
-            }};
-        }
-
-        self.packages.extend(load_overlay!(
-            "packages.toml",
+        self.packages.extend(loader.load_overlay_filtered(
+            PACKAGES_TOML,
             packages::load,
-            active_categories
-        ));
+            active_categories,
+        )?);
         self.symlinks.extend({
             let mut overlay_symlinks =
-                load_overlay!("symlinks.toml", symlinks::load, active_categories);
+                loader.load_overlay_filtered(SYMLINKS_TOML, symlinks::load, active_categories)?;
             symlinks::set_origin(&mut overlay_symlinks, overlay_root);
             overlay_symlinks
         });
         if platform.has_registry() {
             self.registry
-                .extend(load_overlay!("registry.toml", registry::load));
+                .extend(loader.load_overlay(REGISTRY_TOML, registry::load)?);
         }
         if platform.supports_systemd() {
-            self.units.extend(load_overlay!(
-                "systemd-units.toml",
+            self.units.extend(loader.load_overlay_filtered(
+                SYSTEMD_UNITS_TOML,
                 systemd_units::load,
-                active_categories
-            ));
+                active_categories,
+            )?);
         }
-        self.chmod
-            .extend(load_overlay!("chmod.toml", chmod::load, active_categories));
-        self.vscode_extensions.extend(load_overlay!(
-            "vscode-extensions.toml",
+        self.chmod.extend(loader.load_overlay_filtered(
+            CHMOD_TOML,
+            chmod::load,
+            active_categories,
+        )?);
+        self.vscode_extensions.extend(loader.load_overlay_filtered(
+            VSCODE_EXTENSIONS_TOML,
             vscode_extensions::load,
-            active_categories
-        ));
-        self.git_settings.extend(load_overlay!(
-            "git-config.toml",
+            active_categories,
+        )?);
+        self.git_settings.extend(loader.load_overlay_filtered(
+            GIT_CONFIG_TOML,
             git_config::load,
-            active_categories
-        ));
-        self.scripts.extend(load_overlay!(
-            "scripts.toml",
+            active_categories,
+        )?);
+        self.scripts.extend(loader.load_overlay_filtered(
+            SCRIPTS_TOML,
             scripts::load,
-            active_categories
-        ));
+            active_categories,
+        )?);
 
         Ok(())
     }
@@ -404,16 +501,7 @@ impl Config {
     /// - Platform incompatibilities
     #[must_use]
     pub fn validate(&self, platform: Platform) -> Vec<ValidationWarning> {
-        let root = &self.root;
-        let mut warnings = Vec::new();
-        warnings.extend(symlinks::validate(&self.symlinks, root));
-        warnings.extend(packages::validate(&self.packages, platform));
-        warnings.extend(registry::validate(&self.registry, platform));
-        warnings.extend(chmod::validate(&self.chmod, platform));
-        warnings.extend(systemd_units::validate(&self.units, platform));
-        warnings.extend(vscode_extensions::validate(&self.vscode_extensions));
-        warnings.extend(git_config::validate(&self.git_settings));
-        warnings
+        ConfigValidator::new(self, platform).validate_all().finish()
     }
 }
 

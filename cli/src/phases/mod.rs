@@ -16,12 +16,15 @@
 pub mod apply;
 pub mod bootstrap;
 mod catalog;
+pub(crate) mod filter;
 mod macros;
 pub mod repository;
 pub mod validation;
 
 pub use catalog::{all_install_tasks, all_uninstall_tasks};
-pub(crate) use macros::{resource_task, task_deps};
+pub(crate) use macros::{
+    process_config_resource_states, process_config_resources, resource_task, task_deps,
+};
 
 // Re-export engine types so downstream `use super::` and `use crate::phases::`
 // continue to work unchanged.

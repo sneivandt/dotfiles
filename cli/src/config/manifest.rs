@@ -1,7 +1,7 @@
 //! Sparse-checkout manifest configuration loading.
 use anyhow::Result;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::helpers::category_matcher::Category;
@@ -29,7 +29,7 @@ struct ManifestSection {
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path, excluded_categories: &[Category]) -> Result<Manifest> {
-    let config: HashMap<String, ManifestSection> = toml_loader::load_config(path)?;
+    let config: BTreeMap<String, ManifestSection> = toml_loader::load_optional_config(path)?;
 
     let items: Vec<(String, Vec<String>)> = config.into_iter().map(|(k, v)| (k, v.paths)).collect();
 

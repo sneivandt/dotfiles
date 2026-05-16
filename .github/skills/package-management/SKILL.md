@@ -66,9 +66,10 @@ Runs only on Arch with `paru` installed. Uses `paru -S --needed --noconfirm`.
 ### PackageProvider Trait
 
 All package manager operations are abstracted behind the `PackageProvider` trait
-(`resources/package.rs`). Each implementation encapsulates one package manager's
-CLI, and new managers require only a new `PackageProvider` impl and a
-`PackageManager` enum variant:
+(`resources/package.rs`). Concrete provider implementations live in
+`resources/package/providers.rs`, so `package.rs` stays focused on the public
+resource API and manager dispatch. New managers require a new `PackageProvider`
+impl and a `PackageManager` enum variant:
 
 ```rust
 pub trait PackageProvider: std::fmt::Debug + Send + Sync {

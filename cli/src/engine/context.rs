@@ -94,6 +94,26 @@ impl std::fmt::Debug for Context {
 }
 
 impl Context {
+    fn cloned(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            platform: self.platform,
+            log: self.log.clone(),
+            dry_run: self.dry_run,
+            home: self.home.clone(),
+            executor: self.executor.clone(),
+            parallel: self.parallel,
+            is_ci: self.is_ci,
+            cancelled: self.cancelled.clone(),
+        }
+    }
+
+    fn clone_with(&self, update: impl FnOnce(&mut Self)) -> Self {
+        let mut cloned = self.cloned();
+        update(&mut cloned);
+        cloned
+    }
+
     /// Creates a new context for task execution.
     ///
     /// # Errors
@@ -211,65 +231,25 @@ impl Context {
     /// sharing the rest of the context.
     #[must_use]
     pub fn with_log(&self, log: Arc<dyn Log>) -> Self {
-        Self {
-            config: self.config.clone(),
-            platform: self.platform,
-            log,
-            dry_run: self.dry_run,
-            home: self.home.clone(),
-            executor: self.executor.clone(),
-            parallel: self.parallel,
-            is_ci: self.is_ci,
-            cancelled: self.cancelled.clone(),
-        }
+        self.clone_with(|ctx| ctx.log = log)
     }
 
     /// Create a copy of this context with dry-run mode set.
     #[must_use]
     pub fn with_dry_run(&self, dry_run: bool) -> Self {
-        Self {
-            config: self.config.clone(),
-            platform: self.platform,
-            log: self.log.clone(),
-            dry_run,
-            home: self.home.clone(),
-            executor: self.executor.clone(),
-            parallel: self.parallel,
-            is_ci: self.is_ci,
-            cancelled: self.cancelled.clone(),
-        }
+        self.clone_with(|ctx| ctx.dry_run = dry_run)
     }
 
     /// Create a copy of this context with parallel mode set.
     #[must_use]
     pub fn with_parallel(&self, parallel: bool) -> Self {
-        Self {
-            config: self.config.clone(),
-            platform: self.platform,
-            log: self.log.clone(),
-            dry_run: self.dry_run,
-            home: self.home.clone(),
-            executor: self.executor.clone(),
-            parallel,
-            is_ci: self.is_ci,
-            cancelled: self.cancelled.clone(),
-        }
+        self.clone_with(|ctx| ctx.parallel = parallel)
     }
 
     /// Create a copy of this context with a different home directory.
     #[must_use]
     pub fn with_home(&self, home: std::path::PathBuf) -> Self {
-        Self {
-            config: self.config.clone(),
-            platform: self.platform,
-            log: self.log.clone(),
-            dry_run: self.dry_run,
-            home,
-            executor: self.executor.clone(),
-            parallel: self.parallel,
-            is_ci: self.is_ci,
-            cancelled: self.cancelled.clone(),
-        }
+        self.clone_with(|ctx| ctx.home = home)
     }
 
     /// Create a copy of this context with the CI flag overridden.
@@ -278,17 +258,7 @@ impl Context {
     /// process-global environment variables.
     #[must_use]
     pub fn with_ci(&self, is_ci: bool) -> Self {
-        Self {
-            config: self.config.clone(),
-            platform: self.platform,
-            log: self.log.clone(),
-            dry_run: self.dry_run,
-            home: self.home.clone(),
-            executor: self.executor.clone(),
-            parallel: self.parallel,
-            is_ci,
-            cancelled: self.cancelled.clone(),
-        }
+        self.clone_with(|ctx| ctx.is_ci = is_ci)
     }
 
     /// Create a copy of this context with the given cancellation token.
@@ -296,17 +266,7 @@ impl Context {
     /// Used to wire the signal handler's token into the execution context.
     #[must_use]
     pub fn with_cancellation(&self, cancelled: CancellationToken) -> Self {
-        Self {
-            config: self.config.clone(),
-            platform: self.platform,
-            log: self.log.clone(),
-            dry_run: self.dry_run,
-            home: self.home.clone(),
-            executor: self.executor.clone(),
-            parallel: self.parallel,
-            is_ci: self.is_ci,
-            cancelled,
-        }
+        self.clone_with(|ctx| ctx.cancelled = cancelled)
     }
 
     /// Returns `true` if the process has been asked to shut down.

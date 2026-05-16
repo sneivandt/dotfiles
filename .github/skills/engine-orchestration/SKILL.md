@@ -70,7 +70,7 @@ Within a single task, resources are processed in parallel when
 
 ```rust
 if ctx.parallel && resources.len() > 1 {
-    parallel::process_resources_parallel(ctx, resources, opts)
+    parallel::process_apply_parallel(ctx, resources, opts, get_resource_state)
 } else {
     // sequential apply loop
 }
@@ -78,11 +78,17 @@ if ctx.parallel && resources.len() > 1 {
 
 ### How It Works
 
-`collect_parallel_stats()` uses `rayon::par_iter().try_for_each()`:
-- Each item runs `process_single()` or `remove_single()` independently
-- A `Mutex<TaskStats>` accumulates per-item deltas — the lock is held only
-  for the brief counter update, not during the work itself
+`process_apply_parallel()` handles both self-checking resources and precomputed
+`(resource, state)` pairs. It delegates to `collect_parallel_stats()`, which
+uses Rayon's `try_fold` / `try_reduce` pattern:
+- Each item runs `process_single()` independently after the caller-provided
+  state extraction closure returns `(Resource, ResourceState)`
+- Each worker accumulates local `TaskStats`, then results are merged without a
+  shared stats lock
 - Diagnostic thread names are re-set per iteration since Rayon reuses threads
+
+Removal still uses `process_remove_parallel()`, which calls `remove_single()` for
+resources whose current state is `Correct`.
 
 ### Resource `Send` Requirement
 

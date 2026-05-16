@@ -34,6 +34,34 @@ where
     Ok(stats.finish(ctx))
 }
 
+fn process_apply_items<T, R>(
+    ctx: &Context,
+    items: Vec<T>,
+    opts: &ProcessOpts,
+    span_kind: &'static str,
+    get_resource_state: impl Fn(T) -> Result<(R, ResourceState)> + Sync + Send,
+) -> Result<TaskResult>
+where
+    T: Send,
+    R: Applicable + Send,
+{
+    let span = tracing::debug_span!(
+        "process_apply_items",
+        kind = span_kind,
+        verb = opts.verb,
+        count = items.len()
+    );
+    let _enter = span.enter();
+    if ctx.parallel && !opts.sequential && items.len() > 1 {
+        ctx.debug_fmt(|| format!("processing {} resources in parallel", items.len()));
+        return parallel::process_apply_parallel(ctx, items, opts, get_resource_state);
+    }
+    run_sequential(ctx, items, |ctx, item| {
+        let (resource, current) = get_resource_state(item)?;
+        apply::process_single(ctx, &resource, &current, opts)
+    })
+}
+
 /// Process resources by checking each one's current state and applying as needed.
 ///
 /// For tasks where each resource can independently determine its own state via
@@ -50,19 +78,9 @@ pub fn process_resources<R: Resource + Send>(
     opts: &ProcessOpts,
 ) -> Result<TaskResult> {
     let resources: Vec<R> = resources.into_iter().collect();
-    let span = tracing::debug_span!(
-        "process_resources",
-        verb = opts.verb,
-        count = resources.len()
-    );
-    let _enter = span.enter();
-    if ctx.parallel && !opts.sequential && resources.len() > 1 {
-        ctx.debug_fmt(|| format!("processing {} resources in parallel", resources.len()));
-        return parallel::process_resources_parallel(ctx, resources, opts);
-    }
-    run_sequential(ctx, resources, |ctx, resource| {
-        let current = resource.current_state()?;
-        apply::process_single(ctx, &resource, &current, opts)
+    process_apply_items(ctx, resources, opts, "self_checking", |resource| {
+        let state = resource.current_state()?;
+        Ok((resource, state))
     })
 }
 
@@ -82,19 +100,7 @@ pub fn process_resource_states<R: Applicable + Send>(
     opts: &ProcessOpts,
 ) -> Result<TaskResult> {
     let resource_states: Vec<(R, ResourceState)> = resource_states.into_iter().collect();
-    let span = tracing::debug_span!(
-        "process_resource_states",
-        verb = opts.verb,
-        count = resource_states.len()
-    );
-    let _enter = span.enter();
-    if ctx.parallel && !opts.sequential && resource_states.len() > 1 {
-        ctx.debug_fmt(|| format!("processing {} resources in parallel", resource_states.len()));
-        return parallel::process_resource_states_parallel(ctx, resource_states, opts);
-    }
-    run_sequential(ctx, resource_states, |ctx, (resource, current)| {
-        apply::process_single(ctx, &resource, &current, opts)
-    })
+    process_apply_items(ctx, resource_states, opts, "precomputed_state", Ok)
 }
 
 /// Process resources for removal.

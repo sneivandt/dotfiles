@@ -24,6 +24,43 @@ macro_rules! task_deps {
 
 pub(crate) use task_deps;
 
+/// Process config-derived resources after a macro has evaluated its item list.
+///
+/// Keeping this logic in a normal function makes the macro expansion smaller
+/// and keeps resource processing semantics in one place.
+pub(crate) fn process_config_resources<Item, R>(
+    ctx: &crate::phases::Context,
+    items: Vec<Item>,
+    mut build: impl FnMut(Item, &crate::phases::Context) -> R,
+    opts: &crate::phases::ProcessOpts,
+) -> ::anyhow::Result<crate::phases::TaskResult>
+where
+    R: crate::resources::Resource + Send,
+{
+    let resources = items.into_iter().map(|item| build(item, ctx));
+    crate::phases::process_resources(ctx, resources, opts)
+}
+
+/// Process config-derived resources whose state is computed from one cache.
+pub(crate) fn process_config_resource_states<Item, Cache, R>(
+    ctx: &crate::phases::Context,
+    items: Vec<Item>,
+    cache: &Cache,
+    mut build: impl FnMut(Item, &crate::phases::Context) -> R,
+    mut state: impl FnMut(&R, &Cache) -> crate::resources::ResourceState,
+    opts: &crate::phases::ProcessOpts,
+) -> ::anyhow::Result<crate::phases::TaskResult>
+where
+    R: crate::resources::Applicable + Send,
+{
+    let resource_states = items.into_iter().map(|item| {
+        let resource = build(item, ctx);
+        let current = state(&resource, cache);
+        (resource, current)
+    });
+    crate::phases::process_resource_states(ctx, resource_states, opts)
+}
+
 /// Define a task that processes config-derived resources with minimal
 /// boilerplate.
 ///
@@ -115,13 +152,14 @@ macro_rules! resource_task {
                 });
                 let $cache_ctx = ctx;
                 let $state_cache = { $cache_expr }?;
-                let resource_states = $cache_items.into_iter().map(|$item| {
-                    let $build_ctx = ctx;
-                    let $state_res = { $build_expr };
-                    let state = { $state_expr };
-                    ($state_res, state)
-                });
-                $crate::phases::process_resource_states(ctx, resource_states, &$opts)
+                $crate::phases::process_config_resource_states(
+                    ctx,
+                    $cache_items,
+                    &$state_cache,
+                    |$item, $build_ctx| $build_expr,
+                    |$state_res, $state_cache| $state_expr,
+                    &$opts,
+                )
             }
         }
 
@@ -228,11 +266,13 @@ macro_rules! resource_task {
                     let $setup_ctx = ctx;
                     { $setup_expr }
                 )?
-                let resources = items.into_iter().map(|$item| {
-                    let $build_ctx = ctx;
-                    $build_expr
-                });
-                $crate::phases::process_resources(ctx, resources, &$opts).map(Some)
+                $crate::phases::process_config_resources(
+                    ctx,
+                    items,
+                    |$item, $build_ctx| $build_expr,
+                    &$opts,
+                )
+                .map(Some)
             }
 
             fn run(
@@ -250,11 +290,12 @@ macro_rules! resource_task {
                     let $setup_ctx = ctx;
                     { $setup_expr }
                 )?
-                let resources = items.into_iter().map(|$item| {
-                    let $build_ctx = ctx;
-                    $build_expr
-                });
-                $crate::phases::process_resources(ctx, resources, &$opts)
+                $crate::phases::process_config_resources(
+                    ctx,
+                    items,
+                    |$item, $build_ctx| $build_expr,
+                    &$opts,
+                )
             }
         }
     };

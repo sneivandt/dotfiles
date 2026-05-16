@@ -78,6 +78,19 @@ impl Category {
     }
 }
 
+/// Parse a compound TOML section key into category tags.
+///
+/// Section names use `-` to express AND logic, e.g. `arch-desktop` means both
+/// `arch` and `desktop` must be active.
+#[must_use]
+pub(crate) fn parse_section_key(section_name: &str) -> Vec<Category> {
+    section_name
+        .split('-')
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| Category::from_tag(s.trim()))
+        .collect()
+}
+
 impl fmt::Display for Category {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())

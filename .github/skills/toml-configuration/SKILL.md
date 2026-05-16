@@ -72,6 +72,7 @@ Each module in `cli/src/config/` follows:
 
 ```rust
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use crate::config::toml_loader;
 
 #[derive(Deserialize)]
@@ -80,8 +81,8 @@ struct MySection {
 }
 
 pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<MyType>> {
-    // Load TOML file into HashMap
-    let config: HashMap<String, MySection> = toml_loader::load_config(path)?;
+    // Load optional TOML into deterministic section order.
+    let config: BTreeMap<String, MySection> = toml_loader::load_optional_config(path)?;
 
     // Convert to (category, Vec<items>) pairs
     let sections: Vec<(String, Vec<MyType>)> = config
@@ -93,6 +94,10 @@ pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<MyType>> 
     Ok(toml_loader::filter_by_categories(sections, active_categories))
 }
 ```
+
+Prefer `config_section!` for simple sectioned lists. Use
+`toml_loader::load_optional_config()` when missing files should behave as empty
+TOML, and `toml_loader::load_required_config()` when a file must exist.
 
 ## Configuration Files
 

@@ -1,7 +1,7 @@
 //! Windows registry entry configuration loading.
 use anyhow::Result;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::ValidationWarning;
@@ -40,7 +40,7 @@ pub struct RegistryEntry {
 #[derive(Debug, Deserialize)]
 struct RegistrySection {
     path: String,
-    values: HashMap<String, toml::Value>,
+    values: BTreeMap<String, toml::Value>,
 }
 
 /// Load registry settings from registry.toml.
@@ -57,7 +57,7 @@ struct RegistrySection {
 ///
 /// Returns an error if the file exists but cannot be parsed.
 pub fn load(path: &Path) -> Result<Vec<RegistryEntry>> {
-    let config: HashMap<String, RegistrySection> = toml_loader::load_config(path)?;
+    let config: BTreeMap<String, RegistrySection> = toml_loader::load_optional_config(path)?;
 
     Ok(config
         .into_values()

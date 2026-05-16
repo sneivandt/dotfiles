@@ -29,20 +29,12 @@ All live in `cli/src/phases/validation.rs` and implement the `Task` trait.
 ## Per-Module `validate()` Functions
 
 Each config module in `cli/src/config/` exposes a `validate()` function
-returning `Vec<ValidationWarning>`. These are aggregated by `Config::validate()`:
+returning `Vec<ValidationWarning>`. `Config::validate()` delegates aggregation to
+the internal `ConfigValidator` helper in `config/mod.rs`:
 
 ```rust
 pub fn validate(&self, platform: Platform) -> Vec<ValidationWarning> {
-    let root = &self.root;
-    let mut warnings = Vec::new();
-    warnings.extend(symlinks::validate(&self.symlinks, root));
-    warnings.extend(packages::validate(&self.packages, platform));
-    warnings.extend(registry::validate(&self.registry, platform));
-    warnings.extend(chmod::validate(&self.chmod, platform));
-    warnings.extend(systemd_units::validate(&self.units, platform));
-    warnings.extend(vscode_extensions::validate(&self.vscode_extensions));
-    warnings.extend(git_config::validate(&self.git_settings));
-    warnings
+    ConfigValidator::new(self, platform).validate_all().finish()
 }
 ```
 
@@ -83,7 +75,7 @@ Key API:
 
 1. Add a `pub fn validate(items: &[MyType], ...) -> Vec<ValidationWarning>` function
 2. Use the `Validator` builder for consistency
-3. Wire it into `Config::validate()` in `config/mod.rs`
+3. Wire it into `ConfigValidator::validate_all()` in `config/mod.rs`
 
 ## Integration Tests: Config Drift
 
@@ -110,6 +102,6 @@ The `is_covered_by()` helper handles directory prefix matching (trailing `/`).
 
 - Use the `Validator` builder for all per-module validation — avoid manual `Vec::push()` loops
 - Every config module should have a `validate()` function
-- Wire new validators into `Config::validate()` in `config/mod.rs`
+- Wire new validators into `ConfigValidator::validate_all()` in `config/mod.rs`
 - Config drift tests read real files — keep them self-contained with private TOML types
 - Validation tasks in `phases/validation.rs` follow the standard `Task` trait pattern

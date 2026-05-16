@@ -30,14 +30,14 @@ cli/src/
 │   ├── mod.rs     # Config struct (aggregates all types)
 │   ├── helpers/   # Shared loader utilities
 │   │   ├── mod.rs       # Re-exports
-│   │   ├── toml_loader.rs  # filter_by_categories(), TOML deserialization helpers
-│   │   ├── category_matcher.rs  # Category matching logic
+│   │   ├── toml_loader.rs  # load_optional_config(), load_required_config(), filtering
+│   │   ├── category_matcher.rs  # Category matching and section-key parsing
 │   │   └── validation.rs   # Config validation helpers
 │   ├── profiles.rs
 │   └── *.rs       # Per-type loaders (packages, symlinks, etc.)
 ├── resources/     # Declarative resource abstraction
 │   ├── mod.rs     # Applicable + Resource traits, ResourceState, ResourceChange
-│   └── *.rs       # Per-type resources (symlink, registry, chmod, etc.)
+│   └── *.rs / */  # Per-type resources (symlink, registry, package providers, etc.)
 ├── engine/        # Generic resource processing engine
 │   ├── mod.rs     # process_resources(), process_resource_states()
 │   ├── mode.rs    # ProcessMode, ProcessOpts, ResourceAction
@@ -51,9 +51,12 @@ cli/src/
 │   └── tests/     # Engine unit tests
 ├── phases/        # Phase task implementations
 │   ├── mod.rs     # Task trait, TaskPhase, re-exports from engine/ and helpers/
-│   ├── helpers/   # Macros (task_deps!, resource_task!, batch_resource_task!) and catalog
-│   ├── system/ # System-phase tasks (self_update, update, sparse_checkout, hooks, etc.)
-│   ├── user/ # User-phase tasks (packages, symlinks, chmod, git_config, etc.)
+│   ├── macros.rs  # task_deps!, resource_task!, and macro helper functions
+│   ├── filter.rs  # --only/--skip task selector matching
+│   ├── catalog.rs # install/uninstall task registration
+│   ├── bootstrap/ # Bootstrap tasks (self_update, wrapper, PATH, developer mode)
+│   ├── repository/ # Repository tasks (update, sparse_checkout, hooks, reload_config)
+│   ├── apply/ # Apply tasks (packages, symlinks, chmod, git_config, etc.)
 │   └── validation.rs  # Validation task (shared, not phase-specific)
 └── commands/      # install.rs, uninstall.rs, test.rs
 ```
@@ -77,9 +80,10 @@ pub enum TaskResult { Ok, NotApplicable(String), Skipped(String), Failed(String)
 ```
 
 `run_if_applicable()` combines the `should_run` check and `run` call into a single step,
-returning `Ok(None)` when the task is not applicable. The `resource_task!` and `batch_task!`
-macros override the default to evaluate the config items exactly once, avoiding a second
-config lock acquisition. The executor calls `run_if_applicable()` — never `run()` directly.
+returning `Ok(None)` when the task is not applicable. The `resource_task!` macro
+has standard and batch variants; both override the default to evaluate config
+items exactly once, avoiding a second config lock acquisition. The executor calls
+`run_if_applicable()` — never `run()` directly.
 
 ### Task Dependencies
 
@@ -381,9 +385,14 @@ let cached = batch_check_values(&resources)?;
 
 ## Config Loader Pattern
 
-Each `config/*.rs` module: `toml_loader::load_section_items(path, extract)` → `toml_loader::filter_by_categories(sections, categories)` → map items.
+Each `config/*.rs` module should use `config_section!` for simple sectioned
+lists. It expands to `toml_loader::load_section::<S>(path, active_categories)`,
+which loads an optional TOML file, preserves deterministic section order, filters
+by category, and maps raw entries to domain items.
 
-For simple flat lists, use the convenience wrapper `toml_loader::load_section::<S>(path, active_categories)` which combines all three steps via the `ConfigSection` trait.
+Use `toml_loader::load_optional_config()` when a missing file should deserialize
+as empty TOML, and `toml_loader::load_required_config()` when absence is an
+error. Avoid calling the compatibility `load_config()` helper from new code.
 
 ## Error Handling
 
@@ -410,5 +419,3 @@ skill. For the `process_resources()` helpers and parallel dispatch, see the
 - Guard tools with `executor.which()`; return `TaskResult::Skipped(reason)` when not applicable
 - Pass `&*ctx.executor` (deref coercion) to resource constructors and batch query functions — never call `exec::*` free functions directly from tasks or resources
 - Add `#[cfg(test)] mod tests` to every module; use `Platform::new()` in tests
-
-

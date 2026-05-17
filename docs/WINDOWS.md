@@ -55,7 +55,7 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 | User | 10 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
 | User | 11 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
 | User | 12 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
-| User | 13 | APM Packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml`, then runs `apm install -g --target copilot,vscode --update` to update and deploy AI plugin manifests globally under `~/.copilot/` and `~/.vscode/`. | Idempotent via APM's lockfile. |
+| User | 13 | APM Packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml`, installs when the manifest or lockfile changes, and otherwise uses `apm outdated -g` before running `apm deps update -g --target copilot,vscode`. | Idempotent via APM's lockfile. |
 
 Tasks run in parallel where dependencies allow, so the numbering above reflects logical
 grouping rather than strict execution order.
@@ -226,7 +226,7 @@ dependencies:
 
 **How it works**:
 - `Install symlinks` links `symlinks/apm/config/base.yml` → `~/.apm/config/base.yml`
-- `Install APM packages` then runs `apm install -g --target copilot,vscode --update`
+- `Install APM packages` runs `apm install -g --target copilot,vscode` when the merged manifest or lockfile changed; otherwise it checks `apm outdated -g` and only runs `apm deps update -g --target copilot,vscode` when locked dependencies are stale
 - Idempotency is provided by APM itself via its lockfile / no-op behaviour
 - Plugin primitives are deployed to `~/.copilot/`, `~/.claude/`, `~/.cursor/`, etc.
 

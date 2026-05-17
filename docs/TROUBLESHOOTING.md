@@ -288,7 +288,9 @@ code --install-extension <extension-id>
 **Solution**:
 ```bash
 # Run APM directly at user scope
-apm install -g --target copilot,vscode --update
+apm install -g --target copilot,vscode
+apm outdated -g
+apm deps update -g --target copilot,vscode
 
 # Inspect the manifest (deployed location)
 cat ~/.apm/apm.yml

@@ -201,7 +201,7 @@ The installation process handles different components based on your profile:
 14. **Configure Shell** - Sets default shell
 15. **Enable Systemd Units** - Enables and starts user or system units from `conf/systemd-units.toml`
 16. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-17. **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml`, then runs `apm install -g --target copilot,vscode --update` to update and deploy AI plugin manifests globally under `~/.copilot/` and `~/.vscode/` ([Microsoft APM](https://github.com/microsoft/apm))
+17. **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml`, installs when the manifest or lockfile changed, and otherwise uses `apm outdated -g` before running `apm deps update -g --target copilot,vscode` only when locked dependencies are stale ([Microsoft APM](https://github.com/microsoft/apm))
 18. **Configure PAM Services** - Installs custom PAM service files (Arch Linux + desktop profile only, uses sudo)
 19. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
 20. **Overlay Scripts** - Runs custom scripts loaded from the overlay repository (when `--overlay` is set)
@@ -228,7 +228,7 @@ grouping rather than strict execution order.
 10. **Configure Git** - Sets `core.symlinks=true`, `core.autocrlf=false`, credential helper
 11. **Apply Registry Settings** - Configures registry from `conf/registry.toml`
 12. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-13. **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml`, then runs `apm install -g --target copilot,vscode --update` to update and deploy AI plugin manifests globally under `~/.copilot/` and `~/.vscode/` ([Microsoft APM](https://github.com/microsoft/apm))
+13. **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml`, installs when the manifest or lockfile changed, and otherwise uses `apm outdated -g` before running `apm deps update -g --target copilot,vscode` only when locked dependencies are stale ([Microsoft APM](https://github.com/microsoft/apm))
 
 Tasks run in parallel where dependencies allow, so the numbering above reflects logical
 grouping rather than strict execution order.

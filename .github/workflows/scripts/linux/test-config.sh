@@ -64,10 +64,25 @@ test_symlinks_validation()
     entries="$(read_toml_section_array "$DIR/conf/symlinks.toml" "$section" "symlinks")" || true
     echo "$entries" | while IFS='' read -r src || [ -n "$src" ]; do
       [ -n "$src" ] || continue
-      if [ ! -e "$DIR/symlinks/$src" ] && [ ! -L "$DIR/symlinks/$src" ]; then
-        printf "%sERROR: symlinks.toml [%s] source missing: symlinks/%s%s\n" "${RED}" "$section" "$src" "${NC}" >&2
-        echo 1 > "$err_file"
-      fi
+      case "$src" in
+        *\**)
+          # Glob pattern: expand without quoting $src so the shell expands wildcards
+          found=0
+          for f in "$DIR"/symlinks/$src; do
+            if [ -e "$f" ] || [ -L "$f" ]; then found=1; break; fi
+          done
+          if [ "$found" -eq 0 ]; then
+            printf "%sERROR: symlinks.toml [%s] source missing: symlinks/%s%s\n" "${RED}" "$section" "$src" "${NC}" >&2
+            echo 1 > "$err_file"
+          fi
+          ;;
+        *)
+          if [ ! -e "$DIR/symlinks/$src" ] && [ ! -L "$DIR/symlinks/$src" ]; then
+            printf "%sERROR: symlinks.toml [%s] source missing: symlinks/%s%s\n" "${RED}" "$section" "$src" "${NC}" >&2
+            echo 1 > "$err_file"
+          fi
+          ;;
+      esac
     done
   done
   result="$(cat "$err_file")"; rm -f "$err_file"

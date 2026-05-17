@@ -88,3 +88,132 @@ impl Validator {
 pub(crate) fn check(condition: bool, message: impl Into<String>) -> Option<String> {
     condition.then(|| message.into())
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    reason = "test code uses panicking helpers"
+)]
+mod tests {
+    use super::*;
+
+    struct Item {
+        label: &'static str,
+        value: i32,
+    }
+
+    #[test]
+    fn check_returns_message_when_condition_is_true() {
+        assert_eq!(
+            check(true, "invalid value"),
+            Some("invalid value".to_string())
+        );
+    }
+
+    #[test]
+    fn check_returns_none_when_condition_is_false() {
+        assert_eq!(check(false, "invalid value"), None);
+    }
+
+    #[test]
+    fn warn_records_source_item_and_message() {
+        let mut validator = Validator::new("example.toml");
+
+        validator.warn("item-a", "is invalid");
+
+        assert_eq!(
+            validator.finish(),
+            vec![ValidationWarning::new(
+                "example.toml",
+                "item-a",
+                "is invalid"
+            )],
+        );
+    }
+
+    #[test]
+    fn warn_if_records_only_true_conditions() {
+        let mut validator = Validator::new("example.toml");
+
+        validator.warn_if(false, "item-a", "should not appear");
+        validator.warn_if(true, "item-b", "should appear");
+
+        assert_eq!(
+            validator.finish(),
+            vec![ValidationWarning::new(
+                "example.toml",
+                "item-b",
+                "should appear"
+            )],
+        );
+    }
+
+    #[test]
+    fn check_each_collects_all_some_messages_and_ignores_none() {
+        let items = [
+            Item {
+                label: "negative",
+                value: -1,
+            },
+            Item {
+                label: "zero",
+                value: 0,
+            },
+            Item {
+                label: "large",
+                value: 42,
+            },
+        ];
+
+        let warnings = Validator::new("numbers.toml")
+            .check_each(
+                &items,
+                |item| item.label,
+                |item| {
+                    vec![
+                        check(item.value < 0, "must be non-negative"),
+                        check(item.value == 0, "must be non-zero"),
+                        check(item.value > 10, "must be at most 10"),
+                    ]
+                },
+            )
+            .finish();
+
+        assert_eq!(
+            warnings,
+            vec![
+                ValidationWarning::new("numbers.toml", "negative", "must be non-negative"),
+                ValidationWarning::new("numbers.toml", "zero", "must be non-zero"),
+                ValidationWarning::new("numbers.toml", "large", "must be at most 10"),
+            ],
+        );
+    }
+
+    #[test]
+    fn check_each_can_be_chained_after_standalone_warnings() {
+        let mut validator = Validator::new("numbers.toml");
+        validator.warn("file", "global warning");
+
+        let warnings = validator
+            .check_each(
+                &[Item {
+                    label: "negative",
+                    value: -5,
+                }],
+                |item| item.label,
+                |item| vec![check(item.value < 0, "must be non-negative")],
+            )
+            .finish();
+
+        assert_eq!(
+            warnings,
+            vec![
+                ValidationWarning::new("numbers.toml", "file", "global warning"),
+                ValidationWarning::new("numbers.toml", "negative", "must be non-negative"),
+            ],
+        );
+    }
+}

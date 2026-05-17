@@ -560,6 +560,14 @@ mod tests {
         Platform::new(Os::Windows, false)
     }
 
+    fn write_overlay_config(overlay: &tempfile::TempDir, file: &str, content: &str) -> PathBuf {
+        let conf = overlay.path().join("conf");
+        std::fs::create_dir_all(&conf).expect("create overlay conf");
+        let path = conf.join(file);
+        std::fs::write(&path, content).expect("write overlay config");
+        path
+    }
+
     #[test]
     fn load_with_empty_config_files() {
         let (dir, profile, platform) = setup_load(linux(), &[]);
@@ -593,13 +601,11 @@ mod tests {
     fn load_expands_overlay_symlink_globs() {
         let (dir, profile, platform) = setup_load(linux(), &[]);
         let overlay = tempfile::tempdir().expect("create overlay dir");
-        let overlay_conf = overlay.path().join("conf");
-        std::fs::create_dir_all(&overlay_conf).expect("create overlay conf");
-        std::fs::write(
-            overlay_conf.join("symlinks.toml"),
+        write_overlay_config(
+            &overlay,
+            "symlinks.toml",
             "[base]\nsymlinks = [{ source = \"skills/*\", target = \".copilot/skills/*\" }]\n",
-        )
-        .expect("write overlay symlinks");
+        );
         std::fs::create_dir_all(
             overlay
                 .path()
@@ -618,6 +624,64 @@ mod tests {
             Some(".copilot/skills/authz-oncall")
         );
         assert_eq!(config.symlinks[0].origin.as_deref(), Some(overlay.path()));
+    }
+
+    #[test]
+    fn load_appends_overlay_packages_and_scripts() {
+        let (dir, profile, platform) = setup_load(
+            linux(),
+            &[("packages.toml", "[base]\npackages = [\"git\"]\n")],
+        );
+        let overlay = tempfile::tempdir().expect("create overlay dir");
+        write_overlay_config(&overlay, "packages.toml", "[base]\npackages = [\"curl\"]\n");
+        write_overlay_config(
+            &overlay,
+            "scripts.toml",
+            r#"
+[base]
+scripts = [{ name = "Setup SSH", path = "scripts/ssh.sh" }]
+
+[desktop]
+scripts = [{ name = "Setup desktop", path = "scripts/desktop.sh" }]
+"#,
+        );
+
+        let config = Config::load(dir.path(), &profile, platform, Some(overlay.path()))
+            .expect("load should succeed");
+
+        assert_eq!(config.overlay.as_deref(), Some(overlay.path()));
+        assert_eq!(
+            config
+                .packages
+                .iter()
+                .map(|package| package.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["git", "curl"],
+            "overlay packages should append to main packages"
+        );
+        assert_eq!(config.scripts.len(), 1);
+        assert_eq!(config.scripts[0].name, "Setup SSH");
+        assert_eq!(config.scripts[0].path, "scripts/ssh.sh");
+    }
+
+    #[test]
+    fn load_reports_overlay_path_for_overlay_syntax_errors() {
+        let (dir, profile, platform) = setup_load(linux(), &[]);
+        let overlay = tempfile::tempdir().expect("create overlay dir");
+        let invalid_path = write_overlay_config(&overlay, "scripts.toml", "[base\nscripts = [");
+
+        let result = Config::load(dir.path(), &profile, platform, Some(overlay.path()));
+
+        assert!(result.is_err(), "invalid overlay config should fail");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("overlay"),
+            "error should identify overlay config source: {msg}"
+        );
+        assert!(
+            msg.contains(invalid_path.to_str().unwrap_or("scripts.toml")),
+            "error should include overlay config path: {msg}"
+        );
     }
 
     #[test]

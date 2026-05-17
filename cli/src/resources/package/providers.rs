@@ -264,3 +264,199 @@ impl PackageProvider for WingetProvider {
         }
     }
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    reason = "test code uses panicking helpers"
+)]
+mod tests {
+    use super::*;
+    use crate::exec::{ExecResult, MockExecutor};
+
+    fn ok_result(stdout: &str) -> ExecResult {
+        ExecResult {
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            success: true,
+            code: Some(0),
+        }
+    }
+
+    fn failed_result(stdout: &str, stderr: &str, code: i32) -> ExecResult {
+        ExecResult {
+            stdout: stdout.to_string(),
+            stderr: stderr.to_string(),
+            success: false,
+            code: Some(code),
+        }
+    }
+
+    #[test]
+    fn split_padded_columns_preserves_single_spaces_inside_columns() {
+        assert_eq!(
+            split_padded_columns("Windows Terminal  Microsoft.WindowsTerminal  1.22.0"),
+            vec!["Windows Terminal", "Microsoft.WindowsTerminal", "1.22.0"],
+        );
+    }
+
+    #[test]
+    fn split_padded_columns_collapses_wide_separators() {
+        assert_eq!(
+            split_padded_columns("Name        Id                         Version"),
+            vec!["Name", "Id", "Version"],
+        );
+    }
+
+    #[test]
+    fn byte_offset_of_col_finds_columns_after_unicode_names() {
+        let line = "中文名称 App                   Unicode.App                  1.0.0";
+
+        assert_eq!(byte_offset_of_col(line, 0), Some(0));
+        assert_eq!(
+            byte_offset_of_col(line, 1),
+            Some("中文名称 App                   ".len())
+        );
+        assert_eq!(
+            line.get(byte_offset_of_col(line, 1).unwrap()..)
+                .unwrap()
+                .split_whitespace()
+                .next(),
+            Some("Unicode.App"),
+        );
+    }
+
+    #[test]
+    fn byte_offset_of_col_returns_none_for_missing_column() {
+        assert_eq!(byte_offset_of_col("Name  Id", 3), None);
+    }
+
+    #[test]
+    fn query_names_extracts_first_tokens_and_ignores_blank_lines() {
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .withf(|program, args| program == "pacman" && args == ["-Q"])
+            .returning(|_, _| Ok(ok_result("git 2.51.0\n\nbase-devel 1-2\nvim\n")));
+
+        let names = query_names(&mock, "pacman", &["-Q"], ParseMode::FirstToken).unwrap();
+
+        assert_eq!(names.len(), 3);
+        assert!(names.contains("git"));
+        assert!(names.contains("base-devel"));
+        assert!(names.contains("vim"));
+        assert!(!names.contains("2.51.0"));
+    }
+
+    #[test]
+    fn query_names_includes_exit_code_and_stderr_on_failure() {
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(failed_result("", "database lock held", 42)));
+
+        let err = query_names(&mock, "pacman", &["-Q"], ParseMode::FirstToken).unwrap_err();
+        let message = err.to_string();
+
+        assert!(
+            message.contains("pacman query failed"),
+            "message: {message}"
+        );
+        assert!(message.contains("Some(42)"), "message: {message}");
+        assert!(message.contains("database lock held"), "message: {message}");
+    }
+
+    #[test]
+    fn parse_winget_ids_returns_empty_without_id_header() {
+        let ids = parse_winget_ids("Name  Version\nGit   2.51.0\n");
+
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn parse_winget_ids_ignores_blank_and_separator_rows() {
+        let ids = parse_winget_ids(concat!(
+            "Name             Id        Version\n",
+            "----------------------------------\n",
+            "\n",
+            "                                  \n",
+            "Git              Git.Git   2.51.0\n",
+        ));
+
+        assert_eq!(ids.len(), 1);
+        assert!(ids.contains("Git.Git"));
+    }
+
+    #[test]
+    fn winget_query_installed_uses_expected_noninteractive_flags() {
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .withf(|program, args| {
+                program == "winget"
+                    && args
+                        == [
+                            "list",
+                            "--accept-source-agreements",
+                            "--disable-interactivity",
+                        ]
+            })
+            .returning(|_, _| Ok(ok_result("Name  Id       Version\nGit   Git.Git  2.51.0\n")));
+
+        let ids = WingetProvider.query_installed(&mock).unwrap();
+
+        assert_eq!(ids.len(), 1);
+        assert!(ids.contains("Git.Git"));
+    }
+
+    #[test]
+    fn winget_install_failure_prefers_stdout_when_stderr_is_empty() {
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .withf(|program, args| {
+                program == "winget"
+                    && args
+                        == [
+                            "install",
+                            "--id",
+                            "Git.Git",
+                            "--exact",
+                            "--source",
+                            "winget",
+                            "--accept-source-agreements",
+                            "--accept-package-agreements",
+                        ]
+            })
+            .returning(|_, _| Ok(failed_result("No package found", "", 1)));
+
+        let change = WingetProvider.install("Git.Git", &mock).unwrap();
+
+        assert_eq!(
+            change,
+            ResourceChange::Skipped {
+                reason: "winget install failed: No package found".to_string(),
+            },
+        );
+    }
+
+    #[test]
+    fn winget_install_failure_includes_stdout_and_stderr_when_both_present() {
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .returning(|_, _| Ok(failed_result("Installer output", "Access denied", 1)));
+
+        let change = WingetProvider.install("Git.Git", &mock).unwrap();
+
+        assert_eq!(
+            change,
+            ResourceChange::Skipped {
+                reason: "winget install failed: Installer output\nAccess denied".to_string(),
+            },
+        );
+    }
+}

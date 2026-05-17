@@ -266,9 +266,9 @@ test_wrapper_forwarded_args()
   fi
 )}
 
-test_wrapper_build_mode_forwards_supported_flags()
+test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args()
 {(
-  log_stage "Testing build-mode forwards arguments unchanged"
+  log_stage "Testing build-mode consumes --build and forwards CLI arguments"
 
   tmpdir=$(mktemp -d)
   trap 'rm -rf "$tmpdir"' EXIT
@@ -291,7 +291,6 @@ EOF
   PATH="$tmpdir/fake-bin:$PATH" "$tmpdir/dotfiles.sh" --build install -p desktop -d -v
 
   expected=$(cat <<EOF
---build
 install
 -p
 desktop
@@ -302,7 +301,7 @@ EOF
   actual=$(cat "$tmpdir/forwarded-args.txt")
 
   if [ "$actual" = "$expected" ]; then
-    log_verbose "✓ Build mode forwards arguments unchanged"
+    log_verbose "✓ Build mode consumes --build and forwards CLI arguments"
   else
     printf "%sERROR: Forwarded args mismatch.%s\nExpected:\n%s\nActual:\n%s\n" "${RED}" "${NC}" "$expected" "$actual" >&2
     return 1
@@ -335,7 +334,6 @@ EOF
     "$tmpdir/dotfiles.sh" --build install --skip symlinks --only packages --no-parallel
 
   expected=$(cat <<'EOF'
---build
 install
 --skip
 symlinks
@@ -582,7 +580,7 @@ case "$0" in
     test_wrapper_checksum_verification
     test_wrapper_offline_fallback
     test_wrapper_forwarded_args
-    test_wrapper_build_mode_forwards_supported_flags
+    test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args
     test_wrapper_forwards_advanced_flags
     test_wrapper_root_detection
     test_wrapper_error_handling

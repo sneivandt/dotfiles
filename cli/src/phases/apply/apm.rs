@@ -461,7 +461,12 @@ fn merge_fragments(fragments: &[PathBuf]) -> Result<String> {
 /// Return whether the generated manifest should be written to disk.
 fn merged_manifest_needs_write(target: &Path, content: &str) -> Result<bool> {
     match std::fs::symlink_metadata(target) {
-        Ok(meta) if meta.file_type().is_symlink() => Ok(true),
+        Ok(meta) if meta.file_type().is_symlink() => {
+            anyhow::bail!(
+                "merged manifest target is a symlink; remove it before continuing: {}",
+                target.display()
+            );
+        }
         Ok(meta) if meta.is_file() => {
             let existing = std::fs::read(target).with_context(|| {
                 format!("reading existing merged manifest {}", target.display())
@@ -475,8 +480,7 @@ fn merged_manifest_needs_write(target: &Path, content: &str) -> Result<bool> {
     }
 }
 
-/// Write the merged manifest to `target`, replacing any existing file or
-/// symlink (e.g. a leftover symlink from the previous direct-link layout).
+/// Write the merged manifest to `target`, replacing any existing file.
 ///
 /// Returns early without writing if the existing file already has identical
 /// content, so we avoid bumping the mtime on unchanged runs.
@@ -486,13 +490,14 @@ fn write_merged_manifest(target: &Path, content: &str) -> Result<()> {
             .with_context(|| format!("creating directory {}", parent.display()))?;
     }
 
-    // Check existing content; only rewrite if changed.  We use symlink_metadata
-    // first because the legacy layout had `~/.apm/apm.yml` as a symlink into
-    // the dotfiles repo, and we want to replace it with a real file.
+    // Check existing content; only rewrite if changed. Use symlink_metadata so
+    // a symlink is rejected instead of writing through it.
     match std::fs::symlink_metadata(target) {
         Ok(meta) if meta.file_type().is_symlink() => {
-            std::fs::remove_file(target)
-                .with_context(|| format!("removing legacy symlink {}", target.display()))?;
+            anyhow::bail!(
+                "merged manifest target is a symlink; remove it before continuing: {}",
+                target.display()
+            );
         }
         Ok(meta) if meta.is_file() => {
             let existing = std::fs::read(target).with_context(|| {
@@ -982,7 +987,7 @@ mod tests {
     }
 
     #[test]
-    fn write_merged_manifest_replaces_legacy_symlink() {
+    fn write_merged_manifest_errors_when_target_is_symlink() {
         let dir = tempfile::tempdir().expect("create temp dir");
         let target = dir.path().join("apm.yml");
         let source = dir.path().join("source.yml");
@@ -997,15 +1002,17 @@ mod tests {
             return;
         }
 
-        write_merged_manifest(&target, "new content\n").expect("write");
+        let result = write_merged_manifest(&target, "new content\n");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("symlink"),
+            "error should identify symlink target: {msg}"
+        );
         let meta = std::fs::symlink_metadata(&target).expect("stat");
         assert!(
-            !meta.file_type().is_symlink(),
-            "should no longer be a symlink"
-        );
-        assert_eq!(
-            std::fs::read_to_string(&target).expect("read"),
-            "new content\n"
+            meta.file_type().is_symlink(),
+            "symlink should be left untouched"
         );
     }
 

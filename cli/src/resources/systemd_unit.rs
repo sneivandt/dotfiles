@@ -77,6 +77,52 @@ impl SystemdUnitResource {
             SystemdScope::System => ("sudo", vec!["systemctl", "enable", "--now", &self.name]),
         }
     }
+
+    fn state_from_is_enabled(&self, result: &crate::exec::ExecResult) -> ResourceState {
+        if result.success {
+            return ResourceState::Correct;
+        }
+
+        let output = command_output(result);
+        if output.lines().any(|line| line.trim() == "disabled") {
+            return ResourceState::Missing;
+        }
+
+        ResourceState::Unknown {
+            reason: format!(
+                "systemctl is-enabled {} failed ({}): {}",
+                self.name,
+                exit_status(result),
+                output_if_present(&output)
+            ),
+        }
+    }
+}
+
+fn command_output(result: &crate::exec::ExecResult) -> String {
+    let stdout = result.stdout.trim();
+    let stderr = result.stderr.trim();
+    match (stdout.is_empty(), stderr.is_empty()) {
+        (true, true) => String::new(),
+        (false, true) => stdout.to_string(),
+        (true, false) => stderr.to_string(),
+        (false, false) => format!("{stdout}; {stderr}"),
+    }
+}
+
+fn exit_status(result: &crate::exec::ExecResult) -> String {
+    result.code.map_or_else(
+        || "terminated by signal".to_string(),
+        |code| format!("exit {code}"),
+    )
+}
+
+const fn output_if_present(output: &str) -> &str {
+    if output.is_empty() {
+        "no output"
+    } else {
+        output
+    }
 }
 
 impl Applicable for SystemdUnitResource {
@@ -114,11 +160,7 @@ impl Resource for SystemdUnitResource {
         };
         let args = self.check_args(scope);
         let result = self.executor.run_unchecked("systemctl", &args)?;
-        if result.success {
-            Ok(ResourceState::Correct)
-        } else {
-            Ok(ResourceState::Missing)
-        }
+        Ok(self.state_from_is_enabled(&result))
     }
 }
 
@@ -192,14 +234,34 @@ mod tests {
     }
 
     #[test]
-    fn current_state_missing_when_systemctl_fails() {
+    fn current_state_missing_when_systemctl_reports_disabled() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
-            .once()
-            .returning(|_, _| Ok(fail_result()));
+        mock.expect_run_unchecked().once().returning(|_, _| {
+            Ok(ExecResult {
+                stdout: "disabled\n".to_string(),
+                ..fail_result()
+            })
+        });
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service".to_string(), "user", executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+    }
+
+    #[test]
+    fn current_state_unknown_when_systemctl_failure_is_ambiguous() {
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked().once().returning(|_, _| {
+            Ok(ExecResult {
+                stderr: "Failed to connect to bus".to_string(),
+                ..fail_result()
+            })
+        });
+        let executor: Arc<dyn Executor> = Arc::new(mock);
+        let resource = SystemdUnitResource::new("dunst.service".to_string(), "user", executor);
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Unknown { .. }
+        ));
     }
 
     #[test]

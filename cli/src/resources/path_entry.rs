@@ -181,10 +181,16 @@ impl Resource for PathEntryResource {
         // it may already contain the directory even if the current process's
         // environment block does not.
         #[cfg(windows)]
-        if let PathStrategy::WindowsRegistry { ref dir, .. } = self.strategy
-            && user_path_contains(dir).unwrap_or(false)
-        {
-            return Ok(ResourceState::Correct);
+        if let PathStrategy::WindowsRegistry { ref dir, .. } = self.strategy {
+            match user_path_contains(dir) {
+                Ok(true) => return Ok(ResourceState::Correct),
+                Ok(false) => {}
+                Err(e) => {
+                    return Ok(ResourceState::Unknown {
+                        reason: e.to_string(),
+                    });
+                }
+            }
         }
 
         Ok(ResourceState::Missing)

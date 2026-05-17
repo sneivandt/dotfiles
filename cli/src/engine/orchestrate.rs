@@ -129,16 +129,7 @@ pub fn process_resources_remove<R: Resource + Send>(
         return parallel::process_remove_parallel(ctx, resources, verb);
     }
     run_sequential(ctx, resources, |ctx, resource| {
-        let current = match resource.current_state() {
-            Ok(current) => current,
-            Err(e) => {
-                ctx.log.warn(&format!(
-                    "failed to check state for {}: {e}",
-                    resource.description()
-                ));
-                return Ok(TaskStats::new());
-            }
-        };
+        let current = resource.current_state()?;
         apply::remove_single(ctx, &resource, &current, verb)
     })
 }

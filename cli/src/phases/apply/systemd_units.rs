@@ -118,6 +118,13 @@ mod tests {
         }
     }
 
+    fn disabled_result() -> ExecResult {
+        ExecResult {
+            stdout: "disabled\n".to_string(),
+            ..fail_result()
+        }
+    }
+
     #[test]
     fn should_run_false_on_windows() {
         let mut config = empty_config(PathBuf::from("/tmp"));
@@ -176,7 +183,7 @@ mod tests {
         });
         // Ordered expectations:
         //   1. run("systemctl", ["--user", "daemon-reload"]) -> success
-        //   2. run_unchecked("systemctl", ["--user", "is-enabled", "dunst.service"]) → fail (Missing)
+        //   2. run_unchecked("systemctl", ["--user", "is-enabled", "dunst.service"]) -> disabled (Missing)
         //   3. run_unchecked("systemctl", ["--user", "enable", "--now", "dunst.service"]) → success
         let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
@@ -187,7 +194,7 @@ mod tests {
         mock.expect_run_unchecked()
             .once()
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(fail_result()));
+            .returning(|_, _| Ok(disabled_result()));
         mock.expect_run_unchecked()
             .once()
             .in_sequence(&mut seq)
@@ -210,11 +217,11 @@ mod tests {
         });
         // In dry-run mode daemon-reload is NOT called (guarded by `!ctx.dry_run`).
         // current_state() still runs to decide whether change would be needed.
-        //   1. run_unchecked("systemctl", ["--user", "is-enabled", "dunst.service"]) → fail (Missing)
+        //   1. run_unchecked("systemctl", ["--user", "is-enabled", "dunst.service"]) -> disabled (Missing)
         let mut mock = MockExecutor::new();
         mock.expect_run_unchecked()
             .once()
-            .returning(|_, _| Ok(fail_result()));
+            .returning(|_, _| Ok(disabled_result()));
         let mut ctx = make_systemd_context(config, mock);
         ctx = ctx.with_dry_run(true);
 
@@ -255,7 +262,7 @@ mod tests {
             .once()
             .in_sequence(&mut seq)
             .withf(|program, args| program == "systemctl" && args == ["is-enabled", "sshd.service"])
-            .returning(|_, _| Ok(fail_result()));
+            .returning(|_, _| Ok(disabled_result()));
         mock.expect_run_unchecked()
             .once()
             .in_sequence(&mut seq)

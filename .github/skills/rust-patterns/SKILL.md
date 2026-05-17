@@ -394,7 +394,7 @@ by category, and maps raw entries to domain items.
 
 Use `toml_loader::load_optional_config()` when a missing file should deserialize
 as empty TOML, and `toml_loader::load_required_config()` when absence is an
-error. Avoid calling the compatibility `load_config()` helper from new code.
+error.
 
 ## Error Handling
 

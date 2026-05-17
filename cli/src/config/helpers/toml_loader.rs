@@ -66,13 +66,21 @@ pub(crate) fn load_section<S: ConfigSection>(
 ///
 /// Returns an error if the file cannot be read or parsed.
 pub(crate) fn load_optional_config<T: DeserializeOwned>(path: &Path) -> Result<T> {
-    if !path.exists() {
-        // Return empty config for missing files by deserializing empty TOML
-        return toml::from_str("")
-            .with_context(|| format!("Failed to create empty config: {}", path.display()));
-    }
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Return empty config for missing files by deserializing empty TOML
+            return toml::from_str("")
+                .with_context(|| format!("Failed to create empty config: {}", path.display()));
+        }
+        Err(e) => {
+            return Err(e)
+                .with_context(|| format!("Failed to read config file: {}", path.display()));
+        }
+    };
 
-    load_required_config(path)
+    toml::from_str(&content)
+        .with_context(|| format!("Failed to parse TOML config: {}", path.display()))
 }
 
 /// Load a required TOML config file.
@@ -90,19 +98,6 @@ pub(crate) fn load_required_config<T: DeserializeOwned>(path: &Path) -> Result<T
 
     toml::from_str(&content)
         .with_context(|| format!("Failed to parse TOML config: {}", path.display()))
-}
-
-/// Load an optional TOML config file.
-///
-/// Missing files deserialize as empty TOML for backwards-compatible config
-/// sections. New call sites should choose this function explicitly rather than
-/// relying on a generic loader to decide the missing-file policy.
-///
-/// # Errors
-///
-/// Returns an error if the file exists but cannot be read or parsed.
-pub(crate) fn load_config<T: DeserializeOwned>(path: &Path) -> Result<T> {
-    load_optional_config(path)
 }
 
 /// Load a TOML config file where each top-level section contains a single

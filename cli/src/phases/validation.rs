@@ -189,8 +189,10 @@ impl Task for ValidateManifestSync {
         let symlinks_path = conf.join("symlinks.toml");
         let manifest_path = conf.join("manifest.toml");
 
-        let symlink_raw: HashMap<String, Value> = toml_loader::load_config(&symlinks_path)?;
-        let manifest_raw: HashMap<String, Value> = toml_loader::load_config(&manifest_path)?;
+        let symlink_raw: HashMap<String, Value> =
+            toml_loader::load_required_config(&symlinks_path)?;
+        let manifest_raw: HashMap<String, Value> =
+            toml_loader::load_required_config(&manifest_path)?;
 
         let symlink_sections: HashSet<String> = symlink_raw.into_keys().collect();
         let manifest_sections: HashSet<String> = manifest_raw.into_keys().collect();
@@ -518,6 +520,27 @@ fn build_shellcheck_args(paths: &[PathBuf]) -> Vec<String> {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    use crate::phases::test_helpers::{empty_config, make_linux_context};
+
+    #[test]
+    fn manifest_sync_errors_when_manifest_file_is_missing() {
+        let dir = tempfile::tempdir().expect("tempdir should create");
+        let conf = dir.path().join("conf");
+        std::fs::create_dir_all(&conf).expect("conf dir should create");
+        std::fs::write(conf.join("symlinks.toml"), "[base]\nsymlinks = []\n")
+            .expect("symlinks config should write");
+
+        let ctx = make_linux_context(empty_config(dir.path().to_path_buf()));
+        let result = ValidateManifestSync.run(&ctx);
+
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("manifest.toml"),
+            "missing manifest error should include file path: {msg}"
+        );
+    }
 
     #[test]
     fn detects_sh_extension() {

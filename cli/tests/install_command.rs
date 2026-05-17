@@ -666,7 +666,6 @@ fn install_run_dry_run_returns_ok() {
     std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
 
     let global = dotfiles_cli::cli::GlobalOpts {
-        build: false,
         root: Some(root_path),
         profile: Some("base".to_string()),
         dry_run: true,
@@ -703,7 +702,6 @@ fn install_run_dry_run_with_only_filter_returns_ok() {
     std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
 
     let global = dotfiles_cli::cli::GlobalOpts {
-        build: false,
         root: Some(root_path),
         profile: Some("base".to_string()),
         dry_run: true,
@@ -740,7 +738,6 @@ fn install_run_dry_run_with_skip_filter_returns_ok() {
     std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
 
     let global = dotfiles_cli::cli::GlobalOpts {
-        build: false,
         root: Some(root_path),
         profile: Some("base".to_string()),
         dry_run: true,
@@ -777,7 +774,6 @@ fn install_run_dry_run_with_only_no_match_returns_ok() {
     std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
 
     let global = dotfiles_cli::cli::GlobalOpts {
-        build: false,
         root: Some(root_path),
         profile: Some("base".to_string()),
         dry_run: true,
@@ -814,7 +810,6 @@ fn install_run_dry_run_with_only_filter_parallel_returns_ok() {
     std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
 
     let global = dotfiles_cli::cli::GlobalOpts {
-        build: false,
         root: Some(root_path),
         profile: Some("base".to_string()),
         dry_run: true,
@@ -851,7 +846,6 @@ fn install_run_dry_run_with_skip_and_only_together() {
     std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
 
     let global = dotfiles_cli::cli::GlobalOpts {
-        build: false,
         root: Some(root_path),
         profile: Some("base".to_string()),
         dry_run: true,

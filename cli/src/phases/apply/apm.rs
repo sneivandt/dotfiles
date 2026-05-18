@@ -7,14 +7,14 @@
 //! repositories may symlink additional fragments into `~/.apm/config/*.yml`
 //! (for example `~/.apm/config/work.yml`).
 //!
-//! Because `apm install -g --target copilot,vscode --update` always reads the
-//! manifest at `~/.apm/apm.yml` regardless of cwd, this task merges every
-//! `~/.apm/config/*.yml` fragment into a single generated `~/.apm/apm.yml`
-//! and then invokes `apm install -g --target copilot,vscode --update` once so
-//! primitives are refreshed to the latest matching refs and deployed globally
-//! to both the Copilot target (`~/.copilot/`) and the VS Code target
-//! (`~/.vscode/`).  Idempotency is provided by APM itself via its lockfile; the
-//! merged file is regenerated deterministically every run.
+//! Because `apm install -g --target copilot,vscode` always reads the manifest
+//! at `~/.apm/apm.yml` regardless of cwd, this task merges every
+//! `~/.apm/config/*.yml` fragment into a single generated `~/.apm/apm.yml`.
+//! It then invokes `apm install -g --target copilot,vscode` whenever install
+//! state must be materialized, including ordinary up-to-date runs so local
+//! symlinked plugin edits are redeployed to their real runtime locations.
+//! Idempotency is provided by APM itself via its lockfile; the merged file is
+//! regenerated deterministically every run.
 
 use anyhow::{Context as _, Result};
 use sha2::{Digest as _, Sha256};
@@ -135,6 +135,9 @@ impl Task for InstallApmPackages {
                      not been installed successfully yet"
                 ));
             } else {
+                ctx.log.dry_run(&format!(
+                    "run apm install -g --target {APM_TARGETS} to redeploy current manifest content"
+                ));
                 ctx.log
                     .dry_run("run apm outdated -g and update only if dependencies are stale");
             }
@@ -151,6 +154,12 @@ impl Task for InstallApmPackages {
             }
             return Ok(result);
         }
+
+        let result = run_apm_install(ctx)?;
+        if !matches!(result, TaskResult::Ok) {
+            return Ok(result);
+        }
+        write_manifest_marker(&marker_path, &manifest_hash)?;
 
         match apm_dependencies_are_outdated(ctx)? {
             ApmOutdatedCheck::Outdated(true) => {
@@ -700,20 +709,33 @@ mod tests {
     }
 
     #[test]
-    fn run_skips_update_when_manifest_lock_and_dependencies_are_current() {
+    fn run_reinstalls_then_skips_update_when_manifest_lock_and_dependencies_are_current() {
         let dir = tempfile::tempdir().expect("create temp dir");
         write_current_manifest_lock_and_marker(dir.path());
 
+        let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
         mock.expect_which()
             .with(mockall::predicate::eq("apm"))
             .once()
             .returning(|_| true);
-        let expected_cwd = dir.path().to_path_buf();
+        let install_cwd = dir.path().to_path_buf();
         mock.expect_run_in_with_env()
             .once()
+            .in_sequence(&mut seq)
             .returning(move |dir, program, args, env| {
-                assert_eq!(dir, expected_cwd.as_path());
+                assert_eq!(dir, install_cwd.as_path());
+                assert_eq!(program, "apm");
+                assert_eq!(args, ["install", "-g", "--target", "copilot,vscode"]);
+                assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
+                Ok(ok_result("installed\n"))
+            });
+        let outdated_cwd = dir.path().to_path_buf();
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |dir, program, args, env| {
+                assert_eq!(dir, outdated_cwd.as_path());
                 assert_eq!(program, "apm");
                 assert_eq!(args, ["outdated", "-g"]);
                 assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
@@ -725,7 +747,7 @@ mod tests {
         let result = InstallApmPackages.run(&ctx).expect("run should not error");
         assert!(
             matches!(result, TaskResult::Ok),
-            "expected Ok when APM is already current, got {result:?}"
+            "expected Ok after reinstalling current APM content, got {result:?}"
         );
     }
 
@@ -740,6 +762,17 @@ mod tests {
             .with(mockall::predicate::eq("apm"))
             .once()
             .returning(|_| true);
+        let install_cwd = dir.path().to_path_buf();
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |dir, program, args, env| {
+                assert_eq!(dir, install_cwd.as_path());
+                assert_eq!(program, "apm");
+                assert_eq!(args, ["install", "-g", "--target", "copilot,vscode"]);
+                assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
+                Ok(ok_result("installed\n"))
+            });
         let outdated_cwd = dir.path().to_path_buf();
         mock.expect_run_in_with_env()
             .once()

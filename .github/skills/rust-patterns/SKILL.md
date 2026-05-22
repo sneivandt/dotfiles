@@ -68,22 +68,30 @@ cli/src/
 pub trait Task: Send + Sync + 'static {
     fn name(&self) -> &str;
     fn phase(&self) -> TaskPhase;
-    fn task_id(&self) -> TypeId { TypeId::of::<Self>() }
-    fn dependencies(&self) -> &[TypeId] { &[] }
+    fn task_id(&self) -> TaskId { TaskId::Type(TypeId::of::<Self>()) }
+    fn dependencies(&self) -> &[TaskId] { &[] }
+    fn execution_policies(&self) -> &[ExecutionPolicy] { ALWAYS_POLICY }
     fn should_run(&self, ctx: &Context) -> bool;
     fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
         self.run(ctx).map(Some)  // default: delegates to run()
     }
+    fn needs_elevation(&self, ctx: &Context) -> bool { false }
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
 }
-pub enum TaskPhase { System, User }
+pub enum TaskPhase { Bootstrap, Repository, Apply }
 pub enum TaskResult { Ok, NotApplicable(String), Skipped(String), Failed(String), DryRun }
 ```
 
-`run_if_applicable()` combines the `should_run` check and `run` call into a single step,
-returning `Ok(None)` when the task is not applicable. The `resource_task!` macro
-has standard and batch variants; both override the default to evaluate config
-items exactly once, avoiding a second config lock acquisition. The executor calls
+`execution_policies()` declares orchestration-level gates such as
+`PlatformSupported`, `SkipInDryRun`, and `RequiresElevation`. The runner
+evaluates policies before `should_run()` and only primes sudo for tasks whose
+policies and `should_run()` pass and whose `needs_elevation()` predicts a
+mutation.
+
+`run_if_applicable()` combines final applicability with execution, returning
+`Ok(None)` when the task is not applicable. The `resource_task!` macro has
+standard and batch variants; both override the default to evaluate config items
+exactly once, avoiding a second config lock acquisition. The executor calls
 `run_if_applicable()` — never `run()` directly.
 
 ### Task Dependencies
@@ -127,7 +135,7 @@ For tasks that read config items, map each to a resource, and process them,
 the `resource_task!` macro eliminates all boilerplate:
 
 ```rust
-use crate::phases::{ProcessOpts, TaskPhase, resource_task};
+use crate::phases::{ExecutionPolicy, ProcessOpts, TaskPhase, resource_task};
 use crate::resources::my_resource::MyResource;
 
 resource_task! {
@@ -135,6 +143,7 @@ resource_task! {
     pub MyTask {
         name: "My task",
         phase: TaskPhase::Apply,
+        policy: [ExecutionPolicy::PlatformSupported("systemd", Platform::supports_systemd)], // optional
         deps: [crate::phases::repository::some_dependency::SomeDependency],  // optional
         guard: |ctx| ctx.platform.supports_systemd(),     // optional
         items: |ctx| ctx.config_read().items.clone(),
@@ -145,7 +154,10 @@ resource_task! {
 ```
 
 The macro generates a `Debug` struct and a full `Task` implementation:
-- `should_run` returns `false` when the `guard` fails or `items` is empty
+- `execution_policies` returns any declared `policy: [...]` entries
+- `should_run` returns `false` when the `guard` fails
+- `run_if_applicable` evaluates config items once and returns `Ok(None)` when
+  nothing is configured
 - `run` clones the config items, maps each to a resource via `build`, and
   delegates to `process_resources`
 
@@ -162,7 +174,7 @@ When a task needs custom logic beyond the macro (e.g., batch-querying state,
 conditional skipping, or non-resource work), write the impl manually:
 
 ```rust
-use crate::phases::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, task_deps};
+use crate::phases::{Context, ExecutionPolicy, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, task_deps};
 use crate::resources::my_resource::MyResource;
 
 pub struct MyTask;
@@ -170,8 +182,18 @@ impl Task for MyTask {
     fn name(&self) -> &str { "My task" }
     fn phase(&self) -> TaskPhase { TaskPhase::Apply }
     task_deps![crate::phases::repository::some_dependency::SomeDependency]; // omit if no dependencies
+    fn execution_policies(&self) -> &[ExecutionPolicy] {
+        const POLICIES: &[ExecutionPolicy] = &[
+            ExecutionPolicy::PlatformSupported("systemd", Platform::supports_systemd),
+            ExecutionPolicy::RequiresElevation,
+        ];
+        POLICIES
+    }
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_systemd() && !ctx.config_read().items.is_empty()
+    }
+    fn needs_elevation(&self, ctx: &Context) -> bool {
+        ctx.config_read().items.iter().any(|item| item.requires_root)
     }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let items = ctx.config_read().items.clone();
@@ -217,6 +239,10 @@ setup), write the check→dry-run→mutate loop manually:
 pub struct MyCustomTask;
 impl Task for MyCustomTask {
     fn name(&self) -> &str { "My custom task" }
+    fn execution_policies(&self) -> &[ExecutionPolicy] {
+        const POLICIES: &[ExecutionPolicy] = &[ExecutionPolicy::SkipInDryRun("reason")];
+        POLICIES
+    }
     fn should_run(&self, ctx: &Context) -> bool { true }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if already_correct() {

@@ -87,6 +87,7 @@ where
 ///     pub StructName {
 ///         name: "Human-readable task name",
 ///         phase: TaskPhase::Apply,
+///         policy: [ExecutionPolicy::PlatformSupported("systemd", Platform::supports_systemd)], // optional
 ///         deps: [DepType1, DepType2],          // optional
 ///         guard: |ctx| bool_expr,              // optional
 ///         setup: |ctx| { side_effects(); },    // optional
@@ -118,6 +119,7 @@ macro_rules! resource_task {
         $vis:vis $name:ident {
             name: $task_name:expr,
             phase: $phase:expr,
+            $(policy: [$($policy:expr),+ $(,)?],)?
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
             items: |$items_ctx:ident| $items_expr:expr,
@@ -171,6 +173,13 @@ macro_rules! resource_task {
 
             $($crate::phases::task_deps![$($dep),+];)?
 
+            $(
+                fn execution_policies(&self) -> &[$crate::phases::ExecutionPolicy] {
+                    const POLICIES: &[$crate::phases::ExecutionPolicy] = &[$($policy),+];
+                    POLICIES
+                }
+            )?
+
             fn should_run(&self, ctx: &$crate::phases::Context) -> bool {
                 let _ = ctx;
                 $(
@@ -213,6 +222,7 @@ macro_rules! resource_task {
         $vis:vis $name:ident {
             name: $task_name:expr,
             phase: $phase:expr,
+            $(policy: [$($policy:expr),+ $(,)?],)?
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
             $(setup: |$setup_ctx:ident| $setup_expr:expr,)?
@@ -235,6 +245,13 @@ macro_rules! resource_task {
             }
 
             $($crate::phases::task_deps![$($dep),+];)?
+
+            $(
+                fn execution_policies(&self) -> &[$crate::phases::ExecutionPolicy] {
+                    const POLICIES: &[$crate::phases::ExecutionPolicy] = &[$($policy),+];
+                    POLICIES
+                }
+            )?
 
             fn should_run(&self, ctx: &$crate::phases::Context) -> bool {
                 let _ = ctx;

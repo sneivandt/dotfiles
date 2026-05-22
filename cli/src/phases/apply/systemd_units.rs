@@ -6,8 +6,10 @@ use anyhow::Result;
 
 use crate::config::systemd_units::SystemdUnit;
 use crate::phases::{
-    Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, task_deps,
+    Context, ExecutionPolicy, ProcessOpts, Task, TaskPhase, TaskResult, process_resources,
+    task_deps,
 };
+use crate::platform::Platform;
 use crate::resources::systemd_unit::SystemdUnitResource;
 
 /// Enable and start systemd units.
@@ -25,19 +27,25 @@ impl Task for ConfigureSystemd {
 
     task_deps![crate::phases::apply::symlinks::InstallSymlinks];
 
+    fn execution_policies(&self) -> &[ExecutionPolicy] {
+        const POLICIES: &[ExecutionPolicy] = &[
+            ExecutionPolicy::PlatformSupported("systemd", Platform::supports_systemd),
+            ExecutionPolicy::RequiresElevation,
+        ];
+        POLICIES
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_systemd()
             && !ctx.config_read().units.is_empty()
             && ctx.executor.which("systemctl")
     }
 
-    fn needs_sudo(&self, ctx: &Context) -> bool {
-        !ctx.dry_run
-            && ctx
-                .config_read()
-                .units
-                .iter()
-                .any(|unit| unit.scope == "system")
+    fn needs_elevation(&self, ctx: &Context) -> bool {
+        ctx.config_read()
+            .units
+            .iter()
+            .any(|unit| unit.scope == "system")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

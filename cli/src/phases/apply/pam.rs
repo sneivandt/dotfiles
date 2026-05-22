@@ -5,7 +5,10 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::config::category_matcher::Category;
-use crate::phases::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources};
+use crate::phases::{
+    Context, ExecutionPolicy, ProcessOpts, Task, TaskPhase, TaskResult, process_resources,
+};
+use crate::platform::Platform;
 use crate::resources::IntrinsicState;
 use crate::resources::pam::PamConfigResource;
 
@@ -58,11 +61,19 @@ impl Task for ConfigurePam {
         TaskPhase::Apply
     }
 
+    fn execution_policies(&self) -> &[ExecutionPolicy] {
+        const POLICIES: &[ExecutionPolicy] = &[
+            ExecutionPolicy::PlatformSupported("Arch Linux", Platform::is_arch_linux),
+            ExecutionPolicy::RequiresElevation,
+        ];
+        POLICIES
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
         Self::is_arch_desktop(ctx)
     }
 
-    fn needs_sudo(&self, ctx: &Context) -> bool {
+    fn needs_elevation(&self, ctx: &Context) -> bool {
         Self::needs_sudo_for_service(ctx, HYPRLOCK_SERVICE)
     }
 

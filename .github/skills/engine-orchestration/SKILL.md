@@ -21,6 +21,12 @@ starts.  The function loops over
 and dispatching tasks per phase.  Within each phase, tasks run via the
 scheduler (parallel) or sequentially (single task / `--no-parallel`).
 
+Before parallel dispatch, the runner evaluates task execution policies and
+`should_run()` as part of `requires_elevation()`. It primes sudo only for tasks
+that declare `ExecutionPolicy::RequiresElevation`, are supported on the current
+platform, are not skipped by dry-run policy, are applicable, and predict a
+privileged mutation via `needs_elevation()`.
+
 ## Task-Level: Scheduler
 
 Within each phase, `run_tasks_to_completion()` dispatches:
@@ -28,6 +34,9 @@ Within each phase, `run_tasks_to_completion()` dispatches:
 1. If `ctx.parallel` and more than one task → check for cycles via `graph::has_cycle()` (Kahn's algorithm)
 2. If cycle detected → bail with an error (abort the run)
 3. Otherwise → `engine::scheduler::run_tasks_parallel()` spawns OS threads
+
+Each dispatched task is still passed through `phases::execute()`, which applies
+`execution_policies()` before `should_run()` and `run_if_applicable()`.
 
 ### Why OS Threads (Not Rayon)
 

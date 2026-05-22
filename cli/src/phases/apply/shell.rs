@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 
-use crate::phases::{ProcessOpts, TaskPhase, resource_task};
+use crate::phases::{ExecutionPolicy, ProcessOpts, TaskPhase, resource_task};
+use crate::platform::Platform;
 use crate::resources::shell::DefaultShellResource;
 
 resource_task! {
@@ -10,6 +11,7 @@ resource_task! {
     pub ConfigureShell {
         name: "Configure default shell",
         phase: TaskPhase::Apply,
+        policy: [ExecutionPolicy::PlatformSupported("Linux shell configuration", Platform::is_linux)],
         deps: [crate::phases::apply::packages::InstallPackages],
         guard: |ctx| {
             ctx.platform.is_linux() && ctx.executor.which("zsh") && !ctx.is_ci

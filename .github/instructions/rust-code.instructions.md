@@ -34,6 +34,11 @@ Define tasks via the `resource_task!` macro in `cli/src/phases/`, not by
 hand-implementing the `Task` trait. Use `task_deps!` for dependencies.
 Register tasks in `cli/src/phases/catalog.rs`.
 
+Use `ExecutionPolicy` for orchestration-level gates: platform support,
+dry-run-only skips, and elevation declarations. For tasks declaring
+`RequiresElevation`, implement `needs_elevation()` so sudo is primed only when
+the task is applicable and a privileged mutation is predicted.
+
 See the `resource-implementation` and `rust-patterns` skills for full templates.
 
 ## Resource Traits

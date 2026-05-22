@@ -11,9 +11,10 @@ use anyhow::{Context as _, Result};
 
 use crate::config::packages::Package;
 use crate::phases::{
-    Context, ProcessOpts, Task, TaskPhase, TaskResult, TaskStats, process_resource_states,
-    task_deps,
+    Context, ExecutionPolicy, ProcessOpts, Task, TaskPhase, TaskResult, TaskStats,
+    process_resource_states, task_deps,
 };
+use crate::platform::Platform;
 use crate::resources::Applicable as _;
 use crate::resources::package::{
     PackageManager, PackageResource, batch_install_packages, get_installed_packages,
@@ -93,12 +94,17 @@ impl Task for InstallPackages {
         TaskPhase::Apply
     }
 
+    fn execution_policies(&self) -> &[ExecutionPolicy] {
+        const POLICIES: &[ExecutionPolicy] = &[ExecutionPolicy::RequiresElevation];
+        POLICIES
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.config_read().packages.iter().any(|p| !p.is_aur)
     }
 
-    fn needs_sudo(&self, ctx: &Context) -> bool {
-        if !ctx.platform.uses_pacman() || ctx.dry_run {
+    fn needs_elevation(&self, ctx: &Context) -> bool {
+        if !ctx.platform.uses_pacman() {
             return false;
         }
         predict_sudo(
@@ -142,12 +148,20 @@ impl Task for InstallAurPackages {
 
     task_deps![InstallParu];
 
+    fn execution_policies(&self) -> &[ExecutionPolicy] {
+        const POLICIES: &[ExecutionPolicy] = &[
+            ExecutionPolicy::PlatformSupported("AUR", Platform::supports_aur),
+            ExecutionPolicy::RequiresElevation,
+        ];
+        POLICIES
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_aur() && ctx.config_read().packages.iter().any(|p| p.is_aur)
     }
 
-    fn needs_sudo(&self, ctx: &Context) -> bool {
-        if !ctx.platform.supports_aur() || ctx.dry_run {
+    fn needs_elevation(&self, ctx: &Context) -> bool {
+        if !ctx.platform.supports_aur() {
             return false;
         }
         predict_sudo(
@@ -190,13 +204,21 @@ impl Task for InstallParu {
         TaskPhase::Apply
     }
 
+    fn execution_policies(&self) -> &[ExecutionPolicy] {
+        const POLICIES: &[ExecutionPolicy] = &[
+            ExecutionPolicy::PlatformSupported("pacman", Platform::uses_pacman),
+            ExecutionPolicy::RequiresElevation,
+        ];
+        POLICIES
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.uses_pacman()
     }
 
-    fn needs_sudo(&self, ctx: &Context) -> bool {
+    fn needs_elevation(&self, ctx: &Context) -> bool {
         // makepkg -si calls sudo internally to install the built package
-        ctx.platform.uses_pacman() && !ctx.dry_run && !ctx.executor.which("paru")
+        ctx.platform.uses_pacman() && !ctx.executor.which("paru")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

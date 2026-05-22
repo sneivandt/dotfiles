@@ -2,7 +2,8 @@
 
 use anyhow::Result;
 
-use crate::phases::{Context, Task, TaskPhase, TaskResult};
+use crate::phases::{Context, ExecutionPolicy, Task, TaskPhase, TaskResult};
+use crate::platform::Platform;
 
 /// The single setting this task enforces.
 const DESIRED_KEY: &str = "generateResolvConf = true";
@@ -29,8 +30,20 @@ impl Task for InstallWslConf {
         TaskPhase::Apply
     }
 
+    fn execution_policies(&self) -> &[ExecutionPolicy] {
+        const POLICIES: &[ExecutionPolicy] = &[
+            ExecutionPolicy::PlatformSupported("WSL", Platform::is_wsl),
+            ExecutionPolicy::RequiresElevation,
+        ];
+        POLICIES
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.is_wsl()
+    }
+
+    fn needs_elevation(&self, _ctx: &Context) -> bool {
+        !is_correct("/etc/wsl.conf")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

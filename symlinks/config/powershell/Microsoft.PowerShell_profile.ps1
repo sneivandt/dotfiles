@@ -11,6 +11,11 @@ if (Get-Module PSReadLine)
 
 $Global:GitExists = [bool](Get-Command "git" -ErrorAction SilentlyContinue)
 
+if (Get-Command "code-insiders" -ErrorAction SilentlyContinue)
+{
+    Set-Alias -Name code -Value code-insiders
+}
+
 $Global:IsNestedPwsh = $false
 if ($null -eq $env:windir)
 {

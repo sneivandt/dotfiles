@@ -4,7 +4,13 @@ use crate::engine::{
 };
 use crate::phases::test_helpers::empty_config;
 use crate::resources::{Resource, ResourceChange, ResourceState, ResourceStateProvider};
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 
 use super::{
     MockResource, bail_opts, default_opts, dry_run_context, parallel_context, test_context,
@@ -35,6 +41,27 @@ impl ResourceStateProvider<PrecomputedResource> for PrecomputedStateProvider {
     type Cache = ();
 
     fn load(&self, _resources: &[PrecomputedResource]) -> anyhow::Result<Self::Cache> {
+        Ok(())
+    }
+
+    fn current_state(
+        &self,
+        resource: &PrecomputedResource,
+        _cache: &Self::Cache,
+    ) -> anyhow::Result<ResourceState> {
+        Ok(resource.state.clone())
+    }
+}
+
+struct CountingStateProvider {
+    loads: Arc<AtomicUsize>,
+}
+
+impl ResourceStateProvider<PrecomputedResource> for CountingStateProvider {
+    type Cache = ();
+
+    fn load(&self, _resources: &[PrecomputedResource]) -> anyhow::Result<Self::Cache> {
+        self.loads.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -112,6 +139,23 @@ fn process_precomputed_states_applies_precomputed() {
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
     assert!(matches!(result, TaskResult::Ok));
+}
+
+#[test]
+fn process_resources_with_provider_empty_list_skips_provider_load() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resources: Vec<PrecomputedResource> = vec![];
+    let opts = default_opts();
+    let loads = Arc::new(AtomicUsize::new(0));
+    let provider = CountingStateProvider {
+        loads: Arc::clone(&loads),
+    };
+
+    let result = process_resources_with_provider(&ctx, resources, &provider, &opts).unwrap();
+
+    assert!(matches!(result, TaskResult::Ok));
+    assert_eq!(loads.load(Ordering::SeqCst), 0);
 }
 
 // -----------------------------------------------------------------------

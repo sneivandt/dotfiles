@@ -226,10 +226,25 @@ pub struct PreloadedStateProvider<Cache, State> {
     state: State,
 }
 
+/// State provider backed by a borrowed cache.
+#[derive(Debug, Clone)]
+pub struct BorrowedStateProvider<'cache, Cache: ?Sized, State> {
+    cache: &'cache Cache,
+    state: State,
+}
+
 impl<Cache, State> PreloadedStateProvider<Cache, State> {
     /// Create a provider from a cache value and state-mapping closure.
     #[must_use]
     pub const fn new(cache: Cache, state: State) -> Self {
+        Self { cache, state }
+    }
+}
+
+impl<'cache, Cache: ?Sized, State> BorrowedStateProvider<'cache, Cache, State> {
+    /// Create a provider from a borrowed cache and state-mapping closure.
+    #[must_use]
+    pub const fn new(cache: &'cache Cache, state: State) -> Self {
         Self { cache, state }
     }
 }
@@ -248,6 +263,23 @@ where
 
     fn current_state(&self, resource: &R, _cache: &Self::Cache) -> Result<ResourceState> {
         (self.state)(resource, &self.cache)
+    }
+}
+
+impl<R, Cache, State> ResourceStateProvider<R> for BorrowedStateProvider<'_, Cache, State>
+where
+    R: Resource,
+    Cache: Sync + ?Sized,
+    State: Fn(&R, &Cache) -> Result<ResourceState> + Sync,
+{
+    type Cache = ();
+
+    fn load(&self, _resources: &[R]) -> Result<Self::Cache> {
+        Ok(())
+    }
+
+    fn current_state(&self, resource: &R, _cache: &Self::Cache) -> Result<ResourceState> {
+        (self.state)(resource, self.cache)
     }
 }
 

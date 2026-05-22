@@ -17,7 +17,7 @@ use crate::phases::{
 use crate::resources::package::{
     PackageManager, PackageResource, batch_install_packages, get_installed_packages,
 };
-use crate::resources::{PreloadedStateProvider, Resource as _};
+use crate::resources::{BorrowedStateProvider, Resource as _};
 
 /// Default number of parallel jobs for makepkg if nproc detection fails.
 const DEFAULT_NPROC: &str = "4";
@@ -356,8 +356,8 @@ fn individual_install(
     let resources = packages
         .iter()
         .map(|pkg| PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor)));
-    let provider = PreloadedStateProvider::new(
-        installed.clone(),
+    let provider = BorrowedStateProvider::new(
+        installed,
         |resource: &PackageResource, installed: &HashSet<String>| {
             Ok(resource.state_from_installed(installed))
         },

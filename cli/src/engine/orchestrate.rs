@@ -85,6 +85,10 @@ where
     P::Cache: Sync,
 {
     let resources: Vec<R> = resources.into_iter().collect();
+    if resources.is_empty() {
+        return Ok(TaskResult::Ok);
+    }
+
     let cache = provider.load(&resources)?;
     process_apply_items(ctx, resources, opts, "state_provider", |resource| {
         let state = provider.current_state(&resource, &cache)?;

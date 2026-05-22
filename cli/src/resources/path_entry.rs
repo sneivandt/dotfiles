@@ -7,7 +7,7 @@ use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::{Applicable, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
 
 /// Source for checking whether a directory is already on `PATH`.
@@ -114,7 +114,7 @@ impl PathEntryResource {
     }
 }
 
-impl Applicable for PathEntryResource {
+impl Resource for PathEntryResource {
     fn description(&self) -> String {
         format!("PATH \u{2192} {}", self.dir.display())
     }
@@ -159,7 +159,7 @@ impl Applicable for PathEntryResource {
     }
 }
 
-impl Resource for PathEntryResource {
+impl IntrinsicState for PathEntryResource {
     fn current_state(&self) -> Result<ResourceState> {
         // Fast path: directory is already on the runtime PATH.
         if self.path_source.is_on_path(&self.dir) {

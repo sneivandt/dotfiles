@@ -100,14 +100,15 @@ the `PackageManager` enum and its `provider` reference.
 
 ### Resource-Based Package Installation
 
-All package managers use `process_resource_states()` with batch-queried state.
+All package managers use `process_resources_with_provider()` with
+batch-queried state.
 The `batch_install_packages()` function groups resources by manager and delegates
 to each provider:
 
 ```rust
 let installed = get_installed_packages(manager, &*ctx.executor)?;
-// Build (PackageResource, ResourceState) pairs using state_from_installed()
-// Then call process_resource_states() for dry-run/apply logic
+// Build PackageResource values and share installed through a BorrowedStateProvider
+// Then call process_resources_with_provider() for dry-run/apply logic
 // Finally batch_install_packages() for the actual install
 ```
 

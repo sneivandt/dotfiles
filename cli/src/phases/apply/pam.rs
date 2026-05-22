@@ -9,7 +9,7 @@ use crate::phases::{
     Context, ExecutionPolicy, ProcessOpts, Task, TaskPhase, TaskResult, process_resources,
 };
 use crate::platform::Platform;
-use crate::resources::Resource;
+use crate::resources::IntrinsicState;
 use crate::resources::pam::PamConfigResource;
 
 /// The PAM service name to configure on Arch Linux desktop systems.

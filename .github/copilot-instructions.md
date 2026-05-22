@@ -35,8 +35,8 @@ The engine has five internal layers: `config/` (TOML parsing) → `resources/` (
 | `cli/src/phases/mod.rs` | `Task` trait definition |
 | `cli/src/phases/macros.rs` | `resource_task!` and `task_deps!` macros |
 | `cli/src/phases/catalog.rs` | Task registry (`all_install_tasks()` / `all_uninstall_tasks()`) |
-| `cli/src/resources/mod.rs` | `Applicable` and `Resource` traits — the idempotent primitives |
-| `cli/src/engine/orchestrate.rs` | `process_resources()` — the core execution workhorse |
+| `cli/src/resources/mod.rs` | `Resource`, `IntrinsicState`, and `ResourceStateProvider` primitives |
+| `cli/src/engine/orchestrate.rs` | Provider-backed resource orchestration workhorse |
 | `cli/src/engine/plan.rs` | Pure resource plan/diff construction before mutation |
 | `cli/src/config/mod.rs` | `config_section!` macro and config loading |
 | `cli/src/error.rs` | `ResourceError` and `ConfigError` domain types |
@@ -51,12 +51,13 @@ The project enforces pedantic + nursery Clippy lints and explicitly denies `pani
 
 Tasks are defined via the `resource_task!` macro in `cli/src/phases/`, not by hand-implementing the `Task` trait. Dependencies use `task_deps!`. Config sections use `config_section!`. See the `resource-implementation` and `rust-patterns` skills.
 
-### Two Resource Traits
+### Resource State Providers
 
-- `Applicable`: core operations (describe, apply, remove)
-- `Resource`: extends `Applicable` with `current_state()` for state checking
+- `Resource`: core operations (describe, apply, remove)
+- `IntrinsicState`: resources that can check their own state with `current_state()`
+- `ResourceStateProvider`: supplies state for orchestration, either via intrinsic checks or cached/bulk queries
 
-The split exists because some resources need bulk state queries before individual apply.
+The provider split lets intrinsic checks and bulk/cached state queries share the same orchestration path.
 
 ### Category Filtering
 

@@ -2,7 +2,7 @@
 use anyhow::Result;
 use std::sync::Arc;
 
-use super::{Applicable, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
 
 /// Source for reading the current login shell.
@@ -61,7 +61,7 @@ impl DefaultShellResource {
     }
 }
 
-impl Applicable for DefaultShellResource {
+impl Resource for DefaultShellResource {
     fn description(&self) -> String {
         format!("default shell → {}", self.target_shell)
     }
@@ -76,7 +76,7 @@ impl Applicable for DefaultShellResource {
     }
 }
 
-impl Resource for DefaultShellResource {
+impl IntrinsicState for DefaultShellResource {
     fn current_state(&self) -> Result<ResourceState> {
         let Some(current_shell) = self.shell_source.current_shell() else {
             return Ok(ResourceState::Unknown {

@@ -87,9 +87,10 @@ if ctx.parallel && resources.len() > 1 {
 
 ### How It Works
 
-`process_apply_parallel()` handles both self-checking resources and precomputed
-`(resource, state)` pairs. It delegates to `collect_parallel_stats()`, which
-uses Rayon's `try_fold` / `try_reduce` pattern:
+`process_apply_parallel()` handles resources after the caller-provided state
+provider closure maps each resource to `(Resource, ResourceState)`. It delegates
+to `collect_parallel_stats()`, which uses Rayon's `try_fold` / `try_reduce`
+pattern:
 - Each item runs `process_single()` independently after the caller-provided
   state extraction closure returns `(Resource, ResourceState)`
 - Each worker accumulates local `TaskStats`, then results are merged without a
@@ -111,8 +112,8 @@ automatically.
 check→plan/diff→dry-run/apply loop so individual tasks don't repeat it. They
 are re-exported from `phases/mod.rs`:
 
-- **`process_resources(ctx, resources, opts)`** — calls `current_state()` on each resource.
-- **`process_resource_states(ctx, resource_states, opts)`** — takes pre-computed `(Resource, ResourceState)` pairs for batch-checked resources (packages, VS Code extensions).
+- **`process_resources(ctx, resources, opts)`** — convenience wrapper for resources implementing `IntrinsicState`.
+- **`process_resources_with_provider(ctx, resources, provider, opts)`** — loads provider state once, then maps each resource to a `ResourceState` from intrinsic, preloaded, borrowed, or cached state.
 - **`process_resources_remove(ctx, resources, verb)`** — uninstall counterpart: removes resources in `Correct` state, skips others.
 
 Use these helpers for **all** new resource-based tasks. They build typed

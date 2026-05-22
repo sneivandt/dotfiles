@@ -1,7 +1,7 @@
 //! Windows Developer Mode resource.
 use anyhow::Result;
 
-use super::{Applicable, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
 
 /// Registry key path for Windows Developer Mode (display/description only).
 const DEVELOPER_MODE_KEY: &str = r"HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock";
@@ -34,7 +34,7 @@ impl Default for DeveloperModeResource {
     }
 }
 
-impl Applicable for DeveloperModeResource {
+impl Resource for DeveloperModeResource {
     fn description(&self) -> String {
         format!("{DEVELOPER_MODE_KEY}\\{DEVELOPER_MODE_VALUE}")
     }
@@ -67,7 +67,7 @@ impl Applicable for DeveloperModeResource {
     }
 }
 
-impl Resource for DeveloperModeResource {
+impl IntrinsicState for DeveloperModeResource {
     fn current_state(&self) -> Result<ResourceState> {
         #[cfg(windows)]
         {

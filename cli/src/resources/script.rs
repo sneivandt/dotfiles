@@ -17,7 +17,7 @@ use anyhow::{Context as _, Result, bail};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::{Applicable, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
 use crate::error::ResourceError;
 use crate::exec::Executor;
 
@@ -115,7 +115,7 @@ impl ScriptResource {
 
     /// Run the script (apply) and return the change along with captured stdout.
     ///
-    /// Use this instead of [`Applicable::apply`] when you want to forward the
+    /// Use this instead of [`Resource::apply`] when you want to forward the
     /// script's per-item log lines through the engine logger.
     ///
     /// # Errors
@@ -173,7 +173,7 @@ impl ScriptResource {
     }
 }
 
-impl Applicable for ScriptResource {
+impl Resource for ScriptResource {
     fn description(&self) -> String {
         self.name.clone()
     }
@@ -218,7 +218,7 @@ impl Applicable for ScriptResource {
     }
 }
 
-impl Resource for ScriptResource {
+impl IntrinsicState for ScriptResource {
     fn current_state(&self) -> Result<ResourceState> {
         if !self.script_path.exists() {
             return Ok(ResourceState::Invalid {

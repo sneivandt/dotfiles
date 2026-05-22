@@ -2,7 +2,7 @@
 use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
-use super::{Applicable, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
 
 /// A git hook file resource that can be checked, installed, and removed.
 #[derive(Debug, Clone)]
@@ -21,7 +21,7 @@ impl HookFileResource {
     }
 }
 
-impl Applicable for HookFileResource {
+impl Resource for HookFileResource {
     fn description(&self) -> String {
         self.target.file_name().map_or_else(
             || self.target.display().to_string(),
@@ -63,7 +63,7 @@ impl Applicable for HookFileResource {
     }
 }
 
-impl Resource for HookFileResource {
+impl IntrinsicState for HookFileResource {
     fn current_state(&self) -> Result<ResourceState> {
         if !self.source.exists() {
             return Ok(ResourceState::Invalid {

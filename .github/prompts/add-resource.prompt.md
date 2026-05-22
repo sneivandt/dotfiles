@@ -8,8 +8,8 @@ Add a new resource type called `{{resource_name}}` to the dotfiles engine. Follo
 established patterns by completing these steps:
 
 1. **Resource struct** — Create `cli/src/resources/{{resource_name}}.rs`
-   - Implement `Applicable` (describe, apply, remove)
-   - Implement `Resource` if the resource can check its own state; otherwise use bulk-checked pattern
+   - Implement `Resource` (description, apply, remove)
+   - Implement `IntrinsicState` if the resource can check its own state; otherwise use a `ResourceStateProvider` bulk-checked pattern
    - Follow the templates in the `resource-implementation` skill
 
 2. **Config loader** — Create `cli/src/config/{{resource_name}}.rs`

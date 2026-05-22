@@ -36,7 +36,9 @@ pub use cancellation::CancellationToken;
 pub use context::Context;
 pub use context::ContextOpts;
 pub use mode::{ProcessMode, ProcessOpts, ResourceAction};
-pub use orchestrate::{process_resource_states, process_resources, process_resources_remove};
+pub use orchestrate::{
+    process_resources, process_resources_remove, process_resources_with_provider,
+};
 pub use stats::{TaskResult, TaskStats};
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use anyhow::Context as _;
 use anyhow::Result;
 
-use super::{Applicable, Resource, ResourceChange, ResourceState};
+use super::{Resource, ResourceChange, ResourceState};
 use crate::config::registry::RegistryValueType;
 
 /// Native Windows registry access via the `winreg` crate.
@@ -243,7 +243,7 @@ pub fn batch_check_values(
     Ok(HashMap::new())
 }
 
-impl Applicable for RegistryResource {
+impl Resource for RegistryResource {
     fn description(&self) -> String {
         format!(
             "{}\\{} = {}",
@@ -269,20 +269,6 @@ impl Applicable for RegistryResource {
                 "registry operations are only supported on Windows",
             )
             .into())
-        }
-    }
-}
-
-impl Resource for RegistryResource {
-    fn current_state(&self) -> Result<ResourceState> {
-        #[cfg(windows)]
-        {
-            let current_value = native::read_value(&self.key_path, &self.value_name)?;
-            Ok(self.state_from_cached(current_value.as_deref()))
-        }
-        #[cfg(not(windows))]
-        {
-            Ok(ResourceState::Missing)
         }
     }
 }

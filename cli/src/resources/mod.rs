@@ -17,13 +17,13 @@ pub mod path_entry;
 
 use anyhow::Result;
 
-/// Minimal interface for resources that can be described, applied, and removed.
+/// Interface for resources that can be described, applied, and removed.
 ///
-/// Resources whose state is determined via a single external bulk query (e.g.
-/// VS Code extensions) should implement only this trait.  Resources that can
-/// determine their own state independently implement the richer [`Resource`]
-/// super-trait.
-pub trait Applicable {
+/// State discovery is intentionally separate from this trait.  The engine uses
+/// a [`ResourceStateProvider`] to determine whether each resource is already in
+/// the desired state, which allows both intrinsic per-resource checks and
+/// cached/bulk checks to share the same orchestration path.
+pub trait Resource {
     /// Human-readable description of this resource.
     fn description(&self) -> String;
 
@@ -145,25 +145,33 @@ pub enum ResourceChange {
     },
 }
 
-/// Unified interface for resources that can be checked and applied.
+/// Provides current state for a batch of resources.
 ///
-/// Extends [`Applicable`] with state-checking methods for resources that can
-/// independently determine their own state (e.g. symlinks, registry entries,
-/// file permissions).
+/// Implementations may either use no cache (for intrinsic checks) or load a
+/// shared cache once and reuse it for every resource in the batch.
+pub trait ResourceStateProvider<R: Resource> {
+    /// Cached state shared across all resources in this batch.
+    type Cache: Sync;
+
+    /// Load shared state for this batch.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the state cache cannot be loaded.
+    fn load(&self, resources: &[R]) -> Result<Self::Cache>;
+
+    /// Determine the current state for one resource.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the resource state cannot be determined.
+    fn current_state(&self, resource: &R, cache: &Self::Cache) -> Result<ResourceState>;
+}
+
+/// State-checking extension for resources that can inspect themselves.
 ///
-/// Resources whose state requires a single external bulk query should implement
-/// only [`Applicable`] instead.
-///
-/// # Examples
-///
-/// ```ignore
-/// // All resources follow the same check-then-apply pattern:
-/// let state = resource.current_state()?;
-/// if resource.needs_change()? {
-///     resource.apply()?;
-/// }
-/// ```
-pub trait Resource: Applicable {
+/// This is bridged into the orchestration layer by [`IntrinsicStateProvider`].
+pub trait IntrinsicState: Resource {
     /// Check the current state of the resource.
     ///
     /// # Errors
@@ -187,6 +195,124 @@ pub trait Resource: Applicable {
     }
 }
 
+/// State provider for resources that implement [`IntrinsicState`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct IntrinsicStateProvider;
+
+impl<R: IntrinsicState> ResourceStateProvider<R> for IntrinsicStateProvider {
+    type Cache = ();
+
+    fn load(&self, _resources: &[R]) -> Result<Self::Cache> {
+        Ok(())
+    }
+
+    fn current_state(&self, resource: &R, _cache: &Self::Cache) -> Result<ResourceState> {
+        resource.current_state()
+    }
+}
+
+/// Closure-backed state provider for cached or bulk state checks.
+#[derive(Debug, Clone)]
+pub struct CachedStateProvider<Cache, Load, State> {
+    load: Load,
+    state: State,
+    _cache: std::marker::PhantomData<fn() -> Cache>,
+}
+
+/// State provider backed by an already-loaded cache.
+#[derive(Debug, Clone)]
+pub struct PreloadedStateProvider<Cache, State> {
+    cache: Cache,
+    state: State,
+}
+
+/// State provider backed by a borrowed cache.
+#[derive(Debug, Clone)]
+pub struct BorrowedStateProvider<'cache, Cache: ?Sized, State> {
+    cache: &'cache Cache,
+    state: State,
+}
+
+impl<Cache, State> PreloadedStateProvider<Cache, State> {
+    /// Create a provider from a cache value and state-mapping closure.
+    #[must_use]
+    pub const fn new(cache: Cache, state: State) -> Self {
+        Self { cache, state }
+    }
+}
+
+impl<'cache, Cache: ?Sized, State> BorrowedStateProvider<'cache, Cache, State> {
+    /// Create a provider from a borrowed cache and state-mapping closure.
+    #[must_use]
+    pub const fn new(cache: &'cache Cache, state: State) -> Self {
+        Self { cache, state }
+    }
+}
+
+impl<R, Cache, State> ResourceStateProvider<R> for PreloadedStateProvider<Cache, State>
+where
+    R: Resource,
+    Cache: Sync,
+    State: Fn(&R, &Cache) -> Result<ResourceState> + Sync,
+{
+    type Cache = ();
+
+    fn load(&self, _resources: &[R]) -> Result<Self::Cache> {
+        Ok(())
+    }
+
+    fn current_state(&self, resource: &R, _cache: &Self::Cache) -> Result<ResourceState> {
+        (self.state)(resource, &self.cache)
+    }
+}
+
+impl<R, Cache, State> ResourceStateProvider<R> for BorrowedStateProvider<'_, Cache, State>
+where
+    R: Resource,
+    Cache: Sync + ?Sized,
+    State: Fn(&R, &Cache) -> Result<ResourceState> + Sync,
+{
+    type Cache = ();
+
+    fn load(&self, _resources: &[R]) -> Result<Self::Cache> {
+        Ok(())
+    }
+
+    fn current_state(&self, resource: &R, _cache: &Self::Cache) -> Result<ResourceState> {
+        (self.state)(resource, self.cache)
+    }
+}
+
+impl<Cache, Load, State> CachedStateProvider<Cache, Load, State> {
+    /// Create a state provider from cache-loading and state-mapping closures.
+    #[must_use]
+    pub const fn new(load: Load, state: State) -> Self {
+        Self {
+            load,
+            state,
+            _cache: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<R, Cache, Load, State> ResourceStateProvider<R> for CachedStateProvider<Cache, Load, State>
+where
+    R: Resource,
+    Cache: Sync,
+    Load: for<'a> Fn(&'a [R]) -> Result<Cache> + Sync,
+    State: for<'a, 'b> Fn(&'a R, &'b Cache) -> Result<ResourceState> + Sync,
+{
+    type Cache = Cache;
+
+    fn load(&self, resources: &[R]) -> Result<Self::Cache> {
+        (self.load)(resources)
+    }
+
+    fn current_state(&self, resource: &R, cache: &Self::Cache) -> Result<ResourceState> {
+        (self.state)(resource, cache)
+    }
+}
+
 #[cfg(test)]
 #[allow(
     clippy::expect_used,
@@ -201,7 +327,7 @@ mod tests {
         state: ResourceState,
     }
 
-    impl Applicable for TestResource {
+    impl Resource for TestResource {
         fn description(&self) -> String {
             "test resource".to_string()
         }
@@ -211,7 +337,7 @@ mod tests {
         }
     }
 
-    impl Resource for TestResource {
+    impl IntrinsicState for TestResource {
         fn current_state(&self) -> Result<ResourceState> {
             Ok(self.state.clone())
         }

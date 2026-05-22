@@ -12,10 +12,10 @@ use super::plan::{ApplyChange, ApplyOperation, RemoveChange, RemoveOperation};
 use super::stats::TaskStats;
 use crate::error::ResourceError;
 use crate::logging::DiagEvent;
-use crate::resources::{Applicable, ResourceChange, ResourceState};
+use crate::resources::{Resource, ResourceChange, ResourceState};
 
 /// Process a single resource given its current state, returning a stats delta.
-pub(super) fn process_single<R: Applicable>(
+pub(super) fn process_single<R: Resource>(
     ctx: &Context,
     resource: &R,
     resource_state: &ResourceState,
@@ -97,7 +97,7 @@ fn record_resource_change(
 }
 
 /// Apply a single resource change, returning a stats delta.
-fn apply_resource<R: Applicable>(
+fn apply_resource<R: Resource>(
     ctx: &Context,
     resource: &R,
     desc: &str,
@@ -129,7 +129,7 @@ fn apply_resource<R: Applicable>(
 }
 
 /// Remove a single resource, returning a stats delta.
-pub(super) fn remove_single<R: Applicable>(
+pub(super) fn remove_single<R: Resource>(
     ctx: &Context,
     resource: &R,
     current: &ResourceState,

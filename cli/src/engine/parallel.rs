@@ -11,13 +11,13 @@ use super::context::Context;
 use super::mode::ProcessOpts;
 use super::stats::TaskStats;
 use crate::logging::{diag_thread_name, set_diag_thread_name};
-use crate::resources::{Applicable, Resource, ResourceState};
+use crate::resources::{IntrinsicState, Resource, ResourceState};
 
 /// Process resource-like items in parallel using Rayon.
 ///
 /// The caller supplies `get_resource_state` so self-checking resources and
 /// pre-computed `(resource, state)` pairs share the same parallel apply path.
-pub(super) fn process_apply_parallel<T: Send, R: Applicable + Send>(
+pub(super) fn process_apply_parallel<T: Send, R: Resource + Send>(
     ctx: &Context,
     items: Vec<T>,
     opts: &ProcessOpts,
@@ -36,7 +36,7 @@ pub(super) fn process_apply_parallel<T: Send, R: Applicable + Send>(
 }
 
 /// Remove resources in parallel using Rayon.
-pub(super) fn process_remove_parallel<R: Resource + Send>(
+pub(super) fn process_remove_parallel<R: IntrinsicState + Send>(
     ctx: &Context,
     resources: Vec<R>,
     verb: &str,

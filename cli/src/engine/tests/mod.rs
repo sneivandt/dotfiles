@@ -5,7 +5,7 @@ mod stats;
 use crate::engine::mode::ProcessOpts;
 use crate::error::ResourceError;
 use crate::phases::test_helpers::make_static_context;
-use crate::resources::{Applicable, Resource, ResourceChange, ResourceState};
+use crate::resources::{IntrinsicState, Resource, ResourceChange, ResourceState};
 
 // -----------------------------------------------------------------------
 // Test doubles
@@ -50,7 +50,7 @@ impl MockResource {
     }
 }
 
-impl Applicable for MockResource {
+impl Resource for MockResource {
     fn description(&self) -> String {
         self.desc.clone()
     }
@@ -68,7 +68,7 @@ impl Applicable for MockResource {
     }
 }
 
-impl Resource for MockResource {
+impl IntrinsicState for MockResource {
     fn current_state(&self) -> anyhow::Result<ResourceState> {
         self.state_result
             .clone()
@@ -81,7 +81,7 @@ pub(super) struct TypedErrorResource {
     pub error_variant: &'static str,
 }
 
-impl Applicable for TypedErrorResource {
+impl Resource for TypedErrorResource {
     fn description(&self) -> String {
         "typed-error resource".to_string()
     }

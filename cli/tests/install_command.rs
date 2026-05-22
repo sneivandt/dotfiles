@@ -497,7 +497,7 @@ fn install_symlinks_is_idempotent() {
     use std::sync::Arc;
 
     use dotfiles_cli::phases::Task;
-    use dotfiles_cli::resources::Resource;
+    use dotfiles_cli::resources::IntrinsicState;
 
     let ctx = common::TestContextBuilder::new()
         .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")

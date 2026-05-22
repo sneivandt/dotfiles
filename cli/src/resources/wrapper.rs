@@ -6,7 +6,7 @@
 use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
-use super::{Applicable, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
 
 /// Which wrapper script to install on the user's `PATH`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,7 +110,7 @@ fn cmd_set_value_escape(value: &str) -> String {
     value.replace('%', "%%")
 }
 
-impl Applicable for WrapperResource {
+impl Resource for WrapperResource {
     fn description(&self) -> String {
         format!("wrapper \u{2192} {}", self.target.display())
     }
@@ -142,7 +142,7 @@ impl Applicable for WrapperResource {
     }
 }
 
-impl Resource for WrapperResource {
+impl IntrinsicState for WrapperResource {
     fn current_state(&self) -> Result<ResourceState> {
         if !self.target.exists() {
             return Ok(ResourceState::Missing);

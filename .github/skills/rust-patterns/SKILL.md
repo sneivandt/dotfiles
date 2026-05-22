@@ -36,10 +36,10 @@ cli/src/
 │   ├── profiles.rs
 │   └── *.rs       # Per-type loaders (packages, symlinks, etc.)
 ├── resources/     # Declarative resource abstraction
-│   ├── mod.rs     # Applicable + Resource traits, ResourceState, ResourceChange
+│   ├── mod.rs     # Resource traits, state providers, ResourceState, ResourceChange
 │   └── *.rs / */  # Per-type resources (symlink, registry, package providers, etc.)
 ├── engine/        # Generic resource processing engine
-│   ├── mod.rs     # process_resources(), process_resource_states()
+│   ├── mod.rs     # process_resources(), process_resources_with_provider()
 │   ├── mode.rs    # ProcessMode, ProcessOpts, ResourceAction
 │   ├── plan.rs    # ApplyChange / RemoveChange plan-diff types
 │   ├── stats.rs   # TaskResult, TaskStats
@@ -126,8 +126,8 @@ it must appear inside `impl Task for …`.
 ### New Resource-Based Task Template (preferred)
 
 Most tasks process a list of `Resource` implementors. Use the generic
-`process_resources()` or `process_resource_states()` helpers instead of
-writing the state-match loop by hand.
+`process_resources()` or `process_resources_with_provider()` helpers instead
+of writing the state-match loop by hand.
 
 #### `resource_task!` macro (simplest — use for config→resource tasks)
 
@@ -205,8 +205,8 @@ impl Task for MyTask {
 ```
 
 For tasks that batch-query state up front (packages, VS Code extensions,
-registry), build `(Resource, ResourceState)` pairs and use
-`process_resource_states()` instead.
+registry), use `process_resources_with_provider()` with `PreloadedStateProvider`,
+`BorrowedStateProvider`, or a custom `ResourceStateProvider` instead.
 
 Register in `phases/catalog.rs` by adding `Box::new(crate::phases::apply::my_module::MyTask)` to
 `all_install_tasks()`.
@@ -428,9 +428,9 @@ Use `anyhow::Result`, `?`, `.context("msg")?`, `bail!("msg")`. No `unwrap()` in 
 
 ## Resource Abstraction
 
-The `resources/` module provides a two-level trait hierarchy (`Applicable` /
-`Resource`) for checking and applying system state. Tasks consume resources
-via the `process_resources()` helper family.
+The `resources/` module separates apply/remove behaviour (`Resource`) from
+state discovery (`IntrinsicState` and `ResourceStateProvider`). Tasks consume
+resources via the `process_resources()` helper family.
 
 For trait definitions, `ResourceState`/`ResourceChange` enums, resource struct
 templates, and the bulk-checked pattern, see the **`resource-implementation`**
@@ -442,8 +442,8 @@ skill. For the `process_resources()` helpers and parallel dispatch, see the
 - All task logic in `cli/src/phases/*.rs` — never in shell scripts
 - Every task: `name`, `should_run`, `run`; check `ctx.dry_run` before side effects
 - **Use `task_deps![…]`** inside `impl Task` to declare dependencies — never write `const DEPS` by hand
-- **Use `process_resources()` / `process_resource_states()`** for resource-based tasks — do not duplicate the state-match loop
-- Use `Resource` trait for declarative state checks where applicable
+- **Use `process_resources()` / `process_resources_with_provider()`** for resource-based tasks — do not duplicate the state-match loop
+- Use `IntrinsicState` for declarative per-resource state checks where applicable
 - Guard tools with `executor.which()`; return `TaskResult::Skipped(reason)` when not applicable
 - Pass `&*ctx.executor` (deref coercion) to resource constructors and batch query functions — never call `exec::*` free functions directly from tasks or resources
 - Add `#[cfg(test)] mod tests` to every module; use `Platform::new()` in tests

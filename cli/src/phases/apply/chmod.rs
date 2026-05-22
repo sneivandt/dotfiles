@@ -1,6 +1,7 @@
 //! Task: apply file permissions.
 
-use crate::phases::{ProcessOpts, TaskPhase, resource_task};
+use crate::phases::{ExecutionPolicy, ProcessOpts, TaskPhase, resource_task};
+use crate::platform::Platform;
 use crate::resources::chmod::ChmodResource;
 
 resource_task! {
@@ -8,6 +9,7 @@ resource_task! {
     pub ApplyFilePermissions {
         name: "Apply file permissions",
         phase: TaskPhase::Apply,
+        policy: [ExecutionPolicy::PlatformSupported("chmod", Platform::supports_chmod)],
         deps: [crate::phases::apply::symlinks::InstallSymlinks],
         guard: |ctx| ctx.platform.supports_chmod(),
         items: |ctx| ctx.config_read().chmod.clone(),

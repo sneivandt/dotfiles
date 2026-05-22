@@ -45,6 +45,7 @@ use std::fmt;
 use anyhow::Result;
 
 use crate::logging::{DiagEvent, TaskStatus};
+use crate::platform::Platform;
 
 /// Unique identifier for a task in the dependency graph.
 ///
@@ -99,6 +100,27 @@ pub enum TaskPhase {
     Apply,
 }
 
+/// Declarative rules that the orchestration layer evaluates before a task runs.
+#[derive(Debug, Clone, Copy)]
+pub enum ExecutionPolicy {
+    /// Run whenever the task's own applicability check passes.
+    Always,
+    /// Run only when the current platform supports the named capability.
+    PlatformSupported(&'static str, fn(&Platform) -> bool),
+    /// Skip the task entirely in dry-run mode, using the given reason.
+    SkipInDryRun(&'static str),
+    /// The task may require elevated privileges when it predicts a mutation.
+    RequiresElevation,
+}
+
+const ALWAYS_POLICY: &[ExecutionPolicy] = &[ExecutionPolicy::Always];
+
+#[derive(Debug)]
+enum PolicyDecision {
+    NotApplicable(String),
+    Skipped(String),
+}
+
 impl fmt::Display for TaskPhase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -147,6 +169,11 @@ pub trait Task: Send + Sync + 'static {
         &[]
     }
 
+    /// Execution rules that are enforced centrally before the task runs.
+    fn execution_policies(&self) -> &[ExecutionPolicy] {
+        ALWAYS_POLICY
+    }
+
     /// Whether this task should run on the current platform/profile.
     fn should_run(&self, ctx: &Context) -> bool;
 
@@ -167,13 +194,28 @@ pub trait Task: Send + Sync + 'static {
         self.run(ctx).map(Some)
     }
 
-    /// Whether this task will need sudo/root privileges based on current state.
+    /// Whether this task will need elevated privileges based on current state.
     ///
     /// Called before parallel dispatch to allow the runner to prime the
     /// credential cache (`sudo -v`) so that interactive prompts do not
     /// collide with parallel output.  The default returns `false`.
-    fn needs_sudo(&self, _ctx: &Context) -> bool {
+    fn needs_elevation(&self, _ctx: &Context) -> bool {
         false
+    }
+
+    /// Whether the task's policies and current state require elevation.
+    fn requires_elevation(&self, ctx: &Context) -> bool {
+        !ctx.dry_run
+            && self
+                .execution_policies()
+                .iter()
+                .any(|p| matches!(p, ExecutionPolicy::RequiresElevation))
+            && self.needs_elevation(ctx)
+    }
+
+    /// Compatibility alias for callers/tests that still use sudo terminology.
+    fn needs_sudo(&self, ctx: &Context) -> bool {
+        self.requires_elevation(ctx)
     }
 
     /// Execute the task.
@@ -193,6 +235,47 @@ fn record(ctx: &Context, name: &str, phase: TaskPhase, status: TaskStatus, msg: 
     }
 }
 
+fn evaluate_policy(task: &dyn Task, ctx: &Context) -> Option<PolicyDecision> {
+    for policy in task.execution_policies() {
+        match *policy {
+            ExecutionPolicy::Always | ExecutionPolicy::RequiresElevation => {}
+            ExecutionPolicy::PlatformSupported(capability, is_supported) => {
+                if !is_supported(&ctx.platform) {
+                    return Some(PolicyDecision::NotApplicable(format!(
+                        "{capability} not supported on {}",
+                        ctx.platform
+                    )));
+                }
+            }
+            ExecutionPolicy::SkipInDryRun(reason) => {
+                if ctx.dry_run {
+                    return Some(PolicyDecision::Skipped(reason.to_string()));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn record_policy_decision(ctx: &Context, name: &str, phase: TaskPhase, decision: PolicyDecision) {
+    match decision {
+        PolicyDecision::NotApplicable(reason) => {
+            ctx.log.diag_task(DiagEvent::TaskSkip, name, &reason);
+            if ctx.log.debug_enabled() {
+                ctx.log.stage(name);
+            }
+            ctx.debug_fmt(|| format!("not applicable: {reason}"));
+            ctx.log
+                .record_task(name, phase, TaskStatus::NotApplicable, None);
+        }
+        PolicyDecision::Skipped(reason) => {
+            ctx.log.diag_task(DiagEvent::TaskSkip, name, &reason);
+            ctx.log.info(&format!("skipped: {reason}"));
+            record(ctx, name, phase, TaskStatus::Skipped, Some(&reason));
+        }
+    }
+}
+
 /// Execute a task, recording the result in the logger.
 ///
 /// Each task invocation is wrapped in a [`tracing::info_span`] so that
@@ -207,6 +290,11 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
     let phase = task.phase();
+
+    if let Some(decision) = evaluate_policy(task, ctx) {
+        record_policy_decision(ctx, task.name(), phase, decision);
+        return;
+    }
 
     if !task.should_run(ctx) {
         ctx.log
@@ -637,6 +725,34 @@ mod tests {
         }
     }
 
+    struct PolicyTask {
+        policies: &'static [ExecutionPolicy],
+        ran: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        needs_elevation: bool,
+    }
+
+    impl Task for PolicyTask {
+        fn name(&self) -> &'static str {
+            "policy-task"
+        }
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Apply
+        }
+        fn execution_policies(&self) -> &[ExecutionPolicy] {
+            self.policies
+        }
+        fn should_run(&self, _ctx: &Context) -> bool {
+            true
+        }
+        fn needs_elevation(&self, _ctx: &Context) -> bool {
+            self.needs_elevation
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
     #[test]
     fn execute_skips_non_applicable_task() {
         let config = empty_config(PathBuf::from("/tmp"));
@@ -719,6 +835,43 @@ mod tests {
 
         execute(&task, &ctx);
         assert_eq!(log.failure_count(), 0);
+    }
+
+    #[test]
+    fn execute_applies_platform_policy_before_running_task() {
+        const POLICIES: &[ExecutionPolicy] = &[ExecutionPolicy::PlatformSupported(
+            "Windows",
+            Platform::is_windows,
+        )];
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, log) = make_static_context(config);
+        let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let task = PolicyTask {
+            policies: POLICIES,
+            ran: std::sync::Arc::clone(&ran),
+            needs_elevation: false,
+        };
+
+        execute(&task, &ctx);
+
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(log.failure_count(), 0);
+    }
+
+    #[test]
+    fn requires_elevation_respects_policy_and_dry_run() {
+        const POLICIES: &[ExecutionPolicy] = &[ExecutionPolicy::RequiresElevation];
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _) = make_static_context(config);
+        let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let task = PolicyTask {
+            policies: POLICIES,
+            ran,
+            needs_elevation: true,
+        };
+
+        assert!(task.requires_elevation(&ctx));
+        assert!(!task.requires_elevation(&ctx.with_dry_run(true)));
     }
 
     #[test]

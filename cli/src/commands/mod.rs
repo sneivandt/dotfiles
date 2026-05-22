@@ -710,7 +710,7 @@ pub fn run_tasks_to_completion<'a>(
         let sudo_task_names: Vec<&str> = if ctx.parallel && !ctx.dry_run && phase_tasks.len() > 1 {
             phase_tasks
                 .iter()
-                .filter(|t| t.needs_sudo(ctx))
+                .filter(|t| t.requires_elevation(ctx))
                 .map(|t| t.name())
                 .collect()
         } else {
@@ -730,7 +730,7 @@ pub fn run_tasks_to_completion<'a>(
 
             let reason = "sudo credentials unavailable";
             phase_tasks.retain(|task| {
-                if task.needs_sudo(ctx) {
+                if task.requires_elevation(ctx) {
                     log.record_task(
                         task.name(),
                         task.phase(),

@@ -1,6 +1,7 @@
 //! Task: enable Windows Developer Mode.
 
-use crate::phases::{ProcessOpts, TaskPhase, resource_task};
+use crate::phases::{ExecutionPolicy, ProcessOpts, TaskPhase, resource_task};
+use crate::platform::Platform;
 use crate::resources::developer_mode::DeveloperModeResource;
 
 resource_task! {
@@ -8,6 +9,7 @@ resource_task! {
     pub EnableDeveloperMode {
         name: "Enable developer mode",
         phase: TaskPhase::Bootstrap,
+        policy: [ExecutionPolicy::PlatformSupported("Windows", Platform::is_windows)],
         guard: |ctx| ctx.platform.is_windows(),
         items: |_ctx| vec![()],
         build: |_unit, _ctx| DeveloperModeResource::new(),

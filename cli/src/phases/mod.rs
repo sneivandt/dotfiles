@@ -210,6 +210,8 @@ pub trait Task: Send + Sync + 'static {
                 .execution_policies()
                 .iter()
                 .any(|p| matches!(p, ExecutionPolicy::RequiresElevation))
+            && evaluate_policy_decision(self.execution_policies(), ctx).is_none()
+            && self.should_run(ctx)
             && self.needs_elevation(ctx)
     }
 
@@ -235,8 +237,8 @@ fn record(ctx: &Context, name: &str, phase: TaskPhase, status: TaskStatus, msg: 
     }
 }
 
-fn evaluate_policy(task: &dyn Task, ctx: &Context) -> Option<PolicyDecision> {
-    for policy in task.execution_policies() {
+fn evaluate_policy_decision(policies: &[ExecutionPolicy], ctx: &Context) -> Option<PolicyDecision> {
+    for policy in policies {
         match *policy {
             ExecutionPolicy::Always | ExecutionPolicy::RequiresElevation => {}
             ExecutionPolicy::PlatformSupported(capability, is_supported) => {
@@ -255,6 +257,10 @@ fn evaluate_policy(task: &dyn Task, ctx: &Context) -> Option<PolicyDecision> {
         }
     }
     None
+}
+
+fn evaluate_policy(task: &dyn Task, ctx: &Context) -> Option<PolicyDecision> {
+    evaluate_policy_decision(task.execution_policies(), ctx)
 }
 
 fn record_policy_decision(ctx: &Context, name: &str, phase: TaskPhase, decision: PolicyDecision) {
@@ -729,6 +735,7 @@ mod tests {
         policies: &'static [ExecutionPolicy],
         ran: std::sync::Arc<std::sync::atomic::AtomicBool>,
         needs_elevation: bool,
+        should_run: bool,
     }
 
     impl Task for PolicyTask {
@@ -742,7 +749,7 @@ mod tests {
             self.policies
         }
         fn should_run(&self, _ctx: &Context) -> bool {
-            true
+            self.should_run
         }
         fn needs_elevation(&self, _ctx: &Context) -> bool {
             self.needs_elevation
@@ -850,6 +857,7 @@ mod tests {
             policies: POLICIES,
             ran: std::sync::Arc::clone(&ran),
             needs_elevation: false,
+            should_run: true,
         };
 
         execute(&task, &ctx);
@@ -868,10 +876,46 @@ mod tests {
             policies: POLICIES,
             ran,
             needs_elevation: true,
+            should_run: true,
         };
 
         assert!(task.requires_elevation(&ctx));
         assert!(!task.requires_elevation(&ctx.with_dry_run(true)));
+    }
+
+    #[test]
+    fn requires_elevation_respects_platform_policy() {
+        const POLICIES: &[ExecutionPolicy] = &[
+            ExecutionPolicy::PlatformSupported("Windows", Platform::is_windows),
+            ExecutionPolicy::RequiresElevation,
+        ];
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _) = make_static_context(config);
+        let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let task = PolicyTask {
+            policies: POLICIES,
+            ran,
+            needs_elevation: true,
+            should_run: true,
+        };
+
+        assert!(!task.requires_elevation(&ctx));
+    }
+
+    #[test]
+    fn requires_elevation_respects_should_run() {
+        const POLICIES: &[ExecutionPolicy] = &[ExecutionPolicy::RequiresElevation];
+        let config = empty_config(PathBuf::from("/tmp"));
+        let (ctx, _) = make_static_context(config);
+        let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let task = PolicyTask {
+            policies: POLICIES,
+            ran,
+            needs_elevation: true,
+            should_run: false,
+        };
+
+        assert!(!task.requires_elevation(&ctx));
     }
 
     #[test]

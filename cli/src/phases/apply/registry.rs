@@ -10,12 +10,7 @@ resource_task! {
         phase: TaskPhase::Apply,
         guard: |ctx| ctx.platform.has_registry(),
         items: |ctx| ctx.config_read().registry.clone(),
-        cache: |items, _ctx| {
-            let resources: Vec<RegistryResource> = items.iter()
-                .map(RegistryResource::from_entry)
-                .collect();
-            batch_check_values(&resources)
-        },
+        cache: |resources, _ctx| batch_check_values(resources),
         build: |entry, _ctx| RegistryResource::from_entry(&entry),
         state: |r, cached| {
             let key = format!("{}\\{}", r.key_path, r.value_name);

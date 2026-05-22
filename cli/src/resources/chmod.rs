@@ -4,7 +4,7 @@ use anyhow::Context as _;
 use anyhow::Result;
 use std::path::PathBuf;
 
-use super::{Applicable, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
 
 /// Unix file permission mask (all permission bits).
 #[cfg(unix)]
@@ -116,7 +116,7 @@ impl ChmodResource {
     }
 }
 
-impl Applicable for ChmodResource {
+impl Resource for ChmodResource {
     fn description(&self) -> String {
         format!("{} {}", self.mode, self.target.display())
     }
@@ -152,7 +152,7 @@ impl Applicable for ChmodResource {
     }
 }
 
-impl Resource for ChmodResource {
+impl IntrinsicState for ChmodResource {
     fn current_state(&self) -> Result<ResourceState> {
         // Check if target exists
         if !self.target.exists() {

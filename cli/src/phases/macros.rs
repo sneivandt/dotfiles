@@ -35,30 +35,29 @@ pub(crate) fn process_config_resources<Item, R>(
     opts: &crate::phases::ProcessOpts,
 ) -> ::anyhow::Result<crate::phases::TaskResult>
 where
-    R: crate::resources::Resource + Send,
+    R: crate::resources::IntrinsicState + Send,
 {
     let resources = items.into_iter().map(|item| build(item, ctx));
     crate::phases::process_resources(ctx, resources, opts)
 }
 
-/// Process config-derived resources whose state is computed from one cache.
-pub(crate) fn process_config_resource_states<Item, Cache, R>(
+/// Process config-derived resources whose state is supplied by one cache.
+pub(crate) fn process_config_resources_with_provider<Item, Cache, R>(
     ctx: &crate::phases::Context,
     items: Vec<Item>,
-    cache: &Cache,
     mut build: impl FnMut(Item, &crate::phases::Context) -> R,
-    mut state: impl FnMut(&R, &Cache) -> crate::resources::ResourceState,
+    load: impl Fn(&[R], &crate::phases::Context) -> ::anyhow::Result<Cache> + Sync,
+    state: impl for<'a> Fn(&'a R, &Cache) -> ::anyhow::Result<crate::resources::ResourceState> + Sync,
     opts: &crate::phases::ProcessOpts,
 ) -> ::anyhow::Result<crate::phases::TaskResult>
 where
-    R: crate::resources::Applicable + Send,
+    R: crate::resources::Resource + Send,
+    Cache: Sync,
 {
-    let resource_states = items.into_iter().map(|item| {
-        let resource = build(item, ctx);
-        let current = state(&resource, cache);
-        (resource, current)
-    });
-    crate::phases::process_resource_states(ctx, resource_states, opts)
+    let resources: Vec<R> = items.into_iter().map(|item| build(item, ctx)).collect();
+    let cache = load(&resources, ctx)?;
+    let provider = crate::resources::PreloadedStateProvider::new(cache, state);
+    crate::phases::process_resources_with_provider(ctx, resources, &provider, opts)
 }
 
 /// Define a task that processes config-derived resources with minimal
@@ -70,13 +69,13 @@ where
 /// Two variants are supported:
 ///
 /// - **Standard:** each resource computes its own state via
-///   [`Resource::current_state`](crate::resources::Resource::current_state).
+///   [`IntrinsicState::current_state`](crate::resources::IntrinsicState::current_state).
 ///   Required fields: `items`, `build`, `opts`. Optional: `deps`, `guard`,
 ///   `setup`.
-/// - **Batch:** state is computed once for the full set via a single bulk
-///   query, then the resulting `(Resource, ResourceState)` pairs are
-///   processed. Use when state checking amortises across the set (e.g.
-///   registry, VS Code extensions). Required fields: `items`, `cache`,
+/// - **Batch:** resources are built once, then a state provider loads one
+///   cache for the full set and maps each resource to a state. Use when state
+///   checking amortises across the set (e.g. registry, VS Code extensions).
+///   Required fields: `items`, `cache`,
 ///   `build`, `state`, `opts`. Optional: `deps`, `guard`. The arm is
 ///   selected by the presence of `cache:` and `state:`.
 ///
@@ -103,7 +102,7 @@ where
 ///         name: "Human-readable task name",
 ///         phase: TaskPhase::Apply,
 ///         items: |ctx| ctx.config_read().field.clone(),
-///         cache: |items, ctx| query_bulk_state(items, ctx),
+///         cache: |resources, ctx| query_bulk_state(resources, ctx),
 ///         build: |item, ctx| Resource::from(&item, &ctx.home),
 ///         state: |resource, cache| resource.state_from_cache(&cache),
 ///         opts: ProcessOpts::lenient("verb"),
@@ -138,8 +137,8 @@ macro_rules! resource_task {
                 ctx: &$crate::phases::Context,
             ) -> ::anyhow::Result<$crate::phases::TaskResult> {
                 let $items_ctx = ctx;
-                let $cache_items: Vec<_> = { $items_expr };
-                if $cache_items.is_empty() {
+                let items: Vec<_> = { $items_expr };
+                if items.is_empty() {
                     return Ok($crate::phases::TaskResult::NotApplicable(
                         "nothing configured".to_string(),
                     ));
@@ -147,17 +146,15 @@ macro_rules! resource_task {
                 ctx.debug_fmt(|| {
                     format!(
                         "batch-checking {} resources with a single query",
-                        $cache_items.len()
+                        items.len()
                     )
                 });
-                let $cache_ctx = ctx;
-                let $state_cache = { $cache_expr }?;
-                $crate::phases::process_config_resource_states(
+                $crate::phases::process_config_resources_with_provider(
                     ctx,
-                    $cache_items,
-                    &$state_cache,
+                    items,
                     |$item, $build_ctx| $build_expr,
-                    |$state_res, $state_cache| $state_expr,
+                    |$cache_items, $cache_ctx| $cache_expr,
+                    |$state_res, $state_cache| Ok($state_expr),
                     &$opts,
                 )
             }

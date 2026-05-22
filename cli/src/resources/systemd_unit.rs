@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use super::{Applicable, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
 use crate::error::ResourceError;
 use crate::exec::Executor;
 
@@ -125,7 +125,7 @@ const fn output_if_present(output: &str) -> &str {
     }
 }
 
-impl Applicable for SystemdUnitResource {
+impl Resource for SystemdUnitResource {
     fn description(&self) -> String {
         if self.scope == "user" {
             self.name.clone()
@@ -148,7 +148,7 @@ impl Applicable for SystemdUnitResource {
     }
 }
 
-impl Resource for SystemdUnitResource {
+impl IntrinsicState for SystemdUnitResource {
     fn current_state(&self) -> Result<ResourceState> {
         let scope = match self.parsed_scope() {
             Ok(scope) => scope,

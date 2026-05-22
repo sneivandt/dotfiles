@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 
-use super::{Applicable, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
 
 /// Standard PAM configuration content using `system-auth` includes.
@@ -52,7 +52,7 @@ impl PamConfigResource {
     }
 }
 
-impl Applicable for PamConfigResource {
+impl Resource for PamConfigResource {
     fn description(&self) -> String {
         format!("/etc/pam.d/{}", self.name)
     }
@@ -111,7 +111,7 @@ impl Applicable for PamConfigResource {
     }
 }
 
-impl Resource for PamConfigResource {
+impl IntrinsicState for PamConfigResource {
     /// Check whether `/etc/pam.d/<name>` exists and has the correct content.
     ///
     /// # Errors

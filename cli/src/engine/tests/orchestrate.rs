@@ -1,14 +1,62 @@
 use crate::engine::mode::ProcessOpts;
 use crate::engine::{
-    TaskResult, process_resource_states, process_resources, process_resources_remove,
+    TaskResult, process_resources, process_resources_remove, process_resources_with_provider,
 };
 use crate::phases::test_helpers::empty_config;
-use crate::resources::ResourceState;
+use crate::resources::{Resource, ResourceChange, ResourceState, ResourceStateProvider};
 use std::path::PathBuf;
 
 use super::{
     MockResource, bail_opts, default_opts, dry_run_context, parallel_context, test_context,
 };
+
+struct PrecomputedResource {
+    resource: MockResource,
+    state: ResourceState,
+}
+
+impl Resource for PrecomputedResource {
+    fn description(&self) -> String {
+        self.resource.description()
+    }
+
+    fn apply(&self) -> anyhow::Result<ResourceChange> {
+        self.resource.apply()
+    }
+
+    fn remove(&self) -> anyhow::Result<ResourceChange> {
+        self.resource.remove()
+    }
+}
+
+struct PrecomputedStateProvider;
+
+impl ResourceStateProvider<PrecomputedResource> for PrecomputedStateProvider {
+    type Cache = ();
+
+    fn load(&self, _resources: &[PrecomputedResource]) -> anyhow::Result<Self::Cache> {
+        Ok(())
+    }
+
+    fn current_state(
+        &self,
+        resource: &PrecomputedResource,
+        _cache: &Self::Cache,
+    ) -> anyhow::Result<ResourceState> {
+        Ok(resource.state.clone())
+    }
+}
+
+fn process_precomputed_states(
+    ctx: &crate::engine::Context,
+    resource_states: impl IntoIterator<Item = (MockResource, ResourceState)>,
+    opts: &ProcessOpts<'_>,
+) -> anyhow::Result<TaskResult> {
+    let resources = resource_states
+        .into_iter()
+        .map(|(resource, state)| PrecomputedResource { resource, state });
+    process_resources_with_provider(ctx, resources, &PrecomputedStateProvider, opts)
+}
 
 // -----------------------------------------------------------------------
 // process_resources
@@ -43,11 +91,11 @@ fn process_resources_empty_list() {
 }
 
 // -----------------------------------------------------------------------
-// process_resource_states
+// process_precomputed_states
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_resource_states_applies_precomputed() {
+fn process_precomputed_states_applies_precomputed() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource_states = vec![
@@ -62,7 +110,7 @@ fn process_resource_states_applies_precomputed() {
     ];
     let opts = default_opts();
 
-    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
     assert!(matches!(result, TaskResult::Ok));
 }
 
@@ -144,11 +192,11 @@ fn process_resources_parallel_bail_on_error_propagates() {
 }
 
 // -----------------------------------------------------------------------
-// Parallel dispatch — process_resource_states
+// Parallel dispatch — process_precomputed_states
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_resource_states_parallel_dispatch() {
+fn process_precomputed_states_parallel_dispatch() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = parallel_context(config);
     let resource_states = vec![
@@ -171,7 +219,7 @@ fn process_resource_states_parallel_dispatch() {
     ];
     let opts = default_opts();
 
-    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
     assert!(matches!(result, TaskResult::Ok));
 }
 
@@ -238,11 +286,11 @@ fn process_resources_bail_on_apply_error_propagates() {
 }
 
 // -----------------------------------------------------------------------
-// Stats accumulation across multiple resources in process_resource_states
+// Stats accumulation across multiple resources in process_precomputed_states
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_resource_states_stats_accumulate_across_resources() {
+fn process_precomputed_states_stats_accumulate_across_resources() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     // 2 correct, 1 missing (applied), 1 invalid (skipped)
@@ -271,7 +319,7 @@ fn process_resource_states_stats_accumulate_across_resources() {
     let opts = default_opts();
 
     // Just verify it succeeds — individual counts are exercised by process_single tests
-    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
     assert!(matches!(result, TaskResult::Ok));
 }
 
@@ -308,7 +356,7 @@ fn process_resources_remove_parallel_dry_run() {
 }
 
 #[test]
-fn process_resource_states_parallel_no_bail_skips_errors() {
+fn process_precomputed_states_parallel_no_bail_skips_errors() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = parallel_context(config);
     let resource_states = vec![
@@ -322,22 +370,22 @@ fn process_resource_states_parallel_no_bail_skips_errors() {
         ),
     ];
     let opts = default_opts(); // no_bail
-    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
     assert!(matches!(result, TaskResult::Ok));
 }
 
 // -----------------------------------------------------------------------
-// process_resource_states — empty list
+// process_precomputed_states — empty list
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_resource_states_empty_list() {
+fn process_precomputed_states_empty_list() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource_states: Vec<(MockResource, ResourceState)> = vec![];
     let opts = default_opts();
 
-    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
     assert!(matches!(result, TaskResult::Ok));
 }
 
@@ -356,11 +404,11 @@ fn process_resources_remove_empty_list() {
 }
 
 // -----------------------------------------------------------------------
-// process_resource_states — bail on error
+// process_precomputed_states — bail on error
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_resource_states_bail_on_error_propagates() {
+fn process_precomputed_states_bail_on_error_propagates() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource_states = vec![(
@@ -369,17 +417,17 @@ fn process_resource_states_bail_on_error_propagates() {
     )];
     let opts = bail_opts();
 
-    let result = process_resource_states(&ctx, resource_states, &opts);
+    let result = process_precomputed_states(&ctx, resource_states, &opts);
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("fatal"));
 }
 
 // -----------------------------------------------------------------------
-// process_resource_states — lenient error skipping
+// process_precomputed_states — lenient error skipping
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_resource_states_lenient_skips_errors() {
+fn process_precomputed_states_lenient_skips_errors() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource_states = vec![
@@ -394,7 +442,7 @@ fn process_resource_states_lenient_skips_errors() {
     ];
     let opts = default_opts();
 
-    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
     assert!(matches!(result, TaskResult::Ok));
 }
 
@@ -417,11 +465,11 @@ fn process_resources_lenient_skips_apply_errors() {
 }
 
 // -----------------------------------------------------------------------
-// Parallel — process_resource_states bail on error
+// Parallel — process_precomputed_states bail on error
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_resource_states_parallel_bail_on_error_propagates() {
+fn process_precomputed_states_parallel_bail_on_error_propagates() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = parallel_context(config);
     let resource_states = vec![
@@ -436,7 +484,7 @@ fn process_resource_states_parallel_bail_on_error_propagates() {
     ];
     let opts = bail_opts();
 
-    let result = process_resource_states(&ctx, resource_states, &opts);
+    let result = process_precomputed_states(&ctx, resource_states, &opts);
     assert!(result.is_err());
 }
 
@@ -515,11 +563,11 @@ fn process_resources_remove_error_propagates() {
 }
 
 // -----------------------------------------------------------------------
-// process_resource_states — dry-run
+// process_precomputed_states — dry-run
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_resource_states_dry_run() {
+fn process_precomputed_states_dry_run() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = dry_run_context(config);
     let resource_states = vec![
@@ -534,16 +582,16 @@ fn process_resource_states_dry_run() {
     ];
     let opts = default_opts();
 
-    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
     assert!(matches!(result, TaskResult::DryRun));
 }
 
 // -----------------------------------------------------------------------
-// process_resource_states — parallel dry-run
+// process_precomputed_states — parallel dry-run
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_resource_states_parallel_dry_run() {
+fn process_precomputed_states_parallel_dry_run() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (mut ctx, _log) = parallel_context(config);
     ctx = ctx.with_dry_run(true);
@@ -559,7 +607,7 @@ fn process_resource_states_parallel_dry_run() {
     ];
     let opts = default_opts();
 
-    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
     assert!(matches!(result, TaskResult::DryRun));
 }
 
@@ -622,11 +670,11 @@ fn process_resources_stops_on_cancellation() {
 }
 
 // -----------------------------------------------------------------------
-// Cancellation — sequential process_resource_states
+// Cancellation — sequential process_precomputed_states
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_resource_states_stops_on_cancellation() {
+fn process_precomputed_states_stops_on_cancellation() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     ctx.cancelled.cancel();
@@ -642,7 +690,7 @@ fn process_resource_states_stops_on_cancellation() {
     ];
     let opts = default_opts();
 
-    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
     assert!(matches!(result, TaskResult::Ok));
 }
 
@@ -701,6 +749,6 @@ fn sequential_opts_forces_sequential_for_resource_states() {
     ];
     let opts = ProcessOpts::strict("install").sequential();
 
-    let result = process_resource_states(&ctx, resource_states, &opts).unwrap();
+    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
     assert!(matches!(result, TaskResult::Ok));
 }

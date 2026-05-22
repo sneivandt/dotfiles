@@ -23,7 +23,7 @@ pub mod validation;
 
 pub use catalog::{all_install_tasks, all_uninstall_tasks};
 pub(crate) use macros::{
-    process_config_resource_states, process_config_resources, resource_task, task_deps,
+    process_config_resources, process_config_resources_with_provider, resource_task, task_deps,
 };
 
 // Re-export engine types so downstream `use super::` and `use crate::phases::`
@@ -35,8 +35,8 @@ pub use crate::engine::update_signal::UpdateSignal;
 #[allow(unused_imports, reason = "re-exported for doc-tests")]
 // TaskStats is used by doc-tests via the lib crate
 pub use crate::engine::{
-    ProcessMode, ProcessOpts, ResourceAction, TaskResult, TaskStats, process_resource_states,
-    process_resources, process_resources_remove,
+    ProcessMode, ProcessOpts, ResourceAction, TaskResult, TaskStats, process_resources,
+    process_resources_remove, process_resources_with_provider,
 };
 
 use std::any::TypeId;
@@ -555,7 +555,7 @@ pub mod test_helpers {
 )]
 mod tests {
     use super::*;
-    use crate::resources::{Applicable, Resource, ResourceChange, ResourceState};
+    use crate::resources::{IntrinsicState, Resource, ResourceChange, ResourceState};
     use anyhow::Result;
     use std::cell::Cell;
     use std::path::PathBuf;
@@ -569,7 +569,7 @@ mod tests {
     #[derive(Debug)]
     struct DummyResource;
 
-    impl Applicable for DummyResource {
+    impl Resource for DummyResource {
         fn description(&self) -> String {
             "dummy".to_string()
         }
@@ -579,7 +579,7 @@ mod tests {
         }
     }
 
-    impl Resource for DummyResource {
+    impl IntrinsicState for DummyResource {
         fn current_state(&self) -> Result<ResourceState> {
             Ok(ResourceState::Correct)
         }

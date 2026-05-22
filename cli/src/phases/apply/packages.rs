@@ -11,13 +11,13 @@ use anyhow::{Context as _, Result};
 
 use crate::config::packages::Package;
 use crate::phases::{
-    Context, ProcessOpts, Task, TaskPhase, TaskResult, TaskStats, process_resource_states,
+    Context, ProcessOpts, Task, TaskPhase, TaskResult, TaskStats, process_resources_with_provider,
     task_deps,
 };
-use crate::resources::Applicable as _;
 use crate::resources::package::{
     PackageManager, PackageResource, batch_install_packages, get_installed_packages,
 };
+use crate::resources::{PreloadedStateProvider, Resource as _};
 
 /// Default number of parallel jobs for makepkg if nproc detection fails.
 const DEFAULT_NPROC: &str = "4";
@@ -353,12 +353,16 @@ fn individual_install(
     installed: &HashSet<String>,
     manager: PackageManager,
 ) -> Result<TaskResult> {
-    let resource_states = packages.iter().map(|pkg| {
-        let resource = PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor));
-        let state = resource.state_from_installed(installed);
-        (resource, state)
-    });
-    process_resource_states(ctx, resource_states, &ProcessOpts::lenient("install"))
+    let resources = packages
+        .iter()
+        .map(|pkg| PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor)));
+    let provider = PreloadedStateProvider::new(
+        installed.clone(),
+        |resource: &PackageResource, installed: &HashSet<String>| {
+            Ok(resource.state_from_installed(installed))
+        },
+    );
+    process_resources_with_provider(ctx, resources, &provider, &ProcessOpts::lenient("install"))
 }
 
 /// Process a list of packages by querying installed state once and dispatching
@@ -402,7 +406,7 @@ mod tests {
         make_windows_context,
     };
     use crate::platform::Os;
-    use crate::resources::Applicable;
+    use crate::resources::Resource;
     use crate::resources::package::{PackageManager, PackageResource};
     use std::path::PathBuf;
 

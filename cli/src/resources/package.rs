@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use super::{Applicable, Resource, ResourceChange, ResourceState};
+use super::{Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
 
 mod providers;
@@ -214,24 +214,13 @@ pub fn batch_install_packages(resources: &[&PackageResource]) -> Result<()> {
     Ok(())
 }
 
-impl Applicable for PackageResource {
+impl Resource for PackageResource {
     fn description(&self) -> String {
         format!("{} ({})", self.name, self.manager)
     }
 
     fn apply(&self) -> Result<ResourceChange> {
         self.provider.install(&self.name, &*self.executor)
-    }
-}
-
-impl Resource for PackageResource {
-    fn current_state(&self) -> Result<ResourceState> {
-        let installed = self.provider.is_installed(&self.name, &*self.executor)?;
-        if installed {
-            Ok(ResourceState::Correct)
-        } else {
-            Ok(ResourceState::Missing)
-        }
     }
 }
 
@@ -421,71 +410,6 @@ mod tests {
             3,
             "all three package IDs should be collected"
         );
-    }
-
-    // ------------------------------------------------------------------
-    // PackageResource::current_state
-    // ------------------------------------------------------------------
-
-    #[test]
-    fn current_state_pacman_correct_when_query_succeeds() {
-        let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
-            .once()
-            .returning(|_, _| Ok(ok_result("git 2.39.0\n")));
-        let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = PackageResource::new(
-            "git".to_string(),
-            PackageManager::Pacman,
-            Arc::clone(&executor),
-        );
-        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
-    }
-
-    #[test]
-    fn current_state_pacman_missing_when_query_fails() {
-        let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
-            .once()
-            .returning(|_, _| Ok(fail_result()));
-        let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = PackageResource::new(
-            "git".to_string(),
-            PackageManager::Pacman,
-            Arc::clone(&executor),
-        );
-        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
-    }
-
-    #[test]
-    fn current_state_winget_correct_when_id_in_output() {
-        let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
-            .once()
-            .returning(|_, _| Ok(ok_result("Git.Git  2.39.0\n")));
-        let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = PackageResource::new(
-            "Git.Git".to_string(),
-            PackageManager::Winget,
-            Arc::clone(&executor),
-        );
-        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
-    }
-
-    #[test]
-    fn current_state_winget_missing_when_not_in_output() {
-        // success=true but ID not present in stdout
-        let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
-            .once()
-            .returning(|_, _| Ok(ok_result("No packages found.\n")));
-        let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = PackageResource::new(
-            "Git.Git".to_string(),
-            PackageManager::Winget,
-            Arc::clone(&executor),
-        );
-        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
     }
 
     // ------------------------------------------------------------------

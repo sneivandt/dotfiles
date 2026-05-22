@@ -6,7 +6,7 @@ use anyhow::Result;
 
 use crate::config::category_matcher::Category;
 use crate::phases::{Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources};
-use crate::resources::Resource;
+use crate::resources::IntrinsicState;
 use crate::resources::pam::PamConfigResource;
 
 /// The PAM service name to configure on Arch Linux desktop systems.

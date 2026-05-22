@@ -15,7 +15,7 @@ use anyhow::Result;
 use crate::config::scripts::ScriptEntry;
 use crate::phases::{Context, Task, TaskPhase, TaskResult, task_deps};
 use crate::resources::script::ScriptResource;
-use crate::resources::{Resource, ResourceChange, ResourceState};
+use crate::resources::{IntrinsicState, ResourceChange, ResourceState};
 
 // ---------------------------------------------------------------------------
 // Static task: Load overlay scripts

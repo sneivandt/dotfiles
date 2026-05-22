@@ -3,7 +3,7 @@ use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::{Applicable, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
 use crate::exec::Executor;
 
 /// A symlink resource that can be checked and applied.
@@ -43,7 +43,7 @@ impl SymlinkResource {
     }
 }
 
-impl Applicable for SymlinkResource {
+impl Resource for SymlinkResource {
     fn description(&self) -> String {
         format!("{} -> {}", self.target.display(), self.source.display())
     }
@@ -119,7 +119,7 @@ impl Applicable for SymlinkResource {
     }
 }
 
-impl Resource for SymlinkResource {
+impl IntrinsicState for SymlinkResource {
     fn current_state(&self) -> Result<ResourceState> {
         if let Some(reason) = &self.validation_error {
             return Ok(ResourceState::Invalid {

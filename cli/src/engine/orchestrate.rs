@@ -12,7 +12,9 @@ use super::context::Context;
 use super::mode::ProcessOpts;
 use super::parallel;
 use super::stats::{TaskResult, TaskStats};
-use crate::resources::{Applicable, Resource, ResourceState};
+use crate::resources::{
+    IntrinsicState, IntrinsicStateProvider, Resource, ResourceState, ResourceStateProvider,
+};
 
 /// Run `process_one` over `items` sequentially, honouring cancellation.
 ///
@@ -43,7 +45,7 @@ fn process_apply_items<T, R>(
 ) -> Result<TaskResult>
 where
     T: Send,
-    R: Applicable + Send,
+    R: Resource + Send,
 {
     let span = tracing::debug_span!(
         "process_apply_items",
@@ -62,45 +64,49 @@ where
     })
 }
 
-/// Process resources by checking each one's current state and applying as needed.
+/// Process resources with an explicit state provider.
 ///
-/// For tasks where each resource can independently determine its own state via
-/// `resource.current_state()`.
+/// The provider may check each resource intrinsically or load cached/bulk state
+/// once for the full resource slice.
 ///
 /// # Errors
 ///
-/// Returns an error if any resource fails to check its state or apply changes,
-/// depending on the `bail_on_error` setting in `opts`. If `bail_on_error` is `false`,
-/// errors are logged as warnings instead.
-pub fn process_resources<R: Resource + Send>(
+/// Returns an error if provider state loading, per-resource state checking, or
+/// applying changes fails, depending on the `bail_on_error` setting in `opts`.
+pub fn process_resources_with_provider<R, P>(
     ctx: &Context,
     resources: impl IntoIterator<Item = R>,
+    provider: &P,
     opts: &ProcessOpts,
-) -> Result<TaskResult> {
+) -> Result<TaskResult>
+where
+    R: Resource + Send,
+    P: ResourceStateProvider<R> + Sync,
+    P::Cache: Sync,
+{
     let resources: Vec<R> = resources.into_iter().collect();
-    process_apply_items(ctx, resources, opts, "self_checking", |resource| {
-        let state = resource.current_state()?;
+    let cache = provider.load(&resources)?;
+    process_apply_items(ctx, resources, opts, "state_provider", |resource| {
+        let state = provider.current_state(&resource, &cache)?;
         Ok((resource, state))
     })
 }
 
-/// Process resources with pre-computed states.
+/// Process resources by checking each one's intrinsic current state.
 ///
-/// For tasks that batch-query state (e.g., registry, packages, VS Code extensions)
-/// and then iterate with cached results.
+/// This is a convenience wrapper around [`process_resources_with_provider`] for
+/// resources that implement [`IntrinsicState`].
 ///
 /// # Errors
 ///
-/// Returns an error if any resource fails to apply changes, depending on the
-/// `bail_on_error` setting in `opts`. If `bail_on_error` is `false`, errors are
-/// logged as warnings instead.
-pub fn process_resource_states<R: Applicable + Send>(
+/// Returns an error if any resource fails to check its state or apply changes,
+/// depending on the `bail_on_error` setting in `opts`.
+pub fn process_resources<R: IntrinsicState + Send>(
     ctx: &Context,
-    resource_states: impl IntoIterator<Item = (R, ResourceState)>,
+    resources: impl IntoIterator<Item = R>,
     opts: &ProcessOpts,
 ) -> Result<TaskResult> {
-    let resource_states: Vec<(R, ResourceState)> = resource_states.into_iter().collect();
-    process_apply_items(ctx, resource_states, opts, "precomputed_state", Ok)
+    process_resources_with_provider(ctx, resources, &IntrinsicStateProvider, opts)
 }
 
 /// Process resources for removal.
@@ -110,13 +116,13 @@ pub fn process_resource_states<R: Applicable + Send>(
 ///
 /// When `ctx.parallel` is `true` and there is more than one resource, removal
 /// runs in parallel using Rayon (matching the behaviour of [`process_resources`]
-/// and [`process_resource_states`]).
+/// and [`process_resources_with_provider`]).
 ///
 /// # Errors
 ///
 /// Returns an error if a resource fails to check its current state or fails
 /// during the removal process.
-pub fn process_resources_remove<R: Resource + Send>(
+pub fn process_resources_remove<R: IntrinsicState + Send>(
     ctx: &Context,
     resources: impl IntoIterator<Item = R>,
     verb: &str,

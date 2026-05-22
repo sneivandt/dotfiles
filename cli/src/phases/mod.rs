@@ -205,11 +205,12 @@ pub trait Task: Send + Sync + 'static {
 
     /// Whether the task's policies and current state require elevation.
     fn requires_elevation(&self, ctx: &Context) -> bool {
+        let declares_elevation = self
+            .execution_policies()
+            .iter()
+            .any(|p| matches!(p, ExecutionPolicy::RequiresElevation));
         !ctx.dry_run
-            && self
-                .execution_policies()
-                .iter()
-                .any(|p| matches!(p, ExecutionPolicy::RequiresElevation))
+            && declares_elevation
             && evaluate_policy_decision(self.execution_policies(), ctx).is_none()
             && self.should_run(ctx)
             && self.needs_elevation(ctx)
@@ -734,8 +735,8 @@ mod tests {
     struct PolicyTask {
         policies: &'static [ExecutionPolicy],
         ran: std::sync::Arc<std::sync::atomic::AtomicBool>,
-        needs_elevation: bool,
         should_run: bool,
+        needs_elevation: bool,
     }
 
     impl Task for PolicyTask {
@@ -856,8 +857,8 @@ mod tests {
         let task = PolicyTask {
             policies: POLICIES,
             ran: std::sync::Arc::clone(&ran),
-            needs_elevation: false,
             should_run: true,
+            needs_elevation: false,
         };
 
         execute(&task, &ctx);
@@ -875,8 +876,8 @@ mod tests {
         let task = PolicyTask {
             policies: POLICIES,
             ran,
-            needs_elevation: true,
             should_run: true,
+            needs_elevation: true,
         };
 
         assert!(task.requires_elevation(&ctx));
@@ -895,8 +896,8 @@ mod tests {
         let task = PolicyTask {
             policies: POLICIES,
             ran,
-            needs_elevation: true,
             should_run: true,
+            needs_elevation: true,
         };
 
         assert!(!task.requires_elevation(&ctx));
@@ -911,8 +912,8 @@ mod tests {
         let task = PolicyTask {
             policies: POLICIES,
             ran,
-            needs_elevation: true,
             should_run: false,
+            needs_elevation: true,
         };
 
         assert!(!task.requires_elevation(&ctx));

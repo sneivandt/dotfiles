@@ -177,17 +177,23 @@ pub trait Task: Send + Sync + 'static {
     /// Which phase this task belongs to (Bootstrap, Repository, or Apply).
     fn phase(&self) -> TaskPhase;
 
-    /// Stable TypeId for dependency matching.
-    fn task_id(&self) -> TypeId { TypeId::of::<Self>() }
+    /// Stable identifier for dependency matching.
+    fn task_id(&self) -> TaskId { TaskId::Type(TypeId::of::<Self>()) }
 
-    /// TypeIds of tasks that must complete before this one starts.
-    fn dependencies(&self) -> &[TypeId] { &[] }
+    /// TaskIds of tasks that must complete before this one starts.
+    fn dependencies(&self) -> &[TaskId] { &[] }
+
+    /// Declarative rules enforced before the task runs.
+    fn execution_policies(&self) -> &[ExecutionPolicy] { ALWAYS_POLICY }
 
     /// Whether this task should run on the current platform/profile.
     fn should_run(&self, ctx: &Context) -> bool;
 
     /// Combine applicability checks with execution.
     fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>>;
+
+    /// Predict whether an applicable task will need elevation.
+    fn needs_elevation(&self, ctx: &Context) -> bool { false }
 
     /// Execute the task.
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
@@ -196,7 +202,7 @@ pub trait Task: Send + Sync + 'static {
 
 A shared `Context` struct (defined in `engine/context.rs`) carries the loaded `Config`, `Platform`, `Logger`, and flags (`dry_run`, `parallel`, `home` path). Task-specific dependencies are injected via constructors: `UpdateRepository` and `ReloadConfig` share an `UpdateSignal` (`engine/update_signal.rs`) to coordinate config reloading, and hook tasks (`InstallGitHooks`, `UninstallGitHooks`) hold an `Arc<dyn FileSystemOps>` for testable filesystem access.
 
-The `execute()` function first checks `should_run()`, then calls `run_if_applicable()`, recording `Ok`, `NotApplicable`, `Skipped`, `DryRun`, or `Failed` in the logger.
+The `execute()` function first evaluates `execution_policies()` (platform support, dry-run skip rules, and elevation declarations), then checks `should_run()` and calls `run_if_applicable()`, recording `Ok`, `NotApplicable`, `Skipped`, `DryRun`, or `Failed` in the logger. Before parallel phase dispatch, `run_tasks_to_completion()` calls `requires_elevation()` only for tasks whose policies and `should_run()` pass, then primes sudo for the tasks that predict a privileged mutation.
 
 #### Engine (`engine/`)
 

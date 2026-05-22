@@ -49,7 +49,7 @@ impl Task for InstallVsCodeExtensions {
             VsCodeExtensionResource::new(ext.id.clone(), cmd.clone(), Arc::clone(&ctx.executor))
         });
         let provider = PreloadedStateProvider::new(
-            installed.clone(),
+            installed,
             |resource: &VsCodeExtensionResource, installed: &HashSet<String>| {
                 Ok(resource.state_from_installed(installed))
             },

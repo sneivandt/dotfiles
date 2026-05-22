@@ -1,33 +1,40 @@
 ---
 name: resource-implementation
 description: >
-  Patterns for implementing concrete Resource and Applicable types in
-  cli/src/resources/. Use when adding a new resource or modifying existing
-  resource behaviour.
+  Patterns for implementing concrete Resource, IntrinsicState, and
+  ResourceStateProvider types in cli/src/resources/. Use when adding a new
+  resource or modifying existing resource behaviour.
 ---
 
 # Resource Implementation
 
-Resources in `cli/src/resources/` are the declarative primitives that check
-and apply system state. Each resource file implements either `Resource`
-(self-checking) or `Applicable` (bulk-checked).
+Resources in `cli/src/resources/` are the declarative primitives that apply
+system state. State discovery is intentionally separate: resources either
+implement `IntrinsicState` for per-resource checks or use a
+`ResourceStateProvider` for cached/bulk checks.
 
 ## Trait Definitions
 
 ```rust
-/// Base trait — implement for resources whose state is determined by a bulk
-/// external query (e.g. VS Code extensions, packages).
-pub trait Applicable {
+/// Core trait — implement for every resource.
+pub trait Resource {
     fn description(&self) -> String;
     fn apply(&self) -> Result<ResourceChange>;
     fn remove(&self) -> Result<ResourceChange>; // default: unimplemented
 }
 
-/// Extended trait — implement for resources that can independently check
-/// their own state (e.g. symlinks, registry entries, file permissions).
-pub trait Resource: Applicable {
+/// Extension trait — implement for resources that can independently check
+/// their own state (e.g. symlinks, file permissions).
+pub trait IntrinsicState: Resource {
     fn current_state(&self) -> Result<ResourceState>;
     fn needs_change(&self) -> Result<bool>; // default: Missing|Incorrect → true
+}
+
+/// Provider trait — implement or compose for cached/bulk state checks.
+pub trait ResourceStateProvider<R: Resource> {
+    type Cache: Sync;
+    fn load(&self, resources: &[R]) -> Result<Self::Cache>;
+    fn current_state(&self, resource: &R, cache: &Self::Cache) -> Result<ResourceState>;
 }
 
 pub enum ResourceState {
@@ -35,6 +42,7 @@ pub enum ResourceState {
     Correct,
     Incorrect { current: String },
     Invalid { reason: String },
+    Unknown { reason: String },
 }
 pub enum ResourceChange {
     Applied,
@@ -45,10 +53,10 @@ pub enum ResourceChange {
 
 ## Which Trait to Implement
 
-| Trait | When | Examples |
+| Trait / provider | When | Examples |
 |---|---|---|
-| `Resource` (implies `Applicable`) | Resource can independently check its own state | `SymlinkResource`, `ChmodResource`, `GitConfigResource`, `HookFileResource`, `WrapperResource`, `PathEntryResource`, `ScriptResource` |
-| `Applicable` only | State requires a single bulk query shared across instances | `VsCodeExtensionResource`, `PackageResource` |
+| `Resource` + `IntrinsicState` | Resource can independently check its own state | `SymlinkResource`, `ChmodResource`, `GitConfigResource`, `HookFileResource`, `WrapperResource`, `PathEntryResource`, `ScriptResource` |
+| `Resource` + `ResourceStateProvider` | State requires one shared cached/bulk query | `VsCodeExtensionResource`, `PackageResource`, `RegistryResource` |
 
 ## Self-Checking Resource Template
 
@@ -73,13 +81,13 @@ impl MyResource {
     }
 }
 
-impl Applicable for MyResource {
+impl Resource for MyResource {
     fn description(&self) -> String { format!("{}", self.target.display()) }
     fn apply(&self) -> Result<ResourceChange> { /* create/update */ }
     fn remove(&self) -> Result<ResourceChange> { /* undo */ }
 }
 
-impl Resource for MyResource {
+impl IntrinsicState for MyResource {
     fn current_state(&self) -> Result<ResourceState> { /* check */ }
 }
 ```
@@ -105,6 +113,11 @@ impl<'a> MyResource<'a> {
 }
 
 impl Resource for MyResource<'_> {
+    fn description(&self) -> String { self.name.clone() }
+    fn apply(&self) -> Result<ResourceChange> { /* create/update */ }
+}
+
+impl IntrinsicState for MyResource<'_> {
     fn current_state(&self) -> Result<ResourceState> {
         let result = self.executor.run_unchecked("tool", &["check", &self.name])?;
         if result.success { Ok(ResourceState::Correct) } else { Ok(ResourceState::Missing) }
@@ -115,7 +128,7 @@ impl Resource for MyResource<'_> {
 The `Executor: Debug` supertrait allows `#[derive(Debug)]`. Resources are not `Clone`
 when they hold trait object references.
 
-## Bulk-Checked (Applicable-Only) Template
+## Bulk-Checked Provider Template
 
 For resources whose state comes from a single expensive query:
 
@@ -133,7 +146,7 @@ impl MyResource {
     }
 }
 
-impl Applicable for MyResource {
+impl Resource for MyResource {
     fn description(&self) -> String { self.id.clone() }
     fn apply(&self) -> Result<ResourceChange> { /* install */ }
 }
@@ -142,8 +155,18 @@ impl Applicable for MyResource {
 pub fn get_installed(executor: &dyn Executor) -> Result<HashSet<String>> { /* single command */ }
 ```
 
-The task calls `get_installed()` once, then builds `(resource, state)` pairs
-and passes them to `process_resource_states()`.
+The task calls `get_installed()` once, then uses
+`process_resources_with_provider()` with `PreloadedStateProvider` or
+`BorrowedStateProvider` so all resources share the same cache:
+
+```rust
+let installed = get_installed(&*ctx.executor)?;
+let resources = items.iter().map(|item| MyResource::from_entry(item, Arc::clone(&ctx.executor)));
+let provider = BorrowedStateProvider::new(&installed, |resource: &MyResource, installed| {
+    Ok(resource.state_from_installed(installed))
+});
+process_resources_with_provider(ctx, resources, &provider, &ProcessOpts::lenient("install"))
+```
 
 Real examples: `VsCodeExtensionResource`, `PackageResource`.
 
@@ -155,9 +178,12 @@ Real examples: `VsCodeExtensionResource`, `PackageResource`.
 | `Correct` | Matches desired state | Symlink points correctly, value matches |
 | `Incorrect { current }` | Exists but wrong | Symlink wrong target, wrong value |
 | `Invalid { reason }` | Cannot be applied | Source missing, target is real directory |
+| `Unknown { reason }` | State cannot be determined | Detection tool unavailable |
 
 Use `Invalid` for conditions where applying would be wrong or dangerous.
-The engine logs the reason and skips the resource regardless of `ProcessMode`.
+Use `Unknown` when the engine genuinely cannot determine state. The engine logs
+the reason and skips `Invalid` and `Unknown` resources regardless of
+`ProcessMode`.
 
 ## ResourceChange Usage
 
@@ -179,13 +205,15 @@ For Windows symlinks, use `MetadataExt::file_attributes()` instead of
 
 - Self-checking resources: construct directly and call `current_state()` / `apply()` against temp dirs
 - Executor-dependent resources: pass `SystemExecutor` for description-only tests; mock the executor for behaviour tests
+- Bulk-checked resources: test `state_from_*` mapping and provider-backed task behaviour
 - Use `tempfile::tempdir()` for filesystem resources
 - Add `#[cfg(test)] mod tests` to every resource module
 
 ## Rules
 
 - One resource type per file in `resources/`
-- Implement `Resource` when state can be checked individually; `Applicable` when bulk-checked
+- Implement `Resource` for apply/remove behaviour on every resource
+- Add `IntrinsicState` when state can be checked individually; use `ResourceStateProvider` when state is bulk-checked
 - Use `#[must_use]` on constructors and `from_entry()` methods
 - All public items need `///` doc comments with `# Errors` on fallible functions
 - Resources must implement `Send` for parallel processing

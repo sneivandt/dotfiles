@@ -38,9 +38,10 @@ See the `resource-implementation` and `rust-patterns` skills for full templates.
 
 ## Resource Traits
 
-Two traits exist in `cli/src/resources/mod.rs`:
-- `Applicable` — describe, apply, remove (use when bulk state query needed)
-- `Resource` — extends `Applicable` with `current_state()` (use when resource checks itself)
+Resource state discovery is provider-backed in `cli/src/resources/mod.rs`:
+- `Resource` — describe, apply, remove
+- `IntrinsicState` — extends `Resource` for resources with their own `current_state()`
+- `ResourceStateProvider` — supplies state from intrinsic checks or shared cached/bulk queries
 
 ## Config Loading
 

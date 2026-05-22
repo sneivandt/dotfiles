@@ -77,7 +77,7 @@ Invoked with: `sh`
 ## Script Resource
 
 `cli/src/resources/script.rs` — `ScriptResource` implements both
-`Applicable` and `Resource`:
+`Resource` and `IntrinsicState`:
 
 - `current_state()` — runs `--check`, maps exit code to `Correct`/`Missing`
 - `dry_run_output()` — runs `--dryrun` and propagates failures

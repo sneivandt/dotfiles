@@ -205,7 +205,7 @@ The execution engine provides the generic resource processing loop, dependency g
 - **`context.rs`** — `Context` and `ContextOpts`: shared state (config, platform, logger, flags) threaded through every task
 - **`plan.rs`** — pure resource plan/diff construction from `ResourceState` + `ProcessOpts`
 - **`apply.rs`** — single-resource plan execution: log/dry-run → apply/remove → stats
-- **`orchestrate.rs`** — top-level resource orchestration with `process_resources()`, `process_resource_states()`, and `process_resources_remove()`
+- **`orchestrate.rs`** — top-level resource orchestration with `process_resources()`, `process_resources_with_provider()`, and `process_resources_remove()`
 - **`mode.rs`** — `ProcessMode` enum (`Strict`, `Lenient`, `InstallMissing`, `FixExisting`) and `ProcessOpts` that control which states are fixable and whether errors bail or warn
 - **`parallel.rs`** — Rayon-based parallel dispatch when `ctx.parallel` is true
 - **`graph.rs`** — dependency graph cycle detection (Kahn's algorithm)
@@ -489,9 +489,9 @@ of tasks with unsatisfied dependencies (common on 2-vCPU CI runners).
 Within each task, resource operations (symlinks, packages, registry entries,
 etc.) are also processed in parallel using Rayon's `into_par_iter()`.
 
-- `process_resources()` and `process_resource_states()` in `engine/` dispatch
-  to Rayon's `into_par_iter()` when `ctx.parallel` is `true` and there is more than
-  one resource to process
+- `process_resources()` and `process_resources_with_provider()` in `engine/`
+  dispatch to Rayon's `into_par_iter()` when `ctx.parallel` is `true` and there
+  is more than one resource to process
 - A `Mutex<TaskStats>` accumulates changed/skipped counters across threads
 - The `Executor` trait requires `Sync` so resources holding `&dyn Executor` are safe
   to share across threads
@@ -503,7 +503,7 @@ debugging), pass `--no-parallel` to the wrapper scripts or the binary directly (
 
 `process_resources_remove()` (used by uninstall tasks) also dispatches to parallel
 processing when `ctx.parallel` is `true` and there is more than one resource,
-matching the behaviour of `process_resources()` and `process_resource_states()`.
+matching the behaviour of `process_resources()` and `process_resources_with_provider()`.
 
 ### Binary Distribution
 

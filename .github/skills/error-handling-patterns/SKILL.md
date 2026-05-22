@@ -78,7 +78,7 @@ drop(some_owned_resource);
 ### Resource-Based Tasks (preferred)
 
 For tasks that manage declarative resources (`Resource` trait), use the generic
-`process_resources()` / `process_resource_states()` helpers. They enforce the
+`process_resources()` / `process_resources_with_provider()` helpers. They enforce the
 correct check→plan/diff→dry-run/apply order automatically:
 
 ```rust
@@ -134,7 +134,7 @@ Both verify checksums after downloading binaries and fall back to existing binar
 ## Rules
 
 1. **Use `anyhow::Result` with `.context()`** for all fallible Rust code
-2. **Use `process_resources()` / `process_resource_states()`** for resource-based tasks — they enforce idempotency and dry-run automatically
+2. **Use `process_resources()` / `process_resources_with_provider()`** for resource-based tasks — they enforce idempotency and dry-run automatically
 3. **Check existing state** before mutations (idempotency) in custom tasks
 4. **Check `ctx.dry_run`** before any side effect in custom tasks
 5. **Use `.ok()` with a comment** for intentionally ignored errors

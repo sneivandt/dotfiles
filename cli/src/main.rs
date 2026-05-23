@@ -81,14 +81,13 @@ fn main() -> ExitCode {
             commands::uninstall::run(&args.global, &opts, &log, &token)
         }
         cli::Command::Test(opts) => commands::test::run(&args.global, &opts, &log, &token),
-        cli::Command::Logs(_) => return ExitCode::SUCCESS,
         cli::Command::Version => {
             commands::version::run();
             return ExitCode::SUCCESS;
         }
         // Completions are handled above; this arm is unreachable but kept
         // because the `unreachable!` macro is denied by the lint configuration.
-        cli::Command::Completions(_) => return ExitCode::SUCCESS,
+        cli::Command::Logs(_) | cli::Command::Completions(_) => return ExitCode::SUCCESS,
     };
 
     if let Err(e) = result {

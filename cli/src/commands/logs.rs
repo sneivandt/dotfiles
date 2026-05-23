@@ -1,6 +1,5 @@
 //! Logs command implementation.
 
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -52,8 +51,7 @@ fn newest_matching_log_path(cache_dir: &Path, diagnostic: bool) -> Result<Option
     let mut newest: Option<(SystemTime, PathBuf)> = None;
 
     for entry in entries {
-        let entry =
-            entry.with_context(|| format!("reading entry in {}", cache_dir.display()))?;
+        let entry = entry.with_context(|| format!("reading entry in {}", cache_dir.display()))?;
         let path = entry.path();
         if !is_log_candidate(&path, diagnostic) {
             continue;
@@ -76,15 +74,16 @@ fn newest_matching_log_path(cache_dir: &Path, diagnostic: bool) -> Result<Option
 }
 
 fn is_log_candidate(path: &Path, diagnostic: bool) -> bool {
-    path.file_name()
+    let has_log_extension = path
+        .extension()
         .and_then(std::ffi::OsStr::to_str)
-        .is_some_and(|name| {
-            if diagnostic {
-                name.ends_with(".diag.log")
-            } else {
-                name.ends_with(".log") && !name.ends_with(".diag.log")
-            }
-        })
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("log"));
+    let is_diagnostic = path
+        .file_stem()
+        .and_then(std::ffi::OsStr::to_str)
+        .is_some_and(|stem| stem.to_ascii_lowercase().ends_with(".diag"));
+
+    has_log_extension && diagnostic == is_diagnostic
 }
 
 #[cfg(test)]
@@ -117,7 +116,10 @@ mod tests {
         let mut output = Vec::new();
         run_with_cache_dir(&cache_dir, false, &mut output).expect("logs command should succeed");
 
-        assert_eq!(String::from_utf8(output).unwrap(), "No dotfiles log found yet.\n");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "No dotfiles log found yet.\n"
+        );
     }
 
     #[test]

@@ -62,13 +62,16 @@ after the task finishes.
 
 ### Sequential Fallback
 
-When `ctx.parallel` is false, single task, or cycle detected:
+When `ctx.parallel` is false or there is only a single task:
 
 ```rust
 for task in &tasks {
-    tasks::execute(*task, ctx);
+    phases::execute(*task, ctx);
 }
 ```
+
+Cycles are detected before dispatch and cause the runner to bail rather than
+falling back to sequential execution.
 
 ## Resource-Level: Rayon
 

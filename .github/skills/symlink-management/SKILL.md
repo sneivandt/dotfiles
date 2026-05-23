@@ -7,19 +7,29 @@ description: >
 
 # Symlink Management
 
-Symlinks connect config files from `symlinks/` to `$HOME`. Config in `conf/symlinks.toml`, loaded by `config::symlinks`, installed by `tasks::symlinks`.
+Symlinks connect config files from `symlinks/` to `$HOME`. Config in
+`conf/symlinks.toml` is loaded by `config::symlinks` and installed by
+`phases::apply::symlinks`.
 
 ## Configuration
 
-```ini
+```toml
 [base]
-config/nvim
-config/git/config
-[arch,desktop]
-config/hypr
+symlinks = [
+  "config/nvim",
+  "config/git/config",
+]
+
+[arch-desktop]
+symlinks = [
+  "config/hypr",
+]
+
 [windows]
-{ source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }
-"config/git/windows"
+symlinks = [
+  { source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" },
+  "config/git/windows",
+]
 ```
 
 Source files in `symlinks/` have **no leading dots**.
@@ -48,21 +58,21 @@ The explicit target is joined to `$HOME` directly: `home.join(target)`.
 
 ## Task Implementation
 
-The task uses `SymlinkResource` from the `resources` module for declarative state
-management via the generic `process_resources()` helper:
+The install task is generated with `resource_task!` and uses `SymlinkResource`
+for declarative state management via `process_resources()`:
 
 ```rust
-#[derive(Debug)]
-pub struct InstallSymlinks;
-impl Task for InstallSymlinks {
-    fn name(&self) -> &str { "Install symlinks" }
-    task_deps![
-        crate::phases::repository::reload_config::ReloadConfig,
-        crate::phases::bootstrap::developer_mode::EnableDeveloperMode,
-    ];
-    fn should_run(&self, ctx: &Context) -> bool { !ctx.config_read().symlinks.is_empty() }
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        process_resources(ctx, build_resources(ctx), &ProcessOpts::strict("link"))
+resource_task! {
+    /// Create symlinks from symlinks/ to $HOME.
+    pub InstallSymlinks {
+        name: "Install symlinks",
+        phase: TaskPhase::Apply,
+        items: |ctx| ctx.config_read().symlinks.clone(),
+        build: |s, ctx| {
+            let repo_root = ctx.root();
+            build_resource(&s, &repo_root, &ctx.home, &ctx.executor)
+        },
+        opts: ProcessOpts::strict("link"),
     }
 }
 ```
@@ -75,14 +85,14 @@ Platform-specific symlink creation is handled inside `SymlinkResource::apply()`.
 2. Add to `conf/symlinks.toml` under correct profile section:
    - Plain string `"config/myapp/config"` → target `~/.config/myapp/config` (dot prepended automatically)
    - `{ source = "AppData/Roaming/MyApp/config", target = "AppData/Roaming/MyApp/config" }` → target `~/AppData/Roaming/MyApp/config` (no dot prefix)
-3. Optionally add to `conf/manifest.toml` for sparse checkout
+3. For non-`base` sections, add the source path to the matching `conf/manifest.toml` section for sparse checkout validation
 4. Test: `./dotfiles.sh install -d`
 
 ## Idempotency
 
 - Correct symlink already exists → skip
-- Wrong symlink or file exists → remove and recreate
-- Source missing (sparse checkout) → skip silently
+- Wrong symlink target → fix when safe
+- Unsafe paths or missing sources → report as invalid and skip applying
 
 ## Uninstall
 
@@ -100,4 +110,4 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 - Source and explicit target paths must be relative and must not contain `..`
 - Use directory symlinks for entire config dirs, file symlinks for selective management
 - Don't create symlinks inside already-symlinked directories
-- Source files filtered by sparse checkout are silently skipped
+- Missing source files are invalid and skipped without applying

@@ -12,7 +12,7 @@ The project uses git hooks for pre-commit security scanning. Hook installation i
 ## Overview
 
 - **Pre-commit scanning**: Detect sensitive information before commits
-- **Automatic installation**: `tasks::hooks::InstallGitHooks` copies hooks during install
+- **Automatic installation**: `phases::repository::hooks::InstallGitHooks` copies hooks during install
 - **Pattern-based detection**: Configurable patterns in `hooks/sensitive-patterns.ini`
 - **Bypassable**: `git commit --no-verify` for false positives
 

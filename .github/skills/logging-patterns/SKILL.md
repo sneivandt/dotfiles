@@ -90,18 +90,21 @@ The log file path is shown in the summary.
 
 ## Task Recording & Summary
 
-`tasks::execute()` automatically records each task result:
+`phases::execute()` automatically records each task result:
 
 ```rust
 pub fn execute(task: &dyn Task, ctx: &Context) {
+    if let Some(decision) = evaluate_policy(task, ctx) {
+        record_policy_decision(ctx, task.name(), task.phase(), decision);
+        return;
+    }
     if !task.should_run(ctx) {
-        ctx.log.debug(&format!("skipping task: {} (not applicable)", task.name()));
         ctx.log.record_task(task.name(), task.phase(), TaskStatus::NotApplicable, None);
         return;
     }
-    ctx.log.stage(task.name());
-    match task.run(ctx) {
-        Ok(TaskResult::Ok) => ctx.log.record_task(task.name(), task.phase(), TaskStatus::Ok, None),
+    match task.run_if_applicable(ctx) {
+        Ok(Some(TaskResult::Ok)) => ctx.log.record_task(task.name(), task.phase(), TaskStatus::Ok, None),
+        Ok(None) => ctx.log.record_task(task.name(), task.phase(), TaskStatus::NotApplicable, None),
         // ... Skipped, DryRun, Err handled similarly
     }
 }
@@ -137,7 +140,7 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 
 When `verbose=false`:
 - `stage` and `info` messages are suppressed on the console
-- `tasks::execute()` emits compact inline task-result lines via `emit_task_result()`
+- `phases::execute()` emits compact inline task-result lines via `emit_task_result()`
 - The summary shows only totals (no per-phase task breakdown)
 - The progress line shows a count ("3 tasks running…") instead of task names
 
@@ -161,7 +164,7 @@ provide this information in the file).
    (console-only)
 5. Check `ctx.dry_run` before side effects; use `ctx.log.dry_run()` for preview
 6. Return `TaskResult::DryRun` in dry-run mode
-7. Task recording is automatic via `tasks::execute()` — don't call `record_task` in tasks
+7. Task recording is automatic via `phases::execute()` — don't call `record_task` in tasks
 
 ## Parallel Task Logging
 

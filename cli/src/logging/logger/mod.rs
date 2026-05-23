@@ -482,15 +482,19 @@ mod tests {
     }
 
     #[test]
-    fn summary_omits_log_path() {
+    fn summary_includes_log_paths() {
         let (log, _tmp, _guard) = isolated_logger();
         log.record_task("summary-test", TaskPhase::Apply, TaskStatus::Ok, None);
         log.print_summary();
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();
         assert!(
-            !contents.contains("log: "),
-            "routine summary should not include the log path: {contents}"
+            contents.contains("log: "),
+            "summary should include the main log path: {contents}"
+        );
+        assert!(
+            contents.contains("diagnostic log: "),
+            "summary should include the diagnostic log path: {contents}"
         );
     }
 }

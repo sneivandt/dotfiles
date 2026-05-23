@@ -2,8 +2,9 @@
 use std::cell::RefCell;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use super::utils::{format_utc_datetime_us, strip_ansi};
@@ -29,14 +30,38 @@ pub fn set_diag_thread_name(name: &str) {
     });
 }
 
+/// Guard that restores the previous diagnostic task context when dropped.
+#[derive(Debug)]
+pub struct DiagTaskContextGuard {
+    previous: Option<String>,
+}
+
+impl Drop for DiagTaskContextGuard {
+    fn drop(&mut self) {
+        DIAG_TASK_NAME.with(|cell| {
+            *cell.borrow_mut() = self.previous.take();
+        });
+    }
+}
+
+/// Set the diagnostic task context for the current scope.
+#[must_use]
+pub fn diag_task_context(name: &str) -> DiagTaskContextGuard {
+    let previous = DIAG_TASK_NAME.with(|cell| cell.borrow_mut().replace(name.to_string()));
+    DiagTaskContextGuard { previous }
+}
+
 /// Read the diagnostic task name for the current thread.
 #[must_use]
 pub fn diag_thread_name() -> String {
+    if let Some(name) = DIAG_TASK_NAME.with(|cell| cell.borrow().clone()) {
+        return name;
+    }
     let thread = std::thread::current();
     if let Some(name) = thread.name() {
         return name.to_string();
     }
-    DIAG_TASK_NAME.with(|cell| cell.borrow().as_deref().unwrap_or("?").to_string())
+    "?".to_string()
 }
 
 /// Event kinds for the diagnostic log.
@@ -114,6 +139,7 @@ pub struct DiagnosticLog {
     #[cfg_attr(not(test), allow(dead_code, reason = "used conditionally via cfg"))]
     path: PathBuf,
     start: Instant,
+    sequence: AtomicU64,
 }
 
 impl DiagnosticLog {
@@ -125,13 +151,13 @@ impl DiagnosticLog {
     /// variables.
     ///
     /// Returns `None` if the file cannot be created.
-    pub(super) fn new(command: &str, cache_dir: &std::path::Path, start: Instant) -> Option<Self> {
+    pub(super) fn new(command: &str, cache_dir: &Path, start: Instant) -> Option<Self> {
         let path = cache_dir.join(format!("{command}.diag.log"));
         let version =
             option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
         let header = format!(
             "# Diagnostic log — dotfiles {version} {}\n\
-             # Columns: elapsed_us | wall_utc | thread | event | message\n",
+             # Columns: seq | elapsed_us | wall_utc | context | event | message\n",
             format_utc_datetime_us(),
         );
         fs::write(&path, header).ok()?;
@@ -140,42 +166,48 @@ impl DiagnosticLog {
             file: Mutex::new(file),
             path,
             start,
+            sequence: AtomicU64::new(0),
         })
     }
 
     /// Emit a diagnostic event.
     ///
-    /// Each line is: `+<elapsed_us> <wall_utc_us> [<thread>] <TAG> <message>`
+    /// Each line is:
+    /// `<seq> +<elapsed_us> <wall_utc_us> [<context>] <TAG> <message>`
     ///
-    /// ANSI escape sequences are stripped from the message.  The thread
-    /// identifier comes from the OS thread name when available (e.g.
-    /// `"main"`), otherwise from the task name set via
-    /// [`set_diag_thread_name`].
+    /// ANSI escape sequences are stripped from the message. The context comes
+    /// from the current task context when one is set, otherwise from the OS
+    /// thread name when available (e.g. `"main"`).
     pub fn emit(&self, event: DiagEvent, message: &str) {
+        self.emit_with_context(event, &diag_thread_name(), message);
+    }
+
+    /// Emit a diagnostic event with an explicit context name.
+    fn emit_with_context(&self, event: DiagEvent, context: &str, message: &str) {
+        let Ok(mut f) = self.file.lock() else {
+            return;
+        };
+        let seq = self
+            .sequence
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1);
         let elapsed = self.start.elapsed();
         let elapsed_us = elapsed.as_micros();
         let wall = format_utc_datetime_us();
-        let thread_name = diag_thread_name();
         let tag = event.tag();
         let clean = strip_ansi(message);
-        let line = format!("+{elapsed_us:>12} {wall} [{thread_name}] {tag:<12} {clean}\n");
-        if let Ok(mut f) = self.file.lock() {
-            drop(f.write_all(line.as_bytes()));
-        }
+        let line = format!("{seq:06} +{elapsed_us:>12} {wall} [{context}] {tag:<12} {clean}\n");
+        drop(f.write_all(line.as_bytes()));
     }
 
     /// Emit a diagnostic event with an explicit task name context.
     pub fn emit_task(&self, event: DiagEvent, task: &str, message: &str) {
-        if message.is_empty() {
-            self.emit(event, &format!("[{task}]"));
-        } else {
-            self.emit(event, &format!("[{task}] {message}"));
-        }
+        self.emit_with_context(event, task, message);
     }
 
     /// Return the path of the diagnostic log file.
-    #[cfg(test)]
-    pub(crate) fn path(&self) -> &std::path::Path {
+    #[must_use]
+    pub fn path(&self) -> &Path {
         &self.path
     }
 }
@@ -215,7 +247,7 @@ mod tests {
             "diagnostic log should start with header"
         );
         assert!(
-            contents.contains("elapsed_us"),
+            contents.contains("seq | elapsed_us"),
             "header should describe columns"
         );
     }
@@ -359,6 +391,21 @@ mod tests {
     }
 
     #[test]
+    fn diag_task_context_restores_previous_name() {
+        let result = std::thread::spawn(|| {
+            set_diag_thread_name("outer-task");
+            let inner = {
+                let _guard = diag_task_context("inner-task");
+                diag_thread_name()
+            };
+            (inner, diag_thread_name())
+        })
+        .join()
+        .expect("thread should not panic");
+        assert_eq!(result, ("inner-task".to_string(), "outer-task".to_string()));
+    }
+
+    #[test]
     fn diagnostic_emit_task_empty_message() {
         let (diag, _tmp) = isolated_diag_log();
         diag.emit_task(DiagEvent::TaskDone, "task-name", "");
@@ -367,10 +414,26 @@ mod tests {
             contents.contains("[task-name]"),
             "should contain [task-name]"
         );
-        // Should not have extra space after the bracket
+        assert!(contents.contains("TASK_DONE"), "should contain event tag");
         assert!(
-            !contents.contains("[task-name] \n"),
+            contents.lines().any(|line| line.ends_with("TASK_DONE    ")),
             "should not have trailing space"
+        );
+    }
+
+    #[test]
+    fn diagnostic_events_have_sequence_numbers() {
+        let (diag, _tmp) = isolated_diag_log();
+        diag.emit(DiagEvent::Info, "first");
+        diag.emit(DiagEvent::Info, "second");
+        let contents = fs::read_to_string(diag.path()).unwrap();
+        assert!(
+            contents.lines().any(|line| line.starts_with("000001 ")),
+            "first event should have sequence 1"
+        );
+        assert!(
+            contents.lines().any(|line| line.starts_with("000002 ")),
+            "second event should have sequence 2"
         );
     }
 

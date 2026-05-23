@@ -8,7 +8,9 @@ mod types;
 mod utils;
 
 pub use buffered::BufferedLog;
-pub use diagnostic::{DiagEvent, DiagnosticLog, diag_thread_name, set_diag_thread_name};
+pub use diagnostic::{
+    DiagEvent, DiagnosticLog, diag_task_context, diag_thread_name, set_diag_thread_name,
+};
 pub use logger::Logger;
 pub use subscriber::init_subscriber;
 pub use types::{Log, Output, TaskEntry, TaskRecorder, TaskStatus};

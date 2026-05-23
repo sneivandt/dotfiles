@@ -525,12 +525,14 @@ The installer writes two log files per run:
 - **Main log** (`~/.cache/dotfiles/<command>.log`) — human-readable log with timestamps, always written at full verbose detail regardless of the console verbose flag
 - **Diagnostic log** (`~/.cache/dotfiles/<command>.diag.log`) — microsecond-precision chronological log of all events, including parallel execution
 
-Both paths are shown at the end of the installation summary.
+The paths are recorded in the main log summary. Routine successful console
+output does not repeat them; use `dotfiles logs` or the paths above when you
+need to inspect a previous run.
 
 ### When to use the diagnostic log
 
 The diagnostic log is useful for:
-- **Understanding parallel execution order** — events have true wall-clock timestamps and thread names, showing exactly which resources were processed concurrently
+- **Understanding parallel execution order** — events have true wall-clock timestamps and task context, showing exactly which resources were processed concurrently
 - **Identifying slow operations** — compare elapsed microsecond timestamps to find bottlenecks
 - **Debugging task dependency issues** — `TASK_WAIT`, `TASK_START`, and `TASK_DONE` events show the scheduling timeline
 
@@ -538,7 +540,7 @@ The diagnostic log is useful for:
 
 Each line follows the format:
 ```
-+<elapsed_us> <wall_utc> [<thread>] <TAG> <message>
+<seq> +<elapsed_us> <wall_utc> [<context>] <TAG> <message>
 ```
 
 Examples:

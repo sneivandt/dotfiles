@@ -60,15 +60,43 @@ fn execute_checked(mut cmd: Command, label: &str) -> Result<ExecResult> {
 
 /// Log captured child-process output at debug level.
 fn log_command_output(label: &str, result: &ExecResult) {
-    log_stream(label, "stdout", &result.stdout);
-    log_stream(label, "stderr", &result.stderr);
+    log_stream(label, "stdout", &result.stdout, result.success);
+    log_stream(label, "stderr", &result.stderr, result.success);
 }
 
 /// Log one captured output stream line-by-line.
-fn log_stream(label: &str, stream: &str, output: &str) {
+fn log_stream(label: &str, stream: &str, output: &str, success: bool) {
+    let summary = stream_summary(output);
+    if summary.is_empty() {
+        return;
+    }
+
+    if success {
+        tracing::debug!(
+            target: "dotfiles::exec",
+            "{label} {stream}: {summary} suppressed on success"
+        );
+        return;
+    }
+
+    tracing::debug!(target: "dotfiles::exec", "{label} {stream}: {summary}");
     for line in output.lines().filter(|line| !line.trim().is_empty()) {
         tracing::debug!(target: "dotfiles::exec", "{label} {stream}: {line}");
     }
+}
+
+/// Summarise a captured child-process output stream.
+fn stream_summary(output: &str) -> String {
+    let line_count = output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count();
+    if line_count == 0 {
+        return String::new();
+    }
+
+    let line_word = if line_count == 1 { "line" } else { "lines" };
+    format!("{line_count} {line_word}, {} bytes", output.len())
 }
 
 /// Format stdout/stderr for a failed command error message.
@@ -354,5 +382,15 @@ mod tests {
         #[cfg(not(windows))]
         let result = executor.run_in(&dir, "echo", &["hello"]).unwrap();
         assert!(result.success, "echo in temp dir should succeed");
+    }
+
+    #[test]
+    fn stream_summary_ignores_blank_output() {
+        assert_eq!(stream_summary("\n \n"), "");
+    }
+
+    #[test]
+    fn stream_summary_counts_non_empty_lines() {
+        assert_eq!(stream_summary("one\n\n two \n"), "2 lines, 11 bytes");
     }
 }

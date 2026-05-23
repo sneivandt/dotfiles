@@ -319,7 +319,6 @@ Example summary output:
 
   12 tasks: 2 ok, 10 dry-run
   completed in 0.8s
-  log: C:\Users\YourName\AppData\Local\dotfiles\install.log
 ```
 
 ## Troubleshooting

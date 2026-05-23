@@ -142,6 +142,8 @@ impl BufferedLog {
                 Ok(guard) => guard.clone(),
                 Err(_) => return,
             };
+            let span = tracing::info_span!("task", name = task_name);
+            let _enter = span.enter();
             if self.inner.is_verbose() {
                 for entry in &entries {
                     entry.replay();

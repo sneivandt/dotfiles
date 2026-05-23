@@ -44,7 +44,7 @@ use std::fmt;
 
 use anyhow::Result;
 
-use crate::logging::{DiagEvent, TaskStatus};
+use crate::logging::{DiagEvent, TaskStatus, diag_task_context};
 use crate::platform::Platform;
 
 /// Unique identifier for a task in the dependency graph.
@@ -296,6 +296,7 @@ fn record_policy_decision(ctx: &Context, name: &str, phase: TaskPhase, decision:
 pub fn execute(task: &dyn Task, ctx: &Context) {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
+    let _diag_context = diag_task_context(task.name());
     let phase = task.phase();
 
     if let Some(decision) = evaluate_policy(task, ctx) {

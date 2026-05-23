@@ -40,6 +40,37 @@ impl tracing::field::Visit for MessageExtractor {
     }
 }
 
+/// Task context stored on tracing spans created by `phases::execute`.
+#[derive(Debug, Default)]
+struct TaskSpanContext {
+    task_name: Option<String>,
+}
+
+/// Extracts the task name from a tracing span's `name` field.
+#[derive(Default)]
+struct SpanContextExtractor {
+    task_name: Option<String>,
+}
+
+impl tracing::field::Visit for SpanContextExtractor {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "name" {
+            let rendered = format!("{value:?}");
+            let value = rendered
+                .strip_prefix('"')
+                .and_then(|s| s.strip_suffix('"'))
+                .unwrap_or(&rendered);
+            self.task_name = Some(value.to_string());
+        }
+    }
+
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        if field.name() == "name" {
+            self.task_name = Some(value.to_string());
+        }
+    }
+}
+
 /// A [`tracing_subscriber::Layer`] that appends all events to the persistent
 /// log file with timestamps and ANSI codes stripped.
 ///
@@ -103,15 +134,30 @@ impl FileLayer {
     }
 }
 
-impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FileLayer {
-    fn on_event(
+impl<S> tracing_subscriber::Layer<S> for FileLayer
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+{
+    fn on_new_span(
         &self,
-        event: &tracing::Event<'_>,
-        _ctx: tracing_subscriber::layer::Context<'_, S>,
+        attrs: &tracing::span::Attributes<'_>,
+        id: &tracing::span::Id,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
+        let mut extractor = SpanContextExtractor::default();
+        attrs.record(&mut extractor);
+        if let Some(span) = ctx.span(id) {
+            span.extensions_mut().insert(TaskSpanContext {
+                task_name: extractor.task_name,
+            });
+        }
+    }
+
+    fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
         let metadata = event.metadata();
         let level = *metadata.level();
         let target = metadata.target();
+        let task_name = event_task_name(event, &ctx);
 
         let mut extractor = MessageExtractor::default();
         event.record(&mut extractor);
@@ -119,18 +165,20 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FileLayer {
         let msg = raw.trim_start();
         let ts = format_utc_time();
 
+        let level_label = level_label(level, target);
+        let context = task_name.map_or_else(String::new, |name| format!(" [{name}]"));
+        let prefix = format!("[{ts}] [{level_label}]{context}");
+
         let line = if msg.is_empty() {
-            format!("[{ts}]")
+            prefix
         } else {
             match (level, target) {
                 (tracing::Level::INFO, "dotfiles::task_result") => return,
-                (tracing::Level::INFO, "dotfiles::stage") => format!("[{ts}] ==> {msg}"),
+                (tracing::Level::INFO, "dotfiles::stage") => format!("{prefix} ==> {msg}"),
                 (tracing::Level::INFO, "dotfiles::phase") => {
-                    format!("[{ts}] :: {msg}")
+                    format!("{prefix} :: {msg}")
                 }
-                (tracing::Level::ERROR, _) => format!("[{ts}] [error] {msg}"),
-                (tracing::Level::WARN, _) => format!("[{ts}] [warn] {msg}"),
-                _ => format!("[{ts}] {msg}"),
+                _ => format!("{prefix} {msg}"),
             }
         };
 
@@ -138,6 +186,39 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FileLayer {
             drop(writeln!(f, "{line}"));
         }
     }
+}
+
+fn level_label(level: tracing::Level, target: &str) -> &'static str {
+    match (level, target) {
+        (tracing::Level::INFO, "dotfiles::stage") => "stage",
+        (tracing::Level::INFO, "dotfiles::phase") => "phase",
+        (tracing::Level::INFO, "dotfiles::dry_run") => "dry-run",
+        (tracing::Level::ERROR, _) => "error",
+        (tracing::Level::WARN, _) => "warn",
+        (tracing::Level::DEBUG, "dotfiles::exec") => "command",
+        (tracing::Level::DEBUG, _) => "debug",
+        (tracing::Level::INFO, _) => "info",
+        (tracing::Level::TRACE, _) => "trace",
+    }
+}
+
+fn event_task_name<S>(
+    event: &tracing::Event<'_>,
+    ctx: &tracing_subscriber::layer::Context<'_, S>,
+) -> Option<String>
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+{
+    let scope = ctx.event_scope(event)?;
+    let mut task_name = None;
+    for span in scope.from_root() {
+        if span.metadata().name() == "task"
+            && let Some(context) = span.extensions().get::<TaskSpanContext>()
+        {
+            task_name.clone_from(&context.task_name);
+        }
+    }
+    task_name
 }
 
 /// A [`tracing_subscriber::fmt::FormatEvent`] that emits dotfiles-style
@@ -172,6 +253,7 @@ where
             tracing::Level::INFO if target == "dotfiles::task_result" => {
                 writeln!(writer, "{msg}")
             }
+            tracing::Level::INFO if target == "dotfiles::file_only" => Ok(()),
             tracing::Level::INFO if target == "dotfiles::stage" => {
                 if VERBOSE.load(Ordering::Relaxed) {
                     writeln!(writer, "\x1b[1m{msg}\x1b[0m")
@@ -343,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn file_layer_formats_debug_without_tag() {
+    fn file_layer_formats_debug_with_level_tag() {
         let (path, _tmp, _guard) = isolated_file_layer();
         tracing::debug!("extra detail");
         let content = fs::read_to_string(&path).unwrap();
@@ -352,8 +434,8 @@ mod tests {
             .find(|l| l.contains("extra detail"))
             .unwrap();
         assert!(
-            !line.contains("[debug]"),
-            "debug should not have [debug] tag: {line}"
+            line.contains("[debug]"),
+            "debug should have [debug] tag: {line}"
         );
     }
 

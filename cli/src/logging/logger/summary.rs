@@ -41,42 +41,45 @@ impl Logger {
             }
         }
 
-        // In verbose mode, show the full per-task breakdown.
+        // Show the full per-task breakdown on verbose consoles and always keep
+        // it in the persistent log file via DEBUG records.
         if self.verbose {
             println!();
             self.phase("Summary");
+        } else {
+            self.debug("");
+            self.debug("Summary");
+        }
 
-            let phases = [
-                TaskPhase::Bootstrap,
-                TaskPhase::Repository,
-                TaskPhase::Apply,
-            ];
-            for phase in &phases {
-                let phase_tasks: Vec<&TaskEntry> =
-                    tasks.iter().filter(|t| t.phase == *phase).collect();
-                let has_visible = phase_tasks
-                    .iter()
-                    .any(|t| t.status != TaskStatus::NotApplicable);
-                if !has_visible {
-                    continue;
-                }
-                self.info(&format!("\x1b[1m{phase}\x1b[0m"));
-                for task in &phase_tasks {
-                    let (icon, color) = match task.status {
-                        TaskStatus::NotApplicable => continue,
-                        TaskStatus::Ok => ("\u{2713}", "\x1b[32m"),
-                        TaskStatus::Skipped => ("\u{25cb}", "\x1b[33m"),
-                        TaskStatus::DryRun => ("~", "\x1b[35m"),
-                        TaskStatus::Failed => ("\u{2717}", "\x1b[31m"),
-                    };
+        let phases = [
+            TaskPhase::Bootstrap,
+            TaskPhase::Repository,
+            TaskPhase::Apply,
+        ];
+        for phase in &phases {
+            let phase_tasks: Vec<&TaskEntry> = tasks.iter().filter(|t| t.phase == *phase).collect();
+            let has_visible = phase_tasks
+                .iter()
+                .any(|t| t.status != TaskStatus::NotApplicable);
+            if !has_visible {
+                continue;
+            }
+            self.summary_detail(&format!("\x1b[1m{phase}\x1b[0m"));
+            for task in &phase_tasks {
+                let (icon, color) = match task.status {
+                    TaskStatus::NotApplicable => continue,
+                    TaskStatus::Ok => ("\u{2713}", "\x1b[32m"),
+                    TaskStatus::Skipped => ("\u{25cb}", "\x1b[33m"),
+                    TaskStatus::DryRun => ("~", "\x1b[35m"),
+                    TaskStatus::Failed => ("\u{2717}", "\x1b[31m"),
+                };
 
-                    let suffix = task
-                        .message
-                        .as_ref()
-                        .map_or_else(String::new, |msg| format!(" ({msg})"));
+                let suffix = task
+                    .message
+                    .as_ref()
+                    .map_or_else(String::new, |msg| format!(" ({msg})"));
 
-                    self.info(&format!("{color}  {icon} {}{suffix}\x1b[0m", task.name));
-                }
+                self.summary_detail(&format!("{color}  {icon} {}{suffix}\x1b[0m", task.name));
             }
         }
 
@@ -108,6 +111,24 @@ impl Logger {
         ));
 
         self.always(&format!("  \x1b[2mcompleted in {elapsed_str}\x1b[0m"));
+        if let Some(path) = self.log_path() {
+            Self::file_only(&format!("log: {}", path.display()));
+        }
+        if let Some(diagnostic) = self.diagnostic() {
+            Self::file_only(&format!("diagnostic log: {}", diagnostic.path().display()));
+        }
+    }
+
+    fn summary_detail(&self, msg: &str) {
+        if self.verbose {
+            self.info(msg);
+        } else {
+            self.debug(msg);
+        }
+    }
+
+    fn file_only(msg: &str) {
+        tracing::info!(target: "dotfiles::file_only", "{msg}");
     }
 }
 

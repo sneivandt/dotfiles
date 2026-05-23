@@ -75,7 +75,8 @@ e.g. `install.log`, `uninstall.log`, `test.log`) with timestamps and ANSI codes
 stripped. On Windows, when `XDG_CACHE_HOME` is not set, the path falls back to
 `%USERPROFILE%\.cache\dotfiles\<command>.log`. The log file is always written
 in verbose mode — all messages appear regardless of the console verbose flag.
-The log file path is shown in the summary.
+The main and diagnostic log paths are recorded in the log file summary but are
+not printed to the console during routine successful runs.
 
 | Method | Console (verbose) | Console (non-verbose) | Log file |
 |--------|-------------------|----------------------|----------|
@@ -110,10 +111,12 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 }
 ```
 
-`log.print_summary()` shows totals at end of run. In verbose mode the summary
-includes a full per-task breakdown grouped by phase; in non-verbose mode only
-the totals line is shown (individual results were already emitted inline as
-tasks completed). Don't call `record_task` inside tasks.
+`log.print_summary()` shows totals at end of run. In verbose mode the console
+summary includes a full per-task breakdown grouped by phase; in non-verbose mode
+the console shows only totals (individual results were already emitted inline as
+tasks completed). The persistent log file always receives the full per-task
+breakdown and the paths to the main and diagnostic logs. Don't call
+`record_task` inside tasks.
 
 ## Pattern in Task::run()
 
@@ -150,9 +153,10 @@ When `verbose=true`:
 - The progress line shows individual task names
 
 The **log file** always receives full output regardless of the verbose setting.
-The **`task_result`** target is the exception: it is console-only and never
-written to the log file (since the `stage` headers and detail lines already
-provide this information in the file).
+The **`task_result`** target is console-only and never written to the log file
+(since the `stage` headers and detail lines already provide this information in
+the file). The **`file_only`** target is the inverse: written to the log file but
+suppressed on the console.
 
 ## Rules
 
@@ -192,7 +196,7 @@ that captures every event **immediately** with microsecond wall-clock timestamps
 including real-time interleaving of parallel tasks (unlike the main log, which
 replays buffered output per-task).
 
-Each line: `+<elapsed_us> <wall_utc_us> [<thread>] <TAG>  <message>`
+Each line: `<seq> +<elapsed_us> <wall_utc_us> [<context>] <TAG>  <message>`
 
 Key tags: `STAGE`, `INFO`, `DEBUG`, `WARN`, `ERROR`, `DRYRUN`, `TASK_WAIT`,
 `TASK_START`, `TASK_DONE`, `TASK_SKIP`, `RES_CHECK`, `RES_APPLY`,

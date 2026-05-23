@@ -330,7 +330,7 @@ All operations are logged to persistent log files. Use `dotfiles logs` (or
 **Log contents:**
 - Installation timestamp
 - Selected profile
-- All operations performed
+- Structured level and task context for all operations performed
 - Full verbose-level detail (always, regardless of console verbose flag)
 - Summary statistics
 - Error messages and warnings
@@ -343,10 +343,11 @@ A **diagnostic log** is also written alongside the main log:
 **Windows:**
 - Location: `%USERPROFILE%\.cache\dotfiles\install.diag.log`
 
-The diagnostic log captures every event with microsecond-precision timestamps
-and thread identification, preserving the true chronological order of parallel
-execution.  See [Troubleshooting](TROUBLESHOOTING.md#using-diagnostic-logs) for
-details on reading the diagnostic log.
+The diagnostic log captures every event with sequence numbers,
+microsecond-precision timestamps, and task context, preserving the true
+chronological order of parallel execution. See
+[Troubleshooting](TROUBLESHOOTING.md#using-diagnostic-logs) for details on
+reading the diagnostic log.
 
 If a command fails, the CLI may print `Run 'dotfiles logs' for details.` after
 the actionable error so you can inspect the full log without routine successful

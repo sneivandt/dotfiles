@@ -97,11 +97,11 @@ if (Get-Command "gh" -ErrorAction SilentlyContinue)
     {
         if ($args.Count -eq 0)
         {
-            gh copilot
+            gh copilot -- --yolo
         }
         else
         {
-            gh copilot -p ($args -join ' ')
+            gh copilot -- --yolo -p ($args -join ' ')
         }
     }
 

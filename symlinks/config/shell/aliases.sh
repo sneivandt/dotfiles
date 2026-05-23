@@ -73,9 +73,9 @@ if command -v gh >/dev/null 2>&1; then
   # Chat mode: interactive if no args, prompt mode if args provided
   ai() {
     if [ $# -eq 0 ]; then
-      gh copilot
+      gh copilot -- --yolo
     else
-      gh copilot -p "$*"
+      gh copilot -- --yolo -p "$*"
     fi
   }
   # Suggest mode: interactive

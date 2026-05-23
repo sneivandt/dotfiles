@@ -44,6 +44,7 @@ cd dotfiles
 dotfiles.sh [--build] install   [-p PROFILE] [-d] [-v]
 dotfiles.sh [--build] uninstall [-p PROFILE] [-d] [-v]
 dotfiles.sh [--build] test      [-p PROFILE] [-v]
+dotfiles.sh [--build] logs      [-v]
 dotfiles.sh [--build] version
 ```
 
@@ -52,6 +53,7 @@ dotfiles.sh [--build] version
 - **`install`** - Install dotfiles and configure system
 - **`uninstall`** - Remove installed dotfiles (managed symlinks)
 - **`test`** - Run configuration validation
+- **`logs`** - Print the most recent dotfiles operation log
 - **`version`** - Print version information
 - **`--build`** - Build and run from source (requires `cargo`)
 - **`-p, --profile PROFILE`** - Use specific profile (base, desktop)
@@ -66,6 +68,7 @@ dotfiles.sh [--build] version
 .\dotfiles.ps1 [--build] install -p desktop [-d] [-v]
 .\dotfiles.ps1 [--build] uninstall [-d]
 .\dotfiles.ps1 [--build] test
+.\dotfiles.ps1 [--build] logs [-v]
 .\dotfiles.ps1 [--build] version
 ```
 
@@ -272,7 +275,6 @@ task completes, followed by a totals line:
 
   15 tasks: 2 ok, 1 skipped, 12 dry-run (6 not applicable)
   completed in 1.3s
-  log: /home/user/.cache/dotfiles/install.log
 ```
 
 ## Parallel Execution
@@ -313,14 +315,16 @@ Combine with `-v` for full detail on every resource:
 
 ## Logging
 
-All operations are logged to persistent log files:
+All operations are logged to persistent log files. Use `dotfiles logs` (or
+`./dotfiles.sh logs`) to print the most recent operation log. Use
+`dotfiles logs -v` to print the diagnostic log when one is available.
 
 **Linux:**
 - Location: `${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/install.log`
 - Includes: Timestamps, operations, full detail, summary
 
 **Windows:**
-- Location: `%LOCALAPPDATA%\dotfiles\install.log`
+- Location: `%USERPROFILE%\.cache\dotfiles\install.log`
 - Includes: Timestamps, operations, full detail, summary
 
 **Log contents:**
@@ -337,12 +341,16 @@ A **diagnostic log** is also written alongside the main log:
 - Location: `${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/install.diag.log`
 
 **Windows:**
-- Location: `%LOCALAPPDATA%\dotfiles\install.diag.log`
+- Location: `%USERPROFILE%\.cache\dotfiles\install.diag.log`
 
 The diagnostic log captures every event with microsecond-precision timestamps
 and thread identification, preserving the true chronological order of parallel
 execution.  See [Troubleshooting](TROUBLESHOOTING.md#using-diagnostic-logs) for
 details on reading the diagnostic log.
+
+If a command fails, the CLI may print `Run 'dotfiles logs' for details.` after
+the actionable error so you can inspect the full log without routine successful
+runs repeating the log path.
 
 ## Installation Summary
 
@@ -371,7 +379,6 @@ appended:
 
   15 tasks: 2 ok, 1 skipped, 12 dry-run (6 not applicable)
   completed in 1.3s
-  log: /home/user/.cache/dotfiles/install.log
 ```
 
 **Status icons:**

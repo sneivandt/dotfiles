@@ -46,5 +46,4 @@
   <text x="34" y="492" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>
   <text x="34" y="510" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">  10 tasks: </tspan><tspan fill="#86efac">4 ok</tspan><tspan fill="#e2e8f0">, </tspan><tspan fill="#d8b4fe">6 dry-run</tspan><tspan fill="#64748b"> (6 not applicable)</tspan></text>
   <text x="34" y="528" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#64748b">  completed in 0.4s</tspan></text>
-  <text x="34" y="546" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#64748b">  log: ~/.cache/dotfiles/install.log</tspan></text>
 </svg>

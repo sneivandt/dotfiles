@@ -108,9 +108,6 @@ impl Logger {
         ));
 
         self.always(&format!("  \x1b[2mcompleted in {elapsed_str}\x1b[0m"));
-        if let Some(path) = &self.log_file {
-            self.always(&format!("  \x1b[2mlog: {}\x1b[0m", path.display()));
-        }
     }
 }
 

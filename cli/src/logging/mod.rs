@@ -12,6 +12,7 @@ pub use diagnostic::{DiagEvent, DiagnosticLog, diag_thread_name, set_diag_thread
 pub use logger::Logger;
 pub use subscriber::init_subscriber;
 pub use types::{Log, Output, TaskEntry, TaskRecorder, TaskStatus};
+pub(crate) use utils::dotfiles_cache_dir_readonly;
 
 /// Guard that keeps a test tracing dispatcher installed while holding the
 /// process-wide test dispatch lock.

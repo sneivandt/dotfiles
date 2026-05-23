@@ -52,7 +52,9 @@ Available variants: `CommandFailed`, `PermissionDenied`, `ConflictingState`, `No
 
 ### Task Failure Recording
 
-Task failures don't abort the run. `tasks::execute()` catches errors and records `TaskStatus::Failed`; remaining tasks still execute. The summary reports all failures at the end.
+Task failures don't abort the run. `phases::execute()` catches errors and
+records `TaskStatus::Failed`; remaining tasks still execute. The summary
+reports all failures at the end.
 
 ### Intentionally Ignored Errors
 
@@ -137,7 +139,7 @@ Both verify checksums after downloading binaries and fall back to existing binar
 2. **Use `process_resources()` / `process_resources_with_provider()`** for resource-based tasks — they enforce idempotency and dry-run automatically
 3. **Check existing state** before mutations (idempotency) in custom tasks
 4. **Check `ctx.dry_run`** before any side effect in custom tasks
-5. **Use `.ok()` with a comment** for intentionally ignored errors
+5. **Do not use `.ok()` to ignore errors**; handle them explicitly
 6. **Use `if let Err(e)` with debug logging** for errors worth noting
 7. **Return `TaskResult` variants** correctly: `Skipped`, `DryRun`, `Ok`
 8. **Don't abort on task failure** — record and continue

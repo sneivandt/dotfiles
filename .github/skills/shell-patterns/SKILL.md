@@ -25,13 +25,13 @@ export DOTFILES_ROOT
 ### Two Modes
 
 1. **Production mode** (default): Downloads latest binary from GitHub Releases if missing, verifies checksum, then lets the binary self-update
-2. **Build mode** (`--build`): Builds from source with `cargo build --release`, runs directly
+2. **Build mode** (`--build`): Builds from source with `cargo build --profile dev-opt`, runs directly
 
 ```sh
 if [ "$BUILD_MODE" = true ]; then
   cd "$DOTFILES_ROOT/cli"
-  cargo build --release --quiet
-  exec "$DOTFILES_ROOT/cli/target/release/dotfiles" --root "$DOTFILES_ROOT" $ARGS
+  cargo build --profile dev-opt
+  exec "$DOTFILES_ROOT/cli/target/dev-opt/dotfiles" "$@"
 fi
 ```
 

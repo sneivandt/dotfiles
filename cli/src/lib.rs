@@ -11,7 +11,7 @@
 //! - **[`resources`]** — idempotent `check + apply` primitives (symlinks, packages, …)
 //! - **[`engine`]** — execution engine: context, dependency graph, and resource processing
 //! - **[`phases`]** — named, dependency-ordered units of work wired to resources
-//! - **[`commands`]** — top-level subcommand orchestration (`install`, `uninstall`, `test`)
+//! - **[`commands`]** — top-level subcommand orchestration (`install`, `uninstall`, `test`, `logs`)
 pub mod cli;
 pub mod commands;
 pub mod config;

@@ -57,7 +57,16 @@ pub(super) fn terminal_columns_with(columns_env: Option<String>) -> usize {
 
 /// Return the `$XDG_CACHE_HOME/dotfiles/` directory, creating it if needed.
 pub(super) fn dotfiles_cache_dir() -> Option<PathBuf> {
-    let cache_dir = std::env::var("XDG_CACHE_HOME").map_or_else(
+    dotfiles_cache_subdir(&cache_base_dir())
+}
+
+/// Return the `$XDG_CACHE_HOME/dotfiles/` directory without creating it.
+pub(crate) fn dotfiles_cache_dir_readonly() -> PathBuf {
+    cache_base_dir().join("dotfiles")
+}
+
+fn cache_base_dir() -> PathBuf {
+    std::env::var("XDG_CACHE_HOME").map_or_else(
         |_| {
             std::env::var("HOME")
                 .or_else(|_| std::env::var("USERPROFILE"))
@@ -65,8 +74,7 @@ pub(super) fn dotfiles_cache_dir() -> Option<PathBuf> {
                 .join(".cache")
         },
         PathBuf::from,
-    );
-    dotfiles_cache_subdir(&cache_dir)
+    )
 }
 
 /// Return `<base>/dotfiles/`, creating it if needed.

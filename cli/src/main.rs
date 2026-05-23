@@ -1,4 +1,5 @@
 //! Dotfiles management engine binary entry point.
+use std::io::Write as _;
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
@@ -16,10 +17,23 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
+    // Log viewing is read-only: do not initialize the tracing subscriber or
+    // create a new log file just to display existing logs.
+    if let cli::Command::Logs(_) = &args.command {
+        return match commands::logs::run(args.verbose) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                drop(writeln!(std::io::stderr().lock(), "{e:#}"));
+                ExitCode::FAILURE
+            }
+        };
+    }
+
     let command_name = match &args.command {
         cli::Command::Install(_) => "install",
         cli::Command::Uninstall(_) => "uninstall",
         cli::Command::Test(_) => "test",
+        cli::Command::Logs(_) => "logs",
         cli::Command::Version | cli::Command::Completions(_) => "version",
     };
     logging::init_subscriber(args.verbose, command_name);
@@ -67,6 +81,7 @@ fn main() -> ExitCode {
             commands::uninstall::run(&args.global, &opts, &log, &token)
         }
         cli::Command::Test(opts) => commands::test::run(&args.global, &opts, &log, &token),
+        cli::Command::Logs(_) => return ExitCode::SUCCESS,
         cli::Command::Version => {
             commands::version::run();
             return ExitCode::SUCCESS;
@@ -78,6 +93,7 @@ fn main() -> ExitCode {
 
     if let Err(e) = result {
         log.error(&format!("{e:#}"));
+        log.error("Run 'dotfiles logs' for details.");
         dotfiles_cli::elevation::wait_if_elevated();
         return ExitCode::FAILURE;
     }

@@ -71,6 +71,8 @@ cd dotfiles
 ./dotfiles.sh install -v           # verbose output
 ./dotfiles.sh uninstall            # remove symlinks
 ./dotfiles.sh test                 # validate configuration
+./dotfiles.sh logs                 # view the most recent operation log
+./dotfiles.sh logs -v              # view the diagnostic log when available
 ./dotfiles.sh version              # print binary version
 ./dotfiles.sh --build install -d   # build from source and dry-run
 ```
@@ -79,6 +81,7 @@ cd dotfiles
 ```powershell
 .\dotfiles.ps1 install -p desktop
 .\dotfiles.ps1 install -d
+.\dotfiles.ps1 logs
 ```
 
 See the [Usage Guide](docs/USAGE.md) for the full reference.

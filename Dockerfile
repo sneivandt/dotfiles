@@ -24,6 +24,13 @@ COPY cli/ cli/
 COPY .git .git
 RUN cargo build --release --manifest-path cli/Cargo.toml \
     && strip cli/target/release/dotfiles
+RUN mkdir -p /build/source \
+    && git archive --format=tar HEAD | tar -x -C /build/source \
+    && (git config --unset-all http.https://github.com/.extraheader || true) \
+    && (git remote remove origin || true) \
+    && git remote add origin https://github.com/sneivandt/dotfiles.git \
+    && git checkout -B main HEAD \
+    && (git branch --set-upstream-to=origin/main main || true)
 
 FROM ubuntu:24.04
 
@@ -63,10 +70,10 @@ RUN useradd -m -s /bin/zsh -U sneivandt
 WORKDIR /home/sneivandt
 ENV SHELL=/bin/zsh
 
-# Install dotfiles
-COPY --chown=sneivandt:sneivandt conf /home/sneivandt/dotfiles/conf
-COPY --chown=sneivandt:sneivandt symlinks /home/sneivandt/dotfiles/symlinks
-COPY --chown=sneivandt:sneivandt hooks /home/sneivandt/dotfiles/hooks
+# Install a self-managing dotfiles checkout. Keep sanitized Git metadata so
+# update and sparse-checkout tasks can operate inside the image.
+COPY --from=builder --chown=sneivandt:sneivandt /build/source/ /home/sneivandt/dotfiles/
+COPY --from=builder --chown=sneivandt:sneivandt /build/.git /home/sneivandt/dotfiles/.git
 COPY --from=builder /build/cli/target/release/dotfiles /home/sneivandt/dotfiles/bin/dotfiles
 USER sneivandt
 RUN /home/sneivandt/dotfiles/bin/dotfiles --root /home/sneivandt/dotfiles -p base install

@@ -110,7 +110,7 @@
   contributors  = shortlog --summary --numbered
 
   # Delete merged branches
-  delete-merged = !git branch --merged | grep -E -v '(^\\*|master|main|dev)' | xargs -r -n 1 git branch -d
+  delete-merged = "!f() { current=$(git branch --show-current); git for-each-ref --format='%(refname:short)' refs/heads --merged HEAD | while IFS= read -r branch; do [ \"$branch\" = \"$current\" ] && continue; case \"$branch\" in main|master|dev|develop) continue ;; esac; git branch -d -- \"$branch\"; done; }; f"
 
   # Who am I?
   whoami        = !git config user.email && git config user.name

@@ -3,6 +3,7 @@ pub mod category_matcher {
     //! Re-export of [`super::helpers::category_matcher`].
     pub use super::helpers::category_matcher::{Category, matches};
 }
+pub(crate) mod apm;
 pub mod chmod;
 pub mod git_config;
 pub(crate) mod helpers;
@@ -282,6 +283,9 @@ impl<'a> ConfigValidator<'a> {
 
     fn validate_all(self) -> Self {
         self.validate_with(|config, _platform| symlinks::validate(&config.symlinks, &config.root))
+            .validate_with(|config, _platform| {
+                apm::validate(&config.root, config.overlay.as_deref())
+            })
             .validate_with(|config, platform| packages::validate(&config.packages, platform))
             .validate_with(|config, platform| registry::validate(&config.registry, platform))
             .validate_with(|config, platform| chmod::validate(&config.chmod, platform))

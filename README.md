@@ -1,4 +1,4 @@
-# Dotfiles ✨
+# Dotfiles
 
 [![Release](https://github.com/sneivandt/dotfiles/actions/workflows/release.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/release.yml)
 [![Publish Docker](https://github.com/sneivandt/dotfiles/actions/workflows/docker.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/docker.yml)

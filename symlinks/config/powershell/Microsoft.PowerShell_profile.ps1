@@ -115,17 +115,18 @@ if (Get-Command "gh" -ErrorAction SilentlyContinue)
 }
 
 # Ensure local bin directory is in PATH
-$localBinDir = Join-Path $HOME ".local\bin"
+$pathSeparator = [System.IO.Path]::PathSeparator
+$localBinDir = Join-Path (Join-Path $HOME ".local") "bin"
 if ((Test-Path $localBinDir) -and ($env:Path -notlike "*$localBinDir*"))
 {
-    $env:Path += ";$localBinDir"
+    $env:Path += "$pathSeparator$localBinDir"
 }
 
 # Ensure Cargo (Rust) bin directory is in PATH
-$cargoDir = Join-Path $HOME ".cargo\bin"
+$cargoDir = Join-Path (Join-Path $HOME ".cargo") "bin"
 if ((Test-Path $cargoDir) -and ($env:Path -notlike "*$cargoDir*"))
 {
-    $env:Path += ";$cargoDir"
+    $env:Path += "$pathSeparator$cargoDir"
 }
 
 # Load additional profile scripts from profile.d directory

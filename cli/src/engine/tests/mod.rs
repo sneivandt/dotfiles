@@ -1,5 +1,6 @@
 mod apply_tests;
 mod orchestrate;
+mod resource_contracts;
 mod stats;
 
 use crate::engine::mode::ProcessOpts;

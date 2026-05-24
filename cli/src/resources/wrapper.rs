@@ -21,7 +21,7 @@ impl WrapperType {
     /// Detect the wrapper type from the `DOTFILES_WRAPPER` environment
     /// variable, falling back to platform heuristics.
     #[must_use]
-    pub fn detect(platform: &crate::platform::Platform) -> Self {
+    pub fn detect(platform: crate::platform::Platform) -> Self {
         match std::env::var("DOTFILES_WRAPPER").as_deref() {
             Ok("sh") => Self::Sh,
             Ok("pwsh") => Self::Pwsh,

@@ -63,7 +63,7 @@ pub trait Resource {
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::resources::ResourceState;
+/// use dotfiles_cli::testing::resources::ResourceState;
 ///
 /// let missing = ResourceState::Missing;
 /// let correct = ResourceState::Correct;
@@ -122,7 +122,7 @@ impl std::fmt::Display for ResourceState {
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::resources::ResourceChange;
+/// use dotfiles_cli::testing::resources::ResourceChange;
 ///
 /// let applied = ResourceChange::Applied;
 /// let noop = ResourceChange::AlreadyCorrect;

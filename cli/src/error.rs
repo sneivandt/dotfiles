@@ -19,7 +19,7 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::error::ResourceError;
+/// use dotfiles_cli::testing::error::ResourceError;
 ///
 /// let err = ResourceError::command_failed("pacman", "exit code 1");
 /// assert!(err.to_string().contains("pacman"));

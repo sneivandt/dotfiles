@@ -69,7 +69,7 @@ pub trait Output: Send + Sync {
     /// Default implementation formats icon + name + optional detail and
     /// routes through [`always`](Self::always).  `NotApplicable` tasks are
     /// silently ignored.
-    fn emit_task_result(&self, name: &str, status: &TaskStatus, message: Option<&str>) {
+    fn emit_task_result(&self, name: &str, status: TaskStatus, message: Option<&str>) {
         let (icon, color) = match status {
             TaskStatus::Ok => ("\u{2713}", "\x1b[32m"),
             TaskStatus::Skipped => ("\u{25cb}", "\x1b[33m"),

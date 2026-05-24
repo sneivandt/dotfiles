@@ -20,6 +20,7 @@ use dotfiles_cli::config::Config;
 use dotfiles_cli::config::profiles;
 use dotfiles_cli::logging::Logger;
 use dotfiles_cli::platform::{Os, Platform};
+use dotfiles_cli::testing as dotfiles_cli;
 use std::sync::Arc;
 
 // ---------------------------------------------------------------------------

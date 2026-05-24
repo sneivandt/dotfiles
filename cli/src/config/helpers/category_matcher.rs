@@ -31,7 +31,7 @@ impl Category {
     /// # Examples
     ///
     /// ```
-    /// use dotfiles_cli::config::category_matcher::Category;
+    /// use dotfiles_cli::testing::config::category_matcher::Category;
     ///
     /// assert_eq!(Category::from_tag("arch"), Category::Arch);
     /// assert_eq!(Category::from_tag("DESKTOP"), Category::Desktop);
@@ -60,7 +60,7 @@ impl Category {
     /// # Examples
     ///
     /// ```
-    /// use dotfiles_cli::config::category_matcher::Category;
+    /// use dotfiles_cli::testing::config::category_matcher::Category;
     ///
     /// assert_eq!(Category::Arch.as_str(), "arch");
     /// assert_eq!(Category::Other("custom".to_string()).as_str(), "custom");
@@ -117,7 +117,7 @@ impl Ord for Category {
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::config::category_matcher::{Category, matches};
+/// use dotfiles_cli::testing::config::category_matcher::{Category, matches};
 ///
 /// let section = vec![Category::Arch, Category::Desktop];
 /// let active_both = vec![Category::Arch, Category::Desktop];

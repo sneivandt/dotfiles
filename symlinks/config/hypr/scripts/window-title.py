@@ -12,7 +12,7 @@ def emit() -> None:
     try:
         out = subprocess.check_output(["hyprctl", "activewindow", "-j"], text=True)
         title = json.loads(out).get("title", "") or ""
-    except (subprocess.CalledProcessError, json.JSONDecodeError):
+    except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
         title = ""
 
     if not title:
@@ -34,18 +34,21 @@ def main() -> int:
     triggers = ("activewindow>>", "closewindow>>", "openwindow>>",
                 "workspace>>", "focusedmon>>")
 
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-        sock.connect(sock_path)
-        buf = b""
-        while True:
-            data = sock.recv(4096)
-            if not data:
-                break
-            buf += data
-            while b"\n" in buf:
-                line, buf = buf.split(b"\n", 1)
-                if line.decode("utf-8", "replace").startswith(triggers):
-                    emit()
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.connect(sock_path)
+            buf = b""
+            while True:
+                data = sock.recv(4096)
+                if not data:
+                    break
+                buf += data
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    if line.decode("utf-8", "replace").startswith(triggers):
+                        emit()
+    except OSError:
+        return 0
     return 0
 
 

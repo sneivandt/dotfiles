@@ -18,6 +18,7 @@
 
     "custom/window": {
         "exec": "~/.config/hypr/scripts/window-title.py",
+        "exec-if": "command -v hyprctl >/dev/null 2>&1 && test -x ~/.config/hypr/scripts/window-title.py",
         "return-type": "json",
         "tooltip": false
     },
@@ -36,12 +37,14 @@
 
     "custom/playing": {
         "exec": "~/.config/hypr/scripts/playing.sh",
+        "exec-if": "command -v playerctl >/dev/null 2>&1 && test -x ~/.config/hypr/scripts/playing.sh",
         "interval": 5,
         "format": "\uf001 {}"
     },
 
     "custom/stocks": {
         "exec": "~/.config/hypr/scripts/stocks.sh",
+        "exec-if": "command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 && test -x ~/.config/hypr/scripts/stocks.sh",
         "interval": 300,
         "return-type": "json",
         "tooltip": false

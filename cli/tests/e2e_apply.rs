@@ -30,6 +30,7 @@ mod unix_e2e {
     use dotfiles_cli::phases::apply::chmod::ApplyFilePermissions;
     use dotfiles_cli::phases::apply::symlinks::InstallSymlinks;
     use dotfiles_cli::phases::repository::hooks::InstallGitHooks;
+    use dotfiles_cli::testing as dotfiles_cli;
 
     // -----------------------------------------------------------------------
     // Helpers

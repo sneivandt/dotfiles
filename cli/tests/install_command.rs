@@ -13,6 +13,7 @@
 
 mod common;
 
+use dotfiles_cli::testing as dotfiles_cli;
 use std::collections::HashSet;
 
 use dotfiles_cli::phases;

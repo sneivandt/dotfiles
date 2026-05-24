@@ -740,7 +740,7 @@ pub fn run_tasks_to_completion<'a>(
                     );
                     log.emit_task_result(
                         task.name(),
-                        &crate::logging::TaskStatus::Skipped,
+                        crate::logging::TaskStatus::Skipped,
                         Some(reason),
                     );
                     false

@@ -143,7 +143,7 @@ pub(crate) fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<L
                     );
                     log.record_task(task.name(), task.phase(), TaskStatus::Skipped, Some(reason));
                     if !log.is_verbose() {
-                        log.emit_task_result(task.name(), &TaskStatus::Skipped, Some(reason));
+                        log.emit_task_result(task.name(), TaskStatus::Skipped, Some(reason));
                     }
                     // my_senders is dropped here without sending, propagating
                     // RecvError to any tasks that depend on this one.

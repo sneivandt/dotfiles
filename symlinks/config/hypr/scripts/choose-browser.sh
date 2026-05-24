@@ -10,7 +10,14 @@ do
     then
       exec "$browser"
     else
-      case $(echo "$@" | tr '[:upper:]' '[:lower:]') in
+      if [ "$#" -eq 1 ]; then
+        target=$1
+      else
+        target=$*
+      fi
+      normalized=$(printf '%s' "$target" | tr '[:upper:]' '[:lower:]')
+
+      case "$normalized" in
         "prime video")
           exec "$browser" --app="https://amazon.com/video"
           ;;
@@ -26,11 +33,23 @@ do
         "youtube")
           exec "$browser" --app="https://youtube.com/"
           ;;
-        "https://"*)
-          exec "$browser" --app="$*"
+      esac
+
+      case "$target" in
+        http://*|https://*)
+          exec "$browser" --app="$target"
+          ;;
+        *:*)
+          exec "$browser" "$target"
+          ;;
+        /*|./*|../*|~/*)
+          exec "$browser" "$target"
+          ;;
+        *.*)
+          exec "$browser" --app="https://$target"
           ;;
         *)
-          exec "$browser" --app="https://$*"
+          exec "$browser" "$target"
           ;;
       esac
     fi

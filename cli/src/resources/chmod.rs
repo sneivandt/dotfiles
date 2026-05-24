@@ -18,7 +18,7 @@ const MODE_BITS_MASK: u32 = 0o7777;
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::resources::chmod::OctalMode;
+/// use dotfiles_cli::testing::resources::chmod::OctalMode;
 ///
 /// let mode = OctalMode::parse("755").unwrap();
 /// assert_eq!(mode.as_u32(), 0o755);

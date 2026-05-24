@@ -23,6 +23,7 @@ use dotfiles_cli::phases::apply::symlinks::InstallSymlinks;
 use dotfiles_cli::phases::apply::symlinks::UninstallSymlinks;
 use dotfiles_cli::phases::repository::hooks::{InstallGitHooks, UninstallGitHooks};
 use dotfiles_cli::phases::{Task, TaskResult};
+use dotfiles_cli::testing as dotfiles_cli;
 
 // ===========================================================================
 // Symlink task execution

@@ -11,7 +11,7 @@ use super::context::Context;
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::phases::TaskResult;
+/// use dotfiles_cli::testing::phases::TaskResult;
 ///
 /// let ok = TaskResult::Ok;
 /// let na = TaskResult::NotApplicable("nothing configured".into());
@@ -58,7 +58,7 @@ pub enum TaskResult {
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::phases::TaskStats;
+/// use dotfiles_cli::testing::phases::TaskStats;
 ///
 /// let mut stats = TaskStats::new();
 /// stats.changed = 3;
@@ -71,7 +71,7 @@ pub enum TaskResult {
 /// When items are skipped, the summary includes the count:
 ///
 /// ```
-/// use dotfiles_cli::phases::TaskStats;
+/// use dotfiles_cli::testing::phases::TaskStats;
 ///
 /// let stats = TaskStats { changed: 1, already_ok: 2, skipped: 3 };
 /// assert_eq!(stats.summary(false), "1 changed, 2 already ok, 3 skipped");
@@ -92,7 +92,7 @@ impl TaskStats {
     /// # Examples
     ///
     /// ```
-    /// use dotfiles_cli::phases::TaskStats;
+    /// use dotfiles_cli::testing::phases::TaskStats;
     ///
     /// let stats = TaskStats::new();
     /// assert_eq!(stats.changed, 0);
@@ -109,7 +109,7 @@ impl TaskStats {
     /// # Examples
     ///
     /// ```
-    /// use dotfiles_cli::phases::TaskStats;
+    /// use dotfiles_cli::testing::phases::TaskStats;
     ///
     /// let stats = TaskStats { changed: 5, already_ok: 12, skipped: 0 };
     /// assert_eq!(stats.summary(false), "5 changed, 12 already ok");

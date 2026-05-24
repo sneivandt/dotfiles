@@ -81,7 +81,7 @@ impl PathEntryResource {
     #[must_use]
     pub fn new(
         home: &Path,
-        platform: &crate::platform::Platform,
+        platform: crate::platform::Platform,
         executor: Arc<dyn Executor>,
     ) -> Self {
         let dir = home.join(".local").join("bin");
@@ -415,7 +415,7 @@ mod tests {
             is_arch: false,
             is_wsl: false,
         };
-        PathEntryResource::new(home, &platform, executor).with_path_source(on_path)
+        PathEntryResource::new(home, platform, executor).with_path_source(on_path)
     }
 
     #[test]

@@ -60,7 +60,7 @@ use crate::platform::Platform;
 ///
 /// ```
 /// use std::any::TypeId;
-/// use dotfiles_cli::phases::TaskId;
+/// use dotfiles_cli::testing::phases::TaskId;
 ///
 /// // Type-based ID (the usual case):
 /// let id = TaskId::Type(TypeId::of::<u32>());
@@ -234,7 +234,7 @@ pub trait Task: Send + Sync + 'static {
 fn record(ctx: &Context, name: &str, phase: TaskPhase, status: TaskStatus, msg: Option<&str>) {
     ctx.log.record_task(name, phase, status, msg);
     if !ctx.log.is_verbose() {
-        ctx.log.emit_task_result(name, &status, msg);
+        ctx.log.emit_task_result(name, status, msg);
     }
 }
 

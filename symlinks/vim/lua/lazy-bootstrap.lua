@@ -2,29 +2,56 @@
 -- This file auto-installs lazy.nvim and loads plugin configurations
 
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
+local function bootstrap_error(message, output)
+  vim.api.nvim_err_writeln("lazy.nvim bootstrap failed: " .. message)
+  if output and output ~= "" then
+    vim.api.nvim_err_writeln(output)
+  end
+  error("lazy.nvim bootstrap failed", 0)
+end
+
 if not vim.loop.fs_stat(lazypath) then
   -- Pin to a specific commit for security and reproducibility
   -- Update this commit hash periodically to get security fixes
   local lazy_commit = "077102c5bfc578693f12377846d427f49bc50076" -- v11.14.1 (2024-11-20)
-  vim.fn.system({
+
+  if vim.fn.executable("git") ~= 1 then
+    bootstrap_error("git is required to install lazy.nvim")
+  end
+
+  local clone_output = vim.fn.system({
     "git",
     "clone",
     "--filter=blob:none",
     "https://github.com/folke/lazy.nvim.git",
     lazypath,
   })
-  vim.fn.system({
+  if vim.v.shell_error ~= 0 then
+    vim.fn.delete(lazypath, "rf")
+    bootstrap_error("git clone failed", clone_output)
+  end
+
+  local checkout_output = vim.fn.system({
     "git",
     "-C",
     lazypath,
     "checkout",
     lazy_commit,
   })
+  if vim.v.shell_error ~= 0 then
+    vim.fn.delete(lazypath, "rf")
+    bootstrap_error("git checkout " .. lazy_commit .. " failed", checkout_output)
+  end
 end
 vim.opt.rtp:prepend(lazypath)
 
 -- Configure lazy.nvim with plugins
-require("lazy").setup({
+local ok, lazy = pcall(require, "lazy")
+if not ok then
+  bootstrap_error("failed to load lazy.nvim from " .. lazypath, lazy)
+end
+
+lazy.setup({
   -- Core plugins
   { "tpope/vim-commentary" },
   { "tpope/vim-surround" },

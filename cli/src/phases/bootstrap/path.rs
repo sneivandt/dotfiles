@@ -25,7 +25,7 @@ impl Task for ConfigurePath {
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {
-        let resource = PathEntryResource::new(&ctx.home, &ctx.platform, Arc::clone(&ctx.executor));
+        let resource = PathEntryResource::new(&ctx.home, ctx.platform, Arc::clone(&ctx.executor));
         process_resources(
             ctx,
             std::iter::once(resource),

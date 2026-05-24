@@ -1,6 +1,7 @@
 # Neovim Plugin Management
 
-This directory contains configuration for Neovim with modern lazy.nvim plugin management.
+This directory is symlinked to both `~/.vim` and `~/.config/nvim`, so Vim and
+Neovim share the same base configuration.
 
 ## Current Setup
 
@@ -20,7 +21,8 @@ When you first launch Neovim:
 
 1. lazy.nvim will auto-install to `~/.local/share/nvim/lazy/lazy.nvim`
 2. All plugins will be automatically downloaded
-3. A lockfile will be created at `~/.config/nvim/lazy-lock.json`
+3. The checked-in lockfile is used from `~/.config/nvim/lazy-lock.json`
+   through the `~/.config/nvim -> ~/.vim` symlink.
 
 No configuration or environment variables needed - it works out of the box.
 
@@ -46,9 +48,10 @@ Plugins are defined in `lua/lazy-bootstrap.lua`. The configuration includes all 
 
 ## Files
 
-- `init.vim` - Main entry point, sources `~/.vim/vimrc`
+- `init.vim` - Neovim entry point, loaded as `~/.config/nvim/init.vim` and sources `~/.vim/vimrc`
 - `nvimrc` - Plugin loading logic for Neovim
 - `lua/lazy-bootstrap.lua` - lazy.nvim bootstrap and plugin definitions (Neovim only)
+- `lazy-lock.json` - lazy.nvim plugin lockfile shared through the `~/.config/nvim` symlink
 
 ## Troubleshooting
 
@@ -56,7 +59,8 @@ Plugins are defined in `lua/lazy-bootstrap.lua`. The configuration includes all 
 If you see errors with lazy.nvim:
 1. Exit Neovim
 2. Clean lazy.nvim cache: `rm -rf ~/.local/share/nvim/lazy`
-3. Restart Neovim to re-download plugins
+3. Restart Neovim to re-download plugins. Bootstrap errors now include the
+   failing `git` output when clone or checkout fails.
 
 ### Updating lazy.nvim
 To update to a newer version of lazy.nvim:

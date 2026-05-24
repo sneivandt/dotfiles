@@ -7,6 +7,7 @@
 // Used by all integration test binaries that declare `mod common;`.
 #![allow(dead_code, reason = "used conditionally via cfg")]
 
+use dotfiles_cli::testing as dotfiles_cli;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 

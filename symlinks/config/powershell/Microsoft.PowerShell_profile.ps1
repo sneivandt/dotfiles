@@ -114,20 +114,59 @@ if (Get-Command "gh" -ErrorAction SilentlyContinue)
     Set-Alias -Name aic -Value Invoke-CopilotSuggest
 }
 
-# Ensure local bin directory is in PATH
-$pathSeparator = [System.IO.Path]::PathSeparator
-$localBinDir = Join-Path (Join-Path $HOME ".local") "bin"
-if ((Test-Path $localBinDir) -and ($env:Path -notlike "*$localBinDir*"))
+function Add-PathEntry
 {
-    $env:Path += "$pathSeparator$localBinDir"
+    param (
+        [string]$Directory
+    )
+
+    if (-not (Test-Path $Directory))
+    {
+        return
+    }
+
+    $comparison = [System.StringComparison]::Ordinal
+    if ($null -ne $env:windir)
+    {
+        $comparison = [System.StringComparison]::OrdinalIgnoreCase
+    }
+
+    $trimChars = [char[]]@(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    $normalizedDirectory = $Directory.TrimEnd($trimChars)
+
+    foreach ($entry in @($env:Path -split [System.IO.Path]::PathSeparator))
+    {
+        if ([string]::IsNullOrWhiteSpace($entry))
+        {
+            continue
+        }
+
+        if ([string]::Equals($entry.TrimEnd($trimChars), $normalizedDirectory, $comparison))
+        {
+            return
+        }
+    }
+
+    if ([string]::IsNullOrEmpty($env:Path))
+    {
+        $env:Path = $Directory
+    }
+    else
+    {
+        $env:Path += "$([System.IO.Path]::PathSeparator)$Directory"
+    }
 }
+
+# Ensure local bin directory is in PATH
+$localBinDir = Join-Path (Join-Path $HOME ".local") "bin"
+Add-PathEntry -Directory $localBinDir
 
 # Ensure Cargo (Rust) bin directory is in PATH
 $cargoDir = Join-Path (Join-Path $HOME ".cargo") "bin"
-if ((Test-Path $cargoDir) -and ($env:Path -notlike "*$cargoDir*"))
-{
-    $env:Path += "$pathSeparator$cargoDir"
-}
+Add-PathEntry -Directory $cargoDir
 
 # Load additional profile scripts from profile.d directory
 $profileDir = Join-Path $HOME ".config\powershell\profile.d"

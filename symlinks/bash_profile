@@ -2,7 +2,7 @@
 
 # Guard against multiple sourcing
 [ -n "$BASH_PROFILE_LOADED" ] && return
-export BASH_PROFILE_LOADED=1
+BASH_PROFILE_LOADED=1
 
 # Global profile (optional)
 [ -f /etc/profile ] && . /etc/profile

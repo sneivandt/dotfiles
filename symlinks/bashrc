@@ -3,7 +3,7 @@
 
 # Guard against multiple sourcing
 [ -n "$BASHRC_LOADED" ] && return
-export BASHRC_LOADED=1
+BASHRC_LOADED=1
 
 # History
 [ -d ~/.cache/bash ] || mkdir -p ~/.cache/bash

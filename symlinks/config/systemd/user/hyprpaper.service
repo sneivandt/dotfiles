@@ -13,6 +13,8 @@ Type=simple
 ExecStart=/usr/bin/hyprpaper
 Restart=on-failure
 RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
 
 [Install]
 WantedBy=graphical-session.target

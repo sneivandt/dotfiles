@@ -7,7 +7,6 @@ ZSHRC_LOADED=1
 # Quiet
 setopt no_beep
 setopt NO_LIST_BEEP
-set bell-style none
 
 # Word Style
 autoload -Uz select-word-style
@@ -34,42 +33,22 @@ setopt pushdsilent
 setopt pushdtohome
 
 # Path
-if [ -f ~/.config/shell/path.sh ]; then
-  . ~/.config/shell/path.sh
-else
-  echo "Warning: ~/.config/shell/path.sh not found" >&2
-fi
+[ -r ~/.config/shell/path.sh ] && . ~/.config/shell/path.sh
 
 # Aliases
-if [ -f ~/.config/shell/aliases.sh ]; then
-  . ~/.config/shell/aliases.sh
-else
-  echo "Warning: ~/.config/shell/aliases.sh not found" >&2
-fi
+[ -r ~/.config/shell/aliases.sh ] && . ~/.config/shell/aliases.sh
 
 # GUI Aliases (optional)
-[ -f ~/.config/shell/aliases-desktop.sh ] && . ~/.config/shell/aliases-desktop.sh
+[ -r ~/.config/shell/aliases-desktop.sh ] && . ~/.config/shell/aliases-desktop.sh
 
 # Prompt
-if [ -f ~/.config/zsh/prompt.zsh ]; then
-  . ~/.config/zsh/prompt.zsh
-else
-  echo "Warning: ~/.config/zsh/prompt.zsh not found" >&2
-fi
+[ -r ~/.config/zsh/prompt.zsh ] && . ~/.config/zsh/prompt.zsh
 
 # Completion
-if [ -f ~/.config/zsh/completion.zsh ]; then
-  . ~/.config/zsh/completion.zsh
-else
-  echo "Warning: ~/.config/zsh/completion.zsh not found" >&2
-fi
+[ -r ~/.config/zsh/completion.zsh ] && . ~/.config/zsh/completion.zsh
 
 # Key bindings
-if [ -f ~/.config/zsh/key-bindings.zsh ]; then
-  . ~/.config/zsh/key-bindings.zsh
-else
-  echo "Warning: ~/.config/zsh/key-bindings.zsh not found" >&2
-fi
+[ -r ~/.config/zsh/key-bindings.zsh ] && . ~/.config/zsh/key-bindings.zsh
 
 # Plugins
 for plugin in ~/.config/zsh/plugins/*.zsh(N)

@@ -5,17 +5,13 @@
 BASH_PROFILE_LOADED=1
 
 # Global profile (optional)
-[ -f /etc/profile ] && . /etc/profile
+[ -r /etc/profile ] && . /etc/profile
 
 # Profile
-if [ -f ~/.config/shell/profile.sh ]; then
-  . ~/.config/shell/profile.sh
-else
-  echo "Warning: ~/.config/shell/profile.sh not found" >&2
-fi
+[ -r ~/.config/shell/profile.sh ] && . ~/.config/shell/profile.sh
 
 # GUI Profile (optional)
-[ -f ~/.config/shell/profile-desktop.sh ] && . ~/.config/shell/profile-desktop.sh
+[ -r ~/.config/shell/profile-desktop.sh ] && . ~/.config/shell/profile-desktop.sh
 
 # GUI Arch Profile (optional)
-[ -f ~/.config/shell/profile-arch-desktop.sh ] && . ~/.config/shell/profile-arch-desktop.sh
+[ -r ~/.config/shell/profile-arch-desktop.sh ] && . ~/.config/shell/profile-arch-desktop.sh

@@ -14,28 +14,16 @@ shopt -s histappend
 shopt -s checkwinsize
 
 # Path
-if [ -f ~/.config/shell/path.sh ]; then
-  . ~/.config/shell/path.sh
-else
-  echo "Warning: ~/.config/shell/path.sh not found" >&2
-fi
+[ -r ~/.config/shell/path.sh ] && . ~/.config/shell/path.sh
 
 # Aliases
-if [ -f ~/.config/shell/aliases.sh ]; then
-  . ~/.config/shell/aliases.sh
-else
-  echo "Warning: ~/.config/shell/aliases.sh not found" >&2
-fi
+[ -r ~/.config/shell/aliases.sh ] && . ~/.config/shell/aliases.sh
 
 # GUI Aliases (optional)
-[ -f ~/.config/shell/aliases-desktop.sh ] && . ~/.config/shell/aliases-desktop.sh
+[ -r ~/.config/shell/aliases-desktop.sh ] && . ~/.config/shell/aliases-desktop.sh
 
 # Prompt
-if [ -f ~/.config/bash/prompt ]; then
-  . ~/.config/bash/prompt
-else
-  echo "Warning: ~/.config/bash/prompt not found" >&2
-fi
+[ -r ~/.config/bash/prompt ] && . ~/.config/bash/prompt
 
 # zoxide
 if command -v zoxide >/dev/null 2>&1

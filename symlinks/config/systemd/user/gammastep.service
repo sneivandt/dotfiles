@@ -13,6 +13,8 @@ Type=simple
 ExecStart=/usr/bin/gammastep -c %h/.config/gammastep/config.ini
 Restart=on-failure
 RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
 
 [Install]
 WantedBy=graphical-session.target

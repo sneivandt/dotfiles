@@ -1,7 +1,7 @@
 [Unit]
 Description=Set initial volume and unmute
-After=pipewire.service pulseaudio.service
-Wants=pipewire.service pulseaudio.service
+After=pipewire.service pipewire-pulse.service wireplumber.service pulseaudio.service
+Wants=pipewire.service pipewire-pulse.service wireplumber.service
 ConditionFileIsExecutable=%h/.config/volume/init-volume.sh
 
 [Service]

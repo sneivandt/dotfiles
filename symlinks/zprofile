@@ -5,15 +5,11 @@
 ZPROFILE_LOADED=1
 
 # Login/session profile
-if [ -f ~/.config/shell/profile.sh ]; then
-  . ~/.config/shell/profile.sh
-else
-  echo "Warning: ~/.config/shell/profile.sh not found" >&2
-fi
+[ -r ~/.config/shell/profile.sh ] && . ~/.config/shell/profile.sh
 
 # GUI profiles (optional)
-[ -f ~/.config/shell/profile-desktop.sh ] && . ~/.config/shell/profile-desktop.sh
-[ -f ~/.config/shell/profile-arch-desktop.sh ] && . ~/.config/shell/profile-arch-desktop.sh
+[ -r ~/.config/shell/profile-desktop.sh ] && . ~/.config/shell/profile-desktop.sh
+[ -r ~/.config/shell/profile-arch-desktop.sh ] && . ~/.config/shell/profile-arch-desktop.sh
 
 # Start graphical session on tty1 if not already running
 if uwsm check may-start 2>/dev/null; then

@@ -1,21 +1,4 @@
 #!/usr/bin/env zsh
 
-# Guard against multiple sourcing
-[ -n "$ZSHENV_LOADED" ] && return
-ZSHENV_LOADED=1
-
-# Global profile (optional)
-[ -f /etc/zsh/zprofile ] && . /etc/zsh/zprofile
-
-# Profile
-if [ -f ~/.config/shell/profile.sh ]; then
-  . ~/.config/shell/profile.sh
-else
-  echo "Warning: ~/.config/shell/profile.sh not found" >&2
-fi
-
-# GUI Profile (optional)
-[ -f ~/.config/shell/profile-desktop.sh ] && . ~/.config/shell/profile-desktop.sh
-
-# GUI Arch Profile (optional)
-[ -f ~/.config/shell/profile-arch-desktop.sh ] && . ~/.config/shell/profile-arch-desktop.sh
+# Keep this file quiet and minimal: zsh sources it for every invocation,
+# including non-interactive scripts. Login/session setup belongs in zprofile.

@@ -26,6 +26,7 @@ symlinks = [
 [linux]
 symlinks = [
   "bash_profile",
+  # Internal chain: symlinks/config/nvim -> ../vim, reusing the Vim config.
   "config/nvim",
   "bashrc",
   "config/bash/prompt",
@@ -104,6 +105,8 @@ symlinks = [
   "config/idea/config/options/ide.general.xml",
   "config/idea/config/options/keymap.xml",
   "config/idea/idea.properties",
+  # Internal chain: symlinks/vscode-remote/data/Machine/settings.json
+  # -> ../../../config/Code/User/settings.json.
   "vscode-remote/data/Machine/settings.json",
 ]
 
@@ -113,6 +116,7 @@ symlinks = [
   "config/Agents - Insiders/User/settings.json",
   "config/Agents/User/keybindings.json",
   "config/Agents/User/settings.json",
+  # Internal chains: Code Insiders settings/keybindings reuse stable Code files.
   "config/Code - Insiders/User/keybindings.json",
   "config/Code - Insiders/User/settings.json",
   "config/Code/User/keybindings.json",

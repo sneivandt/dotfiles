@@ -68,8 +68,6 @@ paths = [
 # "linux-desktop" — [desktop] qualifies because desktop ⊆ {linux, desktop}.
 [desktop]
 paths = [
-  "config/Agents/",
-  "config/Agents - Insiders/",
   "config/Code/",
   "config/Code - Insiders/",
   "config/idea/",
@@ -87,7 +85,7 @@ paths = [
 [arch-desktop]
 paths = [
   "config/alacritty/",
-  "config/chromium/",
+  "config/chromium-flags.conf",
   "config/gammastep/",
   "config/gtk-2.0/",
   "config/gtk-3.0/",

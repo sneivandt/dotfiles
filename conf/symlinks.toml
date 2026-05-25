@@ -64,7 +64,7 @@ symlinks = [
 [arch-desktop]
 symlinks = [
   "config/alacritty/alacritty.toml",
-  "config/chromium/chromium-flags.conf",
+  "config/chromium-flags.conf",
   "config/gammastep/config.ini",
   "config/gtk-2.0/gtkrc-2.0",
   "config/gtk-3.0/settings.ini",
@@ -111,10 +111,6 @@ symlinks = [
 
 [linux-desktop]
 symlinks = [
-  "config/Agents - Insiders/User/keybindings.json",
-  "config/Agents - Insiders/User/settings.json",
-  "config/Agents/User/keybindings.json",
-  "config/Agents/User/settings.json",
   # Internal chains: Code Insiders settings/keybindings reuse stable Code files.
   "config/Code - Insiders/User/keybindings.json",
   "config/Code - Insiders/User/settings.json",

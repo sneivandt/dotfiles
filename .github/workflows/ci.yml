@@ -87,11 +87,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - name: Install Rust toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
         with:
-          manifest-path: cli/Cargo.toml
-          command: check all
-          log-level: warn
+          workspaces: "cli -> target"
+      - run: cargo install cargo-deny --locked
+      - run: cargo deny --manifest-path cli/Cargo.toml check all
 
   # ── Build, Clippy & Test ──────────────────────────────
   build-linux:

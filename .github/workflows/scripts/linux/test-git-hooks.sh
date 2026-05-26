@@ -71,8 +71,32 @@ test_hook_allows() {
   fi
 }
 
+test_hook_wiring() {
+  repo_root="${DIR:-$(git rev-parse --show-toplevel)}"
+
+  for script in check-sensitive.sh check-rust.sh check-ci-guards.sh; do
+    if [ ! -f "$repo_root/hooks/$script" ]; then
+      fail "Missing hook helper $script"
+      return 1
+    fi
+    if ! grep -Fq "$script" "$repo_root/hooks/pre-commit"; then
+      fail "pre-commit does not call $script"
+      return 1
+    fi
+    if ! sh -n "$repo_root/hooks/$script"; then
+      fail "$script has invalid POSIX shell syntax"
+      return 1
+    fi
+  done
+
+  pass "Pre-commit hook calls all helper scripts"
+}
+
 printf "Testing pre-commit hook sensitive pattern detection\n"
 printf "==================================================\n\n"
+
+printf "Testing hook wiring...\n"
+test_hook_wiring
 
 # Test AWS credentials
 printf "Testing AWS patterns...\n"

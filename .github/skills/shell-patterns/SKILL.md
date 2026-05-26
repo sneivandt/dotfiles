@@ -53,7 +53,14 @@ Windows PowerShell wrapper with identical logic:
 
 ## Git Hooks
 
-The `hooks/pre-commit` script is the only other POSIX shell script. It scans staged changes for sensitive patterns.
+The `hooks/pre-commit` script is the only other POSIX shell entrypoint. It scans
+staged changes for sensitive patterns and delegates targeted CI parity checks to
+helper scripts in `hooks/`.
+
+When editing `dotfiles.sh`, keep argument forwarding unchanged unless the wrapper
+itself consumes a flag. `hooks/check-ci-guards.sh` runs ShellCheck on staged
+shell files by default; with `DOTFILES_HOOKS_FULL=1`, it also runs the Linux
+wrapper test script for staged `dotfiles.sh` changes.
 
 ## Code Style Rules
 

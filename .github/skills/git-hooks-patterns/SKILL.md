@@ -82,8 +82,13 @@ Categories: `api-keys`, `passwords`, `tokens`, `aws`, `private-keys`, `github`, 
 The `hooks/pre-commit` script is a POSIX shell (`#!/bin/sh`) orchestrator that
 delegates to dedicated scripts:
 1. Runs `hooks/check-sensitive.sh` which reads patterns from `hooks/sensitive-patterns.ini` and scans `git diff --cached` for matches
-2. Runs `hooks/check-rust.sh` which runs `cargo fmt --check` and `cargo clippy -- -D warnings` (host plus optional `x86_64-pc-windows-gnu` target) when `.rs` files are staged, and PSScriptAnalyzer when `.ps1`/`.psm1` files are staged
-3. Prints error and aborts if either check fails
+2. Runs `hooks/check-rust.sh` which runs `cargo fmt --check` and `cargo clippy --profile ci -- -D warnings` when `.rs` files are staged, and PSScriptAnalyzer when `.ps1`/`.psm1` files are staged
+3. Runs `hooks/check-ci-guards.sh` which mirrors fast targeted CI checks for staged config, dependency, and shell-wrapper changes:
+   - `conf/*.toml` or `symlinks/` changes: shell config validation
+   - `cli/Cargo.toml`, `cli/Cargo.lock`, or `cli/deny.toml` changes: wildcard dependency scan
+   - shell hook/wrapper changes: ShellCheck on staged shell files when installed
+   - full mode (`DOTFILES_HOOKS_FULL=1`): Windows-target clippy, Rust tests, config drift tests, cargo-deny, and Linux shell wrapper tests
+4. Prints error and aborts if any check fails
 
 ### Bypassing
 
@@ -104,3 +109,4 @@ git commit --no-verify  # Use for false positives only
 - Never commit real credentials
 - Test patterns before committing
 - The hook installation task uses `self.fs_ops.exists()` to check directory existence (not `.exists()` directly), enabling mockall-generated `MockFileSystemOps` injection via `InstallGitHooks::with_fs_ops()` in tests
+- Keep `hooks/pre-commit` wired to every `hooks/check-*.sh` helper and update `.github/workflows/scripts/linux/test-git-hooks.sh` when adding a helper

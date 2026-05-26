@@ -19,6 +19,14 @@ cargo fmt --check                          # Format check
 ../dotfiles.sh test                        # Config validation via Rust engine
 ```
 
+For CI parity, prefer the `ci` profile when reproducing GitHub Actions failures:
+
+```bash
+cargo test --profile ci --manifest-path cli/Cargo.toml
+cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+cargo test --profile ci --manifest-path cli/Cargo.toml --test config_drift
+```
+
 ## Unit Tests
 
 Every module has inline tests with `#[cfg(test)]`:
@@ -145,9 +153,14 @@ GitHub Actions runs `cargo test`, `cargo clippy --all-targets -- -D warnings`,
 validation runs via `./dotfiles.sh test`. See the **`ci-cd-patterns`** skill
 for pipeline structure and adding new jobs.
 
+`hooks/check-rust.sh` and `hooks/check-ci-guards.sh` run fast targeted
+pre-commit guards for the failure classes that have recently reached CI. Use
+`DOTFILES_HOOKS_FULL=1` to include slower CI-parity checks: Rust tests,
+Windows-target clippy, cargo-deny, config drift, and Linux wrapper forwarding.
+
 ## Rules
 
 1. Every new module must include `#[cfg(test)] mod tests`
 2. Test pure functions; use `Platform::new()` and string parsers to avoid I/O
 3. Use `Arc::new(SystemExecutor)` when constructing executor-backed resources in tests that only check descriptions or static state
-4. Run `cargo clippy` and `cargo fmt` before committing
+4. Run `cargo clippy`, `cargo fmt`, and the targeted hook guard for the files you changed before committing

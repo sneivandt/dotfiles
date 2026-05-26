@@ -18,5 +18,6 @@ HOOKS_DIR="$(git rev-parse --show-toplevel)/hooks"
 
 sh "$HOOKS_DIR/check-sensitive.sh"
 sh "$HOOKS_DIR/check-rust.sh"
+sh "$HOOKS_DIR/check-ci-guards.sh"
 
 exit 0

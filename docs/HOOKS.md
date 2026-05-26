@@ -74,18 +74,34 @@ Edit `hooks/sensitive-patterns.ini` to add, modify, or remove detection patterns
 
 ### check-rust.sh - Code Quality
 
-Runs the following checks against staged files:
+Runs the following checks against staged files. Pre-commit stays fast by default;
+set `DOTFILES_HOOKS_FULL=1` to run the slower CI-parity checks locally.
 
 1. **`cargo fmt --check`** — fails the commit if any `.rs` files are not formatted.
    Run `cargo fmt --manifest-path cli/Cargo.toml` to fix.
-2. **`cargo clippy -- -D warnings`** (host target) — fails the commit if clippy
+2. **`cargo clippy --profile ci -- -D warnings`** (host target) — fails the commit if clippy
    reports any warnings, matching the same lint policy enforced by CI.
-3. **`cargo clippy --target x86_64-pc-windows-gnu -- -D warnings`** — catches
+3. **Full mode: `cargo clippy --profile ci --target x86_64-pc-windows-gnu -- -D warnings`** — catches
    Windows-only `cfg` arms, `winreg` references, and platform-gated import
    drift before they hit CI. Skipped with a notice when the target is not
    installed (`rustup target add x86_64-pc-windows-gnu` plus a mingw-w64 gcc).
-4. **PSScriptAnalyzer** — lints staged `.ps1`/`.psm1` files when `pwsh` and the
+4. **Full mode: `cargo test --profile ci`** — catches unit and integration test regressions
+   before the CI build jobs.
+5. **PSScriptAnalyzer** — lints staged `.ps1`/`.psm1` files when `pwsh` and the
    module are available. Skipped with a notice otherwise.
+
+### check-ci-guards.sh - Targeted CI Guards
+
+Runs fast targeted checks for staged files that commonly break CI. Slower checks
+are full-mode only (`DOTFILES_HOOKS_FULL=1`):
+
+1. **Config and symlink changes** — run the shell config validators. Full mode
+   also runs `cargo test --profile ci --test config_drift` when Cargo is installed.
+2. **Cargo dependency policy changes** — reject wildcard dependencies. Full mode
+   also runs `cargo deny check bans licenses sources` when cargo-deny is installed.
+3. **Shell script changes** — run ShellCheck on staged shell files when installed.
+4. **Full mode: `dotfiles.sh` changes** — run the Linux shell wrapper tests, including
+   argument-forwarding coverage.
 
 ## File Layout
 
@@ -93,7 +109,8 @@ Runs the following checks against staged files:
 | --- | --- | --- |
 | `pre-commit` | yes | Orchestrator — calls each check script |
 | `check-sensitive.sh` | no | Sensitive data scanning |
-| `check-rust.sh` | no | Rust formatting and clippy linting |
+| `check-rust.sh` | no | Rust formatting, clippy, tests, and PowerShell linting |
+| `check-ci-guards.sh` | no | Targeted local guards for common CI failure classes |
 | `sensitive-patterns.ini` | no | Regex patterns for sensitive data scanner |
 
 Only files without an extension are installed as git hooks. Helper scripts use

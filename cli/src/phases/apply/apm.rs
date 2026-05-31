@@ -42,6 +42,9 @@ const APM_NONINTERACTIVE_ENV: &[(&str, &str)] = &[
     ("GCM_GUI_PROMPT", "false"),
 ];
 const APM_UP_TO_DATE_MARKER: &str = "all dependencies are up-to-date";
+/// Marker `apm deps update` prints when no locked ref advanced.  Its absence
+/// means at least one dependency was actually refreshed.
+const APM_UPDATE_NO_CHANGES_MARKER: &str = "all packages already at latest refs";
 
 /// Install and update AI plugin manifests via Microsoft APM.
 #[derive(Debug)]
@@ -174,13 +177,17 @@ impl Task for InstallApmPackages {
         write_manifest_marker(&marker_path, &manifest_hash)?;
 
         match apm_dependencies_are_outdated(ctx)? {
-            ApmOutdatedCheck::Outdated(true) => {
-                let result = run_apm_update(ctx)?;
-                if matches!(result, TaskResult::Ok) {
+            ApmOutdatedCheck::Outdated(true) => match run_apm_update(ctx)? {
+                ApmUpdateOutcome::Changed => {
                     ctx.log.always("    update: APM dependencies");
+                    Ok(TaskResult::Ok)
                 }
-                Ok(result)
-            }
+                ApmUpdateOutcome::Unchanged => {
+                    ctx.log.debug("APM dependencies already at latest refs");
+                    Ok(TaskResult::Ok)
+                }
+                ApmUpdateOutcome::Skipped(reason) => Ok(TaskResult::Skipped(reason)),
+            },
             ApmOutdatedCheck::Outdated(false) => {
                 ctx.log.debug("APM dependencies are up-to-date");
                 Ok(TaskResult::Ok)
@@ -195,6 +202,16 @@ enum ApmOutdatedCheck {
     /// The check completed and reported whether dependencies are outdated.
     Outdated(bool),
     /// The check could not run because credentials are unavailable.
+    Skipped(String),
+}
+
+/// Outcome of refreshing locked user-scope dependencies.
+enum ApmUpdateOutcome {
+    /// `apm deps update` advanced at least one locked ref.
+    Changed,
+    /// `apm deps update` ran but every dependency was already current.
+    Unchanged,
+    /// The update could not run because credentials are unavailable.
     Skipped(String),
 }
 
@@ -268,7 +285,7 @@ fn apm_dependencies_are_outdated(ctx: &Context) -> Result<ApmOutdatedCheck> {
 }
 
 /// Refresh locked user-scope dependencies to the latest matching refs.
-fn run_apm_update(ctx: &Context) -> Result<TaskResult> {
+fn run_apm_update(ctx: &Context) -> Result<ApmUpdateOutcome> {
     let cwd = ctx.home.clone();
     ctx.debug_fmt(|| {
         format!(
@@ -285,7 +302,11 @@ fn run_apm_update(ctx: &Context) -> Result<TaskResult> {
     ) {
         Ok(result) => {
             report_apm_output(ctx, &result.stdout, &result.stderr);
-            Ok(TaskResult::Ok)
+            if update_output_made_changes(&result.stdout, &result.stderr) {
+                Ok(ApmUpdateOutcome::Changed)
+            } else {
+                Ok(ApmUpdateOutcome::Unchanged)
+            }
         }
         Err(err) => {
             let msg = format!("{err:#}");
@@ -295,7 +316,7 @@ fn run_apm_update(ctx: &Context) -> Result<TaskResult> {
                     .to_string();
                 ctx.log
                     .warn(&format!("skipping: {reason} (details: {})", msg.trim()));
-                Ok(TaskResult::Skipped(reason))
+                Ok(ApmUpdateOutcome::Skipped(reason))
             } else {
                 Err(err).context("updating APM dependencies")
             }
@@ -307,6 +328,19 @@ fn run_apm_update(ctx: &Context) -> Result<TaskResult> {
 fn outdated_output_has_updates(stdout: &str, stderr: &str) -> bool {
     let output = format!("{stdout}\n{stderr}").to_lowercase();
     !output.contains(APM_UP_TO_DATE_MARKER)
+}
+
+/// Return whether `apm deps update` actually advanced any locked ref.
+///
+/// When every dependency is already current APM prints
+/// `[*] All packages already at latest refs.`, so the absence of that marker
+/// means at least one ref moved.  Dependencies pinned to git branch or commit
+/// refs report an `unknown` status from `apm outdated`, which forces an update
+/// attempt on every run; gating the change line on this marker keeps the
+/// console quiet unless an update truly happened.
+fn update_output_made_changes(stdout: &str, stderr: &str) -> bool {
+    let output = format!("{stdout}\n{stderr}").to_lowercase();
+    !output.contains(APM_UPDATE_NO_CHANGES_MARKER)
 }
 
 /// Build a stable fingerprint for the generated manifest content.
@@ -880,6 +914,64 @@ mod tests {
         assert!(
             matches!(result, TaskResult::Ok),
             "expected Ok after apm deps update, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn run_stays_quiet_when_update_reports_no_changes() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        write_current_manifest_lock_and_marker(dir.path());
+
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .with(mockall::predicate::eq("apm"))
+            .once()
+            .returning(|_| true);
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_, _, args, _| {
+                assert_eq!(args, ["install", "-g", "--target", "copilot,vscode"]);
+                Ok(ok_result("installed\n"))
+            });
+        // Branch/commit refs report an `unknown` status, so `apm outdated`
+        // never prints the up-to-date marker and an update is attempted.
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_, _, args, _| {
+                assert_eq!(args, ["outdated", "-g"]);
+                Ok(ok_result(
+                    "[i] Some dependencies could not be checked (branch/commit refs)\n",
+                ))
+            });
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_, _, args, _| {
+                assert_eq!(args, ["deps", "update", "-g", "--target", "copilot,vscode"]);
+                Ok(ok_result("[*] All packages already at latest refs.\n"))
+            });
+
+        let ctx = make_home_context_with_executor(dir.path(), mock);
+
+        let result = InstallApmPackages.run(&ctx).expect("run should not error");
+        assert!(
+            matches!(result, TaskResult::Ok),
+            "expected Ok when update made no changes, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn update_output_made_changes_detects_no_change_marker() {
+        assert!(
+            !update_output_made_changes("[*] All packages already at latest refs.\n", ""),
+            "the no-change marker must suppress the update message"
+        );
+        assert!(
+            update_output_made_changes("[*] Updated 2 APM dependencies in 0.8s.\n", ""),
+            "a real update must report a change"
         );
     }
 

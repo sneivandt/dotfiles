@@ -19,6 +19,15 @@ fi
 # shellcheck source=lib/test-helpers.sh
 . "$SCRIPT_DIR"/lib/test-helpers.sh
 
+# Return 0 (true) when a repo-relative path is tracked by git. Used to tell a
+# genuinely missing reference (a typo: not tracked) apart from a file that is
+# merely absent from the working tree because sparse checkout omitted it (still
+# tracked in the index). Platform/profile-agnostic and correct for both sparse
+# developer checkouts and full CI checkouts.
+is_tracked_by_git() {
+  git -C "$DIR" ls-files --error-unmatch -- "$1" >/dev/null 2>&1
+}
+
 # Validate that files listed in manifest.toml exist in symlinks/.
 test_config_validation()
 {(
@@ -32,6 +41,10 @@ test_config_validation()
     echo "$entries" | while IFS='' read -r file || [ -n "$file" ]; do
       [ -n "$file" ] || continue
       if [ ! -e "$DIR/symlinks/$file" ] && [ ! -L "$DIR/symlinks/${file%/}" ]; then
+        if is_tracked_by_git "symlinks/$file"; then
+          log_verbose "Skipping [$section] symlinks/$file: omitted by sparse checkout"
+          continue
+        fi
         printf "%sERROR: manifest.toml [%s] references missing: symlinks/%s%s\n" "${RED}" "$section" "$file" "${NC}" >&2
         echo 1 > "$err_file"
       fi
@@ -72,12 +85,20 @@ test_symlinks_validation()
             if [ -e "$f" ] || [ -L "$f" ]; then found=1; break; fi
           done
           if [ "$found" -eq 0 ]; then
+            if [ -n "$(git -C "$DIR" ls-files -- "symlinks/$src" 2>/dev/null)" ]; then
+              log_verbose "Skipping [$section] symlinks/$src: omitted by sparse checkout"
+              continue
+            fi
             printf "%sERROR: symlinks.toml [%s] source missing: symlinks/%s%s\n" "${RED}" "$section" "$src" "${NC}" >&2
             echo 1 > "$err_file"
           fi
           ;;
         *)
           if [ ! -e "$DIR/symlinks/$src" ] && [ ! -L "$DIR/symlinks/$src" ]; then
+            if is_tracked_by_git "symlinks/$src"; then
+              log_verbose "Skipping [$section] symlinks/$src: omitted by sparse checkout"
+              continue
+            fi
             printf "%sERROR: symlinks.toml [%s] source missing: symlinks/%s%s\n" "${RED}" "$section" "$src" "${NC}" >&2
             echo 1 > "$err_file"
           fi
@@ -101,6 +122,10 @@ test_chmod_validation()
   grep -oP 'path\s*=\s*"\K[^"]+' "$DIR/conf/chmod.toml" | while IFS='' read -r file || [ -n "$file" ]; do
     [ -n "$file" ] || continue
     if [ ! -e "$DIR/symlinks/$file" ] && [ ! -L "$DIR/symlinks/$file" ]; then
+      if is_tracked_by_git "symlinks/$file"; then
+        log_verbose "Skipping chmod symlinks/$file: omitted by sparse checkout"
+        continue
+      fi
       printf "%sERROR: chmod.toml references missing: symlinks/%s%s\n" "${RED}" "$file" "${NC}" >&2
       echo 1 > "$err_file"
     fi

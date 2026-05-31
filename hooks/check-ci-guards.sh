@@ -65,12 +65,14 @@ run_config_validation() {
   scripts_dir="$REPO_ROOT/.github/workflows/scripts/linux"
   if ! (
     cd "$scripts_dir"
-    sh test-config.sh config_validation
-    sh test-config.sh symlinks_validation
-    sh test-config.sh chmod_validation
-    sh test-config.sh toml_syntax
-    sh test-config.sh category_consistency
-    sh test-config.sh empty_sections
+    rc=0
+    sh test-config.sh config_validation    || rc=1
+    sh test-config.sh symlinks_validation  || rc=1
+    sh test-config.sh chmod_validation     || rc=1
+    sh test-config.sh toml_syntax          || rc=1
+    sh test-config.sh category_consistency || rc=1
+    sh test-config.sh empty_sections       || rc=1
+    exit "$rc"
   ); then
     abort_with_hint \
       "configuration validation failed." \

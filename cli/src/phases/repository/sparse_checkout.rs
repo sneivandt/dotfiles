@@ -26,6 +26,20 @@ fn is_up_to_date(sparse_file: &Path, patterns_str: &str) -> bool {
     std::fs::read_to_string(sparse_file).is_ok_and(|current| current.trim() == patterns_str.trim())
 }
 
+/// Return whether `core.sparseCheckout` is currently enabled in the repo.
+///
+/// A matching `.git/info/sparse-checkout` file is not sufficient to consider
+/// sparse checkout applied: `git sparse-checkout disable` (or a manual
+/// `git config core.sparseCheckout false`) flips this flag to `false` while
+/// leaving the file intact, and git then ignores the patterns entirely.
+/// Checking the flag lets [`ConfigureSparseCheckout::run`] re-enable sparse
+/// checkout instead of short-circuiting on the still-matching file.
+fn sparse_checkout_config_enabled(ctx: &Context, root: &Path) -> bool {
+    ctx.executor
+        .run_unchecked_in(root, "git", &["config", "--get", "core.sparseCheckout"])
+        .is_ok_and(|result| result.success && result.stdout.trim() == "true")
+}
+
 /// Read the existing sparse-checkout file contents, if any.
 ///
 /// Returns `Ok(None)` when the file does not exist.
@@ -243,7 +257,9 @@ impl Task for ConfigureSparseCheckout {
         let patterns_str = build_patterns(&excluded_files);
         let sparse_file = ctx.root().join(".git/info/sparse-checkout");
 
-        if is_up_to_date(&sparse_file, &patterns_str) {
+        if is_up_to_date(&sparse_file, &patterns_str)
+            && sparse_checkout_config_enabled(ctx, &ctx.root())
+        {
             ctx.log.debug(&format!(
                 "already configured ({} files excluded)",
                 excluded_files.len()
@@ -483,12 +499,70 @@ mod tests {
 
         let mut config = empty_config(dir.path().to_path_buf());
         config.manifest.excluded_files.push("AppData/".to_string());
-        let ctx = make_linux_context(config);
+
+        // core.sparseCheckout reports enabled, so the file match short-circuits.
+        let mut executor = MockExecutor::new();
+        executor
+            .expect_run_unchecked_in()
+            .once()
+            .returning(|_, _, args| {
+                assert_eq!(args, ["config", "--get", "core.sparseCheckout"]);
+                Ok(ExecResult {
+                    stdout: "true\n".to_string(),
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            });
+        let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
         let result = ConfigureSparseCheckout::new().run(&ctx).unwrap();
         assert!(
             matches!(result, TaskResult::Ok),
             "expected Ok when sparse-checkout is already up to date, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn run_reconfigures_when_file_matches_but_config_disabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let info_dir = dir.path().join(".git").join("info");
+        std::fs::create_dir_all(&info_dir).unwrap();
+        // File already matches the expected patterns for "symlinks".
+        std::fs::write(info_dir.join("sparse-checkout"), "/*\n!/symlinks/symlinks").unwrap();
+
+        let mut config = empty_config(dir.path().to_path_buf());
+        config.manifest.excluded_files.push("symlinks".to_string());
+
+        let mut executor = MockExecutor::new();
+        // core.sparseCheckout is disabled (key unset → non-zero exit).
+        executor
+            .expect_run_unchecked_in()
+            .once()
+            .returning(|_, _, _| {
+                Ok(ExecResult {
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    success: false,
+                    code: Some(1),
+                })
+            });
+        // Full apply path then runs: status, config true, config cone false,
+        // read-tree (the excluded "symlinks" path is absent, so no checkout).
+        executor.expect_run_in().times(4).returning(|_, _, _| {
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
+        let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
+
+        let result = ConfigureSparseCheckout::new().run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Ok),
+            "expected reconfigure (not early Ok) when config is disabled, got {result:?}"
         );
     }
 

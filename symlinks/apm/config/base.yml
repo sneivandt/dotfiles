@@ -2,29 +2,35 @@ name: dotfiles
 version: 1.0.0
 dependencies:
   apm:
-    # .NET tooling
-    - dotnet/skills/plugins/dotnet-diag
-    - dotnet/skills/plugins/dotnet-msbuild
-    - dotnet/skills/plugins/dotnet-upgrade
+    # External dependencies are pinned to a specific commit (#<sha>) so that
+    # `apm outdated`/`apm deps update` do not treat a moving default branch as
+    # perpetually stale and re-clone full repo history on every install. The
+    # pinned SHAs are the last known-good revisions already resolved locally;
+    # bump them deliberately when adopting upstream changes.
 
-    # Copilot meta / workflow
-    - github/awesome-copilot/plugins/awesome-copilot
-    - github/awesome-copilot/plugins/context-engineering
-    - github/awesome-copilot/plugins/automate-this
+    # .NET tooling (dotnet/skills @ 22575b2, 2026-04-30)
+    - dotnet/skills/plugins/dotnet-diag#22575b2ac0094de25490e7336ebad8bb1b4daef8
+    - dotnet/skills/plugins/dotnet-msbuild#22575b2ac0094de25490e7336ebad8bb1b4daef8
+    - dotnet/skills/plugins/dotnet-upgrade#22575b2ac0094de25490e7336ebad8bb1b4daef8
+
+    # Copilot meta / workflow (github/awesome-copilot @ 90921cc, 2026-05-01)
+    - github/awesome-copilot/plugins/awesome-copilot#90921cc46f4e452ea379e70884d60ec25263f16a
+    - github/awesome-copilot/plugins/context-engineering#90921cc46f4e452ea379e70884d60ec25263f16a
+    - github/awesome-copilot/plugins/automate-this#90921cc46f4e452ea379e70884d60ec25263f16a
 
     # Planning & process
-    - github/awesome-copilot/plugins/project-planning
-    - github/awesome-copilot/plugins/software-engineering-team
+    - github/awesome-copilot/plugins/project-planning#90921cc46f4e452ea379e70884d60ec25263f16a
+    - github/awesome-copilot/plugins/software-engineering-team#90921cc46f4e452ea379e70884d60ec25263f16a
 
     # Cloud / infrastructure
-    - github/awesome-copilot/plugins/azure-cloud-development
+    - github/awesome-copilot/plugins/azure-cloud-development#90921cc46f4e452ea379e70884d60ec25263f16a
 
     # Cross-cutting code quality
-    - github/awesome-copilot/plugins/security-best-practices
+    - github/awesome-copilot/plugins/security-best-practices#90921cc46f4e452ea379e70884d60ec25263f16a
 
     # Document conversion skills
-    - github/awesome-copilot/skills/md-to-docx
-    - github/awesome-copilot/skills/markdown-to-html
+    - github/awesome-copilot/skills/md-to-docx#90921cc46f4e452ea379e70884d60ec25263f16a
+    - github/awesome-copilot/skills/markdown-to-html#90921cc46f4e452ea379e70884d60ec25263f16a
 
     # Local plugins
     - ~/.apm/plugins/dot-code

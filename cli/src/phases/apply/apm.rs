@@ -157,11 +157,16 @@ impl Task for InstallApmPackages {
             }
             let result = run_apm_install(ctx)?;
             if matches!(result, TaskResult::Ok) {
+                ctx.log
+                    .always(&format!("    install: {}", describe_dependencies(&merged)));
                 write_manifest_marker(&marker_path, &manifest_hash)?;
             }
             return Ok(result);
         }
 
+        // Unchanged manifest: redeploy locally symlinked plugins without
+        // announcing a state change, matching the quiet idempotent convention
+        // used by the other apply tasks.
         let result = run_apm_install(ctx)?;
         if !matches!(result, TaskResult::Ok) {
             return Ok(result);
@@ -170,11 +175,14 @@ impl Task for InstallApmPackages {
 
         match apm_dependencies_are_outdated(ctx)? {
             ApmOutdatedCheck::Outdated(true) => {
-                ctx.log.info("APM dependencies are outdated; updating");
-                run_apm_update(ctx)
+                let result = run_apm_update(ctx)?;
+                if matches!(result, TaskResult::Ok) {
+                    ctx.log.always("    update: APM dependencies");
+                }
+                Ok(result)
             }
             ApmOutdatedCheck::Outdated(false) => {
-                ctx.log.info("APM dependencies are up-to-date");
+                ctx.log.debug("APM dependencies are up-to-date");
                 Ok(TaskResult::Ok)
             }
             ApmOutdatedCheck::Skipped(reason) => Ok(TaskResult::Skipped(reason)),
@@ -354,30 +362,29 @@ fn write_manifest_marker(marker: &Path, manifest_hash: &str) -> Result<()> {
         .with_context(|| format!("writing APM manifest install marker {}", marker.display()))
 }
 
-/// Surface APM command output to the user so they can see what was installed or
-/// updated.  APM provides idempotency itself via its lockfile, so we have to
-/// relay its output to give the user any visibility into the install — otherwise
-/// the task is silent on success.
+/// Relay raw APM command output to the diagnostic log file and the verbose
+/// console.
+///
+/// The headline state-change is emitted separately as an always-visible
+/// `    {verb}: {desc}` line by the caller, so this routes APM's own
+/// line-by-line chatter through `debug`: it is always captured in the log
+/// file and shown under `--verbose`, but stays out of the way on ordinary
+/// runs.  APM provides idempotency itself via its lockfile, so this output is
+/// purely informational.
 fn report_apm_output(ctx: &Context, stdout: &str, stderr: &str) {
-    let mut emitted = false;
     for line in stdout.lines() {
         let trimmed = line.trim_end();
         if trimmed.trim().is_empty() {
             continue;
         }
-        ctx.log.info(trimmed);
-        emitted = true;
+        ctx.log.debug(trimmed);
     }
     for line in stderr.lines() {
         let trimmed = line.trim_end();
         if trimmed.trim().is_empty() {
             continue;
         }
-        ctx.log.warn(trimmed);
-        emitted = true;
-    }
-    if !emitted {
-        ctx.log.info("apm install completed (no output)");
+        ctx.log.debug(trimmed);
     }
 }
 
@@ -418,6 +425,35 @@ fn discover_yaml_files(config_dir: &Path) -> Result<Vec<PathBuf>> {
     }
     files.sort();
     Ok(files)
+}
+
+/// Build a human-facing phrase describing the dependencies in the merged
+/// manifest, e.g. `"3 APM dependencies"` or `"1 APM dependency"`.
+///
+/// Used for the always-visible install change line so the console output
+/// matches the `    {verb}: {desc}` style emitted by the other apply tasks.
+/// Falls back to `"APM manifest"` when the count cannot be determined.
+fn describe_dependencies(merged: &str) -> String {
+    match count_manifest_dependencies(merged) {
+        Some(1) => "1 APM dependency".to_string(),
+        Some(n) => format!("{n} APM dependencies"),
+        None => "APM manifest".to_string(),
+    }
+}
+
+/// Count the `dependencies.apm` and `dependencies.mcp` entries in the merged
+/// manifest.  Returns `None` if the manifest cannot be parsed.
+fn count_manifest_dependencies(merged: &str) -> Option<usize> {
+    use serde_yaml_ng::Value;
+
+    let value: Value = serde_yaml_ng::from_str(merged).ok()?;
+    let deps = value.get("dependencies")?;
+    let count = ["apm", "mcp"]
+        .iter()
+        .filter_map(|key| deps.get(key).and_then(Value::as_sequence))
+        .map(Vec::len)
+        .sum();
+    Some(count)
 }
 
 /// Return whether a path has a YAML extension supported by APM fragments.
@@ -1032,6 +1068,43 @@ mod tests {
         let merged = merge_fragments(&[f]).expect("merge");
         assert!(merged.contains("name: dotfiles"));
         assert!(!merged.contains("dependencies:"));
+    }
+
+    #[test]
+    fn describe_dependencies_counts_apm_and_mcp_entries() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let f = dir.path().join("deps.yml");
+        std::fs::write(
+            &f,
+            "name: d\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n    - baz/qux\n  mcp:\n    - server-1\n",
+        )
+        .expect("write");
+        let merged = merge_fragments(&[f]).expect("merge");
+        assert_eq!(count_manifest_dependencies(&merged), Some(3));
+        assert_eq!(describe_dependencies(&merged), "3 APM dependencies");
+    }
+
+    #[test]
+    fn describe_dependencies_uses_singular_for_one_entry() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let f = dir.path().join("one.yml");
+        std::fs::write(
+            &f,
+            "name: o\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n",
+        )
+        .expect("write");
+        let merged = merge_fragments(&[f]).expect("merge");
+        assert_eq!(describe_dependencies(&merged), "1 APM dependency");
+    }
+
+    #[test]
+    fn describe_dependencies_falls_back_when_no_dependencies() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let f = dir.path().join("none.yml");
+        std::fs::write(&f, "name: n\nversion: 1.0.0\n").expect("write");
+        let merged = merge_fragments(&[f]).expect("merge");
+        assert_eq!(count_manifest_dependencies(&merged), None);
+        assert_eq!(describe_dependencies(&merged), "APM manifest");
     }
 
     #[test]

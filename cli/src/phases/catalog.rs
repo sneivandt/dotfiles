@@ -27,6 +27,7 @@ pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
             repo_updated.clone(),
         )),
         Box::new(crate::phases::apply::git_config::ConfigureGit),
+        Box::new(crate::phases::apply::copilot_settings::ConfigureCopilot),
         Box::new(crate::phases::repository::hooks::InstallGitHooks::new()),
         Box::new(crate::phases::repository::completions::GenerateCompletions),
         Box::new(crate::phases::apply::packages::InstallPackages),

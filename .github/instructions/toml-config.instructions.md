@@ -44,6 +44,7 @@ Always include a trailing comma after the last array element.
 | `systemd-units.toml` | `units` | String (full unit filename, e.g. `dunst.service`) |
 | `vscode-extensions.toml` | `extensions` | String (publisher.name) |
 | `git-config.toml` | `settings` | `{ key, value }` |
+| `copilot.toml` | `settings` | `{ key, value }` — `key` is a dot path into `~/.copilot/settings.json`; `value` is any TOML scalar/array/table |
 | `chmod.toml` | `permissions` | `{ mode, path }` |
 | `registry.toml` | n/a (nested) | Logical section with `path` plus `[section.values]` subtable (Windows) |
 

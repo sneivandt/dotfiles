@@ -1,0 +1,39 @@
+# GitHub Copilot CLI settings
+#
+# Each entry is converged inside ~/.copilot/settings.json. The `key` is a
+# dot-separated path into that JSON document, so nested values (such as the
+# footer toggles) can be managed individually without touching their siblings.
+#
+# Only the keys listed here are managed. Everything else in settings.json —
+# including volatile, CLI-managed state like `enabledPlugins`,
+# `extraKnownMarketplaces`, and `sessionSync` — is left untouched. Plugins are
+# managed declaratively via APM (see symlinks/apm/config/*.yml), so they are
+# intentionally not listed here.
+
+[base]
+settings = [
+  # Core behaviour
+  { key = "model",          value = "claude-opus-4.8" },
+  { key = "banner",         value = "never"           },
+  { key = "beep",           value = false             },
+  { key = "memory",         value = true              },
+  { key = "renderMarkdown", value = true              },
+  { key = "logLevel",       value = "all"             },
+
+  # Appearance
+  { key = "theme",     value = "auto"   },
+  { key = "colorMode", value = "github" },
+
+  # Footer / status line (managed per-field so the CLI can still add new ones)
+  { key = "footer.showModelEffort",   value = false },
+  { key = "footer.showDirectory",     value = true  },
+  { key = "footer.showBranch",        value = true  },
+  { key = "footer.showContextWindow", value = false },
+  { key = "footer.showQuota",         value = false },
+  { key = "footer.showAiUsed",        value = false },
+  { key = "footer.showAgent",         value = true  },
+  { key = "footer.showCodeChanges",   value = false },
+  { key = "footer.showUsername",      value = false },
+  { key = "footer.showSandbox",       value = false },
+  { key = "footer.showCustom",        value = true  },
+]

@@ -1,11 +1,13 @@
 ---
 source: tests/install_command.rs
+assertion_line: 86
 expression: "task_names.join(\"\\n\")"
 ---
 Enable developer mode
 Configure sparse checkout
 Update repository
 Configure Git
+Configure Copilot
 Install Git hooks
 Generate shell completions
 Install packages

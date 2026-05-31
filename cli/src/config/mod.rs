@@ -5,6 +5,7 @@ pub mod category_matcher {
 }
 pub(crate) mod apm;
 pub mod chmod;
+pub mod copilot;
 pub mod git_config;
 pub(crate) mod helpers;
 pub mod manifest;
@@ -181,6 +182,7 @@ const SYSTEMD_UNITS_TOML: &str = "systemd-units.toml";
 const CHMOD_TOML: &str = "chmod.toml";
 const VSCODE_EXTENSIONS_TOML: &str = "vscode-extensions.toml";
 const GIT_CONFIG_TOML: &str = "git-config.toml";
+const COPILOT_TOML: &str = "copilot.toml";
 const MANIFEST_TOML: &str = "manifest.toml";
 const SCRIPTS_TOML: &str = "scripts.toml";
 
@@ -294,6 +296,7 @@ impl<'a> ConfigValidator<'a> {
                 vscode_extensions::validate(&config.vscode_extensions)
             })
             .validate_with(|config, _platform| git_config::validate(&config.git_settings))
+            .validate_with(|config, _platform| copilot::validate(&config.copilot_settings))
     }
 
     fn validate_with(
@@ -359,6 +362,8 @@ pub struct Config {
     pub vscode_extensions: Vec<vscode_extensions::VsCodeExtension>,
     /// Git configuration settings to apply globally.
     pub git_settings: Vec<git_config::GitSetting>,
+    /// GitHub Copilot CLI settings to converge in `~/.copilot/settings.json`.
+    pub copilot_settings: Vec<copilot::CopilotSetting>,
     /// Sparse checkout manifest for file exclusions.
     pub manifest: manifest::Manifest,
     /// Custom scripts from the overlay repository.
@@ -407,6 +412,8 @@ impl Config {
         )?;
         let git_settings =
             loader.load_filtered(GIT_CONFIG_TOML, git_config::load, active_categories)?;
+        let copilot_settings =
+            loader.load_filtered(COPILOT_TOML, copilot::load, active_categories)?;
         let manifest = loader.load_filtered(MANIFEST_TOML, manifest::load, excluded_categories)?;
 
         let mut config = Self {
@@ -420,6 +427,7 @@ impl Config {
             chmod: chmod_entries,
             vscode_extensions,
             git_settings,
+            copilot_settings,
             manifest,
             scripts: Vec::new(),
         };
@@ -486,6 +494,11 @@ impl Config {
         self.git_settings.extend(loader.load_overlay_filtered(
             GIT_CONFIG_TOML,
             git_config::load,
+            active_categories,
+        )?);
+        self.copilot_settings.extend(loader.load_overlay_filtered(
+            COPILOT_TOML,
+            copilot::load,
             active_categories,
         )?);
         self.scripts.extend(loader.load_overlay_filtered(

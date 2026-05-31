@@ -440,6 +440,7 @@ pub mod test_helpers {
             chmod: vec![],
             vscode_extensions: vec![],
             git_settings: vec![],
+            copilot_settings: vec![],
             manifest: Manifest {
                 excluded_files: vec![],
             },
@@ -975,8 +976,8 @@ mod tests {
         let tasks = all_install_tasks();
         assert_eq!(
             tasks.len(),
-            22,
-            "expected 22 install tasks — did you add a new task without updating \
+            23,
+            "expected 23 install tasks — did you add a new task without updating \
              all_install_tasks()? Update the registration list and this test."
         );
     }

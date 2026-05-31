@@ -275,6 +275,38 @@ settings = [
 
 ---
 
+### `copilot.toml`
+**Purpose**: Converges selected keys inside the GitHub Copilot CLI settings file
+(`~/.copilot/settings.json`).
+
+**Format**: Sections represent categories; entries are inline tables with `key` and
+`value` fields. The `key` is a dot-separated path into the JSON document, and
+`value` is any TOML scalar, array, or inline table (converted to JSON).
+
+**Example**:
+```toml
+[base]
+settings = [
+  { key = "model",             value = "claude-opus-4.8" },
+  { key = "beep",              value = false             },
+  { key = "footer.showBranch", value = true              },
+]
+```
+
+**How it works**:
+- Only the listed keys are managed; every other key in `settings.json` is
+  preserved on write. This makes it safe to apply against a *volatile* file the
+  Copilot CLI also rewrites at runtime (e.g. after `/model` or `/theme`).
+- Dotted keys (such as `footer.showBranch`) target nested values individually
+  without clobbering sibling keys.
+- A key is only rewritten when its current value drifts from the declared one,
+  so up-to-date runs make no changes.
+- Volatile, CLI-managed state (`enabledPlugins`, `extraKnownMarketplaces`,
+  `sessionSync`, login data) is intentionally left out. Plugins are managed
+  declaratively via APM instead.
+
+---
+
 ## Overlay Configuration
 
 An **overlay repository** provides private configuration extensions that are

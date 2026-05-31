@@ -6,6 +6,7 @@
 
 pub mod apm;
 pub mod chmod;
+pub mod copilot_settings;
 pub mod git_config;
 pub mod overlay_scripts;
 pub mod packages;

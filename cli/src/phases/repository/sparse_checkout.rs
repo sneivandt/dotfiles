@@ -68,14 +68,53 @@ fn read_existing_patterns(sparse_file: &Path) -> Result<Option<String>> {
 /// Setting the two config keys directly enables sparse checkout in
 /// non-cone mode without modifying the working tree; the subsequent
 /// `git read-tree -mu HEAD` then applies only our intentional patterns.
+///
+/// The keys are written to the per-worktree config scope when the
+/// `extensions.worktreeConfig` extension is active.  `git sparse-checkout
+/// disable` enables that extension and stores `core.sparseCheckout=false` in
+/// the worktree config, which overrides the repository scope; writing plain
+/// `git config` there would be silently shadowed and sparse checkout would
+/// never re-enable.
 fn enable_sparse_checkout_config(ctx: &Context, root: &Path) -> Result<()> {
     ctx.log
         .debug("enabling sparse checkout (non-cone mode via git config)");
-    ctx.executor
-        .run_in(root, "git", &["config", "core.sparseCheckout", "true"])?;
-    ctx.executor
-        .run_in(root, "git", &["config", "core.sparseCheckoutCone", "false"])?;
+    let scope: &[&str] = if worktree_config_enabled(ctx, root) {
+        &["--worktree"]
+    } else {
+        &[]
+    };
+    set_git_config(ctx, root, scope, "core.sparseCheckout", "true")?;
+    set_git_config(ctx, root, scope, "core.sparseCheckoutCone", "false")?;
     Ok(())
+}
+
+/// Write a single git config key/value in the repository at `root`, using the
+/// extra `scope` flags (e.g. `--worktree`) when supplied.
+fn set_git_config(
+    ctx: &Context,
+    root: &Path,
+    scope: &[&str],
+    key: &str,
+    value: &str,
+) -> Result<()> {
+    let mut args = vec!["config"];
+    args.extend_from_slice(scope);
+    args.push(key);
+    args.push(value);
+    ctx.executor.run_in(root, "git", &args)?;
+    Ok(())
+}
+
+/// Return whether the `extensions.worktreeConfig` extension is enabled, in
+/// which case `core.*` overrides live in the per-worktree config scope.
+fn worktree_config_enabled(ctx: &Context, root: &Path) -> bool {
+    ctx.executor
+        .run_unchecked_in(
+            root,
+            "git",
+            &["config", "--get", "extensions.worktreeConfig"],
+        )
+        .is_ok_and(|result| result.success && result.stdout.trim() == "true")
 }
 
 /// Write the patterns string to `.git/info/sparse-checkout`, creating the
@@ -535,10 +574,12 @@ mod tests {
         config.manifest.excluded_files.push("symlinks".to_string());
 
         let mut executor = MockExecutor::new();
-        // core.sparseCheckout is disabled (key unset → non-zero exit).
+        // core.sparseCheckout is disabled (key unset → non-zero exit); the
+        // worktree-config extension is likewise unset, so config writes go to
+        // the repository scope.
         executor
             .expect_run_unchecked_in()
-            .once()
+            .times(2)
             .returning(|_, _, _| {
                 Ok(ExecResult {
                     stdout: String::new(),
@@ -664,6 +705,69 @@ mod tests {
     }
 
     #[test]
+    fn enable_sparse_checkout_uses_worktree_scope_when_extension_enabled() {
+        let mut executor = MockExecutor::new();
+        executor
+            .expect_run_unchecked_in()
+            .once()
+            .returning(|_, _, args| {
+                assert_eq!(args, ["config", "--get", "extensions.worktreeConfig"]);
+                Ok(ExecResult {
+                    stdout: "true\n".to_string(),
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            });
+        executor.expect_run_in().times(2).returning(|_, _, args| {
+            assert!(
+                args.contains(&"--worktree"),
+                "expected --worktree scope, got {args:?}"
+            );
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
+        let config = empty_config(PathBuf::from("/repo"));
+        let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
+        enable_sparse_checkout_config(&ctx, Path::new("/repo")).unwrap();
+    }
+
+    #[test]
+    fn enable_sparse_checkout_uses_repo_scope_when_extension_disabled() {
+        let mut executor = MockExecutor::new();
+        executor
+            .expect_run_unchecked_in()
+            .once()
+            .returning(|_, _, _| {
+                Ok(ExecResult {
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    success: false,
+                    code: Some(1),
+                })
+            });
+        executor.expect_run_in().times(2).returning(|_, _, args| {
+            assert!(
+                !args.contains(&"--worktree"),
+                "expected repository scope (no --worktree), got {args:?}"
+            );
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
+        let config = empty_config(PathBuf::from("/repo"));
+        let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
+        enable_sparse_checkout_config(&ctx, Path::new("/repo")).unwrap();
+    }
+
+    #[test]
     fn run_writes_sparse_checkout_patterns_and_calls_git() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join(".git")).unwrap();
@@ -678,6 +782,16 @@ mod tests {
         //   3. git config core.sparseCheckoutCone false
         //   4. git read-tree -mu HEAD
         let mut executor = MockExecutor::new();
+        // extensions.worktreeConfig query → unset, so config writes go to the
+        // repository scope.
+        executor.expect_run_unchecked_in().returning(|_, _, _| {
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: false,
+                code: Some(1),
+            })
+        });
         executor.expect_run_in().returning(|_, _, _| {
             Ok(ExecResult {
                 stdout: String::new(),
@@ -727,6 +841,15 @@ mod tests {
         //   5. rollback git read-tree → success
         let mut seq = mockall::Sequence::new();
         let mut executor = MockExecutor::new();
+        // extensions.worktreeConfig query → unset (repository scope).
+        executor.expect_run_unchecked_in().returning(|_, _, _| {
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: false,
+                code: Some(1),
+            })
+        });
         // git status (clean worktree)
         executor
             .expect_run_in()

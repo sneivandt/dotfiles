@@ -1,9 +1,9 @@
 //! Filesystem operations for installing or staging an updated binary, plus
+//! the post-install smoke test and end-to-end download orchestration.
 #![allow(
     clippy::arithmetic_side_effects,
     reason = "counters and validated math; bounded by config sizes"
 )]
-//! the post-install smoke test and end-to-end download orchestration.
 
 use std::fs;
 use std::io::Write;

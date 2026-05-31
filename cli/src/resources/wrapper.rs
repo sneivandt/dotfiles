@@ -1,8 +1,8 @@
 //! CLI wrapper installation resource.
 //!
 //! Installs a small script on the user's `PATH` (`~/.local/bin/dotfiles` on
-//! both Unix and Windows) that delegates to the repository's wrapper script
-//! so `dotfiles` can be invoked from anywhere.
+//! Unix and `~/.local/bin/dotfiles.cmd` on Windows) that delegates to the
+//! repository's wrapper script so `dotfiles` can be invoked from anywhere.
 use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
@@ -54,8 +54,8 @@ impl WrapperResource {
     /// `$HOME/.local/bin/`).
     ///
     /// On Unix this produces an extensionless shell script.  On Windows
-    /// it produces a `.cmd` shim that delegates to the repository's
-    /// `dotfiles.ps1`, which is discoverable via `PATHEXT`.
+    /// it produces a `.cmd` shim that directly invokes the repository's
+    /// `dotfiles.ps1`.
     #[must_use]
     pub fn new(wrapper_type: WrapperType, dotfiles_root: &Path, home: &Path) -> Self {
         let bin_dir = home.join(".local").join("bin");

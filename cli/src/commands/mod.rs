@@ -515,7 +515,7 @@ impl CommandRunner {
 /// # Errors
 ///
 /// Returns an error if the profile name is invalid, profile definitions cannot
-/// be loaded from `profiles.toml`, or interactive prompting fails.
+/// be loaded from `conf/profiles.toml`, or interactive prompting fails.
 fn resolve_profile(
     global: &GlobalOpts,
     root: &std::path::Path,

@@ -104,7 +104,7 @@ impl ResourceError {
 /// Errors that arise from configuration loading and profile resolution.
 #[derive(Error, Debug)]
 pub enum ConfigError {
-    /// The requested profile name is not defined in `profiles.toml`.
+    /// The requested profile name is not defined in `conf/profiles.toml`.
     ///
     /// Valid profiles are defined in `conf/profiles.toml`.
     #[error("Invalid profile '{name}' (available: {available})")]
@@ -125,7 +125,7 @@ pub enum ConfigError {
     },
 
     /// An I/O error occurred while reading a config file.
-    #[error("IO error reading config file {path}: {source}")]
+    #[error("I/O error reading config file {path}: {source}")]
     Io {
         /// Path to the file that could not be read.
         path: String,
@@ -163,7 +163,7 @@ mod tests {
             source: io::Error::new(io::ErrorKind::NotFound, "no such file"),
         };
         assert!(e.to_string().contains("/conf/packages.toml"));
-        assert!(e.to_string().contains("IO error reading config file"));
+        assert!(e.to_string().contains("I/O error reading config file"));
     }
 
     #[test]

@@ -8,7 +8,7 @@ use crate::phases::{Context, Task, TaskPhase, TaskResult, UpdateSignal, task_dep
 pub struct UpdateRepository {
     /// Set to `true` when the repository is actually updated by this task.
     ///
-    /// Shared with [`super::reload_config::ReloadConfig`] so that task can
+    /// Shared with [`super::reload_config::ReloadConfig`] so that the task can
     /// skip the reload when the repository was already up to date.
     pub(super) repo_updated: UpdateSignal,
 }

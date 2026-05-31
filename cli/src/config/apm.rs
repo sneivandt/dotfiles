@@ -95,26 +95,95 @@ fn validate_fragment(validator: &mut Validator, root: &Path, fragment: &Path) {
         }
     };
 
-    let Some(apm_deps) = value
+    if let Some(apm_deps) = value
         .get("dependencies")
         .and_then(|dependencies| dependencies.get("apm"))
+        .and_then(YamlValue::as_sequence)
+    {
+        for dependency in apm_deps {
+            if let Some(plugin_name) = local_dot_plugin_name(dependency) {
+                validate_local_plugin_ref(validator, root, fragment, &plugin_name);
+            }
+        }
+    }
+
+    validate_mcp_deps(validator, root, fragment, &value);
+}
+
+/// Validate `dependencies.mcp` entries declared directly in a fragment.
+///
+/// APM merges these self-defined servers into `~/.apm/apm.yml`, so a malformed
+/// entry (missing `name`, or missing both `command` and `url`) silently
+/// produces a broken `mcp-config.json` at install time. Surface it earlier.
+fn validate_mcp_deps(validator: &mut Validator, root: &Path, fragment: &Path, value: &YamlValue) {
+    let Some(mcp_deps) = value
+        .get("dependencies")
+        .and_then(|dependencies| dependencies.get("mcp"))
         .and_then(YamlValue::as_sequence)
     else {
         return;
     };
 
-    for dependency in apm_deps {
-        if let Some(plugin_name) = local_dot_plugin_name(dependency) {
-            validate_local_plugin_ref(validator, root, fragment, plugin_name);
+    for (index, entry) in mcp_deps.iter().enumerate() {
+        if entry.as_str().is_some() {
+            // String shorthand (registry reference) needs no further checks.
+            continue;
+        }
+        if !entry.is_mapping() {
+            validator.warn(
+                mcp_item(root, fragment, index, entry),
+                "dependencies.mcp entry is neither a registry string nor a mapping",
+            );
+            continue;
+        }
+
+        if entry
+            .get("name")
+            .and_then(YamlValue::as_str)
+            .is_none_or(|name| name.trim().is_empty())
+        {
+            validator.warn(
+                mcp_item(root, fragment, index, entry),
+                "dependencies.mcp entry is missing a non-empty 'name'",
+            );
+        }
+
+        let has_command = entry
+            .get("command")
+            .and_then(YamlValue::as_str)
+            .is_some_and(|command| !command.trim().is_empty());
+        let has_url = entry
+            .get("url")
+            .and_then(YamlValue::as_str)
+            .is_some_and(|url| !url.trim().is_empty());
+        if !has_command && !has_url {
+            validator.warn(
+                mcp_item(root, fragment, index, entry),
+                "dependencies.mcp entry must define a 'command' (stdio) or 'url' (http) field",
+            );
         }
     }
 }
 
-fn local_dot_plugin_name(dependency: &YamlValue) -> Option<&str> {
-    let plugin_name = dependency
-        .as_str()?
+/// Build a stable item label for an `mcp` warning, preferring the entry's
+/// declared `name` and falling back to the sequence index.
+fn mcp_item(root: &Path, fragment: &Path, index: usize, entry: &YamlValue) -> String {
+    let name = entry
+        .get("name")
+        .and_then(YamlValue::as_str)
+        .filter(|name| !name.trim().is_empty());
+    name.map_or_else(
+        || format!("{}: mcp[{index}]", path_item(root, fragment)),
+        |name| format!("{}: mcp '{name}'", path_item(root, fragment)),
+    )
+}
+
+fn local_dot_plugin_name(dependency: &YamlValue) -> Option<String> {
+    let normalized = dependency.as_str()?.replace('\\', "/");
+    let plugin_name = normalized
         .strip_prefix(LOCAL_PLUGIN_PREFIX)?
-        .trim_end_matches('/');
+        .trim_end_matches('/')
+        .to_owned();
     plugin_name
         .starts_with(LOCAL_PLUGIN_NAME_PREFIX)
         .then_some(plugin_name)
@@ -240,6 +309,70 @@ mod tests {
             "dependencies:\n  apm:\n    - ~/.apm/plugins/dot-code\n",
         );
         write_plugin(temp_dir.path(), "dot-code", r#"{ "name": "dot-code" }"#);
+
+        assert!(validate(temp_dir.path(), None).is_empty());
+    }
+
+    #[test]
+    fn validate_normalizes_backslash_local_plugin_ref() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_fragment(
+            temp_dir.path(),
+            "dependencies:\n  apm:\n    - '~\\.apm\\plugins\\dot-code'\n",
+        );
+
+        let warnings = validate(temp_dir.path(), None);
+
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("has no matching directory"));
+    }
+
+    #[test]
+    fn validate_accepts_well_formed_mcp_entry() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_fragment(
+            temp_dir.path(),
+            "dependencies:\n  mcp:\n    - name: kusto\n      command: agency\n",
+        );
+
+        assert!(validate(temp_dir.path(), None).is_empty());
+    }
+
+    #[test]
+    fn validate_detects_mcp_entry_missing_name() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_fragment(
+            temp_dir.path(),
+            "dependencies:\n  mcp:\n    - command: agency\n",
+        );
+
+        let warnings = validate(temp_dir.path(), None);
+
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("missing a non-empty 'name'"));
+    }
+
+    #[test]
+    fn validate_detects_mcp_entry_missing_command_and_url() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_fragment(
+            temp_dir.path(),
+            "dependencies:\n  mcp:\n    - name: kusto\n",
+        );
+
+        let warnings = validate(temp_dir.path(), None);
+
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("must define a 'command'"));
+    }
+
+    #[test]
+    fn validate_accepts_mcp_registry_string_shorthand() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_fragment(
+            temp_dir.path(),
+            "dependencies:\n  mcp:\n    - some/registry-server\n",
+        );
 
         assert!(validate(temp_dir.path(), None).is_empty());
     }

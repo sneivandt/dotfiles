@@ -465,11 +465,20 @@ fn is_yaml_fragment(path: &Path) -> bool {
 
 /// Parse each fragment, concatenate `dependencies.apm` and `dependencies.mcp`
 /// across all of them, and emit a single YAML document string.
+///
+/// Duplicate entries are dropped, keeping the first occurrence: `apm` refs are
+/// deduplicated by their serialized value and `mcp` servers by their `name`
+/// field (falling back to the serialized value for string shorthands). This
+/// keeps the generated manifest stable when base and overlay fragments declare
+/// the same plugin or MCP server.
 fn merge_fragments(fragments: &[PathBuf]) -> Result<String> {
     use serde_yaml_ng::Value;
+    use std::collections::HashSet;
 
     let mut apm_deps: Vec<Value> = Vec::new();
     let mut mcp_deps: Vec<Value> = Vec::new();
+    let mut seen_apm: HashSet<String> = HashSet::new();
+    let mut seen_mcp: HashSet<String> = HashSet::new();
 
     for path in fragments {
         let content = std::fs::read_to_string(path)
@@ -482,10 +491,18 @@ fn merge_fragments(fragments: &[PathBuf]) -> Result<String> {
 
         if let Some(deps) = value.get("dependencies") {
             if let Some(seq) = deps.get("apm").and_then(Value::as_sequence) {
-                apm_deps.extend(seq.iter().cloned());
+                for entry in seq {
+                    if seen_apm.insert(apm_dedup_key(entry)) {
+                        apm_deps.push(entry.clone());
+                    }
+                }
             }
             if let Some(seq) = deps.get("mcp").and_then(Value::as_sequence) {
-                mcp_deps.extend(seq.iter().cloned());
+                for entry in seq {
+                    if seen_mcp.insert(mcp_dedup_key(entry)) {
+                        mcp_deps.push(entry.clone());
+                    }
+                }
             }
         }
     }
@@ -508,6 +525,23 @@ fn merge_fragments(fragments: &[PathBuf]) -> Result<String> {
     let body = serde_yaml_ng::to_string(&Value::Mapping(root))
         .context("serialising merged apm manifest")?;
     Ok(format!("{GENERATED_HEADER}{body}"))
+}
+
+/// Deduplication key for an `apm` dependency: its serialized representation.
+fn apm_dedup_key(entry: &serde_yaml_ng::Value) -> String {
+    serde_yaml_ng::to_string(entry).unwrap_or_else(|_| format!("{entry:?}"))
+}
+
+/// Deduplication key for an `mcp` dependency: its `name` field when present,
+/// otherwise its serialized representation (registry string shorthands).
+fn mcp_dedup_key(entry: &serde_yaml_ng::Value) -> String {
+    entry
+        .get("name")
+        .and_then(serde_yaml_ng::Value::as_str)
+        .map_or_else(
+            || format!("@{}", apm_dedup_key(entry)),
+            |name| format!("name:{name}"),
+        )
 }
 
 /// Return whether the generated manifest should be written to disk.
@@ -1044,6 +1078,30 @@ mod tests {
         assert!(merged.contains("baz/qux"));
         assert!(merged.contains("server-1"));
         assert!(merged.contains("name: dotfiles"));
+    }
+
+    #[test]
+    fn merge_fragments_deduplicates_apm_and_mcp_entries() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let a = dir.path().join("a.yml");
+        let b = dir.path().join("b.yml");
+        std::fs::write(
+            &a,
+            "name: a\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n  mcp:\n    - name: kusto\n      command: agency\n",
+        )
+        .expect("write a");
+        std::fs::write(
+            &b,
+            "name: b\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n  mcp:\n    - name: kusto\n      command: other\n",
+        )
+        .expect("write b");
+
+        let merged = merge_fragments(&[a, b]).expect("merge");
+        assert_eq!(merged.matches("foo/bar").count(), 1);
+        assert_eq!(merged.matches("name: kusto").count(), 1);
+        // First occurrence wins, so the duplicate's command is dropped.
+        assert!(merged.contains("agency"));
+        assert!(!merged.contains("other"));
     }
 
     #[test]

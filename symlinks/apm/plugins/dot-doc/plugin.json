@@ -1,5 +1,6 @@
 {
   "name": "dot-doc",
   "version": "1.0.0",
-  "description": "Document generation workflows and preferences"
+  "description": "Document generation workflows and preferences",
+  "skills": ["skills/"]
 }

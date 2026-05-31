@@ -433,7 +433,10 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers automatically 
 
 1. Create TOML file in `conf/`
 2. Add a config parser in `cli/src/config/`
-3. Add the field to the `Config` struct and load it in `Config::load()`
+3. Add the field to the `Config` struct and a single `SectionLoader` call in
+   `Config::load()` (e.g. `sections.collect_filtered(...)`). The same call
+   loads the main config and merges the overlay, so there is no separate
+   overlay-merge step to keep in sync.
 4. Create a task in `cli/src/phases/apply/` that consumes the config
 5. Document in CONFIGURATION.md
 

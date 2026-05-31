@@ -24,16 +24,16 @@ Persisted via `git2` crate to local git config.
 
 ## Config Merging
 
-`Config::load()` accepts an optional overlay path. When set, it reads
-every standard TOML file from `<overlay>/conf/` (if present) and appends
-entries to the main config lists. The same category filtering applies.
+`Config::load()` accepts an optional overlay path. When set, each section's
+`SectionLoader` call reads the matching TOML file from `<overlay>/conf/` (if
+present) and appends its entries to the main config list. The same category
+filtering applies.
 
 ```rust
-// In Config::load() — merge_overlay() handles overlay loading
-if let Some(overlay_root) = overlay {
-    let overlay_conf = overlay_root.join("conf");
-    // Load each TOML type if the file exists, append to vectors
-}
+// In Config::load() — each SectionLoader call loads main config AND
+// merges the overlay for that section in one step.
+let sections = SectionLoader::new(root, overlay, profile);
+let packages = sections.collect_filtered(PACKAGES_TOML, packages::load)?;
 ```
 
 ## Script Convention

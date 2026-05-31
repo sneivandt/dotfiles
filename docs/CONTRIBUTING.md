@@ -127,7 +127,9 @@ cargo test --manifest-path cli/Cargo.toml
 
 1. Create TOML file in `conf/`
 2. Add a parser module in `cli/src/config/` (follow existing patterns like `packages.rs`)
-3. Add the field to the `Config` struct and load it in `Config::load()`
+3. Add the field to the `Config` struct and a single `SectionLoader` call in
+   `Config::load()`. One call (e.g. `sections.collect_filtered(...)`) loads the
+   main config *and* merges the overlay, so there is no separate merge step.
 4. Create a task in `cli/src/phases/apply/` that consumes the config
 
 #### Creating New Profiles

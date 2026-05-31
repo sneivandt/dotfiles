@@ -171,4 +171,5 @@ ShowHidden = 0x00000001
 - Serde handles deserialization with strong typing
 - Use `#[serde(untagged)]` for polymorphic enums (string vs object)
 - Always validate TOML syntax — malformed files cause deserialization errors
-- Config loaders are called in `Config::load()` (`cli/src/config/mod.rs`)
+- Config loaders are called in `Config::load()` (`cli/src/config/mod.rs`) via a
+  single `SectionLoader` call per section, which also handles overlay merging

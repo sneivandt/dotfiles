@@ -267,6 +267,107 @@ impl ConfigLoader {
     }
 }
 
+/// Loads config sections from the main `conf/` directory and, when present,
+/// merges matching sections from an overlay repository.
+///
+/// Each `collect_*` method performs the main load and the overlay merge for a
+/// single section in one call.  Keeping both halves in one place makes it
+/// structurally impossible for a section to be loaded without also being
+/// merged from the overlay — the desync footgun that a hand-written
+/// `load` + `merge_overlay` pair invited.
+struct SectionLoader<'a> {
+    root: &'a Path,
+    overlay_root: Option<&'a Path>,
+    main: ConfigLoader,
+    overlay: Option<ConfigLoader>,
+    active: &'a [category_matcher::Category],
+    excluded: &'a [category_matcher::Category],
+}
+
+impl<'a> SectionLoader<'a> {
+    fn new(root: &'a Path, overlay_root: Option<&'a Path>, profile: &'a profiles::Profile) -> Self {
+        Self {
+            root,
+            overlay_root,
+            main: ConfigLoader::main(root),
+            overlay: overlay_root.map(ConfigLoader::overlay),
+            active: &profile.active_categories,
+            excluded: &profile.excluded_categories,
+        }
+    }
+
+    /// Load a category-filtered section from main config and append the
+    /// overlay's matching section.
+    fn collect_filtered<T>(
+        &self,
+        file: &str,
+        load: fn(&Path, &[category_matcher::Category]) -> Result<Vec<T>>,
+    ) -> Result<Vec<T>> {
+        let mut items = self.main.load_filtered(file, load, self.active)?;
+        if let Some(overlay) = &self.overlay {
+            items.extend(overlay.load_overlay_filtered(file, load, self.active)?);
+        }
+        Ok(items)
+    }
+
+    /// Like [`collect_filtered`](Self::collect_filtered) but applies `post` to
+    /// each batch using its originating root, so main and overlay items keep
+    /// the correct provenance (used by symlinks to set their origin).
+    fn collect_filtered_post<T>(
+        &self,
+        file: &str,
+        load: fn(&Path, &[category_matcher::Category]) -> Result<Vec<T>>,
+        post: impl Fn(&mut [T], &Path),
+    ) -> Result<Vec<T>> {
+        let mut items = self.main.load_filtered(file, load, self.active)?;
+        post(&mut items, self.root);
+        if let (Some(overlay), Some(overlay_root)) = (&self.overlay, self.overlay_root) {
+            let mut extra = overlay.load_overlay_filtered(file, load, self.active)?;
+            post(&mut extra, overlay_root);
+            items.extend(extra);
+        }
+        Ok(items)
+    }
+
+    /// Load an unfiltered section (no category tags) from main config and
+    /// append the overlay's matching section.
+    fn collect_unfiltered<T>(
+        &self,
+        file: &str,
+        load: fn(&Path) -> Result<Vec<T>>,
+    ) -> Result<Vec<T>> {
+        let mut items = self.main.load(file, load)?;
+        if let Some(overlay) = &self.overlay {
+            items.extend(overlay.load_overlay(file, load)?);
+        }
+        Ok(items)
+    }
+
+    /// Collect a category-filtered section from the overlay only; the main
+    /// `conf/` directory does not provide this section.
+    fn collect_overlay_only<T>(
+        &self,
+        file: &str,
+        load: fn(&Path, &[category_matcher::Category]) -> Result<Vec<T>>,
+    ) -> Result<Vec<T>> {
+        let mut items = Vec::new();
+        if let Some(overlay) = &self.overlay {
+            items.extend(overlay.load_overlay_filtered(file, load, self.active)?);
+        }
+        Ok(items)
+    }
+
+    /// Load a single-value section filtered by the profile's *excluded*
+    /// categories.  Not merged from the overlay.
+    fn load_excluded<T>(
+        &self,
+        file: &str,
+        load: fn(&Path, &[category_matcher::Category]) -> Result<T>,
+    ) -> Result<T> {
+        self.main.load_filtered(file, load, self.excluded)
+    }
+}
+
 #[derive(Debug)]
 struct ConfigValidator<'a> {
     config: &'a Config,
@@ -383,131 +484,44 @@ impl Config {
         platform: Platform,
         overlay: Option<&Path>,
     ) -> Result<Self> {
-        let active_categories = &profile.active_categories;
-        let excluded_categories = &profile.excluded_categories;
-        let loader = ConfigLoader::main(root);
+        let sections = SectionLoader::new(root, overlay, profile);
 
-        let packages = loader.load_filtered(PACKAGES_TOML, packages::load, active_categories)?;
-        let mut symlinks =
-            loader.load_filtered(SYMLINKS_TOML, symlinks::load, active_categories)?;
-        symlinks::set_origin(&mut symlinks, root);
-
-        let registry = if platform.has_registry() {
-            loader.load(REGISTRY_TOML, registry::load)?
-        } else {
-            Vec::new()
-        };
-
-        let units = if platform.supports_systemd() {
-            loader.load_filtered(SYSTEMD_UNITS_TOML, systemd_units::load, active_categories)?
-        } else {
-            Vec::new()
-        };
-
-        let chmod_entries = loader.load_filtered(CHMOD_TOML, chmod::load, active_categories)?;
-        let vscode_extensions = loader.load_filtered(
-            VSCODE_EXTENSIONS_TOML,
-            vscode_extensions::load,
-            active_categories,
-        )?;
-        let git_settings =
-            loader.load_filtered(GIT_CONFIG_TOML, git_config::load, active_categories)?;
-        let copilot_settings =
-            loader.load_filtered(COPILOT_TOML, copilot::load, active_categories)?;
-        let manifest = loader.load_filtered(MANIFEST_TOML, manifest::load, excluded_categories)?;
-
+        // Each field is loaded and overlay-merged by a single `SectionLoader`
+        // call, so adding a new config section means adding one struct field
+        // and one line here — never a second edit in a separate merge step.
         let mut config = Self {
             root: root.to_path_buf(),
             overlay: overlay.map(Path::to_path_buf),
             profile: profile.clone(),
-            packages,
-            symlinks,
-            registry,
-            units,
-            chmod: chmod_entries,
-            vscode_extensions,
-            git_settings,
-            copilot_settings,
-            manifest,
-            scripts: Vec::new(),
+            packages: sections.collect_filtered(PACKAGES_TOML, packages::load)?,
+            symlinks: sections.collect_filtered_post(
+                SYMLINKS_TOML,
+                symlinks::load,
+                symlinks::set_origin,
+            )?,
+            registry: if platform.has_registry() {
+                sections.collect_unfiltered(REGISTRY_TOML, registry::load)?
+            } else {
+                Vec::new()
+            },
+            units: if platform.supports_systemd() {
+                sections.collect_filtered(SYSTEMD_UNITS_TOML, systemd_units::load)?
+            } else {
+                Vec::new()
+            },
+            chmod: sections.collect_filtered(CHMOD_TOML, chmod::load)?,
+            vscode_extensions: sections
+                .collect_filtered(VSCODE_EXTENSIONS_TOML, vscode_extensions::load)?,
+            git_settings: sections.collect_filtered(GIT_CONFIG_TOML, git_config::load)?,
+            copilot_settings: sections.collect_filtered(COPILOT_TOML, copilot::load)?,
+            manifest: sections.load_excluded(MANIFEST_TOML, manifest::load)?,
+            scripts: sections.collect_overlay_only(SCRIPTS_TOML, scripts::load)?,
         };
-
-        // Merge overlay configuration if an overlay path is provided.
-        if let Some(overlay_root) = overlay {
-            config.merge_overlay(overlay_root, active_categories, platform)?;
-        }
 
         config.symlinks = symlinks::expand_glob_patterns(&config.symlinks, root)
             .context("expanding symlink glob patterns")?;
 
         Ok(config)
-    }
-
-    /// Merge configuration from an overlay repository into this config.
-    ///
-    /// Overlay TOML files use the same format as the main `conf/` files and
-    /// are appended to the existing lists.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if any overlay configuration file cannot be parsed.
-    fn merge_overlay(
-        &mut self,
-        overlay_root: &Path,
-        active_categories: &[category_matcher::Category],
-        platform: Platform,
-    ) -> Result<()> {
-        let loader = ConfigLoader::overlay(overlay_root);
-
-        self.packages.extend(loader.load_overlay_filtered(
-            PACKAGES_TOML,
-            packages::load,
-            active_categories,
-        )?);
-        self.symlinks.extend({
-            let mut overlay_symlinks =
-                loader.load_overlay_filtered(SYMLINKS_TOML, symlinks::load, active_categories)?;
-            symlinks::set_origin(&mut overlay_symlinks, overlay_root);
-            overlay_symlinks
-        });
-        if platform.has_registry() {
-            self.registry
-                .extend(loader.load_overlay(REGISTRY_TOML, registry::load)?);
-        }
-        if platform.supports_systemd() {
-            self.units.extend(loader.load_overlay_filtered(
-                SYSTEMD_UNITS_TOML,
-                systemd_units::load,
-                active_categories,
-            )?);
-        }
-        self.chmod.extend(loader.load_overlay_filtered(
-            CHMOD_TOML,
-            chmod::load,
-            active_categories,
-        )?);
-        self.vscode_extensions.extend(loader.load_overlay_filtered(
-            VSCODE_EXTENSIONS_TOML,
-            vscode_extensions::load,
-            active_categories,
-        )?);
-        self.git_settings.extend(loader.load_overlay_filtered(
-            GIT_CONFIG_TOML,
-            git_config::load,
-            active_categories,
-        )?);
-        self.copilot_settings.extend(loader.load_overlay_filtered(
-            COPILOT_TOML,
-            copilot::load,
-            active_categories,
-        )?);
-        self.scripts.extend(loader.load_overlay_filtered(
-            SCRIPTS_TOML,
-            scripts::load,
-            active_categories,
-        )?);
-
-        Ok(())
     }
 
     /// Validate the configuration and return any warnings.

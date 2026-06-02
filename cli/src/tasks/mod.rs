@@ -22,19 +22,27 @@
 //! - **AI** (`tasks::ai`) — Copilot/APM settings.
 //! - **Overlay** (`tasks::overlay`) — overlay script tasks.
 //! - **Validation** (`tasks::validation`) — configuration checks.
+//!
+//! The modules above define tasks.  The remaining modules are supporting
+//! infrastructure rather than task definitions:
+//!
+//! - `catalog` — registers every task and builds the install/uninstall lists.
+//! - `execute` — the policy-aware execution engine and result recording.
+//! - `filter` — category/profile filtering shared by tasks.
+//! - `macros` — the `resource_task!` / `task_deps!` authoring macros.
+//! - `types` — shared task vocabulary (`TaskId`, `TaskPhase`, `Domain`,
+//!   `ExecutionPolicy`).
 #![allow(
     clippy::arithmetic_side_effects,
     reason = "counters and validated math; bounded by config sizes"
 )]
 
+// Task-domain modules: each groups the task definitions for one subject area.
 pub mod ai;
-mod catalog;
 pub mod core;
 pub mod editors;
 pub mod files;
-pub(crate) mod filter;
 pub mod git;
-mod macros;
 pub mod overlay;
 pub mod packages;
 pub mod repository;
@@ -42,10 +50,19 @@ pub mod shell;
 pub mod system;
 pub mod validation;
 
+// Supporting infrastructure: shared machinery, not task definitions.
+mod catalog;
+mod execute;
+pub(crate) mod filter;
+mod macros;
+mod types;
+
 pub use catalog::{all_install_tasks, all_uninstall_tasks};
+pub use execute::execute;
 pub(crate) use macros::{
     process_config_resources, process_config_resources_with_provider, resource_task, task_deps,
 };
+pub use types::{Domain, ExecutionPolicy, TaskId, TaskPhase};
 
 // Re-export engine types so downstream `use super::` and `use crate::tasks::`
 // continue to work unchanged.
@@ -61,192 +78,12 @@ pub use crate::engine::{
 };
 
 use std::any::TypeId;
-use std::fmt;
 
 use anyhow::Result;
 
-use crate::logging::{DiagEvent, TaskStatus, diag_task_context};
-use crate::platform::Platform;
-
-/// Unique identifier for a task in the dependency graph.
-///
-/// Static task types use [`TaskId::Type`], derived from the Rust type system,
-/// which is globally unique at compile time.  Dynamically created tasks — such
-/// as [`OverlayScriptTask`](crate::tasks::overlay::OverlayScriptTask)
-/// where multiple instances of the same struct appear in the same task list —
-/// use [`TaskId::Dynamic`] with a hash computed from instance-specific data so
-/// that each instance has a distinct identity.
-///
-/// # Examples
-///
-/// ```
-/// use std::any::TypeId;
-/// use dotfiles_cli::testing::tasks::TaskId;
-///
-/// // Type-based ID (the usual case):
-/// let id = TaskId::Type(TypeId::of::<u32>());
-///
-/// // Instance-based ID (for dynamic tasks):
-/// let id = TaskId::Dynamic(42);
-///
-/// assert_ne!(id, TaskId::Type(TypeId::of::<u32>()));
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TaskId {
-    /// Type-derived identifier for static singleton task structs.
-    ///
-    /// Produced automatically by the default `task_id()` implementation.
-    Type(TypeId),
-    /// Instance-derived identifier for dynamically created tasks.
-    ///
-    /// Used when multiple instances of the same struct appear in the task
-    /// list (e.g. one `OverlayScriptTask` per configured script).
-    Dynamic(u64),
-}
-
-/// Execution phase of a task.
-///
-/// Bootstrap tasks run first to prepare the tool itself (binary update,
-/// wrapper installation, PATH configuration).  Repository tasks run
-/// second to synchronise the dotfiles repository (sparse checkout,
-/// pull, config reload, hooks).  Apply tasks run last to converge the
-/// user environment to its declared state (symlinks, packages, etc.).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TaskPhase {
-    /// Prepare the dotfiles tool itself.
-    Bootstrap,
-    /// Synchronise the dotfiles repository.
-    Repository,
-    /// Apply declared state to the user environment.
-    Apply,
-}
-
-/// Declarative rules that the orchestration layer evaluates before a task runs.
-#[derive(Debug, Clone, Copy)]
-pub enum ExecutionPolicy {
-    /// Run whenever the task's own applicability check passes.
-    Always,
-    /// Run only when the current platform supports the named capability.
-    PlatformSupported(&'static str, fn(&Platform) -> bool),
-    /// Skip the task entirely in dry-run mode, using the given reason.
-    SkipInDryRun(&'static str),
-    /// The task may require elevated privileges when it predicts a mutation.
-    RequiresElevation,
-}
+use execute::evaluate_policy_decision;
 
 const ALWAYS_POLICY: &[ExecutionPolicy] = &[ExecutionPolicy::Always];
-
-#[derive(Debug)]
-enum PolicyDecision {
-    NotApplicable(String),
-    Skipped(String),
-}
-
-impl TaskPhase {
-    /// Human-facing milestone label shown as a `::` header in console output.
-    ///
-    /// Unlike [`fmt::Display`] (which returns the bare enum variant name and is
-    /// used in diagnostics and cycle-error messages), this returns an
-    /// outcome-oriented phrase describing what the phase accomplishes for the
-    /// user.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Bootstrap => "Bootstrapping",
-            Self::Repository => "Configuring repository",
-            Self::Apply => "Configuring environment",
-        }
-    }
-}
-
-impl fmt::Display for TaskPhase {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Bootstrap => f.write_str("Bootstrap"),
-            Self::Repository => f.write_str("Repository"),
-            Self::Apply => f.write_str("Apply"),
-        }
-    }
-}
-
-/// Subject area a task is about, independent of its execution [`TaskPhase`].
-///
-/// Where [`TaskPhase`] answers *when* a task runs (the scheduler groups by
-/// phase to enforce ordering barriers), `Domain` answers *what* a task is
-/// about.  The end-of-run summary groups by domain so the report matches the
-/// user's mental model (git, packages, files…) rather than internal timing.
-///
-/// The two axes are genuinely independent: a single domain may span multiple
-/// phases.  For example the [`Overlay`](Domain::Overlay) domain loads
-/// configuration during [`TaskPhase::Repository`] and runs scripts during
-/// [`TaskPhase::Apply`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Domain {
-    /// The dotfiles tool itself (binary self-update, wrapper, PATH).
-    Core,
-    /// The dotfiles repository (sparse checkout, pull, config reload).
-    Repository,
-    /// Git configuration and hooks.
-    Git,
-    /// System and language package installation.
-    Packages,
-    /// Files materialised into place (symlinks, permissions).
-    Files,
-    /// Shell configuration and completions.
-    Shell,
-    /// Operating-system integration (systemd, PAM, registry, WSL, developer mode).
-    System,
-    /// Editor configuration (VS Code extensions).
-    Editors,
-    /// AI (Copilot settings, APM packages).
-    Ai,
-    /// Overlay-provided configuration and custom scripts.
-    Overlay,
-    /// Configuration and lint validation checks.
-    Validation,
-    /// Default for tasks with no specific subject area (test/mock tasks only).
-    General,
-}
-
-impl Domain {
-    /// All domains in canonical display order, used to group summary output.
-    #[must_use]
-    pub const fn all() -> &'static [Self] {
-        &[
-            Self::Core,
-            Self::Repository,
-            Self::Git,
-            Self::Packages,
-            Self::Files,
-            Self::Shell,
-            Self::System,
-            Self::Editors,
-            Self::Ai,
-            Self::Overlay,
-            Self::Validation,
-            Self::General,
-        ]
-    }
-
-    /// Human-facing label for this domain, shown as a summary group header.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Core => "Core",
-            Self::Repository => "Repository",
-            Self::Git => "Git",
-            Self::Packages => "Packages",
-            Self::Files => "Files",
-            Self::Shell => "Shell",
-            Self::System => "System",
-            Self::Editors => "Editors",
-            Self::Ai => "AI",
-            Self::Overlay => "Overlay",
-            Self::Validation => "Validation",
-            Self::General => "General",
-        }
-    }
-}
 
 /// A named, executable task.
 ///
@@ -355,182 +192,6 @@ pub trait Task: Send + Sync + 'static {
     /// Returns an error if the task fails to execute, such as when system commands
     /// fail, file operations are not permitted, or configuration is invalid.
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
-}
-
-/// Record and optionally emit a compact task-result line.
-fn record(
-    ctx: &Context,
-    name: &str,
-    phase: TaskPhase,
-    domain: Domain,
-    status: TaskStatus,
-    msg: Option<&str>,
-) {
-    ctx.log.record_task(name, phase, domain, status, msg);
-    if !ctx.log.is_verbose() {
-        ctx.log.emit_task_result(name, status, msg);
-    }
-}
-
-fn evaluate_policy_decision(policies: &[ExecutionPolicy], ctx: &Context) -> Option<PolicyDecision> {
-    for policy in policies {
-        match *policy {
-            ExecutionPolicy::Always | ExecutionPolicy::RequiresElevation => {}
-            ExecutionPolicy::PlatformSupported(capability, is_supported) => {
-                if !is_supported(&ctx.platform) {
-                    return Some(PolicyDecision::NotApplicable(format!(
-                        "{capability} not supported on {}",
-                        ctx.platform
-                    )));
-                }
-            }
-            ExecutionPolicy::SkipInDryRun(reason) => {
-                if ctx.dry_run {
-                    return Some(PolicyDecision::Skipped(reason.to_string()));
-                }
-            }
-        }
-    }
-    None
-}
-
-fn evaluate_policy(task: &dyn Task, ctx: &Context) -> Option<PolicyDecision> {
-    evaluate_policy_decision(task.execution_policies(), ctx)
-}
-
-fn record_policy_decision(
-    ctx: &Context,
-    name: &str,
-    phase: TaskPhase,
-    domain: Domain,
-    decision: PolicyDecision,
-) {
-    match decision {
-        PolicyDecision::NotApplicable(reason) => {
-            ctx.log.diag_task(DiagEvent::TaskSkip, name, &reason);
-            if ctx.log.debug_enabled() {
-                ctx.log.stage(name);
-            }
-            ctx.debug_fmt(|| format!("not applicable: {reason}"));
-            ctx.log
-                .record_task(name, phase, domain, TaskStatus::NotApplicable, None);
-        }
-        PolicyDecision::Skipped(reason) => {
-            ctx.log.diag_task(DiagEvent::TaskSkip, name, &reason);
-            ctx.log.info(&format!("skipped: {reason}"));
-            record(ctx, name, phase, domain, TaskStatus::Skipped, Some(&reason));
-        }
-    }
-}
-
-/// Execute a task, recording the result in the logger.
-///
-/// Each task invocation is wrapped in a [`tracing::info_span`] so that
-/// the log file and diagnostic output include structured context about
-/// which task produced each message.
-///
-/// If cancellation has been requested (Ctrl-C) and a task returns
-/// [`TaskResult::Failed`] or an error, the failure is downgraded to
-/// [`TaskStatus::Skipped`] with an "interrupted" message so the
-/// summary does not count signal-induced failures.
-pub fn execute(task: &dyn Task, ctx: &Context) {
-    let span = tracing::info_span!("task", name = task.name());
-    let _enter = span.enter();
-    let _diag_context = diag_task_context(task.name());
-    let phase = task.phase();
-    let domain = task.domain();
-
-    if let Some(decision) = evaluate_policy(task, ctx) {
-        record_policy_decision(ctx, task.name(), phase, domain, decision);
-        return;
-    }
-
-    if !task.should_run(ctx) {
-        ctx.log
-            .diag_task(DiagEvent::TaskSkip, task.name(), "not applicable");
-        if ctx.log.debug_enabled() {
-            ctx.log.stage(task.name());
-        }
-        ctx.log
-            .debug(&format!("skipping task: {} (not applicable)", task.name()));
-        ctx.log
-            .record_task(task.name(), phase, domain, TaskStatus::NotApplicable, None);
-        return;
-    }
-
-    ctx.log
-        .diag_task(DiagEvent::TaskStart, task.name(), "executing");
-    record_run_outcome(task, ctx, phase, domain);
-}
-
-/// Run a task and record its outcome.
-///
-/// Cancellation-induced failures (Ctrl-C) are downgraded to
-/// [`TaskStatus::Skipped`] so the summary does not count signal
-/// interruptions as real failures.
-fn record_run_outcome(task: &dyn Task, ctx: &Context, phase: TaskPhase, domain: Domain) {
-    let rec = |status: TaskStatus, msg: Option<&str>| {
-        record(ctx, task.name(), phase, domain, status, msg);
-    };
-    match task.run_if_applicable(ctx) {
-        Ok(None) => {
-            ctx.log
-                .diag_task(DiagEvent::TaskSkip, task.name(), "nothing configured");
-            if ctx.log.debug_enabled() {
-                ctx.log.stage(task.name());
-            }
-            ctx.log.debug("nothing configured");
-            ctx.log
-                .record_task(task.name(), phase, domain, TaskStatus::NotApplicable, None);
-        }
-        Ok(Some(result)) => match result {
-            TaskResult::Ok => {
-                ctx.log.diag_task(DiagEvent::TaskDone, task.name(), "");
-                rec(TaskStatus::Ok, None);
-            }
-            TaskResult::NotApplicable(reason) => {
-                ctx.log.diag_task(DiagEvent::TaskSkip, task.name(), &reason);
-                ctx.debug_fmt(|| format!("not applicable: {reason}"));
-                ctx.log
-                    .record_task(task.name(), phase, domain, TaskStatus::NotApplicable, None);
-            }
-            TaskResult::Skipped(reason) => {
-                ctx.log.diag_task(DiagEvent::TaskSkip, task.name(), &reason);
-                ctx.log.info(&format!("skipped: {reason}"));
-                rec(TaskStatus::Skipped, Some(&reason));
-            }
-            TaskResult::Failed(reason) => {
-                if ctx.is_cancelled() {
-                    ctx.log
-                        .diag_task(DiagEvent::TaskSkip, task.name(), "interrupted");
-                    ctx.log.warn(&format!("interrupted: {reason}"));
-                    rec(TaskStatus::Skipped, Some("interrupted"));
-                } else {
-                    ctx.log.diag_task(DiagEvent::TaskFail, task.name(), &reason);
-                    ctx.log.warn(&format!("failed: {reason}"));
-                    rec(TaskStatus::Failed, Some(&reason));
-                }
-            }
-            TaskResult::DryRun => {
-                ctx.log
-                    .diag_task(DiagEvent::TaskDone, task.name(), "dry-run");
-                rec(TaskStatus::DryRun, None);
-            }
-        },
-        Err(e) => {
-            if ctx.is_cancelled() {
-                ctx.log
-                    .diag_task(DiagEvent::TaskSkip, task.name(), "interrupted");
-                ctx.log.warn(&format!("interrupted: {}", task.name()));
-                rec(TaskStatus::Skipped, Some("interrupted"));
-            } else {
-                ctx.log
-                    .diag_task(DiagEvent::TaskFail, task.name(), &format!("{e:#}"));
-                ctx.log.error(&format!("{}: {e:#}", task.name()));
-                rec(TaskStatus::Failed, Some(&format!("{e:#}")));
-            }
-        }
-    }
 }
 
 /// Shared helpers for task unit tests.
@@ -787,6 +448,7 @@ pub mod test_helpers {
 )]
 mod tests {
     use super::*;
+    use crate::platform::Platform;
     use crate::resources::{IntrinsicState, Resource, ResourceChange, ResourceState};
     use anyhow::Result;
     use std::cell::Cell;

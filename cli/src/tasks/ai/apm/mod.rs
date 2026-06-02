@@ -30,10 +30,28 @@
 
 use anyhow::{Context as _, Result};
 use sha2::{Digest as _, Sha256};
+use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_deps};
+
+mod autopilot;
+mod fragments;
+mod manifest;
+mod outdated;
+
+use autopilot::{
+    DesiredApmWorkflows, apply_workflow_autopilot_fixup, snapshot_desired_apm_workflow_ids,
+};
+use fragments::{discover_fragment_files, discover_yaml_files, merge_fragments};
+use manifest::{
+    describe_dependencies, manifest_fingerprint, manifest_marker_matches,
+    merged_manifest_needs_write, write_manifest_marker, write_merged_manifest,
+};
+use outdated::{
+    ApmOutdatedCheck, ApmUpdateOutcome, outdated_output_has_updates, update_output_made_changes,
+};
 
 /// Header written at the top of the generated `~/.apm/apm.yml`.  The contents
 /// are not meaningful to APM itself beyond providing a valid manifest, but
@@ -169,6 +187,7 @@ impl Task for InstallApmPackages {
             return Ok(TaskResult::DryRun);
         }
 
+        let pre_workflows = snapshot_desired_apm_workflow_ids(ctx);
         ensure_copilot_app_enabled(ctx);
 
         if manifest_needs_write || lock_missing || marker_missing_or_stale {
@@ -180,7 +199,7 @@ impl Task for InstallApmPackages {
                 ctx.log
                     .always(&format!("    install: {}", describe_dependencies(&merged)));
                 write_manifest_marker(&marker_path, &manifest_hash)?;
-                apply_workflow_autopilot_fixup(ctx);
+                apply_workflow_autopilot_fixup(ctx, &pre_workflows);
             }
             return Ok(result);
         }
@@ -212,27 +231,9 @@ impl Task for InstallApmPackages {
             }
             ApmOutdatedCheck::Skipped(reason) => TaskResult::Skipped(reason),
         };
-        apply_workflow_autopilot_fixup(ctx);
+        apply_workflow_autopilot_fixup(ctx, &pre_workflows);
         Ok(outcome)
     }
-}
-
-/// Result of checking the lockfile for stale dependencies.
-enum ApmOutdatedCheck {
-    /// The check completed and reported whether dependencies are outdated.
-    Outdated(bool),
-    /// The check could not run because credentials are unavailable.
-    Skipped(String),
-}
-
-/// Outcome of refreshing locked user-scope dependencies.
-enum ApmUpdateOutcome {
-    /// `apm deps update` advanced at least one locked ref.
-    Changed,
-    /// `apm deps update` ran but every dependency was already current.
-    Unchanged,
-    /// The update could not run because credentials are unavailable.
-    Skipped(String),
 }
 
 /// Best-effort enable of the experimental `copilot-app` apm target.
@@ -381,78 +382,6 @@ fn run_apm_update(ctx: &Context) -> Result<ApmUpdateOutcome> {
     }
 }
 
-/// Return whether `apm outdated` reported any stale dependency.
-fn outdated_output_has_updates(stdout: &str, stderr: &str) -> bool {
-    let output = format!("{stdout}\n{stderr}").to_lowercase();
-    !output.contains(APM_UP_TO_DATE_MARKER)
-}
-
-/// Return whether `apm deps update` actually advanced any locked ref.
-///
-/// When every dependency is already current APM prints
-/// `[*] All packages already at latest refs.`, so the absence of that marker
-/// means at least one ref moved.  Dependencies pinned to git branch or commit
-/// refs report an `unknown` status from `apm outdated`, which forces an update
-/// attempt on every run; gating the change line on this marker keeps the
-/// console quiet unless an update truly happened.
-fn update_output_made_changes(stdout: &str, stderr: &str) -> bool {
-    let output = format!("{stdout}\n{stderr}").to_lowercase();
-    !output.contains(APM_UPDATE_NO_CHANGES_MARKER)
-}
-
-/// Build a stable fingerprint for the generated manifest content.
-fn manifest_fingerprint(content: &str) -> String {
-    let mut hash = String::with_capacity(64);
-    for byte in Sha256::digest(content.as_bytes()) {
-        hash.push(hex_nibble(byte >> 4));
-        hash.push(hex_nibble(byte & 0x0f));
-    }
-    hash
-}
-
-/// Convert a 4-bit value to a lowercase hexadecimal character.
-const fn hex_nibble(nibble: u8) -> char {
-    match nibble {
-        0 => '0',
-        1 => '1',
-        2 => '2',
-        3 => '3',
-        4 => '4',
-        5 => '5',
-        6 => '6',
-        7 => '7',
-        8 => '8',
-        9 => '9',
-        10 => 'a',
-        11 => 'b',
-        12 => 'c',
-        13 => 'd',
-        14 => 'e',
-        15 => 'f',
-        _ => '?',
-    }
-}
-
-/// Return whether the marker records a successful install for this manifest.
-fn manifest_marker_matches(marker: &Path, manifest_hash: &str) -> Result<bool> {
-    match std::fs::read_to_string(marker) {
-        Ok(existing) => Ok(existing.trim() == manifest_hash),
-        Err(err) if err.kind() == ErrorKind::NotFound => Ok(false),
-        Err(err) => Err(err)
-            .with_context(|| format!("reading APM manifest install marker {}", marker.display())),
-    }
-}
-
-/// Record that APM successfully installed the current generated manifest.
-fn write_manifest_marker(marker: &Path, manifest_hash: &str) -> Result<()> {
-    if let Some(parent) = marker.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("creating directory {}", parent.display()))?;
-    }
-    std::fs::write(marker, format!("{manifest_hash}\n"))
-        .with_context(|| format!("writing APM manifest install marker {}", marker.display()))
-}
-
 /// Relay raw APM command output to the diagnostic log file and the verbose
 /// console.
 ///
@@ -477,358 +406,6 @@ fn report_apm_output(ctx: &Context, stdout: &str, stderr: &str) {
         }
         ctx.log.debug(trimmed);
     }
-}
-
-/// Re-assert that APM-managed Copilot App workflows run on autopilot.
-///
-/// APM installs workflow prompts into the Copilot App's `SQLite` database
-/// (`~/.copilot/data.db`) secure-by-default: every row arrives
-/// `mode='interactive'` and `enabled=0`, so a freshly installed automation
-/// will not fire until a human re-enables it in the App's Workflows tab.  For
-/// the small set of workflows this repo deploys that is undesirable -- they are
-/// meant to be hands-off -- so after a successful `apm install` we flip the
-/// `apm--*` rows to `mode='autopilot'` and `enabled=1`.
-///
-/// This is strictly best-effort and never fails the task: APM has already done
-/// the real work by the time we get here.  The most common failure is a locked
-/// database, which means the Copilot App is currently open and holding the
-/// lock; we surface that loudly so the user knows to close the App (or just
-/// toggle the workflows by hand).  The update runs through Python's stdlib
-/// `sqlite3` module so we do not need a `SQLite` binary on PATH or a Rust
-/// `SQLite` dependency.
-fn apply_workflow_autopilot_fixup(ctx: &Context) {
-    let db = ctx.home.join(".copilot").join("data.db");
-    match db.try_exists() {
-        Ok(true) => {}
-        Ok(false) => {
-            ctx.debug_fmt(|| format!("skipping autopilot fixup: {} does not exist", db.display()));
-            return;
-        }
-        Err(e) => {
-            ctx.debug_fmt(|| {
-                format!(
-                    "skipping autopilot fixup: cannot stat {}: {e}",
-                    db.display()
-                )
-            });
-            return;
-        }
-    }
-
-    let Some(db_str) = db.to_str() else {
-        ctx.log.warn(&format!(
-            "skipping autopilot fixup: database path {} is not valid UTF-8",
-            db.display()
-        ));
-        return;
-    };
-
-    let python = if ctx.executor.which("python3") {
-        "python3"
-    } else if ctx.executor.which("python") {
-        "python"
-    } else {
-        ctx.log.warn(
-            "skipping autopilot fixup: neither python3 nor python found in PATH; enable the apm \
-             workflows manually from the Copilot App's Workflows tab",
-        );
-        return;
-    };
-
-    match ctx.executor.run_unchecked_in(
-        &ctx.home,
-        python,
-        &["-c", WORKFLOW_AUTOPILOT_SCRIPT, db_str],
-    ) {
-        Ok(r) if r.success => {
-            let (matched, updated) = parse_autopilot_counts(&r.stdout);
-            if matched == 0 {
-                ctx.log.warn(
-                    "autopilot fixup: no apm-managed workflows found in ~/.copilot/data.db \
-                     (expected the apm--* rows from this install)",
-                );
-            } else if updated > 0 {
-                ctx.log.always(&format!(
-                    "    workflows: set {updated} apm workflow(s) to autopilot + enabled"
-                ));
-            } else {
-                ctx.debug_fmt(|| {
-                    format!(
-                        "autopilot fixup: {matched} apm workflow(s) already autopilot + enabled"
-                    )
-                });
-            }
-        }
-        Ok(r) => {
-            let stderr = r.stderr.trim();
-            if stderr.contains("database is locked") {
-                ctx.log.warn(
-                    "autopilot fixup: ~/.copilot/data.db is locked -- close the Copilot App and \
-                     re-run `dotfiles install`, or enable the apm workflows manually from the \
-                     Workflows tab",
-                );
-            } else if stderr.contains("no such table") {
-                ctx.log.warn(
-                    "autopilot fixup: the workflows table is missing from ~/.copilot/data.db; open \
-                     the Copilot App once to initialize it, then re-run `dotfiles install`",
-                );
-            } else {
-                ctx.log.warn(&format!(
-                    "autopilot fixup failed (apm install still succeeded): {stderr}"
-                ));
-            }
-        }
-        Err(e) => {
-            ctx.log.warn(&format!(
-                "autopilot fixup could not run {python} (apm install still succeeded): {e:#}"
-            ));
-        }
-    }
-}
-
-/// Python stdlib `sqlite3` program that flips APM-managed Copilot App workflows
-/// to autopilot.
-///
-/// Invoked as `python -c <script> <db_path>`.  It prints two space-separated
-/// integers to stdout -- the number of `apm--*` rows present and the number it
-/// actually updated -- which [`parse_autopilot_counts`] reads back.  The
-/// `IS NOT` comparisons are NULL-safe and the `id GLOB 'apm--*'` filter scopes
-/// the change to APM-owned rows so hand-authored workflows are never touched.
-const WORKFLOW_AUTOPILOT_SCRIPT: &str = "import sqlite3,sys\n\
-con=sqlite3.connect(sys.argv[1], timeout=5)\n\
-con.execute(\"PRAGMA busy_timeout=5000\")\n\
-matched=con.execute(\"SELECT COUNT(*) FROM workflows WHERE id GLOB 'apm--*'\").fetchone()[0]\n\
-cur=con.execute(\"UPDATE workflows SET mode='autopilot', enabled=1 WHERE id GLOB 'apm--*' AND (mode IS NOT 'autopilot' OR enabled IS NOT 1)\")\n\
-con.commit()\n\
-print(matched, cur.rowcount)\n";
-
-/// Parse the `"<matched> <updated>"` line printed by [`WORKFLOW_AUTOPILOT_SCRIPT`].
-///
-/// Returns `(0, 0)` if the output cannot be parsed, which callers treat as "no
-/// apm rows found" rather than an error.
-fn parse_autopilot_counts(stdout: &str) -> (u64, u64) {
-    let mut nums = stdout
-        .split_whitespace()
-        .filter_map(|t| t.parse::<u64>().ok());
-    (nums.next().unwrap_or(0), nums.next().unwrap_or(0))
-}
-
-/// Discover `*.yml` and `*.yaml` files in `~/.apm/config/`.
-///
-/// Returns an empty vector if the directory does not exist.  Results are
-/// sorted by path so the merged manifest is deterministic regardless of the
-/// filesystem's enumeration order.
-fn discover_fragment_files(home: &Path) -> Result<Vec<PathBuf>> {
-    discover_yaml_files(&home.join(".apm").join("config"))
-}
-
-/// Discover YAML files in an APM fragment directory.
-fn discover_yaml_files(config_dir: &Path) -> Result<Vec<PathBuf>> {
-    let entries = match std::fs::read_dir(config_dir) {
-        Ok(entries) => entries,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(err) => {
-            return Err(err)
-                .with_context(|| format!("reading APM config directory {}", config_dir.display()));
-        }
-    };
-
-    let mut files = Vec::new();
-    for entry in entries {
-        let entry = entry
-            .with_context(|| format!("reading directory entry in {}", config_dir.display()))?;
-        let path = entry.path();
-        if !is_yaml_fragment(&path) {
-            continue;
-        }
-        let metadata = std::fs::metadata(&path).with_context(|| {
-            format!("reading metadata for manifest fragment {}", path.display())
-        })?;
-        if metadata.is_file() {
-            files.push(path);
-        }
-    }
-    files.sort();
-    Ok(files)
-}
-
-/// Build a human-facing phrase describing the dependencies in the merged
-/// manifest, e.g. `"3 APM dependencies"` or `"1 APM dependency"`.
-///
-/// Used for the always-visible install change line so the console output
-/// matches the `    {verb}: {desc}` style emitted by the other apply tasks.
-/// Falls back to `"APM manifest"` when the count cannot be determined.
-fn describe_dependencies(merged: &str) -> String {
-    match count_manifest_dependencies(merged) {
-        Some(1) => "1 APM dependency".to_string(),
-        Some(n) => format!("{n} APM dependencies"),
-        None => "APM manifest".to_string(),
-    }
-}
-
-/// Count the `dependencies.apm` and `dependencies.mcp` entries in the merged
-/// manifest.  Returns `None` if the manifest cannot be parsed.
-fn count_manifest_dependencies(merged: &str) -> Option<usize> {
-    use serde_yaml_ng::Value;
-
-    let value: Value = serde_yaml_ng::from_str(merged).ok()?;
-    let deps = value.get("dependencies")?;
-    let count = ["apm", "mcp"]
-        .iter()
-        .filter_map(|key| deps.get(key).and_then(Value::as_sequence))
-        .map(Vec::len)
-        .sum();
-    Some(count)
-}
-
-/// Return whether a path has a YAML extension supported by APM fragments.
-fn is_yaml_fragment(path: &Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("yml") || ext.eq_ignore_ascii_case("yaml"))
-}
-
-/// Parse each fragment, concatenate `dependencies.apm` and `dependencies.mcp`
-/// across all of them, and emit a single YAML document string.
-///
-/// Duplicate entries are dropped, keeping the first occurrence: `apm` refs are
-/// deduplicated by their serialized value and `mcp` servers by their `name`
-/// field (falling back to the serialized value for string shorthands). This
-/// keeps the generated manifest stable when base and overlay fragments declare
-/// the same plugin or MCP server.
-fn merge_fragments(fragments: &[PathBuf]) -> Result<String> {
-    use serde_yaml_ng::Value;
-    use std::collections::HashSet;
-
-    let mut apm_deps: Vec<Value> = Vec::new();
-    let mut mcp_deps: Vec<Value> = Vec::new();
-    let mut seen_apm: HashSet<String> = HashSet::new();
-    let mut seen_mcp: HashSet<String> = HashSet::new();
-
-    for path in fragments {
-        let content = std::fs::read_to_string(path)
-            .with_context(|| format!("reading manifest fragment {}", path.display()))?;
-        if content.trim().is_empty() {
-            continue;
-        }
-        let value: Value = serde_yaml_ng::from_str(&content)
-            .with_context(|| format!("parsing manifest fragment {}", path.display()))?;
-
-        if let Some(deps) = value.get("dependencies") {
-            if let Some(seq) = deps.get("apm").and_then(Value::as_sequence) {
-                for entry in seq {
-                    if seen_apm.insert(apm_dedup_key(entry)) {
-                        apm_deps.push(entry.clone());
-                    }
-                }
-            }
-            if let Some(seq) = deps.get("mcp").and_then(Value::as_sequence) {
-                for entry in seq {
-                    if seen_mcp.insert(mcp_dedup_key(entry)) {
-                        mcp_deps.push(entry.clone());
-                    }
-                }
-            }
-        }
-    }
-
-    let mut root = serde_yaml_ng::Mapping::new();
-    root.insert(Value::from("name"), Value::from("dotfiles"));
-    root.insert(Value::from("version"), Value::from("1.0.0"));
-
-    let mut deps = serde_yaml_ng::Mapping::new();
-    if !apm_deps.is_empty() {
-        deps.insert(Value::from("apm"), Value::Sequence(apm_deps));
-    }
-    if !mcp_deps.is_empty() {
-        deps.insert(Value::from("mcp"), Value::Sequence(mcp_deps));
-    }
-    if !deps.is_empty() {
-        root.insert(Value::from("dependencies"), Value::Mapping(deps));
-    }
-
-    let body = serde_yaml_ng::to_string(&Value::Mapping(root))
-        .context("serialising merged apm manifest")?;
-    Ok(format!("{GENERATED_HEADER}{body}"))
-}
-
-/// Deduplication key for an `apm` dependency: its serialized representation.
-fn apm_dedup_key(entry: &serde_yaml_ng::Value) -> String {
-    serde_yaml_ng::to_string(entry).unwrap_or_else(|_| format!("{entry:?}"))
-}
-
-/// Deduplication key for an `mcp` dependency: its `name` field when present,
-/// otherwise its serialized representation (registry string shorthands).
-fn mcp_dedup_key(entry: &serde_yaml_ng::Value) -> String {
-    entry
-        .get("name")
-        .and_then(serde_yaml_ng::Value::as_str)
-        .map_or_else(
-            || format!("@{}", apm_dedup_key(entry)),
-            |name| format!("name:{name}"),
-        )
-}
-
-/// Return whether the generated manifest should be written to disk.
-fn merged_manifest_needs_write(target: &Path, content: &str) -> Result<bool> {
-    match std::fs::symlink_metadata(target) {
-        Ok(meta) if meta.file_type().is_symlink() => {
-            anyhow::bail!(
-                "merged manifest target is a symlink; remove it before continuing: {}",
-                target.display()
-            );
-        }
-        Ok(meta) if meta.is_file() => {
-            let existing = std::fs::read(target).with_context(|| {
-                format!("reading existing merged manifest {}", target.display())
-            })?;
-            Ok(existing != content.as_bytes())
-        }
-        Ok(_) => Ok(true),
-        Err(err) if err.kind() == ErrorKind::NotFound => Ok(true),
-        Err(err) => Err(err)
-            .with_context(|| format!("reading metadata for merged manifest {}", target.display())),
-    }
-}
-
-/// Write the merged manifest to `target`, replacing any existing file.
-///
-/// Returns early without writing if the existing file already has identical
-/// content, so we avoid bumping the mtime on unchanged runs.
-fn write_merged_manifest(target: &Path, content: &str) -> Result<()> {
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("creating directory {}", parent.display()))?;
-    }
-
-    // Check existing content; only rewrite if changed. Use symlink_metadata so
-    // a symlink is rejected instead of writing through it.
-    match std::fs::symlink_metadata(target) {
-        Ok(meta) if meta.file_type().is_symlink() => {
-            anyhow::bail!(
-                "merged manifest target is a symlink; remove it before continuing: {}",
-                target.display()
-            );
-        }
-        Ok(meta) if meta.is_file() => {
-            let existing = std::fs::read(target).with_context(|| {
-                format!("reading existing merged manifest {}", target.display())
-            })?;
-            if existing == content.as_bytes() {
-                return Ok(());
-            }
-        }
-        Ok(_) => {}
-        Err(err) if err.kind() == ErrorKind::NotFound => {}
-        Err(err) => {
-            return Err(err).with_context(|| {
-                format!("reading metadata for merged manifest {}", target.display())
-            });
-        }
-    }
-
-    std::fs::write(target, content)
-        .with_context(|| format!("writing merged manifest {}", target.display()))
 }
 
 /// Heuristic: does an `apm install` failure message indicate a missing or
@@ -860,6 +437,7 @@ fn looks_like_auth_failure(message: &str) -> bool {
     reason = "test code uses panicking helpers"
 )]
 mod tests {
+    use super::autopilot::{WORKFLOW_AUTOPILOT_SCRIPT, WORKFLOW_DESIRED_IDS_SCRIPT};
     use super::*;
     use crate::exec::{ExecResult, MockExecutor};
     use crate::platform::{Os, Platform};
@@ -1072,20 +650,35 @@ mod tests {
 
         let mut mock = MockExecutor::new();
         let mut seq = mockall::Sequence::new();
-        expect_apm_install(&mut mock, &mut seq);
+        // python3 is probed twice: once for the pre-install snapshot and once
+        // for the post-install fixup.
         mock.expect_which()
             .with(mockall::predicate::eq("python3"))
-            .once()
+            .times(2)
             .returning(|_| true);
-        let home = dir.path().to_path_buf();
+        // Pre-install snapshot: no apm--* rows are desired yet, so the diff in
+        // the post-install fixup is a genuine "set 3" change.
+        let pre_home = dir.path().to_path_buf();
+        let pre_db = db_str.clone();
         mock.expect_run_unchecked_in()
             .once()
             .in_sequence(&mut seq)
             .returning(move |run_dir, program, args| {
-                assert_eq!(run_dir, home.as_path());
+                assert_eq!(run_dir, pre_home.as_path());
+                assert_eq!(program, "python3");
+                assert_eq!(args, ["-c", WORKFLOW_DESIRED_IDS_SCRIPT, pre_db.as_str()]);
+                Ok(ok_result(""))
+            });
+        expect_apm_install(&mut mock, &mut seq);
+        let post_home = dir.path().to_path_buf();
+        mock.expect_run_unchecked_in()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |run_dir, program, args| {
+                assert_eq!(run_dir, post_home.as_path());
                 assert_eq!(program, "python3");
                 assert_eq!(args, ["-c", WORKFLOW_AUTOPILOT_SCRIPT, db_str.as_str()]);
-                Ok(ok_result("3 3\n"))
+                Ok(ok_result("3 3\napm--a\napm--b\napm--c\n"))
             });
 
         let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -1105,13 +698,15 @@ mod tests {
         let mut mock = MockExecutor::new();
         let mut seq = mockall::Sequence::new();
         expect_apm_install(&mut mock, &mut seq);
+        // Probed twice (pre-install snapshot + post-install fixup); both fall
+        // back to `python` and then give up, so neither runs a query.
         mock.expect_which()
             .with(mockall::predicate::eq("python3"))
-            .once()
+            .times(2)
             .returning(|_| false);
         mock.expect_which()
             .with(mockall::predicate::eq("python"))
-            .once()
+            .times(2)
             .returning(|_| false);
 
         let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -1130,11 +725,25 @@ mod tests {
 
         let mut mock = MockExecutor::new();
         let mut seq = mockall::Sequence::new();
-        expect_apm_install(&mut mock, &mut seq);
         mock.expect_which()
             .with(mockall::predicate::eq("python3"))
-            .once()
+            .times(2)
             .returning(|_| true);
+        // Pre-install snapshot also hits the locked database and degrades to
+        // Unavailable, so the post-install fixup stays quiet rather than
+        // reporting a spurious change.
+        mock.expect_run_unchecked_in()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| {
+                Ok(ExecResult {
+                    stdout: String::new(),
+                    stderr: "database is locked".to_string(),
+                    success: false,
+                    code: Some(1),
+                })
+            });
+        expect_apm_install(&mut mock, &mut seq);
         mock.expect_run_unchecked_in()
             .once()
             .in_sequence(&mut seq)
@@ -1349,18 +958,6 @@ mod tests {
     }
 
     #[test]
-    fn update_output_made_changes_detects_no_change_marker() {
-        assert!(
-            !update_output_made_changes("[*] All packages already at latest refs.\n", ""),
-            "the no-change marker must suppress the update message"
-        );
-        assert!(
-            update_output_made_changes("[*] Updated 2 APM dependencies in 0.8s.\n", ""),
-            "a real update must report a change"
-        );
-    }
-
-    #[test]
     fn run_installs_when_success_marker_is_missing() {
         let dir = tempfile::tempdir().expect("create temp dir");
         write_current_manifest_and_lock(dir.path());
@@ -1560,202 +1157,5 @@ mod tests {
         assert!(!looks_like_auth_failure(
             "credential cache cleanup failed after archive extraction"
         ));
-    }
-
-    #[test]
-    fn discover_fragment_files_returns_empty_when_dir_missing() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        assert!(
-            discover_fragment_files(dir.path())
-                .expect("discover")
-                .is_empty()
-        );
-    }
-
-    #[test]
-    fn discover_fragment_files_errors_when_config_path_is_not_directory() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let apm_dir = dir.path().join(".apm");
-        std::fs::create_dir_all(&apm_dir).expect("create ~/.apm");
-        std::fs::write(apm_dir.join("config"), "not a directory\n").expect("write config file");
-
-        let err = discover_fragment_files(dir.path()).expect_err("config file should error");
-        assert!(
-            format!("{err:#}").contains("reading APM config directory"),
-            "expected context for read_dir failure, got {err:#}"
-        );
-    }
-
-    #[test]
-    fn discover_fragment_files_returns_yaml_files_only_sorted() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let cfg = dir.path().join(".apm").join("config");
-        std::fs::create_dir_all(&cfg).expect("create config dir");
-        std::fs::write(cfg.join("work.yml"), "name: work\n").expect("write work.yml");
-        std::fs::write(cfg.join("base.yaml"), "name: base\n").expect("write base.yaml");
-        std::fs::write(cfg.join("README.md"), "ignore me\n").expect("write README.md");
-
-        let files = discover_fragment_files(dir.path()).expect("discover");
-        assert_eq!(files.len(), 2);
-        assert!(files[0].ends_with("base.yaml"));
-        assert!(files[1].ends_with("work.yml"));
-    }
-
-    #[test]
-    fn merge_fragments_concatenates_apm_and_mcp_dependencies() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let a = dir.path().join("a.yml");
-        let b = dir.path().join("b.yml");
-        std::fs::write(
-            &a,
-            "name: a\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n",
-        )
-        .expect("write a");
-        std::fs::write(
-            &b,
-            "name: b\nversion: 1.0.0\ndependencies:\n  apm:\n    - baz/qux\n  mcp:\n    - server-1\n",
-        )
-        .expect("write b");
-
-        let merged = merge_fragments(&[a, b]).expect("merge");
-        assert!(merged.starts_with(GENERATED_HEADER));
-        assert!(merged.contains("foo/bar"));
-        assert!(merged.contains("baz/qux"));
-        assert!(merged.contains("server-1"));
-        assert!(merged.contains("name: dotfiles"));
-    }
-
-    #[test]
-    fn merge_fragments_deduplicates_apm_and_mcp_entries() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let a = dir.path().join("a.yml");
-        let b = dir.path().join("b.yml");
-        std::fs::write(
-            &a,
-            "name: a\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n  mcp:\n    - name: kusto\n      command: agency\n",
-        )
-        .expect("write a");
-        std::fs::write(
-            &b,
-            "name: b\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n  mcp:\n    - name: kusto\n      command: other\n",
-        )
-        .expect("write b");
-
-        let merged = merge_fragments(&[a, b]).expect("merge");
-        assert_eq!(merged.matches("foo/bar").count(), 1);
-        assert_eq!(merged.matches("name: kusto").count(), 1);
-        // First occurrence wins, so the duplicate's command is dropped.
-        assert!(merged.contains("agency"));
-        assert!(!merged.contains("other"));
-    }
-
-    #[test]
-    fn merge_fragments_preserves_complex_map_entries() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let f = dir.path().join("complex.yml");
-        std::fs::write(
-            &f,
-            "name: x\nversion: 1.0.0\ndependencies:\n  apm:\n    - git: dev.azure.com/org/repo\n      path: services/foo\n",
-        )
-        .expect("write");
-        let merged = merge_fragments(&[f]).expect("merge");
-        assert!(merged.contains("dev.azure.com/org/repo"));
-        assert!(merged.contains("services/foo"));
-    }
-
-    #[test]
-    fn merge_fragments_skips_empty_files() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let f = dir.path().join("empty.yml");
-        std::fs::write(&f, "\n\n").expect("write");
-        let merged = merge_fragments(&[f]).expect("merge");
-        assert!(merged.contains("name: dotfiles"));
-        assert!(!merged.contains("dependencies:"));
-    }
-
-    #[test]
-    fn describe_dependencies_counts_apm_and_mcp_entries() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let f = dir.path().join("deps.yml");
-        std::fs::write(
-            &f,
-            "name: d\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n    - baz/qux\n  mcp:\n    - server-1\n",
-        )
-        .expect("write");
-        let merged = merge_fragments(&[f]).expect("merge");
-        assert_eq!(count_manifest_dependencies(&merged), Some(3));
-        assert_eq!(describe_dependencies(&merged), "3 APM dependencies");
-    }
-
-    #[test]
-    fn describe_dependencies_uses_singular_for_one_entry() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let f = dir.path().join("one.yml");
-        std::fs::write(
-            &f,
-            "name: o\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n",
-        )
-        .expect("write");
-        let merged = merge_fragments(&[f]).expect("merge");
-        assert_eq!(describe_dependencies(&merged), "1 APM dependency");
-    }
-
-    #[test]
-    fn describe_dependencies_falls_back_when_no_dependencies() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let f = dir.path().join("none.yml");
-        std::fs::write(&f, "name: n\nversion: 1.0.0\n").expect("write");
-        let merged = merge_fragments(&[f]).expect("merge");
-        assert_eq!(count_manifest_dependencies(&merged), None);
-        assert_eq!(describe_dependencies(&merged), "APM manifest");
-    }
-
-    #[test]
-    fn write_merged_manifest_errors_when_target_is_symlink() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let target = dir.path().join("apm.yml");
-        let source = dir.path().join("source.yml");
-        std::fs::write(&source, "old\n").expect("write source");
-
-        // Skip on platforms where unprivileged symlink creation isn't
-        // available (Windows without developer mode).
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&source, &target).expect("symlink");
-        #[cfg(windows)]
-        if std::os::windows::fs::symlink_file(&source, &target).is_err() {
-            return;
-        }
-
-        let result = write_merged_manifest(&target, "new content\n");
-        assert!(result.is_err());
-        let msg = result.unwrap_err().to_string();
-        assert!(
-            msg.contains("symlink"),
-            "error should identify symlink target: {msg}"
-        );
-        let meta = std::fs::symlink_metadata(&target).expect("stat");
-        assert!(
-            meta.file_type().is_symlink(),
-            "symlink should be left untouched"
-        );
-    }
-
-    #[test]
-    fn write_merged_manifest_skips_rewrite_when_unchanged() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let target = dir.path().join("apm.yml");
-        std::fs::write(&target, "same\n").expect("seed");
-        let mtime_before = std::fs::metadata(&target)
-            .expect("stat")
-            .modified()
-            .expect("mtime");
-        // Sleep briefly so a rewrite would change mtime measurably.
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        write_merged_manifest(&target, "same\n").expect("write");
-        let mtime_after = std::fs::metadata(&target)
-            .expect("stat")
-            .modified()
-            .expect("mtime");
-        assert_eq!(mtime_before, mtime_after);
     }
 }

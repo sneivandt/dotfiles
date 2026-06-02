@@ -22,7 +22,7 @@ settings = [
 
   # Appearance
   { key = "theme",     value = "auto"   },
-  { key = "colorMode", value = "github" },
+  { key = "colorMode", value = "default" },
 
   # Footer / status line (managed per-field so the CLI can still add new ones)
   { key = "footer.showModelEffort",   value = false },

@@ -52,7 +52,7 @@ Available variants: `CommandFailed`, `PermissionDenied`, `ConflictingState`, `No
 
 ### Task Failure Recording
 
-Task failures don't abort the run. `phases::execute()` catches errors and
+Task failures don't abort the run. `tasks::execute()` catches errors and
 records `TaskStatus::Failed`; remaining tasks still execute. The summary
 reports all failures at the end.
 

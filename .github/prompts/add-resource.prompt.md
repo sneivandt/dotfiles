@@ -19,9 +19,9 @@ established patterns by completing these steps:
 
 3. **TOML file** — Create `conf/{{resource_name}}.toml` with at least a `[base]` section
 
-4. **Task** — Create the task in `cli/src/phases/apply/`
+4. **Task** — Create the task in the appropriate `cli/src/tasks/<domain>/` folder
    - Use the `resource_task!` macro
-   - Register in `cli/src/phases/catalog.rs` (`all_install_tasks` and `all_uninstall_tasks`)
+   - Register in `cli/src/tasks/catalog.rs` (`all_install_tasks` and `all_uninstall_tasks`)
 
 5. **Module wiring** — Add `pub mod` declarations in `cli/src/resources/mod.rs` and `cli/src/config/mod.rs`
 

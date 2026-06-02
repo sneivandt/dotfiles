@@ -72,7 +72,8 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 │                   scheduler          │
 │  resources/     — idempotent check   │
 │                   + apply primitives │
-│  phases/        — Phase task impls   │
+│  tasks/         — Task impls,        │
+│                   grouped by domain  │
 │  platform.rs    — OS detection       │
 │  logging/       — structured logging │
 │  exec.rs        — subprocess exec    │
@@ -142,7 +143,7 @@ The wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`) handle only the `--build` f
 
 #### Commands (`commands/`)
 
-- **`install.rs`** — Uses `CommandRunner` to resolve the profile, load `Config`, build the task list, filter by `--skip`/`--only`, and execute each task via `phases::execute()`
+- **`install.rs`** — Uses `CommandRunner` to resolve the profile, load `Config`, build the task list, filter by `--skip`/`--only`, and execute each task via `tasks::execute()`
 - **`uninstall.rs`** — Removes managed symlinks
 - **`test.rs`** — Runs configuration validation
 
@@ -166,7 +167,7 @@ The wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`) handle only the `--build` f
 | `overlay.rs` | — | Overlay path resolution and persistence |
 | `scripts.rs` | `scripts.toml` | Custom script entries from overlay repo |
 
-#### Tasks (`phases/`)
+#### Tasks (`tasks/`)
 
 Each task implements the `Task` trait:
 
@@ -176,6 +177,11 @@ pub trait Task: Send + Sync + 'static {
     fn name(&self) -> &str;
 
     /// Which phase this task belongs to (Bootstrap, Repository, or Apply).
+    ///
+    /// This is per-task metadata returned by the task itself — it is **not**
+    /// derived from the folder the task lives in. A task can therefore live in
+    /// any module yet declare any phase, which is how a single domain (e.g.
+    /// the overlay system) can span more than one phase.
     fn phase(&self) -> TaskPhase;
 
     /// Stable identifier for dependency matching.
@@ -220,36 +226,59 @@ The execution engine provides the generic resource processing loop, dependency g
 - **`stats.rs`** — `TaskResult` and `TaskStats` types
 - **`update_signal.rs`** — `Arc<AtomicBool>` signalling between `UpdateRepository` and `ReloadConfig`
 
-**Implemented tasks** (executed as soon as dependencies allow):
+**Two axes: domain and phase.** Task files are organized by **domain** (what a
+task is about) under `cli/src/tasks/`, while each task independently declares its
+**phase** (when it runs) via `phase()`. The axes are orthogonal: a domain folder
+can hold tasks from different phases, and a single domain can span phases. Domain
+folders:
 
-Bootstrap phase (`cli/src/phases/bootstrap/`):
-- `self_update` — Updates the dotfiles binary from the latest GitHub release. Runs **before** the task graph (directly from `install.rs`) so all subsequent tasks use the latest code. If the binary is replaced, the process re-execs itself with a guard variable (`DOTFILES_REEXEC_GUARD`) to prevent an infinite loop.
-- `developer_mode` — Enable Windows developer mode (required for symlinks)
-- `wrapper` — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
-- `path` — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
+- `core/` — self-update, CLI wrapper install, `PATH` setup
+- `repository/` — git pull, sparse checkout, config reload
+- `git/` — git config, git hooks
+- `files/` — symlinks, file permissions
+- `shell/` — login shell, zsh completions
+- `system/` — developer mode, systemd units, registry, PAM, wsl.conf
+- `ai/` — APM plugin manifests, Copilot settings
+- `editors/` — handled by the single-file `editors.rs` (VS Code extensions)
 
-Repository phase (`cli/src/phases/repository/`):
-- `update` — Update repository (`git pull --ff-only`)
-- `sparse_checkout` — Configure git sparse checkout
-- `reload_config` — Reload config from disk after `update` pulls new commits
-- `hooks` — Install git hooks (copies `hooks/*` into `.git/hooks/`)
-- `completions` — Generate the zsh completion script into `symlinks/config/zsh/completions/`
-- `overlay_scripts` — Discover overlay script definitions and log script count (implemented in `apply/overlay_scripts.rs` despite using the Repository phase)
+Single-file domains live as plain modules at the root of `tasks/`: `packages.rs`,
+`editors.rs`, `overlay.rs`, and `validation.rs`. The framework itself — the `Task`
+trait, `TaskPhase`, `Domain`, the `resource_task!`/`task_deps!` macros, the task
+catalog, and the `--skip`/`--only` filter — lives in `mod.rs`, `macros.rs`,
+`catalog.rs`, and `filter.rs`.
 
-Apply phase (`cli/src/phases/apply/`):
-- `packages` — Install system packages (pacman or winget)
-- `paru` — Bootstrap paru AUR helper (Arch Linux only)
-- `aur_packages` — Install AUR packages via paru (Arch Linux only)
-- `symlinks` — Create symlinks
-- `chmod` — Apply file permissions
-- `git_config` — Configure git settings (Windows: autocrlf, symlinks, credential helper)
-- `shell` — Configure default shell
-- `systemd` — Enable systemd units
-- `registry` — Apply Windows registry settings
-- `vscode` — Install VS Code extensions
-- `apm` — Install and update AI plugin manifests via Microsoft APM (reads `~/.apm/apm.yml` generated by merging every `~/.apm/config/*.yml` fragment; runs `apm install -g --target copilot,vscode` when the manifest or lockfile changed, otherwise checks `apm outdated -g` before `apm deps update -g --target copilot,vscode`)
-- `pam` — Install custom PAM service files (Arch Linux + desktop, uses sudo)
-- `wsl_conf` — Write `/etc/wsl.conf` with `generateResolvConf = true` (Linux/WSL only, uses sudo)
+**Implemented tasks** (the engine schedules by **phase**, completing each before
+the next; within a phase, tasks run as soon as dependencies allow). Each task is
+annotated with its domain folder:
+
+Bootstrap phase — prepares the tool itself, before the main task graph:
+- `self_update` (core) — Updates the dotfiles binary from the latest GitHub release. Runs **before** the task graph (directly from `install.rs`) so all subsequent tasks use the latest code. If the binary is replaced, the process re-execs itself with a guard variable (`DOTFILES_REEXEC_GUARD`) to prevent an infinite loop.
+- `developer_mode` (system) — Enable Windows developer mode (required for symlinks)
+- `wrapper` (core) — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
+- `path` (core) — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
+
+Repository phase — synchronize the dotfiles repository:
+- `update` (repository) — Update repository (`git pull --ff-only`)
+- `sparse_checkout` (repository) — Configure git sparse checkout
+- `reload_config` (repository) — Reload config from disk after `update` pulls new commits
+- `hooks` (git) — Install git hooks (copies `hooks/*` into `.git/hooks/`)
+- `completions` (shell) — Generate the zsh completion script into `symlinks/config/zsh/completions/`
+- `overlay_scripts` (overlay) — Discover overlay script definitions and log script count. The overlay *domain* spans two phases: this discovery task runs in the Repository phase, while the generated `OverlayScriptTask`s run in the Apply phase. Both live in `tasks/overlay.rs` because phase is per-task metadata (see `phase()` above), not folder-derived.
+
+Apply phase — converge declared configuration to its target state:
+- `packages` (packages) — Install system packages (pacman or winget)
+- `paru` (packages) — Bootstrap paru AUR helper (Arch Linux only)
+- `aur_packages` (packages) — Install AUR packages via paru (Arch Linux only)
+- `symlinks` (files) — Create symlinks
+- `chmod` (files) — Apply file permissions
+- `git_config` (git) — Configure git settings (Windows: autocrlf, symlinks, credential helper)
+- `shell` (shell) — Configure default shell
+- `systemd` (system) — Enable systemd units
+- `registry` (system) — Apply Windows registry settings
+- `vscode` (editors) — Install VS Code extensions
+- `apm` (ai) — Install and update AI plugin manifests via Microsoft APM (reads `~/.apm/apm.yml` generated by merging every `~/.apm/config/*.yml` fragment; runs `apm install -g --target copilot,vscode` when the manifest or lockfile changed, otherwise checks `apm outdated -g` before `apm deps update -g --target copilot,vscode`)
+- `pam` (system) — Install custom PAM service files (Arch Linux + desktop, uses sudo)
+- `wsl_conf` (system) — Write `/etc/wsl.conf` with `generateResolvConf = true` (Linux/WSL only, uses sudo)
 
 #### Overlay System
 
@@ -372,13 +401,13 @@ packages::load(&conf.join("packages.toml"), active_categories)
     .context("loading packages.toml")?;
 ```
 
-Task failures are caught by `phases::execute()` and recorded as `TaskStatus::Failed` — the binary continues executing remaining tasks and reports all failures in the summary.
+Task failures are caught by `tasks::execute()` and recorded as `TaskStatus::Failed` — the binary continues executing remaining tasks and reports all failures in the summary.
 
 ## Testing Architecture
 
 ### Rust Tests
 
-- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/toml_loader.rs`, `phases/bootstrap/*.rs`, `phases/repository/*.rs`, `phases/apply/*.rs`)
+- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/toml_loader.rs`, `tasks/core/*.rs`, `tasks/repository/*.rs`, `tasks/files/*.rs`)
 - **Integration tests**: Separate test binaries in `cli/tests/` (`install_command.rs`, `uninstall_command.rs`, `test_command.rs`), using `IntegrationTestContext` and `TestContextBuilder` helpers from `cli/tests/common/mod.rs`
 - **Snapshot tests**: Task list snapshots via the `insta` crate (`cli/tests/snapshots/`). Update with `INSTA_UPDATE=unseen cargo test` or `cargo insta review`
 
@@ -425,9 +454,9 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers automatically 
 
 ### Adding New Tasks
 
-1. Create a new file in `cli/src/phases/bootstrap/`, `cli/src/phases/repository/` (for bootstrap/repository-phase tasks), or `cli/src/phases/apply/` (for apply-phase tasks) implementing the `Task` trait
-2. Add the module to `cli/src/phases/bootstrap/mod.rs`, `cli/src/phases/repository/mod.rs`, or `cli/src/phases/apply/mod.rs`
-3. Add the task to `all_install_tasks()` in `cli/src/phases/catalog.rs`
+1. Create a new file in the relevant domain folder under `cli/src/tasks/<domain>/` (e.g. `core/`, `repository/`, `git/`, `files/`, `shell/`, `system/`, `ai/`), implementing the `Task` trait and declaring its `phase()` (Bootstrap, Repository, or Apply)
+2. Add the module to that domain's `cli/src/tasks/<domain>/mod.rs`
+3. Add the task to `all_install_tasks()` in `cli/src/tasks/catalog.rs`
 
 ### Adding New Configuration Types
 
@@ -437,7 +466,7 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers automatically 
    `Config::load()` (e.g. `sections.collect_filtered(...)`). The same call
    loads the main config and merges the overlay, so there is no separate
    overlay-merge step to keep in sync.
-4. Create a task in `cli/src/phases/apply/` that consumes the config
+4. Create a task in the relevant domain folder under `cli/src/tasks/` (declaring the Apply phase) that consumes the config
 5. Document in CONFIGURATION.md
 
 ### Adding Overlay Scripts
@@ -465,7 +494,7 @@ completing all tasks in one phase before starting the next.  Within each
 phase, tasks are executed in parallel using a dependency-graph scheduler.
 
 Each task declares its dependencies using the `task_deps!` macro (defined in
-`phases/macros.rs`, re-exported from `phases/mod.rs`), which implements `Task::dependencies()` returning `TypeId`s of
+`tasks/macros.rs`, re-exported from `tasks/mod.rs`), which implements `Task::dependencies()` returning `TypeId`s of
 prerequisite task structs.  The scheduler uses `std::thread::scope` to spawn
 one OS thread per task and `mpsc` channels to block each task until its
 dependencies complete.  For each task, a channel is created — dependent tasks

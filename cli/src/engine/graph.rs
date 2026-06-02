@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::phases::{Task, TaskId};
+use crate::tasks::{Task, TaskId};
 
 /// Detect cycles in the task dependency graph using Kahn's algorithm.
 ///
@@ -79,7 +79,7 @@ mod tests {
     use super::*;
     use std::any::TypeId;
 
-    use crate::phases::{Context, TaskId, TaskPhase, TaskResult};
+    use crate::tasks::{Context, TaskId, TaskPhase, TaskResult};
 
     use anyhow::Result;
 
@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn install_tasks_have_resolvable_dependencies() {
         use std::collections::HashSet;
-        let tasks = crate::phases::all_install_tasks();
+        let tasks = crate::tasks::all_install_tasks();
         let ids: Vec<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
         let unique: HashSet<TaskId> = ids.iter().copied().collect();
         assert_eq!(ids.len(), unique.len(), "duplicate task TaskIds found");
@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn install_tasks_have_no_cycles() {
-        let tasks = crate::phases::all_install_tasks();
+        let tasks = crate::tasks::all_install_tasks();
         let task_refs: Vec<&dyn Task> = tasks.iter().map(Box::as_ref).collect();
         assert!(
             !has_cycle(&task_refs),

@@ -5,8 +5,8 @@ use std::sync::{
 };
 
 use crate::engine::{TaskResult, process_resources, process_resources_remove};
-use crate::phases::test_helpers::empty_config;
 use crate::resources::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use crate::tasks::test_helpers::empty_config;
 
 use super::{bail_opts, default_opts, dry_run_context, test_context};
 

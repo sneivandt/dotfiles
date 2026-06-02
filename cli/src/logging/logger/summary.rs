@@ -1,6 +1,6 @@
 //! End-of-run summary printing for [`Logger`].
 //!
-//! Renders the per-phase task breakdown (verbose mode only) followed by a
+//! Renders the per-domain task breakdown (verbose mode only) followed by a
 #![allow(
     clippy::arithmetic_side_effects,
     reason = "counters and validated math; bounded by config sizes"
@@ -11,11 +11,11 @@ use std::time::Duration;
 
 use super::Logger;
 use crate::logging::types::{TaskEntry, TaskStatus};
-use crate::phases::TaskPhase;
+use crate::tasks::Domain;
 
 #[allow(clippy::print_stdout, reason = "intentional user-facing output")]
 impl Logger {
-    /// Print the summary of all recorded tasks, grouped by phase.
+    /// Print the summary of all recorded tasks, grouped by domain.
     pub fn print_summary(&self) {
         let tasks = match self.tasks.lock() {
             Ok(guard) => guard.clone(),
@@ -51,21 +51,17 @@ impl Logger {
             self.debug("Summary");
         }
 
-        let phases = [
-            TaskPhase::Bootstrap,
-            TaskPhase::Repository,
-            TaskPhase::Apply,
-        ];
-        for phase in &phases {
-            let phase_tasks: Vec<&TaskEntry> = tasks.iter().filter(|t| t.phase == *phase).collect();
-            let has_visible = phase_tasks
+        for domain in Domain::all() {
+            let domain_tasks: Vec<&TaskEntry> =
+                tasks.iter().filter(|t| t.domain == *domain).collect();
+            let has_visible = domain_tasks
                 .iter()
                 .any(|t| t.status != TaskStatus::NotApplicable);
             if !has_visible {
                 continue;
             }
-            self.summary_detail(&format!("\x1b[1m{phase}\x1b[0m"));
-            for task in &phase_tasks {
+            self.summary_detail(&format!("\x1b[1m{}\x1b[0m", domain.label()));
+            for task in &domain_tasks {
                 let (icon, color) = match task.status {
                     TaskStatus::NotApplicable => continue,
                     TaskStatus::Ok => ("\u{2713}", "\x1b[32m"),
@@ -77,7 +73,7 @@ impl Logger {
                 let suffix = task
                     .message
                     .as_ref()
-                    .map_or_else(String::new, |msg| format!(" ({msg})"));
+                    .map_or_else(String::new, |msg| format!(" \u{2014} {msg}"));
 
                 self.summary_detail(&format!("{color}  {icon} {}{suffix}\x1b[0m", task.name));
             }

@@ -102,7 +102,7 @@ Unlike static tasks in the catalog, overlay scripts produce dynamic tasks:
 
 ```rust
 // In install.rs
-let mut all_tasks = phases::all_install_tasks();
+let mut all_tasks = tasks::all_install_tasks();
 all_tasks.extend(runner.overlay_script_tasks());
 ```
 

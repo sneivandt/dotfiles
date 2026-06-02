@@ -299,17 +299,17 @@ When using `-d` (dry-run), the logging system:
 
 Example summary output:
 ```
-:: Bootstrap
+:: Bootstrapping
   ✓ Enable developer mode
   ~ Install wrapper
   ~ Configure PATH
 
-:: Repository
+:: Configuring repository
   ✓ Configure sparse checkout
   ✓ Update repository
   ~ Install Git hooks
 
-:: Apply
+:: Configuring environment
   ~ Install packages
   ~ Install symlinks
   ~ Configure Git

@@ -9,20 +9,20 @@
 //!
 //! Unlike the structural tests in `install_command.rs` (which verify task lists,
 //! names, and dependency graphs), these tests call `task.run(&ctx)` and
-//! `phases::execute()` to validate that the full config-load → task-execution →
+//! `tasks::execute()` to validate that the full config-load → task-execution →
 //! filesystem-outcome pipeline works correctly.
 
 mod common;
 
-use dotfiles_cli::phases;
+use dotfiles_cli::tasks;
 #[cfg(unix)]
-use dotfiles_cli::phases::apply::chmod::ApplyFilePermissions;
-use dotfiles_cli::phases::apply::git_config::ConfigureGit;
-use dotfiles_cli::phases::apply::symlinks::InstallSymlinks;
+use dotfiles_cli::tasks::files::chmod::ApplyFilePermissions;
+use dotfiles_cli::tasks::files::symlinks::InstallSymlinks;
 #[cfg(unix)]
-use dotfiles_cli::phases::apply::symlinks::UninstallSymlinks;
-use dotfiles_cli::phases::repository::hooks::{InstallGitHooks, UninstallGitHooks};
-use dotfiles_cli::phases::{Task, TaskResult};
+use dotfiles_cli::tasks::files::symlinks::UninstallSymlinks;
+use dotfiles_cli::tasks::git::git_config::ConfigureGit;
+use dotfiles_cli::tasks::git::hooks::{InstallGitHooks, UninstallGitHooks};
+use dotfiles_cli::tasks::{Task, TaskResult};
 use dotfiles_cli::testing as dotfiles_cli;
 
 // ===========================================================================
@@ -339,10 +339,10 @@ fn chmod_is_idempotent() {
 }
 
 // ===========================================================================
-// phases::execute() wrapper
+// tasks::execute() wrapper
 // ===========================================================================
 
-/// `phases::execute()` must record a successful task without failures.
+/// `tasks::execute()` must record a successful task without failures.
 #[cfg(unix)]
 #[test]
 fn execute_records_no_failures_for_successful_task() {
@@ -352,7 +352,7 @@ fn execute_records_no_failures_for_successful_task() {
         .build();
 
     let ec = test.make_context("base");
-    phases::execute(&InstallSymlinks, &ec.ctx);
+    tasks::execute(&InstallSymlinks, &ec.ctx);
 
     assert_eq!(
         ec.log.failure_count(),
@@ -367,7 +367,7 @@ fn execute_records_not_applicable_when_skipped() {
     let test = common::TestContextBuilder::new().build();
     let ec = test.make_context("base");
 
-    phases::execute(&InstallSymlinks, &ec.ctx);
+    tasks::execute(&InstallSymlinks, &ec.ctx);
     assert_eq!(
         ec.log.failure_count(),
         0,
@@ -388,9 +388,9 @@ fn execute_mixed_skip_and_success() {
     let ec = test.make_context("base");
 
     // Symlinks task has empty config → skipped
-    phases::execute(&InstallSymlinks, &ec.ctx);
+    tasks::execute(&InstallSymlinks, &ec.ctx);
     // Hooks task has real hooks → succeeds
-    phases::execute(&InstallGitHooks::new(), &ec.ctx);
+    tasks::execute(&InstallGitHooks::new(), &ec.ctx);
 
     assert_eq!(ec.log.failure_count(), 0);
     assert!(!ec.log.has_failures());
@@ -478,9 +478,9 @@ fn dry_run_pipeline_produces_no_failures() {
 
     let ec = test.make_dry_run_context("base");
 
-    for task in phases::all_install_tasks() {
+    for task in tasks::all_install_tasks() {
         if FILESYSTEM_TASKS.contains(&task.name()) && task.should_run(&ec.ctx) {
-            phases::execute(task.as_ref(), &ec.ctx);
+            tasks::execute(task.as_ref(), &ec.ctx);
         }
     }
 

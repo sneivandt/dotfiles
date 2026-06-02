@@ -16,14 +16,14 @@ commands. Shell wrappers only bootstrap and invoke the binary.
 
 | Work area | Primary files | Use this skill |
 |---|---|---|
-| New or changed resource type | `cli/src/resources/`, `cli/src/phases/apply/` | `resource-implementation` |
+| New or changed resource type | `cli/src/resources/`, `cli/src/tasks/<domain>/` | `resource-implementation` |
 | Task scheduling, dependencies, parallelism | `cli/src/engine/`, `cli/src/commands/mod.rs` | `engine-orchestration` |
-| Error handling, idempotency, dry-run behaviour | `cli/src/resources/`, `cli/src/phases/` | `error-handling-patterns` |
+| Error handling, idempotency, dry-run behaviour | `cli/src/resources/`, `cli/src/tasks/` | `error-handling-patterns` |
 | Console output, task recording, summaries | `cli/src/logging/` | `logging-patterns` |
 | TOML parsing or config sections | `cli/src/config/`, `conf/` | `toml-configuration`, `config-validation` |
-| Profiles or sparse checkout | `cli/src/config/profiles.rs`, `cli/src/phases/repository/sparse_checkout.rs` | `profile-system`, `sparse-checkout-patterns` |
+| Profiles or sparse checkout | `cli/src/config/profiles.rs`, `cli/src/tasks/repository/sparse_checkout.rs` | `profile-system`, `sparse-checkout-patterns` |
 | Windows-specific features | registry, symlinks, PowerShell wrapper, platform gates | `windows-specific-patterns`, `cross-platform-verification` |
-| Package installation | `cli/src/resources/package.rs`, `cli/src/phases/apply/packages.rs` | `package-management` |
+| Package installation | `cli/src/resources/package.rs`, `cli/src/tasks/packages.rs` | `package-management` |
 | Overlay config or script tasks | `cli/src/config/overlay.rs`, `cli/src/resources/script.rs` | `overlay-scripts` |
 
 ## Project Layout
@@ -35,7 +35,7 @@ cli/src/
 ├── config/         # TOML loading, profile/category filtering, validation
 ├── resources/      # Declarative Resource, IntrinsicState, providers
 ├── engine/         # Context, resource plans, orchestration, scheduler
-├── phases/         # Task trait, macros, task catalog, phase implementations
+├── tasks/          # Task trait, macros, task catalog, domain-grouped tasks
 ├── commands/       # install, uninstall, test, version command runners
 ├── logging/        # Logger, buffered parallel output, diagnostic logs
 ├── exec.rs         # Executor abstraction for subprocesses
@@ -50,7 +50,7 @@ cli/src/
 - Prefer the `resource_task!` macro for config-to-resource tasks; use manual
   `Task` implementations only for non-standard orchestration or dynamic tasks.
 - Declare dependencies with `task_deps![...]`; register static tasks in
-  `cli/src/phases/catalog.rs`.
+  `cli/src/tasks/catalog.rs`.
 - Use `ExecutionPolicy` for central platform, dry-run, and elevation gates.
   Tasks that declare `RequiresElevation` must implement `needs_elevation()` so
   sudo is primed only when a privileged mutation is actually needed.
@@ -63,8 +63,8 @@ cli/src/
 
 ## Task and Resource Rules
 
-- Tasks live under `cli/src/phases/{bootstrap,repository,apply}/` or
-  `cli/src/phases/validation.rs`.
+- Tasks live in domain folders under `cli/src/tasks/<domain>/` or
+  `cli/src/tasks/validation.rs`.
 - Resource state should be discovered through `IntrinsicState` or a
   `ResourceStateProvider`, then applied through `process_resources()`,
   `process_resources_with_provider()`, or `process_resources_remove()`.

@@ -9,7 +9,7 @@ description: >
 
 Symlinks connect config files from `symlinks/` to `$HOME`. Config in
 `conf/symlinks.toml` is loaded by `config::symlinks` and installed by
-`phases::apply::symlinks`.
+`tasks::files::symlinks`.
 
 ## Configuration
 
@@ -39,7 +39,7 @@ applied.
 
 ## Target Path
 
-`compute_target()` in `phases/apply/symlinks.rs` always prepends a dot:
+`compute_target()` in `tasks/files/symlinks.rs` always prepends a dot:
 
 ```rust
 fn compute_target(home: &Path, source: &str) -> PathBuf {

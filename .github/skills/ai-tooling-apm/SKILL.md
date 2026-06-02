@@ -21,7 +21,7 @@ the Rust `InstallApmPackages` task.
 | `symlinks/apm/plugins/dot-doc` | Local document-generation workflow skills |
 | `symlinks/apm/plugins/dot-skill` | Local skill/plugin maintenance skills |
 | `conf/symlinks.toml` | Links `apm/config/base.yml` and `apm/plugins/*` from this repo |
-| `cli/src/phases/apply/apm.rs` | Merges APM fragments and runs global APM dependency updates |
+| `cli/src/tasks/ai/apm.rs` | Merges APM fragments and runs global APM dependency updates |
 
 ## When to Change What
 
@@ -73,5 +73,5 @@ After APM config or local plugin changes, run:
 ./dotfiles.sh install -d
 ```
 
-For changes to `cli/src/phases/apply/apm.rs`, also run the Rust checks from the
+For changes to `cli/src/tasks/ai/apm.rs`, also run the Rust checks from the
 `cross-platform-verification` skill.

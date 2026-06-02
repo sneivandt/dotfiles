@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use super::diagnostic::{DiagEvent, DiagnosticLog};
 use super::logger::Logger;
 use super::types::{Output, TaskRecorder, TaskStatus};
-use crate::phases::TaskPhase;
+use crate::tasks::{Domain, TaskPhase};
 
 /// A single buffered log entry, replayed when flushed.
 #[derive(Debug, Clone)]
@@ -127,7 +127,7 @@ impl BufferedLog {
     /// by delegating to [`Logger::notify_task_done`].
     ///
     /// In non-verbose mode the task-result line (a [`TaskResult`](LogEntry::TaskResult)
-    /// entry appended by [`execute`](crate::phases::execute)) is replayed
+    /// entry appended by [`execute`](crate::tasks::execute)) is replayed
     /// *before* the detail entries so that the compact result header appears
     /// above any per-resource output (e.g. dry-run lines).
     #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
@@ -188,8 +188,15 @@ impl Output for BufferedLog {
 }
 
 impl TaskRecorder for BufferedLog {
-    fn record_task(&self, name: &str, phase: TaskPhase, status: TaskStatus, message: Option<&str>) {
-        self.inner.record_task(name, phase, status, message);
+    fn record_task(
+        &self,
+        name: &str,
+        phase: TaskPhase,
+        domain: Domain,
+        status: TaskStatus,
+        message: Option<&str>,
+    ) {
+        self.inner.record_task(name, phase, domain, status, message);
     }
 }
 
@@ -210,7 +217,13 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
         let log = Arc::new(log);
         let buf = BufferedLog::new(Arc::clone(&log));
-        buf.record_task("task-a", TaskPhase::Apply, TaskStatus::Ok, None);
+        buf.record_task(
+            "task-a",
+            TaskPhase::Apply,
+            Domain::General,
+            TaskStatus::Ok,
+            None,
+        );
         assert_eq!(log.task_entries().len(), 1);
         assert_eq!(log.task_entries()[0].name, "task-a");
     }

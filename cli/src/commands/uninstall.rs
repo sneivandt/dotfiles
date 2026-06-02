@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::cli::{GlobalOpts, UninstallOpts};
 use crate::logging::Logger;
-use crate::phases;
+use crate::tasks;
 
 /// Run the uninstall command.
 ///
@@ -22,13 +22,13 @@ pub fn run(
     // also triggers a self-update.
     let root = super::install::resolve_root(global)?;
     if std::env::var_os(super::REEXEC_GUARD_VAR).is_none()
-        && phases::bootstrap::self_update::pre_update(&root, &**log, global.dry_run)?
+        && tasks::core::self_update::pre_update(&root, &**log, global.dry_run)?
     {
         super::re_exec(&root, &**log);
     }
 
     let runner = super::CommandRunner::new(global, log, token)?;
-    let tasks = phases::all_uninstall_tasks();
+    let tasks = tasks::all_uninstall_tasks();
     runner.run(tasks.iter().map(Box::as_ref))
 }
 
@@ -42,17 +42,17 @@ pub fn run(
 mod tests {
     use std::collections::HashSet;
 
-    use crate::phases::{self, TaskId};
+    use crate::tasks::{self, TaskId};
 
     #[test]
     fn uninstall_tasks_contains_expected_count() {
-        let tasks = phases::all_uninstall_tasks();
+        let tasks = tasks::all_uninstall_tasks();
         assert_eq!(tasks.len(), 3);
     }
 
     #[test]
     fn uninstall_tasks_contain_remove_symlinks() {
-        let tasks = phases::all_uninstall_tasks();
+        let tasks = tasks::all_uninstall_tasks();
         let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
         assert!(
             names.contains(&"Remove symlinks"),
@@ -62,7 +62,7 @@ mod tests {
 
     #[test]
     fn uninstall_tasks_contain_remove_git_hooks() {
-        let tasks = phases::all_uninstall_tasks();
+        let tasks = tasks::all_uninstall_tasks();
         let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
         assert!(
             names.contains(&"Remove Git hooks"),
@@ -72,7 +72,7 @@ mod tests {
 
     #[test]
     fn uninstall_tasks_have_unique_names() {
-        let tasks = phases::all_uninstall_tasks();
+        let tasks = tasks::all_uninstall_tasks();
         let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
         let unique: HashSet<&str> = names.iter().copied().collect();
         assert_eq!(names.len(), unique.len(), "duplicate task names: {names:?}");
@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn uninstall_tasks_have_unique_type_ids() {
-        let tasks = phases::all_uninstall_tasks();
+        let tasks = tasks::all_uninstall_tasks();
         let ids: Vec<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
         let unique: HashSet<TaskId> = ids.iter().copied().collect();
         assert_eq!(ids.len(), unique.len(), "duplicate task TaskIds found");
@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn uninstall_tasks_have_resolvable_dependencies() {
-        let tasks = phases::all_uninstall_tasks();
+        let tasks = tasks::all_uninstall_tasks();
         let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
         for task in &tasks {
             for dep in task.dependencies() {

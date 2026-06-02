@@ -35,7 +35,7 @@ Within each phase, `run_tasks_to_completion()` dispatches:
 2. If cycle detected → bail with an error (abort the run)
 3. Otherwise → `engine::scheduler::run_tasks_parallel()` spawns OS threads
 
-Each dispatched task is still passed through `phases::execute()`, which applies
+Each dispatched task is still passed through `tasks::execute()`, which applies
 `execution_policies()` before `should_run()` and `run_if_applicable()`.
 
 ### Why OS Threads (Not Rayon)
@@ -66,7 +66,7 @@ When `ctx.parallel` is false or there is only a single task:
 
 ```rust
 for task in &tasks {
-    phases::execute(*task, ctx);
+    tasks::execute(*task, ctx);
 }
 ```
 
@@ -113,7 +113,7 @@ automatically.
 
 `engine/orchestrate.rs` provides three helpers that drive the
 check→plan/diff→dry-run/apply loop so individual tasks don't repeat it. They
-are re-exported from `phases/mod.rs`:
+are re-exported from `tasks/mod.rs`:
 
 - **`process_resources(ctx, resources, opts)`** — convenience wrapper for resources implementing `IntrinsicState`.
 - **`process_resources_with_provider(ctx, resources, provider, opts)`** — loads provider state once, then maps each resource to a `ResourceState` from intrinsic, preloaded, borrowed, or cached state.

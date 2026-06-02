@@ -13,9 +13,9 @@ use crate::cli::GlobalOpts;
 use crate::config::Config;
 use crate::config::profiles;
 use crate::logging::{Log, Logger, Output};
-use crate::phases::TaskPhase;
-use crate::phases::{self, Context, Task};
 use crate::platform::Platform;
+use crate::tasks::TaskPhase;
+use crate::tasks::{self, Context, Task};
 
 /// Environment variable set before re-exec to prevent infinite self-update loops.
 const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
@@ -271,7 +271,7 @@ mod unix_tests {
 )]
 mod task_graph_tests {
     use super::*;
-    use crate::phases::{
+    use crate::tasks::{
         TaskResult, task_deps,
         test_helpers::{empty_config, make_static_context},
     };
@@ -488,14 +488,14 @@ impl CommandRunner {
 
     /// Create dynamic overlay script tasks from the loaded configuration.
     ///
-    /// Returns one [`OverlayScriptTask`](crate::phases::apply::overlay_scripts::OverlayScriptTask)
+    /// Returns one [`OverlayScriptTask`](crate::tasks::overlay::OverlayScriptTask)
     /// per script entry in the overlay config.  Returns an empty list when no
     /// overlay is configured.
     #[must_use]
     pub fn overlay_script_tasks(&self) -> Vec<Box<dyn Task>> {
         let config = self.ctx.config_read();
         config.overlay.as_ref().map_or_else(Vec::new, |root| {
-            phases::apply::overlay_scripts::overlay_script_tasks(&config.scripts, root)
+            tasks::overlay::overlay_script_tasks(&config.scripts, root)
         })
     }
 
@@ -701,7 +701,7 @@ pub fn run_tasks_to_completion<'a>(
         }
 
         log.always("");
-        log.phase(&phase.to_string());
+        log.phase(phase.label());
 
         // Before parallel dispatch, prime the sudo credential cache if any
         // task in this phase will need root privileges.  This avoids an
@@ -735,6 +735,7 @@ pub fn run_tasks_to_completion<'a>(
                     log.record_task(
                         task.name(),
                         task.phase(),
+                        task.domain(),
                         crate::logging::TaskStatus::Skipped,
                         Some(reason),
                     );
@@ -751,7 +752,7 @@ pub fn run_tasks_to_completion<'a>(
         }
 
         if ctx.parallel && phase_tasks.len() > 1 {
-            if phases::has_cycle(&phase_tasks) {
+            if tasks::has_cycle(&phase_tasks) {
                 let message = format!("dependency cycle detected in {phase} phase task graph");
                 log.error(&message);
                 anyhow::bail!(message);
@@ -763,7 +764,7 @@ pub fn run_tasks_to_completion<'a>(
                     log.warn("cancelled - stopping before next task");
                     break;
                 }
-                phases::execute(*task, ctx);
+                tasks::execute(*task, ctx);
             }
         }
     }

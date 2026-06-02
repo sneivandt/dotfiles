@@ -257,18 +257,18 @@ task completes, followed by a totals line:
   dotfiles v0.1.317
   profile: desktop
 
-:: Bootstrap
+:: Bootstrapping
   ~ Install wrapper
   ~ Configure PATH
 
-:: Repository
+:: Configuring repository
   ✓ Configure sparse checkout
   ○ Update repository — local changes present
   ~ Install Git hooks
   ✓ Reload configuration
   ~ Generate shell completions
 
-:: Apply
+:: Configuring environment
   ~ Install symlinks
   ~ Install packages
   ~ Configure systemd units
@@ -476,11 +476,11 @@ need to specify `--overlay` once:
 Each overlay script appears as its own task in the output:
 
 ```
-:: Repository
+:: Configuring repository
   ✓ Reload configuration
   ✓ Load overlay scripts
 
-:: Apply
+:: Configuring environment
   ✓ Install symlinks
   ✓ Install private files   ← overlay script task
   ✓ Install packages

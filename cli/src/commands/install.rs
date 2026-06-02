@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::cli::{GlobalOpts, InstallOpts};
 use crate::logging::Logger;
-use crate::phases;
+use crate::tasks;
 
 /// Run the install command.
 ///
@@ -30,7 +30,7 @@ pub fn run(
     // also triggers a self-update.
     let root = resolve_root(global)?;
     if std::env::var_os(super::REEXEC_GUARD_VAR).is_none()
-        && phases::bootstrap::self_update::pre_update(&root, &**log, global.dry_run)?
+        && tasks::core::self_update::pre_update(&root, &**log, global.dry_run)?
     {
         super::re_exec(&root, &**log);
     }
@@ -38,11 +38,11 @@ pub fn run(
     let runner = super::CommandRunner::new(global, log, token)?;
 
     // Build the full task list: static tasks + dynamic overlay script tasks.
-    let mut all_tasks = phases::all_install_tasks();
+    let mut all_tasks = tasks::all_install_tasks();
     all_tasks.extend(runner.overlay_script_tasks());
-    phases::filter::warn_unmatched_filters(&all_tasks, &opts.only, "--only", &**log);
-    phases::filter::warn_unmatched_filters(&all_tasks, &opts.skip, "--skip", &**log);
-    let filtered: Vec<&dyn phases::Task> = all_tasks
+    tasks::filter::warn_unmatched_filters(&all_tasks, &opts.only, "--only", &**log);
+    tasks::filter::warn_unmatched_filters(&all_tasks, &opts.skip, "--skip", &**log);
+    let filtered: Vec<&dyn tasks::Task> = all_tasks
         .iter()
         .filter(|t| {
             // Both --only and --skip can be active simultaneously.
@@ -52,12 +52,12 @@ pub fn run(
                 || opts
                     .only
                     .iter()
-                    .any(|filter| phases::filter::task_matches_filter(t.name(), filter));
+                    .any(|filter| tasks::filter::task_matches_filter(t.name(), filter));
             let passes_skip = opts.skip.is_empty()
                 || !opts
                     .skip
                     .iter()
-                    .any(|filter| phases::filter::task_matches_filter(t.name(), filter));
+                    .any(|filter| tasks::filter::task_matches_filter(t.name(), filter));
             passes_only && passes_skip
         })
         .map(Box::as_ref)
@@ -190,10 +190,10 @@ mod tests {
     fn warn_unmatched_filters_warns_on_no_match() {
         use crate::logging::Logger;
         let log = Logger::new("test");
-        let all = phases::all_install_tasks();
+        let all = tasks::all_install_tasks();
 
         // "xyznonexistent" should not match any task
-        phases::filter::warn_unmatched_filters(
+        tasks::filter::warn_unmatched_filters(
             &all,
             &["xyznonexistent".to_string()],
             "--only",
@@ -207,8 +207,8 @@ mod tests {
     fn warn_unmatched_filters_silent_on_valid_match() {
         use crate::logging::Logger;
         let log = Logger::new("test");
-        let all = phases::all_install_tasks();
+        let all = tasks::all_install_tasks();
 
-        phases::filter::warn_unmatched_filters(&all, &["symlinks".to_string()], "--only", &log);
+        tasks::filter::warn_unmatched_filters(&all, &["symlinks".to_string()], "--only", &log);
     }
 }

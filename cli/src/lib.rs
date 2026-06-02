@@ -30,9 +30,9 @@ mod error;
 mod exec;
 mod fs;
 mod logging;
-mod phases;
 mod platform;
 mod resources;
+mod tasks;
 
 /// Run the dotfiles CLI and return the process exit code.
 ///
@@ -194,29 +194,29 @@ pub mod testing {
         pub use crate::logging::{Log, Logger};
     }
 
-    pub mod phases {
-        pub use crate::phases::{
+    pub mod tasks {
+        pub use crate::tasks::{
             Context, ContextOpts, ProcessMode, ProcessOpts, ResourceAction, Task, TaskId,
             TaskPhase, TaskResult, TaskStats, all_install_tasks, all_uninstall_tasks, execute,
         };
 
-        pub mod apply {
+        pub mod files {
             pub mod chmod {
-                pub use crate::phases::apply::chmod::ApplyFilePermissions;
-            }
-
-            pub mod git_config {
-                pub use crate::phases::apply::git_config::ConfigureGit;
+                pub use crate::tasks::files::chmod::ApplyFilePermissions;
             }
 
             pub mod symlinks {
-                pub use crate::phases::apply::symlinks::{InstallSymlinks, UninstallSymlinks};
+                pub use crate::tasks::files::symlinks::{InstallSymlinks, UninstallSymlinks};
             }
         }
 
-        pub mod repository {
+        pub mod git {
+            pub mod git_config {
+                pub use crate::tasks::git::git_config::ConfigureGit;
+            }
+
             pub mod hooks {
-                pub use crate::phases::repository::hooks::{InstallGitHooks, UninstallGitHooks};
+                pub use crate::tasks::git::hooks::{InstallGitHooks, UninstallGitHooks};
             }
         }
     }

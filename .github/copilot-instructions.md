@@ -24,7 +24,7 @@ This project manages dotfiles and system configuration using a profile-based spa
 | Skills | `.github/skills/` | Agent-specific coding patterns |
 | Docs | `docs/` | Human-readable guides and reference |
 
-The engine has five internal layers: `config/` (TOML parsing) → `resources/` (idempotent primitives) → `engine/` (parallel execution) → `phases/` (dependency-ordered tasks) → `commands/` (CLI entry points). See `docs/ARCHITECTURE.md` for the full system design.
+The engine has five internal layers: `config/` (TOML parsing) → `resources/` (idempotent primitives) → `engine/` (parallel execution) → `tasks/` (dependency-ordered tasks) → `commands/` (CLI entry points). See `docs/ARCHITECTURE.md` for the full system design.
 
 ## Key Files
 
@@ -32,9 +32,9 @@ The engine has five internal layers: `config/` (TOML parsing) → `resources/` (
 |---|---|
 | `cli/src/lib.rs` | Module structure and public API docs — start here |
 | `cli/src/cli.rs` | clap-based CLI args and `GlobalOpts` |
-| `cli/src/phases/mod.rs` | `Task` trait definition |
-| `cli/src/phases/macros.rs` | `resource_task!` and `task_deps!` macros |
-| `cli/src/phases/catalog.rs` | Task registry (`all_install_tasks()` / `all_uninstall_tasks()`) |
+| `cli/src/tasks/mod.rs` | `Task` trait definition |
+| `cli/src/tasks/macros.rs` | `resource_task!` and `task_deps!` macros |
+| `cli/src/tasks/catalog.rs` | Task registry (`all_install_tasks()` / `all_uninstall_tasks()`) |
 | `cli/src/resources/mod.rs` | `Resource`, `IntrinsicState`, and `ResourceStateProvider` primitives |
 | `cli/src/engine/orchestrate.rs` | Provider-backed resource orchestration workhorse |
 | `cli/src/engine/plan.rs` | Pure resource plan/diff construction before mutation |
@@ -49,7 +49,7 @@ The project enforces pedantic + nursery Clippy lints and explicitly denies `pani
 
 ### Macro-Driven Tasks
 
-Tasks are defined via the `resource_task!` macro in `cli/src/phases/`, not by hand-implementing the `Task` trait. Dependencies use `task_deps!`. Config sections use `config_section!`. See the `resource-implementation` and `rust-patterns` skills.
+Tasks are defined via the `resource_task!` macro in `cli/src/tasks/`, not by hand-implementing the `Task` trait. Dependencies use `task_deps!`. Config sections use `config_section!`. See the `resource-implementation` and `rust-patterns` skills.
 
 ### Resource State Providers
 

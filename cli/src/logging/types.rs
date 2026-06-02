@@ -1,14 +1,16 @@
 //! Core logging types: task entries, status, and the [`Log`] trait.
 use super::diagnostic::{DiagEvent, DiagnosticLog};
-use crate::phases::TaskPhase;
+use crate::tasks::{Domain, TaskPhase};
 
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]
 pub struct TaskEntry {
     /// Human-readable task name.
     pub name: String,
-    /// Execution phase of the task.
+    /// Execution phase of the task (when it runs).
     pub phase: TaskPhase,
+    /// Subject-matter domain of the task (what it is about).
+    pub domain: Domain,
     /// Final status of the task.
     pub status: TaskStatus,
     /// Optional detail message (e.g., skip reason or error description).
@@ -123,7 +125,14 @@ pub trait Output: Send + Sync {
 /// independently.
 pub trait TaskRecorder: Send + Sync {
     /// Record a task result for the summary.
-    fn record_task(&self, name: &str, phase: TaskPhase, status: TaskStatus, message: Option<&str>);
+    fn record_task(
+        &self,
+        name: &str,
+        phase: TaskPhase,
+        domain: Domain,
+        status: TaskStatus,
+        message: Option<&str>,
+    );
 }
 
 /// Combined logging interface: user-facing output plus task recording.
@@ -164,12 +173,14 @@ mod tests {
         let entry = TaskEntry {
             name: "test-task".to_string(),
             phase: TaskPhase::Apply,
+            domain: Domain::General,
             status: TaskStatus::Ok,
             message: Some("all good".to_string()),
         };
         let cloned = entry.clone();
         assert_eq!(cloned.name, entry.name);
         assert_eq!(cloned.phase, entry.phase);
+        assert_eq!(cloned.domain, entry.domain);
         assert_eq!(cloned.status, entry.status);
         assert_eq!(cloned.message, entry.message);
     }

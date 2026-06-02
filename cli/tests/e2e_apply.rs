@@ -13,7 +13,7 @@
 //! - A minimal dotfiles repository is built under a temporary directory.
 //! - A second temporary directory acts as the isolated `$HOME`.
 //! - Multiple filesystem-safe install tasks are run together (not in dry-run
-//!   mode) using the same [`phases::execute`] wrapper that the real install
+//!   mode) using the same [`tasks::execute`] wrapper that the real install
 //!   command uses.
 //! - Concrete side effects on the sandbox home are asserted after the first
 //!   run (real mutations) and after a second run (idempotency).
@@ -26,10 +26,10 @@ mod common;
 #[cfg(unix)]
 mod unix_e2e {
     use super::common;
-    use dotfiles_cli::phases;
-    use dotfiles_cli::phases::apply::chmod::ApplyFilePermissions;
-    use dotfiles_cli::phases::apply::symlinks::InstallSymlinks;
-    use dotfiles_cli::phases::repository::hooks::InstallGitHooks;
+    use dotfiles_cli::tasks;
+    use dotfiles_cli::tasks::files::chmod::ApplyFilePermissions;
+    use dotfiles_cli::tasks::files::symlinks::InstallSymlinks;
+    use dotfiles_cli::tasks::git::hooks::InstallGitHooks;
     use dotfiles_cli::testing as dotfiles_cli;
 
     // -----------------------------------------------------------------------
@@ -90,9 +90,9 @@ mod unix_e2e {
 
         let (test, ec) = build_full_fixture();
 
-        phases::execute(&InstallSymlinks, &ec.ctx);
-        phases::execute(&InstallGitHooks::new(), &ec.ctx);
-        phases::execute(&ApplyFilePermissions, &ec.ctx);
+        tasks::execute(&InstallSymlinks, &ec.ctx);
+        tasks::execute(&InstallGitHooks::new(), &ec.ctx);
+        tasks::execute(&ApplyFilePermissions, &ec.ctx);
 
         assert!(!ec.log.has_failures(), "no task should fail");
 
@@ -145,18 +145,18 @@ mod unix_e2e {
         let (test, ec) = build_full_fixture();
 
         // ── First run ───────────────────────────────────────────────────────
-        phases::execute(&InstallSymlinks, &ec.ctx);
-        phases::execute(&InstallGitHooks::new(), &ec.ctx);
-        phases::execute(&ApplyFilePermissions, &ec.ctx);
+        tasks::execute(&InstallSymlinks, &ec.ctx);
+        tasks::execute(&InstallGitHooks::new(), &ec.ctx);
+        tasks::execute(&ApplyFilePermissions, &ec.ctx);
         assert!(
             !ec.log.has_failures(),
             "first run should produce no failures"
         );
 
         // ── Second run (same context, same tasks) ────────────────────────────
-        phases::execute(&InstallSymlinks, &ec.ctx);
-        phases::execute(&InstallGitHooks::new(), &ec.ctx);
-        phases::execute(&ApplyFilePermissions, &ec.ctx);
+        tasks::execute(&InstallSymlinks, &ec.ctx);
+        tasks::execute(&InstallGitHooks::new(), &ec.ctx);
+        tasks::execute(&ApplyFilePermissions, &ec.ctx);
         assert!(
             !ec.log.has_failures(),
             "second (idempotent) run should also produce no failures"
@@ -198,7 +198,7 @@ mod unix_e2e {
     fn apply_pipeline_symlink_resolves_to_source_content() {
         let (_test, ec) = build_full_fixture();
 
-        phases::execute(&InstallSymlinks, &ec.ctx);
+        tasks::execute(&InstallSymlinks, &ec.ctx);
         assert!(!ec.log.has_failures());
 
         let content = std::fs::read_to_string(ec.ctx.home.join(".bashrc")).unwrap();

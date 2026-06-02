@@ -101,7 +101,7 @@ cargo test --manifest-path cli/Cargo.toml
 
 #### Adding New Tasks
 
-1. Create a new file in `cli/src/phases/bootstrap/`, `cli/src/phases/repository/`, or `cli/src/phases/apply/` implementing the `Task` trait:
+1. Create a new file in the appropriate domain folder under `cli/src/tasks/<domain>/` implementing the `Task` trait:
    ```rust
    #[derive(Debug)]
    pub struct MyNewTask;
@@ -120,8 +120,8 @@ cargo test --manifest-path cli/Cargo.toml
        }
    }
    ```
-2. Add the module to `cli/src/phases/bootstrap/mod.rs`, `cli/src/phases/repository/mod.rs`, or `cli/src/phases/apply/mod.rs`
-3. Add the task to `all_install_tasks()` in `cli/src/phases/catalog.rs`
+2. Add the module to the domain's `cli/src/tasks/<domain>/mod.rs`
+3. Add the task to `all_install_tasks()` in `cli/src/tasks/catalog.rs`
 
 #### Adding New Configuration Types
 
@@ -130,7 +130,7 @@ cargo test --manifest-path cli/Cargo.toml
 3. Add the field to the `Config` struct and a single `SectionLoader` call in
    `Config::load()`. One call (e.g. `sections.collect_filtered(...)`) loads the
    main config *and* merges the overlay, so there is no separate merge step.
-4. Create a task in `cli/src/phases/apply/` that consumes the config
+4. Create a task in the appropriate `cli/src/tasks/<domain>/` folder that consumes the config
 
 #### Creating New Profiles
 
@@ -144,7 +144,7 @@ exclude = ["windows", "desktop"]
 ### Rust Code Guidelines
 
 - **Error Handling**: Use `anyhow::Result` with `.context()` for all fallible operations
-- **Task Pattern**: Implement the `Task` trait in `cli/src/phases/bootstrap/`, `cli/src/phases/repository/`, or `cli/src/phases/apply/`; use `should_run()` for platform/profile gating
+- **Task Pattern**: Implement the `Task` trait in the relevant `cli/src/tasks/<domain>/` folder; use `should_run()` for platform/profile gating
 - **Idempotency**: Always check if action is needed before taking it
 - **No Trailing Whitespace**: Remove all trailing whitespace from files
 - **Formatting**: Run `cargo fmt` before committing

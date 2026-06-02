@@ -8,8 +8,8 @@ use std::sync::{Arc, mpsc};
 
 use crate::logging::{self, BufferedLog, DiagEvent, Log, Logger, Output as _, TaskStatus};
 #[cfg(test)]
-use crate::phases::TaskPhase;
-use crate::phases::{self, Context, Task, TaskId};
+use crate::tasks::TaskPhase;
+use crate::tasks::{self, Context, Task, TaskId};
 
 /// Execute a single task, catching any panic.
 ///
@@ -24,7 +24,7 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> bool {
     let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        phases::execute(task, &task_ctx);
+        tasks::execute(task, &task_ctx);
     }));
 
     if let Err(payload) = result {
@@ -38,7 +38,13 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> bool {
             })
             .unwrap_or_else(|| "task panicked".to_string());
         log.diag_task(DiagEvent::TaskFail, task.name(), &msg);
-        log.record_task(task.name(), task.phase(), TaskStatus::Failed, Some(&msg));
+        log.record_task(
+            task.name(),
+            task.phase(),
+            task.domain(),
+            TaskStatus::Failed,
+            Some(&msg),
+        );
         buf.flush_and_complete(task.name());
         return false;
     }
@@ -141,7 +147,13 @@ pub(crate) fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<L
                         task.name(),
                         &format!("skipped: {reason}"),
                     );
-                    log.record_task(task.name(), task.phase(), TaskStatus::Skipped, Some(reason));
+                    log.record_task(
+                        task.name(),
+                        task.phase(),
+                        task.domain(),
+                        TaskStatus::Skipped,
+                        Some(reason),
+                    );
                     if !log.is_verbose() {
                         log.emit_task_result(task.name(), TaskStatus::Skipped, Some(reason));
                     }
@@ -178,8 +190,8 @@ mod tests {
     use anyhow::Result;
 
     use super::*;
-    use crate::phases::test_helpers::{ContextBuilder, empty_config};
-    use crate::phases::{TaskResult, task_deps};
+    use crate::tasks::test_helpers::{ContextBuilder, empty_config};
+    use crate::tasks::{TaskResult, task_deps};
 
     fn make_test_log_and_ctx() -> (Arc<Logger>, Context, logging::TestDispatchLock) {
         let dispatch_lock = logging::test_dispatch_lock();
@@ -746,7 +758,7 @@ mod tests {
 
         // Exactly mirrors what run_tasks_parallel does per task thread.
         log.notify_task_start("stats-task");
-        phases::execute(&StatsTask, &task_ctx);
+        tasks::execute(&StatsTask, &task_ctx);
         buf.flush_and_complete("stats-task");
 
         let path = log.log_path().expect("log path");
@@ -792,7 +804,7 @@ mod tests {
             let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
 
             log.notify_task_start(name);
-            phases::execute(&task_named, &task_ctx);
+            tasks::execute(&task_named, &task_ctx);
             buf.flush_and_complete(name);
         }
 
@@ -895,7 +907,7 @@ mod tests {
         let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
 
         log.notify_task_start("debug-fmt-task");
-        phases::execute(&DebugFmtTask, &task_ctx);
+        tasks::execute(&DebugFmtTask, &task_ctx);
         buf.flush_and_complete("debug-fmt-task");
 
         let targets = captured

@@ -91,7 +91,7 @@ not printed to the console during routine successful runs.
 
 ## Task Recording & Summary
 
-`phases::execute()` automatically records each task result:
+`tasks::execute()` automatically records each task result:
 
 ```rust
 pub fn execute(task: &dyn Task, ctx: &Context) {
@@ -143,7 +143,7 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 
 When `verbose=false`:
 - `stage` and `info` messages are suppressed on the console
-- `phases::execute()` emits compact inline task-result lines via `emit_task_result()`
+- `tasks::execute()` emits compact inline task-result lines via `emit_task_result()`
 - The summary shows only totals (no per-phase task breakdown)
 - The progress line shows a count ("3 tasks running…") instead of task names
 
@@ -168,7 +168,7 @@ suppressed on the console.
    (console-only)
 5. Check `ctx.dry_run` before side effects; use `ctx.log.dry_run()` for preview
 6. Return `TaskResult::DryRun` in dry-run mode
-7. Task recording is automatic via `phases::execute()` — don't call `record_task` in tasks
+7. Task recording is automatic via `tasks::execute()` — don't call `record_task` in tasks
 
 ## Parallel Task Logging
 

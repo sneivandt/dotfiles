@@ -40,7 +40,7 @@ impl tracing::field::Visit for MessageExtractor {
     }
 }
 
-/// Task context stored on tracing spans created by `phases::execute`.
+/// Task context stored on tracing spans created by `tasks::execute`.
 #[derive(Debug, Default)]
 struct TaskSpanContext {
     task_name: Option<String>,

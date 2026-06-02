@@ -15,9 +15,9 @@ mod common;
 use dotfiles_cli::testing as dotfiles_cli;
 use std::collections::HashSet;
 
-use dotfiles_cli::phases;
-use dotfiles_cli::phases::TaskId;
 use dotfiles_cli::platform::{Os, Platform};
+use dotfiles_cli::tasks;
+use dotfiles_cli::tasks::TaskId;
 
 // ---------------------------------------------------------------------------
 // Snapshot: full uninstall task list
@@ -29,7 +29,7 @@ use dotfiles_cli::platform::{Os, Platform};
 /// to fail, prompting a deliberate snapshot update.
 #[test]
 fn uninstall_task_names() {
-    let all_tasks = phases::all_uninstall_tasks();
+    let all_tasks = tasks::all_uninstall_tasks();
     let task_names: Vec<&str> = all_tasks.iter().map(|t| t.name()).collect();
     insta::assert_snapshot!("uninstall_task_names", task_names.join("\n"));
 }
@@ -41,13 +41,13 @@ fn uninstall_task_names() {
 /// The uninstall task list must contain the expected number of tasks.
 #[test]
 fn uninstall_task_count() {
-    assert_eq!(phases::all_uninstall_tasks().len(), 3);
+    assert_eq!(tasks::all_uninstall_tasks().len(), 3);
 }
 
 /// Every uninstall task name must be non-empty.
 #[test]
 fn uninstall_task_names_are_non_empty() {
-    for task in phases::all_uninstall_tasks() {
+    for task in tasks::all_uninstall_tasks() {
         assert!(!task.name().is_empty(), "uninstall task has an empty name");
     }
 }
@@ -55,7 +55,7 @@ fn uninstall_task_names_are_non_empty() {
 /// No two uninstall tasks may share the same name.
 #[test]
 fn uninstall_task_names_are_unique() {
-    let tasks = phases::all_uninstall_tasks();
+    let tasks = tasks::all_uninstall_tasks();
     let mut seen: HashSet<&str> = HashSet::new();
     for task in &tasks {
         assert!(
@@ -69,7 +69,7 @@ fn uninstall_task_names_are_unique() {
 /// No two uninstall tasks may share the same [`TaskId`].
 #[test]
 fn uninstall_task_type_ids_are_unique() {
-    let tasks = phases::all_uninstall_tasks();
+    let tasks = tasks::all_uninstall_tasks();
     let ids: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
     assert_eq!(
         ids.len(),
@@ -82,7 +82,7 @@ fn uninstall_task_type_ids_are_unique() {
 /// task in the same list.
 #[test]
 fn uninstall_task_dependencies_are_resolvable() {
-    let tasks = phases::all_uninstall_tasks();
+    let tasks = tasks::all_uninstall_tasks();
     let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
     for task in &tasks {
         for dep in task.dependencies() {
@@ -102,7 +102,7 @@ fn uninstall_task_dependencies_are_resolvable() {
 /// "Remove symlinks" must be present in the uninstall task list.
 #[test]
 fn uninstall_task_list_contains_remove_symlinks() {
-    let tasks = phases::all_uninstall_tasks();
+    let tasks = tasks::all_uninstall_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
         names.contains(&"Remove symlinks"),
@@ -113,7 +113,7 @@ fn uninstall_task_list_contains_remove_symlinks() {
 /// "Remove Git hooks" must be present in the uninstall task list.
 #[test]
 fn uninstall_task_list_contains_remove_git_hooks() {
-    let tasks = phases::all_uninstall_tasks();
+    let tasks = tasks::all_uninstall_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
         names.contains(&"Remove Git hooks"),
@@ -140,12 +140,12 @@ fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-uninstall"));
 
-    let task_ctx = phases::Context::new(
+    let task_ctx = tasks::Context::new(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        phases::ContextOpts {
+        tasks::ContextOpts {
             dry_run: true,
             parallel: false,
             is_ci: None,
@@ -153,7 +153,7 @@ fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
     )
     .expect("create context");
 
-    let tasks = phases::all_uninstall_tasks();
+    let tasks = tasks::all_uninstall_tasks();
     for task in &tasks {
         let _ = task.should_run(&task_ctx);
     }
@@ -168,8 +168,8 @@ fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
 fn uninstall_tasks_form_acyclic_dependency_graph() {
     use dotfiles_cli::engine::graph::has_cycle;
 
-    let tasks = phases::all_uninstall_tasks();
-    let task_refs: Vec<&dyn phases::Task> = tasks.iter().map(Box::as_ref).collect();
+    let tasks = tasks::all_uninstall_tasks();
+    let task_refs: Vec<&dyn tasks::Task> = tasks.iter().map(Box::as_ref).collect();
     assert!(
         !has_cycle(&task_refs),
         "uninstall task dependency graph contains a cycle"
@@ -191,7 +191,7 @@ fn uninstall_tasks_form_acyclic_dependency_graph() {
 fn uninstall_symlinks_is_idempotent() {
     use std::sync::Arc;
 
-    use dotfiles_cli::phases::Task;
+    use dotfiles_cli::tasks::Task;
 
     let ctx = common::TestContextBuilder::new()
         .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")
@@ -208,13 +208,13 @@ fn uninstall_symlinks_is_idempotent() {
     ));
 
     let config = ctx.load_config("base");
-    let task_ctx = phases::Context::from_raw(
+    let task_ctx = tasks::Context::from_raw(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
         home_dir.path().to_path_buf(),
-        phases::ContextOpts {
+        tasks::ContextOpts {
             dry_run: false,
             parallel: false,
             is_ci: Some(false),
@@ -222,20 +222,20 @@ fn uninstall_symlinks_is_idempotent() {
     );
 
     // Install the symlink first so there is something to uninstall.
-    let install_result = phases::apply::symlinks::InstallSymlinks
+    let install_result = tasks::files::symlinks::InstallSymlinks
         .run(&task_ctx)
         .expect("install run");
     assert!(
-        matches!(install_result, phases::TaskResult::Ok),
+        matches!(install_result, tasks::TaskResult::Ok),
         "install run should succeed"
     );
 
     // First uninstall: symlink must be materialised to a regular file.
-    let result1 = phases::apply::symlinks::UninstallSymlinks
+    let result1 = tasks::files::symlinks::UninstallSymlinks
         .run(&task_ctx)
         .expect("first uninstall run");
     assert!(
-        matches!(result1, phases::TaskResult::Ok),
+        matches!(result1, tasks::TaskResult::Ok),
         "first uninstall run should succeed"
     );
 
@@ -247,11 +247,11 @@ fn uninstall_symlinks_is_idempotent() {
     );
 
     // Second uninstall: must succeed (idempotency — target is no longer a symlink).
-    let result2 = phases::apply::symlinks::UninstallSymlinks
+    let result2 = tasks::files::symlinks::UninstallSymlinks
         .run(&task_ctx)
         .expect("second uninstall run");
     assert!(
-        matches!(result2, phases::TaskResult::Ok),
+        matches!(result2, tasks::TaskResult::Ok),
         "second uninstall run should succeed (idempotency guarantee)"
     );
 }
@@ -280,12 +280,12 @@ fn uninstall_tasks_should_run_with_windows_platform() {
     let log: Arc<dotfiles_cli::logging::Logger> =
         Arc::new(dotfiles_cli::logging::Logger::new("test-uninstall-windows"));
 
-    let task_ctx = phases::Context::new(
+    let task_ctx = tasks::Context::new(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
         Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
         executor,
-        phases::ContextOpts {
+        tasks::ContextOpts {
             dry_run: true,
             parallel: false,
             is_ci: None,
@@ -293,7 +293,7 @@ fn uninstall_tasks_should_run_with_windows_platform() {
     )
     .expect("create context");
 
-    let all_tasks = phases::all_uninstall_tasks();
+    let all_tasks = tasks::all_uninstall_tasks();
     for task in &all_tasks {
         let _ = task.should_run(&task_ctx);
     }

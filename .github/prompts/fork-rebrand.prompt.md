@@ -26,7 +26,7 @@ Do not invent values. If something is missing, ask.
 
 These references break the self-update mechanism or misrepresent identity if left unchanged.
 
-1. **Self-update constant** — `cli/src/phases/bootstrap/self_update.rs`
+1. **Self-update constant** — `cli/src/tasks/core/self_update/mod.rs`
    - Replace `const REPO: &str = "sneivandt/dotfiles";` with the user's slug.
    - This is the constant the running binary uses to fetch new releases. It is *not* the
      same as the wrapper variable.

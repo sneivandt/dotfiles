@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use crate::cli::{GlobalOpts, TestOpts};
 use crate::logging::Logger;
-use crate::phases::Task;
-use crate::phases::validation::{
+use crate::tasks::Task;
+use crate::tasks::validation::{
     RunPSScriptAnalyzer, RunShellcheck, ValidateConfigFiles, ValidateConfigWarnings,
     ValidateManifestSync, ValidateSymlinkSources,
 };

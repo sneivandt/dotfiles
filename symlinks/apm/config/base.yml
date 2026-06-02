@@ -2,6 +2,11 @@ name: dotfiles
 version: 1.0.0
 dependencies:
   apm:
+    # Local plugins
+    - ~/.apm/plugins/dot-code
+    - ~/.apm/plugins/dot-doc
+    - ~/.apm/plugins/dot-skill
+
     # External dependencies are pinned to a specific commit (#<sha>) so that
     # `apm outdated`/`apm deps update` do not treat a moving default branch as
     # perpetually stale and re-clone full repo history on every install. The
@@ -31,8 +36,3 @@ dependencies:
     # Document conversion skills
     - github/awesome-copilot/skills/md-to-docx#90921cc46f4e452ea379e70884d60ec25263f16a
     - github/awesome-copilot/skills/markdown-to-html#90921cc46f4e452ea379e70884d60ec25263f16a
-
-    # Local plugins
-    - ~/.apm/plugins/dot-code
-    - ~/.apm/plugins/dot-doc
-    - ~/.apm/plugins/dot-skill

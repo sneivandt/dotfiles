@@ -4,7 +4,7 @@
 [![Publish Docker](https://github.com/sneivandt/dotfiles/actions/workflows/docker.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/docker.yml)
 [![CI](https://github.com/sneivandt/dotfiles/actions/workflows/ci.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/ci.yml)
 
-A cross-platform dotfiles manager built on a **Rust engine** with declarative TOML configuration. This is my personal setup, designed as a **reference chassis**. Fork it, rebrand it, and make it yours.
+A cross-platform dotfiles manager built on a **Rust engine** with declarative TOML configuration. This is my real setup that I use every day, built to be easy to fork, rebrand, and make your own.
 
 ![Generated terminal preview of a dotfiles dry-run install](docs/assets/terminal-screenshot.svg)
 

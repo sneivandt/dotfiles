@@ -4,6 +4,7 @@ dependencies:
   apm:
     # Local plugins
     - ~/.apm/plugins/dot-code
+    - ~/.apm/plugins/dot-copilot
     - ~/.apm/plugins/dot-doc
     - ~/.apm/plugins/dot-skill
 

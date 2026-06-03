@@ -21,7 +21,7 @@ the Rust `InstallApmPackages` task.
 | `symlinks/apm/plugins/dot-doc` | Local document-generation workflow skills |
 | `symlinks/apm/plugins/dot-skill` | Local skill/plugin maintenance skills |
 | `conf/symlinks.toml` | Links `apm/config/base.yml` and `apm/plugins/*` from this repo |
-| `cli/src/tasks/ai/apm.rs` | Merges APM fragments and runs global APM dependency updates |
+| `cli/src/tasks/ai/apm/` | Merges APM fragments and runs global APM dependency updates (`mod.rs` orchestration; `fragments.rs`, `manifest.rs`, `outdated.rs`, `autopilot.rs`) |
 
 ## When to Change What
 
@@ -35,7 +35,7 @@ the Rust `InstallApmPackages` task.
 
 ## MCP Servers and Hooks via APM
 
-APM owns more than skills. `merge_fragments` in `apm.rs` aggregates both
+APM owns more than skills. `merge_fragments` in `apm/fragments.rs` aggregates both
 `dependencies.apm` and `dependencies.mcp` from every `~/.apm/config/*.yml`
 fragment, so AI tooling can be delivered through APM instead of raw symlinks:
 
@@ -73,5 +73,5 @@ After APM config or local plugin changes, run:
 ./dotfiles.sh install -d
 ```
 
-For changes to `cli/src/tasks/ai/apm.rs`, also run the Rust checks from the
+For changes to `cli/src/tasks/ai/apm/`, also run the Rust checks from the
 `cross-platform-verification` skill.

@@ -239,13 +239,19 @@ folders:
 - `shell/` — login shell, zsh completions
 - `system/` — developer mode, systemd units, registry, PAM, wsl.conf
 - `ai/` — APM plugin manifests, Copilot settings
-- `editors/` — handled by the single-file `editors.rs` (VS Code extensions)
+- `editors/` — VS Code/editor extensions
+- `packages/` — system and AUR packages
+- `overlay/` — overlay script discovery and execution
+- `validation/` — configuration checks
 
-Single-file domains live as plain modules at the root of `tasks/`: `packages.rs`,
-`editors.rs`, `overlay.rs`, and `validation.rs`. The framework itself — the `Task`
-trait, `TaskPhase`, `Domain`, the `resource_task!`/`task_deps!` macros, the task
-catalog, and the `--skip`/`--only` filter — lives in `mod.rs`, `macros.rs`,
-`catalog.rs`, and `filter.rs`.
+Every domain is a folder, so `tasks/` reads uniformly. A domain folder takes one
+of two shapes: a thin `mod.rs` with per-task submodules (as in `system/` and
+`git/`), or a production `mod.rs` paired with a sibling `tests.rs` when the code
+is one cohesive unit but its tests are large (as in `editors/`, `overlay/`,
+`packages/`, `validation/`, `ai/apm/`, and `repository/sparse_checkout/`). The
+framework itself — the `Task` trait, `TaskPhase`, `Domain`, the
+`resource_task!`/`task_deps!` macros, the task catalog, and the `--skip`/`--only`
+filter — lives in `mod.rs`, `macros.rs`, `catalog.rs`, and `filter.rs`.
 
 **Implemented tasks** (the engine schedules by **phase**, completing each before
 the next; within a phase, tasks run as soon as dependencies allow). Each task is
@@ -263,7 +269,7 @@ Repository phase — synchronize the dotfiles repository:
 - `reload_config` (repository) — Reload config from disk after `update` pulls new commits
 - `hooks` (git) — Install git hooks (copies `hooks/*` into `.git/hooks/`)
 - `completions` (shell) — Generate the zsh completion script into `symlinks/config/zsh/completions/`
-- `overlay_scripts` (overlay) — Discover overlay script definitions and log script count. The overlay *domain* spans two phases: this discovery task runs in the Repository phase, while the generated `OverlayScriptTask`s run in the Apply phase. Both live in `tasks/overlay.rs` because phase is per-task metadata (see `phase()` above), not folder-derived.
+- `overlay_scripts` (overlay) — Discover overlay script definitions and log script count. The overlay *domain* spans two phases: this discovery task runs in the Repository phase, while the generated `OverlayScriptTask`s run in the Apply phase. Both live in `tasks/overlay/mod.rs` because phase is per-task metadata (see `phase()` above), not folder-derived.
 
 Apply phase — converge declared configuration to its target state:
 - `packages` (packages) — Install system packages (pacman or winget)

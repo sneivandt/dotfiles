@@ -23,6 +23,23 @@
 //! - **Overlay** (`tasks::overlay`) — overlay script tasks.
 //! - **Validation** (`tasks::validation`) — configuration checks.
 //!
+//! ## Module layout convention
+//!
+//! Every domain is a folder, so `tasks/` reads uniformly: each child directory
+//! is a subject area and the loose top-level files are shared infrastructure.  A
+//! domain folder takes one of two shapes, both legitimate:
+//!
+//! - **Thin `mod.rs` + per-task files** — the `mod.rs` carries only the module
+//!   docs and `pub mod` declarations; each task lives in its own submodule (as in
+//!   `tasks::system` and `tasks::git`).  Prefer this when a domain spans several
+//!   distinct tasks that each warrant their own file.
+//! - **Production `mod.rs` + `tests.rs`** — a cohesive domain keeps its task
+//!   definitions and helpers in `mod.rs` and splits only the `#[cfg(test)]`
+//!   module into a sibling `tests.rs` (as in `tasks::editors`, `tasks::overlay`,
+//!   `tasks::packages`, `tasks::validation`, `tasks::ai::apm`, and
+//!   `tasks::repository::sparse_checkout`).  Prefer this when the production code
+//!   is naturally one unit but the test module is large enough to crowd it.
+//!
 //! The modules above define tasks.  The remaining modules are supporting
 //! infrastructure rather than task definitions:
 //!

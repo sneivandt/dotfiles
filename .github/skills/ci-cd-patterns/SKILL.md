@@ -60,6 +60,7 @@ scripts/
 │   ├── test-applications.sh    # App-specific tests (git, zsh, vim, nvim)
 │   ├── test-config.sh          # Config validation checks
 │   ├── test-git-hooks.sh       # Pre-commit hook tests
+│   ├── test-paru.sh            # Paru/AUR helper tests (Arch; not wired into a ci.yml job)
 │   ├── test-shell-wrapper.sh   # dotfiles.sh wrapper tests
 │   ├── test-static-analysis.sh # ShellCheck/PSScriptAnalyzer runners
 │   └── test-uninstall.sh       # Install/uninstall round-trip

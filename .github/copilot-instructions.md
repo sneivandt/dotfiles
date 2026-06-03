@@ -38,7 +38,7 @@ The engine has five internal layers: `config/` (TOML parsing) → `resources/` (
 | `cli/src/resources/mod.rs` | `Resource`, `IntrinsicState`, and `ResourceStateProvider` primitives |
 | `cli/src/engine/orchestrate.rs` | Provider-backed resource orchestration workhorse |
 | `cli/src/engine/plan.rs` | Pure resource plan/diff construction before mutation |
-| `cli/src/config/mod.rs` | `config_section!` macro and config loading |
+| `cli/src/config/mod.rs` | Config loading and `config_section!` re-export (macro defined in `config/helpers/section_macro.rs`) |
 | `cli/src/error.rs` | `ResourceError` and `ConfigError` domain types |
 
 ## Conventions

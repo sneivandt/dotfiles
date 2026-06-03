@@ -21,9 +21,9 @@ commands. Shell wrappers only bootstrap and invoke the binary.
 | Error handling, idempotency, dry-run behaviour | `cli/src/resources/`, `cli/src/tasks/` | `error-handling-patterns` |
 | Console output, task recording, summaries | `cli/src/logging/` | `logging-patterns` |
 | TOML parsing or config sections | `cli/src/config/`, `conf/` | `toml-configuration`, `config-validation` |
-| Profiles or sparse checkout | `cli/src/config/profiles.rs`, `cli/src/tasks/repository/sparse_checkout.rs` | `profile-system`, `sparse-checkout-patterns` |
+| Profiles or sparse checkout | `cli/src/config/profiles.rs`, `cli/src/tasks/repository/sparse_checkout/mod.rs` | `profile-system`, `sparse-checkout-patterns` |
 | Windows-specific features | registry, symlinks, PowerShell wrapper, platform gates | `windows-specific-patterns`, `cross-platform-verification` |
-| Package installation | `cli/src/resources/package.rs`, `cli/src/tasks/packages.rs` | `package-management` |
+| Package installation | `cli/src/resources/package.rs`, `cli/src/tasks/packages/mod.rs` | `package-management` |
 | Overlay config or script tasks | `cli/src/config/overlay.rs`, `cli/src/resources/script.rs` | `overlay-scripts` |
 
 ## Project Layout
@@ -36,7 +36,7 @@ cli/src/
 ├── resources/      # Declarative Resource, IntrinsicState, providers
 ├── engine/         # Context, resource plans, orchestration, scheduler
 ├── tasks/          # Task trait, macros, task catalog, domain-grouped tasks
-├── commands/       # install, uninstall, test, version command runners
+├── commands/       # install, uninstall, test, version, logs command runners
 ├── logging/        # Logger, buffered parallel output, diagnostic logs
 ├── exec.rs         # Executor abstraction for subprocesses
 └── platform.rs     # OS/capability detection
@@ -64,7 +64,7 @@ cli/src/
 ## Task and Resource Rules
 
 - Tasks live in domain folders under `cli/src/tasks/<domain>/` or
-  `cli/src/tasks/validation.rs`.
+  `cli/src/tasks/validation/mod.rs`.
 - Resource state should be discovered through `IntrinsicState` or a
   `ResourceStateProvider`, then applied through `process_resources()`,
   `process_resources_with_provider()`, or `process_resources_remove()`.

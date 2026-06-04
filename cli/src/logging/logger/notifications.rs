@@ -22,11 +22,7 @@ impl Logger {
             |_| name.to_string(),
             |mut active| {
                 active.push(name.to_string());
-                if self.verbose {
-                    active.join(", ")
-                } else {
-                    format!("{} tasks running\u{2026}", active.len())
-                }
+                self.format_active(&active)
             },
         );
         self.draw_progress(&names);
@@ -51,14 +47,27 @@ impl Logger {
             active.retain(|n| n != name);
             if active.is_empty() {
                 None
-            } else if self.verbose {
-                Some(active.join(", "))
             } else {
-                Some(format!("{} tasks running\u{2026}", active.len()))
+                Some(self.format_active(&active))
             }
         });
         if let Some(names) = remaining {
             self.draw_progress(&names);
+        }
+    }
+
+    /// Build the progress-line text describing the currently active tasks.
+    ///
+    /// In verbose mode every task name is listed.  Otherwise a single active
+    /// task is named directly so the user can see which one is running, while
+    /// multiple concurrent tasks collapse to a count summary.
+    fn format_active(&self, active: &[String]) -> String {
+        if self.verbose {
+            return active.join(", ");
+        }
+        match active {
+            [only] => format!("{only}\u{2026}"),
+            _ => format!("{} tasks running\u{2026}", active.len()),
         }
     }
 }
@@ -81,6 +90,28 @@ mod tests {
         assert!(
             active.contains(&"my-task".to_string()),
             "active_tasks should contain 'my-task'"
+        );
+    }
+
+    #[test]
+    fn format_active_names_single_task() {
+        let (mut log, _tmp, _guard) = isolated_logger();
+        log.verbose = false;
+        assert_eq!(
+            log.format_active(&["only-task".to_string()]),
+            "only-task\u{2026}",
+            "a single active task should be named directly"
+        );
+    }
+
+    #[test]
+    fn format_active_summarizes_multiple_tasks() {
+        let (mut log, _tmp, _guard) = isolated_logger();
+        log.verbose = false;
+        assert_eq!(
+            log.format_active(&["task-a".to_string(), "task-b".to_string()]),
+            "2 tasks running\u{2026}",
+            "multiple active tasks should collapse to a count"
         );
     }
 

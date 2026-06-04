@@ -125,7 +125,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Disable Windows Defender real-time monitoring
-        run: Set-MpPreference -DisableRealtimeMonitoring $true
+        continue-on-error: true
+        run: |
+          try {
+            Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop
+          } catch {
+            Write-Host "Could not disable Defender real-time monitoring (likely tamper protection); continuing: $_"
+          }
       - name: Install Rust toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2

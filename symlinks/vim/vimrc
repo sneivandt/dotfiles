@@ -9,9 +9,9 @@ filetype plugin indent on
 " }}}
 " Plugins ----------------------------------------------------------------- {{{
 
-" Native package manager is used (vim 8+)
-" Plugins are in pack/plugins/start/ for auto-load
-" Neovim-specific plugins are in pack/plugins/opt/ and loaded in nvimrc
+" Neovim loads plugins via lazy.nvim (see nvimrc and lua/lazy-bootstrap.lua).
+" Plain Vim runs without plugins; the plugin-specific settings near the bottom
+" of this file are guarded by has('nvim').
 
 " }}}
 " Options------------------------------------------------------------------ {{{
@@ -170,18 +170,18 @@ nnoremap J L
 nnoremap K H
 noremap L g_
 
-" Tabs
-noremap <c-r>n :tabnew<cr>
-noremap <c-r><c-r> :tabnext<cr>
-noremap <c-r>1 1gt
-noremap <c-r>2 2gt
-noremap <c-r>3 3gt
-noremap <c-r>4 4gt
-noremap <c-r>5 5gt
-noremap <c-r>6 6gt
-noremap <c-r>7 7gt
-noremap <c-r>8 8gt
-noremap <c-r>9 9gt
+" Tabs (prefixed with <c-t> to leave normal-mode <c-r> redo intact)
+noremap <c-t>n :tabnew<cr>
+noremap <c-t><c-t> :tabnext<cr>
+noremap <c-t>1 1gt
+noremap <c-t>2 2gt
+noremap <c-t>3 3gt
+noremap <c-t>4 4gt
+noremap <c-t>5 5gt
+noremap <c-t>6 6gt
+noremap <c-t>7 7gt
+noremap <c-t>8 8gt
+noremap <c-t>9 9gt
 
 " Center search results while navigating
 nnoremap n nzzzv
@@ -305,6 +305,9 @@ augroup END
 "}}}
 " Plugin settings --------------------------------------------------------- {{{
 
+" These plugins are only available in Neovim (loaded via lazy.nvim).
+if has('nvim')
+
 " FZF {{{
 
 " Use fzf for fuzzy finding (replaces ctrlp)
@@ -369,35 +372,6 @@ vmap <Enter> <Plug>(EasyAlign)
 nmap ga <Plug>(EasyAlign)
 
 " }}}
-" Nerdtree {{{
-
-let NERDTreeMinimalUI=1
-let NERDTreeShowHidden=1
-let NERDTreeRespectWildIgnore=1
-let NERDTreeWinPos='right'
-" Only bind in Vim (Neovim uses nvim-tree with same binding)
-if !has('nvim')
-  noremap <silent><c-e> :NERDTreeToggle<cr>:wincmd =<cr>
-endif
-
-" Auto close vim if Nerd tree is the only remaining buffer
-function! CloseIfOnlyNerdTreeLeft() " {{{
-  if exists('t:NERDTreeBufName')
-    let nerdtree_bufnr = bufnr(t:NERDTreeBufName)
-    if nerdtree_bufnr != -1 && !empty(win_findbuf(nerdtree_bufnr))
-      if winnr('$') == 1
-        q
-      endif
-    endif
-  endif
-endfunction " }}}
-
-augroup NerdTreeAutoClose
-  autocmd!
-  autocmd WinEnter * call CloseIfOnlyNerdTreeLeft()
-augroup END
-
-" }}}
 " Vim-go {{{
 
 " Auto-install Go tools when needed
@@ -414,5 +388,7 @@ let g:go_fmt_command="goimports"
 let g:go_term_mode="split"
 
 " }}}
+
+endif
 
 " }}}

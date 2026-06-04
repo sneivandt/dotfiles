@@ -185,10 +185,12 @@ lazy.setup({
           incremental_selection = {
             enable = true,
             keymaps = {
-              init_selection = "<CR>",
-              scope_incremental = "<CR>",
-              node_incremental = "<TAB>",
-              node_decremental = "<S-TAB>",
+              -- Use g-prefixed keys to avoid clobbering <CR> (vim-easy-align)
+              -- and <TAB> (mapped to % in vimrc)
+              init_selection = "gnn",
+              scope_incremental = "grc",
+              node_incremental = "grn",
+              node_decremental = "grm",
             },
           },
         })

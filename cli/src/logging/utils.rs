@@ -1,7 +1,3 @@
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 //! Utility functions for path resolution, ANSI stripping, and time formatting.
 use std::fs;
 use std::path::PathBuf;
@@ -109,7 +105,8 @@ pub(super) fn log_file_path_in(command: &str, base: &std::path::Path) -> Option<
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
-    reason = "ranges validated by surrounding logic"
+    clippy::arithmetic_side_effects,
+    reason = "Hinnant civil-from-days integer algorithm; all terms bounded for valid epoch seconds"
 )]
 fn civil_from_epoch_secs(epoch_secs: u64) -> (i32, u32, u32, u32, u32, u32) {
     let day_secs = (epoch_secs % 86_400) as u32;

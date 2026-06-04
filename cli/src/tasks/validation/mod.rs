@@ -3,10 +3,6 @@
 //! These tasks verify configuration integrity and run linters on shell and
 //! `PowerShell` scripts.  They are used by [`crate::commands::test::run`] but
 //! live in the `tasks` module so they follow the same `Task` trait pattern
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 //! as all other tasks and are independently testable.
 use anyhow::Result;
 use std::path::{Path, PathBuf};
@@ -93,7 +89,7 @@ impl Task for ValidateSymlinkSources {
             if !source.exists() {
                 ctx.log
                     .error(&format!("symlink source missing: {}", source.display()));
-                missing += 1;
+                missing = missing.saturating_add(1);
             }
         }
 
@@ -145,7 +141,7 @@ impl Task for ValidateConfigFiles {
             } else {
                 ctx.log
                     .error(&format!("missing config: conf/{config_file}"));
-                errors += 1;
+                errors = errors.saturating_add(1);
             }
         }
 

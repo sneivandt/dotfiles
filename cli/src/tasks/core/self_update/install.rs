@@ -1,9 +1,5 @@
 //! Filesystem operations for installing or staging an updated binary, plus
 //! the post-install smoke test and end-to-end download orchestration.
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 
 use std::fs;
 use std::io::Write;
@@ -134,7 +130,7 @@ pub(super) fn smoke_test_binary(path: &Path) -> Result<()> {
         match std::process::Command::new(path).arg("version").output() {
             Ok(output) => break output,
             Err(e) if is_transient_busy(&e) && attempts < MAX_RETRIES => {
-                attempts += 1;
+                attempts = attempts.saturating_add(1);
                 std::thread::sleep(std::time::Duration::from_millis(
                     BASE_DELAY_MS * u64::from(attempts),
                 ));

@@ -1,8 +1,4 @@
 //! Top-level resource orchestration: check state, dispatch to sequential or
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 //! parallel processing, and collect stats.
 
 use anyhow::Result;
@@ -31,7 +27,13 @@ where
             ctx.log.warn("cancelled — stopping before next resource");
             break;
         }
-        stats += process_one(ctx, item)?;
+        #[allow(
+            clippy::arithmetic_side_effects,
+            reason = "TaskStats::add_assign saturates internally"
+        )]
+        {
+            stats += process_one(ctx, item)?;
+        }
     }
     Ok(stats.finish(ctx))
 }

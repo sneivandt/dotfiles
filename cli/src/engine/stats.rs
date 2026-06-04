@@ -1,7 +1,3 @@
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 //! Result and statistics types for task execution.
 
 use super::context::Context;
@@ -149,9 +145,9 @@ impl TaskStats {
 
 impl std::ops::AddAssign for TaskStats {
     fn add_assign(&mut self, other: Self) {
-        self.changed += other.changed;
-        self.already_ok += other.already_ok;
-        self.skipped += other.skipped;
+        self.changed = self.changed.saturating_add(other.changed);
+        self.already_ok = self.already_ok.saturating_add(other.already_ok);
+        self.skipped = self.skipped.saturating_add(other.skipped);
     }
 }
 

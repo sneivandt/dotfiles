@@ -47,7 +47,7 @@ fn split_padded_columns(line: &str) -> Vec<String> {
 
     for ch in line.chars() {
         if ch == ' ' {
-            spaces += 1;
+            spaces = spaces.saturating_add(1);
             if spaces < 2 {
                 continue;
             }
@@ -78,9 +78,9 @@ fn byte_offset_of_col(line: &str, col_idx: usize) -> Option<usize> {
 
     for (i, ch) in line.char_indices() {
         if ch == ' ' {
-            spaces += 1;
+            spaces = spaces.saturating_add(1);
             if in_col && spaces >= 2 {
-                col += 1;
+                col = col.saturating_add(1);
                 in_col = false;
             }
         } else {

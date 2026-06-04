@@ -1,7 +1,3 @@
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 //! Profile definition and resolution.
 use anyhow::{Context as _, Result, bail};
 use serde::Deserialize;
@@ -185,9 +181,12 @@ pub fn prompt_interactive(conf_dir: &Path) -> Result<String> {
     println!("\nSelect a profile:");
     for (i, (name, desc)) in options.iter().enumerate() {
         if let Some(d) = desc {
-            println!("  \x1b[1m{}\x1b[0m) {name} \u{2014} {d}", i + 1);
+            println!(
+                "  \x1b[1m{}\x1b[0m) {name} \u{2014} {d}",
+                i.saturating_add(1)
+            );
         } else {
-            println!("  \x1b[1m{}\x1b[0m) {name}", i + 1);
+            println!("  \x1b[1m{}\x1b[0m) {name}", i.saturating_add(1));
         }
     }
     print!("\nProfile [1-{}]: ", options.len());
@@ -208,7 +207,7 @@ pub fn prompt_interactive(conf_dir: &Path) -> Result<String> {
     }
 
     options
-        .get(choice - 1)
+        .get(choice.saturating_sub(1))
         .map(|(name, _)| name.clone())
         .context("selection out of range")
 }

@@ -1,7 +1,3 @@
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 //! Single-resource processing: check state, apply or remove one resource.
 
 use anyhow::Result;
@@ -30,11 +26,11 @@ pub(super) fn process_single<R: Resource>(
     match plan.operation() {
         ApplyOperation::Noop => {
             ctx.debug_fmt(|| format!("ok: {}", plan.description()));
-            delta.already_ok += 1;
+            delta.already_ok = delta.already_ok.saturating_add(1);
         }
         ApplyOperation::Skip { reason } => {
             ctx.debug_fmt(|| format!("skipping {}: {reason}", plan.description()));
-            delta.skipped += 1;
+            delta.skipped = delta.skipped.saturating_add(1);
         }
         ApplyOperation::Apply {
             verb,
@@ -45,10 +41,16 @@ pub(super) fn process_single<R: Resource>(
                 if let Some(message) = plan.dry_run_message() {
                     ctx.log.dry_run(&message);
                 }
-                delta.changed += 1;
+                delta.changed = delta.changed.saturating_add(1);
                 return Ok(delta);
             }
-            delta += apply_resource(ctx, resource, plan.description(), verb, *bail_on_error)?;
+            #[allow(
+                clippy::arithmetic_side_effects,
+                reason = "TaskStats::add_assign saturates internally"
+            )]
+            {
+                delta += apply_resource(ctx, resource, plan.description(), verb, *bail_on_error)?;
+            }
         }
     }
     Ok(delta)
@@ -76,14 +78,14 @@ fn record_resource_change(
                 &format!("{desc} {applied_label}"),
             );
             ctx.log.always(&format!("    {verb}: {desc}"));
-            delta.changed += 1;
+            delta.changed = delta.changed.saturating_add(1);
         }
         ResourceChange::AlreadyCorrect => {
             ctx.log.diag(
                 DiagEvent::ResourceResult,
                 &format!("{desc} already_correct"),
             );
-            delta.already_ok += 1;
+            delta.already_ok = delta.already_ok.saturating_add(1);
         }
         ResourceChange::Skipped { reason } => {
             ctx.log.diag(
@@ -91,7 +93,7 @@ fn record_resource_change(
                 &format!("{desc} skipped: {reason}"),
             );
             ctx.log.warn(&format!("skipping {desc}: {reason}"));
-            delta.skipped += 1;
+            delta.skipped = delta.skipped.saturating_add(1);
         }
     }
 }
@@ -119,7 +121,7 @@ fn apply_resource<R: Resource>(
                 return Err(e);
             }
             ctx.log.warn(&format!("failed to {verb} {desc}: {e}"));
-            delta.skipped += 1;
+            delta.skipped = delta.skipped.saturating_add(1);
             return Ok(delta);
         }
     };
@@ -143,7 +145,7 @@ pub(super) fn remove_single<R: Resource>(
                 if let Some(message) = plan.dry_run_message() {
                     ctx.log.dry_run(&message);
                 }
-                delta.changed += 1;
+                delta.changed = delta.changed.saturating_add(1);
                 return Ok(delta);
             }
             ctx.log.diag(
@@ -160,11 +162,11 @@ pub(super) fn remove_single<R: Resource>(
                 "skipping removal of {}: {reason}",
                 plan.description()
             ));
-            delta.skipped += 1;
+            delta.skipped = delta.skipped.saturating_add(1);
         }
         RemoveOperation::Noop => {
             // Not ours or doesn't exist — skip silently
-            delta.already_ok += 1;
+            delta.already_ok = delta.already_ok.saturating_add(1);
         }
     }
     Ok(delta)

@@ -4,10 +4,6 @@
 //! (pacman, paru, winget). Adding support for a new manager requires only a
 //! new implementation of `PackageProvider` and a corresponding variant in
 //! [`PackageManager`].
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

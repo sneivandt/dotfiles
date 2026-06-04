@@ -49,10 +49,6 @@
 //! - `macros` — the `resource_task!` / `task_deps!` authoring macros.
 //! - `types` — shared task vocabulary (`TaskId`, `TaskPhase`, `Domain`,
 //!   `ExecutionPolicy`).
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 
 // Task-domain modules: each groups the task definitions for one subject area.
 pub mod ai;
@@ -503,7 +499,7 @@ mod tests {
             phase: TaskPhase::Apply,
             domain: Domain::General,
             items: |_ctx| {
-                RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
+                RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
                 Vec::<()>::new()
             },
             build: |_item, _ctx| DummyResource,
@@ -518,7 +514,7 @@ mod tests {
             phase: TaskPhase::Apply,
             domain: Domain::General,
             items: |_ctx| {
-                BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get() + 1));
+                BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
                 Vec::<()>::new()
             },
             cache: |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),

@@ -5,10 +5,6 @@
 //! - [`cache`]   — version-check cache I/O.
 //! - [`http`]    — HTTP client trait, GitHub API, checksum verification.
 //! - [`version`] — semver parsing and ordering for release tags.
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 //! - [`install`] — binary replacement, staging, smoke testing, and download.
 
 mod cache;
@@ -21,31 +17,33 @@ mod version;
 /// without pulling in an extra hex crate after `sha2` 0.11 dropped its
 /// `LowerHex`/`UpperHex` impls on `Output`.
 pub(super) fn hex_encode(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .fold(String::with_capacity(bytes.len() * 2), |mut acc, b| {
+    bytes.iter().fold(
+        String::with_capacity(bytes.len().saturating_mul(2)),
+        |mut acc, b| {
             acc.push(nibble_to_lower(b >> 4));
             acc.push(nibble_to_lower(b & 0x0f));
             acc
-        })
+        },
+    )
 }
 
 /// Upper-case hex encoding of a byte slice.  Companion to [`hex_encode`].
 #[cfg(test)]
 pub(super) fn hex_encode_upper(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .fold(String::with_capacity(bytes.len() * 2), |mut acc, b| {
+    bytes.iter().fold(
+        String::with_capacity(bytes.len().saturating_mul(2)),
+        |mut acc, b| {
             acc.push(nibble_to_upper(b >> 4));
             acc.push(nibble_to_upper(b & 0x0f));
             acc
-        })
+        },
+    )
 }
 
 fn nibble_to_lower(n: u8) -> char {
     match n & 0x0f {
-        0..=9 => char::from(b'0' + n),
-        10..=15 => char::from(b'a' + n - 10),
+        0..=9 => char::from(b'0'.saturating_add(n)),
+        10..=15 => char::from(b'a'.saturating_add(n).saturating_sub(10)),
         _ => '0',
     }
 }
@@ -53,8 +51,8 @@ fn nibble_to_lower(n: u8) -> char {
 #[cfg(test)]
 fn nibble_to_upper(n: u8) -> char {
     match n & 0x0f {
-        0..=9 => char::from(b'0' + n),
-        10..=15 => char::from(b'A' + n - 10),
+        0..=9 => char::from(b'0'.saturating_add(n)),
+        10..=15 => char::from(b'A'.saturating_add(n).saturating_sub(10)),
         _ => '0',
     }
 }

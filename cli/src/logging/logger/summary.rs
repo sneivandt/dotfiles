@@ -1,10 +1,6 @@
 //! End-of-run summary printing for [`Logger`].
 //!
 //! Renders the per-domain task breakdown (verbose mode only) followed by a
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 //! single-line aggregate count and the elapsed time.
 
 use std::time::Duration;
@@ -33,11 +29,11 @@ impl Logger {
 
         for task in &tasks {
             match task.status {
-                TaskStatus::Ok => ok += 1,
-                TaskStatus::NotApplicable => not_applicable += 1,
-                TaskStatus::Skipped => skipped += 1,
-                TaskStatus::DryRun => dry_run += 1,
-                TaskStatus::Failed => failed += 1,
+                TaskStatus::Ok => ok = ok.saturating_add(1),
+                TaskStatus::NotApplicable => not_applicable = not_applicable.saturating_add(1),
+                TaskStatus::Skipped => skipped = skipped.saturating_add(1),
+                TaskStatus::DryRun => dry_run = dry_run.saturating_add(1),
+                TaskStatus::Failed => failed = failed.saturating_add(1),
             }
         }
 
@@ -80,7 +76,10 @@ impl Logger {
         }
 
         self.always("");
-        let active = ok + skipped + dry_run + failed;
+        let active = ok
+            .saturating_add(skipped)
+            .saturating_add(dry_run)
+            .saturating_add(failed);
         let mut parts: Vec<String> = vec![format!("\x1b[32m{ok} ok\x1b[0m")];
         if skipped > 0 {
             parts.push(format!("\x1b[33m{skipped} skipped\x1b[0m"));

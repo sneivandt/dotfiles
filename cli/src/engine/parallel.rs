@@ -1,7 +1,3 @@
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 //! Rayon-based parallel resource processing.
 
 use anyhow::Result;
@@ -81,11 +77,23 @@ fn collect_parallel_stats<T: Send>(
             if cancelled() {
                 return Ok(acc);
             }
-            acc += work(item)?;
+            #[allow(
+                clippy::arithmetic_side_effects,
+                reason = "TaskStats::add_assign saturates internally"
+            )]
+            {
+                acc += work(item)?;
+            }
             Ok(acc)
         })
         .try_reduce(TaskStats::default, |mut a, b| {
-            a += b;
+            #[allow(
+                clippy::arithmetic_side_effects,
+                reason = "TaskStats::add_assign saturates internally"
+            )]
+            {
+                a += b;
+            }
             Ok(a)
         })
 }

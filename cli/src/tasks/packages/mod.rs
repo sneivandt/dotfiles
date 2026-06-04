@@ -1,7 +1,3 @@
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 //! Tasks: install system packages.
 
 use std::collections::HashSet;
@@ -344,7 +340,7 @@ fn batch_install(
     for r in &resources {
         if installed.contains(&r.name) {
             ctx.debug_fmt(|| format!("ok: {}", r.description()));
-            stats.already_ok += 1;
+            stats.already_ok = stats.already_ok.saturating_add(1);
         } else {
             missing.push(r);
         }

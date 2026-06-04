@@ -1,7 +1,3 @@
-#![allow(
-    clippy::arithmetic_side_effects,
-    reason = "counters and validated math; bounded by config sizes"
-)]
 //! Task dependency graph utilities.
 
 use std::collections::HashMap;
@@ -52,11 +48,11 @@ pub fn has_cycle(tasks: &[&dyn Task]) -> bool {
     let mut processed = 0usize;
 
     while let Some(idx) = queue.pop() {
-        processed += 1;
+        processed = processed.saturating_add(1);
         if let Some(dependents) = reverse_deps.get(idx) {
             for &dep in dependents {
                 if let Some(count) = in_degree.get_mut(dep) {
-                    *count -= 1;
+                    *count = count.saturating_sub(1);
                     if *count == 0 {
                         queue.push(dep);
                     }

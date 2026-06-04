@@ -24,9 +24,19 @@
 //! `apm experimental enable copilot-app` (see `ensure_copilot_app_enabled`) to
 //! keep fresh machines reproducible.  That step is best-effort: an older apm
 //! without the subcommand simply logs a warning and the non-experimental
-//! targets still install.  Verified against apm 0.16.0, where only `.prompt.md`
-//! fragments with workflow frontmatter are encoded (under the `apm--` id
-//! namespace); other primitives are left to the `copilot`/`vscode` targets.
+//! targets still install.
+//!
+//! The `copilot-app` target only meaningfully encodes `.prompt.md` fragments
+//! with workflow frontmatter (under the `apm--` id namespace).  In apm 0.16.x,
+//! however, it also walks other deployed primitives and refuses to
+//! lockfile-encode any whose id is outside that namespace -- notably the
+//! `.agent.md` agent files shipped by third-party packages -- which makes
+//! `apm install` exit non-zero even though the `copilot`/`vscode` targets
+//! deployed those agents correctly.  Because that failure is a benign,
+//! upstream-only limitation of the experimental target,
+//! [`run_apm_install`] tolerates it when (and only when) every reported error
+//! is that specific encoding failure; any other error still fails the task.
+//! See [`tolerable_workflow_encode_failures`].
 
 use anyhow::{Context as _, Result};
 use sha2::{Digest as _, Sha256};
@@ -68,6 +78,17 @@ const APM_UP_TO_DATE_MARKER: &str = "all dependencies are up-to-date";
 /// Marker `apm deps update` prints when no locked ref advanced.  Its absence
 /// means at least one dependency was actually refreshed.
 const APM_UPDATE_NO_CHANGES_MARKER: &str = "all packages already at latest refs";
+/// Per-package failure record emitted by the experimental `copilot-app` target
+/// when it refuses to lockfile-encode a deployed primitive whose id is outside
+/// apm's `apm--<owner>--<pkg>--<prompt>` workflow namespace.
+///
+/// This happens for `.agent.md` agent files shipped by third-party packages:
+/// the `copilot`/`vscode` targets still deploy those agents correctly, so the
+/// failure is a benign, upstream-only limitation of the experimental target.
+/// The two halves are matched as one phrase so explanatory or duplicated text
+/// elsewhere in the output cannot be mistaken for a failure record.
+const APM_WORKFLOW_ENCODE_FAILURE_MARKER: &str = "Failed to integrate primitives from cached package: Refusing to lockfile-encode \
+     non-APM workflow id";
 
 /// Install and update AI plugin manifests via Microsoft APM.
 #[derive(Debug)]
@@ -302,6 +323,21 @@ fn run_apm_install(ctx: &Context) -> Result<TaskResult> {
                 ctx.log
                     .warn(&format!("skipping: {reason} (details: {})", msg.trim()));
                 Ok(TaskResult::Skipped(reason))
+            } else if let Some(encode_failures) = tolerable_workflow_encode_failures(&msg) {
+                // The experimental `copilot-app` target refused to lockfile-encode
+                // `.agent.md` (and other non-workflow) primitives whose ids fall
+                // outside apm's `apm--` namespace.  Those primitives are still
+                // deployed by the `copilot`/`vscode` targets, so the install
+                // succeeded for everything that matters.  Route the raw output to
+                // the diagnostic log and continue rather than failing the task.
+                report_apm_output(ctx, &msg, "");
+                ctx.log.warn(&format!(
+                    "apm install succeeded; ignoring {encode_failures} experimental \
+                     copilot-app workflow-encoding error(s) for non-workflow primitives \
+                     (e.g. .agent.md agents). The copilot/vscode targets deployed normally; \
+                     full apm output is in the log."
+                ));
+                Ok(TaskResult::Ok)
             } else {
                 Err(err).context("running apm install")
             }
@@ -426,6 +462,63 @@ fn looks_like_auth_failure(message: &str) -> bool {
     ]
     .iter()
     .any(|needle| lowered.contains(needle))
+}
+
+/// Decide whether an `apm install` failure is solely the experimental
+/// `copilot-app` target refusing to lockfile-encode non-workflow primitives,
+/// returning the count of such failures when so.
+///
+/// `apm install -g --target copilot,vscode,copilot-app` exits non-zero when the
+/// experimental `copilot-app` target encounters a deployed primitive whose id
+/// is outside its `apm--<owner>--<pkg>--<prompt>` workflow namespace (notably
+/// `.agent.md` agent files shipped by third-party packages).  Those agents are
+/// still installed correctly by the `copilot`/`vscode` targets, so this benign,
+/// upstream-only limitation should not fail the task.
+///
+/// To avoid ever masking a genuine failure this fails closed: it returns
+/// `Some(n)` only when apm's own reported error total parses *and* exactly
+/// equals the number of workflow-encoding failure records.  Any unparseable
+/// summary, or any additional error of a different kind, yields `None` so the
+/// failure propagates normally.
+///
+/// This is only meaningful for the fixed `copilot,vscode,copilot-app` target
+/// set used by [`run_apm_install`]; the `copilot-app` target is the sole source
+/// of the tolerated marker.
+fn tolerable_workflow_encode_failures(message: &str) -> Option<usize> {
+    let normalized = normalize_apm_output(message);
+    let encode_failures = normalized
+        .matches(APM_WORKFLOW_ENCODE_FAILURE_MARKER)
+        .count();
+    if encode_failures == 0 {
+        return None;
+    }
+    match parse_apm_error_count(&normalized) {
+        Some(total) if total == encode_failures => Some(encode_failures),
+        _ => None,
+    }
+}
+
+/// Collapse every run of whitespace (including newlines) to a single space so
+/// console line-wrapping in captured apm output cannot split a marker phrase.
+fn normalize_apm_output(message: &str) -> String {
+    message.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Parse the total error count from apm's summary line, e.g. the `7` in
+/// `... with 7 error(s).`.  Returns `None` when no digit-prefixed ` error`
+/// token is present so callers fail closed on unexpected output.
+fn parse_apm_error_count(normalized: &str) -> Option<usize> {
+    let idx = normalized.find(" error")?;
+    let digits: String = normalized
+        .get(..idx)?
+        .chars()
+        .rev()
+        .take_while(char::is_ascii_digit)
+        .collect::<Vec<char>>()
+        .into_iter()
+        .rev()
+        .collect();
+    digits.parse().ok()
 }
 
 #[cfg(test)]

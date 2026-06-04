@@ -72,10 +72,15 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
     ) {
         Ok(r) if r.success => match decide_fixup_outcome(&r.stdout, pre) {
             FixupOutcome::NoWorkflows => {
-                ctx.log.warn(
+                // Common for manifests whose deps are agents/skills only (no
+                // `.prompt.md` workflows): there are legitimately no `apm--*`
+                // rows to fix up.  Keep it out of the console and just record
+                // it in the log.
+                ctx.debug_fmt(|| {
                     "autopilot fixup: no apm-managed workflows found in ~/.copilot/data.db \
-                     (expected the apm--* rows from this install)",
-                );
+                     (none expected when no .prompt.md workflow deps are installed)"
+                        .to_string()
+                });
             }
             FixupOutcome::Set(n) => {
                 ctx.log.always(&format!(
@@ -273,8 +278,9 @@ fn parse_desired_ids(stdout: &str) -> HashSet<String> {
 /// script output and the pre-install snapshot.
 #[derive(Debug, PartialEq, Eq)]
 enum FixupOutcome {
-    /// No `apm--*` rows were present at all -- warn (the install should have
-    /// created them).
+    /// No `apm--*` rows were present at all.  This is expected for manifests
+    /// that install only agents/skills (no `.prompt.md` workflows), so it is
+    /// logged at debug rather than warned.
     NoWorkflows,
     /// `n` workflows newly reached the desired state; announce it.
     Set(usize),
@@ -425,7 +431,7 @@ mod tests {
     }
 
     #[test]
-    fn decide_fixup_outcome_warns_when_no_workflows() {
+    fn decide_fixup_outcome_reports_no_workflows_when_absent() {
         let pre = DesiredApmWorkflows::FirstInstall;
         let outcome = decide_fixup_outcome("0 0\n", &pre);
         assert_eq!(outcome, FixupOutcome::NoWorkflows);

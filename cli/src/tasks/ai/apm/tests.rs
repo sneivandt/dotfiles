@@ -721,3 +721,145 @@ fn auth_failure_detection_ignores_unrelated_credential_text() {
         "credential cache cleanup failed after archive extraction"
     ));
 }
+
+/// Realistic `apm install` failure output where every error is the experimental
+/// `copilot-app` target refusing to lockfile-encode `.agent.md` agents.
+const APM_WORKFLOW_ENCODE_ONLY_OUTPUT: &str = "running apm install\n  \
+[x] 2 packages failed:\n    \
++- dotnet/skills/plugins/dotnet-diag -- Failed to integrate primitives from cached \
+package: Refusing to lockfile-encode non-APM workflow id: \
+'optimizing-dotnet-performance.agent.md'\n    \
++- dotnet/skills/plugins/dotnet-msbuild -- Failed to integrate primitives from cached \
+package: Refusing to lockfile-encode non-APM workflow id: 'build-perf.agent.md'\n\
+[!] Installed 17 APM dependencies in 0.9s with 2 error(s).\n[!] Install interrupted after 0.9s.\n";
+
+#[test]
+fn run_tolerates_copilot_app_workflow_encoding_failures() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_default_home_fragment(dir.path());
+
+    let mut mock = MockExecutor::new();
+    let mut seq = mockall::Sequence::new();
+    mock.expect_which()
+        .with(mockall::predicate::eq("apm"))
+        .once()
+        .returning(|_| true);
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_, _, args, _| {
+            assert_eq!(args, ["experimental", "enable", "copilot-app"]);
+            Ok(ok_result("[!] copilot-app is already enabled.\n"))
+        });
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_, _, args, _| {
+            assert_eq!(
+                args,
+                ["install", "-g", "--target", "copilot,vscode,copilot-app"]
+            );
+            Err(anyhow::anyhow!(
+                "apm install failed (exit 1): stdout: {APM_WORKFLOW_ENCODE_ONLY_OUTPUT}"
+            ))
+        });
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+
+    let result = InstallApmPackages
+        .run(&ctx)
+        .expect("benign copilot-app encoding failures should not error");
+    assert!(
+        matches!(result, TaskResult::Ok),
+        "expected Ok when only copilot-app workflow-encoding failed, got {result:?}"
+    );
+    // A successful (if tolerated) install must persist the manifest marker so
+    // subsequent runs stay idempotent.
+    assert!(
+        dir.path()
+            .join(".apm")
+            .join(".dotfiles-manifest.sha256")
+            .exists(),
+        "tolerated install should still write the manifest marker"
+    );
+}
+
+#[test]
+fn run_propagates_when_a_non_encoding_error_is_present() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_default_home_fragment(dir.path());
+
+    let mut mock = MockExecutor::new();
+    let mut seq = mockall::Sequence::new();
+    mock.expect_which()
+        .with(mockall::predicate::eq("apm"))
+        .once()
+        .returning(|_| true);
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_, _, args, _| {
+            assert_eq!(args, ["experimental", "enable", "copilot-app"]);
+            Ok(ok_result("[!] copilot-app is already enabled.\n"))
+        });
+    // One benign encoding failure plus one genuine failure: the task must fail.
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_, _, _, _| {
+            Err(anyhow::anyhow!(
+                "apm install failed (exit 1): stdout:   [x] 2 packages failed:\n    \
+                 +- pkg/a -- Failed to integrate primitives from cached package: \
+                 Refusing to lockfile-encode non-APM workflow id: 'a.agent.md'\n    \
+                 +- pkg/b -- Network error while downloading package\n\
+                 [!] Installed 1 APM dependencies in 0.9s with 2 error(s)."
+            ))
+        });
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+
+    InstallApmPackages
+        .run(&ctx)
+        .expect_err("a genuine failure mixed with encoding noise must propagate");
+}
+
+#[test]
+fn workflow_encode_detection_accepts_uniform_encoding_failures() {
+    assert_eq!(
+        tolerable_workflow_encode_failures(APM_WORKFLOW_ENCODE_ONLY_OUTPUT),
+        Some(2)
+    );
+}
+
+#[test]
+fn workflow_encode_detection_survives_line_wrapped_markers() {
+    // The marker phrase split across wrapped lines must still be recognised.
+    let wrapped = "  [x] 1 packages failed:\n    +- pkg -- Failed to integrate primitives\n\
+                   from cached package: Refusing to lockfile-encode\nnon-APM workflow id: \
+                   'x.agent.md'\n[!] Installed 5 deps with 1 error(s).";
+    assert_eq!(tolerable_workflow_encode_failures(wrapped), Some(1));
+}
+
+#[test]
+fn workflow_encode_detection_rejects_mixed_failures() {
+    let mixed = "  [x] 2 packages failed:\n    +- a -- Failed to integrate primitives from \
+                 cached package: Refusing to lockfile-encode non-APM workflow id: 'a.agent.md'\n    \
+                 +- b -- Network error\n[!] Installed 1 deps with 2 error(s).";
+    assert_eq!(tolerable_workflow_encode_failures(mixed), None);
+}
+
+#[test]
+fn workflow_encode_detection_fails_closed_without_a_total() {
+    // Encoding failure present but no parseable error total: do not tolerate.
+    let no_total = "    +- a -- Failed to integrate primitives from cached package: \
+                    Refusing to lockfile-encode non-APM workflow id: 'a.agent.md'";
+    assert_eq!(tolerable_workflow_encode_failures(no_total), None);
+}
+
+#[test]
+fn workflow_encode_detection_ignores_unrelated_failures() {
+    assert_eq!(
+        tolerable_workflow_encode_failures("archive extraction failed with 1 error(s)."),
+        None
+    );
+}

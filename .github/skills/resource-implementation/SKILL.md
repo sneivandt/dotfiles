@@ -19,8 +19,8 @@ implement `IntrinsicState` for per-resource checks or use a
 /// Core trait — implement for every resource.
 pub trait Resource {
     fn description(&self) -> String;
-    fn apply(&self) -> Result<ResourceChange>;
-    fn remove(&self) -> Result<ResourceChange>; // default: unimplemented
+    fn apply(&self) -> ResourceResult<ResourceChange>;
+    fn remove(&self) -> ResourceResult<ResourceChange>; // default: unimplemented
 }
 
 /// Extension trait — implement for resources that can independently check
@@ -50,6 +50,14 @@ pub enum ResourceChange {
     Skipped { reason: String },
 }
 ```
+
+`apply`/`remove` return `ResourceResult<T>` (alias for `Result<T, ResourceError>`),
+so failures are typed and the engine classifies them via `ResourceError::category()`
+without downcasting. `current_state` (on `IntrinsicState`/`ResourceStateProvider`)
+still returns `anyhow::Result`. Inside `apply`/`remove`, `?` auto-converts
+`std::io::Error` (→ `ResourceError::Io`) and `anyhow::Error` from internal helpers
+(→ `ResourceError::Other`); return a concrete variant directly for classifiable
+resource-level failures. See the `error-handling-patterns` skill.
 
 ## Which Trait to Implement
 
@@ -83,8 +91,8 @@ impl MyResource {
 
 impl Resource for MyResource {
     fn description(&self) -> String { format!("{}", self.target.display()) }
-    fn apply(&self) -> Result<ResourceChange> { /* create/update */ }
-    fn remove(&self) -> Result<ResourceChange> { /* undo */ }
+    fn apply(&self) -> ResourceResult<ResourceChange> { /* create/update */ }
+    fn remove(&self) -> ResourceResult<ResourceChange> { /* undo */ }
 }
 
 impl IntrinsicState for MyResource {
@@ -114,7 +122,7 @@ impl<'a> MyResource<'a> {
 
 impl Resource for MyResource<'_> {
     fn description(&self) -> String { self.name.clone() }
-    fn apply(&self) -> Result<ResourceChange> { /* create/update */ }
+    fn apply(&self) -> ResourceResult<ResourceChange> { /* create/update */ }
 }
 
 impl IntrinsicState for MyResource<'_> {
@@ -148,7 +156,7 @@ impl MyResource {
 
 impl Resource for MyResource {
     fn description(&self) -> String { self.id.clone() }
-    fn apply(&self) -> Result<ResourceChange> { /* install */ }
+    fn apply(&self) -> ResourceResult<ResourceChange> { /* install */ }
 }
 
 // Provide a standalone query function:

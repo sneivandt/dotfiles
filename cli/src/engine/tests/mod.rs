@@ -5,7 +5,7 @@ mod stats;
 
 use crate::engine::mode::ProcessOpts;
 use crate::error::ResourceError;
-use crate::resources::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use crate::resources::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::tasks::test_helpers::make_static_context;
 
 // -----------------------------------------------------------------------
@@ -56,16 +56,16 @@ impl Resource for MockResource {
         self.desc.clone()
     }
 
-    fn apply(&self) -> anyhow::Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         self.apply_result
             .clone()
-            .map_err(|s| anyhow::anyhow!("{s}"))
+            .map_err(|s| anyhow::anyhow!("{s}").into())
     }
 
-    fn remove(&self) -> anyhow::Result<ResourceChange> {
+    fn remove(&self) -> ResourceResult<ResourceChange> {
         self.remove_result
             .clone()
-            .map_err(|s| anyhow::anyhow!("{s}"))
+            .map_err(|s| anyhow::anyhow!("{s}").into())
     }
 }
 
@@ -87,17 +87,17 @@ impl Resource for TypedErrorResource {
         "typed-error resource".to_string()
     }
 
-    fn apply(&self) -> anyhow::Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         match self.error_variant {
-            "command_failed" => Err(ResourceError::command_failed("pacman", "exit code 1").into()),
-            "permission_denied" => Err(ResourceError::permission_denied("/etc/secure").into()),
-            "conflicting_state" => Err(ResourceError::conflicting_state("test", "a", "b").into()),
-            "not_supported" => Err(ResourceError::not_supported("linux only").into()),
-            other => Err(anyhow::anyhow!("unknown error variant: {other}")),
+            "command_failed" => Err(ResourceError::command_failed("pacman", "exit code 1")),
+            "permission_denied" => Err(ResourceError::permission_denied("/etc/secure")),
+            "conflicting_state" => Err(ResourceError::conflicting_state("test", "a", "b")),
+            "not_supported" => Err(ResourceError::not_supported("linux only")),
+            other => Err(anyhow::anyhow!("unknown error variant: {other}").into()),
         }
     }
 
-    fn remove(&self) -> anyhow::Result<ResourceChange> {
+    fn remove(&self) -> ResourceResult<ResourceChange> {
         Ok(ResourceChange::Applied)
     }
 }

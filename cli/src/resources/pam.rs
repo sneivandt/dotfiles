@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 
-use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::exec::Executor;
 
 /// Standard PAM configuration content using `system-auth` includes.
@@ -65,7 +65,7 @@ impl Resource for PamConfigResource {
     /// # Errors
     ///
     /// Returns an error if the file cannot be written, even with sudo.
-    fn apply(&self) -> Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         let target = self.target_path();
 
         match std::fs::write(&target, PAM_TEMPLATE) {
@@ -73,7 +73,11 @@ impl Resource for PamConfigResource {
             Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
                 // Fall through to sudo path.
             }
-            Err(e) => return Err(e).context(format!("write {target}")),
+            Err(e) => {
+                return Err(anyhow::Error::new(e)
+                    .context(format!("write {target}"))
+                    .into());
+            }
         }
 
         let tmp = self.tmp_path();
@@ -94,7 +98,7 @@ impl Resource for PamConfigResource {
     /// # Errors
     ///
     /// Returns an error if the file cannot be removed.
-    fn remove(&self) -> Result<ResourceChange> {
+    fn remove(&self) -> ResourceResult<ResourceChange> {
         let target = self.target_path();
         if !std::path::Path::new(&target).exists() {
             return Ok(ResourceChange::AlreadyCorrect);
@@ -106,7 +110,9 @@ impl Resource for PamConfigResource {
                 self.executor.run("sudo", &["rm", &target])?;
                 Ok(ResourceChange::Applied)
             }
-            Err(e) => Err(e).context(format!("remove {target}")),
+            Err(e) => Err(anyhow::Error::new(e)
+                .context(format!("remove {target}"))
+                .into()),
         }
     }
 }

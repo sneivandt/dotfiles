@@ -4,7 +4,7 @@ use anyhow::Context as _;
 use anyhow::Result;
 use std::path::PathBuf;
 
-use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 
 /// Unix file permission mask (all permission bits).
 #[cfg(unix)]
@@ -121,7 +121,7 @@ impl Resource for ChmodResource {
         format!("{} {}", self.mode, self.target.display())
     }
 
-    fn apply(&self) -> Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

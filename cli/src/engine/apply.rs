@@ -6,7 +6,6 @@ use super::context::Context;
 use super::mode::ProcessOpts;
 use super::plan::{ApplyChange, ApplyOperation, RemoveChange, RemoveOperation};
 use super::stats::TaskStats;
-use crate::error::ResourceError;
 use crate::logging::DiagEvent;
 use crate::resources::{Resource, ResourceChange, ResourceState};
 
@@ -112,13 +111,13 @@ fn apply_resource<R: Resource>(
     let change = match resource.apply() {
         Ok(change) => change,
         Err(e) => {
-            let category = categorize_error(&e);
+            let category = e.category();
             ctx.log.diag(
                 DiagEvent::ResourceResult,
                 &format!("{desc} error [{category}]: {e}"),
             );
             if bail_on_error {
-                return Err(e);
+                return Err(e.into());
             }
             ctx.log.warn(&format!("failed to {verb} {desc}: {e}"));
             delta.skipped = delta.skipped.saturating_add(1);
@@ -170,18 +169,4 @@ pub(super) fn remove_single<R: Resource>(
         }
     }
     Ok(delta)
-}
-
-/// Categorise an error for diagnostic logging.
-///
-/// Attempts to downcast the `anyhow::Error` to a [`ResourceError`] for a
-/// structured category label. Falls back to `"unknown"` for untyped errors.
-fn categorize_error(e: &anyhow::Error) -> &'static str {
-    match e.downcast_ref::<ResourceError>() {
-        Some(ResourceError::CommandFailed { .. }) => "command_failed",
-        Some(ResourceError::PermissionDenied { .. }) => "permission_denied",
-        Some(ResourceError::ConflictingState { .. }) => "conflicting_state",
-        Some(ResourceError::NotSupported { .. }) => "not_supported",
-        None => "unknown",
-    }
 }

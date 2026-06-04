@@ -5,7 +5,7 @@ use std::sync::{
 };
 
 use crate::engine::{TaskResult, process_resources, process_resources_remove};
-use crate::resources::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use crate::resources::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::tasks::test_helpers::empty_config;
 
 use super::{bail_opts, default_opts, dry_run_context, test_context};
@@ -44,13 +44,13 @@ impl Resource for ContractResource {
         "contract resource".to_string()
     }
 
-    fn apply(&self) -> anyhow::Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         self.apply_calls.fetch_add(1, Ordering::SeqCst);
         *self.state.lock().unwrap() = ResourceState::Correct;
         Ok(ResourceChange::Applied)
     }
 
-    fn remove(&self) -> anyhow::Result<ResourceChange> {
+    fn remove(&self) -> ResourceResult<ResourceChange> {
         self.remove_calls.fetch_add(1, Ordering::SeqCst);
         *self.state.lock().unwrap() = ResourceState::Missing;
         Ok(ResourceChange::Applied)

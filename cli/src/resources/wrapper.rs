@@ -6,7 +6,7 @@
 use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
-use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 
 /// Which wrapper script to install on the user's `PATH`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,7 +115,7 @@ impl Resource for WrapperResource {
         format!("wrapper \u{2192} {}", self.target.display())
     }
 
-    fn apply(&self) -> Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         crate::fs::ensure_parent_dir(&self.target)?;
 
         std::fs::write(&self.target, &self.content)
@@ -131,7 +131,7 @@ impl Resource for WrapperResource {
         Ok(ResourceChange::Applied)
     }
 
-    fn remove(&self) -> Result<ResourceChange> {
+    fn remove(&self) -> ResourceResult<ResourceChange> {
         if self.target.exists() {
             std::fs::remove_file(&self.target)
                 .with_context(|| format!("remove wrapper {}", self.target.display()))?;

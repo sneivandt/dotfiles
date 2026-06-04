@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::exec::{self, Executor};
 
 /// A VS Code extension resource that can be checked and installed.
@@ -88,7 +88,7 @@ impl Resource for VsCodeExtensionResource {
         self.id.clone()
     }
 
-    fn apply(&self) -> Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         let result = run_code_cmd(
             &self.code_cmd,
             &["--install-extension", &self.id, "--force"],

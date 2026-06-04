@@ -60,6 +60,27 @@ pub enum ResourceError {
         /// Explanation of why the resource is unsupported.
         reason: String,
     },
+
+    /// An I/O error occurred while applying or removing a resource.
+    #[error("I/O error: {source}")]
+    Io {
+        /// The underlying I/O error.
+        #[from]
+        source: std::io::Error,
+    },
+
+    /// A resource failure that does not map to a more specific variant.
+    ///
+    /// This is the escape hatch for context-rich errors produced by internal
+    /// helpers (e.g. filesystem utilities) that return [`anyhow::Error`].  Use a
+    /// concrete variant above for expected, classifiable resource failures and
+    /// reserve `Other` for unexpected helper or library errors.
+    #[error(transparent)]
+    Other {
+        /// The underlying error, preserving its context chain.
+        #[from]
+        source: anyhow::Error,
+    },
 }
 
 impl ResourceError {
@@ -97,6 +118,25 @@ impl ResourceError {
     pub fn not_supported(reason: impl Into<String>) -> Self {
         Self::NotSupported {
             reason: reason.into(),
+        }
+    }
+
+    /// Short, stable category label for diagnostic logging.
+    ///
+    /// Recurses into [`Other`](Self::Other) so a typed error that was converted
+    /// to an [`anyhow::Error`] (for example by an internal helper) and then back
+    /// into [`Other`](Self::Other) is still classified by its original variant.
+    #[must_use]
+    pub fn category(&self) -> &'static str {
+        match self {
+            Self::CommandFailed { .. } => "command_failed",
+            Self::PermissionDenied { .. } => "permission_denied",
+            Self::ConflictingState { .. } => "conflicting_state",
+            Self::NotSupported { .. } => "not_supported",
+            Self::Io { .. } => "io",
+            Self::Other { source } => source
+                .downcast_ref::<Self>()
+                .map_or("unknown", Self::category),
         }
     }
 }
@@ -242,5 +282,50 @@ mod tests {
     #[test]
     fn resource_error_is_send_sync() {
         assert_send_sync::<ResourceError>();
+    }
+
+    #[test]
+    fn category_labels_match_variants() {
+        assert_eq!(
+            ResourceError::command_failed("git", "x").category(),
+            "command_failed"
+        );
+        assert_eq!(
+            ResourceError::permission_denied("/p").category(),
+            "permission_denied"
+        );
+        assert_eq!(
+            ResourceError::conflicting_state("r", "e", "a").category(),
+            "conflicting_state"
+        );
+        assert_eq!(
+            ResourceError::not_supported("r").category(),
+            "not_supported"
+        );
+        let io: ResourceError = io::Error::new(io::ErrorKind::NotFound, "nope").into();
+        assert_eq!(io.category(), "io");
+        let other: ResourceError = anyhow::anyhow!("freeform").into();
+        assert_eq!(other.category(), "unknown");
+    }
+
+    #[test]
+    fn category_recurses_through_anyhow_round_trip() {
+        // A typed error converted to anyhow and back into `Other` must retain
+        // its original category rather than degrading to "unknown".
+        let typed = ResourceError::command_failed("pacman", "exit 1");
+        let as_anyhow: anyhow::Error = typed.into();
+        let round_tripped: ResourceError = as_anyhow.into();
+        assert!(matches!(round_tripped, ResourceError::Other { .. }));
+        assert_eq!(round_tripped.category(), "command_failed");
+    }
+
+    #[test]
+    fn other_variant_preserves_context_chain() {
+        let chained = anyhow::anyhow!("leaf cause").context("outer context");
+        let err: ResourceError = chained.into();
+        let as_anyhow: anyhow::Error = err.into();
+        let rendered = format!("{as_anyhow:#}");
+        assert!(rendered.contains("outer context"), "got: {rendered}");
+        assert!(rendered.contains("leaf cause"), "got: {rendered}");
     }
 }

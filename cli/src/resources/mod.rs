@@ -18,6 +18,16 @@ pub mod path_entry;
 
 use anyhow::Result;
 
+use crate::error::ResourceError;
+
+/// Result type returned by [`Resource`] operations (`apply`/`remove`).
+///
+/// Unlike the `anyhow::Result` used for state discovery, the error half is the
+/// typed [`ResourceError`], so the orchestration layer can classify failures
+/// (see [`ResourceError::category`]) without downcasting.  Helper errors that
+/// have no dedicated variant flow through [`ResourceError::Other`].
+pub type ResourceResult<T> = std::result::Result<T, ResourceError>;
+
 /// Interface for resources that can be described, applied, and removed.
 ///
 /// State discovery is intentionally separate from this trait.  The engine uses
@@ -37,9 +47,9 @@ pub trait Resource {
     ///
     /// # Errors
     ///
-    /// Returns an error if the resource cannot be applied due to I/O failures,
-    /// permission issues, invalid paths, or other system errors.
-    fn apply(&self) -> Result<ResourceChange>;
+    /// Returns a [`ResourceError`] if the resource cannot be applied due to I/O
+    /// failures, permission issues, invalid paths, or other system errors.
+    fn apply(&self) -> ResourceResult<ResourceChange>;
 
     /// Remove the resource, undoing a previous `apply()`.
     ///
@@ -48,14 +58,13 @@ pub trait Resource {
     ///
     /// # Errors
     ///
-    /// Returns an error if the resource cannot be removed, or if removal is not supported
-    /// for this resource type.
-    fn remove(&self) -> Result<ResourceChange> {
-        Err(crate::error::ResourceError::not_supported(format!(
+    /// Returns a [`ResourceError`] if the resource cannot be removed, or if
+    /// removal is not supported for this resource type.
+    fn remove(&self) -> ResourceResult<ResourceChange> {
+        Err(ResourceError::not_supported(format!(
             "operation 'remove' is not supported for resource '{}'",
             self.description()
-        ))
-        .into())
+        )))
     }
 }
 
@@ -333,7 +342,7 @@ mod tests {
             "test resource".to_string()
         }
 
-        fn apply(&self) -> Result<ResourceChange> {
+        fn apply(&self) -> ResourceResult<ResourceChange> {
             Ok(ResourceChange::Applied)
         }
     }

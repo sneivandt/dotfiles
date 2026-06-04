@@ -2,7 +2,9 @@ use crate::engine::mode::ProcessOpts;
 use crate::engine::{
     TaskResult, process_resources, process_resources_remove, process_resources_with_provider,
 };
-use crate::resources::{Resource, ResourceChange, ResourceState, ResourceStateProvider};
+use crate::resources::{
+    Resource, ResourceChange, ResourceResult, ResourceState, ResourceStateProvider,
+};
 use crate::tasks::test_helpers::empty_config;
 use std::{
     path::PathBuf,
@@ -26,11 +28,11 @@ impl Resource for PrecomputedResource {
         self.resource.description()
     }
 
-    fn apply(&self) -> anyhow::Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         self.resource.apply()
     }
 
-    fn remove(&self) -> anyhow::Result<ResourceChange> {
+    fn remove(&self) -> ResourceResult<ResourceChange> {
         self.resource.remove()
     }
 }

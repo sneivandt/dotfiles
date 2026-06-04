@@ -3,7 +3,7 @@ use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::exec::Executor;
 
 /// A symlink resource that can be checked and applied.
@@ -48,7 +48,7 @@ impl Resource for SymlinkResource {
         format!("{} -> {}", self.target.display(), self.source.display())
     }
 
-    fn apply(&self) -> Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         crate::fs::ensure_parent_dir(&self.target)?;
 
         // Attempt to remove any existing target; ignore NotFound since the
@@ -63,8 +63,9 @@ impl Resource for SymlinkResource {
                 // Path was already absent — nothing to remove.
             }
             Err(e) => {
-                return Err(e)
-                    .with_context(|| format!("remove existing: {}", self.target.display()));
+                return Err(e
+                    .context(format!("remove existing: {}", self.target.display()))
+                    .into());
             }
         }
 
@@ -75,7 +76,7 @@ impl Resource for SymlinkResource {
         Ok(ResourceChange::Applied)
     }
 
-    fn remove(&self) -> Result<ResourceChange> {
+    fn remove(&self) -> ResourceResult<ResourceChange> {
         // Classify the target explicitly so that unexpected metadata errors
         // do not fall through to `copy_into_place` (which would materialize
         // the source into place — the wrong thing to do for a transient
@@ -102,7 +103,8 @@ impl Resource for SymlinkResource {
             }
             Err(e) => {
                 return Err(anyhow::Error::new(e)
-                    .context(format!("stat target: {}", self.target.display())));
+                    .context(format!("stat target: {}", self.target.display()))
+                    .into());
             }
         }
 

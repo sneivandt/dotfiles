@@ -2,7 +2,7 @@
 use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
-use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 
 /// A git hook file resource that can be checked, installed, and removed.
 #[derive(Debug, Clone)]
@@ -29,7 +29,7 @@ impl Resource for HookFileResource {
         )
     }
 
-    fn apply(&self) -> Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         crate::fs::ensure_parent_dir(&self.target)?;
         crate::fs::remove_existing(&self.target)?;
 
@@ -52,7 +52,7 @@ impl Resource for HookFileResource {
         Ok(ResourceChange::Applied)
     }
 
-    fn remove(&self) -> Result<ResourceChange> {
+    fn remove(&self) -> ResourceResult<ResourceChange> {
         if self.target.exists() {
             std::fs::remove_file(&self.target)
                 .with_context(|| format!("remove hook: {}", self.target.display()))?;

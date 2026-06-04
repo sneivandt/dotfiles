@@ -7,7 +7,7 @@ use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::exec::Executor;
 
 /// Source for checking whether a directory is already on `PATH`.
@@ -119,7 +119,7 @@ impl Resource for PathEntryResource {
         format!("PATH \u{2192} {}", self.dir.display())
     }
 
-    fn apply(&self) -> Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         if self.path_source.is_on_path(&self.dir) {
             return Ok(ResourceChange::AlreadyCorrect);
         }
@@ -152,7 +152,7 @@ impl Resource for PathEntryResource {
         }
     }
 
-    fn remove(&self) -> Result<ResourceChange> {
+    fn remove(&self) -> ResourceResult<ResourceChange> {
         // Leaving the directory on PATH is harmless; removing it from
         // profile files or registry is fragile and surprising.
         Ok(ResourceChange::AlreadyCorrect)

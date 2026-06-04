@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use anyhow::{Context as _, Result};
 use serde_json::{Map, Value};
 
-use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 
 /// A single key within a JSON settings document.
 #[derive(Debug)]
@@ -118,7 +118,7 @@ impl Resource for CopilotSettingResource {
         format!("{} = {}", self.key, self.desired_value)
     }
 
-    fn apply(&self) -> Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         let mut document = self.read_document()?;
         self.set_in_document(&mut document)?;
 

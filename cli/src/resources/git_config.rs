@@ -1,7 +1,7 @@
 //! Git configuration resource.
 use anyhow::{Context as _, Result};
 
-use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 
 /// A git config entry resource that can be checked and applied.
 ///
@@ -52,12 +52,12 @@ impl Resource for GitConfigResource {
         format!("{} = {}", self.key, self.desired_value)
     }
 
-    fn apply(&self) -> Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         let config = git2::Config::open_default().context("opening git config")?;
         let mut global = config
             .open_level(git2::ConfigLevel::Global)
             .context("opening global git config")?;
-        self.apply_to_config(&mut global)
+        self.apply_to_config(&mut global).map_err(Into::into)
     }
 }
 

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::exec::Executor;
 
 mod providers;
@@ -215,8 +215,10 @@ impl Resource for PackageResource {
         format!("{} ({})", self.name, self.manager)
     }
 
-    fn apply(&self) -> Result<ResourceChange> {
-        self.provider.install(&self.name, &*self.executor)
+    fn apply(&self) -> ResourceResult<ResourceChange> {
+        self.provider
+            .install(&self.name, &*self.executor)
+            .map_err(Into::into)
     }
 }
 

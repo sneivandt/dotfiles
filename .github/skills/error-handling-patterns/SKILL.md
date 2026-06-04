@@ -29,26 +29,32 @@ packages::load(&conf.join("packages.toml"), active_categories)
 
 ### ResourceError in Resources
 
-Resource implementations (`resources/*.rs`) should return typed `ResourceError` variants
-instead of `anyhow::bail!()`. This enables `categorize_error()` in the processing pipeline
-to classify failures for diagnostic logging:
+`Resource::apply`/`remove` return `ResourceResult<ResourceChange>` (alias for
+`Result<_, ResourceError>`). Return typed `ResourceError` variants directly for
+classifiable, resource-level failures instead of `anyhow::bail!()`. This lets
+`ResourceError::category()` label failures for diagnostic logging:
 
 ```rust
 use crate::error::ResourceError;
 
-// Platform-unsupported operations:
-Err(ResourceError::NotSupported {
-    reason: "registry operations are only supported on Windows".to_string(),
-}.into())
+// Platform-unsupported operations (no `.into()` needed — already ResourceError):
+Err(ResourceError::not_supported(
+    "registry operations are only supported on Windows",
+))
 
 // External command failures:
-Err(ResourceError::CommandFailed {
-    program: "pacman".to_string(),
-    message: format!("exit code {code}"),
-}.into())
+Err(ResourceError::command_failed("pacman", format!("exit code {code}")))
 ```
 
-Available variants: `CommandFailed`, `PermissionDenied`, `ConflictingState`, `NotSupported`.
+Inside `apply`/`remove`, `?` auto-converts errors from internal helpers:
+`std::io::Error` → `ResourceError::Io`, and context-rich `anyhow::Error` (e.g.
+from `crate::fs` or `git2`) → `ResourceError::Other`. When a helper returns
+`anyhow::Result`, finish with `.map_err(Into::into)` or wrap with
+`anyhow::Error::new(e).context(...).into()`.
+
+Variants: `CommandFailed`, `PermissionDenied`, `ConflictingState`,
+`NotSupported`, `Io`, `Other`. `category()` recurses through `Other` so a typed
+error round-tripped through `anyhow` keeps its original category label.
 
 ### Task Failure Recording
 

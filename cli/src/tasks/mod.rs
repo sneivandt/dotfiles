@@ -462,7 +462,9 @@ pub mod test_helpers {
 mod tests {
     use super::*;
     use crate::platform::Platform;
-    use crate::resources::{IntrinsicState, Resource, ResourceChange, ResourceState};
+    use crate::resources::{
+        IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState,
+    };
     use anyhow::Result;
     use std::cell::Cell;
     use std::path::PathBuf;
@@ -481,7 +483,7 @@ mod tests {
             "dummy".to_string()
         }
 
-        fn apply(&self) -> Result<ResourceChange> {
+        fn apply(&self) -> ResourceResult<ResourceChange> {
             Ok(ResourceChange::AlreadyCorrect)
         }
     }

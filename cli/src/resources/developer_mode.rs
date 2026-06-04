@@ -1,7 +1,7 @@
 //! Windows Developer Mode resource.
 use anyhow::Result;
 
-use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 
 /// Registry key path for Windows Developer Mode (display/description only).
 const DEVELOPER_MODE_KEY: &str = r"HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock";
@@ -39,7 +39,7 @@ impl Resource for DeveloperModeResource {
         format!("{DEVELOPER_MODE_KEY}\\{DEVELOPER_MODE_VALUE}")
     }
 
-    fn apply(&self) -> Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         #[cfg(windows)]
         {
             use winreg::RegKey;
@@ -61,8 +61,7 @@ impl Resource for DeveloperModeResource {
         {
             Err(crate::error::ResourceError::not_supported(
                 "developer mode is only supported on Windows",
-            )
-            .into())
+            ))
         }
     }
 }

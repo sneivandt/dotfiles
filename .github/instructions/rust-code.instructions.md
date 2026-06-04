@@ -24,8 +24,9 @@ Every `#[allow(...)]` must include a `reason = "..."` argument. Never use bare
 ## Error Handling
 
 - Commands return `anyhow::Result<()>` — convert domain errors via `?`
-- Resources return `Result<ResourceChange>` or `Result<ResourceState>`
-- Use `ResourceError` factory methods (`not_found`, `command_failed`, etc.)
+- `Resource::apply`/`remove` return `ResourceResult<ResourceChange>` (typed
+  `ResourceError`); `current_state` returns `anyhow::Result<ResourceState>`
+- Use `ResourceError` factory methods (`not_supported`, `command_failed`, etc.)
 - See the `error-handling-patterns` skill for idempotency conventions
 
 ## Task Definition

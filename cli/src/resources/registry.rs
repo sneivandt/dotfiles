@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use anyhow::Context as _;
 use anyhow::Result;
 
-use super::{Resource, ResourceChange, ResourceState};
+use super::{Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::config::registry::RegistryValueType;
 
 /// Native Windows registry access via the `winreg` crate.
@@ -251,7 +251,7 @@ impl Resource for RegistryResource {
         )
     }
 
-    fn apply(&self) -> Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         #[cfg(windows)]
         {
             native::write_value(
@@ -267,8 +267,7 @@ impl Resource for RegistryResource {
         {
             Err(crate::error::ResourceError::not_supported(
                 "registry operations are only supported on Windows",
-            )
-            .into())
+            ))
         }
     }
 }

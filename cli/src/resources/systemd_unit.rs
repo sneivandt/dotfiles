@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::error::ResourceError;
 use crate::exec::Executor;
 
@@ -134,7 +134,7 @@ impl Resource for SystemdUnitResource {
         }
     }
 
-    fn apply(&self) -> Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         let scope = self.parsed_scope()?;
         let (program, args) = self.apply_invocation(scope);
         let result = self.executor.run_unchecked(program, &args)?;

@@ -17,7 +17,7 @@ use anyhow::{Context as _, Result, bail};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::error::ResourceError;
 use crate::exec::Executor;
 
@@ -178,7 +178,7 @@ impl Resource for ScriptResource {
         self.name.clone()
     }
 
-    fn apply(&self) -> Result<ResourceChange> {
+    fn apply(&self) -> ResourceResult<ResourceChange> {
         if !self.script_path.exists() {
             return Ok(ResourceChange::Skipped {
                 reason: format!("script not found: {}", self.script_path.display()),
@@ -197,7 +197,7 @@ impl Resource for ScriptResource {
         Ok(ResourceChange::Applied)
     }
 
-    fn remove(&self) -> Result<ResourceChange> {
+    fn remove(&self) -> ResourceResult<ResourceChange> {
         if !self.script_path.exists() {
             return Ok(ResourceChange::Skipped {
                 reason: format!("script not found: {}", self.script_path.display()),

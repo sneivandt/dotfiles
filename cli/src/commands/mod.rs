@@ -378,15 +378,15 @@ mod task_graph_tests {
         }
     }
 
-    struct ApplyAfterBootstrapTask {
+    struct ProvisionAfterBootstrapTask {
         ran: Arc<AtomicBool>,
         completed_bootstrap: Arc<AtomicUsize>,
         expected_bootstrap_count: usize,
     }
 
-    impl Task for ApplyAfterBootstrapTask {
+    impl Task for ProvisionAfterBootstrapTask {
         fn name(&self) -> &'static str {
-            "apply-after-bootstrap"
+            "provision-after-bootstrap"
         }
 
         fn phase(&self) -> TaskPhase {
@@ -402,7 +402,7 @@ mod task_graph_tests {
             let done = self.completed_bootstrap.load(Ordering::SeqCst);
             if done != self.expected_bootstrap_count {
                 return Ok(TaskResult::Failed(format!(
-                    "apply started before bootstrap completed: {done}/{}",
+                    "provision started before bootstrap completed: {done}/{}",
                     self.expected_bootstrap_count
                 )));
             }
@@ -411,30 +411,34 @@ mod task_graph_tests {
     }
 
     #[test]
-    fn run_tasks_to_completion_completes_bootstrap_phase_before_apply() {
+    fn run_tasks_to_completion_completes_bootstrap_phase_before_provision() {
         let (ctx, log) = make_static_context(empty_config(PathBuf::from("/repo")));
         let ctx = ctx.with_parallel(true);
 
         let completed_bootstrap = Arc::new(AtomicUsize::new(0));
-        let apply_ran = Arc::new(AtomicBool::new(false));
+        let provision_ran = Arc::new(AtomicBool::new(false));
 
         let bootstrap = BootstrapMarkTask {
             name: "bootstrap-mark",
             completed: Arc::clone(&completed_bootstrap),
         };
-        let apply = ApplyAfterBootstrapTask {
-            ran: Arc::clone(&apply_ran),
+        let provision = ProvisionAfterBootstrapTask {
+            ran: Arc::clone(&provision_ran),
             completed_bootstrap: Arc::clone(&completed_bootstrap),
             expected_bootstrap_count: 1,
         };
 
-        // Intentionally pass apply first to ensure phase gating, not input
+        // Intentionally pass provision first to ensure phase gating, not input
         // order, controls execution.
-        run_tasks_to_completion([&apply as &dyn Task, &bootstrap as &dyn Task], &ctx, &log)
-            .expect("phase barriers should run all bootstrap tasks before apply");
+        run_tasks_to_completion(
+            [&provision as &dyn Task, &bootstrap as &dyn Task],
+            &ctx,
+            &log,
+        )
+        .expect("phase barriers should run all bootstrap tasks before provision");
 
         assert_eq!(completed_bootstrap.load(Ordering::SeqCst), 1);
-        assert!(apply_ran.load(Ordering::SeqCst));
+        assert!(provision_ran.load(Ordering::SeqCst));
     }
 }
 
@@ -671,7 +675,7 @@ const fn prime_sudo(_ctx: &Context, _log: &Arc<Logger>, _task_names: &[&str]) ->
     true
 }
 
-/// Execute the full phased task pipeline (Bootstrap → Repository → Apply →
+/// Execute the full phased task pipeline (Bootstrap → Sync → Provision →
 /// Update).
 ///
 /// Phases run strictly in order, each completing before the next begins; an

@@ -267,7 +267,7 @@ fn apm_task_should_run(ctx: &Context) -> bool {
 /// `ctx.advance_versions` (i.e. `update`, not `install`), so the
 /// `:: Updating dependencies` header is absent under ordinary installs.
 ///
-/// Because phases run independently — a failed Apply task does not abort the
+/// Because phases run independently — a failed Provision task does not abort the
 /// run before the Update phase — this task re-asserts the convergence
 /// precondition itself: it only contacts APM when a current manifest has been
 /// installed successfully (lockfile present and the success marker matches the

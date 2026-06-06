@@ -94,9 +94,9 @@ impl TaskPhase {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Bootstrap => "Bootstrapping",
-            Self::Sync => "Syncing repository",
-            Self::Provision => "Provisioning environment",
+            Self::Bootstrap => "Preparing dotfiles",
+            Self::Sync => "Refreshing dotfiles",
+            Self::Provision => "Applying configuration",
             Self::Update => "Updating dependencies",
         }
     }

@@ -7,11 +7,11 @@ resource_task! {
     /// Configure git settings from git-config.toml.
     pub ConfigureGit {
         name: "Configure Git",
-        phase: TaskPhase::Apply,
+        phase: TaskPhase::Provision,
         domain: Domain::Git,
         items: |ctx| ctx.config_read().git_settings.clone(),
         build: |s, _ctx| GitConfigResource::new(s.key, s.value),
-        opts: ProcessOpts::strict("set git config").sequential(),
+        opts: ProcessOpts::strict("configure").sequential(),
     }
 }
 

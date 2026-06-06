@@ -87,7 +87,7 @@ impl Task for InstallPackages {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {
@@ -143,7 +143,7 @@ impl Task for InstallAurPackages {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {
@@ -205,7 +205,7 @@ impl Task for InstallParu {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {

@@ -60,6 +60,8 @@ pub struct GlobalOpts {
 pub enum Command {
     /// Install dotfiles and configure system
     Install(InstallOpts),
+    /// Update dotfiles and advance pinned dependency versions
+    Update(UpdateOpts),
     /// Remove installed dotfiles
     Uninstall(UninstallOpts),
     /// Run self-tests and validation
@@ -92,6 +94,13 @@ pub struct InstallOpts {
     #[arg(long, value_delimiter = ',')]
     pub only: Vec<String>,
 }
+
+/// Options for the `update` subcommand.
+///
+/// `update` runs the same task graph as `install` and therefore accepts the
+/// same task selectors.  It is an alias of [`InstallOpts`] so the two commands
+/// share one option type and one filtering implementation.
+pub type UpdateOpts = InstallOpts;
 
 /// Options for the `uninstall` subcommand.
 #[derive(Parser, Debug, Clone)]
@@ -201,6 +210,50 @@ mod tests {
     fn parse_uninstall() {
         let cli = Cli::parse_from(["dotfiles", "uninstall"]);
         assert!(matches!(cli.command, Command::Uninstall(_)));
+    }
+
+    #[test]
+    fn parse_update() {
+        let cli = Cli::parse_from(["dotfiles", "update"]);
+        assert!(matches!(cli.command, Command::Update(_)));
+    }
+
+    #[test]
+    fn parse_update_with_profile() {
+        let cli = Cli::parse_from(["dotfiles", "--profile", "desktop", "update"]);
+        assert_eq!(cli.global.profile, Some("desktop".to_string()));
+        assert!(matches!(cli.command, Command::Update(_)));
+    }
+
+    #[test]
+    fn parse_update_dry_run() {
+        let cli = Cli::parse_from(["dotfiles", "-d", "update"]);
+        assert!(cli.global.dry_run);
+        assert!(matches!(cli.command, Command::Update(_)));
+    }
+
+    #[test]
+    fn parse_update_skip_tasks() {
+        let cli = Cli::parse_from(["dotfiles", "update", "--skip", "packages"]);
+        assert!(
+            matches!(&cli.command, Command::Update(_)),
+            "Expected Update command"
+        );
+        if let Command::Update(opts) = cli.command {
+            assert_eq!(opts.skip, vec!["packages"]);
+        }
+    }
+
+    #[test]
+    fn parse_update_only_tasks() {
+        let cli = Cli::parse_from(["dotfiles", "update", "--only", "apm"]);
+        assert!(
+            matches!(&cli.command, Command::Update(_)),
+            "Expected Update command"
+        );
+        if let Command::Update(opts) = cli.command {
+            assert_eq!(opts.only, vec!["apm"]);
+        }
     }
 
     #[test]

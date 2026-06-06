@@ -260,7 +260,9 @@ impl Resource for RegistryResource {
                 &self.value_data,
                 self.value_type,
             )
-            .with_context(|| format!("set registry: {}\\{}", self.key_path, self.value_name))?;
+            .with_context(|| {
+                format!("configure registry: {}\\{}", self.key_path, self.value_name)
+            })?;
             Ok(ResourceChange::Applied)
         }
         #[cfg(not(windows))]

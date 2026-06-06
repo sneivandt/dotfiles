@@ -1,6 +1,6 @@
 //! Repository tasks — synchronise the dotfiles repository.
 //!
-//! These tasks run during the Repository phase and handle sparse checkout
+//! These tasks run during the Sync phase and handle sparse checkout
 //! configuration, repository updates, and config reloading.
 
 pub mod reload_config;

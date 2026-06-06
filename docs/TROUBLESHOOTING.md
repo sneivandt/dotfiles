@@ -287,7 +287,11 @@ code --install-extension <extension-id>
 
 **Solution**:
 ```bash
-# Run APM directly at user scope
+# Re-run the engine. `update` redeploys the manifest AND advances stale
+# dependencies; `install` only redeploys without bumping locked refs.
+./dotfiles.sh update
+
+# Or run APM directly at user scope
 apm install -g --target copilot,vscode
 apm outdated -g
 apm deps update -g --target copilot,vscode

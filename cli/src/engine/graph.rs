@@ -91,7 +91,7 @@ mod tests {
                     $display
                 }
                 fn phase(&self) -> TaskPhase {
-                    TaskPhase::Apply
+                    TaskPhase::Provision
                 }
                 fn dependencies(&self) -> &[TaskId] {
                     const DEPS: &[TaskId] = $deps;
@@ -141,7 +141,7 @@ mod tests {
             "missing-dep"
         }
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Apply
+            TaskPhase::Provision
         }
         fn dependencies(&self) -> &[TaskId] {
             // Points to a TaskId that won't be present in the task list
@@ -196,7 +196,7 @@ mod tests {
             "duplicate-a"
         }
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Apply
+            TaskPhase::Provision
         }
         fn should_run(&self, _ctx: &Context) -> bool {
             true
@@ -212,7 +212,7 @@ mod tests {
             "duplicate-b"
         }
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Apply
+            TaskPhase::Provision
         }
         fn task_id(&self) -> TaskId {
             // Deliberately returns DuplicateIdA's TypeId to simulate a collision.

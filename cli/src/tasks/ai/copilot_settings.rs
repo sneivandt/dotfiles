@@ -11,7 +11,7 @@ resource_task! {
     /// sequential because every resource reads and rewrites the same file.
     pub ConfigureCopilot {
         name: "Configure Copilot",
-        phase: TaskPhase::Apply,
+        phase: TaskPhase::Provision,
         domain: Domain::Ai,
         items: |ctx| ctx.config_read().copilot_settings.clone(),
         build: |s, ctx| CopilotSettingResource::new(
@@ -19,7 +19,7 @@ resource_task! {
             s.json_value(),
             ctx.home.join(".copilot").join("settings.json"),
         ),
-        opts: ProcessOpts::strict("set copilot setting").sequential(),
+        opts: ProcessOpts::strict("configure").sequential(),
     }
 }
 

@@ -3,6 +3,7 @@ pub mod install;
 pub mod logs;
 pub mod test;
 pub mod uninstall;
+pub mod update;
 pub mod version;
 
 use std::sync::Arc;
@@ -292,7 +293,7 @@ mod task_graph_tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Apply
+            TaskPhase::Provision
         }
 
         task_deps![CycleTaskB];
@@ -317,7 +318,7 @@ mod task_graph_tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Apply
+            TaskPhase::Provision
         }
 
         task_deps![CycleTaskA];
@@ -389,7 +390,7 @@ mod task_graph_tests {
         }
 
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Apply
+            TaskPhase::Provision
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -475,6 +476,7 @@ impl CommandRunner {
             crate::engine::ContextOpts {
                 dry_run: global.dry_run,
                 parallel: global.parallel,
+                advance_versions: false,
                 is_ci: None,
             },
         )?
@@ -484,6 +486,16 @@ impl CommandRunner {
             ctx,
             log: Arc::clone(log),
         })
+    }
+
+    /// Return a runner whose context advances locked dependency versions.
+    ///
+    /// Used by the `update` command so that version-advancing tasks (currently
+    /// the APM dependency refresh) run; `install` leaves this `false`.
+    #[must_use]
+    pub fn with_advance_versions(mut self, advance_versions: bool) -> Self {
+        self.ctx = self.ctx.with_advance_versions(advance_versions);
+        self
     }
 
     /// Create dynamic overlay script tasks from the loaded configuration.
@@ -659,14 +671,19 @@ const fn prime_sudo(_ctx: &Context, _log: &Arc<Logger>, _task_names: &[&str]) ->
     true
 }
 
-/// Execute the full three-phase task pipeline.
+/// Execute the full phased task pipeline (Bootstrap → Repository → Apply →
+/// Update).
 ///
-/// task is present, tasks run as soon as their dependencies complete.  Each
-/// task's console output is buffered and flushed atomically on completion.
+/// Phases run strictly in order, each completing before the next begins; an
+/// empty phase (e.g. Update under `install`) is skipped with no header.  Within
+/// a phase, when parallel execution is enabled, tasks are dispatched through the
+/// buffered scheduler and run as soon as their dependencies complete; each
+/// task's console output is buffered and flushed atomically on completion so
+/// the result header is shown above any per-task detail lines.
 /// A status line shows which tasks are currently running.
 ///
-/// When parallel execution is disabled (or only one task is present),
-/// tasks execute sequentially in list order.
+/// When parallel execution is disabled, tasks execute sequentially in list
+/// order with their output written directly.
 ///
 /// # Errors
 ///
@@ -680,8 +697,9 @@ pub fn run_tasks_to_completion<'a>(
     let tasks: Vec<&dyn Task> = tasks.into_iter().collect();
     let phases = [
         TaskPhase::Bootstrap,
-        TaskPhase::Repository,
-        TaskPhase::Apply,
+        TaskPhase::Sync,
+        TaskPhase::Provision,
+        TaskPhase::Update,
     ];
 
     for phase in phases {
@@ -751,7 +769,12 @@ pub fn run_tasks_to_completion<'a>(
             });
         }
 
-        if ctx.parallel && phase_tasks.len() > 1 {
+        // A phase with a single task still dispatches through the buffered
+        // scheduler (not the sequential fallback) so its result header is
+        // replayed before any detail lines — matching multi-task phases.  This
+        // keeps the Update phase's `update:` line below its check mark, the
+        // same way the Provision phase renders the `install:` line.
+        if ctx.parallel && !phase_tasks.is_empty() {
             if tasks::has_cycle(&phase_tasks) {
                 let message = format!("dependency cycle detected in {phase} phase task graph");
                 log.error(&message);

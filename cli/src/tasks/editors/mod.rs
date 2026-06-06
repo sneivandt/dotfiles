@@ -21,7 +21,7 @@ impl Task for InstallVsCodeExtensions {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {
@@ -62,7 +62,7 @@ impl Task for InstallVsCodeExtensions {
             ctx,
             resources,
             &provider,
-            &ProcessOpts::install_missing("install extension"),
+            &ProcessOpts::install_missing("install"),
         )
     }
 }

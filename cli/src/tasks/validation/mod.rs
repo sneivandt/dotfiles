@@ -23,7 +23,7 @@ impl Task for ValidateConfigWarnings {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {
@@ -65,7 +65,7 @@ impl Task for ValidateSymlinkSources {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {
@@ -113,7 +113,7 @@ impl Task for ValidateConfigFiles {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {
@@ -179,7 +179,7 @@ impl Task for ValidateManifestSync {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {
@@ -248,7 +248,7 @@ impl Task for RunShellcheck {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {
@@ -309,7 +309,7 @@ impl Task for RunPSScriptAnalyzer {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {

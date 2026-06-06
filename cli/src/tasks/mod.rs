@@ -4,7 +4,7 @@
 //! phase in which they run.  A task's execution phase ([`TaskPhase`]) is per-task
 //! metadata, independent of which domain module the task lives in, so a single
 //! domain can span phases (for example `overlay` loads scripts during the
-//! Repository phase and runs them during the Apply phase).
+//! Sync phase and runs them during the Provision phase).
 //!
 //! Domain modules:
 //!
@@ -107,7 +107,8 @@ pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
 
-    /// Execution phase: [`TaskPhase::Bootstrap`], [`TaskPhase::Repository`], or [`TaskPhase::Apply`].
+    /// Execution phase: [`TaskPhase::Bootstrap`], [`TaskPhase::Sync`],
+    /// [`TaskPhase::Provision`], or [`TaskPhase::Update`].
     fn phase(&self) -> TaskPhase;
 
     /// Subject area this task belongs to, used to group summary output.
@@ -272,6 +273,7 @@ pub mod test_helpers {
             crate::engine::ContextOpts {
                 dry_run: false,
                 parallel: false,
+                advance_versions: false,
                 is_ci: Some(false),
             },
         )
@@ -498,7 +500,7 @@ mod tests {
         /// Test-only task for resource-task macro behaviour.
         CountingResourceTask {
             name: "Counting resource task",
-            phase: TaskPhase::Apply,
+            phase: TaskPhase::Provision,
             domain: Domain::General,
             items: |_ctx| {
                 RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
@@ -513,7 +515,7 @@ mod tests {
         /// Test-only task for batch-resource-task macro behaviour.
         CountingBatchTask {
             name: "Counting batch task",
-            phase: TaskPhase::Apply,
+            phase: TaskPhase::Provision,
             domain: Domain::General,
             items: |_ctx| {
                 BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
@@ -538,7 +540,7 @@ mod tests {
             self.name
         }
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Apply
+            TaskPhase::Provision
         }
         fn should_run(&self, _ctx: &Context) -> bool {
             self.should_run
@@ -560,7 +562,7 @@ mod tests {
             "policy-task"
         }
         fn phase(&self) -> TaskPhase {
-            TaskPhase::Apply
+            TaskPhase::Provision
         }
         fn execution_policies(&self) -> &[ExecutionPolicy] {
             self.policies
@@ -790,8 +792,8 @@ mod tests {
         let tasks = all_install_tasks();
         assert_eq!(
             tasks.len(),
-            23,
-            "expected 23 install tasks — did you add a new task without updating \
+            24,
+            "expected 24 install tasks — did you add a new task without updating \
              all_install_tasks()? Update the registration list and this test."
         );
     }

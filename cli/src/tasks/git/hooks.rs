@@ -79,7 +79,7 @@ impl Task for InstallGitHooks {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Repository
+        TaskPhase::Sync
     }
 
     fn domain(&self) -> Domain {
@@ -95,7 +95,7 @@ impl Task for InstallGitHooks {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let resources = self.discover(ctx)?;
-        process_resources(ctx, resources, &ProcessOpts::strict("install hook"))
+        process_resources(ctx, resources, &ProcessOpts::strict("install"))
     }
 }
 
@@ -137,7 +137,7 @@ impl Task for UninstallGitHooks {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Repository
+        TaskPhase::Sync
     }
 
     fn domain(&self) -> Domain {
@@ -151,7 +151,7 @@ impl Task for UninstallGitHooks {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let resources = self.discover(ctx)?;
-        process_resources_remove(ctx, resources, "remove hook")
+        process_resources_remove(ctx, resources, "remove")
     }
 }
 

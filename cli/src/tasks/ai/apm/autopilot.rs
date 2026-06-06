@@ -1,23 +1,51 @@
 //! Copilot App workflow autopilot fixup for APM-managed workflows.
 //!
 //! After `apm install` rewrites workflow rows secure-by-default, this module
-//! re-asserts the `apm--*` workflows to autopilot + enabled and decides, via a
-//! ground-truth pre/post snapshot, whether anything actually changed so that
-//! steady-state runs stay quiet.
+//! re-asserts *only the workflows this dotfiles install deployed* to autopilot
+//! and enabled, and decides, via a ground-truth pre/post snapshot, whether
+//! anything actually changed so that steady-state runs stay quiet.
+//!
+//! # Scoping to dotfiles-deployed workflows
+//!
+//! APM's `apm--<owner>--<pkg>--<prompt>` id namespace is shared by *every*
+//! apm-deployed workflow on the machine, regardless of which manifest or
+//! project deployed it, so a blanket `id GLOB 'apm--*'` update would also flip
+//! workflows a user installed through an unrelated `apm install` to autopilot +
+//! enabled -- silently arming foreign automations to run on a schedule.  To
+//! avoid that, the fixup reads the exact set of workflow ids this install
+//! deployed from APM's lockfile (`~/.apm/apm.lock.yaml`), where each deployed
+//! workflow is recorded as a `copilot-app-db://workflows/<id>` entry under its
+//! dependency's `deployed_files`, and scopes every query to that id set.  When
+//! the lockfile lists no workflows (the common case: the deps ship only
+//! agents/skills) or is missing, the fixup does nothing.
+//!
+//! The global lockfile is authoritative here: this task regenerates
+//! `~/.apm/apm.yml` from the repo's fragments and runs `apm install -g`
+//! immediately before the fixup, so at fixup time the lockfile reflects exactly
+//! the dotfiles-managed manifest.  Workflows dropped from the manifest fall out
+//! of the lockfile and are intentionally left untouched rather than disabled.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
+use std::io::ErrorKind;
 
 use crate::tasks::Context;
 
-/// Re-assert that APM-managed Copilot App workflows run on autopilot.
+/// Re-assert that the Copilot App workflows *this dotfiles install deployed*
+/// run on autopilot.
 ///
 /// APM installs workflow prompts into the Copilot App's `SQLite` database
 /// (`~/.copilot/data.db`) secure-by-default: every row arrives
 /// `mode='interactive'` and `enabled=0`, so a freshly installed automation
 /// will not fire until a human re-enables it in the App's Workflows tab.  For
-/// the small set of workflows this repo deploys that is undesirable -- they are
-/// meant to be hands-off -- so after a successful `apm install` we flip the
-/// `apm--*` rows to `mode='autopilot'` and `enabled=1`.
+/// the dotfiles-managed workflows that is undesirable -- they are meant to be
+/// hands-off -- so after a successful `apm install` we flip exactly those rows
+/// to `mode='autopilot'` and `enabled=1`.
+///
+/// The set of dotfiles-managed workflow ids is read fresh from
+/// `~/.apm/apm.lock.yaml` (see [`read_deployed_workflow_ids`]) -- the lockfile
+/// the install we just ran regenerated -- so workflows belonging to other
+/// manifests are never touched.  When the lockfile records no workflows (or is
+/// missing), there is nothing to do and the fixup returns quietly.
 ///
 /// This is strictly best-effort and never fails the task: APM has already done
 /// the real work by the time we get here.  The most common failure is a locked
@@ -27,6 +55,18 @@ use crate::tasks::Context;
 /// `sqlite3` module so we do not need a `SQLite` binary on PATH or a Rust
 /// `SQLite` dependency.
 pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWorkflows) {
+    let ids: Vec<String> = match read_deployed_workflow_ids(ctx) {
+        Some(ids) if !ids.is_empty() => ids.into_iter().collect(),
+        _ => {
+            ctx.debug_fmt(|| {
+                "autopilot fixup: ~/.apm/apm.lock.yaml lists no dotfiles-managed workflows; \
+                 nothing to enable"
+                    .to_string()
+            });
+            return;
+        }
+    };
+
     let db = ctx.home.join(".copilot").join("data.db");
     match db.try_exists() {
         Ok(true) => {}
@@ -65,43 +105,11 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
         return;
     };
 
-    match ctx.executor.run_unchecked_in(
-        &ctx.home,
-        python,
-        &["-c", WORKFLOW_AUTOPILOT_SCRIPT, db_str],
-    ) {
-        Ok(r) if r.success => match decide_fixup_outcome(&r.stdout, pre) {
-            FixupOutcome::NoWorkflows => {
-                // Common for manifests whose deps are agents/skills only (no
-                // `.prompt.md` workflows): there are legitimately no `apm--*`
-                // rows to fix up.  Keep it out of the console and just record
-                // it in the log.
-                ctx.debug_fmt(|| {
-                    "autopilot fixup: no apm-managed workflows found in ~/.copilot/data.db \
-                     (none expected when no .prompt.md workflow deps are installed)"
-                        .to_string()
-                });
-            }
-            FixupOutcome::Set(n) => {
-                ctx.log.always(&format!(
-                    "    workflows: set {n} apm workflow(s) to autopilot + enabled"
-                ));
-            }
-            FixupOutcome::Quiet => {
-                ctx.debug_fmt(|| {
-                    "autopilot fixup: apm workflows already autopilot + enabled (no change)"
-                        .to_string()
-                });
-            }
-            FixupOutcome::Unparsed => {
-                ctx.debug_fmt(|| {
-                    format!(
-                        "autopilot fixup: could not parse script output (continuing): {}",
-                        r.stdout.trim()
-                    )
-                });
-            }
-        },
+    let args = build_workflow_script_args(WORKFLOW_AUTOPILOT_SCRIPT, db_str, &ids);
+    match ctx.executor.run_unchecked_in(&ctx.home, python, &args) {
+        Ok(r) if r.success => {
+            report_fixup_outcome(ctx, decide_fixup_outcome(&r.stdout, pre), &r.stdout);
+        }
         Ok(r) => {
             let stderr = r.stderr.trim();
             if stderr.contains("database is locked") {
@@ -129,30 +137,87 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
     }
 }
 
-/// Ground-truth snapshot of which `apm--*` workflows were already in the desired
-/// state (`mode='autopilot'`, `enabled=1`) before `apm install` mutated the
-/// Copilot App database.
+/// Report the outcome of a successful autopilot-fixup script run.
 ///
-/// Captured up front so the post-install fixup can report a real delta instead
-/// of the full set APM resets secure-by-default on every run.
+/// Only [`FixupOutcome::Set`] produces a console line; the other outcomes are
+/// steady-state or non-actionable and stay at debug level to keep idempotent
+/// runs quiet.
+fn report_fixup_outcome(ctx: &Context, outcome: FixupOutcome, stdout: &str) {
+    match outcome {
+        FixupOutcome::NoWorkflows => {
+            // The lockfile listed dotfiles-managed workflows but none of them
+            // are present in `~/.copilot/data.db` yet.  This is the normal
+            // state until the Copilot App has run discovery for the workflows'
+            // project, so keep it out of the console and just log it.
+            ctx.debug_fmt(|| {
+                "autopilot fixup: dotfiles-managed workflows are listed in \
+                 ~/.apm/apm.lock.yaml but none were found in ~/.copilot/data.db yet"
+                    .to_string()
+            });
+        }
+        FixupOutcome::Set(n) => {
+            ctx.log.always(&format!(
+                "    workflows: set {n} apm workflow(s) to autopilot + enabled"
+            ));
+        }
+        FixupOutcome::Quiet => {
+            ctx.debug_fmt(|| {
+                "autopilot fixup: apm workflows already autopilot + enabled (no change)".to_string()
+            });
+        }
+        FixupOutcome::Unparsed => {
+            ctx.debug_fmt(|| {
+                format!(
+                    "autopilot fixup: could not parse script output (continuing): {}",
+                    stdout.trim()
+                )
+            });
+        }
+    }
+}
+
+/// Ground-truth snapshot of which dotfiles-managed workflows were already in
+/// the desired state (`mode='autopilot'`, `enabled=1`) before `apm install`
+/// mutated the Copilot App database.
+///
+/// Scoped to the workflow ids recorded in the *pre-install* lockfile so the
+/// post-install fixup can report a real delta instead of the full set APM
+/// resets secure-by-default on every run.  In the steady state the pre- and
+/// post-install id sets are identical, so the delta is zero and the run stays
+/// quiet.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum DesiredApmWorkflows {
     /// The pre-install desired ids were read successfully (possibly empty).
     Known(HashSet<String>),
-    /// No `~/.copilot/data.db` (or no `workflows` table) yet -- a first install,
-    /// where every workflow the fixup ends up setting is a genuine change.
+    /// No `~/.copilot/data.db`, no `workflows` table, or no pre-install
+    /// lockfile yet -- a first install, where every workflow the fixup ends up
+    /// setting is a genuine change.
     FirstInstall,
     /// The snapshot could not be taken (no Python, locked db, bad UTF-8, ...).
     /// The fixup stays quiet to avoid reporting a change it cannot substantiate.
     Unavailable,
 }
 
-/// Read the set of already-desired `apm--*` workflow ids before install.
+/// Read the set of already-desired dotfiles-managed workflow ids before
+/// install.
 ///
+/// Scopes to the workflow ids in the pre-install `~/.apm/apm.lock.yaml` so the
+/// later delta is computed against the same id space the fixup will manage.
 /// Best-effort and read-only: every failure path returns a non-`Known` variant
 /// and logs at debug level, never warning, because a missing snapshot must not
 /// produce a false "set N workflow(s)" line later.
 pub(super) fn snapshot_desired_apm_workflow_ids(ctx: &Context) -> DesiredApmWorkflows {
+    let ids: Vec<String> = match read_deployed_workflow_ids(ctx) {
+        // No prior lockfile: nothing was managed before, so every workflow the
+        // post-install fixup sets is genuinely new.
+        None => return DesiredApmWorkflows::FirstInstall,
+        // A prior lockfile that deployed no workflows: nothing could have been
+        // desired, so an empty known set makes any newly added workflow a real
+        // change downstream.
+        Some(ids) if ids.is_empty() => return DesiredApmWorkflows::Known(HashSet::new()),
+        Some(ids) => ids.into_iter().collect(),
+    };
+
     let db = ctx.home.join(".copilot").join("data.db");
     match db.try_exists() {
         Ok(true) => {}
@@ -184,11 +249,8 @@ pub(super) fn snapshot_desired_apm_workflow_ids(ctx: &Context) -> DesiredApmWork
         return DesiredApmWorkflows::Unavailable;
     };
 
-    match ctx.executor.run_unchecked_in(
-        &ctx.home,
-        python,
-        &["-c", WORKFLOW_DESIRED_IDS_SCRIPT, db_str],
-    ) {
+    let args = build_workflow_script_args(WORKFLOW_DESIRED_IDS_SCRIPT, db_str, &ids);
+    match ctx.executor.run_unchecked_in(&ctx.home, python, &args) {
         Ok(r) if r.success => DesiredApmWorkflows::Known(parse_desired_ids(&r.stdout)),
         Ok(r) => {
             if r.stderr.contains("no such table") {
@@ -210,36 +272,128 @@ pub(super) fn snapshot_desired_apm_workflow_ids(ctx: &Context) -> DesiredApmWork
     }
 }
 
-/// Read-only Python stdlib `sqlite3` program that lists the `apm--*` workflows
-/// already in the desired state (`mode='autopilot'`, `enabled=1`).
+/// Lockfile URI prefix under which APM records a deployed Copilot App workflow.
 ///
-/// Invoked as `python -c <script> <db_path>`.  Prints one id per line in `id`
-/// order, which [`parse_desired_ids`] reads back.  On a freshly reset database
-/// this prints nothing, which is the realistic pre-install state.
+/// Each `deployed_files` entry of this shape encodes the workflow's database
+/// primary key after the prefix, i.e.
+/// `copilot-app-db://workflows/apm--<owner>--<pkg>--<prompt>`.
+const COPILOT_APP_WORKFLOW_URI_PREFIX: &str = "copilot-app-db://workflows/";
+
+/// Read the workflow ids this dotfiles install deployed from
+/// `~/.apm/apm.lock.yaml`.
+///
+/// Returns `None` when the lockfile is absent or cannot be read (treated like a
+/// first install / nothing-to-do), and `Some(set)` -- possibly empty -- when it
+/// was parsed.  Only `deployed_files` entries under the
+/// [`COPILOT_APP_WORKFLOW_URI_PREFIX`] count; agents, skills, and other
+/// primitives are ignored.  Best-effort: a malformed lockfile yields an empty
+/// set rather than an error so the fixup simply does nothing.
+fn read_deployed_workflow_ids(ctx: &Context) -> Option<BTreeSet<String>> {
+    let lock = ctx.home.join(".apm").join("apm.lock.yaml");
+    let content = match std::fs::read_to_string(&lock) {
+        Ok(content) => content,
+        Err(e) => {
+            if e.kind() != ErrorKind::NotFound {
+                ctx.debug_fmt(|| {
+                    format!(
+                        "autopilot scope: cannot read {} (treating as no workflows): {e}",
+                        lock.display()
+                    )
+                });
+            }
+            return None;
+        }
+    };
+    Some(parse_deployed_workflow_ids(&content))
+}
+
+/// Extract the dotfiles-deployed workflow ids from APM lockfile text.
+///
+/// Walks `dependencies[*].deployed_files[*]` and collects every entry that
+/// starts with [`COPILOT_APP_WORKFLOW_URI_PREFIX`], stripped to the bare
+/// workflow id.  Any parse failure or unexpected shape yields an empty set.
+fn parse_deployed_workflow_ids(lockfile: &str) -> BTreeSet<String> {
+    use serde_yaml_ng::Value;
+
+    let mut ids = BTreeSet::new();
+    let Ok(value) = serde_yaml_ng::from_str::<Value>(lockfile) else {
+        return ids;
+    };
+    let Some(deps) = value.get("dependencies").and_then(Value::as_sequence) else {
+        return ids;
+    };
+    for dep in deps {
+        let Some(files) = dep.get("deployed_files").and_then(Value::as_sequence) else {
+            continue;
+        };
+        for file in files {
+            if let Some(id) = file
+                .as_str()
+                .and_then(|s| s.strip_prefix(COPILOT_APP_WORKFLOW_URI_PREFIX))
+                && !id.is_empty()
+            {
+                ids.insert(id.to_owned());
+            }
+        }
+    }
+    ids
+}
+
+/// Build the `python -c <script> <db_path> <id>...` argument vector.
+///
+/// The workflow ids are passed as discrete process arguments (never shell
+/// interpolated) and bound as `sqlite3` query parameters inside the script, so
+/// they cannot be misinterpreted as SQL.  Callers guarantee `ids` is non-empty
+/// so the scripts never build an empty `IN ()` clause.
+fn build_workflow_script_args<'a>(script: &'a str, db: &'a str, ids: &'a [String]) -> Vec<&'a str> {
+    let mut args = Vec::with_capacity(ids.len().saturating_add(3));
+    args.push("-c");
+    args.push(script);
+    args.push(db);
+    args.extend(ids.iter().map(String::as_str));
+    args
+}
+
+/// Read-only Python stdlib `sqlite3` program that lists which of the
+/// dotfiles-managed workflows are already in the desired state
+/// (`mode='autopilot'`, `enabled=1`).
+///
+/// Invoked as `python -c <script> <db_path> <id>...` where the trailing
+/// arguments are the dotfiles-managed workflow ids.  They are bound as query
+/// parameters in an `IN (...)` clause and the matches are printed one id per
+/// line in `id` order, which [`parse_desired_ids`] reads back.  On a freshly
+/// reset database this prints nothing, which is the realistic pre-install
+/// state.
 pub(super) const WORKFLOW_DESIRED_IDS_SCRIPT: &str = "import sqlite3,sys\n\
 con=sqlite3.connect(sys.argv[1], timeout=5)\n\
 con.execute(\"PRAGMA busy_timeout=5000\")\n\
-for row in con.execute(\"SELECT id FROM workflows WHERE id GLOB 'apm--*' AND mode IS 'autopilot' AND enabled IS 1 ORDER BY id\"):\n\
+ids=sys.argv[2:]\n\
+ph=\",\".join(\"?\" for _ in ids)\n\
+q=\"SELECT id FROM workflows WHERE id IN (\"+ph+\") AND mode IS 'autopilot' AND enabled IS 1 ORDER BY id\"\n\
+for row in con.execute(q, ids):\n\
 \x20   print(row[0])\n";
 
-/// Python stdlib `sqlite3` program that flips APM-managed Copilot App workflows
-/// to autopilot.
+/// Python stdlib `sqlite3` program that flips the dotfiles-managed Copilot App
+/// workflows to autopilot.
 ///
-/// Invoked as `python -c <script> <db_path>`.  It first prints two
-/// space-separated integers -- the number of `apm--*` rows present and the
-/// number it actually updated -- then, one per line, the id of every `apm--*`
-/// row now in the desired state.  [`parse_autopilot_result`] reads both parts
-/// back.  The `IS NOT` comparisons are NULL-safe and the `id GLOB 'apm--*'`
-/// filter scopes the change to APM-owned rows so hand-authored workflows are
-/// never touched.
+/// Invoked as `python -c <script> <db_path> <id>...` where the trailing
+/// arguments are the dotfiles-managed workflow ids.  It first prints two
+/// space-separated integers -- the number of those rows present and the number
+/// it actually updated -- then, one per line, the id of every such row now in
+/// the desired state.  [`parse_autopilot_result`] reads both parts back.  The
+/// ids are bound as query parameters in an `IN (...)` clause so the change is
+/// scoped to exactly the workflows this install deployed, and the `IS NOT`
+/// comparisons are NULL-safe.
 pub(super) const WORKFLOW_AUTOPILOT_SCRIPT: &str = "import sqlite3,sys\n\
 con=sqlite3.connect(sys.argv[1], timeout=5)\n\
 con.execute(\"PRAGMA busy_timeout=5000\")\n\
-matched=con.execute(\"SELECT COUNT(*) FROM workflows WHERE id GLOB 'apm--*'\").fetchone()[0]\n\
-cur=con.execute(\"UPDATE workflows SET mode='autopilot', enabled=1 WHERE id GLOB 'apm--*' AND (mode IS NOT 'autopilot' OR enabled IS NOT 1)\")\n\
+ids=sys.argv[2:]\n\
+ph=\",\".join(\"?\" for _ in ids)\n\
+matched=con.execute(\"SELECT COUNT(*) FROM workflows WHERE id IN (\"+ph+\")\", ids).fetchone()[0]\n\
+cur=con.execute(\"UPDATE workflows SET mode='autopilot', enabled=1 WHERE id IN (\"+ph+\") AND (mode IS NOT 'autopilot' OR enabled IS NOT 1)\", ids)\n\
 con.commit()\n\
 print(matched, cur.rowcount)\n\
-for row in con.execute(\"SELECT id FROM workflows WHERE id GLOB 'apm--*' AND mode IS 'autopilot' AND enabled IS 1 ORDER BY id\"):\n\
+for row in con.execute(\"SELECT id FROM workflows WHERE id IN (\"+ph+\") AND mode IS 'autopilot' AND enabled IS 1 ORDER BY id\", ids):\n\
 \x20   print(row[0])\n";
 
 /// Parse the output of [`WORKFLOW_AUTOPILOT_SCRIPT`].
@@ -276,11 +430,11 @@ fn parse_desired_ids(stdout: &str) -> HashSet<String> {
 
 /// What the post-install autopilot fixup should report, derived purely from the
 /// script output and the pre-install snapshot.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FixupOutcome {
-    /// No `apm--*` rows were present at all.  This is expected for manifests
-    /// that install only agents/skills (no `.prompt.md` workflows), so it is
-    /// logged at debug rather than warned.
+    /// None of the requested dotfiles-managed workflow ids matched a row in
+    /// `~/.copilot/data.db` (the lockfile listed workflows, but the App has not
+    /// recorded them yet).  Logged at debug rather than warned.
     NoWorkflows,
     /// `n` workflows newly reached the desired state; announce it.
     Set(usize),
@@ -368,6 +522,79 @@ mod tests {
     #[test]
     fn parse_desired_ids_empty_is_empty_set() {
         assert!(parse_desired_ids("").is_empty());
+    }
+
+    #[test]
+    fn parse_deployed_workflow_ids_extracts_only_workflow_uris() {
+        let lock = "\
+lockfile_version: '1'
+dependencies:
+- repo_url: _local/dot-code
+  deployed_files:
+  - .agents/skills/project-hygiene
+- repo_url: github/awesome-copilot
+  deployed_files:
+  - copilot-app-db://workflows/apm--awesome-copilot--planning--triage
+  - .agents/skills/foo
+  - copilot-app-db://workflows/apm--awesome-copilot--planning--report
+- repo_url: dotnet/skills
+  deployed_files:
+  - copilot-app-db://workflows/apm--dotnet--diag--collect
+";
+        let ids = parse_deployed_workflow_ids(lock);
+        let expected: BTreeSet<String> = [
+            "apm--awesome-copilot--planning--triage",
+            "apm--awesome-copilot--planning--report",
+            "apm--dotnet--diag--collect",
+        ]
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+        assert_eq!(ids, expected);
+    }
+
+    #[test]
+    fn parse_deployed_workflow_ids_empty_when_no_workflows() {
+        let lock = "\
+dependencies:
+- repo_url: _local/dot-code
+  deployed_files:
+  - .agents/skills/project-hygiene
+";
+        assert!(parse_deployed_workflow_ids(lock).is_empty());
+    }
+
+    #[test]
+    fn parse_deployed_workflow_ids_empty_on_malformed_or_unrelated_yaml() {
+        // A bare scalar, a mapping without `dependencies`, and a dependency
+        // without `deployed_files` must all yield an empty set rather than
+        // panicking or erroring.
+        assert!(parse_deployed_workflow_ids("lock\n").is_empty());
+        assert!(parse_deployed_workflow_ids("name: x\nversion: 1\n").is_empty());
+        assert!(parse_deployed_workflow_ids("dependencies:\n- repo_url: a/b\n").is_empty());
+        assert!(parse_deployed_workflow_ids(": : not yaml : :").is_empty());
+    }
+
+    #[test]
+    fn parse_deployed_workflow_ids_ignores_bare_prefix() {
+        // An entry that is exactly the prefix (empty id) must be dropped.
+        let lock = "\
+dependencies:
+- repo_url: a/b
+  deployed_files:
+  - copilot-app-db://workflows/
+";
+        assert!(parse_deployed_workflow_ids(lock).is_empty());
+    }
+
+    #[test]
+    fn build_workflow_script_args_appends_ids_in_order() {
+        let ids = vec!["apm--a".to_string(), "apm--b".to_string()];
+        let args = build_workflow_script_args(WORKFLOW_AUTOPILOT_SCRIPT, "/db", &ids);
+        assert_eq!(
+            args,
+            ["-c", WORKFLOW_AUTOPILOT_SCRIPT, "/db", "apm--a", "apm--b"]
+        );
     }
 
     /// Regression guard: the embedded Python scripts must keep the `print`

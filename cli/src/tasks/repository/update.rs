@@ -27,7 +27,7 @@ impl Task for UpdateRepository {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Repository
+        TaskPhase::Sync
     }
 
     fn domain(&self) -> Domain {

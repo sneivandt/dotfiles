@@ -33,7 +33,7 @@ impl Task for ConfigurePath {
         process_resources(
             ctx,
             std::iter::once(resource),
-            &ProcessOpts::strict("configure PATH"),
+            &ProcessOpts::strict("configure"),
         )
     }
 }

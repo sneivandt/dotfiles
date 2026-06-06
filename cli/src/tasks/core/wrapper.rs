@@ -52,7 +52,7 @@ pub struct UninstallWrapper;
 
 impl Task for UninstallWrapper {
     fn name(&self) -> &'static str {
-        "Uninstall wrapper"
+        "Remove wrapper"
     }
 
     fn phase(&self) -> TaskPhase {

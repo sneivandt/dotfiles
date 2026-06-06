@@ -13,12 +13,20 @@ The engine has two levels of parallelism: **task-level** (scheduler) and
 
 ## Phase Barrier
 
-`run_tasks_to_completion()` in `commands/mod.rs` enforces a strict three-phase
+`run_tasks_to_completion()` in `commands/mod.rs` enforces a strict phased
 execution model: all **Bootstrap** tasks complete before any **Repository**
-task starts, and all **Repository** tasks complete before any **Apply** task
-starts.  The function loops over
-`[TaskPhase::Bootstrap, TaskPhase::Repository, TaskPhase::Apply]`, filtering
-and dispatching tasks per phase.  Within each phase, tasks run via the
+task starts, all **Repository** tasks complete before any **Configure** task
+starts, and all **Configure** tasks complete before any **Update** task starts.
+The function loops over
+`[TaskPhase::Bootstrap, TaskPhase::Sync, TaskPhase::Provision, TaskPhase::Update]`,
+filtering and dispatching tasks per phase.  A phase with no tasks is skipped
+silently (no `::` header).  The **Update** phase advances pinned/locked
+dependency versions and is only populated by the `update` command —
+`install` filters Update-phase tasks out of the schedule (see
+`run_pipeline` in `commands/install.rs`), so ordinary installs show no
+`Updating dependencies` phase.  Cross-phase ordering is guaranteed solely by this
+sequential loop (the per-phase scheduler only resolves dependencies among
+tasks present in the same phase).  Within each phase, tasks run via the
 scheduler (parallel) or sequentially (single task / `--no-parallel`).
 
 Before parallel dispatch, the runner evaluates task execution policies and
@@ -158,8 +166,16 @@ Use named constructors:
 ProcessOpts::strict("link")            // fix Missing+Incorrect, bail on errors
 ProcessOpts::lenient("install")        // fix Missing+Incorrect, warn on errors
 ProcessOpts::install_missing("enable") // only fix Missing, warn on errors
-ProcessOpts::fix_existing("chmod")     // only fix Incorrect, bail on errors
+ProcessOpts::fix_existing("configure") // only fix Incorrect, bail on errors
 ```
+
+The `verb` renders as the per-resource detail line `    {verb}: {desc}` (and
+`would {verb}: {desc}` in dry-run).  Keep it to the **canonical vocabulary** so
+console language stays consistent across tasks: **install** (provision a new
+artifact), **configure** (adjust settings of something that exists), **update**
+(advance versions), **enable** (toggle on), **link**/**unlink** (symlinks), and
+**remove** (uninstall).  Use the bare verb — don't append the noun (the `desc`
+and task name already carry it): write `"configure"`, not `"set git config"`.
 
 ## Dependency Graph
 

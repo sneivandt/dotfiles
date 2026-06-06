@@ -69,6 +69,7 @@ cd dotfiles
 ./dotfiles.sh install -p desktop   # install with explicit profile
 ./dotfiles.sh install -d           # dry-run (preview without applying)
 ./dotfiles.sh install -v           # verbose output
+./dotfiles.sh update               # install + advance pinned dependency versions
 ./dotfiles.sh uninstall            # remove symlinks
 ./dotfiles.sh test                 # validate configuration
 ./dotfiles.sh logs                 # view the most recent operation log

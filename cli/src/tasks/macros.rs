@@ -86,7 +86,7 @@ where
 /// resource_task! {
 ///     pub StructName {
 ///         name: "Human-readable task name",
-///         phase: TaskPhase::Apply,
+///         phase: TaskPhase::Provision,
 ///         domain: Domain::Packages,
 ///         policy: [ExecutionPolicy::PlatformSupported("systemd", Platform::supports_systemd)], // optional
 ///         deps: [DepType1, DepType2],          // optional
@@ -102,7 +102,7 @@ where
 /// resource_task! {
 ///     pub StructName {
 ///         name: "Human-readable task name",
-///         phase: TaskPhase::Apply,
+///         phase: TaskPhase::Provision,
 ///         domain: Domain::Packages,
 ///         items: |ctx| ctx.config_read().field.clone(),
 ///         cache: |resources, ctx| query_bulk_state(resources, ctx),

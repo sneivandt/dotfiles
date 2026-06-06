@@ -1,6 +1,5 @@
 ---
 source: tests/install_command.rs
-assertion_line: 86
 expression: "task_names.join(\"\\n\")"
 ---
 Enable developer mode
@@ -9,17 +8,18 @@ Update repository
 Configure Git
 Configure Copilot
 Install Git hooks
-Generate shell completions
+Install shell completions
 Install packages
 Install paru
 Install AUR packages
 Install symlinks
-Apply file permissions
+Configure file permissions
 Configure default shell
 Configure systemd units
-Apply registry settings
+Configure registry settings
 Install VS Code extensions
 Install APM packages
+Update APM packages
 Configure PAM services
 Install wsl.conf
 Load overlay scripts

@@ -11,6 +11,8 @@
 .EXAMPLE
     PS> .\dotfiles.ps1 install --profile base --dry-run --only symlinks
 .EXAMPLE
+    PS> .\dotfiles.ps1 update --profile desktop
+.EXAMPLE
     PS> .\dotfiles.ps1 --build install --profile desktop
 #>
 

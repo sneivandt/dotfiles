@@ -226,7 +226,8 @@ dependencies:
 
 **How it works**:
 - `Install symlinks` links `symlinks/apm/config/base.yml` → `~/.apm/config/base.yml`
-- `Install APM packages` runs `apm install -g --target copilot,vscode` when the merged manifest or lockfile changed; otherwise it checks `apm outdated -g` and only runs `apm deps update -g --target copilot,vscode` when locked dependencies are stale
+- `Install APM packages` runs `apm install -g --target copilot,vscode` when the merged manifest or lockfile changed. This converges to the locked manifest and never advances locked refs
+- `Update APM packages` (the `update` command only) runs in a separate **Updating dependencies** phase after everything else: it checks `apm outdated -g` and runs `apm deps update -g --target copilot,vscode` to advance any stale locked dependencies. It is absent from `install`
 - Idempotency is provided by APM itself via its lockfile / no-op behaviour
 - Plugin primitives are deployed to `~/.copilot/`, `~/.claude/`, `~/.cursor/`, etc.
 
@@ -239,10 +240,13 @@ The dotfiles repository is automatically updated during installation. The binary
 
 ### Automatic Updates (Recommended)
 
-Simply re-run the installer:
+Re-run the engine. Use `update` to also advance pinned dependency versions
+(e.g. APM plugin dependencies), or `install` to re-apply without bumping
+pinned versions:
 
 ```powershell
-.\dotfiles.ps1 install -p desktop
+.\dotfiles.ps1 update -p desktop    # install + advance pinned dependency versions
+.\dotfiles.ps1 install -p desktop   # re-apply only, versions stay pinned
 ```
 
 The binary automatically fetches and merges updates from remote using `git pull --ff-only`.
@@ -255,7 +259,7 @@ If you prefer to update manually:
 
 ```powershell
 git pull
-.\dotfiles.ps1 install -p desktop
+.\dotfiles.ps1 update -p desktop
 ```
 
 Note: If the working tree has conflicting changes, commit or resolve them before pulling.
@@ -304,16 +308,16 @@ Example summary output:
   ~ Install wrapper
   ~ Configure PATH
 
-:: Configuring repository
+:: Syncing repository
   ✓ Configure sparse checkout
   ✓ Update repository
   ~ Install Git hooks
 
-:: Configuring environment
+:: Provisioning environment
   ~ Install packages
   ~ Install symlinks
   ~ Configure Git
-  ~ Apply registry settings
+  ~ Configure registry settings
   ~ Install VS Code extensions
   ~ Install APM packages
 

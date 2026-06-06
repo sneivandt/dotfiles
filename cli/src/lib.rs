@@ -66,6 +66,7 @@ pub fn run() -> ExitCode {
 
     let command_name = match &args.command {
         cli::Command::Install(_) => "install",
+        cli::Command::Update(_) => "update",
         cli::Command::Uninstall(_) => "uninstall",
         cli::Command::Test(_) => "test",
         cli::Command::Logs(_) => "logs",
@@ -81,7 +82,7 @@ pub fn run() -> ExitCode {
     {
         let needs_elevation = matches!(
             &args.command,
-            cli::Command::Install(_) | cli::Command::Uninstall(_)
+            cli::Command::Install(_) | cli::Command::Update(_) | cli::Command::Uninstall(_)
         ) && !args.global.dry_run;
         if needs_elevation
             && !elevation::is_elevated()
@@ -109,6 +110,7 @@ pub fn run() -> ExitCode {
 
     let result = match args.command {
         cli::Command::Install(opts) => commands::install::run(&args.global, &opts, &log, &token),
+        cli::Command::Update(opts) => commands::update::run(&args.global, &opts, &log, &token),
         cli::Command::Uninstall(opts) => {
             commands::uninstall::run(&args.global, &opts, &log, &token)
         }
@@ -137,7 +139,7 @@ pub fn run() -> ExitCode {
 #[doc(hidden)]
 pub mod testing {
     pub mod cli {
-        pub use crate::cli::{GlobalOpts, InstallOpts, TestOpts};
+        pub use crate::cli::{GlobalOpts, InstallOpts, TestOpts, UpdateOpts};
     }
 
     pub mod commands {
@@ -155,6 +157,10 @@ pub mod testing {
 
         pub mod uninstall {
             pub use crate::commands::uninstall::run;
+        }
+
+        pub mod update {
+            pub use crate::commands::update::run;
         }
 
         pub mod version {

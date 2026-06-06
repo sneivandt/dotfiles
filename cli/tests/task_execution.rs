@@ -459,7 +459,7 @@ fn git_config_dry_run_makes_no_changes() {
 const FILESYSTEM_TASKS: &[&str] = &[
     "Install symlinks",
     "Install Git hooks",
-    "Apply file permissions",
+    "Configure file permissions",
     "Configure Git",
 ];
 

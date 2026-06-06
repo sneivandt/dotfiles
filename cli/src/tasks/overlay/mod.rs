@@ -35,7 +35,7 @@ impl Task for LoadOverlayScripts {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Repository
+        TaskPhase::Sync
     }
 
     fn domain(&self) -> Domain {
@@ -109,7 +109,7 @@ impl Task for OverlayScriptTask {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {

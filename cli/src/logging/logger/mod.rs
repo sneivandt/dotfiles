@@ -325,7 +325,7 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
         log.record_task(
             "symlinks",
-            TaskPhase::Apply,
+            TaskPhase::Provision,
             Domain::General,
             TaskStatus::Ok,
             None,
@@ -341,7 +341,7 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
         log.record_task(
             "packages",
-            TaskPhase::Apply,
+            TaskPhase::Provision,
             Domain::General,
             TaskStatus::Skipped,
             Some("not on arch"),
@@ -355,17 +355,23 @@ mod tests {
     #[test]
     fn record_multiple_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task("a", TaskPhase::Apply, Domain::General, TaskStatus::Ok, None);
+        log.record_task(
+            "a",
+            TaskPhase::Provision,
+            Domain::General,
+            TaskStatus::Ok,
+            None,
+        );
         log.record_task(
             "b",
-            TaskPhase::Apply,
+            TaskPhase::Provision,
             Domain::General,
             TaskStatus::Failed,
             Some("error"),
         );
         log.record_task(
             "c",
-            TaskPhase::Apply,
+            TaskPhase::Provision,
             Domain::General,
             TaskStatus::DryRun,
             None,
@@ -377,11 +383,17 @@ mod tests {
     fn has_failures_detects_failed_task() {
         let (log, _tmp, _guard) = isolated_logger();
         assert!(!log.has_failures());
-        log.record_task("a", TaskPhase::Apply, Domain::General, TaskStatus::Ok, None);
+        log.record_task(
+            "a",
+            TaskPhase::Provision,
+            Domain::General,
+            TaskStatus::Ok,
+            None,
+        );
         assert!(!log.has_failures());
         log.record_task(
             "b",
-            TaskPhase::Apply,
+            TaskPhase::Provision,
             Domain::General,
             TaskStatus::Failed,
             Some("error"),
@@ -413,24 +425,30 @@ mod tests {
     fn failure_count_returns_correct_count() {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.failure_count(), 0);
-        log.record_task("a", TaskPhase::Apply, Domain::General, TaskStatus::Ok, None);
+        log.record_task(
+            "a",
+            TaskPhase::Provision,
+            Domain::General,
+            TaskStatus::Ok,
+            None,
+        );
         log.record_task(
             "b",
-            TaskPhase::Apply,
+            TaskPhase::Provision,
             Domain::General,
             TaskStatus::Failed,
             Some("error 1"),
         );
         log.record_task(
             "c",
-            TaskPhase::Apply,
+            TaskPhase::Provision,
             Domain::General,
             TaskStatus::Failed,
             Some("error 2"),
         );
         log.record_task(
             "d",
-            TaskPhase::Apply,
+            TaskPhase::Provision,
             Domain::General,
             TaskStatus::Skipped,
             None,
@@ -444,7 +462,7 @@ mod tests {
         let log_ref: &dyn Log = &log;
         log_ref.record_task(
             "via-trait",
-            TaskPhase::Apply,
+            TaskPhase::Provision,
             Domain::General,
             TaskStatus::Ok,
             None,
@@ -544,7 +562,7 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
         log.record_task(
             "summary-test",
-            TaskPhase::Apply,
+            TaskPhase::Provision,
             Domain::General,
             TaskStatus::Ok,
             None,

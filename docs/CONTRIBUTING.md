@@ -108,7 +108,7 @@ cargo test --manifest-path cli/Cargo.toml
 
    impl Task for MyNewTask {
        fn name(&self) -> &str { "My New Task" }
-       fn phase(&self) -> TaskPhase { TaskPhase::Apply }
+       fn phase(&self) -> TaskPhase { TaskPhase::Provision }
 
        fn should_run(&self, ctx: &Context) -> bool {
            ctx.platform.supports_systemd()  // use capability methods when possible

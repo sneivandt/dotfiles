@@ -36,7 +36,7 @@ cli/src/
 ├── resources/      # Declarative Resource, IntrinsicState, providers
 ├── engine/         # Context, resource plans, orchestration, scheduler
 ├── tasks/          # Task trait, macros, task catalog, domain-grouped tasks
-├── commands/       # install, uninstall, test, version, logs command runners
+├── commands/       # install, update, uninstall, test, version, logs command runners
 ├── logging/        # Logger, buffered parallel output, diagnostic logs
 ├── exec.rs         # Executor abstraction for subprocesses
 └── platform.rs     # OS/capability detection

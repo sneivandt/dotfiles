@@ -66,7 +66,7 @@ resource_task! {
     /// Create symlinks from symlinks/ to $HOME.
     pub InstallSymlinks {
         name: "Install symlinks",
-        phase: TaskPhase::Apply,
+        phase: TaskPhase::Provision,
         items: |ctx| ctx.config_read().symlinks.clone(),
         build: |s, ctx| {
             let repo_root = ctx.root();

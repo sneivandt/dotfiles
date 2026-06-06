@@ -27,7 +27,7 @@ impl Task for InstallWslConf {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {

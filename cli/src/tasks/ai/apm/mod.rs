@@ -17,6 +17,14 @@
 //! Idempotency is provided by APM itself via its lockfile; the merged file is
 //! regenerated deterministically every run.
 //!
+//! Advancing locked dependency refs (`apm outdated` followed by
+//! `apm deps update`) is **not** part of this task.  It is handled separately
+//! by [`UpdateApmPackages`], which runs in [`TaskPhase::Update`] and is only
+//! scheduled by the `update` command (when `ctx.advance_versions` is set).
+//! The `install` command therefore converges to the declared/locked manifest
+//! without moving any locked ref forward, and shows no `Updating dependencies`
+//! phase.  See [`advance_apm_dependencies`].
+//!
 //! The experimental `copilot-app` target integrates hand-authored Copilot App
 //! workflow prompts (`.prompt.md` files carrying workflow frontmatter) into
 //! `~/.copilot`.  It is gated behind apm's experimental flag, persisted in the
@@ -90,7 +98,11 @@ const APM_UPDATE_NO_CHANGES_MARKER: &str = "all packages already at latest refs"
 const APM_WORKFLOW_ENCODE_FAILURE_MARKER: &str = "Failed to integrate primitives from cached package: Refusing to lockfile-encode \
      non-APM workflow id";
 
-/// Install and update AI plugin manifests via Microsoft APM.
+/// Converge AI plugin manifests via Microsoft APM.
+///
+/// Merges the manifest fragments and runs `apm install`, redeploying locally
+/// symlinked plugin edits.  It never advances locked dependency refs — that is
+/// [`UpdateApmPackages`]'s job under the `update` command.
 #[derive(Debug)]
 pub struct InstallApmPackages;
 
@@ -100,7 +112,7 @@ impl Task for InstallApmPackages {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {
@@ -114,35 +126,7 @@ impl Task for InstallApmPackages {
     ];
 
     fn should_run(&self, ctx: &Context) -> bool {
-        // Run whenever the symlinks layer ships fragments, or whenever
-        // fragments have been linked into `~/.apm/config/`.
-        let repo_config_dir = ctx
-            .config_read()
-            .root
-            .join("symlinks")
-            .join("apm")
-            .join("config");
-        match discover_yaml_files(&repo_config_dir) {
-            Ok(fragments) if !fragments.is_empty() => return true,
-            Ok(_) => {}
-            Err(err) => {
-                ctx.log.warn(&format!(
-                    "could not inspect symlinks/apm/config; task will run to avoid hiding the \
-                     error: {err:#}"
-                ));
-                return true;
-            }
-        }
-
-        match discover_fragment_files(&ctx.home) {
-            Ok(fragments) => !fragments.is_empty(),
-            Err(err) => {
-                ctx.log.warn(&format!(
-                    "could not inspect ~/.apm/config; task will run to surface the error: {err:#}"
-                ));
-                true
-            }
-        }
+        apm_task_should_run(ctx)
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -202,8 +186,6 @@ impl Task for InstallApmPackages {
                 ctx.log.dry_run(&format!(
                     "run apm install -g --target {APM_TARGETS} to redeploy current manifest content"
                 ));
-                ctx.log
-                    .dry_run("run apm outdated -g and update only if dependencies are stale");
             }
             return Ok(TaskResult::DryRun);
         }
@@ -211,49 +193,151 @@ impl Task for InstallApmPackages {
         let pre_workflows = snapshot_desired_apm_workflow_ids(ctx);
         ensure_copilot_app_enabled(ctx);
 
-        if manifest_needs_write || lock_missing || marker_missing_or_stale {
-            if manifest_needs_write {
-                write_merged_manifest(&manifest_path, &merged)?;
-            }
-            let result = run_apm_install(ctx)?;
-            if matches!(result, TaskResult::Ok) {
-                ctx.log
-                    .always(&format!("    install: {}", describe_dependencies(&merged)));
-                write_manifest_marker(&marker_path, &manifest_hash)?;
-                apply_workflow_autopilot_fixup(ctx, &pre_workflows);
-            }
-            return Ok(result);
+        let manifest_changed = manifest_needs_write || lock_missing || marker_missing_or_stale;
+        if manifest_needs_write {
+            write_merged_manifest(&manifest_path, &merged)?;
         }
 
-        // Unchanged manifest: redeploy locally symlinked plugins without
-        // announcing a state change, matching the quiet idempotent convention
-        // used by the other apply tasks.
-        let result = run_apm_install(ctx)?;
-        if !matches!(result, TaskResult::Ok) {
-            return Ok(result);
+        // Always (re)run `apm install` so locally symlinked plugin edits are
+        // redeployed to their runtime locations.  When the manifest changed
+        // this also installs newly declared dependencies; on an unchanged
+        // manifest it is a quiet idempotent redeploy.
+        let install_result = run_apm_install(ctx)?;
+        if !matches!(install_result, TaskResult::Ok) {
+            // Auth skip (or similar): do not record the manifest as installed
+            // and do not attempt to advance dependencies.
+            return Ok(install_result);
+        }
+        if manifest_changed {
+            ctx.log
+                .always(&format!("    install: {}", describe_dependencies(&merged)));
         }
         write_manifest_marker(&marker_path, &manifest_hash)?;
 
-        let outcome = match apm_dependencies_are_outdated(ctx)? {
-            ApmOutdatedCheck::Outdated(true) => match run_apm_update(ctx)? {
-                ApmUpdateOutcome::Changed => {
-                    ctx.log.always("    update: APM dependencies");
-                    TaskResult::Ok
-                }
-                ApmUpdateOutcome::Unchanged => {
-                    ctx.log.debug("APM dependencies already at latest refs");
-                    TaskResult::Ok
-                }
-                ApmUpdateOutcome::Skipped(reason) => TaskResult::Skipped(reason),
-            },
-            ApmOutdatedCheck::Outdated(false) => {
-                ctx.log.debug("APM dependencies are up-to-date");
-                TaskResult::Ok
-            }
-            ApmOutdatedCheck::Skipped(reason) => TaskResult::Skipped(reason),
-        };
+        // Convergence is complete.  Advancing locked dependency refs
+        // (`apm outdated` / `apm deps update`) is a separate concern handled by
+        // the `update`-only [`UpdateApmPackages`] task in [`TaskPhase::Update`],
+        // so this task never moves a locked ref forward.
         apply_workflow_autopilot_fixup(ctx, &pre_workflows);
-        Ok(outcome)
+        Ok(TaskResult::Ok)
+    }
+}
+
+/// Whether an APM task should run on this machine.
+///
+/// True whenever the symlinks layer ships manifest fragments, or whenever
+/// fragments have already been linked into `~/.apm/config/`.  Shared by
+/// [`InstallApmPackages`] and [`UpdateApmPackages`] so both gate on the same
+/// "APM is in play here" signal.
+fn apm_task_should_run(ctx: &Context) -> bool {
+    let repo_config_dir = ctx
+        .config_read()
+        .root
+        .join("symlinks")
+        .join("apm")
+        .join("config");
+    match discover_yaml_files(&repo_config_dir) {
+        Ok(fragments) if !fragments.is_empty() => return true,
+        Ok(_) => {}
+        Err(err) => {
+            ctx.log.warn(&format!(
+                "could not inspect symlinks/apm/config; task will run to avoid hiding the \
+                 error: {err:#}"
+            ));
+            return true;
+        }
+    }
+
+    match discover_fragment_files(&ctx.home) {
+        Ok(fragments) => !fragments.is_empty(),
+        Err(err) => {
+            ctx.log.warn(&format!(
+                "could not inspect ~/.apm/config; task will run to surface the error: {err:#}"
+            ));
+            true
+        }
+    }
+}
+
+/// Advance pinned APM dependency versions — the `update` command only.
+///
+/// This task runs in [`TaskPhase::Update`], which the scheduler executes after
+/// the Provision phase (where [`InstallApmPackages`] has already converged the
+/// manifest and lockfile).  It is only ever scheduled when the command sets
+/// `ctx.advance_versions` (i.e. `update`, not `install`), so the
+/// `:: Updating dependencies` header is absent under ordinary installs.
+///
+/// Because phases run independently — a failed Apply task does not abort the
+/// run before the Update phase — this task re-asserts the convergence
+/// precondition itself: it only contacts APM when a current manifest has been
+/// installed successfully (lockfile present and the success marker matches the
+/// merged manifest hash).  Otherwise it skips, so a half-converged or failed
+/// install can never trigger a lockfile-advancing `apm deps update`.
+#[derive(Debug)]
+pub struct UpdateApmPackages;
+
+impl Task for UpdateApmPackages {
+    fn name(&self) -> &'static str {
+        "Update APM packages"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Update
+    }
+
+    fn domain(&self) -> Domain {
+        Domain::Ai
+    }
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        apm_task_should_run(ctx)
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        if ctx.dry_run {
+            ctx.log.dry_run(
+                "run apm outdated -g and apm deps update -g to advance any stale dependencies",
+            );
+            return Ok(TaskResult::DryRun);
+        }
+
+        if !ctx.executor.which("apm") {
+            let reason = "apm not found in PATH; install it via `winget install Microsoft.APM` \
+                          on Windows or the `apm-bin` AUR package on Arch Linux"
+                .to_string();
+            ctx.log.warn(&format!("skipping: {reason}"));
+            return Ok(TaskResult::Skipped(reason));
+        }
+
+        let fragments = discover_fragment_files(&ctx.home)?;
+        if fragments.is_empty() {
+            let reason = "no manifest fragments found under ~/.apm/config/".to_string();
+            ctx.log.warn(&format!("skipping: {reason}"));
+            return Ok(TaskResult::Skipped(reason));
+        }
+
+        // Re-assert the convergence precondition: only advance locked refs when
+        // the current merged manifest has been installed successfully.  This
+        // restores the "advance only after a successful install" invariant that
+        // the single-task design enforced via early return, now that
+        // convergence runs in a separate, independently-failing phase.
+        let lock_path = ctx.home.join(".apm").join("apm.lock.yaml");
+        let lock_present = lock_path
+            .try_exists()
+            .with_context(|| format!("checking APM lockfile {}", lock_path.display()))?;
+        let merged = merge_fragments(&fragments)?;
+        let manifest_hash = manifest_fingerprint(&merged);
+        let marker_path = ctx.home.join(".apm").join(".dotfiles-manifest.sha256");
+        let marker_matches = manifest_marker_matches(&marker_path, &manifest_hash)?;
+        if !lock_present || !marker_matches {
+            let reason = "APM manifest has not been installed successfully yet; skipping \
+                          dependency advancement"
+                .to_string();
+            ctx.log.debug(&reason);
+            return Ok(TaskResult::Skipped(reason));
+        }
+
+        advance_apm_dependencies(ctx)
     }
 }
 
@@ -343,6 +427,34 @@ fn run_apm_install(ctx: &Context) -> Result<TaskResult> {
             }
         }
     }
+}
+
+/// Advance locked user-scope dependencies to the latest matching refs.
+///
+/// Runs only under the `update` command (`ctx.advance_versions`).  Checks
+/// `apm outdated -g` first and only runs `apm deps update` when something is
+/// stale.  Returns the resulting task outcome: `Ok` when nothing needed
+/// advancing or an update succeeded, or `Skipped` when credentials are
+/// unavailable.
+fn advance_apm_dependencies(ctx: &Context) -> Result<TaskResult> {
+    Ok(match apm_dependencies_are_outdated(ctx)? {
+        ApmOutdatedCheck::Outdated(true) => match run_apm_update(ctx)? {
+            ApmUpdateOutcome::Changed => {
+                ctx.log.always("    update: advanced to latest versions");
+                TaskResult::Ok
+            }
+            ApmUpdateOutcome::Unchanged => {
+                ctx.log.debug("APM dependencies already at latest refs");
+                TaskResult::Ok
+            }
+            ApmUpdateOutcome::Skipped(reason) => TaskResult::Skipped(reason),
+        },
+        ApmOutdatedCheck::Outdated(false) => {
+            ctx.log.debug("APM dependencies are up-to-date");
+            TaskResult::Ok
+        }
+        ApmOutdatedCheck::Skipped(reason) => TaskResult::Skipped(reason),
+    })
 }
 
 /// Return whether any locked user-scope dependency has a newer matching ref.

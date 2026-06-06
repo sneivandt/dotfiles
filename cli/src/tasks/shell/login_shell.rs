@@ -10,7 +10,7 @@ resource_task! {
     /// Configure the default shell to zsh.
     pub ConfigureShell {
         name: "Configure default shell",
-        phase: TaskPhase::Apply,
+        phase: TaskPhase::Provision,
         domain: Domain::Shell,
         policy: [ExecutionPolicy::PlatformSupported("Linux shell configuration", Platform::is_linux)],
         deps: [crate::tasks::packages::InstallPackages],
@@ -19,7 +19,7 @@ resource_task! {
         },
         items: |_ctx| vec![()],
         build: |_unit, ctx| DefaultShellResource::new("zsh".to_string(), Arc::clone(&ctx.executor)),
-        opts: ProcessOpts::strict("configure shell"),
+        opts: ProcessOpts::strict("configure"),
     }
 }
 

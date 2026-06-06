@@ -21,7 +21,7 @@ the Rust `InstallApmPackages` task.
 | `symlinks/apm/plugins/dot-doc` | Local document-generation workflow skills |
 | `symlinks/apm/plugins/dot-skill` | Local skill/plugin maintenance skills |
 | `conf/symlinks.toml` | Links `apm/config/base.yml` and `apm/plugins/*` from this repo |
-| `cli/src/tasks/ai/apm/` | Merges APM fragments and runs global APM dependency updates (`mod.rs` orchestration; `fragments.rs`, `manifest.rs`, `outdated.rs`, `autopilot.rs`) |
+| `cli/src/tasks/ai/apm/` | `InstallApmPackages` (Provision phase) merges fragments + runs `apm install`; `UpdateApmPackages` (Update phase, `update` command only) advances locked deps via `apm outdated` + `apm deps update` (`mod.rs` orchestration; `fragments.rs`, `manifest.rs`, `outdated.rs`, `autopilot.rs`) |
 
 ## When to Change What
 
@@ -72,6 +72,16 @@ After APM config or local plugin changes, run:
 ```sh
 ./dotfiles.sh install -d
 ```
+
+`install` converges to the locked manifest and never advances locked refs:
+the Configure-phase `InstallApmPackages` task only runs `apm install`.  To pull in
+newer plugin/MCP dependency versions, run `./dotfiles.sh update`, which adds a
+separate **Updating dependencies** phase whose `UpdateApmPackages` task runs
+`apm outdated` + `apm deps update`.  That task guards itself — it only contacts
+APM when the manifest has already been installed successfully (lockfile present
+and the success marker matches) — so a failed/partial install never advances
+locked refs.  The `update`-only scheduling lives in `run_pipeline`
+(`commands/install.rs`); the task itself does not read `ctx.advance_versions`.
 
 For changes to `cli/src/tasks/ai/apm/`, also run the Rust checks from the
 `cross-platform-verification` skill.

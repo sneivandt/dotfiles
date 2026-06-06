@@ -92,12 +92,12 @@ The `interpreter_args()` method selects the interpreter based on file extension.
 Unlike static tasks in the catalog, overlay scripts produce dynamic tasks:
 
 1. `LoadOverlayScripts` is a static task in `all_install_tasks()` — runs in
-   the Repository phase, validates overlay is configured and logs script count
+   the Sync phase, validates overlay is configured and logs script count
 2. `CommandRunner::overlay_script_tasks()` creates one `OverlayScriptTask`
    per `ScriptEntry` from the loaded config
 3. `install.rs` extends the static task list with these dynamic tasks before
    filtering and execution
-4. Each `OverlayScriptTask` runs in the Apply phase; the phase barrier
+4. Each `OverlayScriptTask` runs in the Provision phase; the phase barrier
    guarantees `LoadOverlayScripts` (Repository) completes first
 
 ```rust

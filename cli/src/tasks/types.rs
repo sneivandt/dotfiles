@@ -51,18 +51,24 @@ pub enum TaskId {
 /// Execution phase of a task.
 ///
 /// Bootstrap tasks run first to prepare the tool itself (binary update,
-/// wrapper installation, PATH configuration).  Repository tasks run
+/// wrapper installation, PATH configuration).  Sync tasks run
 /// second to synchronise the dotfiles repository (sparse checkout,
-/// pull, config reload, hooks).  Apply tasks run last to converge the
+/// pull, config reload, hooks).  Provision tasks run third to converge the
 /// user environment to its declared state (symlinks, packages, etc.).
+/// Update tasks run last and advance pinned/locked dependency versions
+/// beyond the declared state; they are only scheduled by the `update`
+/// command, so the phase is absent (and its header omitted) under
+/// ordinary `install` runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TaskPhase {
     /// Prepare the dotfiles tool itself.
     Bootstrap,
     /// Synchronise the dotfiles repository.
-    Repository,
-    /// Apply declared state to the user environment.
-    Apply,
+    Sync,
+    /// Converge the user environment to its declared state.
+    Provision,
+    /// Advance pinned/locked dependency versions (the `update` command only).
+    Update,
 }
 
 /// Declarative rules that the orchestration layer evaluates before a task runs.
@@ -89,8 +95,9 @@ impl TaskPhase {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Bootstrap => "Bootstrapping",
-            Self::Repository => "Configuring repository",
-            Self::Apply => "Configuring environment",
+            Self::Sync => "Syncing repository",
+            Self::Provision => "Provisioning environment",
+            Self::Update => "Updating dependencies",
         }
     }
 }
@@ -99,8 +106,9 @@ impl fmt::Display for TaskPhase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Bootstrap => f.write_str("Bootstrap"),
-            Self::Repository => f.write_str("Repository"),
-            Self::Apply => f.write_str("Apply"),
+            Self::Sync => f.write_str("Sync"),
+            Self::Provision => f.write_str("Provision"),
+            Self::Update => f.write_str("Update"),
         }
     }
 }
@@ -114,8 +122,8 @@ impl fmt::Display for TaskPhase {
 ///
 /// The two axes are genuinely independent: a single domain may span multiple
 /// phases.  For example the [`Overlay`](Domain::Overlay) domain loads
-/// configuration during [`TaskPhase::Repository`] and runs scripts during
-/// [`TaskPhase::Apply`].
+/// configuration during [`TaskPhase::Sync`] and runs scripts during
+/// [`TaskPhase::Provision`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Domain {
     /// The dotfiles tool itself (binary self-update, wrapper, PATH).

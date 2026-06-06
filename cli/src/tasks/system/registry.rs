@@ -7,8 +7,8 @@ use crate::tasks::{Domain, ExecutionPolicy, ProcessOpts, TaskPhase, resource_tas
 resource_task! {
     /// Apply Windows registry settings.
     pub ApplyRegistry {
-        name: "Apply registry settings",
-        phase: TaskPhase::Apply,
+        name: "Configure registry settings",
+        phase: TaskPhase::Provision,
         domain: Domain::System,
         policy: [ExecutionPolicy::PlatformSupported("Windows registry", Platform::has_registry)],
         guard: |ctx| ctx.platform.has_registry(),
@@ -20,7 +20,7 @@ resource_task! {
             let val = cached.get(&key).and_then(|v| v.as_deref());
             r.state_from_cached(val)
         },
-        opts: ProcessOpts::lenient("set registry"),
+        opts: ProcessOpts::lenient("configure"),
     }
 }
 

@@ -321,7 +321,7 @@ The overlay path is resolved from (in priority order):
 
 ### `scripts.toml` (Overlay)
 
-**Purpose**: Defines custom script tasks that run during the Apply phase.
+**Purpose**: Defines custom script tasks that run during the Provision phase.
 
 **Location**: `<overlay>/conf/scripts.toml`
 

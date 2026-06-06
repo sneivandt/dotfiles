@@ -42,7 +42,7 @@ resource_task! {
     /// Create symlinks from symlinks/ to $HOME.
     pub InstallSymlinks {
         name: "Install symlinks",
-        phase: TaskPhase::Apply,
+        phase: TaskPhase::Provision,
         domain: Domain::Files,
         items: |ctx| ctx.config_read().symlinks.clone(),
         build: |s, ctx| {
@@ -63,7 +63,7 @@ impl Task for UninstallSymlinks {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Apply
+        TaskPhase::Provision
     }
 
     fn domain(&self) -> Domain {

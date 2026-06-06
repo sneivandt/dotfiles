@@ -177,6 +177,21 @@ fn write_workflow_db(home: &Path) -> PathBuf {
     db_path
 }
 
+/// Write a `<home>/.apm/apm.lock.yaml` whose `deployed_files` record `ids` as
+/// dotfiles-managed Copilot App workflows, so the autopilot fixup is scoped to
+/// exactly those ids.
+fn write_workflow_lock(home: &Path, ids: &[&str]) {
+    let apm_dir = home.join(".apm");
+    std::fs::create_dir_all(&apm_dir).expect("create .apm dir");
+    let mut yaml = String::from("dependencies:\n- repo_url: test/pkg\n  deployed_files:\n");
+    for id in ids {
+        yaml.push_str("  - copilot-app-db://workflows/");
+        yaml.push_str(id);
+        yaml.push('\n');
+    }
+    std::fs::write(apm_dir.join("apm.lock.yaml"), yaml).expect("write workflow lock");
+}
+
 /// Queue the apm `which` + experimental-enable + install expectations shared
 /// by every autopilot-fixup test (the changed-manifest path).
 fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
@@ -209,6 +224,9 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_home_fragment(dir.path(), "base.yml", AUTOPILOT_FIXTURE_FRAGMENT);
     let db_path = write_workflow_db(dir.path());
+    // The lockfile records exactly the workflows this install deployed; the
+    // fixup must scope every query to these ids and nothing else.
+    write_workflow_lock(dir.path(), &["apm--a", "apm--b", "apm--c"]);
     let db_str = db_path.to_str().expect("db path utf-8").to_string();
 
     let mut mock = MockExecutor::new();
@@ -219,8 +237,8 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
         .with(mockall::predicate::eq("python3"))
         .times(2)
         .returning(|_| true);
-    // Pre-install snapshot: no apm--* rows are desired yet, so the diff in
-    // the post-install fixup is a genuine "set 3" change.
+    // Pre-install snapshot: scoped to the lockfile ids; none are desired yet,
+    // so the diff in the post-install fixup is a genuine "set 3" change.
     let pre_home = dir.path().to_path_buf();
     let pre_db = db_str.clone();
     mock.expect_run_unchecked_in()
@@ -229,7 +247,17 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
         .returning(move |run_dir, program, args| {
             assert_eq!(run_dir, pre_home.as_path());
             assert_eq!(program, "python3");
-            assert_eq!(args, ["-c", WORKFLOW_DESIRED_IDS_SCRIPT, pre_db.as_str()]);
+            assert_eq!(
+                args,
+                [
+                    "-c",
+                    WORKFLOW_DESIRED_IDS_SCRIPT,
+                    pre_db.as_str(),
+                    "apm--a",
+                    "apm--b",
+                    "apm--c"
+                ]
+            );
             Ok(ok_result(""))
         });
     expect_apm_install(&mut mock, &mut seq);
@@ -240,7 +268,17 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
         .returning(move |run_dir, program, args| {
             assert_eq!(run_dir, post_home.as_path());
             assert_eq!(program, "python3");
-            assert_eq!(args, ["-c", WORKFLOW_AUTOPILOT_SCRIPT, db_str.as_str()]);
+            assert_eq!(
+                args,
+                [
+                    "-c",
+                    WORKFLOW_AUTOPILOT_SCRIPT,
+                    db_str.as_str(),
+                    "apm--a",
+                    "apm--b",
+                    "apm--c"
+                ]
+            );
             Ok(ok_result("3 3\napm--a\napm--b\napm--c\n"))
         });
 
@@ -257,6 +295,7 @@ fn run_warns_when_python_missing_for_autopilot_fixup() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_home_fragment(dir.path(), "base.yml", AUTOPILOT_FIXTURE_FRAGMENT);
     write_workflow_db(dir.path());
+    write_workflow_lock(dir.path(), &["apm--a"]);
 
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
@@ -285,6 +324,7 @@ fn run_warns_when_workflow_db_is_locked() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_home_fragment(dir.path(), "base.yml", AUTOPILOT_FIXTURE_FRAGMENT);
     write_workflow_db(dir.path());
+    write_workflow_lock(dir.path(), &["apm--a"]);
 
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
@@ -328,7 +368,36 @@ fn run_warns_when_workflow_db_is_locked() {
 }
 
 #[test]
-fn run_reinstalls_then_skips_update_when_manifest_lock_and_dependencies_are_current() {
+fn run_skips_autopilot_fixup_when_lock_lists_no_workflows() {
+    // The common case: the deployed deps ship only agents/skills, so the
+    // lockfile records no `copilot-app-db://workflows/` entries.  The fixup
+    // must scope to zero ids and skip entirely -- never probing python or
+    // touching the database -- even though `~/.copilot/data.db` exists.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_home_fragment(dir.path(), "base.yml", AUTOPILOT_FIXTURE_FRAGMENT);
+    write_workflow_db(dir.path());
+    std::fs::write(
+        dir.path().join(".apm").join("apm.lock.yaml"),
+        "dependencies:\n- repo_url: test/pkg\n  deployed_files:\n  - .agents/skills/foo\n",
+    )
+    .expect("write lock without workflows");
+
+    let mut mock = MockExecutor::new();
+    let mut seq = mockall::Sequence::new();
+    // Only the apm install runs; no python probe is queued, so the mock would
+    // panic on any unexpected `which("python3")`/`run_unchecked_in` call.
+    expect_apm_install(&mut mock, &mut seq);
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Ok),
+        "expected Ok with the fixup skipped, got {result:?}"
+    );
+}
+
+#[test]
+fn update_skips_deps_update_when_dependencies_current() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
 
@@ -338,28 +407,6 @@ fn run_reinstalls_then_skips_update_when_manifest_lock_and_dependencies_are_curr
         .with(mockall::predicate::eq("apm"))
         .once()
         .returning(|_| true);
-    mock.expect_run_in_with_env()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|_, _, args, env| {
-            assert_eq!(args, ["experimental", "enable", "copilot-app"]);
-            assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
-            Ok(ok_result("[!] copilot-app is already enabled.\n"))
-        });
-    let install_cwd = dir.path().to_path_buf();
-    mock.expect_run_in_with_env()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |dir, program, args, env| {
-            assert_eq!(dir, install_cwd.as_path());
-            assert_eq!(program, "apm");
-            assert_eq!(
-                args,
-                ["install", "-g", "--target", "copilot,vscode,copilot-app"]
-            );
-            assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
-            Ok(ok_result("installed\n"))
-        });
     let outdated_cwd = dir.path().to_path_buf();
     mock.expect_run_in_with_env()
         .once()
@@ -371,18 +418,20 @@ fn run_reinstalls_then_skips_update_when_manifest_lock_and_dependencies_are_curr
             assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
             Ok(ok_result("[*] All dependencies are up-to-date\n"))
         });
+    // No `apm deps update` expectation: when nothing is outdated the update
+    // task must not advance any locked ref.  The mock panics on extra calls.
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
-        "expected Ok after reinstalling current APM content, got {result:?}"
+        "expected Ok when dependencies are already current, got {result:?}"
     );
 }
 
 #[test]
-fn run_updates_dependencies_when_outdated_reports_stale_lock() {
+fn update_advances_dependencies_when_outdated_reports_stale_lock() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
 
@@ -392,28 +441,6 @@ fn run_updates_dependencies_when_outdated_reports_stale_lock() {
         .with(mockall::predicate::eq("apm"))
         .once()
         .returning(|_| true);
-    mock.expect_run_in_with_env()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|_, _, args, env| {
-            assert_eq!(args, ["experimental", "enable", "copilot-app"]);
-            assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
-            Ok(ok_result("[!] copilot-app is already enabled.\n"))
-        });
-    let install_cwd = dir.path().to_path_buf();
-    mock.expect_run_in_with_env()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |dir, program, args, env| {
-            assert_eq!(dir, install_cwd.as_path());
-            assert_eq!(program, "apm");
-            assert_eq!(
-                args,
-                ["install", "-g", "--target", "copilot,vscode,copilot-app"]
-            );
-            assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
-            Ok(ok_result("installed\n"))
-        });
     let outdated_cwd = dir.path().to_path_buf();
     mock.expect_run_in_with_env()
         .once()
@@ -447,7 +474,7 @@ fn run_updates_dependencies_when_outdated_reports_stale_lock() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
         "expected Ok after apm deps update, got {result:?}"
@@ -455,7 +482,7 @@ fn run_updates_dependencies_when_outdated_reports_stale_lock() {
 }
 
 #[test]
-fn run_stays_quiet_when_update_reports_no_changes() {
+fn update_stays_quiet_when_deps_update_reports_no_changes() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
 
@@ -465,24 +492,6 @@ fn run_stays_quiet_when_update_reports_no_changes() {
         .with(mockall::predicate::eq("apm"))
         .once()
         .returning(|_| true);
-    mock.expect_run_in_with_env()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|_, _, args, env| {
-            assert_eq!(args, ["experimental", "enable", "copilot-app"]);
-            assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
-            Ok(ok_result("[!] copilot-app is already enabled.\n"))
-        });
-    mock.expect_run_in_with_env()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |_, _, args, _| {
-            assert_eq!(
-                args,
-                ["install", "-g", "--target", "copilot,vscode,copilot-app"]
-            );
-            Ok(ok_result("installed\n"))
-        });
     // Branch/commit refs report an `unknown` status, so `apm outdated`
     // never prints the up-to-date marker and an update is attempted.
     mock.expect_run_in_with_env()
@@ -513,10 +522,76 @@ fn run_stays_quiet_when_update_reports_no_changes() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
         "expected Ok when update made no changes, got {result:?}"
+    );
+}
+
+#[test]
+fn install_task_converges_without_advancing_dependencies() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_current_manifest_lock_and_marker(dir.path());
+
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    mock.expect_which()
+        .with(mockall::predicate::eq("apm"))
+        .once()
+        .returning(|_| true);
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_, _, args, _| {
+            assert_eq!(args, ["experimental", "enable", "copilot-app"]);
+            Ok(ok_result("[!] copilot-app is already enabled.\n"))
+        });
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |_, _, args, _| {
+            assert_eq!(
+                args,
+                ["install", "-g", "--target", "copilot,vscode,copilot-app"]
+            );
+            Ok(ok_result("installed\n"))
+        });
+    // No `apm outdated` / `apm deps update` expectations are registered: the
+    // convergence task never advances locked refs — that is the `update`-only
+    // `UpdateApmPackages` task's job.  The mock would panic on any such call.
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+
+    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Ok),
+        "expected Ok converging without dependency advancement, got {result:?}"
+    );
+}
+
+#[test]
+fn update_skips_advancement_when_install_marker_missing() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    // Manifest + lock present but no success marker => the current manifest was
+    // never installed successfully, so the update task must NOT contact apm.
+    write_current_manifest_and_lock(dir.path());
+
+    let mut mock = MockExecutor::new();
+    mock.expect_which()
+        .with(mockall::predicate::eq("apm"))
+        .once()
+        .returning(|_| true);
+    // No `apm outdated` / `apm deps update` expectations: the converged-manifest
+    // guard must short-circuit before any lockfile-advancing call.  The mock
+    // panics on any unexpected `run_in_with_env`.
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+
+    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Skipped(_)),
+        "expected Skipped when the install success marker is missing, got {result:?}"
     );
 }
 
@@ -584,6 +659,42 @@ fn run_dry_run_reports_planned_apm_work_without_writing() {
     assert!(
         !dir.path().join(".apm").join("apm.yml").exists(),
         "dry-run must not write the generated manifest"
+    );
+}
+
+#[test]
+fn update_dry_run_reports_planned_advancement() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_default_home_fragment(dir.path());
+
+    let ctx = make_home_context(dir.path()).with_dry_run(true);
+
+    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::DryRun),
+        "expected DryRun for the update task with fragments present, got {result:?}"
+    );
+}
+
+#[test]
+fn update_skips_when_apm_not_found() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_current_manifest_lock_and_marker(dir.path());
+
+    let mut mock = MockExecutor::new();
+    mock.expect_which()
+        .with(mockall::predicate::eq("apm"))
+        .once()
+        .returning(|_| false);
+    // No `run_in_with_env` expectations: a missing apm binary must short-circuit
+    // before any command runs.
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+
+    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Skipped(_)),
+        "expected Skipped when apm is not on PATH, got {result:?}"
     );
 }
 

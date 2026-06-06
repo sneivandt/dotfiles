@@ -32,7 +32,7 @@ impl Task for ReloadConfig {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Repository
+        TaskPhase::Sync
     }
 
     fn domain(&self) -> Domain {

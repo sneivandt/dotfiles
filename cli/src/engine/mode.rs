@@ -167,12 +167,13 @@ pub enum ResourceAction {
 /// assert!(!opts.mode.fix_incorrect() && opts.mode.fix_missing() && !opts.mode.bail_on_error());
 ///
 /// // Fix existing only, bail on errors:
-/// let opts = ProcessOpts::fix_existing("apply permissions");
+/// let opts = ProcessOpts::fix_existing("configure");
 /// assert!(opts.mode.fix_incorrect() && !opts.mode.fix_missing() && opts.mode.bail_on_error());
 /// ```
 #[derive(Debug)]
 pub struct ProcessOpts<'a> {
-    /// Verb for log messages (e.g., "install", "link", "apply permissions").
+    /// Verb for log messages — keep to the canonical set ("install",
+    /// "configure", "update", "enable", "link", "unlink", "remove").
     pub verb: &'a str,
     /// Processing strategy controlling which states are fixable and error behaviour.
     pub mode: ProcessMode,

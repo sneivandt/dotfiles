@@ -277,7 +277,7 @@ impl Task for ConfigureSparseCheckout {
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Repository
+        TaskPhase::Sync
     }
 
     fn domain(&self) -> Domain {

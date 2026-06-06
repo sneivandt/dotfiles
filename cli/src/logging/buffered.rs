@@ -219,7 +219,7 @@ mod tests {
         let buf = BufferedLog::new(Arc::clone(&log));
         buf.record_task(
             "task-a",
-            TaskPhase::Apply,
+            TaskPhase::Provision,
             Domain::General,
             TaskStatus::Ok,
             None,

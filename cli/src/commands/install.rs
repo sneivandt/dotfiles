@@ -8,6 +8,9 @@ use crate::tasks;
 
 /// Run the install command.
 ///
+/// Converges the system to the declared state without advancing locked
+/// dependency versions (see [`crate::commands::update`] for that).
+///
 /// # Errors
 ///
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
@@ -16,6 +19,26 @@ pub fn run(
     opts: &InstallOpts,
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
+) -> Result<()> {
+    run_pipeline(global, opts, log, token, false)
+}
+
+/// Shared implementation behind both `install` and `update`.
+///
+/// The two commands run the identical task graph; `advance_versions`
+/// distinguishes them.  When `false` (install) the pipeline converges to the
+/// declared state.  When `true` (update) version-advancing tasks — currently
+/// the APM dependency refresh — additionally move locked refs forward.
+///
+/// # Errors
+///
+/// Returns an error if profile resolution, configuration loading, or task execution fails.
+pub(crate) fn run_pipeline(
+    global: &GlobalOpts,
+    opts: &InstallOpts,
+    log: &Arc<Logger>,
+    token: &crate::engine::CancellationToken,
+    advance_versions: bool,
 ) -> Result<()> {
     let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     if std::env::var_os(super::REEXEC_GUARD_VAR).is_some() {
@@ -35,11 +58,22 @@ pub fn run(
         super::re_exec(&root, &**log);
     }
 
-    let runner = super::CommandRunner::new(global, log, token)?;
+    let runner =
+        super::CommandRunner::new(global, log, token)?.with_advance_versions(advance_versions);
 
     // Build the full task list: static tasks + dynamic overlay script tasks.
     let mut all_tasks = tasks::all_install_tasks();
     all_tasks.extend(runner.overlay_script_tasks());
+
+    // Version-advancing tasks (the `Update` phase) are only scheduled by the
+    // `update` command.  Drop them here for `install` so the `Updating
+    // dependencies` phase is empty (its header is suppressed) and so `--only`/
+    // `--skip` warnings and matching below reason about the command-eligible
+    // task set rather than tasks that could never run.
+    if !advance_versions {
+        all_tasks.retain(|t| t.phase() != tasks::TaskPhase::Update);
+    }
+
     tasks::filter::warn_unmatched_filters(&all_tasks, &opts.only, "--only", &**log);
     tasks::filter::warn_unmatched_filters(&all_tasks, &opts.skip, "--skip", &**log);
     let filtered: Vec<&dyn tasks::Task> = all_tasks

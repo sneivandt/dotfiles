@@ -11,9 +11,9 @@ const ZSH_COMPLETION_FILENAME: &str = "_dotfiles";
 /// Relative path within the symlinks directory to the zsh completions folder.
 const ZSH_COMPLETIONS_SUBDIR: &str = "config/zsh/completions";
 
-/// Generate shell completions for the dotfiles CLI and write them into the
-/// repo's symlinks directory so they are available through the existing
-/// symlink at `~/.config/zsh/completions/`.
+/// Install shell completions for the dotfiles CLI by generating the zsh
+/// completion script and writing it into the repo's symlinks directory so it
+/// is available through the existing symlink at `~/.config/zsh/completions/`.
 ///
 /// On non-Linux platforms the task is a no-op because the managed zsh
 /// completions directory is only present in the Linux symlink layout.
@@ -22,11 +22,11 @@ pub struct GenerateCompletions;
 
 impl Task for GenerateCompletions {
     fn name(&self) -> &'static str {
-        "Generate shell completions"
+        "Install shell completions"
     }
 
     fn phase(&self) -> TaskPhase {
-        TaskPhase::Repository
+        TaskPhase::Sync
     }
 
     fn domain(&self) -> Domain {

@@ -29,13 +29,13 @@
   <text x="34" y="186" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#d8b4fe">  ~ Install wrapper</tspan></text>
   <text x="34" y="204" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#d8b4fe">  ~ Configure PATH</tspan></text>
   <text x="34" y="222" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>
-  <text x="34" y="240" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#60a5fa">:: Configuring repository</tspan></text>
+  <text x="34" y="240" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#60a5fa">:: Syncing repository</tspan></text>
   <text x="34" y="258" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Configure sparse checkout</tspan></text>
   <text x="34" y="276" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Update repository</tspan></text>
   <text x="34" y="294" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Install Git hooks</tspan></text>
-  <text x="34" y="312" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Generate shell completions</tspan></text>
+  <text x="34" y="312" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Install shell completions</tspan></text>
   <text x="34" y="330" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>
-  <text x="34" y="348" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#60a5fa">:: Configuring environment</tspan></text>
+  <text x="34" y="348" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#60a5fa">:: Provisioning environment</tspan></text>
   <text x="34" y="366" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#d8b4fe">  ~ Install symlinks</tspan></text>
   <text x="34" y="384" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">    would link: ~/.zshrc -&gt; ./symlinks/zshrc</tspan></text>
   <text x="34" y="402" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">    would link: ~/.config/nvim -&gt; ./symlinks/config/nvim</tspan></text>

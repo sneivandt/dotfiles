@@ -42,6 +42,7 @@ cd dotfiles
 **Synopsis:**
 ```
 dotfiles.sh [--build] install   [-p PROFILE] [-d] [-v]
+dotfiles.sh [--build] update    [-p PROFILE] [-d] [-v]
 dotfiles.sh [--build] uninstall [-p PROFILE] [-d] [-v]
 dotfiles.sh [--build] test      [-p PROFILE] [-v]
 dotfiles.sh [--build] logs      [-v]
@@ -50,7 +51,8 @@ dotfiles.sh [--build] version
 
 **Options:**
 
-- **`install`** - Install dotfiles and configure system
+- **`install`** - Converge the system to the declared state (does not advance pinned versions)
+- **`update`** - Everything `install` does, **plus** advancing pinned dependency versions (currently APM plugin dependencies via `apm deps update`)
 - **`uninstall`** - Remove installed dotfiles (managed symlinks)
 - **`test`** - Run configuration validation
 - **`logs`** - Print the most recent dotfiles operation log
@@ -61,11 +63,16 @@ dotfiles.sh [--build] version
 - **`-v, --verbose`** - Enable verbose logging
 - **`-d, --dry-run`** - Preview changes without modifying system
 
+`install` and `update` run the identical task graph and accept the same
+`--skip` / `--only` selectors; the only difference is that `update` advances
+pinned dependency versions while `install` leaves them pinned.
+
 ### Windows (`dotfiles.ps1`)
 
 **Synopsis:**
 ```powershell
 .\dotfiles.ps1 [--build] install -p desktop [-d] [-v]
+.\dotfiles.ps1 [--build] update -p desktop [-d] [-v]
 .\dotfiles.ps1 [--build] uninstall [-d]
 .\dotfiles.ps1 [--build] test
 .\dotfiles.ps1 [--build] logs [-v]
@@ -109,18 +116,30 @@ cd dotfiles
 
 ### Updating Dotfiles
 
+`install` converges your system to the declared state but leaves pinned
+dependency versions untouched. `update` does everything `install` does **and**
+adds a final **Updating dependencies** phase that advances pinned dependency
+versions (currently APM plugin dependencies, via `apm deps update`). Because
+this is a separate phase that runs after everything else, `update` output ends
+with a `:: Updating dependencies` section; `install` has no such phase. Use
+`update` when you want to pull in newer dependency versions; use `install` for
+a reproducible, version-stable apply.
+
 **Linux (uses saved profile):**
 ```bash
 cd ~/dotfiles
 git pull
-./dotfiles.sh install
+./dotfiles.sh update      # install + advance pinned dependency versions
 ```
+
+To re-apply configuration without bumping any pinned versions, run
+`./dotfiles.sh install` instead.
 
 **Windows:**
 ```powershell
 cd ~\dotfiles
 git pull
-.\dotfiles.ps1 install -p desktop
+.\dotfiles.ps1 update -p desktop
 ```
 
 ### Previewing Changes
@@ -191,7 +210,7 @@ The installation process handles different components based on your profile:
 4. **Install Git Hooks** - Copies repository git hooks into `.git/hooks/`
 5. **Install Wrapper** - Installs `dotfiles` wrapper to `~/.local/bin/`
 6. **Configure PATH** - Ensures `~/.local/bin` is on PATH
-7. **Generate Shell Completions** - Writes the zsh completion script into the managed `symlinks/config/zsh/completions/` directory
+7. **Install Shell Completions** - Writes the zsh completion script into the managed `symlinks/config/zsh/completions/` directory
 
 **User** (apply declared state):
 
@@ -204,10 +223,14 @@ The installation process handles different components based on your profile:
 14. **Configure Shell** - Sets default shell
 15. **Enable Systemd Units** - Enables and starts user or system units from `conf/systemd-units.toml`
 16. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-17. **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml`, installs when the manifest or lockfile changed, and otherwise uses `apm outdated -g` before running `apm deps update -g --target copilot,vscode` only when locked dependencies are stale ([Microsoft APM](https://github.com/microsoft/apm))
+17. **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml` and runs `apm install` when the manifest or lockfile changed. This converges to the locked manifest and never advances locked refs ([Microsoft APM](https://github.com/microsoft/apm))
 18. **Configure PAM Services** - Installs custom PAM service files (Arch Linux + desktop profile only, uses sudo)
 19. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
 20. **Overlay Scripts** - Runs custom scripts loaded from the overlay repository (when `--overlay` is set)
+
+**Update** (advance pinned versions — `update` command only):
+
+21. **Update APM Packages** - Runs `apm outdated -g` and, when locked dependencies are stale, `apm deps update -g` to advance them to the latest matching refs. This phase only runs under `dotfiles update` (it is absent from `install`), runs after the Provision phase, and self-guards so it only advances once the manifest has been installed successfully
 
 Tasks run in parallel where dependencies allow, so the numbering above reflects logical
 grouping rather than strict execution order.
@@ -229,9 +252,13 @@ grouping rather than strict execution order.
 8. **Install Packages** - Installs packages using winget
 9. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
 10. **Configure Git** - Sets `core.symlinks=true`, `core.autocrlf=false`, credential helper
-11. **Apply Registry Settings** - Configures registry from `conf/registry.toml`
+11. **Configure Registry Settings** - Configures registry from `conf/registry.toml`
 12. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-13. **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml`, installs when the manifest or lockfile changed, and otherwise uses `apm outdated -g` before running `apm deps update -g --target copilot,vscode` only when locked dependencies are stale ([Microsoft APM](https://github.com/microsoft/apm))
+13. **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml` and runs `apm install` when the manifest or lockfile changed. This converges to the locked manifest and never advances locked refs ([Microsoft APM](https://github.com/microsoft/apm))
+
+**Update** (advance pinned versions — `update` command only):
+
+14. **Update APM Packages** - Runs `apm outdated -g` and, when locked dependencies are stale, `apm deps update -g` to advance them to the latest matching refs. This phase only runs under `dotfiles update` (it is absent from `install`), runs after the Provision phase, and self-guards so it only advances once the manifest has been installed successfully
 
 Tasks run in parallel where dependencies allow, so the numbering above reflects logical
 grouping rather than strict execution order.
@@ -261,14 +288,14 @@ task completes, followed by a totals line:
   ~ Install wrapper
   ~ Configure PATH
 
-:: Configuring repository
+:: Syncing repository
   ✓ Configure sparse checkout
   ○ Update repository — local changes present
   ~ Install Git hooks
   ✓ Reload configuration
-  ~ Generate shell completions
+  ~ Install shell completions
 
-:: Configuring environment
+:: Provisioning environment
   ~ Install symlinks
   ~ Install packages
   ~ Configure systemd units
@@ -372,8 +399,8 @@ appended:
      ○ Update repository (local changes present)
      ~ Install Git hooks
      ✓ Reload configuration
-     ~ Generate shell completions
-   Apply
+     ~ Install shell completions
+   Configure
      ~ Install symlinks
      ~ Install packages
      ~ Configure systemd units
@@ -476,11 +503,11 @@ need to specify `--overlay` once:
 Each overlay script appears as its own task in the output:
 
 ```
-:: Configuring repository
+:: Syncing repository
   ✓ Reload configuration
   ✓ Load overlay scripts
 
-:: Configuring environment
+:: Provisioning environment
   ✓ Install symlinks
   ✓ Install private files   ← overlay script task
   ✓ Install packages

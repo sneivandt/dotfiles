@@ -298,6 +298,10 @@ impl Task for UpdateApmPackages {
             ctx.log.dry_run(
                 "run apm outdated -g and apm deps update -g to advance any stale dependencies",
             );
+            ctx.log.dry_run(
+                "re-assert apm-managed Copilot App workflows to autopilot + enabled in \
+                 ~/.copilot/data.db after advancing dependencies",
+            );
             return Ok(TaskResult::DryRun);
         }
 
@@ -436,19 +440,42 @@ fn run_apm_install(ctx: &Context) -> Result<TaskResult> {
 /// stale.  Returns the resulting task outcome: `Ok` when nothing needed
 /// advancing or an update succeeded, or `Skipped` when credentials are
 /// unavailable.
+///
+/// When `apm deps update` actually runs it redeploys the experimental
+/// `copilot-app` workflows secure-by-default (`mode='interactive'`,
+/// `enabled=0`), exactly as `apm install` does.  To stop `update` from
+/// silently re-disabling the autopilot automations that [`InstallApmPackages`]
+/// armed earlier in the run, this snapshots the desired workflows *before* the
+/// update and re-asserts autopilot + enabled afterward via
+/// [`apply_workflow_autopilot_fixup`].  The fixup is best-effort, idempotent,
+/// and stays quiet when no workflow changed state.
 fn advance_apm_dependencies(ctx: &Context) -> Result<TaskResult> {
     Ok(match apm_dependencies_are_outdated(ctx)? {
-        ApmOutdatedCheck::Outdated(true) => match run_apm_update(ctx)? {
-            ApmUpdateOutcome::Changed => {
-                ctx.log.always("    update: advanced to latest versions");
-                TaskResult::Ok
+        ApmOutdatedCheck::Outdated(true) => {
+            // Snapshot which dotfiles-managed workflows are already armed before
+            // `apm deps update` redeploys the `copilot-app` target
+            // secure-by-default.  `apm outdated` (above) is read-only, so this
+            // pre-update state is still intact.
+            let pre_workflows = snapshot_desired_apm_workflow_ids(ctx);
+            match run_apm_update(ctx)? {
+                ApmUpdateOutcome::Changed => {
+                    ctx.log.always("    update: advanced to latest versions");
+                    // The advance redeployed the workflows disabled; re-arm them.
+                    apply_workflow_autopilot_fixup(ctx, &pre_workflows);
+                    TaskResult::Ok
+                }
+                ApmUpdateOutcome::Unchanged => {
+                    ctx.log.debug("APM dependencies already at latest refs");
+                    // `apm deps update` still ran (something looked outdated), so
+                    // re-assert autopilot defensively in case it redeployed the
+                    // workflows without advancing a ref.  Stays quiet when the
+                    // workflows were untouched.
+                    apply_workflow_autopilot_fixup(ctx, &pre_workflows);
+                    TaskResult::Ok
+                }
+                ApmUpdateOutcome::Skipped(reason) => TaskResult::Skipped(reason),
             }
-            ApmUpdateOutcome::Unchanged => {
-                ctx.log.debug("APM dependencies already at latest refs");
-                TaskResult::Ok
-            }
-            ApmUpdateOutcome::Skipped(reason) => TaskResult::Skipped(reason),
-        },
+        }
         ApmOutdatedCheck::Outdated(false) => {
             ctx.log.debug("APM dependencies are up-to-date");
             TaskResult::Ok

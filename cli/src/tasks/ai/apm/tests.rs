@@ -530,6 +530,181 @@ fn update_stays_quiet_when_deps_update_reports_no_changes() {
 }
 
 #[test]
+fn update_re_arms_apm_workflows_after_deps_update() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_current_manifest_lock_and_marker(dir.path());
+    // Overwrite the plain lock with one that records a dotfiles-managed
+    // workflow so the pre-update snapshot and post-update fixup are scoped to
+    // it.  This is the regression scenario: `apm deps update` redeploys the
+    // workflow secure-by-default (disabled), and the fixup must re-arm it.
+    write_workflow_lock(dir.path(), &["apm--a"]);
+    let db_path = write_workflow_db(dir.path());
+    let db_str = db_path.to_str().expect("db path utf-8").to_string();
+
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    mock.expect_which()
+        .with(mockall::predicate::eq("apm"))
+        .once()
+        .returning(|_| true);
+    // python3 is probed twice: once for the pre-update snapshot and once for
+    // the post-update fixup.
+    mock.expect_which()
+        .with(mockall::predicate::eq("python3"))
+        .times(2)
+        .returning(|_| true);
+
+    // apm outdated reports a stale lock, so an update is attempted.
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |_, program, args, _| {
+            assert_eq!(program, "apm");
+            assert_eq!(args, ["outdated", "-g"]);
+            Ok(ok_result("Outdated dependencies:\n- example/plugin\n"))
+        });
+    // Pre-update snapshot: the workflow is not desired yet, so the later diff
+    // is a genuine "set 1" change.
+    let pre_db = db_str.clone();
+    mock.expect_run_unchecked_in()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |_, program, args| {
+            assert_eq!(program, "python3");
+            assert_eq!(
+                args,
+                ["-c", WORKFLOW_DESIRED_IDS_SCRIPT, pre_db.as_str(), "apm--a"]
+            );
+            Ok(ok_result(""))
+        });
+    // apm deps update advances the lock and redeploys the workflow disabled.
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |_, program, args, _| {
+            assert_eq!(program, "apm");
+            assert_eq!(
+                args,
+                [
+                    "deps",
+                    "update",
+                    "-g",
+                    "--target",
+                    "copilot,vscode,copilot-app"
+                ]
+            );
+            Ok(ok_result("updated\n"))
+        });
+    // Post-update fixup re-arms the workflow to autopilot + enabled; the diff
+    // against the empty pre-snapshot reports one newly desired workflow.
+    mock.expect_run_unchecked_in()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |_, program, args| {
+            assert_eq!(program, "python3");
+            assert_eq!(
+                args,
+                ["-c", WORKFLOW_AUTOPILOT_SCRIPT, db_str.as_str(), "apm--a"]
+            );
+            Ok(ok_result("1 1\napm--a\n"))
+        });
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+
+    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Ok),
+        "expected Ok after re-arming workflows post deps update, got {result:?}"
+    );
+}
+
+#[test]
+fn update_re_arms_apm_workflows_even_when_deps_update_reports_no_changes() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_current_manifest_lock_and_marker(dir.path());
+    // A dotfiles-managed workflow is recorded in the lock.  Even when
+    // `apm deps update` reports no advanced refs it can still redeploy the
+    // workflow disabled, so the fixup must run defensively on this path too.
+    write_workflow_lock(dir.path(), &["apm--a"]);
+    let db_path = write_workflow_db(dir.path());
+    let db_str = db_path.to_str().expect("db path utf-8").to_string();
+
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    mock.expect_which()
+        .with(mockall::predicate::eq("apm"))
+        .once()
+        .returning(|_| true);
+    mock.expect_which()
+        .with(mockall::predicate::eq("python3"))
+        .times(2)
+        .returning(|_| true);
+
+    // Branch/commit refs report `unknown`, so the up-to-date marker is absent
+    // and an update is attempted.
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |_, _, args, _| {
+            assert_eq!(args, ["outdated", "-g"]);
+            Ok(ok_result(
+                "[i] Some dependencies could not be checked (branch/commit refs)\n",
+            ))
+        });
+    // Pre-update snapshot: the workflow is already desired (steady state).
+    let pre_db = db_str.clone();
+    mock.expect_run_unchecked_in()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |_, program, args| {
+            assert_eq!(program, "python3");
+            assert_eq!(
+                args,
+                ["-c", WORKFLOW_DESIRED_IDS_SCRIPT, pre_db.as_str(), "apm--a"]
+            );
+            Ok(ok_result("apm--a\n"))
+        });
+    // apm deps update reports no advanced refs (Unchanged outcome).
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |_, _, args, _| {
+            assert_eq!(
+                args,
+                [
+                    "deps",
+                    "update",
+                    "-g",
+                    "--target",
+                    "copilot,vscode,copilot-app"
+                ]
+            );
+            Ok(ok_result("[*] All packages already at latest refs.\n"))
+        });
+    // The fixup still runs; with the workflow already desired the delta is
+    // net-zero, so it stays quiet but must not be skipped.
+    mock.expect_run_unchecked_in()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |_, program, args| {
+            assert_eq!(program, "python3");
+            assert_eq!(
+                args,
+                ["-c", WORKFLOW_AUTOPILOT_SCRIPT, db_str.as_str(), "apm--a"]
+            );
+            Ok(ok_result("1 1\napm--a\n"))
+        });
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+
+    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Ok),
+        "expected Ok after re-arming workflows on the no-change path, got {result:?}"
+    );
+}
+
+#[test]
 fn install_task_converges_without_advancing_dependencies() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());

@@ -38,12 +38,12 @@ use crate::tasks::Context;
 /// `mode='interactive'` and `enabled=0`, so a freshly installed automation
 /// will not fire until a human re-enables it in the App's Workflows tab.  For
 /// the dotfiles-managed workflows that is undesirable -- they are meant to be
-/// hands-off -- so after a successful `apm install` we flip exactly those rows
-/// to `mode='autopilot'` and `enabled=1`.
+/// hands-off -- so after a successful `apm install` or `apm deps update` we
+/// flip exactly those rows to `mode='autopilot'` and `enabled=1`.
 ///
 /// The set of dotfiles-managed workflow ids is read fresh from
 /// `~/.apm/apm.lock.yaml` (see [`read_deployed_workflow_ids`]) -- the lockfile
-/// the install we just ran regenerated -- so workflows belonging to other
+/// the apm operation we just ran regenerated -- so workflows belonging to other
 /// manifests are never touched.  When the lockfile records no workflows (or is
 /// missing), there is nothing to do and the fixup returns quietly.
 ///
@@ -115,23 +115,24 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
             if stderr.contains("database is locked") {
                 ctx.log.warn(
                     "autopilot fixup: ~/.copilot/data.db is locked -- close the Copilot App and \
-                     re-run `dotfiles install`, or enable the apm workflows manually from the \
-                     Workflows tab",
+                     re-run `dotfiles install` or `dotfiles update`, or enable the apm workflows \
+                     manually from the Workflows tab",
                 );
             } else if stderr.contains("no such table") {
                 ctx.log.warn(
                     "autopilot fixup: the workflows table is missing from ~/.copilot/data.db; open \
-                     the Copilot App once to initialize it, then re-run `dotfiles install`",
+                     the Copilot App once to initialize it, then re-run `dotfiles install` or \
+                     `dotfiles update`",
                 );
             } else {
                 ctx.log.warn(&format!(
-                    "autopilot fixup failed (apm install still succeeded): {stderr}"
+                    "autopilot fixup failed (the apm operation still succeeded): {stderr}"
                 ));
             }
         }
         Err(e) => {
             ctx.log.warn(&format!(
-                "autopilot fixup could not run {python} (apm install still succeeded): {e:#}"
+                "autopilot fixup could not run {python} (the apm operation still succeeded): {e:#}"
             ));
         }
     }

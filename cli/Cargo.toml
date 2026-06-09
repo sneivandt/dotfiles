@@ -29,7 +29,7 @@ toml = "1"
 tracing = "0.1"
 ureq = "3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-which = "8.0.2"
+which = "8.0.3"
 terminal_size = "0.4.4"
 serde_yaml_ng = "0.10.0"
 

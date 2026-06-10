@@ -78,7 +78,7 @@ packages = [
   "Microsoft.APM",
   "Microsoft.PowerShell",
   "Microsoft.Teams",
-  "Microsoft.VisualStudioCode",
+  "Microsoft.VisualStudioCode.Insiders",
   "Microsoft.WindowsTerminal",
   "OpenJS.NodeJS",
   "Python.Python.3.14",

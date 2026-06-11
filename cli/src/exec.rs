@@ -17,6 +17,19 @@ fn new_command(program: &str) -> Command {
         use std::os::unix::process::CommandExt as _;
         cmd.process_group(0);
     }
+    #[cfg(windows)]
+    {
+        // winget writes status/progress (e.g. "No available upgrade found.")
+        // straight to the attached console (CONOUT$), bypassing the redirected
+        // stdout/stderr handles. Spawning it without a console window forces all
+        // output through the captured pipes so it is suppressed on success and
+        // still surfaced on failure.
+        if program.eq_ignore_ascii_case("winget") {
+            use std::os::windows::process::CommandExt as _;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+    }
     cmd
 }
 

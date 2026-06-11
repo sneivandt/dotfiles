@@ -375,18 +375,18 @@ mod tests {
 
     #[test]
     fn get_installed_winget_handles_unicode_in_name_column() {
-        // The Name column contains multi-byte Unicode characters (accented letters,
-        // an em dash, and CJK characters).  The byte offset of the Id column in
-        // each data row differs from the header's byte offset, so the fix of
-        // re-deriving the byte offset per row is required to extract IDs correctly.
+        // The Name column contains multi-byte and multi-width Unicode characters
+        // (accented letters, an em dash, and wide CJK characters). winget aligns the
+        // Id column by display width, not byte or char offset, so the parser must
+        // slice columns by display column to extract IDs from every row.
         let stdout = concat!(
             "Name                          Id                           Version\n",
             "-------------------------------------------------------------------\n",
-            // CJK characters (中 is 3 bytes each) in Name
-            "中文名称 App                   Unicode.App                  1.0.0\n",
-            // em dash (—, 3 bytes) in Name
-            "App \u{2014} Edition           App.Edition                  2.0.0\n",
-            // accented characters (2 bytes each) in Name
+            // CJK characters (display width 2 each) in Name
+            "中文名称 App                  Unicode.App                  1.0.0\n",
+            // em dash (display width 1) in Name
+            "App \u{2014} Edition                 App.Edition                  2.0.0\n",
+            // accented characters (display width 1 each) in Name
             "Ünïcödé App                   Unicode.Accented             3.0.0\n",
         );
 

@@ -40,85 +40,93 @@ fn query_names(
     Ok(set)
 }
 
-fn split_padded_columns(line: &str) -> Vec<String> {
+/// Parses the column header row of `winget list` output into a list of
+/// `(display-column, name)` pairs, one per column.
+///
+/// winget left-aligns each value at the same *display* column as its header.
+/// Column starts are therefore measured in terminal cells, not bytes or
+/// `char`s, so that wide characters (e.g. CJK names, which occupy two cells)
+/// and multibyte-but-narrow characters (e.g. an en-dash) both keep later
+/// columns aligned. Column names are detected as runs of non-space characters.
+fn header_columns(line: &str) -> Vec<(usize, String)> {
     let mut cols = Vec::new();
+    let mut col = 0usize;
+    let mut start: Option<usize> = None;
     let mut current = String::new();
-    let mut spaces = 0usize;
 
     for ch in line.chars() {
         if ch == ' ' {
-            spaces = spaces.saturating_add(1);
-            if spaces < 2 {
-                continue;
-            }
-
-            if !current.is_empty() {
-                cols.push(std::mem::take(&mut current));
+            if let Some(s) = start.take() {
+                cols.push((s, std::mem::take(&mut current)));
             }
         } else {
-            if spaces == 1 {
-                current.push(' ');
+            if start.is_none() {
+                start = Some(col);
             }
-            spaces = 0;
             current.push(ch);
         }
+        col = col.saturating_add(char_display_width(ch));
     }
 
-    if !current.is_empty() {
-        cols.push(current);
+    if let Some(s) = start {
+        cols.push((s, current));
     }
 
     cols
 }
 
-fn byte_offset_of_col(line: &str, col_idx: usize) -> Option<usize> {
-    let mut col = 0usize;
-    let mut in_col = false;
-    let mut spaces = 0usize;
+/// Returns the display width of `ch` in terminal cells, treating control and
+/// zero-width characters as width zero.
+fn char_display_width(ch: char) -> usize {
+    unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0)
+}
 
-    for (i, ch) in line.char_indices() {
-        if ch == ' ' {
-            spaces = spaces.saturating_add(1);
-            if in_col && spaces >= 2 {
-                col = col.saturating_add(1);
-                in_col = false;
-            }
-        } else {
-            spaces = 0;
-            if !in_col {
-                if col == col_idx {
-                    return Some(i);
-                }
-                in_col = true;
-            }
+/// Returns the substring of `line` spanning the half-open *display-column*
+/// range `[start, end)`. Walking by display width keeps the slice aligned with
+/// winget's column layout regardless of the byte or `char` length of preceding
+/// values.
+fn slice_by_display_range(line: &str, start: usize, end: usize) -> String {
+    let mut col = 0usize;
+    let mut out = String::new();
+
+    for ch in line.chars() {
+        if col >= end {
+            break;
         }
+        if col >= start {
+            out.push(ch);
+        }
+        col = col.saturating_add(char_display_width(ch));
     }
-    None
+
+    out
 }
 
 pub(super) fn parse_winget_ids(stdout: &str) -> HashSet<String> {
     let mut ids = HashSet::new();
-    let mut id_col_idx: Option<usize> = None;
+    let mut id_range: Option<(usize, usize)> = None;
 
     for line in stdout.lines() {
-        if let Some(col_idx) = id_col_idx {
+        if let Some((id_start, next_start)) = id_range {
             if line.bytes().all(|b| b == b'-' || b == b' ') {
                 continue;
             }
-            if let Some(start) = byte_offset_of_col(line, col_idx)
-                && let Some(slice) = line.get(start..)
-            {
-                let id = slice
-                    .find("  ")
-                    .map_or_else(|| slice.trim(), |sep_pos| slice[..sep_pos].trim());
-                if !id.is_empty() {
-                    ids.insert(id.to_string());
-                }
+            let cell = slice_by_display_range(line, id_start, next_start);
+            let id = cell.trim();
+            // Package IDs never contain spaces; this also filters stray
+            // sentence fragments that may precede the table.
+            if !id.is_empty() && !id.contains(' ') {
+                ids.insert(id.to_string());
             }
         } else {
-            let cols = split_padded_columns(line);
-            if let Some(id_idx) = cols.iter().position(|c| c == "Id") {
-                id_col_idx = Some(id_idx);
+            let cols = header_columns(line);
+            if let Some(pos) = cols.iter().position(|(_, name)| name == "Id")
+                && let Some(&(id_start, _)) = cols.get(pos)
+            {
+                let next_start = cols
+                    .get(pos.saturating_add(1))
+                    .map_or(usize::MAX, |&(s, _)| s);
+                id_range = Some((id_start, next_start));
             }
         }
     }
@@ -296,42 +304,38 @@ mod tests {
     }
 
     #[test]
-    fn split_padded_columns_preserves_single_spaces_inside_columns() {
-        assert_eq!(
-            split_padded_columns("Windows Terminal  Microsoft.WindowsTerminal  1.22.0"),
-            vec!["Windows Terminal", "Microsoft.WindowsTerminal", "1.22.0"],
+    fn parse_winget_ids_handles_truncated_name_with_single_space_separator() {
+        // A 28-char name padded to width 29 leaves exactly ONE trailing space
+        // before the Id, reproducing the winget truncation that broke the old
+        // 2+-space column splitter.
+        let header = format!("{:<29}{:<37}{}", "Name", "Id", "Version");
+        let row = format!(
+            "{:<29}{:<37}{}",
+            "Visual Studio Code Insiders…", "Microsoft.VisualStudioCode.Insiders", "1.125.0"
         );
+        let stdout = format!("{header}\n{}\n{row}\n", "-".repeat(73));
+
+        let ids = parse_winget_ids(&stdout);
+
+        assert!(ids.contains("Microsoft.VisualStudioCode.Insiders"));
+        assert_eq!(ids.len(), 1);
     }
 
     #[test]
-    fn split_padded_columns_collapses_wide_separators() {
-        assert_eq!(
-            split_padded_columns("Name        Id                         Version"),
-            vec!["Name", "Id", "Version"],
+    fn parse_winget_ids_handles_en_dash_name() {
+        // The en-dash is one char but three bytes; display-range slicing must
+        // keep the Id column aligned.
+        let header = format!("{:<44}{:<20}{}", "Name", "Id", "Version");
+        let row = format!(
+            "{:<44}{:<20}{}",
+            "APM – Agent Package Manager", "Microsoft.APM", "1.0.0"
         );
-    }
+        let stdout = format!("{header}\n{}\n{row}\n", "-".repeat(70));
 
-    #[test]
-    fn byte_offset_of_col_finds_columns_after_unicode_names() {
-        let line = "中文名称 App                   Unicode.App                  1.0.0";
+        let ids = parse_winget_ids(&stdout);
 
-        assert_eq!(byte_offset_of_col(line, 0), Some(0));
-        assert_eq!(
-            byte_offset_of_col(line, 1),
-            Some("中文名称 App                   ".len())
-        );
-        assert_eq!(
-            line.get(byte_offset_of_col(line, 1).unwrap()..)
-                .unwrap()
-                .split_whitespace()
-                .next(),
-            Some("Unicode.App"),
-        );
-    }
-
-    #[test]
-    fn byte_offset_of_col_returns_none_for_missing_column() {
-        assert_eq!(byte_offset_of_col("Name  Id", 3), None);
+        assert!(ids.contains("Microsoft.APM"));
+        assert_eq!(ids.len(), 1);
     }
 
     #[test]

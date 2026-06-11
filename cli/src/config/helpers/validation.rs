@@ -12,7 +12,7 @@ use crate::config::ValidationWarning;
 /// ```ignore
 /// let warnings = Validator::new("packages.toml")
 ///     .check_each(&packages, |pkg| &pkg.name, |pkg| {
-///         check(!pkg.name.trim().is_empty(), "package name is empty")
+///         [check(!pkg.name.trim().is_empty(), "package name is empty")]
 ///     })
 ///     .finish();
 /// ```
@@ -52,14 +52,19 @@ impl Validator {
     /// Validate each item in a slice, running `check_fn` per item.
     ///
     /// `item_label` extracts the human-readable identifier for warnings.
-    /// `check_fn` returns an iterator of optional error messages — each
-    /// `Some(message)` becomes a warning.
-    pub(crate) fn check_each<T>(
+    /// `check_fn` returns any iterable of optional error messages — each
+    /// `Some(message)` becomes a warning. Fixed-count callers can return a
+    /// stack array (`[...]`) to avoid a per-item heap allocation, while
+    /// callers with a variable number of checks can return a `Vec`.
+    pub(crate) fn check_each<T, I>(
         mut self,
         items: &[T],
         item_label: impl Fn(&T) -> &str,
-        check_fn: impl Fn(&T) -> Vec<Option<String>>,
-    ) -> Self {
+        check_fn: impl Fn(&T) -> I,
+    ) -> Self
+    where
+        I: IntoIterator<Item = Option<String>>,
+    {
         for item in items {
             let label = item_label(item);
             for message in check_fn(item).into_iter().flatten() {
@@ -173,7 +178,7 @@ mod tests {
                 &items,
                 |item| item.label,
                 |item| {
-                    vec![
+                    [
                         check(item.value < 0, "must be non-negative"),
                         check(item.value == 0, "must be non-zero"),
                         check(item.value > 10, "must be at most 10"),
@@ -204,7 +209,7 @@ mod tests {
                     value: -5,
                 }],
                 |item| item.label,
-                |item| vec![check(item.value < 0, "must be non-negative")],
+                |item| [check(item.value < 0, "must be non-negative")],
             )
             .finish();
 

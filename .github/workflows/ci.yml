@@ -119,6 +119,41 @@ jobs:
           path: cli/target/ci/dotfiles
           retention-days: 1
 
+  # ── MSRV (Minimum Supported Rust Version) ─────────────
+  msrv:
+    name: "Rust: MSRV (1.91)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install MSRV toolchain
+        run: |
+          rustup toolchain install 1.91 --profile minimal
+          rustup override set 1.91
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "cli -> target"
+          cache-on-failure: true
+      - name: Check against MSRV
+        run: cargo +1.91 check --manifest-path cli/Cargo.toml --all-targets
+
+  # ── Coverage (informational, non-gating) ──────────────
+  coverage:
+    name: "Rust: Coverage"
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "cli -> target"
+          cache-on-failure: true
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate coverage report
+        run: cargo llvm-cov --manifest-path cli/Cargo.toml --lib --summary-only
+
   build-windows:
     name: "Build: Windows"
     runs-on: windows-latest
@@ -325,6 +360,7 @@ jobs:
       - audit
       - deny
       - build-linux
+      - msrv
       - build-windows
       - integration-linux
       - integration-windows

@@ -36,7 +36,7 @@ pub fn validate(
         entries,
         |e| &e.path,
         |e| {
-            vec![
+            [
                 OctalMode::parse(&e.mode).err(),
                 check(
                     Path::new(&e.path).is_absolute() || e.path.starts_with('/'),

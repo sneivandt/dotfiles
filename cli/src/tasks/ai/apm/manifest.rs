@@ -3,7 +3,7 @@
 use anyhow::{Context as _, Result};
 use sha2::{Digest as _, Sha256};
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Build a stable fingerprint for the generated manifest content.
 pub(super) fn manifest_fingerprint(content: &str) -> String {
@@ -73,11 +73,20 @@ pub(super) fn describe_dependencies(merged: &str) -> String {
 }
 
 /// Count the `dependencies.apm` and `dependencies.mcp` entries in the merged
-/// manifest.  Returns `None` if the manifest cannot be parsed.
+/// manifest.  Returns `None` if the manifest cannot be parsed or has no
+/// `dependencies` mapping.
 fn count_manifest_dependencies(merged: &str) -> Option<usize> {
     use serde_yaml_ng::Value;
 
-    let value: Value = serde_yaml_ng::from_str(merged).ok()?;
+    let value: Value = match serde_yaml_ng::from_str(merged) {
+        Ok(value) => value,
+        Err(err) => {
+            // A genuine parse failure is worth surfacing at debug level; the
+            // caller still falls back to the generic "APM manifest" phrase.
+            tracing::debug!("failed to parse merged manifest for dependency count: {err}");
+            return None;
+        }
+    };
     let deps = value.get("dependencies")?;
     let count = ["apm", "mcp"]
         .iter()
@@ -88,6 +97,11 @@ fn count_manifest_dependencies(merged: &str) -> Option<usize> {
 }
 
 /// Return whether the generated manifest should be written to disk.
+///
+/// # Errors
+///
+/// Returns an error if `target` is a symlink (it must be removed first) or if
+/// the existing file's content or metadata cannot be read.
 pub(super) fn merged_manifest_needs_write(target: &Path, content: &str) -> Result<bool> {
     match std::fs::symlink_metadata(target) {
         Ok(meta) if meta.file_type().is_symlink() => {
@@ -112,41 +126,52 @@ pub(super) fn merged_manifest_needs_write(target: &Path, content: &str) -> Resul
 /// Write the merged manifest to `target`, replacing any existing file.
 ///
 /// Returns early without writing if the existing file already has identical
-/// content, so we avoid bumping the mtime on unchanged runs.
+/// content, so we avoid bumping the mtime on unchanged runs.  The write is
+/// staged to a sibling temp file and renamed into place so a concurrent reader
+/// never observes a partially written manifest.
+///
+/// # Errors
+///
+/// Returns an error if `target` is a symlink, if the existing file cannot be
+/// read for comparison, or if the temp file cannot be written or renamed.
 pub(super) fn write_merged_manifest(target: &Path, content: &str) -> Result<()> {
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating directory {}", parent.display()))?;
     }
 
-    // Check existing content; only rewrite if changed. Use symlink_metadata so
-    // a symlink is rejected instead of writing through it.
-    match std::fs::symlink_metadata(target) {
-        Ok(meta) if meta.file_type().is_symlink() => {
-            anyhow::bail!(
-                "merged manifest target is a symlink; remove it before continuing: {}",
-                target.display()
-            );
-        }
-        Ok(meta) if meta.is_file() => {
-            let existing = std::fs::read(target).with_context(|| {
-                format!("reading existing merged manifest {}", target.display())
-            })?;
-            if existing == content.as_bytes() {
-                return Ok(());
-            }
-        }
-        Ok(_) => {}
-        Err(err) if err.kind() == ErrorKind::NotFound => {}
-        Err(err) => {
-            return Err(err).with_context(|| {
-                format!("reading metadata for merged manifest {}", target.display())
-            });
-        }
+    // Reuse the same symlink-bail / read-compare logic the planner uses so the
+    // two paths cannot drift. Skips the write entirely when content matches.
+    if !merged_manifest_needs_write(target, content)? {
+        return Ok(());
     }
 
-    std::fs::write(target, content)
-        .with_context(|| format!("writing merged manifest {}", target.display()))
+    let tmp = manifest_temp_path(target);
+    std::fs::write(&tmp, content)
+        .with_context(|| format!("writing temporary merged manifest {}", tmp.display()))?;
+    let mut guard = crate::fs::TempPath::new(tmp.clone());
+    std::fs::rename(&tmp, target).with_context(|| {
+        format!(
+            "renaming {} into place at {}",
+            tmp.display(),
+            target.display()
+        )
+    })?;
+    guard.persist();
+    Ok(())
+}
+
+/// Build the sibling temp path used to stage an atomic manifest write.
+///
+/// Keeping the temp file in the same directory as `target` guarantees the
+/// subsequent rename stays on one filesystem and is therefore atomic.
+fn manifest_temp_path(target: &Path) -> PathBuf {
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let name = target.file_name().map_or_else(
+        || "dotfiles_apm_tmp".to_string(),
+        |n| format!("{}.dotfiles_tmp", n.to_string_lossy()),
+    );
+    parent.join(name)
 }
 
 #[cfg(test)]

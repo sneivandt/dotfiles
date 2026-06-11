@@ -50,7 +50,7 @@ pub fn validate(
             packages,
             |pkg| &pkg.name,
             |pkg| {
-                vec![
+                [
                     check(
                         pkg.is_aur && !platform.is_arch_linux(),
                         "AUR package specified but platform is not Arch Linux",

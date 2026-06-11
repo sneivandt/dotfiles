@@ -62,7 +62,7 @@ pub fn validate(settings: &[CopilotSetting]) -> Vec<ValidationWarning> {
             settings,
             |setting| &setting.key,
             |setting| {
-                vec![
+                [
                     check(setting.key.trim().is_empty(), "settings key is empty"),
                     check(
                         setting.key.split('.').any(str::is_empty),

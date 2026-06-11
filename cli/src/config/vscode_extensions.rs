@@ -27,7 +27,7 @@ pub fn validate(extensions: &[VsCodeExtension]) -> Vec<ValidationWarning> {
             extensions,
             |ext| &ext.id,
             |ext| {
-                vec![
+                [
                     check(ext.id.trim().is_empty(), "extension ID is empty"),
                     check(
                         !ext.id.contains('.'),

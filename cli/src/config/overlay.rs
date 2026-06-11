@@ -4,7 +4,7 @@
 //! custom scripts that extend the main dotfiles configuration.  The overlay
 //! path is resolved from CLI args, the `DOTFILES_OVERLAY` environment
 //! variable, or the repository's local git config (`dotfiles.overlay`).
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 /// Try to read the overlay path from the `DOTFILES_OVERLAY` environment variable.
@@ -17,18 +17,14 @@ fn parse_env_overlay(raw: Option<String>) -> Option<PathBuf> {
     raw.filter(|v| !v.is_empty()).map(PathBuf::from)
 }
 
+/// The git config key used to persist the overlay path.
+const OVERLAY_KEY: &str = "dotfiles.overlay";
+
 /// Try to read the persisted overlay path from the repository's local git
 /// config (`dotfiles.overlay`).
 #[must_use]
 pub fn read_persisted(root: &Path) -> Option<PathBuf> {
-    let repo = git2::Repository::discover(root).ok()?;
-    let config = repo.config().ok()?;
-    let local = config.open_level(git2::ConfigLevel::Local).ok()?;
-    local
-        .get_string("dotfiles.overlay")
-        .ok()
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
+    crate::config::helpers::git_state::read_local(root, OVERLAY_KEY).map(PathBuf::from)
 }
 
 /// Persist the overlay path to the repository's local git config so future
@@ -39,14 +35,11 @@ pub fn read_persisted(root: &Path) -> Option<PathBuf> {
 /// Returns an error if the repository cannot be discovered or the config
 /// cannot be written.
 pub fn persist(root: &Path, overlay_path: &Path) -> Result<()> {
-    let repo = git2::Repository::discover(root).context("finding git repository")?;
-    let config = repo.config().context("opening git config")?;
-    let mut local = config
-        .open_level(git2::ConfigLevel::Local)
-        .context("opening local git config")?;
-    local
-        .set_str("dotfiles.overlay", &overlay_path.display().to_string())
-        .context("persisting overlay path to git config")
+    crate::config::helpers::git_state::persist_local(
+        root,
+        OVERLAY_KEY,
+        &overlay_path.display().to_string(),
+    )
 }
 
 /// Resolve the overlay path from CLI arg, `DOTFILES_OVERLAY` env var, or

@@ -67,45 +67,32 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
         }
     };
 
-    let db = ctx.home.join(".copilot").join("data.db");
-    match db.try_exists() {
-        Ok(true) => {}
-        Ok(false) => {
-            ctx.debug_fmt(|| format!("skipping autopilot fixup: {} does not exist", db.display()));
+    let (python, db_str) = match probe_workflow_db(ctx) {
+        WorkflowDbProbe::Ready { python, db_str } => (python, db_str),
+        WorkflowDbProbe::DbMissing { path } => {
+            ctx.debug_fmt(|| format!("skipping autopilot fixup: {path} does not exist"));
             return;
         }
-        Err(e) => {
-            ctx.debug_fmt(|| {
-                format!(
-                    "skipping autopilot fixup: cannot stat {}: {e}",
-                    db.display()
-                )
-            });
+        WorkflowDbProbe::DbStatError { path, error } => {
+            ctx.debug_fmt(|| format!("skipping autopilot fixup: cannot stat {path}: {error}"));
             return;
         }
-    }
-
-    let Some(db_str) = db.to_str() else {
-        ctx.log.warn(&format!(
-            "skipping autopilot fixup: database path {} is not valid UTF-8",
-            db.display()
-        ));
-        return;
+        WorkflowDbProbe::DbPathNotUtf8 { path } => {
+            ctx.log.warn(&format!(
+                "skipping autopilot fixup: database path {path} is not valid UTF-8"
+            ));
+            return;
+        }
+        WorkflowDbProbe::PythonMissing => {
+            ctx.log.warn(
+                "skipping autopilot fixup: neither python3 nor python found in PATH; enable the \
+                 apm workflows manually from the Copilot App's Workflows tab",
+            );
+            return;
+        }
     };
 
-    let python = if ctx.executor.which("python3") {
-        "python3"
-    } else if ctx.executor.which("python") {
-        "python"
-    } else {
-        ctx.log.warn(
-            "skipping autopilot fixup: neither python3 nor python found in PATH; enable the apm \
-             workflows manually from the Copilot App's Workflows tab",
-        );
-        return;
-    };
-
-    let args = build_workflow_script_args(WORKFLOW_AUTOPILOT_SCRIPT, db_str, &ids);
+    let args = build_workflow_script_args(WORKFLOW_AUTOPILOT_SCRIPT, &db_str, &ids);
     match ctx.executor.run_unchecked_in(&ctx.home, python, &args) {
         Ok(r) if r.success => {
             report_fixup_outcome(ctx, decide_fixup_outcome(&r.stdout, pre), &r.stdout);
@@ -124,6 +111,18 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
                      the Copilot App once to initialize it, then re-run `dotfiles install` or \
                      `dotfiles update`",
                 );
+            } else if stderr.contains("no such column") {
+                // Schema drift: the Copilot App database no longer matches the
+                // version-1 workflows contract the embedded scripts target
+                // (`id`, `mode`, `enabled`).  Surface it loudly and name the
+                // contract so the scripts can be updated, rather than letting a
+                // renamed column degrade to a generic failure line.
+                ctx.log.warn(&format!(
+                    "autopilot fixup: ~/.copilot/data.db no longer matches the expected workflows \
+                     schema (columns id, mode, enabled); the Copilot App database format may have \
+                     changed. Enable the apm workflows manually from the Workflows tab and report \
+                     this so the dotfiles autopilot scripts can be updated: {stderr}"
+                ));
             } else {
                 ctx.log.warn(&format!(
                     "autopilot fixup failed (the apm operation still succeeded): {stderr}"
@@ -219,38 +218,28 @@ pub(super) fn snapshot_desired_apm_workflow_ids(ctx: &Context) -> DesiredApmWork
         Some(ids) => ids.into_iter().collect(),
     };
 
-    let db = ctx.home.join(".copilot").join("data.db");
-    match db.try_exists() {
-        Ok(true) => {}
-        Ok(false) => return DesiredApmWorkflows::FirstInstall,
-        Err(e) => {
-            ctx.debug_fmt(|| format!("apm workflow snapshot: cannot stat {}: {e}", db.display()));
+    let (python, db_str) = match probe_workflow_db(ctx) {
+        WorkflowDbProbe::Ready { python, db_str } => (python, db_str),
+        WorkflowDbProbe::DbMissing { .. } => return DesiredApmWorkflows::FirstInstall,
+        WorkflowDbProbe::DbStatError { path, error } => {
+            ctx.debug_fmt(|| format!("apm workflow snapshot: cannot stat {path}: {error}"));
             return DesiredApmWorkflows::Unavailable;
         }
-    }
-
-    let Some(db_str) = db.to_str() else {
-        ctx.debug_fmt(|| {
-            format!(
-                "apm workflow snapshot: database path {} is not valid UTF-8",
-                db.display()
-            )
-        });
-        return DesiredApmWorkflows::Unavailable;
+        WorkflowDbProbe::DbPathNotUtf8 { path } => {
+            ctx.debug_fmt(|| {
+                format!("apm workflow snapshot: database path {path} is not valid UTF-8")
+            });
+            return DesiredApmWorkflows::Unavailable;
+        }
+        WorkflowDbProbe::PythonMissing => {
+            ctx.debug_fmt(|| {
+                "apm workflow snapshot: neither python3 nor python found in PATH".to_string()
+            });
+            return DesiredApmWorkflows::Unavailable;
+        }
     };
 
-    let python = if ctx.executor.which("python3") {
-        "python3"
-    } else if ctx.executor.which("python") {
-        "python"
-    } else {
-        ctx.debug_fmt(|| {
-            "apm workflow snapshot: neither python3 nor python found in PATH".to_string()
-        });
-        return DesiredApmWorkflows::Unavailable;
-    };
-
-    let args = build_workflow_script_args(WORKFLOW_DESIRED_IDS_SCRIPT, db_str, &ids);
+    let args = build_workflow_script_args(WORKFLOW_DESIRED_IDS_SCRIPT, &db_str, &ids);
     match ctx.executor.run_unchecked_in(&ctx.home, python, &args) {
         Ok(r) if r.success => DesiredApmWorkflows::Known(parse_desired_ids(&r.stdout)),
         Ok(r) => {
@@ -270,6 +259,90 @@ pub(super) fn snapshot_desired_apm_workflow_ids(ctx: &Context) -> DesiredApmWork
             ctx.debug_fmt(|| format!("apm workflow snapshot: could not run {python}: {e:#}"));
             DesiredApmWorkflows::Unavailable
         }
+    }
+}
+
+/// Result of locating the Copilot App `SQLite` database and a Python
+/// interpreter to drive it.
+///
+/// Both [`apply_workflow_autopilot_fixup`] and
+/// [`snapshot_desired_apm_workflow_ids`] need the same four things -- the
+/// `~/.copilot/data.db` path, proof it exists, a UTF-8 rendering of that path
+/// for the script argv, and a `python3`/`python` interpreter -- but they report
+/// the failure modes differently: the fixup warns loudly (it is re-asserting
+/// user-visible state) while the snapshot stays at debug level (a missing
+/// snapshot must never manufacture a false "set N workflow(s)" line).  This enum
+/// carries the probe outcome and the data each caller needs to format its own
+/// message, so the shared mechanism lives in one place while the divergent
+/// logging stays with the callers.
+enum WorkflowDbProbe {
+    /// The database exists and an interpreter is available.
+    Ready {
+        /// The interpreter to invoke (`python3` preferred, else `python`).
+        python: &'static str,
+        /// UTF-8 rendering of the database path for the script argv.
+        db_str: String,
+    },
+    /// The database file does not exist yet.
+    DbMissing {
+        /// Display path of the absent database.
+        path: String,
+    },
+    /// The database path could not be stat'd.
+    DbStatError {
+        /// Display path of the database.
+        path: String,
+        /// The stat error, rendered for logging.
+        error: String,
+    },
+    /// The database path is not valid UTF-8 and cannot be passed to the script.
+    DbPathNotUtf8 {
+        /// Display path of the database.
+        path: String,
+    },
+    /// Neither `python3` nor `python` is on `PATH`.
+    PythonMissing,
+}
+
+/// Locate the Copilot App database and a Python interpreter.
+///
+/// Shared preamble for [`apply_workflow_autopilot_fixup`] and
+/// [`snapshot_desired_apm_workflow_ids`]; see [`WorkflowDbProbe`] for why the
+/// outcome is returned rather than logged here.
+fn probe_workflow_db(ctx: &Context) -> WorkflowDbProbe {
+    let db = ctx.home.join(".copilot").join("data.db");
+    match db.try_exists() {
+        Ok(true) => {}
+        Ok(false) => {
+            return WorkflowDbProbe::DbMissing {
+                path: db.display().to_string(),
+            };
+        }
+        Err(e) => {
+            return WorkflowDbProbe::DbStatError {
+                path: db.display().to_string(),
+                error: e.to_string(),
+            };
+        }
+    }
+
+    let Some(db_str) = db.to_str() else {
+        return WorkflowDbProbe::DbPathNotUtf8 {
+            path: db.display().to_string(),
+        };
+    };
+
+    let python = if ctx.executor.which("python3") {
+        "python3"
+    } else if ctx.executor.which("python") {
+        "python"
+    } else {
+        return WorkflowDbProbe::PythonMissing;
+    };
+
+    WorkflowDbProbe::Ready {
+        python,
+        db_str: db_str.to_string(),
     }
 }
 
@@ -365,14 +438,13 @@ fn build_workflow_script_args<'a>(script: &'a str, db: &'a str, ids: &'a [String
 /// line in `id` order, which [`parse_desired_ids`] reads back.  On a freshly
 /// reset database this prints nothing, which is the realistic pre-install
 /// state.
-pub(super) const WORKFLOW_DESIRED_IDS_SCRIPT: &str = "import sqlite3,sys\n\
-con=sqlite3.connect(sys.argv[1], timeout=5)\n\
-con.execute(\"PRAGMA busy_timeout=5000\")\n\
-ids=sys.argv[2:]\n\
-ph=\",\".join(\"?\" for _ in ids)\n\
-q=\"SELECT id FROM workflows WHERE id IN (\"+ph+\") AND mode IS 'autopilot' AND enabled IS 1 ORDER BY id\"\n\
-for row in con.execute(q, ids):\n\
-\x20   print(row[0])\n";
+///
+/// The program lives in `scripts/workflow_desired_ids.py` and is embedded at
+/// build time via [`include_str!`] so its real four-space indentation survives
+/// verbatim; the repository pins `*.py` to LF endings so the embedded bytes are
+/// stable across platforms.
+pub(super) const WORKFLOW_DESIRED_IDS_SCRIPT: &str =
+    include_str!("scripts/workflow_desired_ids.py");
 
 /// Python stdlib `sqlite3` program that flips the dotfiles-managed Copilot App
 /// workflows to autopilot.
@@ -385,17 +457,12 @@ for row in con.execute(q, ids):\n\
 /// ids are bound as query parameters in an `IN (...)` clause so the change is
 /// scoped to exactly the workflows this install deployed, and the `IS NOT`
 /// comparisons are NULL-safe.
-pub(super) const WORKFLOW_AUTOPILOT_SCRIPT: &str = "import sqlite3,sys\n\
-con=sqlite3.connect(sys.argv[1], timeout=5)\n\
-con.execute(\"PRAGMA busy_timeout=5000\")\n\
-ids=sys.argv[2:]\n\
-ph=\",\".join(\"?\" for _ in ids)\n\
-matched=con.execute(\"SELECT COUNT(*) FROM workflows WHERE id IN (\"+ph+\")\", ids).fetchone()[0]\n\
-cur=con.execute(\"UPDATE workflows SET mode='autopilot', enabled=1 WHERE id IN (\"+ph+\") AND (mode IS NOT 'autopilot' OR enabled IS NOT 1)\", ids)\n\
-con.commit()\n\
-print(matched, cur.rowcount)\n\
-for row in con.execute(\"SELECT id FROM workflows WHERE id IN (\"+ph+\") AND mode IS 'autopilot' AND enabled IS 1 ORDER BY id\", ids):\n\
-\x20   print(row[0])\n";
+///
+/// The program lives in `scripts/workflow_autopilot.py` and is embedded at
+/// build time via [`include_str!`] so its real four-space indentation survives
+/// verbatim; the repository pins `*.py` to LF endings so the embedded bytes are
+/// stable across platforms.
+pub(super) const WORKFLOW_AUTOPILOT_SCRIPT: &str = include_str!("scripts/workflow_autopilot.py");
 
 /// Parse the output of [`WORKFLOW_AUTOPILOT_SCRIPT`].
 ///

@@ -77,6 +77,16 @@ fn default_definitions() -> HashMap<String, ProfileDef> {
 /// Returns an error if the profile is not found or the profiles.toml file cannot be parsed.
 pub fn resolve(name: &str, conf_dir: &Path, platform: Platform) -> Result<Profile, ConfigError> {
     let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
+    resolve_with_defs(name, &defs, platform)
+}
+
+/// Resolve a profile from already-loaded definitions, applying platform
+/// auto-detection overrides.
+fn resolve_with_defs(
+    name: &str,
+    defs: &HashMap<String, ProfileDef>,
+    platform: Platform,
+) -> Result<Profile, ConfigError> {
     let mut available_names: Vec<&str> = defs.keys().map(String::as_str).collect();
     available_names.sort_unstable();
     let available = available_names.join(", ");
@@ -126,17 +136,14 @@ fn parse_env_profile(raw: Option<String>) -> Option<String> {
     raw.filter(|v| !v.is_empty())
 }
 
+/// The git config key used to persist the selected profile.
+const PROFILE_KEY: &str = "dotfiles.profile";
+
 /// Try to read the persisted profile from the repository's local git config
 /// (`dotfiles.profile`).
 #[must_use]
 pub fn read_persisted(root: &Path) -> Option<String> {
-    let repo = git2::Repository::discover(root).ok()?;
-    let config = repo.config().ok()?;
-    let local = config.open_level(git2::ConfigLevel::Local).ok()?;
-    local
-        .get_string("dotfiles.profile")
-        .ok()
-        .filter(|v| !v.is_empty())
+    crate::config::helpers::git_state::read_local(root, PROFILE_KEY)
 }
 
 /// Persist the profile name to the repository's local git config so future
@@ -147,14 +154,7 @@ pub fn read_persisted(root: &Path) -> Option<String> {
 /// Returns an error if the repository cannot be discovered or the config
 /// cannot be written.
 pub fn persist(root: &Path, name: &str) -> Result<()> {
-    let repo = git2::Repository::discover(root).context("finding git repository")?;
-    let config = repo.config().context("opening git config")?;
-    let mut local = config
-        .open_level(git2::ConfigLevel::Local)
-        .context("opening local git config")?;
-    local
-        .set_str("dotfiles.profile", name)
-        .context("persisting profile to git config")
+    crate::config::helpers::git_state::persist_local(root, PROFILE_KEY, name)
 }
 
 /// Interactively prompt the user to select a profile.
@@ -164,15 +164,20 @@ pub fn persist(root: &Path, name: &str) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if profiles cannot be loaded or user input cannot be read.
-#[allow(clippy::print_stdout, reason = "intentional user-facing output")]
 pub fn prompt_interactive(conf_dir: &Path) -> Result<String> {
     let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
+    prompt_interactive_with_defs(&defs)
+}
 
-    let mut options: Vec<(String, Option<String>)> = defs
-        .into_iter()
-        .map(|(name, def)| (name, def.description))
+/// Interactively prompt the user to select a profile from already-loaded
+/// definitions.
+#[allow(clippy::print_stdout, reason = "intentional user-facing output")]
+fn prompt_interactive_with_defs(defs: &HashMap<String, ProfileDef>) -> Result<String> {
+    let mut options: Vec<(&str, Option<&str>)> = defs
+        .iter()
+        .map(|(name, def)| (name.as_str(), def.description.as_deref()))
         .collect();
-    options.sort_by(|(a, _), (b, _)| a.cmp(b));
+    options.sort_by_key(|(a, _)| *a);
 
     if options.is_empty() {
         bail!("no compatible profiles found");
@@ -208,7 +213,7 @@ pub fn prompt_interactive(conf_dir: &Path) -> Result<String> {
 
     options
         .get(choice.saturating_sub(1))
-        .map(|(name, _)| name.clone())
+        .map(|(name, _)| (*name).to_string())
         .context("selection out of range")
 }
 
@@ -229,6 +234,7 @@ pub fn resolve_from_args(
     platform: Platform,
 ) -> Result<Profile> {
     let conf_dir = root.join("conf");
+    let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
 
     let name = if let Some(name) = cli_profile
         .map(str::to_owned)
@@ -237,7 +243,7 @@ pub fn resolve_from_args(
     {
         name
     } else {
-        let name = prompt_interactive(&conf_dir)?;
+        let name = prompt_interactive_with_defs(&defs)?;
         #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
         if let Err(e) = persist(root, &name) {
             eprintln!("warning: could not persist profile to git config: {e}");
@@ -245,7 +251,7 @@ pub fn resolve_from_args(
         name
     };
 
-    resolve(&name, &conf_dir, platform).map_err(Into::into)
+    resolve_with_defs(&name, &defs, platform).map_err(Into::into)
 }
 
 #[cfg(test)]

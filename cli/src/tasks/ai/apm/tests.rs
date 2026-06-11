@@ -368,6 +368,57 @@ fn run_warns_when_workflow_db_is_locked() {
 }
 
 #[test]
+fn run_warns_when_workflow_db_schema_drifts() {
+    // The Copilot App database has drifted from the version-1 workflows schema
+    // the embedded scripts target (e.g. the `mode` column was renamed), so
+    // sqlite raises `no such column`.  The fixup must surface this loudly while
+    // staying non-fatal -- the apm install itself still succeeded.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_home_fragment(dir.path(), "base.yml", AUTOPILOT_FIXTURE_FRAGMENT);
+    write_workflow_db(dir.path());
+    write_workflow_lock(dir.path(), &["apm--a"]);
+
+    let mut mock = MockExecutor::new();
+    let mut seq = mockall::Sequence::new();
+    mock.expect_which()
+        .with(mockall::predicate::eq("python3"))
+        .times(2)
+        .returning(|_| true);
+    // Pre-install snapshot hits the drifted schema first.  Since the error is
+    // not `no such table`, it degrades quietly to Unavailable.
+    mock.expect_run_unchecked_in()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_, _, _| {
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: "no such column: mode".to_string(),
+                success: false,
+                code: Some(1),
+            })
+        });
+    expect_apm_install(&mut mock, &mut seq);
+    mock.expect_run_unchecked_in()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_, _, _| {
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: "no such column: mode".to_string(),
+                success: false,
+                code: Some(1),
+            })
+        });
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Ok),
+        "expected Ok despite schema drift (non-fatal), got {result:?}"
+    );
+}
+
+#[test]
 fn run_skips_autopilot_fixup_when_lock_lists_no_workflows() {
     // The common case: the deployed deps ship only agents/skills, so the
     // lockfile records no `copilot-app-db://workflows/` entries.  The fixup

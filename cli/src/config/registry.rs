@@ -53,6 +53,16 @@ struct RegistrySection {
 /// - TOML string starting with `0x` (parseable as hex) → `REG_DWORD`.
 /// - Any other TOML string → `REG_SZ` (use explicit integers for `DWORD`).
 ///
+/// # Categories
+///
+/// Unlike symlinks, packages, and units, registry entries are **not**
+/// category-filtered: every entry in `registry.toml` is returned regardless of
+/// the active profile or platform categories. This is intentional — the file is
+/// only read on Windows (its sole consumer is the Windows registry task), so a
+/// platform tag would be redundant, and there is currently no need to scope
+/// individual entries by profile. Callers receive the full set and apply it
+/// wholesale.
+///
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
@@ -122,7 +132,7 @@ pub fn validate(
         let has_valid_hive = VALID_HIVE_PREFIXES
             .iter()
             .any(|prefix| upper.starts_with(prefix));
-        vec![
+        [
             check(e.key_path.trim().is_empty(), "registry key path is empty"),
             check(e.value_name.trim().is_empty(), "registry value name is empty"),
             check(

@@ -62,7 +62,7 @@ pub fn validate(
         let has_valid_ext = VALID_UNIT_EXTENSIONS
             .iter()
             .any(|ext| u.name.ends_with(ext));
-        vec![
+        [
             check(u.name.trim().is_empty(), "unit name is empty"),
             check(
                 !matches!(u.scope.as_str(), "user" | "system"),

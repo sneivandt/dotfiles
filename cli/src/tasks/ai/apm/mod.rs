@@ -150,11 +150,13 @@ impl Task for InstallApmPackages {
         let marker_path = ctx.home.join(".apm").join(".dotfiles-manifest.sha256");
         let merged = merge_fragments(&fragments)?;
         let manifest_hash = manifest_fingerprint(&merged);
-        let manifest_needs_write = merged_manifest_needs_write(&manifest_path, &merged)?;
-        let lock_missing = !lock_path
-            .try_exists()
-            .with_context(|| format!("checking APM lockfile {}", lock_path.display()))?;
-        let marker_missing_or_stale = !manifest_marker_matches(&marker_path, &manifest_hash)?;
+        let state = ApmInstallState::detect(
+            &manifest_path,
+            &lock_path,
+            &marker_path,
+            &merged,
+            &manifest_hash,
+        )?;
 
         if ctx.dry_run {
             ctx.log
@@ -163,7 +165,7 @@ impl Task for InstallApmPackages {
                 "re-assert apm-managed Copilot App workflows to autopilot + enabled in \
                  ~/.copilot/data.db after a successful install",
             );
-            if manifest_needs_write {
+            if state.manifest_needs_write {
                 ctx.log.dry_run(&format!(
                     "merge {} APM manifest fragment(s) into {}",
                     fragments.len(),
@@ -172,12 +174,12 @@ impl Task for InstallApmPackages {
                 ctx.log.dry_run(&format!(
                     "run apm install -g --target {APM_TARGETS} to sync changed manifest"
                 ));
-            } else if lock_missing {
+            } else if state.lock_missing {
                 ctx.log.dry_run(&format!(
                     "run apm install -g --target {APM_TARGETS} because {} is missing",
                     lock_path.display()
                 ));
-            } else if marker_missing_or_stale {
+            } else if state.marker_missing_or_stale {
                 ctx.log.dry_run(&format!(
                     "run apm install -g --target {APM_TARGETS} because the current manifest has \
                      not been installed successfully yet"
@@ -193,8 +195,8 @@ impl Task for InstallApmPackages {
         let pre_workflows = snapshot_desired_apm_workflow_ids(ctx);
         ensure_copilot_app_enabled(ctx);
 
-        let manifest_changed = manifest_needs_write || lock_missing || marker_missing_or_stale;
-        if manifest_needs_write {
+        let manifest_changed = state.manifest_changed();
+        if state.manifest_needs_write {
             write_merged_manifest(&manifest_path, &merged)?;
         }
 
@@ -220,6 +222,54 @@ impl Task for InstallApmPackages {
         // so this task never moves a locked ref forward.
         apply_workflow_autopilot_fixup(ctx, &pre_workflows);
         Ok(TaskResult::Ok)
+    }
+}
+
+/// Filesystem-derived signals that decide whether `apm install` must run and
+/// what to report.
+///
+/// Computed once per [`InstallApmPackages::run`] from the merged manifest and
+/// the on-disk lockfile/marker so the dry-run preview and the real execution
+/// path branch on identical state.
+#[derive(Debug, Clone, Copy)]
+struct ApmInstallState {
+    /// The merged manifest differs from the on-disk `~/.apm/apm.yml`.
+    manifest_needs_write: bool,
+    /// The APM lockfile is absent (a fresh machine or wiped state).
+    lock_missing: bool,
+    /// The success marker is missing or does not match the current manifest.
+    marker_missing_or_stale: bool,
+}
+
+impl ApmInstallState {
+    /// Detect install state from the merged manifest and on-disk artifacts.
+    ///
+    /// # Errors
+    ///
+    /// Propagates IO errors from comparing the merged manifest against the
+    /// target, probing the lockfile, or reading the success marker.
+    fn detect(
+        manifest_path: &Path,
+        lock_path: &Path,
+        marker_path: &Path,
+        merged: &str,
+        manifest_hash: &str,
+    ) -> Result<Self> {
+        let manifest_needs_write = merged_manifest_needs_write(manifest_path, merged)?;
+        let lock_missing = !lock_path
+            .try_exists()
+            .with_context(|| format!("checking APM lockfile {}", lock_path.display()))?;
+        let marker_missing_or_stale = !manifest_marker_matches(marker_path, manifest_hash)?;
+        Ok(Self {
+            manifest_needs_write,
+            lock_missing,
+            marker_missing_or_stale,
+        })
+    }
+
+    /// Whether `apm install` will materially change locked or installed state.
+    const fn manifest_changed(self) -> bool {
+        self.manifest_needs_write || self.lock_missing || self.marker_missing_or_stale
     }
 }
 

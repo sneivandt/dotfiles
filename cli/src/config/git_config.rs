@@ -26,7 +26,7 @@ pub fn validate(settings: &[GitSetting]) -> Vec<ValidationWarning> {
             settings,
             |setting| &setting.key,
             |setting| {
-                vec![
+                [
                     check(setting.key.trim().is_empty(), "config key is empty"),
                     check(setting.value.trim().is_empty(), "config value is empty"),
                     check(

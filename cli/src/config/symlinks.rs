@@ -17,7 +17,13 @@ pub struct Symlink {
     pub target: Option<String>,
     /// Root of the repository that owns this symlink entry.
     /// Used to resolve `source` against `<origin>/symlinks/`.
-    /// Set after loading — `None` until `set_origin` is called.
+    ///
+    /// `None` only transiently while a section is being loaded; [`set_origin`]
+    /// runs as the post-load step in [`Config::load`](super::Config::load) and
+    /// stamps every entry with its originating root (main or overlay), so the
+    /// field is always `Some` by the time a [`Config`](super::Config) is
+    /// returned. [`resolve_symlinks_dir`] falls back to a supplied root for the
+    /// remaining `None` window.
     pub origin: Option<PathBuf>,
 }
 
@@ -50,8 +56,13 @@ config_section! {
     },
 }
 
-/// Set the `origin` field on every symlink entry to the given root.
-pub fn set_origin(symlinks: &mut [Symlink], root: &Path) {
+/// Stamp the originating repository root onto every symlink entry.
+///
+/// This is the post-load provenance step invoked by
+/// [`Config::load`](super::Config::load) once a section has been parsed: main
+/// entries get the repo root and overlay entries get the overlay root, so
+/// [`resolve_symlinks_dir`] can locate each entry's `symlinks/` directory.
+pub(crate) fn set_origin(symlinks: &mut [Symlink], root: &Path) {
     for s in symlinks {
         s.origin = Some(root.to_path_buf());
     }
@@ -230,6 +241,16 @@ fn path_segments(path: &str) -> Vec<String> {
         .collect()
 }
 
+/// Reports whether `path` is a real directory, without following symlinks.
+///
+/// Glob expansion recurses into directories via [`std::fs::read_dir`]. Using
+/// [`Path::is_dir`] would follow a symlink-to-directory and recurse outside the
+/// managed `symlinks/` tree. `symlink_metadata` inspects the entry itself, so a
+/// symlink is never treated as a directory to descend into.
+fn is_real_dir(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
+}
+
 fn expand_segments(
     base: &Path,
     remaining: &[String],
@@ -250,7 +271,7 @@ fn expand_segments(
 
     if segment == "*" {
         let current = base.join(relative);
-        if !current.is_dir() {
+        if !is_real_dir(&current) {
             return Ok(Vec::new());
         }
         let mut entries: Vec<_> = std::fs::read_dir(&current)

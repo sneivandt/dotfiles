@@ -5,6 +5,7 @@ use super::*;
 use crate::exec::{ExecResult, MockExecutor};
 use crate::platform::{Os, Platform};
 use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 fn ok_result(stdout: &str) -> ExecResult {

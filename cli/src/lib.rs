@@ -1,7 +1,6 @@
 #![allow(
     dead_code,
     unreachable_pub,
-    unused_imports,
     reason = "internal modules are hidden behind the binary entry point and internal-api facade"
 )]
 

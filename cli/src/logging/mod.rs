@@ -8,12 +8,14 @@ mod types;
 mod utils;
 
 pub use buffered::BufferedLog;
-pub use diagnostic::{
-    DiagEvent, DiagnosticLog, diag_task_context, diag_thread_name, set_diag_thread_name,
-};
+pub use diagnostic::{DiagEvent, diag_task_context, diag_thread_name, set_diag_thread_name};
 pub use logger::Logger;
 pub use subscriber::init_subscriber;
-pub use types::{Log, Output, TaskEntry, TaskRecorder, TaskStatus};
+pub use types::{Log, Output, TaskStatus};
+// Only the in-crate unit tests reach `TaskRecorder` from outside the `logging`
+// module; production code uses the `super::types` path directly.
+#[cfg(test)]
+pub use types::TaskRecorder;
 pub(crate) use utils::dotfiles_cache_dir_readonly;
 
 /// Guard that keeps a test tracing dispatcher installed while holding the

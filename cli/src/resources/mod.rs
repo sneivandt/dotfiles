@@ -221,14 +221,6 @@ impl<R: IntrinsicState> ResourceStateProvider<R> for IntrinsicStateProvider {
     }
 }
 
-/// Closure-backed state provider for cached or bulk state checks.
-#[derive(Debug, Clone)]
-pub struct CachedStateProvider<Cache, Load, State> {
-    load: Load,
-    state: State,
-    _cache: std::marker::PhantomData<fn() -> Cache>,
-}
-
 /// State provider backed by an already-loaded cache.
 #[derive(Debug, Clone)]
 pub struct PreloadedStateProvider<Cache, State> {
@@ -290,36 +282,6 @@ where
 
     fn current_state(&self, resource: &R, _cache: &Self::Cache) -> Result<ResourceState> {
         (self.state)(resource, self.cache)
-    }
-}
-
-impl<Cache, Load, State> CachedStateProvider<Cache, Load, State> {
-    /// Create a state provider from cache-loading and state-mapping closures.
-    #[must_use]
-    pub const fn new(load: Load, state: State) -> Self {
-        Self {
-            load,
-            state,
-            _cache: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<R, Cache, Load, State> ResourceStateProvider<R> for CachedStateProvider<Cache, Load, State>
-where
-    R: Resource,
-    Cache: Sync,
-    Load: for<'a> Fn(&'a [R]) -> Result<Cache> + Sync,
-    State: for<'a, 'b> Fn(&'a R, &'b Cache) -> Result<ResourceState> + Sync,
-{
-    type Cache = Cache;
-
-    fn load(&self, resources: &[R]) -> Result<Self::Cache> {
-        (self.load)(resources)
-    }
-
-    fn current_state(&self, resource: &R, cache: &Self::Cache) -> Result<ResourceState> {
-        (self.state)(resource, cache)
     }
 }
 

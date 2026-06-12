@@ -80,6 +80,7 @@ pub use types::{Domain, ExecutionPolicy, TaskId, TaskPhase};
 // Re-export engine types so downstream `use super::` and `use crate::tasks::`
 // continue to work unchanged.
 pub use crate::engine::Context;
+#[cfg(any(feature = "internal-api", doctest))]
 pub use crate::engine::ContextOpts;
 pub(crate) use crate::engine::graph::has_cycle;
 pub use crate::engine::update_signal::UpdateSignal;
@@ -385,16 +386,6 @@ pub mod test_helpers {
             )
             .with_ci(self.is_ci)
         }
-    }
-
-    /// Build a [`Context`] with the specified OS/arch and default [`MockExecutor`].
-    #[must_use]
-    pub fn make_platform_context(
-        config: Config,
-        os: crate::platform::Os,
-        is_arch: bool,
-    ) -> Context {
-        ContextBuilder::new(config).os(os).arch(is_arch).build()
     }
 
     /// Build a [`Context`] with the specified OS/arch and a [`MockExecutor`]

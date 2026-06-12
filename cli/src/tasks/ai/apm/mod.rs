@@ -47,10 +47,7 @@
 //! See [`tolerable_workflow_encode_failures`].
 
 use anyhow::{Context as _, Result};
-use sha2::{Digest as _, Sha256};
-use std::collections::HashSet;
-use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_deps};
 
@@ -59,9 +56,7 @@ mod fragments;
 mod manifest;
 mod outdated;
 
-use autopilot::{
-    DesiredApmWorkflows, apply_workflow_autopilot_fixup, snapshot_desired_apm_workflow_ids,
-};
+use autopilot::{apply_workflow_autopilot_fixup, snapshot_desired_apm_workflow_ids};
 use fragments::{discover_fragment_files, discover_yaml_files, merge_fragments};
 use manifest::{
     describe_dependencies, manifest_fingerprint, manifest_marker_matches,

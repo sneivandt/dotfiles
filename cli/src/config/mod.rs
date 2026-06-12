@@ -1,7 +1,9 @@
 //! Configuration loading and validation for all TOML config files.
 pub mod category_matcher {
     //! Re-export of [`super::helpers::category_matcher`].
-    pub use super::helpers::category_matcher::{Category, matches};
+    pub use super::helpers::category_matcher::Category;
+    #[cfg(any(feature = "internal-api", doctest))]
+    pub use super::helpers::category_matcher::matches;
 }
 pub(crate) mod apm;
 pub mod chmod;

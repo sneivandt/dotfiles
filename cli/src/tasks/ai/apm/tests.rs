@@ -521,6 +521,10 @@ fn update_advances_dependencies_when_outdated_reports_stale_lock() {
                 ]
             );
             assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
+            // Simulate a real ref advance by rewriting the lockfile; the task
+            // detects change by comparing the lockfile before and after.
+            std::fs::write(dir.join(".apm").join("apm.lock.yaml"), "advanced\n")
+                .expect("rewrite lock");
             Ok(ok_result("updated\n"))
         });
 
@@ -569,7 +573,9 @@ fn update_stays_quiet_when_deps_update_reports_no_changes() {
                     "copilot,vscode,copilot-app"
                 ]
             );
-            Ok(ok_result("[*] All packages already at latest refs.\n"))
+            // The mock leaves the lockfile untouched, so the before/after
+            // comparison reports no advance even though `apm update` re-ran.
+            Ok(ok_result("  [+] github.com/example/plugin (cached)\n"))
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -716,7 +722,7 @@ fn update_re_arms_apm_workflows_even_when_deps_update_reports_no_changes() {
             );
             Ok(ok_result("apm--a\n"))
         });
-    // apm deps update reports no advanced refs (Unchanged outcome).
+    // apm deps update leaves the lockfile untouched (Unchanged outcome).
     mock.expect_run_in_with_env()
         .once()
         .in_sequence(&mut seq)
@@ -731,7 +737,7 @@ fn update_re_arms_apm_workflows_even_when_deps_update_reports_no_changes() {
                     "copilot,vscode,copilot-app"
                 ]
             );
-            Ok(ok_result("[*] All packages already at latest refs.\n"))
+            Ok(ok_result("  [+] github.com/example/plugin (cached)\n"))
         });
     // The fixup still runs; with the workflow already desired the delta is
     // net-zero, so it stays quiet but must not be skipped.

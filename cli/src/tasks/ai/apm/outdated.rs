@@ -1,6 +1,6 @@
 //! Parsing of APM `outdated` / `update` command output into typed decisions.
 
-use super::{APM_UP_TO_DATE_MARKER, APM_UPDATE_NO_CHANGES_MARKER};
+use super::APM_UP_TO_DATE_MARKER;
 
 /// Result of checking the lockfile for stale dependencies.
 pub(super) enum ApmOutdatedCheck {
@@ -26,19 +26,6 @@ pub(super) fn outdated_output_has_updates(stdout: &str, stderr: &str) -> bool {
     !output.contains(APM_UP_TO_DATE_MARKER)
 }
 
-/// Return whether `apm deps update` actually advanced any locked ref.
-///
-/// When every dependency is already current APM prints
-/// `[*] All packages already at latest refs.`, so the absence of that marker
-/// means at least one ref moved.  Dependencies pinned to git branch or commit
-/// refs report an `unknown` status from `apm outdated`, which forces an update
-/// attempt on every run; gating the change line on this marker keeps the
-/// console quiet unless an update truly happened.
-pub(super) fn update_output_made_changes(stdout: &str, stderr: &str) -> bool {
-    let output = format!("{stdout}\n{stderr}").to_lowercase();
-    !output.contains(APM_UPDATE_NO_CHANGES_MARKER)
-}
-
 #[cfg(test)]
 #[allow(
     clippy::expect_used,
@@ -51,14 +38,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn update_output_made_changes_detects_no_change_marker() {
+    fn outdated_output_has_updates_detects_up_to_date_marker() {
         assert!(
-            !update_output_made_changes("[*] All packages already at latest refs.\n", ""),
-            "the no-change marker must suppress the update message"
+            !outdated_output_has_updates("[*] All dependencies are up-to-date.\n", ""),
+            "the up-to-date marker must report no stale dependencies"
         );
         assert!(
-            update_output_made_changes("[*] Updated 2 APM dependencies in 0.8s.\n", ""),
-            "a real update must report a change"
+            outdated_output_has_updates("github/foo  1.0.0  2.0.0  major\n", ""),
+            "output without the up-to-date marker must report stale dependencies"
         );
     }
 }

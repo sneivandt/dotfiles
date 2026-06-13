@@ -62,9 +62,7 @@ use manifest::{
     describe_dependencies, manifest_fingerprint, manifest_marker_matches,
     merged_manifest_needs_write, write_manifest_marker, write_merged_manifest,
 };
-use outdated::{
-    ApmOutdatedCheck, ApmUpdateOutcome, outdated_output_has_updates, update_output_made_changes,
-};
+use outdated::{ApmOutdatedCheck, ApmUpdateOutcome, outdated_output_has_updates};
 
 /// Header written at the top of the generated `~/.apm/apm.yml`.  The contents
 /// are not meaningful to APM itself beyond providing a valid manifest, but
@@ -78,9 +76,6 @@ const APM_NONINTERACTIVE_ENV: &[(&str, &str)] = &[
     ("GCM_GUI_PROMPT", "false"),
 ];
 const APM_UP_TO_DATE_MARKER: &str = "all dependencies are up-to-date";
-/// Marker `apm deps update` prints when no locked ref advanced.  Its absence
-/// means at least one dependency was actually refreshed.
-const APM_UPDATE_NO_CHANGES_MARKER: &str = "all packages already at latest refs";
 /// Per-package failure record emitted by the experimental `copilot-app` target
 /// when it refuses to lockfile-encode a deployed primitive whose id is outside
 /// apm's `apm--<owner>--<pkg>--<prompt>` workflow namespace.
@@ -563,8 +558,18 @@ fn apm_dependencies_are_outdated(ctx: &Context) -> Result<ApmOutdatedCheck> {
 }
 
 /// Refresh locked user-scope dependencies to the latest matching refs.
+///
+/// Detects whether anything actually advanced by snapshotting the APM lockfile
+/// (`~/.apm/apm.lock.yaml`) before and after the run rather than parsing console
+/// output.  APM emits no stable "no changes" marker for dependencies pinned to
+/// git branch/commit refs — `apm outdated` reports them as `unknown`, so APM
+/// re-integrates them on every run even when no ref moves.  The lockfile only
+/// changes when a pinned ref actually advances, making it the authoritative
+/// change signal.
 fn run_apm_update(ctx: &Context) -> Result<ApmUpdateOutcome> {
     let cwd = ctx.home.clone();
+    let lock_path = ctx.home.join(".apm").join("apm.lock.yaml");
+    let lock_before = read_lock_snapshot(&lock_path);
     ctx.debug_fmt(|| {
         format!(
             "running `apm deps update -g --target {APM_TARGETS}` in {} (interactive credential \
@@ -580,10 +585,11 @@ fn run_apm_update(ctx: &Context) -> Result<ApmUpdateOutcome> {
     ) {
         Ok(result) => {
             report_apm_output(ctx, &result.stdout, &result.stderr);
-            if update_output_made_changes(&result.stdout, &result.stderr) {
-                Ok(ApmUpdateOutcome::Changed)
-            } else {
+            let lock_after = read_lock_snapshot(&lock_path);
+            if lock_before == lock_after {
                 Ok(ApmUpdateOutcome::Unchanged)
+            } else {
+                Ok(ApmUpdateOutcome::Changed)
             }
         }
         Err(err) => {
@@ -600,6 +606,15 @@ fn run_apm_update(ctx: &Context) -> Result<ApmUpdateOutcome> {
             }
         }
     }
+}
+
+/// Read the APM lockfile for before/after change detection.
+///
+/// A missing lockfile (or any read error) degrades to `None` so update
+/// detection never fails the task; an unreadable lockfile that hashes the same
+/// way both times simply reports no change.
+fn read_lock_snapshot(path: &Path) -> Option<Vec<u8>> {
+    std::fs::read(path).ok()
 }
 
 /// Relay raw APM command output to the diagnostic log file and the verbose

@@ -540,7 +540,14 @@ fn resolve_profile(
 ) -> Result<profiles::Profile> {
     log.stage("Resolving profile");
     let profile = profiles::resolve_from_args(global.profile.as_deref(), root, platform)?;
-    log.always(&format!("  profile: {}", profile.name));
+    let mut platform_label = platform.description().to_string();
+    if platform.is_wsl() {
+        platform_label.push_str(" \u{00b7} WSL");
+    }
+    log.always(&format!(
+        "\x1b[2mprofile\x1b[0m  {} \x1b[2m\u{00b7} {platform_label}\x1b[0m",
+        profile.name
+    ));
     Ok(profile)
 }
 
@@ -553,7 +560,7 @@ fn resolve_overlay(
 ) -> Option<std::path::PathBuf> {
     let overlay = crate::config::overlay::resolve_from_args(global.overlay.as_deref(), root);
     if let Some(ref path) = overlay {
-        log.always(&format!("  overlay: {}", path.display()));
+        log.always(&format!("\x1b[2moverlay\x1b[0m  {}", path.display()));
     }
     overlay
 }

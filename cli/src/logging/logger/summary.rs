@@ -76,10 +76,17 @@ impl Logger {
         }
 
         self.always("");
-        let active = ok
-            .saturating_add(skipped)
-            .saturating_add(dry_run)
-            .saturating_add(failed);
+
+        // Overall status icon reflects the worst outcome: failures dominate,
+        // then dry-run previews, otherwise a clean success.
+        let (icon, icon_color) = if failed > 0 {
+            ("\u{2717}", "\x1b[31m")
+        } else if dry_run > 0 {
+            ("~", "\x1b[35m")
+        } else {
+            ("\u{2713}", "\x1b[32m")
+        };
+
         let mut parts: Vec<String> = vec![format!("\x1b[32m{ok} ok\x1b[0m")];
         if skipped > 0 {
             parts.push(format!("\x1b[33m{skipped} skipped\x1b[0m"));
@@ -90,22 +97,20 @@ impl Logger {
         if failed > 0 {
             parts.push(format!("\x1b[31m{failed} failed\x1b[0m"));
         }
-
-        let na_suffix = if not_applicable > 0 {
-            format!(" \x1b[2m({not_applicable} not applicable)\x1b[0m")
-        } else {
-            String::new()
-        };
+        if not_applicable > 0 {
+            parts.push(format!("\x1b[2m{not_applicable} not applicable\x1b[0m"));
+        }
 
         let elapsed = self.start.elapsed();
         let elapsed_str = format_elapsed(elapsed);
 
+        let separator = " \x1b[2m\u{00b7}\x1b[0m ";
         self.always(&format!(
-            "  {active} tasks: {}{na_suffix}",
-            parts.join(", "),
+            "{icon_color}{icon}\x1b[0m {}",
+            parts.join(separator),
         ));
 
-        self.always(&format!("  \x1b[2mcompleted in {elapsed_str}\x1b[0m"));
+        self.always(&format!("\x1b[2mcompleted in {elapsed_str}\x1b[0m"));
         if let Some(path) = self.log_path() {
             Self::file_only(&format!("log: {}", path.display()));
         }

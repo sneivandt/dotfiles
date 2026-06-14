@@ -42,9 +42,11 @@ pub(crate) fn run_pipeline(
 ) -> Result<()> {
     let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     if std::env::var_os(super::REEXEC_GUARD_VAR).is_some() {
-        log.always(&format!("  updated to {version}"));
+        log.always(&format!(
+            "\x1b[1mdotfiles\x1b[0m \x1b[2m{version} \u{00b7} updated\x1b[0m"
+        ));
     } else {
-        log.always(&format!("  dotfiles {version}"));
+        log.always(&format!("\x1b[1mdotfiles\x1b[0m \x1b[2m{version}\x1b[0m"));
     }
 
     // Self-update before the task graph — if the binary is replaced, re-exec

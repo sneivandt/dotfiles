@@ -87,7 +87,6 @@
     "explorer.confirmDragAndDrop": false,
     "extensions.ignoreRecommendations": true,
     "files.associations": {
-        "*.json": "jsonc",
         "*vimrc": "vim",
         "vimrc": "vim",
         "nvimrc": "vim"

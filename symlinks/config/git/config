@@ -26,7 +26,6 @@
   prune = true
   pruneTags = true
   writeCommitGraph = true
-[transfer]
 [help]
   autocorrect = prompt
 [init]

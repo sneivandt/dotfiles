@@ -13,7 +13,7 @@ end
 if not vim.loop.fs_stat(lazypath) then
   -- Pin to a specific commit for security and reproducibility
   -- Update this commit hash periodically to get security fixes
-  local lazy_commit = "077102c5bfc578693f12377846d427f49bc50076" -- v11.14.1 (2024-11-20)
+  local lazy_commit = "85c7ff3711b730b4030d03144f6db6375044ae82" -- v11.17.5
 
   if vim.fn.executable("git") ~= 1 then
     bootstrap_error("git is required to install lazy.nvim")

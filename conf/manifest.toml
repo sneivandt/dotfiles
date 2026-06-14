@@ -24,7 +24,6 @@ paths = [
   "bashrc",
   "config/bash/",
   "config/nvim",
-  "config/pinentry/",
   "config/readline/",
   "config/shell/aliases.sh",
   "config/shell/path.sh",

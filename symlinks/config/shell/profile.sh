@@ -22,7 +22,8 @@ fi
 export GOPATH=~/src/go
 
 # locale
-export LC_ALL=en_US.UTF-8
+# Set LANG (and LANGUAGE) rather than LC_ALL; LC_ALL overrides every locale
+# category and prevents per-category customization.
 export LANG=en_US.UTF-8
 export LANGUAGE=en_US.UTF-8
 

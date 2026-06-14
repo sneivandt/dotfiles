@@ -10,8 +10,10 @@ BASHRC_LOADED=1
 export HISTFILE=~/.cache/bash/history
 export HISTSIZE=10000
 export HISTFILESIZE=10000
+export HISTCONTROL=ignoreboth
 shopt -s histappend
 shopt -s checkwinsize
+shopt -s globstar
 
 # Path
 [ -r ~/.config/shell/path.sh ] && . ~/.config/shell/path.sh

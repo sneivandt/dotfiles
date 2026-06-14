@@ -34,10 +34,11 @@ git_prompt_info()
 }
 
 # Fast sudo check
+# Uses `sudo -nv` (validate-only): unlike `sudo -n true`, it does not write a
+# "a password is required" entry to the auth log when no timestamp is cached.
 sudo_active()
 {
-  # Performance: Use sudo -n true instead of uptime
-  if sudo -n true 2>/dev/null; then
+  if sudo -nv 2>/dev/null; then
     echo -n " %F{cyan}!%f"
   fi
 }

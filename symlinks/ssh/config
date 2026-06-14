@@ -2,7 +2,6 @@ Host *
   TCPKeepAlive yes
   ServerAliveInterval 60
   ServerAliveCountMax 2
-  HashKnownHosts no
   AddKeysToAgent yes
   Compression yes
 

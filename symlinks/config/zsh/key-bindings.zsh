@@ -43,7 +43,9 @@ bindkey '^[[Z' reverse-menu-complete
 # Ctrl+r Search history
 bindkey '^R' history-incremental-search-backward
 
-# Ctrl+t Toggle "sudo " at the start of line
+# Esc-Esc Toggle "sudo " at the start of line
+# (Bound to Esc-Esc rather than ^T because fzf's key-bindings.zsh, sourced
+# later, claims ^T for its file widget.)
 sudo-command-line()
 {
   [[ -z $BUFFER ]] && zle up-history
@@ -54,7 +56,7 @@ sudo-command-line()
   fi
 }
 zle -N sudo-command-line
-bindkey '^T' sudo-command-line
+bindkey '\e\e' sudo-command-line
 
 # Search based on what you typed so far
 autoload -U up-line-or-beginning-search

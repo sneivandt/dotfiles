@@ -5,7 +5,7 @@
 [ -n "$(command -v wslpath)" ] || { echo "ERROR: Not in WSL Environment" 1>&2 && return 1; }
 [ -n "$WINHOME" ] || { echo "ERROR: WINHOME not set" 1>&2 && return 1; }
 
-for i in github vsts
+for i in github github_internal ado
 do
   if [ -d "$WINHOME"/.ssh/"$i" ] && [ "$(readlink -f "$WINHOME"/.ssh/"$i")" != "$(readlink -f "$HOME"/.ssh/"$i")" ]
   then

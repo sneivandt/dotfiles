@@ -15,7 +15,6 @@ select-word-style bash
 # History
 setopt histignorealldups
 setopt sharehistory
-setopt appendhistory
 setopt extendedglob
 setopt hist_expire_dups_first
 setopt hist_find_no_dups
@@ -117,12 +116,6 @@ for func in ~/.config/zsh/functions/*(N)
 do
   autoload -Uz "${func:t}"
 done
-
-# Clear screen on startup for urxvt
-if [[ "$TERM" == "rxvt-unicode-256color" ]]
-then
-  clear
-fi
 
 # Custom FZF Ctrl+R behavior: Execute immediately
 if zle -l fzf-history-widget

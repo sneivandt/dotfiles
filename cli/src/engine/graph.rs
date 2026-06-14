@@ -4,11 +4,34 @@ use std::collections::HashMap;
 
 use crate::tasks::{Task, TaskId};
 
-/// Detect cycles in the task dependency graph using Kahn's algorithm.
+/// Reason a task dependency graph failed validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraphError {
+    /// Two or more tasks share the same [`TaskId`], so dependencies cannot be
+    /// resolved unambiguously.
+    DuplicateId,
+    /// The dependency graph contains at least one cycle.
+    Cycle,
+}
+
+impl std::fmt::Display for GraphError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DuplicateId => f.write_str("duplicate task identifiers"),
+            Self::Cycle => f.write_str("dependency cycle"),
+        }
+    }
+}
+
+impl std::error::Error for GraphError {}
+
+/// Validate a task dependency graph using Kahn's algorithm.
 ///
-/// Returns `true` if the graph contains at least one cycle or if task
-/// identifiers are not unique.
-pub fn has_cycle(tasks: &[&dyn Task]) -> bool {
+/// # Errors
+///
+/// Returns [`GraphError::DuplicateId`] if two tasks share a [`TaskId`], or
+/// [`GraphError::Cycle`] if the graph contains at least one dependency cycle.
+pub fn validate(tasks: &[&dyn Task]) -> Result<(), GraphError> {
     let id_to_idx: HashMap<TaskId, usize> = tasks
         .iter()
         .enumerate()
@@ -16,7 +39,7 @@ pub fn has_cycle(tasks: &[&dyn Task]) -> bool {
         .collect();
 
     if id_to_idx.len() != tasks.len() {
-        return true;
+        return Err(GraphError::DuplicateId);
     }
 
     let mut in_degree: Vec<usize> = tasks
@@ -61,7 +84,11 @@ pub fn has_cycle(tasks: &[&dyn Task]) -> bool {
         }
     }
 
-    processed != tasks.len()
+    if processed == tasks.len() {
+        Ok(())
+    } else {
+        Err(GraphError::Cycle)
+    }
 }
 
 #[cfg(test)]
@@ -157,37 +184,37 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // has_cycle
+    // validate
     // -----------------------------------------------------------------------
 
     #[test]
     fn no_cycle_independent_tasks() {
         let tasks: Vec<&dyn Task> = vec![&TaskA, &TaskB, &TaskC];
-        assert!(!has_cycle(&tasks));
+        assert_eq!(validate(&tasks), Ok(()));
     }
 
     #[test]
     fn no_cycle_linear_chain() {
         let tasks: Vec<&dyn Task> = vec![&DepA, &DepB, &DepC];
-        assert!(!has_cycle(&tasks));
+        assert_eq!(validate(&tasks), Ok(()));
     }
 
     #[test]
     fn no_cycle_diamond() {
         let tasks: Vec<&dyn Task> = vec![&DiaA, &DiaB, &DiaC, &DiaD];
-        assert!(!has_cycle(&tasks));
+        assert_eq!(validate(&tasks), Ok(()));
     }
 
     #[test]
     fn cycle_detected() {
         let tasks: Vec<&dyn Task> = vec![&CycA, &CycB];
-        assert!(has_cycle(&tasks));
+        assert_eq!(validate(&tasks), Err(GraphError::Cycle));
     }
 
     #[test]
     fn missing_dep_not_a_cycle() {
         let tasks: Vec<&dyn Task> = vec![&MissingDepTask, &TaskA];
-        assert!(!has_cycle(&tasks));
+        assert_eq!(validate(&tasks), Ok(()));
     }
 
     struct DuplicateIdA;
@@ -233,7 +260,7 @@ mod tests {
     #[test]
     fn duplicate_task_ids_are_treated_as_invalid() {
         let tasks: Vec<&dyn Task> = vec![&DuplicateIdA, &DuplicateIdB];
-        assert!(has_cycle(&tasks));
+        assert_eq!(validate(&tasks), Err(GraphError::DuplicateId));
     }
 
     // -----------------------------------------------------------------------
@@ -263,9 +290,10 @@ mod tests {
     fn install_tasks_have_no_cycles() {
         let tasks = crate::tasks::all_install_tasks();
         let task_refs: Vec<&dyn Task> = tasks.iter().map(Box::as_ref).collect();
-        assert!(
-            !has_cycle(&task_refs),
-            "install task graph should not contain cycles"
+        assert_eq!(
+            validate(&task_refs),
+            Ok(()),
+            "install task graph should be a valid DAG"
         );
     }
 }

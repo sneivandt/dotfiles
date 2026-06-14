@@ -183,7 +183,7 @@ pub mod testing {
         pub use crate::engine::{CancellationToken, Context, ContextOpts};
 
         pub mod graph {
-            pub use crate::engine::graph::has_cycle;
+            pub use crate::engine::graph::{GraphError, validate};
         }
     }
 

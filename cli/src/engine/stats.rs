@@ -124,6 +124,17 @@ impl TaskStats {
         }
     }
 
+    /// Merge another stats delta into this one, saturating each counter.
+    ///
+    /// Prefer this over `+=` at call sites: it performs the same saturating
+    /// addition as [`AddAssign`](std::ops::AddAssign) but as a plain method
+    /// call, so it does not trip the `arithmetic_side_effects` lint.
+    pub const fn merge(&mut self, other: &Self) {
+        self.changed = self.changed.saturating_add(other.changed);
+        self.already_ok = self.already_ok.saturating_add(other.already_ok);
+        self.skipped = self.skipped.saturating_add(other.skipped);
+    }
+
     /// Log the summary and return the appropriate `TaskResult`.
     ///
     /// Only prints to the console when something actually changed (or was
@@ -145,9 +156,7 @@ impl TaskStats {
 
 impl std::ops::AddAssign for TaskStats {
     fn add_assign(&mut self, other: Self) {
-        self.changed = self.changed.saturating_add(other.changed);
-        self.already_ok = self.already_ok.saturating_add(other.already_ok);
-        self.skipped = self.skipped.saturating_add(other.skipped);
+        self.merge(&other);
     }
 }
 

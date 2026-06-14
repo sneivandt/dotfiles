@@ -77,23 +77,11 @@ fn collect_parallel_stats<T: Send>(
             if cancelled() {
                 return Ok(acc);
             }
-            #[allow(
-                clippy::arithmetic_side_effects,
-                reason = "TaskStats::add_assign saturates internally"
-            )]
-            {
-                acc += work(item)?;
-            }
+            acc.merge(&work(item)?);
             Ok(acc)
         })
         .try_reduce(TaskStats::default, |mut a, b| {
-            #[allow(
-                clippy::arithmetic_side_effects,
-                reason = "TaskStats::add_assign saturates internally"
-            )]
-            {
-                a += b;
-            }
+            a.merge(&b);
             Ok(a)
         })
 }

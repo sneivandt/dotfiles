@@ -82,7 +82,7 @@ pub use types::{Domain, ExecutionPolicy, TaskId, TaskPhase};
 pub use crate::engine::Context;
 #[cfg(any(feature = "internal-api", doctest))]
 pub use crate::engine::ContextOpts;
-pub(crate) use crate::engine::graph::has_cycle;
+pub(crate) use crate::engine::graph::validate;
 pub use crate::engine::update_signal::UpdateSignal;
 #[allow(unused_imports, reason = "re-exported for doc-tests")]
 // TaskStats is used by doc-tests via the lib crate

@@ -1,37 +1,35 @@
 //! Process-wide cancellation flag for graceful shutdown.
 //!
-//! `CancellationToken` wraps an `Arc<AtomicBool>` and exposes only the two
-//! operations needed for cooperative cancellation: [`CancellationToken::cancel`]
-//! (called by the signal handler) and [`CancellationToken::is_cancelled`]
-//! (polled by processing loops before each work item).
+//! `CancellationToken` wraps an [`AtomicFlag`](super::atomic_flag::AtomicFlag)
+//! and exposes only the two operations needed for cooperative cancellation:
+//! [`CancellationToken::cancel`] (called by the signal handler) and
+//! [`CancellationToken::is_cancelled`] (polled by processing loops before each
+//! work item).
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use super::atomic_flag::AtomicFlag;
 
 /// A lightweight, cheaply-clonable flag that records whether the process
 /// has been asked to shut down (e.g. via Ctrl-C).
 ///
 /// Create one instance with [`CancellationToken::new`] and clone it for the
 /// signal handler and the execution [`Context`](super::Context).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CancellationToken {
-    cancelled: Arc<AtomicBool>,
+    flag: AtomicFlag,
 }
 
 impl CancellationToken {
     /// Create a new token in the "not cancelled" state.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            cancelled: Arc::new(AtomicBool::new(false)),
-        }
+        Self::default()
     }
 
     /// Signal cancellation.
     ///
     /// Called from the `ctrlc` handler when the user presses Ctrl-C.
     pub fn cancel(&self) {
-        self.cancelled.store(true, Ordering::Release);
+        self.flag.set();
     }
 
     /// Returns `true` if [`Self::cancel`] has been called.
@@ -40,13 +38,7 @@ impl CancellationToken {
     /// new work items.
     #[must_use]
     pub fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Acquire)
-    }
-}
-
-impl Default for CancellationToken {
-    fn default() -> Self {
-        Self::new()
+        self.flag.get()
     }
 }
 

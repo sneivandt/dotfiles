@@ -779,8 +779,8 @@ pub fn run_tasks_to_completion<'a>(
         // keeps the Update phase's `update:` line below its check mark, the
         // same way the Provision phase renders the `install:` line.
         if ctx.parallel && !phase_tasks.is_empty() {
-            if tasks::has_cycle(&phase_tasks) {
-                let message = format!("dependency cycle detected in {phase} phase task graph");
+            if let Err(err) = tasks::validate(&phase_tasks) {
+                let message = format!("{err} detected in {phase} phase task graph");
                 log.error(&message);
                 anyhow::bail!(message);
             }

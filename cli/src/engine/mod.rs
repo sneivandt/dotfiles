@@ -15,6 +15,8 @@
 
 /// Single-resource processing: check state, apply or remove one resource.
 pub mod apply;
+/// Shared boolean flag backing cancellation and update signalling.
+mod atomic_flag;
 /// Process-wide cancellation flag for graceful shutdown.
 pub mod cancellation;
 /// Shared execution context for tasks.

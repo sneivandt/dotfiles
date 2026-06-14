@@ -167,13 +167,14 @@ fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
 /// The uninstall task dependency graph must not contain any cycles.
 #[test]
 fn uninstall_tasks_form_acyclic_dependency_graph() {
-    use dotfiles_cli::engine::graph::has_cycle;
+    use dotfiles_cli::engine::graph::validate;
 
     let tasks = tasks::all_uninstall_tasks();
     let task_refs: Vec<&dyn tasks::Task> = tasks.iter().map(Box::as_ref).collect();
-    assert!(
-        !has_cycle(&task_refs),
-        "uninstall task dependency graph contains a cycle"
+    assert_eq!(
+        validate(&task_refs),
+        Ok(()),
+        "uninstall task dependency graph is not a valid DAG"
     );
 }
 

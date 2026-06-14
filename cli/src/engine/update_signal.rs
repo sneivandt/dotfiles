@@ -1,32 +1,30 @@
 //! Typed signal shared between [`crate::tasks::repository::update::UpdateRepository`] and
 //! [`crate::tasks::repository::reload_config::ReloadConfig`].
 //!
-//! `UpdateSignal` wraps an `Arc<AtomicBool>` but exposes only the two
-//! operations that matter for this use-case: [`UpdateSignal::mark_updated`](crate::engine::update_signal::UpdateSignal::mark_updated)
+//! `UpdateSignal` wraps an [`AtomicFlag`](super::atomic_flag::AtomicFlag) but
+//! exposes only the two operations that matter for this use-case:
+//! [`UpdateSignal::mark_updated`](crate::engine::update_signal::UpdateSignal::mark_updated)
 //! (called by `UpdateRepository`) and [`UpdateSignal::was_updated`](crate::engine::update_signal::UpdateSignal::was_updated) (called
 //! by `ReloadConfig`).  This makes the cross-task coupling explicit and
 //! self-documenting while remaining zero-cost at runtime.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use super::atomic_flag::AtomicFlag;
 
 /// A lightweight, cheaply-clonable flag that records whether the dotfiles
 /// repository was updated during the current run.
 ///
 /// Create one instance with [`UpdateSignal::new`] and clone it for each task
 /// that needs access to the same flag.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct UpdateSignal {
-    updated: Arc<AtomicBool>,
+    flag: AtomicFlag,
 }
 
 impl UpdateSignal {
     /// Create a new signal in the "not updated" state.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            updated: Arc::new(AtomicBool::new(false)),
-        }
+        Self::default()
     }
 
     /// Record that the repository was updated.
@@ -34,7 +32,7 @@ impl UpdateSignal {
     /// Called by [`crate::tasks::repository::update::UpdateRepository`] after a successful
     /// `git pull` that fetched new commits.
     pub fn mark_updated(&self) {
-        self.updated.store(true, Ordering::Release);
+        self.flag.set();
     }
 
     /// Returns `true` if [`Self::mark_updated`] has been called.
@@ -43,13 +41,7 @@ impl UpdateSignal {
     /// a config reload is necessary.
     #[must_use]
     pub fn was_updated(&self) -> bool {
-        self.updated.load(Ordering::Acquire)
-    }
-}
-
-impl Default for UpdateSignal {
-    fn default() -> Self {
-        Self::new()
+        self.flag.get()
     }
 }
 

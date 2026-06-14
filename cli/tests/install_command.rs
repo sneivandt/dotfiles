@@ -319,13 +319,14 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
 /// scheduler unit tests.
 #[test]
 fn install_tasks_form_acyclic_dependency_graph() {
-    use dotfiles_cli::engine::graph::has_cycle;
+    use dotfiles_cli::engine::graph::validate;
 
     let tasks = tasks::all_install_tasks();
     let task_refs: Vec<&dyn tasks::Task> = tasks.iter().map(Box::as_ref).collect();
-    assert!(
-        !has_cycle(&task_refs),
-        "install task dependency graph contains a cycle"
+    assert_eq!(
+        validate(&task_refs),
+        Ok(()),
+        "install task dependency graph is not a valid DAG"
     );
 }
 

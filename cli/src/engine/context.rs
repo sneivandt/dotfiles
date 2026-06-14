@@ -113,23 +113,8 @@ impl std::fmt::Debug for Context {
 }
 
 impl Context {
-    fn cloned(&self) -> Self {
-        Self {
-            config: self.config.clone(),
-            platform: self.platform,
-            log: self.log.clone(),
-            dry_run: self.dry_run,
-            home: self.home.clone(),
-            executor: self.executor.clone(),
-            parallel: self.parallel,
-            advance_versions: self.advance_versions,
-            is_ci: self.is_ci,
-            cancelled: self.cancelled.clone(),
-        }
-    }
-
     fn clone_with(&self, update: impl FnOnce(&mut Self)) -> Self {
-        let mut cloned = self.cloned();
+        let mut cloned = self.clone();
         update(&mut cloned);
         cloned
     }

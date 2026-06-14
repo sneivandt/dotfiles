@@ -43,13 +43,13 @@ pub(super) fn process_single<R: Resource>(
                 delta.changed = delta.changed.saturating_add(1);
                 return Ok(delta);
             }
-            #[allow(
-                clippy::arithmetic_side_effects,
-                reason = "TaskStats::add_assign saturates internally"
-            )]
-            {
-                delta += apply_resource(ctx, resource, plan.description(), verb, *bail_on_error)?;
-            }
+            delta.merge(&apply_resource(
+                ctx,
+                resource,
+                plan.description(),
+                verb,
+                *bail_on_error,
+            )?);
         }
     }
     Ok(delta)

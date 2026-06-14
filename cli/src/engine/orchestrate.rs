@@ -27,13 +27,7 @@ where
             ctx.log.warn("cancelled — stopping before next resource");
             break;
         }
-        #[allow(
-            clippy::arithmetic_side_effects,
-            reason = "TaskStats::add_assign saturates internally"
-        )]
-        {
-            stats += process_one(ctx, item)?;
-        }
+        stats.merge(&process_one(ctx, item)?);
     }
     Ok(stats.finish(ctx))
 }

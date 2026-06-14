@@ -233,8 +233,9 @@ function Test-InstallArgumentForwarding {
         $env:DOTFILES_REEXEC_GUARD = '1'
         $output = & $wrapper install -p base -d 2>&1
         $text = ($output | Out-String)
+        $plain = $text -replace "$([char]27)\[[0-9;]*m", ''
 
-        if ($LASTEXITCODE -eq 0 -and $text -match 'profile:\s+base') {
+        if ($LASTEXITCODE -eq 0 -and $plain -match 'profile\s+base') {
             Write-TestPass "Install arguments forwarded correctly"
             return $true
         }
@@ -262,8 +263,9 @@ function Test-AdvancedFlagForwarding {
         $env:DOTFILES_REEXEC_GUARD = '1'
         $output = & $wrapper install -p base -d --skip symlinks --only packages --no-parallel 2>&1
         $text = ($output | Out-String)
+        $plain = $text -replace "$([char]27)\[[0-9;]*m", ''
 
-        if ($LASTEXITCODE -eq 0 -and $text -match 'profile:\s+base') {
+        if ($LASTEXITCODE -eq 0 -and $plain -match 'profile\s+base') {
             Write-TestPass "Wrapper forwards advanced flags to the Rust CLI"
             return $true
         }

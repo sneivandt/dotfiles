@@ -13,10 +13,10 @@ use std::sync::{Arc, RwLock};
 
 use dotfiles_cli::config::Config;
 use dotfiles_cli::config::profiles;
-use dotfiles_cli::exec::{ExecResult, Executor};
+use dotfiles_cli::exec::{ExecResult, Executor, SystemExecutor};
 use dotfiles_cli::logging::{Log, Logger};
 use dotfiles_cli::platform::Platform;
-use dotfiles_cli::tasks::Context;
+use dotfiles_cli::tasks::{Context, ContextOpts};
 
 /// Write the minimal set of TOML config files required by the dotfiles engine
 /// into `root`.
@@ -248,7 +248,7 @@ impl IntegrationTestContext {
             Arc::clone(&log) as Arc<dyn Log>,
             Arc::new(StubExecutor),
             home.path().to_path_buf(),
-            dotfiles_cli::tasks::ContextOpts {
+            ContextOpts {
                 dry_run: false,
                 parallel: false,
                 advance_versions: false,
@@ -262,8 +262,80 @@ impl IntegrationTestContext {
         }
     }
 
+    /// Create a task execution [`Context`] backed by a real [`SystemExecutor`].
+    ///
+    /// Unlike [`make_context`](Self::make_context) (which uses a [`StubExecutor`]
+    /// and panics on any command), this variant lets a task perform real
+    /// `which()` lookups and shell-outs. The caller controls the [`Platform`] and
+    /// [`ContextOpts`] so tests can exercise platform-guarded `should_run`/`run`
+    /// paths (Windows, Arch, parallel, dry-run) without a matching host OS.
+    ///
+    /// A throwaway temporary directory is used as `$HOME`, keeping the test
+    /// hermetic from the real home directory.
+    pub(crate) fn make_system_context(
+        &self,
+        profile: &str,
+        platform: Platform,
+        opts: ContextOpts,
+    ) -> ExecutionContext {
+        let config = self.load_config_for_platform(profile, platform);
+        let home = tempfile::tempdir().expect("create home dir");
+        let log = Arc::new(Logger::new("test"));
+        let ctx = Context::from_raw(
+            Arc::new(RwLock::new(Arc::new(config))),
+            platform,
+            Arc::clone(&log) as Arc<dyn Log>,
+            Arc::new(SystemExecutor),
+            home.path().to_path_buf(),
+            opts,
+        );
+        ExecutionContext {
+            ctx,
+            log,
+            _home: home,
+        }
+    }
+
     /// Create a dry-run task execution [`Context`] for the given profile.
     pub(crate) fn make_dry_run_context(&self, profile: &str) -> ExecutionContext {
         self.make_context(profile).into_dry_run()
     }
+}
+
+/// Run the `install` command in dry-run mode against a fresh minimal repository.
+///
+/// Builds an isolated repository (with a `.git/` directory so the profile can be
+/// persisted), then invokes [`commands::install::run`](dotfiles_cli::commands::install::run)
+/// with the given `skip`/`only` selectors and `parallel` flag. The temporary
+/// repository lives only for the duration of the call.
+///
+/// Returns the command result so callers can assert success or inspect errors.
+pub(crate) fn run_install_dry_run(
+    skip: Vec<String>,
+    only: Vec<String>,
+    parallel: bool,
+) -> anyhow::Result<()> {
+    let ctx = TestContextBuilder::new().build();
+    let root_path = ctx.root_path().to_path_buf();
+
+    // `resolve_from_args` calls `persist()` which writes to `.git/config`;
+    // create the directory so the write succeeds.
+    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
+
+    let global = dotfiles_cli::cli::GlobalOpts {
+        root: Some(root_path),
+        profile: Some("base".to_string()),
+        dry_run: true,
+        overlay: None,
+        parallel,
+    };
+    let opts = dotfiles_cli::cli::InstallOpts { skip, only };
+    let log: Arc<Logger> = Arc::new(Logger::new("test-install-dry-run"));
+
+    dotfiles_cli::commands::install::run(
+        &global,
+        &opts,
+        &log,
+        &dotfiles_cli::engine::CancellationToken::new(),
+    )
 }

@@ -205,6 +205,10 @@ pub mod testing {
             TaskPhase, TaskResult, TaskStats, all_install_tasks, all_uninstall_tasks, execute,
         };
 
+        pub mod filter {
+            pub use crate::tasks::filter::task_matches_filter;
+        }
+
         pub mod files {
             pub mod chmod {
                 pub use crate::tasks::files::chmod::ApplyFilePermissions;

@@ -19,57 +19,7 @@ use std::collections::HashSet;
 use dotfiles_cli::platform::{Os, Platform};
 use dotfiles_cli::tasks;
 use dotfiles_cli::tasks::TaskId;
-
-const TASK_FILTER_STOP_WORDS: &[&str] = &[
-    "install",
-    "configure",
-    "enable",
-    "apply",
-    "update",
-    "run",
-    "validate",
-];
-
-fn normalized_task_tokens(value: &str) -> Vec<String> {
-    value
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|token| !token.is_empty())
-        .map(str::to_ascii_lowercase)
-        .collect()
-}
-
-fn normalize_task_filter(value: &str) -> String {
-    normalized_task_tokens(value).join("-")
-}
-
-fn canonical_task_selector(task_name: &str) -> String {
-    let tokens = normalized_task_tokens(task_name);
-    let trimmed: Vec<_> = tokens
-        .iter()
-        .skip_while(|token| TASK_FILTER_STOP_WORDS.contains(&token.as_str()))
-        .cloned()
-        .collect();
-    if trimmed.is_empty() {
-        tokens.join("-")
-    } else {
-        trimmed.join("-")
-    }
-}
-
-fn task_matches_filter(task_name: &str, filter: &str) -> bool {
-    let normalized_filter = normalize_task_filter(filter);
-    if normalized_filter.is_empty() {
-        return false;
-    }
-
-    let canonical_selector = canonical_task_selector(task_name);
-    normalized_filter == normalize_task_filter(task_name)
-        || normalized_filter == canonical_selector
-        || canonical_selector
-            .split('-')
-            .next()
-            .is_some_and(|token| token == normalized_filter)
-}
+use dotfiles_cli::tasks::filter::task_matches_filter;
 
 // ---------------------------------------------------------------------------
 // Snapshot: full install task list
@@ -275,36 +225,22 @@ fn only_filter_with_no_match_returns_empty() {
 /// `should_run` must not panic for any install task when given a minimal config.
 #[test]
 fn install_tasks_should_run_does_not_panic_with_minimal_config() {
-    use std::sync::Arc;
-
-    let ctx_builder = common::TestContextBuilder::new();
-    let ctx = ctx_builder.build();
-    let config = ctx.load_config("base");
-
-    let platform = Platform::detect();
-    let executor: Arc<dyn dotfiles_cli::exec::Executor> =
-        Arc::new(dotfiles_cli::exec::SystemExecutor);
-    let log: Arc<dotfiles_cli::logging::Logger> =
-        Arc::new(dotfiles_cli::logging::Logger::new("test-install"));
-
-    let task_ctx = tasks::Context::new(
-        Arc::new(std::sync::RwLock::new(Arc::new(config))),
-        platform,
-        Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
-        executor,
+    let ctx = common::TestContextBuilder::new().build();
+    let ec = ctx.make_system_context(
+        "base",
+        Platform::detect(),
         tasks::ContextOpts {
             dry_run: true,
             parallel: false,
             advance_versions: false,
             is_ci: None,
         },
-    )
-    .expect("create context");
+    );
 
     let tasks = tasks::all_install_tasks();
     // Calling should_run on every task must not panic.
     for task in &tasks {
-        let _ = task.should_run(&task_ctx);
+        let _ = task.should_run(&ec.ctx);
     }
 }
 
@@ -377,40 +313,27 @@ fn install_task_list_contains_configure_git() {
 /// `ApplyRegistry`, and `ApplyFilePermissions` without needing a real Windows OS.
 #[test]
 fn install_tasks_should_run_with_windows_platform() {
-    use std::sync::Arc;
-
-    let ctx_builder = common::TestContextBuilder::new();
-    let ctx = ctx_builder.build();
+    let ctx = common::TestContextBuilder::new().build();
 
     let platform = Platform {
         os: Os::Windows,
         is_arch: false,
         is_wsl: false,
     };
-    let config = ctx.load_config_for_platform("base", platform);
-
-    let executor: Arc<dyn dotfiles_cli::exec::Executor> =
-        Arc::new(dotfiles_cli::exec::SystemExecutor);
-    let log: Arc<dotfiles_cli::logging::Logger> =
-        Arc::new(dotfiles_cli::logging::Logger::new("test-windows"));
-
-    let task_ctx = tasks::Context::new(
-        Arc::new(std::sync::RwLock::new(Arc::new(config))),
+    let ec = ctx.make_system_context(
+        "base",
         platform,
-        Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
-        executor,
         tasks::ContextOpts {
             dry_run: true,
             parallel: false,
             advance_versions: false,
             is_ci: None,
         },
-    )
-    .expect("create context");
+    );
 
     let all_tasks = tasks::all_install_tasks();
     for task in &all_tasks {
-        let _ = task.should_run(&task_ctx);
+        let _ = task.should_run(&ec.ctx);
     }
 }
 
@@ -508,23 +431,9 @@ fn install_symlinks_is_idempotent() {
         .with_symlink_source("bashrc")
         .build();
 
-    // Use a dedicated temp directory as $HOME so the test does not modify the
-    // real home directory.
-    let home_dir = tempfile::tempdir().expect("create temp home dir");
-
-    let platform = Platform::detect();
-    let executor: Arc<dyn dotfiles_cli::exec::Executor> =
-        Arc::new(dotfiles_cli::exec::SystemExecutor);
-    let log: Arc<dotfiles_cli::logging::Logger> =
-        Arc::new(dotfiles_cli::logging::Logger::new("test-idempotent"));
-
-    let config = ctx.load_config("base");
-    let task_ctx = tasks::Context::from_raw(
-        Arc::new(std::sync::RwLock::new(Arc::new(config))),
-        platform,
-        Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
-        executor,
-        home_dir.path().to_path_buf(),
+    let ec = ctx.make_system_context(
+        "base",
+        Platform::detect(),
         tasks::ContextOpts {
             dry_run: false,
             parallel: false,
@@ -536,7 +445,7 @@ fn install_symlinks_is_idempotent() {
     let task = tasks::files::symlinks::InstallSymlinks;
 
     // First run: must succeed and create the symlink.
-    let result1 = task.run(&task_ctx).expect("first install run");
+    let result1 = task.run(&ec.ctx).expect("first install run");
     assert!(
         matches!(result1, tasks::TaskResult::Ok),
         "first install run should succeed"
@@ -544,7 +453,7 @@ fn install_symlinks_is_idempotent() {
 
     // Build the resource to inspect state directly.
     let source = ctx.root_path().join("symlinks").join("bashrc");
-    let target = home_dir.path().join(".bashrc");
+    let target = ec.ctx.home.join(".bashrc");
     let resource = dotfiles_cli::resources::symlink::SymlinkResource::new(
         source,
         target,
@@ -562,7 +471,7 @@ fn install_symlinks_is_idempotent() {
     );
 
     // Second run: must succeed without changing anything.
-    let result2 = task.run(&task_ctx).expect("second install run");
+    let result2 = task.run(&ec.ctx).expect("second install run");
     assert!(
         matches!(result2, tasks::TaskResult::Ok),
         "second install run should succeed"
@@ -590,7 +499,6 @@ fn install_symlinks_is_idempotent() {
 #[test]
 fn apply_file_permissions_run_sets_mode_on_unix() {
     use std::os::unix::fs::PermissionsExt;
-    use std::sync::Arc;
 
     use dotfiles_cli::tasks::Task;
 
@@ -601,33 +509,14 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
         )
         .build();
 
-    let home_dir = tempfile::tempdir().expect("create temp home dir");
-
-    // Create $HOME/.ssh/config with mode 0o644.
-    let ssh_dir = home_dir.path().join(".ssh");
-    std::fs::create_dir_all(&ssh_dir).expect("create .ssh dir");
-    let ssh_config = ssh_dir.join("config");
-    std::fs::write(&ssh_config, "").expect("create ssh config");
-    std::fs::set_permissions(&ssh_config, std::fs::Permissions::from_mode(0o644))
-        .expect("set initial permissions");
-
     let platform = Platform {
         os: Os::Linux,
         is_arch: false,
         is_wsl: false,
     };
-    let executor: Arc<dyn dotfiles_cli::exec::Executor> =
-        Arc::new(dotfiles_cli::exec::SystemExecutor);
-    let log: Arc<dotfiles_cli::logging::Logger> =
-        Arc::new(dotfiles_cli::logging::Logger::new("test-chmod"));
-
-    let config = ctx.load_config_for_platform("base", platform);
-    let task_ctx = tasks::Context::from_raw(
-        Arc::new(std::sync::RwLock::new(Arc::new(config))),
+    let ec = ctx.make_system_context(
+        "base",
         platform,
-        Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
-        executor,
-        home_dir.path().to_path_buf(),
         tasks::ContextOpts {
             dry_run: false,
             parallel: false,
@@ -636,8 +525,16 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
         },
     );
 
+    // Create $HOME/.ssh/config with mode 0o644.
+    let ssh_dir = ec.ctx.home.join(".ssh");
+    std::fs::create_dir_all(&ssh_dir).expect("create .ssh dir");
+    let ssh_config = ssh_dir.join("config");
+    std::fs::write(&ssh_config, "").expect("create ssh config");
+    std::fs::set_permissions(&ssh_config, std::fs::Permissions::from_mode(0o644))
+        .expect("set initial permissions");
+
     let result = tasks::files::chmod::ApplyFilePermissions
-        .run(&task_ctx)
+        .run(&ec.ctx)
         .expect("apply file permissions run");
     assert!(
         matches!(result, tasks::TaskResult::Ok),
@@ -662,35 +559,7 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
 /// without making any filesystem changes.
 #[test]
 fn install_run_dry_run_returns_ok() {
-    use std::sync::Arc;
-
-    let ctx = common::TestContextBuilder::new().build();
-    let root_path = ctx.root_path().to_path_buf();
-
-    // `resolve_from_args` calls `persist()` which writes to `.git/config`;
-    // create the directory so the write succeeds.
-    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
-
-    let global = dotfiles_cli::cli::GlobalOpts {
-        root: Some(root_path),
-        profile: Some("base".to_string()),
-        dry_run: true,
-        overlay: None,
-        parallel: false,
-    };
-    let opts = dotfiles_cli::cli::InstallOpts {
-        skip: vec![],
-        only: vec![],
-    };
-    let log: Arc<dotfiles_cli::logging::Logger> =
-        Arc::new(dotfiles_cli::logging::Logger::new("test-dry-run-pipeline"));
-
-    let result = dotfiles_cli::commands::install::run(
-        &global,
-        &opts,
-        &log,
-        &dotfiles_cli::engine::CancellationToken::new(),
-    );
+    let result = common::run_install_dry_run(vec![], vec![], false);
     assert!(
         result.is_ok(),
         "dry-run install should return Ok: {result:?}"
@@ -701,32 +570,7 @@ fn install_run_dry_run_returns_ok() {
 /// `Ok(())` and execute only matching tasks.
 #[test]
 fn install_run_dry_run_with_only_filter_returns_ok() {
-    use std::sync::Arc;
-
-    let ctx = common::TestContextBuilder::new().build();
-    let root_path = ctx.root_path().to_path_buf();
-    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
-
-    let global = dotfiles_cli::cli::GlobalOpts {
-        root: Some(root_path),
-        profile: Some("base".to_string()),
-        dry_run: true,
-        overlay: None,
-        parallel: false,
-    };
-    let opts = dotfiles_cli::cli::InstallOpts {
-        skip: vec![],
-        only: vec!["symlinks".to_string()],
-    };
-    let log: Arc<dotfiles_cli::logging::Logger> =
-        Arc::new(dotfiles_cli::logging::Logger::new("test-only-filter"));
-
-    let result = dotfiles_cli::commands::install::run(
-        &global,
-        &opts,
-        &log,
-        &dotfiles_cli::engine::CancellationToken::new(),
-    );
+    let result = common::run_install_dry_run(vec![], vec!["symlinks".to_string()], false);
     assert!(
         result.is_ok(),
         "dry-run install with --only symlinks should return Ok: {result:?}"
@@ -737,32 +581,7 @@ fn install_run_dry_run_with_only_filter_returns_ok() {
 /// `Ok(())` and skip matching tasks.
 #[test]
 fn install_run_dry_run_with_skip_filter_returns_ok() {
-    use std::sync::Arc;
-
-    let ctx = common::TestContextBuilder::new().build();
-    let root_path = ctx.root_path().to_path_buf();
-    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
-
-    let global = dotfiles_cli::cli::GlobalOpts {
-        root: Some(root_path),
-        profile: Some("base".to_string()),
-        dry_run: true,
-        overlay: None,
-        parallel: false,
-    };
-    let opts = dotfiles_cli::cli::InstallOpts {
-        skip: vec!["packages".to_string()],
-        only: vec![],
-    };
-    let log: Arc<dotfiles_cli::logging::Logger> =
-        Arc::new(dotfiles_cli::logging::Logger::new("test-skip-filter"));
-
-    let result = dotfiles_cli::commands::install::run(
-        &global,
-        &opts,
-        &log,
-        &dotfiles_cli::engine::CancellationToken::new(),
-    );
+    let result = common::run_install_dry_run(vec!["packages".to_string()], vec![], false);
     assert!(
         result.is_ok(),
         "dry-run install with --skip packages should return Ok: {result:?}"
@@ -773,32 +592,7 @@ fn install_run_dry_run_with_skip_filter_returns_ok() {
 /// `Ok(())` (empty task list is not an error).
 #[test]
 fn install_run_dry_run_with_only_no_match_returns_ok() {
-    use std::sync::Arc;
-
-    let ctx = common::TestContextBuilder::new().build();
-    let root_path = ctx.root_path().to_path_buf();
-    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
-
-    let global = dotfiles_cli::cli::GlobalOpts {
-        root: Some(root_path),
-        profile: Some("base".to_string()),
-        dry_run: true,
-        overlay: None,
-        parallel: false,
-    };
-    let opts = dotfiles_cli::cli::InstallOpts {
-        skip: vec![],
-        only: vec!["zzznomatch".to_string()],
-    };
-    let log: Arc<dotfiles_cli::logging::Logger> =
-        Arc::new(dotfiles_cli::logging::Logger::new("test-only-no-match"));
-
-    let result = dotfiles_cli::commands::install::run(
-        &global,
-        &opts,
-        &log,
-        &dotfiles_cli::engine::CancellationToken::new(),
-    );
+    let result = common::run_install_dry_run(vec![], vec!["zzznomatch".to_string()], false);
     assert!(
         result.is_ok(),
         "dry-run install with --only no-match should return Ok: {result:?}"
@@ -809,32 +603,7 @@ fn install_run_dry_run_with_only_no_match_returns_ok() {
 /// must return `Ok(())`.
 #[test]
 fn install_run_dry_run_with_only_filter_parallel_returns_ok() {
-    use std::sync::Arc;
-
-    let ctx = common::TestContextBuilder::new().build();
-    let root_path = ctx.root_path().to_path_buf();
-    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
-
-    let global = dotfiles_cli::cli::GlobalOpts {
-        root: Some(root_path),
-        profile: Some("base".to_string()),
-        dry_run: true,
-        overlay: None,
-        parallel: true,
-    };
-    let opts = dotfiles_cli::cli::InstallOpts {
-        skip: vec![],
-        only: vec!["symlinks".to_string()],
-    };
-    let log: Arc<dotfiles_cli::logging::Logger> =
-        Arc::new(dotfiles_cli::logging::Logger::new("test-only-parallel"));
-
-    let result = dotfiles_cli::commands::install::run(
-        &global,
-        &opts,
-        &log,
-        &dotfiles_cli::engine::CancellationToken::new(),
-    );
+    let result = common::run_install_dry_run(vec![], vec!["symlinks".to_string()], true);
     assert!(
         result.is_ok(),
         "parallel dry-run with --only symlinks should return Ok: {result:?}"
@@ -845,32 +614,11 @@ fn install_run_dry_run_with_only_filter_parallel_returns_ok() {
 /// a task must satisfy `--only` and must not match `--skip`.
 #[test]
 fn install_run_dry_run_with_skip_and_only_together() {
-    use std::sync::Arc;
-
-    let ctx = common::TestContextBuilder::new().build();
-    let root_path = ctx.root_path().to_path_buf();
-    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
-
-    let global = dotfiles_cli::cli::GlobalOpts {
-        root: Some(root_path),
-        profile: Some("base".to_string()),
-        dry_run: true,
-        overlay: None,
-        parallel: false,
-    };
     // Matching tasks are still excluded when they also match --skip.
-    let opts = dotfiles_cli::cli::InstallOpts {
-        skip: vec!["symlinks".to_string()],
-        only: vec!["symlinks".to_string()],
-    };
-    let log: Arc<dotfiles_cli::logging::Logger> =
-        Arc::new(dotfiles_cli::logging::Logger::new("test-skip-and-only"));
-
-    let result = dotfiles_cli::commands::install::run(
-        &global,
-        &opts,
-        &log,
-        &dotfiles_cli::engine::CancellationToken::new(),
+    let result = common::run_install_dry_run(
+        vec!["symlinks".to_string()],
+        vec!["symlinks".to_string()],
+        false,
     );
     assert!(
         result.is_ok(),
@@ -888,24 +636,10 @@ fn install_run_dry_run_with_skip_and_only_together() {
 /// without needing a real system.
 #[test]
 fn install_tasks_should_run_with_parallel_enabled() {
-    use std::sync::Arc;
-
-    let ctx_builder = common::TestContextBuilder::new();
-    let ctx = ctx_builder.build();
-    let config = ctx.load_config("base");
-
-    let platform = Platform::detect();
-    let executor: Arc<dyn dotfiles_cli::exec::Executor> =
-        Arc::new(dotfiles_cli::exec::SystemExecutor);
-    let log: Arc<dotfiles_cli::logging::Logger> =
-        Arc::new(dotfiles_cli::logging::Logger::new("test-parallel"));
-
-    let task_ctx = tasks::Context::from_raw(
-        Arc::new(std::sync::RwLock::new(Arc::new(config))),
-        platform,
-        Arc::clone(&log) as Arc<dyn dotfiles_cli::logging::Log>,
-        executor,
-        std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())),
+    let ctx = common::TestContextBuilder::new().build();
+    let ec = ctx.make_system_context(
+        "base",
+        Platform::detect(),
         tasks::ContextOpts {
             dry_run: true,
             parallel: true,
@@ -916,6 +650,6 @@ fn install_tasks_should_run_with_parallel_enabled() {
 
     let all_tasks = tasks::all_install_tasks();
     for task in &all_tasks {
-        let _ = task.should_run(&task_ctx);
+        let _ = task.should_run(&ec.ctx);
     }
 }

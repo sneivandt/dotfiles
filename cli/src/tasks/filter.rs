@@ -33,7 +33,7 @@ pub(crate) fn warn_unmatched_filters(
 
 /// Return whether a task name matches a user-supplied selector.
 #[must_use]
-pub(crate) fn task_matches_filter(task_name: &str, filter: &str) -> bool {
+pub fn task_matches_filter(task_name: &str, filter: &str) -> bool {
     let normalized_filter = normalize_task_filter(filter);
     if normalized_filter.is_empty() {
         return false;

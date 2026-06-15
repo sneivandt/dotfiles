@@ -8,7 +8,7 @@
 # as query parameters in an IN (...) clause and matches are printed one id per
 # line in id order, which parse_desired_ids reads back.
 #
-# Schema contract (version 1): the Copilot App sqlite `workflows` table must
+# Schema contract (version 2): the Copilot App sqlite `workflows` table must
 # expose `id` (TEXT), `mode` (TEXT) and `enabled` (INTEGER) columns. If that
 # contract changes, bump this version and update the Rust callers in autopilot.rs.
 import sqlite3, sys

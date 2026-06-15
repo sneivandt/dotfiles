@@ -370,7 +370,7 @@ fn run_warns_when_workflow_db_is_locked() {
 
 #[test]
 fn run_warns_when_workflow_db_schema_drifts() {
-    // The Copilot App database has drifted from the version-1 workflows schema
+    // The Copilot App database has drifted from the version-2 workflows schema
     // the embedded scripts target (e.g. the `mode` column was renamed), so
     // sqlite raises `no such column`.  The fixup must surface this loudly while
     // staying non-fatal -- the apm install itself still succeeded.

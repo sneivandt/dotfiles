@@ -113,15 +113,18 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
                 );
             } else if stderr.contains("no such column") {
                 // Schema drift: the Copilot App database no longer matches the
-                // version-1 workflows contract the embedded scripts target
-                // (`id`, `mode`, `enabled`).  Surface it loudly and name the
-                // contract so the scripts can be updated, rather than letting a
-                // renamed column degrade to a generic failure line.
+                // version-2 workflows contract the embedded scripts target
+                // (`id`, `mode`, `enabled`, plus the scheduling columns
+                // `interval`, `schedule_hour`, `schedule_minute`, `schedule_day`
+                // and `next_run_at`).  Surface it loudly and name the contract so
+                // the scripts can be updated, rather than letting a renamed column
+                // degrade to a generic failure line.
                 ctx.log.warn(&format!(
                     "autopilot fixup: ~/.copilot/data.db no longer matches the expected workflows \
-                     schema (columns id, mode, enabled); the Copilot App database format may have \
-                     changed. Enable the apm workflows manually from the Workflows tab and report \
-                     this so the dotfiles autopilot scripts can be updated: {stderr}"
+                     schema (columns id, mode, enabled, interval, schedule_hour, schedule_minute, \
+                     schedule_day, next_run_at); the Copilot App database format may have changed. \
+                     Enable the apm workflows manually from the Workflows tab and report this so \
+                     the dotfiles autopilot scripts can be updated: {stderr}"
                 ));
             } else {
                 ctx.log.warn(&format!(

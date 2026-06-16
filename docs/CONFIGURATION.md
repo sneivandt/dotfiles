@@ -287,7 +287,8 @@ settings = [
 ```toml
 [base]
 settings = [
-  { key = "model",             value = "claude-opus-4.8" },
+  { key = "model",             value = "gpt-5.5"         },
+  { key = "effortLevel",       value = "high"            },
   { key = "beep",              value = false             },
   { key = "footer.showBranch", value = true              },
 ]

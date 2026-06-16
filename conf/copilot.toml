@@ -13,7 +13,8 @@
 [base]
 settings = [
   # Core behaviour
-  { key = "model",          value = "claude-opus-4.8" },
+  { key = "model",          value = "gpt-5.5"         },
+  { key = "effortLevel",    value = "high"            },
   { key = "banner",         value = "never"           },
   { key = "beep",           value = false             },
   { key = "memory",         value = true              },

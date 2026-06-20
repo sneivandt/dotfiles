@@ -1,10 +1,45 @@
 #!/bin/sh
 
-ignore=$(git remote show origin | sed -n -e 's/.*HEAD branch: //p')
-branches=$(git branch --merged origin/HEAD 2>/dev/null)
+default_remote=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)
+default_branch=${default_remote#origin/}
+current_branch=$(git branch --show-current 2>/dev/null)
+worktree_branches=$(
+  git worktree list --porcelain 2>/dev/null | while IFS= read -r line; do
+    case "$line" in
+      "branch refs/heads/"*)
+        printf '%s\n' "${line#branch refs/heads/}"
+        ;;
+    esac
+  done
+)
+
+is_worktree_branch() {
+  case "
+$worktree_branches
+" in
+    *"
+$1
+"*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
 
 # Delete branches merged to origin/HEAD
-if [ -n "$branches" ]
-then
-  echo "$branches" | grep -E -v "(^\\*|$ignore)" | xargs -r -n 1 git branch -d
+if [ -n "$default_remote" ]; then
+  git for-each-ref --format='%(refname:short)' --merged "$default_remote" refs/heads | while IFS= read -r branch; do
+    case "$branch" in
+      ""|"$current_branch"|"$default_branch"|main|master|dev|develop)
+        continue
+        ;;
+    esac
+
+    if is_worktree_branch "$branch"; then
+      continue
+    fi
+
+    git branch -d -- "$branch"
+  done
 fi

@@ -215,28 +215,63 @@ fn validate_local_plugin_ref(
         return;
     }
 
-    validate_plugin_json(validator, &item, &plugin_dir, plugin_name);
+    validate_local_plugin_manifest_and_sources(validator, &item, &plugin_dir, plugin_name);
 }
 
-fn validate_plugin_json(
+fn validate_local_plugin_manifest(
     validator: &mut Validator,
     item: &str,
     plugin_dir: &Path,
     plugin_name: &str,
 ) {
-    let manifest = plugin_dir.join("plugin.json");
-    if !manifest.is_file() {
-        validator.warn(
-            item,
-            format!(
-                "local APM plugin is missing plugin.json: {}",
-                manifest.display()
-            ),
-        );
+    let apm_manifest = plugin_dir.join("apm.yml");
+    if apm_manifest.is_file() {
+        validate_apm_yml(validator, item, &apm_manifest, plugin_name);
         return;
     }
 
-    let content = match std::fs::read_to_string(&manifest) {
+    let plugin_manifest = plugin_dir.join("plugin.json");
+    if plugin_manifest.is_file() {
+        validate_plugin_json(validator, item, &plugin_manifest, plugin_name);
+        return;
+    }
+
+    validator.warn(
+        item,
+        format!(
+            "local APM plugin is missing apm.yml or plugin.json: {}",
+            apm_manifest.display()
+        ),
+    );
+}
+
+fn validate_apm_yml(validator: &mut Validator, item: &str, manifest: &Path, plugin_name: &str) {
+    let content = match std::fs::read_to_string(manifest) {
+        Ok(content) => content,
+        Err(err) => {
+            validator.warn(item, format!("could not read apm.yml: {err}"));
+            return;
+        }
+    };
+    let value: YamlValue = match serde_yaml_ng::from_str(&content) {
+        Ok(value) => value,
+        Err(err) => {
+            validator.warn(item, format!("could not parse apm.yml: {err}"));
+            return;
+        }
+    };
+
+    validate_manifest_name(
+        validator,
+        item,
+        value.get("name").and_then(YamlValue::as_str),
+        "apm.yml",
+        plugin_name,
+    );
+}
+
+fn validate_plugin_json(validator: &mut Validator, item: &str, manifest: &Path, plugin_name: &str) {
+    let content = match std::fs::read_to_string(manifest) {
         Ok(content) => content,
         Err(err) => {
             validator.warn(item, format!("could not read plugin.json: {err}"));
@@ -251,21 +286,123 @@ fn validate_plugin_json(
         }
     };
 
-    match value.get("name").and_then(JsonValue::as_str) {
+    validate_manifest_name(
+        validator,
+        item,
+        value.get("name").and_then(JsonValue::as_str),
+        "plugin.json",
+        plugin_name,
+    );
+}
+
+fn validate_manifest_name(
+    validator: &mut Validator,
+    item: &str,
+    name: Option<&str>,
+    manifest_name: &str,
+    plugin_name: &str,
+) {
+    match name {
         Some(name) if name == plugin_name => {}
         Some(name) if name.trim().is_empty() => {
-            validator.warn(item, "plugin.json name is missing or empty");
+            validator.warn(item, format!("{manifest_name} name is missing or empty"));
         }
         Some(name) => {
             validator.warn(
                 item,
-                format!("plugin.json name '{name}' does not match local plugin '{plugin_name}'"),
+                format!(
+                    "{manifest_name} name '{name}' does not match local plugin '{plugin_name}'"
+                ),
             );
         }
         None => {
-            validator.warn(item, "plugin.json name is missing or empty");
+            validator.warn(item, format!("{manifest_name} name is missing or empty"));
         }
     }
+}
+
+fn validate_native_skill_sources(validator: &mut Validator, item: &str, plugin_dir: &Path) {
+    let skills_dir = plugin_dir.join(".apm").join("skills");
+    match std::fs::read_dir(&skills_dir) {
+        Ok(entries) => {
+            let has_skill = entries.filter_map(Result::ok).any(|entry| {
+                let path = entry.path();
+                path.is_dir() && path.join("SKILL.md").is_file()
+            });
+            if !has_skill {
+                validator.warn(
+                    item,
+                    format!(
+                        "native APM plugin has no .apm/skills/*/SKILL.md entries: {}",
+                        skills_dir.display()
+                    ),
+                );
+            }
+        }
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            validator.warn(
+                item,
+                format!(
+                    "native APM plugin is missing .apm/skills directory: {}",
+                    skills_dir.display()
+                ),
+            );
+        }
+        Err(err) => {
+            validator.warn(item, format!("could not inspect .apm/skills: {err}"));
+        }
+    }
+}
+
+fn validate_legacy_skill_sources(validator: &mut Validator, item: &str, plugin_dir: &Path) {
+    let skills_dir = plugin_dir.join("skills");
+    match std::fs::read_dir(&skills_dir) {
+        Ok(entries) => {
+            let has_skill = entries.filter_map(Result::ok).any(|entry| {
+                let path = entry.path();
+                path.is_dir() && path.join("SKILL.md").is_file()
+            });
+            if !has_skill {
+                validator.warn(
+                    item,
+                    format!(
+                        "legacy APM plugin has no skills/*/SKILL.md entries: {}",
+                        skills_dir.display()
+                    ),
+                );
+            }
+        }
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            validator.warn(
+                item,
+                format!(
+                    "legacy APM plugin is missing skills directory: {}",
+                    skills_dir.display()
+                ),
+            );
+        }
+        Err(err) => {
+            validator.warn(item, format!("could not inspect skills directory: {err}"));
+        }
+    }
+}
+
+fn validate_plugin_sources(validator: &mut Validator, item: &str, plugin_dir: &Path) {
+    if plugin_dir.join("apm.yml").is_file() {
+        validate_native_skill_sources(validator, item, plugin_dir);
+    } else if plugin_dir.join("plugin.json").is_file() {
+        validate_legacy_skill_sources(validator, item, plugin_dir);
+    }
+}
+
+fn validate_local_plugin_manifest_and_sources(
+    validator: &mut Validator,
+    item: &str,
+    plugin_dir: &Path,
+    plugin_name: &str,
+) {
+    validate_local_plugin_manifest(validator, item, plugin_dir, plugin_name);
+    validate_plugin_sources(validator, item, plugin_dir);
 }
 
 fn path_item(root: &Path, path: &Path) -> String {
@@ -299,6 +436,25 @@ mod tests {
             .join(plugin_name);
         std::fs::create_dir_all(&plugin_dir).expect("create plugin dir");
         std::fs::write(plugin_dir.join("plugin.json"), manifest).expect("write plugin manifest");
+        write_skill(&plugin_dir.join("skills"), "example");
+    }
+
+    fn write_native_plugin(root: &Path, plugin_name: &str, manifest: &str) {
+        let plugin_dir = root
+            .join("symlinks")
+            .join("apm")
+            .join("plugins")
+            .join(plugin_name);
+        std::fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+        std::fs::write(plugin_dir.join("apm.yml"), manifest).expect("write apm manifest");
+        write_skill(&plugin_dir.join(".apm").join("skills"), "example");
+    }
+
+    fn write_skill(skills_root: &Path, skill_name: &str) {
+        let skill_dir = skills_root.join(skill_name);
+        std::fs::create_dir_all(&skill_dir).expect("create skill dir");
+        std::fs::write(skill_dir.join("SKILL.md"), "---\nname: example\n---\n")
+            .expect("write skill");
     }
 
     #[test]
@@ -309,6 +465,22 @@ mod tests {
             "dependencies:\n  apm:\n    - ~/.apm/plugins/dot-code\n",
         );
         write_plugin(temp_dir.path(), "dot-code", r#"{ "name": "dot-code" }"#);
+
+        assert!(validate(temp_dir.path(), None).is_empty());
+    }
+
+    #[test]
+    fn validate_accepts_native_local_plugin_ref() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_fragment(
+            temp_dir.path(),
+            "dependencies:\n  apm:\n    - ~/.apm/plugins/dot-code\n",
+        );
+        write_native_plugin(
+            temp_dir.path(),
+            "dot-code",
+            "name: dot-code\nversion: 1.0.0\n",
+        );
 
         assert!(validate(temp_dir.path(), None).is_empty());
     }
@@ -392,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_detects_missing_plugin_json() {
+    fn validate_detects_missing_local_plugin_manifest() {
         let temp_dir = tempfile::tempdir().unwrap();
         write_fragment(
             temp_dir.path(),
@@ -411,7 +583,11 @@ mod tests {
         let warnings = validate(temp_dir.path(), None);
 
         assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("missing plugin.json"));
+        assert!(
+            warnings[0]
+                .message
+                .contains("missing apm.yml or plugin.json")
+        );
     }
 
     #[test]
@@ -422,6 +598,25 @@ mod tests {
             "dependencies:\n  apm:\n    - ~/.apm/plugins/dot-code\n",
         );
         write_plugin(temp_dir.path(), "dot-code", r#"{ "name": "wrong-name" }"#);
+
+        let warnings = validate(temp_dir.path(), None);
+
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("does not match"));
+    }
+
+    #[test]
+    fn validate_detects_native_plugin_name_mismatch() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_fragment(
+            temp_dir.path(),
+            "dependencies:\n  apm:\n    - ~/.apm/plugins/dot-code\n",
+        );
+        write_native_plugin(
+            temp_dir.path(),
+            "dot-code",
+            "name: wrong-name\nversion: 1.0.0\n",
+        );
 
         let warnings = validate(temp_dir.path(), None);
 

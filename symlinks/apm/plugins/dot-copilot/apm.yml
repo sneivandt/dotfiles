@@ -1,0 +1,4 @@
+name: dot-copilot
+version: 1.0.0
+description: Copilot agent behavior preferences
+includes: auto

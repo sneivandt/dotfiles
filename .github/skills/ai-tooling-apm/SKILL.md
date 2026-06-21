@@ -60,8 +60,10 @@ fragment, so AI tooling can be delivered through APM instead of raw symlinks:
 
 - Keep local plugin names short and `dot-*`: `dot-code`, `dot-copilot`,
   `dot-doc`, `dot-skill`.
-- Ensure each plugin folder has a matching `plugin.json` `name` field, and
-  declare its skills explicitly with `"skills": ["skills/"]`.
+- Use native APM package layout for each local plugin: `apm.yml` at the plugin
+  root and source primitives under `.apm/` (for example,
+  `.apm/skills/<skill>/SKILL.md`). Set `includes: auto` unless a plugin needs a
+  stricter include allow-list.
 - Reference local plugins with forward slashes (`~/.apm/plugins/dot-foo`), even
   in Windows-only overlay fragments. APM normalizes `/` on Windows and the
   dotfiles validator only recognizes the forward-slash form.

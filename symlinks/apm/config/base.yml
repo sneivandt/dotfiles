@@ -18,8 +18,8 @@ dependencies:
     - dotnet/skills/plugins/dotnet-upgrade#main
 
     # Copilot workflow
-    - github/awesome-copilot/plugins/context-engineering#main
     - github/awesome-copilot/plugins/automate-this#main
+    - github/awesome-copilot/plugins/context-engineering#main
     - github/awesome-copilot/skills/agent-supply-chain#main
 
     # Planning & process

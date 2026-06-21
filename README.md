@@ -1,101 +1,48 @@
 # Dotfiles
 
-[![Release](https://github.com/sneivandt/dotfiles/actions/workflows/release.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/release.yml)
-[![Publish Docker](https://github.com/sneivandt/dotfiles/actions/workflows/docker.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/docker.yml)
-[![CI](https://github.com/sneivandt/dotfiles/actions/workflows/ci.yml/badge.svg)](https://github.com/sneivandt/dotfiles/actions/workflows/ci.yml)
+A highly personal dotfiles manager powered by a **Rust engine** and declarative TOML configuration. This is the setup I run every day on Linux and Windows to converge my machines onto the tools, symlinks, editor settings, Git config, services, and system preferences I want.
 
-A cross-platform dotfiles manager powered by a **Rust engine** and declarative TOML configuration. It's the setup I run every day on Linux and Windows, and it's designed to be forked: rebrand it, swap in your own config, and make it yours.
+It manages my shell, editor, Git, packages, services, Windows registry settings, file permissions, sparse checkout state, and AI tooling across Linux and Windows.
 
 ![Generated terminal preview of a dotfiles dry-run install](docs/assets/terminal-screenshot.svg)
 
-## What you get
+## What it does
 
 - **Rust engine:** a single compiled binary orchestrates everything — no fragile shell pipelines to debug.
-- **Profile-based:** one repo, many machines. Pick `base` for a minimal shell or `desktop` for a full workstation; Linux, Arch, and Windows are auto-detected on top.
+- **Profile-based:** one repo, many machines. `base` covers a minimal shell, `desktop` covers a full workstation, and Linux, Arch, and Windows are auto-detected on top.
 - **Declarative TOML:** packages, symlinks, systemd units, VS Code extensions, git config, registry keys, and file permissions are each a one-liner in `conf/*.toml` — no new shell functions to write.
 - **Idempotent:** every run converges on the declared state, so it's safe to re-run anytime. Preview first with `-d`.
-- **Sparse checkout:** only the files relevant to your active profile ever land on disk.
-- **Self-updating:** the entry scripts fetch the latest binary from GitHub Releases for you — there's nothing to install or upgrade by hand.
+- **Sparse checkout:** only the files relevant to the active profile ever land on disk.
 - **Cross-platform:** Linux and Windows share the same config and the same binary.
-- **CI tested:** `cargo test`, `clippy`, `shellcheck`, and per-profile integration tests run on every push.
-- **Docker sandbox:** explore the full setup in a throwaway container without touching your host.
 
-## Try it first
+## Commands
 
-Run a full install inside a disposable container — nothing touches your host:
+Git is the only prerequisite for a normal bootstrap. The repo-level wrapper downloads the latest binary from GitHub Releases and runs the initial install; after that, the normal entry point is the installed `dotfiles` command. Rust is only required when compiling from source with `--build`.
 
-```bash
-docker run --rm -it sneivandt/dotfiles
-```
+Initial bootstrap uses the platform wrapper: `./dotfiles.sh install -p desktop` on Linux or `.\dotfiles.ps1 install -p desktop` on Windows.
 
-## Install
+| Task | Command |
+|------|---------|
+| Install | `dotfiles install -p desktop` |
+| Dry run | `dotfiles install -d` |
+| Update | `dotfiles update` |
+| Uninstall managed links/hooks | `dotfiles uninstall` |
+| Validate config | `dotfiles test` |
+| View logs | `dotfiles logs` |
+| Print version | `dotfiles version` |
 
-**Prerequisites:** Git. Rust is only required if you compile from source with `--build`.
-
-### Agent-first (recommended)
-
-Hand this prompt to your AI agent (GitHub Copilot, Claude, Cursor, and friends) to fork the repo and tailor it to you in one go:
-
-```
-Adopt https://github.com/sneivandt/dotfiles as my personal dotfiles repo.
-GitHub username: [YOUR_USERNAME], git name: [YOUR_NAME], git email: [YOUR_EMAIL].
-
-1. Fork and clone it.
-2. Run .github/prompts/fork-rebrand.prompt.md to rebrand it to my repo.
-3. Ask me what I want installed and configured, then update symlinks/ and conf/*.toml.
-4. Install: ./dotfiles.sh install -p desktop  (or .\dotfiles.ps1 on Windows)
-```
-
-### Manual install
-
-**Linux:**
-```bash
-git clone https://github.com/sneivandt/dotfiles.git
-cd dotfiles
-./dotfiles.sh install        # interactive profile prompt on first run
-```
-
-**Windows (PowerShell):**
-```powershell
-git clone https://github.com/sneivandt/dotfiles.git
-cd dotfiles
-.\dotfiles.ps1 install -p desktop
-```
-
-## Common commands
-
-**Linux:**
-```bash
-./dotfiles.sh install -p desktop   # install with explicit profile
-./dotfiles.sh install -d           # dry-run (preview without applying)
-./dotfiles.sh install -v           # verbose output
-./dotfiles.sh update               # install + advance pinned dependency versions
-./dotfiles.sh uninstall            # remove symlinks/hooks/wrapper only
-./dotfiles.sh test                 # validate configuration
-./dotfiles.sh logs                 # view the most recent operation log
-./dotfiles.sh logs -v              # view the diagnostic log when available
-./dotfiles.sh version              # print binary version
-```
-
-**Windows (PowerShell):**
-```powershell
-.\dotfiles.ps1 install -p desktop
-.\dotfiles.ps1 install -d
-.\dotfiles.ps1 logs
-```
-
-See the [Usage Guide](docs/USAGE.md) for the full reference.
+See the [Usage Guide](docs/USAGE.md) for the full command reference.
 
 ## Profiles
 
-Pick one profile per machine; the platform categories are detected for you.
+Each machine uses one profile; platform categories are detected automatically.
 
 | Profile | Best for |
 |---------|----------|
 | `base` | Servers, WSL, minimal shell environments |
 | `desktop` | Workstations with GUI tools (Arch: Hyprland/Wayland) |
 
-The `linux`, `windows`, and `arch` platform categories are detected at runtime and layer on top of whichever profile you choose. In your own fork, define any profiles that fit your machines — `work`, `server`, `vm`, `gaming`, and so on.
+The `linux`, `windows`, and `arch` platform categories are detected at runtime and layer on top of whichever profile is selected.
 
 See the [Profile System Guide](docs/PROFILES.md) for details.
 
@@ -121,9 +68,9 @@ See the [Configuration Reference](docs/CONFIGURATION.md) for the full TOML forma
 
 Three layers, kept deliberately thin:
 
-1. **Entry scripts** (`dotfiles.sh` / `dotfiles.ps1`): download the binary from GitHub Releases (or build it with `--build`) and forward your arguments.
-2. **Rust binary** (`cli/`): parses the config, resolves your profile, and applies symlinks, packages, and settings. It shells out only when it has to — package managers, systemd, and the like.
-3. **Configuration** (`conf/`): the part you edit. Everything else follows from the TOML.
+1. **Entry scripts** (`dotfiles.sh` / `dotfiles.ps1`): download the binary from GitHub Releases (or build it with `--build`) and forward arguments.
+2. **Rust binary** (`cli/`): parses the config, resolves the profile, and applies symlinks, packages, and settings. It shells out only when it has to — package managers, systemd, and the like.
+3. **Configuration** (`conf/`): the editable layer. Everything else follows from the TOML.
 
 `install` is the normal convergence command: it may self-update the binary,
 attempt a safe fast-forward repository sync, reload config, and apply declared
@@ -131,16 +78,6 @@ state without advancing pinned dependency versions. `update` runs the same flow
 plus a final dependency-advancement phase. `uninstall` is conservative and only
 detaches the managed symlinks, Git hooks, and wrapper; it does not remove
 packages or roll back system/editor settings.
-
-## Making it yours
-
-The [`fork-rebrand`](.github/prompts/fork-rebrand.prompt.md) agent prompt automates most of this. To do it by hand:
-
-1. **Fork** the repo (or "Use this template") and clone it.
-2. **Rebrand:** point the self-update URL, git identity, CI fixture, and Docker labels at your own repo. The `fork-rebrand` prompt does this for you; manually, replace every occurrence of `sneivandt` and set your name and email in `symlinks/config/git/config`.
-3. **Add your dotfiles:** drop your config files into `symlinks/`. Anything there is symlinked into `$HOME` on install.
-4. **Declare your tools:** edit `conf/*.toml` to list the packages, extensions, and settings you want on each machine.
-5. **Push a tag:** CI builds the Linux and Windows binaries, and any new machine can bootstrap from a single command.
 
 ## Development
 
@@ -153,13 +90,11 @@ cargo clippy -- -D warnings      # lint
 cargo fmt                        # format
 ```
 
-To build from source and preview changes against your actual config:
+To build from source and preview changes against the active config:
 
 ```bash
 ./dotfiles.sh --build install -d # run from repo root
 ```
-
-See [Contributing](docs/CONTRIBUTING.md) for the full development workflow.
 
 ## Documentation
 
@@ -170,9 +105,3 @@ See [Contributing](docs/CONTRIBUTING.md) for the full development workflow.
 | [Configuration Reference](docs/CONFIGURATION.md) | TOML format details |
 | [Architecture](docs/ARCHITECTURE.md) | Rust engine design |
 | [Contributing](docs/CONTRIBUTING.md) | Development workflow |
-| [Testing](docs/TESTING.md) | Test strategy and CI |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes |
-| [Windows Usage](docs/WINDOWS.md) | Windows-specific notes |
-| [Docker](docs/DOCKER.md) | Sandbox usage |
-| [Git Hooks](docs/HOOKS.md) | Repository hooks |
-| [Security](docs/SECURITY.md) | Security policy |

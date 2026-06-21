@@ -36,9 +36,10 @@ the Rust `InstallApmPackages` task.
 
 ## MCP Servers and Hooks via APM
 
-APM owns more than skills. `merge_fragments` in `apm/fragments.rs` aggregates both
-`dependencies.apm` and `dependencies.mcp` from every `~/.apm/config/*.yml`
-fragment, so AI tooling can be delivered through APM instead of raw symlinks:
+APM owns more than skills. `merge_fragments` in `apm/fragments.rs` layers
+manifest fields from every `~/.apm/config/*.yml` fragment and dependency-aware
+merges both `dependencies` and `devDependencies`, so AI tooling can be delivered
+through APM instead of raw symlinks:
 
 - **MCP servers**: declare self-defined stdio/http servers under
   `dependencies.mcp:` in a fragment (`base.yml` or an overlay's fragment).

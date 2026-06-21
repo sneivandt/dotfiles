@@ -72,9 +72,11 @@ pub(super) fn describe_dependencies(merged: &str) -> String {
     }
 }
 
-/// Count the `dependencies.apm` and `dependencies.mcp` entries in the merged
-/// manifest.  Returns `None` if the manifest cannot be parsed or has no
-/// `dependencies` mapping.
+/// Count all dependency entries in the merged manifest.
+///
+/// Both `dependencies` and `devDependencies` are included, and every dependency
+/// group under each section counts. Returns `None` if the manifest cannot be
+/// parsed or has no dependency sections.
 fn count_manifest_dependencies(merged: &str) -> Option<usize> {
     use serde_yaml_ng::Value;
 
@@ -87,13 +89,14 @@ fn count_manifest_dependencies(merged: &str) -> Option<usize> {
             return None;
         }
     };
-    let deps = value.get("dependencies")?;
-    let count = ["apm", "mcp"]
+    let count = ["dependencies", "devDependencies"]
         .iter()
-        .filter_map(|key| deps.get(key).and_then(Value::as_sequence))
+        .filter_map(|section| value.get(section).and_then(Value::as_mapping))
+        .flat_map(serde_yaml_ng::Mapping::values)
+        .filter_map(Value::as_sequence)
         .map(Vec::len)
         .sum();
-    Some(count)
+    (count > 0).then_some(count)
 }
 
 /// Return whether the generated manifest should be written to disk.
@@ -192,12 +195,26 @@ mod tests {
         let f = dir.path().join("deps.yml");
         std::fs::write(
             &f,
-            "name: d\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n    - baz/qux\n  mcp:\n    - server-1\n",
+            "\
+name: d
+version: 1.0.0
+dependencies:
+  apm:
+    - foo/bar
+    - baz/qux
+  mcp:
+    - server-1
+  lsp:
+    - rust-analyzer
+devDependencies:
+  apm:
+    - ./dev/package
+",
         )
         .expect("write");
         let merged = merge_fragments(&[f]).expect("merge");
-        assert_eq!(count_manifest_dependencies(&merged), Some(3));
-        assert_eq!(describe_dependencies(&merged), "3 APM dependencies");
+        assert_eq!(count_manifest_dependencies(&merged), Some(5));
+        assert_eq!(describe_dependencies(&merged), "5 APM dependencies");
     }
 
     #[test]

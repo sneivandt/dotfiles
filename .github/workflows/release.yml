@@ -9,13 +9,13 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check-ci:
     name: Check CI succeeded
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository }}
     steps:
       - name: CI passed
         run: echo "CI workflow passed, proceeding with release."
@@ -50,7 +50,7 @@ jobs:
           cache-on-failure: true
 
       - name: Build release binary
-        run: cargo build --release --manifest-path cli/Cargo.toml
+        run: cargo build --release --locked --manifest-path cli/Cargo.toml
         env:
           DOTFILES_VERSION: v0.1.${{ github.run_number }}
 
@@ -83,7 +83,7 @@ jobs:
           cache-on-failure: true
 
       - name: Build release binary
-        run: cargo build --release --manifest-path cli/Cargo.toml
+        run: cargo build --release --locked --manifest-path cli/Cargo.toml
         env:
           DOTFILES_VERSION: v0.1.${{ github.run_number }}
 
@@ -100,6 +100,8 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     needs: [build-linux, build-windows]
+    permissions:
+      contents: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -112,6 +114,15 @@ jobs:
         run: |
           VERSION="v0.1.${{ github.run_number }}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure release tag is unused
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null; then
+            echo "Release tag $VERSION already exists." >&2
+            exit 1
+          fi
 
       - name: Download Linux artifact
         uses: actions/download-artifact@v8

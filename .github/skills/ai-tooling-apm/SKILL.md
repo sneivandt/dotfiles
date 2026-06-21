@@ -18,6 +18,7 @@ the Rust `InstallApmPackages` task.
 |---|---|
 | `symlinks/apm/config/base.yml` | APM manifest fragment linked to `~/.apm/config/base.yml` |
 | `symlinks/apm/plugins/dot-code` | Local coding workflow skills |
+| `symlinks/apm/plugins/dot-copilot` | Local Copilot interaction workflow skills |
 | `symlinks/apm/plugins/dot-doc` | Local document-generation workflow skills |
 | `symlinks/apm/plugins/dot-skill` | Local skill/plugin maintenance skills |
 | `conf/symlinks.toml` | Links `apm/config/base.yml` and `apm/plugins/*` from this repo |
@@ -54,7 +55,8 @@ fragment, so AI tooling can be delivered through APM instead of raw symlinks:
 
 ## Local Plugin Rules
 
-- Keep local plugin names short and `dot-*`: `dot-code`, `dot-doc`, `dot-skill`.
+- Keep local plugin names short and `dot-*`: `dot-code`, `dot-copilot`,
+  `dot-doc`, `dot-skill`.
 - Ensure each plugin folder has a matching `plugin.json` `name` field, and
   declare its skills explicitly with `"skills": ["skills/"]`.
 - Reference local plugins with forward slashes (`~/.apm/plugins/dot-foo`), even

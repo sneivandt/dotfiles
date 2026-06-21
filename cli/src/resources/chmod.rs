@@ -74,6 +74,7 @@ impl OctalMode {
 
     /// The original string representation.
     #[must_use]
+    #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn as_str(&self) -> &str {
         &self.raw
     }

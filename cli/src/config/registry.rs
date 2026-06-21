@@ -19,8 +19,6 @@ pub enum RegistryValueType {
     Dword,
     /// Null-terminated Unicode string (`REG_SZ`).
     String,
-    /// Unicode string with unexpanded environment references (`REG_EXPAND_SZ`).
-    ExpandString,
 }
 
 /// A Windows registry entry.

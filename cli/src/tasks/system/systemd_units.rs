@@ -253,7 +253,7 @@ mod tests {
         });
         let ctx = make_platform_context_with_which(config, Os::Linux, false, true);
 
-        assert!(ConfigureSystemd.needs_sudo(&ctx));
+        assert!(ConfigureSystemd.requires_elevation(&ctx));
     }
 
     #[test]

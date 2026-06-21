@@ -46,13 +46,6 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
     /// cannot be parsed.
     fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>>;
 
-    /// Check whether a single package is currently installed.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the package manager command fails.
-    fn is_installed(&self, name: &str, executor: &dyn Executor) -> Result<bool>;
-
     /// Install a single package.
     ///
     /// # Errors

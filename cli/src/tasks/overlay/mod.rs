@@ -137,6 +137,9 @@ impl Task for OverlayScriptTask {
 
     fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
         ctx.log.stage(self.name());
+        if let Some(description) = &self.entry.description {
+            ctx.log.info(description);
+        }
         self.run(ctx).map(Some)
     }
 

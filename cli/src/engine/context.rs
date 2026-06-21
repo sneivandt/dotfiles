@@ -161,6 +161,7 @@ impl Context {
     /// Intended for test helpers and integration-test scaffolding that supply
     /// fully-constructed components rather than deriving them from the
     /// environment.  Prefer [`Context::new`] in production code.
+    #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn from_raw(
         config: Arc<RwLock<Arc<Config>>>,
         platform: Platform,
@@ -227,6 +228,7 @@ impl Context {
 
     /// Hooks source directory.
     #[must_use]
+    #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn hooks_dir(&self) -> std::path::PathBuf {
         self.repo_paths().hooks_dir
     }
@@ -243,12 +245,14 @@ impl Context {
 
     /// Create a copy of this context with dry-run mode set.
     #[must_use]
+    #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn with_dry_run(&self, dry_run: bool) -> Self {
         self.clone_with(|ctx| ctx.dry_run = dry_run)
     }
 
     /// Create a copy of this context with parallel mode set.
     #[must_use]
+    #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn with_parallel(&self, parallel: bool) -> Self {
         self.clone_with(|ctx| ctx.parallel = parallel)
     }
@@ -264,6 +268,7 @@ impl Context {
 
     /// Create a copy of this context with a different home directory.
     #[must_use]
+    #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn with_home(&self, home: std::path::PathBuf) -> Self {
         self.clone_with(|ctx| ctx.home = home)
     }
@@ -273,6 +278,7 @@ impl Context {
     /// Used in tests to validate CI-gated task behaviour without mutating
     /// process-global environment variables.
     #[must_use]
+    #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn with_ci(&self, is_ci: bool) -> Self {
         self.clone_with(|ctx| ctx.is_ci = is_ci)
     }
@@ -341,8 +347,8 @@ mod tests {
     use super::*;
     use crate::logging::Logger;
     use crate::logging::{Output, TaskRecorder, TaskStatus};
+    use crate::tasks::Domain;
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
-    use crate::tasks::{Domain, TaskPhase};
     use std::path::PathBuf;
 
     #[derive(Debug)]
@@ -366,7 +372,6 @@ mod tests {
         fn record_task(
             &self,
             _name: &str,
-            _phase: TaskPhase,
             _domain: Domain,
             _status: TaskStatus,
             _message: Option<&str>,

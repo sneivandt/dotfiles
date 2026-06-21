@@ -195,11 +195,6 @@ pub trait Task: Send + Sync + 'static {
             && self.needs_elevation(ctx)
     }
 
-    /// Compatibility alias for callers/tests that still use sudo terminology.
-    fn needs_sudo(&self, ctx: &Context) -> bool {
-        self.requires_elevation(ctx)
-    }
-
     /// Execute the task.
     ///
     /// # Errors

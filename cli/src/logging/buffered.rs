@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use super::diagnostic::{DiagEvent, DiagnosticLog};
 use super::logger::Logger;
 use super::types::{Output, TaskRecorder, TaskStatus};
-use crate::tasks::{Domain, TaskPhase};
+use crate::tasks::Domain;
 
 /// A single buffered log entry, replayed when flushed.
 #[derive(Debug, Clone)]
@@ -188,15 +188,8 @@ impl Output for BufferedLog {
 }
 
 impl TaskRecorder for BufferedLog {
-    fn record_task(
-        &self,
-        name: &str,
-        phase: TaskPhase,
-        domain: Domain,
-        status: TaskStatus,
-        message: Option<&str>,
-    ) {
-        self.inner.record_task(name, phase, domain, status, message);
+    fn record_task(&self, name: &str, domain: Domain, status: TaskStatus, message: Option<&str>) {
+        self.inner.record_task(name, domain, status, message);
     }
 }
 
@@ -217,13 +210,7 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
         let log = Arc::new(log);
         let buf = BufferedLog::new(Arc::clone(&log));
-        buf.record_task(
-            "task-a",
-            TaskPhase::Provision,
-            Domain::General,
-            TaskStatus::Ok,
-            None,
-        );
+        buf.record_task("task-a", Domain::General, TaskStatus::Ok, None);
         assert_eq!(log.task_entries().len(), 1);
         assert_eq!(log.task_entries()[0].name, "task-a");
     }

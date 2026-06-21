@@ -10,24 +10,16 @@
 use crate::engine::{Context, TaskResult};
 use crate::logging::{DiagEvent, TaskStatus, diag_task_context};
 
-use super::{Domain, ExecutionPolicy, Task, TaskPhase};
+use super::{Domain, ExecutionPolicy, Task};
 
 #[derive(Debug)]
 pub(super) enum PolicyDecision {
     NotApplicable(String),
-    Skipped(String),
 }
 
 /// Record and optionally emit a compact task-result line.
-fn record(
-    ctx: &Context,
-    name: &str,
-    phase: TaskPhase,
-    domain: Domain,
-    status: TaskStatus,
-    msg: Option<&str>,
-) {
-    ctx.log.record_task(name, phase, domain, status, msg);
+fn record(ctx: &Context, name: &str, domain: Domain, status: TaskStatus, msg: Option<&str>) {
+    ctx.log.record_task(name, domain, status, msg);
     if !ctx.log.is_verbose() {
         ctx.log.emit_task_result(name, status, msg);
     }
@@ -48,11 +40,6 @@ pub(super) fn evaluate_policy_decision(
                     )));
                 }
             }
-            ExecutionPolicy::SkipInDryRun(reason) => {
-                if ctx.dry_run {
-                    return Some(PolicyDecision::Skipped(reason.to_string()));
-                }
-            }
         }
     }
     None
@@ -62,13 +49,7 @@ fn evaluate_policy(task: &dyn Task, ctx: &Context) -> Option<PolicyDecision> {
     evaluate_policy_decision(task.execution_policies(), ctx)
 }
 
-fn record_policy_decision(
-    ctx: &Context,
-    name: &str,
-    phase: TaskPhase,
-    domain: Domain,
-    decision: PolicyDecision,
-) {
+fn record_policy_decision(ctx: &Context, name: &str, domain: Domain, decision: PolicyDecision) {
     match decision {
         PolicyDecision::NotApplicable(reason) => {
             ctx.log.diag_task(DiagEvent::TaskSkip, name, &reason);
@@ -77,12 +58,7 @@ fn record_policy_decision(
             }
             ctx.debug_fmt(|| format!("not applicable: {reason}"));
             ctx.log
-                .record_task(name, phase, domain, TaskStatus::NotApplicable, None);
-        }
-        PolicyDecision::Skipped(reason) => {
-            ctx.log.diag_task(DiagEvent::TaskSkip, name, &reason);
-            ctx.log.info(&format!("skipped: {reason}"));
-            record(ctx, name, phase, domain, TaskStatus::Skipped, Some(&reason));
+                .record_task(name, domain, TaskStatus::NotApplicable, None);
         }
     }
 }
@@ -101,11 +77,10 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
     let _diag_context = diag_task_context(task.name());
-    let phase = task.phase();
     let domain = task.domain();
 
     if let Some(decision) = evaluate_policy(task, ctx) {
-        record_policy_decision(ctx, task.name(), phase, domain, decision);
+        record_policy_decision(ctx, task.name(), domain, decision);
         return;
     }
 
@@ -118,13 +93,13 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
         ctx.log
             .debug(&format!("skipping task: {} (not applicable)", task.name()));
         ctx.log
-            .record_task(task.name(), phase, domain, TaskStatus::NotApplicable, None);
+            .record_task(task.name(), domain, TaskStatus::NotApplicable, None);
         return;
     }
 
     ctx.log
         .diag_task(DiagEvent::TaskStart, task.name(), "executing");
-    record_run_outcome(task, ctx, phase, domain);
+    record_run_outcome(task, ctx, domain);
 }
 
 /// Run a task and record its outcome.
@@ -132,9 +107,9 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 /// Cancellation-induced failures (Ctrl-C) are downgraded to
 /// [`TaskStatus::Skipped`] so the summary does not count signal
 /// interruptions as real failures.
-fn record_run_outcome(task: &dyn Task, ctx: &Context, phase: TaskPhase, domain: Domain) {
+fn record_run_outcome(task: &dyn Task, ctx: &Context, domain: Domain) {
     let rec = |status: TaskStatus, msg: Option<&str>| {
-        record(ctx, task.name(), phase, domain, status, msg);
+        record(ctx, task.name(), domain, status, msg);
     };
     match task.run_if_applicable(ctx) {
         Ok(None) => {
@@ -145,7 +120,7 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context, phase: TaskPhase, domain: 
             }
             ctx.log.debug("nothing configured");
             ctx.log
-                .record_task(task.name(), phase, domain, TaskStatus::NotApplicable, None);
+                .record_task(task.name(), domain, TaskStatus::NotApplicable, None);
         }
         Ok(Some(result)) => match result {
             TaskResult::Ok => {
@@ -156,7 +131,7 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context, phase: TaskPhase, domain: 
                 ctx.log.diag_task(DiagEvent::TaskSkip, task.name(), &reason);
                 ctx.debug_fmt(|| format!("not applicable: {reason}"));
                 ctx.log
-                    .record_task(task.name(), phase, domain, TaskStatus::NotApplicable, None);
+                    .record_task(task.name(), domain, TaskStatus::NotApplicable, None);
             }
             TaskResult::Skipped(reason) => {
                 ctx.log.diag_task(DiagEvent::TaskSkip, task.name(), &reason);

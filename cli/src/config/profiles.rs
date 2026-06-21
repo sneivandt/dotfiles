@@ -75,6 +75,7 @@ fn default_definitions() -> HashMap<String, ProfileDef> {
 /// # Errors
 ///
 /// Returns an error if the profile is not found or the profiles.toml file cannot be parsed.
+#[cfg(any(test, feature = "internal-api", doctest))]
 pub fn resolve(name: &str, conf_dir: &Path, platform: Platform) -> Result<Profile, ConfigError> {
     let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
     resolve_with_defs(name, &defs, platform)
@@ -164,6 +165,7 @@ pub fn persist(root: &Path, name: &str) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if profiles cannot be loaded or user input cannot be read.
+#[cfg(any(test, feature = "internal-api", doctest))]
 pub fn prompt_interactive(conf_dir: &Path) -> Result<String> {
     let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
     prompt_interactive_with_defs(&defs)

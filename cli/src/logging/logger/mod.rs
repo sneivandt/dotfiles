@@ -26,7 +26,7 @@ use super::types::{Output, TaskEntry, TaskRecorder, TaskStatus};
 use super::utils::{dotfiles_cache_dir, log_file_path};
 #[cfg(test)]
 use super::utils::{dotfiles_cache_subdir, log_file_path_in};
-use crate::tasks::{Domain, TaskPhase};
+use crate::tasks::Domain;
 
 /// Generate an inherent `pub fn $name(&self, msg: &str)` method on `Logger`
 /// that optionally emits to the diagnostic log and then forwards to the given
@@ -231,7 +231,6 @@ impl Logger {
     pub fn record_task(
         &self,
         name: &str,
-        phase: TaskPhase,
         domain: Domain,
         status: TaskStatus,
         message: Option<&str>,
@@ -239,7 +238,6 @@ impl Logger {
         if let Ok(mut guard) = self.tasks.lock() {
             guard.push(TaskEntry {
                 name: name.to_string(),
-                phase,
                 domain,
                 status,
                 message: message.map(String::from),
@@ -288,15 +286,8 @@ impl Output for Logger {
 }
 
 impl TaskRecorder for Logger {
-    fn record_task(
-        &self,
-        name: &str,
-        phase: TaskPhase,
-        domain: Domain,
-        status: TaskStatus,
-        message: Option<&str>,
-    ) {
-        self.record_task(name, phase, domain, status, message);
+    fn record_task(&self, name: &str, domain: Domain, status: TaskStatus, message: Option<&str>) {
+        self.record_task(name, domain, status, message);
     }
 }
 
@@ -311,7 +302,7 @@ mod tests {
     use super::*;
     use crate::logging::isolated_logger;
     use crate::logging::types::Log;
-    use crate::tasks::{Domain, TaskPhase};
+    use crate::tasks::Domain;
     use std::fs;
 
     #[test]
@@ -323,13 +314,7 @@ mod tests {
     #[test]
     fn record_task_ok() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task(
-            "symlinks",
-            TaskPhase::Provision,
-            Domain::General,
-            TaskStatus::Ok,
-            None,
-        );
+        log.record_task("symlinks", Domain::General, TaskStatus::Ok, None);
         let tasks = log.task_entries();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].name, "symlinks");
@@ -341,7 +326,6 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
         log.record_task(
             "packages",
-            TaskPhase::Provision,
             Domain::General,
             TaskStatus::Skipped,
             Some("not on arch"),
@@ -355,27 +339,9 @@ mod tests {
     #[test]
     fn record_multiple_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task(
-            "a",
-            TaskPhase::Provision,
-            Domain::General,
-            TaskStatus::Ok,
-            None,
-        );
-        log.record_task(
-            "b",
-            TaskPhase::Provision,
-            Domain::General,
-            TaskStatus::Failed,
-            Some("error"),
-        );
-        log.record_task(
-            "c",
-            TaskPhase::Provision,
-            Domain::General,
-            TaskStatus::DryRun,
-            None,
-        );
+        log.record_task("a", Domain::General, TaskStatus::Ok, None);
+        log.record_task("b", Domain::General, TaskStatus::Failed, Some("error"));
+        log.record_task("c", Domain::General, TaskStatus::DryRun, None);
         assert_eq!(log.task_entries().len(), 3);
     }
 
@@ -383,21 +349,9 @@ mod tests {
     fn has_failures_detects_failed_task() {
         let (log, _tmp, _guard) = isolated_logger();
         assert!(!log.has_failures());
-        log.record_task(
-            "a",
-            TaskPhase::Provision,
-            Domain::General,
-            TaskStatus::Ok,
-            None,
-        );
+        log.record_task("a", Domain::General, TaskStatus::Ok, None);
         assert!(!log.has_failures());
-        log.record_task(
-            "b",
-            TaskPhase::Provision,
-            Domain::General,
-            TaskStatus::Failed,
-            Some("error"),
-        );
+        log.record_task("b", Domain::General, TaskStatus::Failed, Some("error"));
         assert!(log.has_failures());
     }
 
@@ -425,34 +379,10 @@ mod tests {
     fn failure_count_returns_correct_count() {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.failure_count(), 0);
-        log.record_task(
-            "a",
-            TaskPhase::Provision,
-            Domain::General,
-            TaskStatus::Ok,
-            None,
-        );
-        log.record_task(
-            "b",
-            TaskPhase::Provision,
-            Domain::General,
-            TaskStatus::Failed,
-            Some("error 1"),
-        );
-        log.record_task(
-            "c",
-            TaskPhase::Provision,
-            Domain::General,
-            TaskStatus::Failed,
-            Some("error 2"),
-        );
-        log.record_task(
-            "d",
-            TaskPhase::Provision,
-            Domain::General,
-            TaskStatus::Skipped,
-            None,
-        );
+        log.record_task("a", Domain::General, TaskStatus::Ok, None);
+        log.record_task("b", Domain::General, TaskStatus::Failed, Some("error 1"));
+        log.record_task("c", Domain::General, TaskStatus::Failed, Some("error 2"));
+        log.record_task("d", Domain::General, TaskStatus::Skipped, None);
         assert_eq!(log.failure_count(), 2);
     }
 
@@ -460,13 +390,7 @@ mod tests {
     fn log_trait_delegates_to_logger() {
         let (log, _tmp, _guard) = isolated_logger();
         let log_ref: &dyn Log = &log;
-        log_ref.record_task(
-            "via-trait",
-            TaskPhase::Provision,
-            Domain::General,
-            TaskStatus::Ok,
-            None,
-        );
+        log_ref.record_task("via-trait", Domain::General, TaskStatus::Ok, None);
         assert_eq!(log.task_entries().len(), 1);
     }
 
@@ -560,13 +484,7 @@ mod tests {
     #[test]
     fn summary_includes_log_paths() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task(
-            "summary-test",
-            TaskPhase::Provision,
-            Domain::General,
-            TaskStatus::Ok,
-            None,
-        );
+        log.record_task("summary-test", Domain::General, TaskStatus::Ok, None);
         log.print_summary();
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();

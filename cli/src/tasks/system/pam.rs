@@ -160,14 +160,14 @@ mod tests {
     fn needs_sudo_false_on_windows() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_windows_context(config);
-        assert!(!ConfigurePam.needs_sudo(&ctx));
+        assert!(!ConfigurePam.requires_elevation(&ctx));
     }
 
     #[test]
     fn needs_sudo_false_on_non_arch() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        assert!(!ConfigurePam.needs_sudo(&ctx));
+        assert!(!ConfigurePam.requires_elevation(&ctx));
     }
 
     #[test]
@@ -182,6 +182,6 @@ mod tests {
     #[test]
     fn needs_sudo_false_in_dry_run() {
         let ctx = make_arch_desktop_context().with_dry_run(true);
-        assert!(!ConfigurePam.needs_sudo(&ctx));
+        assert!(!ConfigurePam.requires_elevation(&ctx));
     }
 }

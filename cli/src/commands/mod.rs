@@ -763,7 +763,6 @@ pub fn run_tasks_to_completion<'a>(
                 if task.requires_elevation(ctx) {
                     log.record_task(
                         task.name(),
-                        task.phase(),
                         task.domain(),
                         crate::logging::TaskStatus::Skipped,
                         Some(reason),

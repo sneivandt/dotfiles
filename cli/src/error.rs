@@ -37,6 +37,10 @@ pub enum ResourceError {
 
     /// The operation was denied due to insufficient permissions.
     #[error("permission denied: {path}")]
+    #[allow(
+        dead_code,
+        reason = "part of the resource error taxonomy; exercised through test resources"
+    )]
     PermissionDenied {
         /// Path that could not be accessed.
         path: String,
@@ -45,6 +49,10 @@ pub enum ResourceError {
     /// The resource was found in an unexpected state that conflicts with the
     /// desired state and cannot be automatically reconciled.
     #[error("conflicting state for {resource}: expected {expected}, found {actual}")]
+    #[allow(
+        dead_code,
+        reason = "part of the resource error taxonomy; exercised through test resources"
+    )]
     ConflictingState {
         /// Human-readable resource description.
         resource: String,
@@ -95,12 +103,20 @@ impl ResourceError {
 
     /// Create a [`PermissionDenied`](Self::PermissionDenied) error.
     #[must_use]
+    #[allow(
+        dead_code,
+        reason = "part of the resource error taxonomy; exercised through test resources"
+    )]
     pub fn permission_denied(path: impl Into<String>) -> Self {
         Self::PermissionDenied { path: path.into() }
     }
 
     /// Create a [`ConflictingState`](Self::ConflictingState) error.
     #[must_use]
+    #[allow(
+        dead_code,
+        reason = "part of the resource error taxonomy; exercised through test resources"
+    )]
     pub fn conflicting_state(
         resource: impl Into<String>,
         expected: impl Into<String>,

@@ -78,8 +78,6 @@ pub enum ExecutionPolicy {
     Always,
     /// Run only when the current platform supports the named capability.
     PlatformSupported(&'static str, fn(&Platform) -> bool),
-    /// Skip the task entirely in dry-run mode, using the given reason.
-    SkipInDryRun(&'static str),
     /// The task may require elevated privileges when it predicts a mutation.
     RequiresElevation,
 }

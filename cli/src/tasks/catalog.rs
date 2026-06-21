@@ -56,7 +56,6 @@ pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
 mod tests {
     use super::{all_install_tasks, all_uninstall_tasks};
     use crate::tasks::Domain;
-    use crate::tasks::core::self_update::UpdateBinary;
     use crate::tasks::validation::{
         RunPSScriptAnalyzer, RunShellcheck, ValidateConfigFiles, ValidateConfigWarnings,
         ValidateManifestSync, ValidateSymlinkSources,
@@ -70,8 +69,7 @@ mod tests {
     fn all_registered_tasks_declare_a_domain() {
         let mut tasks = all_install_tasks();
         tasks.extend(all_uninstall_tasks());
-        // Tasks run outside the catalog (inline self-update, the test command).
-        tasks.push(Box::new(UpdateBinary));
+        // Tasks run outside the catalog (the test command).
         tasks.push(Box::new(ValidateConfigWarnings));
         tasks.push(Box::new(ValidateSymlinkSources));
         tasks.push(Box::new(ValidateConfigFiles));

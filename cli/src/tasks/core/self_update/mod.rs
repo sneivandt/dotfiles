@@ -60,8 +60,6 @@ fn nibble_to_upper(n: u8) -> char {
 use anyhow::Result;
 
 use crate::logging::Output;
-use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult};
-
 /// GitHub repository used for release lookups.
 pub(super) const REPO: &str = "sneivandt/dotfiles";
 
@@ -78,7 +76,7 @@ enum UpdateCheck {
     /// Could not reach GitHub.
     Offline,
     /// Already running the latest version.
-    AlreadyCurrent(String),
+    AlreadyCurrent,
     /// Running a development build; self-update is not applicable.
     DevBuild,
     /// A newer version is available.
@@ -111,11 +109,11 @@ fn check_for_update(root: &std::path::Path, client: &dyn HttpClient) -> Result<U
     };
     write_cache(root, &latest)?;
     if latest == current {
-        return Ok(UpdateCheck::AlreadyCurrent(latest));
+        return Ok(UpdateCheck::AlreadyCurrent);
     }
     if !is_newer(&latest, &current) {
         tracing::debug!("latest release {latest} is not newer than current {current}, skipping");
-        return Ok(UpdateCheck::AlreadyCurrent(latest));
+        return Ok(UpdateCheck::AlreadyCurrent);
     }
     Ok(UpdateCheck::UpdateAvailable { latest, current })
 }
@@ -143,7 +141,7 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
         UpdateCheck::CacheFresh
         | UpdateCheck::Offline
         | UpdateCheck::DevBuild
-        | UpdateCheck::AlreadyCurrent(_) => Ok(false),
+        | UpdateCheck::AlreadyCurrent => Ok(false),
         UpdateCheck::UpdateAvailable { latest, current } => {
             if dry_run {
                 log.info(&format!("update available: {current} → {latest}"));
@@ -161,84 +159,5 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
 
             Ok(true)
         }
-    }
-}
-
-/// Update the running dotfiles binary to the latest GitHub release.
-#[derive(Debug)]
-pub struct UpdateBinary;
-
-impl Task for UpdateBinary {
-    fn name(&self) -> &'static str {
-        "Update binary"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Bootstrap
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Core
-    }
-
-    fn should_run(&self, ctx: &Context) -> bool {
-        // Only run when the binary lives in $DOTFILES_ROOT/bin/ (production
-        // layout). Skip when running from a cargo build directory.
-        is_running_from_bin(&ctx.root())
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let root = ctx.root();
-        let client = default_http_client();
-        match check_for_update(&root, &client)? {
-            UpdateCheck::CacheFresh => {
-                Ok(TaskResult::Skipped("version cache is fresh".to_string()))
-            }
-            UpdateCheck::Offline => {
-                ctx.log
-                    .warn("could not reach GitHub, skipping binary update");
-                Ok(TaskResult::Skipped("offline".to_string()))
-            }
-            UpdateCheck::DevBuild => {
-                ctx.log.debug("dev build, skipping update check");
-                Ok(TaskResult::Skipped("dev build".to_string()))
-            }
-            UpdateCheck::AlreadyCurrent(tag) => {
-                ctx.log.debug(&format!("already up to date ({tag})"));
-                Ok(TaskResult::Ok)
-            }
-            UpdateCheck::UpdateAvailable { latest, .. } => {
-                if ctx.dry_run {
-                    ctx.log.dry_run(&format!("would update binary to {latest}"));
-                    return Ok(TaskResult::DryRun);
-                }
-                ctx.log.info(&format!("downloading {latest}…"));
-                download_and_install(&root, &latest, &client)?;
-                ctx.log.info(&format!("updated to {latest}"));
-                Ok(TaskResult::Ok)
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
-mod tests {
-    use super::*;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context};
-    use std::path::PathBuf;
-
-    #[test]
-    fn should_run_false_when_not_in_bin_dir() {
-        let config = empty_config(PathBuf::from("/nonexistent/repo"));
-        let ctx = make_linux_context(config);
-        let task = UpdateBinary;
-        // The test binary is in target/, not bin/, so should_run returns false.
-        assert!(!task.should_run(&ctx));
     }
 }

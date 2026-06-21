@@ -146,11 +146,6 @@ impl PackageProvider for PacmanProvider {
         query_names(executor, "pacman", &["-Q"], ParseMode::FirstToken)
     }
 
-    fn is_installed(&self, name: &str, executor: &dyn Executor) -> Result<bool> {
-        let result = executor.run_unchecked("pacman", &["-Q", name])?;
-        Ok(result.success)
-    }
-
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
         executor.run("sudo", &["pacman", "-Syu", "--needed", "--noconfirm", name])?;
         Ok(ResourceChange::Applied)
@@ -178,10 +173,6 @@ impl PackageProvider for ParuProvider {
 
     fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
         PacmanProvider.query_installed(executor)
-    }
-
-    fn is_installed(&self, name: &str, executor: &dyn Executor) -> Result<bool> {
-        PacmanProvider.is_installed(name, executor)
     }
 
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
@@ -228,20 +219,6 @@ impl PackageProvider for WingetProvider {
         }
 
         Ok(parse_winget_ids(&result.stdout))
-    }
-
-    fn is_installed(&self, name: &str, executor: &dyn Executor) -> Result<bool> {
-        let result = executor.run_unchecked(
-            "winget",
-            &[
-                "list",
-                "--id",
-                name,
-                "--exact",
-                "--accept-source-agreements",
-            ],
-        )?;
-        Ok(result.success && result.stdout.contains(name))
     }
 
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {

@@ -25,6 +25,10 @@ pub fn is_elevated() -> bool {
 /// Always returns `false` on non-Windows platforms.
 #[cfg(not(windows))]
 #[must_use]
+#[allow(
+    dead_code,
+    reason = "called only from Windows cfg-gated elevation path"
+)]
 pub const fn is_elevated() -> bool {
     false
 }

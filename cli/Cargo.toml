@@ -82,6 +82,7 @@ unwrap_used = "deny"
 verbose_file_reads = "deny"
 
 [lints.rust]
+dead_code = "deny"
 unsafe_code = "deny"
 let_underscore_drop = "deny"
 missing_debug_implementations = "deny"

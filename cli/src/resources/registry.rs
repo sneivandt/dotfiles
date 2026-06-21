@@ -73,20 +73,6 @@ mod native {
                 key.set_value(value_name, &value_data)
                     .with_context(|| format!("setting {key_path}\\{value_name}"))?;
             }
-            RegistryValueType::ExpandString => {
-                use winreg::RegValue;
-                let mut bytes: Vec<u8> = value_data
-                    .encode_utf16()
-                    .flat_map(u16::to_le_bytes)
-                    .collect();
-                bytes.extend_from_slice(&[0, 0]);
-                let raw = RegValue {
-                    bytes: bytes.into(),
-                    vtype: REG_EXPAND_SZ,
-                };
-                key.set_raw_value(value_name, &raw)
-                    .with_context(|| format!("setting {key_path}\\{value_name}"))?;
-            }
         }
         Ok(())
     }

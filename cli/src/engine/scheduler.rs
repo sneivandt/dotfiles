@@ -38,13 +38,7 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> bool {
             })
             .unwrap_or_else(|| "task panicked".to_string());
         log.diag_task(DiagEvent::TaskFail, task.name(), &msg);
-        log.record_task(
-            task.name(),
-            task.phase(),
-            task.domain(),
-            TaskStatus::Failed,
-            Some(&msg),
-        );
+        log.record_task(task.name(), task.domain(), TaskStatus::Failed, Some(&msg));
         buf.flush_and_complete(task.name());
         return false;
     }
@@ -149,7 +143,6 @@ pub(crate) fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<L
                     );
                     log.record_task(
                         task.name(),
-                        task.phase(),
                         task.domain(),
                         TaskStatus::Skipped,
                         Some(reason),

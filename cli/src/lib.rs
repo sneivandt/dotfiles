@@ -1,5 +1,4 @@
 #![allow(
-    dead_code,
     unreachable_pub,
     reason = "internal modules are hidden behind the binary entry point and internal-api facade"
 )]

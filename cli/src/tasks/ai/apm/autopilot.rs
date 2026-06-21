@@ -38,7 +38,7 @@ use crate::tasks::Context;
 /// `mode='interactive'` and `enabled=0`, so a freshly installed automation
 /// will not fire until a human re-enables it in the App's Workflows tab.  For
 /// the dotfiles-managed workflows that is undesirable -- they are meant to be
-/// hands-off -- so after a successful `apm install` or `apm deps update` we
+/// hands-off -- so after a successful `apm install` or `apm update` we
 /// flip exactly those rows to `mode='autopilot'` and `enabled=1`.
 ///
 /// The set of dotfiles-managed workflow ids is read fresh from

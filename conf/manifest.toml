@@ -51,6 +51,7 @@ paths = [
 # Arch Linux-specific files
 [arch]
 paths = [
+  "apm/config/arch.yml",
   "config/pacman.conf",
   "config/paru/",
   "config/zsh/functions/update-mirrors",

@@ -67,7 +67,8 @@ cargo test --manifest-path cli/Cargo.toml
    [base]
    symlinks = [
      "config/mynewconfig",
-     { source = "apm/plugins/*", target = ".copilot/skills/*" },
+     "apm/config/base.yml",
+     "apm/plugins/*",
    ]
    ```
    Use a full path-segment `*` when a directory should expand into one symlink per direct child.

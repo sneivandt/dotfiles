@@ -78,7 +78,7 @@ pub struct Context {
     /// Whether to advance locked dependency versions beyond the declared state.
     ///
     /// Set by the `update` command; `false` for `install`.  Gates the APM
-    /// dependency refresh (`apm outdated` / `apm deps update`) so that
+    /// dependency refresh (`apm outdated` / `apm update`) so that
     /// `install` converges to the declared state without bumping locked refs.
     pub advance_versions: bool,
     /// Whether the process is running inside a CI environment.
@@ -256,7 +256,7 @@ impl Context {
     /// Create a copy of this context with version-advancement mode set.
     ///
     /// Used by the `update` command to opt into advancing locked dependency
-    /// refs (e.g. `apm deps update`) that `install` deliberately leaves alone.
+    /// refs (e.g. `apm update`) that `install` deliberately leaves alone.
     #[must_use]
     pub fn with_advance_versions(&self, advance_versions: bool) -> Self {
         self.clone_with(|ctx| ctx.advance_versions = advance_versions)

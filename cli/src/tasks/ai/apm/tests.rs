@@ -143,10 +143,7 @@ fn run_installs_when_manifest_changed() {
         .returning(move |dir, program, args, env| {
             assert_eq!(dir, install_cwd.as_path());
             assert_eq!(program, "apm");
-            assert_eq!(
-                args,
-                ["install", "-g", "--target", "copilot,vscode,copilot-app"]
-            );
+            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
             assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
             assert!(env.contains(&("GCM_INTERACTIVE", "Never")));
             assert!(env.contains(&("GCM_GUI_PROMPT", "false")));
@@ -212,10 +209,7 @@ fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
         .in_sequence(seq)
         .returning(|_, program, args, _| {
             assert_eq!(program, "apm");
-            assert_eq!(
-                args,
-                ["install", "-g", "--target", "copilot,vscode,copilot-app"]
-            );
+            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
             Ok(ok_result("installed\n"))
         });
 }
@@ -449,7 +443,7 @@ fn run_skips_autopilot_fixup_when_lock_lists_no_workflows() {
 }
 
 #[test]
-fn update_skips_deps_update_when_dependencies_current() {
+fn update_skips_apm_update_when_dependencies_current() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
 
@@ -470,7 +464,7 @@ fn update_skips_deps_update_when_dependencies_current() {
             assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
             Ok(ok_result("[*] All dependencies are up-to-date\n"))
         });
-    // No `apm deps update` expectation: when nothing is outdated the update
+    // No `apm update` expectation: when nothing is outdated the update
     // task must not advance any locked ref.  The mock panics on extra calls.
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -512,13 +506,7 @@ fn update_advances_dependencies_when_outdated_reports_stale_lock() {
             assert_eq!(program, "apm");
             assert_eq!(
                 args,
-                [
-                    "deps",
-                    "update",
-                    "-g",
-                    "--target",
-                    "copilot,vscode,copilot-app"
-                ]
+                ["update", "-g", "--yes", "--target", "copilot,copilot-app"]
             );
             assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
             // Simulate a real ref advance by rewriting the lockfile; the task
@@ -533,12 +521,12 @@ fn update_advances_dependencies_when_outdated_reports_stale_lock() {
     let result = UpdateApmPackages.run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
-        "expected Ok after apm deps update, got {result:?}"
+        "expected Ok after apm update, got {result:?}"
     );
 }
 
 #[test]
-fn update_stays_quiet_when_deps_update_reports_no_changes() {
+fn update_stays_quiet_when_apm_update_reports_no_changes() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
 
@@ -565,13 +553,7 @@ fn update_stays_quiet_when_deps_update_reports_no_changes() {
         .returning(move |_, _, args, _| {
             assert_eq!(
                 args,
-                [
-                    "deps",
-                    "update",
-                    "-g",
-                    "--target",
-                    "copilot,vscode,copilot-app"
-                ]
+                ["update", "-g", "--yes", "--target", "copilot,copilot-app"]
             );
             // The mock leaves the lockfile untouched, so the before/after
             // comparison reports no advance even though `apm update` re-ran.
@@ -588,12 +570,12 @@ fn update_stays_quiet_when_deps_update_reports_no_changes() {
 }
 
 #[test]
-fn update_re_arms_apm_workflows_after_deps_update() {
+fn update_re_arms_apm_workflows_after_apm_update() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
     // Overwrite the plain lock with one that records a dotfiles-managed
     // workflow so the pre-update snapshot and post-update fixup are scoped to
-    // it.  This is the regression scenario: `apm deps update` redeploys the
+    // it.  This is the regression scenario: `apm update` redeploys the
     // workflow secure-by-default (disabled), and the fixup must re-arm it.
     write_workflow_lock(dir.path(), &["apm--a"]);
     let db_path = write_workflow_db(dir.path());
@@ -635,7 +617,7 @@ fn update_re_arms_apm_workflows_after_deps_update() {
             );
             Ok(ok_result(""))
         });
-    // apm deps update advances the lock and redeploys the workflow disabled.
+    // apm update advances the lock and redeploys the workflow disabled.
     mock.expect_run_in_with_env()
         .once()
         .in_sequence(&mut seq)
@@ -643,13 +625,7 @@ fn update_re_arms_apm_workflows_after_deps_update() {
             assert_eq!(program, "apm");
             assert_eq!(
                 args,
-                [
-                    "deps",
-                    "update",
-                    "-g",
-                    "--target",
-                    "copilot,vscode,copilot-app"
-                ]
+                ["update", "-g", "--yes", "--target", "copilot,copilot-app"]
             );
             Ok(ok_result("updated\n"))
         });
@@ -672,16 +648,16 @@ fn update_re_arms_apm_workflows_after_deps_update() {
     let result = UpdateApmPackages.run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
-        "expected Ok after re-arming workflows post deps update, got {result:?}"
+        "expected Ok after re-arming workflows post apm update, got {result:?}"
     );
 }
 
 #[test]
-fn update_re_arms_apm_workflows_even_when_deps_update_reports_no_changes() {
+fn update_re_arms_apm_workflows_even_when_apm_update_reports_no_changes() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
     // A dotfiles-managed workflow is recorded in the lock.  Even when
-    // `apm deps update` reports no advanced refs it can still redeploy the
+    // `apm update` reports no advanced refs it can still redeploy the
     // workflow disabled, so the fixup must run defensively on this path too.
     write_workflow_lock(dir.path(), &["apm--a"]);
     let db_path = write_workflow_db(dir.path());
@@ -722,20 +698,14 @@ fn update_re_arms_apm_workflows_even_when_deps_update_reports_no_changes() {
             );
             Ok(ok_result("apm--a\n"))
         });
-    // apm deps update leaves the lockfile untouched (Unchanged outcome).
+    // apm update leaves the lockfile untouched (Unchanged outcome).
     mock.expect_run_in_with_env()
         .once()
         .in_sequence(&mut seq)
         .returning(move |_, _, args, _| {
             assert_eq!(
                 args,
-                [
-                    "deps",
-                    "update",
-                    "-g",
-                    "--target",
-                    "copilot,vscode,copilot-app"
-                ]
+                ["update", "-g", "--yes", "--target", "copilot,copilot-app"]
             );
             Ok(ok_result("  [+] github.com/example/plugin (cached)\n"))
         });
@@ -784,13 +754,10 @@ fn install_task_converges_without_advancing_dependencies() {
         .once()
         .in_sequence(&mut seq)
         .returning(move |_, _, args, _| {
-            assert_eq!(
-                args,
-                ["install", "-g", "--target", "copilot,vscode,copilot-app"]
-            );
+            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
             Ok(ok_result("installed\n"))
         });
-    // No `apm outdated` / `apm deps update` expectations are registered: the
+    // No `apm outdated` / `apm update` expectations are registered: the
     // convergence task never advances locked refs — that is the `update`-only
     // `UpdateApmPackages` task's job.  The mock would panic on any such call.
 
@@ -815,7 +782,7 @@ fn update_skips_advancement_when_install_marker_missing() {
         .with(mockall::predicate::eq("apm"))
         .once()
         .returning(|_| true);
-    // No `apm outdated` / `apm deps update` expectations: the converged-manifest
+    // No `apm outdated` / `apm update` expectations: the converged-manifest
     // guard must short-circuit before any lockfile-advancing call.  The mock
     // panics on any unexpected `run_in_with_env`.
 
@@ -854,10 +821,7 @@ fn run_installs_when_success_marker_is_missing() {
         .returning(move |dir, program, args, _env| {
             assert_eq!(dir, install_cwd.as_path());
             assert_eq!(program, "apm");
-            assert_eq!(
-                args,
-                ["install", "-g", "--target", "copilot,vscode,copilot-app"]
-            );
+            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
             Ok(ok_result("installed\n"))
         });
 
@@ -1034,10 +998,7 @@ fn run_continues_when_experimental_enable_fails() {
         .once()
         .in_sequence(&mut seq)
         .returning(|_, _, args, _| {
-            assert_eq!(
-                args,
-                ["install", "-g", "--target", "copilot,vscode,copilot-app"]
-            );
+            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
             Ok(ok_result("installed\n"))
         });
 
@@ -1099,10 +1060,7 @@ fn run_tolerates_copilot_app_workflow_encoding_failures() {
         .once()
         .in_sequence(&mut seq)
         .returning(|_, _, args, _| {
-            assert_eq!(
-                args,
-                ["install", "-g", "--target", "copilot,vscode,copilot-app"]
-            );
+            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
             Err(anyhow::anyhow!(
                 "apm install failed (exit 1): stdout: {APM_WORKFLOW_ENCODE_ONLY_OUTPUT}"
             ))
@@ -1173,6 +1131,23 @@ fn workflow_encode_detection_accepts_uniform_encoding_failures() {
         tolerable_workflow_encode_failures(APM_WORKFLOW_ENCODE_ONLY_OUTPUT),
         Some(2)
     );
+}
+
+#[test]
+fn workflow_encode_detection_accepts_current_apm_wording() {
+    let current = "  [x] 4 packages failed:\n    +- dotnet/skills/plugins/dotnet-diag \
+                   -- Failed to integrate primitives: Refusing to lockfile-encode non-APM \
+                   workflow id: 'optimizing-dotnet-performance.agent.md'\n    +- \
+                   dotnet/skills/plugins/dotnet-msbuild -- Failed to integrate primitives: \
+                   Refusing to lockfile-encode non-APM workflow id: 'msbuild.agent.md'\n    \
+                   +- github/awesome-copilot/plugins/context-engineering -- Failed to \
+                   integrate primitives: Refusing to lockfile-encode non-APM workflow id: \
+                   'context-architect.agent.md'\n    +- \
+                   github/awesome-copilot/plugins/project-planning -- Failed to integrate \
+                   primitives: Refusing to lockfile-encode non-APM workflow id: \
+                   'implementation-plan.agent.md'\n[!] Installed 14 APM dependencies in 7.9s \
+                   with 4 error(s).";
+    assert_eq!(tolerable_workflow_encode_failures(current), Some(4));
 }
 
 #[test]

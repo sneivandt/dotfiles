@@ -8,35 +8,25 @@ dependencies:
     - ~/.apm/plugins/dot-doc
     - ~/.apm/plugins/dot-skill
 
-    # External dependencies are pinned to a specific commit (#<sha>) so that
-    # `apm outdated`/`apm deps update` do not treat a moving default branch as
-    # perpetually stale and re-clone full repo history on every install. The
-    # pinned SHAs are the last known-good revisions already resolved locally;
-    # bump them deliberately when adopting upstream changes.
+    # External dependencies track upstream main branches. APM records exact
+    # commits in ~/.apm/apm.lock.yaml; `dotfiles update` / `apm update -g`
+    # advances those locks without hard-coding SHAs in this fragment.
 
-    # .NET tooling (dotnet/skills @ a7a744c, 2026-06-21)
-    - dotnet/skills/plugins/dotnet-diag#a7a744ce18951bf30a73769217abbd7165203be9
-    - dotnet/skills/plugins/dotnet-msbuild#a7a744ce18951bf30a73769217abbd7165203be9
-    - dotnet/skills/plugins/dotnet-upgrade#a7a744ce18951bf30a73769217abbd7165203be9
+    # .NET tooling
+    - dotnet/skills/plugins/dotnet-diag#main
+    - dotnet/skills/plugins/dotnet-msbuild#main
+    - dotnet/skills/plugins/dotnet-upgrade#main
 
-    # Copilot meta / workflow (github/awesome-copilot @ 251f416, 2026-06-21)
-    - github/awesome-copilot/plugins/awesome-copilot#251f416b6d3aa12837b10536e6f9bdd67f482ff7
-    - github/awesome-copilot/plugins/context-engineering#251f416b6d3aa12837b10536e6f9bdd67f482ff7
-    - github/awesome-copilot/plugins/automate-this#251f416b6d3aa12837b10536e6f9bdd67f482ff7
-    - github/awesome-copilot/skills/agent-supply-chain#251f416b6d3aa12837b10536e6f9bdd67f482ff7
+    # Copilot workflow
+    - github/awesome-copilot/plugins/context-engineering#main
+    - github/awesome-copilot/plugins/automate-this#main
+    - github/awesome-copilot/skills/agent-supply-chain#main
 
     # Planning & process
-    - github/awesome-copilot/plugins/project-planning#251f416b6d3aa12837b10536e6f9bdd67f482ff7
-    - github/awesome-copilot/plugins/software-engineering-team#251f416b6d3aa12837b10536e6f9bdd67f482ff7
-
-    # Cloud / infrastructure
-    - github/awesome-copilot/plugins/azure-cloud-development#251f416b6d3aa12837b10536e6f9bdd67f482ff7
+    - github/awesome-copilot/plugins/project-planning#main
 
     # Cross-cutting code quality
-    - github/awesome-copilot/plugins/security-best-practices#251f416b6d3aa12837b10536e6f9bdd67f482ff7
-
-    # System administration
-    - github/awesome-copilot/skills/arch-linux-triage#251f416b6d3aa12837b10536e6f9bdd67f482ff7
+    - github/awesome-copilot/plugins/security-best-practices#main
 
     # Document conversion skills
-    - github/awesome-copilot/skills/md-to-docx#251f416b6d3aa12837b10536e6f9bdd67f482ff7
+    - github/awesome-copilot/skills/md-to-docx#main

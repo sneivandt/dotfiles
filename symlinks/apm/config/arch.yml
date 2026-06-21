@@ -1,0 +1,6 @@
+name: dotfiles-arch
+version: 1.0.0
+dependencies:
+  apm:
+    # System administration
+    - github/awesome-copilot/skills/arch-linux-triage#main

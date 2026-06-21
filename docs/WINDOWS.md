@@ -55,7 +55,7 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 | User | 10 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
 | User | 11 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
 | User | 12 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
-| User | 13 | APM Packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml`, installs when the manifest or lockfile changes, and otherwise uses `apm outdated -g` before running `apm deps update -g --target copilot,vscode`. | Idempotent via APM's lockfile. |
+| User | 13 | APM Packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install -g --target copilot,copilot-app` when the manifest, lockfile, or local plugin content needs redeploying. The `update` command separately runs `apm outdated -g` and `apm update -g --yes --target copilot,copilot-app` when locked refs are stale. | Idempotent via APM's lockfile. |
 
 Tasks run in parallel where dependencies allow, so the numbering above reflects logical
 grouping rather than strict execution order.
@@ -204,7 +204,7 @@ To add a new link:
 2. Add the path to the `[windows]` section in `conf/symlinks.toml`. Use a plain string for Unix-style paths (dot prefix applied automatically) or `{ source, target }` for Windows paths that need no dot prefix.
 3. Re-run `./dotfiles.ps1`.
 
-Symlink entries also support a full path-segment `*` glob. Each `*` in `source` captures one path segment and each `*` in an explicit `target` is replaced by the matching capture, for example `{ source = "copilot/skills/*", target = ".copilot/skills/*" }`.
+Symlink entries also support a full path-segment `*` glob. Each `*` in `source` captures one path segment and each `*` in an explicit `target` is replaced by the matching capture, for example `apm/plugins/*` links each local APM plugin into `~/.apm/plugins/<plugin>`.
 
 ## VS Code Extensions
 
@@ -226,8 +226,8 @@ dependencies:
 
 **How it works**:
 - `Install symlinks` links `symlinks/apm/config/base.yml` → `~/.apm/config/base.yml`
-- `Install APM packages` runs `apm install -g --target copilot,vscode` when the merged manifest or lockfile changed. This converges to the locked manifest and never advances locked refs
-- `Update APM packages` (the `update` command only) runs in a separate **Updating dependencies** phase after everything else: it checks `apm outdated -g` and runs `apm deps update -g --target copilot,vscode` to advance any stale locked dependencies. It is absent from `install`
+- `Install APM packages` runs `apm install -g --target copilot,copilot-app` when the merged manifest, lockfile, or local plugin content needs redeploying. This converges to the locked manifest and never advances locked refs
+- `Update APM packages` (the `update` command only) runs in a separate **Updating dependencies** phase after everything else: it checks `apm outdated -g` and runs `apm update -g --yes --target copilot,copilot-app` to advance any stale locked dependencies. It is absent from `install`
 - Idempotency is provided by APM itself via its lockfile / no-op behaviour
 - Plugin primitives are deployed to `~/.copilot/`, `~/.claude/`, `~/.cursor/`, etc.
 

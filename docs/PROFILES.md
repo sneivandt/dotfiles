@@ -180,6 +180,38 @@ You can create custom profiles for specific needs:
    - Add sections to `conf/packages.toml`, `conf/symlinks.toml`, etc.
    - Use section name `[my-custom]` or multi-category like `[arch-my-custom]`
 
+### Profile-Specific APM Tooling
+
+APM config is delivered through symlinked manifest fragments under
+`symlinks/apm/config/*.yml`. The base fragment is linked by the `[base]`
+section in `conf/symlinks.toml`, so it is installed for every profile.
+
+To make AI tooling profile-specific, split optional dependencies into their own
+fragment and link that fragment from the matching profile category:
+
+```toml
+# conf/symlinks.toml
+[desktop]
+symlinks = [
+  "apm/config/desktop.yml",
+]
+```
+
+```yaml
+# symlinks/apm/config/desktop.yml
+name: dotfiles-desktop
+version: 1.0.0
+dependencies:
+  apm:
+    - github/awesome-copilot/plugins/automate-this#<pinned-sha>
+```
+
+Also list `apm/config/desktop.yml` under the matching section in
+`conf/manifest.toml` so sparse checkout includes the fragment when that
+category is active. On install, the APM task merges every linked
+`~/.apm/config/*.yml` fragment into `~/.apm/apm.yml`, so each selected profile
+gets the base AI tooling plus its profile-specific fragments.
+
 ## Profile Categories
 
 Categories are logical groups used throughout the configuration system:

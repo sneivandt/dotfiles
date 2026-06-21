@@ -292,9 +292,9 @@ code --install-extension <extension-id>
 ./dotfiles.sh update
 
 # Or run APM directly at user scope
-apm install -g --target copilot,vscode
+apm install -g --target copilot,copilot-app
 apm outdated -g
-apm deps update -g --target copilot,vscode
+apm update -g --yes --target copilot,copilot-app
 
 # Inspect the manifest (deployed location)
 cat ~/.apm/apm.yml

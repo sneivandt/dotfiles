@@ -22,7 +22,7 @@ the Rust `InstallApmPackages` task.
 | `symlinks/apm/plugins/dot-doc` | Local document-generation workflow skills |
 | `symlinks/apm/plugins/dot-skill` | Local skill/plugin maintenance skills |
 | `conf/symlinks.toml` | Links `apm/config/base.yml` and `apm/plugins/*` from this repo |
-| `cli/src/tasks/ai/apm/` | `InstallApmPackages` (Provision phase) merges fragments + runs `apm install`; `UpdateApmPackages` (Update phase, `update` command only) advances locked deps via `apm outdated` + `apm deps update` (`mod.rs` orchestration; `fragments.rs`, `manifest.rs`, `outdated.rs`, `autopilot.rs`) |
+| `cli/src/tasks/ai/apm/` | `InstallApmPackages` (Provision phase) merges fragments + runs `apm install`; `UpdateApmPackages` (Update phase, `update` command only) advances locked deps via `apm outdated` + `apm update` (`mod.rs` orchestration; `fragments.rs`, `manifest.rs`, `outdated.rs`, `autopilot.rs`) |
 
 ## When to Change What
 
@@ -43,15 +43,18 @@ fragment, so AI tooling can be delivered through APM instead of raw symlinks:
 - **MCP servers**: declare self-defined stdio/http servers under
   `dependencies.mcp:` in a fragment (`base.yml` or an overlay's fragment).
   `apm install -g` writes the per-client config (`~/.copilot/mcp-config.json`
-  for Copilot). Keep MCP servers **direct** in the fragment — APM 0.16.0 does
-  not resolve transitive (plugin-owned) MCP from local `~/.apm/plugins` paths.
+  for Copilot). Keep self-defined MCP servers **direct** in the fragment unless
+  intentionally opting into transitive MCP trust with APM's
+  `--trust-transitive-mcp`; direct declarations keep the trust boundary explicit.
 - **Hooks**: ship `*.json` hooks under a local plugin's `.apm/hooks/`. APM
   deploys them to `~/.copilot/hooks/<plugin>-<file>.json` at user scope. A
   sidecar script (e.g. a `.ps1` the hook invokes) can ride along as a skill
   asset; it lands at `~/.agents/skills/<skill>/`, so point the hook there.
-- **Instructions**: NOT supported at Copilot user scope — keep
-  `~/.copilot/copilot-instructions.md` as a direct symlink, not an APM
-  primitive.
+- **Instructions**: supported at Copilot user scope in current APM. Instruction
+  primitives can be delivered through APM and are concatenated into
+  `~/.copilot/copilot-instructions.md`. Keep repo-specific instructions in
+  `.github/copilot-instructions.md`; use APM only for reusable user-scope
+  instruction packages.
 
 ## Local Plugin Rules
 
@@ -79,7 +82,7 @@ After APM config or local plugin changes, run:
 the Configure-phase `InstallApmPackages` task only runs `apm install`.  To pull in
 newer plugin/MCP dependency versions, run `./dotfiles.sh update`, which adds a
 separate **Updating dependencies** phase whose `UpdateApmPackages` task runs
-`apm outdated` + `apm deps update`.  That task guards itself — it only contacts
+`apm outdated` + `apm update`.  That task guards itself — it only contacts
 APM when the manifest has already been installed successfully (lockfile present
 and the success marker matches) — so a failed/partial install never advances
 locked refs.  The `update`-only scheduling lives in `run_pipeline`

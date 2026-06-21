@@ -12,9 +12,9 @@ pub(super) enum ApmOutdatedCheck {
 
 /// Outcome of refreshing locked user-scope dependencies.
 pub(super) enum ApmUpdateOutcome {
-    /// `apm deps update` advanced at least one locked ref.
+    /// `apm update` advanced at least one locked ref.
     Changed,
-    /// `apm deps update` ran but every dependency was already current.
+    /// `apm update` ran but every dependency was already current.
     Unchanged,
     /// The update could not run because credentials are unavailable.
     Skipped(String),

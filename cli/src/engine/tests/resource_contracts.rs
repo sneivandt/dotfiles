@@ -4,7 +4,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use crate::engine::{TaskResult, process_resources, process_resources_remove};
+use crate::engine::{ProcessOpts, TaskResult, process_resources, process_resources_remove};
 use crate::resources::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::tasks::test_helpers::empty_config;
 
@@ -73,6 +73,89 @@ fn dry_run_contract_context() -> crate::engine::Context {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = dry_run_context(config);
     ctx
+}
+
+#[derive(Clone)]
+struct StateCase {
+    name: &'static str,
+    state: ResourceState,
+}
+
+struct ProcessModeCase {
+    name: &'static str,
+    opts: ProcessOpts<'static>,
+    applies_missing: bool,
+    applies_incorrect: bool,
+}
+
+fn state_cases() -> [StateCase; 5] {
+    [
+        StateCase {
+            name: "missing",
+            state: ResourceState::Missing,
+        },
+        StateCase {
+            name: "correct",
+            state: ResourceState::Correct,
+        },
+        StateCase {
+            name: "incorrect",
+            state: ResourceState::Incorrect {
+                current: "drifted".to_string(),
+            },
+        },
+        StateCase {
+            name: "invalid",
+            state: ResourceState::Invalid {
+                reason: "unsafe target".to_string(),
+            },
+        },
+        StateCase {
+            name: "unknown",
+            state: ResourceState::Unknown {
+                reason: "state probe failed".to_string(),
+            },
+        },
+    ]
+}
+
+fn process_mode_cases() -> [ProcessModeCase; 4] {
+    [
+        ProcessModeCase {
+            name: "strict",
+            opts: ProcessOpts::strict("install"),
+            applies_missing: true,
+            applies_incorrect: true,
+        },
+        ProcessModeCase {
+            name: "lenient",
+            opts: ProcessOpts::lenient("install"),
+            applies_missing: true,
+            applies_incorrect: true,
+        },
+        ProcessModeCase {
+            name: "install-missing",
+            opts: ProcessOpts::install_missing("install"),
+            applies_missing: true,
+            applies_incorrect: false,
+        },
+        ProcessModeCase {
+            name: "fix-existing",
+            opts: ProcessOpts::fix_existing("configure"),
+            applies_missing: false,
+            applies_incorrect: true,
+        },
+    ]
+}
+
+fn mode_applies_state(mode: &ProcessModeCase, state: &ResourceState) -> bool {
+    match state {
+        ResourceState::Missing => mode.applies_missing,
+        ResourceState::Incorrect { .. } => mode.applies_incorrect,
+        ResourceState::Correct | ResourceState::Invalid { .. } | ResourceState::Unknown { .. } => {
+            false
+        }
+    }
 }
 
 #[test]
@@ -216,4 +299,177 @@ fn contract_remove_does_not_touch_unmanaged_or_unsafe_states() {
     assert_eq!(incorrect.remove_calls(), 0);
     assert_eq!(invalid.remove_calls(), 0);
     assert_eq!(unknown.remove_calls(), 0);
+}
+
+#[test]
+fn contract_process_modes_apply_only_their_fixable_states() -> anyhow::Result<()> {
+    let ctx = contract_context();
+
+    for mode in process_mode_cases() {
+        for case in state_cases() {
+            let resource = ContractResource::new(case.state.clone());
+            let should_apply = mode_applies_state(&mode, &case.state);
+
+            let result = process_resources(&ctx, [resource.clone()], &mode.opts)?;
+
+            assert!(
+                matches!(result, TaskResult::Ok),
+                "mode {} and state {} should complete successfully",
+                mode.name,
+                case.name
+            );
+            assert_eq!(
+                resource.apply_calls(),
+                usize::from(should_apply),
+                "mode {} should apply state {} exactly as declared by its contract",
+                mode.name,
+                case.name
+            );
+            assert_eq!(
+                resource.remove_calls(),
+                0,
+                "install processing must not call remove for mode {} and state {}",
+                mode.name,
+                case.name
+            );
+
+            let expected_state = if should_apply {
+                ResourceState::Correct
+            } else {
+                case.state
+            };
+            assert_eq!(
+                resource.state(),
+                expected_state,
+                "mode {} should leave state {} in the expected post-condition",
+                mode.name,
+                case.name
+            );
+        }
+    }
+
+    Ok(())
+}
+
+#[test]
+fn contract_dry_run_process_modes_never_mutate_any_state() -> anyhow::Result<()> {
+    let ctx = dry_run_contract_context();
+
+    for mode in process_mode_cases() {
+        for case in state_cases() {
+            let resource = ContractResource::new(case.state.clone());
+
+            let result = process_resources(&ctx, [resource.clone()], &mode.opts)?;
+
+            assert!(
+                matches!(result, TaskResult::DryRun),
+                "dry-run mode {} and state {} should report dry-run",
+                mode.name,
+                case.name
+            );
+            assert_eq!(
+                resource.state(),
+                case.state,
+                "dry-run mode {} should not mutate state {}",
+                mode.name,
+                case.name
+            );
+            assert_eq!(
+                resource.apply_calls(),
+                0,
+                "dry-run mode {} should not apply state {}",
+                mode.name,
+                case.name
+            );
+            assert_eq!(
+                resource.remove_calls(),
+                0,
+                "dry-run mode {} should not remove state {}",
+                mode.name,
+                case.name
+            );
+        }
+    }
+
+    Ok(())
+}
+
+#[test]
+fn contract_remove_only_mutates_correct_resources() -> anyhow::Result<()> {
+    let ctx = contract_context();
+
+    for case in state_cases() {
+        let resource = ContractResource::new(case.state.clone());
+        let should_remove = matches!(case.state, ResourceState::Correct);
+
+        let result = process_resources_remove(&ctx, [resource.clone()], "remove")?;
+
+        assert!(
+            matches!(result, TaskResult::Ok),
+            "remove state {} should complete successfully",
+            case.name
+        );
+        assert_eq!(
+            resource.remove_calls(),
+            usize::from(should_remove),
+            "remove should call remove exactly once only for correct resources"
+        );
+        assert_eq!(
+            resource.apply_calls(),
+            0,
+            "remove should never call apply for state {}",
+            case.name
+        );
+
+        let expected_state = if should_remove {
+            ResourceState::Missing
+        } else {
+            case.state
+        };
+        assert_eq!(
+            resource.state(),
+            expected_state,
+            "remove should leave state {} in the expected post-condition",
+            case.name
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
+fn contract_remove_dry_run_never_mutates_any_state() -> anyhow::Result<()> {
+    let ctx = dry_run_contract_context();
+
+    for case in state_cases() {
+        let resource = ContractResource::new(case.state.clone());
+
+        let result = process_resources_remove(&ctx, [resource.clone()], "remove")?;
+
+        assert!(
+            matches!(result, TaskResult::DryRun),
+            "dry-run remove state {} should report dry-run",
+            case.name
+        );
+        assert_eq!(
+            resource.state(),
+            case.state,
+            "dry-run remove should not mutate state {}",
+            case.name
+        );
+        assert_eq!(
+            resource.remove_calls(),
+            0,
+            "dry-run remove should not call remove for state {}",
+            case.name
+        );
+        assert_eq!(
+            resource.apply_calls(),
+            0,
+            "dry-run remove should not call apply for state {}",
+            case.name
+        );
+    }
+
+    Ok(())
 }

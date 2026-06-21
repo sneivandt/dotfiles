@@ -70,7 +70,7 @@ cd dotfiles
 ./dotfiles.sh install -d           # dry-run (preview without applying)
 ./dotfiles.sh install -v           # verbose output
 ./dotfiles.sh update               # install + advance pinned dependency versions
-./dotfiles.sh uninstall            # remove symlinks
+./dotfiles.sh uninstall            # remove symlinks/hooks/wrapper only
 ./dotfiles.sh test                 # validate configuration
 ./dotfiles.sh logs                 # view the most recent operation log
 ./dotfiles.sh logs -v              # view the diagnostic log when available
@@ -124,6 +124,13 @@ Three layers, kept deliberately thin:
 1. **Entry scripts** (`dotfiles.sh` / `dotfiles.ps1`): download the binary from GitHub Releases (or build it with `--build`) and forward your arguments.
 2. **Rust binary** (`cli/`): parses the config, resolves your profile, and applies symlinks, packages, and settings. It shells out only when it has to — package managers, systemd, and the like.
 3. **Configuration** (`conf/`): the part you edit. Everything else follows from the TOML.
+
+`install` is the normal convergence command: it may self-update the binary,
+attempt a safe fast-forward repository sync, reload config, and apply declared
+state without advancing pinned dependency versions. `update` runs the same flow
+plus a final dependency-advancement phase. `uninstall` is conservative and only
+detaches the managed symlinks, Git hooks, and wrapper; it does not remove
+packages or roll back system/editor settings.
 
 ## Making it yours
 

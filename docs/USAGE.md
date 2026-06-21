@@ -52,7 +52,7 @@ dotfiles.sh [--build] version
 **Options:**
 
 - **`install`** - Converge the system to the declared state (does not advance pinned versions)
-- **`update`** - Everything `install` does, **plus** advancing pinned dependency versions (currently APM plugin dependencies via `apm deps update`)
+- **`update`** - Everything `install` does, **plus** advancing pinned dependency versions (currently APM plugin dependencies via `apm update`)
 - **`uninstall`** - Remove installed dotfiles (managed symlinks)
 - **`test`** - Run configuration validation
 - **`logs`** - Print the most recent dotfiles operation log
@@ -116,19 +116,22 @@ cd dotfiles
 
 ### Updating Dotfiles
 
-`install` converges your system to the declared state but leaves pinned
-dependency versions untouched. `update` does everything `install` does **and**
-adds a final **Updating dependencies** phase that advances pinned dependency
-versions (currently APM plugin dependencies, via `apm deps update`). Because
-this is a separate phase that runs after everything else, `update` output ends
-with a `:: Updating dependencies` section; `install` has no such phase. Use
-`update` when you want to pull in newer dependency versions; use `install` for
-a reproducible, version-stable apply.
+`install` is the normal convergence command. It may update the dotfiles binary
+first, then attempts a safe fast-forward-only repository sync, reloads
+configuration if the repo changed, and applies the declared machine state. It
+does **not** advance pinned dependency versions.
+
+`update` does everything `install` does **and** adds a final **Updating
+dependencies** phase that advances pinned dependency versions (currently APM
+plugin dependencies, via `apm update`). Because this is a separate phase
+that runs after everything else, `update` output ends with a `:: Updating
+dependencies` section; `install` has no such phase. Use `update` when you want
+to pull in newer dependency versions; use `install` for a reproducible,
+version-stable apply.
 
 **Linux (uses saved profile):**
 ```bash
 cd ~/dotfiles
-git pull
 ./dotfiles.sh update      # install + advance pinned dependency versions
 ```
 
@@ -138,7 +141,6 @@ To re-apply configuration without bumping any pinned versions, run
 **Windows:**
 ```powershell
 cd ~\dotfiles
-git pull
 .\dotfiles.ps1 update -p desktop
 ```
 
@@ -167,11 +169,21 @@ git pull
 
 ### Uninstalling
 
-**Remove all managed symlinks:**
+`uninstall` is intentionally conservative. It removes the pieces that this
+project can safely detach without guessing the user's desired system state:
+managed symlinks, installed Git hooks, and the wrapper entry point. It does not
+try to roll back packages, registry values, systemd enablement, shell changes,
+VS Code extensions, Copilot settings, APM packages, PAM/WSL configuration, or
+overlay script effects.
+
+When removing a managed symlink, the current source content is materialized into
+the target path first, so uninstalling does not leave the user without the file
+or directory that had been linked.
+
+**Remove managed symlinks, Git hooks, and wrapper:**
 ```bash
 ./dotfiles.sh uninstall
-# Removes symlinks created by dotfiles
-# Does not remove packages or other configuration
+# Does not remove packages or other system/editor configuration
 ```
 
 **Preview uninstallation:**
@@ -230,7 +242,7 @@ The installation process handles different components based on your profile:
 
 **Update** (advance pinned versions — `update` command only):
 
-21. **Update APM Packages** - Runs `apm outdated -g` and, when locked dependencies are stale, `apm deps update -g` to advance them to the latest matching refs. This phase only runs under `dotfiles update` (it is absent from `install`), runs after the Provision phase, and self-guards so it only advances once the manifest has been installed successfully
+21. **Update APM Packages** - Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` (it is absent from `install`), runs after the Provision phase, and self-guards so it only advances once the manifest has been installed successfully
 
 Tasks run in parallel where dependencies allow, so the numbering above reflects logical
 grouping rather than strict execution order.
@@ -258,7 +270,7 @@ grouping rather than strict execution order.
 
 **Update** (advance pinned versions — `update` command only):
 
-14. **Update APM Packages** - Runs `apm outdated -g` and, when locked dependencies are stale, `apm deps update -g` to advance them to the latest matching refs. This phase only runs under `dotfiles update` (it is absent from `install`), runs after the Provision phase, and self-guards so it only advances once the manifest has been installed successfully
+14. **Update APM Packages** - Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` (it is absent from `install`), runs after the Provision phase, and self-guards so it only advances once the manifest has been installed successfully
 
 Tasks run in parallel where dependencies allow, so the numbering above reflects logical
 grouping rather than strict execution order.

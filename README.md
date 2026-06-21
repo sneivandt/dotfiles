@@ -1,29 +1,25 @@
 # Dotfiles
 
-A highly personal dotfiles manager powered by a **Rust engine** and declarative TOML configuration. This is the setup I run every day on Linux and Windows to converge my machines onto the tools, symlinks, editor settings, Git config, services, and system preferences I want.
-
-It manages my shell, editor, Git, packages, services, Windows registry settings, file permissions, sparse checkout state, and AI tooling across Linux and Windows.
+A personal dotfiles manager powered by a **Rust engine** and declarative TOML configuration. It converges my Linux and Windows machines onto the shell, editor, Git, packages, services, system preferences, sparse checkout state, and AI tooling I use every day.
 
 ![Generated terminal preview of a dotfiles dry-run install](docs/assets/terminal-screenshot.svg)
 
 ## What it does
 
-- **Rust engine:** a single compiled binary orchestrates everything — no fragile shell pipelines to debug.
-- **Profile-based:** one repo, many machines. `base` covers a minimal shell, `desktop` covers a full workstation, and Linux, Arch, and Windows are auto-detected on top.
-- **Declarative TOML:** packages, symlinks, systemd units, VS Code extensions, git config, registry keys, and file permissions are each a one-liner in `conf/*.toml` — no new shell functions to write.
-- **Idempotent:** every run converges on the declared state, so it's safe to re-run anytime. Preview first with `-d`.
-- **Sparse checkout:** only the files relevant to the active profile ever land on disk.
-- **Cross-platform:** Linux and Windows share the same config and the same binary.
+- **Single Rust engine:** one compiled binary plans and applies changes, keeping the shell wrappers thin.
+- **Profile-aware setup:** `base` covers minimal environments, `desktop` adds workstation tools, and Linux, Arch, and Windows layers are detected automatically.
+- **Declarative configuration:** packages, symlinks, services, editor settings, Git config, registry keys, file permissions, and AI tooling all live in `conf/*.toml`.
+- **Safe convergence:** re-running `install` brings the machine back to the declared state. Preview changes first with `-d`.
+- **Sparse checkout support:** only files relevant to the active profile are checked out locally.
+- **Cross-platform by design:** Linux and Windows use the same configuration model and Rust binary.
 
 ## Commands
 
-Git is the only prerequisite for a normal bootstrap. The repo-level wrapper downloads the latest binary from GitHub Releases and runs the initial install; after that, the normal entry point is the installed `dotfiles` command. Rust is only required when compiling from source with `--build`.
-
-Initial bootstrap uses the platform wrapper: `./dotfiles.sh install -p desktop` on Linux or `.\dotfiles.ps1 install -p desktop` on Windows.
+Bootstrap with the platform wrapper: `./dotfiles.sh install` on Linux or `.\dotfiles.ps1 install` on Windows. The first run prompts for a profile and saves it. Add `--build` to compile from source; otherwise the wrapper downloads the latest release. After bootstrap, use the installed `dotfiles` command.
 
 | Task | Command |
 |------|---------|
-| Install | `dotfiles install -p desktop` |
+| Install | `dotfiles install` |
 | Dry run | `dotfiles install -d` |
 | Update | `dotfiles update` |
 | Uninstall managed links/hooks | `dotfiles uninstall` |
@@ -40,7 +36,7 @@ Each machine uses one profile; platform categories are detected automatically.
 | Profile | Best for |
 |---------|----------|
 | `base` | Servers, WSL, minimal shell environments |
-| `desktop` | Workstations with GUI tools (Arch: Hyprland/Wayland) |
+| `desktop` | Full desktop/workstation setups with GUI tools |
 
 The `linux`, `windows`, and `arch` platform categories are detected at runtime and layer on top of whichever profile is selected.
 
@@ -81,7 +77,7 @@ packages or roll back system/editor settings.
 
 ## Development
 
-Run all commands from the `cli/` directory:
+Run Rust development commands from the `cli/` directory:
 
 ```bash
 cargo build                      # build
@@ -90,7 +86,7 @@ cargo clippy -- -D warnings      # lint
 cargo fmt                        # format
 ```
 
-To build from source and preview changes against the active config:
+From the repo root, build from source and preview changes against the active config:
 
 ```bash
 ./dotfiles.sh --build install -d # run from repo root

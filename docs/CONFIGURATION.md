@@ -55,7 +55,7 @@ Platform categories (`linux`, `windows`, `arch`) are auto-detected based on the 
 **Example**:
 ```toml
 [desktop]
-description = "Full graphical desktop (Arch: Hyprland/Wayland)"
+description = "Full desktop/workstation setup with GUI tools"
 include = ["desktop"]
 exclude = []
 ```
@@ -440,7 +440,7 @@ Configuration requiring multiple categories (on an Arch Linux system with the `d
 ```toml
 # profiles.toml
 [desktop]
-description = "Full graphical desktop (Arch: Hyprland/Wayland)"
+description = "Full desktop/workstation setup with GUI tools"
 include = ["desktop"]
 exclude = []
 

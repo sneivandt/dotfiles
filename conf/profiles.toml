@@ -13,6 +13,6 @@ include = []
 exclude = ["desktop"]
 
 [desktop]
-description = "Full graphical desktop (Arch: Hyprland/Wayland)"
+description = "Full desktop/workstation setup with GUI tools"
 include = ["desktop"]
 exclude = []

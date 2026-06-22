@@ -121,10 +121,10 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
                 // degrade to a generic failure line.
                 ctx.log.warn(&format!(
                     "autopilot fixup: ~/.copilot/data.db no longer matches the expected workflows \
-                     schema (columns id, mode, enabled, interval, schedule_hour, schedule_minute, \
-                     schedule_day, next_run_at); the Copilot App database format may have changed. \
-                     Enable the apm workflows manually from the Workflows tab and report this so \
-                     the dotfiles autopilot scripts can be updated: {stderr}"
+                     schema (columns id, name, prompt, mode, enabled, interval, schedule_hour, \
+                     schedule_minute, schedule_day, next_run_at); the Copilot App database format \
+                     may have changed. Enable the apm workflows manually from the Workflows tab and \
+                     report this so the dotfiles autopilot scripts can be updated: {stderr}"
                 ));
             } else {
                 ctx.log.warn(&format!(
@@ -449,17 +449,18 @@ fn build_workflow_script_args<'a>(script: &'a str, db: &'a str, ids: &'a [String
 pub(super) const WORKFLOW_DESIRED_IDS_SCRIPT: &str =
     include_str!("scripts/workflow_desired_ids.py");
 
-/// Python stdlib `sqlite3` program that flips the dotfiles-managed Copilot App
-/// workflows to autopilot.
+/// Python stdlib `sqlite3` program that de-duplicates the dotfiles-managed
+/// Copilot App workflows and flips them to autopilot.
 ///
 /// Invoked as `python -c <script> <db_path> <id>...` where the trailing
-/// arguments are the dotfiles-managed workflow ids.  It first prints two
-/// space-separated integers -- the number of those rows present and the number
-/// it actually updated -- then, one per line, the id of every such row now in
-/// the desired state.  [`parse_autopilot_result`] reads both parts back.  The
-/// ids are bound as query parameters in an `IN (...)` clause so the change is
-/// scoped to exactly the workflows this install deployed, and the `IS NOT`
-/// comparisons are NULL-safe.
+/// arguments are the dotfiles-managed workflow ids.  It first removes duplicate
+/// rows for those visible workflow definitions, keeping the newest managed row,
+/// then prints two space-separated integers -- the number of those rows present
+/// and the number it actually updated -- then, one per line, the id of every
+/// such row now in the desired state.  [`parse_autopilot_result`] reads both
+/// parts back.  The ids are bound as query parameters in an `IN (...)` clause so
+/// the change is scoped to exactly the workflows this install deployed, and the
+/// `IS NOT` comparisons are NULL-safe.
 ///
 /// The program lives in `scripts/workflow_autopilot.py` and is embedded at
 /// build time via [`include_str!`] so its real four-space indentation survives
@@ -665,6 +666,95 @@ dependencies:
         assert_eq!(
             args,
             ["-c", WORKFLOW_AUTOPILOT_SCRIPT, "/db", "apm--a", "apm--b"]
+        );
+    }
+
+    fn python_for_script_tests() -> Option<&'static str> {
+        ["python3", "python"].into_iter().find(|candidate| {
+            std::process::Command::new(candidate)
+                .arg("--version")
+                .output()
+                .is_ok_and(|output| output.status.success())
+        })
+    }
+
+    fn run_python_script(python: &str, script: &str, args: &[&str]) -> std::process::Output {
+        std::process::Command::new(python)
+            .arg("-c")
+            .arg(script)
+            .args(args)
+            .output()
+            .expect("run python script")
+    }
+
+    #[test]
+    fn workflow_autopilot_script_deduplicates_managed_rows() {
+        let Some(python) = python_for_script_tests() else {
+            return;
+        };
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let db_path = dir.path().join("data.db");
+        let db = db_path.to_str().expect("db path utf-8");
+        let setup = run_python_script(
+            python,
+            r#"
+import sqlite3, sys
+con = sqlite3.connect(sys.argv[1])
+con.execute("CREATE TABLE workflows (id TEXT, name TEXT, prompt TEXT, mode TEXT, enabled INTEGER, interval TEXT, schedule_hour INTEGER, schedule_minute INTEGER, schedule_day INTEGER, next_run_at TEXT)")
+con.executemany(
+    "INSERT INTO workflows VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [
+        ("apm--unknown--a", "PR Triage", "prompt-a", "autopilot", 1, "hourly", 9, 0, 1, "2099-01-01T00:00:00.000Z"),
+        ("apm--a", "PR Triage", "prompt-a", "autopilot", 1, "hourly", 9, 0, 1, "2099-01-01T00:00:00.000Z"),
+        ("apm--a", "PR Triage", "prompt-a", "interactive", 0, "hourly", 9, 0, 1, None),
+        ("apm--b", "PR Review", "prompt-b", "interactive", 0, "daily", 9, 0, 1, None),
+        ("foreign--workflow", "Foreign", "prompt-foreign", "interactive", 0, "hourly", 9, 0, 1, None),
+        ("foreign--workflow", "Foreign", "prompt-foreign", "interactive", 0, "hourly", 9, 0, 1, None),
+    ],
+)
+con.commit()
+"#,
+            &[db],
+        );
+        assert!(
+            setup.status.success(),
+            "setup failed: {}",
+            String::from_utf8_lossy(&setup.stderr)
+        );
+
+        let fixup = run_python_script(python, WORKFLOW_AUTOPILOT_SCRIPT, &[db, "apm--a", "apm--b"]);
+        assert!(
+            fixup.status.success(),
+            "fixup failed: {}",
+            String::from_utf8_lossy(&fixup.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(fixup.stdout)
+                .expect("stdout utf-8")
+                .replace("\r\n", "\n"),
+            "3 2\napm--a\napm--b\n"
+        );
+
+        let query = run_python_script(
+            python,
+            r#"
+import sqlite3, sys
+con = sqlite3.connect(sys.argv[1])
+for row in con.execute("SELECT id, COUNT(*), MIN(mode), MIN(enabled) FROM workflows GROUP BY id ORDER BY id"):
+    print("|".join(map(str, row)))
+"#,
+            &[db],
+        );
+        assert!(
+            query.status.success(),
+            "query failed: {}",
+            String::from_utf8_lossy(&query.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(query.stdout)
+                .expect("stdout utf-8")
+                .replace("\r\n", "\n"),
+            "apm--a|1|autopilot|1\napm--b|1|autopilot|1\nforeign--workflow|2|interactive|0\n"
         );
     }
 

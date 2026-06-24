@@ -83,7 +83,7 @@ impl Resource for SymlinkResource {
         // stat failure).  A missing target is fine: we still materialize so
         // the user retains the file/directory after uninstall.
         match self.target.symlink_metadata() {
-            Ok(meta) if meta.is_symlink() => {
+            Ok(meta) if is_link_like(&meta) => {
                 // Proceed with the normal materialize-then-remove path below.
             }
             Ok(_) => {
@@ -193,7 +193,7 @@ fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
     let mut guard = crate::fs::TempPath::new(tmp.clone());
 
     match target.symlink_metadata() {
-        Ok(meta) if meta.is_symlink() => {
+        Ok(meta) if is_link_like(&meta) => {
             remove_symlink(target)
                 .with_context(|| format!("remove symlink: {}", target.display()))?;
         }
@@ -233,7 +233,7 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
         .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;
 
     match target.symlink_metadata() {
-        Ok(meta) if meta.is_symlink() => {
+        Ok(meta) if is_link_like(&meta) => {
             remove_symlink(target)
                 .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
         }
@@ -334,7 +334,7 @@ fn paths_equal(a: &Path, b: &Path) -> bool {
 }
 
 /// Create a symlink at `link` pointing to `target`.
-fn create_symlink(target: &Path, link: &Path, _executor: &dyn Executor) -> Result<()> {
+fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(target, link).with_context(|| {
@@ -349,13 +349,16 @@ fn create_symlink(target: &Path, link: &Path, _executor: &dyn Executor) -> Resul
     #[cfg(windows)]
     {
         let is_dir = target.is_dir();
-        let result = if is_dir {
-            std::os::windows::fs::symlink_dir(target, link)
+        if is_dir {
+            match std::os::windows::fs::symlink_dir(target, link) {
+                Ok(()) => Ok(()),
+                Err(e) => create_junction(target, link, executor)
+                    .with_context(|| format!("directory symlink failed: {e}")),
+            }
         } else {
-            std::os::windows::fs::symlink_file(target, link)
-        };
-
-        result.with_context(|| {
+            std::os::windows::fs::symlink_file(target, link).map_err(anyhow::Error::from)
+        }
+        .with_context(|| {
             format!(
                 "creating symlink {} -> {} (enable Developer Mode or run as administrator)",
                 link.display(),
@@ -365,6 +368,41 @@ fn create_symlink(target: &Path, link: &Path, _executor: &dyn Executor) -> Resul
     }
 
     Ok(())
+}
+
+/// Create a Windows directory junction as a fallback for directory symlinks.
+#[cfg(windows)]
+fn create_junction(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
+    let link_arg = link.to_string_lossy();
+    let target_arg = target.to_string_lossy();
+    let args = ["/c", "mklink", "/J", link_arg.as_ref(), target_arg.as_ref()];
+    let result = executor.run_unchecked("cmd", &args)?;
+    if result.success {
+        Ok(())
+    } else {
+        Err(crate::error::ResourceError::command_failed(
+            "mklink",
+            format!(
+                "create junction '{}' -> '{}': {}",
+                link.display(),
+                target.display(),
+                command_output(&result)
+            ),
+        )
+        .into())
+    }
+}
+
+#[cfg(windows)]
+fn command_output(result: &crate::exec::ExecResult) -> String {
+    let stdout = result.stdout.trim();
+    let stderr = result.stderr.trim();
+    match (stdout.is_empty(), stderr.is_empty()) {
+        (true, true) => "no output".to_string(),
+        (false, true) => stdout.to_string(),
+        (true, false) => stderr.to_string(),
+        (false, false) => format!("{stdout}; {stderr}"),
+    }
 }
 
 /// Remove a symlink, handling platform differences.
@@ -414,6 +452,19 @@ fn is_dir_like(meta: &std::fs::Metadata) -> bool {
     }
 }
 
+/// Check if metadata represents a managed link-like entry.
+fn is_link_like(meta: &std::fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        meta.file_attributes() & 0x400 != 0 // FILE_ATTRIBUTE_REPARSE_POINT
+    }
+    #[cfg(not(windows))]
+    {
+        meta.is_symlink()
+    }
+}
+
 /// Fallback directory removal on Windows using `cmd /c rmdir`.
 /// This spawns a separate process that doesn't hold any handles from the
 /// current process, which can resolve "Access is denied" errors.
@@ -457,6 +508,41 @@ mod tests {
 
     fn system_executor() -> Arc<dyn Executor> {
         Arc::new(SystemExecutor)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn create_junction_invokes_mklink_with_directory_args() {
+        use crate::exec::{ExecResult, MockExecutor};
+
+        let mut mock = MockExecutor::new();
+        mock.expect_run_unchecked()
+            .once()
+            .withf(|program, args| {
+                let expected = [
+                    "/c",
+                    "mklink",
+                    "/J",
+                    r"C:\Users\test\.config\templates",
+                    r"C:\repo\symlinks\config\git\templates",
+                ];
+                program == "cmd" && args == expected.as_slice()
+            })
+            .returning(|_, _| {
+                Ok(ExecResult {
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    success: true,
+                    code: Some(0),
+                })
+            });
+
+        create_junction(
+            Path::new(r"C:\repo\symlinks\config\git\templates"),
+            Path::new(r"C:\Users\test\.config\templates"),
+            &mock,
+        )
+        .unwrap();
     }
 
     #[test]

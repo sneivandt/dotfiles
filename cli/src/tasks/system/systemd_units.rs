@@ -43,6 +43,7 @@ impl Task for ConfigureSystemd {
         ctx.platform.supports_systemd()
             && !ctx.config_read().units.is_empty()
             && ctx.executor.which("systemctl")
+            && !ctx.is_ci
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
@@ -106,7 +107,8 @@ mod tests {
     use crate::exec::{ExecResult, MockExecutor};
     use crate::platform::{Os, Platform};
     use crate::tasks::test_helpers::{
-        empty_config, make_context, make_linux_context, make_platform_context_with_which,
+        ContextBuilder, empty_config, make_context, make_linux_context,
+        make_platform_context_with_which,
     };
     use crate::tasks::{Context, Task, TaskResult};
     use std::path::PathBuf;
@@ -167,13 +169,32 @@ mod tests {
     }
 
     #[test]
+    fn should_run_false_when_ci() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.units.push(SystemdUnit {
+            name: "dunst.service".to_string(),
+            scope: "user".to_string(),
+        });
+        let ctx = ContextBuilder::new(config)
+            .os(Os::Linux)
+            .which(true)
+            .ci(true)
+            .build();
+        assert!(!ConfigureSystemd.should_run(&ctx));
+    }
+
+    #[test]
     fn should_run_true_on_linux_with_units_and_systemctl() {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
             scope: "user".to_string(),
         });
-        let ctx = make_platform_context_with_which(config, Os::Linux, false, true);
+        let ctx = ContextBuilder::new(config)
+            .os(Os::Linux)
+            .which(true)
+            .ci(false)
+            .build();
         assert!(ConfigureSystemd.should_run(&ctx));
     }
 

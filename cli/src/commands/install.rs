@@ -133,7 +133,7 @@ fn resolve_root_from_dir(
     cwd: Option<&std::path::Path>,
 ) -> Result<std::path::PathBuf> {
     if let Some(ref root) = global.root {
-        return Ok(root.clone());
+        return crate::fs::canonicalize(root);
     }
 
     // Auto-detect: binary location, DOTFILES_ROOT env, or current dir
@@ -162,7 +162,7 @@ fn resolve_root_from_dir(
         && cwd.join("conf").exists()
         && cwd.join("symlinks").exists()
     {
-        return Ok(cwd.to_path_buf());
+        return crate::fs::canonicalize(cwd);
     }
 
     anyhow::bail!("cannot determine dotfiles root. Use --root or set DOTFILES_ROOT env var");
@@ -177,12 +177,12 @@ fn resolve_root_from_dir(
 )]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn resolve_root_uses_explicit_root() {
+        let temp_dir = tempfile::tempdir().unwrap();
         let global = GlobalOpts {
-            root: Some(PathBuf::from("/explicit/path")),
+            root: Some(temp_dir.path().to_path_buf()),
             profile: None,
             dry_run: false,
             overlay: None,
@@ -191,7 +191,30 @@ mod tests {
 
         let result = resolve_root(&global);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), PathBuf::from("/explicit/path"));
+        assert_eq!(
+            result.unwrap(),
+            crate::fs::canonicalize(temp_dir.path()).unwrap()
+        );
+    }
+
+    #[test]
+    fn resolve_root_canonicalizes_explicit_relative_root() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let relative_root = temp_dir.path().join(".");
+        let global = GlobalOpts {
+            root: Some(relative_root),
+            profile: None,
+            dry_run: false,
+            overlay: None,
+            parallel: true,
+        };
+
+        let result = resolve_root(&global);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            crate::fs::canonicalize(temp_dir.path()).unwrap()
+        );
     }
 
     #[test]

@@ -229,7 +229,7 @@ mod tests {
         let ctx = make_linux_context(config).with_home(home_dir.path().to_path_buf());
 
         let result = InstallSymlinks.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Ok));
+        assert!(matches!(result, TaskResult::Failed(_)));
         assert!(!home_dir.path().join("escaped-source").exists());
     }
 
@@ -252,7 +252,7 @@ mod tests {
         let ctx = make_linux_context(config).with_home(home_dir.path().to_path_buf());
 
         let result = InstallSymlinks.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Ok));
+        assert!(matches!(result, TaskResult::Failed(_)));
         assert!(!outside_target.exists());
     }
 

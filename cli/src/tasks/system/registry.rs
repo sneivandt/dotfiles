@@ -78,13 +78,14 @@ mod tests {
         assert!(matches!(result, TaskResult::NotApplicable(_)));
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn run_with_entries_on_non_windows_skips_gracefully() {
         // On non-Windows, batch_check_values() returns an empty map.
         // Every entry therefore has state Missing, and apply() returns an
         // error ("registry operations are only supported on Windows").
-        // Because ProcessOpts uses no_bail(), each error is caught and counted
-        // as skipped — the task still returns Ok rather than propagating the error.
+        // Because ProcessOpts is lenient, each error is caught and counted
+        // as a non-fatal failure rather than propagating the error.
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.registry.push(RegistryEntry {
             key_path: r"HKCU:\Console".to_string(),
@@ -96,6 +97,6 @@ mod tests {
         // would normally gate this, but run() is called directly in unit tests).
         let ctx = make_windows_context(config);
         let result = ApplyRegistry.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Ok));
+        assert!(matches!(result, TaskResult::Failed(_)));
     }
 }

@@ -112,6 +112,16 @@ impl PathEntryResource {
         self.path_source = PathSource::Fixed(on_path);
         self
     }
+
+    fn shell_profile_contains_managed_line(path: &Path, line: &str) -> Result<bool> {
+        if !path.exists() {
+            return Ok(false);
+        }
+
+        Ok(std::fs::read_to_string(path)
+            .with_context(|| format!("read {}", path.display()))?
+            .contains(line))
+    }
 }
 
 impl Resource for PathEntryResource {
@@ -120,13 +130,14 @@ impl Resource for PathEntryResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        if self.path_source.is_on_path(&self.dir) {
-            return Ok(ResourceChange::AlreadyCorrect);
-        }
+        use std::io::Write;
 
         match &self.strategy {
             PathStrategy::ShellProfile { path, line } => {
-                use std::io::Write;
+                if Self::shell_profile_contains_managed_line(path, line)? {
+                    return Ok(ResourceChange::AlreadyCorrect);
+                }
+
                 let mut file = std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
@@ -138,6 +149,10 @@ impl Resource for PathEntryResource {
                 Ok(ResourceChange::Applied)
             }
             PathStrategy::WindowsRegistry { dir, executor } => {
+                if self.path_source.is_on_path(&self.dir) {
+                    return Ok(ResourceChange::AlreadyCorrect);
+                }
+
                 append_user_path_windows(dir)?;
                 // Best-effort broadcast of the environment change so already-
                 // running shells / Explorer pick up the new PATH without a
@@ -161,39 +176,45 @@ impl Resource for PathEntryResource {
 
 impl IntrinsicState for PathEntryResource {
     fn current_state(&self) -> Result<ResourceState> {
-        // Fast path: directory is already on the runtime PATH.
-        if self.path_source.is_on_path(&self.dir) {
-            return Ok(ResourceState::Correct);
-        }
-
-        // On Unix, also check whether the export line was already written
-        // to the profile (it may not have been sourced yet in this session).
-        if let PathStrategy::ShellProfile { ref path, ref line } = self.strategy
-            && path.exists()
-            && std::fs::read_to_string(path)
-                .with_context(|| format!("read {}", path.display()))?
-                .contains(line.as_str())
-        {
-            return Ok(ResourceState::Correct);
-        }
-
-        // On Windows, also check the persisted user PATH in the registry —
-        // it may already contain the directory even if the current process's
-        // environment block does not.
-        #[cfg(windows)]
-        if let PathStrategy::WindowsRegistry { ref dir, .. } = self.strategy {
-            match user_path_contains(dir) {
-                Ok(true) => return Ok(ResourceState::Correct),
-                Ok(false) => {}
-                Err(e) => {
-                    return Ok(ResourceState::Unknown {
-                        reason: e.to_string(),
-                    });
+        match &self.strategy {
+            PathStrategy::ShellProfile { path, line } => {
+                if Self::shell_profile_contains_managed_line(path, line)? {
+                    Ok(ResourceState::Correct)
+                } else {
+                    Ok(ResourceState::Missing)
                 }
             }
-        }
+            #[cfg(windows)]
+            PathStrategy::WindowsRegistry { dir, .. } => {
+                // Fast path: directory is already on the runtime PATH.
+                if self.path_source.is_on_path(&self.dir) {
+                    return Ok(ResourceState::Correct);
+                }
 
-        Ok(ResourceState::Missing)
+                // Also check the persisted user PATH in the registry — it may
+                // already contain the directory even if the current process's
+                // environment block does not.
+                match user_path_contains(dir) {
+                    Ok(true) => return Ok(ResourceState::Correct),
+                    Ok(false) => {}
+                    Err(e) => {
+                        return Ok(ResourceState::Unknown {
+                            reason: e.to_string(),
+                        });
+                    }
+                }
+
+                Ok(ResourceState::Missing)
+            }
+            #[cfg(not(windows))]
+            PathStrategy::WindowsRegistry { .. } => {
+                if self.path_source.is_on_path(&self.dir) {
+                    return Ok(ResourceState::Correct);
+                }
+
+                Ok(ResourceState::Missing)
+            }
+        }
     }
 }
 
@@ -431,10 +452,11 @@ mod tests {
     }
 
     #[test]
-    fn correct_when_already_on_path() {
-        let r = make_path_entry(Path::new("/home/user"), true);
+    fn missing_when_on_path_but_profile_missing() {
+        let tmp = TempDir::new().unwrap();
+        let r = make_path_entry(tmp.path(), true);
         let state = r.current_state().unwrap();
-        assert_eq!(state, ResourceState::Correct);
+        assert_eq!(state, ResourceState::Missing);
     }
 
     #[test]
@@ -497,11 +519,28 @@ mod tests {
     }
 
     #[test]
-    fn apply_skips_when_already_on_path() {
+    fn apply_appends_to_profile_when_on_path_but_profile_missing() {
         let tmp = TempDir::new().unwrap();
+        let profile = tmp.path().join(".profile");
         let r = make_path_entry(tmp.path(), true);
         let result = r.apply().unwrap();
+        assert_eq!(result, ResourceChange::Applied);
+
+        let content = std::fs::read_to_string(&profile).unwrap();
+        assert!(content.contains("export PATH=\"$HOME/.local/bin:$PATH\""));
+    }
+
+    #[test]
+    fn apply_skips_when_profile_already_contains_export_line() {
+        let tmp = TempDir::new().unwrap();
+        let profile = tmp.path().join(".profile");
+        let content = "# existing\nexport PATH=\"$HOME/.local/bin:$PATH\"\n";
+        std::fs::write(&profile, content).unwrap();
+
+        let r = make_path_entry(tmp.path(), false);
+        let result = r.apply().unwrap();
         assert_eq!(result, ResourceChange::AlreadyCorrect);
+        assert_eq!(std::fs::read_to_string(&profile).unwrap(), content);
     }
 
     #[test]

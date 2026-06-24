@@ -19,7 +19,6 @@ the Rust `InstallApmPackages` task.
 | `symlinks/apm/config/base.yml` | APM manifest fragment linked to `~/.apm/config/base.yml` |
 | `symlinks/apm/plugins/dot-code` | Local coding workflow skills |
 | `symlinks/apm/plugins/dot-copilot` | Local Copilot interaction workflow skills |
-| `symlinks/apm/plugins/dot-doc` | Local document-generation workflow skills |
 | `symlinks/apm/plugins/dot-skill` | Local skill/plugin maintenance skills |
 | `conf/symlinks.toml` | Links `apm/config/base.yml` and `apm/plugins/*` from this repo |
 | `cli/src/tasks/ai/apm/` | `InstallApmPackages` (Provision phase) merges fragments + runs `apm install`; `UpdateApmPackages` (Update phase, `update` command only) advances locked deps via `apm outdated` + `apm update` (`mod.rs` orchestration; `fragments.rs`, `manifest.rs`, `outdated.rs`, `autopilot.rs`) |
@@ -60,7 +59,7 @@ through APM instead of raw symlinks:
 ## Local Plugin Rules
 
 - Keep local plugin names short and `dot-*`: `dot-code`, `dot-copilot`,
-  `dot-doc`, `dot-skill`.
+  `dot-skill`.
 - Use native APM package layout for each local plugin: `apm.yml` at the plugin
   root and source primitives under `.apm/` (for example,
   `.apm/skills/<skill>/SKILL.md`). Set `includes: auto` unless a plugin needs a

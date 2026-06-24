@@ -5,7 +5,6 @@ dependencies:
     # Local plugins
     - ~/.apm/plugins/dot-code
     - ~/.apm/plugins/dot-copilot
-    - ~/.apm/plugins/dot-doc
     - ~/.apm/plugins/dot-skill
 
     # External dependencies track upstream main branches. APM records exact
@@ -27,6 +26,3 @@ dependencies:
 
     # Cross-cutting code quality
     - github/awesome-copilot/plugins/security-best-practices#main
-
-    # Document conversion skills
-    - github/awesome-copilot/skills/md-to-docx#main

@@ -53,12 +53,18 @@ impl Resource for HookFileResource {
     }
 
     fn remove(&self) -> ResourceResult<ResourceChange> {
-        if self.target.exists() {
-            std::fs::remove_file(&self.target)
-                .with_context(|| format!("remove hook: {}", self.target.display()))?;
-            Ok(ResourceChange::Applied)
-        } else {
-            Ok(ResourceChange::AlreadyCorrect)
+        match self.target.symlink_metadata() {
+            Ok(_) => {
+                std::fs::remove_file(&self.target)
+                    .with_context(|| format!("remove hook: {}", self.target.display()))?;
+                Ok(ResourceChange::Applied)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                Ok(ResourceChange::AlreadyCorrect)
+            }
+            Err(error) => Err(anyhow::Error::new(error)
+                .context(format!("stat hook: {}", self.target.display()))
+                .into()),
         }
     }
 }
@@ -232,5 +238,25 @@ mod tests {
             HookFileResource::new(dir.path().join("src"), dir.path().join("nonexistent"));
         let result = resource.remove().unwrap();
         assert_eq!(result, ResourceChange::AlreadyCorrect);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_deletes_broken_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let dst = dir.path().join("target");
+        symlink(dir.path().join("missing-hook"), &dst).unwrap();
+
+        let resource = HookFileResource::new(dir.path().join("src"), dst.clone());
+
+        assert!(!dst.exists());
+        assert!(dst.symlink_metadata().is_ok());
+
+        let result = resource.remove().unwrap();
+
+        assert_eq!(result, ResourceChange::Applied);
+        assert!(dst.symlink_metadata().is_err());
     }
 }

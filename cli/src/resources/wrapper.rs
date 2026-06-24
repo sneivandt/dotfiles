@@ -100,6 +100,15 @@ impl WrapperResource {
 
         Self { target, content }
     }
+
+    fn target_metadata(&self) -> Result<Option<std::fs::Metadata>> {
+        match std::fs::symlink_metadata(&self.target) {
+            Ok(metadata) => Ok(Some(metadata)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(anyhow::Error::new(error)
+                .context(format!("stat wrapper {}", self.target.display()))),
+        }
+    }
 }
 
 fn sh_single_quote(value: &str) -> String {
@@ -118,6 +127,20 @@ impl Resource for WrapperResource {
     fn apply(&self) -> ResourceResult<ResourceChange> {
         crate::fs::ensure_parent_dir(&self.target)?;
 
+        if let Some(metadata) = self.target_metadata()? {
+            if metadata.file_type().is_symlink() {
+                std::fs::remove_file(&self.target).with_context(|| {
+                    format!("remove stale wrapper symlink {}", self.target.display())
+                })?;
+            } else if metadata.is_dir() {
+                return Err(crate::error::ResourceError::conflicting_state(
+                    self.description(),
+                    "wrapper file",
+                    "directory",
+                ));
+            }
+        }
+
         std::fs::write(&self.target, &self.content)
             .with_context(|| format!("write wrapper to {}", self.target.display()))?;
 
@@ -132,20 +155,42 @@ impl Resource for WrapperResource {
     }
 
     fn remove(&self) -> ResourceResult<ResourceChange> {
-        if self.target.exists() {
-            std::fs::remove_file(&self.target)
-                .with_context(|| format!("remove wrapper {}", self.target.display()))?;
-            Ok(ResourceChange::Applied)
-        } else {
-            Ok(ResourceChange::AlreadyCorrect)
+        match self.target_metadata()? {
+            Some(metadata) if metadata.is_dir() => {
+                Err(crate::error::ResourceError::conflicting_state(
+                    self.description(),
+                    "wrapper target to be absent",
+                    "directory",
+                ))
+            }
+            Some(_) => {
+                std::fs::remove_file(&self.target)
+                    .with_context(|| format!("remove wrapper {}", self.target.display()))?;
+                Ok(ResourceChange::Applied)
+            }
+            None => Ok(ResourceChange::AlreadyCorrect),
         }
     }
 }
 
 impl IntrinsicState for WrapperResource {
     fn current_state(&self) -> Result<ResourceState> {
-        if !self.target.exists() {
+        let Some(metadata) = self.target_metadata()? else {
             return Ok(ResourceState::Missing);
+        };
+
+        if metadata.file_type().is_symlink() {
+            let current = match std::fs::metadata(&self.target) {
+                Ok(_) => "symlink",
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => "broken symlink",
+                Err(error) => {
+                    return Err(anyhow::Error::new(error)
+                        .context(format!("stat wrapper target {}", self.target.display())));
+                }
+            };
+            return Ok(ResourceState::Incorrect {
+                current: current.to_string(),
+            });
         }
 
         let current = std::fs::read_to_string(&self.target)
@@ -311,6 +356,23 @@ mod tests {
         assert!(matches!(state, ResourceState::Incorrect { .. }));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn state_broken_symlink_is_incorrect_not_missing() {
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path();
+        let r = make_sh_resource(Path::new("/repo"), home);
+
+        std::fs::create_dir_all(r.target.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink("/nonexistent/dotfiles-wrapper", &r.target).unwrap();
+
+        let state = r.current_state().unwrap();
+        assert!(matches!(
+            state,
+            ResourceState::Incorrect { ref current } if current == "broken symlink"
+        ));
+    }
+
     // ── Apply ────────────────────────────────────────────────────────
 
     #[test]
@@ -355,6 +417,29 @@ mod tests {
         assert_eq!(actual, r.content);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn apply_replaces_broken_symlink_with_wrapper_file() {
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path();
+        let r = make_sh_resource(Path::new("/repo"), home);
+
+        std::fs::create_dir_all(r.target.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink("/nonexistent/dotfiles-wrapper", &r.target).unwrap();
+
+        let result = r.apply().unwrap();
+
+        assert_eq!(result, ResourceChange::Applied);
+        assert!(
+            !std::fs::symlink_metadata(&r.target)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "wrapper target must be a regular file after apply"
+        );
+        assert_eq!(std::fs::read_to_string(&r.target).unwrap(), r.content);
+    }
+
     // ── Remove ───────────────────────────────────────────────────────
 
     #[test]
@@ -376,6 +461,22 @@ mod tests {
         let r = make_sh_resource(Path::new("/repo"), Path::new("/nonexistent"));
         let result = r.remove().unwrap();
         assert_eq!(result, ResourceChange::AlreadyCorrect);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_deletes_broken_symlink() {
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path();
+        let r = make_sh_resource(Path::new("/repo"), home);
+
+        std::fs::create_dir_all(r.target.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink("/nonexistent/dotfiles-wrapper", &r.target).unwrap();
+
+        let result = r.remove().unwrap();
+
+        assert_eq!(result, ResourceChange::Applied);
+        assert!(r.target.symlink_metadata().is_err());
     }
 
     // ── Target paths ─────────────────────────────────────────────────

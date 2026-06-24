@@ -64,13 +64,17 @@ pub enum TaskResult {
 /// assert_eq!(stats.summary(true), "3 would change, 10 already ok");
 /// ```
 ///
-/// When items are skipped, the summary includes the count:
+/// When items are skipped or fail non-fatally, the summary includes the counts:
 ///
 /// ```
 /// use dotfiles_cli::testing::tasks::TaskStats;
 ///
-/// let stats = TaskStats { changed: 1, already_ok: 2, skipped: 3 };
-/// assert_eq!(stats.summary(false), "1 changed, 2 already ok, 3 skipped");
+/// let mut stats = TaskStats::new();
+/// stats.changed = 1;
+/// stats.already_ok = 2;
+/// stats.skipped = 3;
+/// stats.failed = 1;
+/// assert_eq!(stats.summary(false), "1 changed, 2 already ok, 3 skipped, 1 failed");
 /// ```
 #[derive(Debug, Default)]
 pub struct TaskStats {
@@ -78,8 +82,10 @@ pub struct TaskStats {
     pub changed: u32,
     /// Number of items already in the correct state.
     pub already_ok: u32,
-    /// Number of items skipped due to errors or inapplicability.
+    /// Number of items deliberately skipped due to inapplicability.
     pub skipped: u32,
+    /// Number of items that failed without aborting the enclosing task.
+    pub failed: u32,
 }
 
 impl TaskStats {
@@ -94,6 +100,7 @@ impl TaskStats {
     /// assert_eq!(stats.changed, 0);
     /// assert_eq!(stats.already_ok, 0);
     /// assert_eq!(stats.skipped, 0);
+    /// assert_eq!(stats.failed, 0);
     /// ```
     #[must_use]
     pub fn new() -> Self {
@@ -107,21 +114,29 @@ impl TaskStats {
     /// ```
     /// use dotfiles_cli::testing::tasks::TaskStats;
     ///
-    /// let stats = TaskStats { changed: 5, already_ok: 12, skipped: 0 };
+    /// let stats = TaskStats {
+    ///     changed: 5,
+    ///     already_ok: 12,
+    ///     skipped: 0,
+    ///     failed: 0,
+    /// };
     /// assert_eq!(stats.summary(false), "5 changed, 12 already ok");
     /// assert_eq!(stats.summary(true), "5 would change, 12 already ok");
     /// ```
     #[must_use]
     pub fn summary(&self, dry_run: bool) -> String {
         let verb = if dry_run { "would change" } else { "changed" };
+        let mut parts = vec![
+            format!("{} {verb}", self.changed),
+            format!("{} already ok", self.already_ok),
+        ];
         if self.skipped > 0 {
-            format!(
-                "{} {verb}, {} already ok, {} skipped",
-                self.changed, self.already_ok, self.skipped
-            )
-        } else {
-            format!("{} {verb}, {} already ok", self.changed, self.already_ok)
+            parts.push(format!("{} skipped", self.skipped));
         }
+        if self.failed > 0 {
+            parts.push(format!("{} failed", self.failed));
+        }
+        parts.join(", ")
     }
 
     /// Merge another stats delta into this one, saturating each counter.
@@ -133,21 +148,25 @@ impl TaskStats {
         self.changed = self.changed.saturating_add(other.changed);
         self.already_ok = self.already_ok.saturating_add(other.already_ok);
         self.skipped = self.skipped.saturating_add(other.skipped);
+        self.failed = self.failed.saturating_add(other.failed);
     }
 
     /// Log the summary and return the appropriate `TaskResult`.
     ///
-    /// Only prints to the console when something actually changed (or was
-    /// skipped).  Quiet idempotent runs reduce noise on no-op invocations.
+    /// Only prints to the console when something actually changed, was
+    /// skipped, or failed non-fatally. Quiet idempotent runs reduce noise on
+    /// no-op invocations.
     pub fn finish(self, ctx: &Context) -> TaskResult {
         let msg = self.summary(ctx.dry_run);
-        if self.changed > 0 || self.skipped > 0 {
+        if self.changed > 0 || self.skipped > 0 || self.failed > 0 {
             ctx.log.info(&msg);
         } else {
             ctx.log.debug(&msg);
         }
         if ctx.dry_run {
             TaskResult::DryRun
+        } else if self.failed > 0 {
+            TaskResult::Failed(msg)
         } else {
             TaskResult::Ok
         }
@@ -180,6 +199,7 @@ mod tests {
         assert_eq!(stats.changed, 0);
         assert_eq!(stats.already_ok, 0);
         assert_eq!(stats.skipped, 0);
+        assert_eq!(stats.failed, 0);
     }
 
     #[test]
@@ -188,6 +208,7 @@ mod tests {
         assert_eq!(stats.changed, 0);
         assert_eq!(stats.already_ok, 0);
         assert_eq!(stats.skipped, 0);
+        assert_eq!(stats.failed, 0);
     }
 
     // -------------------------------------------------------------------
@@ -212,6 +233,7 @@ mod tests {
             changed: 5,
             already_ok: 0,
             skipped: 0,
+            failed: 0,
         };
         assert_eq!(stats.summary(false), "5 changed, 0 already ok");
     }
@@ -222,6 +244,7 @@ mod tests {
             changed: 0,
             already_ok: 10,
             skipped: 0,
+            failed: 0,
         };
         assert_eq!(stats.summary(false), "0 changed, 10 already ok");
     }
@@ -232,6 +255,7 @@ mod tests {
             changed: 1,
             already_ok: 2,
             skipped: 3,
+            failed: 0,
         };
         assert_eq!(stats.summary(false), "1 changed, 2 already ok, 3 skipped");
     }
@@ -242,10 +266,11 @@ mod tests {
             changed: 1,
             already_ok: 2,
             skipped: 3,
+            failed: 1,
         };
         assert_eq!(
             stats.summary(true),
-            "1 would change, 2 already ok, 3 skipped"
+            "1 would change, 2 already ok, 3 skipped, 1 failed"
         );
     }
 
@@ -255,6 +280,7 @@ mod tests {
             changed: 3,
             already_ok: 7,
             skipped: 0,
+            failed: 0,
         };
         let s = stats.summary(false);
         assert!(!s.contains("skipped"), "should not mention skipped: {s}");
@@ -273,6 +299,7 @@ mod tests {
             changed: 1,
             already_ok: 0,
             skipped: 0,
+            failed: 0,
         };
         assert!(matches!(stats.finish(&ctx), TaskResult::Ok));
     }
@@ -286,8 +313,24 @@ mod tests {
             changed: 1,
             already_ok: 0,
             skipped: 0,
+            failed: 0,
         };
         assert!(matches!(stats.finish(&ctx), TaskResult::DryRun));
+    }
+
+    #[test]
+    fn finish_returns_failed_when_non_fatal_failures_were_recorded() {
+        let config =
+            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::tasks::test_helpers::make_linux_context(config);
+        let stats = TaskStats {
+            changed: 0,
+            already_ok: 1,
+            skipped: 0,
+            failed: 1,
+        };
+
+        assert!(matches!(stats.finish(&ctx), TaskResult::Failed(_)));
     }
 
     // -------------------------------------------------------------------
@@ -300,16 +343,19 @@ mod tests {
             changed: 1,
             already_ok: 2,
             skipped: 3,
+            failed: 4,
         };
         let b = TaskStats {
             changed: 10,
             already_ok: 20,
             skipped: 30,
+            failed: 40,
         };
         a += b;
         assert_eq!(a.changed, 11);
         assert_eq!(a.already_ok, 22);
         assert_eq!(a.skipped, 33);
+        assert_eq!(a.failed, 44);
     }
 
     #[test]
@@ -318,11 +364,13 @@ mod tests {
             changed: 5,
             already_ok: 3,
             skipped: 1,
+            failed: 2,
         };
         a += TaskStats::new();
         assert_eq!(a.changed, 5);
         assert_eq!(a.already_ok, 3);
         assert_eq!(a.skipped, 1);
+        assert_eq!(a.failed, 2);
     }
 
     // -------------------------------------------------------------------

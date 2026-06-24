@@ -16,6 +16,8 @@ pub(crate) enum ApplyOperation<'a> {
     Skip {
         /// Human-readable reason for skipping the resource.
         reason: String,
+        /// Whether the skip is a non-fatal resource failure.
+        failed: bool,
     },
     /// Resource should be applied.
     Apply {
@@ -45,7 +47,7 @@ impl<'a> ApplyChange<'a> {
     ) -> Self {
         let operation = match opts.mode.action_for(state) {
             ResourceAction::Noop => ApplyOperation::Noop,
-            ResourceAction::Skip(reason) => ApplyOperation::Skip { reason },
+            ResourceAction::Skip { reason, failed } => ApplyOperation::Skip { reason, failed },
             ResourceAction::Apply => ApplyOperation::Apply {
                 verb: opts.verb,
                 current: incorrect_current(state),
@@ -204,7 +206,8 @@ mod tests {
         assert_eq!(
             plan.operation(),
             &ApplyOperation::Skip {
-                reason: "bad target".to_string()
+                reason: "bad target".to_string(),
+                failed: true,
             }
         );
     }
@@ -270,9 +273,10 @@ mod tests {
             &opts,
         );
 
-        assert!(
-            matches!(plan.operation(), ApplyOperation::Skip { reason } if reason.contains("incorrect"))
-        );
+        assert!(matches!(
+            plan.operation(),
+            ApplyOperation::Skip { reason, failed: false } if reason.contains("incorrect")
+        ));
     }
 
     #[test]

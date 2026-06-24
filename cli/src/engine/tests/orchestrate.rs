@@ -105,7 +105,7 @@ fn process_resources_mixed_states() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::Failed(_)));
 }
 
 #[test]
@@ -197,7 +197,7 @@ fn process_resources_remove_dry_run() {
 fn process_resources_parallel_accumulates_stats() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = parallel_context(config);
-    // Three resources: one already correct, one missing (will be applied), one invalid (skipped).
+    // Three resources: one already correct, one missing (will be applied), one invalid (failed).
     let resources = vec![
         MockResource::new(ResourceState::Correct),
         MockResource::new(ResourceState::Missing),
@@ -208,7 +208,7 @@ fn process_resources_parallel_accumulates_stats() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::Failed(_)));
 }
 
 #[test]
@@ -339,7 +339,7 @@ fn process_resources_bail_on_apply_error_propagates() {
 fn process_precomputed_states_stats_accumulate_across_resources() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
-    // 2 correct, 1 missing (applied), 1 invalid (skipped)
+    // 2 correct, 1 missing (applied), 1 invalid (failed)
     let resource_states = vec![
         (
             MockResource::new(ResourceState::Correct),
@@ -366,7 +366,7 @@ fn process_precomputed_states_stats_accumulate_across_resources() {
 
     // Just verify it succeeds — individual counts are exercised by process_single tests
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::Failed(_)));
 }
 
 // -----------------------------------------------------------------------
@@ -402,7 +402,7 @@ fn process_resources_remove_parallel_dry_run() {
 }
 
 #[test]
-fn process_precomputed_states_parallel_no_bail_skips_errors() {
+fn process_precomputed_states_parallel_no_bail_reports_failure() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = parallel_context(config);
     let resource_states = vec![
@@ -417,7 +417,7 @@ fn process_precomputed_states_parallel_no_bail_skips_errors() {
     ];
     let opts = default_opts(); // no_bail
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::Failed(_)));
 }
 
 // -----------------------------------------------------------------------
@@ -473,7 +473,7 @@ fn process_precomputed_states_bail_on_error_propagates() {
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_precomputed_states_lenient_skips_errors() {
+fn process_precomputed_states_lenient_reports_failure() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource_states = vec![
@@ -489,7 +489,7 @@ fn process_precomputed_states_lenient_skips_errors() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::Failed(_)));
 }
 
 // -----------------------------------------------------------------------
@@ -497,7 +497,7 @@ fn process_precomputed_states_lenient_skips_errors() {
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_resources_lenient_skips_apply_errors() {
+fn process_resources_lenient_reports_apply_errors() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resources = vec![
@@ -507,7 +507,7 @@ fn process_resources_lenient_skips_apply_errors() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::Failed(_)));
 }
 
 // -----------------------------------------------------------------------
@@ -662,7 +662,7 @@ fn process_precomputed_states_parallel_dry_run() {
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_resources_lenient_skips_multiple_apply_errors() {
+fn process_resources_lenient_reports_multiple_apply_errors() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resources = vec![
@@ -673,7 +673,7 @@ fn process_resources_lenient_skips_multiple_apply_errors() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::Failed(_)));
 }
 
 // -----------------------------------------------------------------------

@@ -158,6 +158,13 @@ fn mode_applies_state(mode: &ProcessModeCase, state: &ResourceState) -> bool {
     }
 }
 
+fn state_reports_nonfatal_failure(state: &ResourceState) -> bool {
+    matches!(
+        state,
+        ResourceState::Invalid { .. } | ResourceState::Unknown { .. }
+    )
+}
+
 #[test]
 fn contract_missing_resource_applies_once_then_noops() {
     let ctx = contract_context();
@@ -226,20 +233,20 @@ fn contract_invalid_and_unknown_resources_are_not_applied() {
 
     let result = process_resources(&ctx, [invalid.clone(), unknown.clone()], &opts).unwrap();
 
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::Failed(_)));
     assert_eq!(invalid.apply_calls(), 0);
     assert_eq!(unknown.apply_calls(), 0);
 }
 
 #[test]
-fn contract_lenient_apply_errors_are_safe_skips() {
+fn contract_lenient_apply_errors_are_nonfatal_failures() {
     let ctx = contract_context();
     let resource = super::MockResource::new(ResourceState::Missing).with_apply(Err("boom".into()));
     let opts = default_opts();
 
     let result = process_resources(&ctx, [resource], &opts).unwrap();
 
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::Failed(_)));
 }
 
 #[test]
@@ -312,9 +319,11 @@ fn contract_process_modes_apply_only_their_fixable_states() -> anyhow::Result<()
 
             let result = process_resources(&ctx, [resource.clone()], &mode.opts)?;
 
-            assert!(
-                matches!(result, TaskResult::Ok),
-                "mode {} and state {} should complete successfully",
+            let expected_failure = state_reports_nonfatal_failure(&case.state);
+            assert_eq!(
+                matches!(result, TaskResult::Failed(_)),
+                expected_failure,
+                "mode {} and state {} should report failure only for unsafe states",
                 mode.name,
                 case.name
             );

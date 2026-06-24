@@ -27,9 +27,13 @@ pub(super) fn process_single<R: Resource>(
             ctx.debug_fmt(|| format!("ok: {}", plan.description()));
             delta.already_ok = delta.already_ok.saturating_add(1);
         }
-        ApplyOperation::Skip { reason } => {
+        ApplyOperation::Skip { reason, failed } => {
             ctx.debug_fmt(|| format!("skipping {}: {reason}", plan.description()));
-            delta.skipped = delta.skipped.saturating_add(1);
+            if *failed {
+                delta.failed = delta.failed.saturating_add(1);
+            } else {
+                delta.skipped = delta.skipped.saturating_add(1);
+            }
         }
         ApplyOperation::Apply {
             verb,
@@ -92,7 +96,7 @@ fn record_resource_change(
                 &format!("{desc} skipped: {reason}"),
             );
             ctx.log.warn(&format!("skipping {desc}: {reason}"));
-            delta.skipped = delta.skipped.saturating_add(1);
+            delta.failed = delta.failed.saturating_add(1);
         }
     }
 }
@@ -120,7 +124,7 @@ fn apply_resource<R: Resource>(
                 return Err(e.into());
             }
             ctx.log.warn(&format!("failed to {verb} {desc}: {e}"));
-            delta.skipped = delta.skipped.saturating_add(1);
+            delta.failed = delta.failed.saturating_add(1);
             return Ok(delta);
         }
     };

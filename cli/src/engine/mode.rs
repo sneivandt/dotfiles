@@ -64,7 +64,7 @@ impl ProcessMode {
 
     /// Whether errors from `apply()` should propagate (bail).
     ///
-    /// When `false`, errors are logged as warnings and counted as skipped.
+    /// When `false`, errors are logged as warnings and counted as non-fatal failures.
     #[must_use]
     pub const fn bail_on_error(self) -> bool {
         matches!(self, Self::Strict | Self::FixExisting)
@@ -94,23 +94,31 @@ impl ProcessMode {
     ///     ProcessMode::InstallMissing.action_for(
     ///         &ResourceState::Incorrect { current: "x".into() },
     ///     ),
-    ///     ResourceAction::Skip(_),
+    ///     ResourceAction::Skip { failed: false, .. },
     /// ));
     /// ```
     #[must_use]
     pub fn action_for(self, state: &ResourceState) -> ResourceAction {
         match state {
             ResourceState::Correct => ResourceAction::Noop,
-            ResourceState::Invalid { reason } => ResourceAction::Skip(reason.clone()),
-            ResourceState::Unknown { reason } => {
-                ResourceAction::Skip(format!("state unknown: {reason}"))
-            }
+            ResourceState::Invalid { reason } => ResourceAction::Skip {
+                reason: reason.clone(),
+                failed: true,
+            },
+            ResourceState::Unknown { reason } => ResourceAction::Skip {
+                reason: format!("state unknown: {reason}"),
+                failed: true,
+            },
             ResourceState::Missing if self.fix_missing() => ResourceAction::Apply,
-            ResourceState::Missing => ResourceAction::Skip("mode skips missing resources".into()),
+            ResourceState::Missing => ResourceAction::Skip {
+                reason: "mode skips missing resources".into(),
+                failed: false,
+            },
             ResourceState::Incorrect { .. } if self.fix_incorrect() => ResourceAction::Apply,
-            ResourceState::Incorrect { .. } => {
-                ResourceAction::Skip("mode skips incorrect resources".into())
-            }
+            ResourceState::Incorrect { .. } => ResourceAction::Skip {
+                reason: "mode skips incorrect resources".into(),
+                failed: false,
+            },
         }
     }
 }
@@ -128,7 +136,10 @@ impl ProcessMode {
 ///
 /// let apply = ResourceAction::Apply;
 /// let noop = ResourceAction::Noop;
-/// let skip = ResourceAction::Skip("not applicable".into());
+/// let skip = ResourceAction::Skip {
+///     reason: "not applicable".into(),
+///     failed: false,
+/// };
 ///
 /// assert_eq!(apply, ResourceAction::Apply);
 /// assert_ne!(apply, noop);
@@ -140,7 +151,12 @@ pub enum ResourceAction {
     /// No action needed — resource is already in the desired state.
     Noop,
     /// Skip the resource for the given reason.
-    Skip(String),
+    Skip {
+        /// Human-readable reason for skipping the resource.
+        reason: String,
+        /// Whether the skip indicates the task attempted work that did not succeed.
+        failed: bool,
+    },
 }
 
 /// Configuration for the generic resource processing loop.
@@ -329,7 +345,10 @@ mod tests {
             ProcessMode::FixExisting,
         ] {
             assert!(
-                matches!(mode.action_for(&state), ResourceAction::Skip(_)),
+                matches!(
+                    mode.action_for(&state),
+                    ResourceAction::Skip { failed: true, .. },
+                ),
                 "mode {mode:?} should Skip on Invalid",
             );
         }
@@ -350,7 +369,7 @@ mod tests {
         ] {
             let action = mode.action_for(&state);
             assert!(
-                matches!(action, ResourceAction::Skip(_)),
+                matches!(action, ResourceAction::Skip { failed: true, .. }),
                 "mode {mode:?} should Skip on Unknown",
             );
         }
@@ -362,7 +381,10 @@ mod tests {
             reason: "SHELL not set".into(),
         };
         match ProcessMode::Strict.action_for(&state) {
-            ResourceAction::Skip(reason) => {
+            ResourceAction::Skip {
+                reason,
+                failed: true,
+            } => {
                 assert!(reason.contains("state unknown"), "reason: {reason}");
                 assert!(reason.contains("SHELL not set"), "reason: {reason}");
             }
@@ -400,7 +422,7 @@ mod tests {
     fn action_for_missing_fix_existing_skips() {
         assert!(matches!(
             ProcessMode::FixExisting.action_for(&ResourceState::Missing),
-            ResourceAction::Skip(_),
+            ResourceAction::Skip { failed: false, .. },
         ));
     }
 
@@ -435,7 +457,7 @@ mod tests {
         };
         assert!(matches!(
             ProcessMode::InstallMissing.action_for(&state),
-            ResourceAction::Skip(_),
+            ResourceAction::Skip { failed: false, .. },
         ));
     }
 
@@ -467,24 +489,48 @@ mod tests {
     #[test]
     fn resource_action_skip_eq_same_reason() {
         assert_eq!(
-            ResourceAction::Skip("x".into()),
-            ResourceAction::Skip("x".into()),
+            ResourceAction::Skip {
+                reason: "x".into(),
+                failed: false,
+            },
+            ResourceAction::Skip {
+                reason: "x".into(),
+                failed: false,
+            },
         );
     }
 
     #[test]
     fn resource_action_skip_ne_different_reason() {
         assert_ne!(
-            ResourceAction::Skip("a".into()),
-            ResourceAction::Skip("b".into()),
+            ResourceAction::Skip {
+                reason: "a".into(),
+                failed: false,
+            },
+            ResourceAction::Skip {
+                reason: "b".into(),
+                failed: false,
+            },
         );
     }
 
     #[test]
     fn resource_action_variants_ne() {
         assert_ne!(ResourceAction::Apply, ResourceAction::Noop);
-        assert_ne!(ResourceAction::Apply, ResourceAction::Skip("x".into()));
-        assert_ne!(ResourceAction::Noop, ResourceAction::Skip("x".into()));
+        assert_ne!(
+            ResourceAction::Apply,
+            ResourceAction::Skip {
+                reason: "x".into(),
+                failed: false,
+            },
+        );
+        assert_ne!(
+            ResourceAction::Noop,
+            ResourceAction::Skip {
+                reason: "x".into(),
+                failed: false,
+            },
+        );
     }
 
     // -------------------------------------------------------------------

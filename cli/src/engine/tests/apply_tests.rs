@@ -27,7 +27,7 @@ fn process_single_correct_increments_already_ok() {
 }
 
 #[test]
-fn process_single_invalid_increments_skipped() {
+fn process_single_invalid_increments_failed() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = MockResource::new(ResourceState::Invalid {
@@ -45,12 +45,13 @@ fn process_single_invalid_increments_skipped() {
     )
     .unwrap();
 
-    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.failed, 1);
+    assert_eq!(stats.skipped, 0);
     assert_eq!(stats.changed, 0);
 }
 
 #[test]
-fn process_single_unknown_increments_skipped() {
+fn process_single_unknown_increments_failed() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = MockResource::new(ResourceState::Unknown {
@@ -68,7 +69,8 @@ fn process_single_unknown_increments_skipped() {
     )
     .unwrap();
 
-    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.failed, 1);
+    assert_eq!(stats.skipped, 0);
     assert_eq!(stats.changed, 0);
 }
 
@@ -210,7 +212,7 @@ fn process_single_apply_already_correct_increments_already_ok() {
 }
 
 #[test]
-fn process_single_apply_skipped_no_bail_increments_skipped() {
+fn process_single_apply_skipped_no_bail_increments_failed() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource =
@@ -221,12 +223,13 @@ fn process_single_apply_skipped_no_bail_increments_skipped() {
 
     let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
 
-    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.failed, 1);
+    assert_eq!(stats.skipped, 0);
     assert_eq!(stats.changed, 0);
 }
 
 #[test]
-fn process_single_apply_error_no_bail_increments_skipped() {
+fn process_single_apply_error_no_bail_increments_failed() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = MockResource::new(ResourceState::Missing).with_apply(Err("boom".to_string()));
@@ -234,7 +237,8 @@ fn process_single_apply_error_no_bail_increments_skipped() {
 
     let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
 
-    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.failed, 1);
+    assert_eq!(stats.skipped, 0);
     assert_eq!(stats.changed, 0);
 }
 
@@ -264,7 +268,7 @@ fn process_single_apply_bail_on_already_correct() {
 }
 
 #[test]
-fn process_single_apply_bail_on_skipped_still_skips() {
+fn process_single_apply_bail_on_skipped_records_failure() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource =
@@ -274,7 +278,8 @@ fn process_single_apply_bail_on_skipped_still_skips() {
     let opts = bail_opts();
 
     let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
-    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.failed, 1);
+    assert_eq!(stats.skipped, 0);
     assert_eq!(stats.changed, 0);
 }
 
@@ -424,7 +429,7 @@ fn remove_single_typed_error_propagates() {
 // -----------------------------------------------------------------------
 
 #[test]
-fn process_single_command_failed_error_lenient_skips() {
+fn process_single_command_failed_error_lenient_fails_nonfatally() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = TypedErrorResource {
@@ -433,7 +438,8 @@ fn process_single_command_failed_error_lenient_skips() {
     let opts = default_opts();
 
     let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
-    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.failed, 1);
+    assert_eq!(stats.skipped, 0);
     assert_eq!(stats.changed, 0);
 }
 
@@ -452,7 +458,7 @@ fn process_single_permission_denied_error_bail_propagates() {
 }
 
 #[test]
-fn process_single_conflicting_state_error_lenient_skips() {
+fn process_single_conflicting_state_error_lenient_fails_nonfatally() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = TypedErrorResource {
@@ -461,7 +467,8 @@ fn process_single_conflicting_state_error_lenient_skips() {
     let opts = default_opts();
 
     let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
-    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.failed, 1);
+    assert_eq!(stats.skipped, 0);
 }
 
 #[test]
@@ -510,7 +517,7 @@ fn process_single_conflicting_state_error_bail_propagates() {
 }
 
 #[test]
-fn process_single_permission_denied_error_lenient_skips() {
+fn process_single_permission_denied_error_lenient_fails_nonfatally() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = TypedErrorResource {
@@ -519,12 +526,13 @@ fn process_single_permission_denied_error_lenient_skips() {
     let opts = default_opts();
 
     let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
-    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.failed, 1);
+    assert_eq!(stats.skipped, 0);
     assert_eq!(stats.changed, 0);
 }
 
 #[test]
-fn process_single_not_supported_error_lenient_skips() {
+fn process_single_not_supported_error_lenient_fails_nonfatally() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let resource = TypedErrorResource {
@@ -533,7 +541,8 @@ fn process_single_not_supported_error_lenient_skips() {
     let opts = default_opts();
 
     let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
-    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.failed, 1);
+    assert_eq!(stats.skipped, 0);
     assert_eq!(stats.changed, 0);
 }
 

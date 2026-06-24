@@ -135,16 +135,18 @@ fn write_sparse_patterns(sparse_file: &Path, patterns_str: &str) -> Result<()> {
 /// Best-effort: failures are logged at debug level and otherwise ignored
 /// (e.g. when an excluded file isn't tracked in HEAD).
 fn reset_excluded_to_head(ctx: &Context, root: &Path, excluded_files: &[String]) {
-    let excluded: Vec<&str> = excluded_files
+    let excluded: Vec<String> = excluded_files
         .iter()
-        .filter(|f| root.join(f).exists())
-        .map(String::as_str)
+        .filter_map(|f| {
+            let repo_path = format!("symlinks/{f}");
+            root.join(&repo_path).exists().then_some(repo_path)
+        })
         .collect();
     if excluded.is_empty() {
         return;
     }
     let mut checkout_args = vec!["checkout", "HEAD", "--"];
-    checkout_args.extend(&excluded);
+    checkout_args.extend(excluded.iter().map(String::as_str));
     ctx.debug_fmt(|| {
         format!(
             "resetting {} excluded files to HEAD before read-tree",
@@ -318,14 +320,14 @@ impl Task for ConfigureSparseCheckout {
             return Ok(TaskResult::DryRun);
         }
 
+        // Clean up broken git config symlinks that prevent git from running.
+        remove_broken_git_symlinks(ctx, &*self.fs_ops);
+
         if worktree_has_local_changes(ctx)? {
             return Ok(TaskResult::Skipped("local changes present".to_string()));
         }
 
         let previous_patterns = read_existing_patterns(&sparse_file)?;
-
-        // Clean up broken git config symlinks that prevent git from running.
-        remove_broken_git_symlinks(ctx, &*self.fs_ops);
 
         let root = ctx.root();
 

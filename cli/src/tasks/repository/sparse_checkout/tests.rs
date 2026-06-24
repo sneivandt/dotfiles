@@ -80,6 +80,37 @@ fn restore_sparse_checkout_file_removes_file_when_previous_is_missing() {
     assert!(!path.exists());
 }
 
+#[test]
+fn reset_excluded_to_head_uses_symlinks_repo_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let tracked_path = dir.path().join("symlinks").join("config").join("nvim");
+    std::fs::create_dir_all(tracked_path.parent().unwrap()).unwrap();
+    std::fs::write(&tracked_path, "tracked").unwrap();
+
+    let mut executor = MockExecutor::new();
+    executor
+        .expect_run_in()
+        .once()
+        .returning(|_, program, args| {
+            assert_eq!(program, "git");
+            assert_eq!(args, ["checkout", "HEAD", "--", "symlinks/config/nvim"]);
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
+    let config = empty_config(dir.path().to_path_buf());
+    let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
+
+    reset_excluded_to_head(
+        &ctx,
+        dir.path(),
+        &["config/nvim".to_string(), "missing/file".to_string()],
+    );
+}
+
 // -----------------------------------------------------------------------
 // should_run
 // -----------------------------------------------------------------------
@@ -279,6 +310,83 @@ fn run_skips_when_worktree_has_local_changes() {
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
     let result = ConfigureSparseCheckout::new().run(&ctx).unwrap();
+    assert!(
+        matches!(result, TaskResult::Skipped(ref s) if s.contains("local changes present")),
+        "expected local changes skip, got {result:?}"
+    );
+}
+
+#[test]
+fn run_removes_broken_git_symlinks_before_checking_worktree_status() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join(".git")).unwrap();
+
+    let mut config = empty_config(dir.path().to_path_buf());
+    config
+        .manifest
+        .excluded_files
+        .push("config/git/config".to_string());
+
+    let mut seq = mockall::Sequence::new();
+    let broken_link = PathBuf::from("/home/test/.config/git/config");
+    let target = dir
+        .path()
+        .join("symlinks")
+        .join("config")
+        .join("git")
+        .join("config");
+
+    let mut fs = MockFileSystemOps::new();
+    fs.expect_exists()
+        .once()
+        .in_sequence(&mut seq)
+        .withf(|p| p == Path::new("/home/test/.config/git"))
+        .returning(|_| true);
+    let broken_link_for_read_dir = broken_link.clone();
+    fs.expect_read_dir()
+        .once()
+        .in_sequence(&mut seq)
+        .withf(|p| p == Path::new("/home/test/.config/git"))
+        .returning(move |_| Ok(vec![broken_link_for_read_dir.clone()]));
+    let broken_link_for_read_link = broken_link.clone();
+    let target_for_read_link = target.clone();
+    fs.expect_read_link()
+        .once()
+        .in_sequence(&mut seq)
+        .withf(move |p| p == broken_link_for_read_link.as_path())
+        .returning(move |_| Ok(target_for_read_link.clone()));
+    let target_for_exists = target;
+    fs.expect_exists()
+        .once()
+        .in_sequence(&mut seq)
+        .withf(move |p| p == target_for_exists.as_path())
+        .returning(|_| false);
+    fs.expect_remove()
+        .once()
+        .in_sequence(&mut seq)
+        .withf(move |p| p == broken_link.as_path())
+        .returning(|_| Ok(()));
+
+    let mut executor = MockExecutor::new();
+    executor
+        .expect_run_in()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_, program, args| {
+            assert_eq!(program, "git");
+            assert_eq!(args, ["status", "--porcelain", "--untracked-files=no"]);
+            Ok(ExecResult {
+                stdout: "M  cli/src/tasks/packages.rs\n".to_string(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
+
+    let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
+    let task = ConfigureSparseCheckout::with_fs_ops(Arc::new(fs));
+
+    let result = task.run(&ctx).unwrap();
     assert!(
         matches!(result, TaskResult::Skipped(ref s) if s.contains("local changes present")),
         "expected local changes skip, got {result:?}"

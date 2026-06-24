@@ -111,7 +111,8 @@ impl ChmodResource {
         entry: &crate::config::chmod::ChmodEntry,
         home: &std::path::Path,
     ) -> Result<Self> {
-        let target = home.join(format!(".{}", entry.path));
+        let relative_path = entry.path.strip_prefix('.').unwrap_or(&entry.path);
+        let target = home.join(format!(".{relative_path}"));
         let mode = OctalMode::parse(&entry.mode).map_err(|msg| anyhow::anyhow!("{msg}"))?;
         Ok(Self::new(target, mode))
     }
@@ -461,6 +462,21 @@ mod tests {
 
         assert_eq!(resource.mode, mode("600"));
         assert_eq!(resource.target, PathBuf::from("/home/user/.ssh/config"));
+    }
+
+    #[test]
+    fn from_entry_normalizes_leading_dot_path() {
+        let entry = crate::config::chmod::ChmodEntry {
+            mode: "600".to_string(),
+            path: ".ssh/config".to_string(),
+        };
+
+        let home = std::path::Path::new("/home/user");
+        let resource = ChmodResource::from_entry(&entry, home).unwrap();
+
+        assert_eq!(resource.mode, mode("600"));
+        assert_eq!(resource.target, PathBuf::from("/home/user/.ssh/config"));
+        assert_ne!(resource.target, PathBuf::from("/home/user/..ssh/config"));
     }
 
     #[test]

@@ -70,6 +70,8 @@ paths = [
 paths = [
   "config/Code/",
   "config/Code - Insiders/",
+  "AppData/Roaming/Code - Insiders/",
+  "AppData/Roaming/Code/",
   "config/idea/",
   "vscode-remote/",
 ]

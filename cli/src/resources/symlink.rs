@@ -334,38 +334,39 @@ fn paths_equal(a: &Path, b: &Path) -> bool {
 }
 
 /// Create a symlink at `link` pointing to `target`.
+#[cfg(unix)]
 fn create_symlink(target: &Path, link: &Path, _executor: &dyn Executor) -> Result<()> {
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(target, link).with_context(|| {
-            format!(
-                "creating symlink {} -> {}",
-                link.display(),
-                target.display()
-            )
-        })?;
-    }
+    std::os::unix::fs::symlink(target, link).with_context(|| {
+        format!(
+            "creating symlink {} -> {}",
+            link.display(),
+            target.display()
+        )
+    })?;
 
-    #[cfg(windows)]
-    {
-        let is_dir = target.is_dir();
-        if is_dir {
-            match std::os::windows::fs::symlink_dir(target, link) {
-                Ok(()) => Ok(()),
-                Err(e) => create_junction(target, link, _executor)
-                    .with_context(|| format!("directory symlink failed: {e}")),
-            }
-        } else {
-            std::os::windows::fs::symlink_file(target, link).map_err(anyhow::Error::from)
+    Ok(())
+}
+
+/// Create a symlink at `link` pointing to `target`.
+#[cfg(windows)]
+fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
+    let is_dir = target.is_dir();
+    if is_dir {
+        match std::os::windows::fs::symlink_dir(target, link) {
+            Ok(()) => Ok(()),
+            Err(e) => create_junction(target, link, executor)
+                .with_context(|| format!("directory symlink failed: {e}")),
         }
-        .with_context(|| {
-            format!(
-                "creating symlink {} -> {} (enable Developer Mode or run as administrator)",
-                link.display(),
-                target.display()
-            )
-        })?;
+    } else {
+        std::os::windows::fs::symlink_file(target, link).map_err(anyhow::Error::from)
     }
+    .with_context(|| {
+        format!(
+            "creating symlink {} -> {} (enable Developer Mode or run as administrator)",
+            link.display(),
+            target.display()
+        )
+    })?;
 
     Ok(())
 }

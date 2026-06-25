@@ -334,7 +334,7 @@ fn paths_equal(a: &Path, b: &Path) -> bool {
 }
 
 /// Create a symlink at `link` pointing to `target`.
-fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
+fn create_symlink(target: &Path, link: &Path, _executor: &dyn Executor) -> Result<()> {
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(target, link).with_context(|| {
@@ -352,7 +352,7 @@ fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result
         if is_dir {
             match std::os::windows::fs::symlink_dir(target, link) {
                 Ok(()) => Ok(()),
-                Err(e) => create_junction(target, link, executor)
+                Err(e) => create_junction(target, link, _executor)
                     .with_context(|| format!("directory symlink failed: {e}")),
             }
         } else {

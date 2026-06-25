@@ -109,3 +109,10 @@ paths = [
   "config/fuzzel/",
   "zprofile",
 ]
+
+# Windows desktop-specific files
+[windows-desktop]
+paths = [
+  "AppData/Roaming/Code - Insiders/",
+  "AppData/Roaming/Code/",
+]

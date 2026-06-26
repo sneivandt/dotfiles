@@ -65,12 +65,32 @@ fn make_home_context(home: &Path) -> Context {
 }
 
 fn make_home_context_with_executor(home: &Path, executor: MockExecutor) -> Context {
+    write_workflow_db(home);
+    make_home_context_without_copilot_app_with_executor(home, executor)
+}
+
+fn make_home_context_without_copilot_app_with_executor(
+    home: &Path,
+    executor: MockExecutor,
+) -> Context {
+    make_home_context_for_platform_with_executor(home, Platform::new(Os::Linux, false), executor)
+}
+
+fn make_home_context_for_platform_with_executor(
+    home: &Path,
+    platform: Platform,
+    executor: MockExecutor,
+) -> Context {
     make_context(
         empty_config(home.to_path_buf()),
-        Platform::new(Os::Linux, false),
+        platform,
         Arc::new(executor),
     )
     .with_home(home.to_path_buf())
+}
+
+fn make_home_context_for_platform(home: &Path, platform: Platform) -> Context {
+    make_home_context_for_platform_with_executor(home, platform, MockExecutor::new())
 }
 
 #[test]
@@ -111,6 +131,37 @@ fn run_skips_when_apm_not_found() {
         ),
         other => panic!("expected TaskResult::Skipped, got {other:?}"),
     }
+}
+
+#[test]
+fn missing_apm_reason_recommends_winget_for_wsl() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let ctx = make_home_context_for_platform(dir.path(), Platform::new_wsl());
+
+    assert_eq!(
+        missing_apm_reason(&ctx),
+        "apm not found in PATH; install the Windows package with `winget.exe install \
+         Microsoft.APM` and re-open your WSL shell"
+    );
+}
+
+#[test]
+fn missing_apm_reason_recommends_winget_for_windows() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let ctx = make_home_context_for_platform(dir.path(), Platform::new(Os::Windows, false));
+
+    assert_eq!(
+        missing_apm_reason(&ctx),
+        "apm not found in PATH; install it with `winget install Microsoft.APM`"
+    );
+}
+
+#[test]
+fn missing_apm_reason_omits_unknown_install_command() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let ctx = make_home_context_for_platform(dir.path(), Platform::new(Os::Linux, false));
+
+    assert_eq!(missing_apm_reason(&ctx), "apm not found in PATH");
 }
 
 #[test]
@@ -160,6 +211,89 @@ fn run_installs_when_manifest_changed() {
     let manifest = std::fs::read_to_string(dir.path().join(".apm").join("apm.yml"))
         .expect("read merged manifest");
     assert!(manifest.contains("github/awesome-copilot/plugins/project-planning"));
+}
+
+#[test]
+fn run_includes_copilot_app_target_on_windows_when_app_database_exists() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_home_fragment(
+        dir.path(),
+        "base.yml",
+        "name: base\nversion: 1.0.0\ndependencies:\n  apm:\n    - github/awesome-copilot/plugins/project-planning\n",
+    );
+    write_workflow_db(dir.path());
+
+    let mut mock = MockExecutor::new();
+    let mut seq = mockall::Sequence::new();
+    mock.expect_which()
+        .with(mockall::predicate::eq("apm"))
+        .once()
+        .returning(|_| true);
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_, _, args, env| {
+            assert_eq!(args, ["experimental", "enable", "copilot-app"]);
+            assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
+            Ok(ok_result("[!] copilot-app is already enabled.\n"))
+        });
+    let install_cwd = dir.path().to_path_buf();
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |dir, program, args, env| {
+            assert_eq!(dir, install_cwd.as_path());
+            assert_eq!(program, "apm");
+            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
+            assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
+            Ok(ok_result("installed\n"))
+        });
+
+    let ctx = make_home_context_for_platform_with_executor(
+        dir.path(),
+        Platform::new(Os::Windows, false),
+        mock,
+    );
+
+    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Ok),
+        "expected Ok after apm install, got {result:?}"
+    );
+}
+
+#[test]
+fn run_omits_copilot_app_target_when_app_database_missing() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_home_fragment(
+        dir.path(),
+        "base.yml",
+        "name: base\nversion: 1.0.0\ndependencies:\n  apm:\n    - github/awesome-copilot/plugins/project-planning\n",
+    );
+
+    let mut mock = MockExecutor::new();
+    mock.expect_which()
+        .with(mockall::predicate::eq("apm"))
+        .once()
+        .returning(|_| true);
+    let install_cwd = dir.path().to_path_buf();
+    mock.expect_run_in_with_env()
+        .once()
+        .returning(move |dir, program, args, env| {
+            assert_eq!(dir, install_cwd.as_path());
+            assert_eq!(program, "apm");
+            assert_eq!(args, ["install", "-g", "--target", "copilot"]);
+            assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
+            Ok(ok_result("installed\n"))
+        });
+
+    let ctx = make_home_context_without_copilot_app_with_executor(dir.path(), mock);
+
+    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Ok),
+        "expected Ok after apm install, got {result:?}"
+    );
 }
 
 /// Shared fragment that forces the changed-manifest install path.

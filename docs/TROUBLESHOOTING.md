@@ -279,6 +279,7 @@ code --install-extension <extension-id>
 
 **Solution**:
 - Windows: `winget install Microsoft.APM`
+- WSL: install the Windows package with `winget.exe install Microsoft.APM`, then re-open the WSL shell
 - Arch Linux: install the `apm-bin` AUR package (included in `conf/packages.toml`)
 - Verify: `apm --version`
 
@@ -291,10 +292,11 @@ code --install-extension <extension-id>
 # dependencies; `install` only redeploys without bumping locked refs.
 ./dotfiles.sh update
 
-# Or run APM directly at user scope
-apm install -g --target copilot,copilot-app
+# Or run APM directly at user scope.
+# Add ,copilot-app only after the Copilot App has initialized ~/.copilot/data.db.
+apm install -g --target copilot
 apm outdated -g
-apm update -g --yes --target copilot,copilot-app
+apm update -g --yes --target copilot
 
 # Inspect the manifest (deployed location)
 cat ~/.apm/apm.yml

@@ -16,6 +16,8 @@ if (Get-Command "code-insiders" -ErrorAction SilentlyContinue)
     Set-Alias -Name code -Value code-insiders
 }
 
+Set-Alias -Name dot -Value dotfiles
+
 $Global:IsNestedPwsh = $false
 if ($null -eq $env:windir)
 {

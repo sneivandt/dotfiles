@@ -10,6 +10,8 @@ alias cls="clear"
 
 alias df="df -h -T"
 
+alias dot="dotfiles"
+
 alias g="git"
 
 alias grep="grep --color=auto"

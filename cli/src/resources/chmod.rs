@@ -68,6 +68,13 @@ impl OctalMode {
 
     /// The numeric permission bits.
     #[must_use]
+    #[cfg_attr(
+        not(unix),
+        allow(
+            dead_code,
+            reason = "numeric chmod bits are only consumed by Unix permission operations"
+        )
+    )]
     pub const fn as_u32(&self) -> u32 {
         self.bits
     }

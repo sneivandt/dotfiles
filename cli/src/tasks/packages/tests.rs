@@ -250,11 +250,7 @@ fn make_package_context(
     executor: MockExecutor,
 ) -> Context {
     use crate::platform::Platform;
-    crate::tasks::test_helpers::make_context(
-        config,
-        Platform::new(os, is_arch),
-        std::sync::Arc::new(executor),
-    )
+    crate::tasks::test_helpers::make_context(config, Platform::new(os, is_arch), Arc::new(executor))
 }
 
 #[test]

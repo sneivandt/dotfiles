@@ -39,26 +39,27 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 
 ## What the Binary Does
 
-`dotfiles.ps1` downloads (or builds) the Rust binary and forwards all arguments to it. The binary runs the following tasks on Windows:
+`dotfiles.ps1` downloads (or builds) the Rust binary and forwards all arguments to it. Before scheduled tasks start, self-update may replace the binary and re-exec the process. The remaining Windows work runs in phase order, but rows within the same phase are inventory, not a strict sequence; tasks run in parallel when their dependencies allow.
 
-| Phase | Step | Task | Description | Idempotency Cue |
-|-------|------|------|-------------|-----------------|
-| System | 1 | Self-Update | Updates the dotfiles binary from latest GitHub release (runs before the task scheduler; re-execs if updated). | Skips if already up to date. |
-| System | 2 | Developer Mode | Enables Windows developer mode (required for symlink creation). | Skips if already enabled. |
-| System | 3 | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
-| System | 4 | Update Repository | Updates the repository from remote (`git pull --ff-only`). | Skips if already up to date. |
-| System | 5 | Git Hooks | Copies repository git hooks into `.git/hooks/`. | Skips if hooks already match. |
-| System | 6 | Configure PATH | Ensures dotfiles bin directory is on PATH. | Skips if already on PATH. |
-| System | 7 | Install Wrapper | Installs the `dotfiles` wrapper script so the CLI is on PATH from any directory. | Skips if wrapper is already up to date. |
-| User | 8 | Packages | Installs missing packages from `conf/packages.toml` using winget. | Skips already-installed packages. |
-| User | 9 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
-| User | 10 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
-| User | 11 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
-| User | 12 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
-| User | 13 | APM Packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install -g --target copilot,codex`, adding `copilot-app` only when `~/.copilot/data.db` exists. The `update` command separately runs `apm outdated -g` and `apm update -g --yes` with the same target selection when locked refs are stale. | Idempotent via APM's lockfile. |
-
-Tasks run in parallel where dependencies allow, so the numbering above reflects logical
-grouping rather than strict execution order.
+| Phase | Task | Description | Idempotency Cue |
+|-------|------|-------------|-----------------|
+| Bootstrap | Developer Mode | Enables Windows developer mode (required for symlink creation). | Skips if already enabled. |
+| Bootstrap | Install Wrapper | Installs the `dotfiles` wrapper script so the CLI is on PATH from any directory. | Skips if wrapper is already up to date. |
+| Bootstrap | Configure PATH | Ensures dotfiles bin directory is on PATH after the wrapper task completes. | Skips if already on PATH. |
+| Sync | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
+| Sync | Update Repository | Updates the repository from remote (`git pull --ff-only`) after sparse checkout is configured. | Skips if already up to date. |
+| Sync | Git Hooks | Copies repository git hooks into `.git/hooks/` after repository update. | Skips if hooks already match. |
+| Sync | Reload Configuration | Reloads config after repository update. | Skips when no repository update happened. |
+| Sync | Load Overlay Scripts | Discovers overlay script tasks after config reload, when `--overlay` is set. | Skips when no overlay scripts are configured. |
+| Provision | Packages | Installs missing packages from `conf/packages.toml` using winget. | Skips already-installed packages. |
+| Provision | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
+| Provision | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
+| Provision | Copilot Settings | Applies Copilot CLI settings from `conf/copilot.toml`. | Skips if settings already match. |
+| Provision | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
+| Provision | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
+| Provision | APM Packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install -g --target copilot,codex`, adding `copilot-app` only when `~/.copilot/data.db` exists. | Idempotent via APM's lockfile. |
+| Provision | Overlay Scripts | Runs custom scripts loaded from the overlay repository, when `--overlay` is set. | Script-defined checks decide whether each script runs. |
+| Update | APM Packages | `dotfiles update` only: runs `apm outdated -g` and `apm update -g --yes` when locked refs are stale. | Skips when locked refs are current. |
 
 Tasks that don't apply to Windows (systemd, shell, chmod, paru) are automatically skipped via platform detection.
 
@@ -66,7 +67,7 @@ Tasks that don't apply to Windows (systemd, shell, chmod, paru) are automaticall
 
 The repository contains symlinks (e.g., `symlinks/config/nvim` → `../vim`) that are tracked in Git. On Windows, creating actual symlinks during Git operations requires Developer Mode enabled or Administrator privileges.
 
-The binary **automatically configures** Git to enable symlink support, since Developer Mode is enabled during the System phase:
+The binary **automatically configures** Git to enable symlink support, since Developer Mode is enabled during the Bootstrap phase:
 
 ```powershell
 git config core.symlinks true
@@ -76,7 +77,7 @@ git config credential.helper manager
 
 This configuration:
 - Enables proper symlink creation in the working directory
-- Requires Developer Mode (enabled automatically by the first installation task)
+- Requires Developer Mode (enabled automatically during the Bootstrap phase)
 - Is applied automatically on first run (idempotent—won't change if already set)
 
 **Manual Workaround:** If you encounter symlink permission errors before running the script (e.g., during initial `git clone`), you can temporarily disable symlinks:
@@ -270,7 +271,7 @@ The dotfiles installation includes a comprehensive logging system that tracks al
 
 ### Log File Location
 
-All installation operations are logged to: `%LOCALAPPDATA%\dotfiles\install.log`
+All installation operations are logged to: `%USERPROFILE%\.cache\dotfiles\install.log`
 
 This persistent log file includes:
 - Timestamp of installation
@@ -284,7 +285,8 @@ The log file is useful for troubleshooting installation issues or reviewing what
 ### Task Summary
 
 In **non-verbose** mode (default), compact task-result lines are shown inline as
-each task completes, followed by a totals line. Status icons:
+task buffers flush, followed by a totals line. Within a phase, line order can
+vary because independent tasks run in parallel. Status icons:
 
 - `✓` — task completed successfully (green)
 - `○` — deliberately skipped (yellow)
@@ -292,7 +294,7 @@ each task completes, followed by a totals line. Status icons:
 - `✗` — task failed (red)
 
 Not-applicable tasks are omitted from the summary display. In **verbose** mode
-(`-v`), a full per-task breakdown grouped by phase is appended.
+(`-v`), a full per-task breakdown grouped by domain is appended.
 
 ### Dry-Run Mode
 
@@ -303,17 +305,17 @@ When using `-d` (dry-run), the logging system:
 
 Example summary output:
 ```
-:: Bootstrapping
+:: Preparing dotfiles
   ✓ Enable developer mode
   ~ Install wrapper
   ~ Configure PATH
 
-:: Syncing repository
+:: Refreshing dotfiles
   ✓ Configure sparse checkout
   ✓ Update repository
   ~ Install Git hooks
 
-:: Provisioning environment
+:: Applying configuration
   ~ Install packages
   ~ Install symlinks
   ~ Configure Git
@@ -321,7 +323,7 @@ Example summary output:
   ~ Install VS Code extensions
   ~ Install APM packages
 
-  12 tasks: 2 ok, 10 dry-run
+  ~ 3 ok · 9 dry-run
   completed in 0.8s
 ```
 

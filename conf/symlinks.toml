@@ -95,14 +95,6 @@ symlinks = [
 
 [desktop]
 symlinks = [
-  "config/idea/config/codestyles/Custom.xml",
-  "config/idea/config/inspection/Custom.xml",
-  "config/idea/config/keymaps/Custom.xml",
-  "config/idea/config/options/colors.scheme.xml",
-  "config/idea/config/options/editor.xml",
-  "config/idea/config/options/ide.general.xml",
-  "config/idea/config/options/keymap.xml",
-  "config/idea/idea.properties",
   # Internal chain: symlinks/vscode-remote/data/Machine/settings.json
   # -> ../../../config/Code/User/settings.json.
   "vscode-remote/data/Machine/settings.json",
@@ -135,4 +127,3 @@ symlinks = [
   { source = "AppData/Roaming/Code/User/keybindings.json", target = "AppData/Roaming/Code/User/keybindings.json" },
   { source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" },
 ]
-

@@ -51,44 +51,36 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 
 ## High-Level Architecture
 
-```
-┌──────────────┐      ┌─────────────┐
-│ dotfiles.sh  │      │ dotfiles.ps1│   Thin wrappers
-│  (Linux)     │      │  (Windows)  │   download/build binary
-└──────┬───────┘      └──────┬──────┘
-       │                     │
-       ▼                     ▼
-┌──────────────────────────────────────┐
-│         cli/ (Rust binary)           │
-│                                      │
-│  cli.rs         — clap argument      │
-│                   parsing            │
-│  commands/      — install, update,   │
-│                   uninstall, test,   │
-│                   version            │
-│  config/        — TOML loading &     │
-│                   profile resolution │
-│  engine/        — execution engine,  │
-│                   context, graph,    │
-│                   scheduler          │
-│  resources/     — idempotent check   │
-│                   + apply primitives │
-│  tasks/         — Task impls,        │
-│                   grouped by domain  │
-│  platform.rs    — OS detection       │
-│  logging/       — structured logging │
-│  exec.rs        — subprocess exec    │
-└──────────────────────────────────────┘
-       │
-       ▼
-┌────────────────────────────────────────────┐
-│            conf/ (TOML files)              │
-│  packages.toml      symlinks.toml          │
-│  profiles.toml      manifest.toml          │
-│  systemd-units.toml vscode-extensions.toml │
-│  registry.toml      chmod.toml             │
-│  git-config.toml    copilot.toml           │
-└────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    linux["dotfiles.sh<br/>Linux wrapper"]
+    windows["dotfiles.ps1<br/>Windows wrapper"]
+
+    linux --> cli
+    windows --> cli
+
+    subgraph rust_binary["cli/ Rust binary"]
+        cli["cli.rs<br/>clap arguments"]
+        commands["commands/<br/>install, update, uninstall, test, version"]
+        config["config/<br/>TOML loading and profile resolution"]
+        engine["engine/<br/>context, plan, graph, scheduler"]
+        resources["resources/<br/>idempotent check/apply primitives"]
+        tasks["tasks/<br/>task implementations grouped by domain"]
+        platform["platform.rs<br/>OS detection"]
+        logging["logging/<br/>structured logs and summaries"]
+        exec["exec.rs<br/>subprocess execution"]
+    end
+
+    cli --> commands
+    commands --> config
+    commands --> engine
+    engine --> tasks
+    engine --> resources
+    tasks --> resources
+    tasks --> exec
+    config --> platform
+    commands --> logging
+    config --> conf["conf/ TOML files<br/>packages, symlinks, profiles, manifest,<br/>systemd units, registry, chmod, git config, Copilot/APM"]
 ```
 
 ## Component Architecture
@@ -145,8 +137,8 @@ The wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`) handle only the `--build` f
 
 #### Commands (`commands/`)
 
-- **`install.rs`** — Uses `CommandRunner` to resolve the profile, load `Config`, build the task list, filter by `--skip`/`--only`, and execute each task via `tasks::execute()`. Before the task graph, it may self-update the binary and re-exec so the rest of the run uses the latest engine. It also attempts safe fast-forward-only repository synchronization in the task graph but leaves pinned dependency versions untouched. Exposes `run_pipeline(advance_versions)`, the shared implementation behind both `install` and `update`
-- **`update.rs`** — Delegates to `install::run_pipeline` with `advance_versions = true`, so it runs the identical task graph as `install` but additionally schedules the final Update phase to advance pinned dependency versions (currently the APM dependency refresh)
+- **`install.rs`** — Uses `CommandRunner` to resolve the profile, load `Config`, build the task list, filter by `--skip`/`--only`, and execute the phased task pipeline. Before the task graph, it may self-update the binary and re-exec so the rest of the run uses the latest engine. It also attempts safe fast-forward-only repository synchronization in the task graph but leaves pinned dependency versions untouched. Exposes `run_pipeline(advance_versions)`, the shared implementation behind both `install` and `update`
+- **`update.rs`** — Delegates to `install::run_pipeline` with `advance_versions = true`, so it runs the same base task graph as `install` and additionally schedules the final Update phase to advance pinned dependency versions (currently the APM dependency refresh)
 - **`uninstall.rs`** — Conservatively removes detachable managed state: symlinks, installed Git hooks, and the wrapper entry point. It intentionally does not remove packages or roll back registry, systemd, shell, editor, Copilot/APM, PAM/WSL, or overlay-script changes
 - **`test.rs`** — Runs configuration validation
 
@@ -179,7 +171,7 @@ pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
 
-    /// Which phase this task belongs to (Bootstrap, Repository, Configure, or Update).
+    /// Which phase this task belongs to (Bootstrap, Sync, Provision, or Update).
     ///
     /// This is per-task metadata returned by the task itself — it is **not**
     /// derived from the folder the task lives in. A task can therefore live in
@@ -257,12 +249,15 @@ itself — the `Task` trait, `TaskPhase`, `Domain`, the
 `resource_task!`/`task_deps!` macros, the task catalog, and the `--skip`/`--only`
 filter — lives in `mod.rs`, `macros.rs`, `catalog.rs`, and `filter.rs`.
 
-**Implemented tasks** (the engine schedules by **phase**, completing each before
-the next; within a phase, tasks run as soon as dependencies allow). Each task is
-annotated with its domain folder:
+**Implemented tasks** (inventory only, not execution order). The engine schedules
+by **phase**, completing each phase before the next; within a phase, tasks run as
+soon as dependencies allow, so sibling tasks may complete in any order. Each task
+is annotated with its domain folder:
 
-Bootstrap phase — prepares the tool itself, before the main task graph:
+Pre-scheduler action:
 - `self_update` (core) — Updates the dotfiles binary from the latest GitHub release. Runs **before** the task graph (directly from `install.rs`) so all subsequent tasks use the latest code. If the binary is replaced, the process re-execs itself with a guard variable (`DOTFILES_REEXEC_GUARD`) to prevent an infinite loop.
+
+Bootstrap phase — prepares the tool itself:
 - `developer_mode` (system) — Enable Windows developer mode (required for symlinks)
 - `wrapper` (core) — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
 - `path` (core) — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
@@ -292,6 +287,12 @@ Provision phase — converge declared configuration to its target state:
 
 Update phase — advance pinned/locked dependency versions (the `update` command only; absent from `install`):
 - `apm` (ai) — `UpdateApmPackages`: runs `apm outdated -g` and, when stale, `apm update -g --yes` to advance locked dependency refs. Self-guards on the install success marker so it only advances after a successful convergence
+
+Key dependency edges are `wrapper → path`, `sparse_checkout → update_repository
+→ reload_config`, `update_repository → hooks/completions`, `reload_config →
+overlay_scripts`, `paru → aur_packages`, `symlinks → chmod/systemd/apm`, and
+`packages → shell/apm`. Other tasks in the same phase are peers and may run or
+finish in any order.
 
 #### Overlay System
 
@@ -351,11 +352,12 @@ Structured logger that:
 - Tracks operation counters
 - Prints a summary at the end of execution
 
-A **diagnostic log** is written alongside the main log to
-`$XDG_CACHE_HOME/dotfiles/<command>.diag.log`.  Unlike the main log (which
-replays buffered parallel output per-task), the diagnostic log captures every
-event immediately with sequence numbers, microsecond-resolution wall-clock
-timestamps, and task context, providing the true chronological view of parallel execution.
+A **diagnostic log** is written alongside the main log under the dotfiles cache
+directory (`$XDG_CACHE_HOME/dotfiles/`, or `~/.cache/dotfiles/` when
+`XDG_CACHE_HOME` is unset). Unlike the main log (which replays buffered parallel
+output per-task), the diagnostic log captures every event immediately with
+sequence numbers, microsecond-resolution wall-clock timestamps, and task
+context, providing the true chronological view of parallel execution.
 Event tags cover the full lifecycle: logger messages (`STAGE`, `INFO`, `DEBUG`,
 `WARN`, `ERROR`, `DRYRUN`), task scheduling (`TASK_WAIT`, `TASK_START`,
 `TASK_DONE`, `TASK_SKIP`), and resource processing (`RES_CHECK`, `RES_APPLY`,
@@ -414,7 +416,7 @@ packages::load(&conf.join("packages.toml"), active_categories)
     .context("loading packages.toml")?;
 ```
 
-Task failures are caught by `tasks::execute()` and recorded as `TaskStatus::Failed` — the binary continues executing remaining tasks and reports all failures in the summary.
+Task failures are caught by `tasks::execute()` and recorded as `TaskStatus::Failed`. Independent tasks can continue, but dependent tasks are skipped if a prerequisite failed; all failures are reported in the summary.
 
 ## Testing Architecture
 
@@ -467,7 +469,7 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers automatically 
 
 ### Adding New Tasks
 
-1. Create a new file in the relevant domain folder under `cli/src/tasks/<domain>/` (e.g. `core/`, `repository/`, `git/`, `files/`, `shell/`, `system/`, `ai/`), implementing the `Task` trait and declaring its `phase()` (Bootstrap, Repository, Configure, or Update)
+1. Create a new file in the relevant domain folder under `cli/src/tasks/<domain>/` (e.g. `core/`, `repository/`, `git/`, `files/`, `shell/`, `system/`, `ai/`), implementing the `Task` trait and declaring its `phase()` (Bootstrap, Sync, Provision, or Update)
 2. Add the module to that domain's `cli/src/tasks/<domain>/mod.rs`
 3. Add the task to `all_install_tasks()` in `cli/src/tasks/catalog.rs`
 
@@ -500,8 +502,8 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers automatically 
 ### Parallel Task Execution
 
 Execution is split into four phases: **Bootstrap** (prepare the tool
-itself), **Repository** (synchronise the dotfiles repository),
-**Configure** (apply declared state), then **Update** (advance pinned/locked
+itself), **Sync** (synchronise the dotfiles repository),
+**Provision** (apply declared state), then **Update** (advance pinned/locked
 dependency versions — `update` command only).  `run_tasks_to_completion()`
 loops over
 `[TaskPhase::Bootstrap, TaskPhase::Sync, TaskPhase::Provision, TaskPhase::Update]`,
@@ -545,12 +547,13 @@ of tasks with unsatisfied dependencies (common on 2-vCPU CI runners).
 ### Parallel Resource Processing
 
 Within each task, resource operations (symlinks, packages, registry entries,
-etc.) are also processed in parallel using Rayon's `into_par_iter()`.
+etc.) are also processed in parallel using Rayon.
 
 - `process_resources()` and `process_resources_with_provider()` in `engine/`
-  dispatch to Rayon's `into_par_iter()` when `ctx.parallel` is `true` and there
-  is more than one resource to process
-- A `Mutex<TaskStats>` accumulates changed/skipped counters across threads
+  dispatch to Rayon when `ctx.parallel` is `true` and there is more than one
+  resource to process
+- Each worker accumulates local `TaskStats`, then the results are reduced
+  without a shared stats lock
 - The `Executor` trait requires `Sync` so resources holding `&dyn Executor` are safe
   to share across threads
 - The `Logger` uses `Mutex<Vec<TaskEntry>>` internally for thread-safe task recording

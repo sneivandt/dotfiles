@@ -132,7 +132,7 @@ symlinks = [
 - Globs are expanded during config load and preserve overlay ownership, so overlay entries link back to `<overlay>/symlinks/...` rather than the main repo.
 - Example: `config/nvim` → `~/.config/nvim` symlinked to `<repo>/symlinks/config/nvim`
 - Example: `{ source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }` → `~/AppData/Roaming/Code/User/settings.json`
-- Example: `apm/plugins/*` links each direct child of `<repo>/symlinks/apm/plugins/` into `~/.apm/plugins/<child>`; APM then deploys plugin primitives into Copilot, Codex, VS Code, and Copilot App targets
+- Example: `apm/plugins/*` links each direct child of `<repo>/symlinks/apm/plugins/` into `~/.apm/plugins/<child>`; APM uses those linked sources when deploying plugin primitives into Copilot, Codex, VS Code, and Copilot App targets
 
 ---
 
@@ -179,7 +179,7 @@ units = [
 ]
 ```
 
-**Note**: User unit files should exist in `symlinks/config/systemd/user/` and be symlinked before enabling. System-scope units are enabled with `sudo systemctl` and must already be available to systemd.
+**Note**: User unit files should exist in `symlinks/config/systemd/user/`; the task dependency graph ensures symlinks are created before units are enabled. System-scope units are enabled with `sudo systemctl` and must already be available to systemd.
 
 ---
 
@@ -323,7 +323,10 @@ The overlay path is resolved from (in priority order):
 
 ### `scripts.toml` (Overlay)
 
-**Purpose**: Defines custom script tasks that run during the Provision phase.
+**Purpose**: Defines custom script tasks that are scheduled during the Provision
+phase. They run alongside other Provision tasks when dependencies allow; do not
+rely on their position relative to built-in tasks unless the task model declares
+an explicit dependency.
 
 **Location**: `<overlay>/conf/scripts.toml`
 

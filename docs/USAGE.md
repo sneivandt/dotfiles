@@ -63,9 +63,10 @@ dotfiles.sh [--build] version
 - **`-v, --verbose`** - Enable verbose logging
 - **`-d, --dry-run`** - Preview changes without modifying system
 
-`install` and `update` run the identical task graph and accept the same
-`--skip` / `--only` selectors; the only difference is that `update` advances
-pinned dependency versions while `install` leaves them pinned.
+`install` and `update` run the same base task graph and accept the same
+`--skip` / `--only` selectors. `update` additionally schedules the final
+Update phase to advance pinned dependency versions, while `install` leaves them
+pinned.
 
 ### Windows (`dotfiles.ps1`)
 
@@ -85,7 +86,7 @@ pinned dependency versions while `install` leaves them pinned.
 - **`-p PROFILE`** - Use specific profile (base, desktop)
 - **`--overlay DIR`** - Use a private overlay repository for additional configuration
 - **`-d`** - Preview changes without applying (dry-run)
-- **`-Verbose`** - Enable verbose logging
+- **`-v, --verbose`** - Enable verbose logging
 
 ## Common Workflows
 
@@ -212,68 +213,66 @@ or directory that had been linked.
 
 The installation process handles different components based on your profile:
 
-### Linux Installation Steps
+### Linux Task Groups
 
-**System** (prepare the environment):
+Before the scheduler starts, **Self-Update** may update the dotfiles binary from
+the latest GitHub release and re-exec the process so the rest of the run uses
+the new engine.
 
-1. **Self-Update** - Updates the dotfiles binary from latest GitHub release (runs before the task scheduler; re-execs the process if a new binary is installed)
-2. **Configure Sparse Checkout** - Excludes files based on profile
-3. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
-4. **Install Git Hooks** - Copies repository git hooks into `.git/hooks/`
-5. **Install Wrapper** - Installs `dotfiles` wrapper to `~/.local/bin/`
-6. **Configure PATH** - Ensures `~/.local/bin` is on PATH
-7. **Install Shell Completions** - Writes the zsh completion script into the managed `symlinks/config/zsh/completions/` directory
+The scheduled work then runs in phase order: Bootstrap, Sync, Provision, and
+Update. Rows within the same phase are inventory, not a strict sequence; tasks
+run in parallel whenever their dependencies allow.
 
-**User** (apply declared state):
+| Phase | Task | Description |
+| --- | --- | --- |
+| Bootstrap | Install wrapper | Installs `dotfiles` wrapper to `~/.local/bin/`. |
+| Bootstrap | Configure PATH | Ensures `~/.local/bin` is on PATH after the wrapper task completes. |
+| Sync | Configure sparse checkout | Excludes files based on profile. |
+| Sync | Update repository | Pulls latest changes (`git pull --ff-only`) after sparse checkout is configured. |
+| Sync | Install Git hooks | Copies repository git hooks into `.git/hooks/` after repository update. |
+| Sync | Reload configuration | Reloads config after repository update. |
+| Sync | Install shell completions | Writes the zsh completion script into the managed `symlinks/config/zsh/completions/` directory after repository update. |
+| Sync | Load overlay scripts | Discovers overlay script tasks after config reload, when `--overlay` is set. |
+| Provision | Install packages | Installs packages from `conf/packages.toml` using pacman. |
+| Provision | Install paru | Bootstraps paru AUR helper (Arch Linux only). |
+| Provision | Install AUR packages | Installs AUR packages via paru after paru is available (Arch Linux only). |
+| Provision | Install symlinks | Links files from `symlinks/` to `$HOME`. |
+| Provision | Configure file permissions | Applies file permissions from `conf/chmod.toml` after symlinks exist. |
+| Provision | Configure Git | Applies git configuration. |
+| Provision | Configure Copilot | Applies Copilot CLI settings from `conf/copilot.toml`. |
+| Provision | Configure default shell | Sets the default shell after packages are installed. |
+| Provision | Configure systemd units | Enables and starts user or system units from `conf/systemd-units.toml` after symlinks exist. |
+| Provision | Install VS Code extensions | Installs extensions from `conf/vscode-extensions.toml`. |
+| Provision | Install APM packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install` when the manifest or lockfile changed. This converges to the locked manifest and never advances locked refs ([Microsoft APM](https://github.com/microsoft/apm)). |
+| Provision | Configure PAM services | Installs custom PAM service files (Arch Linux + desktop profile only, uses sudo). |
+| Provision | Write wsl.conf | Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root). |
+| Provision | Overlay scripts | Runs custom scripts loaded from the overlay repository (when `--overlay` is set). |
+| Update | Update APM packages | Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` and is absent from `install`. |
 
-8. **Install Packages** - Installs packages from `conf/packages.toml` using pacman
-9. **Install Paru** - Bootstraps paru AUR helper (Arch Linux only)
-10. **Install AUR Packages** - Installs AUR packages via paru (Arch Linux only)
-11. **Create Symlinks** - Links files from `symlinks/` to `$HOME`
-12. **Set Permissions** - Applies file permissions from `conf/chmod.toml`
-13. **Configure Git** - Applies git configuration
-14. **Configure Shell** - Sets default shell
-15. **Enable Systemd Units** - Enables and starts user or system units from `conf/systemd-units.toml`
-16. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-17. **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml` and runs `apm install` when the manifest or lockfile changed. This converges to the locked manifest and never advances locked refs ([Microsoft APM](https://github.com/microsoft/apm))
-18. **Configure PAM Services** - Installs custom PAM service files (Arch Linux + desktop profile only, uses sudo)
-19. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
-20. **Overlay Scripts** - Runs custom scripts loaded from the overlay repository (when `--overlay` is set)
+### Windows Task Groups
 
-**Update** (advance pinned versions — `update` command only):
+Before the scheduler starts, **Self-Update** may update the dotfiles binary from
+the latest GitHub release and re-exec the process.
 
-21. **Update APM Packages** - Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` (it is absent from `install`), runs after the Provision phase, and self-guards so it only advances once the manifest has been installed successfully
-
-Tasks run in parallel where dependencies allow, so the numbering above reflects logical
-grouping rather than strict execution order.
-
-### Windows Installation Steps
-
-**System** (prepare the environment):
-
-1. **Self-Update** - Updates the dotfiles binary from latest GitHub release (runs before the task scheduler; re-execs the process if a new binary is installed)
-2. **Enable Developer Mode** - Enables Windows developer mode (required for symlinks)
-3. **Configure Sparse Checkout** - Excludes files based on profile
-4. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
-5. **Install Git Hooks** - Copies repository git hooks into `.git/hooks/`
-6. **Configure PATH** - Ensures dotfiles bin directory is on PATH
-7. **Install Wrapper** - Installs the platform `dotfiles` wrapper script so the CLI is on PATH from any directory
-
-**User** (apply declared state):
-
-8. **Install Packages** - Installs packages using winget
-9. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
-10. **Configure Git** - Sets `core.symlinks=true`, `core.autocrlf=false`, credential helper
-11. **Configure Registry Settings** - Configures registry from `conf/registry.toml`
-12. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-13. **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml` and runs `apm install` when the manifest or lockfile changed. This converges to the locked manifest and never advances locked refs ([Microsoft APM](https://github.com/microsoft/apm))
-
-**Update** (advance pinned versions — `update` command only):
-
-14. **Update APM Packages** - Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` (it is absent from `install`), runs after the Provision phase, and self-guards so it only advances once the manifest has been installed successfully
-
-Tasks run in parallel where dependencies allow, so the numbering above reflects logical
-grouping rather than strict execution order.
+| Phase | Task | Description |
+| --- | --- | --- |
+| Bootstrap | Enable developer mode | Enables Windows developer mode (required for symlinks). |
+| Bootstrap | Install wrapper | Installs the platform `dotfiles` wrapper script so the CLI is on PATH from any directory. |
+| Bootstrap | Configure PATH | Ensures dotfiles bin directory is on PATH after the wrapper task completes. |
+| Sync | Configure sparse checkout | Excludes files based on profile. |
+| Sync | Update repository | Pulls latest changes (`git pull --ff-only`) after sparse checkout is configured. |
+| Sync | Install Git hooks | Copies repository git hooks into `.git/hooks/` after repository update. |
+| Sync | Reload configuration | Reloads config after repository update. |
+| Sync | Load overlay scripts | Discovers overlay script tasks after config reload, when `--overlay` is set. |
+| Provision | Install packages | Installs packages using winget. |
+| Provision | Install symlinks | Links files from `symlinks/` to `%USERPROFILE%`. |
+| Provision | Configure Git | Sets `core.symlinks=true`, `core.autocrlf=false`, and credential helper. |
+| Provision | Configure Copilot | Applies Copilot CLI settings from `conf/copilot.toml`. |
+| Provision | Configure registry settings | Configures registry from `conf/registry.toml`. |
+| Provision | Install VS Code extensions | Installs extensions from `conf/vscode-extensions.toml`. |
+| Provision | Install APM packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install` when the manifest or lockfile changed. This converges to the locked manifest and never advances locked refs ([Microsoft APM](https://github.com/microsoft/apm)). |
+| Provision | Overlay scripts | Runs custom scripts loaded from the overlay repository (when `--overlay` is set). |
+| Update | Update APM packages | Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` and is absent from `install`. |
 
 ## Verbose Mode
 
@@ -287,48 +286,53 @@ Enable verbose logging to see detailed operation information:
 - Stage headers for each task (`==>` markers)
 - Per-item detail (symlinks, packages, etc.)
 - Operations being skipped (with reasons)
-- Full per-task summary grouped by phase
+- Full per-task summary grouped by domain
 
 **Default (non-verbose) output** shows compact inline task-result lines as each
-task completes, followed by a totals line:
+task's buffered output is flushed, followed by a totals line. Within a phase,
+line order can vary because independent tasks run in parallel.
 
 ```
   dotfiles v0.1.317
-  profile: desktop
+  profile  desktop · Arch Linux
 
-:: Bootstrapping
+:: Preparing dotfiles
   ~ Install wrapper
   ~ Configure PATH
 
-:: Syncing repository
+:: Refreshing dotfiles
   ✓ Configure sparse checkout
   ○ Update repository — local changes present
   ~ Install Git hooks
   ✓ Reload configuration
   ~ Install shell completions
 
-:: Provisioning environment
+:: Applying configuration
   ~ Install symlinks
   ~ Install packages
   ~ Configure systemd units
 
-  15 tasks: 2 ok, 1 skipped, 12 dry-run (6 not applicable)
+  ~ 2 ok · 1 skipped · 7 dry-run · 6 not applicable
   completed in 1.3s
 ```
 
 ## Parallel Execution
 
-Resource operations (symlinks, packages, registry entries, etc.) run in parallel
-by default using Rayon's thread pool. This significantly speeds up installation
-when many items need to be processed.
+The task pipeline has phase barriers: Bootstrap completes before Sync, Sync
+completes before Provision, and Provision completes before the optional Update
+phase. Within each phase, independent tasks run in parallel as soon as their
+dependencies complete. Inside a task, resource operations (symlinks, packages,
+registry entries, etc.) also run in parallel by default using Rayon's thread
+pool.
 
 **When parallel execution runs:**
+- Independent tasks in the same phase can overlap
 - Multiple symlinks are created concurrently
 - Package state checks overlap
 - Registry entries are applied in parallel
 
-**Parallel execution is safe** — each resource is checked and applied independently,
-and the results accumulator uses a mutex for thread-safe counting.
+**Parallel execution is safe** — task dependencies are enforced by the scheduler,
+and each resource is checked and applied independently.
 
 To disable parallel execution, see [Advanced Binary Options](#advanced-binary-options).
 
@@ -395,29 +399,32 @@ runs repeating the log path.
 ## Installation Summary
 
 After installation, a summary is displayed. In **non-verbose** mode (default),
-compact task-result lines are shown inline as tasks complete, followed by totals.
+compact task-result lines are shown inline as task buffers flush, followed by
+totals.
 
-In **verbose** mode (`-v`), a full per-task breakdown grouped by phase is
-appended:
+In **verbose** mode (`-v`), a full per-task breakdown grouped by domain is
+appended. This is a logical summary, not the chronological execution order.
 
 **Example (verbose):**
 ```
 :: Summary
-   Bootstrap
+   Core
      ~ Install wrapper
      ~ Configure PATH
    Repository
      ✓ Configure sparse checkout
      ○ Update repository (local changes present)
-     ~ Install Git hooks
      ✓ Reload configuration
-     ~ Install shell completions
-   Configure
+   Git
+     ~ Install Git hooks
+   Files
      ~ Install symlinks
+   Packages
      ~ Install packages
+   System
      ~ Configure systemd units
 
-  15 tasks: 2 ok, 1 skipped, 12 dry-run (6 not applicable)
+  ~ 2 ok · 1 skipped · 6 dry-run · 6 not applicable
   completed in 1.3s
 ```
 
@@ -512,14 +519,16 @@ need to specify `--overlay` once:
 - **Custom scripts** in `scripts/` — defined in `conf/scripts.toml` with a
   convention-based interface (`--check`, `--dryrun`, `--remove`, no args for apply)
 
-Each overlay script appears as its own task in the output:
+Each overlay script appears as its own task in the output. It is scheduled in
+the Provision phase with other Provision tasks, so its relative position can
+vary unless dependencies constrain it:
 
 ```
-:: Syncing repository
+:: Refreshing dotfiles
   ✓ Reload configuration
   ✓ Load overlay scripts
 
-:: Provisioning environment
+:: Applying configuration
   ✓ Install symlinks
   ✓ Install private files   ← overlay script task
   ✓ Install packages
@@ -592,12 +601,12 @@ The wrappers forward all arguments unchanged to the binary, so these work with
 - **`--only TASKS`** - Run only specific tasks (comma-separated)
 - **`--overlay DIR`** - Use a private overlay repository
 - **`--root DIR`** - Override dotfiles root directory (set automatically by wrapper scripts)
-- **`--no-parallel`** - Disable parallel execution of resource operations
+- **`--no-parallel`** - Disable task-level and resource-level parallel execution
 
 ## Shell Completions
 
 Tab completions for the `dotfiles` CLI are generated automatically during
-the **Repository** phase of every `install` run (Linux only).  The generated
+the **Sync** phase of every `install` run (Linux only).  The generated
 script is written to:
 
 ```

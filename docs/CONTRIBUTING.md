@@ -289,7 +289,7 @@ When adding features or changing behavior:
    - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - For common issues
 3. Add examples to help users understand the feature
 4. Update cross-references in related documents
-5. Update [docs/README.md](README.md) if adding new documentation files
+5. Update the [documentation index](README.md) if adding new documentation files
 
 ## Questions or Help
 

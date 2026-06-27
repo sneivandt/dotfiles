@@ -567,7 +567,7 @@ If you're still experiencing issues:
 
 1. **Check the log files**:
    - Linux: `~/.cache/dotfiles/install.log` and `~/.cache/dotfiles/install.diag.log`
-   - Windows: `%LOCALAPPDATA%\dotfiles\install.log` and `%LOCALAPPDATA%\dotfiles\install.diag.log`
+   - Windows: `%USERPROFILE%\.cache\dotfiles\install.log` and `%USERPROFILE%\.cache\dotfiles\install.diag.log`
 
 2. **Run with verbose mode**:
    ```bash

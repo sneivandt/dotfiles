@@ -52,10 +52,10 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 ## High-Level Architecture
 
 ```
-┌──────────────┐      ┌─────────────┐
-│ dotfiles.sh  │      │ dotfiles.ps1 │   Thin wrappers
-│  (Linux)     │      │  (Windows)  │   download/build binary
-└──────┬───────┘      └──────┬──────┘
+┌──────────────┐      ┌──────────────┐
+│ dotfiles.sh  │      │ dotfiles.ps1  │   Thin wrappers
+│  (Linux)     │      │  (Windows)   │   download/build binary
+└──────┬───────┘      └──────┬───────┘
        │                     │
        ▼                     ▼
 ┌──────────────────────────────────────┐

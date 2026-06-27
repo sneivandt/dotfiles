@@ -13,8 +13,8 @@ Three GitHub Actions workflows in `.github/workflows/`:
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `ci.yml` | Push/PR to main | Build, lint, test, integration checks |
-| `release.yml` | Push to main (cli/conf paths) | Build release binaries, create GitHub Release |
-| `docker.yml` | Push to main | Build and push Docker image to Docker Hub |
+| `release.yml` | Successful CI `workflow_run` from same-repo push to main | Build release binaries, create GitHub Release |
+| `docker.yml` | Successful CI `workflow_run` from same-repo push to main | Build and push Docker image to Docker Hub |
 
 ## CI Pipeline (`ci.yml`)
 
@@ -97,16 +97,34 @@ than making the repository unusable on minimal machines.
 
 ## Release Pipeline (`release.yml`)
 
-1. Builds release binaries on both Linux and Windows
+Release is a publishing workflow. Its `check-ci` job must only proceed when the
+completed CI run:
+
+- concluded successfully
+- came from a `push`
+- ran on `main`
+- came from the same repository (`head_repository.full_name == github.repository`)
+
+This guard prevents publishing jobs from running for pull-request or fork-owned
+workflow runs before any job that uses write permissions or secrets can start.
+
+1. Builds release binaries for Linux x86_64, Linux aarch64, and Windows x86_64
 2. Sets `DOTFILES_VERSION=v0.1.${{ github.run_number }}` as env var
 3. `build.rs` embeds this version via `cargo:rustc-env=DOTFILES_VERSION`
-4. Strips the Linux binary (`strip cli/target/release/dotfiles`)
-5. Renames to `dotfiles-linux-x86_64` / `dotfiles-windows-x86_64.exe`
-6. Generates `checksums.sha256` via `sha256sum`
-7. Creates a GitHub Release with `softprops/action-gh-release@v2`
+4. Renames artifacts to `dotfiles-linux-x86_64`, `dotfiles-linux-aarch64`, and
+   `dotfiles-windows-x86_64.exe`
+5. Generates `checksums.sha256` via `sha256sum`
+6. Creates a GitHub Release with `softprops/action-gh-release@v3`
 
 The shell wrappers (`dotfiles.sh`, `dotfiles.ps1`) download these release
 binaries, verify the SHA256 checksum, and cache the installed version.
+
+## Docker Pipeline (`docker.yml`)
+
+Docker publishing mirrors the release workflow's `workflow_run` guard before
+using Docker Hub secrets. It checks out the exact CI head SHA, logs in to Docker
+Hub, builds the repository Dockerfile, pushes `sneivandt/dotfiles:latest`, and
+updates the Docker Hub description from `README.md`.
 
 ## Adding a New CI Job
 
@@ -124,5 +142,7 @@ binaries, verify the SHA256 checksum, and cache the installed version.
 - Integration tests use `--root .` to run against the checked-out repo
 - Release version comes from `github.run_number` — no manual tagging
 - Binary checksums are always generated and published with releases
+- Publishing workflows triggered by `workflow_run` must gate on successful
+  same-repo pushes to `main` before using write permissions or secrets
 - When a new recurring CI failure class appears, add the narrowest practical local
   guard to `hooks/check-ci-guards.sh` or `hooks/check-rust.sh`, and document it here

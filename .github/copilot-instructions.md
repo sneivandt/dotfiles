@@ -45,7 +45,7 @@ The engine has five internal layers: `config/` (TOML parsing) → `resources/` (
 
 ### Strict Lints
 
-The project enforces pedantic + nursery Clippy lints and explicitly denies `panic`, `unwrap_used`, `expect_used`, `todo`, `dbg_macro`, `arithmetic_side_effects`, `let_underscore_drop`, `unused_result_ok`, `allow_attributes_without_reason`, and `unreachable_pub`. Never use `.unwrap()` or `.expect()` — use `?` with `anyhow::Result` or return typed errors from `cli/src/error.rs`. Every `#[allow(...)]` must include a `reason = "..."` argument.
+The project enforces pedantic + nursery Clippy lints. `cli/Cargo.toml` is the source of truth for denied Rust and Clippy lints; `.github/instructions/rust-code.instructions.md` summarizes the Rust coding rules for `cli/src/**/*.rs`. Never use `.unwrap()` or `.expect()` — use `?` with `anyhow::Result` or return typed errors from `cli/src/error.rs`. Every `#[allow(...)]` must include a `reason = "..."` argument.
 
 ### Macro-Driven Tasks
 

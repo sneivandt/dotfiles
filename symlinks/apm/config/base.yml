@@ -12,17 +12,8 @@ dependencies:
     # advances those locks without hard-coding SHAs in this fragment.
 
     # .NET tooling
-    - dotnet/skills/plugins/dotnet-diag#main
     - dotnet/skills/plugins/dotnet-msbuild#main
-    - dotnet/skills/plugins/dotnet-upgrade#main
 
-    # Copilot workflow
-    - github/awesome-copilot/plugins/automate-this#main
+    # Agent workflow
     - github/awesome-copilot/plugins/context-engineering#main
     - github/awesome-copilot/skills/agent-supply-chain#main
-
-    # Planning & process
-    - github/awesome-copilot/plugins/project-planning#main
-
-    # Cross-cutting code quality
-    - github/awesome-copilot/plugins/security-best-practices#main

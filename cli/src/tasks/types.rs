@@ -189,7 +189,7 @@ pub enum Domain {
     System,
     /// Editor configuration (VS Code extensions).
     Editors,
-    /// AI (Copilot settings, APM packages).
+    /// AI tooling (client settings, APM packages).
     Ai,
     /// Overlay-provided configuration and custom scripts.
     Overlay,

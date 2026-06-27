@@ -174,7 +174,7 @@ cd ~\dotfiles
 project can safely detach without guessing the user's desired system state:
 managed symlinks, installed Git hooks, and the wrapper entry point. It does not
 try to roll back packages, registry values, systemd enablement, shell changes,
-VS Code extensions, Copilot settings, APM packages, PAM/WSL configuration, or
+VS Code extensions, AI tooling, PAM/WSL configuration, or
 overlay script effects.
 
 When removing a managed symlink, the current source content is materialized into

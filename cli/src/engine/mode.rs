@@ -40,7 +40,7 @@ pub enum ProcessMode {
     /// Install only missing resources, warning on errors.
     ///
     /// Suitable for resources that should not be overwritten when already
-    /// present (e.g. VS Code extensions, systemd units, Copilot plugins).
+    /// present (e.g. VS Code extensions, systemd units, agent plugins).
     InstallMissing,
     /// Fix only incorrect resources (skip missing), bailing on errors.
     ///

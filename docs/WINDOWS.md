@@ -213,7 +213,7 @@ The file `conf/vscode-extensions.toml` contains extensions under category sectio
 
 ## AI Plugins (Microsoft APM)
 
-The file `symlinks/apm/config/base.yml` is a [Microsoft APM](https://github.com/microsoft/apm) manifest fragment. It is symlinked to `~/.apm/config/base.yml`. The `apm` task merges every `~/.apm/config/*.yml` (including overlay-supplied fragments) into a generated `~/.apm/apm.yml`, then APM consumes it at user scope and deploys AI tooling (Copilot, Claude, Cursor, etc.) plugin sources globally — nothing is written into this repository.
+The file `symlinks/apm/config/base.yml` is a [Microsoft APM](https://github.com/microsoft/apm) manifest fragment. It is symlinked to `~/.apm/config/base.yml`. The `apm` task merges every `~/.apm/config/*.yml` (including overlay-supplied fragments) into a generated `~/.apm/apm.yml`, then APM consumes it at user scope and deploys AI tooling (Copilot, Codex, Claude, Cursor, etc.) plugin sources globally — nothing is written into this repository.
 
 **Format**:
 ```yaml

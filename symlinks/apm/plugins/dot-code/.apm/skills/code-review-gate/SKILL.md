@@ -1,6 +1,10 @@
 ---
 name: code-review-gate
-description: Use when reviewing code changes. Produce high-signal, evidence-backed findings only: real bugs, security issues, maintainability risks, test gaps, cross-platform breakage, or bad-practice patterns that materially affect correctness.
+description: >
+  Use when reviewing code changes. Produce high-signal, evidence-backed findings
+  only: real bugs, security issues, maintainability risks, test gaps,
+  cross-platform breakage, or bad-practice patterns that materially affect
+  correctness.
 ---
 
 # Code Review Gate

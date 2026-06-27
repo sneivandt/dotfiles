@@ -23,7 +23,7 @@ and invoke it.
 - **Extensible**: A private overlay repository can inject additional config and
   custom script tasks.
 
-## Architecture
+## Architecture Snapshot
 
 | Layer | Path | Role |
 |---|---|---|
@@ -31,28 +31,14 @@ and invoke it.
 | Shell wrappers | `dotfiles.sh` / `dotfiles.ps1` | Download or `cargo build` the binary, then exec it |
 | Configuration | `conf/` | Declarative TOML config files |
 | Symlinks | `symlinks/` | Managed by the Rust engine |
-| Skills | `.agents/skills/` | Shared agent-specific coding patterns for Copilot and Codex |
+| Skills | `.agents/skills/` | Shared coding patterns for AI agents |
 | Docs | `docs/` | Human-readable guides and reference |
 
-The engine has five internal layers: `config/` (TOML parsing) -> `resources/`
-(idempotent primitives) -> `engine/` (parallel execution) -> `tasks/`
-(dependency-ordered tasks) -> `commands/` (CLI entry points). See
-`docs/ARCHITECTURE.md` for the full system design.
-
-## Key Files
-
-| File | Purpose |
-|---|---|
-| `cli/src/lib.rs` | Module structure and public API docs; start here |
-| `cli/src/cli.rs` | clap-based CLI args and `GlobalOpts` |
-| `cli/src/tasks/mod.rs` | `Task` trait definition |
-| `cli/src/tasks/macros.rs` | `resource_task!` and `task_deps!` macros |
-| `cli/src/tasks/catalog.rs` | Task registry (`all_install_tasks()` / `all_uninstall_tasks()`) |
-| `cli/src/resources/mod.rs` | `Resource`, `IntrinsicState`, and `ResourceStateProvider` primitives |
-| `cli/src/engine/orchestrate.rs` | Provider-backed resource orchestration workhorse |
-| `cli/src/engine/plan.rs` | Pure resource plan/diff construction before mutation |
-| `cli/src/config/mod.rs` | Config loading and `config_section!` re-export |
-| `cli/src/error.rs` | `ResourceError` and `ConfigError` domain types |
+The engine layers are `config/` (TOML parsing) -> `resources/` (idempotent
+primitives) -> `engine/` (parallel execution) -> `tasks/`
+(dependency-ordered tasks) -> `commands/` (CLI entry points). Start with
+`cli/src/lib.rs` for the module map and `docs/ARCHITECTURE.md` for the full
+system design.
 
 ## Conventions
 
@@ -108,7 +94,7 @@ After the binary updates itself, it re-execs with a guard env var
 `anyhow::Result`, derive `clap` args, etc.). Never leave trailing whitespace in
 any file.
 
-**Testing** - always run before committing:
+**Rust validation** - for Rust changes, run:
 
 ```bash
 cd cli && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test

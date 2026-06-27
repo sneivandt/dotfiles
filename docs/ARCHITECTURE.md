@@ -234,7 +234,7 @@ folders:
 - `files/` — symlinks, file permissions
 - `shell/` — login shell, zsh completions
 - `system/` — developer mode, systemd units, registry, PAM, wsl.conf
-- `ai/` — APM plugin manifests, Copilot settings, and shared agent context
+- `ai/` — AI tooling/APM manifests, shared agent context, and Copilot-specific settings
 - `editors/` — VS Code/editor extensions
 - `packages/` — system and AUR packages
 - `overlay/` — overlay script discovery and execution

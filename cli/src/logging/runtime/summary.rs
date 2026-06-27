@@ -73,39 +73,16 @@ impl Logger {
 
         self.always("");
 
-        // Overall status icon reflects the worst outcome: failures dominate,
-        // then dry-run previews, otherwise a clean success.
-        let (icon, icon_color) = if failed > 0 {
-            ("\u{2717}", "\x1b[31m")
-        } else if dry_run > 0 {
-            ("~", "\x1b[35m")
-        } else {
-            ("\u{2713}", "\x1b[32m")
-        };
-
-        let mut parts: Vec<String> = vec![format!("\x1b[32m{ok} ok\x1b[0m")];
-        if skipped > 0 {
-            parts.push(format!("\x1b[33m{skipped} skipped\x1b[0m"));
-        }
-        if dry_run > 0 {
-            parts.push(format!("\x1b[35m{dry_run} dry-run\x1b[0m"));
-        }
-        if failed > 0 {
-            parts.push(format!("\x1b[31m{failed} failed\x1b[0m"));
-        }
-        if not_applicable > 0 {
-            parts.push(format!("\x1b[2m{not_applicable} not applicable\x1b[0m"));
-        }
-
         let elapsed = self.start.elapsed();
         let elapsed_str = format_elapsed(elapsed);
 
-        let separator = " \x1b[2m\u{00b7}\x1b[0m ";
-        self.always(&format!(
-            "{icon_color}{icon}\x1b[0m {}",
-            parts.join(separator),
+        self.always(&format_summary_counts(
+            ok,
+            skipped,
+            dry_run,
+            failed,
+            not_applicable,
         ));
-
         self.always(&format!("\x1b[2mcompleted in {elapsed_str}\x1b[0m"));
         if let Some(path) = self.log_path() {
             Self::file_only(&format!("log: {}", path.display()));
@@ -126,6 +103,30 @@ impl Logger {
     fn file_only(msg: &str) {
         tracing::info!(target: "dotfiles::file_only", "{msg}");
     }
+}
+
+fn format_summary_counts(
+    ok: u32,
+    skipped: u32,
+    dry_run: u32,
+    failed: u32,
+    not_applicable: u32,
+) -> String {
+    let mut parts: Vec<String> = vec![format!("\x1b[32m{ok} ok\x1b[0m")];
+    if skipped > 0 {
+        parts.push(format!("\x1b[33m{skipped} skipped\x1b[0m"));
+    }
+    if dry_run > 0 {
+        parts.push(format!("\x1b[35m{dry_run} dry-run\x1b[0m"));
+    }
+    if failed > 0 {
+        parts.push(format!("\x1b[31m{failed} failed\x1b[0m"));
+    }
+    if not_applicable > 0 {
+        parts.push(format!("\x1b[2m{not_applicable} not applicable\x1b[0m"));
+    }
+    let separator = " \x1b[2m\u{00b7}\x1b[0m ";
+    parts.join(separator)
 }
 
 /// Format a duration as a human-readable string (e.g., "1.2s", "2m 5s").
@@ -165,5 +166,16 @@ mod tests {
     fn format_elapsed_minutes() {
         let d = Duration::from_secs(125);
         assert_eq!(format_elapsed(d), "2m 5s");
+    }
+
+    #[test]
+    fn format_summary_counts_uses_colored_text_without_symbols() {
+        let summary = format_summary_counts(17, 1, 0, 0, 6);
+        assert_eq!(
+            summary,
+            "\x1b[32m17 ok\x1b[0m \x1b[2m\u{00b7}\x1b[0m \x1b[33m1 skipped\x1b[0m \x1b[2m\u{00b7}\x1b[0m \x1b[2m6 not applicable\x1b[0m"
+        );
+        assert!(!summary.contains('\u{2713}'));
+        assert!(!summary.contains('\u{2717}'));
     }
 }

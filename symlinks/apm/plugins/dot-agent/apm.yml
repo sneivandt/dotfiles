@@ -1,0 +1,4 @@
+name: dot-agent
+version: 1.0.0
+description: Agent behavior preferences
+includes: auto

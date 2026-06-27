@@ -21,14 +21,14 @@ fragments, local plugins, skills, hooks, MCP servers, and instructions.
   environment.
 - Local APM plugins are the preferred way to distribute reusable personal
   primitives. Keep plugin names short and scoped, such as `dot-code`,
-  `dot-copilot`, and `dot-skill`.
+  `dot-agent`, and `dot-skill`.
 
 ## Per-Agent Organization
 
 - Put coding, review, refactoring, and implementation preferences in
   `dot-code`.
-- Put Copilot interaction behavior, status-update style, chat workflows, and
-  user-experience preferences in `dot-copilot`.
+- Put agent interaction behavior, status-update style, chat workflows, and
+  user-experience preferences in `dot-agent`.
 - Put skill/plugin authoring, curation, maintenance, and APM workflow guidance
   in `dot-skill`.
 - Prefer one small composable skill per recurring behavior. Do not bury

@@ -14,6 +14,7 @@ use super::manifest::{
     describe_dependencies, manifest_fingerprint, manifest_marker_matches,
     merged_manifest_needs_write, write_manifest_marker, write_merged_manifest,
 };
+use super::skip_with_warning;
 use super::targets::{ApmTargets, missing_apm_reason};
 use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
 
@@ -43,16 +44,15 @@ impl Task for InstallApmPackages {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if !ctx.dry_run && !ctx.executor.which("apm") {
-            let reason = missing_apm_reason(ctx);
-            ctx.log.warn(&format!("skipping: {reason}"));
-            return Ok(TaskResult::Skipped(reason));
+            return Ok(skip_with_warning(ctx, missing_apm_reason(ctx)));
         }
 
         let fragments = discover_fragment_files(&ctx.home)?;
         if fragments.is_empty() {
-            let reason = "no manifest fragments found under ~/.apm/config/".to_string();
-            ctx.log.warn(&format!("skipping: {reason}"));
-            return Ok(TaskResult::Skipped(reason));
+            return Ok(skip_with_warning(
+                ctx,
+                "no manifest fragments found under ~/.apm/config/",
+            ));
         }
 
         let manifest_path = ctx.home.join(".apm").join("apm.yml");

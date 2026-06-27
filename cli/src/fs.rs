@@ -158,6 +158,17 @@ pub fn write(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     std::fs::write(path, content).with_context(|| format!("write {}", path.display()))
 }
 
+/// Write file content after ensuring the parent directory exists.
+///
+/// # Errors
+///
+/// Returns an error if the parent directory cannot be created or the file
+/// cannot be written.
+pub fn write_with_parent(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
+    ensure_parent_dir(path)?;
+    write(path, content)
+}
+
 /// Copy a file with consistent path context.
 ///
 /// # Errors
@@ -175,6 +186,40 @@ pub fn copy_file(source: &Path, target: &Path) -> Result<u64> {
 /// Returns an error if the file cannot be removed.
 pub fn remove_file(path: &Path) -> Result<()> {
     std::fs::remove_file(path).with_context(|| format!("remove {}", path.display()))
+}
+
+/// Remove a file if it exists and report whether anything was removed.
+///
+/// # Errors
+///
+/// Returns an error if metadata cannot be read or the existing file cannot be
+/// removed.
+pub fn remove_file_if_present(path: &Path, action: &str) -> Result<bool> {
+    match symlink_metadata_optional(path, action)? {
+        Some(_) => {
+            remove_file(path)?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
+/// Set a file executable by owner, group, and others.
+///
+/// # Errors
+///
+/// Returns an error if file metadata cannot be read or permissions cannot be
+/// written.
+#[cfg(unix)]
+pub fn set_executable(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut perms = std::fs::metadata(path)
+        .with_context(|| format!("read executable metadata: {}", path.display()))?
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(path, perms)
+        .with_context(|| format!("set executable permissions: {}", path.display()))
 }
 
 /// Canonicalize a path, stripping the Windows extended-length `\\?\` prefix.

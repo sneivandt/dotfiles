@@ -7,7 +7,7 @@ use crate::fs::{FileSystemOps, SystemFileSystemOps};
 use crate::resources::hook::HookFileResource;
 use crate::tasks::{
     Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, process_resources,
-    process_resources_remove, task_deps,
+    process_resources_remove, task_metadata,
 };
 
 /// Discover hook file resources from the `hooks/` directory.
@@ -74,19 +74,12 @@ impl Default for InstallGitHooks {
 }
 
 impl Task for InstallGitHooks {
-    fn name(&self) -> &'static str {
-        "Install Git hooks"
+    task_metadata! {
+        name: "Install Git hooks",
+        phase: TaskPhase::Sync,
+        domain: Domain::Git,
+        deps: [crate::tasks::repository::update::UpdateRepository],
     }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Sync
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Git
-    }
-
-    task_deps![crate::tasks::repository::update::UpdateRepository];
 
     fn should_run(&self, ctx: &Context) -> bool {
         let paths = ctx.repo_paths();
@@ -132,16 +125,10 @@ impl Default for UninstallGitHooks {
 }
 
 impl Task for UninstallGitHooks {
-    fn name(&self) -> &'static str {
-        "Remove Git hooks"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Sync
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Git
+    task_metadata! {
+        name: "Remove Git hooks",
+        phase: TaskPhase::Sync,
+        domain: Domain::Git,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

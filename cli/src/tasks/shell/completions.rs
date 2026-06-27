@@ -59,13 +59,7 @@ impl Task for GenerateCompletions {
             return Ok(TaskResult::DryRun);
         }
 
-        // Ensure the parent directory exists before writing.
-        if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("creating directory {}", parent.display()))?;
-        }
-
-        std::fs::write(&dest, content).with_context(|| format!("writing {}", dest.display()))?;
+        crate::fs::write_with_parent(&dest, content)?;
 
         ctx.log.info("zsh completions written");
         Ok(TaskResult::Ok)

@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::fs::{FileSystemOps, SystemFileSystemOps};
-use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult};
+use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
 
 /// Default sparse checkout pattern that includes all files at root level.
 const DEFAULT_SPARSE_PATTERN: &str = "/*";
@@ -277,16 +277,10 @@ impl Default for ConfigureSparseCheckout {
 }
 
 impl Task for ConfigureSparseCheckout {
-    fn name(&self) -> &'static str {
-        "Configure sparse checkout"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Sync
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Repository
+    task_metadata! {
+        name: "Configure sparse checkout",
+        phase: TaskPhase::Sync,
+        domain: Domain::Repository,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

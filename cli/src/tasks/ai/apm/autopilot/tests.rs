@@ -44,6 +44,7 @@ const DEFAULT_FRAGMENT: &str =
 
 /// Shared fragment that forces the changed-manifest install path.
 const AUTOPILOT_FIXTURE_FRAGMENT: &str = "name: base\nversion: 1.0.0\ndependencies:\n  apm:\n    - github/awesome-copilot/plugins/project-planning\n";
+const TARGET_ALL: &str = "copilot,codex,copilot-app";
 
 fn write_home_fragment(home: &Path, filename: &str, content: &str) {
     let fragment_dir = home.join(".apm").join("config");
@@ -109,6 +110,36 @@ fn write_workflow_lock(home: &Path, ids: &[&str]) {
     std::fs::write(apm_dir.join("apm.lock.yaml"), yaml).expect("write workflow lock");
 }
 
+fn write_autopilot_fixture(home: &Path, ids: &[&str]) -> PathBuf {
+    write_home_fragment(home, "base.yml", AUTOPILOT_FIXTURE_FRAGMENT);
+    let db_path = write_workflow_db(home);
+    write_workflow_lock(home, ids);
+    db_path
+}
+
+fn expect_python3(mock: &mut MockExecutor, times: usize, found: bool) {
+    mock.expect_which()
+        .with(mockall::predicate::eq("python3"))
+        .times(times)
+        .returning(move |_| found);
+}
+
+fn expect_apm_available(mock: &mut MockExecutor) {
+    mock.expect_which()
+        .with(mockall::predicate::eq("apm"))
+        .once()
+        .returning(|_| true);
+}
+
+fn exec_error(stderr: &str) -> ExecResult {
+    ExecResult {
+        stdout: String::new(),
+        stderr: stderr.to_string(),
+        success: false,
+        code: Some(1),
+    }
+}
+
 /// Queue the apm `which` + experimental-enable + install expectations shared
 /// by every autopilot-fixup test (the changed-manifest path).
 fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
@@ -128,10 +159,7 @@ fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
         .in_sequence(seq)
         .returning(|_, program, args, _| {
             assert_eq!(program, "apm");
-            assert_eq!(
-                args,
-                ["install", "-g", "--target", "copilot,codex,copilot-app"]
-            );
+            assert_eq!(args, ["install", "-g", "--target", TARGET_ALL]);
             Ok(ok_result("installed\n"))
         });
 }
@@ -358,21 +386,12 @@ fn workflow_scripts_keep_python_indentation() {
 #[test]
 fn run_sets_apm_workflows_to_autopilot_after_install() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    write_home_fragment(dir.path(), "base.yml", AUTOPILOT_FIXTURE_FRAGMENT);
-    let db_path = write_workflow_db(dir.path());
-    // The lockfile records exactly the workflows this install deployed; the
-    // fixup must scope every query to these ids and nothing else.
-    write_workflow_lock(dir.path(), &["apm--a", "apm--b", "apm--c"]);
+    let db_path = write_autopilot_fixture(dir.path(), &["apm--a", "apm--b", "apm--c"]);
     let db_str = db_path.to_str().expect("db path utf-8").to_string();
 
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
-    // python3 is probed twice: once for the pre-install snapshot and once
-    // for the post-install fixup.
-    mock.expect_which()
-        .with(mockall::predicate::eq("python3"))
-        .times(2)
-        .returning(|_| true);
+    expect_python3(&mut mock, 2, true);
     // Pre-install snapshot: scoped to the lockfile ids; none are desired yet,
     // so the diff in the post-install fixup is a genuine "set 3" change.
     let pre_home = dir.path().to_path_buf();
@@ -429,19 +448,14 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
 #[test]
 fn run_warns_when_python_missing_for_autopilot_fixup() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    write_home_fragment(dir.path(), "base.yml", AUTOPILOT_FIXTURE_FRAGMENT);
-    write_workflow_db(dir.path());
-    write_workflow_lock(dir.path(), &["apm--a"]);
+    write_autopilot_fixture(dir.path(), &["apm--a"]);
 
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
     expect_apm_install(&mut mock, &mut seq);
     // Probed twice (pre-install snapshot + post-install fixup); both fall
     // back to `python` and then give up, so neither runs a query.
-    mock.expect_which()
-        .with(mockall::predicate::eq("python3"))
-        .times(2)
-        .returning(|_| false);
+    expect_python3(&mut mock, 2, false);
     mock.expect_which()
         .with(mockall::predicate::eq("python"))
         .times(2)
@@ -458,42 +472,23 @@ fn run_warns_when_python_missing_for_autopilot_fixup() {
 #[test]
 fn run_warns_when_workflow_db_is_locked() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    write_home_fragment(dir.path(), "base.yml", AUTOPILOT_FIXTURE_FRAGMENT);
-    write_workflow_db(dir.path());
-    write_workflow_lock(dir.path(), &["apm--a"]);
+    write_autopilot_fixture(dir.path(), &["apm--a"]);
 
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
-    mock.expect_which()
-        .with(mockall::predicate::eq("python3"))
-        .times(2)
-        .returning(|_| true);
+    expect_python3(&mut mock, 2, true);
     // Pre-install snapshot also hits the locked database and degrades to
     // Unavailable, so the post-install fixup stays quiet rather than reporting
     // a spurious change.
     mock.expect_run_unchecked_in()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: "database is locked".to_string(),
-                success: false,
-                code: Some(1),
-            })
-        });
+        .returning(|_, _, _| Ok(exec_error("database is locked")));
     expect_apm_install(&mut mock, &mut seq);
     mock.expect_run_unchecked_in()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: "database is locked".to_string(),
-                success: false,
-                code: Some(1),
-            })
-        });
+        .returning(|_, _, _| Ok(exec_error("database is locked")));
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
@@ -510,41 +505,22 @@ fn run_warns_when_workflow_db_schema_drifts() {
     // sqlite raises `no such column`. The fixup must surface this loudly while
     // staying non-fatal -- the apm install itself still succeeded.
     let dir = tempfile::tempdir().expect("create temp dir");
-    write_home_fragment(dir.path(), "base.yml", AUTOPILOT_FIXTURE_FRAGMENT);
-    write_workflow_db(dir.path());
-    write_workflow_lock(dir.path(), &["apm--a"]);
+    write_autopilot_fixture(dir.path(), &["apm--a"]);
 
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
-    mock.expect_which()
-        .with(mockall::predicate::eq("python3"))
-        .times(2)
-        .returning(|_| true);
+    expect_python3(&mut mock, 2, true);
     // Pre-install snapshot hits the drifted schema first. Since the error is
     // not `no such table`, it degrades quietly to Unavailable.
     mock.expect_run_unchecked_in()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: "no such column: mode".to_string(),
-                success: false,
-                code: Some(1),
-            })
-        });
+        .returning(|_, _, _| Ok(exec_error("no such column: mode")));
     expect_apm_install(&mut mock, &mut seq);
     mock.expect_run_unchecked_in()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: "no such column: mode".to_string(),
-                success: false,
-                code: Some(1),
-            })
-        });
+        .returning(|_, _, _| Ok(exec_error("no such column: mode")));
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
@@ -597,16 +573,8 @@ fn update_re_arms_apm_workflows_after_apm_update() {
 
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
-    mock.expect_which()
-        .with(mockall::predicate::eq("apm"))
-        .once()
-        .returning(|_| true);
-    // python3 is probed twice: once for the pre-update snapshot and once for
-    // the post-update fixup.
-    mock.expect_which()
-        .with(mockall::predicate::eq("python3"))
-        .times(2)
-        .returning(|_| true);
+    expect_apm_available(&mut mock);
+    expect_python3(&mut mock, 2, true);
 
     // apm outdated reports a stale lock, so an update is attempted.
     mock.expect_run_in_with_env()
@@ -637,16 +605,7 @@ fn update_re_arms_apm_workflows_after_apm_update() {
         .in_sequence(&mut seq)
         .returning(move |_, program, args, _| {
             assert_eq!(program, "apm");
-            assert_eq!(
-                args,
-                [
-                    "update",
-                    "-g",
-                    "--yes",
-                    "--target",
-                    "copilot,codex,copilot-app"
-                ]
-            );
+            assert_eq!(args, ["update", "-g", "--yes", "--target", TARGET_ALL]);
             Ok(ok_result("updated\n"))
         });
     // Post-update fixup re-arms the workflow to autopilot + enabled; the diff
@@ -685,14 +644,8 @@ fn update_re_arms_apm_workflows_even_when_apm_update_reports_no_changes() {
 
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
-    mock.expect_which()
-        .with(mockall::predicate::eq("apm"))
-        .once()
-        .returning(|_| true);
-    mock.expect_which()
-        .with(mockall::predicate::eq("python3"))
-        .times(2)
-        .returning(|_| true);
+    expect_apm_available(&mut mock);
+    expect_python3(&mut mock, 2, true);
 
     // Branch/commit refs report `unknown`, so the up-to-date marker is absent
     // and an update is attempted.
@@ -723,16 +676,7 @@ fn update_re_arms_apm_workflows_even_when_apm_update_reports_no_changes() {
         .once()
         .in_sequence(&mut seq)
         .returning(move |_, _, args, _| {
-            assert_eq!(
-                args,
-                [
-                    "update",
-                    "-g",
-                    "--yes",
-                    "--target",
-                    "copilot,codex,copilot-app"
-                ]
-            );
+            assert_eq!(args, ["update", "-g", "--yes", "--target", TARGET_ALL]);
             Ok(ok_result("  [+] github.com/example/plugin (cached)\n"))
         });
     // The fixup still runs; with the workflow already desired the delta is

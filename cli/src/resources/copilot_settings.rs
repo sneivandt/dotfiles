@@ -126,12 +126,7 @@ impl Resource for CopilotSettingResource {
             .with_context(|| format!("serializing {}", self.path.display()))?;
         serialized.push('\n');
 
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("creating {}", parent.display()))?;
-        }
-        std::fs::write(&self.path, serialized)
-            .with_context(|| format!("writing {}", self.path.display()))?;
+        crate::fs::write_with_parent(&self.path, serialized)?;
         Ok(ResourceChange::Applied)
     }
 }

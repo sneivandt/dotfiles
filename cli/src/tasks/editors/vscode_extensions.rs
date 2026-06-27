@@ -8,7 +8,7 @@ use crate::resources::vscode_extension::{
 };
 use crate::tasks::{
     Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult,
-    process_resources_with_borrowed_cache,
+    process_resources_with_borrowed_cache, task_metadata,
 };
 
 /// Install VS Code extensions.
@@ -16,16 +16,10 @@ use crate::tasks::{
 pub struct InstallVsCodeExtensions;
 
 impl Task for InstallVsCodeExtensions {
-    fn name(&self) -> &'static str {
-        "Install VS Code extensions"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Editors
+    task_metadata! {
+        name: "Install VS Code extensions",
+        phase: TaskPhase::Provision,
+        domain: Domain::Editors,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

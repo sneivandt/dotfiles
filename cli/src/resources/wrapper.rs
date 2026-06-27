@@ -120,8 +120,6 @@ impl Resource for WrapperResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        crate::fs::ensure_parent_dir(&self.target)?;
-
         if let Some(metadata) = self.target_metadata()? {
             if metadata.file_type().is_symlink() {
                 crate::fs::remove_file(&self.target)?;
@@ -134,15 +132,10 @@ impl Resource for WrapperResource {
             }
         }
 
-        crate::fs::write(&self.target, &self.content)?;
+        crate::fs::write_with_parent(&self.target, &self.content)?;
 
         #[cfg(unix)]
-        {
-            use anyhow::Context as _;
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&self.target, std::fs::Permissions::from_mode(0o755))
-                .with_context(|| format!("chmod 755 {}", self.target.display()))?;
-        }
+        crate::fs::set_executable(&self.target)?;
 
         Ok(ResourceChange::Applied)
     }

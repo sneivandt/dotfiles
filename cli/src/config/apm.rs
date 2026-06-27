@@ -422,6 +422,8 @@ fn path_item(root: &Path, path: &Path) -> String {
 mod tests {
     use super::*;
 
+    const DOT_CODE_FRAGMENT: &str = "dependencies:\n  apm:\n    - ~/.apm/plugins/dot-code\n";
+
     fn write_fragment(root: &Path, content: &str) {
         let config_dir = root.join("symlinks").join("apm").join("config");
         std::fs::create_dir_all(&config_dir).expect("create apm config dir");
@@ -457,13 +459,20 @@ mod tests {
             .expect("write skill");
     }
 
+    fn write_dot_code_fragment(root: &Path) {
+        write_fragment(root, DOT_CODE_FRAGMENT);
+    }
+
+    fn assert_single_warning_contains(root: &Path, expected: &str) {
+        let warnings = validate(root, None);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains(expected));
+    }
+
     #[test]
     fn validate_accepts_matching_local_plugin_ref() {
         let temp_dir = tempfile::tempdir().unwrap();
-        write_fragment(
-            temp_dir.path(),
-            "dependencies:\n  apm:\n    - ~/.apm/plugins/dot-code\n",
-        );
+        write_dot_code_fragment(temp_dir.path());
         write_plugin(temp_dir.path(), "dot-code", r#"{ "name": "dot-code" }"#);
 
         assert!(validate(temp_dir.path(), None).is_empty());
@@ -472,10 +481,7 @@ mod tests {
     #[test]
     fn validate_accepts_native_local_plugin_ref() {
         let temp_dir = tempfile::tempdir().unwrap();
-        write_fragment(
-            temp_dir.path(),
-            "dependencies:\n  apm:\n    - ~/.apm/plugins/dot-code\n",
-        );
+        write_dot_code_fragment(temp_dir.path());
         write_native_plugin(
             temp_dir.path(),
             "dot-code",
@@ -493,10 +499,7 @@ mod tests {
             "dependencies:\n  apm:\n    - '~\\.apm\\plugins\\dot-code'\n",
         );
 
-        let warnings = validate(temp_dir.path(), None);
-
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("has no matching directory"));
+        assert_single_warning_contains(temp_dir.path(), "has no matching directory");
     }
 
     #[test]
@@ -518,10 +521,7 @@ mod tests {
             "dependencies:\n  mcp:\n    - command: agency\n",
         );
 
-        let warnings = validate(temp_dir.path(), None);
-
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("missing a non-empty 'name'"));
+        assert_single_warning_contains(temp_dir.path(), "missing a non-empty 'name'");
     }
 
     #[test]
@@ -532,10 +532,7 @@ mod tests {
             "dependencies:\n  mcp:\n    - name: kusto\n",
         );
 
-        let warnings = validate(temp_dir.path(), None);
-
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("must define a 'command'"));
+        assert_single_warning_contains(temp_dir.path(), "must define a 'command'");
     }
 
     #[test]
@@ -552,24 +549,15 @@ mod tests {
     #[test]
     fn validate_detects_missing_local_plugin_dir() {
         let temp_dir = tempfile::tempdir().unwrap();
-        write_fragment(
-            temp_dir.path(),
-            "dependencies:\n  apm:\n    - ~/.apm/plugins/dot-code\n",
-        );
+        write_dot_code_fragment(temp_dir.path());
 
-        let warnings = validate(temp_dir.path(), None);
-
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("has no matching directory"));
+        assert_single_warning_contains(temp_dir.path(), "has no matching directory");
     }
 
     #[test]
     fn validate_detects_missing_local_plugin_manifest() {
         let temp_dir = tempfile::tempdir().unwrap();
-        write_fragment(
-            temp_dir.path(),
-            "dependencies:\n  apm:\n    - ~/.apm/plugins/dot-code\n",
-        );
+        write_dot_code_fragment(temp_dir.path());
         std::fs::create_dir_all(
             temp_dir
                 .path()
@@ -580,48 +568,29 @@ mod tests {
         )
         .expect("create plugin dir");
 
-        let warnings = validate(temp_dir.path(), None);
-
-        assert_eq!(warnings.len(), 1);
-        assert!(
-            warnings[0]
-                .message
-                .contains("missing apm.yml or plugin.json")
-        );
+        assert_single_warning_contains(temp_dir.path(), "missing apm.yml or plugin.json");
     }
 
     #[test]
     fn validate_detects_plugin_name_mismatch() {
         let temp_dir = tempfile::tempdir().unwrap();
-        write_fragment(
-            temp_dir.path(),
-            "dependencies:\n  apm:\n    - ~/.apm/plugins/dot-code\n",
-        );
+        write_dot_code_fragment(temp_dir.path());
         write_plugin(temp_dir.path(), "dot-code", r#"{ "name": "wrong-name" }"#);
 
-        let warnings = validate(temp_dir.path(), None);
-
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("does not match"));
+        assert_single_warning_contains(temp_dir.path(), "does not match");
     }
 
     #[test]
     fn validate_detects_native_plugin_name_mismatch() {
         let temp_dir = tempfile::tempdir().unwrap();
-        write_fragment(
-            temp_dir.path(),
-            "dependencies:\n  apm:\n    - ~/.apm/plugins/dot-code\n",
-        );
+        write_dot_code_fragment(temp_dir.path());
         write_native_plugin(
             temp_dir.path(),
             "dot-code",
             "name: wrong-name\nversion: 1.0.0\n",
         );
 
-        let warnings = validate(temp_dir.path(), None);
-
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("does not match"));
+        assert_single_warning_contains(temp_dir.path(), "does not match");
     }
 
     #[test]
@@ -642,9 +611,6 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         write_fragment(temp_dir.path(), "dependencies: [");
 
-        let warnings = validate(temp_dir.path(), None);
-
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("could not parse"));
+        assert_single_warning_contains(temp_dir.path(), "could not parse");
     }
 }

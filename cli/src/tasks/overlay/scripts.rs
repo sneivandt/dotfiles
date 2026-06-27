@@ -15,7 +15,7 @@ use anyhow::Result;
 use crate::config::scripts::ScriptEntry;
 use crate::resources::script::ScriptResource;
 use crate::resources::{IntrinsicState, ResourceChange, ResourceState};
-use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_deps};
+use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
 
 // ---------------------------------------------------------------------------
 // Static task: Load overlay scripts
@@ -30,19 +30,12 @@ use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_deps};
 pub struct LoadOverlayScripts;
 
 impl Task for LoadOverlayScripts {
-    fn name(&self) -> &'static str {
-        "Load overlay scripts"
+    task_metadata! {
+        name: "Load overlay scripts",
+        phase: TaskPhase::Sync,
+        domain: Domain::Overlay,
+        deps: [crate::tasks::repository::reload_config::ReloadConfig],
     }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Sync
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Overlay
-    }
-
-    task_deps![crate::tasks::repository::reload_config::ReloadConfig];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.config_read().overlay.is_some()

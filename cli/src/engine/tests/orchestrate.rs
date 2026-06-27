@@ -87,14 +87,25 @@ fn process_precomputed_states(
     process_resources_with_provider(ctx, resources, &PrecomputedStateProvider, opts)
 }
 
+fn test_ctx() -> crate::engine::Context {
+    test_context(empty_config(PathBuf::from("/tmp"))).0
+}
+
+fn parallel_ctx() -> crate::engine::Context {
+    parallel_context(empty_config(PathBuf::from("/tmp"))).0
+}
+
+fn dry_ctx() -> crate::engine::Context {
+    dry_run_context(empty_config(PathBuf::from("/tmp"))).0
+}
+
 // -----------------------------------------------------------------------
 // process_resources
 // -----------------------------------------------------------------------
 
 #[test]
 fn process_resources_mixed_states() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resources = vec![
         MockResource::new(ResourceState::Correct),
         MockResource::new(ResourceState::Missing),
@@ -110,8 +121,7 @@ fn process_resources_mixed_states() {
 
 #[test]
 fn process_resources_empty_list() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resources: Vec<MockResource> = vec![];
     let opts = default_opts();
 
@@ -125,8 +135,7 @@ fn process_resources_empty_list() {
 
 #[test]
 fn process_precomputed_states_applies_precomputed() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resource_states = vec![
         (
             MockResource::new(ResourceState::Missing),
@@ -145,8 +154,7 @@ fn process_precomputed_states_applies_precomputed() {
 
 #[test]
 fn process_resources_with_provider_empty_list_skips_provider_load() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resources: Vec<PrecomputedResource> = vec![];
     let opts = default_opts();
     let loads = Arc::new(AtomicUsize::new(0));
@@ -166,8 +174,7 @@ fn process_resources_with_provider_empty_list_skips_provider_load() {
 
 #[test]
 fn process_resources_remove_removes_correct_resources() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resources = vec![
         MockResource::new(ResourceState::Correct),
         MockResource::new(ResourceState::Missing),
@@ -179,8 +186,7 @@ fn process_resources_remove_removes_correct_resources() {
 
 #[test]
 fn process_resources_remove_dry_run() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = dry_run_context(config);
+    let ctx = dry_ctx();
     // Remove should NOT be called in dry-run
     let resources =
         vec![MockResource::new(ResourceState::Correct).with_remove(Err("should not call".into()))];
@@ -195,8 +201,7 @@ fn process_resources_remove_dry_run() {
 
 #[test]
 fn process_resources_parallel_accumulates_stats() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = parallel_context(config);
+    let ctx = parallel_ctx();
     // Three resources: one already correct, one missing (will be applied), one invalid (failed).
     let resources = vec![
         MockResource::new(ResourceState::Correct),
@@ -214,8 +219,7 @@ fn process_resources_parallel_accumulates_stats() {
 #[test]
 fn process_resources_parallel_single_resource_runs_sequentially() {
     // When there is only one resource, the sequential path is taken even if parallel=true.
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = parallel_context(config);
+    let ctx = parallel_ctx();
     let resources = vec![MockResource::new(ResourceState::Missing)];
     let opts = default_opts();
 
@@ -225,8 +229,7 @@ fn process_resources_parallel_single_resource_runs_sequentially() {
 
 #[test]
 fn process_resources_parallel_bail_on_error_propagates() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = parallel_context(config);
+    let ctx = parallel_ctx();
     let resources = vec![
         MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
         MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
@@ -243,8 +246,7 @@ fn process_resources_parallel_bail_on_error_propagates() {
 
 #[test]
 fn process_precomputed_states_parallel_dispatch() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = parallel_context(config);
+    let ctx = parallel_ctx();
     let resource_states = vec![
         (
             MockResource::new(ResourceState::Missing),
@@ -275,8 +277,7 @@ fn process_precomputed_states_parallel_dispatch() {
 
 #[test]
 fn process_resources_remove_parallel_dispatch() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = parallel_context(config);
+    let ctx = parallel_ctx();
     let resources = vec![
         MockResource::new(ResourceState::Correct),
         MockResource::new(ResourceState::Missing),
@@ -292,8 +293,7 @@ fn process_resources_remove_parallel_dispatch() {
 
 #[test]
 fn process_resources_current_state_error_propagates() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resources =
         vec![MockResource::new(ResourceState::Missing).with_state_error("state failed")];
     let opts = default_opts();
@@ -305,8 +305,7 @@ fn process_resources_current_state_error_propagates() {
 
 #[test]
 fn process_resources_remove_current_state_error_propagates() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resources =
         vec![MockResource::new(ResourceState::Missing).with_state_error("state failed")];
 
@@ -321,8 +320,7 @@ fn process_resources_remove_current_state_error_propagates() {
 
 #[test]
 fn process_resources_bail_on_apply_error_propagates() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resources = vec![MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into()))];
     let opts = bail_opts();
 
@@ -337,8 +335,7 @@ fn process_resources_bail_on_apply_error_propagates() {
 
 #[test]
 fn process_precomputed_states_stats_accumulate_across_resources() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     // 2 correct, 1 missing (applied), 1 invalid (failed)
     let resource_states = vec![
         (
@@ -375,9 +372,7 @@ fn process_precomputed_states_stats_accumulate_across_resources() {
 
 #[test]
 fn process_resources_parallel_dry_run() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (mut ctx, _log) = parallel_context(config);
-    ctx = ctx.with_dry_run(true);
+    let ctx = parallel_ctx().with_dry_run(true);
     // apply() would error if called — dry-run must skip it
     let resources = vec![
         MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
@@ -390,9 +385,7 @@ fn process_resources_parallel_dry_run() {
 
 #[test]
 fn process_resources_remove_parallel_dry_run() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (mut ctx, _log) = parallel_context(config);
-    ctx = ctx.with_dry_run(true);
+    let ctx = parallel_ctx().with_dry_run(true);
     let resources = vec![
         MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),
         MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),
@@ -403,8 +396,7 @@ fn process_resources_remove_parallel_dry_run() {
 
 #[test]
 fn process_precomputed_states_parallel_no_bail_reports_failure() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = parallel_context(config);
+    let ctx = parallel_ctx();
     let resource_states = vec![
         (
             MockResource::new(ResourceState::Missing).with_apply(Err("oops".into())),
@@ -426,8 +418,7 @@ fn process_precomputed_states_parallel_no_bail_reports_failure() {
 
 #[test]
 fn process_precomputed_states_empty_list() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resource_states: Vec<(MockResource, ResourceState)> = vec![];
     let opts = default_opts();
 
@@ -441,8 +432,7 @@ fn process_precomputed_states_empty_list() {
 
 #[test]
 fn process_resources_remove_empty_list() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resources: Vec<MockResource> = vec![];
 
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
@@ -455,8 +445,7 @@ fn process_resources_remove_empty_list() {
 
 #[test]
 fn process_precomputed_states_bail_on_error_propagates() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resource_states = vec![(
         MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
         ResourceState::Missing,
@@ -474,8 +463,7 @@ fn process_precomputed_states_bail_on_error_propagates() {
 
 #[test]
 fn process_precomputed_states_lenient_reports_failure() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resource_states = vec![
         (
             MockResource::new(ResourceState::Missing).with_apply(Err("oops".into())),
@@ -498,8 +486,7 @@ fn process_precomputed_states_lenient_reports_failure() {
 
 #[test]
 fn process_resources_lenient_reports_apply_errors() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resources = vec![
         MockResource::new(ResourceState::Missing).with_apply(Err("oops".into())),
         MockResource::new(ResourceState::Correct),
@@ -516,8 +503,7 @@ fn process_resources_lenient_reports_apply_errors() {
 
 #[test]
 fn process_precomputed_states_parallel_bail_on_error_propagates() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = parallel_context(config);
+    let ctx = parallel_ctx();
     let resource_states = vec![
         (
             MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
@@ -540,8 +526,7 @@ fn process_precomputed_states_parallel_bail_on_error_propagates() {
 
 #[test]
 fn process_resources_remove_parallel_state_error_propagates() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = parallel_context(config);
+    let ctx = parallel_ctx();
     let resources = vec![
         MockResource::new(ResourceState::Correct).with_state_error("state failed"),
         MockResource::new(ResourceState::Correct).with_state_error("state failed"),
@@ -558,8 +543,7 @@ fn process_resources_remove_parallel_state_error_propagates() {
 
 #[test]
 fn process_resources_parallel_state_error_propagates() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = parallel_context(config);
+    let ctx = parallel_ctx();
     let resources = vec![
         MockResource::new(ResourceState::Correct).with_state_error("state failed"),
         MockResource::new(ResourceState::Correct).with_state_error("state failed"),
@@ -576,8 +560,7 @@ fn process_resources_parallel_state_error_propagates() {
 
 #[test]
 fn process_resources_remove_all_missing_skips_silently() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resources = vec![
         MockResource::new(ResourceState::Missing),
         MockResource::new(ResourceState::Incorrect {
@@ -598,8 +581,7 @@ fn process_resources_remove_all_missing_skips_silently() {
 
 #[test]
 fn process_resources_remove_error_propagates() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resources =
         vec![MockResource::new(ResourceState::Correct).with_remove(Err("rm failed".into()))];
 
@@ -614,8 +596,7 @@ fn process_resources_remove_error_propagates() {
 
 #[test]
 fn process_precomputed_states_dry_run() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = dry_run_context(config);
+    let ctx = dry_ctx();
     let resource_states = vec![
         (
             MockResource::new(ResourceState::Missing).with_apply(Err("should not call".into())),
@@ -638,9 +619,7 @@ fn process_precomputed_states_dry_run() {
 
 #[test]
 fn process_precomputed_states_parallel_dry_run() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (mut ctx, _log) = parallel_context(config);
-    ctx = ctx.with_dry_run(true);
+    let ctx = parallel_ctx().with_dry_run(true);
     let resource_states = vec![
         (
             MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
@@ -663,8 +642,7 @@ fn process_precomputed_states_parallel_dry_run() {
 
 #[test]
 fn process_resources_lenient_reports_multiple_apply_errors() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     let resources = vec![
         MockResource::new(ResourceState::Missing).with_apply(Err("error1".into())),
         MockResource::new(ResourceState::Missing).with_apply(Err("error2".into())),
@@ -682,8 +660,7 @@ fn process_resources_lenient_reports_multiple_apply_errors() {
 
 #[test]
 fn process_resources_remove_parallel_error_propagates() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = parallel_context(config);
+    let ctx = parallel_ctx();
     let resources = vec![
         MockResource::new(ResourceState::Correct).with_remove(Err("rm error".into())),
         MockResource::new(ResourceState::Correct).with_remove(Err("rm error".into())),
@@ -699,8 +676,7 @@ fn process_resources_remove_parallel_error_propagates() {
 
 #[test]
 fn process_resources_stops_on_cancellation() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     // Cancel before processing begins
     ctx.cancelled.cancel();
     // apply() would error if called — cancellation should prevent it
@@ -721,8 +697,7 @@ fn process_resources_stops_on_cancellation() {
 
 #[test]
 fn process_precomputed_states_stops_on_cancellation() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     ctx.cancelled.cancel();
     let resource_states = vec![
         (
@@ -746,8 +721,7 @@ fn process_precomputed_states_stops_on_cancellation() {
 
 #[test]
 fn process_resources_remove_stops_on_cancellation() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let ctx = test_ctx();
     ctx.cancelled.cancel();
     // remove() would error if called
     let resources = vec![
@@ -765,8 +739,7 @@ fn process_resources_remove_stops_on_cancellation() {
 
 #[test]
 fn sequential_opts_forces_sequential_processing() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = parallel_context(config);
+    let ctx = parallel_ctx();
     // Use sequential opts — should not dispatch to parallel path
     let resources = vec![
         MockResource::new(ResourceState::Correct),
@@ -781,8 +754,7 @@ fn sequential_opts_forces_sequential_processing() {
 
 #[test]
 fn sequential_opts_forces_sequential_for_resource_states() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = parallel_context(config);
+    let ctx = parallel_ctx();
     let resource_states = vec![
         (
             MockResource::new(ResourceState::Correct),

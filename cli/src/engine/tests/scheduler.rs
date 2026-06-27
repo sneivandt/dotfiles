@@ -20,31 +20,32 @@ fn run_test_tasks(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>) {
     run_tasks_parallel(tasks, &graph, ctx, log);
 }
 
-// -----------------------------------------------------------------------
-// Independent task: sets a flag when it runs.
-// -----------------------------------------------------------------------
-struct FlagTask {
-    ran: Arc<AtomicBool>,
+macro_rules! flag_task {
+    ($type_name:ident, $task_name:literal $(, deps: [$($dep:ty),+ $(,)?])?) => {
+        struct $type_name {
+            ran: Arc<AtomicBool>,
+        }
+
+        impl Task for $type_name {
+            fn name(&self) -> &'static str {
+                $task_name
+            }
+
+            fn phase(&self) -> TaskPhase {
+                TaskPhase::Provision
+            }
+
+            $(task_deps![$($dep),+];)?
+
+            fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+                self.ran.store(true, Ordering::SeqCst);
+                Ok(TaskResult::Ok)
+            }
+        }
+    };
 }
 
-impl Task for FlagTask {
-    fn name(&self) -> &'static str {
-        "flag-task"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
-    }
-
-    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        self.ran.store(true, Ordering::SeqCst);
-        Ok(TaskResult::Ok)
-    }
-}
+flag_task!(FlagTask, "flag-task");
 
 // -----------------------------------------------------------------------
 // Panic task: panics unconditionally, simulating a failed dependency.
@@ -70,247 +71,32 @@ impl Task for PanicTask {
     }
 }
 
-// -----------------------------------------------------------------------
-// Task that depends on PanicTask; sets a flag if it runs.
-// -----------------------------------------------------------------------
-struct DepOnPanicTask {
-    ran: Arc<AtomicBool>,
-}
-
-impl Task for DepOnPanicTask {
-    fn name(&self) -> &'static str {
-        "dep-on-panic"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
-    }
-
-    task_deps![PanicTask];
-
-    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        self.ran.store(true, Ordering::SeqCst);
-        Ok(TaskResult::Ok)
-    }
-}
+flag_task!(DepOnPanicTask, "dep-on-panic", deps: [PanicTask]);
 
 // -----------------------------------------------------------------------
 // Chain tasks: PanicTask → ChainB → ChainC.
 // -----------------------------------------------------------------------
-struct ChainB {
-    ran: Arc<AtomicBool>,
-}
-
-impl Task for ChainB {
-    fn name(&self) -> &'static str {
-        "chain-b"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
-    }
-
-    task_deps![PanicTask];
-
-    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        self.ran.store(true, Ordering::SeqCst);
-        Ok(TaskResult::Ok)
-    }
-}
-
-struct ChainC {
-    ran: Arc<AtomicBool>,
-}
-
-impl Task for ChainC {
-    fn name(&self) -> &'static str {
-        "chain-c"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
-    }
-
-    task_deps![ChainB];
-
-    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        self.ran.store(true, Ordering::SeqCst);
-        Ok(TaskResult::Ok)
-    }
-}
+flag_task!(ChainB, "chain-b", deps: [PanicTask]);
+flag_task!(ChainC, "chain-c", deps: [ChainB]);
 
 // -----------------------------------------------------------------------
 // Tests
 // -----------------------------------------------------------------------
 
-// -----------------------------------------------------------------------
-// A second independent task type (different TypeId from FlagTask).
-// -----------------------------------------------------------------------
-struct FlagTask2 {
-    ran: Arc<AtomicBool>,
-}
-
-impl Task for FlagTask2 {
-    fn name(&self) -> &'static str {
-        "flag-task-2"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
-    }
-
-    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        self.ran.store(true, Ordering::SeqCst);
-        Ok(TaskResult::Ok)
-    }
-}
-
-// -----------------------------------------------------------------------
-// Task that depends on FlagTask (for happy-path dependency tests).
-// -----------------------------------------------------------------------
-struct DepOnFlagTask {
-    ran: Arc<AtomicBool>,
-}
-
-impl Task for DepOnFlagTask {
-    fn name(&self) -> &'static str {
-        "dep-on-flag"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
-    }
-
-    task_deps![FlagTask];
-
-    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        self.ran.store(true, Ordering::SeqCst);
-        Ok(TaskResult::Ok)
-    }
-}
+flag_task!(FlagTask2, "flag-task-2");
+flag_task!(DepOnFlagTask, "dep-on-flag", deps: [FlagTask]);
 
 // -----------------------------------------------------------------------
 // Diamond tasks: A → D, B → D (two independent parents, one child).
 // -----------------------------------------------------------------------
-struct DiamondA {
-    ran: Arc<AtomicBool>,
-}
-
-impl Task for DiamondA {
-    fn name(&self) -> &'static str {
-        "diamond-a"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
-    }
-
-    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        self.ran.store(true, Ordering::SeqCst);
-        Ok(TaskResult::Ok)
-    }
-}
-
-struct DiamondB {
-    ran: Arc<AtomicBool>,
-}
-
-impl Task for DiamondB {
-    fn name(&self) -> &'static str {
-        "diamond-b"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
-    }
-
-    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        self.ran.store(true, Ordering::SeqCst);
-        Ok(TaskResult::Ok)
-    }
-}
-
-struct DiamondD {
-    ran: Arc<AtomicBool>,
-}
-
-impl Task for DiamondD {
-    fn name(&self) -> &'static str {
-        "diamond-d"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
-    }
-
-    task_deps![DiamondA, DiamondB];
-
-    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        self.ran.store(true, Ordering::SeqCst);
-        Ok(TaskResult::Ok)
-    }
-}
+flag_task!(DiamondA, "diamond-a");
+flag_task!(DiamondB, "diamond-b");
+flag_task!(DiamondD, "diamond-d", deps: [DiamondA, DiamondB]);
 
 // -----------------------------------------------------------------------
 // Task with a dependency on a type not in the task list.
 // -----------------------------------------------------------------------
-struct DepOnMissing {
-    ran: Arc<AtomicBool>,
-}
-
-impl Task for DepOnMissing {
-    fn name(&self) -> &'static str {
-        "dep-on-missing"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
-    }
-
-    // Depends on PanicTask which won't be in the task list.
-    task_deps![PanicTask];
-
-    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        self.ran.store(true, Ordering::SeqCst);
-        Ok(TaskResult::Ok)
-    }
-}
+flag_task!(DepOnMissing, "dep-on-missing", deps: [PanicTask]);
 
 // -----------------------------------------------------------------------
 // Tests

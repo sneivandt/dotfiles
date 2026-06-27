@@ -1,54 +1,10 @@
 //! Named, dependency-ordered tasks that orchestrate resource changes.
 //!
-//! Tasks are filed by **domain** — what each task is about — rather than by the
-//! phase in which they run.  A task's execution phase ([`TaskPhase`]) is per-task
-//! metadata, independent of which domain module the task lives in, so a single
-//! domain can span phases (for example `overlay` loads scripts during the
-//! Sync phase and runs them during the Provision phase).
-//!
-//! Domain modules:
-//!
-//! - **Core** (`tasks::core`) — the dotfiles tool itself (binary update, wrapper
-//!   installation, PATH configuration).
-//! - **Repository** (`tasks::repository`) — repository synchronisation (sparse
-//!   checkout, pull, config reload).
-//! - **Git** (`tasks::git`) — git configuration and hooks.
-//! - **Files** (`tasks::files`) — symlinks and file permissions.
-//! - **Shell** (`tasks::shell`) — shell setup and completions.
-//! - **System** (`tasks::system`) — OS integration (registry, PAM, systemd,
-//!   developer mode, WSL).
-//! - **Packages** (`tasks::packages`) — system and AUR packages.
-//! - **Editors** (`tasks::editors`) — editor extensions.
-//! - **AI** (`tasks::ai`) — Copilot/APM settings.
-//! - **Overlay** (`tasks::overlay`) — overlay script tasks.
-//! - **Validation** (`tasks::validation`) — configuration checks.
-//!
-//! ## Module layout convention
-//!
-//! Every domain is a folder, so `tasks/` reads uniformly: each child directory
-//! is a subject area and the loose top-level files are shared infrastructure.  A
-//! domain folder takes one of two shapes, both legitimate:
-//!
-//! - **Thin `mod.rs` + per-task files** — the `mod.rs` carries only the module
-//!   docs and `pub mod` declarations; each task lives in its own submodule (as in
-//!   `tasks::system` and `tasks::git`).  Prefer this when a domain spans several
-//!   distinct tasks that each warrant their own file.
-//! - **Production `mod.rs` + `tests.rs`** — a cohesive domain keeps its task
-//!   definitions and helpers in `mod.rs` and splits only the `#[cfg(test)]`
-//!   module into a sibling `tests.rs` (as in `tasks::editors`, `tasks::overlay`,
-//!   `tasks::packages`, `tasks::validation`, `tasks::ai::apm`, and
-//!   `tasks::repository::sparse_checkout`).  Prefer this when the production code
-//!   is naturally one unit but the test module is large enough to crowd it.
-//!
-//! The modules above define tasks.  The remaining modules are supporting
-//! infrastructure rather than task definitions:
-//!
-//! - `catalog` — registers every task and builds the install/uninstall lists.
-//! - `execute` — the policy-aware execution engine and result recording.
-//! - `filter` — category/profile filtering shared by tasks.
-//! - `macros` — the `resource_task!` / `task_deps!` authoring macros.
-//! - `types` — shared task vocabulary (`TaskId`, `TaskPhase`, `Domain`,
-//!   `ExecutionPolicy`).
+//! Tasks are grouped by domain (`core`, `repository`, `git`, `files`, `shell`,
+//! `system`, `packages`, `editors`, `ai`, `overlay`, and `validation`) while
+//! each task's [`TaskPhase`] metadata controls when it runs.  Top-level support
+//! modules provide the catalog, executor, filtering, task macros, and shared
+//! vocabulary.
 
 // Task-domain modules: each groups the task definitions for one subject area.
 pub mod ai;

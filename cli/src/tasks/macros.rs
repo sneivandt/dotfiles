@@ -118,58 +118,12 @@ where
     crate::tasks::process_resources_with_provider(ctx, resources, &provider, opts)
 }
 
-/// Define a task that processes config-derived resources with minimal
-/// boilerplate.
+/// Define a task that reads config items, builds resources, and processes them.
 ///
-/// Generates a `Debug` struct and a full [`Task`](crate::tasks::Task) implementation for the
-/// common pattern: read config items → build resources → process.
-///
-/// Two variants are supported:
-///
-/// - **Standard:** each resource computes its own state via
-///   [`IntrinsicState::current_state`](crate::resources::IntrinsicState::current_state).
-///   Required fields: `items`, `build`, `opts`. Optional: `deps`, `guard`,
-///   `setup`.
-/// - **Batch:** resources are built once, then a state provider loads one
-///   cache for the full set and maps each resource to a state. Use when state
-///   checking amortises across the set (e.g. registry, VS Code extensions).
-///   Required fields: `items`, `cache`,
-///   `build`, `state`, `opts`. Optional: `deps`, `guard`. The arm is
-///   selected by the presence of `cache:` and `state:`.
-///
-/// # Examples
-///
-/// ```ignore
-/// // Standard variant
-/// resource_task! {
-///     pub StructName {
-///         name: "Human-readable task name",
-///         phase: TaskPhase::Provision,
-///         domain: Domain::Packages,
-///         policy: [PlatformCapability::Systemd.policy()], // optional
-///         deps: [DepType1, DepType2],          // optional
-///         guard: |ctx| bool_expr,              // optional
-///         setup: |ctx| { side_effects(); },    // optional
-///         items: |ctx| ctx.config_read().field.clone(),
-///         build: |item, ctx| Resource::from(&item, &ctx.home),
-///         opts: ProcessOpts::strict("verb"),
-///     }
-/// }
-///
-/// // Batch variant
-/// resource_task! {
-///     pub StructName {
-///         name: "Human-readable task name",
-///         phase: TaskPhase::Provision,
-///         domain: Domain::Packages,
-///         items: |ctx| ctx.config_read().field.clone(),
-///         cache: |resources, ctx| query_bulk_state(resources, ctx),
-///         build: |item, ctx| Resource::from(&item, &ctx.home),
-///         state: |resource, cache| resource.state_from_cache(&cache),
-///         opts: ProcessOpts::lenient("verb"),
-///     }
-/// }
-/// ```
+/// Supports the standard intrinsic-state path and a batch path (`cache:` +
+/// `state:`) for resources whose current state comes from one shared query.
+/// Optional `policy`, `deps`, `guard`, and `setup` clauses cover the common
+/// task variations without hand-writing [`Task`](crate::tasks::Task) metadata.
 macro_rules! resource_task {
     // -----------------------------------------------------------------
     // Batch variant — `cache:` and `state:` blocks are present.

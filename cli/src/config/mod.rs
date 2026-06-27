@@ -315,6 +315,10 @@ impl<'a> SectionLoader<'a> {
     }
 }
 
+fn load_if<T>(enabled: bool, load: impl FnOnce() -> Result<Vec<T>>) -> Result<Vec<T>> {
+    if enabled { load() } else { Ok(Vec::new()) }
+}
+
 macro_rules! registered_config_validators {
     ($validator:ident) => {
         $validator
@@ -498,16 +502,12 @@ impl Config {
                 symlinks::load,
                 symlinks::set_origin,
             )?,
-            registry: if platform.has_registry() {
-                sections.collect_unfiltered(REGISTRY_TOML, registry::load)?
-            } else {
-                Vec::new()
-            },
-            units: if platform.supports_systemd() {
-                sections.collect_filtered(SYSTEMD_UNITS_TOML, systemd_units::load)?
-            } else {
-                Vec::new()
-            },
+            registry: load_if(platform.has_registry(), || {
+                sections.collect_unfiltered(REGISTRY_TOML, registry::load)
+            })?,
+            units: load_if(platform.supports_systemd(), || {
+                sections.collect_filtered(SYSTEMD_UNITS_TOML, systemd_units::load)
+            })?,
             chmod: sections.collect_filtered(CHMOD_TOML, chmod::load)?,
             vscode_extensions: sections
                 .collect_filtered(VSCODE_EXTENSIONS_TOML, vscode_extensions::load)?,

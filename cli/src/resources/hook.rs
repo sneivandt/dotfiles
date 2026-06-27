@@ -31,32 +31,19 @@ impl Resource for HookFileResource {
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
         crate::fs::prepare_target(&self.target)?;
-
         crate::fs::copy_file(&self.source, &self.target)?;
 
-        // Make executable on Unix
         #[cfg(unix)]
-        {
-            use anyhow::Context as _;
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(&self.target)
-                .with_context(|| format!("read hook metadata: {}", self.target.display()))?
-                .permissions();
-            perms.set_mode(0o755);
-            std::fs::set_permissions(&self.target, perms)
-                .with_context(|| format!("setting hook permissions: {}", self.target.display()))?;
-        }
+        crate::fs::set_executable(&self.target)?;
 
         Ok(ResourceChange::Applied)
     }
 
     fn remove(&self) -> ResourceResult<ResourceChange> {
-        match crate::fs::symlink_metadata_optional(&self.target, "stat hook")? {
-            Some(_) => {
-                crate::fs::remove_file(&self.target)?;
-                Ok(ResourceChange::Applied)
-            }
-            None => Ok(ResourceChange::AlreadyCorrect),
+        if crate::fs::remove_file_if_present(&self.target, "stat hook")? {
+            Ok(ResourceChange::Applied)
+        } else {
+            Ok(ResourceChange::AlreadyCorrect)
         }
     }
 }

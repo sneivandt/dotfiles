@@ -6,23 +6,8 @@
 /// Generates an internal section struct, the `ConfigSection` trait impl,
 /// and a public `load()` function that filters by active categories.
 ///
-/// # Syntax
-///
-/// ```ignore
-/// // Identity mapping (Entry == Item):
-/// config_section!(field: "settings", ty: GitSetting);
-///
-/// // Explicit mapping (Entry → Item):
-/// config_section! {
-///     field: "symlinks",
-///     entry: SymlinkEntry,
-///     item: Symlink,
-///     map: |entry| match entry {
-///         SymlinkEntry::Simple(s) => Symlink { source: s, target: None },
-///         SymlinkEntry::WithTarget { source, target } => Symlink { source, target: Some(target) },
-///     },
-/// }
-/// ```
+/// Supports identity mapping (`ty`) and explicit entry-to-item mapping
+/// (`entry`, `item`, `map`) variants.
 macro_rules! config_section {
     // Identity mapping (Entry == Item).
     (field: $field:literal, ty: $ty:ty $(,)?) => {

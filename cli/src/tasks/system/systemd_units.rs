@@ -8,7 +8,7 @@ use crate::config::systemd_units::SystemdUnit;
 use crate::resources::systemd_unit::SystemdUnitResource;
 use crate::tasks::{
     Context, Domain, ExecutionPolicy, PlatformCapability, ProcessOpts, Task, TaskPhase, TaskResult,
-    process_resources, task_deps,
+    process_resources, task_metadata,
 };
 
 /// Enable and start systemd units.
@@ -16,26 +16,15 @@ use crate::tasks::{
 pub struct ConfigureSystemd;
 
 impl Task for ConfigureSystemd {
-    fn name(&self) -> &'static str {
-        "Configure systemd units"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::System
-    }
-
-    task_deps![crate::tasks::files::symlinks::InstallSymlinks];
-
-    fn execution_policies(&self) -> &[ExecutionPolicy] {
-        const POLICIES: &[ExecutionPolicy] = &[
+    task_metadata! {
+        name: "Configure systemd units",
+        phase: TaskPhase::Provision,
+        domain: Domain::System,
+        policy: [
             PlatformCapability::Systemd.policy(),
             ExecutionPolicy::RequiresElevation,
-        ];
-        POLICIES
+        ],
+        deps: [crate::tasks::files::symlinks::InstallSymlinks],
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

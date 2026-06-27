@@ -38,7 +38,7 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> bool {
             })
             .unwrap_or_else(|| "task panicked".to_string());
         log.diag_task(DiagEvent::TaskFail, task.name(), &msg);
-        log.record_task(task.name(), task.domain(), TaskStatus::Failed, Some(&msg));
+        log.record_task_outcome(task.name(), task.domain(), TaskStatus::Failed, Some(&msg));
         buf.flush_and_complete(task.name());
         return false;
     }
@@ -141,15 +141,12 @@ pub(crate) fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<L
                         task.name(),
                         &format!("skipped: {reason}"),
                     );
-                    log.record_task(
+                    log.record_task_outcome(
                         task.name(),
                         task.domain(),
                         TaskStatus::Skipped,
                         Some(reason),
                     );
-                    if !log.is_verbose() {
-                        log.emit_task_result(task.name(), TaskStatus::Skipped, Some(reason));
-                    }
                     // my_senders is dropped here without sending, propagating
                     // RecvError to any tasks that depend on this one.
                     return;

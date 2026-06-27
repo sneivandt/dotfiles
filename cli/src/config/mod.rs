@@ -69,7 +69,52 @@ pub mod test_helpers {
         let result = loader(&path, &[Category::Base]).expect("loader should not fail");
         assert!(result.is_empty(), "missing file should produce empty list");
     }
+
+    /// Assert that an unfiltered config loader returns an empty list for a
+    /// missing file.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the temp directory cannot be created or the loader fails.
+    #[allow(
+        clippy::expect_used,
+        reason = "panicking allowed at this trust boundary"
+    )]
+    pub fn assert_load_missing_unfiltered_returns_empty<T>(
+        loader: impl Fn(&std::path::Path) -> anyhow::Result<Vec<T>>,
+    ) {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let path = dir.path().join("nonexistent.toml");
+        let result = loader(&path).expect("loader should not fail");
+        assert!(result.is_empty(), "missing file should produce empty list");
+    }
 }
+
+#[cfg(test)]
+macro_rules! test_load_missing_returns_empty {
+    ($loader:path) => {
+        #[test]
+        fn load_missing_file_returns_empty() {
+            crate::config::test_helpers::assert_load_missing_returns_empty($loader);
+        }
+    };
+}
+
+#[cfg(test)]
+pub(crate) use test_load_missing_returns_empty;
+
+#[cfg(test)]
+macro_rules! test_load_missing_unfiltered_returns_empty {
+    ($loader:path) => {
+        #[test]
+        fn load_missing_file_returns_empty() {
+            crate::config::test_helpers::assert_load_missing_unfiltered_returns_empty($loader);
+        }
+    };
+}
+
+#[cfg(test)]
+pub(crate) use test_load_missing_unfiltered_returns_empty;
 
 use std::path::{Path, PathBuf};
 

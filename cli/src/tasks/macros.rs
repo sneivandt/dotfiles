@@ -24,6 +24,19 @@ macro_rules! task_deps {
 
 pub(crate) use task_deps;
 
+/// Implement [`Task::execution_policies`](crate::tasks::Task::execution_policies)
+/// from a static policy list.
+macro_rules! execution_policies_impl {
+    [$($policy:expr),+ $(,)?] => {
+        fn execution_policies(&self) -> &[$crate::tasks::ExecutionPolicy] {
+            const POLICIES: &[$crate::tasks::ExecutionPolicy] = &[$($policy),+];
+            POLICIES
+        }
+    };
+}
+
+pub(crate) use execution_policies_impl;
+
 /// Process config-derived resources after a macro has evaluated its item list.
 ///
 /// Keeping this logic in a normal function makes the macro expansion smaller
@@ -88,7 +101,7 @@ where
 ///         name: "Human-readable task name",
 ///         phase: TaskPhase::Provision,
 ///         domain: Domain::Packages,
-///         policy: [ExecutionPolicy::PlatformSupported("systemd", Platform::supports_systemd)], // optional
+///         policy: [PlatformCapability::Systemd.policy()], // optional
 ///         deps: [DepType1, DepType2],          // optional
 ///         guard: |ctx| bool_expr,              // optional
 ///         setup: |ctx| { side_effects(); },    // optional
@@ -180,12 +193,7 @@ macro_rules! resource_task {
 
             $($crate::tasks::task_deps![$($dep),+];)?
 
-            $(
-                fn execution_policies(&self) -> &[$crate::tasks::ExecutionPolicy] {
-                    const POLICIES: &[$crate::tasks::ExecutionPolicy] = &[$($policy),+];
-                    POLICIES
-                }
-            )?
+            $($crate::tasks::execution_policies_impl![$($policy),+];)?
 
             #[allow(
                 unused_variables,
@@ -261,12 +269,7 @@ macro_rules! resource_task {
 
             $($crate::tasks::task_deps![$($dep),+];)?
 
-            $(
-                fn execution_policies(&self) -> &[$crate::tasks::ExecutionPolicy] {
-                    const POLICIES: &[$crate::tasks::ExecutionPolicy] = &[$($policy),+];
-                    POLICIES
-                }
-            )?
+            $($crate::tasks::execution_policies_impl![$($policy),+];)?
 
             #[allow(
                 unused_variables,

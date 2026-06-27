@@ -58,12 +58,8 @@ impl Logger {
             }
             self.summary_detail(&format!("\x1b[1m{}\x1b[0m", domain.label()));
             for task in &domain_tasks {
-                let (icon, color) = match task.status {
-                    TaskStatus::NotApplicable => continue,
-                    TaskStatus::Ok => ("\u{2713}", "\x1b[32m"),
-                    TaskStatus::Skipped => ("\u{25cb}", "\x1b[33m"),
-                    TaskStatus::DryRun => ("~", "\x1b[35m"),
-                    TaskStatus::Failed => ("\u{2717}", "\x1b[31m"),
+                let Some((icon, color)) = task.status.icon_and_color() else {
+                    continue;
                 };
 
                 let suffix = task

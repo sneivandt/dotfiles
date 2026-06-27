@@ -97,6 +97,86 @@ pub fn ensure_parent_dir(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Read symlink metadata and return `None` when the path is absent.
+///
+/// # Errors
+///
+/// Returns an error if metadata cannot be read for a reason other than the path
+/// being absent.
+pub fn symlink_metadata_optional(path: &Path, action: &str) -> Result<Option<std::fs::Metadata>> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => {
+            Err(anyhow::Error::new(error).context(format!("{action}: {}", path.display())))
+        }
+    }
+}
+
+/// Return a standard validation message when a required source path is missing.
+#[must_use]
+pub fn missing_source_reason(path: &Path) -> Option<String> {
+    (!path.exists()).then(|| format!("source does not exist: {}", path.display()))
+}
+
+/// Prepare a target for replacement by creating its parent and removing any
+/// existing file, symlink, or empty directory.
+///
+/// # Errors
+///
+/// Returns an error if the parent directory cannot be created or the existing
+/// target cannot be removed.
+pub fn prepare_target(path: &Path) -> Result<()> {
+    ensure_parent_dir(path)?;
+    remove_existing(path)
+}
+
+/// Read a file as bytes with consistent path context.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read.
+pub fn read_bytes(path: &Path) -> Result<Vec<u8>> {
+    std::fs::read(path).with_context(|| format!("read {}", path.display()))
+}
+
+/// Read a UTF-8 file with consistent path context.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read as a string.
+pub fn read_string(path: &Path) -> Result<String> {
+    std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))
+}
+
+/// Write file content with consistent path context.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be written.
+pub fn write(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
+    std::fs::write(path, content).with_context(|| format!("write {}", path.display()))
+}
+
+/// Copy a file with consistent path context.
+///
+/// # Errors
+///
+/// Returns an error if the source cannot be copied to the destination.
+pub fn copy_file(source: &Path, target: &Path) -> Result<u64> {
+    std::fs::copy(source, target)
+        .with_context(|| format!("copy {} to {}", source.display(), target.display()))
+}
+
+/// Remove a file with consistent path context.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be removed.
+pub fn remove_file(path: &Path) -> Result<()> {
+    std::fs::remove_file(path).with_context(|| format!("remove {}", path.display()))
+}
+
 /// Canonicalize a path, stripping the Windows extended-length `\\?\` prefix.
 ///
 /// On Windows, [`std::fs::canonicalize`] returns paths prefixed with `\\?\`,

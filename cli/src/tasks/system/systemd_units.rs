@@ -5,11 +5,10 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::config::systemd_units::SystemdUnit;
-use crate::platform::Platform;
 use crate::resources::systemd_unit::SystemdUnitResource;
 use crate::tasks::{
-    Context, Domain, ExecutionPolicy, ProcessOpts, Task, TaskPhase, TaskResult, process_resources,
-    task_deps,
+    Context, Domain, ExecutionPolicy, PlatformCapability, ProcessOpts, Task, TaskPhase, TaskResult,
+    process_resources, task_deps,
 };
 
 /// Enable and start systemd units.
@@ -33,7 +32,7 @@ impl Task for ConfigureSystemd {
 
     fn execution_policies(&self) -> &[ExecutionPolicy] {
         const POLICIES: &[ExecutionPolicy] = &[
-            ExecutionPolicy::PlatformSupported("systemd", Platform::supports_systemd),
+            PlatformCapability::Systemd.policy(),
             ExecutionPolicy::RequiresElevation,
         ];
         POLICIES

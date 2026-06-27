@@ -50,31 +50,34 @@ pub fn validate(
 ) -> Vec<ValidationWarning> {
     use super::helpers::validation::{Validator, check};
 
-    let mut v = Validator::new("systemd-units.toml");
-    v.warn_if(
-        !units.is_empty() && !platform.supports_systemd(),
-        "systemd units",
-        "systemd units defined but platform does not support systemd",
-    );
-    v.check_each(units, |u| &u.name, |u| {
-        // Note: systemd unit extensions are case-sensitive on Linux
-        #[allow(clippy::case_sensitive_file_extension_comparisons, reason = "extensions are ASCII-only")]
-        let has_valid_ext = VALID_UNIT_EXTENSIONS
-            .iter()
-            .any(|ext| u.name.ends_with(ext));
-        [
-            check(u.name.trim().is_empty(), "unit name is empty"),
-            check(
-                !matches!(u.scope.as_str(), "user" | "system"),
-                "unit scope should be 'user' or 'system'",
-            ),
-            check(
-                !has_valid_ext,
-                "unit name should end with a valid systemd extension (.service, .timer, .socket, etc.)",
-            ),
-        ]
-    })
-    .finish()
+    Validator::new(super::SYSTEMD_UNITS_TOML)
+        .warn_if(
+            !units.is_empty() && !platform.supports_systemd(),
+            "systemd units",
+            "systemd units defined but platform does not support systemd",
+        )
+        .check_each(units, |u| &u.name, |u| {
+            // Note: systemd unit extensions are case-sensitive on Linux
+            #[allow(
+                clippy::case_sensitive_file_extension_comparisons,
+                reason = "extensions are ASCII-only"
+            )]
+            let has_valid_ext = VALID_UNIT_EXTENSIONS
+                .iter()
+                .any(|ext| u.name.ends_with(ext));
+            [
+                check(u.name.trim().is_empty(), "unit name is empty"),
+                check(
+                    !matches!(u.scope.as_str(), "user" | "system"),
+                    "unit scope should be 'user' or 'system'",
+                ),
+                check(
+                    !has_valid_ext,
+                    "unit name should end with a valid systemd extension (.service, .timer, .socket, etc.)",
+                ),
+            ]
+        })
+        .finish()
 }
 
 #[cfg(test)]
@@ -87,7 +90,8 @@ pub fn validate(
 mod tests {
     use super::*;
     use crate::config::category_matcher::Category;
-    use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
+    use crate::config::test_helpers::write_temp_toml;
+    use crate::config::test_load_missing_returns_empty;
 
     #[test]
     fn load_base_units() {
@@ -128,10 +132,7 @@ units = [{ name = "some-daemon.service", scope = "system" }]
         assert_eq!(units[0].scope, "system");
     }
 
-    #[test]
-    fn load_missing_file_returns_empty() {
-        assert_load_missing_returns_empty(load);
-    }
+    test_load_missing_returns_empty!(load);
 
     #[test]
     fn validate_detects_invalid_extension() {

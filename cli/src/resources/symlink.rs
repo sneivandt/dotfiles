@@ -82,11 +82,11 @@ impl Resource for SymlinkResource {
         // the source into place — the wrong thing to do for a transient
         // stat failure).  A missing target is fine: we still materialize so
         // the user retains the file/directory after uninstall.
-        match self.target.symlink_metadata() {
-            Ok(meta) if is_link_like(&meta) => {
+        match crate::fs::symlink_metadata_optional(&self.target, "stat target")? {
+            Some(meta) if is_link_like(&meta) => {
                 // Proceed with the normal materialize-then-remove path below.
             }
-            Ok(_) => {
+            Some(_) => {
                 // Target exists but is not a symlink: refuse to overwrite to
                 // protect user data that replaced the managed symlink.
                 return Ok(ResourceChange::Skipped {
@@ -96,15 +96,10 @@ impl Resource for SymlinkResource {
                     ),
                 });
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            None => {
                 // Target already absent: still materialize source content into
                 // place so the user ends up with the real file/directory after
                 // uninstall, matching the behaviour when the symlink is present.
-            }
-            Err(e) => {
-                return Err(anyhow::Error::new(e)
-                    .context(format!("stat target: {}", self.target.display()))
-                    .into());
             }
         }
 
@@ -129,22 +124,17 @@ impl IntrinsicState for SymlinkResource {
             });
         }
 
-        // Check if source exists
-        if !self.source.exists() {
-            return Ok(ResourceState::Invalid {
-                reason: format!("source does not exist: {}", self.source.display()),
-            });
+        if let Some(reason) = crate::fs::missing_source_reason(&self.source) {
+            return Ok(ResourceState::Invalid { reason });
         }
 
         // Check if symlink already points to the correct source
         std::fs::read_link(&self.target).map_or_else(
-            |_| match self.target.symlink_metadata() {
-                Ok(_) => Ok(ResourceState::Incorrect {
+            |_| match crate::fs::symlink_metadata_optional(&self.target, "stat target")? {
+                Some(_) => Ok(ResourceState::Incorrect {
                     current: "target is a regular file or dangling symlink".to_string(),
                 }),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ResourceState::Missing),
-                Err(e) => Err(anyhow::Error::new(e)
-                    .context(format!("stat target: {}", self.target.display()))),
+                None => Ok(ResourceState::Missing),
             },
             |existing| {
                 if paths_equal(&existing, &self.source) {
@@ -187,17 +177,16 @@ fn sibling_temp_path(target: &Path, suffix: &str) -> PathBuf {
 /// the temp file into place.
 fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
     let tmp = sibling_temp_path(target, ".dotfiles_tmp");
-    std::fs::copy(source, &tmp)
-        .with_context(|| format!("copy {} to {}", source.display(), tmp.display()))?;
+    crate::fs::copy_file(source, &tmp)?;
 
     let mut guard = crate::fs::TempPath::new(tmp.clone());
 
-    match target.symlink_metadata() {
-        Ok(meta) if is_link_like(&meta) => {
+    match crate::fs::symlink_metadata_optional(target, "stat target")? {
+        Some(meta) if is_link_like(&meta) => {
             remove_symlink(target)
                 .with_context(|| format!("remove symlink: {}", target.display()))?;
         }
-        Ok(_) => {
+        Some(_) => {
             // Target exists but is not a symlink — refuse to overwrite to
             // prevent data loss.
             return Err(anyhow::anyhow!(
@@ -205,12 +194,8 @@ fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
                 target.display()
             ));
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+        None => {
             // Target is absent; nothing to remove before rename.
-        }
-        Err(e) => {
-            return Err(anyhow::Error::new(e))
-                .with_context(|| format!("stat {}", target.display()));
         }
     }
 
@@ -232,12 +217,12 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
     crate::fs::copy_dir_recursive(source, &tmp, false)
         .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;
 
-    match target.symlink_metadata() {
-        Ok(meta) if is_link_like(&meta) => {
+    match crate::fs::symlink_metadata_optional(target, "stat target")? {
+        Some(meta) if is_link_like(&meta) => {
             remove_symlink(target)
                 .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
         }
-        Ok(_) => {
+        Some(_) => {
             // Target exists but is not a symlink — refuse to overwrite to
             // prevent data loss.
             return Err(anyhow::anyhow!(
@@ -245,12 +230,8 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
                 target.display()
             ));
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+        None => {
             // Target is absent; nothing to remove before rename.
-        }
-        Err(e) => {
-            return Err(anyhow::Error::new(e))
-                .with_context(|| format!("stat {}", target.display()));
         }
     }
 
@@ -282,13 +263,8 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
 }
 
 fn remove_stale_temp_dir(tmp: &Path) -> Result<()> {
-    let meta = match tmp.symlink_metadata() {
-        Ok(meta) => meta,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => {
-            return Err(anyhow::Error::new(e))
-                .with_context(|| format!("stat temp path: {}", tmp.display()));
-        }
+    let Some(meta) = crate::fs::symlink_metadata_optional(tmp, "stat temp path")? else {
+        return Ok(());
     };
 
     if meta.file_type().is_symlink() || !meta.is_dir() {

@@ -2,9 +2,8 @@
 
 use std::sync::Arc;
 
-use crate::platform::Platform;
 use crate::resources::shell::DefaultShellResource;
-use crate::tasks::{Domain, ExecutionPolicy, ProcessOpts, TaskPhase, resource_task};
+use crate::tasks::{Domain, PlatformCapability, ProcessOpts, TaskPhase, resource_task};
 
 resource_task! {
     /// Configure the default shell to zsh.
@@ -12,7 +11,7 @@ resource_task! {
         name: "Configure default shell",
         phase: TaskPhase::Provision,
         domain: Domain::Shell,
-        policy: [ExecutionPolicy::PlatformSupported("Linux shell configuration", Platform::is_linux)],
+        policy: [PlatformCapability::LinuxShell.policy()],
         deps: [crate::tasks::packages::InstallPackages],
         guard: |ctx| {
             ctx.platform.is_linux() && ctx.executor.which("zsh") && !ctx.is_ci

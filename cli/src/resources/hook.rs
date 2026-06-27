@@ -1,5 +1,5 @@
 //! Git hook resource.
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use std::path::PathBuf;
 
 use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
@@ -30,19 +30,17 @@ impl Resource for HookFileResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        crate::fs::ensure_parent_dir(&self.target)?;
-        crate::fs::remove_existing(&self.target)?;
+        crate::fs::prepare_target(&self.target)?;
 
-        // Copy file
-        std::fs::copy(&self.source, &self.target)
-            .with_context(|| format!("copy hook to {}", self.target.display()))?;
+        crate::fs::copy_file(&self.source, &self.target)?;
 
         // Make executable on Unix
         #[cfg(unix)]
         {
+            use anyhow::Context as _;
             use std::os::unix::fs::PermissionsExt;
             let mut perms = std::fs::metadata(&self.target)
-                .with_context(|| format!("reading hook metadata: {}", self.target.display()))?
+                .with_context(|| format!("read hook metadata: {}", self.target.display()))?
                 .permissions();
             perms.set_mode(0o755);
             std::fs::set_permissions(&self.target, perms)
@@ -53,44 +51,37 @@ impl Resource for HookFileResource {
     }
 
     fn remove(&self) -> ResourceResult<ResourceChange> {
-        match self.target.symlink_metadata() {
-            Ok(_) => {
-                std::fs::remove_file(&self.target)
-                    .with_context(|| format!("remove hook: {}", self.target.display()))?;
+        match crate::fs::symlink_metadata_optional(&self.target, "stat hook")? {
+            Some(_) => {
+                crate::fs::remove_file(&self.target)?;
                 Ok(ResourceChange::Applied)
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                Ok(ResourceChange::AlreadyCorrect)
-            }
-            Err(error) => Err(anyhow::Error::new(error)
-                .context(format!("stat hook: {}", self.target.display()))
-                .into()),
+            None => Ok(ResourceChange::AlreadyCorrect),
         }
     }
 }
 
 impl IntrinsicState for HookFileResource {
     fn current_state(&self) -> Result<ResourceState> {
-        if !self.source.exists() {
-            return Ok(ResourceState::Invalid {
-                reason: format!("source does not exist: {}", self.source.display()),
-            });
+        if let Some(reason) = crate::fs::missing_source_reason(&self.source) {
+            return Ok(ResourceState::Invalid { reason });
         }
 
         // Detect broken symlinks at the target location
-        if !self.target.exists() && self.target.symlink_metadata().is_ok() {
-            return Ok(ResourceState::Incorrect {
-                current: "broken symlink".to_string(),
-            });
-        }
-
-        if !self.target.exists() {
-            return Ok(ResourceState::Missing);
+        match crate::fs::symlink_metadata_optional(&self.target, "stat target")? {
+            Some(_) if !self.target.exists() => {
+                return Ok(ResourceState::Incorrect {
+                    current: "broken symlink".to_string(),
+                });
+            }
+            None => return Ok(ResourceState::Missing),
+            Some(_) => {}
         }
 
         // On Unix, verify the installed hook has the executable bit set
         #[cfg(unix)]
         {
+            use anyhow::Context as _;
             use std::os::unix::fs::PermissionsExt;
             let mode = std::fs::metadata(&self.target)
                 .with_context(|| format!("read target metadata: {}", self.target.display()))?
@@ -104,10 +95,8 @@ impl IntrinsicState for HookFileResource {
         }
 
         // Compare file contents
-        let src_content = std::fs::read(&self.source)
-            .with_context(|| format!("read source: {}", self.source.display()))?;
-        let dst_content = std::fs::read(&self.target)
-            .with_context(|| format!("read target: {}", self.target.display()))?;
+        let src_content = crate::fs::read_bytes(&self.source)?;
+        let dst_content = crate::fs::read_bytes(&self.target)?;
 
         if src_content == dst_content {
             Ok(ResourceState::Correct)

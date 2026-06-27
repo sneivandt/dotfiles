@@ -82,6 +82,22 @@ pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
     }
 }
 
+/// Run the shared self-update preflight and re-exec if the binary changed.
+///
+/// # Errors
+///
+/// Returns an error if the repository root cannot be resolved or the pre-update
+/// check fails.
+pub(crate) fn prepare_self_update(global: &GlobalOpts, log: &Arc<Logger>) -> Result<()> {
+    let root = install::resolve_root(global)?;
+    if std::env::var_os(REEXEC_GUARD_VAR).is_none()
+        && tasks::core::self_update::pre_update(&root, &**log, global.dry_run)?
+    {
+        re_exec(&root, &**log);
+    }
+    Ok(())
+}
+
 #[cfg(unix)]
 fn re_exec_path(root: &std::path::Path) -> std::path::PathBuf {
     root.join("bin").join("dotfiles")
@@ -598,20 +614,8 @@ fn load_config(
         debug_count(*count, label);
     }
 
-    // Validate configuration and display warnings
     let warnings = config.validate(platform);
-    if !warnings.is_empty() {
-        log.warn(&format!(
-            "found {} configuration warning(s):",
-            warnings.len()
-        ));
-        for warning in &warnings {
-            log.warn(&format!(
-                "  {} [{}]: {}",
-                warning.source, warning.item, warning.message
-            ));
-        }
-    }
+    crate::config::helpers::validation::display_validation_warnings(&warnings, log);
 
     Ok(config)
 }
@@ -761,14 +765,9 @@ pub fn run_tasks_to_completion<'a>(
             let reason = "sudo credentials unavailable";
             phase_tasks.retain(|task| {
                 if task.requires_elevation(ctx) {
-                    log.record_task(
+                    log.record_task_outcome(
                         task.name(),
                         task.domain(),
-                        crate::logging::TaskStatus::Skipped,
-                        Some(reason),
-                    );
-                    log.emit_task_result(
-                        task.name(),
                         crate::logging::TaskStatus::Skipped,
                         Some(reason),
                     );

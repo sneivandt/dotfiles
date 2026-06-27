@@ -6,14 +6,13 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 
 use crate::config::packages::Package;
-use crate::platform::Platform;
+use crate::resources::Resource as _;
 use crate::resources::package::{
     PackageManager, PackageResource, batch_install_packages, get_installed_packages,
 };
-use crate::resources::{BorrowedStateProvider, Resource as _};
 use crate::tasks::{
-    Context, Domain, ExecutionPolicy, ProcessOpts, Task, TaskPhase, TaskResult, TaskStats,
-    process_resources_with_provider, task_deps,
+    Context, Domain, ExecutionPolicy, PlatformCapability, ProcessOpts, Task, TaskPhase, TaskResult,
+    TaskStats, process_resources_with_borrowed_cache, task_deps,
 };
 
 /// Default number of parallel jobs for makepkg if nproc detection fails.
@@ -154,7 +153,7 @@ impl Task for InstallAurPackages {
 
     fn execution_policies(&self) -> &[ExecutionPolicy] {
         const POLICIES: &[ExecutionPolicy] = &[
-            ExecutionPolicy::PlatformSupported("AUR", Platform::supports_aur),
+            PlatformCapability::Aur.policy(),
             ExecutionPolicy::RequiresElevation,
         ];
         POLICIES
@@ -214,7 +213,7 @@ impl Task for InstallParu {
 
     fn execution_policies(&self) -> &[ExecutionPolicy] {
         const POLICIES: &[ExecutionPolicy] = &[
-            ExecutionPolicy::PlatformSupported("pacman", Platform::uses_pacman),
+            PlatformCapability::Pacman.policy(),
             ExecutionPolicy::RequiresElevation,
         ];
         POLICIES
@@ -386,13 +385,15 @@ fn individual_install(
     let resources = packages
         .iter()
         .map(|pkg| PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor)));
-    let provider = BorrowedStateProvider::new(
+    process_resources_with_borrowed_cache(
+        ctx,
+        resources,
         installed,
         |resource: &PackageResource, installed: &HashSet<String>| {
             Ok(resource.state_from_installed(installed))
         },
-    );
-    process_resources_with_provider(ctx, resources, &provider, &ProcessOpts::lenient("install"))
+        &ProcessOpts::lenient("install"),
+    )
 }
 
 /// Process a list of packages by querying installed state once and dispatching

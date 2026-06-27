@@ -73,9 +73,10 @@ mod types;
 pub use catalog::{all_install_tasks, all_uninstall_tasks};
 pub use execute::execute;
 pub(crate) use macros::{
-    process_config_resources, process_config_resources_with_provider, resource_task, task_deps,
+    execution_policies_impl, process_config_resources, process_config_resources_with_provider,
+    resource_task, task_deps,
 };
-pub use types::{Domain, ExecutionPolicy, TaskId, TaskPhase};
+pub use types::{Domain, ExecutionPolicy, PlatformCapability, TaskId, TaskPhase};
 
 // Re-export engine types so downstream `use super::` and `use crate::tasks::`
 // continue to work unchanged.
@@ -98,6 +99,27 @@ use anyhow::Result;
 use execute::evaluate_policy_decision;
 
 const ALWAYS_POLICY: &[ExecutionPolicy] = &[ExecutionPolicy::Always];
+
+/// Process resources whose current state is derived from a borrowed cache.
+///
+/// # Errors
+///
+/// Returns an error if provider-backed resource processing fails.
+pub(crate) fn process_resources_with_borrowed_cache<R, Cache, State>(
+    ctx: &Context,
+    resources: impl IntoIterator<Item = R>,
+    cache: &Cache,
+    state: State,
+    opts: &ProcessOpts,
+) -> Result<TaskResult>
+where
+    R: crate::resources::Resource + Send,
+    Cache: Sync + ?Sized,
+    State: for<'a> Fn(&'a R, &Cache) -> Result<crate::resources::ResourceState> + Sync,
+{
+    let provider = crate::resources::BorrowedStateProvider::new(cache, state);
+    process_resources_with_provider(ctx, resources, &provider, opts)
+}
 
 /// A named, executable task.
 ///

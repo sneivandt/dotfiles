@@ -1,8 +1,7 @@
 //! Task: apply Windows registry entries.
 
-use crate::platform::Platform;
 use crate::resources::registry::{RegistryResource, batch_check_values};
-use crate::tasks::{Domain, ExecutionPolicy, ProcessOpts, TaskPhase, resource_task};
+use crate::tasks::{Domain, PlatformCapability, ProcessOpts, TaskPhase, resource_task};
 
 resource_task! {
     /// Apply Windows registry settings.
@@ -10,7 +9,7 @@ resource_task! {
         name: "Configure registry settings",
         phase: TaskPhase::Provision,
         domain: Domain::System,
-        policy: [ExecutionPolicy::PlatformSupported("Windows registry", Platform::has_registry)],
+        policy: [PlatformCapability::WindowsRegistry.policy()],
         guard: |ctx| ctx.platform.has_registry(),
         items: |ctx| ctx.config_read().registry.clone(),
         cache: |resources, _ctx| batch_check_values(resources),

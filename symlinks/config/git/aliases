@@ -65,7 +65,7 @@
 
   # push
   ps  = push
-  psf = push --force
+  psf = push --force-with-lease
 
   # rebase
   rb  = rebase

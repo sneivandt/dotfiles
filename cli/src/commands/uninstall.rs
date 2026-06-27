@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use crate::cli::{GlobalOpts, UninstallOpts};
 use crate::logging::Logger;
-use crate::tasks;
 
 /// Run the uninstall command.
 ///
@@ -17,18 +16,10 @@ pub fn run(
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
-    // Self-update before the task graph.
-    // The guard variable prevents an infinite re-exec loop if the new binary
-    // also triggers a self-update.
-    let root = super::install::resolve_root(global)?;
-    if std::env::var_os(super::REEXEC_GUARD_VAR).is_none()
-        && tasks::core::self_update::pre_update(&root, &**log, global.dry_run)?
-    {
-        super::re_exec(&root, &**log);
-    }
+    super::prepare_self_update(global, log)?;
 
     let runner = super::CommandRunner::new(global, log, token)?;
-    let tasks = tasks::all_uninstall_tasks();
+    let tasks = crate::tasks::all_uninstall_tasks();
     runner.run(tasks.iter().map(Box::as_ref))
 }
 

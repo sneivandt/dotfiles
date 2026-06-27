@@ -5,11 +5,11 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::config::category_matcher::Category;
-use crate::platform::Platform;
 use crate::resources::IntrinsicState;
 use crate::resources::pam::PamConfigResource;
 use crate::tasks::{
-    Context, Domain, ExecutionPolicy, ProcessOpts, Task, TaskPhase, TaskResult, process_resources,
+    Context, Domain, ExecutionPolicy, PlatformCapability, ProcessOpts, Task, TaskPhase, TaskResult,
+    process_resources,
 };
 
 /// The PAM service name to configure on Arch Linux desktop systems.
@@ -67,7 +67,7 @@ impl Task for ConfigurePam {
 
     fn execution_policies(&self) -> &[ExecutionPolicy] {
         const POLICIES: &[ExecutionPolicy] = &[
-            ExecutionPolicy::PlatformSupported("Arch Linux", Platform::is_arch_linux),
+            PlatformCapability::ArchLinux.policy(),
             ExecutionPolicy::RequiresElevation,
         ];
         POLICIES

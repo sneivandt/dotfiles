@@ -1,3 +1,16 @@
 #!/bin/sh
 
-export PATH="$HOME/.local/bin:$HOME/.bin:$HOME/src/go/bin:$HOME/.cargo/bin:$PATH"
+_path_prepend() {
+  case ":$PATH:" in
+    *":$1:"*) ;;
+    *) PATH="$1${PATH:+:$PATH}" ;;
+  esac
+}
+
+_path_prepend "$HOME/.cargo/bin"
+_path_prepend "$HOME/src/go/bin"
+_path_prepend "$HOME/.bin"
+_path_prepend "$HOME/.local/bin"
+export PATH
+
+unset -f _path_prepend

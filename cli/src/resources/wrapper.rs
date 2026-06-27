@@ -3,7 +3,7 @@
 //! Installs a small script on the user's `PATH` (`~/.local/bin/dotfiles` on
 //! Unix and `~/.local/bin/dotfiles.cmd` on Windows) that delegates to the
 //! repository's wrapper script so `dotfiles` can be invoked from anywhere.
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
@@ -102,12 +102,7 @@ impl WrapperResource {
     }
 
     fn target_metadata(&self) -> Result<Option<std::fs::Metadata>> {
-        match std::fs::symlink_metadata(&self.target) {
-            Ok(metadata) => Ok(Some(metadata)),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(anyhow::Error::new(error)
-                .context(format!("stat wrapper {}", self.target.display()))),
-        }
+        crate::fs::symlink_metadata_optional(&self.target, "stat wrapper")
     }
 }
 
@@ -129,9 +124,7 @@ impl Resource for WrapperResource {
 
         if let Some(metadata) = self.target_metadata()? {
             if metadata.file_type().is_symlink() {
-                std::fs::remove_file(&self.target).with_context(|| {
-                    format!("remove stale wrapper symlink {}", self.target.display())
-                })?;
+                crate::fs::remove_file(&self.target)?;
             } else if metadata.is_dir() {
                 return Err(crate::error::ResourceError::conflicting_state(
                     self.description(),
@@ -141,11 +134,11 @@ impl Resource for WrapperResource {
             }
         }
 
-        std::fs::write(&self.target, &self.content)
-            .with_context(|| format!("write wrapper to {}", self.target.display()))?;
+        crate::fs::write(&self.target, &self.content)?;
 
         #[cfg(unix)]
         {
+            use anyhow::Context as _;
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&self.target, std::fs::Permissions::from_mode(0o755))
                 .with_context(|| format!("chmod 755 {}", self.target.display()))?;
@@ -164,8 +157,7 @@ impl Resource for WrapperResource {
                 ))
             }
             Some(_) => {
-                std::fs::remove_file(&self.target)
-                    .with_context(|| format!("remove wrapper {}", self.target.display()))?;
+                crate::fs::remove_file(&self.target)?;
                 Ok(ResourceChange::Applied)
             }
             None => Ok(ResourceChange::AlreadyCorrect),
@@ -193,8 +185,7 @@ impl IntrinsicState for WrapperResource {
             });
         }
 
-        let current = std::fs::read_to_string(&self.target)
-            .with_context(|| format!("read wrapper at {}", self.target.display()))?;
+        let current = crate::fs::read_string(&self.target)?;
 
         if current == self.content {
             Ok(ResourceState::Correct)

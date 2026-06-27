@@ -2,8 +2,9 @@
 
 use anyhow::Result;
 
-use crate::platform::Platform;
-use crate::tasks::{Context, Domain, ExecutionPolicy, Task, TaskPhase, TaskResult};
+use crate::tasks::{
+    Context, Domain, ExecutionPolicy, PlatformCapability, Task, TaskPhase, TaskResult,
+};
 
 /// The single setting this task enforces.
 const DESIRED_KEY: &str = "generateResolvConf = true";
@@ -38,7 +39,7 @@ impl Task for InstallWslConf {
 
     fn execution_policies(&self) -> &[ExecutionPolicy] {
         const POLICIES: &[ExecutionPolicy] = &[
-            ExecutionPolicy::PlatformSupported("WSL", Platform::is_wsl),
+            PlatformCapability::Wsl.policy(),
             ExecutionPolicy::RequiresElevation,
         ];
         POLICIES

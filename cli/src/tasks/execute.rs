@@ -17,20 +17,15 @@ pub(super) enum PolicyDecision {
     NotApplicable(String),
 }
 
-/// Record and optionally emit a compact task-result line.
-fn record(ctx: &Context, name: &str, domain: Domain, status: TaskStatus, msg: Option<&str>) {
-    ctx.log.record_task(name, domain, status, msg);
-    if !ctx.log.is_verbose() {
-        ctx.log.emit_task_result(name, status, msg);
-    }
-}
-
 pub(super) fn evaluate_policy_decision(
     policies: &[ExecutionPolicy],
     ctx: &Context,
 ) -> Option<PolicyDecision> {
     for policy in policies {
         match *policy {
+            // Elevation is evaluated in Task::requires_elevation() after
+            // platform support and task applicability are known; at execution
+            // time this policy is only a declaration.
             ExecutionPolicy::Always | ExecutionPolicy::RequiresElevation => {}
             ExecutionPolicy::PlatformSupported(capability, is_supported) => {
                 if !is_supported(&ctx.platform) {
@@ -53,12 +48,10 @@ fn record_policy_decision(ctx: &Context, name: &str, domain: Domain, decision: P
     match decision {
         PolicyDecision::NotApplicable(reason) => {
             ctx.log.diag_task(DiagEvent::TaskSkip, name, &reason);
-            if ctx.log.debug_enabled() {
-                ctx.log.stage(name);
-            }
+            ctx.log.debug_stage(name);
             ctx.debug_fmt(|| format!("not applicable: {reason}"));
             ctx.log
-                .record_task(name, domain, TaskStatus::NotApplicable, None);
+                .record_task_outcome(name, domain, TaskStatus::NotApplicable, None);
         }
     }
 }
@@ -87,13 +80,11 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
     if !task.should_run(ctx) {
         ctx.log
             .diag_task(DiagEvent::TaskSkip, task.name(), "not applicable");
-        if ctx.log.debug_enabled() {
-            ctx.log.stage(task.name());
-        }
+        ctx.log.debug_stage(task.name());
         ctx.log
             .debug(&format!("skipping task: {} (not applicable)", task.name()));
         ctx.log
-            .record_task(task.name(), domain, TaskStatus::NotApplicable, None);
+            .record_task_outcome(task.name(), domain, TaskStatus::NotApplicable, None);
         return;
     }
 
@@ -109,18 +100,17 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 /// interruptions as real failures.
 fn record_run_outcome(task: &dyn Task, ctx: &Context, domain: Domain) {
     let rec = |status: TaskStatus, msg: Option<&str>| {
-        record(ctx, task.name(), domain, status, msg);
+        ctx.log
+            .record_task_outcome(task.name(), domain, status, msg);
     };
     match task.run_if_applicable(ctx) {
         Ok(None) => {
             ctx.log
                 .diag_task(DiagEvent::TaskSkip, task.name(), "nothing configured");
-            if ctx.log.debug_enabled() {
-                ctx.log.stage(task.name());
-            }
+            ctx.log.debug_stage(task.name());
             ctx.log.debug("nothing configured");
             ctx.log
-                .record_task(task.name(), domain, TaskStatus::NotApplicable, None);
+                .record_task_outcome(task.name(), domain, TaskStatus::NotApplicable, None);
         }
         Ok(Some(result)) => match result {
             TaskResult::Ok => {
@@ -131,7 +121,7 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context, domain: Domain) {
                 ctx.log.diag_task(DiagEvent::TaskSkip, task.name(), &reason);
                 ctx.debug_fmt(|| format!("not applicable: {reason}"));
                 ctx.log
-                    .record_task(task.name(), domain, TaskStatus::NotApplicable, None);
+                    .record_task_outcome(task.name(), domain, TaskStatus::NotApplicable, None);
             }
             TaskResult::Skipped(reason) => {
                 ctx.log.diag_task(DiagEvent::TaskSkip, task.name(), &reason);

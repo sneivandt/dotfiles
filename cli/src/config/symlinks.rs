@@ -362,7 +362,7 @@ fn target_key(symlink: &Symlink) -> String {
 pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<ValidationWarning> {
     use super::helpers::validation::{Validator, check};
 
-    Validator::new("symlinks.toml")
+    Validator::new(super::SYMLINKS_TOML)
         .check_each(
             symlinks,
             |s| &s.source,
@@ -413,7 +413,8 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<ValidationWarning> {
 mod tests {
     use super::*;
     use crate::config::category_matcher::Category;
-    use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
+    use crate::config::test_helpers::write_temp_toml;
+    use crate::config::test_load_missing_returns_empty;
 
     #[test]
     fn load_base_symlinks() {
@@ -464,10 +465,7 @@ symlinks = [
         assert_eq!(symlinks[1].target.as_deref(), Some(".custom-name"));
     }
 
-    #[test]
-    fn load_missing_file_returns_empty() {
-        assert_load_missing_returns_empty(load);
-    }
+    test_load_missing_returns_empty!(load);
 
     #[test]
     fn validate_detects_missing_source() {

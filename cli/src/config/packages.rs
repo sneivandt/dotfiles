@@ -45,7 +45,7 @@ pub fn validate(
 ) -> Vec<ValidationWarning> {
     use super::helpers::validation::{Validator, check};
 
-    Validator::new("packages.toml")
+    Validator::new(super::PACKAGES_TOML)
         .check_each(
             packages,
             |pkg| &pkg.name,
@@ -72,7 +72,8 @@ pub fn validate(
 mod tests {
     use super::*;
     use crate::config::category_matcher::Category;
-    use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
+    use crate::config::test_helpers::write_temp_toml;
+    use crate::config::test_load_missing_returns_empty;
 
     #[test]
     fn load_filters_by_category() {
@@ -105,10 +106,7 @@ packages = [{ name = "paru-bin", aur = true }, { name = "yay", aur = true }]
         assert!(packages[1].is_aur);
     }
 
-    #[test]
-    fn load_missing_file_returns_empty() {
-        assert_load_missing_returns_empty(load);
-    }
+    test_load_missing_returns_empty!(load);
 
     #[test]
     fn validate_warns_aur_on_non_arch() {

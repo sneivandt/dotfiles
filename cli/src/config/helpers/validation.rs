@@ -1,5 +1,6 @@
 //! Declarative validation helpers for configuration items.
 use crate::config::ValidationWarning;
+use crate::logging::Output;
 
 /// Builder for collecting [`ValidationWarning`]s against a single config source.
 ///
@@ -38,15 +39,17 @@ impl Validator {
     }
 
     /// Push a warning if the condition is `true`.
+    #[must_use]
     pub(crate) fn warn_if(
-        &mut self,
+        mut self,
         condition: bool,
         item: impl Into<String>,
         message: impl Into<String>,
-    ) {
+    ) -> Self {
         if condition {
             self.warn(item, message);
         }
+        self
     }
 
     /// Validate each item in a slice, running `check_fn` per item.
@@ -92,6 +95,24 @@ impl Validator {
 #[must_use]
 pub(crate) fn check(condition: bool, message: impl Into<String>) -> Option<String> {
     condition.then(|| message.into())
+}
+
+/// Display validation warnings using the standard command-line format.
+pub(crate) fn display_validation_warnings(warnings: &[ValidationWarning], log: &dyn Output) {
+    if warnings.is_empty() {
+        return;
+    }
+
+    log.warn(&format!(
+        "found {} configuration warning(s):",
+        warnings.len()
+    ));
+    for warning in warnings {
+        log.warn(&format!(
+            "  {} [{}]: {}",
+            warning.source, warning.item, warning.message
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -141,10 +162,9 @@ mod tests {
 
     #[test]
     fn warn_if_records_only_true_conditions() {
-        let mut validator = Validator::new("example.toml");
-
-        validator.warn_if(false, "item-a", "should not appear");
-        validator.warn_if(true, "item-b", "should appear");
+        let validator = Validator::new("example.toml")
+            .warn_if(false, "item-a", "should not appear")
+            .warn_if(true, "item-b", "should appear");
 
         assert_eq!(
             validator.finish(),

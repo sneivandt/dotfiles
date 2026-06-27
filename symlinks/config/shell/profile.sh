@@ -1,8 +1,10 @@
 #!/bin/sh
 
 # gpg
-GPG_TTY="$(tty)"
-export GPG_TTY
+if tty -s; then
+  GPG_TTY="$(tty)"
+  export GPG_TTY
+fi
 
 # xdg
 export XDG_CACHE_HOME="$HOME"/.cache

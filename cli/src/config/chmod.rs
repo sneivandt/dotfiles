@@ -26,32 +26,32 @@ pub fn validate(
     use super::helpers::validation::{Validator, check};
     use crate::resources::chmod::OctalMode;
 
-    let mut v = Validator::new("chmod.toml");
-    v.warn_if(
-        !entries.is_empty() && !platform.supports_chmod(),
-        "chmod entries",
-        "chmod entries defined but platform does not support chmod",
-    );
-    v.check_each(
-        entries,
-        |e| &e.path,
-        |e| {
-            [
-                OctalMode::parse(&e.mode).err(),
-                check(
-                    Path::new(&e.path).is_absolute() || e.path.starts_with('/'),
-                    "path should be relative to $HOME directory",
-                ),
-                check(
-                    Path::new(&e.path)
-                        .components()
-                        .any(|c| c == std::path::Component::ParentDir),
-                    "path must not contain '..' components",
-                ),
-            ]
-        },
-    )
-    .finish()
+    Validator::new(super::CHMOD_TOML)
+        .warn_if(
+            !entries.is_empty() && !platform.supports_chmod(),
+            "chmod entries",
+            "chmod entries defined but platform does not support chmod",
+        )
+        .check_each(
+            entries,
+            |e| &e.path,
+            |e| {
+                [
+                    OctalMode::parse(&e.mode).err(),
+                    check(
+                        Path::new(&e.path).is_absolute() || e.path.starts_with('/'),
+                        "path should be relative to $HOME directory",
+                    ),
+                    check(
+                        Path::new(&e.path)
+                            .components()
+                            .any(|c| c == std::path::Component::ParentDir),
+                        "path must not contain '..' components",
+                    ),
+                ]
+            },
+        )
+        .finish()
 }
 
 #[cfg(test)]
@@ -64,7 +64,8 @@ pub fn validate(
 mod tests {
     use super::*;
     use crate::config::category_matcher::Category;
-    use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
+    use crate::config::test_helpers::write_temp_toml;
+    use crate::config::test_load_missing_returns_empty;
 
     #[test]
     fn parse_chmod_entry() {
@@ -83,10 +84,7 @@ permissions = [
         assert_eq!(entries[1].mode, "755");
     }
 
-    #[test]
-    fn load_missing_file_returns_empty() {
-        assert_load_missing_returns_empty(load);
-    }
+    test_load_missing_returns_empty!(load);
 
     #[test]
     fn validate_detects_invalid_mode() {

@@ -3,12 +3,12 @@ use anyhow::Result;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::resources::PreloadedStateProvider;
 use crate::resources::vscode_extension::{
     VsCodeExtensionResource, find_code_command, get_installed_extensions,
 };
 use crate::tasks::{
-    Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, process_resources_with_provider,
+    Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult,
+    process_resources_with_borrowed_cache,
 };
 
 /// Install VS Code extensions.
@@ -52,16 +52,13 @@ impl Task for InstallVsCodeExtensions {
         let resources = extensions.iter().map(|ext| {
             VsCodeExtensionResource::new(ext.id.clone(), cmd.clone(), Arc::clone(&ctx.executor))
         });
-        let provider = PreloadedStateProvider::new(
-            installed,
+        process_resources_with_borrowed_cache(
+            ctx,
+            resources,
+            &installed,
             |resource: &VsCodeExtensionResource, installed: &HashSet<String>| {
                 Ok(resource.state_from_installed(installed))
             },
-        );
-        process_resources_with_provider(
-            ctx,
-            resources,
-            &provider,
             &ProcessOpts::install_missing("install"),
         )
     }

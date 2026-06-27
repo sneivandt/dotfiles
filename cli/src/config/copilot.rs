@@ -57,7 +57,7 @@ config_section!(field: "settings", ty: CopilotSetting);
 pub fn validate(settings: &[CopilotSetting]) -> Vec<ValidationWarning> {
     use super::helpers::validation::{Validator, check};
 
-    Validator::new("copilot.toml")
+    Validator::new(super::COPILOT_TOML)
         .check_each(
             settings,
             |setting| &setting.key,
@@ -84,7 +84,8 @@ pub fn validate(settings: &[CopilotSetting]) -> Vec<ValidationWarning> {
 mod tests {
     use super::*;
     use crate::config::category_matcher::Category;
-    use crate::config::test_helpers::{assert_load_missing_returns_empty, write_temp_toml};
+    use crate::config::test_helpers::write_temp_toml;
+    use crate::config::test_load_missing_returns_empty;
 
     #[test]
     fn load_base_settings() {
@@ -134,10 +135,7 @@ settings = [{ key = "model", value = "x" }]
         assert!(settings.is_empty());
     }
 
-    #[test]
-    fn load_missing_file_returns_empty() {
-        assert_load_missing_returns_empty(load);
-    }
+    test_load_missing_returns_empty!(load);
 
     // ------------------------------------------------------------------
     // validate

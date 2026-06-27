@@ -30,6 +30,20 @@ pub enum TaskStatus {
     Failed,
 }
 
+impl TaskStatus {
+    /// Icon and ANSI color used for compact status rendering.
+    #[must_use]
+    pub const fn icon_and_color(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            Self::Ok => Some(("\u{2713}", "\x1b[32m")),
+            Self::Skipped => Some(("\u{25cb}", "\x1b[33m")),
+            Self::Failed => Some(("\u{2717}", "\x1b[31m")),
+            Self::DryRun => Some(("~", "\x1b[35m")),
+            Self::NotApplicable => None,
+        }
+    }
+}
+
 /// User-facing output methods.
 ///
 /// This trait covers display-oriented logging: stage headers, informational
@@ -70,12 +84,8 @@ pub trait Output: Send + Sync {
     /// routes through [`always`](Self::always).  `NotApplicable` tasks are
     /// silently ignored.
     fn emit_task_result(&self, name: &str, status: TaskStatus, message: Option<&str>) {
-        let (icon, color) = match status {
-            TaskStatus::Ok => ("\u{2713}", "\x1b[32m"),
-            TaskStatus::Skipped => ("\u{25cb}", "\x1b[33m"),
-            TaskStatus::Failed => ("\u{2717}", "\x1b[31m"),
-            TaskStatus::DryRun => ("~", "\x1b[35m"),
-            TaskStatus::NotApplicable => return,
+        let Some((icon, color)) = status.icon_and_color() else {
+            return;
         };
         let suffix = message.map_or_else(String::new, |msg| format!(" \u{2014} {msg}"));
         self.task_result(&format!("{color}  {icon} {name}{suffix}\x1b[0m"));
@@ -89,6 +99,12 @@ pub trait Output: Send + Sync {
     /// DEBUG-capable file layer whenever logging is active.
     fn debug_enabled(&self) -> bool {
         tracing::dispatcher::has_been_set()
+    }
+    /// Emit a stage header only when debug logging is active.
+    fn debug_stage(&self, msg: &str) {
+        if self.debug_enabled() {
+            self.stage(msg);
+        }
     }
     /// Access the high-precision diagnostic log, if available.
     fn diagnostic(&self) -> Option<&DiagnosticLog> {
@@ -136,7 +152,21 @@ pub trait TaskRecorder: Send + Sync {
 /// A blanket implementation is provided for any type that implements both
 /// sub-traits, so concrete types only need to implement [`Output`] and
 /// [`TaskRecorder`].
-pub trait Log: Output + TaskRecorder {}
+pub trait Log: Output + TaskRecorder {
+    /// Record a task outcome and emit the compact non-verbose result line.
+    fn record_task_outcome(
+        &self,
+        name: &str,
+        domain: Domain,
+        status: TaskStatus,
+        message: Option<&str>,
+    ) {
+        self.record_task(name, domain, status, message);
+        if !self.is_verbose() {
+            self.emit_task_result(name, status, message);
+        }
+    }
+}
 
 impl<T: Output + TaskRecorder> Log for T {}
 

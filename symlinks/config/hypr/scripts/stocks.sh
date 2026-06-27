@@ -7,9 +7,9 @@ set -o nounset
 # Outputs Waybar JSON with Pango markup (price plus red/green % change).
 
 quotes='
-%5EGSPC|S&amp;P|
-MSFT|MSFT|$
-BTC-USD|BTC|$
+%5EGSPC|&#xf201;|
+MSFT|&#xf3ca;|$
+BTC-USD|&#xf15a;|$
 '
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/waybar-stocks"
 cache_file="$cache_dir/quotes-sp500-prices.json"

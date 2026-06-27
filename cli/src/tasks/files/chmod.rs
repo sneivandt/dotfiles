@@ -1,8 +1,7 @@
 //! Task: configure file permissions.
 
-use crate::platform::Platform;
 use crate::resources::chmod::ChmodResource;
-use crate::tasks::{Domain, ExecutionPolicy, ProcessOpts, TaskPhase, resource_task};
+use crate::tasks::{Domain, PlatformCapability, ProcessOpts, TaskPhase, resource_task};
 
 resource_task! {
     /// Configure file permissions from chmod.toml.
@@ -10,7 +9,7 @@ resource_task! {
         name: "Configure file permissions",
         phase: TaskPhase::Provision,
         domain: Domain::Files,
-        policy: [ExecutionPolicy::PlatformSupported("chmod", Platform::supports_chmod)],
+        policy: [PlatformCapability::Chmod.policy()],
         deps: [crate::tasks::files::symlinks::InstallSymlinks],
         guard: |ctx| ctx.platform.supports_chmod(),
         items: |ctx| ctx.config_read().chmod.clone(),

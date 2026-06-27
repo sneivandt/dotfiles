@@ -49,16 +49,7 @@ pub(crate) fn run_pipeline(
         log.always(&format!("\x1b[1mdotfiles\x1b[0m \x1b[2m{version}\x1b[0m"));
     }
 
-    // Self-update before the task graph — if the binary is replaced, re-exec
-    // so all tasks run with the updated code and config parsers.
-    // The guard variable prevents an infinite re-exec loop if the new binary
-    // also triggers a self-update.
-    let root = resolve_root(global)?;
-    if std::env::var_os(super::REEXEC_GUARD_VAR).is_none()
-        && tasks::core::self_update::pre_update(&root, &**log, global.dry_run)?
-    {
-        super::re_exec(&root, &**log);
-    }
+    super::prepare_self_update(global, log)?;
 
     let runner =
         super::CommandRunner::new(global, log, token)?.with_advance_versions(advance_versions);

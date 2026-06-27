@@ -153,5 +153,5 @@
     "workbench.iconTheme": "vs-seti",
     "workbench.startupEditor": "none",
     "workbench.tips.enabled": false,
-    "workbench.tree.enableStickyScroll": false,
+    "workbench.tree.enableStickyScroll": false
 }

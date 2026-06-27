@@ -10,7 +10,7 @@ local function bootstrap_error(message, output)
   error("lazy.nvim bootstrap failed", 0)
 end
 
-if not vim.loop.fs_stat(lazypath) then
+if not vim.uv.fs_stat(lazypath) then
   -- Pin to a specific commit for security and reproducibility
   -- Update this commit hash periodically to get security fixes
   local lazy_commit = "85c7ff3711b730b4030d03144f6db6375044ae82" -- v11.17.5

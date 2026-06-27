@@ -82,6 +82,55 @@ pub enum ExecutionPolicy {
     RequiresElevation,
 }
 
+/// Named platform capabilities used to build [`ExecutionPolicy`] values.
+#[derive(Debug, Clone, Copy)]
+pub enum PlatformCapability {
+    /// POSIX chmod support.
+    Chmod,
+    /// Linux login-shell configuration.
+    LinuxShell,
+    /// Arch Linux platform support.
+    ArchLinux,
+    /// Systemd support.
+    Systemd,
+    /// Windows Subsystem for Linux.
+    Wsl,
+    /// Native Windows support.
+    Windows,
+    /// Windows registry support.
+    WindowsRegistry,
+    /// Arch User Repository support.
+    Aur,
+    /// Pacman package manager support.
+    Pacman,
+}
+
+impl PlatformCapability {
+    /// Build an execution policy for this capability.
+    #[must_use]
+    pub const fn policy(self) -> ExecutionPolicy {
+        match self {
+            Self::Chmod => ExecutionPolicy::PlatformSupported("chmod", Platform::supports_chmod),
+            Self::LinuxShell => {
+                ExecutionPolicy::PlatformSupported("Linux shell configuration", Platform::is_linux)
+            }
+            Self::ArchLinux => {
+                ExecutionPolicy::PlatformSupported("Arch Linux", Platform::is_arch_linux)
+            }
+            Self::Systemd => {
+                ExecutionPolicy::PlatformSupported("systemd", Platform::supports_systemd)
+            }
+            Self::Wsl => ExecutionPolicy::PlatformSupported("WSL", Platform::is_wsl),
+            Self::Windows => ExecutionPolicy::PlatformSupported("Windows", Platform::is_windows),
+            Self::WindowsRegistry => {
+                ExecutionPolicy::PlatformSupported("Windows registry", Platform::has_registry)
+            }
+            Self::Aur => ExecutionPolicy::PlatformSupported("AUR", Platform::supports_aur),
+            Self::Pacman => ExecutionPolicy::PlatformSupported("pacman", Platform::uses_pacman),
+        }
+    }
+}
+
 impl TaskPhase {
     /// Human-facing milestone label shown as a `::` header in console output.
     ///

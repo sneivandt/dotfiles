@@ -63,7 +63,11 @@ set tabstop=2
 set termguicolors
 set textwidth=0
 set updatetime=300
-set viminfo=
+if has('nvim')
+  set shada=!,'100,<50,s10,h
+else
+  set viminfo=!,'100,<50,s10,h
+endif
 set visualbell
 set wildmenu
 set wrap

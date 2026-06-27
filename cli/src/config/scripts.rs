@@ -67,6 +67,7 @@ mod tests {
     use super::*;
     use crate::config::category_matcher::Category;
     use crate::config::test_helpers::write_temp_toml;
+    use crate::config::test_load_missing_returns_empty;
 
     #[test]
     fn load_scripts_from_toml() {
@@ -97,10 +98,7 @@ scripts = [
         assert!(entries.is_empty());
     }
 
-    #[test]
-    fn load_missing_file_returns_empty() {
-        crate::config::test_helpers::assert_load_missing_returns_empty(load);
-    }
+    test_load_missing_returns_empty!(load);
 
     #[test]
     fn resolve_script_path_joins_overlay_root() {

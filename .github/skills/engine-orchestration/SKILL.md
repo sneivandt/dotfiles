@@ -27,7 +27,7 @@ dependency versions and is only populated by the `update` command —
 `Updating dependencies` phase.  Cross-phase ordering is guaranteed solely by this
 sequential loop (the per-phase scheduler only resolves dependencies among
 tasks present in the same phase).  Within each phase, tasks run via the
-scheduler (parallel) or sequentially (single task / `--no-parallel`).
+scheduler when `ctx.parallel` is enabled, or sequentially under `--no-parallel`.
 
 Before parallel dispatch, the runner evaluates task execution policies and
 `should_run()` as part of `requires_elevation()`. It primes sudo only for tasks
@@ -39,9 +39,14 @@ privileged mutation via `needs_elevation()`.
 
 Within each phase, `run_tasks_to_completion()` dispatches:
 
-1. If `ctx.parallel` and more than one task → check for cycles via `graph::has_cycle()` (Kahn's algorithm)
-2. If cycle detected → bail with an error (abort the run)
-3. Otherwise → `engine::scheduler::run_tasks_parallel()` spawns OS threads
+1. If `ctx.parallel` and the phase has tasks → build a
+   `ResolvedTaskGraph` with `ResolvedTaskGraph::resolve(&phase_tasks)`.
+2. If graph resolution finds duplicate task IDs or a cycle → bail with an error
+   (abort the run).
+3. Otherwise → pass the resolved graph to
+   `engine::scheduler::run_tasks_parallel()`, which spawns OS threads. A
+   single-task phase still goes through the scheduler when `ctx.parallel` is
+   enabled so buffered output ordering matches multi-task phases.
 
 Each dispatched task is still passed through `tasks::execute()`, which applies
 `execution_policies()` before `should_run()` and `run_if_applicable()`.
@@ -55,9 +60,11 @@ gives each task its own thread.
 
 ### Channel Wiring
 
-For each task:
-- A `(Sender, Receiver)` channel is created sized to the dependency count
+For each task with dependencies:
+- A `(Sender, Receiver)` channel is created
 - Each dependency holds a clone of the task's `Sender`
+- The original sender is dropped after wiring so failed dependencies close
+  dependent receivers instead of leaving them blocked
 - When a dependency finishes, it sends `()` on all its cloned senders
 - The task blocks on `rx.recv()` once per dependency
 - If a sender is dropped without sending (dependency panicked), `recv()` returns `Err` — the task is skipped and propagates the failure by dropping its own senders
@@ -70,7 +77,7 @@ after the task finishes.
 
 ### Sequential Fallback
 
-When `ctx.parallel` is false or there is only a single task:
+When `ctx.parallel` is false:
 
 ```rust
 for task in &tasks {
@@ -78,8 +85,8 @@ for task in &tasks {
 }
 ```
 
-Cycles are detected before dispatch and cause the runner to bail rather than
-falling back to sequential execution.
+The sequential path does not build a dependency graph; it runs tasks in the
+phase list order.
 
 ## Resource-Level: Rayon
 
@@ -179,9 +186,11 @@ and task name already carry it): write `"configure"`, not `"set git config"`.
 
 ## Dependency Graph
 
-`engine/graph.rs` provides `has_cycle()` using Kahn's algorithm:
-- Builds in-degree counts and reverse-dependency adjacency lists
-- Processes zero-in-degree nodes; if `processed != total` → cycle exists
+`engine/graph.rs` provides `ResolvedTaskGraph::resolve()`:
+- Maps task IDs to phase-local indices and rejects duplicate IDs
+- Builds dependency and dependent adjacency lists once for both validation and
+  scheduler wiring
+- Validates acyclicity with Kahn's algorithm; if `processed != total` → cycle exists
 - Missing dependencies (filtered tasks) are silently ignored
 
 ## Diagnostic Events
@@ -201,5 +210,5 @@ The scheduler emits structured events to the diagnostic log:
 - Resource parallelism uses Rayon — never OS threads for resource processing
 - Both levels are gated by `ctx.parallel`
 - Tests set `parallel: false` to keep execution deterministic
-- Cycle detection bails with an error — never falls back to sequential
+- Parallel graph validation bails with an error — never falls back to sequential
 - `BufferedLog` must be flushed via `flush_and_complete()` after each parallel task

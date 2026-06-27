@@ -32,9 +32,13 @@ cargo test --manifest-path cli/Cargo.toml -- test_name
 
 ### Test Organization
 
-#### 1. Unit Tests (inline `#[cfg(test)]` modules)
+#### 1. Unit Tests (`#[cfg(test)]` modules)
 
-Unit tests live alongside the code they test in `cli/src/`. Examples:
+Unit tests live alongside the code they test in `cli/src/`. Small modules keep
+tests inline; larger test modules can live in sibling files such as `tests.rs`,
+or in a grouped test folder such as `resources/tests/<resource>.rs`, and are
+included from the production module with `#[cfg(test)]` plus `#[path = "..."]`.
+Examples:
 - `platform.rs` — Platform detection and category exclusion logic
 - `cli.rs` — CLI argument parsing and command structure
 - `config/toml_loader.rs` — TOML file parsing

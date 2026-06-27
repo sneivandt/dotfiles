@@ -66,16 +66,16 @@ Runs only on Arch with `paru` installed. Uses `paru -S --needed --noconfirm`.
 ### PackageProvider Trait
 
 All package manager operations are abstracted behind the `PackageProvider` trait
-(`resources/package.rs`). Concrete provider implementations live in
-`resources/package/providers.rs`, so `package.rs` stays focused on the public
-resource API and manager dispatch. New managers require a new `PackageProvider`
-impl and a `PackageManager` enum variant:
+(`resources/package.rs`). Concrete provider implementations live as focused
+files under `resources/package/` (for example `pacman.rs`, `paru.rs`, and
+`winget.rs`), so `package.rs` stays focused on the public resource API and
+manager dispatch. New managers require a new `PackageProvider` impl and a
+`PackageManager` enum variant:
 
 ```rust
 pub trait PackageProvider: std::fmt::Debug + Send + Sync {
     fn name(&self) -> &'static str;
     fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>>;
-    fn is_installed(&self, name: &str, executor: &dyn Executor) -> Result<bool>;
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange>;
     fn supports_batch(&self) -> bool { false }
     fn batch_install(&self, names: &[&str], executor: &dyn Executor) -> Result<()> { ... }

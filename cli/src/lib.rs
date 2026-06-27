@@ -182,7 +182,17 @@ pub mod testing {
         pub use crate::engine::{CancellationToken, Context, ContextOpts};
 
         pub mod graph {
-            pub use crate::engine::graph::{GraphError, validate};
+            pub use crate::engine::graph::GraphError;
+
+            /// Validate a task dependency graph.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`GraphError::DuplicateId`] if two tasks share a task ID,
+            /// or [`GraphError::Cycle`] if the graph contains a cycle.
+            pub fn validate(tasks: &[&dyn crate::tasks::Task]) -> Result<(), GraphError> {
+                crate::engine::graph::ResolvedTaskGraph::resolve(tasks).map(|_| ())
+            }
         }
     }
 

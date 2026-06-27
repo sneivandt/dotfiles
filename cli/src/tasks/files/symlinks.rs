@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::resources::symlink::SymlinkResource;
 use crate::tasks::{
     Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, process_resources_remove,
-    resource_task,
+    resource_task, task_metadata,
 };
 
 /// Build a single [`SymlinkResource`] from a config entry.
@@ -58,16 +58,10 @@ resource_task! {
 pub struct UninstallSymlinks;
 
 impl Task for UninstallSymlinks {
-    fn name(&self) -> &'static str {
-        "Remove symlinks"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Files
+    task_metadata! {
+        name: "Remove symlinks",
+        phase: TaskPhase::Provision,
+        domain: Domain::Files,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

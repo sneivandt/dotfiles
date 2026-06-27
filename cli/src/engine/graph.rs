@@ -25,69 +25,100 @@ impl std::fmt::Display for GraphError {
 
 impl std::error::Error for GraphError {}
 
-/// Validate a task dependency graph using Kahn's algorithm.
+/// Dependency graph resolved against one filtered task slice.
 ///
-/// # Errors
-///
-/// Returns [`GraphError::DuplicateId`] if two tasks share a [`TaskId`], or
-/// [`GraphError::Cycle`] if the graph contains at least one dependency cycle.
-pub fn validate(tasks: &[&dyn Task]) -> Result<(), GraphError> {
-    let id_to_idx: HashMap<TaskId, usize> = tasks
-        .iter()
-        .enumerate()
-        .map(|(i, t)| (t.task_id(), i))
-        .collect();
+/// Missing dependencies are intentionally ignored: command filters can remove a
+/// dependency from the active task list, and the remaining tasks should be
+/// scheduled relative to the tasks that are still present.
+#[derive(Debug)]
+pub(crate) struct ResolvedTaskGraph {
+    dependencies: Vec<Vec<usize>>,
+    dependents: Vec<Vec<usize>>,
+}
 
-    if id_to_idx.len() != tasks.len() {
-        return Err(GraphError::DuplicateId);
-    }
+impl ResolvedTaskGraph {
+    /// Build and validate the graph for `tasks`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GraphError::DuplicateId`] if two tasks share a [`TaskId`], or
+    /// [`GraphError::Cycle`] if the graph contains at least one dependency cycle.
+    pub(crate) fn resolve(tasks: &[&dyn Task]) -> Result<Self, GraphError> {
+        let id_to_idx: HashMap<TaskId, usize> = tasks
+            .iter()
+            .enumerate()
+            .map(|(idx, task)| (task.task_id(), idx))
+            .collect();
 
-    let mut in_degree: Vec<usize> = tasks
-        .iter()
-        .map(|t| {
-            t.dependencies()
-                .iter()
-                .filter(|d| id_to_idx.contains_key(d))
-                .count()
-        })
-        .collect();
+        if id_to_idx.len() != tasks.len() {
+            return Err(GraphError::DuplicateId);
+        }
 
-    let mut reverse_deps: Vec<Vec<usize>> = vec![Vec::new(); tasks.len()];
-    for (i, t) in tasks.iter().enumerate() {
-        for dep in t.dependencies() {
-            if let Some(&dep_idx) = id_to_idx.get(dep)
-                && let Some(rd) = reverse_deps.get_mut(dep_idx)
-            {
-                rd.push(i);
+        let dependencies: Vec<Vec<usize>> = tasks
+            .iter()
+            .map(|task| {
+                task.dependencies()
+                    .iter()
+                    .filter_map(|dep| id_to_idx.get(dep).copied())
+                    .collect()
+            })
+            .collect();
+
+        let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); tasks.len()];
+        for (task_idx, deps) in dependencies.iter().enumerate() {
+            for &dep_idx in deps {
+                if let Some(reverse) = dependents.get_mut(dep_idx) {
+                    reverse.push(task_idx);
+                }
             }
         }
+
+        let graph = Self {
+            dependencies,
+            dependents,
+        };
+        graph.validate_acyclic()?;
+        Ok(graph)
     }
 
-    let mut queue: Vec<usize> = in_degree
-        .iter()
-        .enumerate()
-        .filter_map(|(i, &d)| (d == 0).then_some(i))
-        .collect();
-    let mut processed = 0usize;
+    /// Task indices this task depends on.
+    #[must_use]
+    pub(crate) fn dependencies(&self, task_idx: usize) -> &[usize] {
+        self.dependencies.get(task_idx).map_or(&[], Vec::as_slice)
+    }
 
-    while let Some(idx) = queue.pop() {
-        processed = processed.saturating_add(1);
-        if let Some(dependents) = reverse_deps.get(idx) {
-            for &dep in dependents {
-                if let Some(count) = in_degree.get_mut(dep) {
+    /// Task indices that depend on this task.
+    #[must_use]
+    pub(crate) fn dependents(&self, task_idx: usize) -> &[usize] {
+        self.dependents.get(task_idx).map_or(&[], Vec::as_slice)
+    }
+
+    fn validate_acyclic(&self) -> Result<(), GraphError> {
+        let mut in_degree: Vec<usize> = self.dependencies.iter().map(Vec::len).collect();
+        let mut queue: Vec<usize> = in_degree
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, &degree)| (degree == 0).then_some(idx))
+            .collect();
+        let mut processed = 0usize;
+
+        while let Some(idx) = queue.pop() {
+            processed = processed.saturating_add(1);
+            for &dependent_idx in self.dependents(idx) {
+                if let Some(count) = in_degree.get_mut(dependent_idx) {
                     *count = count.saturating_sub(1);
                     if *count == 0 {
-                        queue.push(dep);
+                        queue.push(dependent_idx);
                     }
                 }
             }
         }
-    }
 
-    if processed == tasks.len() {
-        Ok(())
-    } else {
-        Err(GraphError::Cycle)
+        if processed == self.dependencies.len() {
+            Ok(())
+        } else {
+            Err(GraphError::Cycle)
+        }
     }
 }
 
@@ -186,6 +217,10 @@ mod tests {
     // -----------------------------------------------------------------------
     // validate
     // -----------------------------------------------------------------------
+
+    fn validate(tasks: &[&dyn Task]) -> Result<(), GraphError> {
+        ResolvedTaskGraph::resolve(tasks).map(|_| ())
+    }
 
     #[test]
     fn no_cycle_independent_tasks() {

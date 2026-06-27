@@ -215,7 +215,9 @@ For Windows symlinks, use `MetadataExt::file_attributes()` instead of
 - Executor-dependent resources: pass `SystemExecutor` for description-only tests; mock the executor for behaviour tests
 - Bulk-checked resources: test `state_from_*` mapping and provider-backed task behaviour
 - Use `tempfile::tempdir()` for filesystem resources
-- Add `#[cfg(test)] mod tests` to every resource module
+- Add `#[cfg(test)] mod tests` to every resource module. Keep small tests inline;
+  put large resource test modules in `cli/src/resources/tests/<resource>.rs` and
+  include them with `#[path = "tests/<resource>.rs"] mod tests;`.
 
 ## Rules
 

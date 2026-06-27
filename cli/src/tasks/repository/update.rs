@@ -41,6 +41,7 @@ impl Task for UpdateRepository {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let root = ctx.root();
         // Pass HOME so git finds the correct global config when running elevated
         // on Windows (elevated token can have a different home path).
         let home_str = ctx.home.to_string_lossy().into_owned();
@@ -48,7 +49,7 @@ impl Task for UpdateRepository {
 
         // Skip when not on a branch (e.g. detached HEAD in CI checkouts).
         let head_ref = if let Ok(result) = ctx.executor.run_in_with_env(
-            &ctx.root(),
+            &root,
             "git",
             &["symbolic-ref", "--quiet", "HEAD"],
             git_env,
@@ -61,12 +62,12 @@ impl Task for UpdateRepository {
 
         // Refuse to pull when tracked files are dirty. Untracked files do not
         // block a fast-forward pull, so they should not prevent updates.
-        if worktree_has_local_changes(ctx, git_env)? {
+        if worktree_has_local_changes(ctx, &root, git_env)? {
             return Ok(TaskResult::Skipped("local changes present".to_string()));
         }
 
         if ctx.dry_run {
-            match dry_run_update_status(ctx, git_env, &head_ref)? {
+            match dry_run_update_status(ctx, &root, git_env, &head_ref)? {
                 DryRunUpdateStatus::AlreadyCurrent => {
                     ctx.log.debug("already up to date");
                     return Ok(TaskResult::Ok);
@@ -78,14 +79,13 @@ impl Task for UpdateRepository {
             }
         }
 
-        ctx.log
-            .debug(&format!("pulling from {}", ctx.root().display()));
+        ctx.log.debug(&format!("pulling from {}", root.display()));
 
         // Fetch first so divergence can be evaluated without invoking `git pull`,
         // which fails noisily when the local branch has diverged from upstream.
-        if let Err(e) =
-            ctx.executor
-                .run_in_with_env(&ctx.root(), "git", &["fetch", "--quiet"], git_env)
+        if let Err(e) = ctx
+            .executor
+            .run_in_with_env(&root, "git", &["fetch", "--quiet"], git_env)
         {
             ctx.log.warn(&format!("git fetch failed: {e:#}"));
             return Ok(TaskResult::Failed("git fetch failed".to_string()));
@@ -93,7 +93,7 @@ impl Task for UpdateRepository {
 
         let pre_sha = ctx
             .executor
-            .run_in_with_env(&ctx.root(), "git", &["rev-parse", "HEAD"], git_env)?
+            .run_in_with_env(&root, "git", &["rev-parse", "HEAD"], git_env)?
             .stdout
             .trim()
             .to_string();
@@ -101,7 +101,7 @@ impl Task for UpdateRepository {
         let upstream_sha =
             match ctx
                 .executor
-                .run_in_with_env(&ctx.root(), "git", &["rev-parse", "@{u}"], git_env)
+                .run_in_with_env(&root, "git", &["rev-parse", "@{u}"], git_env)
             {
                 Ok(r) => r.stdout.trim().to_string(),
                 Err(e) => {
@@ -123,7 +123,7 @@ impl Task for UpdateRepository {
         let ahead = ctx
             .executor
             .run_in_with_env(
-                &ctx.root(),
+                &root,
                 "git",
                 &["rev-list", "--count", "@{u}..HEAD"],
                 git_env,
@@ -141,12 +141,9 @@ impl Task for UpdateRepository {
             ));
         }
 
-        let result = ctx.executor.run_in_with_env(
-            &ctx.root(),
-            "git",
-            &["merge", "--ff-only", "@{u}"],
-            git_env,
-        );
+        let result =
+            ctx.executor
+                .run_in_with_env(&root, "git", &["merge", "--ff-only", "@{u}"], git_env);
         match result {
             Ok(r) => {
                 ctx.log
@@ -172,15 +169,16 @@ enum DryRunUpdateStatus {
 
 fn dry_run_update_status(
     ctx: &Context,
+    root: &std::path::Path,
     git_env: &[(&str, &str)],
     head_ref: &str,
 ) -> Result<DryRunUpdateStatus> {
     let head = ctx
         .executor
-        .run_in_with_env(&ctx.root(), "git", &["rev-parse", "HEAD"], git_env)?;
+        .run_in_with_env(root, "git", &["rev-parse", "HEAD"], git_env)?;
     let head_sha = head.stdout.trim().to_string();
 
-    if let Some(remote_sha) = upstream_remote_sha(ctx, git_env, head_ref) {
+    if let Some(remote_sha) = upstream_remote_sha(ctx, root, git_env, head_ref) {
         return Ok(if head_sha == remote_sha {
             DryRunUpdateStatus::AlreadyCurrent
         } else {
@@ -188,9 +186,9 @@ fn dry_run_update_status(
         });
     }
 
-    if let Ok(upstream) =
-        ctx.executor
-            .run_in_with_env(&ctx.root(), "git", &["rev-parse", "@{u}"], git_env)
+    if let Ok(upstream) = ctx
+        .executor
+        .run_in_with_env(root, "git", &["rev-parse", "@{u}"], git_env)
     {
         return Ok(if head_sha == upstream.stdout.trim() {
             DryRunUpdateStatus::AlreadyCurrent
@@ -202,28 +200,23 @@ fn dry_run_update_status(
     Ok(DryRunUpdateStatus::Unknown)
 }
 
-fn upstream_remote_sha(ctx: &Context, git_env: &[(&str, &str)], head_ref: &str) -> Option<String> {
+fn upstream_remote_sha(
+    ctx: &Context,
+    root: &std::path::Path,
+    git_env: &[(&str, &str)],
+    head_ref: &str,
+) -> Option<String> {
     let branch = head_ref.strip_prefix("refs/heads/").unwrap_or(head_ref);
     let remote_key = format!("branch.{branch}.remote");
     let merge_key = format!("branch.{branch}.merge");
 
     let remote = ctx
         .executor
-        .run_in_with_env(
-            &ctx.root(),
-            "git",
-            &["config", "--get", &remote_key],
-            git_env,
-        )
+        .run_in_with_env(root, "git", &["config", "--get", &remote_key], git_env)
         .ok()?;
     let merge_ref = ctx
         .executor
-        .run_in_with_env(
-            &ctx.root(),
-            "git",
-            &["config", "--get", &merge_key],
-            git_env,
-        )
+        .run_in_with_env(root, "git", &["config", "--get", &merge_key], git_env)
         .ok()?;
 
     let remote_name = remote.stdout.trim();
@@ -235,7 +228,7 @@ fn upstream_remote_sha(ctx: &Context, git_env: &[(&str, &str)], head_ref: &str) 
     let ls_remote = ctx
         .executor
         .run_in_with_env(
-            &ctx.root(),
+            root,
             "git",
             &["ls-remote", "--exit-code", remote_name, merge_name],
             git_env,
@@ -249,9 +242,13 @@ fn upstream_remote_sha(ctx: &Context, git_env: &[(&str, &str)], head_ref: &str) 
         .map(ToString::to_string)
 }
 
-fn worktree_has_local_changes(ctx: &Context, git_env: &[(&str, &str)]) -> Result<bool> {
+fn worktree_has_local_changes(
+    ctx: &Context,
+    root: &std::path::Path,
+    git_env: &[(&str, &str)],
+) -> Result<bool> {
     let status = ctx.executor.run_in_with_env(
-        &ctx.root(),
+        root,
         "git",
         &["status", "--porcelain", "--untracked-files=no"],
         git_env,
@@ -273,7 +270,7 @@ mod tests {
     use crate::platform::{Os, Platform};
     use crate::tasks::UpdateSignal;
     use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
     fn ok_result(stdout: &str) -> ExecResult {
@@ -375,7 +372,7 @@ mod tests {
 
         fn run_in_with_env(
             &self,
-            _: &std::path::Path,
+            _: &Path,
             _: &str,
             args: &[&str],
             _: &[(&str, &str)],
@@ -416,7 +413,7 @@ mod tests {
             Arc::new(UntrackedAwareExecutor),
         );
 
-        assert!(!worktree_has_local_changes(&ctx, &[]).unwrap());
+        assert!(!worktree_has_local_changes(&ctx, Path::new("/repo"), &[]).unwrap());
     }
 
     #[test]

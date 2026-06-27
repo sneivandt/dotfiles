@@ -7,7 +7,7 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-use super::{Context, Domain, Task, TaskPhase, TaskResult};
+use super::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
 
 const SHELLCHECK_SEVERITY_ARG: &str = "--severity=warning";
 const SHELLCHECK_ENABLE_ARG: &str = "--enable=avoid-nullary-conditions";
@@ -18,16 +18,10 @@ const SHELLCHECK_EXCLUDE_CODES: &str = "SC1090,SC1091,SC3043,SC2154";
 pub struct ValidateConfigWarnings;
 
 impl Task for ValidateConfigWarnings {
-    fn name(&self) -> &'static str {
-        "Validate config warnings"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Validation
+    task_metadata! {
+        name: "Validate config warnings",
+        phase: TaskPhase::Provision,
+        domain: Domain::Validation,
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -60,16 +54,10 @@ impl Task for ValidateConfigWarnings {
 pub struct ValidateSymlinkSources;
 
 impl Task for ValidateSymlinkSources {
-    fn name(&self) -> &'static str {
-        "Validate symlink sources"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Validation
+    task_metadata! {
+        name: "Validate symlink sources",
+        phase: TaskPhase::Provision,
+        domain: Domain::Validation,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -80,7 +68,7 @@ impl Task for ValidateSymlinkSources {
         let config = ctx.config_read();
         let symlinks = config.symlinks.clone();
 
-        let repo_root = ctx.root();
+        let repo_root = config.root.clone();
         let mut missing = 0u32;
 
         for symlink in &symlinks {
@@ -108,16 +96,10 @@ impl Task for ValidateSymlinkSources {
 pub struct ValidateConfigFiles;
 
 impl Task for ValidateConfigFiles {
-    fn name(&self) -> &'static str {
-        "Validate config files"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Validation
+    task_metadata! {
+        name: "Validate config files",
+        phase: TaskPhase::Provision,
+        domain: Domain::Validation,
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -125,7 +107,8 @@ impl Task for ValidateConfigFiles {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let conf = ctx.root().join("conf");
+        let root = ctx.root();
+        let conf = root.join("conf");
         let required = [
             "profiles.toml",
             "symlinks.toml",
@@ -145,7 +128,7 @@ impl Task for ValidateConfigFiles {
             }
         }
 
-        let hooks_dir = ctx.root().join("hooks");
+        let hooks_dir = root.join("hooks");
         if hooks_dir.exists() {
             ctx.log.debug("found hooks directory");
         } else {
@@ -174,16 +157,10 @@ impl Task for ValidateConfigFiles {
 pub struct ValidateManifestSync;
 
 impl Task for ValidateManifestSync {
-    fn name(&self) -> &'static str {
-        "Validate manifest sync"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Validation
+    task_metadata! {
+        name: "Validate manifest sync",
+        phase: TaskPhase::Provision,
+        domain: Domain::Validation,
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -243,16 +220,10 @@ impl Task for ValidateManifestSync {
 pub struct RunShellcheck;
 
 impl Task for RunShellcheck {
-    fn name(&self) -> &'static str {
-        "Shellcheck"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Validation
+    task_metadata! {
+        name: "Shellcheck",
+        phase: TaskPhase::Provision,
+        domain: Domain::Validation,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -304,16 +275,10 @@ impl Task for RunShellcheck {
 pub struct RunPSScriptAnalyzer;
 
 impl Task for RunPSScriptAnalyzer {
-    fn name(&self) -> &'static str {
-        "PSScriptAnalyzer"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Validation
+    task_metadata! {
+        name: "PSScriptAnalyzer",
+        phase: TaskPhase::Provision,
+        domain: Domain::Validation,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

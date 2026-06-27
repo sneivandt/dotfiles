@@ -21,7 +21,7 @@ the Rust `InstallApmPackages` task.
 | `symlinks/apm/plugins/dot-copilot` | Local Copilot interaction workflow skills |
 | `symlinks/apm/plugins/dot-skill` | Local skill/plugin maintenance skills |
 | `conf/symlinks.toml` | Links `apm/config/base.yml` and `apm/plugins/*` from this repo |
-| `cli/src/tasks/ai/apm/` | `InstallApmPackages` (Provision phase) merges fragments + runs `apm install` for Copilot and Codex targets; `UpdateApmPackages` (Update phase, `update` command only) advances locked deps via `apm outdated` + `apm update` with the same target selection (`mod.rs` orchestration; `fragments.rs`, `manifest.rs`, `outdated.rs`, `autopilot.rs`) |
+| `cli/src/tasks/ai/apm/` | `InstallApmPackages` (Provision phase) merges fragments + runs `apm install` for Copilot and Codex targets; `UpdateApmPackages` (Update phase, `update` command only) advances locked deps via `apm outdated` + `apm update` with the same target selection. The module is split into focused files: `install.rs`, `update.rs`, `commands.rs`, `targets.rs`, `fragments.rs`, `manifest.rs`, `outdated.rs`, and `autopilot.rs`; `mod.rs` only wires modules, re-exports tasks, and owns shared constants/test imports. |
 
 ## When to Change What
 

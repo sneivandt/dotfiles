@@ -224,7 +224,8 @@ The execution engine provides the generic resource processing loop, dependency g
 - **`orchestrate.rs`** — top-level resource orchestration with `process_resources()`, `process_resources_with_provider()`, and `process_resources_remove()`
 - **`mode.rs`** — `ProcessMode` enum (`Strict`, `Lenient`, `InstallMissing`, `FixExisting`) and `ProcessOpts` that control which states are fixable and whether errors bail or warn
 - **`parallel.rs`** — Rayon-based parallel dispatch when `ctx.parallel` is true
-- **`graph.rs`** — dependency graph cycle detection (Kahn's algorithm)
+- **`graph.rs`** — phase-local dependency graph resolution, duplicate-ID checks,
+  and cycle detection (Kahn's algorithm)
 - **`scheduler.rs`** — dependency-driven parallel task scheduling using OS threads and `mpsc` channels
 - **`stats.rs`** — `TaskResult` and `TaskStats` types
 - **`update_signal.rs`** — `Arc<AtomicBool>` signalling between `UpdateRepository` and `ReloadConfig`
@@ -247,12 +248,12 @@ folders:
 - `overlay/` — overlay script discovery and execution
 - `validation/` — configuration checks
 
-Every domain is a folder, so `tasks/` reads uniformly. A domain folder takes one
-of two shapes: a thin `mod.rs` with per-task submodules (as in `system/` and
-`git/`), or a production `mod.rs` paired with a sibling `tests.rs` when the code
-is one cohesive unit but its tests are large (as in `editors/`, `overlay/`,
-`packages/`, `validation/`, `ai/apm/`, and `repository/sparse_checkout/`). The
-framework itself — the `Task` trait, `TaskPhase`, `Domain`, the
+Every domain is a folder, so `tasks/` reads uniformly. A domain folder typically
+uses a thin `mod.rs` with per-task submodules (as in `system/`, `git/`, and
+`ai/apm/`). Cohesive modules can instead keep production code in `mod.rs` and
+move large tests to a sibling `tests.rs` (as in `editors/`, `overlay/`,
+`packages/`, `validation/`, and `repository/sparse_checkout/`). The framework
+itself — the `Task` trait, `TaskPhase`, `Domain`, the
 `resource_task!`/`task_deps!` macros, the task catalog, and the `--skip`/`--only`
 filter — lives in `mod.rs`, `macros.rs`, `catalog.rs`, and `filter.rs`.
 
@@ -509,8 +510,11 @@ such as Update under `install`, is skipped with no header).  Within each
 phase, tasks are executed in parallel using a dependency-graph scheduler.
 
 Each task declares its dependencies using the `task_deps!` macro (defined in
-`tasks/macros.rs`, re-exported from `tasks/mod.rs`), which implements `Task::dependencies()` returning `TypeId`s of
-prerequisite task structs.  The scheduler uses `std::thread::scope` to spawn
+`tasks/macros.rs`, re-exported from `tasks/mod.rs`), which implements
+`Task::dependencies()` returning `TaskId`s for prerequisite task structs.
+Before scheduling, `ResolvedTaskGraph::resolve()` maps those IDs to phase-local
+task indices, builds dependency/dependent adjacency lists, rejects duplicate
+IDs, and validates the graph. The scheduler uses `std::thread::scope` to spawn
 one OS thread per task and `mpsc` channels to block each task until its
 dependencies complete.  For each task, a channel is created — dependent tasks
 wait by calling `recv()` on the receiving end, and each dependency sends a
@@ -533,9 +537,9 @@ of tasks with unsatisfied dependencies (common on 2-vCPU CI runners).
   output from different tasks never interleaves
 - A dim status line (`▹ task1, task2, ...`) shows which tasks are currently
   running, updated on every task start and completion
-- Cycle detection (Kahn's algorithm) runs before scheduling; if a cycle is
-  found, the run is aborted with an error
-- Dependencies that reference `TypeId`s not present in the task list (e.g.
+- Graph validation (including cycle detection via Kahn's algorithm) runs before
+  parallel scheduling; if a cycle is found, the run is aborted with an error
+- Dependencies that reference `TaskId`s not present in the task list (e.g.
   filtered out by `--skip`/`--only`) are silently ignored
 
 ### Parallel Resource Processing

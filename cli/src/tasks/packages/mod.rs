@@ -12,7 +12,7 @@ use crate::resources::package::{
 };
 use crate::tasks::{
     Context, Domain, ExecutionPolicy, PlatformCapability, ProcessOpts, Task, TaskPhase, TaskResult,
-    TaskStats, process_resources_with_borrowed_cache, task_deps,
+    TaskStats, process_resources_with_borrowed_cache, task_metadata,
 };
 
 /// Default number of parallel jobs for makepkg if nproc detection fails.
@@ -81,21 +81,11 @@ fn predict_sudo(ctx: &Context, manager: PackageManager, tool: &str, packages: &[
 pub struct InstallPackages;
 
 impl Task for InstallPackages {
-    fn name(&self) -> &'static str {
-        "Install packages"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Packages
-    }
-
-    fn execution_policies(&self) -> &[ExecutionPolicy] {
-        const POLICIES: &[ExecutionPolicy] = &[ExecutionPolicy::RequiresElevation];
-        POLICIES
+    task_metadata! {
+        name: "Install packages",
+        phase: TaskPhase::Provision,
+        domain: Domain::Packages,
+        policy: [ExecutionPolicy::RequiresElevation],
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -137,26 +127,12 @@ impl Task for InstallPackages {
 pub struct InstallAurPackages;
 
 impl Task for InstallAurPackages {
-    fn name(&self) -> &'static str {
-        "Install AUR packages"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Packages
-    }
-
-    task_deps![InstallParu];
-
-    fn execution_policies(&self) -> &[ExecutionPolicy] {
-        const POLICIES: &[ExecutionPolicy] = &[
-            PlatformCapability::Aur.policy(),
-            ExecutionPolicy::RequiresElevation,
-        ];
-        POLICIES
+    task_metadata! {
+        name: "Install AUR packages",
+        phase: TaskPhase::Provision,
+        domain: Domain::Packages,
+        policy: [PlatformCapability::Aur.policy(), ExecutionPolicy::RequiresElevation],
+        deps: [InstallParu],
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -199,24 +175,14 @@ impl Task for InstallAurPackages {
 pub struct InstallParu;
 
 impl Task for InstallParu {
-    fn name(&self) -> &'static str {
-        "Install paru"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Packages
-    }
-
-    fn execution_policies(&self) -> &[ExecutionPolicy] {
-        const POLICIES: &[ExecutionPolicy] = &[
+    task_metadata! {
+        name: "Install paru",
+        phase: TaskPhase::Provision,
+        domain: Domain::Packages,
+        policy: [
             PlatformCapability::Pacman.policy(),
             ExecutionPolicy::RequiresElevation,
-        ];
-        POLICIES
+        ],
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

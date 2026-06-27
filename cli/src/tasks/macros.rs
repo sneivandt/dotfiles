@@ -37,6 +37,51 @@ macro_rules! execution_policies_impl {
 
 pub(crate) use execution_policies_impl;
 
+/// Implement common [`Task`](crate::tasks::Task) metadata methods.
+///
+/// Use this for hand-written tasks whose body cannot use [`resource_task!`] but
+/// whose `name`, `phase`, `domain`, dependencies, and policies are static.
+///
+/// # Examples
+///
+/// ```ignore
+/// task_metadata! {
+///     name: "Install packages",
+///     phase: TaskPhase::Provision,
+///     domain: Domain::Packages,
+///     policy: [ExecutionPolicy::RequiresElevation],
+///     deps: [InstallParu],
+/// }
+/// ```
+macro_rules! task_metadata {
+    (
+        name: $task_name:expr,
+        phase: $phase:expr,
+        domain: $domain:expr
+        $(, policy: [$($policy:expr),+ $(,)?])?
+        $(, deps: [$($dep:ty),+ $(,)?])?
+        $(,)?
+    ) => {
+        fn name(&self) -> &'static str {
+            $task_name
+        }
+
+        fn phase(&self) -> $crate::tasks::TaskPhase {
+            $phase
+        }
+
+        fn domain(&self) -> $crate::tasks::Domain {
+            $domain
+        }
+
+        $($crate::tasks::task_deps![$($dep),+];)?
+
+        $($crate::tasks::execution_policies_impl![$($policy),+];)?
+    };
+}
+
+pub(crate) use task_metadata;
+
 /// Process config-derived resources after a macro has evaluated its item list.
 ///
 /// Keeping this logic in a normal function makes the macro expansion smaller

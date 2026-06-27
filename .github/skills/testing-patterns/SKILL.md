@@ -29,7 +29,7 @@ cargo test --profile ci --manifest-path cli/Cargo.toml --test config_drift
 
 ## Unit Tests
 
-Every module has inline tests with `#[cfg(test)]`:
+Small modules can keep inline tests with `#[cfg(test)]`:
 
 ```rust
 #[cfg(test)]
@@ -43,6 +43,11 @@ mod tests {
     }
 }
 ```
+
+Large unit test modules can live in sibling files and still be wired from the
+production module with `#[cfg(test)] mod tests;`. Use `#[path = "tests.rs"]` for
+large cohesive modules, and `#[path = "tests/<module>.rs"]` for grouped resource
+tests under `cli/src/resources/tests/`.
 
 ### Testing by Module Type
 

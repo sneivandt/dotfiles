@@ -32,7 +32,7 @@ fragments, local plugins, skills, hooks, MCP servers, and instructions.
 - Put skill/plugin authoring, curation, maintenance, and APM workflow guidance
   in `dot-skill`.
 - Prefer one small composable skill per recurring behavior. Do not bury
-  project-specific rules in global APM skills when `.github/skills/` or
+  project-specific rules in global APM skills when `.agents/skills/` or
   repository instructions would be more precise.
 
 ## Private Overlay APM

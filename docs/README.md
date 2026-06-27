@@ -34,8 +34,6 @@ The documentation is organized to support different audiences and use cases:
 4. **Developer Resources**: Contributing, testing, and architecture documentation
 5. **Reference**: Troubleshooting, customization, and security information
 
-For information about where documentation types live (copilot instructions vs skills vs docs), see **`.github/copilot-instructions.md`**.
-
 ## Contributing to Documentation
 
 When updating documentation:

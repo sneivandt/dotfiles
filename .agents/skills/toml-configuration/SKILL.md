@@ -105,12 +105,14 @@ TOML, and `toml_loader::load_required_config()` when a file must exist.
 |------|--------|-------|
 | `profiles.toml` | table | Profile definitions with `include`/`exclude` arrays |
 | `manifest.toml` | arrays | Sparse checkout exclusions using `excluded_categories` with the same AND logic |
-| `symlinks.toml` | arrays | Profile-filtered symlink paths |
+| `symlinks.toml` | arrays | Profile-filtered symlink paths; strings, or `{ source, target }` for paths that must not get a dot-prefix target. A complete path segment of `*` is supported for directory globs. |
 | `packages.toml` | arrays | Simple strings or `{ name, aur }` objects |
 | `systemd-units.toml` | arrays | Systemd unit names; strings default to user scope, objects can set `scope` |
-| `chmod.toml` | arrays | Objects with `mode` and `path` fields |
+| `chmod.toml` | arrays | `permissions` entries with `mode` and `path` fields |
 | `vscode-extensions.toml` | arrays | Extension IDs |
+| `git-config.toml` | arrays | `settings` entries with `key` and `value` fields |
 | `registry.toml` | tables | `path` field + `values` table for registry keys |
+| `copilot.toml` | arrays | Copilot CLI settings entries with dot-path `key` and TOML `value` fields |
 | `scripts.toml` | arrays | Overlay script entries with `name`, `path`, optional `description` |
 
 ## TOML Format Examples
@@ -136,9 +138,9 @@ Plain systemd unit strings default to `scope = "user"`. Use
 
 ```toml
 [base]
-entries = [
-  { mode = "0600", path = "~/.ssh/config" },
-  { mode = "0700", path = "~/.gnupg" },
+permissions = [
+  { mode = "600", path = "ssh/config" },
+  { mode = "700", path = "gnupg" },
 ]
 ```
 
@@ -168,6 +170,9 @@ ShowHidden = 0x00000001
 - Use **hyphen-separated** table names for multi-category sections: `[arch-desktop]`
 - All config files use TOML arrays or tables — no custom parsing
 - Categories are extracted from table names (lowercased, split on `-`)
+- Valid categories are `base`, `desktop`, `linux`, `windows`, and `arch`
+- Include a trailing comma after the last array element
+- Do not use dots or commas in section names; dots create nested TOML tables
 - Serde handles deserialization with strong typing
 - Use `#[serde(untagged)]` for polymorphic enums (string vs object)
 - Always validate TOML syntax — malformed files cause deserialization errors

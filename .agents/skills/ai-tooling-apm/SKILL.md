@@ -25,7 +25,7 @@ the Rust `InstallApmPackages` task.
 
 ## When to Change What
 
-- Update `.github/skills/` for repository-specific coding patterns that should
+- Update `.agents/skills/` for repository-specific coding patterns that should
   guide agents working on this dotfiles codebase.
 - Update `symlinks/apm/plugins/dot-*` for personal reusable skills that should
   be installed into the user's global APM environment.
@@ -52,9 +52,8 @@ through APM instead of raw symlinks:
   asset; it lands at `~/.agents/skills/<skill>/`, so point the hook there.
 - **Instructions**: supported at Copilot user scope in current APM. Instruction
   primitives can be delivered through APM and are concatenated into
-  `~/.copilot/copilot-instructions.md`. Keep repo-specific instructions in
-  `.github/copilot-instructions.md`; use APM only for reusable user-scope
-  instruction packages.
+  `~/.copilot/copilot-instructions.md`. Keep repo-specific shared instructions
+  in `AGENTS.md`; use APM only for reusable user-scope instruction packages.
 
 ## Local Plugin Rules
 

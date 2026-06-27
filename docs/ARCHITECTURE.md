@@ -80,7 +80,7 @@ flowchart TD
     tasks --> exec
     config --> platform
     commands --> logging
-    config --> conf["conf/ TOML files<br/>packages, symlinks, profiles, manifest,<br/>systemd units, registry, chmod, git config, Copilot/APM"]
+    config --> conf["conf/ TOML files<br/>packages, symlinks, profiles, manifest,<br/>systemd units, registry, chmod, git config, AI tooling/APM"]
 ```
 
 ## Component Architecture
@@ -139,7 +139,7 @@ The wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`) handle only the `--build` f
 
 - **`install.rs`** — Uses `CommandRunner` to resolve the profile, load `Config`, build the task list, filter by `--skip`/`--only`, and execute the phased task pipeline. Before the task graph, it may self-update the binary and re-exec so the rest of the run uses the latest engine. It also attempts safe fast-forward-only repository synchronization in the task graph but leaves pinned dependency versions untouched. Exposes `run_pipeline(advance_versions)`, the shared implementation behind both `install` and `update`
 - **`update.rs`** — Delegates to `install::run_pipeline` with `advance_versions = true`, so it runs the same base task graph as `install` and additionally schedules the final Update phase to advance pinned dependency versions (currently the APM dependency refresh)
-- **`uninstall.rs`** — Conservatively removes detachable managed state: symlinks, installed Git hooks, and the wrapper entry point. It intentionally does not remove packages or roll back registry, systemd, shell, editor, Copilot/APM, PAM/WSL, or overlay-script changes
+- **`uninstall.rs`** — Conservatively removes detachable managed state: symlinks, installed Git hooks, and the wrapper entry point. It intentionally does not remove packages or roll back registry, systemd, shell, editor, AI tooling/APM, PAM/WSL, or overlay-script changes
 - **`test.rs`** — Runs configuration validation
 
 #### Config (`config/`)
@@ -234,7 +234,7 @@ folders:
 - `files/` — symlinks, file permissions
 - `shell/` — login shell, zsh completions
 - `system/` — developer mode, systemd units, registry, PAM, wsl.conf
-- `ai/` — APM plugin manifests, Copilot settings
+- `ai/` — APM plugin manifests, Copilot settings, and shared agent context
 - `editors/` — VS Code/editor extensions
 - `packages/` — system and AUR packages
 - `overlay/` — overlay script discovery and execution

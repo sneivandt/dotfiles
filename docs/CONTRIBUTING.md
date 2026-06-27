@@ -21,7 +21,8 @@ Thank you for your interest in contributing! This document provides guidelines f
 - [Configuration Reference](CONFIGURATION.md) - Configuration file formats
 - [Testing Documentation](TESTING.md) - How to test your changes
 
-**Agent Skills**: For technical coding patterns, GitHub Copilot uses skills in `.github/skills/`. See `.github/copilot-instructions.md` for the complete list.
+**Agent Skills**: For technical coding patterns, Copilot and Codex use shared
+skills in `.agents/skills/`. See `AGENTS.md` for the complete context map.
 
 ## Prerequisites
 
@@ -36,9 +37,8 @@ After installation, ensure `cargo` is on your PATH (open a new terminal if neede
 
 ### Before Making Changes
 
-1. Review the project guidelines in `.github/copilot-instructions.md`
-2. Understand the profile system (base, desktop) and auto-detected platform categories (linux, windows, arch)
-3. Run existing tests:
+1. Understand the profile system (base, desktop) and auto-detected platform categories (linux, windows, arch)
+2. Run existing tests:
    ```bash
    cd cli && cargo test
    ```
@@ -268,7 +268,8 @@ chore(ci): update shellcheck version
 
 ## Code Style
 
-See the `rust-patterns` and `shell-patterns` skills in `.github/skills/` for detailed coding conventions. Summary:
+See the `rust-patterns` and `shell-patterns` skills in `.agents/skills/` for
+detailed coding conventions. Summary:
 
 - **Rust**: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `anyhow::Result` with `.context()`
 - **Shell**: POSIX `#!/bin/sh`, 2-space indent, minimal logic in wrappers

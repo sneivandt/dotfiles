@@ -1,6 +1,6 @@
 # Windows Usage
 
-Windows dotfiles management powered by the Rust core engine. The PowerShell entrypoint (`dotfiles.ps1`) is a thin wrapper that downloads (or builds) the Rust binary and forwards all arguments to it, providing registry personalization, symlinks, package installation, VS Code extensions, and GitHub Copilot CLI skills in an idempotent fashion.
+Windows dotfiles management powered by the Rust core engine. The PowerShell entrypoint (`dotfiles.ps1`) is a thin wrapper that downloads (or builds) the Rust binary and forwards all arguments to it, providing registry personalization, symlinks, package installation, VS Code extensions, and AI agent skills in an idempotent fashion.
 
 **See Also:**
 - [Usage Guide](USAGE.md) - General usage instructions

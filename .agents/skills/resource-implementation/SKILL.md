@@ -178,6 +178,27 @@ process_resources_with_provider(ctx, resources, &provider, &ProcessOpts::lenient
 
 Real examples: `VsCodeExtensionResource`, `PackageResource`.
 
+## Adding a New Resource Type
+
+When asked to add a new resource type, wire the whole vertical slice rather than
+only the resource struct:
+
+1. Create `cli/src/resources/<resource>.rs`; implement `Resource`, plus
+   `IntrinsicState` when the resource can check itself or a
+   `ResourceStateProvider` when state should be bulk/cached.
+2. Create `cli/src/config/<resource>.rs`; use `config_section!`, support
+   category-based filtering, and add a config-loading test.
+3. Add `conf/<resource>.toml` with the appropriate section and item format.
+4. Create the task in the appropriate `cli/src/tasks/<domain>/` folder; prefer
+   `resource_task!`, declare dependencies, and register it in
+   `cli/src/tasks/catalog.rs`.
+5. Add module declarations in `cli/src/resources/mod.rs`,
+   `cli/src/config/mod.rs`, and the relevant `cli/src/tasks/**/mod.rs`.
+6. Validate with the Rust checks from `cross-platform-verification`.
+
+Read `rust-patterns`, `toml-configuration`, and `engine-orchestration` before
+starting if the resource touches config loading or task dependencies.
+
 ## ResourceState Usage
 
 | Variant | Meaning | Typical check |

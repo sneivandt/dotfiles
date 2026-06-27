@@ -4,6 +4,7 @@ use anyhow::Result;
 
 use crate::tasks::{
     Context, Domain, ExecutionPolicy, PlatformCapability, Task, TaskPhase, TaskResult,
+    task_metadata,
 };
 
 /// The single setting this task enforces.
@@ -25,24 +26,14 @@ const DESIRED_KEY_NAME: &str = "generateResolvConf";
 pub struct InstallWslConf;
 
 impl Task for InstallWslConf {
-    fn name(&self) -> &'static str {
-        "Install wsl.conf"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::System
-    }
-
-    fn execution_policies(&self) -> &[ExecutionPolicy] {
-        const POLICIES: &[ExecutionPolicy] = &[
+    task_metadata! {
+        name: "Install wsl.conf",
+        phase: TaskPhase::Provision,
+        domain: Domain::System,
+        policy: [
             PlatformCapability::Wsl.policy(),
             ExecutionPolicy::RequiresElevation,
-        ];
-        POLICIES
+        ],
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

@@ -4,8 +4,8 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use super::PackageProvider;
 use super::pacman::PacmanProvider;
+use super::{PackageInstallReport, PackageProvider, PackageResource};
 use crate::exec::Executor;
 use crate::resources::ResourceChange;
 
@@ -27,14 +27,15 @@ impl PackageProvider for ParuProvider {
         Ok(ResourceChange::Applied)
     }
 
-    fn supports_batch(&self) -> bool {
-        true
-    }
-
-    fn batch_install(&self, names: &[&str], executor: &dyn Executor) -> Result<()> {
+    fn install_missing(
+        &self,
+        resources: &[&PackageResource],
+        executor: &dyn Executor,
+    ) -> Result<PackageInstallReport> {
         let mut args = vec!["-S", "--needed", "--noconfirm"];
+        let names: Vec<&str> = resources.iter().map(|r| r.name.as_str()).collect();
         args.extend(names);
         executor.run("paru", &args)?;
-        Ok(())
+        Ok(PackageInstallReport::applied(resources.len()))
     }
 }

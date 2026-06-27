@@ -6,13 +6,11 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 
 use crate::config::packages::Package;
-use crate::resources::Resource as _;
-use crate::resources::package::{
-    PackageManager, PackageResource, batch_install_packages, get_installed_packages,
-};
+use crate::resources::package::{PackageManager, PackageResource, get_installed_packages};
+use crate::resources::{Resource as _, ResourceState};
 use crate::tasks::{
-    Context, Domain, ExecutionPolicy, PlatformCapability, ProcessOpts, Task, TaskPhase, TaskResult,
-    TaskStats, process_resources_with_borrowed_cache, task_metadata,
+    Context, Domain, ExecutionPolicy, PlatformCapability, Task, TaskPhase, TaskResult, TaskStats,
+    task_metadata,
 };
 
 /// Default number of parallel jobs for makepkg if nproc detection fails.
@@ -282,13 +280,11 @@ fn build_paru(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
 // Package installation
 // ---------------------------------------------------------------------------
 
-/// Install missing packages in a single package-manager invocation.
+/// Install missing packages using the package provider's preferred strategy.
 ///
-/// Faster than per-package installs and lets the solver resolve cross-package
-/// dependencies across the full set.  Used for managers whose
-/// [`PackageProvider::supports_batch`](crate::resources::package::PackageProvider::supports_batch)
-/// returns `true` (Pacman, Paru).
-fn batch_install(
+/// Pacman and Paru install in one solver invocation; Winget installs
+/// individually and reports per-package failures without aborting the whole set.
+fn install_missing(
     ctx: &Context,
     packages: &[Package],
     installed: &HashSet<String>,
@@ -303,7 +299,7 @@ fn batch_install(
     let mut missing = Vec::new();
 
     for r in &resources {
-        if installed.contains(&r.name) {
+        if matches!(r.state_from_installed(installed), ResourceState::Correct) {
             ctx.debug_fmt(|| format!("ok: {}", r.description()));
             stats.already_ok = stats.already_ok.saturating_add(1);
         } else {
@@ -325,46 +321,40 @@ fn batch_install(
     }
 
     ctx.log
-        .debug(&format!("batch-installing {} packages", missing.len()));
-    if let Err(e) = batch_install_packages(&missing) {
-        let reason = format!("batch install failed: {e:#}");
+        .debug(&format!("installing {} missing packages", missing.len()));
+    let report = match manager.provider().install_missing(&missing, &*ctx.executor) {
+        Ok(report) => report,
+        Err(e) => {
+            let reason = format!("{manager} install failed: {e:#}");
+            ctx.log.warn(&reason);
+            stats.failed = u32::try_from(missing.len()).unwrap_or(u32::MAX);
+            drop(stats.finish(ctx));
+            return TaskResult::Failed(reason);
+        }
+    };
+
+    for failure in report.failures() {
+        ctx.log.warn(&format!(
+            "failed to install {} with {manager}: {}",
+            failure.package, failure.reason
+        ));
+    }
+
+    stats.changed = u32::try_from(report.applied_count()).unwrap_or(u32::MAX);
+    stats.failed = u32::try_from(report.failures().len()).unwrap_or(u32::MAX);
+
+    if report.has_failures() {
+        let reason = format!("{} package install(s) failed", report.failures().len());
         ctx.log.warn(&reason);
-        stats.skipped = u32::try_from(missing.len()).unwrap_or(u32::MAX);
         drop(stats.finish(ctx));
         return TaskResult::Failed(reason);
     }
-    stats.changed = u32::try_from(missing.len()).unwrap_or(u32::MAX);
 
     stats.finish(ctx)
 }
 
-/// Install packages one at a time so that one failure does not prevent the
-/// remainder from being attempted.  Used for managers whose
-/// [`PackageProvider::supports_batch`](crate::resources::package::PackageProvider::supports_batch)
-/// returns `false` (Winget).
-fn individual_install(
-    ctx: &Context,
-    packages: &[Package],
-    installed: &HashSet<String>,
-    manager: PackageManager,
-) -> Result<TaskResult> {
-    let resources = packages
-        .iter()
-        .map(|pkg| PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor)));
-    process_resources_with_borrowed_cache(
-        ctx,
-        resources,
-        installed,
-        |resource: &PackageResource, installed: &HashSet<String>| {
-            Ok(resource.state_from_installed(installed))
-        },
-        &ProcessOpts::lenient("install"),
-    )
-}
-
 /// Process a list of packages by querying installed state once and dispatching
-/// to either [`batch_install`] or [`individual_install`] based on whether the
-/// underlying provider supports batch installation.
+/// to the package provider's preferred install strategy.
 fn process_packages(
     ctx: &Context,
     packages: &[Package],
@@ -377,10 +367,5 @@ fn process_packages(
         )
     });
     let installed = get_installed_packages(manager, &*ctx.executor)?;
-
-    if manager.provider().supports_batch() {
-        Ok(batch_install(ctx, packages, &installed, manager))
-    } else {
-        individual_install(ctx, packages, &installed, manager)
-    }
+    Ok(install_missing(ctx, packages, &installed, manager))
 }

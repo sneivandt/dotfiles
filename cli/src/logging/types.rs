@@ -51,7 +51,7 @@ impl TaskStatus {
 /// intentionally excludes structured task recording, which belongs to
 /// [`TaskRecorder`].
 ///
-/// Both [`Logger`](super::logger::Logger) and
+/// Both [`Logger`](super::runtime::Logger) and
 /// [`BufferedLog`](super::buffered::BufferedLog) implement this trait.
 pub trait Output: Send + Sync {
     /// Log a stage header (major section).

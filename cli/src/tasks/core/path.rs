@@ -3,29 +3,20 @@
 use std::sync::Arc;
 
 use crate::resources::path_entry::PathEntryResource;
-use crate::tasks::{Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, process_resources};
+use crate::tasks::{
+    Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, task_metadata,
+};
 
 /// Ensure `~/.local/bin` is on the user's `PATH`.
 #[derive(Debug)]
 pub struct ConfigurePath;
 
 impl Task for ConfigurePath {
-    fn name(&self) -> &'static str {
-        "Configure PATH"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Bootstrap
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Core
-    }
-
-    crate::tasks::task_deps![crate::tasks::core::wrapper::InstallWrapper];
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
+    task_metadata! {
+        name: "Configure PATH",
+        phase: TaskPhase::Bootstrap,
+        domain: Domain::Core,
+        deps: [crate::tasks::core::wrapper::InstallWrapper],
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {

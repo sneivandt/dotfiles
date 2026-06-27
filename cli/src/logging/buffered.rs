@@ -2,7 +2,7 @@
 use std::sync::{Arc, Mutex};
 
 use super::diagnostic::{DiagEvent, DiagnosticLog};
-use super::logger::Logger;
+use super::runtime::Logger;
 use super::types::{Output, TaskRecorder, TaskStatus};
 use crate::tasks::Domain;
 

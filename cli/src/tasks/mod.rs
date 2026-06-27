@@ -175,7 +175,12 @@ pub trait Task: Send + Sync + 'static {
     }
 
     /// Whether this task should run on the current platform/profile.
-    fn should_run(&self, ctx: &Context) -> bool;
+    ///
+    /// Most tasks are always eligible once their execution policies pass; tasks
+    /// with platform, tool-availability, or configuration gates override this.
+    fn should_run(&self, _ctx: &Context) -> bool {
+        true
+    }
 
     /// Execute the task when it is applicable, combining the applicability
     /// check and run step into a single call.

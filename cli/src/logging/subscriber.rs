@@ -14,7 +14,7 @@ static VERBOSE: AtomicBool = AtomicBool::new(true);
 
 /// Update the global verbose flag.
 ///
-/// Called by [`Logger::set_verbose`](super::logger::Logger::set_verbose) so
+/// Called by [`Logger::set_verbose`](super::runtime::Logger::set_verbose) so
 /// that the formatter and file layer stay in sync with the logger.
 pub(super) fn set_verbose(verbose: bool) {
     VERBOSE.store(verbose, Ordering::Relaxed);

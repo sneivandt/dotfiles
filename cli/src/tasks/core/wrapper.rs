@@ -11,7 +11,7 @@
 use crate::resources::wrapper::{WrapperResource, WrapperType};
 use crate::tasks::{
     Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, process_resources,
-    process_resources_remove,
+    process_resources_remove, task_metadata,
 };
 
 /// Install the CLI wrapper script in `~/.local/bin`.
@@ -19,20 +19,10 @@ use crate::tasks::{
 pub struct InstallWrapper;
 
 impl Task for InstallWrapper {
-    fn name(&self) -> &'static str {
-        "Install wrapper"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Bootstrap
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Core
-    }
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
+    task_metadata! {
+        name: "Install wrapper",
+        phase: TaskPhase::Bootstrap,
+        domain: Domain::Core,
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {
@@ -51,20 +41,10 @@ impl Task for InstallWrapper {
 pub struct UninstallWrapper;
 
 impl Task for UninstallWrapper {
-    fn name(&self) -> &'static str {
-        "Remove wrapper"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Bootstrap
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Core
-    }
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
+    task_metadata! {
+        name: "Remove wrapper",
+        phase: TaskPhase::Bootstrap,
+        domain: Domain::Core,
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {

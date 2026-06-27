@@ -342,21 +342,8 @@ fn load_config(
     log.stage("Loading configuration");
     let config = Config::load(root, profile, platform, overlay)?;
 
-    let debug_count = |count: usize, label: &str| log.debug(&format!("{count} {label}"));
-
-    let counts = [
-        (config.packages.len(), "packages"),
-        (config.symlinks.len(), "symlinks"),
-        (config.registry.len(), "registry entries"),
-        (config.units.len(), "systemd units"),
-        (config.chmod.len(), "chmod entries"),
-        (config.vscode_extensions.len(), "vscode extensions"),
-        (config.manifest.excluded_files.len(), "manifest exclusions"),
-        (config.scripts.len(), "overlay scripts"),
-    ];
-
-    for (count, label) in &counts {
-        debug_count(*count, label);
+    for section in config.section_counts() {
+        log.debug(&format!("{} {}", section.count, section.label));
     }
 
     let warnings = config.validate(platform);

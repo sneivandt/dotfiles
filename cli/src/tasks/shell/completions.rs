@@ -3,7 +3,7 @@ use anyhow::{Context as _, Result};
 use clap::CommandFactory;
 
 use crate::cli::Cli;
-use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_deps};
+use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
 
 /// Filename of the generated zsh completion script.
 const ZSH_COMPLETION_FILENAME: &str = "_dotfiles";
@@ -21,19 +21,12 @@ const ZSH_COMPLETIONS_SUBDIR: &str = "config/zsh/completions";
 pub struct GenerateCompletions;
 
 impl Task for GenerateCompletions {
-    fn name(&self) -> &'static str {
-        "Install shell completions"
+    task_metadata! {
+        name: "Install shell completions",
+        phase: TaskPhase::Sync,
+        domain: Domain::Shell,
+        deps: [crate::tasks::repository::update::UpdateRepository],
     }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Sync
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Shell
-    }
-
-    task_deps![crate::tasks::repository::update::UpdateRepository];
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.is_linux()

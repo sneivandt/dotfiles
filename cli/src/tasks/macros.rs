@@ -240,17 +240,12 @@ macro_rules! resource_task {
 
             $($crate::tasks::execution_policies_impl![$($policy),+];)?
 
-            #[allow(
-                unused_variables,
-                reason = "ctx is only used when the generated task declares a guard"
-            )]
+            $(
             fn should_run(&self, ctx: &$crate::tasks::Context) -> bool {
-                $(
-                    let $guard_ctx = ctx;
-                    if !{ $guard_expr } { return false; }
-                )?
-                true
+                let $guard_ctx = ctx;
+                $guard_expr
             }
+            )?
 
             fn run_if_applicable(
                 &self,
@@ -316,17 +311,12 @@ macro_rules! resource_task {
 
             $($crate::tasks::execution_policies_impl![$($policy),+];)?
 
-            #[allow(
-                unused_variables,
-                reason = "ctx is only used when the generated task declares a guard"
-            )]
+            $(
             fn should_run(&self, ctx: &$crate::tasks::Context) -> bool {
-                $(
-                    let $guard_ctx = ctx;
-                    if !{ $guard_expr } { return false; }
-                )?
-                true
+                let $guard_ctx = ctx;
+                $guard_expr
             }
+            )?
 
             fn run_if_applicable(
                 &self,

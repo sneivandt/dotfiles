@@ -153,7 +153,7 @@ impl Resource for PathEntryResource {
                     return Ok(ResourceChange::AlreadyCorrect);
                 }
 
-                append_user_path_windows(dir)?;
+                append_user_path(dir)?;
                 // Best-effort broadcast of the environment change so already-
                 // running shells / Explorer pick up the new PATH without a
                 // logoff.  SetEnvironmentVariable would do this automatically
@@ -220,10 +220,8 @@ impl IntrinsicState for PathEntryResource {
 
 /// Append `dir` to the Windows user `PATH` in the registry, preserving the
 /// original value type (`REG_EXPAND_SZ` by default).
-///
-/// This is a no-op on non-Windows targets.
 #[cfg(windows)]
-fn append_user_path_windows(dir: &str) -> Result<()> {
+fn append_user_path(dir: &str) -> Result<()> {
     use winreg::RegKey;
     use winreg::RegValue;
     use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_EXPAND_SZ};
@@ -263,81 +261,15 @@ fn append_user_path_windows(dir: &str) -> Result<()> {
     Ok(())
 }
 
+/// No-op non-Windows backend so the cross-platform strategy enum can compile.
 #[cfg(not(windows))]
 #[allow(
     clippy::unnecessary_wraps,
     clippy::missing_const_for_fn,
-    reason = "matches trait signature"
+    reason = "matches Windows backend signature"
 )]
-fn append_user_path_windows(_dir: &str) -> Result<()> {
+fn append_user_path(_dir: &str) -> Result<()> {
     Ok(())
-}
-
-/// Return `true` when `dir` already appears as a `;`-separated entry in
-/// `path` (case-insensitive on Windows).
-///
-/// Each entry in `path` is expanded for `%VAR%` tokens before comparison so
-/// that an existing `%USERPROFILE%\.local\bin` correctly matches an absolute
-/// `C:\Users\foo\.local\bin`.  Without this, repeated runs would keep
-/// appending duplicate entries to the user `PATH`.
-#[cfg(windows)]
-fn path_contains_entry(path: &str, dir: &str) -> bool {
-    let target = normalize_path_entry(&expand_env_vars(dir));
-    path.split(';')
-        .map(|entry| normalize_path_entry(&expand_env_vars(entry)))
-        .any(|entry| entry.eq_ignore_ascii_case(&target))
-}
-
-/// Expand `%VAR%` tokens in `value` against the current process environment.
-///
-/// Unknown variables are left as-is.  Lone `%` characters that do not form a
-/// matched pair are passed through unchanged.
-#[cfg(windows)]
-#[allow(
-    clippy::arithmetic_side_effects,
-    reason = "byte offsets returned by `find` on `%` (1 byte) are bounded by string length"
-)]
-fn expand_env_vars(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    let mut rest = value;
-    while let Some(start) = rest.find('%') {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + 1..];
-        if let Some(end) = after.find('%') {
-            let name = &after[..end];
-            if !name.is_empty()
-                && let Some(val) = std::env::var_os(name)
-            {
-                out.push_str(&val.to_string_lossy());
-                rest = &after[end + 1..];
-                continue;
-            }
-            // No matching env var: keep literal `%NAME%`.
-            out.push('%');
-            out.push_str(name);
-            out.push('%');
-            rest = &after[end + 1..];
-        } else {
-            // Trailing `%` with no closing pair: keep as literal.
-            out.push('%');
-            out.push_str(after);
-            rest = "";
-        }
-    }
-    out.push_str(rest);
-    out
-}
-
-/// Normalize a path entry for comparison: trim surrounding whitespace,
-/// strip a trailing path separator, and unify forward / backward slashes.
-#[cfg(windows)]
-fn normalize_path_entry(entry: &str) -> String {
-    let trimmed = entry.trim();
-    let unified: String = trimmed
-        .chars()
-        .map(|c| if c == '/' { '\\' } else { c })
-        .collect();
-    unified.trim_end_matches('\\').to_string()
 }
 
 /// Return `true` when the persisted user `PATH` in the registry already
@@ -362,38 +294,8 @@ fn user_path_contains(dir: &str) -> Result<bool> {
     }
 }
 
-/// Decode a UTF-16LE registry string payload, stripping any trailing NUL.
-#[cfg(windows)]
-fn decode_reg_string(bytes: &[u8]) -> String {
-    let wide: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|c| {
-            // chunks_exact guarantees len == 2.
-            let lo = *c.first().unwrap_or(&0);
-            let hi = *c.get(1).unwrap_or(&0);
-            u16::from_le_bytes([lo, hi])
-        })
-        .collect();
-    String::from_utf16_lossy(&wide)
-        .trim_end_matches('\0')
-        .to_string()
-}
-
-/// Encode `value` as a NUL-terminated UTF-16LE byte buffer suitable for a
-/// `REG_SZ` / `REG_EXPAND_SZ` registry value.
-#[cfg(windows)]
-fn encode_reg_string(value: &str) -> Vec<u8> {
-    let mut out: Vec<u8> = value.encode_utf16().flat_map(u16::to_le_bytes).collect();
-    out.extend_from_slice(&[0, 0]);
-    out
-}
-
-/// Broadcast `WM_SETTINGCHANGE` for the `"Environment"` setting so that
-/// Explorer and other top-level windows re-read their environment block.
-///
-/// Performed by a tiny `PowerShell` helper so we avoid an `unsafe` FFI
-/// dependency in this crate.  Any failure is ignored — broadcasting is a
-/// best-effort convenience, not a correctness requirement.
+/// Broadcast `WM_SETTINGCHANGE` for the `"Environment"` setting so Explorer
+/// and other top-level windows re-read their environment block.
 #[cfg(windows)]
 fn broadcast_environment_change(executor: &dyn Executor) -> Result<()> {
     const BROADCAST_SCRIPT: &str = "Add-Type -Namespace Win32 -Name NativeMethods -MemberDefinition '[System.Runtime.InteropServices.DllImport(\"user32.dll\", SetLastError=true, CharSet=System.Runtime.InteropServices.CharSet.Auto)] public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.UIntPtr lpdwResult);'; $r = [System.UIntPtr]::Zero; [void][Win32.NativeMethods]::SendMessageTimeout([System.IntPtr]0xffff, 0x001A, [System.UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$r)";
@@ -406,14 +308,95 @@ fn broadcast_environment_change(executor: &dyn Executor) -> Result<()> {
     Ok(())
 }
 
+/// Non-Windows environment broadcast fallback.
 #[cfg(not(windows))]
 #[allow(
     clippy::unnecessary_wraps,
     clippy::missing_const_for_fn,
-    reason = "matches trait signature"
+    reason = "matches Windows backend signature"
 )]
 fn broadcast_environment_change(_executor: &dyn Executor) -> Result<()> {
     Ok(())
+}
+
+/// Return `true` when `dir` already appears as a `;`-separated entry in
+/// `path` (case-insensitive on Windows).
+#[cfg(windows)]
+fn path_contains_entry(path: &str, dir: &str) -> bool {
+    let target = normalize_path_entry(&expand_env_vars(dir));
+    path.split(';')
+        .map(|entry| normalize_path_entry(&expand_env_vars(entry)))
+        .any(|entry| entry.eq_ignore_ascii_case(&target))
+}
+
+/// Expand `%VAR%` tokens in `value` against the current process environment.
+#[cfg(windows)]
+#[allow(
+    clippy::arithmetic_side_effects,
+    reason = "byte offsets returned by `find` on `%` (1 byte) are bounded by string length"
+)]
+fn expand_env_vars(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(start) = rest.find('%') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        if let Some(end) = after.find('%') {
+            let name = &after[..end];
+            if !name.is_empty()
+                && let Some(val) = std::env::var_os(name)
+            {
+                out.push_str(&val.to_string_lossy());
+                rest = &after[end + 1..];
+                continue;
+            }
+            out.push('%');
+            out.push_str(name);
+            out.push('%');
+            rest = &after[end + 1..];
+        } else {
+            out.push('%');
+            out.push_str(after);
+            rest = "";
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Normalize a path entry for comparison.
+#[cfg(windows)]
+fn normalize_path_entry(entry: &str) -> String {
+    let trimmed = entry.trim();
+    let unified: String = trimmed
+        .chars()
+        .map(|c| if c == '/' { '\\' } else { c })
+        .collect();
+    unified.trim_end_matches('\\').to_string()
+}
+
+/// Decode a UTF-16LE registry string payload, stripping any trailing NUL.
+#[cfg(windows)]
+fn decode_reg_string(bytes: &[u8]) -> String {
+    let wide: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|c| {
+            let lo = *c.first().unwrap_or(&0);
+            let hi = *c.get(1).unwrap_or(&0);
+            u16::from_le_bytes([lo, hi])
+        })
+        .collect();
+    String::from_utf16_lossy(&wide)
+        .trim_end_matches('\0')
+        .to_string()
+}
+
+/// Encode `value` as a NUL-terminated UTF-16LE byte buffer.
+#[cfg(windows)]
+fn encode_reg_string(value: &str) -> Vec<u8> {
+    let mut out: Vec<u8> = value.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    out.extend_from_slice(&[0, 0]);
+    out
 }
 
 #[cfg(test)]

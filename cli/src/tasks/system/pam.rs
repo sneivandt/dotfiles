@@ -9,7 +9,7 @@ use crate::resources::IntrinsicState;
 use crate::resources::pam::PamConfigResource;
 use crate::tasks::{
     Context, Domain, ExecutionPolicy, PlatformCapability, ProcessOpts, Task, TaskPhase, TaskResult,
-    process_resources,
+    process_resources, task_metadata,
 };
 
 /// The PAM service name to configure on Arch Linux desktop systems.
@@ -53,24 +53,14 @@ impl ConfigurePam {
 }
 
 impl Task for ConfigurePam {
-    fn name(&self) -> &'static str {
-        "Configure PAM services"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::System
-    }
-
-    fn execution_policies(&self) -> &[ExecutionPolicy] {
-        const POLICIES: &[ExecutionPolicy] = &[
+    task_metadata! {
+        name: "Configure PAM services",
+        phase: TaskPhase::Provision,
+        domain: Domain::System,
+        policy: [
             PlatformCapability::ArchLinux.policy(),
             ExecutionPolicy::RequiresElevation,
-        ];
-        POLICIES
+        ],
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

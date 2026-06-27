@@ -24,10 +24,6 @@ impl Task for ValidateConfigWarnings {
         domain: Domain::Validation,
     }
 
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let warnings = ctx.config_read().validate(ctx.platform);
         if warnings.is_empty() {
@@ -102,10 +98,6 @@ impl Task for ValidateConfigFiles {
         domain: Domain::Validation,
     }
 
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let root = ctx.root();
         let conf = root.join("conf");
@@ -161,10 +153,6 @@ impl Task for ValidateManifestSync {
         name: "Validate manifest sync",
         phase: TaskPhase::Provision,
         domain: Domain::Validation,
-    }
-
-    fn should_run(&self, _ctx: &Context) -> bool {
-        true
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

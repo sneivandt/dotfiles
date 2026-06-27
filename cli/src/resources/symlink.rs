@@ -347,6 +347,64 @@ fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result
     Ok(())
 }
 
+/// Remove a symlink, handling platform differences.
+///
+/// On Windows, directory symlinks must be removed with `remove_dir` (not
+/// `remove_file`). Rust's `symlink_metadata().is_dir()` returns `false` for
+/// symlinks, so the raw `FILE_ATTRIBUTE_DIRECTORY` flag detects directory
+/// symlinks. If `remove_dir` still fails with OS error 5 (access denied), a
+/// `cmd /c rmdir` fallback runs in a separate process.
+fn remove_symlink(path: &Path) -> Result<()> {
+    let meta = match std::fs::symlink_metadata(path) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(e.into()),
+        Err(e) => {
+            return Err(
+                anyhow::Error::new(e).context(format!("reading metadata: {}", path.display()))
+            );
+        }
+    };
+    if is_dir_like(&meta) {
+        match std::fs::remove_dir(path) {
+            Ok(()) => {}
+            #[cfg(windows)]
+            Err(e) if e.raw_os_error() == Some(5) => {
+                remove_dir_fallback(path)?;
+            }
+            Err(e) => return Err(e.into()),
+        }
+    } else {
+        std::fs::remove_file(path).with_context(|| format!("removing file: {}", path.display()))?;
+    }
+    Ok(())
+}
+
+/// Check if metadata represents a managed link-like entry.
+fn is_link_like(meta: &std::fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        meta.file_attributes() & 0x400 != 0 // FILE_ATTRIBUTE_REPARSE_POINT
+    }
+    #[cfg(not(windows))]
+    {
+        meta.is_symlink()
+    }
+}
+
+/// Check if metadata represents a directory-like entry.
+fn is_dir_like(meta: &std::fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        meta.file_attributes() & 0x10 != 0 // FILE_ATTRIBUTE_DIRECTORY
+    }
+    #[cfg(not(windows))]
+    {
+        meta.is_dir()
+    }
+}
+
 /// Create a Windows directory junction as a fallback for directory symlinks.
 #[cfg(windows)]
 fn create_junction(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
@@ -382,69 +440,7 @@ fn command_output(result: &crate::exec::ExecResult) -> String {
     }
 }
 
-/// Remove a symlink, handling platform differences.
-///
-/// On Windows, directory symlinks must be removed with `remove_dir` (not `remove_file`).
-/// Rust's `symlink_metadata().is_dir()` returns `false` for symlinks, so we check
-/// the raw `FILE_ATTRIBUTE_DIRECTORY` flag to detect directory symlinks.
-/// If `remove_dir` still fails with OS error 5 (access denied), we fall back
-/// to `cmd /c rmdir` which runs in a separate process.
-fn remove_symlink(path: &Path) -> Result<()> {
-    let meta = match std::fs::symlink_metadata(path) {
-        Ok(m) => m,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(e.into()),
-        Err(e) => {
-            return Err(
-                anyhow::Error::new(e).context(format!("reading metadata: {}", path.display()))
-            );
-        }
-    };
-    if is_dir_like(&meta) {
-        match std::fs::remove_dir(path) {
-            Ok(()) => {}
-            #[cfg(windows)]
-            Err(e) if e.raw_os_error() == Some(5) => {
-                remove_dir_fallback(path)?;
-            }
-            Err(e) => return Err(e.into()),
-        }
-    } else {
-        std::fs::remove_file(path).with_context(|| format!("removing file: {}", path.display()))?;
-    }
-    Ok(())
-}
-
-/// Check if metadata represents a directory-like entry.
-/// On Windows, `symlink_metadata().is_dir()` returns `false` for directory symlinks,
-/// so we check the raw `FILE_ATTRIBUTE_DIRECTORY` bit instead.
-fn is_dir_like(meta: &std::fs::Metadata) -> bool {
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        meta.file_attributes() & 0x10 != 0 // FILE_ATTRIBUTE_DIRECTORY
-    }
-    #[cfg(not(windows))]
-    {
-        meta.is_dir()
-    }
-}
-
-/// Check if metadata represents a managed link-like entry.
-fn is_link_like(meta: &std::fs::Metadata) -> bool {
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        meta.file_attributes() & 0x400 != 0 // FILE_ATTRIBUTE_REPARSE_POINT
-    }
-    #[cfg(not(windows))]
-    {
-        meta.is_symlink()
-    }
-}
-
 /// Fallback directory removal on Windows using `cmd /c rmdir`.
-/// This spawns a separate process that doesn't hold any handles from the
-/// current process, which can resolve "Access is denied" errors.
 #[cfg(windows)]
 fn remove_dir_fallback(path: &Path) -> Result<()> {
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;

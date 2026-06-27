@@ -194,7 +194,10 @@ fn run_installs_when_manifest_changed() {
         .returning(move |dir, program, args, env| {
             assert_eq!(dir, install_cwd.as_path());
             assert_eq!(program, "apm");
-            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
+            assert_eq!(
+                args,
+                ["install", "-g", "--target", "copilot,codex,copilot-app"]
+            );
             assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
             assert!(env.contains(&("GCM_INTERACTIVE", "Never")));
             assert!(env.contains(&("GCM_GUI_PROMPT", "false")));
@@ -244,7 +247,10 @@ fn run_includes_copilot_app_target_on_windows_when_app_database_exists() {
         .returning(move |dir, program, args, env| {
             assert_eq!(dir, install_cwd.as_path());
             assert_eq!(program, "apm");
-            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
+            assert_eq!(
+                args,
+                ["install", "-g", "--target", "copilot,codex,copilot-app"]
+            );
             assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
             Ok(ok_result("installed\n"))
         });
@@ -282,7 +288,7 @@ fn run_omits_copilot_app_target_when_app_database_missing() {
         .returning(move |dir, program, args, env| {
             assert_eq!(dir, install_cwd.as_path());
             assert_eq!(program, "apm");
-            assert_eq!(args, ["install", "-g", "--target", "copilot"]);
+            assert_eq!(args, ["install", "-g", "--target", "copilot,codex"]);
             assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
             Ok(ok_result("installed\n"))
         });
@@ -343,7 +349,10 @@ fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
         .in_sequence(seq)
         .returning(|_, program, args, _| {
             assert_eq!(program, "apm");
-            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
+            assert_eq!(
+                args,
+                ["install", "-g", "--target", "copilot,codex,copilot-app"]
+            );
             Ok(ok_result("installed\n"))
         });
 }
@@ -640,7 +649,13 @@ fn update_advances_dependencies_when_outdated_reports_stale_lock() {
             assert_eq!(program, "apm");
             assert_eq!(
                 args,
-                ["update", "-g", "--yes", "--target", "copilot,copilot-app"]
+                [
+                    "update",
+                    "-g",
+                    "--yes",
+                    "--target",
+                    "copilot,codex,copilot-app"
+                ]
             );
             assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
             // Simulate a real ref advance by rewriting the lockfile; the task
@@ -687,7 +702,13 @@ fn update_stays_quiet_when_apm_update_reports_no_changes() {
         .returning(move |_, _, args, _| {
             assert_eq!(
                 args,
-                ["update", "-g", "--yes", "--target", "copilot,copilot-app"]
+                [
+                    "update",
+                    "-g",
+                    "--yes",
+                    "--target",
+                    "copilot,codex,copilot-app"
+                ]
             );
             // The mock leaves the lockfile untouched, so the before/after
             // comparison reports no advance even though `apm update` re-ran.
@@ -759,7 +780,13 @@ fn update_re_arms_apm_workflows_after_apm_update() {
             assert_eq!(program, "apm");
             assert_eq!(
                 args,
-                ["update", "-g", "--yes", "--target", "copilot,copilot-app"]
+                [
+                    "update",
+                    "-g",
+                    "--yes",
+                    "--target",
+                    "copilot,codex,copilot-app"
+                ]
             );
             Ok(ok_result("updated\n"))
         });
@@ -839,7 +866,13 @@ fn update_re_arms_apm_workflows_even_when_apm_update_reports_no_changes() {
         .returning(move |_, _, args, _| {
             assert_eq!(
                 args,
-                ["update", "-g", "--yes", "--target", "copilot,copilot-app"]
+                [
+                    "update",
+                    "-g",
+                    "--yes",
+                    "--target",
+                    "copilot,codex,copilot-app"
+                ]
             );
             Ok(ok_result("  [+] github.com/example/plugin (cached)\n"))
         });
@@ -888,7 +921,10 @@ fn install_task_converges_without_advancing_dependencies() {
         .once()
         .in_sequence(&mut seq)
         .returning(move |_, _, args, _| {
-            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
+            assert_eq!(
+                args,
+                ["install", "-g", "--target", "copilot,codex,copilot-app"]
+            );
             Ok(ok_result("installed\n"))
         });
     // No `apm outdated` / `apm update` expectations are registered: the
@@ -955,7 +991,10 @@ fn run_installs_when_success_marker_is_missing() {
         .returning(move |dir, program, args, _env| {
             assert_eq!(dir, install_cwd.as_path());
             assert_eq!(program, "apm");
-            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
+            assert_eq!(
+                args,
+                ["install", "-g", "--target", "copilot,codex,copilot-app"]
+            );
             Ok(ok_result("installed\n"))
         });
 
@@ -1132,7 +1171,10 @@ fn run_continues_when_experimental_enable_fails() {
         .once()
         .in_sequence(&mut seq)
         .returning(|_, _, args, _| {
-            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
+            assert_eq!(
+                args,
+                ["install", "-g", "--target", "copilot,codex,copilot-app"]
+            );
             Ok(ok_result("installed\n"))
         });
 
@@ -1194,7 +1236,10 @@ fn run_tolerates_copilot_app_workflow_encoding_failures() {
         .once()
         .in_sequence(&mut seq)
         .returning(|_, _, args, _| {
-            assert_eq!(args, ["install", "-g", "--target", "copilot,copilot-app"]);
+            assert_eq!(
+                args,
+                ["install", "-g", "--target", "copilot,codex,copilot-app"]
+            );
             Err(anyhow::anyhow!(
                 "apm install failed (exit 1): stdout: {APM_WORKFLOW_ENCODE_ONLY_OUTPUT}"
             ))

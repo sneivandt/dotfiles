@@ -294,9 +294,9 @@ code --install-extension <extension-id>
 
 # Or run APM directly at user scope.
 # Add ,copilot-app only after the Copilot App has initialized ~/.copilot/data.db.
-apm install -g --target copilot
+apm install -g --target copilot,codex
 apm outdated -g
-apm update -g --yes --target copilot
+apm update -g --yes --target copilot,codex
 
 # Inspect the manifest (deployed location)
 cat ~/.apm/apm.yml

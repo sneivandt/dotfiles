@@ -132,7 +132,7 @@ symlinks = [
 - Globs are expanded during config load and preserve overlay ownership, so overlay entries link back to `<overlay>/symlinks/...` rather than the main repo.
 - Example: `config/nvim` → `~/.config/nvim` symlinked to `<repo>/symlinks/config/nvim`
 - Example: `{ source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }` → `~/AppData/Roaming/Code/User/settings.json`
-- Example: `apm/plugins/*` links each direct child of `<repo>/symlinks/apm/plugins/` into `~/.apm/plugins/<child>`; APM then deploys plugin primitives into Copilot, VS Code, and Copilot App targets
+- Example: `apm/plugins/*` links each direct child of `<repo>/symlinks/apm/plugins/` into `~/.apm/plugins/<child>`; APM then deploys plugin primitives into Copilot, Codex, VS Code, and Copilot App targets
 
 ---
 

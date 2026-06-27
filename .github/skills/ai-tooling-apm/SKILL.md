@@ -2,7 +2,7 @@
 name: ai-tooling-apm
 description: >
   AI tooling and APM plugin workflow for this dotfiles repo. Use when changing
-  Copilot/agent settings, APM dependencies, local APM plugins, or skill
+  Copilot/Codex/agent settings, APM dependencies, local APM plugins, or skill
   distribution through symlinks/apm.
 ---
 
@@ -21,7 +21,7 @@ the Rust `InstallApmPackages` task.
 | `symlinks/apm/plugins/dot-copilot` | Local Copilot interaction workflow skills |
 | `symlinks/apm/plugins/dot-skill` | Local skill/plugin maintenance skills |
 | `conf/symlinks.toml` | Links `apm/config/base.yml` and `apm/plugins/*` from this repo |
-| `cli/src/tasks/ai/apm/` | `InstallApmPackages` (Provision phase) merges fragments + runs `apm install`; `UpdateApmPackages` (Update phase, `update` command only) advances locked deps via `apm outdated` + `apm update` (`mod.rs` orchestration; `fragments.rs`, `manifest.rs`, `outdated.rs`, `autopilot.rs`) |
+| `cli/src/tasks/ai/apm/` | `InstallApmPackages` (Provision phase) merges fragments + runs `apm install` for Copilot and Codex targets; `UpdateApmPackages` (Update phase, `update` command only) advances locked deps via `apm outdated` + `apm update` with the same target selection (`mod.rs` orchestration; `fragments.rs`, `manifest.rs`, `outdated.rs`, `autopilot.rs`) |
 
 ## When to Change What
 

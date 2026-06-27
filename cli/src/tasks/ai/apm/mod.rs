@@ -558,7 +558,7 @@ fn run_apm_install(ctx: &Context, targets: ApmTargets) -> Result<TaskResult> {
                 // succeeded for everything that matters.  Route the raw output to
                 // the diagnostic log and continue rather than failing the task.
                 report_apm_output(ctx, &msg, "");
-                ctx.log.warn(&format!(
+                ctx.log.info(&format!(
                     "apm install succeeded; ignoring {encode_failures} experimental \
                      copilot-app workflow-encoding error(s) for non-workflow primitives \
                      (e.g. .agent.md agents). The copilot target deployed normally; \
@@ -712,7 +712,7 @@ fn run_apm_update(ctx: &Context, targets: ApmTargets) -> Result<ApmUpdateOutcome
                 .flatten()
             {
                 report_apm_output(ctx, &msg, "");
-                ctx.log.warn(&format!(
+                ctx.log.info(&format!(
                     "apm update succeeded; ignoring {encode_failures} experimental \
                      copilot-app workflow-encoding error(s) for non-workflow primitives \
                      (e.g. .agent.md agents). The copilot target deployed normally; \

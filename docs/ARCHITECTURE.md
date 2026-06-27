@@ -53,7 +53,7 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 
 ```
 ┌──────────────┐      ┌─────────────┐
-│ dotfiles.sh  │      │ dotfiles.ps1│   Thin wrappers
+│ dotfiles.sh  │      │ dotfiles.ps1 │   Thin wrappers
 │  (Linux)     │      │  (Windows)  │   download/build binary
 └──────┬───────┘      └──────┬──────┘
        │                     │

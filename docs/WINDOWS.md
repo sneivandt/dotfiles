@@ -41,24 +41,23 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 
 `dotfiles.ps1` downloads (or builds) the Rust binary and forwards all arguments to it. The binary runs the following tasks on Windows:
 
-| Phase | Step | Task | Description | Idempotency Cue |
-|-------|------|------|-------------|-----------------|
-| System | 1 | Self-Update | Updates the dotfiles binary from latest GitHub release (runs before the task scheduler; re-execs if updated). | Skips if already up to date. |
-| System | 2 | Developer Mode | Enables Windows developer mode (required for symlink creation). | Skips if already enabled. |
-| System | 3 | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
-| System | 4 | Update Repository | Updates the repository from remote (`git pull --ff-only`). | Skips if already up to date. |
-| System | 5 | Git Hooks | Copies repository git hooks into `.git/hooks/`. | Skips if hooks already match. |
-| System | 6 | Configure PATH | Ensures dotfiles bin directory is on PATH. | Skips if already on PATH. |
-| System | 7 | Install Wrapper | Installs the `dotfiles` wrapper script so the CLI is on PATH from any directory. | Skips if wrapper is already up to date. |
-| User | 8 | Packages | Installs missing packages from `conf/packages.toml` using winget. | Skips already-installed packages. |
-| User | 9 | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
-| User | 10 | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
-| User | 11 | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
-| User | 12 | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
-| User | 13 | APM Packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install -g --target copilot,codex`, adding `copilot-app` only when `~/.copilot/data.db` exists. The `update` command separately runs `apm outdated -g` and `apm update -g --yes` with the same target selection when locked refs are stale. | Idempotent via APM's lockfile. |
+| Phase | Task | Description | Idempotency Cue |
+|-------|------|-------------|-----------------|
+| System | Self-Update | Updates the dotfiles binary from latest GitHub release (runs before the task scheduler; re-execs if updated). | Skips if already up to date. |
+| System | Developer Mode | Enables Windows developer mode (required for symlink creation). | Skips if already enabled. |
+| System | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
+| System | Update Repository | Updates the repository from remote (`git pull --ff-only`). | Skips if already up to date. |
+| System | Git Hooks | Copies repository git hooks into `.git/hooks/`. | Skips if hooks already match. |
+| System | Configure PATH | Ensures dotfiles bin directory is on PATH. | Skips if already on PATH. |
+| System | Install Wrapper | Installs the `dotfiles` wrapper script so the CLI is on PATH from any directory. | Skips if wrapper is already up to date. |
+| User | Packages | Installs missing packages from `conf/packages.toml` using winget. | Skips already-installed packages. |
+| User | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
+| User | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
+| User | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
+| User | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
+| User | APM Packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install -g --target copilot,codex`, adding `copilot-app` only when `~/.copilot/data.db` exists. The `update` command separately runs `apm outdated -g` and `apm update -g --yes` with the same target selection when locked refs are stale. | Idempotent via APM's lockfile. |
 
-Tasks run in parallel where dependencies allow, so the numbering above reflects logical
-grouping rather than strict execution order.
+Within each phase, tasks can run in parallel whenever dependencies allow.
 
 Tasks that don't apply to Windows (systemd, shell, chmod, paru) are automatically skipped via platform detection.
 
@@ -76,7 +75,7 @@ git config credential.helper manager
 
 This configuration:
 - Enables proper symlink creation in the working directory
-- Requires Developer Mode (enabled automatically by the first installation task)
+- Requires Developer Mode (enabled automatically during the System phase)
 - Is applied automatically on first run (idempotent—won't change if already set)
 
 **Manual Workaround:** If you encounter symlink permission errors before running the script (e.g., during initial `git clone`), you can temporarily disable symlinks:
@@ -227,7 +226,7 @@ dependencies:
 **How it works**:
 - `Install symlinks` links `symlinks/apm/config/base.yml` → `~/.apm/config/base.yml`
 - `Install APM packages` runs `apm install -g --target copilot,codex`, adding `copilot-app` only when the Copilot App has initialized `~/.copilot/data.db`, when the merged manifest, lockfile, or local plugin content needs redeploying. This converges to the locked manifest and never advances locked refs
-- `Update APM packages` (the `update` command only) runs in a separate **Updating dependencies** phase after everything else: it checks `apm outdated -g` and runs `apm update -g --yes` with the same target selection to advance any stale locked dependencies. It is absent from `install`
+- `Update APM packages` (the `update` command only) runs in a separate **Updating dependencies** phase after Provision completes: it checks `apm outdated -g` and runs `apm update -g --yes` with the same target selection to advance any stale locked dependencies. It is absent from `install`
 - Idempotency is provided by APM itself via its lockfile / no-op behaviour
 - Plugin primitives are deployed to `~/.copilot/`, `~/.claude/`, `~/.cursor/`, etc.
 

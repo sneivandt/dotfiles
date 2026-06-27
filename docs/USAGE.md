@@ -124,7 +124,7 @@ does **not** advance pinned dependency versions.
 `update` does everything `install` does **and** adds a final **Updating
 dependencies** phase that advances pinned dependency versions (currently APM
 plugin dependencies, via `apm update`). Because this is a separate phase
-that runs after everything else, `update` output ends with a `:: Updating
+that runs after Provision completes, `update` output ends with a `:: Updating
 dependencies` section; `install` has no such phase. Use `update` when you want
 to pull in newer dependency versions; use `install` for a reproducible,
 version-stable apply.
@@ -212,68 +212,66 @@ or directory that had been linked.
 
 The installation process handles different components based on your profile:
 
-### Linux Installation Steps
+### Linux Installation Tasks by Phase
 
 **System** (prepare the environment):
 
-1. **Self-Update** - Updates the dotfiles binary from latest GitHub release (runs before the task scheduler; re-execs the process if a new binary is installed)
-2. **Configure Sparse Checkout** - Excludes files based on profile
-3. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
-4. **Install Git Hooks** - Copies repository git hooks into `.git/hooks/`
-5. **Install Wrapper** - Installs `dotfiles` wrapper to `~/.local/bin/`
-6. **Configure PATH** - Ensures `~/.local/bin` is on PATH
-7. **Install Shell Completions** - Writes the zsh completion script into the managed `symlinks/config/zsh/completions/` directory
+- **Self-Update** - Updates the dotfiles binary from latest GitHub release (runs before the task scheduler; re-execs the process if a new binary is installed)
+- **Configure Sparse Checkout** - Excludes files based on profile
+- **Update Repository** - Pulls latest changes (`git pull --ff-only`)
+- **Install Git Hooks** - Copies repository git hooks into `.git/hooks/`
+- **Install Wrapper** - Installs `dotfiles` wrapper to `~/.local/bin/`
+- **Configure PATH** - Ensures `~/.local/bin` is on PATH
+- **Install Shell Completions** - Writes the zsh completion script into the managed `symlinks/config/zsh/completions/` directory
 
 **User** (apply declared state):
 
-8. **Install Packages** - Installs packages from `conf/packages.toml` using pacman
-9. **Install Paru** - Bootstraps paru AUR helper (Arch Linux only)
-10. **Install AUR Packages** - Installs AUR packages via paru (Arch Linux only)
-11. **Create Symlinks** - Links files from `symlinks/` to `$HOME`
-12. **Set Permissions** - Applies file permissions from `conf/chmod.toml`
-13. **Configure Git** - Applies git configuration
-14. **Configure Shell** - Sets default shell
-15. **Enable Systemd Units** - Enables and starts user or system units from `conf/systemd-units.toml`
-16. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-17. **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml` and runs `apm install` when the manifest or lockfile changed. This converges to the locked manifest and never advances locked refs ([Microsoft APM](https://github.com/microsoft/apm))
-18. **Configure PAM Services** - Installs custom PAM service files (Arch Linux + desktop profile only, uses sudo)
-19. **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
-20. **Overlay Scripts** - Runs custom scripts loaded from the overlay repository (when `--overlay` is set)
+- **Install Packages** - Installs packages from `conf/packages.toml` using pacman
+- **Install Paru** - Bootstraps paru AUR helper (Arch Linux only)
+- **Install AUR Packages** - Installs AUR packages via paru (Arch Linux only)
+- **Create Symlinks** - Links files from `symlinks/` to `$HOME`
+- **Set Permissions** - Applies file permissions from `conf/chmod.toml`
+- **Configure Git** - Applies git configuration
+- **Configure Shell** - Sets default shell
+- **Enable Systemd Units** - Enables and starts user or system units from `conf/systemd-units.toml`
+- **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
+- **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml` and runs `apm install` when the manifest or lockfile changed. This converges to the locked manifest and never advances locked refs ([Microsoft APM](https://github.com/microsoft/apm))
+- **Configure PAM Services** - Installs custom PAM service files (Arch Linux + desktop profile only, uses sudo)
+- **Write wsl.conf** - Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root)
+- **Overlay Scripts** - Runs custom scripts loaded from the overlay repository (when `--overlay` is set)
 
 **Update** (advance pinned versions — `update` command only):
 
-21. **Update APM Packages** - Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` (it is absent from `install`), runs after the Provision phase, and self-guards so it only advances once the manifest has been installed successfully
+- **Update APM Packages** - Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` (it is absent from `install`), runs after the Provision phase, and self-guards so it only advances once the manifest has been installed successfully
 
-Tasks run in parallel where dependencies allow, so the numbering above reflects logical
-grouping rather than strict execution order.
+Within each phase, tasks run in parallel where dependencies allow.
 
-### Windows Installation Steps
+### Windows Installation Tasks by Phase
 
 **System** (prepare the environment):
 
-1. **Self-Update** - Updates the dotfiles binary from latest GitHub release (runs before the task scheduler; re-execs the process if a new binary is installed)
-2. **Enable Developer Mode** - Enables Windows developer mode (required for symlinks)
-3. **Configure Sparse Checkout** - Excludes files based on profile
-4. **Update Repository** - Pulls latest changes (`git pull --ff-only`)
-5. **Install Git Hooks** - Copies repository git hooks into `.git/hooks/`
-6. **Configure PATH** - Ensures dotfiles bin directory is on PATH
-7. **Install Wrapper** - Installs the platform `dotfiles` wrapper script so the CLI is on PATH from any directory
+- **Self-Update** - Updates the dotfiles binary from latest GitHub release (runs before the task scheduler; re-execs the process if a new binary is installed)
+- **Enable Developer Mode** - Enables Windows developer mode (required for symlinks)
+- **Configure Sparse Checkout** - Excludes files based on profile
+- **Update Repository** - Pulls latest changes (`git pull --ff-only`)
+- **Install Git Hooks** - Copies repository git hooks into `.git/hooks/`
+- **Configure PATH** - Ensures dotfiles bin directory is on PATH
+- **Install Wrapper** - Installs the platform `dotfiles` wrapper script so the CLI is on PATH from any directory
 
 **User** (apply declared state):
 
-8. **Install Packages** - Installs packages using winget
-9. **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
-10. **Configure Git** - Sets `core.symlinks=true`, `core.autocrlf=false`, credential helper
-11. **Configure Registry Settings** - Configures registry from `conf/registry.toml`
-12. **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
-13. **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml` and runs `apm install` when the manifest or lockfile changed. This converges to the locked manifest and never advances locked refs ([Microsoft APM](https://github.com/microsoft/apm))
+- **Install Packages** - Installs packages using winget
+- **Create Symlinks** - Links files from `symlinks/` to `%USERPROFILE%`
+- **Configure Git** - Sets `core.symlinks=true`, `core.autocrlf=false`, credential helper
+- **Configure Registry Settings** - Configures registry from `conf/registry.toml`
+- **Install VS Code Extensions** - Installs extensions from `conf/vscode-extensions.toml`
+- **Install APM Packages** - Merges every `~/.apm/config/*.yml` fragment (e.g. `symlinks/apm/config/base.yml`, plus any overlay fragments) into `~/.apm/apm.yml` and runs `apm install` when the manifest or lockfile changed. This converges to the locked manifest and never advances locked refs ([Microsoft APM](https://github.com/microsoft/apm))
 
 **Update** (advance pinned versions — `update` command only):
 
-14. **Update APM Packages** - Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` (it is absent from `install`), runs after the Provision phase, and self-guards so it only advances once the manifest has been installed successfully
+- **Update APM Packages** - Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` (it is absent from `install`), runs after the Provision phase, and self-guards so it only advances once the manifest has been installed successfully
 
-Tasks run in parallel where dependencies allow, so the numbering above reflects logical
-grouping rather than strict execution order.
+Within each phase, tasks run in parallel where dependencies allow.
 
 ## Verbose Mode
 

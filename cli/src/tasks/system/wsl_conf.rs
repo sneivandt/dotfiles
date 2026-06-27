@@ -83,10 +83,9 @@ impl Task for InstallWslConf {
                 let tmp = sudo_fallback_tmp_path();
                 std::fs::write(&tmp, &desired_content)
                     .map_err(|e| anyhow::anyhow!("failed to write temp file {tmp}: {e}"))?;
+                let _cleanup = crate::fs::TempPath::new(std::path::PathBuf::from(&tmp));
 
-                let result = ctx.executor.run("sudo", &["cp", &tmp, target]);
-                drop(std::fs::remove_file(&tmp));
-                result?;
+                ctx.executor.run("sudo", &["cp", &tmp, target])?;
             }
             Err(e) => return Err(anyhow::anyhow!("failed to write {target}: {e}")),
         }

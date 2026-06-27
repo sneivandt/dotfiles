@@ -163,12 +163,11 @@ impl IntrinsicState for ChmodResource {
             });
         }
 
-        let desired_mode = self.mode.as_u32();
-
         // Get current mode (Unix only)
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            let desired_mode = self.mode.as_u32();
             if self.target.is_dir() {
                 check_dir_recursive(&self.target, desired_mode)
             } else {
@@ -183,10 +182,8 @@ impl IntrinsicState for ChmodResource {
                 }
             }
         }
-
         #[cfg(not(unix))]
         {
-            let _ = desired_mode;
             Ok(ResourceState::Invalid {
                 reason: "chmod not supported on this platform".to_string(),
             })

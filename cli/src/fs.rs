@@ -122,14 +122,20 @@ pub fn canonicalize(path: &Path) -> Result<PathBuf> {
 ///
 /// Returns an error if the path exists but cannot be removed.
 pub fn remove_existing(path: &Path) -> Result<()> {
-    if let Ok(metadata) = path.symlink_metadata() {
-        if metadata.is_dir() {
-            std::fs::remove_dir(path)
-                .with_context(|| format!("remove existing: {}", path.display()))?;
-        } else {
-            std::fs::remove_file(path)
-                .with_context(|| format!("remove existing: {}", path.display()))?;
+    let metadata = match path.symlink_metadata() {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(error).with_context(|| format!("stat existing: {}", path.display()));
         }
+    };
+
+    if metadata.is_dir() {
+        std::fs::remove_dir(path)
+            .with_context(|| format!("remove existing: {}", path.display()))?;
+    } else {
+        std::fs::remove_file(path)
+            .with_context(|| format!("remove existing: {}", path.display()))?;
     }
     Ok(())
 }
@@ -219,8 +225,11 @@ fn copy_dir_recursive_inner(src: &Path, dst: &Path, skip_git: bool) -> Result<()
             }
             #[cfg(not(any(unix, windows)))]
             {
-                // Unsupported platform — skip symlinks silently.
-                let _ = (&src_path, &dst_path);
+                tracing::warn!(
+                    "skipping symlink entry {} while copying to {}: symlink creation is unsupported on this platform",
+                    src_path.display(),
+                    dst_path.display()
+                );
             }
         } else if meta.is_dir() {
             if skip_git && entry.file_name() == ".git" {
@@ -278,7 +287,16 @@ impl TempPath {
 impl Drop for TempPath {
     fn drop(&mut self) {
         if self.active {
-            drop(std::fs::remove_file(&self.path));
+            match std::fs::remove_file(&self.path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    tracing::debug!(
+                        "failed to remove temporary file {}: {error}",
+                        self.path.display()
+                    );
+                }
+            }
         }
     }
 }
@@ -315,7 +333,16 @@ impl TempDir {
 impl Drop for TempDir {
     fn drop(&mut self) {
         if self.active {
-            drop(std::fs::remove_dir_all(&self.path));
+            match std::fs::remove_dir_all(&self.path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    tracing::debug!(
+                        "failed to remove temporary directory {}: {error}",
+                        self.path.display()
+                    );
+                }
+            }
         }
     }
 }

@@ -187,8 +187,11 @@ macro_rules! resource_task {
                 }
             )?
 
+            #[allow(
+                unused_variables,
+                reason = "ctx is only used when the generated task declares a guard"
+            )]
             fn should_run(&self, ctx: &$crate::tasks::Context) -> bool {
-                let _ = ctx;
                 $(
                     let $guard_ctx = ctx;
                     if !{ $guard_expr } { return false; }
@@ -265,8 +268,11 @@ macro_rules! resource_task {
                 }
             )?
 
+            #[allow(
+                unused_variables,
+                reason = "ctx is only used when the generated task declares a guard"
+            )]
             fn should_run(&self, ctx: &$crate::tasks::Context) -> bool {
-                let _ = ctx;
                 $(
                     let $guard_ctx = ctx;
                     if !{ $guard_expr } { return false; }

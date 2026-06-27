@@ -15,6 +15,16 @@ use super::paths::{binary_path, old_binary_path};
 #[cfg(windows)]
 use super::paths::{pending_binary_path, pending_version_path};
 
+fn remove_stale_backup(path: &Path) -> Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => {
+            Err(error).with_context(|| format!("removing stale backup {}", path.display()))
+        }
+    }
+}
+
 /// Replace the binary at `path` with `data`, handling platform differences.
 #[cfg_attr(windows, allow(dead_code, reason = "used conditionally via cfg"))]
 pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
@@ -48,7 +58,7 @@ pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
     #[cfg(windows)]
     if path.exists() {
         let old = dir.join(".dotfiles-old.exe");
-        drop(fs::remove_file(&old));
+        remove_stale_backup(&old)?;
         fs::rename(path, &old).context("renaming current binary to .old")?;
     }
 
@@ -58,7 +68,7 @@ pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
     #[cfg(unix)]
     if path.exists() {
         let old = dir.join(".dotfiles.old");
-        drop(fs::remove_file(&old));
+        remove_stale_backup(&old)?;
         fs::rename(path, &old).context("backing up current binary to .old")?;
     }
 

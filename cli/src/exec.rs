@@ -176,8 +176,11 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     /// Returns an error if the command fails to execute or cannot be found,
     /// but does NOT fail on non-zero exit codes (which are captured in the result).
     #[cfg_attr(test, mockall::concretize)]
+    #[allow(
+        unused_variables,
+        reason = "default implementation intentionally ignores the working directory"
+    )]
     fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
-        let _ = dir;
         self.run_unchecked(program, args)
     }
 

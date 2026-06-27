@@ -17,11 +17,10 @@ use crate::tasks::validation::{
 /// Returns an error if profile resolution, configuration validation, or script checks fail.
 pub fn run(
     global: &GlobalOpts,
-    opts: &TestOpts,
+    _opts: &TestOpts,
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
-    let _ = opts;
     let runner = super::CommandRunner::new(global, log, token)?;
     let tasks: Vec<Box<dyn Task>> = vec![
         Box::new(ValidateConfigWarnings),

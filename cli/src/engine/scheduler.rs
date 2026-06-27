@@ -158,7 +158,12 @@ pub(crate) fn run_tasks_parallel(tasks: &[&dyn Task], ctx: &Context, log: &Arc<L
                 if run_task_guarded(task, ctx, log) {
                     // Signal all dependent tasks.
                     for tx in my_senders {
-                        let _ = tx.send(());
+                        if tx.send(()).is_err() {
+                            tracing::debug!(
+                                "dependent task channel closed before {} signalled completion",
+                                task.name()
+                            );
+                        }
                     }
                 }
                 // On panic run_task_guarded returns false; my_senders drops

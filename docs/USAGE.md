@@ -293,27 +293,26 @@ task's buffered output is flushed, followed by a totals line. Within a phase,
 line order can vary because independent tasks run in parallel.
 
 ```
-  dotfiles v0.1.317
-  profile  desktop · Arch Linux
+version v0.1.317 · profile desktop · Arch Linux
 
-:: Preparing dotfiles
+● Setting up dotfiles
   ~ Install wrapper
   ~ Configure PATH
 
-:: Refreshing dotfiles
+● Updating the repository
   ✓ Configure sparse checkout
   ○ Update repository — local changes present
   ~ Install Git hooks
   ✓ Reload configuration
   ~ Install shell completions
 
-:: Applying configuration
+● Configuring your system
   ~ Install symlinks
   ~ Install packages
   ~ Configure systemd units
 
-  ~ 2 ok · 1 skipped · 7 dry-run · 6 not applicable
-  completed in 1.3s
+✦ dotfiles install complete
+  2 ok · 1 skipped · 7 dry-run · 6 not applicable · 1.3s
 ```
 
 ## Parallel Execution
@@ -407,7 +406,7 @@ appended. This is a logical summary, not the chronological execution order.
 
 **Example (verbose):**
 ```
-:: Summary
+● Summary
    Core
      ~ Install wrapper
      ~ Configure PATH
@@ -424,8 +423,8 @@ appended. This is a logical summary, not the chronological execution order.
    System
      ~ Configure systemd units
 
-  ~ 2 ok · 1 skipped · 6 dry-run · 6 not applicable
-  completed in 1.3s
+✦ dotfiles install complete
+  2 ok · 1 skipped · 6 dry-run · 6 not applicable · 1.3s
 ```
 
 **Status icons:**
@@ -524,11 +523,11 @@ the Provision phase with other Provision tasks, so its relative position can
 vary unless dependencies constrain it:
 
 ```
-:: Refreshing dotfiles
+● Updating the repository
   ✓ Reload configuration
   ✓ Load overlay scripts
 
-:: Applying configuration
+● Configuring your system
   ✓ Install symlinks
   ✓ Install private files   ← overlay script task
   ✓ Install packages

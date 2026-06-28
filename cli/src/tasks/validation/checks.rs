@@ -20,7 +20,7 @@ pub struct ValidateConfigWarnings;
 impl Task for ValidateConfigWarnings {
     task_metadata! {
         name: "Validate config warnings",
-        phase: TaskPhase::Provision,
+        phase: TaskPhase::Validation,
         domain: Domain::Validation,
     }
 
@@ -52,7 +52,7 @@ pub struct ValidateSymlinkSources;
 impl Task for ValidateSymlinkSources {
     task_metadata! {
         name: "Validate symlink sources",
-        phase: TaskPhase::Provision,
+        phase: TaskPhase::Validation,
         domain: Domain::Validation,
     }
 
@@ -94,7 +94,7 @@ pub struct ValidateConfigFiles;
 impl Task for ValidateConfigFiles {
     task_metadata! {
         name: "Validate config files",
-        phase: TaskPhase::Provision,
+        phase: TaskPhase::Validation,
         domain: Domain::Validation,
     }
 
@@ -151,7 +151,7 @@ pub struct ValidateManifestSync;
 impl Task for ValidateManifestSync {
     task_metadata! {
         name: "Validate manifest sync",
-        phase: TaskPhase::Provision,
+        phase: TaskPhase::Validation,
         domain: Domain::Validation,
     }
 
@@ -210,7 +210,7 @@ pub struct RunShellcheck;
 impl Task for RunShellcheck {
     task_metadata! {
         name: "Shellcheck",
-        phase: TaskPhase::Provision,
+        phase: TaskPhase::Validation,
         domain: Domain::Validation,
     }
 
@@ -265,7 +265,7 @@ pub struct RunPSScriptAnalyzer;
 impl Task for RunPSScriptAnalyzer {
     task_metadata! {
         name: "PSScriptAnalyzer",
-        phase: TaskPhase::Provision,
+        phase: TaskPhase::Validation,
         domain: Domain::Validation,
     }
 

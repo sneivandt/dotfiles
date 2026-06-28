@@ -262,7 +262,7 @@ where
                 }
             }
             tracing::Level::INFO if target == "dotfiles::phase" => {
-                writeln!(writer, "\x1b[1;34m::\x1b[0m \x1b[1;34m{msg}\x1b[0m")
+                writeln!(writer, "\x1b[1;34m\u{25cf}\x1b[0m \x1b[1;34m{msg}\x1b[0m")
             }
             tracing::Level::INFO if target == "dotfiles::dry_run" => {
                 writeln!(writer, "  {msg}")

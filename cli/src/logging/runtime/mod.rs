@@ -78,6 +78,8 @@ macro_rules! forward_log_methods {
 /// with timestamps and ANSI codes stripped, regardless of the verbose flag.
 #[derive(Debug)]
 pub struct Logger {
+    /// Command currently being executed (`install`, `update`, etc.).
+    pub(super) command: String,
     pub(super) tasks: Mutex<Vec<TaskEntry>>,
     pub(super) log_file: Option<PathBuf>,
     /// Serializes console output from parallel task flushes.
@@ -109,6 +111,7 @@ impl Logger {
     pub fn new(command: &str) -> Self {
         let start = Instant::now();
         Self {
+            command: command.to_string(),
             tasks: Mutex::new(Vec::new()),
             log_file: log_file_path(command),
             flush_lock: Mutex::new(()),
@@ -141,6 +144,7 @@ impl Logger {
     pub(crate) fn new_in(command: &str, cache_dir: &std::path::Path) -> Self {
         let start = Instant::now();
         Self {
+            command: command.to_string(),
             tasks: Mutex::new(Vec::new()),
             log_file: log_file_path_in(command, cache_dir),
             flush_lock: Mutex::new(()),

@@ -40,15 +40,6 @@ pub(crate) fn run_pipeline(
     token: &crate::engine::CancellationToken,
     advance_versions: bool,
 ) -> Result<()> {
-    let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
-    if std::env::var_os(super::REEXEC_GUARD_VAR).is_some() {
-        log.always(&format!(
-            "\x1b[1mdotfiles\x1b[0m \x1b[2m{version} \u{00b7} updated\x1b[0m"
-        ));
-    } else {
-        log.always(&format!("\x1b[1mdotfiles\x1b[0m \x1b[2m{version}\x1b[0m"));
-    }
-
     super::prepare_self_update(global, log)?;
 
     let runner =

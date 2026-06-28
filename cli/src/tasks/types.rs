@@ -55,10 +55,10 @@ pub enum TaskId {
 /// second to synchronise the dotfiles repository (sparse checkout,
 /// pull, config reload, hooks).  Provision tasks run third to converge the
 /// user environment to its declared state (symlinks, packages, etc.).
-/// Update tasks run last and advance pinned/locked dependency versions
-/// beyond the declared state; they are only scheduled by the `update`
-/// command, so the phase is absent (and its header omitted) under
-/// ordinary `install` runs.
+/// Validation tasks run the `test` command's checks. Update tasks advance
+/// pinned/locked dependency versions beyond the declared state; they are only
+/// scheduled by the `update` command, so the phase is absent (and its header
+/// omitted) under ordinary `install` runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TaskPhase {
     /// Prepare the dotfiles tool itself.
@@ -67,6 +67,8 @@ pub enum TaskPhase {
     Sync,
     /// Converge the user environment to its declared state.
     Provision,
+    /// Run configuration and script validation checks.
+    Validation,
     /// Advance pinned/locked dependency versions (the `update` command only).
     Update,
 }
@@ -141,9 +143,10 @@ impl TaskPhase {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Bootstrap => "Preparing dotfiles",
-            Self::Sync => "Refreshing dotfiles",
-            Self::Provision => "Applying configuration",
+            Self::Bootstrap => "Setting up dotfiles",
+            Self::Sync => "Updating the repository",
+            Self::Provision => "Configuring your system",
+            Self::Validation => "Checking the setup",
             Self::Update => "Updating dependencies",
         }
     }
@@ -155,6 +158,7 @@ impl fmt::Display for TaskPhase {
             Self::Bootstrap => f.write_str("Bootstrap"),
             Self::Sync => f.write_str("Sync"),
             Self::Provision => f.write_str("Provision"),
+            Self::Validation => f.write_str("Validation"),
             Self::Update => f.write_str("Update"),
         }
     }

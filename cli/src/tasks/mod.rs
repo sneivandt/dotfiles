@@ -86,7 +86,7 @@ pub trait Task: Send + Sync + 'static {
     fn name(&self) -> &str;
 
     /// Execution phase: [`TaskPhase::Bootstrap`], [`TaskPhase::Sync`],
-    /// [`TaskPhase::Provision`], or [`TaskPhase::Update`].
+    /// [`TaskPhase::Provision`], [`TaskPhase::Validation`], or [`TaskPhase::Update`].
     fn phase(&self) -> TaskPhase;
 
     /// Subject area this task belongs to, used to group summary output.

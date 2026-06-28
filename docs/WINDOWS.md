@@ -305,17 +305,17 @@ When using `-d` (dry-run), the logging system:
 
 Example summary output:
 ```
-:: Preparing dotfiles
+● Setting up dotfiles
   ✓ Enable developer mode
   ~ Install wrapper
   ~ Configure PATH
 
-:: Refreshing dotfiles
+● Updating the repository
   ✓ Configure sparse checkout
   ✓ Update repository
   ~ Install Git hooks
 
-:: Applying configuration
+● Configuring your system
   ~ Install packages
   ~ Install symlinks
   ~ Configure Git
@@ -323,8 +323,8 @@ Example summary output:
   ~ Install VS Code extensions
   ~ Install APM packages
 
-  ~ 3 ok · 9 dry-run
-  completed in 0.8s
+✦ dotfiles install complete
+  3 ok · 9 dry-run · 0.8s
 ```
 
 ## Troubleshooting

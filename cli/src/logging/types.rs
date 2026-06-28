@@ -210,14 +210,16 @@ mod tests {
         assert_eq!(TaskPhase::Bootstrap.to_string(), "Bootstrap");
         assert_eq!(TaskPhase::Sync.to_string(), "Sync");
         assert_eq!(TaskPhase::Provision.to_string(), "Provision");
+        assert_eq!(TaskPhase::Validation.to_string(), "Validation");
         assert_eq!(TaskPhase::Update.to_string(), "Update");
     }
 
     #[test]
     fn task_phase_labels() {
-        assert_eq!(TaskPhase::Bootstrap.label(), "Preparing dotfiles");
-        assert_eq!(TaskPhase::Sync.label(), "Refreshing dotfiles");
-        assert_eq!(TaskPhase::Provision.label(), "Applying configuration");
+        assert_eq!(TaskPhase::Bootstrap.label(), "Setting up dotfiles");
+        assert_eq!(TaskPhase::Sync.label(), "Updating the repository");
+        assert_eq!(TaskPhase::Provision.label(), "Configuring your system");
+        assert_eq!(TaskPhase::Validation.label(), "Checking the setup");
         assert_eq!(TaskPhase::Update.label(), "Updating dependencies");
     }
 

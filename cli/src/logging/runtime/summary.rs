@@ -76,14 +76,15 @@ impl Logger {
         let elapsed = self.start.elapsed();
         let elapsed_str = format_elapsed(elapsed);
 
-        self.always(&format_summary_counts(
-            ok,
-            skipped,
-            dry_run,
-            failed,
-            not_applicable,
+        let status_line = format_summary_counts(ok, skipped, dry_run, failed, not_applicable);
+        let (symbol_color, text_color, label) = completion_style(failed);
+        self.always(&format!(
+            "{symbol_color}\u{2726}\x1b[0m {text_color}\x1b[1mdotfiles {} {label}\x1b[0m",
+            self.command
         ));
-        self.always(&format!("\x1b[2mcompleted in {elapsed_str}\x1b[0m"));
+        self.always(&format!(
+            "  {status_line} \x1b[2m\u{00b7} {elapsed_str}\x1b[0m"
+        ));
         if let Some(path) = self.log_path() {
             Self::file_only(&format!("log: {}", path.display()));
         }
@@ -102,6 +103,14 @@ impl Logger {
 
     fn file_only(msg: &str) {
         tracing::info!(target: "dotfiles::file_only", "{msg}");
+    }
+}
+
+const fn completion_style(failed: u32) -> (&'static str, &'static str, &'static str) {
+    if failed > 0 {
+        ("\x1b[31m", "\x1b[31m", "finished with errors")
+    } else {
+        ("\x1b[1;34m", "", "complete")
     }
 }
 

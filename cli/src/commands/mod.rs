@@ -228,8 +228,9 @@ impl CommandRunner {
     ) -> Result<Self> {
         let platform = Platform::detect();
         let root = install::resolve_root(global)?;
+        let updated = std::env::var_os(REEXEC_GUARD_VAR).is_some();
+        let profile = resolve_profile(global, &root, platform, updated, &**log)?;
         let overlay = resolve_overlay(global, &root, &**log);
-        let profile = resolve_profile(global, &root, platform, &**log)?;
         let config = load_config(&root, &profile, platform, overlay.as_deref(), &**log)?;
 
         let executor: Arc<dyn crate::exec::Executor> = Arc::new(crate::exec::SystemExecutor);
@@ -297,16 +298,23 @@ fn resolve_profile(
     global: &GlobalOpts,
     root: &std::path::Path,
     platform: Platform,
+    updated: bool,
     log: &dyn Output,
 ) -> Result<profiles::Profile> {
     log.stage("Resolving profile");
     let profile = profiles::resolve_from_args(global.profile.as_deref(), root, platform)?;
+    let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    let updated_label = if updated {
+        " \x1b[2m\u{00b7} refreshed\x1b[0m"
+    } else {
+        ""
+    };
     let mut platform_label = platform.description().to_string();
     if platform.is_wsl() {
         platform_label.push_str(" \u{00b7} WSL");
     }
     log.always(&format!(
-        "\x1b[2mprofile\x1b[0m  {} \x1b[2m\u{00b7} {platform_label}\x1b[0m",
+        "  \x1b[2mversion\x1b[0m \x1b[36m{version}\x1b[0m{updated_label} \x1b[2m\u{00b7} profile\x1b[0m {} \x1b[2m\u{00b7} {platform_label}\x1b[0m",
         profile.name
     ));
     Ok(profile)
@@ -321,7 +329,7 @@ fn resolve_overlay(
 ) -> Option<std::path::PathBuf> {
     let overlay = crate::config::overlay::resolve_from_args(global.overlay.as_deref(), root);
     if let Some(ref path) = overlay {
-        log.always(&format!("\x1b[2moverlay\x1b[0m  {}", path.display()));
+        log.always(&format!("  \x1b[2moverlay\x1b[0m  {}", path.display()));
     }
     overlay
 }
@@ -446,6 +454,7 @@ pub fn run_tasks_to_completion<'a>(
         TaskPhase::Bootstrap,
         TaskPhase::Sync,
         TaskPhase::Provision,
+        TaskPhase::Validation,
         TaskPhase::Update,
     ];
 

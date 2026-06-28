@@ -63,7 +63,7 @@ use crate::logging::Output;
 /// GitHub repository used for release lookups.
 pub(super) const REPO: &str = "sneivandt/dotfiles";
 
-use cache::{is_cache_fresh, write_cache};
+use cache::{read_fresh_cache, write_cache};
 use http::{HttpClient, default_http_client, fetch_latest_tag};
 use install::download_and_install;
 use paths::is_running_from_bin;
@@ -71,8 +71,6 @@ use version::{is_newer, is_release_version};
 
 /// Result of checking for an available update.
 enum UpdateCheck {
-    /// Cache is fresh — no network call needed.
-    CacheFresh,
     /// Could not reach GitHub.
     Offline,
     /// Already running the latest version.
@@ -88,6 +86,20 @@ enum UpdateCheck {
     },
 }
 
+fn classify_update(current: &str, latest: String) -> UpdateCheck {
+    if latest == current {
+        return UpdateCheck::AlreadyCurrent;
+    }
+    if !is_newer(&latest, current) {
+        tracing::debug!("latest release {latest} is not newer than current {current}, skipping");
+        return UpdateCheck::AlreadyCurrent;
+    }
+    UpdateCheck::UpdateAvailable {
+        latest,
+        current: current.to_string(),
+    }
+}
+
 /// Check whether an update is available by comparing the local cache and
 /// the latest GitHub release.
 ///
@@ -95,27 +107,33 @@ enum UpdateCheck {
 /// running version (semantic version comparison), preventing silent downgrades.
 fn check_for_update(root: &std::path::Path, client: &dyn HttpClient) -> Result<UpdateCheck> {
     let raw_version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    check_for_update_with_current(root, client, raw_version)
+}
+
+fn check_for_update_with_current(
+    root: &std::path::Path,
+    client: &dyn HttpClient,
+    raw_version: &str,
+) -> Result<UpdateCheck> {
     let current = format!("v{}", raw_version.strip_prefix('v').unwrap_or(raw_version));
     if !is_release_version(&current) {
         tracing::debug!("dev build ({current}), skipping update check");
         return Ok(UpdateCheck::DevBuild);
     }
-    if is_cache_fresh(root) {
-        return Ok(UpdateCheck::CacheFresh);
+    if let Some(latest) = read_fresh_cache(root)
+        && is_release_version(&latest)
+    {
+        return Ok(classify_update(&current, latest));
     }
     let Some(latest) = fetch_latest_tag(client)? else {
         tracing::debug!("fetch_latest_tag returned None, treating as offline");
         return Ok(UpdateCheck::Offline);
     };
-    write_cache(root, &latest)?;
-    if latest == current {
-        return Ok(UpdateCheck::AlreadyCurrent);
+    let check = classify_update(&current, latest);
+    if !matches!(check, UpdateCheck::UpdateAvailable { .. }) {
+        write_cache(root, &current)?;
     }
-    if !is_newer(&latest, &current) {
-        tracing::debug!("latest release {latest} is not newer than current {current}, skipping");
-        return Ok(UpdateCheck::AlreadyCurrent);
-    }
-    Ok(UpdateCheck::UpdateAvailable { latest, current })
+    Ok(check)
 }
 
 /// Run the self-update check before the task graph.
@@ -138,10 +156,7 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
     }
     let client = default_http_client();
     match check_for_update(root, &client)? {
-        UpdateCheck::CacheFresh
-        | UpdateCheck::Offline
-        | UpdateCheck::DevBuild
-        | UpdateCheck::AlreadyCurrent => Ok(false),
+        UpdateCheck::Offline | UpdateCheck::DevBuild | UpdateCheck::AlreadyCurrent => Ok(false),
         UpdateCheck::UpdateAvailable { latest, current } => {
             if dry_run {
                 log.info(&format!("update available: {current} → {latest}"));
@@ -159,5 +174,73 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
 
             Ok(true)
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unwrap_used,
+    reason = "test code uses panicking helpers"
+)]
+mod tests {
+    use std::fs;
+
+    use super::cache::{cache_path, write_cache};
+    use super::http::test_support::MockHttpClient;
+    use super::*;
+
+    #[test]
+    fn fresh_cache_newer_than_current_returns_update_available() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("bin")).unwrap();
+        write_cache(dir.path(), "v9999.0.0").unwrap();
+        let client = MockHttpClient::new(vec![]);
+
+        let result = check_for_update_with_current(dir.path(), &client, "v0.1.0").unwrap();
+
+        match result {
+            UpdateCheck::UpdateAvailable { latest, .. } => {
+                assert_eq!(latest, "v9999.0.0");
+            }
+            _ => panic!("expected cached newer release to trigger update"),
+        }
+    }
+
+    #[test]
+    fn network_update_available_does_not_write_cache_before_install() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("bin")).unwrap();
+        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.0.0"}"#.to_vec())]);
+
+        let result = check_for_update_with_current(dir.path(), &client, "v0.1.0").unwrap();
+
+        assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
+        assert!(
+            !cache_path(dir.path()).exists(),
+            "cache should only be written after a successful install"
+        );
+    }
+
+    #[test]
+    fn malformed_fresh_cache_falls_back_to_network() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        fs::write(
+            bin_dir.join(".dotfiles-version-cache"),
+            format!("bad\n{now}\n"),
+        )
+        .unwrap();
+        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.0.0"}"#.to_vec())]);
+
+        let result = check_for_update_with_current(dir.path(), &client, "v0.1.0").unwrap();
+
+        assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
     }
 }

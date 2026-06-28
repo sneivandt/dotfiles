@@ -46,7 +46,7 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 **Solution**:
 - GitHub Actions builds release binaries whenever a CI run on `main` completes successfully
 - The release workflow (`.github/workflows/release.yml`) publishes Linux (x86_64, aarch64) and Windows binaries with SHA-256 checksums
-- The shell wrappers download the latest release and cache the version for one hour (`bin/.dotfiles-version-cache`)
+- The shell wrappers bootstrap the latest release when the binary is missing; the Rust binary owns the one-hour latest-release cache (`bin/.dotfiles-version-cache`)
 - A `--build` flag builds from source for development
 
 ## High-Level Architecture
@@ -255,7 +255,7 @@ soon as dependencies allow, so sibling tasks may complete in any order. Each tas
 is annotated with its domain folder:
 
 Pre-scheduler action:
-- `self_update` (core) — Updates the dotfiles binary from the latest GitHub release. Runs **before** the task graph (directly from `install.rs`) so all subsequent tasks use the latest code. If the binary is replaced, the process re-execs itself with a guard variable (`DOTFILES_REEXEC_GUARD`) to prevent an infinite loop.
+- `self_update` (core) — Updates the dotfiles binary from the latest GitHub release. Runs **before** the task graph (directly from `install.rs`) so all subsequent tasks use the latest code. It caches the latest release tag for one hour, but a cached tag newer than the running binary still triggers installation; update-available checks only write the cache after a successful install. If the binary is replaced, the process re-execs itself with a guard variable (`DOTFILES_REEXEC_GUARD`) to prevent an infinite loop.
 
 Bootstrap phase — prepares the tool itself:
 - `developer_mode` (system) — Enable Windows developer mode (required for symlinks)

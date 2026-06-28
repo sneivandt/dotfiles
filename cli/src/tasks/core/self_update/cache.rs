@@ -14,23 +14,21 @@ pub(super) fn cache_path(root: &Path) -> PathBuf {
     root.join("bin").join(".dotfiles-version-cache")
 }
 
-/// Check whether the cached version is still fresh (less than [`CACHE_MAX_AGE`]
-/// seconds old).
-pub(super) fn is_cache_fresh(root: &Path) -> bool {
+/// Return the cached latest release tag when it is still fresh (less than
+/// [`CACHE_MAX_AGE`] seconds old).
+pub(super) fn read_fresh_cache(root: &Path) -> Option<String> {
     let path = cache_path(root);
     let Ok(content) = fs::read_to_string(&path) else {
-        return false;
+        return None;
     };
-    let Some(ts_str) = content.lines().nth(1) else {
-        return false;
-    };
+    let mut lines = content.lines();
+    let tag = lines.next().map(str::trim).filter(|tag| !tag.is_empty())?;
+    let ts_str = lines.next()?;
     let Ok(ts) = ts_str.trim().parse::<u64>() else {
-        return false;
+        return None;
     };
-    let Some(now) = unix_timestamp() else {
-        return false;
-    };
-    now.saturating_sub(ts) < CACHE_MAX_AGE
+    let now = unix_timestamp()?;
+    (now.saturating_sub(ts) < CACHE_MAX_AGE).then(|| tag.to_string())
 }
 
 /// Write a new cache file with the given tag and current timestamp.
@@ -63,13 +61,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cache_fresh_returns_false_when_no_cache() {
+    fn read_fresh_cache_returns_none_when_no_cache() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(!is_cache_fresh(dir.path()));
+        assert_eq!(read_fresh_cache(dir.path()), None);
     }
 
     #[test]
-    fn cache_fresh_returns_true_when_recent() {
+    fn read_fresh_cache_returns_tag_when_recent() {
         let dir = tempfile::tempdir().unwrap();
         let bin_dir = dir.path().join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
@@ -84,11 +82,11 @@ mod tests {
         )
         .unwrap();
 
-        assert!(is_cache_fresh(dir.path()));
+        assert_eq!(read_fresh_cache(dir.path()), Some("v1.0".to_string()));
     }
 
     #[test]
-    fn cache_fresh_returns_false_when_stale() {
+    fn read_fresh_cache_returns_none_when_stale() {
         let dir = tempfile::tempdir().unwrap();
         let bin_dir = dir.path().join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
@@ -105,7 +103,26 @@ mod tests {
         )
         .unwrap();
 
-        assert!(!is_cache_fresh(dir.path()));
+        assert_eq!(read_fresh_cache(dir.path()), None);
+    }
+
+    #[test]
+    fn read_fresh_cache_returns_none_when_tag_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        fs::write(
+            bin_dir.join(".dotfiles-version-cache"),
+            format!("\n{now}\n"),
+        )
+        .unwrap();
+
+        assert_eq!(read_fresh_cache(dir.path()), None);
     }
 
     #[test]

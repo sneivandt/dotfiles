@@ -1,15 +1,15 @@
 # Dotfiles
 
-A personal dotfiles manager powered by a **Rust engine** and declarative TOML configuration. It converges my Linux and Windows machines onto the shell, editor, Git, packages, services, system preferences, sparse checkout state, and AI tooling I use every day.
+A personal dotfiles manager built around a **Rust CLI** and declarative TOML configuration. It keeps my Linux and Windows environments consistent across shell, editor, Git, packages, services, system settings, and AI tooling.
 
 ![Generated terminal preview of a dotfiles dry-run install](docs/assets/terminal-screenshot.svg)
 
 ## What it does
 
-- **Single Rust engine:** one compiled binary plans and applies changes, keeping the shell wrappers thin.
-- **Profile-aware setup:** `base` covers minimal environments, `desktop` adds workstation tools, and Linux, Arch, and Windows layers are detected automatically.
-- **Declarative configuration:** packages, symlinks, services, editor settings, Git config, registry keys, file permissions, and AI tooling all live in `conf/*.toml`.
-- **Safe convergence:** re-running `install` brings the machine back to the declared state. Preview changes first with `-d`.
+- **Single Rust CLI:** one compiled binary plans and applies changes, while the shell and PowerShell wrappers stay minimal.
+- **Profile-aware setup:** `base` covers minimal environments, `desktop` adds workstation tools, and Linux, Arch, and Windows settings are detected automatically.
+- **Declarative configuration:** packages, symlinks, services, editor settings, Git config, registry keys, file permissions, and AI tooling are defined in `conf/*.toml`.
+- **Safe to rerun:** re-running `install` reapplies the declared state. Preview changes first with `-d`.
 - **Sparse checkout support:** only files relevant to the active profile are checked out locally.
 - **Cross-platform by design:** Linux and Windows use the same configuration model and Rust binary.
 
@@ -38,21 +38,21 @@ Each machine uses one profile; platform categories are detected automatically.
 | `base` | Servers, WSL, minimal shell environments |
 | `desktop` | Full desktop/workstation setups with GUI tools |
 
-The `linux`, `windows`, and `arch` platform categories are detected at runtime and layer on top of whichever profile is selected.
+The `linux`, `windows`, and `arch` categories are detected automatically and combined with the selected profile.
 
 See the [Profile System Guide](docs/PROFILES.md) for details.
 
 ## Configuration
 
-Everything declarative lives in `conf/*.toml`. Edit these files and the engine takes care of the rest:
+Declarative settings are stored in `conf/*.toml`. Edit these files and the CLI applies the requested state:
 
 | File | Controls |
 |------|----------|
 | `profiles.toml` | Profile definitions |
 | `manifest.toml` | Sparse-checkout file-to-category mappings |
-| `symlinks.toml` | Files symlinked into `$HOME` |
-| `packages.toml` | System packages (pacman, AUR, winget) |
-| `systemd-units.toml` | Systemd units to enable |
+| `symlinks.toml` | Files linked into `$HOME` |
+| `packages.toml` | System packages managed through pacman, AUR, or winget |
+| `systemd-units.toml` | systemd units to enable |
 | `vscode-extensions.toml` | VS Code extensions |
 | `git-config.toml` | Git settings |
 | `registry.toml` | Windows registry keys |
@@ -62,18 +62,13 @@ See the [Configuration Reference](docs/CONFIGURATION.md) for the full TOML forma
 
 ## How it works
 
-Three layers, kept deliberately thin:
+The project has three main layers:
 
 1. **Entry scripts** (`dotfiles.sh` / `dotfiles.ps1`): download the binary from GitHub Releases (or build it with `--build`) and forward arguments.
-2. **Rust binary** (`cli/`): parses the config, resolves the profile, and applies symlinks, packages, and settings. It shells out only when it has to — package managers, systemd, and the like.
+2. **Rust CLI** (`cli/`): parses the config, resolves the profile, and applies symlinks, packages, and settings. It shells out only when it has to — package managers, systemd, and the like.
 3. **Configuration** (`conf/`): the editable layer. Everything else follows from the TOML.
 
-`install` is the normal convergence command: it may self-update the binary,
-attempt a safe fast-forward repository sync, reload config, and apply declared
-state without advancing pinned dependency versions. `update` runs the same flow
-plus a final dependency-advancement phase. `uninstall` is conservative and only
-detaches the managed symlinks, Git hooks, and wrapper; it does not remove
-packages or roll back system/editor settings.
+`install` is the normal apply command: it may self-update the binary, fast-forward the repository, reload configuration, and apply the declared state without updating pinned dependency versions. `update` runs the same flow, then updates pinned dependencies. `uninstall` is conservative: it removes only managed symlinks, Git hooks, and the wrapper; it does not remove packages or roll back system or editor settings.
 
 ## Development
 
@@ -99,5 +94,5 @@ From the repo root, build from source and preview changes against the active con
 | [Usage Guide](docs/USAGE.md) | All commands and flags |
 | [Profile System](docs/PROFILES.md) | How profiles and categories work |
 | [Configuration Reference](docs/CONFIGURATION.md) | TOML format details |
-| [Architecture](docs/ARCHITECTURE.md) | Rust engine design |
+| [Architecture](docs/ARCHITECTURE.md) | Rust CLI design |
 | [Contributing](docs/CONTRIBUTING.md) | Development workflow |

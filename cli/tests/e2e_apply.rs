@@ -26,11 +26,11 @@ mod common;
 #[cfg(unix)]
 mod unix_e2e {
     use super::common;
-    use dotfiles_cli::tasks;
-    use dotfiles_cli::tasks::files::chmod::ApplyFilePermissions;
-    use dotfiles_cli::tasks::files::symlinks::InstallSymlinks;
-    use dotfiles_cli::tasks::git::hooks::InstallGitHooks;
-    use dotfiles_cli::testing as dotfiles_cli;
+    use dotfiles_cli::testing as test_api;
+    use test_api::tasks;
+    use test_api::tasks::files::chmod::ApplyFilePermissions;
+    use test_api::tasks::files::symlinks::InstallSymlinks;
+    use test_api::tasks::git::hooks::InstallGitHooks;
 
     // -----------------------------------------------------------------------
     // Helpers

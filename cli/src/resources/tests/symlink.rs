@@ -115,7 +115,8 @@ fn copy_dir_into_place_removes_stale_temp_directory_before_copying() {
     std::fs::create_dir(&stale_tmp).unwrap();
     std::fs::write(stale_tmp.join("stale.txt"), "stale").unwrap();
 
-    copy_dir_into_place(&source, &target).unwrap();
+    let executor = system_executor();
+    copy_dir_into_place(&source, &target, &*executor).unwrap();
 
     assert_eq!(
         std::fs::read_to_string(target.join("kept.txt")).unwrap(),

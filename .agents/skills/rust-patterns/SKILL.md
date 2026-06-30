@@ -58,6 +58,9 @@ cli/src/
   `has_registry()`, `supports_aur()`, and `uses_pacman()` before direct OS checks.
 - Route all subprocess calls through `ctx.executor`; do not call process helpers
   directly from tasks or resources.
+- After self-update, the binary re-execs with `DOTFILES_REEXEC_GUARD` set to
+  prevent infinite update loops; preserve this guard when changing update or
+  wrapper handoff code.
 - Public Rust items need `///` docs. Fallible public functions include
   `# Errors`; unsafe functions include `# Safety`.
 

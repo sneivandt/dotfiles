@@ -16,12 +16,12 @@
 
 mod common;
 
-use dotfiles_cli::config::Config;
-use dotfiles_cli::config::profiles;
-use dotfiles_cli::logging::Logger;
-use dotfiles_cli::platform::{Os, Platform};
-use dotfiles_cli::testing as dotfiles_cli;
+use dotfiles_cli::testing as test_api;
 use std::sync::Arc;
+use test_api::config::Config;
+use test_api::config::profiles;
+use test_api::logging::Logger;
+use test_api::platform::{Os, Platform};
 
 // ---------------------------------------------------------------------------
 // Config loading
@@ -749,21 +749,21 @@ fn test_command_fails_on_config_warnings() {
 
     std::fs::create_dir_all(ctx.root_path().join(".git")).expect("create .git dir");
 
-    let global = dotfiles_cli::cli::GlobalOpts {
+    let global = test_api::cli::GlobalOpts {
         root: Some(ctx.root_path().to_path_buf()),
         profile: Some("base".to_string()),
         dry_run: true,
         overlay: None,
         parallel: false,
     };
-    let opts = dotfiles_cli::cli::TestOpts {};
+    let opts = test_api::cli::TestOpts {};
     let log = Arc::new(Logger::new("test-command"));
 
-    let result = dotfiles_cli::commands::test::run(
+    let result = test_api::commands::test::run(
         &global,
         &opts,
         &log,
-        &dotfiles_cli::engine::CancellationToken::new(),
+        &test_api::engine::CancellationToken::new(),
     );
     assert!(result.is_err(), "test command should fail on warnings");
 }

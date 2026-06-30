@@ -54,7 +54,7 @@ impl Resource for SymlinkResource {
         // Attempt to remove any existing target; ignore NotFound since the
         // path may already be absent.  This avoids a TOCTOU race between a
         // separate existence check and the removal.
-        match remove_symlink(&self.target) {
+        match remove_symlink(&self.target, &*self.executor) {
             Ok(()) => {}
             Err(e)
                 if e.downcast_ref::<std::io::Error>()
@@ -105,7 +105,7 @@ impl Resource for SymlinkResource {
 
         // Copy source content into place, then remove the symlink, so the user
         // retains the file/directory after uninstall instead of losing it.
-        copy_into_place(&self.source, &self.target).with_context(|| {
+        copy_into_place(&self.source, &self.target, &*self.executor).with_context(|| {
             format!(
                 "materialize {} -> {}",
                 self.target.display(),
@@ -155,11 +155,11 @@ impl IntrinsicState for SymlinkResource {
 /// recursively via [`crate::fs::copy_dir_recursive`]; symlinks within the
 /// source tree are recreated as symlinks rather than followed, preventing
 /// unintended traversal outside the source tree.
-fn copy_into_place(source: &Path, target: &Path) -> Result<()> {
+fn copy_into_place(source: &Path, target: &Path, executor: &dyn Executor) -> Result<()> {
     if source.is_dir() {
-        copy_dir_into_place(source, target)
+        copy_dir_into_place(source, target, executor)
     } else {
-        copy_file_into_place(source, target)
+        copy_file_into_place(source, target, executor)
     }
 }
 
@@ -175,7 +175,7 @@ fn sibling_temp_path(target: &Path, suffix: &str) -> PathBuf {
 
 /// Copy a regular file: stage to a temp sibling, remove the symlink, rename
 /// the temp file into place.
-fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
+fn copy_file_into_place(source: &Path, target: &Path, executor: &dyn Executor) -> Result<()> {
     let tmp = sibling_temp_path(target, ".dotfiles_tmp");
     crate::fs::copy_file(source, &tmp)?;
 
@@ -183,7 +183,7 @@ fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
 
     match crate::fs::symlink_metadata_optional(target, "stat target")? {
         Some(meta) if is_link_like(&meta) => {
-            remove_symlink(target)
+            remove_symlink(target, executor)
                 .with_context(|| format!("remove symlink: {}", target.display()))?;
         }
         Some(_) => {
@@ -209,7 +209,7 @@ fn copy_file_into_place(source: &Path, target: &Path) -> Result<()> {
 /// Copy a directory: stage into a sibling temp directory, remove the
 /// symlink/junction, then rename the temp directory into place.  Falls back to
 /// a plain copy+delete when the rename crosses a filesystem boundary (EXDEV).
-fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
+fn copy_dir_into_place(source: &Path, target: &Path, executor: &dyn Executor) -> Result<()> {
     let tmp = sibling_temp_path(target, "_dotfiles_tmp");
     remove_stale_temp_dir(&tmp)?;
     let mut guard = crate::fs::TempDir::new(tmp.clone());
@@ -219,7 +219,7 @@ fn copy_dir_into_place(source: &Path, target: &Path) -> Result<()> {
 
     match crate::fs::symlink_metadata_optional(target, "stat target")? {
         Some(meta) if is_link_like(&meta) => {
-            remove_symlink(target)
+            remove_symlink(target, executor)
                 .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
         }
         Some(_) => {
@@ -354,7 +354,14 @@ fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result
 /// symlinks, so the raw `FILE_ATTRIBUTE_DIRECTORY` flag detects directory
 /// symlinks. If `remove_dir` still fails with OS error 5 (access denied), a
 /// `cmd /c rmdir` fallback runs in a separate process.
-fn remove_symlink(path: &Path) -> Result<()> {
+#[cfg_attr(
+    not(windows),
+    allow(
+        unused_variables,
+        reason = "executor is only used by the Windows rmdir fallback"
+    )
+)]
+fn remove_symlink(path: &Path, executor: &dyn Executor) -> Result<()> {
     let meta = match std::fs::symlink_metadata(path) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(e.into()),
@@ -369,7 +376,7 @@ fn remove_symlink(path: &Path) -> Result<()> {
             Ok(()) => {}
             #[cfg(windows)]
             Err(e) if e.raw_os_error() == Some(5) => {
-                remove_dir_fallback(path)?;
+                remove_dir_fallback(path, executor)?;
             }
             Err(e) => return Err(e.into()),
         }
@@ -442,25 +449,16 @@ fn command_output(result: &crate::exec::ExecResult) -> String {
 
 /// Fallback directory removal on Windows using `cmd /c rmdir`.
 #[cfg(windows)]
-fn remove_dir_fallback(path: &Path) -> Result<()> {
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    use std::os::windows::process::CommandExt;
-    let output = std::process::Command::new("cmd")
-        .arg("/c")
-        .arg("rmdir")
-        .arg("/s")
-        .arg("/q")
-        .arg(path)
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .context("failed to run rmdir")?;
-    if !output.status.success() {
+fn remove_dir_fallback(path: &Path, executor: &dyn Executor) -> Result<()> {
+    let path_arg = path.to_string_lossy();
+    let result = executor.run_unchecked("cmd", &["/c", "rmdir", "/s", "/q", &path_arg])?;
+    if !result.success {
         return Err(crate::error::ResourceError::command_failed(
             "rmdir",
             format!(
                 "remove directory/symlink '{}': {}",
                 path.display(),
-                String::from_utf8_lossy(&output.stderr).trim()
+                result.stderr.trim()
             ),
         )
         .into());

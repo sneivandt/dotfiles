@@ -233,7 +233,8 @@ impl CommandRunner {
         let overlay = resolve_overlay(global, &root, &**log);
         let config = load_config(&root, &profile, platform, overlay.as_deref(), &**log)?;
 
-        let executor: Arc<dyn crate::exec::Executor> = Arc::new(crate::exec::SystemExecutor);
+        let executor: Arc<dyn crate::exec::Executor> =
+            Arc::new(crate::exec::ManagedExecutor::new(token.clone()));
         let ctx = Context::new(
             Arc::new(std::sync::RwLock::new(Arc::new(config))),
             platform,

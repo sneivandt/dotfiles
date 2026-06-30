@@ -7,16 +7,16 @@
 // Used by all integration test binaries that declare `mod common;`.
 #![allow(dead_code, reason = "used conditionally via cfg")]
 
-use dotfiles_cli::testing as dotfiles_cli;
+use dotfiles_cli::testing as test_api;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
-use dotfiles_cli::config::Config;
-use dotfiles_cli::config::profiles;
-use dotfiles_cli::exec::{ExecResult, Executor, SystemExecutor};
-use dotfiles_cli::logging::{Log, Logger};
-use dotfiles_cli::platform::Platform;
-use dotfiles_cli::tasks::{Context, ContextOpts};
+use test_api::config::Config;
+use test_api::config::profiles;
+use test_api::exec::{ExecResult, Executor, SystemExecutor};
+use test_api::logging::{Log, Logger};
+use test_api::platform::Platform;
+use test_api::tasks::{Context, ContextOpts};
 
 /// Write the minimal set of TOML config files required by the dotfiles engine
 /// into `root`.
@@ -305,7 +305,7 @@ impl IntegrationTestContext {
 /// Run the `install` command in dry-run mode against a fresh minimal repository.
 ///
 /// Builds an isolated repository (with a `.git/` directory so the profile can be
-/// persisted), then invokes [`commands::install::run`](dotfiles_cli::commands::install::run)
+/// persisted), then invokes [`commands::install::run`](test_api::commands::install::run)
 /// with the given `skip`/`only` selectors and `parallel` flag. The temporary
 /// repository lives only for the duration of the call.
 ///
@@ -322,20 +322,20 @@ pub(crate) fn run_install_dry_run(
     // create the directory so the write succeeds.
     std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
 
-    let global = dotfiles_cli::cli::GlobalOpts {
+    let global = test_api::cli::GlobalOpts {
         root: Some(root_path),
         profile: Some("base".to_string()),
         dry_run: true,
         overlay: None,
         parallel,
     };
-    let opts = dotfiles_cli::cli::InstallOpts { skip, only };
+    let opts = test_api::cli::InstallOpts { skip, only };
     let log: Arc<Logger> = Arc::new(Logger::new("test-install-dry-run"));
 
-    dotfiles_cli::commands::install::run(
+    test_api::commands::install::run(
         &global,
         &opts,
         &log,
-        &dotfiles_cli::engine::CancellationToken::new(),
+        &test_api::engine::CancellationToken::new(),
     )
 }

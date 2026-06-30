@@ -13,13 +13,13 @@
 
 mod common;
 
-use dotfiles_cli::testing as dotfiles_cli;
+use dotfiles_cli::testing as test_api;
 use std::collections::HashSet;
 
-use dotfiles_cli::platform::{Os, Platform};
-use dotfiles_cli::tasks;
-use dotfiles_cli::tasks::TaskId;
-use dotfiles_cli::tasks::filter::task_matches_filter;
+use test_api::platform::{Os, Platform};
+use test_api::tasks;
+use test_api::tasks::TaskId;
+use test_api::tasks::filter::task_matches_filter;
 
 // ---------------------------------------------------------------------------
 // Snapshot: full install task list
@@ -255,7 +255,7 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
 /// scheduler unit tests.
 #[test]
 fn install_tasks_form_acyclic_dependency_graph() {
-    use dotfiles_cli::engine::graph::validate;
+    use test_api::engine::graph::validate;
 
     let tasks = tasks::all_install_tasks();
     let task_refs: Vec<&dyn tasks::Task> = tasks.iter().map(Box::as_ref).collect();
@@ -423,8 +423,8 @@ fn only_with_multiple_keywords_includes_all_matching() {
 fn install_symlinks_is_idempotent() {
     use std::sync::Arc;
 
-    use dotfiles_cli::resources::IntrinsicState;
-    use dotfiles_cli::tasks::Task;
+    use test_api::resources::IntrinsicState;
+    use test_api::tasks::Task;
 
     let ctx = common::TestContextBuilder::new()
         .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")
@@ -454,10 +454,10 @@ fn install_symlinks_is_idempotent() {
     // Build the resource to inspect state directly.
     let source = ctx.root_path().join("symlinks").join("bashrc");
     let target = ec.ctx.home.join(".bashrc");
-    let resource = dotfiles_cli::resources::symlink::SymlinkResource::new(
+    let resource = test_api::resources::symlink::SymlinkResource::new(
         source,
         target,
-        Arc::new(dotfiles_cli::exec::SystemExecutor),
+        Arc::new(test_api::exec::SystemExecutor),
     );
 
     // After the first run every resource must be Correct.  This is the
@@ -466,7 +466,7 @@ fn install_symlinks_is_idempotent() {
         resource
             .current_state()
             .expect("check state after first run"),
-        dotfiles_cli::resources::ResourceState::Correct,
+        test_api::resources::ResourceState::Correct,
         "symlink must be Correct after first install"
     );
 
@@ -482,7 +482,7 @@ fn install_symlinks_is_idempotent() {
         resource
             .current_state()
             .expect("check state after second run"),
-        dotfiles_cli::resources::ResourceState::Correct,
+        test_api::resources::ResourceState::Correct,
         "symlink must still be Correct after second install (idempotency guarantee)"
     );
 }
@@ -500,7 +500,7 @@ fn install_symlinks_is_idempotent() {
 fn apply_file_permissions_run_sets_mode_on_unix() {
     use std::os::unix::fs::PermissionsExt;
 
-    use dotfiles_cli::tasks::Task;
+    use test_api::tasks::Task;
 
     let ctx = common::TestContextBuilder::new()
         .with_config_file(

@@ -1,15 +1,39 @@
 //! Command execution abstractions.
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
+use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::{Child, Command, Output, Stdio};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
+
+use crate::engine::CancellationToken;
+
+const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_mins(30);
+#[cfg(not(windows))]
+const SMOKE_TEST_TIMEOUT: Duration = Duration::from_secs(30);
+const POLL_INTERVAL: Duration = Duration::from_millis(50);
+const TERMINATION_GRACE: Duration = Duration::from_secs(2);
 
 /// Create a new [`Command`] with platform-appropriate defaults.
 ///
 /// On Unix the child is placed in its own process group so that a
 /// `SIGINT` from Ctrl-C reaches only the Rust process (via the
-/// cooperative cancellation token) and does not kill child processes
-/// that are still running.
+/// cooperative cancellation token).  The executor can then terminate the
+/// whole child process group on cancellation or timeout.
 fn new_command(program: &str) -> Command {
+    #[allow(unused_mut, reason = "platform-specific mutability")]
+    let mut cmd = Command::new(program);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        cmd.process_group(0);
+    }
+    cmd
+}
+
+/// Create a new [`Command`] from a path with platform-appropriate defaults.
+#[cfg(not(windows))]
+fn new_command_path(program: &Path) -> Command {
     #[allow(unused_mut, reason = "platform-specific mutability")]
     let mut cmd = Command::new(program);
     #[cfg(unix)]
@@ -44,18 +68,245 @@ impl From<Output> for ExecResult {
     }
 }
 
+#[derive(Debug, Clone)]
+struct CommandSettings {
+    timeout: Duration,
+    cancellation: Option<CancellationToken>,
+}
+
+impl CommandSettings {
+    #[cfg(any(windows, test, feature = "internal-api"))]
+    const fn default_timeout() -> Self {
+        Self {
+            timeout: DEFAULT_COMMAND_TIMEOUT,
+            cancellation: None,
+        }
+    }
+
+    #[cfg(not(windows))]
+    const fn timeout(timeout: Duration) -> Self {
+        Self {
+            timeout,
+            cancellation: None,
+        }
+    }
+
+    const fn managed(cancellation: CancellationToken, timeout: Duration) -> Self {
+        Self {
+            timeout,
+            cancellation: Some(cancellation),
+        }
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.cancellation
+            .as_ref()
+            .is_some_and(CancellationToken::is_cancelled)
+    }
+}
+
 /// Execute a command and return the result, bailing on non-zero exit.
-fn execute_checked(mut cmd: Command, label: &str) -> Result<ExecResult> {
-    let output = cmd
-        .output()
-        .with_context(|| format!("failed to execute: {label}"))?;
-    let result = ExecResult::from(output);
+fn execute_checked(cmd: Command, label: &str, settings: &CommandSettings) -> Result<ExecResult> {
+    let result = execute_unchecked(cmd, label, settings)?;
     log_command_output(label, &result);
     if !result.success {
         let code = result.code.unwrap_or(-1);
         bail!("{label} failed (exit {code}): {}", failure_output(&result));
     }
     Ok(result)
+}
+
+fn execute_unchecked(
+    mut cmd: Command,
+    label: &str,
+    settings: &CommandSettings,
+) -> Result<ExecResult> {
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd
+        .spawn()
+        .with_context(|| format!("failed to execute: {label}"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow!("failed to capture stdout for {label}"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| anyhow!("failed to capture stderr for {label}"))?;
+    let stdout_reader = spawn_reader(stdout, "stdout", label);
+    let stderr_reader = spawn_reader(stderr, "stderr", label);
+
+    let start = Instant::now();
+    let status = loop {
+        if settings.is_cancelled() {
+            #[cfg(unix)]
+            terminate_child(&child);
+            #[cfg(windows)]
+            terminate_child(&mut child);
+            wait_after_terminate(&mut child);
+            let result = collect_result(None, stdout_reader, stderr_reader)?;
+            log_command_output(label, &result);
+            bail!("{label} cancelled: {}", failure_output(&result));
+        }
+        if start.elapsed() >= settings.timeout {
+            #[cfg(unix)]
+            terminate_child(&child);
+            #[cfg(windows)]
+            terminate_child(&mut child);
+            wait_after_terminate(&mut child);
+            let result = collect_result(None, stdout_reader, stderr_reader)?;
+            log_command_output(label, &result);
+            bail!(
+                "{label} timed out after {} seconds: {}",
+                settings.timeout.as_secs(),
+                failure_output(&result)
+            );
+        }
+
+        match child
+            .try_wait()
+            .with_context(|| format!("waiting for: {label}"))?
+        {
+            Some(status) => break status,
+            None => std::thread::sleep(POLL_INTERVAL),
+        }
+    };
+
+    collect_result(Some(status), stdout_reader, stderr_reader)
+}
+
+fn spawn_reader<R: Read + Send + 'static>(
+    mut stream: R,
+    name: &'static str,
+    label: &str,
+) -> JoinHandle<Result<Vec<u8>>> {
+    let label = label.to_string();
+    std::thread::spawn(move || {
+        let mut output = Vec::new();
+        stream
+            .read_to_end(&mut output)
+            .with_context(|| format!("reading {name} from {label}"))?;
+        Ok(output)
+    })
+}
+
+fn collect_result(
+    status: Option<std::process::ExitStatus>,
+    stdout_reader: JoinHandle<Result<Vec<u8>>>,
+    stderr_reader: JoinHandle<Result<Vec<u8>>>,
+) -> Result<ExecResult> {
+    let stdout = join_reader(stdout_reader, "stdout")?;
+    let stderr = join_reader(stderr_reader, "stderr")?;
+    let success = status.is_some_and(|s| s.success());
+    let code = status.and_then(|s| s.code());
+    Ok(ExecResult {
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        success,
+        code,
+    })
+}
+
+fn join_reader(handle: JoinHandle<Result<Vec<u8>>>, name: &'static str) -> Result<Vec<u8>> {
+    match handle.join() {
+        Ok(result) => result,
+        Err(_) => bail!("{name} reader thread panicked"),
+    }
+}
+
+#[cfg(unix)]
+fn terminate_child(child: &Child) {
+    terminate_process_tree(child);
+}
+
+#[cfg(windows)]
+fn terminate_child(child: &mut Child) {
+    terminate_process_tree(child);
+    if let Err(err) = child.kill()
+        && err.kind() != std::io::ErrorKind::InvalidInput
+    {
+        tracing::debug!(target: "dotfiles::exec", "failed to kill child: {err}");
+    }
+}
+
+fn wait_after_terminate(child: &mut Child) {
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                force_kill_child(child);
+                return;
+            }
+            Ok(None) if started.elapsed() >= TERMINATION_GRACE => break,
+            Ok(None) => std::thread::sleep(POLL_INTERVAL),
+            Err(err) => {
+                tracing::debug!(target: "dotfiles::exec", "failed waiting after terminate: {err}");
+                return;
+            }
+        }
+    }
+    force_kill_child(child);
+    if let Err(err) = child.wait() {
+        tracing::debug!(target: "dotfiles::exec", "failed waiting after force kill: {err}");
+    }
+}
+
+#[cfg(unix)]
+fn terminate_process_tree(child: &Child) {
+    signal_process_group(child, nix::sys::signal::Signal::SIGTERM);
+}
+
+#[cfg(windows)]
+fn terminate_process_tree(child: &Child) {
+    let pid = child.id().to_string();
+    match Command::new("taskkill")
+        .args(["/PID", &pid, "/T", "/F"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+    {
+        Ok(status) if status.success() => {}
+        Ok(status) => {
+            tracing::debug!(target: "dotfiles::exec", "taskkill failed with status {status}");
+        }
+        Err(err) => {
+            tracing::debug!(target: "dotfiles::exec", "failed to run taskkill: {err}");
+        }
+    }
+}
+
+#[cfg(unix)]
+fn force_kill_child(child: &mut Child) {
+    signal_process_group(child, nix::sys::signal::Signal::SIGKILL);
+    if let Err(err) = child.kill()
+        && err.kind() != std::io::ErrorKind::InvalidInput
+    {
+        tracing::debug!(target: "dotfiles::exec", "failed to force-kill child: {err}");
+    }
+}
+
+#[cfg(windows)]
+fn force_kill_child(child: &mut Child) {
+    terminate_process_tree(child);
+    if let Err(err) = child.kill()
+        && err.kind() != std::io::ErrorKind::InvalidInput
+    {
+        tracing::debug!(target: "dotfiles::exec", "failed to force-kill child: {err}");
+    }
+}
+
+#[cfg(unix)]
+fn signal_process_group(child: &Child, signal: nix::sys::signal::Signal) {
+    let Ok(pid_raw) = i32::try_from(child.id()) else {
+        return;
+    };
+    let pid = nix::unistd::Pid::from_raw(pid_raw);
+    if let Err(err) = nix::sys::signal::killpg(pid, signal) {
+        tracing::debug!(target: "dotfiles::exec", "failed to signal process group {pid}: {err}");
+    }
 }
 
 /// Log captured child-process output at debug level.
@@ -114,7 +365,8 @@ fn failure_output(result: &ExecResult) -> String {
 /// Trait for executing system commands, enabling test injection.
 ///
 /// Implement this trait to provide mock executors for unit tests.
-/// The [`SystemExecutor`] implementation delegates to real process spawning.
+/// Implementations delegate to real process spawning or provide mock executors
+/// for unit tests.
 #[cfg_attr(test, mockall::automock)]
 pub trait Executor: std::fmt::Debug + Send + Sync {
     /// Execute a command, bailing on non-zero exit.
@@ -197,14 +449,19 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
 }
 
 /// The real system executor that delegates to process spawning.
-#[derive(Debug)]
+///
+/// Uses the default command timeout but has no cancellation token. Production
+/// task execution should use [`ManagedExecutor`] so Ctrl-C can stop children.
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg(any(windows, test, feature = "internal-api"))]
 pub struct SystemExecutor;
 
+#[cfg(any(windows, test, feature = "internal-api"))]
 impl Executor for SystemExecutor {
     fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
         let mut cmd = new_command(program);
         cmd.args(args);
-        execute_checked(cmd, program)
+        execute_checked(cmd, program, &CommandSettings::default_timeout())
     }
 
     fn run_in_with_env(
@@ -219,26 +476,29 @@ impl Executor for SystemExecutor {
         for (k, v) in env {
             cmd.env(k, v);
         }
-        execute_checked(cmd, &format!("{program} in {}", dir.display()))
+        execute_checked(
+            cmd,
+            &format!("{program} in {}", dir.display()),
+            &CommandSettings::default_timeout(),
+        )
     }
 
     fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-        let output = new_command(program)
-            .args(args)
-            .output()
-            .with_context(|| format!("failed to execute: {program}"))?;
-        let result = ExecResult::from(output);
+        let mut cmd = new_command(program);
+        cmd.args(args);
+        let result = execute_unchecked(cmd, program, &CommandSettings::default_timeout())?;
         log_command_output(program, &result);
         Ok(result)
     }
 
     fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
-        let output = new_command(program)
-            .args(args)
-            .current_dir(dir)
-            .output()
-            .with_context(|| format!("failed to execute: {program} in {}", dir.display()))?;
-        let result = ExecResult::from(output);
+        let mut cmd = new_command(program);
+        cmd.args(args).current_dir(dir);
+        let result = execute_unchecked(
+            cmd,
+            &format!("{program} in {}", dir.display()),
+            &CommandSettings::default_timeout(),
+        )?;
         log_command_output(&format!("{program} in {}", dir.display()), &result);
         Ok(result)
     }
@@ -250,6 +510,97 @@ impl Executor for SystemExecutor {
     fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
         which::which(program).with_context(|| format!("{program} not found on PATH"))
     }
+}
+
+/// Executor used by task execution so spawned commands honour cancellation.
+#[derive(Debug, Clone)]
+pub struct ManagedExecutor {
+    cancellation: CancellationToken,
+    timeout: Duration,
+}
+
+impl ManagedExecutor {
+    /// Create a managed executor with the default per-command timeout.
+    #[must_use]
+    pub const fn new(cancellation: CancellationToken) -> Self {
+        Self {
+            cancellation,
+            timeout: DEFAULT_COMMAND_TIMEOUT,
+        }
+    }
+
+    fn settings(&self) -> CommandSettings {
+        CommandSettings::managed(self.cancellation.clone(), self.timeout)
+    }
+}
+
+impl Executor for ManagedExecutor {
+    fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+        let mut cmd = new_command(program);
+        cmd.args(args);
+        execute_checked(cmd, program, &self.settings())
+    }
+
+    fn run_in_with_env(
+        &self,
+        dir: &Path,
+        program: &str,
+        args: &[&str],
+        env: &[(&str, &str)],
+    ) -> Result<ExecResult> {
+        let mut cmd = new_command(program);
+        cmd.args(args).current_dir(dir);
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        execute_checked(
+            cmd,
+            &format!("{program} in {}", dir.display()),
+            &self.settings(),
+        )
+    }
+
+    fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+        let mut cmd = new_command(program);
+        cmd.args(args);
+        let result = execute_unchecked(cmd, program, &self.settings())?;
+        log_command_output(program, &result);
+        Ok(result)
+    }
+
+    fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
+        let mut cmd = new_command(program);
+        cmd.args(args).current_dir(dir);
+        let label = format!("{program} in {}", dir.display());
+        let result = execute_unchecked(cmd, &label, &self.settings())?;
+        log_command_output(&label, &result);
+        Ok(result)
+    }
+
+    fn which(&self, program: &str) -> bool {
+        which::which(program).is_ok()
+    }
+
+    fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
+        which::which(program).with_context(|| format!("{program} not found on PATH"))
+    }
+}
+
+/// Run a path-addressed command with the smoke-test timeout.
+///
+/// # Errors
+///
+/// Returns an error if the command cannot be spawned, times out, or otherwise
+/// fails at the process-management layer. Non-zero exit statuses are returned
+/// in the [`ExecResult`] for the caller to interpret.
+#[cfg(not(windows))]
+pub(crate) fn run_path_smoke_test(path: &Path, args: &[&str]) -> Result<ExecResult> {
+    let mut cmd = new_command_path(path);
+    cmd.args(args);
+    let label = path.display().to_string();
+    let result = execute_unchecked(cmd, &label, &CommandSettings::timeout(SMOKE_TEST_TIMEOUT))?;
+    log_command_output(&label, &result);
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -395,5 +746,48 @@ mod tests {
     #[test]
     fn stream_summary_counts_non_empty_lines() {
         assert_eq!(stream_summary("one\n\n two \n"), "2 lines, 11 bytes");
+    }
+
+    #[test]
+    fn managed_executor_times_out_commands() {
+        let token = CancellationToken::new();
+        let executor = ManagedExecutor {
+            cancellation: token,
+            timeout: Duration::from_millis(50),
+        };
+        #[cfg(windows)]
+        let result = executor.run("cmd", &["/C", "ping", "localhost", "-n", "5"]);
+        #[cfg(not(windows))]
+        let result = executor.run("sh", &["-c", "sleep 5"]);
+
+        let message = result
+            .expect_err("long-running command should time out")
+            .to_string();
+        assert!(
+            message.contains("timed out"),
+            "timeout error should be explicit: {message}"
+        );
+    }
+
+    #[test]
+    fn managed_executor_cancels_commands() {
+        let token = CancellationToken::new();
+        token.cancel();
+        let executor = ManagedExecutor {
+            cancellation: token,
+            timeout: Duration::from_secs(5),
+        };
+        #[cfg(windows)]
+        let result = executor.run("cmd", &["/C", "ping", "localhost", "-n", "5"]);
+        #[cfg(not(windows))]
+        let result = executor.run("sh", &["-c", "sleep 5"]);
+
+        let message = result
+            .expect_err("cancelled command should fail")
+            .to_string();
+        assert!(
+            message.contains("cancelled"),
+            "cancellation error should be explicit: {message}"
+        );
     }
 }

@@ -14,16 +14,15 @@
 
 mod common;
 
-use dotfiles_cli::tasks;
+use dotfiles_cli::testing as test_api;
 #[cfg(unix)]
-use dotfiles_cli::tasks::files::chmod::ApplyFilePermissions;
-use dotfiles_cli::tasks::files::symlinks::InstallSymlinks;
+use test_api::tasks::files::chmod::ApplyFilePermissions;
+use test_api::tasks::files::symlinks::InstallSymlinks;
 #[cfg(unix)]
-use dotfiles_cli::tasks::files::symlinks::UninstallSymlinks;
-use dotfiles_cli::tasks::git::git_config::ConfigureGit;
-use dotfiles_cli::tasks::git::hooks::{InstallGitHooks, UninstallGitHooks};
-use dotfiles_cli::tasks::{Task, TaskResult};
-use dotfiles_cli::testing as dotfiles_cli;
+use test_api::tasks::files::symlinks::UninstallSymlinks;
+use test_api::tasks::git::git_config::ConfigureGit;
+use test_api::tasks::git::hooks::{InstallGitHooks, UninstallGitHooks};
+use test_api::tasks::{self, Task, TaskResult};
 
 // ===========================================================================
 // Symlink task execution

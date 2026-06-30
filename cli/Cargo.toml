@@ -46,6 +46,9 @@ internal-api = []
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
 
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.30", features = ["process", "signal"] }
+
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }

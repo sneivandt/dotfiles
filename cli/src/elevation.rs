@@ -10,14 +10,11 @@
 #[cfg(windows)]
 #[must_use]
 pub fn is_elevated() -> bool {
-    use std::process::{Command, Stdio};
+    use crate::exec::Executor as _;
 
-    Command::new("net")
-        .arg("session")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
+    crate::exec::SystemExecutor
+        .run_unchecked("net", &["session"])
+        .is_ok_and(|result| result.success)
 }
 
 /// Check if the current process is running with administrator privileges.
@@ -73,16 +70,12 @@ pub fn elevate_and_exit(
 
     log.always("Not running as administrator. Requesting elevation...");
 
-    let status = std::process::Command::new(ps_exe)
-        .args([
-            "-NoProfile",
-            "-EncodedCommand",
-            &powershell_encode_command(&ps_script),
-        ])
-        .status()
+    let encoded = powershell_encode_command(&ps_script);
+    let result = executor
+        .run_unchecked(ps_exe, &["-NoProfile", "-EncodedCommand", &encoded])
         .context("failed to start elevated process")?;
 
-    if status.success() {
+    if result.success {
         log.always("Elevated window opened.");
         std::process::exit(0);
     }
@@ -153,14 +146,11 @@ pub(crate) fn powershell_encode_command(script: &str) -> String {
 /// falls back to `powershell` (Windows `PowerShell` 5.1) otherwise.
 #[cfg(windows)]
 pub(crate) fn preferred_powershell() -> &'static str {
-    use std::process::Stdio;
+    use crate::exec::Executor as _;
 
-    if std::process::Command::new("pwsh")
-        .args(["-NoProfile", "-Command", "exit 0"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
+    if crate::exec::SystemExecutor
+        .run_unchecked("pwsh", &["-NoProfile", "-Command", "exit 0"])
+        .is_ok_and(|result| result.success)
     {
         "pwsh"
     } else {

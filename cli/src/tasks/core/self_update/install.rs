@@ -136,29 +136,33 @@ pub(super) fn smoke_test_binary(path: &Path) -> Result<()> {
         ) || e.raw_os_error() == Some(ETXTBSY)
     }
     let mut attempts = 0;
-    let output = loop {
-        match std::process::Command::new(path).arg("version").output() {
-            Ok(output) => break output,
-            Err(e) if is_transient_busy(&e) && attempts < MAX_RETRIES => {
+    let result = loop {
+        match crate::exec::run_path_smoke_test(path, &["version"]) {
+            Ok(result) => break result,
+            Err(e)
+                if e.downcast_ref::<std::io::Error>()
+                    .is_some_and(is_transient_busy)
+                    && attempts < MAX_RETRIES =>
+            {
                 attempts = attempts.saturating_add(1);
                 std::thread::sleep(std::time::Duration::from_millis(
                     BASE_DELAY_MS * u64::from(attempts),
                 ));
             }
             Err(e) => {
-                return Err(anyhow::Error::from(e))
+                return Err(e)
                     .with_context(|| format!("spawning smoke test for {}", path.display()));
             }
         }
     };
 
-    if output.status.success() {
+    if result.success {
         Ok(())
     } else {
         bail!(
             "new binary failed smoke test (exit {:?}): {}",
-            output.status.code(),
-            String::from_utf8_lossy(&output.stderr).trim()
+            result.code,
+            result.stderr.trim()
         )
     }
 }

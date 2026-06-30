@@ -76,7 +76,8 @@ respective tool is installed.
 
 ## Pre-signoff checklist for agents
 
-After modifying anything in `cli/src/`, `dotfiles.sh`, or `dotfiles.ps1`:
+After modifying anything in `cli/src/`, `dotfiles.sh`, or `dotfiles.ps1`, or
+before committing/pushing a staged set that already contains those files:
 
 1. Run `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`.
 2. Run `cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings`.

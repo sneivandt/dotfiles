@@ -14,8 +14,8 @@ and invoke it.
 **Core Principles**:
 - **Profile-Based**: Profiles (base, desktop) control sparse checkout and
   configuration; platform categories (linux, windows, arch) are auto-detected.
-- **Idempotent**: Every run converges to the declared state without side
-  effects.
+- **Idempotent**: Every run converges to the declared state without repeating
+  unnecessary mutations.
 - **Cross-Platform**: Single Rust binary; thin POSIX shell and PowerShell
   wrappers.
 - **Declarative**: Configuration lives in `conf/` TOML files, deserialized via
@@ -45,40 +45,19 @@ system design.
 ### Strict Lints
 
 The project enforces pedantic + nursery Clippy lints. `cli/Cargo.toml` is the
-source of truth for denied Rust and Clippy lints. Never use `.unwrap()` or
-`.expect()`; use `?` with `anyhow::Result` or return typed errors from
-`cli/src/error.rs`. Every `#[allow(...)]` must include a `reason = "..."`
+source of truth for denied Rust and Clippy lints. Avoid `.unwrap()` and
+`.expect()` in production code; use `?` with `anyhow::Result` or return typed
+errors from `cli/src/error.rs`. Test-only panics must be covered by explicit,
+reasoned lint allows. Every `#[allow(...)]` must include a `reason = "..."`
 argument.
 
-### Macro-Driven Tasks
+### Task Patterns
 
-Tasks are defined via the `resource_task!` macro in `cli/src/tasks/`, not by
-hand-implementing the `Task` trait. Dependencies use `task_deps!`. Config
-sections use `config_section!`. See the `resource-implementation` and
-`rust-patterns` skills.
-
-### Resource State Providers
-
-- `Resource`: core operations (describe, apply, remove).
-- `IntrinsicState`: resources that can check their own state with
-  `current_state()`.
-- `ResourceStateProvider`: supplies state for orchestration, either via
-  intrinsic checks or cached/bulk queries.
-
-The provider split lets intrinsic checks and bulk/cached state queries share the
-same orchestration path.
-
-### Category Filtering
-
-Every config item is category-aware. Platform categories (linux, windows, arch)
-are auto-detected; profile categories (base, desktop) are user-selected. Items
-matching is AND logic within a category group. See
-`cli/src/config/helpers/category_matcher.rs`.
-
-### Re-exec on Self-Update
-
-After the binary updates itself, it re-execs with a guard env var
-(`DOTFILES_REEXEC_GUARD`) to prevent infinite loops.
+Use `resource_task!` for config-backed resource tasks in `cli/src/tasks/`.
+Use `task_metadata!` for hand-written tasks that need custom control flow but
+still have static name, phase, domain, policy, and dependency metadata.
+Dependencies use `task_deps!`. Config sections use `config_section!`. See the
+`resource-implementation` and `rust-patterns` skills.
 
 ## Working with This Codebase
 
@@ -100,6 +79,9 @@ any file.
 cd cli && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
+Before committing or pushing staged Rust changes, validate the full staged set
+even when some changes were authored by another session.
+
 **Cross-platform verification** - Windows-only CI failures are a recurring
 issue. After any Rust change, also run:
 
@@ -114,10 +96,15 @@ x86_64-pc-windows-gnu` + a mingw-w64 gcc). When the target is unavailable and
 not appropriate to install, say so explicitly in the response. See the
 `cross-platform-verification` skill for details.
 
-Integration tests use `IntegrationTestContext` from `cli/tests/common/` and
-exercise config parsing, symlinking, and dry-run behaviour. Snapshot tests use
-`insta`; update with `INSTA_UPDATE=unseen cargo test`. See `docs/TESTING.md`
-for details.
+See the `testing-patterns` skill and `docs/TESTING.md` for integration test
+helpers, snapshot workflows, and targeted validation guidance.
+
+**Configuration validation** - for changes to `conf/`, `symlinks/`, `hooks/`,
+wrapper scripts, or sparse-checkout manifests, run:
+
+```bash
+./dotfiles.sh test
+```
 
 **Dry-run** - preview changes without applying:
 

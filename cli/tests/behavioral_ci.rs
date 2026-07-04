@@ -168,6 +168,25 @@ fn expect(kind: CallKind, program: &str, args: &[&str], result: ExecResult) -> E
     }
 }
 
+fn expect_code_cmd(cmd: &str, args: &[&str], result: ExecResult) -> ExpectedCall {
+    #[cfg(target_os = "windows")]
+    {
+        let mut full_args = vec!["/C".to_string(), cmd.to_string()];
+        full_args.extend(args.iter().map(|arg| (*arg).to_string()));
+        ExpectedCall {
+            kind: CallKind::RunUnchecked,
+            program: "cmd".to_string(),
+            args: full_args,
+            result,
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        expect(CallKind::RunUnchecked, cmd, args, result)
+    }
+}
+
 fn make_context(
     repo: &common::IntegrationTestContext,
     profile: &str,
@@ -596,14 +615,12 @@ fn vscode_task_queries_once_and_installs_only_missing_extensions() {
     let executor = Arc::new(RecordingExecutor::new(
         &["code-insiders"],
         vec![
-            expect(
-                CallKind::RunUnchecked,
+            expect_code_cmd(
                 "code-insiders",
                 &["--list-extensions"],
                 ok("GitHub.Copilot-Chat\n"),
             ),
-            expect(
-                CallKind::RunUnchecked,
+            expect_code_cmd(
                 "code-insiders",
                 &["--install-extension", "ms-python.python", "--force"],
                 ok(""),

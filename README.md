@@ -22,13 +22,13 @@ bootstrap, use the installed `dotfiles` command.
 
 | Task | Command |
 |------|---------|
-| Install | `dotfiles install` |
-| Dry run | `dotfiles install -d` |
-| Update | `dotfiles update` |
-| Materialize managed links and remove hooks | `dotfiles uninstall` |
+| Apply config | `dotfiles install` |
+| Preview changes | `dotfiles install -d` |
+| Update dependencies | `dotfiles update` |
+| Detach managed files | `dotfiles uninstall` |
 | Validate config | `dotfiles test` |
-| View logs | `dotfiles logs` |
-| Print version | `dotfiles version` |
+| Inspect logs | `dotfiles logs` |
+| Show version | `dotfiles version` |
 
 Use `install` for normal, repeatable convergence. Use `update` when you also
 want to advance pinned dependency versions. Use `uninstall` only to detach
@@ -60,7 +60,7 @@ Declarative settings are stored in `conf/*.toml`. Edit these files and the CLI a
 | `profiles.toml` | Profile definitions |
 | `manifest.toml` | Sparse-checkout file-to-category mappings |
 | `symlinks.toml` | Files linked into `$HOME` |
-| `packages.toml` | System packages managed through pacman, AUR, or winget |
+| `packages.toml` | Packages for pacman, AUR, or winget |
 | `systemd-units.toml` | systemd units to enable |
 | `vscode-extensions.toml` | VS Code extensions |
 | `git-config.toml` | Git settings |

@@ -133,6 +133,7 @@ symlinks = [
 - Example: `config/nvim` → `~/.config/nvim` symlinked to `<repo>/symlinks/config/nvim`
 - Example: `{ source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }` → `~/AppData/Roaming/Code/User/settings.json`
 - Example: `apm/plugins/*` links each direct child of `<repo>/symlinks/apm/plugins/` into `~/.apm/plugins/<child>`; APM uses those linked sources when deploying plugin primitives into Copilot, Codex, VS Code, and Copilot App targets
+- On `uninstall`, managed symlinks are materialized: the source file or directory is copied into the target path so the link becomes a real file/directory. Real non-symlink targets are not overwritten.
 
 ---
 
@@ -367,21 +368,89 @@ This works for all standard config types:
 
 The same category filtering rules apply to overlay sections.
 
-## Adding New Configuration
+## Configuration Cookbook
 
-### Adding a Package
-Add to appropriate section in `packages.toml`:
+Use these small examples when making common changes. Section names are category
+filters, so `[arch-desktop]` applies only when both `arch` and `desktop` are
+active.
+
+### Add a Package
+
+Add the package to the narrowest appropriate section in `conf/packages.toml`:
+
 ```toml
 [arch]
 packages = ["my-new-package"]
+
+[arch-desktop]
+packages = [
+  { name = "some-aur-package", aur = true },
+]
 ```
 
-### Adding a Symlink
-1. Place file in `symlinks/` directory
-2. Add entry to appropriate section in `symlinks.toml`
-3. Update `manifest.toml` if it belongs to a specific category
+Run `./dotfiles.sh install -d` to preview the package task before applying it.
 
-### Adding a New Profile
+### Add a Symlink
+
+1. Place the source file or directory under `symlinks/`.
+2. Add the source path to `conf/symlinks.toml`.
+3. Add the path to `conf/manifest.toml` if it should be excluded from some
+   sparse-checkout profiles.
+
+```toml
+# conf/symlinks.toml
+[base]
+symlinks = [
+  "config/example/tool.toml",
+]
+
+# conf/manifest.toml
+[desktop]
+paths = [
+  "config/example/",
+]
+```
+
+The default target is `~/.<source>`, so `config/example/tool.toml` links to
+`~/.config/example/tool.toml`. Use an explicit `{ source, target }` table for
+paths that should not get a leading dot.
+
+### Add a Windows Registry Key
+
+Add a logical section to `conf/registry.toml` with a PowerShell registry path
+and a `[section.values]` subtable:
+
+```toml
+[terminal]
+path = 'HKCU:\Console'
+
+[terminal.values]
+FaceName = "Cascadia Mono"
+QuickEdit = 1
+```
+
+Keep registry settings in Windows-only sections when they are tied to a
+profile/category split.
+
+### Add an Overlay Script
+
+Overlay scripts live outside this repository and are useful for private or
+machine-specific setup. In the overlay repository:
+
+```toml
+# <overlay>/conf/scripts.toml
+[linux]
+scripts = [
+  { name = "Install private files", path = "scripts/private-files.sh" },
+]
+```
+
+The script path is relative to the overlay root. Scripts should support
+`--check`, `--dryrun`, `--remove`, and no-argument apply mode. Run once with
+`--overlay /path/to/overlay`; the path is saved for future runs.
+
+### Add a New Profile
+
 1. Define in `profiles.toml`:
    ```toml
    [my-profile]
@@ -495,10 +564,14 @@ packages = [
 ]
 ```
 
-## See Also
+## Implementation references
 
-- [Usage Guide](USAGE.md) - How to use configuration files
-- [Profile System](PROFILES.md) - Understanding profile filtering
-- [Architecture](ARCHITECTURE.md) - How configuration is processed
 - `cli/src/config/toml_loader.rs` - TOML loader implementation
 - `cli/src/config/` - Configuration loader modules
+
+## Next read
+
+- [Usage Guide](USAGE.md) - Running installs, dry-runs, overlays, and logs
+- [Profile System](PROFILES.md) - Category matching and sparse checkout behavior
+- [Architecture](ARCHITECTURE.md) - How configuration is loaded and processed
+- [Testing](TESTING.md) - Validation commands for config changes

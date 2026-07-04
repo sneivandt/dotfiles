@@ -62,7 +62,7 @@ pub enum Command {
     Install(InstallOpts),
     /// Update dotfiles and advance pinned dependency versions
     Update(UpdateOpts),
-    /// Remove installed dotfiles
+    /// Materialize managed symlinks and remove installed hooks/wrappers
     Uninstall(UninstallOpts),
     /// Run self-tests and validation
     Test(TestOpts),

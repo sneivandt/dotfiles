@@ -32,7 +32,7 @@ The documentation is organized to support different audiences and use cases:
 2. **Platform Guides**: Platform-specific documentation for Linux and Windows
 3. **Deep Dives**: Detailed guides for specific features (profiles, configuration, etc.)
 4. **Developer Resources**: Contributing, testing, and architecture documentation
-5. **Reference**: Troubleshooting, customization, and security information
+5. **Reference**: Troubleshooting and security information
 
 ## Contributing to Documentation
 

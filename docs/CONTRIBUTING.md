@@ -102,32 +102,27 @@ cargo test --manifest-path cli/Cargo.toml
 
 #### Adding New Tasks
 
-1. Create a new file in the appropriate domain folder under `cli/src/tasks/<domain>/` implementing the `Task` trait:
-   ```rust
-   #[derive(Debug)]
-   pub struct MyNewTask;
+Prefer the existing task macros over hand-written `Task` implementations:
 
-   impl Task for MyNewTask {
-       fn name(&self) -> &str { "My New Task" }
-       fn phase(&self) -> TaskPhase { TaskPhase::Provision }
-
-       fn should_run(&self, ctx: &Context) -> bool {
-           ctx.platform.supports_systemd()  // use capability methods when possible
-       }
-
-       fn run(&self, ctx: &Context) -> Result<TaskResult> {
-           // Idempotent implementation
-           Ok(TaskResult::Ok)
-       }
-   }
-   ```
-2. Add the module to the domain's `cli/src/tasks/<domain>/mod.rs`
-3. Add the task to `all_install_tasks()` in `cli/src/tasks/catalog.rs`
+1. Check `.agents/skills/resource-implementation/SKILL.md`,
+   `.agents/skills/rust-patterns/SKILL.md`, and the closest existing task for
+   the current pattern.
+2. Use `resource_task!` for config-backed tasks that process a list of
+   resources through the shared resource engine.
+3. Use `task_metadata!` for hand-written tasks that need custom control flow
+   but still have static name, phase, domain, policies, and dependency
+   metadata.
+4. Declare dependencies with `task_deps![...]` instead of ad-hoc ordering.
+5. Add the module to the domain's `cli/src/tasks/<domain>/mod.rs`.
+6. Register the task in `all_install_tasks()` or `all_uninstall_tasks()` in
+   `cli/src/tasks/catalog.rs`.
+7. Add unit or integration tests for gating, idempotency, and dry-run behavior.
 
 #### Adding New Configuration Types
 
 1. Create TOML file in `conf/`
-2. Add a parser module in `cli/src/config/` (follow existing patterns like `packages.rs`)
+2. Add a parser module in `cli/src/config/`; prefer `config_section!` for
+   sectioned TOML lists
 3. Add the field to the `Config` struct and a single `SectionLoader` call in
    `Config::load()`. One call (e.g. `sections.collect_filtered(...)`) loads the
    main config *and* merges the overlay, so there is no separate merge step.
@@ -145,11 +140,13 @@ exclude = ["windows", "desktop"]
 ### Rust Code Guidelines
 
 - **Error Handling**: Use `anyhow::Result` with `.context()` for all fallible operations
-- **Task Pattern**: Implement the `Task` trait in the relevant `cli/src/tasks/<domain>/` folder; use `should_run()` for platform/profile gating
+- **Task Pattern**: Prefer `resource_task!` for resource-backed tasks and `task_metadata!` for custom tasks; use `should_run()` only for platform/profile gating that cannot be represented by execution policies
 - **Idempotency**: Always check if action is needed before taking it
 - **No Trailing Whitespace**: Remove all trailing whitespace from files
 - **Formatting**: Run `cargo fmt` before committing
 - **Linting**: Ensure `cargo clippy --all-targets -- -D warnings` passes with no warnings
+- **Lint Allows**: Every `#[allow(...)]` must include a `reason = "..."`
+  argument; avoid `.unwrap()` and `.expect()` in production code
 
 ### Shell Wrapper Guidelines
 
@@ -173,7 +170,16 @@ See [Configuration Reference](CONFIGURATION.md) and the `toml-configuration` ski
    ```bash
    cargo fmt  --check --manifest-path cli/Cargo.toml
    cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+   cargo clippy --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
    cargo test --manifest-path cli/Cargo.toml
+   ```
+   Install the Windows target first when needed:
+   `rustup target add x86_64-pc-windows-gnu` plus a mingw-w64 GCC toolchain.
+
+   For changes under `conf/`, `symlinks/`, `hooks/`, or wrapper scripts, also
+   run:
+   ```bash
+   ./dotfiles.sh test
    ```
 
 2. **Dry-Run Testing**:
@@ -243,7 +249,9 @@ chore(ci): update shellcheck version
 ## Pull Request Process
 
 1. **Before Submitting**:
-   - Ensure all Rust checks pass (`cargo fmt --check`, `cargo clippy`, `cargo test`)
+   - Ensure all Rust checks pass (`cargo fmt --check`, host Clippy,
+     Windows-target Clippy, and `cargo test`)
+   - Run `./dotfiles.sh test` for configuration, symlink, hook, or wrapper changes
    - Test with `-d` (dry-run) mode
    - Update documentation if needed
    - Remove trailing whitespace from all files
@@ -257,6 +265,8 @@ chore(ci): update shellcheck version
 3. **Checklist** (automatically provided by PR template):
    - [ ] Ran `cargo test` successfully
    - [ ] Ran `cargo clippy` with no warnings
+   - [ ] Ran Windows-target Clippy for Rust changes
+   - [ ] Ran `./dotfiles.sh test` for configuration/symlink/hook/wrapper changes
    - [ ] Tested with `-d` (dry-run) mode
    - [ ] No trailing whitespace
    - [ ] Updated documentation
@@ -297,6 +307,12 @@ When adding features or changing behavior:
 - Open an issue for questions
 - Check existing issues and PRs for similar topics
 - Review project documentation thoroughly first
+
+## Next read
+
+- [Testing](TESTING.md) - Exact local and CI validation commands
+- [Architecture](ARCHITECTURE.md) - How tasks, resources, and scheduling fit together
+- [Configuration Reference](CONFIGURATION.md) - TOML formats and cookbook examples
 
 ## License
 

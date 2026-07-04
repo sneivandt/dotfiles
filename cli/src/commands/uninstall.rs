@@ -42,12 +42,12 @@ mod tests {
     }
 
     #[test]
-    fn uninstall_tasks_contain_remove_symlinks() {
+    fn uninstall_tasks_contain_materialize_symlinks() {
         let tasks = tasks::all_uninstall_tasks();
         let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
         assert!(
-            names.contains(&"Remove symlinks"),
-            "expected 'Remove symlinks' in {names:?}"
+            names.contains(&"Materialize symlinks"),
+            "expected 'Materialize symlinks' in {names:?}"
         );
     }
 

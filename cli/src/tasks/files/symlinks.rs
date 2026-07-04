@@ -53,13 +53,13 @@ resource_task! {
     }
 }
 
-/// Remove installed symlinks.
+/// Materialize installed symlinks into real files/directories.
 #[derive(Debug)]
 pub struct UninstallSymlinks;
 
 impl Task for UninstallSymlinks {
     task_metadata! {
-        name: "Remove symlinks",
+        name: "Materialize symlinks",
         phase: TaskPhase::Provision,
         domain: Domain::Files,
     }
@@ -69,7 +69,7 @@ impl Task for UninstallSymlinks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        process_resources_remove(ctx, build_resources(ctx), "unlink")
+        process_resources_remove(ctx, build_resources(ctx), "materialize")
     }
 }
 

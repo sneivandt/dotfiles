@@ -99,14 +99,14 @@ fn uninstall_task_dependencies_are_resolvable() {
 // Expected task presence
 // ---------------------------------------------------------------------------
 
-/// "Remove symlinks" must be present in the uninstall task list.
+/// "Materialize symlinks" must be present in the uninstall task list.
 #[test]
-fn uninstall_task_list_contains_remove_symlinks() {
+fn uninstall_task_list_contains_materialize_symlinks() {
     let tasks = tasks::all_uninstall_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
-        names.contains(&"Remove symlinks"),
-        "expected 'Remove symlinks' in uninstall task list, got: {names:?}"
+        names.contains(&"Materialize symlinks"),
+        "expected 'Materialize symlinks' in uninstall task list, got: {names:?}"
     );
 }
 
@@ -253,6 +253,66 @@ fn uninstall_symlinks_is_idempotent() {
     assert!(
         matches!(result2, tasks::TaskResult::Ok),
         "second uninstall run should succeed (idempotency guarantee)"
+    );
+}
+
+/// The CI-facing uninstall integration test must prove the user-visible
+/// contract: a managed file symlink is replaced with a real file containing the
+/// source content.
+#[cfg(unix)]
+#[test]
+fn uninstall_symlinks_materializes_file_content() {
+    use std::sync::Arc;
+
+    use test_api::tasks::Task;
+
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")
+        .with_symlink_source_content("bashrc", "# managed bashrc\n")
+        .build();
+
+    let home_dir = tempfile::tempdir().expect("create temp home dir");
+    let executor: Arc<dyn test_api::exec::Executor> = Arc::new(test_api::exec::SystemExecutor);
+    let log: Arc<test_api::logging::Logger> =
+        Arc::new(test_api::logging::Logger::new("test-uninstall-materialize"));
+    let task_ctx = tasks::Context::from_raw(
+        Arc::new(std::sync::RwLock::new(Arc::new(ctx.load_config("base")))),
+        Platform::detect(),
+        Arc::clone(&log) as Arc<dyn test_api::logging::Log>,
+        executor,
+        home_dir.path().to_path_buf(),
+        tasks::ContextOpts {
+            dry_run: false,
+            parallel: false,
+            advance_versions: false,
+            is_ci: Some(true),
+        },
+    );
+
+    let install_result = tasks::files::symlinks::InstallSymlinks
+        .run(&task_ctx)
+        .expect("install run");
+    assert!(matches!(install_result, tasks::TaskResult::Ok));
+
+    let target = home_dir.path().join(".bashrc");
+    assert!(
+        std::fs::symlink_metadata(&target)
+            .expect("installed target")
+            .is_symlink(),
+        "install should create the managed symlink before uninstall"
+    );
+
+    let uninstall_result = tasks::files::symlinks::UninstallSymlinks
+        .run(&task_ctx)
+        .expect("uninstall run");
+    assert!(matches!(uninstall_result, tasks::TaskResult::Ok));
+
+    let meta = std::fs::symlink_metadata(&target).expect("materialized target");
+    assert!(!meta.is_symlink(), "uninstall must replace the symlink");
+    assert!(meta.is_file(), "materialized target should be a real file");
+    assert_eq!(
+        std::fs::read_to_string(&target).expect("materialized content"),
+        "# managed bashrc\n"
     );
 }
 

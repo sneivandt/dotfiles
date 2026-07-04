@@ -96,11 +96,16 @@ Platform-specific symlink creation is handled inside `SymlinkResource::apply()`.
 
 ## Uninstall
 
-`UninstallSymlinks` uses `process_resources_remove()` to remove symlinks pointing
-to repo sources:
+`UninstallSymlinks` uses `process_resources_remove()` to operate only on
+symlinks that still point to the configured source. Instead of deleting those
+targets outright, `SymlinkResource::remove()` materializes them: it copies the
+current source file or directory into the target path, replacing the symlink
+with a real file/directory. Existing non-symlink targets are skipped to avoid
+overwriting user data.
+
 ```rust
 fn run(&self, ctx: &Context) -> Result<TaskResult> {
-    process_resources_remove(ctx, build_resources(ctx), "unlink")
+    process_resources_remove(ctx, build_resources(ctx), "materialize")
 }
 ```
 

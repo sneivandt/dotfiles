@@ -17,6 +17,21 @@ Use `cargo test` when changing Rust code or test fixtures, and use
 `./dotfiles.sh test` when changing files under `conf/`, `symlinks/`, `hooks/`, or
 wrapper scripts.
 
+### Cross-Platform Rust Check
+
+After any Rust change, also run Clippy against the Windows target to catch
+platform-gated imports, `#[cfg(windows)]` arms, and `winreg` references before
+CI:
+
+```bash
+rustup target add x86_64-pc-windows-gnu
+cargo clippy --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
+```
+
+The target also requires a mingw-w64 GCC toolchain on Linux. If it is not
+installed, the pre-commit hook skips this check with a notice unless full mode
+is explicitly enabled.
+
 ### Running Tests
 
 ```bash
@@ -229,6 +244,7 @@ cargo fmt --check --manifest-path cli/Cargo.toml
 
 # Linting
 cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+cargo clippy --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
 
 # Tests
 cargo test --manifest-path cli/Cargo.toml
@@ -253,31 +269,30 @@ When contributing changes:
    cargo test --manifest-path cli/Cargo.toml
    ```
 
-2. **Run all lints:**
+2. **Run all lints, including Windows-target Clippy for Rust changes:**
    ```bash
    cargo fmt --check --manifest-path cli/Cargo.toml
    cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+   cargo clippy --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
    ```
 
-3. **Test with dry-run:**
+3. **Run configuration validation when changing config, symlinks, hooks, or wrappers:**
+   ```bash
+   ./dotfiles.sh test
+   ```
+
+4. **Test with dry-run:**
    ```bash
    ./dotfiles.sh --build install -p base -d
    ```
 
-4. **Test affected profiles:**
+5. **Test affected profiles:**
    - If modifying base configuration, test `base` profile
    - If modifying desktop items, test `desktop` profile
    - Platform categories (arch, windows) are auto-detected and tested in CI
    - See [Profile System](PROFILES.md) for profile details
 
-5. **Verify no trailing whitespace** in all files
-
-## See Also
-
-- [Contributing Guide](CONTRIBUTING.md) - Development workflow
-- [Architecture](ARCHITECTURE.md) - Implementation details
-- [Configuration Reference](CONFIGURATION.md) - Configuration file formats
-- [Usage Guide](USAGE.md) - Testing different profiles
+6. **Verify no trailing whitespace** in all files
 
 ## Troubleshooting Tests
 
@@ -288,7 +303,7 @@ When contributing changes:
 
 ### Clippy Warnings
 - All warnings are treated as errors (`-D warnings`)
-- Fix the warning or add a targeted `#[allow()]` with a comment explaining why
+- Fix the warning or add a targeted `#[allow(..., reason = "...")]` explaining why
 
 ### Configuration Validation Failures
 - Check TOML file syntax
@@ -308,3 +323,11 @@ When contributing changes:
 - Snapshot mismatches show a diff: the left side is the stored snapshot, the
   right side is the actual output. If the change is expected, update the
   snapshot as described above.
+
+## Next read
+
+- [Contributing Guide](CONTRIBUTING.md) - Development workflow and PR expectations
+- [Architecture](ARCHITECTURE.md) - Implementation details
+- [Configuration Reference](CONFIGURATION.md) - Configuration file formats
+- [Git Hooks](HOOKS.md) - Local pre-commit checks and full-mode validation
+- [Troubleshooting](TROUBLESHOOTING.md) - Diagnosing failed installs or tests

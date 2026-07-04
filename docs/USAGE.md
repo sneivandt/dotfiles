@@ -53,7 +53,7 @@ dotfiles.sh [--build] version
 
 - **`install`** - Converge the system to the declared state (does not advance pinned versions)
 - **`update`** - Everything `install` does, **plus** advancing pinned dependency versions (currently APM plugin dependencies via `apm update`)
-- **`uninstall`** - Remove installed dotfiles (managed symlinks)
+- **`uninstall`** - Materialize managed symlinks, then remove managed hooks/wrappers
 - **`test`** - Run configuration validation
 - **`logs`** - Print the most recent dotfiles operation log
 - **`version`** - Print version information
@@ -164,24 +164,25 @@ cd ~\dotfiles
 ```bash
 ./dotfiles.sh install -p base
 # Switches to base profile
-# Removes desktop-specific symlinks and files
+# Materializes/removes desktop-specific symlinks and files
 # New profile is saved for future runs
 ```
 
 ### Uninstalling
 
-`uninstall` is intentionally conservative. It removes the pieces that this
-project can safely detach without guessing the user's desired system state:
+`uninstall` is intentionally conservative. It detaches the pieces that this
+project can safely handle without guessing the user's desired system state:
 managed symlinks, installed Git hooks, and the wrapper entry point. It does not
 try to roll back packages, registry values, systemd enablement, shell changes,
 VS Code extensions, AI tooling, PAM/WSL configuration, or
 overlay script effects.
 
-When removing a managed symlink, the current source content is materialized into
-the target path first, so uninstalling does not leave the user without the file
-or directory that had been linked.
+For managed symlinks, `uninstall` does **not** leave the target path empty.
+Before detaching each managed link, it copies the current source content into
+the target path, replacing the link with a real file or directory. Existing
+non-symlink targets are left untouched to avoid overwriting user data.
 
-**Remove managed symlinks, Git hooks, and wrapper:**
+**Materialize managed symlinks and remove Git hooks/wrapper:**
 ```bash
 ./dotfiles.sh uninstall
 # Does not remove packages or other system/editor configuration
@@ -628,9 +629,9 @@ To print a completion script for a specific shell without installing:
 dotfiles completions zsh   # or: bash, fish, elvish, powershell
 ```
 
-## See Also
+## Next read
 
-- [Profile System](PROFILES.md) - Understanding profiles in detail
-- [Configuration Reference](CONFIGURATION.md) - Configuration file formats
-- [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
+- [Configuration Reference](CONFIGURATION.md) - Edit packages, symlinks, registry, and overlays
+- [Profiles](PROFILES.md) - Choose between `base`, `desktop`, and platform categories
 - [Windows Usage](WINDOWS.md) - Windows-specific details
+- [Troubleshooting](TROUBLESHOOTING.md) - Use logs and diagnostic output when a run fails

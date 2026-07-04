@@ -107,9 +107,9 @@ impl Resource for SymlinkResource {
         // retains the file/directory after uninstall instead of losing it.
         copy_into_place(&self.source, &self.target, &*self.executor).with_context(|| {
             format!(
-                "materialize {} -> {}",
-                self.target.display(),
-                self.source.display()
+                "materialize {} to {}",
+                self.source.display(),
+                self.target.display()
             )
         })?;
         Ok(ResourceChange::Applied)

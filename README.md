@@ -15,17 +15,26 @@ A personal dotfiles manager built around a **Rust CLI** and declarative TOML con
 
 ## Commands
 
-Bootstrap with the platform wrapper: `./dotfiles.sh install` on Linux or `.\dotfiles.ps1 install` on Windows. The first run prompts for a profile and saves it. Add `--build` to compile from source; otherwise the wrapper downloads the latest release. After bootstrap, use the installed `dotfiles` command.
+Bootstrap with the platform wrapper: `./dotfiles.sh install` on Linux or
+`.\dotfiles.ps1 install` on Windows. The wrapper downloads the latest release
+when no binary is present; add `--build` to compile from source instead. After
+bootstrap, use the installed `dotfiles` command.
 
 | Task | Command |
 |------|---------|
 | Install | `dotfiles install` |
 | Dry run | `dotfiles install -d` |
 | Update | `dotfiles update` |
-| Uninstall managed links/hooks | `dotfiles uninstall` |
+| Materialize managed links and remove hooks | `dotfiles uninstall` |
 | Validate config | `dotfiles test` |
 | View logs | `dotfiles logs` |
 | Print version | `dotfiles version` |
+
+Use `install` for normal, repeatable convergence. Use `update` when you also
+want to advance pinned dependency versions. Use `uninstall` only to detach
+managed links/hooks/wrappers: managed symlinks are replaced with real files or
+directories copied from their current sources, and broader machine state is not
+reverted.
 
 See the [Usage Guide](docs/USAGE.md) for the full command reference.
 

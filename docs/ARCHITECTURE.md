@@ -124,7 +124,7 @@ dotfiles [-v] [-p PROFILE] [-d] [--no-parallel] [--root DIR] <COMMAND>
 Commands:
   install     Install dotfiles and configure system
   update      Install and advance pinned dependency versions
-  uninstall   Remove installed dotfiles
+  uninstall   Materialize managed symlinks and remove hooks/wrappers
   test        Run self-tests and validation
   version     Print version information
 

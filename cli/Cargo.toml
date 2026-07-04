@@ -36,7 +36,7 @@ unicode-width = "0.2"
 
 [dev-dependencies]
 insta = { version = "1", features = ["yaml"] }
-mockall = "0.14"
+mockall = "0.15"
 tempfile = "3"
 dotfiles-cli = { version = "0.1.0", path = ".", features = ["internal-api"] }
 

@@ -91,8 +91,6 @@ pub enum PlatformCapability {
     Chmod,
     /// Linux login-shell configuration.
     LinuxShell,
-    /// Arch Linux platform support.
-    ArchLinux,
     /// Systemd support.
     Systemd,
     /// Windows Subsystem for Linux.
@@ -115,9 +113,6 @@ impl PlatformCapability {
             Self::Chmod => ExecutionPolicy::PlatformSupported("chmod", Platform::supports_chmod),
             Self::LinuxShell => {
                 ExecutionPolicy::PlatformSupported("Linux shell configuration", Platform::is_linux)
-            }
-            Self::ArchLinux => {
-                ExecutionPolicy::PlatformSupported("Arch Linux", Platform::is_arch_linux)
             }
             Self::Systemd => {
                 ExecutionPolicy::PlatformSupported("systemd", Platform::supports_systemd)
@@ -189,7 +184,7 @@ pub enum Domain {
     Files,
     /// Shell configuration and completions.
     Shell,
-    /// Operating-system integration (systemd, PAM, registry, WSL, developer mode).
+    /// Operating-system integration (systemd, registry, WSL, developer mode).
     System,
     /// Editor configuration (VS Code extensions).
     Editors,

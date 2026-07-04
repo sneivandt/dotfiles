@@ -174,8 +174,7 @@ cd ~\dotfiles
 project can safely handle without guessing the user's desired system state:
 managed symlinks, installed Git hooks, and the wrapper entry point. It does not
 try to roll back packages, registry values, systemd enablement, shell changes,
-VS Code extensions, AI tooling, PAM/WSL configuration, or
-overlay script effects.
+VS Code extensions, AI tooling, WSL configuration, or overlay script effects.
 
 For managed symlinks, `uninstall` does **not** leave the target path empty.
 Before detaching each managed link, it copies the current source content into
@@ -245,7 +244,6 @@ run in parallel whenever their dependencies allow.
 | Provision | Configure systemd units | Enables and starts user or system units from `conf/systemd-units.toml` after symlinks exist. |
 | Provision | Install VS Code extensions | Installs extensions from `conf/vscode-extensions.toml`. |
 | Provision | Install APM packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install` when the manifest or lockfile changed. This converges to the locked manifest and never advances locked refs ([Microsoft APM](https://github.com/microsoft/apm)). |
-| Provision | Configure PAM services | Installs custom PAM service files (Arch Linux + desktop profile only, uses sudo). |
 | Provision | Write wsl.conf | Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root). |
 | Provision | Overlay scripts | Runs custom scripts loaded from the overlay repository (when `--overlay` is set). |
 | Update | Update APM packages | Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` and is absent from `install`. |

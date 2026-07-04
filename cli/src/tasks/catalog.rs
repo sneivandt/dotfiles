@@ -41,7 +41,6 @@ pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
         Box::new(crate::tasks::editors::InstallVsCodeExtensions),
         Box::new(crate::tasks::ai::apm::InstallApmPackages),
         Box::new(crate::tasks::ai::apm::UpdateApmPackages),
-        Box::new(crate::tasks::system::pam::ConfigurePam),
         Box::new(crate::tasks::system::wsl_conf::InstallWslConf),
         Box::new(crate::tasks::overlay::LoadOverlayScripts),
         Box::new(crate::tasks::core::wrapper::InstallWrapper),

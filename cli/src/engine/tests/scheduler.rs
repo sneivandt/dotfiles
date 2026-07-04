@@ -19,6 +19,10 @@ fn run_test_tasks(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>) {
     run_tasks_parallel(tasks, &graph, ctx, log);
 }
 
+fn buffered_log_arc(buf: &Arc<BufferedLog>) -> Arc<dyn Log> {
+    Arc::<BufferedLog>::clone(buf)
+}
+
 macro_rules! flag_task {
     ($type_name:ident, $task_name:literal $(, deps: [$($dep:ty),+ $(,)?])?) => {
         struct $type_name {
@@ -493,7 +497,7 @@ fn stage_header_present_when_info_logged_in_run() {
 
     let ctx = ContextBuilder::new(empty_config(PathBuf::from("/tmp"))).build();
     let buf = Arc::new(BufferedLog::new(Arc::clone(&log)));
-    let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
+    let task_ctx = ctx.with_log(buffered_log_arc(&buf));
 
     // Exactly mirrors what run_tasks_parallel does per task thread.
     log.notify_task_start("stats-task");
@@ -540,7 +544,7 @@ fn stage_headers_present_for_multiple_concurrent_stats_tasks() {
             name,
             count: *count,
         };
-        let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
+        let task_ctx = ctx.with_log(buffered_log_arc(&buf));
 
         log.notify_task_start(name);
         tasks::execute(&task_named, &task_ctx);
@@ -643,7 +647,7 @@ fn stage_header_not_lost_after_debug_fmt_call() {
 
     let ctx = ContextBuilder::new(empty_config(PathBuf::from("/tmp"))).build();
     let buf = Arc::new(BufferedLog::new(Arc::clone(&log)));
-    let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
+    let task_ctx = ctx.with_log(buffered_log_arc(&buf));
 
     log.notify_task_start("debug-fmt-task");
     tasks::execute(&DebugFmtTask, &task_ctx);

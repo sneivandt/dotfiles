@@ -64,6 +64,11 @@ cli/src/
   wrapper handoff code.
 - Public Rust items need `///` docs. Fallible public functions include
   `# Errors`; unsafe functions include `# Safety`.
+- `cli/Cargo.toml` is the source of truth for strict lint policy. In addition
+  to pedantic/nursery/cargo denies, code must avoid silent `as` conversions,
+  ambiguous `Arc`/`Rc` `.clone()` calls, wildcard enum arms, unrelated
+  shadowing, ignored `#[must_use]` values, and assertion messages without
+  context.
 
 ## Task and Resource Rules
 

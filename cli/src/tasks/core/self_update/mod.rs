@@ -204,7 +204,9 @@ mod tests {
             UpdateCheck::UpdateAvailable { latest, .. } => {
                 assert_eq!(latest, "v9999.0.0");
             }
-            _ => panic!("expected cached newer release to trigger update"),
+            UpdateCheck::Offline | UpdateCheck::AlreadyCurrent | UpdateCheck::DevBuild => {
+                panic!("expected cached newer release to trigger update")
+            }
         }
     }
 

@@ -228,10 +228,11 @@ pub fn overlay_script_tasks(
     scripts
         .iter()
         .map(|entry| {
-            Box::new(OverlayScriptTask::new(
+            let task: Box<dyn Task> = Box::new(OverlayScriptTask::new(
                 entry.clone(),
                 overlay_root.to_path_buf(),
-            )) as Box<dyn Task>
+            ));
+            task
         })
         .collect()
 }

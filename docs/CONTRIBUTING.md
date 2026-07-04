@@ -52,6 +52,7 @@ cargo build --manifest-path cli/Cargo.toml
 # Run all checks (same as CI)
 cargo fmt  --check --manifest-path cli/Cargo.toml
 cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+cargo clippy --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
 cargo test --manifest-path cli/Cargo.toml
 
 # Run end-to-end with --build flag (builds from source)
@@ -144,7 +145,7 @@ exclude = ["windows", "desktop"]
 - **Idempotency**: Always check if action is needed before taking it
 - **No Trailing Whitespace**: Remove all trailing whitespace from files
 - **Formatting**: Run `cargo fmt` before committing
-- **Linting**: Ensure `cargo clippy --all-targets -- -D warnings` passes with no warnings
+- **Linting**: Ensure host and Windows-target `cargo clippy --all-targets -- -D warnings` pass with no warnings. `cli/Cargo.toml` is the source of truth for strict lints, including bans on silent `as` conversions, ambiguous ref-counted pointer clones, wildcard enum arms, unrelated shadowing, and ignored `#[must_use]` results
 - **Lint Allows**: Every `#[allow(...)]` must include a `reason = "..."`
   argument; avoid `.unwrap()` and `.expect()` in production code
 

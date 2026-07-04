@@ -245,8 +245,11 @@ fn copy_dir_into_place(source: &Path, target: &Path, executor: &dyn Executor) ->
             // Disarm the guard before cleanup so it doesn't try to remove on drop.
             guard.persist();
             // Best-effort cleanup; failure here is non-fatal since target is correct.
-            if let Err(e) = std::fs::remove_dir_all(&tmp) {
-                tracing::debug!("best-effort cleanup of {} failed: {e}", tmp.display());
+            if let Err(cleanup_error) = std::fs::remove_dir_all(&tmp) {
+                tracing::debug!(
+                    "best-effort cleanup of {} failed: {cleanup_error}",
+                    tmp.display()
+                );
             }
         }
         Err(e) => {

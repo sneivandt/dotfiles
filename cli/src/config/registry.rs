@@ -104,7 +104,9 @@ fn classify_value(value: &toml::Value) -> (String, RegistryValueType) {
             }
         }
         toml::Value::Float(f) => (f.to_string(), RegistryValueType::String),
-        _ => (value.to_string(), RegistryValueType::String),
+        toml::Value::Datetime(_) | toml::Value::Array(_) | toml::Value::Table(_) => {
+            (value.to_string(), RegistryValueType::String)
+        }
     }
 }
 

@@ -388,7 +388,10 @@ mod tests {
                 assert!(reason.contains("state unknown"), "reason: {reason}");
                 assert!(reason.contains("SHELL not set"), "reason: {reason}");
             }
-            other => panic!("expected Skip, got {other:?}"),
+            other
+            @ (ResourceAction::Apply | ResourceAction::Noop | ResourceAction::Skip { .. }) => {
+                panic!("expected Skip, got {other:?}")
+            }
         }
     }
 

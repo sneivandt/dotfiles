@@ -174,7 +174,11 @@ fn run_skips_when_apm_not_found() {
             reason.contains("apm not found"),
             "expected reason to mention 'apm not found', got {reason:?}"
         ),
-        other => panic!("expected TaskResult::Skipped, got {other:?}"),
+        other @ (TaskResult::Ok
+        | TaskResult::OkWithMessage(_)
+        | TaskResult::NotApplicable(_)
+        | TaskResult::Failed(_)
+        | TaskResult::DryRun) => panic!("expected TaskResult::Skipped, got {other:?}"),
     }
 }
 
@@ -265,8 +269,8 @@ fn run_omits_copilot_app_target_when_app_database_missing() {
     let install_cwd = dir.path().to_path_buf();
     mock.expect_run_in_with_env()
         .once()
-        .returning(move |dir, program, args, env| {
-            assert_eq!(dir, install_cwd.as_path());
+        .returning(move |cwd, program, args, env| {
+            assert_eq!(cwd, install_cwd.as_path());
             assert_eq!(program, "apm");
             assert_eq!(args, ["install", "-g", "--target", TARGET_WITHOUT_APP]);
             assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
@@ -302,8 +306,8 @@ fn update_skips_apm_update_when_dependencies_current() {
     mock.expect_run_in_with_env()
         .once()
         .in_sequence(&mut seq)
-        .returning(move |dir, program, args, env| {
-            assert_eq!(dir, outdated_cwd.as_path());
+        .returning(move |cwd, program, args, env| {
+            assert_eq!(cwd, outdated_cwd.as_path());
             assert_eq!(program, "apm");
             assert_eq!(args, ["outdated", "-g"]);
             assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
@@ -333,8 +337,8 @@ fn update_advances_dependencies_when_outdated_reports_stale_lock() {
     mock.expect_run_in_with_env()
         .once()
         .in_sequence(&mut seq)
-        .returning(move |dir, program, args, _env| {
-            assert_eq!(dir, outdated_cwd.as_path());
+        .returning(move |cwd, program, args, _env| {
+            assert_eq!(cwd, outdated_cwd.as_path());
             assert_eq!(program, "apm");
             assert_eq!(args, ["outdated", "-g"]);
             Ok(ok_result("Outdated dependencies:\n- example/plugin\n"))
@@ -343,8 +347,8 @@ fn update_advances_dependencies_when_outdated_reports_stale_lock() {
     mock.expect_run_in_with_env()
         .once()
         .in_sequence(&mut seq)
-        .returning(move |dir, program, args, env| {
-            assert_eq!(dir, update_cwd.as_path());
+        .returning(move |cwd, program, args, env| {
+            assert_eq!(cwd, update_cwd.as_path());
             assert_eq!(program, "apm");
             assert_eq!(
                 args,
@@ -359,7 +363,7 @@ fn update_advances_dependencies_when_outdated_reports_stale_lock() {
             assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
             // Simulate a real ref advance by rewriting the lockfile; the task
             // detects change by comparing the lockfile before and after.
-            std::fs::write(dir.join(".apm").join("apm.lock.yaml"), "advanced\n")
+            std::fs::write(cwd.join(".apm").join("apm.lock.yaml"), "advanced\n")
                 .expect("rewrite lock");
             Ok(ok_result("updated\n"))
         });
@@ -569,7 +573,11 @@ fn run_skips_auth_failures() {
             reason.contains("GitHub authentication"),
             "expected auth skip reason, got {reason:?}"
         ),
-        other => panic!("expected TaskResult::Skipped, got {other:?}"),
+        other @ (TaskResult::Ok
+        | TaskResult::OkWithMessage(_)
+        | TaskResult::NotApplicable(_)
+        | TaskResult::Failed(_)
+        | TaskResult::DryRun) => panic!("expected TaskResult::Skipped, got {other:?}"),
     }
 }
 

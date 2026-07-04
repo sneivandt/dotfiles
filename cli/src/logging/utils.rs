@@ -41,7 +41,7 @@ pub(super) fn terminal_columns() -> usize {
 /// fallback logic without mutating process-global state.
 pub(super) fn terminal_columns_with(columns_env: Option<String>) -> usize {
     terminal_size::terminal_size()
-        .map(|(w, _)| w.0 as usize)
+        .map(|(w, _)| usize::from(w.0))
         .filter(|&n| n > 0)
         .or_else(|| {
             columns_env
@@ -105,6 +105,7 @@ pub(super) fn log_file_path_in(command: &str, base: &std::path::Path) -> Option<
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
+    clippy::as_conversions,
     clippy::arithmetic_side_effects,
     reason = "Hinnant civil-from-days integer algorithm; all terms bounded for valid epoch seconds"
 )]

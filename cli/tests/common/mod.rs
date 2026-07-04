@@ -18,6 +18,10 @@ use test_api::logging::{Log, Logger};
 use test_api::platform::Platform;
 use test_api::tasks::{Context, ContextOpts};
 
+fn log_arc(log: &Arc<Logger>) -> Arc<dyn Log> {
+    Arc::<Logger>::clone(log)
+}
+
 /// Write the minimal set of TOML config files required by the dotfiles engine
 /// into `root`.
 ///
@@ -245,7 +249,7 @@ impl IntegrationTestContext {
         let ctx = Context::from_raw(
             Arc::new(RwLock::new(Arc::new(config))),
             Platform::detect(),
-            Arc::clone(&log) as Arc<dyn Log>,
+            log_arc(&log),
             Arc::new(StubExecutor),
             home.path().to_path_buf(),
             ContextOpts {
@@ -284,7 +288,7 @@ impl IntegrationTestContext {
         let ctx = Context::from_raw(
             Arc::new(RwLock::new(Arc::new(config))),
             platform,
-            Arc::clone(&log) as Arc<dyn Log>,
+            log_arc(&log),
             Arc::new(SystemExecutor),
             home.path().to_path_buf(),
             opts,

@@ -65,7 +65,8 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> TaskSt
     log.notify_task_start(task.name());
 
     let buf = Arc::new(BufferedLog::new(Arc::clone(log)));
-    let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
+    let buffered_log: Arc<dyn Log> = Arc::<BufferedLog>::clone(&buf);
+    let task_ctx = ctx.with_log(buffered_log);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         tasks::execute(task, &task_ctx)
@@ -158,7 +159,7 @@ pub(crate) fn run_tasks_parallel(
             let dep_names: Vec<&str> = graph
                 .dependencies(idx)
                 .iter()
-                .filter_map(|&dep_idx| tasks.get(dep_idx).map(|task| task.name()))
+                .filter_map(|&dep_idx| tasks.get(dep_idx).map(|dep_task| dep_task.name()))
                 .collect();
             let dep_count = dep_names.len();
 

@@ -14,7 +14,11 @@ mod native {
     use anyhow::{Context as _, Result, bail};
     use winreg::RegKey;
     use winreg::enums::{HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
-    use winreg::enums::{REG_DWORD, REG_EXPAND_SZ, REG_SZ};
+    use winreg::enums::{
+        REG_BINARY, REG_DWORD, REG_DWORD_BIG_ENDIAN, REG_EXPAND_SZ, REG_FULL_RESOURCE_DESCRIPTOR,
+        REG_LINK, REG_MULTI_SZ, REG_NONE, REG_QWORD, REG_RESOURCE_LIST,
+        REG_RESOURCE_REQUIREMENTS_LIST, REG_SZ,
+    };
 
     use crate::config::registry::RegistryValueType;
 
@@ -97,11 +101,7 @@ mod native {
             return Ok(unsigned);
         }
         if let Ok(signed) = value_data.parse::<i32>() {
-            #[allow(
-                clippy::cast_sign_loss,
-                reason = "intentional two's-complement reinterpretation for DWORD"
-            )]
-            return Ok(signed as u32);
+            return Ok(u32::from_ne_bytes(signed.to_ne_bytes()));
         }
         anyhow::bail!("invalid decimal DWORD: {value_data}")
     }
@@ -127,7 +127,16 @@ mod native {
                     .trim_end_matches('\0')
                     .to_string()
             }
-            _ => format!("{:?}", val.bytes),
+            REG_NONE
+            | REG_BINARY
+            | REG_DWORD
+            | REG_DWORD_BIG_ENDIAN
+            | REG_LINK
+            | REG_MULTI_SZ
+            | REG_RESOURCE_LIST
+            | REG_FULL_RESOURCE_DESCRIPTOR
+            | REG_RESOURCE_REQUIREMENTS_LIST
+            | REG_QWORD => format!("{:?}", val.bytes),
         }
     }
 }
@@ -296,11 +305,7 @@ fn parse_dword_for_compare(value: &str) -> Option<u32> {
         return Some(unsigned);
     }
     if let Ok(signed) = value.parse::<i32>() {
-        #[allow(
-            clippy::cast_sign_loss,
-            reason = "intentional two's-complement reinterpretation for DWORD"
-        )]
-        return Some(signed as u32);
+        return Some(u32::from_ne_bytes(signed.to_ne_bytes()));
     }
     None
 }

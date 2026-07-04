@@ -23,6 +23,14 @@ use test_api::logging::{Log, Logger};
 use test_api::platform::{Os, Platform};
 use test_api::tasks::{Context, ContextOpts, Task, TaskResult};
 
+fn log_arc(log: &Arc<Logger>) -> Arc<dyn Log> {
+    Arc::<Logger>::clone(log)
+}
+
+fn executor_arc<T: Executor + 'static>(executor: &Arc<T>) -> Arc<dyn Executor> {
+    Arc::<T>::clone(executor)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CallKind {
     Run,
@@ -199,7 +207,7 @@ fn make_context(
     let ctx = Context::from_raw(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
-        Arc::clone(&log) as Arc<dyn Log>,
+        log_arc(&log),
         executor,
         home.path().to_path_buf(),
         ContextOpts {
@@ -491,7 +499,7 @@ fn pacman_task_installs_only_missing_native_packages_in_one_batch() {
             is_arch: true,
             is_wsl: false,
         },
-        Arc::clone(&executor) as Arc<dyn Executor>,
+        executor_arc(&executor),
     );
 
     let result = test_api::tasks::packages::InstallPackages
@@ -540,7 +548,7 @@ fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
             is_arch: true,
             is_wsl: false,
         },
-        Arc::clone(&executor) as Arc<dyn Executor>,
+        executor_arc(&executor),
     );
 
     let result = test_api::tasks::packages::InstallAurPackages
@@ -593,7 +601,7 @@ fn winget_task_uses_exact_ids_and_installs_each_missing_package() {
         &repo,
         "base",
         platform(Os::Windows, false),
-        Arc::clone(&executor) as Arc<dyn Executor>,
+        executor_arc(&executor),
     );
 
     let result = test_api::tasks::packages::InstallPackages
@@ -631,7 +639,7 @@ fn vscode_task_queries_once_and_installs_only_missing_extensions() {
         &repo,
         "desktop",
         platform(Os::Linux, false),
-        Arc::clone(&executor) as Arc<dyn Executor>,
+        executor_arc(&executor),
     );
 
     let result = test_api::tasks::editors::vscode_extensions::InstallVsCodeExtensions
@@ -695,7 +703,7 @@ fn systemd_task_reloads_then_enables_user_and_system_units() {
         &repo,
         "base",
         platform(Os::Linux, false),
-        Arc::clone(&executor) as Arc<dyn Executor>,
+        executor_arc(&executor),
     );
 
     let result = test_api::tasks::system::systemd_units::ConfigureSystemd

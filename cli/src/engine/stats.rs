@@ -396,7 +396,11 @@ mod tests {
         let r = TaskResult::NotApplicable("no config".into());
         match r {
             TaskResult::NotApplicable(reason) => assert_eq!(reason, "no config"),
-            other => panic!("expected NotApplicable, got {other:?}"),
+            other @ (TaskResult::Ok
+            | TaskResult::OkWithMessage(_)
+            | TaskResult::Skipped(_)
+            | TaskResult::Failed(_)
+            | TaskResult::DryRun) => panic!("expected NotApplicable, got {other:?}"),
         }
     }
 
@@ -405,7 +409,11 @@ mod tests {
         let r = TaskResult::Skipped("wrong platform".into());
         match r {
             TaskResult::Skipped(reason) => assert_eq!(reason, "wrong platform"),
-            other => panic!("expected Skipped, got {other:?}"),
+            other @ (TaskResult::Ok
+            | TaskResult::OkWithMessage(_)
+            | TaskResult::NotApplicable(_)
+            | TaskResult::Failed(_)
+            | TaskResult::DryRun) => panic!("expected Skipped, got {other:?}"),
         }
     }
 
@@ -414,7 +422,11 @@ mod tests {
         let r = TaskResult::Failed("git pull failed".into());
         match r {
             TaskResult::Failed(reason) => assert_eq!(reason, "git pull failed"),
-            other => panic!("expected Failed, got {other:?}"),
+            other @ (TaskResult::Ok
+            | TaskResult::OkWithMessage(_)
+            | TaskResult::NotApplicable(_)
+            | TaskResult::Skipped(_)
+            | TaskResult::DryRun) => panic!("expected Failed, got {other:?}"),
         }
     }
 

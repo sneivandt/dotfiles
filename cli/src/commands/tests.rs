@@ -163,7 +163,8 @@ mod task_graph_tests {
             ran: Arc::clone(&ran_b),
         };
 
-        let err = run_tasks_to_completion([&task_a as &dyn Task, &task_b as &dyn Task], &ctx, &log)
+        let tasks: [&dyn Task; 2] = [&task_a, &task_b];
+        let err = run_tasks_to_completion(tasks, &ctx, &log)
             .expect_err("cyclic task graphs should fail fast");
 
         assert!(format!("{err:#}").contains("dependency cycle detected"));
@@ -247,12 +248,9 @@ mod task_graph_tests {
 
         // Intentionally pass provision first to ensure phase gating, not input
         // order, controls execution.
-        run_tasks_to_completion(
-            [&provision as &dyn Task, &bootstrap as &dyn Task],
-            &ctx,
-            &log,
-        )
-        .expect("phase barriers should run all bootstrap tasks before provision");
+        let tasks: [&dyn Task; 2] = [&provision, &bootstrap];
+        run_tasks_to_completion(tasks, &ctx, &log)
+            .expect("phase barriers should run all bootstrap tasks before provision");
 
         assert_eq!(completed_bootstrap.load(Ordering::SeqCst), 1);
         assert!(provision_ran.load(Ordering::SeqCst));

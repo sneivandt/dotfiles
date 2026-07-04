@@ -229,17 +229,16 @@ fn check_dir_recursive(path: &std::path::Path, base_mode: u32) -> Result<Resourc
         }
 
         if entry_path.is_dir() {
-            if let state @ ResourceState::Incorrect { .. } =
+            if let recursive_state @ ResourceState::Incorrect { .. } =
                 check_dir_recursive(&entry_path, base_mode)?
             {
-                return Ok(state);
+                return Ok(recursive_state);
             }
         } else {
-            let current_mode =
-                std::fs::metadata(&entry_path)?.permissions().mode() & MODE_BITS_MASK;
-            if current_mode != file_mode {
+            let entry_mode = std::fs::metadata(&entry_path)?.permissions().mode() & MODE_BITS_MASK;
+            if entry_mode != file_mode {
                 return Ok(ResourceState::Incorrect {
-                    current: format!("file {} has mode {current_mode:o}", entry_path.display()),
+                    current: format!("file {} has mode {entry_mode:o}", entry_path.display()),
                 });
             }
         }

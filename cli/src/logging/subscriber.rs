@@ -56,11 +56,11 @@ impl tracing::field::Visit for SpanContextExtractor {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         if field.name() == "name" {
             let rendered = format!("{value:?}");
-            let value = rendered
+            let rendered_value = rendered
                 .strip_prefix('"')
                 .and_then(|s| s.strip_suffix('"'))
                 .unwrap_or(&rendered);
-            self.task_name = Some(value.to_string());
+            self.task_name = Some(rendered_value.to_string());
         }
     }
 

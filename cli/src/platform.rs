@@ -172,7 +172,7 @@ impl Platform {
             Category::Linux => self.os != Os::Linux,
             Category::Windows => self.os != Os::Windows,
             Category::Arch => !self.is_arch_linux() || self.is_wsl(),
-            _ => false,
+            Category::Base | Category::Desktop | Category::Other(_) => false,
         }
     }
 

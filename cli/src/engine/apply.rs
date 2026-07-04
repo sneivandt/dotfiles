@@ -143,7 +143,7 @@ pub(super) fn remove_single<R: Resource>(
     let plan = RemoveChange::from_state(resource.description(), current, verb);
     let mut delta = TaskStats::new();
     match plan.operation() {
-        RemoveOperation::Remove { verb } => {
+        RemoveOperation::Remove { verb: remove_verb } => {
             if ctx.dry_run {
                 if let Some(message) = plan.dry_run_message() {
                     ctx.log.dry_run(&message);
@@ -153,10 +153,17 @@ pub(super) fn remove_single<R: Resource>(
             }
             ctx.log.diag(
                 DiagEvent::ResourceRemove,
-                &format!("{verb} {}", plan.description()),
+                &format!("{remove_verb} {}", plan.description()),
             );
             let change = resource.remove()?;
-            record_resource_change(ctx, &mut delta, change, plan.description(), verb, "removed");
+            record_resource_change(
+                ctx,
+                &mut delta,
+                change,
+                plan.description(),
+                remove_verb,
+                "removed",
+            );
         }
         RemoveOperation::Skip { reason } => {
             // Cannot determine if this resource is ours — skip removal rather

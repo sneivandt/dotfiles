@@ -91,8 +91,9 @@ fn install_wsl_conf(ctx: &Context, target: &str) -> Result<TaskResult> {
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
             ctx.log.info("direct write failed, falling back to sudo");
             let tmp = sudo_fallback_tmp_path();
-            std::fs::write(&tmp, &desired_content)
-                .map_err(|e| anyhow::anyhow!("failed to write temp file {tmp}: {e}"))?;
+            std::fs::write(&tmp, &desired_content).map_err(|write_error| {
+                anyhow::anyhow!("failed to write temp file {tmp}: {write_error}")
+            })?;
             let _cleanup = crate::fs::TempPath::new(std::path::PathBuf::from(&tmp));
 
             ctx.executor.run("sudo", &["cp", &tmp, target])?;

@@ -116,7 +116,11 @@ impl ResolvedTaskGraph {
             }
         }
 
-        debug_assert_eq!(order.len(), self.dependencies.len());
+        debug_assert_eq!(
+            order.len(),
+            self.dependencies.len(),
+            "topological sort should visit every graph node"
+        );
         order
     }
 

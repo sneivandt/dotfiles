@@ -417,8 +417,8 @@ pub mod test_helpers {
     #[must_use]
     pub fn make_static_context(config: Config) -> (Context, Arc<Logger>) {
         let log = Arc::new(Logger::new("test"));
-        let ctx =
-            make_linux_context(config).with_log(Arc::clone(&log) as Arc<dyn crate::logging::Log>);
+        let log_output: Arc<dyn crate::logging::Log> = Arc::<Logger>::clone(&log);
+        let ctx = make_linux_context(config).with_log(log_output);
         (ctx, log)
     }
 }

@@ -19,6 +19,12 @@ use test_api::platform::{Os, Platform};
 use test_api::tasks;
 use test_api::tasks::TaskId;
 
+fn log_arc(
+    log: &std::sync::Arc<test_api::logging::Logger>,
+) -> std::sync::Arc<dyn test_api::logging::Log> {
+    std::sync::Arc::<test_api::logging::Logger>::clone(log)
+}
+
 // ---------------------------------------------------------------------------
 // Snapshot: full uninstall task list
 // ---------------------------------------------------------------------------
@@ -142,7 +148,7 @@ fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
     let task_ctx = tasks::Context::new(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
-        Arc::clone(&log) as Arc<dyn test_api::logging::Log>,
+        log_arc(&log),
         executor,
         tasks::ContextOpts {
             dry_run: true,
@@ -210,7 +216,7 @@ fn uninstall_symlinks_is_idempotent() {
     let task_ctx = tasks::Context::from_raw(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
-        Arc::clone(&log) as Arc<dyn test_api::logging::Log>,
+        log_arc(&log),
         executor,
         home_dir.path().to_path_buf(),
         tasks::ContextOpts {
@@ -278,7 +284,7 @@ fn uninstall_symlinks_materializes_file_content() {
     let task_ctx = tasks::Context::from_raw(
         Arc::new(std::sync::RwLock::new(Arc::new(ctx.load_config("base")))),
         Platform::detect(),
-        Arc::clone(&log) as Arc<dyn test_api::logging::Log>,
+        log_arc(&log),
         executor,
         home_dir.path().to_path_buf(),
         tasks::ContextOpts {
@@ -342,7 +348,7 @@ fn uninstall_tasks_should_run_with_windows_platform() {
     let task_ctx = tasks::Context::new(
         Arc::new(std::sync::RwLock::new(Arc::new(config))),
         platform,
-        Arc::clone(&log) as Arc<dyn test_api::logging::Log>,
+        log_arc(&log),
         executor,
         tasks::ContextOpts {
             dry_run: true,

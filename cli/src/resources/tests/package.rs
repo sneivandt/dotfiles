@@ -1,6 +1,10 @@
 use super::*;
 use crate::exec::{ExecResult, MockExecutor};
 
+fn executor_arc<T: Executor + 'static>(executor: &Arc<T>) -> Arc<dyn Executor> {
+    Arc::<T>::clone(executor)
+}
+
 fn ok_result(stdout: &str) -> ExecResult {
     ExecResult {
         stdout: stdout.to_string(),
@@ -22,26 +26,26 @@ fn fail_result() -> ExecResult {
 #[test]
 fn description_includes_manager() {
     let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-    let resource = PackageResource::new(
+    let pacman_resource = PackageResource::new(
         "git".to_string(),
         PackageManager::Pacman,
         Arc::clone(&executor),
     );
-    assert_eq!(resource.description(), "git (pacman)");
+    assert_eq!(pacman_resource.description(), "git (pacman)");
 
-    let resource = PackageResource::new(
+    let paru_resource = PackageResource::new(
         "paru-bin".to_string(),
         PackageManager::Paru,
         Arc::clone(&executor),
     );
-    assert_eq!(resource.description(), "paru-bin (paru)");
+    assert_eq!(paru_resource.description(), "paru-bin (paru)");
 
-    let resource = PackageResource::new(
+    let winget_resource = PackageResource::new(
         "Git.Git".to_string(),
         PackageManager::Winget,
         Arc::clone(&executor),
     );
-    assert_eq!(resource.description(), "Git.Git (winget)");
+    assert_eq!(winget_resource.description(), "Git.Git (winget)");
 }
 
 #[test]
@@ -276,12 +280,12 @@ fn batch_install_pacman_groups_into_single_command() {
     let r1 = PackageResource::new(
         "git".to_string(),
         PackageManager::Pacman,
-        Arc::clone(&executor) as Arc<dyn Executor>,
+        executor_arc(&executor),
     );
     let r2 = PackageResource::new(
         "vim".to_string(),
         PackageManager::Pacman,
-        Arc::clone(&executor) as Arc<dyn Executor>,
+        executor_arc(&executor),
     );
     batch_install_packages(&[&r1, &r2]).unwrap();
 
@@ -307,12 +311,12 @@ fn batch_install_paru_groups_into_single_command() {
     let r1 = PackageResource::new(
         "paru-bin".to_string(),
         PackageManager::Paru,
-        Arc::clone(&executor) as Arc<dyn Executor>,
+        executor_arc(&executor),
     );
     let r2 = PackageResource::new(
         "yay".to_string(),
         PackageManager::Paru,
-        Arc::clone(&executor) as Arc<dyn Executor>,
+        executor_arc(&executor),
     );
     batch_install_packages(&[&r1, &r2]).unwrap();
 
@@ -334,12 +338,12 @@ fn batch_install_mixed_managers_sends_separate_commands() {
     let r1 = PackageResource::new(
         "git".to_string(),
         PackageManager::Pacman,
-        Arc::clone(&pacman_exec) as Arc<dyn Executor>,
+        executor_arc(&pacman_exec),
     );
     let r2 = PackageResource::new(
         "paru-bin".to_string(),
         PackageManager::Paru,
-        Arc::clone(&paru_exec) as Arc<dyn Executor>,
+        executor_arc(&paru_exec),
     );
     batch_install_packages(&[&r1, &r2]).unwrap();
 

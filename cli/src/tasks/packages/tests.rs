@@ -17,26 +17,26 @@ use std::path::PathBuf;
 #[test]
 fn package_resource_description() {
     let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
-    let resource = PackageResource::new(
+    let pacman_resource = PackageResource::new(
         "git".to_string(),
         PackageManager::Pacman,
         Arc::clone(&executor),
     );
-    assert_eq!(resource.description(), "git (pacman)");
+    assert_eq!(pacman_resource.description(), "git (pacman)");
 
-    let resource = PackageResource::new(
+    let paru_resource = PackageResource::new(
         "paru-bin".to_string(),
         PackageManager::Paru,
         Arc::clone(&executor),
     );
-    assert_eq!(resource.description(), "paru-bin (paru)");
+    assert_eq!(paru_resource.description(), "paru-bin (paru)");
 
-    let resource = PackageResource::new(
+    let winget_resource = PackageResource::new(
         "Git.Git".to_string(),
         PackageManager::Winget,
         Arc::clone(&executor),
     );
-    assert_eq!(resource.description(), "Git.Git (winget)");
+    assert_eq!(winget_resource.description(), "Git.Git (winget)");
 }
 
 // -----------------------------------------------------------------------

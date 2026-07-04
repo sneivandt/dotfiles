@@ -235,10 +235,11 @@ impl CommandRunner {
 
         let executor: Arc<dyn crate::exec::Executor> =
             Arc::new(crate::exec::ManagedExecutor::new(token.clone()));
+        let log_output: Arc<dyn Log> = Arc::<Logger>::clone(log);
         let ctx = Context::new(
             Arc::new(std::sync::RwLock::new(Arc::new(config))),
             platform,
-            Arc::clone(log) as Arc<dyn Log>,
+            log_output,
             executor,
             crate::engine::ContextOpts {
                 dry_run: global.dry_run,

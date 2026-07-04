@@ -24,10 +24,6 @@ For a first run, preview the selected profile before applying it:
 ./dotfiles.sh install -p desktop -d
 ```
 
-Remove `-d` when the plan looks right. `install` can change symlinks, packages,
-Git config, services, system settings, Windows registry values, editor tooling,
-and AI tooling depending on the active profile and platform.
-
 | Task | Command |
 |------|---------|
 | Apply config | `dotfiles install` |

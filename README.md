@@ -1,13 +1,13 @@
 # Dotfiles
 
-A personal dotfiles manager built around a **Rust CLI** and declarative TOML configuration. It keeps my Linux and Windows environments consistent across shell, editor, Git, packages, services, system settings, and AI tooling.
+My personal dotfiles manager built around a **Rust CLI** and declarative TOML configuration. It keeps my Linux and Windows environments consistent across shell, editor, Git, packages, AI tooling and more.
 
 ![Generated terminal preview of a dotfiles dry-run install](docs/assets/terminal-screenshot.svg)
 
 ## Core ideas
 
 - **Cross-platform:** one Rust CLI plans and applies the desired machine state across Linux and Windows.
-- **Profile-aware:** select `base` for minimal environments or `desktop` for workstations; the CLI adds the matching platform categories for the current system.
+- **Profile-aware:** choose `base` or `desktop`; the CLI automatically applies config for the current machine's platform.
 - **Declarative:** TOML files describe packages, links, tools, and settings without turning setup into a collection of one-off scripts.
 - **Idempotent:** re-running `install` converges on the declared state. Preview changes first with `-d`.
 
@@ -17,6 +17,16 @@ Bootstrap with the platform wrapper: `./dotfiles.sh install` on Linux or
 `.\dotfiles.ps1 install` on Windows. The wrapper downloads the latest release
 when no binary is present; add `--build` to compile from source instead. After
 bootstrap, use the installed `dotfiles` command.
+
+For a first run, preview the selected profile before applying it:
+
+```bash
+./dotfiles.sh install -p desktop -d
+```
+
+Remove `-d` when the plan looks right. `install` can change symlinks, packages,
+Git config, services, system settings, Windows registry values, editor tooling,
+and AI tooling depending on the active profile and platform.
 
 | Task | Command |
 |------|---------|
@@ -28,42 +38,42 @@ bootstrap, use the installed `dotfiles` command.
 | Inspect logs | `dotfiles log` |
 | Show version | `dotfiles version` |
 
-Use `install` for normal, repeatable convergence. Use `update` when you also
-want to advance pinned dependency versions. Use `uninstall` only to detach
-managed links/hooks/wrappers: managed symlinks are replaced with real files or
-directories copied from their current sources, and broader machine state is not
-reverted.
+Use `install` for normal repeatable convergence. Use `update` only when you
+also want to advance pinned dependency versions. `uninstall` detaches managed
+links/hooks/wrappers, materializes symlinks, and leaves broader machine state
+alone.
 
 See the [Usage Guide](docs/USAGE.md) for the full command reference.
 
 ## Profiles
 
-Each machine uses one profile; platform categories are detected automatically.
+Each machine uses one profile; `linux`, `windows`, and `arch` are detected automatically and combined with the selected profile. Select a profile with `-p, --profile`:
+
+```bash
+dotfiles install -p desktop
+```
+
+If no profile is set, `install` prompts for one and saves the selection for future runs.
 
 | Profile | Best for |
 |---------|----------|
 | `base` | Servers, WSL, minimal shell environments |
 | `desktop` | Full desktop/workstation setups with GUI tools |
 
-The `linux`, `windows`, and `arch` categories are detected automatically and combined with the selected profile.
-
 See the [Profile System Guide](docs/PROFILES.md) for details.
 
 ## Configuration
 
-Declarative settings are stored in `conf/*.toml`. Edit these files and the CLI applies the requested state:
+Declarative settings are stored in `conf/*.toml`. Edit these files and the CLI applies the requested state. The table below highlights the core configuration files; it is not a complete list:
 
 | File | Controls |
 |------|----------|
 | `profiles.toml` | Profile definitions |
-| `manifest.toml` | Sparse-checkout file-to-category mappings |
+| `manifest.toml` | Files included for each profile/platform |
 | `symlinks.toml` | Files linked into `$HOME` |
 | `packages.toml` | Packages for pacman, AUR, or winget |
-| `systemd-units.toml` | systemd units to enable |
-| `vscode-extensions.toml` | VS Code extensions |
 | `git-config.toml` | Git settings |
 | `registry.toml` | Windows registry keys |
-| `chmod.toml` | File permissions |
 
 See the [Configuration Reference](docs/CONFIGURATION.md) for the full TOML format.
 
@@ -89,7 +99,7 @@ From the repo root, build from source and preview changes against the active con
 | Guide | What's in it |
 |-------|--------------|
 | [Usage Guide](docs/USAGE.md) | All commands and flags |
-| [Profile System](docs/PROFILES.md) | How profiles and categories work |
+| [Profile System](docs/PROFILES.md) | How profiles work |
 | [Configuration Reference](docs/CONFIGURATION.md) | TOML format details |
 | [Architecture](docs/ARCHITECTURE.md) | Rust CLI design |
 | [Contributing](docs/CONTRIBUTING.md) | Development workflow |

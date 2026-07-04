@@ -55,9 +55,9 @@ pub fn run() -> ExitCode {
     }
 
     // Log viewing is read-only: do not initialize the tracing subscriber or
-    // create a new log file just to display existing logs.
-    if let cli::Command::Logs(_) = &args.command {
-        return match commands::logs::run(args.verbose) {
+    // create a new log file just to display an existing log.
+    if let cli::Command::Log(_) = &args.command {
+        return match commands::log::run(args.verbose) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 drop(writeln!(std::io::stderr().lock(), "{e:#}"));
@@ -71,7 +71,7 @@ pub fn run() -> ExitCode {
         cli::Command::Update(_) => "update",
         cli::Command::Uninstall(_) => "uninstall",
         cli::Command::Test(_) => "test",
-        cli::Command::Logs(_) => "logs",
+        cli::Command::Log(_) => "log",
         cli::Command::Version | cli::Command::Completions(_) => "version",
     };
     logging::init_subscriber(args.verbose, command_name);
@@ -123,12 +123,12 @@ pub fn run() -> ExitCode {
         }
         // Completions are handled above; this arm is unreachable but kept
         // because the `unreachable!` macro is denied by the lint configuration.
-        cli::Command::Logs(_) | cli::Command::Completions(_) => return ExitCode::SUCCESS,
+        cli::Command::Log(_) | cli::Command::Completions(_) => return ExitCode::SUCCESS,
     };
 
     if let Err(e) = result {
         log.error(&format!("{e:#}"));
-        log.error("Run 'dotfiles logs' for details.");
+        log.error("Run 'dotfiles log' for details.");
         elevation::wait_if_elevated();
         return ExitCode::FAILURE;
     }

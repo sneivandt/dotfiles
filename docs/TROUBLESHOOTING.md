@@ -532,7 +532,7 @@ The installer writes two log files per run:
 - **Diagnostic log** (`~/.cache/dotfiles/<command>.diag.log`) — microsecond-precision chronological log of all events, including parallel execution
 
 The paths are recorded in the main log summary. Routine successful console
-output does not repeat them; use `dotfiles logs` or the paths above when you
+output does not repeat them; use `dotfiles log` or the paths above when you
 need to inspect a previous run.
 
 ### When to use the diagnostic log

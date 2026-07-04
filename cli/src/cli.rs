@@ -67,7 +67,7 @@ pub enum Command {
     /// Run self-tests and validation
     Test(TestOpts),
     /// Print the most recent dotfiles log
-    Logs(LogsOpts),
+    Log(LogOpts),
     /// Print version information
     Version,
     /// Generate shell completions for the given shell
@@ -110,9 +110,9 @@ pub struct UninstallOpts;
 #[derive(Parser, Debug, Clone)]
 pub struct TestOpts;
 
-/// Options for the `logs` subcommand.
+/// Options for the `log` subcommand.
 #[derive(Parser, Debug, Clone)]
-pub struct LogsOpts;
+pub struct LogOpts;
 
 /// Options for the `completions` subcommand.
 #[derive(Parser, Debug, Clone)]
@@ -263,16 +263,16 @@ mod tests {
     }
 
     #[test]
-    fn parse_logs() {
-        let cli = Cli::parse_from(["dotfiles", "logs"]);
-        assert!(matches!(cli.command, Command::Logs(_)));
+    fn parse_log() {
+        let cli = Cli::parse_from(["dotfiles", "log"]);
+        assert!(matches!(cli.command, Command::Log(_)));
     }
 
     #[test]
-    fn parse_logs_verbose() {
-        let cli = Cli::parse_from(["dotfiles", "logs", "--verbose"]);
+    fn parse_log_verbose() {
+        let cli = Cli::parse_from(["dotfiles", "log", "--verbose"]);
         assert!(cli.verbose);
-        assert!(matches!(cli.command, Command::Logs(_)));
+        assert!(matches!(cli.command, Command::Log(_)));
     }
 
     #[test]

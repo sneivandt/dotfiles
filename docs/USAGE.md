@@ -45,7 +45,7 @@ dotfiles.sh [--build] install   [-p PROFILE] [-d] [-v]
 dotfiles.sh [--build] update    [-p PROFILE] [-d] [-v]
 dotfiles.sh [--build] uninstall [-p PROFILE] [-d] [-v]
 dotfiles.sh [--build] test      [-p PROFILE] [-v]
-dotfiles.sh [--build] logs      [-v]
+dotfiles.sh [--build] log       [-v]
 dotfiles.sh [--build] version
 ```
 
@@ -55,7 +55,7 @@ dotfiles.sh [--build] version
 - **`update`** - Everything `install` does, **plus** advancing pinned dependency versions (currently APM plugin dependencies via `apm update`)
 - **`uninstall`** - Materialize managed symlinks, then remove managed hooks/wrappers
 - **`test`** - Run configuration validation
-- **`logs`** - Print the most recent dotfiles operation log
+- **`log`** - Print the most recent dotfiles operation log
 - **`version`** - Print version information
 - **`--build`** - Build and run from source (requires `cargo`)
 - **`-p, --profile PROFILE`** - Use specific profile (base, desktop)
@@ -76,7 +76,7 @@ pinned.
 .\dotfiles.ps1 [--build] update -p desktop [-d] [-v]
 .\dotfiles.ps1 [--build] uninstall [-d]
 .\dotfiles.ps1 [--build] test
-.\dotfiles.ps1 [--build] logs [-v]
+.\dotfiles.ps1 [--build] log [-v]
 .\dotfiles.ps1 [--build] version
 ```
 
@@ -356,9 +356,9 @@ Combine with `-v` for full detail on every resource:
 
 ## Logging
 
-All operations are logged to persistent log files. Use `dotfiles logs` (or
-`./dotfiles.sh logs`) to print the most recent operation log. Use
-`dotfiles logs -v` to print the diagnostic log when one is available.
+All operations are logged to persistent log files. Use `dotfiles log` (or
+`./dotfiles.sh log`) to print the most recent operation log. Use
+`dotfiles log -v` to print the diagnostic log when one is available.
 
 **Linux:**
 - Location: `${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/install.log`
@@ -390,7 +390,7 @@ chronological order of parallel execution. See
 [Troubleshooting](TROUBLESHOOTING.md#using-diagnostic-logs) for details on
 reading the diagnostic log.
 
-If a command fails, the CLI may print `Run 'dotfiles logs' for details.` after
+If a command fails, the CLI may print `Run 'dotfiles log' for details.` after
 the actionable error so you can inspect the full log without routine successful
 runs repeating the log path.
 

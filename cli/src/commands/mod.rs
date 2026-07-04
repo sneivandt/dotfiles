@@ -1,6 +1,6 @@
 //! Top-level command handlers for install, uninstall, test, and version.
 pub mod install;
-pub mod logs;
+pub mod log;
 pub mod test;
 pub mod uninstall;
 pub mod update;

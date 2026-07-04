@@ -12,8 +12,8 @@ pub mod commands {
         pub use crate::commands::install::run;
     }
 
-    pub mod logs {
-        pub use crate::commands::logs::run;
+    pub mod log {
+        pub use crate::commands::log::run;
     }
 
     pub mod test {

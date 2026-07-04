@@ -27,7 +27,7 @@ bootstrap, use the installed `dotfiles` command.
 | Update dependencies | `dotfiles update` |
 | Detach managed files | `dotfiles uninstall` |
 | Validate config | `dotfiles test` |
-| Inspect logs | `dotfiles logs` |
+| Inspect logs | `dotfiles log` |
 | Show version | `dotfiles version` |
 
 Use `install` for normal, repeatable convergence. Use `update` when you also

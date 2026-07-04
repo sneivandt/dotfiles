@@ -1,4 +1,4 @@
-//! Logs command implementation.
+//! Log command implementation.
 
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -7,7 +7,7 @@ use anyhow::{Context as _, Result};
 
 const NO_LOG_FOUND: &str = "No dotfiles log found yet.";
 
-/// Run the logs command.
+/// Run the log command.
 ///
 /// # Errors
 ///
@@ -21,14 +21,14 @@ pub fn run(verbose: bool) -> Result<()> {
 
 fn run_with_cache_dir(cache_dir: &Path, verbose: bool, out: &mut dyn std::io::Write) -> Result<()> {
     let Some(path) = newest_log_path(cache_dir, verbose)? else {
-        writeln!(out, "{NO_LOG_FOUND}").context("writing logs output")?;
+        writeln!(out, "{NO_LOG_FOUND}").context("writing log output")?;
         return Ok(());
     };
 
     let contents = std::fs::read_to_string(&path)
         .with_context(|| format!("reading dotfiles log {}", path.display()))?;
     out.write_all(contents.as_bytes())
-        .context("writing logs output")?;
+        .context("writing log output")?;
     Ok(())
 }
 
@@ -103,7 +103,7 @@ mod tests {
         std::fs::write(cache_dir.join("install.log"), "normal log\n").expect("write log");
 
         let mut output = Vec::new();
-        run_with_cache_dir(&cache_dir, false, &mut output).expect("logs command should succeed");
+        run_with_cache_dir(&cache_dir, false, &mut output).expect("log command should succeed");
 
         assert_eq!(String::from_utf8(output).unwrap(), "normal log\n");
     }
@@ -114,7 +114,7 @@ mod tests {
         let cache_dir = tmp.path().join("dotfiles");
 
         let mut output = Vec::new();
-        run_with_cache_dir(&cache_dir, false, &mut output).expect("logs command should succeed");
+        run_with_cache_dir(&cache_dir, false, &mut output).expect("log command should succeed");
 
         assert_eq!(
             String::from_utf8(output).unwrap(),
@@ -132,7 +132,7 @@ mod tests {
             .expect("write diagnostic log");
 
         let mut output = Vec::new();
-        run_with_cache_dir(&cache_dir, true, &mut output).expect("logs command should succeed");
+        run_with_cache_dir(&cache_dir, true, &mut output).expect("log command should succeed");
 
         assert_eq!(String::from_utf8(output).unwrap(), "diagnostic log\n");
     }

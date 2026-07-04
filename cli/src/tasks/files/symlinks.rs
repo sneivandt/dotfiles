@@ -30,11 +30,12 @@ fn build_resource(
 
 /// Build [`SymlinkResource`] instances from the loaded config.
 fn build_resources(ctx: &Context) -> Vec<SymlinkResource> {
-    let repo_root = ctx.root();
+    let paths = ctx.paths();
+    let executor = ctx.system().executor_arc();
     ctx.config_read()
         .symlinks
         .iter()
-        .map(|s| build_resource(s, &repo_root, &ctx.home, &ctx.executor))
+        .map(|s| build_resource(s, paths.root(), paths.home(), &executor))
         .collect()
 }
 
@@ -46,8 +47,9 @@ resource_task! {
         domain: Domain::Files,
         items: |ctx| ctx.config_read().symlinks.clone(),
         build: |s, ctx| {
-            let repo_root = ctx.root();
-            build_resource(&s, &repo_root, &ctx.home, &ctx.executor)
+            let paths = ctx.paths();
+            let executor = ctx.system().executor_arc();
+            build_resource(&s, paths.root(), paths.home(), &executor)
         },
         opts: ProcessOpts::strict("link"),
     }

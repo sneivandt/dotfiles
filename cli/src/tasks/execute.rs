@@ -66,7 +66,7 @@ fn record_policy_decision(ctx: &Context, name: &str, domain: Domain, decision: P
 /// [`TaskResult::Failed`] or an error, the failure is downgraded to
 /// [`TaskStatus::Skipped`] with an "interrupted" message so the
 /// summary does not count signal-induced failures.
-pub fn execute(task: &dyn Task, ctx: &Context) {
+pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
     let _diag_context = diag_task_context(task.name());
@@ -74,7 +74,7 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 
     if let Some(decision) = evaluate_policy(task, ctx) {
         record_policy_decision(ctx, task.name(), domain, decision);
-        return;
+        return TaskStatus::NotApplicable;
     }
 
     if !task.should_run(ctx) {
@@ -85,12 +85,12 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
             .debug(&format!("skipping task: {} (not applicable)", task.name()));
         ctx.log
             .record_task_outcome(task.name(), domain, TaskStatus::NotApplicable, None);
-        return;
+        return TaskStatus::NotApplicable;
     }
 
     ctx.log
         .diag_task(DiagEvent::TaskStart, task.name(), "executing");
-    record_run_outcome(task, ctx, domain);
+    record_run_outcome(task, ctx, domain)
 }
 
 /// Run a task and record its outcome.
@@ -98,10 +98,11 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 /// Cancellation-induced failures (Ctrl-C) are downgraded to
 /// [`TaskStatus::Skipped`] so the summary does not count signal
 /// interruptions as real failures.
-fn record_run_outcome(task: &dyn Task, ctx: &Context, domain: Domain) {
+fn record_run_outcome(task: &dyn Task, ctx: &Context, domain: Domain) -> TaskStatus {
     let rec = |status: TaskStatus, msg: Option<&str>| {
         ctx.log
             .record_task_outcome(task.name(), domain, status, msg);
+        status
     };
     match task.run_if_applicable(ctx) {
         Ok(None) => {
@@ -111,44 +112,46 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context, domain: Domain) {
             ctx.log.debug("nothing configured");
             ctx.log
                 .record_task_outcome(task.name(), domain, TaskStatus::NotApplicable, None);
+            TaskStatus::NotApplicable
         }
         Ok(Some(result)) => match result {
             TaskResult::Ok => {
                 ctx.log.diag_task(DiagEvent::TaskDone, task.name(), "");
-                rec(TaskStatus::Ok, None);
+                rec(TaskStatus::Ok, None)
             }
             TaskResult::OkWithMessage(message) => {
                 ctx.log
                     .diag_task(DiagEvent::TaskDone, task.name(), &message);
-                rec(TaskStatus::Ok, Some(&message));
+                rec(TaskStatus::Ok, Some(&message))
             }
             TaskResult::NotApplicable(reason) => {
                 ctx.log.diag_task(DiagEvent::TaskSkip, task.name(), &reason);
                 ctx.debug_fmt(|| format!("not applicable: {reason}"));
                 ctx.log
                     .record_task_outcome(task.name(), domain, TaskStatus::NotApplicable, None);
+                TaskStatus::NotApplicable
             }
             TaskResult::Skipped(reason) => {
                 ctx.log.diag_task(DiagEvent::TaskSkip, task.name(), &reason);
                 ctx.log.info(&format!("skipped: {reason}"));
-                rec(TaskStatus::Skipped, Some(&reason));
+                rec(TaskStatus::Skipped, Some(&reason))
             }
             TaskResult::Failed(reason) => {
                 if ctx.is_cancelled() {
                     ctx.log
                         .diag_task(DiagEvent::TaskSkip, task.name(), "interrupted");
                     ctx.log.warn(&format!("interrupted: {reason}"));
-                    rec(TaskStatus::Skipped, Some("interrupted"));
+                    rec(TaskStatus::Skipped, Some("interrupted"))
                 } else {
                     ctx.log.diag_task(DiagEvent::TaskFail, task.name(), &reason);
                     ctx.log.warn(&format!("failed: {reason}"));
-                    rec(TaskStatus::Failed, Some(&reason));
+                    rec(TaskStatus::Failed, Some(&reason))
                 }
             }
             TaskResult::DryRun => {
                 ctx.log
                     .diag_task(DiagEvent::TaskDone, task.name(), "dry-run");
-                rec(TaskStatus::DryRun, None);
+                rec(TaskStatus::DryRun, None)
             }
         },
         Err(e) => {
@@ -156,12 +159,12 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context, domain: Domain) {
                 ctx.log
                     .diag_task(DiagEvent::TaskSkip, task.name(), "interrupted");
                 ctx.log.warn(&format!("interrupted: {}", task.name()));
-                rec(TaskStatus::Skipped, Some("interrupted"));
+                rec(TaskStatus::Skipped, Some("interrupted"))
             } else {
                 ctx.log
                     .diag_task(DiagEvent::TaskFail, task.name(), &format!("{e:#}"));
                 ctx.log.error(&format!("{}: {e:#}", task.name()));
-                rec(TaskStatus::Failed, Some(&format!("{e:#}")));
+                rec(TaskStatus::Failed, Some(&format!("{e:#}")))
             }
         }
     }

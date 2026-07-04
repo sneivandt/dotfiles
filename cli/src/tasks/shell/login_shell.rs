@@ -1,7 +1,5 @@
 //! Task: configure the login shell.
 
-use std::sync::Arc;
-
 use crate::resources::shell::DefaultShellResource;
 use crate::tasks::{Domain, PlatformCapability, ProcessOpts, TaskPhase, resource_task};
 
@@ -14,10 +12,11 @@ resource_task! {
         policy: [PlatformCapability::LinuxShell.policy()],
         deps: [crate::tasks::packages::InstallPackages],
         guard: |ctx| {
-            ctx.platform.is_linux() && ctx.executor.which("zsh") && !ctx.is_ci
+            let system = ctx.system();
+            system.platform().is_linux() && system.which("zsh") && !system.is_ci()
         },
         items: |_ctx| vec![()],
-        build: |_unit, ctx| DefaultShellResource::new("zsh".to_string(), Arc::clone(&ctx.executor)),
+        build: |_unit, ctx| DefaultShellResource::new("zsh".to_string(), ctx.system().executor_arc()),
         opts: ProcessOpts::strict("configure"),
     }
 }

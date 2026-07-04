@@ -11,40 +11,87 @@ use crate::logging::{self, BufferedLog, DiagEvent, Log, Logger, Output as _, Tas
 use crate::tasks::TaskPhase;
 use crate::tasks::{self, Context, Task};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DependencySignal {
+    Satisfied,
+    Blocked,
+}
+
+impl DependencySignal {
+    const fn from_status(status: TaskStatus) -> Self {
+        if matches!(status, TaskStatus::Failed) {
+            Self::Blocked
+        } else {
+            Self::Satisfied
+        }
+    }
+}
+
+fn signal_dependents(
+    task_name: &str,
+    senders: Vec<mpsc::Sender<DependencySignal>>,
+    signal: DependencySignal,
+) {
+    for tx in senders {
+        if tx.send(signal).is_err() {
+            tracing::debug!(
+                "dependent task channel closed before {task_name} signalled completion"
+            );
+        }
+    }
+}
+
+fn record_dependency_block(task: &dyn Task, log: &dyn Log) {
+    let reason = "dependency failed";
+    log.diag_task(
+        DiagEvent::TaskSkip,
+        task.name(),
+        &format!("skipped: {reason}"),
+    );
+    log.record_task_outcome(
+        task.name(),
+        task.domain(),
+        TaskStatus::Skipped,
+        Some(reason),
+    );
+}
+
 /// Execute a single task, catching any panic.
 ///
-/// Returns `true` if the task completed without panicking.  On panic the task
-/// is recorded as [`TaskStatus::Failed`], any buffered output is flushed, and
-/// the caller's senders are left un-sent so dependents receive a
-/// [`mpsc::RecvError`] and skip themselves.
-fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> bool {
+/// Returns the recorded task status. On panic the task is recorded as
+/// [`TaskStatus::Failed`], any buffered output is flushed, and dependents are
+/// blocked the same way they are for ordinary task failures.
+fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> TaskStatus {
     log.notify_task_start(task.name());
 
     let buf = Arc::new(BufferedLog::new(Arc::clone(log)));
     let task_ctx = ctx.with_log(buf.clone() as Arc<dyn Log>);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        tasks::execute(task, &task_ctx);
+        tasks::execute(task, &task_ctx)
     }));
 
-    if let Err(payload) = result {
-        let msg = payload
-            .downcast_ref::<&str>()
-            .map(|s| format!("task panicked: {s}"))
-            .or_else(|| {
-                payload
-                    .downcast_ref::<String>()
-                    .map(|s| format!("task panicked: {s}"))
-            })
-            .unwrap_or_else(|| "task panicked".to_string());
-        log.diag_task(DiagEvent::TaskFail, task.name(), &msg);
-        log.record_task_outcome(task.name(), task.domain(), TaskStatus::Failed, Some(&msg));
-        buf.flush_and_complete(task.name());
-        return false;
-    }
+    let status = match result {
+        Ok(status) => status,
+        Err(payload) => {
+            let msg = payload
+                .downcast_ref::<&str>()
+                .map(|s| format!("task panicked: {s}"))
+                .or_else(|| {
+                    payload
+                        .downcast_ref::<String>()
+                        .map(|s| format!("task panicked: {s}"))
+                })
+                .unwrap_or_else(|| "task panicked".to_string());
+            log.diag_task(DiagEvent::TaskFail, task.name(), &msg);
+            log.record_task_outcome(task.name(), task.domain(), TaskStatus::Failed, Some(&msg));
+            buf.flush_and_complete(task.name());
+            return TaskStatus::Failed;
+        }
+    };
 
     buf.flush_and_complete(task.name());
-    true
+    status
 }
 
 /// Run tasks in parallel using a dependency graph.
@@ -64,9 +111,11 @@ pub(crate) fn run_tasks_parallel(
 ) {
     // For each task, create a channel sized to its dep count.
     // senders[i] accumulates all Senders that task i must signal when it completes.
-    let mut receivers: Vec<Option<mpsc::Receiver<()>>> = Vec::with_capacity(tasks.len());
-    let mut dependency_senders: Vec<Option<mpsc::Sender<()>>> = Vec::with_capacity(tasks.len());
-    let mut senders: Vec<Vec<mpsc::Sender<()>>> = vec![Vec::new(); tasks.len()];
+    let mut receivers: Vec<Option<mpsc::Receiver<DependencySignal>>> =
+        Vec::with_capacity(tasks.len());
+    let mut dependency_senders: Vec<Option<mpsc::Sender<DependencySignal>>> =
+        Vec::with_capacity(tasks.len());
+    let mut senders: Vec<Vec<mpsc::Sender<DependencySignal>>> = vec![Vec::new(); tasks.len()];
 
     for task_idx in 0..tasks.len() {
         let deps = graph.dependencies(task_idx);
@@ -74,7 +123,7 @@ pub(crate) fn run_tasks_parallel(
             receivers.push(None);
             dependency_senders.push(None);
         } else {
-            let (tx, rx) = mpsc::channel::<()>();
+            let (tx, rx) = mpsc::channel::<DependencySignal>();
             receivers.push(Some(rx));
             dependency_senders.push(Some(tx));
         }
@@ -92,8 +141,8 @@ pub(crate) fn run_tasks_parallel(
         }
     }
 
-    // Drop the original senders so a failed dependency closes dependent
-    // receivers instead of leaving them blocked forever.
+    // Drop the original senders so an unexpected panic before signalling closes
+    // dependent receivers instead of leaving them blocked forever.
     drop(dependency_senders);
 
     std::thread::scope(|s| {
@@ -128,45 +177,66 @@ pub(crate) fn run_tasks_parallel(
                     }
                 }
 
-                // Wait for all deps: receive one message per dependency.
-                // If recv() returns Err(RecvError) a sender was dropped without
-                // sending — the dependency did not complete (e.g. it panicked).
-                let deps_ok = rx.is_none_or(|rx| (0..dep_count).all(|_| rx.recv().is_ok()));
+                // Wait for all deps: receive one outcome per dependency.
+                // A normal task failure sends Blocked; RecvError is retained as
+                // a defensive guard for panics before dependency signalling.
+                let deps_ok = rx.is_none_or(|rx| {
+                    (0..dep_count).all(|_| matches!(rx.recv(), Ok(DependencySignal::Satisfied)))
+                });
 
                 if !deps_ok {
-                    let reason = "dependency did not complete";
-                    log.diag_task(
-                        DiagEvent::TaskSkip,
-                        task.name(),
-                        &format!("skipped: {reason}"),
-                    );
-                    log.record_task_outcome(
-                        task.name(),
-                        task.domain(),
-                        TaskStatus::Skipped,
-                        Some(reason),
-                    );
-                    // my_senders is dropped here without sending, propagating
-                    // RecvError to any tasks that depend on this one.
+                    record_dependency_block(task, &**log);
+                    signal_dependents(task.name(), my_senders, DependencySignal::Blocked);
                     return;
                 }
 
-                if run_task_guarded(task, ctx, log) {
-                    // Signal all dependent tasks.
-                    for tx in my_senders {
-                        if tx.send(()).is_err() {
-                            tracing::debug!(
-                                "dependent task channel closed before {} signalled completion",
-                                task.name()
-                            );
-                        }
-                    }
-                }
-                // On panic run_task_guarded returns false; my_senders drops
-                // here without sending, propagating RecvError to dependents.
+                let status = run_task_guarded(task, ctx, log);
+                signal_dependents(
+                    task.name(),
+                    my_senders,
+                    DependencySignal::from_status(status),
+                );
             });
         }
     });
+}
+
+/// Run tasks sequentially in dependency-safe order.
+///
+/// Normal task failures block dependent tasks just like the parallel scheduler;
+/// deliberate skips and not-applicable outcomes still satisfy dependencies.
+pub(crate) fn run_tasks_sequential(tasks: &[&dyn Task], graph: &ResolvedTaskGraph, ctx: &Context) {
+    let mut signals: Vec<Option<DependencySignal>> = vec![None; tasks.len()];
+
+    for idx in graph.execution_order() {
+        if ctx.is_cancelled() {
+            ctx.log.warn("cancelled - stopping before next task");
+            break;
+        }
+
+        let deps_ok = graph.dependencies(idx).iter().all(|&dep_idx| {
+            matches!(
+                signals.get(dep_idx).copied().flatten(),
+                Some(DependencySignal::Satisfied)
+            )
+        });
+
+        let signal = if deps_ok {
+            let Some(task) = tasks.get(idx) else {
+                continue;
+            };
+            DependencySignal::from_status(tasks::execute(*task, ctx))
+        } else {
+            if let Some(task) = tasks.get(idx) {
+                record_dependency_block(*task, &*ctx.log);
+            }
+            DependencySignal::Blocked
+        };
+
+        if let Some(slot) = signals.get_mut(idx) {
+            *slot = Some(signal);
+        }
+    }
 }
 
 #[cfg(test)]

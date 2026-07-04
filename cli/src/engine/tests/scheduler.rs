@@ -5,13 +5,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::Result;
 
 use super::*;
-use crate::tasks::test_helpers::{ContextBuilder, empty_config};
+use crate::tasks::test_helpers::{ContextBuilder, empty_config, make_static_context};
 use crate::tasks::{TaskResult, task_deps};
 
 fn make_test_log_and_ctx() -> (Arc<Logger>, Context, logging::TestDispatchLock) {
     let dispatch_lock = logging::test_dispatch_lock();
-    let log = Arc::new(Logger::new("test"));
-    let ctx = ContextBuilder::new(empty_config(PathBuf::from("/tmp"))).build();
+    let (ctx, log) = make_static_context(empty_config(PathBuf::from("/tmp")));
     (log, ctx, dispatch_lock)
 }
 
@@ -72,6 +71,48 @@ impl Task for PanicTask {
 }
 
 flag_task!(DepOnPanicTask, "dep-on-panic", deps: [PanicTask]);
+
+// -----------------------------------------------------------------------
+// Failed task: returns TaskResult::Failed without panicking.
+// -----------------------------------------------------------------------
+struct FailedTask;
+
+impl Task for FailedTask {
+    fn name(&self) -> &'static str {
+        "failed-task"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Provision
+    }
+
+    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+        Ok(TaskResult::Failed("simulated failure".to_string()))
+    }
+}
+
+flag_task!(DepOnFailedTask, "dep-on-failed", deps: [FailedTask]);
+
+// -----------------------------------------------------------------------
+// Skipped task: returns TaskResult::Skipped, which is non-blocking.
+// -----------------------------------------------------------------------
+struct SkippedTask;
+
+impl Task for SkippedTask {
+    fn name(&self) -> &'static str {
+        "skipped-task"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Provision
+    }
+
+    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+        Ok(TaskResult::Skipped("deliberate skip".to_string()))
+    }
+}
+
+flag_task!(DepOnSkippedTask, "dep-on-skipped", deps: [SkippedTask]);
 
 // -----------------------------------------------------------------------
 // Chain tasks: PanicTask → ChainB → ChainC.
@@ -145,6 +186,98 @@ fn dependent_task_is_skipped_when_dependency_panics() {
             .iter()
             .any(|e| e.name == "dep-on-panic" && e.status == TaskStatus::Skipped),
         "dependent task should be recorded as Skipped"
+    );
+}
+
+#[test]
+fn dependent_task_is_skipped_when_dependency_fails() {
+    let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
+    let ran = Arc::new(AtomicBool::new(false));
+    let failed_task = FailedTask;
+    let dep_task = DepOnFailedTask {
+        ran: Arc::clone(&ran),
+    };
+
+    run_test_tasks(&[&failed_task, &dep_task], &ctx, &log);
+
+    assert!(
+        !ran.load(Ordering::SeqCst),
+        "dependent task should not have run"
+    );
+    let entries = log.task_entries();
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.name == "failed-task" && e.status == TaskStatus::Failed),
+        "failed task should be recorded as Failed"
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.name == "dep-on-failed" && e.status == TaskStatus::Skipped),
+        "dependent task should be recorded as Skipped"
+    );
+}
+
+#[test]
+fn sequential_runner_skips_dependents_when_dependency_fails() {
+    let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
+    let ran = Arc::new(AtomicBool::new(false));
+    let failed_task = FailedTask;
+    let dep_task = DepOnFailedTask {
+        ran: Arc::clone(&ran),
+    };
+    let tasks: Vec<&dyn Task> = vec![&failed_task, &dep_task];
+    let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
+
+    run_tasks_sequential(&tasks, &graph, &ctx);
+
+    assert!(
+        !ran.load(Ordering::SeqCst),
+        "dependent task should not have run"
+    );
+    let entries = log.task_entries();
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.name == "failed-task" && e.status == TaskStatus::Failed),
+        "failed task should be recorded as Failed"
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.name == "dep-on-failed" && e.status == TaskStatus::Skipped),
+        "dependent task should be recorded as Skipped"
+    );
+}
+
+#[test]
+fn skipped_dependency_satisfies_dependent_task() {
+    let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
+    let ran = Arc::new(AtomicBool::new(false));
+    let skipped_task = SkippedTask;
+    let dep_task = DepOnSkippedTask {
+        ran: Arc::clone(&ran),
+    };
+
+    run_test_tasks(&[&skipped_task, &dep_task], &ctx, &log);
+
+    assert!(
+        ran.load(Ordering::SeqCst),
+        "deliberately skipped dependencies should not block dependents"
+    );
+    let entries = log.task_entries();
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.name == "skipped-task" && e.status == TaskStatus::Skipped),
+        "dependency should be recorded as Skipped"
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.name == "dep-on-skipped" && e.status == TaskStatus::Ok),
+        "dependent task should be recorded as Ok"
     );
 }
 

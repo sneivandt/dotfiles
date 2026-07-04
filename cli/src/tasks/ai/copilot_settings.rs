@@ -17,7 +17,7 @@ resource_task! {
         build: |s, ctx| CopilotSettingResource::new(
             s.key.clone(),
             s.json_value(),
-            ctx.home.join(".copilot").join("settings.json"),
+            ctx.paths().home().join(".copilot").join("settings.json"),
         ),
         opts: ProcessOpts::strict("configure").sequential(),
     }

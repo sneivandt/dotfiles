@@ -1,6 +1,6 @@
 //! Task dependency graph utilities.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use crate::tasks::{Task, TaskId};
 
@@ -91,6 +91,33 @@ impl ResolvedTaskGraph {
     #[must_use]
     pub(crate) fn dependents(&self, task_idx: usize) -> &[usize] {
         self.dependents.get(task_idx).map_or(&[], Vec::as_slice)
+    }
+
+    /// Return task indices in dependency-safe execution order.
+    #[must_use]
+    pub(crate) fn execution_order(&self) -> Vec<usize> {
+        let mut in_degree: Vec<usize> = self.dependencies.iter().map(Vec::len).collect();
+        let mut queue: VecDeque<usize> = in_degree
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, &degree)| (degree == 0).then_some(idx))
+            .collect();
+        let mut order = Vec::with_capacity(self.dependencies.len());
+
+        while let Some(idx) = queue.pop_front() {
+            order.push(idx);
+            for &dependent_idx in self.dependents(idx) {
+                if let Some(count) = in_degree.get_mut(dependent_idx) {
+                    *count = count.saturating_sub(1);
+                    if *count == 0 {
+                        queue.push_back(dependent_idx);
+                    }
+                }
+            }
+        }
+
+        debug_assert_eq!(order.len(), self.dependencies.len());
+        order
     }
 
     fn validate_acyclic(&self) -> Result<(), GraphError> {

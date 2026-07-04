@@ -95,6 +95,12 @@ pub mod tasks {
         }
     }
 
+    pub mod editors {
+        pub mod vscode_extensions {
+            pub use crate::tasks::editors::InstallVsCodeExtensions;
+        }
+    }
+
     pub mod git {
         pub mod git_config {
             pub use crate::tasks::git::git_config::ConfigureGit;
@@ -102,6 +108,16 @@ pub mod tasks {
 
         pub mod hooks {
             pub use crate::tasks::git::hooks::{InstallGitHooks, UninstallGitHooks};
+        }
+    }
+
+    pub mod packages {
+        pub use crate::tasks::packages::{InstallAurPackages, InstallPackages};
+    }
+
+    pub mod system {
+        pub mod systemd_units {
+            pub use crate::tasks::system::systemd_units::ConfigureSystemd;
         }
     }
 }

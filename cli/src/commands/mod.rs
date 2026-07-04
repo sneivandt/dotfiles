@@ -525,24 +525,23 @@ pub fn run_tasks_to_completion<'a>(
         // replayed before any detail lines — matching multi-task phases.  This
         // keeps the Update phase's `update:` line below its check mark, the
         // same way the Provision phase renders the `install:` line.
-        if ctx.parallel && !phase_tasks.is_empty() {
-            let graph = match crate::engine::graph::ResolvedTaskGraph::resolve(&phase_tasks) {
-                Ok(graph) => graph,
-                Err(err) => {
-                    let message = format!("{err} detected in {phase} phase task graph");
-                    log.error(&message);
-                    anyhow::bail!(message);
-                }
-            };
+        if phase_tasks.is_empty() {
+            continue;
+        }
+
+        let graph = match crate::engine::graph::ResolvedTaskGraph::resolve(&phase_tasks) {
+            Ok(graph) => graph,
+            Err(err) => {
+                let message = format!("{err} detected in {phase} phase task graph");
+                log.error(&message);
+                anyhow::bail!(message);
+            }
+        };
+
+        if ctx.parallel {
             crate::engine::scheduler::run_tasks_parallel(&phase_tasks, &graph, ctx, log);
         } else {
-            for task in &phase_tasks {
-                if ctx.is_cancelled() {
-                    log.warn("cancelled - stopping before next task");
-                    break;
-                }
-                tasks::execute(*task, ctx);
-            }
+            crate::engine::scheduler::run_tasks_sequential(&phase_tasks, &graph, ctx);
         }
     }
 

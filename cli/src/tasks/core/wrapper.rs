@@ -26,8 +26,10 @@ impl Task for InstallWrapper {
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {
-        let wrapper_type = WrapperType::detect(ctx.platform);
-        let resource = WrapperResource::new(wrapper_type, &ctx.root(), &ctx.home);
+        let system = ctx.system();
+        let paths = ctx.paths();
+        let wrapper_type = WrapperType::detect(system.platform());
+        let resource = WrapperResource::new(wrapper_type, paths.root(), paths.home());
         process_resources(
             ctx,
             std::iter::once(resource),
@@ -48,8 +50,10 @@ impl Task for UninstallWrapper {
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {
-        let wrapper_type = WrapperType::detect(ctx.platform);
-        let resource = WrapperResource::new(wrapper_type, &ctx.root(), &ctx.home);
+        let system = ctx.system();
+        let paths = ctx.paths();
+        let wrapper_type = WrapperType::detect(system.platform());
+        let resource = WrapperResource::new(wrapper_type, paths.root(), paths.home());
         process_resources_remove(ctx, std::iter::once(resource), "remove")
     }
 }

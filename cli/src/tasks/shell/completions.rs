@@ -19,7 +19,8 @@ struct ZshCompletionOperation;
 
 impl ZshCompletionOperation {
     fn destination(ctx: &Context) -> std::path::PathBuf {
-        ctx.symlinks_dir()
+        ctx.paths()
+            .symlinks_dir()
             .join(ZSH_COMPLETIONS_SUBDIR)
             .join(ZSH_COMPLETION_FILENAME)
     }
@@ -82,7 +83,7 @@ impl Task for GenerateCompletions {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_linux()
+        ctx.system().platform().is_linux()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

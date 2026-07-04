@@ -1,7 +1,5 @@
 //! Task: ensure `~/.local/bin` is on the user's `PATH`.
 
-use std::sync::Arc;
-
 use crate::resources::path_entry::PathEntryResource;
 use crate::tasks::{
     Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, task_metadata,
@@ -20,7 +18,9 @@ impl Task for ConfigurePath {
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {
-        let resource = PathEntryResource::new(&ctx.home, ctx.platform, Arc::clone(&ctx.executor));
+        let system = ctx.system();
+        let resource =
+            PathEntryResource::new(system.home(), system.platform(), system.executor_arc());
         process_resources(
             ctx,
             std::iter::once(resource),

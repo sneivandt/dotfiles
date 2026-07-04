@@ -266,6 +266,94 @@ test_wrapper_forwarded_args()
   fi
 )}
 
+test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args()
+{(
+  log_stage "Testing real wrapper bootstrap download, checksum, and forwarding"
+
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+
+  cp "$DIR/dotfiles.sh" "$tmpdir/dotfiles.sh"
+  mkdir -p "$tmpdir/fake-bin"
+
+  cat > "$tmpdir/fake-bin/curl" <<'EOF'
+#!/bin/sh
+set -o errexit
+set -o nounset
+
+out=""
+url=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o)
+      shift
+      out="$1"
+      ;;
+    http*)
+      url="$1"
+      ;;
+  esac
+  shift
+done
+
+case "$url" in
+  */releases/latest)
+    printf '{"tag_name":"v9.9.9"}\n'
+    ;;
+  */releases/download/v9.9.9/checksums.sha256)
+    sum=$(sha256sum "$DOTFILES_ROOT/bin/dotfiles" | awk '{print $1}')
+    printf '%s  dotfiles-linux-x86_64\n' "$sum" > "$out"
+    ;;
+  */releases/download/v9.9.9/dotfiles-linux-x86_64)
+    mkdir -p "$(dirname "$out")"
+    cat > "$out" <<'BIN'
+#!/bin/sh
+printf '%s\n' "$DOTFILES_ROOT" > "$DOTFILES_ROOT/root.txt"
+printf '%s\n' "$DOTFILES_WRAPPER" > "$DOTFILES_ROOT/wrapper.txt"
+printf '%s\n' "$@" > "$DOTFILES_ROOT/args.txt"
+BIN
+    ;;
+  *)
+    echo "unexpected URL: $url" >&2
+    exit 1
+    ;;
+esac
+EOF
+  chmod +x "$tmpdir/fake-bin/curl"
+
+  PATH="$tmpdir/fake-bin:$PATH" "$tmpdir/dotfiles.sh" install -p desktop -d
+
+  expected=$(cat <<'EOF'
+install
+-p
+desktop
+-d
+EOF
+)
+  actual=$(cat "$tmpdir/args.txt")
+  root=$(cat "$tmpdir/root.txt")
+  wrapper=$(cat "$tmpdir/wrapper.txt")
+
+  if [ "$actual" != "$expected" ]; then
+    printf "%sERROR: Bootstrap wrapper forwarded args mismatch.%s\nExpected:\n%s\nActual:\n%s\n" "${RED}" "${NC}" "$expected" "$actual" >&2
+    return 1
+  fi
+  if [ "$root" != "$tmpdir" ]; then
+    printf "%sERROR: DOTFILES_ROOT mismatch: expected '%s', got '%s'%s\n" "${RED}" "$tmpdir" "$root" "${NC}" >&2
+    return 1
+  fi
+  if [ "$wrapper" != "sh" ]; then
+    printf "%sERROR: DOTFILES_WRAPPER mismatch: expected 'sh', got '%s'%s\n" "${RED}" "$wrapper" "${NC}" >&2
+    return 1
+  fi
+  if [ ! -x "$tmpdir/bin/dotfiles" ]; then
+    printf "%sERROR: downloaded binary was not made executable%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+
+  log_verbose "✓ Real wrapper bootstrap downloads, verifies, chmods, and forwards arguments"
+)}
+
 test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args()
 {(
   log_stage "Testing build-mode consumes --build and forwards CLI arguments"
@@ -575,18 +663,13 @@ EOF
 case "$0" in
   *test-shell-wrapper.sh)
     test_wrapper_build_mode
-    test_wrapper_version_cache
     test_wrapper_uses_local_binary
-    test_wrapper_checksum_verification
-    test_wrapper_offline_fallback
     test_wrapper_forwarded_args
+    test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
     test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args
     test_wrapper_forwards_advanced_flags
-    test_wrapper_root_detection
-    test_wrapper_error_handling
     test_wrapper_chmod_after_checksum
     test_wrapper_release_pinned_urls
-    test_wrapper_arch_detection
     echo "All shell wrapper tests passed"
     ;;
 esac

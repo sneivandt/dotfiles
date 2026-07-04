@@ -43,10 +43,11 @@ Within each phase, `run_tasks_to_completion()` dispatches:
    `ResolvedTaskGraph` with `ResolvedTaskGraph::resolve(&phase_tasks)`.
 2. If graph resolution finds duplicate task IDs or a cycle → bail with an error
    (abort the run).
-3. Otherwise → pass the resolved graph to
-   `engine::scheduler::run_tasks_parallel()`, which spawns OS threads. A
-   single-task phase still goes through the scheduler when `ctx.parallel` is
-   enabled so buffered output ordering matches multi-task phases.
+3. Otherwise → pass the resolved graph to `engine::scheduler`.
+   `run_tasks_parallel()` spawns OS threads when `ctx.parallel` is enabled; a
+   single-task phase still goes through the scheduler so buffered output ordering
+   matches multi-task phases. `run_tasks_sequential()` uses the same resolved
+   graph under `--no-parallel`.
 
 Each dispatched task is still passed through `tasks::execute()`, which applies
 `execution_policies()` before `should_run()` and `run_if_applicable()`.
@@ -63,11 +64,14 @@ gives each task its own thread.
 For each task with dependencies:
 - A `(Sender, Receiver)` channel is created
 - Each dependency holds a clone of the task's `Sender`
-- The original sender is dropped after wiring so failed dependencies close
-  dependent receivers instead of leaving them blocked
-- When a dependency finishes, it sends `()` on all its cloned senders
+- The original sender is dropped after wiring so an unexpected panic before
+  signalling closes dependent receivers instead of leaving them blocked
+- When a dependency finishes, it sends a `DependencySignal` on all cloned senders
+- `TaskStatus::Failed` maps to `DependencySignal::Blocked`; all other recorded
+  statuses (`Ok`, `DryRun`, `Skipped`, `NotApplicable`) satisfy dependencies
 - The task blocks on `rx.recv()` once per dependency
-- If a sender is dropped without sending (dependency panicked), `recv()` returns `Err` — the task is skipped and propagates the failure by dropping its own senders
+- If any dependency sends `Blocked` or a sender is dropped before signalling,
+  the task is skipped and propagates `Blocked` to its own dependents
 
 ### Buffered Output
 
@@ -77,16 +81,9 @@ after the task finishes.
 
 ### Sequential Fallback
 
-When `ctx.parallel` is false:
-
-```rust
-for task in &tasks {
-    tasks::execute(*task, ctx);
-}
-```
-
-The sequential path does not build a dependency graph; it runs tasks in the
-phase list order.
+When `ctx.parallel` is false, `run_tasks_sequential()` still uses the resolved
+phase graph. Tasks run in dependency-safe topological order, and normal task
+failures block dependents the same way they do in the parallel scheduler.
 
 ## Resource-Level: Rayon
 

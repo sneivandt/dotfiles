@@ -1,9 +1,7 @@
 //! Tasks: install system packages.
 
-use std::collections::HashSet;
-use std::sync::Arc;
-
 use anyhow::{Context as _, Result};
+use std::collections::HashSet;
 
 use crate::config::packages::Package;
 use crate::resources::package::{PackageManager, PackageResource, get_installed_packages};
@@ -38,15 +36,16 @@ fn select_packages(ctx: &Context, is_aur: bool) -> Vec<Package> {
 /// Returns `Ok(manager)` when one is usable, or `Err(reason)` describing why
 /// the task should skip.
 fn resolve_native_manager(ctx: &Context) -> Result<PackageManager, String> {
-    if ctx.platform.is_linux() {
+    let system = ctx.system();
+    if system.platform().is_linux() {
         ctx.log.debug("using pacman package manager");
-        if !ctx.executor.which("pacman") {
+        if !system.which("pacman") {
             return Err("pacman not found".to_string());
         }
         Ok(PackageManager::Pacman)
     } else {
         ctx.log.debug("using winget package manager");
-        if !ctx.executor.which("winget") {
+        if !system.which("winget") {
             return Err("winget not found".to_string());
         }
         Ok(PackageManager::Winget)
@@ -63,10 +62,11 @@ fn resolve_native_manager(ctx: &Context) -> Result<PackageManager, String> {
 /// Otherwise returns `true` iff at least one configured package is not yet
 /// installed — i.e. a sudo-using install command will actually run.
 fn predict_sudo(ctx: &Context, manager: PackageManager, tool: &str, packages: &[Package]) -> bool {
-    if !ctx.executor.which(tool) || packages.is_empty() {
+    let system = ctx.system();
+    if !system.which(tool) || packages.is_empty() {
         return false;
     }
-    let Ok(installed) = get_installed_packages(manager, &*ctx.executor) else {
+    let Ok(installed) = get_installed_packages(manager, system.executor()) else {
         return false;
     };
     packages.iter().any(|p| !installed.contains(&p.name))
@@ -93,7 +93,7 @@ impl Task for InstallPackages {
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
-        if !ctx.platform.uses_pacman() {
+        if !ctx.system().platform().uses_pacman() {
             return false;
         }
         predict_sudo(
@@ -136,11 +136,12 @@ impl Task for InstallAurPackages {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.supports_aur() && ctx.config_read().packages.iter().any(|p| p.is_aur)
+        ctx.system().platform().supports_aur()
+            && ctx.config_read().packages.iter().any(|p| p.is_aur)
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
-        if !ctx.platform.supports_aur() {
+        if !ctx.system().platform().supports_aur() {
             return false;
         }
         predict_sudo(
@@ -157,7 +158,7 @@ impl Task for InstallAurPackages {
             return Ok(TaskResult::Skipped("no AUR packages".to_string()));
         }
 
-        if !ctx.executor.which("paru") {
+        if !ctx.system().which("paru") {
             ctx.log
                 .debug("paru not found in PATH, skipping AUR packages");
             return Ok(TaskResult::Skipped("paru not installed".to_string()));
@@ -186,16 +187,16 @@ impl Task for InstallParu {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.uses_pacman()
+        ctx.system().platform().uses_pacman()
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
         // makepkg -si calls sudo internally to install the built package
-        ctx.platform.uses_pacman() && !ctx.executor.which("paru")
+        ctx.system().platform().uses_pacman() && !ctx.system().which("paru")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if ctx.executor.which("paru") {
+        if ctx.system().which("paru") {
             ctx.log.debug("paru already in PATH");
             if ctx.dry_run {
                 return Ok(TaskResult::DryRun);
@@ -327,9 +328,10 @@ fn install_missing(
     installed: &HashSet<String>,
     manager: PackageManager,
 ) -> TaskResult {
+    let system = ctx.system();
     let resources: Vec<PackageResource> = packages
         .iter()
-        .map(|pkg| PackageResource::new(pkg.name.clone(), manager, Arc::clone(&ctx.executor)))
+        .map(|pkg| PackageResource::new(pkg.name.clone(), manager, system.executor_arc()))
         .collect();
 
     let mut stats = TaskStats::new();
@@ -359,7 +361,10 @@ fn install_missing(
 
     ctx.log
         .debug(&format!("installing {} missing packages", missing.len()));
-    let report = match manager.provider().install_missing(&missing, &*ctx.executor) {
+    let report = match manager
+        .provider()
+        .install_missing(&missing, system.executor())
+    {
         Ok(report) => report,
         Err(e) => {
             let reason = format!("{manager} install failed: {e:#}");
@@ -412,6 +417,6 @@ fn process_packages(
             packages.len()
         )
     });
-    let installed = get_installed_packages(manager, &*ctx.executor)?;
+    let installed = get_installed_packages(manager, ctx.system().executor())?;
     Ok(install_missing(ctx, packages, &installed, manager))
 }

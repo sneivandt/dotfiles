@@ -11,9 +11,9 @@ resource_task! {
         domain: Domain::Files,
         policy: [PlatformCapability::Chmod.policy()],
         deps: [crate::tasks::files::symlinks::InstallSymlinks],
-        guard: |ctx| ctx.platform.supports_chmod(),
+        guard: |ctx| ctx.system().platform().supports_chmod(),
         items: |ctx| ctx.config_read().chmod.clone(),
-        build: |entry, ctx| build_resource(&entry, &ctx.home),
+        build: |entry, ctx| build_resource(&entry, ctx.paths().home()),
         opts: ProcessOpts::fix_existing("configure"),
     }
 }

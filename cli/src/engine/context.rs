@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::{Arc, RwLock};
 
 use anyhow::{Context as _, Result};
@@ -46,6 +47,86 @@ pub(crate) struct RepoPaths {
     pub symlinks_dir: std::path::PathBuf,
     /// Hooks source directory.
     pub hooks_dir: std::path::PathBuf,
+}
+
+/// Filesystem paths exposed to task code as a focused context view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PathContext {
+    home: std::path::PathBuf,
+    repo: RepoPaths,
+}
+
+impl PathContext {
+    /// User home directory.
+    #[must_use]
+    pub(crate) fn home(&self) -> &Path {
+        &self.home
+    }
+
+    /// Dotfiles repository root.
+    #[must_use]
+    pub(crate) fn root(&self) -> &Path {
+        &self.repo.root
+    }
+
+    /// Symlink source directory inside the repository.
+    #[must_use]
+    pub(crate) fn symlinks_dir(&self) -> &Path {
+        &self.repo.symlinks_dir
+    }
+
+    /// Git hook source directory inside the repository.
+    #[must_use]
+    pub(crate) fn hooks_dir(&self) -> &Path {
+        &self.repo.hooks_dir
+    }
+}
+
+/// Platform and process-execution access exposed as a focused context view.
+#[derive(Debug, Clone)]
+pub(crate) struct SystemContext {
+    platform: Platform,
+    home: std::path::PathBuf,
+    executor: Arc<dyn Executor>,
+    is_ci: bool,
+}
+
+impl SystemContext {
+    /// Detected platform.
+    #[must_use]
+    pub(crate) const fn platform(&self) -> Platform {
+        self.platform
+    }
+
+    /// User home directory.
+    #[must_use]
+    pub(crate) fn home(&self) -> &Path {
+        &self.home
+    }
+
+    /// Shared command executor.
+    #[must_use]
+    pub(crate) fn executor(&self) -> &dyn Executor {
+        &*self.executor
+    }
+
+    /// Clone the shared command executor for resource construction.
+    #[must_use]
+    pub(crate) fn executor_arc(&self) -> Arc<dyn Executor> {
+        Arc::clone(&self.executor)
+    }
+
+    /// Return whether the process is running in CI.
+    #[must_use]
+    pub(crate) const fn is_ci(&self) -> bool {
+        self.is_ci
+    }
+
+    /// Return whether `program` is available on PATH.
+    #[must_use]
+    pub(crate) fn which(&self, program: &str) -> bool {
+        self.executor.which(program)
+    }
 }
 
 /// Shared context for task execution.
@@ -211,6 +292,26 @@ impl Context {
             symlinks_dir: root.join("symlinks"),
             hooks_dir: root.join("hooks"),
             root,
+        }
+    }
+
+    /// Return a focused view of filesystem paths used by task code.
+    #[must_use]
+    pub(crate) fn paths(&self) -> PathContext {
+        PathContext {
+            home: self.home.clone(),
+            repo: self.repo_paths(),
+        }
+    }
+
+    /// Return a focused view of platform and process-execution dependencies.
+    #[must_use]
+    pub(crate) fn system(&self) -> SystemContext {
+        SystemContext {
+            platform: self.platform,
+            home: self.home.clone(),
+            executor: Arc::clone(&self.executor),
+            is_ci: self.is_ci,
         }
     }
 

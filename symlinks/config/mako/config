@@ -15,10 +15,10 @@ border-radius=10
 max-visible=3
 layer=overlay
 
-# Colors (normal)
-background-color=#1e1e2e
-text-color=#cdd6f4
-border-color=#61afef
+# Colors (Tokyo Night)
+background-color=#1a1b26
+text-color=#c0caf5
+border-color=#7aa2f7
 
 # Icons
 max-icon-size=48
@@ -30,20 +30,20 @@ group-by=app-name
 
 # Progress bar (e.g. volume, brightness)
 [category=progress]
-border-color=#89b4fa
+border-color=#7aa2f7
 default-timeout=2000
 group-by=category
 
 # Low urgency — subdued styling
 [urgency=low]
-background-color=#1e1e2e
-text-color=#a6adc8
-border-color=#45475a
+background-color=#1a1b26
+text-color=#9aa5ce
+border-color=#414868
 default-timeout=5000
 
 # Critical urgency — prominent red, stays until dismissed
 [urgency=critical]
-background-color=#302030
-text-color=#f38ba8
-border-color=#f38ba8
+background-color=#292e42
+text-color=#f7768e
+border-color=#f7768e
 default-timeout=0

@@ -5,6 +5,7 @@
 [desktop]
 extensions = [
   "docker.docker",
+  "enkia.tokyo-night",
   "github.codespaces",
   "github.vscode-pull-request-github",
   "golang.go",

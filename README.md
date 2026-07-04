@@ -4,14 +4,12 @@ A personal dotfiles manager built around a **Rust CLI** and declarative TOML con
 
 ![Generated terminal preview of a dotfiles dry-run install](docs/assets/terminal-screenshot.svg)
 
-## What it does
+## Core ideas
 
-- **Single Rust CLI:** one compiled binary plans and applies changes, while the shell and PowerShell wrappers stay minimal.
-- **Profile-aware setup:** `base` covers minimal environments, `desktop` adds workstation tools, and Linux, Arch, and Windows settings are detected automatically.
-- **Declarative configuration:** packages, symlinks, services, editor settings, Git config, registry keys, file permissions, and AI tooling are defined in `conf/*.toml`.
-- **Safe to rerun:** re-running `install` reapplies the declared state. Preview changes first with `-d`.
-- **Sparse checkout support:** only files relevant to the active profile are checked out locally.
-- **Cross-platform by design:** Linux and Windows use the same configuration model and Rust binary.
+- **Cross-platform:** one Rust CLI plans and applies the desired machine state across Linux and Windows.
+- **Profile-aware:** select `base` for minimal environments or `desktop` for workstations; the CLI adds the matching platform categories for the current system.
+- **Declarative:** TOML files describe packages, links, tools, and settings without turning setup into a collection of one-off scripts.
+- **Idempotent:** re-running `install` converges on the declared state. Preview changes first with `-d`.
 
 ## Commands
 
@@ -68,16 +66,6 @@ Declarative settings are stored in `conf/*.toml`. Edit these files and the CLI a
 | `chmod.toml` | File permissions |
 
 See the [Configuration Reference](docs/CONFIGURATION.md) for the full TOML format.
-
-## How it works
-
-The project has three main layers:
-
-1. **Entry scripts** (`dotfiles.sh` / `dotfiles.ps1`): download the binary from GitHub Releases (or build it with `--build`) and forward arguments.
-2. **Rust CLI** (`cli/`): parses the config, resolves the profile, and applies symlinks, packages, and settings. It shells out only when it has to — package managers, systemd, and the like.
-3. **Configuration** (`conf/`): the editable layer. Everything else follows from the TOML.
-
-`install` is the normal apply command: it may self-update the binary, fast-forward the repository, reload configuration, and apply the declared state without updating pinned dependency versions. `update` runs the same flow, then updates pinned dependencies. `uninstall` is conservative: it removes only managed symlinks, Git hooks, and the wrapper; it does not remove packages or roll back system or editor settings.
 
 ## Development
 

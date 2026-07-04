@@ -1,10 +1,17 @@
 //! In-progress status line rendering for [`Logger`].
 
+use std::io::IsTerminal as _;
 use std::io::Write as _;
 use std::sync::atomic::Ordering;
 
 use super::Logger;
 use crate::logging::utils::terminal_columns;
+
+/// Return whether stdout is an interactive terminal that can handle redraws.
+#[must_use]
+pub(in crate::logging::runtime) fn stdout_supports_progress() -> bool {
+    std::io::stdout().is_terminal()
+}
 
 #[allow(clippy::print_stdout, reason = "intentional user-facing output")]
 impl Logger {

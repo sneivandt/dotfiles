@@ -4,7 +4,7 @@
 //! start and complete, ensuring the line stays accurate without overlapping
 //! other console output.
 
-use super::Logger;
+use super::{Logger, progress::stdout_supports_progress};
 
 #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
 impl Logger {
@@ -13,11 +13,22 @@ impl Logger {
     /// Acquires the flush lock, erases any previous progress line, adds the
     /// task to the active set, and redraws the status line.
     pub fn notify_task_start(&self, name: &str) {
+        self.notify_task_start_with_progress(name, stdout_supports_progress());
+    }
+
+    /// Record a task start, optionally drawing the interactive progress line.
+    pub(in crate::logging) fn notify_task_start_with_progress(
+        &self,
+        name: &str,
+        show_progress: bool,
+    ) {
         let _guard = self.flush_lock.lock().unwrap_or_else(|e| {
             eprintln!("warning: flush lock was poisoned, recovering");
             e.into_inner()
         });
-        self.clear_progress();
+        if show_progress {
+            self.clear_progress();
+        }
         let names = self.active_tasks.lock().map_or_else(
             |_| name.to_string(),
             |mut active| {
@@ -25,7 +36,9 @@ impl Logger {
                 self.format_active(&active)
             },
         );
-        self.draw_progress(&names);
+        if show_progress {
+            self.draw_progress(&names);
+        }
     }
 
     /// Record that a parallel task has completed (successfully or otherwise).
@@ -38,11 +51,22 @@ impl Logger {
     /// Must be called while **not** already holding `flush_lock` to avoid
     /// deadlocking.
     pub fn notify_task_done(&self, name: &str) {
+        self.notify_task_done_with_progress(name, stdout_supports_progress());
+    }
+
+    /// Record a task completion, optionally redrawing the interactive progress line.
+    pub(in crate::logging) fn notify_task_done_with_progress(
+        &self,
+        name: &str,
+        show_progress: bool,
+    ) {
         let _guard = self.flush_lock.lock().unwrap_or_else(|e| {
             eprintln!("warning: flush lock was poisoned, recovering");
             e.into_inner()
         });
-        self.clear_progress();
+        if show_progress {
+            self.clear_progress();
+        }
         let remaining = self.active_tasks.lock().ok().and_then(|mut active| {
             active.retain(|n| n != name);
             if active.is_empty() {
@@ -51,7 +75,9 @@ impl Logger {
                 Some(self.format_active(&active))
             }
         });
-        if let Some(names) = remaining {
+        if let Some(names) = remaining
+            && show_progress
+        {
             self.draw_progress(&names);
         }
     }
@@ -85,7 +111,7 @@ mod tests {
     #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
     fn notify_task_start_adds_to_active_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start("my-task");
+        log.notify_task_start_with_progress("my-task", false);
         let active = log.active_tasks.lock().unwrap();
         assert!(
             active.contains(&"my-task".to_string()),
@@ -119,7 +145,7 @@ mod tests {
     fn notify_task_start_sets_progress_rows_to_one() {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.progress_rows_count(), 0, "progress_rows starts at 0");
-        log.notify_task_start("task-a");
+        log.notify_task_start_with_progress("task-a", true);
         assert_eq!(
             log.progress_rows_count(),
             1,
@@ -131,8 +157,8 @@ mod tests {
     #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
     fn notify_task_done_removes_from_active_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start("my-task");
-        log.notify_task_done("my-task");
+        log.notify_task_start_with_progress("my-task", false);
+        log.notify_task_done_with_progress("my-task", false);
         let active = log.active_tasks.lock().unwrap();
         assert!(
             !active.contains(&"my-task".to_string()),
@@ -143,13 +169,13 @@ mod tests {
     #[test]
     fn notify_task_done_clears_progress_when_last_task_completes() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start("task-a");
+        log.notify_task_start_with_progress("task-a", true);
         assert_eq!(
             log.progress_rows_count(),
             1,
             "progress_rows should be 1 after start"
         );
-        log.notify_task_done("task-a");
+        log.notify_task_done_with_progress("task-a", true);
         assert_eq!(
             log.progress_rows_count(),
             0,
@@ -160,9 +186,9 @@ mod tests {
     #[test]
     fn notify_task_done_keeps_progress_when_tasks_remain() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start("task-a");
-        log.notify_task_start("task-b");
-        log.notify_task_done("task-a");
+        log.notify_task_start_with_progress("task-a", true);
+        log.notify_task_start_with_progress("task-b", true);
+        log.notify_task_done_with_progress("task-a", true);
         assert_eq!(
             log.progress_rows_count(),
             1,
@@ -174,9 +200,9 @@ mod tests {
     #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
     fn notify_task_done_multiple_tasks_all_complete() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.notify_task_start("task-a");
-        log.notify_task_start("task-b");
-        log.notify_task_done("task-a");
+        log.notify_task_start_with_progress("task-a", true);
+        log.notify_task_start_with_progress("task-b", true);
+        log.notify_task_done_with_progress("task-a", true);
         {
             let active = log.active_tasks.lock().unwrap();
             assert!(
@@ -188,7 +214,7 @@ mod tests {
                 "task-b should still be present"
             );
         }
-        log.notify_task_done("task-b");
+        log.notify_task_done_with_progress("task-b", true);
         {
             let active = log.active_tasks.lock().unwrap();
             assert!(
@@ -200,6 +226,17 @@ mod tests {
             log.progress_rows_count(),
             0,
             "progress_rows should be 0 after all tasks complete"
+        );
+    }
+
+    #[test]
+    fn notify_task_start_suppresses_progress_when_not_interactive() {
+        let (log, _tmp, _guard) = isolated_logger();
+        log.notify_task_start_with_progress("task-a", false);
+        assert_eq!(
+            log.progress_rows_count(),
+            0,
+            "progress_rows should stay zero when progress rendering is disabled"
         );
     }
 }

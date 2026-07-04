@@ -316,7 +316,7 @@ fn resolve_profile(
         platform_label.push_str(" \u{00b7} WSL");
     }
     log.always(&format!(
-        "  \x1b[2mversion\x1b[0m \x1b[36m{version}\x1b[0m{updated_label} \x1b[2m\u{00b7} profile\x1b[0m {} \x1b[2m\u{00b7} {platform_label}\x1b[0m",
+        "\x1b[2mversion\x1b[0m \x1b[36m{version}\x1b[0m{updated_label} \x1b[2m\u{00b7} profile\x1b[0m {} \x1b[2m\u{00b7} {platform_label}\x1b[0m",
         profile.name
     ));
     Ok(profile)

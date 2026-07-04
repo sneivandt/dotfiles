@@ -323,7 +323,7 @@ Example summary output:
   ~ Install VS Code extensions
   ~ Install APM packages
 
-✦ dotfiles install complete
+dotfiles install complete
   3 ok · 9 dry-run · 0.8s
 ```
 

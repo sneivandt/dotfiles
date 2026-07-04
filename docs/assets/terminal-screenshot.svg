@@ -43,6 +43,6 @@
   <text x="34" y="438" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Configure systemd units</tspan></text>
   <text x="34" y="456" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Install VS Code extensions</tspan></text>
   <text x="34" y="474" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>
-  <text x="34" y="492" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#60a5fa" font-weight="700">✦</tspan><tspan fill="#e2e8f0" font-weight="700"> dotfiles install complete</tspan></text>
+  <text x="34" y="492" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0" font-weight="700">dotfiles install complete</tspan></text>
   <text x="34" y="510" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  11 ok</tspan><tspan fill="#64748b"> · 6 not applicable · 4.8s</tspan></text>
 </svg>

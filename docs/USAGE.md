@@ -310,7 +310,7 @@ version v0.1.317 · profile desktop · Arch Linux
   ~ Install packages
   ~ Configure systemd units
 
-✦ dotfiles install complete
+dotfiles install complete
   2 ok · 1 skipped · 7 dry-run · 6 not applicable · 1.3s
 ```
 
@@ -422,7 +422,7 @@ appended. This is a logical summary, not the chronological execution order.
    System
      ~ Configure systemd units
 
-✦ dotfiles install complete
+dotfiles install complete
   2 ok · 1 skipped · 6 dry-run · 6 not applicable · 1.3s
 ```
 

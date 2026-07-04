@@ -13,6 +13,12 @@ system state. State discovery is intentionally separate: resources either
 implement `IntrinsicState` for per-resource checks or use a
 `ResourceStateProvider` for cached/bulk checks.
 
+Use a resource when the task manages one or more concrete desired state items
+that can each be checked and applied independently. Use an engine `Operation`
+instead for idempotent workflows with ordered side effects, generated content,
+external-tool orchestration, or coordination state that does not map cleanly to
+one resource.
+
 ## Trait Definitions
 
 ```rust
@@ -65,6 +71,12 @@ resource-level failures. See the `error-handling-patterns` skill.
 |---|---|---|
 | `Resource` + `IntrinsicState` | Resource can independently check its own state | `SymlinkResource`, `ChmodResource`, `GitConfigResource`, `HookFileResource`, `WrapperResource`, `PathEntryResource`, `ScriptResource` |
 | `Resource` + `ResourceStateProvider` | State requires one shared cached/bulk query | `VsCodeExtensionResource`, `PackageResource`, `RegistryResource` |
+
+Do **not** force a workflow into `Resource` just because it is idempotent. Use
+`Operation` for tasks like generated completions, configuration reloads, overlay
+script execution, repository/sparse-checkout orchestration, bootstrap flows, or
+APM install/update workflows where the useful unit of convergence is the whole
+workflow rather than an individual desired item.
 
 ## Self-Checking Resource Template
 

@@ -1,4 +1,5 @@
 use super::*;
+use crate::logging::TaskStatus;
 use crate::platform::Platform;
 use crate::resources::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use anyhow::Result;
@@ -139,6 +140,29 @@ fn execute_records_ok_task() {
 
     execute(&task, &ctx);
     assert_eq!(log.failure_count(), 0);
+}
+
+#[test]
+fn execute_records_ok_task_with_message() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, log) = make_static_context(config);
+    let task = MockTask {
+        name: "ok-task",
+        should_run: true,
+        result: Ok(TaskResult::OkWithMessage(
+            "installed 1 Arch package: git".to_string(),
+        )),
+    };
+
+    execute(&task, &ctx);
+
+    let entries = log.task_entries();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].status, TaskStatus::Ok);
+    assert_eq!(
+        entries[0].message.as_deref(),
+        Some("installed 1 Arch package: git")
+    );
 }
 
 #[test]

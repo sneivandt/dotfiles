@@ -17,7 +17,7 @@ commands. Shell wrappers only bootstrap and invoke the binary.
 | Work area | Primary files | Use this skill |
 |---|---|---|
 | New or changed resource type | `cli/src/resources/`, `cli/src/tasks/<domain>/` | `resource-implementation` |
-| Task scheduling, dependencies, parallelism | `cli/src/engine/`, `cli/src/commands/mod.rs` | `engine-orchestration` |
+| Operation-style task bodies, scheduling, dependencies, parallelism | `cli/src/engine/`, `cli/src/tasks/<domain>/`, `cli/src/commands/mod.rs` | `engine-orchestration` |
 | Error handling, idempotency, dry-run behaviour | `cli/src/resources/`, `cli/src/tasks/` | `error-handling-patterns` |
 | Console output, task recording, summaries | `cli/src/logging/` | `logging-patterns` |
 | TOML parsing or config sections | `cli/src/config/`, `conf/` | `toml-configuration`, `config-validation` |
@@ -34,7 +34,7 @@ cli/src/
 ├── cli.rs          # clap CLI definitions
 ├── config/         # TOML loading, profile/category filtering, validation
 ├── resources/      # Declarative Resource, IntrinsicState, providers
-├── engine/         # Context, resource plans, orchestration, scheduler
+├── engine/         # Context, resource/operation plans, orchestration, scheduler
 ├── tasks/          # Task trait, macros, task catalog, domain-grouped tasks
 ├── commands/       # install, update, uninstall, test, version, logs command runners
 ├── logging/        # Logger, buffered parallel output, diagnostic logs
@@ -47,8 +47,9 @@ cli/src/
 - Use `anyhow::Result` with contextual `?` propagation in commands/tasks, and
   typed `ResourceError` values in resource implementations when a resource-level
   failure needs classification.
-- Prefer the `resource_task!` macro for config-to-resource tasks; use manual
-  `Task` implementations only for non-standard orchestration or dynamic tasks.
+- Prefer the `resource_task!` macro for config-to-resource tasks. For
+  idempotent multi-step workflows that do not fit one resource, implement
+  `Operation` and call `process_operation()` from the task body.
 - Declare dependencies with `task_deps![...]`; register static tasks in
   `cli/src/tasks/catalog.rs`.
 - Use `ExecutionPolicy` for central platform, dry-run, and elevation gates.
@@ -71,7 +72,11 @@ cli/src/
 - Resource state should be discovered through `IntrinsicState` or a
   `ResourceStateProvider`, then applied through `process_resources()`,
   `process_resources_with_provider()`, or `process_resources_remove()`.
-- Custom non-resource tasks must follow check -> dry-run -> mutate order.
+- Operation-style task bodies should implement `OperationState`,
+  `Operation::preview()`, and `Operation::apply()`, then use
+  `process_operation()` to centralize check -> dry-run -> mutate order.
+- Fully custom tasks that cannot use resources or operations must still follow
+  check -> dry-run -> mutate order manually.
 - Clone config data out of `ctx.config_read()` before long-running work or
   parallel processing.
 - Keep behaviour idempotent: re-running should converge to the same state.

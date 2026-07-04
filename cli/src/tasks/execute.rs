@@ -117,6 +117,11 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context, domain: Domain) {
                 ctx.log.diag_task(DiagEvent::TaskDone, task.name(), "");
                 rec(TaskStatus::Ok, None);
             }
+            TaskResult::OkWithMessage(message) => {
+                ctx.log
+                    .diag_task(DiagEvent::TaskDone, task.name(), &message);
+                rec(TaskStatus::Ok, Some(&message));
+            }
             TaskResult::NotApplicable(reason) => {
                 ctx.log.diag_task(DiagEvent::TaskSkip, task.name(), &reason);
                 ctx.debug_fmt(|| format!("not applicable: {reason}"));

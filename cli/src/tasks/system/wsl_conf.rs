@@ -3,8 +3,8 @@
 use anyhow::Result;
 
 use crate::tasks::{
-    Context, Domain, ExecutionPolicy, PlatformCapability, Task, TaskPhase, TaskResult,
-    task_metadata,
+    Context, Domain, ExecutionPolicy, Operation, OperationState, PlatformCapability, Task,
+    TaskPhase, TaskResult, process_operation, task_metadata,
 };
 
 /// The single setting this task enforces.
@@ -15,6 +15,33 @@ const DESIRED_SECTION: &str = "[network]";
 const DESIRED_CONTENT: &str = "[network]\ngenerateResolvConf = true\n";
 /// The single key name this task enforces inside `[network]`.
 const DESIRED_KEY_NAME: &str = "generateResolvConf";
+
+#[derive(Debug, Clone, Copy)]
+struct WslConfOperation;
+
+impl Operation for WslConfOperation {
+    fn current_state(&self, ctx: &Context) -> Result<OperationState> {
+        if !ctx.platform.is_wsl() {
+            return Ok(OperationState::not_applicable("not running inside WSL"));
+        }
+        if is_correct("/etc/wsl.conf") {
+            return Ok(OperationState::Complete);
+        }
+        Ok(OperationState::needs_run(format!(
+            "update {DESIRED_KEY} in /etc/wsl.conf"
+        )))
+    }
+
+    fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        ctx.log
+            .dry_run(&format!("would update {DESIRED_KEY} in /etc/wsl.conf"));
+        Ok(TaskResult::DryRun)
+    }
+
+    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        install_wsl_conf(ctx, "/etc/wsl.conf")
+    }
+}
 
 /// Write /etc/wsl.conf with `generateResolvConf = true` under `[network]`.
 ///
@@ -45,45 +72,35 @@ impl Task for InstallWslConf {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let target = "/etc/wsl.conf";
-
-        // Already correct — skip.
-        if is_correct(target) {
-            ctx.log.debug("already configured, no action needed");
-            return Ok(TaskResult::Ok);
-        }
-
-        if ctx.dry_run {
-            ctx.log
-                .dry_run(&format!("would update {DESIRED_KEY} in {target}"));
-            return Ok(TaskResult::DryRun);
-        }
-
-        let desired_content = desired_content_for_path(target)?;
-
-        ctx.log.info(&format!("updating {DESIRED_KEY} in {target}"));
-
-        // Try a direct write first (works when running as root).  If that
-        // fails with a permission error, fall back to staging via a temp file
-        // and copying into place with sudo.  The temp path is unique per
-        // process (PID-stamped) so concurrent runs do not race on the same
-        // file and stale content from a previous failed run cannot interfere.
-        match std::fs::write(target, &desired_content) {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-                ctx.log.info("direct write failed, falling back to sudo");
-                let tmp = sudo_fallback_tmp_path();
-                std::fs::write(&tmp, &desired_content)
-                    .map_err(|e| anyhow::anyhow!("failed to write temp file {tmp}: {e}"))?;
-                let _cleanup = crate::fs::TempPath::new(std::path::PathBuf::from(&tmp));
-
-                ctx.executor.run("sudo", &["cp", &tmp, target])?;
-            }
-            Err(e) => return Err(anyhow::anyhow!("failed to write {target}: {e}")),
-        }
-
-        Ok(TaskResult::Ok)
+        process_operation(ctx, &WslConfOperation)
     }
+}
+
+fn install_wsl_conf(ctx: &Context, target: &str) -> Result<TaskResult> {
+    let desired_content = desired_content_for_path(target)?;
+
+    ctx.log.info(&format!("updating {DESIRED_KEY} in {target}"));
+
+    // Try a direct write first (works when running as root).  If that
+    // fails with a permission error, fall back to staging via a temp file
+    // and copying into place with sudo.  The temp path is unique per
+    // process (PID-stamped) so concurrent runs do not race on the same
+    // file and stale content from a previous failed run cannot interfere.
+    match std::fs::write(target, &desired_content) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            ctx.log.info("direct write failed, falling back to sudo");
+            let tmp = sudo_fallback_tmp_path();
+            std::fs::write(&tmp, &desired_content)
+                .map_err(|e| anyhow::anyhow!("failed to write temp file {tmp}: {e}"))?;
+            let _cleanup = crate::fs::TempPath::new(std::path::PathBuf::from(&tmp));
+
+            ctx.executor.run("sudo", &["cp", &tmp, target])?;
+        }
+        Err(e) => return Err(anyhow::anyhow!("failed to write {target}: {e}")),
+    }
+
+    Ok(TaskResult::Ok)
 }
 
 /// Returns the process-unique temp path used by the sudo fallback.

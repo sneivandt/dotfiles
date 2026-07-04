@@ -10,12 +10,14 @@ use super::context::Context;
 /// use dotfiles_cli::testing::tasks::TaskResult;
 ///
 /// let ok = TaskResult::Ok;
+/// let ok_with_message = TaskResult::OkWithMessage("installed 1 package".into());
 /// let na = TaskResult::NotApplicable("nothing configured".into());
 /// let skipped = TaskResult::Skipped("not on arch".into());
 /// let failed = TaskResult::Failed("git pull failed".into());
 /// let dry = TaskResult::DryRun;
 ///
 /// assert!(matches!(ok, TaskResult::Ok));
+/// assert!(matches!(ok_with_message, TaskResult::OkWithMessage(_)));
 /// assert!(matches!(na, TaskResult::NotApplicable(_)));
 /// assert!(matches!(skipped, TaskResult::Skipped(_)));
 /// assert!(matches!(failed, TaskResult::Failed(_)));
@@ -26,6 +28,8 @@ use super::context::Context;
 pub enum TaskResult {
     /// Task completed successfully.
     Ok,
+    /// Task completed successfully with a user-facing detail message.
+    OkWithMessage(String),
     /// Task is not applicable (e.g., no config matched the active profile).
     NotApplicable(String),
     /// Task was explicitly skipped (e.g., running on a different platform, detached HEAD).

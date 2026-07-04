@@ -138,6 +138,27 @@ Use these helpers for **all** new resource-based tasks. They build typed
 `ApplyChange` / `RemoveChange` plans, then handle dry-run checks, error
 categorisation, parallel dispatch, and stats accumulation.
 
+## Operation-Level: Checkable Workflows
+
+Use `Operation` for task bodies that are still idempotent but do not fit the
+per-resource lifecycle. An operation reports an `OperationState`, then
+`process_operation()` enforces the same high-level ordering as resource
+processing:
+
+1. `current_state()` checks without mutation.
+2. `preview()` runs only in dry-run mode for `NeedsRun` state.
+3. `apply()` runs only outside dry-run mode for `NeedsRun` state.
+
+`OperationState::Complete` returns `TaskResult::Ok`,
+`OperationState::NotApplicable` returns `TaskResult::NotApplicable`, and
+`OperationState::Blocked` returns `TaskResult::Skipped`.
+
+Good operation candidates are generated files, config reload coordination,
+custom overlay script execution, repository/sparse-checkout workflows, bootstrap
+flows, and APM install/update workflows. Keep `Task` responsible for metadata
+(name, phase, domain, dependencies, execution policies) and let the operation
+own the checkable workflow body.
+
 ### ProcessMode
 
 `ProcessMode` makes the intent of each processing strategy explicit:

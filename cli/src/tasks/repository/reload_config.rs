@@ -2,7 +2,10 @@
 
 use anyhow::{Context as _, Result};
 
-use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, UpdateSignal, task_metadata};
+use crate::tasks::{
+    Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, UpdateSignal,
+    process_operation, task_metadata,
+};
 
 /// Re-parse all configuration files after `UpdateRepository` has pulled the
 /// latest changes.
@@ -16,6 +19,37 @@ pub struct ReloadConfig {
     /// Shared flag set by [`super::update::UpdateRepository`] when new commits
     /// were fetched.  When `false`, the reload is a no-op.
     pub(super) repo_updated: UpdateSignal,
+}
+
+#[derive(Debug, Clone)]
+struct ReloadConfigOperation {
+    repo_updated: UpdateSignal,
+}
+
+impl ReloadConfigOperation {
+    const fn new(repo_updated: UpdateSignal) -> Self {
+        Self { repo_updated }
+    }
+}
+
+impl Operation for ReloadConfigOperation {
+    fn current_state(&self, _ctx: &Context) -> Result<OperationState> {
+        if self.repo_updated.was_updated() {
+            Ok(OperationState::needs_run("repository changed"))
+        } else {
+            Ok(OperationState::not_applicable(
+                "repository was already current",
+            ))
+        }
+    }
+
+    fn preview(&self, _ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        Ok(TaskResult::DryRun)
+    }
+
+    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        reload_config(ctx)
+    }
 }
 
 impl ReloadConfig {
@@ -39,34 +73,38 @@ impl Task for ReloadConfig {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        // Load the new config while holding only a read lock, so there is no
-        // window where the lock is held for writing across I/O.
-        let new_config = {
-            let old = ctx.config_read();
-            crate::config::Config::load(
-                &old.root,
-                &old.profile,
-                ctx.platform,
-                old.overlay.as_deref(),
-            )
-            .context("reloading configuration after repository update")?
-        };
-
-        ctx.debug_fmt(|| {
-            format!(
-                "{} packages, {} symlinks after reload",
-                new_config.packages.len(),
-                new_config.symlinks.len()
-            )
-        });
-
-        // Atomically replace the shared config so all downstream tasks see the
-        // freshly-loaded values.
-        ctx.config_swap(new_config);
-
-        ctx.log.info("configuration reloaded");
-        Ok(TaskResult::Ok)
+        process_operation(ctx, &ReloadConfigOperation::new(self.repo_updated.clone()))
     }
+}
+
+fn reload_config(ctx: &Context) -> Result<TaskResult> {
+    // Load the new config while holding only a read lock, so there is no
+    // window where the lock is held for writing across I/O.
+    let new_config = {
+        let old = ctx.config_read();
+        crate::config::Config::load(
+            &old.root,
+            &old.profile,
+            ctx.platform,
+            old.overlay.as_deref(),
+        )
+        .context("reloading configuration after repository update")?
+    };
+
+    ctx.debug_fmt(|| {
+        format!(
+            "{} packages, {} symlinks after reload",
+            new_config.packages.len(),
+            new_config.symlinks.len()
+        )
+    });
+
+    // Atomically replace the shared config so all downstream tasks see the
+    // freshly-loaded values.
+    ctx.config_swap(new_config);
+
+    ctx.log.info("configuration reloaded");
+    Ok(TaskResult::Ok)
 }
 
 #[cfg(test)]

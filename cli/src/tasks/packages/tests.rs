@@ -281,8 +281,12 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
     let ctx = make_package_context(config, Os::Linux, true, mock);
     let result = InstallPackages.run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok after batch install, got {result:?}"
+        matches!(
+            result,
+            TaskResult::OkWithMessage(ref message)
+                if message == "installed 1 Arch package: git"
+        ),
+        "expected install detail after batch install, got {result:?}"
     );
 }
 
@@ -384,7 +388,11 @@ fn install_packages_winget_installs_per_package() {
     let ctx = make_package_context(config, Os::Windows, false, mock);
     let result = InstallPackages.run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok after winget per-package install, got {result:?}"
+        matches!(
+            result,
+            TaskResult::OkWithMessage(ref message)
+                if message == "installed 1 package: Git.Git"
+        ),
+        "expected install detail after winget per-package install, got {result:?}"
     );
 }

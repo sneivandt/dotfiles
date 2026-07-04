@@ -40,6 +40,7 @@ pub use crate::engine::Context;
 #[cfg(any(feature = "internal-api", doctest))]
 pub use crate::engine::ContextOpts;
 pub use crate::engine::update_signal::UpdateSignal;
+pub(crate) use crate::engine::{Operation, OperationState, process_operation};
 #[allow(unused_imports, reason = "re-exported for doc-tests")]
 // TaskStats is used by doc-tests via the lib crate
 pub use crate::engine::{

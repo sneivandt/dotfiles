@@ -3,13 +3,66 @@ use anyhow::{Context as _, Result};
 use clap::CommandFactory;
 
 use crate::cli::Cli;
-use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
+use crate::tasks::{
+    Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
+    task_metadata,
+};
 
 /// Filename of the generated zsh completion script.
 const ZSH_COMPLETION_FILENAME: &str = "_dotfiles";
 
 /// Relative path within the symlinks directory to the zsh completions folder.
 const ZSH_COMPLETIONS_SUBDIR: &str = "config/zsh/completions";
+
+#[derive(Debug, Clone, Copy)]
+struct ZshCompletionOperation;
+
+impl ZshCompletionOperation {
+    fn destination(ctx: &Context) -> std::path::PathBuf {
+        ctx.symlinks_dir()
+            .join(ZSH_COMPLETIONS_SUBDIR)
+            .join(ZSH_COMPLETION_FILENAME)
+    }
+
+    fn content() -> Result<String> {
+        let mut buf = Vec::new();
+        let mut cmd = Cli::command();
+        clap_complete::generate(clap_complete::Shell::Zsh, &mut cmd, "dotfiles", &mut buf);
+        String::from_utf8(buf).context("generated zsh completion script is not valid UTF-8")
+    }
+}
+
+impl Operation for ZshCompletionOperation {
+    fn current_state(&self, ctx: &Context) -> Result<OperationState> {
+        let dest = Self::destination(ctx);
+        let content = Self::content()?;
+
+        if dest.exists()
+            && let Ok(existing) = std::fs::read_to_string(&dest)
+            && existing == content
+        {
+            return Ok(OperationState::Complete);
+        }
+
+        Ok(OperationState::needs_run(format!(
+            "write {}",
+            dest.display()
+        )))
+    }
+
+    fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        ctx.log
+            .dry_run(&format!("write {}", Self::destination(ctx).display()));
+        Ok(TaskResult::DryRun)
+    }
+
+    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        let dest = Self::destination(ctx);
+        crate::fs::write_with_parent(&dest, Self::content()?)?;
+        ctx.log.info("zsh completions written");
+        Ok(TaskResult::Ok)
+    }
+}
 
 /// Install shell completions for the dotfiles CLI by generating the zsh
 /// completion script and writing it into the repo's symlinks directory so it
@@ -33,36 +86,7 @@ impl Task for GenerateCompletions {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let dest = ctx
-            .symlinks_dir()
-            .join(ZSH_COMPLETIONS_SUBDIR)
-            .join(ZSH_COMPLETION_FILENAME);
-
-        // Generate the completion content into an in-memory buffer.
-        let mut buf = Vec::new();
-        let mut cmd = Cli::command();
-        clap_complete::generate(clap_complete::Shell::Zsh, &mut cmd, "dotfiles", &mut buf);
-        let content =
-            String::from_utf8(buf).context("generated zsh completion script is not valid UTF-8")?;
-
-        // Check whether the file is already up to date (idempotency).
-        if dest.exists()
-            && let Ok(existing) = std::fs::read_to_string(&dest)
-            && existing == content
-        {
-            ctx.log.debug("zsh completions already up to date");
-            return Ok(TaskResult::Ok);
-        }
-
-        if ctx.dry_run {
-            ctx.log.dry_run(&format!("write {}", dest.display()));
-            return Ok(TaskResult::DryRun);
-        }
-
-        crate::fs::write_with_parent(&dest, content)?;
-
-        ctx.log.info("zsh completions written");
-        Ok(TaskResult::Ok)
+        process_operation(ctx, &ZshCompletionOperation)
     }
 }
 

@@ -15,7 +15,10 @@ use anyhow::Result;
 use crate::config::scripts::ScriptEntry;
 use crate::resources::script::ScriptResource;
 use crate::resources::{IntrinsicState, ResourceChange, ResourceState};
-use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
+use crate::tasks::{
+    Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
+    task_metadata,
+};
 
 // ---------------------------------------------------------------------------
 // Static task: Load overlay scripts
@@ -85,6 +88,59 @@ pub struct OverlayScriptTask {
     overlay_root: PathBuf,
 }
 
+#[derive(Debug, Clone)]
+struct OverlayScriptOperation {
+    entry: ScriptEntry,
+    overlay_root: PathBuf,
+}
+
+impl OverlayScriptOperation {
+    const fn new(entry: ScriptEntry, overlay_root: PathBuf) -> Self {
+        Self {
+            entry,
+            overlay_root,
+        }
+    }
+
+    fn resource(&self, ctx: &Context) -> Result<ScriptResource> {
+        ScriptResource::from_entry(&self.entry, &self.overlay_root, Arc::clone(&ctx.executor))
+    }
+}
+
+impl Operation for OverlayScriptOperation {
+    fn current_state(&self, ctx: &Context) -> Result<OperationState> {
+        let resource = self.resource(ctx)?;
+        Ok(match resource.current_state()? {
+            ResourceState::Correct => OperationState::Complete,
+            ResourceState::Missing | ResourceState::Incorrect { .. } => {
+                OperationState::needs_run(format!("run {}", self.entry.name))
+            }
+            ResourceState::Invalid { reason } | ResourceState::Unknown { reason } => {
+                ctx.log.warn(&format!("skipping: {reason}"));
+                OperationState::not_applicable(reason)
+            }
+        })
+    }
+
+    fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        let output = self.resource(ctx)?.dry_run_output()?;
+        emit_script_lines(ctx, &output, true);
+        Ok(TaskResult::DryRun)
+    }
+
+    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        let (change, output) = self.resource(ctx)?.apply_verbose()?;
+        emit_script_lines(ctx, &output, false);
+        match change {
+            ResourceChange::Skipped { reason } => {
+                ctx.log.warn(&format!("skipping: {reason}"));
+                Ok(TaskResult::Skipped(reason))
+            }
+            ResourceChange::Applied | ResourceChange::AlreadyCorrect => Ok(TaskResult::Ok),
+        }
+    }
+}
+
 impl OverlayScriptTask {
     /// Create a new overlay script task.
     #[must_use]
@@ -137,37 +193,10 @@ impl Task for OverlayScriptTask {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let resource =
-            ScriptResource::from_entry(&self.entry, &self.overlay_root, Arc::clone(&ctx.executor))?;
-
-        let state = resource.current_state()?;
-        match state {
-            ResourceState::Correct => {
-                ctx.log.debug("already correct");
-                Ok(TaskResult::Ok)
-            }
-            ResourceState::Missing | ResourceState::Incorrect { .. } => {
-                if ctx.dry_run {
-                    let output = resource.dry_run_output()?;
-                    emit_script_lines(ctx, &output, true);
-                    Ok(TaskResult::DryRun)
-                } else {
-                    let (change, output) = resource.apply_verbose()?;
-                    emit_script_lines(ctx, &output, false);
-                    match change {
-                        ResourceChange::Skipped { reason } => {
-                            ctx.log.warn(&format!("skipping: {reason}"));
-                            Ok(TaskResult::Skipped(reason))
-                        }
-                        _ => Ok(TaskResult::Ok),
-                    }
-                }
-            }
-            ResourceState::Invalid { reason } | ResourceState::Unknown { reason } => {
-                ctx.log.warn(&format!("skipping: {reason}"));
-                Ok(TaskResult::NotApplicable(reason))
-            }
-        }
+        process_operation(
+            ctx,
+            &OverlayScriptOperation::new(self.entry.clone(), self.overlay_root.clone()),
+        )
     }
 }
 

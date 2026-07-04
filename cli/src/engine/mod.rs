@@ -24,6 +24,7 @@ pub mod context;
 /// Task dependency graph and cycle detection.
 pub mod graph;
 mod mode;
+mod operation;
 mod orchestrate;
 mod parallel;
 pub(crate) mod plan;
@@ -38,6 +39,7 @@ pub use cancellation::CancellationToken;
 pub use context::Context;
 pub use context::ContextOpts;
 pub use mode::{ProcessMode, ProcessOpts, ResourceAction};
+pub(crate) use operation::{Operation, OperationState, process_operation};
 pub use orchestrate::{
     process_resources, process_resources_remove, process_resources_with_provider,
 };

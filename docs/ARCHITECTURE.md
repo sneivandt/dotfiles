@@ -215,6 +215,7 @@ The execution engine provides the generic resource processing loop, dependency g
 - **`apply.rs`** — single-resource plan execution: log/dry-run → apply/remove → stats
 - **`orchestrate.rs`** — top-level resource orchestration with `process_resources()`, `process_resources_with_provider()`, and `process_resources_remove()`
 - **`mode.rs`** — `ProcessMode` enum (`Strict`, `Lenient`, `InstallMissing`, `FixExisting`) and `ProcessOpts` that control which states are fixable and whether errors bail or warn
+- **`operation.rs`** — checkable, idempotent multi-step operations for task bodies that do not fit the one-resource lifecycle
 - **`parallel.rs`** — Rayon-based parallel dispatch when `ctx.parallel` is true
 - **`graph.rs`** — phase-local dependency graph resolution, duplicate-ID checks,
   and cycle detection (Kahn's algorithm)
@@ -248,6 +249,18 @@ move large tests to a sibling `tests.rs` (as in `editors/`, `overlay/`,
 itself — the `Task` trait, `TaskPhase`, `Domain`, the
 `resource_task!`/`task_deps!` macros, the task catalog, and the `--skip`/`--only`
 filter — lives in `mod.rs`, `macros.rs`, `catalog.rs`, and `filter.rs`.
+
+Task bodies generally use one of two convergence abstractions:
+
+- **Resources** for concrete desired state items such as symlinks, files,
+  package entries, registry values, editor extensions, Git settings, and systemd
+  units. Resources expose current state and apply/remove one item, and are
+  processed through the engine's resource helpers.
+- **Operations** for idempotent workflows with ordered side effects, generated
+  content, external-tool orchestration, or coordination state that does not map
+  cleanly to one resource. Operations expose `current_state()`, `preview()`, and
+  `apply()`, and are processed through `process_operation()` so check → dry-run
+  → mutate order stays centralized.
 
 **Implemented tasks** (inventory only, not execution order). The engine schedules
 by **phase**, completing each phase before the next; within a phase, tasks run as

@@ -20,6 +20,10 @@ impl Task for InstallVsCodeExtensions {
         name: "Install VS Code extensions",
         phase: TaskPhase::Provision,
         domain: Domain::Editors,
+        deps: [
+            crate::tasks::packages::InstallPackages,
+            crate::tasks::packages::InstallAurPackages,
+        ],
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

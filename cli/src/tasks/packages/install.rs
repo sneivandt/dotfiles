@@ -182,6 +182,7 @@ impl Task for InstallParu {
             PlatformCapability::Pacman.policy(),
             ExecutionPolicy::RequiresElevation,
         ],
+        deps: [InstallPackages],
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

@@ -28,6 +28,7 @@ packages = [
   "rustup",
   "sed",
   "shellcheck",
+  "sudo",
   "tmux",
   "vim",
   "wget",

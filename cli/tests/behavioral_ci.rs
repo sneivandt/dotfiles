@@ -479,7 +479,7 @@ fn pacman_task_installs_only_missing_native_packages_in_one_batch() {
         )
         .build();
     let executor = Arc::new(RecordingExecutor::new(
-        &["pacman"],
+        &["pacman", "sudo"],
         vec![
             expect(
                 CallKind::RunUnchecked,

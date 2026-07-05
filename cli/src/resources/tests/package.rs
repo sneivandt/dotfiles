@@ -23,6 +23,25 @@ fn fail_result() -> ExecResult {
     }
 }
 
+#[cfg(unix)]
+fn running_as_root() -> bool {
+    nix::unistd::Uid::effective().is_root()
+}
+
+#[cfg(not(unix))]
+const fn running_as_root() -> bool {
+    false
+}
+
+fn expect_sudo_lookup_if_needed(mock: &mut MockExecutor) {
+    if !running_as_root() {
+        mock.expect_which()
+            .once()
+            .with(mockall::predicate::eq("sudo"))
+            .returning(|_| true);
+    }
+}
+
 #[test]
 fn description_includes_manager() {
     let executor: Arc<dyn Executor> = Arc::new(crate::exec::SystemExecutor);
@@ -189,6 +208,7 @@ fn get_installed_winget_handles_unicode_in_name_column() {
 #[test]
 fn apply_pacman_returns_applied_on_success() {
     let mut mock = MockExecutor::new();
+    expect_sudo_lookup_if_needed(&mut mock);
     mock.expect_run().once().returning(|_, _| Ok(ok_result("")));
     let executor: Arc<dyn Executor> = Arc::new(mock);
     let resource = PackageResource::new(
@@ -261,8 +281,8 @@ impl Executor for RecordingExecutor {
         self.run(program, args)
     }
 
-    fn which(&self, _: &str) -> bool {
-        false
+    fn which(&self, program: &str) -> bool {
+        program == "sudo"
     }
 
     fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
@@ -370,6 +390,7 @@ fn batch_install_empty_list_is_noop() {
 #[test]
 fn batch_install_propagates_pacman_error() {
     let mut mock = MockExecutor::new();
+    expect_sudo_lookup_if_needed(&mut mock);
     mock.expect_run()
         .once()
         .returning(|_, _| Err(anyhow::anyhow!("simulated failure")));

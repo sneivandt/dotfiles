@@ -17,14 +17,16 @@ fn build_resource(
     executor: &Arc<dyn crate::exec::Executor>,
 ) -> SymlinkResource {
     let symlinks_dir = crate::config::symlinks::resolve_symlinks_dir(s, repo_root);
+    let source = symlinks_dir.join(&s.source);
     let target = s.target.as_ref().map_or_else(
         || compute_target(home, &s.source),
         |explicit| home.join(explicit),
     );
     let validation_error = crate::config::symlinks::validate_paths(s)
         .err()
-        .map(|e| e.to_string());
-    SymlinkResource::new(symlinks_dir.join(&s.source), target, Arc::clone(executor))
+        .map(|e| e.to_string())
+        .or_else(|| git_symlink_placeholder_reason(&source, repo_root, &**executor));
+    SymlinkResource::new(source, target, Arc::clone(executor))
         .with_validation_error(validation_error)
 }
 
@@ -85,6 +87,56 @@ impl Task for UninstallSymlinks {
 /// `conf/symlinks.toml` rather than relying on naming conventions.
 fn compute_target(home: &Path, source: &str) -> std::path::PathBuf {
     home.join(format!(".{source}"))
+}
+
+#[cfg(windows)]
+fn git_symlink_placeholder_reason(
+    source: &Path,
+    repo_root: &Path,
+    executor: &dyn crate::exec::Executor,
+) -> Option<String> {
+    let metadata = std::fs::symlink_metadata(source).ok()?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return None;
+    }
+
+    let relative_source = source.strip_prefix(repo_root).ok()?;
+    let repo_root_arg = repo_root.to_string_lossy();
+    let relative_arg = relative_source.to_string_lossy();
+    let result = executor
+        .run_unchecked(
+            "git",
+            &[
+                "-C",
+                repo_root_arg.as_ref(),
+                "ls-files",
+                "-s",
+                "--",
+                relative_arg.as_ref(),
+            ],
+        )
+        .ok()?;
+
+    result
+        .stdout
+        .lines()
+        .any(|line| line.starts_with("120000 "))
+        .then(|| {
+            format!(
+                "source is checked out as a plain file but Git records it as a symlink: {} \
+                 (enable symlink support and restore the checkout)",
+                source.display()
+            )
+        })
+}
+
+#[cfg(not(windows))]
+fn git_symlink_placeholder_reason(
+    _source: &Path,
+    _repo_root: &Path,
+    _executor: &dyn crate::exec::Executor,
+) -> Option<String> {
+    None
 }
 
 #[cfg(test)]

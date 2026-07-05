@@ -24,13 +24,18 @@ impl Task for ConfigureSystemd {
             PlatformCapability::Systemd.policy(),
             ExecutionPolicy::RequiresElevation,
         ],
-        deps: [crate::tasks::files::symlinks::InstallSymlinks],
+        deps: [
+            crate::tasks::packages::InstallPackages,
+            crate::tasks::packages::InstallAurPackages,
+            crate::tasks::files::symlinks::InstallSymlinks,
+        ],
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform.supports_systemd()
             && !ctx.config_read().units.is_empty()
             && ctx.executor.which("systemctl")
+            && systemd_available(ctx)
             && !ctx.is_ci
     }
 
@@ -57,6 +62,16 @@ impl Task for ConfigureSystemd {
             resources,
             &ProcessOpts::install_missing("enable").sequential(),
         )
+    }
+}
+
+fn systemd_available(ctx: &Context) -> bool {
+    if ctx.platform.is_wsl() {
+        ctx.executor
+            .run_unchecked("systemctl", &["is-system-running"])
+            .is_ok_and(|result| result.success || result.stdout.trim() == "degraded")
+    } else {
+        true
     }
 }
 

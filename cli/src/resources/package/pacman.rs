@@ -44,6 +44,38 @@ fn query_names(
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PacmanProvider;
 
+#[cfg(unix)]
+fn is_root() -> bool {
+    nix::unistd::Uid::effective().is_root()
+}
+
+#[cfg(not(unix))]
+const fn is_root() -> bool {
+    false
+}
+
+fn pacman_invocation<'a>(
+    args: &[&'a str],
+    executor: &dyn Executor,
+) -> Result<(&'static str, Vec<&'a str>)> {
+    let mut pacman_args = vec!["-Syu", "--needed", "--noconfirm"];
+    pacman_args.extend_from_slice(args);
+
+    if is_root() {
+        return Ok(("pacman", pacman_args));
+    }
+
+    if !executor.which("sudo") {
+        anyhow::bail!(
+            "sudo not found; run as root or install/configure sudo before installing packages"
+        );
+    }
+
+    let mut sudo_args = vec!["pacman"];
+    sudo_args.extend(pacman_args);
+    Ok(("sudo", sudo_args))
+}
+
 impl PackageProvider for PacmanProvider {
     fn name(&self) -> &'static str {
         "pacman"
@@ -54,7 +86,8 @@ impl PackageProvider for PacmanProvider {
     }
 
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
-        executor.run("sudo", &["pacman", "-Syu", "--needed", "--noconfirm", name])?;
+        let (program, args) = pacman_invocation(&[name], executor)?;
+        executor.run(program, &args)?;
         Ok(ResourceChange::Applied)
     }
 
@@ -63,10 +96,9 @@ impl PackageProvider for PacmanProvider {
         resources: &[&PackageResource],
         executor: &dyn Executor,
     ) -> Result<PackageInstallReport> {
-        let mut args = vec!["pacman", "-Syu", "--needed", "--noconfirm"];
         let names: Vec<&str> = resources.iter().map(|r| r.name.as_str()).collect();
-        args.extend(names);
-        executor.run("sudo", &args)?;
+        let (program, args) = pacman_invocation(&names, executor)?;
+        executor.run(program, &args)?;
         Ok(PackageInstallReport::applied(
             resources
                 .iter()
@@ -133,5 +165,43 @@ mod tests {
         );
         assert!(message.contains("Some(42)"), "message: {message}");
         assert!(message.contains("database lock held"), "message: {message}");
+    }
+
+    #[test]
+    fn pacman_invocation_requires_sudo_for_non_root_users() {
+        if is_root() {
+            return;
+        }
+
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .once()
+            .withf(|program| program == "sudo")
+            .returning(|_| false);
+
+        let err = pacman_invocation(&["git"], &mock).unwrap_err();
+
+        assert!(err.to_string().contains("sudo not found"));
+    }
+
+    #[test]
+    fn pacman_invocation_uses_sudo_for_non_root_users_when_available() {
+        if is_root() {
+            return;
+        }
+
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .once()
+            .withf(|program| program == "sudo")
+            .returning(|_| true);
+
+        let (program, args) = pacman_invocation(&["git", "vim"], &mock).unwrap();
+
+        assert_eq!(program, "sudo");
+        assert_eq!(
+            args,
+            ["pacman", "-Syu", "--needed", "--noconfirm", "git", "vim"]
+        );
     }
 }

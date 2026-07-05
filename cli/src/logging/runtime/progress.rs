@@ -7,10 +7,26 @@ use std::sync::atomic::Ordering;
 use super::Logger;
 use crate::logging::utils::terminal_columns;
 
+const PROGRESS_PREFIX_WIDTH: usize = 4;
+const PROGRESS_ELLIPSIS: &str = " …";
+
 /// Return whether stdout is an interactive terminal that can handle redraws.
 #[must_use]
 pub(in crate::logging::runtime) fn stdout_supports_progress() -> bool {
     std::io::stdout().is_terminal()
+}
+
+fn progress_display_names(names: &str, cols: usize) -> String {
+    let max_name_chars = cols.saturating_sub(PROGRESS_PREFIX_WIDTH);
+    if names.chars().count() > max_name_chars {
+        let truncated: String = names
+            .chars()
+            .take(max_name_chars.saturating_sub(PROGRESS_ELLIPSIS.chars().count()))
+            .collect();
+        format!("{truncated}{PROGRESS_ELLIPSIS}")
+    } else {
+        names.to_string()
+    }
 }
 
 #[allow(clippy::print_stdout, reason = "intentional user-facing output")]
@@ -36,17 +52,7 @@ impl Logger {
     /// Must be called while holding `flush_lock`.
     pub(in crate::logging) fn draw_progress(&self, names: &str) {
         let cols = terminal_columns();
-        let prefix_width = 4;
-        let max_name_chars = cols.saturating_sub(prefix_width);
-        let display_names = if names.chars().count() > max_name_chars {
-            let truncated: String = names
-                .chars()
-                .take(max_name_chars.saturating_sub(1))
-                .collect();
-            format!("{truncated}…")
-        } else {
-            names.to_string()
-        };
+        let display_names = progress_display_names(names, cols);
         print!("\x1b[2m▹ {display_names}\x1b[0m");
         drop(std::io::stdout().flush());
         self.progress_rows.store(1, Ordering::Relaxed);
@@ -78,5 +84,10 @@ mod tests {
             1,
             "progress_rows should always be 1 even for very long names"
         );
+    }
+
+    #[test]
+    fn truncated_progress_names_include_space_before_ellipsis() {
+        assert_eq!(super::progress_display_names("abcdefghij", 10), "abcd …");
     }
 }

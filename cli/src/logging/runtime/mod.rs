@@ -83,7 +83,6 @@ pub struct Logger {
     pub(super) command: String,
     pub(super) tasks: Mutex<Vec<TaskEntry>>,
     pub(super) task_details: Mutex<Vec<TaskDetailEntry>>,
-    pub(super) emitted_task_result_sections: Mutex<Vec<TaskStatus>>,
     #[cfg(test)]
     pub(super) log_file: Option<PathBuf>,
     /// Serializes console output from parallel task flushes.
@@ -129,7 +128,6 @@ impl Logger {
             command: command.to_string(),
             tasks: Mutex::new(Vec::new()),
             task_details: Mutex::new(Vec::new()),
-            emitted_task_result_sections: Mutex::new(Vec::new()),
             #[cfg(test)]
             log_file: super::utils::log_file_path(command),
             flush_lock: Mutex::new(()),
@@ -171,7 +169,6 @@ impl Logger {
             command: command.to_string(),
             tasks: Mutex::new(Vec::new()),
             task_details: Mutex::new(Vec::new()),
-            emitted_task_result_sections: Mutex::new(Vec::new()),
             log_file: log_file_path_in(command, cache_dir),
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
@@ -289,22 +286,6 @@ impl Logger {
         }
     }
 
-    /// Return whether the live task-result section header should be printed.
-    pub(in crate::logging) fn should_emit_task_result_section(&self, status: TaskStatus) -> bool {
-        if status != TaskStatus::Skipped {
-            return false;
-        }
-        let Ok(mut guard) = self.emitted_task_result_sections.lock() else {
-            return false;
-        };
-        if guard.contains(&status) {
-            false
-        } else {
-            guard.push(status);
-            true
-        }
-    }
-
     /// Return `true` if any recorded task has failed.
     #[must_use]
     #[allow(dead_code, reason = "used conditionally via cfg")]
@@ -325,45 +306,10 @@ impl Logger {
 }
 
 impl Output for Logger {
-    forward_log_methods!(
-        stage,
-        info,
-        debug,
-        warn,
-        error,
-        dry_run,
-        always,
-        task_result
-    );
-
-    fn is_verbose(&self) -> bool {
-        self.verbose
-    }
+    forward_log_methods!(stage, info, debug, warn, error, dry_run, always);
 
     fn diagnostic(&self) -> Option<&DiagnosticLog> {
         self.diagnostic.as_ref()
-    }
-
-    fn emit_task_result(&self, name: &str, status: TaskStatus, message: Option<&str>) {
-        if self.should_emit_task_result_section(status) {
-            self.task_result("\x1b[1mSkipped\x1b[0m");
-        }
-        emit_task_result_lines(self, name, status, message);
-    }
-}
-
-pub(in crate::logging) fn emit_task_result_lines<O: Output + ?Sized>(
-    output: &O,
-    name: &str,
-    status: TaskStatus,
-    message: Option<&str>,
-) {
-    let Some((icon, color)) = status.icon_and_color() else {
-        return;
-    };
-    output.task_result(&format!("{color}  {icon} {name}\x1b[0m"));
-    if let Some(msg) = message {
-        output.task_result(&format!("      {msg}"));
     }
 }
 
@@ -508,7 +454,7 @@ mod tests {
         let contents = fs::read_to_string(path).unwrap();
         assert!(
             contents.contains("[warn]"),
-            "warn tag should appear in log file"
+            "warn text level should appear in log file"
         );
         assert!(
             contents.contains(&marker),
@@ -525,7 +471,7 @@ mod tests {
         let contents = fs::read_to_string(path).unwrap();
         assert!(
             contents.contains("[error]"),
-            "error tag should appear in log file"
+            "error text level should appear in log file"
         );
         assert!(
             contents.contains(&marker),

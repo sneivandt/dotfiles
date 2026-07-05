@@ -463,7 +463,6 @@ mod tests {
         fn error(&self, _msg: &str) {}
         fn dry_run(&self, _msg: &str) {}
         fn always(&self, _msg: &str) {}
-        fn task_result(&self, _msg: &str) {}
         fn debug_enabled(&self) -> bool {
             false
         }

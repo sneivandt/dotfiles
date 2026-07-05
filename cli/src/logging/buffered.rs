@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 
 use super::diagnostic::{DiagEvent, DiagnosticLog};
 use super::runtime::Logger;
-use super::runtime::emit_task_result_lines;
 use super::types::{Output, TaskRecorder, TaskStatus};
 use crate::tasks::Domain;
 
@@ -24,8 +23,6 @@ enum LogEntry {
     DryRun(String),
     /// An always-visible entry.
     Always(String),
-    /// A compact task-result entry (console-only).
-    TaskResult(String),
 }
 
 impl LogEntry {
@@ -42,26 +39,37 @@ impl LogEntry {
             Self::Error(msg) => tracing::error!("{msg}"),
             Self::DryRun(msg) => tracing::info!(target: "dotfiles::dry_run", "{msg}"),
             Self::Always(msg) => tracing::info!(target: "dotfiles::always", "{msg}"),
-            Self::TaskResult(msg) => tracing::info!(target: "dotfiles::task_result", "{msg}"),
         }
     }
 
     fn detail_line(&self) -> Option<String> {
         match self {
             Self::Info(msg) | Self::DryRun(msg) | Self::Always(msg) => Some(msg.clone()),
-            Self::Stage(_)
-            | Self::Debug(_)
-            | Self::Warn(_)
-            | Self::Error(_)
-            | Self::TaskResult(_) => None,
+            Self::Stage(_) | Self::Debug(_) | Self::Warn(_) | Self::Error(_) => None,
         }
     }
 
-    fn replay_detail_file_only(&self) {
-        if let Some(msg) = self.detail_line() {
-            tracing::info!(target: "dotfiles::file_only", "{msg}");
-        } else {
-            self.replay();
+    fn replay_file_only(&self) {
+        match self {
+            Self::Stage(msg) => tracing::info!(target: "dotfiles::file_only_stage", "{msg}"),
+            Self::Info(msg) => {
+                tracing::info!(target: "dotfiles::file_only", "{msg}");
+            }
+            Self::Debug(msg) => tracing::info!(target: "dotfiles::file_only_debug", "{msg}"),
+            Self::Warn(msg) => tracing::info!(target: "dotfiles::file_only_warn", "{msg}"),
+            Self::Error(msg) => tracing::info!(target: "dotfiles::file_only_error", "{msg}"),
+            Self::DryRun(msg) | Self::Always(msg) => {
+                tracing::info!(target: "dotfiles::file_only", "{msg}");
+            }
+        }
+    }
+
+    fn replay_non_verbose(&self) {
+        match self {
+            Self::Stage(_) | Self::Info(_) | Self::Debug(_) | Self::DryRun(_) | Self::Always(_) => {
+                self.replay_file_only();
+            }
+            Self::Warn(_) | Self::Error(_) => self.replay(),
         }
     }
 }
@@ -127,14 +135,7 @@ impl BufferedLog {
             }
         } else {
             for entry in &entries {
-                if matches!(entry, LogEntry::TaskResult(_)) {
-                    entry.replay();
-                }
-            }
-            for entry in &entries {
-                if !matches!(entry, LogEntry::TaskResult(_)) {
-                    entry.replay();
-                }
+                entry.replay_non_verbose();
             }
         }
     }
@@ -146,11 +147,10 @@ impl BufferedLog {
     /// After replaying the buffered entries, updates the active task display
     /// by delegating to [`Logger::notify_task_done`].
     ///
-    /// In non-verbose mode skipped/failed task-result lines are replayed before
-    /// other output. Details for changed and dry-run tasks are written to the log
-    /// file only; they are rendered once in the final summary instead.
+    /// In non-verbose mode task output is written to the log file only. The
+    /// durable console task list is rendered once in the final grouped summary.
     #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
-    pub fn flush_and_complete(&self, task_name: &str, status: TaskStatus) {
+    pub fn flush_and_complete(&self, task_name: &str, _status: TaskStatus) {
         {
             let _guard = self.inner.flush_lock.lock().unwrap_or_else(|e| {
                 eprintln!("warning: flush lock was poisoned, recovering");
@@ -171,27 +171,8 @@ impl BufferedLog {
                     entry.replay();
                 }
             } else {
-                if status == TaskStatus::Skipped
-                    && self.inner.should_emit_task_result_section(status)
-                {
-                    tracing::info!(target: "dotfiles::task_result", "\x1b[1mSkipped\x1b[0m");
-                }
-                // Replay skipped/failed task-result header(s) first.
                 for entry in &entries {
-                    if matches!(entry, LogEntry::TaskResult(_)) {
-                        entry.replay();
-                    }
-                }
-                for entry in &entries {
-                    if !matches!(entry, LogEntry::TaskResult(_)) {
-                        if matches!(status, TaskStatus::Changed | TaskStatus::DryRun)
-                            && entry.detail_line().is_some()
-                        {
-                            entry.replay_detail_file_only();
-                        } else {
-                            entry.replay();
-                        }
-                    }
+                    entry.replay_non_verbose();
                 }
             }
         }
@@ -208,19 +189,10 @@ impl Output for BufferedLog {
         error   => Error   => Error,
         dry_run => DryRun  => DryRun,
         always  => Always  => Info,
-        task_result => TaskResult => Info,
-    }
-
-    fn is_verbose(&self) -> bool {
-        self.inner.is_verbose()
     }
 
     fn diagnostic(&self) -> Option<&DiagnosticLog> {
         self.inner.diagnostic.as_ref()
-    }
-
-    fn emit_task_result(&self, name: &str, status: TaskStatus, message: Option<&str>) {
-        emit_task_result_lines(self, name, status, message);
     }
 }
 
@@ -241,6 +213,7 @@ mod tests {
     use super::*;
     use crate::logging::isolated_logger;
     use std::fs;
+    use std::sync::Arc;
 
     #[test]
     fn buffered_log_record_task_forwards_to_logger() {
@@ -367,6 +340,74 @@ mod tests {
         assert!(contents.contains(&format!("all-debug-{pid}")));
     }
 
+    #[derive(Clone, Debug)]
+    struct TargetCaptureLayer {
+        targets: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl<S> tracing_subscriber::Layer<S> for TargetCaptureLayer
+    where
+        S: tracing::Subscriber,
+    {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            self.targets
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(event.metadata().target().to_string());
+        }
+    }
+
+    #[test]
+    fn non_verbose_replay_only_demotes_verbose_detail_entries() {
+        use tracing_subscriber::layer::SubscriberExt as _;
+
+        let targets = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry().with(TargetCaptureLayer {
+            targets: Arc::clone(&targets),
+        });
+        let dispatch = tracing::Dispatch::new(subscriber);
+        let _guard = crate::logging::test_dispatch_guard(&dispatch);
+
+        for entry in [
+            LogEntry::Stage("stage".to_string()),
+            LogEntry::Info("info".to_string()),
+            LogEntry::Debug("debug".to_string()),
+            LogEntry::Warn("warn".to_string()),
+            LogEntry::Error("error".to_string()),
+            LogEntry::DryRun("dry-run".to_string()),
+            LogEntry::Always("always".to_string()),
+        ] {
+            entry.replay_non_verbose();
+        }
+
+        let targets = targets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert_eq!(targets[0], "dotfiles::file_only_stage");
+        assert_eq!(targets[1], "dotfiles::file_only");
+        assert_eq!(targets[2], "dotfiles::file_only_debug");
+        assert!(
+            !targets.contains(&"dotfiles::dry_run".to_string()),
+            "dry-run task details should be deferred to the summary in non-verbose replay: {targets:?}"
+        );
+        assert!(
+            !targets.contains(&"dotfiles::always".to_string()),
+            "always task details should be deferred to the summary in non-verbose replay: {targets:?}"
+        );
+        assert!(
+            !targets.iter().any(|target| matches!(
+                target.as_str(),
+                "dotfiles::file_only_warn" | "dotfiles::file_only_error"
+            )),
+            "warnings and errors must not be demoted to file-only replay: {targets:?}"
+        );
+    }
+
     #[test]
     fn buffered_log_diagnostic_returns_inner_diag() {
         let (log, _tmp, _guard) = isolated_logger();
@@ -465,7 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn non_verbose_dry_run_flush_writes_detail_file_only() {
+    fn non_verbose_dry_run_flush_keeps_detail_in_persistent_log() {
         let (mut log, _tmp, _guard) = isolated_logger();
         log.set_verbose(false);
         let log = Arc::new(log);
@@ -491,7 +532,11 @@ mod tests {
         );
         assert!(
             !contents.contains("[dry-run]"),
-            "non-verbose dry-run detail replay should use file-only output, not the live dry-run target\nlog:\n{contents}"
+            "dry-run detail replay should not add a redundant dry-run tag\nlog:\n{contents}"
+        );
+        assert!(
+            contents.contains("] [Configure Copilot] [info] would configure beep = true"),
+            "dry-run detail replay should use the info text level in the persistent log\nlog:\n{contents}"
         );
     }
 }

@@ -172,12 +172,15 @@ where
         }
 
         let ts = format_utc_time();
-        let level_label = level_label(level, target);
         let context = task_name.map_or_else(String::new, |name| format!(" [{name}]"));
-        let prefix = format!("[{ts}] [{level_label}]{context}");
+        let level_label = log_level_label(level, target);
+        let prefix = format!("[{ts}]{context} [{level_label}]");
 
         let line = match (level, target) {
             (tracing::Level::INFO, "dotfiles::stage") => format!("{prefix} ==> {msg}"),
+            (tracing::Level::INFO, "dotfiles::file_only_stage") => {
+                format!("{prefix} ==> {msg}")
+            }
             (tracing::Level::INFO, "dotfiles::phase") => {
                 format!("{prefix} :: {msg}")
             }
@@ -190,15 +193,15 @@ where
     }
 }
 
-fn level_label(level: tracing::Level, target: &str) -> &'static str {
+fn log_level_label(level: tracing::Level, target: &str) -> &'static str {
     match (level, target) {
-        (tracing::Level::INFO, "dotfiles::stage") => "stage",
-        (tracing::Level::INFO, "dotfiles::phase") => "phase",
-        (tracing::Level::INFO, "dotfiles::dry_run") => "dry-run",
-        (tracing::Level::ERROR, _) => "error",
-        (tracing::Level::WARN, _) => "warn",
-        (tracing::Level::DEBUG, "dotfiles::exec") => "command",
-        (tracing::Level::DEBUG, _) => "debug",
+        (tracing::Level::INFO, "dotfiles::file_only_error") | (tracing::Level::ERROR, _) => "error",
+        (tracing::Level::INFO, "dotfiles::file_only_warn") | (tracing::Level::WARN, _) => "warn",
+        (tracing::Level::INFO, "dotfiles::file_only_debug") | (tracing::Level::DEBUG, _) => "debug",
+        (
+            tracing::Level::INFO,
+            "dotfiles::stage" | "dotfiles::file_only_stage" | "dotfiles::phase",
+        ) => "stage",
         (tracing::Level::INFO, _) => "info",
         (tracing::Level::TRACE, _) => "trace",
     }
@@ -247,6 +250,7 @@ where
         let msg = &extractor.message;
 
         match level {
+            _ if target.starts_with("dotfiles::file_only") => Ok(()),
             tracing::Level::ERROR => writeln!(writer, "\x1b[31mERROR\x1b[0m {msg}"),
             tracing::Level::WARN => writeln!(writer, "\x1b[33mWARN\x1b[0m  {msg}"),
             tracing::Level::INFO if target == "dotfiles::always" => {
@@ -255,7 +259,6 @@ where
             tracing::Level::INFO if target == "dotfiles::task_result" => {
                 writeln!(writer, "{msg}")
             }
-            tracing::Level::INFO if target == "dotfiles::file_only" => Ok(()),
             tracing::Level::INFO if target == "dotfiles::stage" => {
                 if VERBOSE.load(Ordering::Relaxed) {
                     writeln!(writer, "\x1b[1m{msg}\x1b[0m")
@@ -409,29 +412,29 @@ mod tests {
     }
 
     #[test]
-    fn file_layer_formats_error_tag() {
+    fn file_layer_formats_error_level_label() {
         let (path, _tmp, _guard) = isolated_file_layer();
         tracing::error!("something broke");
         let content = fs::read_to_string(&path).unwrap();
         assert!(
             content.contains("[error] something broke"),
-            "error should have [error] tag: {content}"
+            "error should have text level label: {content}"
         );
     }
 
     #[test]
-    fn file_layer_formats_warn_tag() {
+    fn file_layer_formats_warn_level_label() {
         let (path, _tmp, _guard) = isolated_file_layer();
         tracing::warn!("careful now");
         let content = fs::read_to_string(&path).unwrap();
         assert!(
             content.contains("[warn] careful now"),
-            "warn should have [warn] tag: {content}"
+            "warn should have text level label: {content}"
         );
     }
 
     #[test]
-    fn file_layer_formats_debug_with_level_tag() {
+    fn file_layer_formats_debug_with_level_label() {
         let (path, _tmp, _guard) = isolated_file_layer();
         tracing::debug!("extra detail");
         let content = fs::read_to_string(&path).unwrap();
@@ -441,12 +444,12 @@ mod tests {
             .unwrap();
         assert!(
             line.contains("[debug]"),
-            "debug should have [debug] tag: {line}"
+            "debug should have text level label: {line}"
         );
     }
 
     #[test]
-    fn file_layer_formats_info_without_special_tag() {
+    fn file_layer_formats_info_with_level_label() {
         let (path, _tmp, _guard) = isolated_file_layer();
         tracing::info!("regular info");
         let content = fs::read_to_string(&path).unwrap();
@@ -454,18 +457,28 @@ mod tests {
             content.contains("regular info"),
             "info message should appear: {content}"
         );
-        // Should NOT have any of the special tags
         let info_line = content
             .lines()
             .find(|l| l.contains("regular info"))
             .unwrap();
         assert!(
-            !info_line.contains("[error]")
-                && !info_line.contains("[warn]")
-                && !info_line.contains("[debug]")
-                && !info_line.contains("[dry run]")
-                && !info_line.contains("==>"),
-            "plain info should have no special tag: {info_line}"
+            info_line.contains("[info]") && !info_line.contains("==>"),
+            "plain info should have text level label and no stage marker: {info_line}"
+        );
+    }
+
+    #[test]
+    fn file_layer_formats_task_context_before_level_label() {
+        let (path, _tmp, _guard) = isolated_file_layer();
+        let span = tracing::info_span!("task", name = "example-task");
+        let _enter = span.enter();
+
+        tracing::info!("task detail");
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("[example-task] [info] task detail"),
+            "task context should precede level label: {content}"
         );
     }
 

@@ -316,7 +316,7 @@ fn resolve_profile(
         platform_label.push_str(" \u{00b7} WSL");
     }
     log.always(&format!(
-        "\x1b[2mversion\x1b[0m \x1b[36m{version}\x1b[0m{updated_label} \x1b[2m\u{00b7} profile\x1b[0m {} \x1b[2m\u{00b7} {platform_label}\x1b[0m",
+        "\x1b[2mversion\x1b[0m {version}{updated_label} \x1b[2m\u{00b7} profile\x1b[0m {} \x1b[2m\u{00b7} {platform_label}\x1b[0m",
         profile.name
     ));
     log.always("");
@@ -514,6 +514,9 @@ pub fn run_tasks_to_completion<'a>(
             let reason = "sudo credentials unavailable";
             phase_tasks.retain(|task| {
                 if task.requires_elevation(ctx) {
+                    let span = tracing::info_span!("task", name = task.name());
+                    let _enter = span.enter();
+                    log.info(&format!("skipped: {reason}"));
                     log.record_task_outcome(
                         task.name(),
                         task.domain(),

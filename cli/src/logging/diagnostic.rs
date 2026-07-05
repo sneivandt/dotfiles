@@ -68,7 +68,7 @@ pub fn diag_thread_name() -> String {
 
 /// Event kinds for the diagnostic log.
 ///
-/// Each variant maps to a short uppercase tag in the log output.
+/// Each variant maps to a stable `snake_case` event name in the log output.
 #[derive(Debug, Clone, Copy)]
 pub enum DiagEvent {
     /// Informational message from a task.
@@ -104,24 +104,24 @@ pub enum DiagEvent {
 }
 
 impl DiagEvent {
-    /// Short tag for the log line.
-    const fn tag(self) -> &'static str {
+    /// Stable event name for the log line.
+    const fn name(self) -> &'static str {
         match self {
-            Self::Info => "INFO",
-            Self::Debug => "DEBUG",
-            Self::Warn => "WARN",
-            Self::Error => "ERROR",
-            Self::Stage => "STAGE",
-            Self::DryRun => "DRYRUN",
-            Self::TaskWait => "TASK_WAIT",
-            Self::TaskStart => "TASK_START",
-            Self::TaskDone => "TASK_DONE",
-            Self::TaskSkip => "TASK_SKIP",
-            Self::TaskFail => "TASK_FAIL",
-            Self::ResourceCheck => "RES_CHECK",
-            Self::ResourceApply => "RES_APPLY",
-            Self::ResourceResult => "RES_RESULT",
-            Self::ResourceRemove => "RES_REMOVE",
+            Self::Info => "info",
+            Self::Debug => "debug",
+            Self::Warn => "warn",
+            Self::Error => "error",
+            Self::Stage => "stage",
+            Self::DryRun => "dry_run",
+            Self::TaskWait => "task_wait",
+            Self::TaskStart => "task_start",
+            Self::TaskDone => "task_done",
+            Self::TaskSkip => "task_skip",
+            Self::TaskFail => "task_fail",
+            Self::ResourceCheck => "resource_check",
+            Self::ResourceApply => "resource_apply",
+            Self::ResourceResult => "resource_result",
+            Self::ResourceRemove => "resource_remove",
         }
     }
 }
@@ -131,7 +131,7 @@ impl DiagEvent {
 /// Unlike the main log file (which replays buffered output per-task and uses
 /// second-precision timestamps), the diagnostic log writes every event
 /// **immediately** with microsecond-precision elapsed time from program start,
-/// the originating thread name, and an event kind tag.  This makes it possible
+/// the originating task/thread context, and the event kind. This makes it possible
 /// to reconstruct the true interleaved timeline of parallel execution.
 ///
 /// Written to `$XDG_CACHE_HOME/dotfiles/<command>.diag.log`.
@@ -176,17 +176,27 @@ impl DiagnosticLog {
     /// Emit a diagnostic event.
     ///
     /// Each line is:
-    /// `<seq> +<elapsed_us> <wall_utc_us> [<context>] <TAG> <message>`
+    /// `<seq> +<elapsed_us> <wall_utc_us> [<context>] [<event>] <message>`
     ///
     /// ANSI escape sequences are stripped from the message. The context comes
     /// from the current task context when one is set, otherwise from the OS
-    /// thread name when available (e.g. `"main"`).
+    /// thread name when available (e.g. `"main"`). Blank messages are omitted.
     pub fn emit(&self, event: DiagEvent, message: &str) {
         self.emit_with_context(event, &diag_thread_name(), message);
     }
 
     /// Emit a diagnostic event with an explicit context name.
     fn emit_with_context(&self, event: DiagEvent, context: &str, message: &str) {
+        let clean = strip_ansi(message);
+        let formatted_message = clean
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join(" | ");
+        if formatted_message.is_empty() {
+            return;
+        }
         let Ok(mut f) = self.file.lock() else {
             return;
         };
@@ -197,9 +207,10 @@ impl DiagnosticLog {
         let elapsed = self.start.elapsed();
         let elapsed_us = elapsed.as_micros();
         let wall = format_utc_datetime_us();
-        let tag = event.tag();
-        let clean = strip_ansi(message);
-        let line = format!("{seq:06} +{elapsed_us:>12} {wall} [{context}] {tag:<12} {clean}\n");
+        let event_name = event.name();
+        let line = format!(
+            "{seq:06} +{elapsed_us:>12} {wall} [{context}] [{event_name}] {formatted_message}\n"
+        );
         drop(f.write_all(line.as_bytes()));
     }
 
@@ -251,7 +262,7 @@ mod tests {
             "diagnostic log should start with header"
         );
         assert!(
-            contents.contains("seq | elapsed_us"),
+            contents.contains("seq | elapsed_us | wall_utc | context | event | message"),
             "header should describe columns"
         );
     }
@@ -267,8 +278,27 @@ mod tests {
             "diagnostic event should appear in diag log"
         );
         assert!(
-            contents.contains("INFO"),
-            "diagnostic event should have INFO tag"
+            contents.contains("[info]"),
+            "diagnostic event should include info event name"
+        );
+    }
+
+    #[test]
+    fn diagnostic_event_appears_after_context_without_padding() {
+        let (diag, _tmp) = isolated_diag_log();
+        diag.emit(DiagEvent::Warn, "event-order");
+        let contents = fs::read_to_string(diag.path()).unwrap();
+        let line = contents
+            .lines()
+            .find(|l| l.contains("event-order"))
+            .unwrap();
+        assert!(
+            line.contains("] [warn] event-order"),
+            "event should be bracketed immediately before the message: {line}"
+        );
+        assert!(
+            !line.contains("[warn]  event-order"),
+            "event column should not add padding after the closing bracket: {line}"
         );
     }
 
@@ -296,21 +326,21 @@ mod tests {
             "diagnostic task event should include task name in brackets"
         );
         assert!(
-            contents.contains("TASK_START"),
-            "diagnostic task event should have TASK_START tag"
+            contents.contains("deps satisfied"),
+            "diagnostic task event should include the message"
         );
     }
 
     #[test]
-    fn diagnostic_resource_events_have_correct_tags() {
+    fn diagnostic_resource_events_include_messages() {
         let (diag, _tmp) = isolated_diag_log();
         diag.emit(DiagEvent::ResourceCheck, "~/.bashrc state=Missing");
         diag.emit(DiagEvent::ResourceApply, "link ~/.bashrc");
         diag.emit(DiagEvent::ResourceResult, "~/.bashrc applied");
         let contents = fs::read_to_string(diag.path()).unwrap();
-        assert!(contents.contains("RES_CHECK"));
-        assert!(contents.contains("RES_APPLY"));
-        assert!(contents.contains("RES_RESULT"));
+        assert!(contents.contains("~/.bashrc state=Missing"));
+        assert!(contents.contains("link ~/.bashrc"));
+        assert!(contents.contains("~/.bashrc applied"));
     }
 
     #[test]
@@ -329,49 +359,16 @@ mod tests {
     }
 
     #[test]
-    fn diag_event_tag_info() {
-        assert_eq!(DiagEvent::Info.tag(), "INFO");
-    }
-
-    #[test]
-    fn diag_event_tag_debug() {
-        assert_eq!(DiagEvent::Debug.tag(), "DEBUG");
-    }
-
-    #[test]
-    fn diag_event_tag_warn() {
-        assert_eq!(DiagEvent::Warn.tag(), "WARN");
-    }
-
-    #[test]
-    fn diag_event_tag_error() {
-        assert_eq!(DiagEvent::Error.tag(), "ERROR");
-    }
-
-    #[test]
-    fn diag_event_tag_stage() {
-        assert_eq!(DiagEvent::Stage.tag(), "STAGE");
-    }
-
-    #[test]
-    fn diag_event_tag_dry_run() {
-        assert_eq!(DiagEvent::DryRun.tag(), "DRYRUN");
-    }
-
-    #[test]
-    fn diag_event_tag_task_events() {
-        assert_eq!(DiagEvent::TaskWait.tag(), "TASK_WAIT");
-        assert_eq!(DiagEvent::TaskStart.tag(), "TASK_START");
-        assert_eq!(DiagEvent::TaskDone.tag(), "TASK_DONE");
-        assert_eq!(DiagEvent::TaskSkip.tag(), "TASK_SKIP");
-    }
-
-    #[test]
-    fn diag_event_tag_resource_events() {
-        assert_eq!(DiagEvent::ResourceCheck.tag(), "RES_CHECK");
-        assert_eq!(DiagEvent::ResourceApply.tag(), "RES_APPLY");
-        assert_eq!(DiagEvent::ResourceResult.tag(), "RES_RESULT");
-        assert_eq!(DiagEvent::ResourceRemove.tag(), "RES_REMOVE");
+    fn diag_event_names_are_stable_snake_case() {
+        assert_eq!(DiagEvent::Debug.name(), "debug");
+        assert_eq!(DiagEvent::Info.name(), "info");
+        assert_eq!(DiagEvent::Stage.name(), "stage");
+        assert_eq!(DiagEvent::TaskStart.name(), "task_start");
+        assert_eq!(DiagEvent::TaskDone.name(), "task_done");
+        assert_eq!(DiagEvent::ResourceApply.name(), "resource_apply");
+        assert_eq!(DiagEvent::Warn.name(), "warn");
+        assert_eq!(DiagEvent::Error.name(), "error");
+        assert_eq!(DiagEvent::TaskFail.name(), "task_fail");
     }
 
     #[test]
@@ -410,18 +407,40 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_emit_task_empty_message() {
+    fn diagnostic_omits_blank_messages() {
         let (diag, _tmp) = isolated_diag_log();
         diag.emit_task(DiagEvent::TaskDone, "task-name", "");
+        diag.emit(DiagEvent::Debug, "   \t");
+        diag.emit(DiagEvent::Info, "after blanks");
         let contents = fs::read_to_string(diag.path()).unwrap();
         assert!(
-            contents.contains("[task-name]"),
-            "should contain [task-name]"
+            !contents.contains("[task-name]"),
+            "empty diagnostic messages should be omitted"
         );
-        assert!(contents.contains("TASK_DONE"), "should contain event tag");
         assert!(
-            contents.lines().any(|line| line.ends_with("TASK_DONE    ")),
-            "should not have trailing space"
+            contents
+                .lines()
+                .any(|line| line.starts_with("000001 ") && line.contains("after blanks")),
+            "blank diagnostic messages should not consume sequence numbers"
+        );
+    }
+
+    #[test]
+    fn diagnostic_collapses_multiline_message_without_blank_lines() {
+        let (diag, _tmp) = isolated_diag_log();
+        diag.emit(DiagEvent::Info, "first\n\n  second  ");
+        let contents = fs::read_to_string(diag.path()).unwrap();
+        let line = contents
+            .lines()
+            .find(|line| line.contains("first"))
+            .unwrap();
+        assert!(
+            line.ends_with("first | second"),
+            "multiline diagnostic messages should be collapsed: {line}"
+        );
+        assert!(
+            !contents.lines().any(str::is_empty),
+            "diagnostic log should not contain blank lines"
         );
     }
 

@@ -37,16 +37,16 @@ debug messages are **always** written to the log file regardless.
 `ctx.log` is an `Arc<dyn Log>`. The `Log` trait is composed from two sub-traits:
 
 - **`Output`** — user-facing display methods (`stage`, `info`, `debug`, `warn`,
-  `error`, `dry_run`, `always`, `task_result`, `emit_task_result`, `is_verbose`,
-  `diagnostic`)
+  `error`, `dry_run`, `always`, `diagnostic`)
 - **`TaskRecorder`** — structured task result recording (`record_task`)
 
 `Log` is defined as `Log: Output + TaskRecorder` with a blanket implementation
 (`impl<T: Output + TaskRecorder> Log for T {}`), so concrete types only implement
 the two sub-traits.
 
-Both `Logger` (sequential) and `BufferedLog` (parallel) implement `Output` and
-`TaskRecorder`, and therefore automatically implement `Log`.
+Both `Logger` (top-level/direct output) and `BufferedLog` (scheduler-owned task
+output) implement `Output` and `TaskRecorder`, and therefore automatically
+implement `Log`.
 
 **When to use each trait:**
 - Accept `&dyn Log` (or `Arc<dyn Log>`) when you need both display and task
@@ -55,17 +55,14 @@ Both `Logger` (sequential) and `BufferedLog` (parallel) implement `Output` and
   (e.g., `resolve_profile()`, `load_config()`).
 
 ```rust
-ctx.log.stage(msg);       // Bold blue "==>" header (verbose-only on console)
+ctx.log.stage(msg);       // Bold stage header on console; "==>" in main log
 ctx.log.info(msg);        // Indented message (verbose-only on console)
 ctx.log.debug(msg);       // Only when verbose=true on terminal
 ctx.log.warn(msg);        // Yellow to stderr
 ctx.log.error(msg);       // Red to stderr
 ctx.log.dry_run(msg);     // Dry-run preview line
 ctx.log.always(msg);      // Always visible on console AND log file
-ctx.log.task_result(msg);  // Always visible on console, omitted from log file
-ctx.log.emit_task_result(name, &status, message);  // Formatted task-result line
-ctx.log.is_verbose();     // Check current verbose mode
-ctx.log.record_task(name, phase, status, message);  // Record task result for summary
+ctx.log.record_task(name, domain, status, message);  // Record task result for summary
 ctx.log.diagnostic();     // Access high-precision diagnostic log (if available)
 ```
 
@@ -75,11 +72,9 @@ e.g. `install.log`, `uninstall.log`, `test.log`) with timestamps and ANSI codes
 stripped. On Windows, when `XDG_CACHE_HOME` is not set, the path falls back to
 `%USERPROFILE%\.cache\dotfiles\<command>.log`. The log file is always written
 in verbose mode — all messages appear regardless of the console verbose flag.
-The main and diagnostic log paths are recorded in the log file summary but are
-not printed to the console during routine successful runs.
 
 | Method | Console (verbose) | Console (non-verbose) | Log file |
-|--------|-------------------|----------------------|----------|
+|--------|-------------------|-----------------------|----------|
 | `stage` | Shown | Suppressed | Always |
 | `info` | Shown | Suppressed | Always |
 | `debug` | Shown | Suppressed | Always |
@@ -87,7 +82,12 @@ not printed to the console during routine successful runs.
 | `error` | Shown | Shown | Always |
 | `dry_run` | Shown | Shown | Always |
 | `always` | Shown | Shown | Always |
-| `task_result` | Shown | Shown | Omitted |
+
+Task output is buffered by the scheduler. In non-verbose mode, buffered
+`stage`, `info`, `debug`, `dry_run`, and `always` entries are replayed to the
+main log only and surfaced through the final grouped summary when the task
+status is shown. `warn` and `error` entries remain console-visible immediately
+when the task buffer flushes.
 
 ## Task Recording & Summary
 
@@ -95,28 +95,27 @@ not printed to the console during routine successful runs.
 
 ```rust
 pub fn execute(task: &dyn Task, ctx: &Context) {
+    let domain = task.domain();
     if let Some(decision) = evaluate_policy(task, ctx) {
-        record_policy_decision(ctx, task.name(), task.phase(), decision);
+        record_policy_decision(ctx, task.name(), domain, decision);
         return;
     }
     if !task.should_run(ctx) {
-        ctx.log.record_task(task.name(), task.phase(), TaskStatus::NotApplicable, None);
+        ctx.log.record_task(task.name(), domain, TaskStatus::NotApplicable, None);
         return;
     }
     match task.run_if_applicable(ctx) {
-        Ok(Some(TaskResult::Ok)) => ctx.log.record_task(task.name(), task.phase(), TaskStatus::Ok, None),
-        Ok(None) => ctx.log.record_task(task.name(), task.phase(), TaskStatus::NotApplicable, None),
+        Ok(Some(TaskResult::Ok)) => ctx.log.record_task(task.name(), domain, TaskStatus::Ok, None),
+        Ok(None) => ctx.log.record_task(task.name(), domain, TaskStatus::NotApplicable, None),
         // ... Skipped, DryRun, Err handled similarly
     }
 }
 ```
 
-`log.print_summary()` shows totals at end of run. In verbose mode the console
-summary includes a full per-task breakdown grouped by phase; in non-verbose mode
-the console shows only totals (individual results were already emitted inline as
-tasks completed). The persistent log file always receives the full per-task
-breakdown and the paths to the main and diagnostic logs. Don't call
-`record_task` inside tasks.
+`log.print_summary()` shows totals at end of run. The console summary includes
+grouped changed/skipped/failed/dry-run sections when those sections have entries;
+the persistent log file already contains each task's replayed stage/detail output
+and receives the final totals. Don't call `record_task` inside tasks.
 
 ## Pattern in Task::run()
 
@@ -142,21 +141,22 @@ fn run(&self, ctx: &Context) -> Result<TaskResult> {
 ## Verbose vs Non-Verbose Mode
 
 When `verbose=false`:
-- `stage` and `info` messages are suppressed on the console
-- `tasks::execute()` emits compact inline task-result lines via `emit_task_result()`
-- The summary shows only totals (no per-phase task breakdown)
-- The progress line shows a count ("3 tasks running…") instead of task names
+- `stage`, `info`, and `debug` messages are suppressed on the console
+- `warn`, `error`, `dry_run`, and `always` messages stay visible on the console
+  for direct `Logger` output; task-buffered `dry_run`/`always` details are
+  deferred to the final summary
+- The summary shows totals plus grouped changed/skipped/failed/dry-run sections
+- The progress line shows the first few task names plus a remaining count
 
 When `verbose=true`:
 - All messages appear on the console as usual
-- The summary includes a full per-task breakdown grouped by phase
+- The summary includes grouped changed/skipped/failed/dry-run sections
 - The progress line shows individual task names
 
 The **log file** always receives full output regardless of the verbose setting.
-The **`task_result`** target is console-only and never written to the log file
-(since the `stage` headers and detail lines already provide this information in
-the file). The **`file_only`** target is the inverse: written to the log file but
-suppressed on the console.
+The **`task_result`** target is internal to summary rendering and never written
+to the log file. The **`file_only`** target is the inverse: written to the log
+file but suppressed on the console.
 
 ## Rules
 
@@ -164,19 +164,18 @@ suppressed on the console.
 2. Use `debug` for per-item detail; `info` for summary counts
 3. Use `always` for structural output that must appear regardless of verbose mode
    (version, profile, summary totals)
-4. Use `task_result` (via `emit_task_result`) for inline task completion lines
-   (console-only)
-5. Check `ctx.dry_run` before side effects; use `ctx.log.dry_run()` for preview
-6. Return `TaskResult::DryRun` in dry-run mode
-7. Task recording is automatic via `tasks::execute()` — don't call `record_task` in tasks
+4. Check `ctx.dry_run` before side effects; use `ctx.log.dry_run()` for preview
+5. Return `TaskResult::DryRun` in dry-run mode
+6. Task recording is automatic via `tasks::execute()` — don't call `record_task` in tasks
 
-## Parallel Task Logging
+## Buffered Task Logging
 
-When parallel execution is enabled, each task receives a `BufferedLog` that
-captures output in memory while the task runs.
+Each scheduler-dispatched task receives a `BufferedLog` that captures output in
+memory while the task runs. This is used in both parallel execution and the
+`--no-parallel` sequential fallback so task headers/details render consistently.
 
-- **On task start**: `Logger::notify_task_start(name)` adds the task name to
-  the active set and prints a dim status line (`▹ task1, task2, ...`)
+- **On parallel task start**: `Logger::notify_task_start(name)` adds the task
+  name to the active set and prints a dim status line (`▹ task1, task2, ...`)
 - **On task complete**: `BufferedLog::flush_and_complete(name)` atomically
   replays all buffered entries (stage, info, debug, etc.) to the real Logger,
   removes the task from the active set, and prints the updated status line
@@ -196,11 +195,13 @@ that captures every event **immediately** with microsecond wall-clock timestamps
 including real-time interleaving of parallel tasks (unlike the main log, which
 replays buffered output per-task).
 
-Each line: `<seq> +<elapsed_us> <wall_utc_us> [<context>] <TAG>  <message>`
+Each line: `<seq> +<elapsed_us> <wall_utc_us> [<context>] [<event>] <message>`
 
-Key tags: `STAGE`, `INFO`, `DEBUG`, `WARN`, `ERROR`, `DRYRUN`, `TASK_WAIT`,
-`TASK_START`, `TASK_DONE`, `TASK_SKIP`, `RES_CHECK`, `RES_APPLY`,
-`RES_RESULT`, `RES_REMOVE`.
+The event column records stable snake_case names like `[debug]`, `[task_done]`,
+and `[resource_check]` without width padding after the bracket. The message
+column records logger output, task scheduling state, and resource processing
+details. Empty messages are omitted, and multiline messages are collapsed onto
+one line so diagnostic logs do not contain blank rows.
 
 Emit events via:
 

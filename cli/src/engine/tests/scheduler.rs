@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::Result;
 
 use super::*;
+use crate::logging::{Output, TaskRecorder};
 use crate::tasks::test_helpers::{ContextBuilder, empty_config, make_static_context};
 use crate::tasks::{TaskResult, task_deps};
 
@@ -252,6 +253,110 @@ fn sequential_runner_skips_dependents_when_dependency_fails() {
             .iter()
             .any(|e| e.name == "dep-on-failed" && e.status == TaskStatus::Skipped),
         "dependent task should be recorded as Skipped"
+    );
+}
+
+#[test]
+fn sequential_runner_records_panics_as_failures() {
+    let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
+    let ran = Arc::new(AtomicBool::new(false));
+    let panic_task = PanicTask;
+    let dep_task = DepOnPanicTask {
+        ran: Arc::clone(&ran),
+    };
+    let tasks: Vec<&dyn Task> = vec![&panic_task, &dep_task];
+    let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
+
+    run_tasks_sequential(&tasks, &graph, &ctx, &log);
+
+    assert!(
+        !ran.load(Ordering::SeqCst),
+        "dependent task should not have run"
+    );
+    let entries = log.task_entries();
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.name == "panic-task" && e.status == TaskStatus::Failed),
+        "panicked task should be recorded as Failed"
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.name == "dep-on-panic" && e.status == TaskStatus::Skipped),
+        "dependent task should be recorded as Skipped"
+    );
+}
+
+#[test]
+fn dependency_block_reason_is_emitted_as_log_detail() {
+    #[derive(Default)]
+    struct RecordingLog {
+        info_lines: std::sync::Mutex<Vec<String>>,
+        records: std::sync::Mutex<Vec<TaskStatus>>,
+    }
+
+    impl Output for RecordingLog {
+        fn stage(&self, _msg: &str) {}
+
+        fn info(&self, msg: &str) {
+            self.info_lines
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(msg.to_string());
+        }
+
+        fn debug(&self, _msg: &str) {}
+
+        fn warn(&self, _msg: &str) {}
+
+        fn error(&self, _msg: &str) {}
+
+        fn dry_run(&self, _msg: &str) {}
+
+        fn always(&self, _msg: &str) {}
+    }
+
+    impl TaskRecorder for RecordingLog {
+        fn record_task(
+            &self,
+            _name: &str,
+            _domain: tasks::Domain,
+            status: TaskStatus,
+            _message: Option<&str>,
+        ) {
+            self.records
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(status);
+        }
+    }
+
+    let log = RecordingLog::default();
+    let ran = Arc::new(AtomicBool::new(false));
+    let task = DepOnFailedTask { ran };
+
+    record_dependency_block(&task, &log);
+
+    let info_lines = log
+        .info_lines
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    assert!(
+        info_lines
+            .iter()
+            .any(|line| line == "skipped: dependency failed"),
+        "dependency skip reason should be emitted as an info log detail: {info_lines:?}"
+    );
+    let records = log
+        .records
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    assert!(
+        records.contains(&TaskStatus::Skipped),
+        "dependency block should still record a skipped task"
     );
 }
 

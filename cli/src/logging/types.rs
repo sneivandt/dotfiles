@@ -69,23 +69,6 @@ pub trait Output: Send + Sync {
     /// Log a message that always appears on the console regardless of verbose
     /// setting.  Used for structural output (version, profile, summary).
     fn always(&self, msg: &str);
-    /// Log a compact task-result line (console-only, omitted from the log file).
-    fn task_result(&self, msg: &str);
-    /// Whether verbose output mode is enabled.
-    ///
-    /// When `false`, stage headers and plain info messages are suppressed on
-    /// the console and replaced by compact inline task-result lines.
-    fn is_verbose(&self) -> bool {
-        true
-    }
-    /// Emit a compact inline task-result line.
-    ///
-    /// Default implementation formats icon + name + optional detail and
-    /// routes through [`always`](Self::always).  `NotApplicable` tasks are
-    /// silently ignored.
-    fn emit_task_result(&self, name: &str, status: TaskStatus, message: Option<&str>) {
-        crate::logging::runtime::emit_task_result_lines(self, name, status, message);
-    }
     /// Return whether debug logging is currently active on this thread.
     ///
     /// This intentionally avoids `tracing::enabled!`, which can leave stale
@@ -149,7 +132,7 @@ pub trait TaskRecorder: Send + Sync {
 /// sub-traits, so concrete types only need to implement [`Output`] and
 /// [`TaskRecorder`].
 pub trait Log: Output + TaskRecorder {
-    /// Record a task outcome and emit notable non-verbose result lines.
+    /// Record a task outcome for the final grouped summary.
     fn record_task_outcome(
         &self,
         name: &str,
@@ -158,9 +141,6 @@ pub trait Log: Output + TaskRecorder {
         message: Option<&str>,
     ) {
         self.record_task(name, domain, status, message);
-        if !self.is_verbose() && matches!(status, TaskStatus::Skipped | TaskStatus::Failed) {
-            self.emit_task_result(name, status, message);
-        }
     }
 }
 
@@ -176,6 +156,36 @@ impl<T: Output + TaskRecorder> Log for T {}
 mod tests {
     use super::*;
     use crate::tasks::TaskPhase;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Default)]
+    struct RecordingLog {
+        records: AtomicUsize,
+    }
+
+    macro_rules! no_op_output_methods {
+        ($($method:ident),+ $(,)?) => {
+            $(
+                fn $method(&self, _msg: &str) {}
+            )+
+        };
+    }
+
+    impl Output for RecordingLog {
+        no_op_output_methods!(stage, info, debug, warn, error, dry_run, always);
+    }
+
+    impl TaskRecorder for RecordingLog {
+        fn record_task(
+            &self,
+            _name: &str,
+            _domain: Domain,
+            _status: TaskStatus,
+            _message: Option<&str>,
+        ) {
+            self.records.fetch_add(1, Ordering::SeqCst);
+        }
+    }
 
     #[test]
     fn task_status_equality() {
@@ -186,6 +196,20 @@ mod tests {
         assert_ne!(TaskStatus::Changed, TaskStatus::Ok);
         assert_ne!(TaskStatus::Skipped, TaskStatus::DryRun);
         assert_ne!(TaskStatus::NotApplicable, TaskStatus::Ok);
+    }
+
+    #[test]
+    fn record_task_outcome_does_not_emit_inline_task_result() {
+        let log = RecordingLog::default();
+
+        log.record_task_outcome(
+            "skipped-task",
+            Domain::General,
+            TaskStatus::Skipped,
+            Some("not needed"),
+        );
+
+        assert_eq!(log.records.load(Ordering::SeqCst), 1);
     }
 
     #[test]

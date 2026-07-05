@@ -102,7 +102,7 @@ impl Logger {
             names.push_str(&remaining.to_string());
             names.push_str(" more");
         }
-        format!("{names}\u{2026}")
+        format!("{names} \u{2026}")
     }
 }
 
@@ -133,7 +133,7 @@ mod tests {
         log.verbose = false;
         assert_eq!(
             log.format_active(&["only-task".to_string()]),
-            "only-task\u{2026}",
+            "only-task \u{2026}",
             "a single active task should be named directly"
         );
     }
@@ -144,7 +144,7 @@ mod tests {
         log.verbose = false;
         assert_eq!(
             log.format_active(&["task-a".to_string(), "task-b".to_string()]),
-            "task-a, task-b\u{2026}",
+            "task-a, task-b \u{2026}",
             "multiple active tasks should show task names"
         );
     }
@@ -161,7 +161,7 @@ mod tests {
                 "task-d".to_string(),
                 "task-e".to_string()
             ]),
-            "task-a, task-b, task-c, +2 more\u{2026}",
+            "task-a, task-b, task-c, +2 more \u{2026}",
             "more than three active tasks should show first names plus overflow count"
         );
     }

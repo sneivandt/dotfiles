@@ -282,15 +282,15 @@ Enable verbose logging to see detailed operation information:
 ```
 
 **Verbose output includes:**
-- Stage headers for each task (`==>` markers)
+- Bold stage headers for each task (the main log renders these with `==>` markers)
 - Per-item detail (symlinks, packages, etc.)
 - Operations being skipped (with reasons)
 - Final summary counts
 
 **Default (non-verbose) output** shows a live progress line while tasks run,
 then a compact summary. Successful no-op tasks are counted as unchanged and are
-not listed individually; only tasks that changed state appear in the final
-changed list.
+not listed individually; tasks that changed state, were skipped, failed, or
+would change state in dry-run mode appear in grouped final sections.
 
 ```
 version v0.1.317 · profile desktop · Arch Linux
@@ -371,7 +371,8 @@ All operations are logged to persistent log files. Use `dotfiles log` (or
 - Installation timestamp
 - Selected profile
 - Structured level and task context for all operations performed
-- Full verbose-level detail (always, regardless of console verbose flag)
+- Full verbose-level detail (always, regardless of console verbose flag),
+  replayed per task when buffered task output flushes
 - Final summary counts
 - Error messages and warnings
 
@@ -384,8 +385,8 @@ A **diagnostic log** is also written alongside the main log:
 - Location: `%USERPROFILE%\.cache\dotfiles\install.diag.log`
 
 The diagnostic log captures every event with sequence numbers,
-microsecond-precision timestamps, and task context, preserving the true
-chronological order of parallel execution. See
+microsecond-precision timestamps, task context, and bracketed event names,
+preserving the true chronological order of parallel execution. See
 [Troubleshooting](TROUBLESHOOTING.md#using-diagnostic-logs) for details on
 reading the diagnostic log.
 
@@ -396,13 +397,13 @@ runs repeating the log path.
 ## Installation Summary
 
 After installation, a summary is displayed. In **non-verbose** mode (default),
-no-op task completions are not printed inline. Skipped tasks are shown once as
-they happen, while the final summary lists tasks that changed state, failed, or
-would change state in dry-run mode, then ends with `Complete`, the runtime, and task
-totals.
+no-op task completions are not printed inline. The final summary lists tasks
+that changed state, were skipped, failed, or would change state in dry-run mode,
+then ends with `Complete`, the runtime, and task totals.
 
-The persistent log file records task output as it happens and ends with the same
-final completion/count lines as the console. Use `dotfiles log` when you need every task result.
+The persistent log file records every task's output, replayed as each buffered
+task completes, and ends with the same final completion/count lines as the
+console. Use `dotfiles log` when you need every task result.
 
 **Example:**
 ```

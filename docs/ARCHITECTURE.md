@@ -359,21 +359,21 @@ This is more expressive than `ctx.platform.is_linux()` because it clearly states
 #### Logging (`logging/`)
 
 Structured logger that:
-- Prints stage headers for each task
+- Prints bold console stage headers for each task (`==>` markers in the main
+  log)
 - Records task outcomes (Ok, Skipped, DryRun, Failed)
 - Tracks operation counters
 - Prints a summary at the end of execution
 
 A **diagnostic log** is written alongside the main log under the dotfiles cache
 directory (`$XDG_CACHE_HOME/dotfiles/`, or `~/.cache/dotfiles/` when
-`XDG_CACHE_HOME` is unset). Unlike the main log (which replays buffered parallel
-output per-task), the diagnostic log captures every event immediately with
-sequence numbers, microsecond-resolution wall-clock timestamps, and task
-context, providing the true chronological view of parallel execution.
-Event tags cover the full lifecycle: logger messages (`STAGE`, `INFO`, `DEBUG`,
-`WARN`, `ERROR`, `DRYRUN`), task scheduling (`TASK_WAIT`, `TASK_START`,
-`TASK_DONE`, `TASK_SKIP`), and resource processing (`RES_CHECK`, `RES_APPLY`,
-`RES_RESULT`, `RES_REMOVE`).
+`XDG_CACHE_HOME` is unset). Unlike the main log (which replays buffered task
+output per task when each task completes), the diagnostic log captures every
+event immediately with sequence numbers, microsecond-resolution wall-clock
+timestamps, task context, and bracketed event names, providing the true
+chronological view of parallel execution. The message column records logger
+output, task scheduling state, and resource processing details without replay
+buffering.
 
 ### Configuration System
 

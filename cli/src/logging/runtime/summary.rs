@@ -1,6 +1,6 @@
 //! End-of-run summary printing for [`Logger`].
 //!
-//! Renders a compact changed-only console summary and final aggregate counts.
+//! Renders grouped task-result sections and final aggregate counts.
 
 use std::time::Duration;
 
@@ -56,30 +56,21 @@ impl Logger {
         );
         let (text_color, label) = completion_label(failed);
 
-        let changed_section_title = summary_mode.changed_section_title();
-        let emitted_task_section = self.print_task_section(
-            changed_section_title,
-            &tasks,
-            &details,
-            summary_mode.should_space_before_first_section(),
-            |task| task.status == TaskStatus::Changed,
-        );
-        let emitted_task_section = self.print_task_section(
-            "Failed",
-            &tasks,
-            &details,
-            emitted_task_section || summary_mode.should_space_before_first_section(),
-            |task| task.status == TaskStatus::Failed,
-        ) || emitted_task_section;
-        self.print_task_section(
-            "Dry-run",
-            &tasks,
-            &details,
-            emitted_task_section || summary_mode.should_space_before_first_section(),
-            |task| task.status == TaskStatus::DryRun,
-        );
+        let mut emitted_task_section = false;
+        for spec in task_section_specs(summary_mode) {
+            let emitted = self.print_task_section(
+                spec.title,
+                &tasks,
+                &details,
+                emitted_task_section,
+                |task| task.status == spec.status,
+            );
+            emitted_task_section = emitted || emitted_task_section;
+        }
 
-        self.task_result("");
+        if should_space_before_totals(self.verbose, changed, skipped, dry_run, failed) {
+            self.task_result("");
+        }
         self.always(&format!(
             "{text_color}\x1b[1m{label}\x1b[0m \x1b[2m\u{00b7} {elapsed_str}\x1b[0m"
         ));
@@ -114,6 +105,12 @@ impl Logger {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TaskSectionSpec {
+    title: &'static str,
+    status: TaskStatus,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SummaryMode {
     Standard,
     Test,
@@ -127,20 +124,31 @@ impl SummaryMode {
             Self::Standard
         }
     }
+}
 
-    const fn changed_section_title(self) -> &'static str {
-        match self {
-            Self::Standard => "Changed",
-            Self::Test => "Tests",
-        }
-    }
-
-    const fn should_space_before_first_section(self) -> bool {
-        match self {
-            Self::Standard => true,
-            Self::Test => false,
-        }
-    }
+const fn task_section_specs(mode: SummaryMode) -> [TaskSectionSpec; 4] {
+    let changed_title = match mode {
+        SummaryMode::Standard => "Changed",
+        SummaryMode::Test => "Tests",
+    };
+    [
+        TaskSectionSpec {
+            title: changed_title,
+            status: TaskStatus::Changed,
+        },
+        TaskSectionSpec {
+            title: "Skipped",
+            status: TaskStatus::Skipped,
+        },
+        TaskSectionSpec {
+            title: "Failed",
+            status: TaskStatus::Failed,
+        },
+        TaskSectionSpec {
+            title: "Dry-run",
+            status: TaskStatus::DryRun,
+        },
+    ]
 }
 
 const fn completion_label(failed: u32) -> (&'static str, &'static str) {
@@ -186,6 +194,16 @@ fn format_summary_counts(
     parts.join(separator)
 }
 
+const fn should_space_before_totals(
+    verbose: bool,
+    changed: u32,
+    skipped: u32,
+    dry_run: u32,
+    failed: u32,
+) -> bool {
+    verbose || changed > 0 || skipped > 0 || dry_run > 0 || failed > 0
+}
+
 fn format_task_line(task: &TaskEntry) -> String {
     let Some((icon, color)) = task.status.icon_and_color() else {
         return format!("  {}", task.name);
@@ -200,6 +218,7 @@ fn task_detail_lines(details: &[TaskDetailEntry], task: &TaskEntry) -> Vec<Strin
         .filter(|entry| entry.name == task.name)
         .flat_map(|entry| entry.lines.iter())
         .filter(|line| Some(line.as_str()) != task_message)
+        .filter(|line| !is_prefixed_task_message(line, task_message))
         .filter(|line| !is_stats_summary(line))
         .cloned()
         .collect::<Vec<String>>();
@@ -213,6 +232,15 @@ fn task_detail_lines(details: &[TaskDetailEntry], task: &TaskEntry) -> Vec<Strin
         .filter(|message| !is_stats_summary(message))
         .map(ToString::to_string)
         .collect()
+}
+
+fn is_prefixed_task_message(line: &str, task_message: Option<&str>) -> bool {
+    let Some(message) = task_message else {
+        return false;
+    };
+    ["skipped: ", "failed: ", "interrupted: "]
+        .iter()
+        .any(|prefix| line.strip_prefix(prefix) == Some(message))
 }
 
 fn is_stats_summary(line: &str) -> bool {
@@ -294,6 +322,50 @@ mod tests {
     }
 
     #[test]
+    fn task_section_specs_include_skipped_before_failed() {
+        let specs = task_section_specs(SummaryMode::Standard);
+
+        assert_eq!(
+            specs,
+            [
+                TaskSectionSpec {
+                    title: "Changed",
+                    status: TaskStatus::Changed,
+                },
+                TaskSectionSpec {
+                    title: "Skipped",
+                    status: TaskStatus::Skipped,
+                },
+                TaskSectionSpec {
+                    title: "Failed",
+                    status: TaskStatus::Failed,
+                },
+                TaskSectionSpec {
+                    title: "Dry-run",
+                    status: TaskStatus::DryRun,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn summary_totals_skip_extra_blank_for_non_verbose_no_op() {
+        assert!(
+            !should_space_before_totals(false, 0, 0, 0, 0),
+            "non-verbose no-op runs already have the header separator"
+        );
+    }
+
+    #[test]
+    fn summary_totals_keep_separator_when_output_was_visible() {
+        assert!(should_space_before_totals(false, 1, 0, 0, 0));
+        assert!(should_space_before_totals(false, 0, 1, 0, 0));
+        assert!(should_space_before_totals(false, 0, 0, 1, 0));
+        assert!(should_space_before_totals(false, 0, 0, 0, 1));
+        assert!(should_space_before_totals(true, 0, 0, 0, 0));
+    }
+
+    #[test]
     fn format_task_line_includes_changed_message() {
         let task = TaskEntry {
             name: "symlinks".to_string(),
@@ -325,6 +397,24 @@ mod tests {
         assert_eq!(
             task_detail_lines(&details, &task),
             vec!["linked: ~/.bashrc"]
+        );
+    }
+
+    #[test]
+    fn task_detail_lines_filters_prefixed_skip_message() {
+        let task = TaskEntry {
+            name: "skip-task".to_string(),
+            status: TaskStatus::Skipped,
+            message: Some("dependency failed".to_string()),
+        };
+        let details = vec![TaskDetailEntry {
+            name: "skip-task".to_string(),
+            lines: vec!["skipped: dependency failed".to_string()],
+        }];
+
+        assert_eq!(
+            task_detail_lines(&details, &task),
+            vec!["dependency failed"]
         );
     }
 

@@ -43,11 +43,14 @@ fn signal_dependents(
 
 fn record_dependency_block(task: &dyn Task, log: &dyn Log) {
     let reason = "dependency failed";
+    let span = tracing::info_span!("task", name = task.name());
+    let _enter = span.enter();
     log.diag_task(
         DiagEvent::TaskSkip,
         task.name(),
         &format!("skipped: {reason}"),
     );
+    log.info(&format!("skipped: {reason}"));
     log.record_task_outcome(
         task.name(),
         task.domain(),
@@ -62,8 +65,18 @@ fn record_dependency_block(task: &dyn Task, log: &dyn Log) {
 /// [`TaskStatus::Failed`], any buffered output is flushed, and dependents are
 /// blocked the same way they are for ordinary task failures.
 fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> TaskStatus {
-    log.notify_task_start(task.name());
+    run_task_buffered(task, ctx, log, true)
+}
 
+fn run_task_buffered(
+    task: &dyn Task,
+    ctx: &Context,
+    log: &Arc<Logger>,
+    notify_start: bool,
+) -> TaskStatus {
+    if notify_start {
+        log.notify_task_start(task.name());
+    }
     let buf = Arc::new(BufferedLog::new(Arc::clone(log)));
     let buffered_log: Arc<dyn Log> = Arc::<BufferedLog>::clone(&buf);
     let task_ctx = ctx.with_log(buffered_log);
@@ -85,9 +98,9 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> TaskSt
                 })
                 .unwrap_or_else(|| "task panicked".to_string());
             log.diag_task(DiagEvent::TaskFail, task.name(), &msg);
+            buf.error(&format!("{}: {msg}", task.name()));
             log.record_task_outcome(task.name(), task.domain(), TaskStatus::Failed, Some(&msg));
-            buf.flush_and_complete(task.name(), TaskStatus::Failed);
-            return TaskStatus::Failed;
+            TaskStatus::Failed
         }
     };
 
@@ -231,11 +244,7 @@ pub(crate) fn run_tasks_sequential(
             let Some(task) = tasks.get(idx) else {
                 continue;
             };
-            let buf = Arc::new(BufferedLog::new(Arc::clone(log)));
-            let buffered_log: Arc<dyn Log> = Arc::<BufferedLog>::clone(&buf);
-            let task_ctx = ctx.with_log(buffered_log);
-            let status = tasks::execute(*task, &task_ctx);
-            buf.flush_and_complete(task.name(), status);
+            let status = run_task_buffered(*task, ctx, log, false);
             DependencySignal::from_status(status)
         } else {
             if let Some(task) = tasks.get(idx) {

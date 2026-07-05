@@ -116,7 +116,7 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context, domain: Domain) -> TaskSta
         }
         Ok(Some(result)) => match result {
             TaskResult::Ok => {
-                ctx.log.diag_task(DiagEvent::TaskDone, task.name(), "");
+                ctx.log.diag_task(DiagEvent::TaskDone, task.name(), "ok");
                 let status = if domain == Domain::Validation {
                     TaskStatus::Changed
                 } else {

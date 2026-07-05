@@ -286,16 +286,17 @@ The log file is useful for troubleshooting installation issues or reviewing what
 
 In **non-verbose** mode (default), a live progress line is shown while tasks
 run, followed by a compact summary. Successful no-op tasks are counted as
-unchanged and are not listed individually. Dry-run tasks are listed only when
-they would change state. Status icons:
+unchanged and are not listed individually. Tasks that changed state, were
+skipped, failed, or would change state in dry-run mode appear in grouped final
+sections. Status icons:
 
 - `●` — task changed state successfully (green)
 - `○` — task did not change state: deliberately skipped (yellow) or dry-run preview (magenta)
 - `✗` — task failed (red)
 
 Not-applicable tasks are counted as unchanged in the console summary. The
-persistent log file records task output as it happens and ends with the same
-final completion/count lines as the console.
+persistent log file records every task's output, replayed as each buffered task
+completes, and ends with the same final completion/count lines as the console.
 
 ### Dry-Run Mode
 

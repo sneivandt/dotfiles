@@ -528,7 +528,10 @@ docker logs <container-id>
 
 The installer writes two log files per run:
 
-- **Main log** (`~/.cache/dotfiles/<command>.log`) — human-readable log with timestamps, always written at full verbose detail regardless of the console verbose flag
+- **Main log** (`~/.cache/dotfiles/<command>.log`) — human-readable log with
+  timestamps, always written at full verbose detail regardless of the console
+  verbose flag; buffered task output is replayed per task when that task
+  completes
 - **Diagnostic log** (`~/.cache/dotfiles/<command>.diag.log`) — microsecond-precision chronological log of all events, including parallel execution
 
 Routine successful output does not print log paths; use `dotfiles log` or the
@@ -539,22 +542,26 @@ paths above when you need to inspect a previous run.
 The diagnostic log is useful for:
 - **Understanding parallel execution order** — events have true wall-clock timestamps and task context, showing exactly which resources were processed concurrently
 - **Identifying slow operations** — compare elapsed microsecond timestamps to find bottlenecks
-- **Debugging task dependency issues** — `TASK_WAIT`, `TASK_START`, and `TASK_DONE` events show the scheduling timeline
+- **Debugging task dependency issues** — task-context lines show when tasks wait, start, and finish
 
 ### Reading the diagnostic log
 
 Each line follows the format:
 ```
-<seq> +<elapsed_us> <wall_utc> [<context>] <TAG> <message>
+<seq> +<elapsed_us> <wall_utc> [<context>] [<event>] <message>
 ```
+The `event` column uses bracketed snake_case names such as `[debug]` and
+`[task_done]` without width padding after the bracket. Empty messages are
+omitted, and multiline messages are collapsed onto one line so diagnostic logs
+do not contain blank rows.
 
 Examples:
 ```bash
 # View the diagnostic log
 cat ~/.cache/dotfiles/install.diag.log
 
-# Find all resource apply events
-grep RES_APPLY ~/.cache/dotfiles/install.diag.log
+# Find resource operations
+grep 'state=' ~/.cache/dotfiles/install.diag.log
 
 # Trace a specific task's lifecycle
 grep 'Install symlinks' ~/.cache/dotfiles/install.diag.log

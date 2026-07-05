@@ -25,7 +25,7 @@ fn build_resource(
     let validation_error = crate::config::symlinks::validate_paths(s)
         .err()
         .map(|e| e.to_string())
-        .or_else(|| git_symlink_placeholder_reason(&source, repo_root, &**executor));
+        .or_else(|| git_symlink_placeholder_reason(&source, repo_root));
     SymlinkResource::new(source, target, Arc::clone(executor))
         .with_validation_error(validation_error)
 }
@@ -90,52 +90,29 @@ fn compute_target(home: &Path, source: &str) -> std::path::PathBuf {
 }
 
 #[cfg(windows)]
-fn git_symlink_placeholder_reason(
-    source: &Path,
-    repo_root: &Path,
-    executor: &dyn crate::exec::Executor,
-) -> Option<String> {
+fn git_symlink_placeholder_reason(source: &Path, repo_root: &Path) -> Option<String> {
     let metadata = std::fs::symlink_metadata(source).ok()?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return None;
     }
 
     let relative_source = source.strip_prefix(repo_root).ok()?;
-    let repo_root_arg = repo_root.to_string_lossy();
-    let relative_arg = relative_source.to_string_lossy();
-    let result = executor
-        .run_unchecked(
-            "git",
-            &[
-                "-C",
-                repo_root_arg.as_ref(),
-                "ls-files",
-                "-s",
-                "--",
-                relative_arg.as_ref(),
-            ],
-        )
-        .ok()?;
+    let repository = git2::Repository::open(repo_root).ok()?;
+    let index = repository.index().ok()?;
+    let entry = index.get_path(relative_source, 0)?;
+    let link_mode = u32::try_from(i32::from(git2::FileMode::Link)).ok()?;
 
-    result
-        .stdout
-        .lines()
-        .any(|line| line.starts_with("120000 "))
-        .then(|| {
-            format!(
-                "source is checked out as a plain file but Git records it as a symlink: {} \
-                 (enable symlink support and restore the checkout)",
-                source.display()
-            )
-        })
+    (entry.mode == link_mode).then(|| {
+        format!(
+            "source is checked out as a plain file but Git records it as a symlink: {} \
+             (enable symlink support and restore the checkout)",
+            source.display()
+        )
+    })
 }
 
 #[cfg(not(windows))]
-fn git_symlink_placeholder_reason(
-    _source: &Path,
-    _repo_root: &Path,
-    _executor: &dyn crate::exec::Executor,
-) -> Option<String> {
+const fn git_symlink_placeholder_reason(_source: &Path, _repo_root: &Path) -> Option<String> {
     None
 }
 

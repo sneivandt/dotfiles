@@ -319,7 +319,6 @@ fn resolve_profile(
         "\x1b[2mversion\x1b[0m {version}{updated_label} \x1b[2m\u{00b7} profile\x1b[0m {} \x1b[2m\u{00b7} {platform_label}\x1b[0m",
         profile.name
     ));
-    log.always("");
     Ok(profile)
 }
 
@@ -331,10 +330,15 @@ fn resolve_overlay(
     log: &dyn Output,
 ) -> Option<std::path::PathBuf> {
     let overlay = crate::config::overlay::resolve_from_args(global.overlay.as_deref(), root);
-    if let Some(ref path) = overlay {
-        log.always(&format!("  \x1b[2moverlay\x1b[0m  {}", path.display()));
-    }
+    log_overlay_path(overlay.as_deref(), log);
     overlay
+}
+
+fn log_overlay_path(overlay: Option<&std::path::Path>, log: &dyn Output) {
+    if let Some(path) = overlay {
+        log.always(&format!("\x1b[2moverlay\x1b[0m {}", path.display()));
+    }
+    log.always("");
 }
 
 /// Load configuration for the given root, profile, and platform, emitting

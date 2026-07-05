@@ -82,6 +82,77 @@ mod unix_tests {
 }
 
 #[cfg(test)]
+mod startup_log_tests {
+    use super::*;
+    use std::path::Path;
+    use std::sync::{Mutex, PoisonError};
+
+    #[derive(Default)]
+    struct CapturingOutput {
+        always_lines: Mutex<Vec<String>>,
+    }
+
+    impl CapturingOutput {
+        fn lines(&self) -> Vec<String> {
+            self.always_lines
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone()
+        }
+    }
+
+    impl Output for CapturingOutput {
+        fn stage(&self, _msg: &str) {}
+
+        fn info(&self, _msg: &str) {}
+
+        fn debug(&self, _msg: &str) {}
+
+        fn warn(&self, _msg: &str) {}
+
+        fn error(&self, _msg: &str) {}
+
+        fn dry_run(&self, _msg: &str) {}
+
+        fn always(&self, msg: &str) {
+            self.always_lines
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(msg.to_string());
+        }
+    }
+
+    #[test]
+    fn overlay_path_is_optional_second_startup_line() {
+        let log = CapturingOutput::default();
+
+        log.always("version line");
+        log_overlay_path(Some(Path::new("/private/overlay")), &log);
+
+        let lines = log.lines();
+        assert_eq!(
+            lines,
+            vec![
+                "version line".to_string(),
+                "\x1b[2moverlay\x1b[0m /private/overlay".to_string(),
+                String::new(),
+            ],
+            "overlay line must immediately follow the version line and must not be indented"
+        );
+    }
+
+    #[test]
+    fn absent_overlay_keeps_single_blank_after_startup_line() {
+        let log = CapturingOutput::default();
+
+        log.always("version line");
+        log_overlay_path(None, &log);
+
+        assert_eq!(log.lines(), vec!["version line".to_string(), String::new()]);
+    }
+}
+
+#[cfg(test)]
 #[allow(
     clippy::expect_used,
     clippy::unwrap_used,

@@ -1,4 +1,7 @@
 name: dot-code
 version: 1.0.0
 description: Coding workflows and preferences
+license: MIT
 includes: auto
+dependencies:
+  apm: []

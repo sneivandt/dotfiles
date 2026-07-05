@@ -1,22 +1,22 @@
 # -----------------------------------------------------------------------------
-# Test-ShellWrapper.ps1 — Tests for dotfiles.ps1 PowerShell wrapper
+# Test-ShellWrapper.ps1 - Tests for dotfiles.ps1 PowerShell wrapper
 # -----------------------------------------------------------------------------
 
 $ErrorActionPreference = 'Stop'
 
 function Write-TestStage {
     param([string]$Message)
-    Write-Host "═══ $Message" -ForegroundColor Cyan
+    Write-Output "=== $Message"
 }
 
 function Write-TestPass {
     param([string]$Message)
-    Write-Host "✓ $Message" -ForegroundColor Green
+    Write-Output "PASS: $Message"
 }
 
 function Write-TestFail {
     param([string]$Message)
-    Write-Host "✗ $Message" -ForegroundColor Red
+    Write-Output "FAIL: $Message"
 }
 
 # ---------------------------------------------------------------------------
@@ -27,12 +27,12 @@ function Test-BuildMode {
     Write-TestStage "Testing dotfiles.ps1 --build mode"
 
     if ($env:BINARY_PATH -and (Test-Path $env:BINARY_PATH)) {
-        Write-Host "Skipping: pre-built binary available, build tested separately" -ForegroundColor Yellow
+        Write-Output "Skipping: pre-built binary available, build tested separately"
         return $true
     }
 
     if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-        Write-Host "Skipping: cargo not installed" -ForegroundColor Yellow
+        Write-Output "Skipping: cargo not installed"
         return $true
     }
 
@@ -117,7 +117,7 @@ function Test-VersionDetection {
     Write-TestStage "Testing version detection"
 
     if (-not $env:BINARY_PATH -or -not (Test-Path $env:BINARY_PATH)) {
-        Write-Host "Skipping: BINARY_PATH not set or binary not found" -ForegroundColor Yellow
+        Write-Output "Skipping: BINARY_PATH not set or binary not found"
         return $true
     }
 
@@ -152,13 +152,20 @@ function Test-ChecksumVerification {
         # Create checksums file
         @'
 abc123  dotfiles-linux-x86_64
+bad999  dotfiles-windows-x86_64.exe.sig
 def456  dotfiles-windows-x86_64.exe
 '@ | Set-Content (Join-Path $tmpDir "checksums.sha256")
 
-        # Test checksum extraction
+        # Test checksum extraction with exact asset-name matching
         $checksums = Get-Content (Join-Path $tmpDir "checksums.sha256")
-        $checksumMatch = "dotfiles-windows"
-        $expected = ($checksums -split "`n" | Where-Object { $_ -match $checksumMatch }) -replace '\s+.*', ''
+        $assetName = "dotfiles-windows-x86_64.exe"
+        $expected = foreach ($line in $checksums) {
+            $fields = $line.Trim() -split '\s+'
+            if ($fields.Count -ge 2 -and $fields[1].TrimStart('*') -eq $assetName) {
+                $fields[0].Trim().ToLower()
+                break
+            }
+        }
 
         if ($expected -eq "def456") {
             Write-TestPass "Checksum extraction works correctly"
@@ -200,7 +207,7 @@ function Test-ArgumentForwarding {
     Write-TestStage "Testing argument forwarding"
 
     if (-not $env:BINARY_PATH -or -not (Test-Path $env:BINARY_PATH)) {
-        Write-Host "Skipping: BINARY_PATH not set or binary not found" -ForegroundColor Yellow
+        Write-Output "Skipping: BINARY_PATH not set or binary not found"
         return $true
     }
 
@@ -224,7 +231,7 @@ function Test-InstallArgumentForwarding {
 
     $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
     if (-not (Test-Path $wrapper)) {
-        Write-Host "Skipping: wrapper not found" -ForegroundColor Yellow
+        Write-Output "Skipping: wrapper not found"
         return $true
     }
 
@@ -288,7 +295,7 @@ function Test-AdvancedFlagForwarding {
 # Test Wrapper Implementation Guards
 # ---------------------------------------------------------------------------
 
-function Test-VersionPinnedBootstrapUrls {
+function Test-VersionPinnedBootstrapUrl {
     Write-TestStage "Testing wrapper resolves release tag and uses pinned URLs for binary and checksum"
 
     $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
@@ -339,9 +346,17 @@ function Test-PlatformDetection {
     if ($isWindowsPlatform) {
         $expectedBinary = "dotfiles.exe"
         $expectedAsset = "dotfiles-windows-x86_64.exe"
-    } else {
+    } elseif ($IsLinux) {
         $expectedBinary = "dotfiles"
-        $expectedAsset = "dotfiles-linux-x86_64"
+        $arch = (uname -m).Trim()
+        if ($arch -in @('aarch64', 'arm64')) {
+            $expectedAsset = "dotfiles-linux-aarch64"
+        } else {
+            $expectedAsset = "dotfiles-linux-x86_64"
+        }
+    } else {
+        Write-TestPass "Unsupported platform detection path verified"
+        return $true
     }
 
     Write-TestPass "Platform detection: Binary=$expectedBinary, Asset=$expectedAsset"
@@ -356,8 +371,6 @@ function Test-ErrorHandling {
     Write-TestStage "Testing error handling"
 
     # Test that missing cargo in build mode produces error
-    $testResult = $true
-
     # Simulate missing cargo scenario
     $originalPath = $env:PATH
     try {
@@ -374,7 +387,7 @@ function Test-ErrorHandling {
 # Run All Tests
 # ---------------------------------------------------------------------------
 
-function Invoke-AllTests {
+function Invoke-TestSuite {
     $results = @()
 
     $results += Test-BuildMode
@@ -385,7 +398,7 @@ function Invoke-AllTests {
     $results += Test-ArgumentForwarding
     $results += Test-InstallArgumentForwarding
     $results += Test-AdvancedFlagForwarding
-    $results += Test-VersionPinnedBootstrapUrls
+    $results += Test-VersionPinnedBootstrapUrl
     $results += Test-PendingBinaryPromotionRollback
     $results += Test-PlatformDetection
     $results += Test-ErrorHandling
@@ -393,8 +406,9 @@ function Invoke-AllTests {
     $passed = ($results | Where-Object { $_ -eq $true }).Count
     $total = $results.Count
 
-    Write-Host "`n═══════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "Results: $passed/$total tests passed" -ForegroundColor $(if ($passed -eq $total) { 'Green' } else { 'Red' })
+    Write-Output ""
+    Write-Output "======================================="
+    Write-Output "Results: $passed/$total tests passed"
 
     if ($passed -eq $total) {
         exit 0
@@ -405,5 +419,5 @@ function Invoke-AllTests {
 
 # Run tests if executed directly
 if ($MyInvocation.InvocationName -ne '.') {
-    Invoke-AllTests
+    Invoke-TestSuite
 }

@@ -4,7 +4,7 @@
 //! `PowerShell` scripts.  They are used by [`crate::commands::test::run`] but
 //! live in the `tasks` module so they follow the same `Task` trait pattern
 //! as all other tasks and are independently testable.
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
 use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
@@ -203,6 +203,58 @@ impl Task for ValidateManifestSync {
     }
 }
 
+/// Validate local APM plugin package shape with APM's own pack dry-run.
+#[derive(Debug)]
+pub struct ValidateApmPlugins;
+
+impl Task for ValidateApmPlugins {
+    task_metadata! {
+        name: "Validate APM plugins",
+        phase: TaskPhase::Validation,
+        domain: Domain::Validation,
+    }
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        ctx.executor.which("apm")
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let plugins =
+            discover_apm_plugin_dirs(&ctx.root().join("symlinks").join("apm").join("plugins"))?;
+        if plugins.is_empty() {
+            ctx.log.info("no local APM plugins found");
+            return Ok(TaskResult::Ok);
+        }
+
+        let mut failures = 0u32;
+        for plugin in &plugins {
+            ctx.debug_fmt(|| format!("validating APM plugin {}", plugin.display()));
+            let result = ctx
+                .executor
+                .run_unchecked_in(plugin, "apm", &["pack", "--dry-run", "--verbose"])
+                .with_context(|| format!("running apm pack validation in {}", plugin.display()))?;
+            if result.success {
+                continue;
+            }
+
+            ctx.log.error(&format!(
+                "APM plugin validation failed: {}",
+                plugin.display()
+            ));
+            log_exec_output(&*ctx.log, &result);
+            failures = failures.saturating_add(1);
+        }
+
+        if failures > 0 {
+            anyhow::bail!("{failures} APM plugin(s) failed validation");
+        }
+
+        ctx.log
+            .info(&format!("validated {} local APM plugins", plugins.len()));
+        Ok(TaskResult::Ok)
+    }
+}
+
 /// Run shellcheck on all shell scripts in the repository.
 #[derive(Debug)]
 pub struct RunShellcheck;
@@ -365,6 +417,30 @@ pub(crate) fn discover_powershell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
         },
         out,
     );
+}
+
+/// Discover local APM plugin directories.
+pub(crate) fn discover_apm_plugin_dirs(dir: &Path) -> Result<Vec<PathBuf>> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => {
+            return Err(err)
+                .with_context(|| format!("reading APM plugins directory {}", dir.display()));
+        }
+    };
+
+    let mut plugins = Vec::new();
+    for entry in entries {
+        let entry =
+            entry.with_context(|| format!("reading directory entry in {}", dir.display()))?;
+        let path = entry.path();
+        if path.is_dir() && path.join("apm.yml").is_file() {
+            plugins.push(path);
+        }
+    }
+    plugins.sort();
+    Ok(plugins)
 }
 
 /// Known POSIX-compatible shell interpreter basenames that shellcheck supports.

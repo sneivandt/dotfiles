@@ -243,10 +243,10 @@ run in parallel whenever their dependencies allow.
 | Provision | Configure default shell | Sets the default shell after packages are installed. |
 | Provision | Configure systemd units | Enables and starts user or system units from `conf/systemd-units.toml` after symlinks exist. |
 | Provision | Install VS Code extensions | Installs extensions from `conf/vscode-extensions.toml`. |
-| Provision | Install APM packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install` when the manifest or lockfile changed. This converges to the locked manifest and never advances locked refs ([Microsoft APM](https://github.com/microsoft/apm)). |
+| Provision | Install APM packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install` to converge locked dependencies and redeploy local plugin content. It never advances locked refs. See [APM Tooling](APM.md). |
 | Provision | Write wsl.conf | Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root). |
 | Provision | Overlay scripts | Runs custom scripts loaded from the overlay repository (when `--overlay` is set). |
-| Update | Update APM packages | Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` and is absent from `install`. |
+| Update | Update APM packages | Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` and is absent from `install`. See [APM Tooling](APM.md). |
 
 ### Windows Task Groups
 
@@ -269,9 +269,9 @@ the latest GitHub release and re-exec the process.
 | Provision | Configure Copilot | Applies Copilot CLI settings from `conf/copilot.toml`. |
 | Provision | Configure registry settings | Configures registry from `conf/registry.toml`. |
 | Provision | Install VS Code extensions | Installs extensions from `conf/vscode-extensions.toml`. |
-| Provision | Install APM packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install` when the manifest or lockfile changed. This converges to the locked manifest and never advances locked refs ([Microsoft APM](https://github.com/microsoft/apm)). |
+| Provision | Install APM packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install` to converge locked dependencies and redeploy local plugin content. It never advances locked refs. See [APM Tooling](APM.md). |
 | Provision | Overlay scripts | Runs custom scripts loaded from the overlay repository (when `--overlay` is set). |
-| Update | Update APM packages | Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` and is absent from `install`. |
+| Update | Update APM packages | Runs `apm outdated -g` and, when locked dependencies are stale, `apm update -g --yes` to advance them to the latest matching refs. This phase only runs under `dotfiles update` and is absent from `install`. See [APM Tooling](APM.md). |
 
 ## Verbose Mode
 

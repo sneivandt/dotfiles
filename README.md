@@ -98,4 +98,5 @@ From the repo root, build from source and preview changes against the active con
 | [Profile System](docs/PROFILES.md) | How profiles work |
 | [Configuration Reference](docs/CONFIGURATION.md) | TOML format details |
 | [Architecture](docs/ARCHITECTURE.md) | Rust CLI design |
+| [APM Tooling](docs/APM.md) | AI tooling packages and APM flow |
 | [Contributing](docs/CONTRIBUTING.md) | Development workflow |

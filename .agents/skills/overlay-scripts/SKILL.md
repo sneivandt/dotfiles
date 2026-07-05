@@ -98,7 +98,7 @@ Unlike static tasks in the catalog, overlay scripts produce dynamic tasks:
 3. `install.rs` extends the static task list with these dynamic tasks before
    filtering and execution
 4. Each `OverlayScriptTask` runs in the Provision phase; the phase barrier
-   guarantees `LoadOverlayScripts` (Repository) completes first
+   guarantees `LoadOverlayScripts` (Sync) completes first
 
 ```rust
 // In install.rs

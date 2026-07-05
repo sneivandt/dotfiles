@@ -18,6 +18,7 @@ This directory contains comprehensive documentation for the dotfiles project.
 - **[Contributing](CONTRIBUTING.md)** - Contribution guidelines
 - **[Testing](TESTING.md)** - Testing and CI documentation
 - **[Architecture](ARCHITECTURE.md)** - Implementation and design details
+- **[APM Tooling](APM.md)** - AI tooling packages, local plugins, and APM install/update flow
 - **[Git Hooks](HOOKS.md)** - Repository git hooks
 
 ### Reference

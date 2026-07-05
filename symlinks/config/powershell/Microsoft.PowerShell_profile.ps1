@@ -103,7 +103,35 @@ if (Get-Command "gh" -ErrorAction SilentlyContinue)
         }
         else
         {
-            gh copilot -- --yolo -p ($args -join ' ')
+            $previousGhPromptDisabled = $env:GH_PROMPT_DISABLED
+            $previousGitTerminalPrompt = $env:GIT_TERMINAL_PROMPT
+
+            try
+            {
+                $env:GH_PROMPT_DISABLED = "1"
+                $env:GIT_TERMINAL_PROMPT = "0"
+                gh copilot -- --yolo -p ($args -join ' ')
+            }
+            finally
+            {
+                if ($null -eq $previousGhPromptDisabled)
+                {
+                    Remove-Item Env:\GH_PROMPT_DISABLED -ErrorAction SilentlyContinue
+                }
+                else
+                {
+                    $env:GH_PROMPT_DISABLED = $previousGhPromptDisabled
+                }
+
+                if ($null -eq $previousGitTerminalPrompt)
+                {
+                    Remove-Item Env:\GIT_TERMINAL_PROMPT -ErrorAction SilentlyContinue
+                }
+                else
+                {
+                    $env:GIT_TERMINAL_PROMPT = $previousGitTerminalPrompt
+                }
+            }
         }
     }
 

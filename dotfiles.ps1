@@ -36,18 +36,67 @@ foreach ($arg in $args)
     $CliArgs += $arg
 }
 
-# Platform detection
-if ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
+function Test-IsWindows
 {
-    $BinaryName = "dotfiles.exe"
-    $AssetName = "dotfiles-windows-x86_64.exe"
+    return ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
 }
-else
+
+function Get-BinaryName
 {
-    $BinaryName = "dotfiles"
-    $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'aarch64' } else { 'x86_64' }
-    $AssetName = "dotfiles-linux-$arch"
+    if (Test-IsWindows)
+    {
+        return "dotfiles.exe"
+    }
+
+    if ($IsLinux)
+    {
+        return "dotfiles"
+    }
+
+    Write-Error "Unsupported operating system. Supported operating systems: Windows, Linux."
+    exit 1
 }
+
+function Get-TargetAssetName
+{
+    if (Test-IsWindows)
+    {
+        $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+        switch ($arch)
+        {
+            { $_ -in @('AMD64', 'x86_64') } {
+                return "dotfiles-windows-x86_64.exe"
+            }
+            default {
+                Write-Error "Unsupported Windows architecture: $arch. Supported architectures: AMD64, x86_64."
+                exit 1
+            }
+        }
+    }
+
+    if (-not $IsLinux)
+    {
+        Write-Error "Unsupported operating system. Supported operating systems: Windows, Linux."
+        exit 1
+    }
+
+    $arch = (uname -m).Trim()
+    switch ($arch)
+    {
+        { $_ -in @('x86_64', 'amd64') } {
+            return "dotfiles-linux-x86_64"
+        }
+        { $_ -in @('aarch64', 'arm64') } {
+            return "dotfiles-linux-aarch64"
+        }
+        default {
+            Write-Error "Unsupported Linux architecture: $arch. Supported architectures: x86_64, amd64, aarch64, arm64."
+            exit 1
+        }
+    }
+}
+
+$BinaryName = Get-BinaryName
 $Binary = Join-Path $BinDir $BinaryName
 $PendingBinary = Join-Path $BinDir ".dotfiles-update.pending"
 $PendingVersion = Join-Path $BinDir ".dotfiles-update.version"
@@ -184,6 +233,33 @@ function Resolve-ReleaseTag
     }
 }
 
+function Get-ChecksumForAsset
+{
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ChecksumContent,
+        [Parameter(Mandatory = $true)]
+        [string]$AssetName
+    )
+
+    foreach ($line in ($ChecksumContent -split '\r?\n'))
+    {
+        $fields = $line.Trim() -split '\s+'
+        if ($fields.Count -lt 2)
+        {
+            continue
+        }
+
+        $name = $fields[1].TrimStart('*')
+        if ($name -eq $AssetName)
+        {
+            return $fields[0].Trim().ToLower()
+        }
+    }
+
+    return $null
+}
+
 function Get-Binary
 {
     $tag = Resolve-ReleaseTag
@@ -194,7 +270,8 @@ function Get-Binary
     }
 
     $releaseBaseUrl = "https://github.com/$Repo/releases/download/$tag"
-    $url = "$releaseBaseUrl/$AssetName"
+    $assetName = Get-TargetAssetName
+    $url = "$releaseBaseUrl/$assetName"
 
     if (-not (Test-Path $BinDir))
     {
@@ -239,14 +316,13 @@ function Get-Binary
         Write-Error "Failed to download checksum file: $($_.Exception.Message)"
         exit 1
     }
-    $expectedLine = ($checksumContent -split "`n" | Where-Object { $_ -match [regex]::Escape($AssetName) } | Select-Object -First 1)
-    if ([string]::IsNullOrWhiteSpace($expectedLine))
+    $expected = Get-ChecksumForAsset -ChecksumContent $checksumContent -AssetName $assetName
+    if ([string]::IsNullOrWhiteSpace($expected))
     {
         if (Test-Path $Binary) { Remove-Item $Binary -Force }
-        Write-Error "Checksum not found in checksum file for $AssetName."
+        Write-Error "Checksum not found in checksum file for $assetName."
         exit 1
     }
-    $expected = ($expectedLine -split '\s+')[0].Trim().ToLower()
     $actual = (Get-FileHash -Path $Binary -Algorithm SHA256).Hash.ToLower()
     if ($expected -ne $actual)
     {

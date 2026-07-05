@@ -106,6 +106,12 @@ fi
 # readline
 export INPUTRC="$XDG_CONFIG_HOME"/readline/inputrc
 
+# ssh
+if [ -d "$HOME/.ssh" ]; then
+  mkdir -p "$HOME/.ssh/control"
+  chmod 700 "$HOME/.ssh/control"
+fi
+
 # _shellcheck
 export SHELLCHECK_OPTS="-e SC1090 -e SC1091"
 

@@ -51,16 +51,34 @@ zstyle ':completion:*:manuals' separate-sections true
 zstyle ':completion:*:processes' command 'ps -au$USER'
 
 # use /etc/hosts and known_hosts for hostname completion
-[ -r /etc/ssh/ssh_known_hosts ] && _global_ssh_hosts=(${${${${(f)"$(</etc/ssh/ssh_known_hosts)"}:#[\|]*}%%\ *}%%,*}) || _ssh_hosts=()
-[ -r ~/.ssh/known_hosts ] && _ssh_hosts=(${${${${(f)"$(<~/.ssh/known_hosts)"}:#[\|]*}%%\ *}%%,*}) || _ssh_hosts=()
-[ -r /etc/hosts ] && : ${(A)_etc_hosts:=${(s: :)${(ps:\t:)${${(f)~~"$(</etc/hosts)"}%%\#*}##[:blank:]#[^[:blank:]]#}}} || _etc_hosts=()
-[ -r ~/.ssh/config ] && _ssh_config=($(sed -ne 's/Host[=\t ]//p' ~/.ssh/config)) || _ssh_config=()
-hosts=(
-  "$_global_ssh_hosts[@]"
-  "$_ssh_hosts[@]"
-  "$_etc_hosts[@]"
-  "$_ssh_config[@]"
-  "$HOST"
-  localhost
-)
+typeset -g _ZSH_HOSTS_CACHE="${HOME}/.cache/zsh/hosts.cache"
+
+if [[ -f "$_ZSH_HOSTS_CACHE" && -n ${_ZSH_HOSTS_CACHE}(#qNmh-24) ]]; then
+  source "$_ZSH_HOSTS_CACHE"
+else
+  [ -r /etc/ssh/ssh_known_hosts ] && _global_ssh_hosts=(${${${${(f)"$(</etc/ssh/ssh_known_hosts)"}:#[\|]*}%%\ *}%%,*}) || _global_ssh_hosts=()
+  [ -r ~/.ssh/known_hosts ] && _ssh_hosts=(${${${${(f)"$(<~/.ssh/known_hosts)"}:#[\|]*}%%\ *}%%,*}) || _ssh_hosts=()
+  [ -r /etc/hosts ] && : ${(A)_etc_hosts:=${(s: :)${(ps:\t:)${${(f)~~"$(</etc/hosts)"}%%\#*}##[:blank:]#[^[:blank:]]#}}} || _etc_hosts=()
+  [ -r ~/.ssh/config ] && _ssh_config=($(sed -ne 's/Host[=\t ]//p' ~/.ssh/config)) || _ssh_config=()
+  hosts=(
+    "$_global_ssh_hosts[@]"
+    "$_ssh_hosts[@]"
+    "$_etc_hosts[@]"
+    "$_ssh_config[@]"
+    "$HOST"
+    localhost
+  )
+
+  if mkdir -p "${_ZSH_HOSTS_CACHE:h}"; then
+    tmp_hosts_cache="$(mktemp "${_ZSH_HOSTS_CACHE}.XXXXXX")" || return 1
+    {
+      print -r -- "typeset -ga hosts=("
+      for host in "${hosts[@]}"; do
+        print -r -- "  ${(qqq)host}"
+      done
+      print -r -- ")"
+    } > "$tmp_hosts_cache"
+    mv "$tmp_hosts_cache" "$_ZSH_HOSTS_CACHE"
+  fi
+fi
 zstyle ':completion:*:hosts' hosts $hosts

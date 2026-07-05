@@ -3,7 +3,8 @@
 use super::*;
 use std::io::Write;
 
-use crate::tasks::test_helpers::{empty_config, make_linux_context};
+use crate::exec::{ExecResult, MockExecutor};
+use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
 
 #[test]
 fn manifest_sync_errors_when_manifest_file_is_missing() {
@@ -72,6 +73,57 @@ fn discovers_ps1_files() {
     let mut found = Vec::new();
     discover_powershell_scripts(dir.path(), &mut found);
     assert_eq!(found.len(), 2);
+}
+
+#[test]
+fn discovers_apm_plugin_dirs() {
+    let dir = tempfile::tempdir().expect("tempdir should create");
+    let plugins = dir.path().join("plugins");
+    std::fs::create_dir_all(plugins.join("dot-code")).expect("plugin dir should create");
+    std::fs::create_dir_all(plugins.join("not-a-plugin")).expect("plain dir should create");
+    std::fs::write(plugins.join("dot-code").join("apm.yml"), "name: dot-code\n")
+        .expect("apm manifest should write");
+
+    let found = discover_apm_plugin_dirs(&plugins).expect("plugin discovery should succeed");
+
+    assert_eq!(found, vec![plugins.join("dot-code")]);
+}
+
+#[test]
+fn apm_plugin_validation_runs_pack_dry_run_in_each_plugin() {
+    let dir = tempfile::tempdir().expect("tempdir should create");
+    let plugins = dir.path().join("symlinks").join("apm").join("plugins");
+    std::fs::create_dir_all(plugins.join("dot-code")).expect("plugin dir should create");
+    std::fs::write(plugins.join("dot-code").join("apm.yml"), "name: dot-code\n")
+        .expect("apm manifest should write");
+
+    let mut executor = MockExecutor::new();
+    executor
+        .expect_run_unchecked_in()
+        .once()
+        .returning(|plugin_dir, program, args| {
+            assert!(
+                plugin_dir.ends_with("dot-code"),
+                "APM pack should run in the plugin directory, got {}",
+                plugin_dir.display()
+            );
+            assert_eq!(program, "apm");
+            assert_eq!(args, ["pack", "--dry-run", "--verbose"]);
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
+
+    let ctx = make_context(
+        empty_config(dir.path().to_path_buf()),
+        crate::platform::Platform::new(crate::platform::Os::Linux, false),
+        std::sync::Arc::new(executor),
+    );
+
+    assert!(ValidateApmPlugins.run(&ctx).is_ok());
 }
 
 #[test]

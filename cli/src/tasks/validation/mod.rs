@@ -3,8 +3,8 @@
 mod checks;
 
 pub use checks::{
-    RunPSScriptAnalyzer, RunShellcheck, ValidateConfigFiles, ValidateConfigWarnings,
-    ValidateManifestSync, ValidateSymlinkSources,
+    RunPSScriptAnalyzer, RunShellcheck, ValidateApmPlugins, ValidateConfigFiles,
+    ValidateConfigWarnings, ValidateManifestSync, ValidateSymlinkSources,
 };
 
 #[cfg(test)]

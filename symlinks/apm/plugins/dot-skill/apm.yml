@@ -1,4 +1,7 @@
 name: dot-skill
 version: 1.0.0
 description: Skill authoring and maintenance preferences
+license: MIT
 includes: auto
+dependencies:
+  apm: []

@@ -456,7 +456,7 @@ GitHub Actions CI (`.github/workflows/ci.yml`) runs on pull requests:
 | --- | --- |
 | `rust-fmt` | Rust format check (`cargo fmt --check`) |
 | `lint` | ShellCheck and PSScriptAnalyzer (matrix: ShellCheck, PSScriptAnalyzer) |
-| `validate-config` | 6 config checks: TOML syntax, file references, category consistency, empty sections |
+| `validate-config` | Config checks: TOML syntax, file references, category consistency, empty sections, local APM plugin package shape |
 | `audit` | Cargo security audit (vulnerability scan) |
 | `deny` | Cargo deny: license and advisory policy |
 | `build-linux` | Linux build + Clippy + unit/integration tests |

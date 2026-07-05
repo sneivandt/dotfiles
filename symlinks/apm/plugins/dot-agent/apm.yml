@@ -1,4 +1,7 @@
 name: dot-agent
 version: 1.0.0
 description: Agent behavior preferences
+license: MIT
 includes: auto
+dependencies:
+  apm: []

@@ -14,9 +14,10 @@ The engine has two levels of parallelism: **task-level** (scheduler) and
 ## Phase Barrier
 
 `run_tasks_to_completion()` in `commands/mod.rs` enforces a strict phased
-execution model: all **Bootstrap** tasks complete before any **Repository**
-task starts, all **Repository** tasks complete before any **Configure** task
-starts, and all **Configure** tasks complete before any **Update** task starts.
+execution model: all **Bootstrap** tasks complete before any **Sync** task
+starts, all **Sync** tasks complete before any **Provision** task starts, and
+all **Provision** tasks complete before any **Validation** or **Update** task
+starts.
 The function loops over
 `[TaskPhase::Bootstrap, TaskPhase::Sync, TaskPhase::Provision, TaskPhase::Validation, TaskPhase::Update]`,
 filtering and dispatching tasks per phase.  A phase with no tasks is skipped

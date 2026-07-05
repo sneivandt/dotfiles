@@ -13,16 +13,19 @@ autoload -Uz select-word-style
 select-word-style bash
 
 # History
+setopt extended_history
+setopt hist_ignore_space
 setopt histignorealldups
-setopt sharehistory
-setopt extendedglob
 setopt hist_expire_dups_first
 setopt hist_find_no_dups
+setopt hist_reduce_blanks
 setopt hist_verify
+setopt sharehistory
+setopt extendedglob
 [ -d ~/.cache/zsh ] || mkdir -p ~/.cache/zsh
 HISTFILE=~/.cache/zsh/history
-HISTSIZE=10000
-SAVEHIST=10000
+HISTSIZE=100000
+SAVEHIST=100000
 
 # Various options
 setopt autocd

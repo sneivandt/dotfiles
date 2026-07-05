@@ -77,7 +77,7 @@ if command -v gh >/dev/null 2>&1; then
     if [ $# -eq 0 ]; then
       gh copilot -- --yolo
     else
-      gh copilot -- --yolo -p "$*"
+      GH_PROMPT_DISABLED=1 GIT_TERMINAL_PROMPT=0 gh copilot -- --yolo -p "$*"
     fi
   }
   # Suggest mode: interactive

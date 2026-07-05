@@ -7,13 +7,12 @@ set -o nounset
 # Outputs Waybar JSON with Pango markup (price plus red/green % change).
 
 quotes='
-%5EGSPC|&#xf201;|
 MSFT|&#xf3ca;|$
 BTC-USD|&#xf15a;|$
 '
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/waybar-stocks"
-cache_file="$cache_dir/quotes-sp500-prices.json"
-lock_dir="$cache_dir/quotes-sp500-prices.lock"
+cache_file="$cache_dir/quotes-prices.json"
+lock_dir="$cache_dir/quotes-prices.lock"
 cache_ttl=300
 tmp_file=""
 
@@ -104,7 +103,7 @@ if [ -z "$parts" ]; then
 fi
 
 out=$(jq -nc --arg t "$parts" '{text:$t, tooltip:"", class:"stocks"}')
-tmp_file=$(mktemp "$cache_dir/.quotes-sp500-prices.XXXXXX")
+tmp_file=$(mktemp "$cache_dir/.quotes-prices.XXXXXX")
 printf '%s' "$out" > "$tmp_file"
 mv -f "$tmp_file" "$cache_file"
 tmp_file=""

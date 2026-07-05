@@ -6,8 +6,8 @@ use crate::cli::{GlobalOpts, TestOpts};
 use crate::logging::Logger;
 use crate::tasks::Task;
 use crate::tasks::validation::{
-    RunPSScriptAnalyzer, RunShellcheck, ValidateConfigFiles, ValidateConfigWarnings,
-    ValidateManifestSync, ValidateSymlinkSources,
+    RunPSScriptAnalyzer, RunShellcheck, ValidateApmPlugins, ValidateConfigFiles,
+    ValidateConfigWarnings, ValidateManifestSync, ValidateSymlinkSources,
 };
 
 /// Run the test/validation command.
@@ -27,6 +27,7 @@ pub fn run(
         Box::new(ValidateSymlinkSources),
         Box::new(ValidateConfigFiles),
         Box::new(ValidateManifestSync),
+        Box::new(ValidateApmPlugins),
         Box::new(RunShellcheck),
         Box::new(RunPSScriptAnalyzer),
     ];

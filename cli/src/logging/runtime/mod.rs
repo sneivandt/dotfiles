@@ -234,11 +234,6 @@ impl Logger {
     );
 
     log_method!(
-        /// Log a phase header (major execution phase marker).
-        phase, Stage, tracing::info, target: "dotfiles::phase"
-    );
-
-    log_method!(
         /// Log an informational message.
         info, Info, tracing::info
     );

@@ -508,20 +508,10 @@ need to specify `--overlay` once:
 - **Custom scripts** in `scripts/` — defined in `conf/scripts.toml` with a
   convention-based interface (`--check`, `--dryrun`, `--remove`, no args for apply)
 
-Each overlay script appears as its own task in the output. It is scheduled in
-the Provision phase with other Provision tasks, so its relative position can
-vary unless dependencies constrain it:
-
-```
-● Updating the repository
-  ● Reload configuration
-  ● Load overlay scripts
-
-● Configuring your system
-  ● Install symlinks
-  ● Install private files   ← overlay script task
-  ● Install packages
-```
+Each configured overlay script is scheduled as its own Provision task. In normal
+output it can appear in the live progress line and, when it changes, skips,
+fails, or dry-runs, in the final grouped summary; verbose logs include its task
+details. Its relative position can vary unless dependencies constrain it.
 
 See [Configuration Reference](CONFIGURATION.md#overlay-configuration) for
 the overlay file format.

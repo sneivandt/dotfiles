@@ -21,8 +21,7 @@ use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
 /// This task runs in [`TaskPhase::Update`], which the scheduler executes after
 /// the Provision phase (where [`super::InstallApmPackages`] has already
 /// converged the manifest and lockfile).  It is only scheduled by the `update`
-/// command, so the `:: Updating dependencies` header is absent under ordinary
-/// installs.
+/// command, so ordinary installs never run version-advancing tasks.
 ///
 /// Because phases run independently — a failed Provision task does not abort the
 /// run before the Update phase — this task re-asserts the convergence

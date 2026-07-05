@@ -396,7 +396,7 @@ fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
     }
 
     log.always(&format!("sudo is required for: {}", task_names.join(", ")));
-    // Flush stdout so the phase header is visible before the password prompt.
+    // Flush stdout so the sudo notice is visible before the password prompt.
     drop(std::io::Write::flush(&mut std::io::stdout()));
     // Connect sudo directly to /dev/tty so the password prompt and keyboard
     // input work correctly regardless of how the Rust process's stdio is
@@ -430,11 +430,10 @@ const fn prime_sudo(_ctx: &Context, _log: &Arc<Logger>, _task_names: &[&str]) ->
 }
 
 /// Execute the full phased task pipeline (Bootstrap → Sync → Provision →
-/// Update).
+/// Validation → Update).
 ///
-/// Phases run strictly in order, each completing before the next begins; an
-/// empty phase (e.g. Update under `install`) is skipped with no header.  Within
-/// a phase, when parallel execution is enabled, tasks are dispatched through the
+/// Phases run strictly in order, each completing before the next begins.
+/// Within a phase, when parallel execution is enabled, tasks are dispatched through the
 /// buffered scheduler and run as soon as their dependencies complete; each
 /// task's console output is buffered and flushed atomically on completion so
 /// the result header is shown above any per-task detail lines.
@@ -475,14 +474,6 @@ pub fn run_tasks_to_completion<'a>(
 
         if phase_tasks.is_empty() {
             continue;
-        }
-
-        if log.is_verbose() {
-            log.always("");
-            log.phase(phase.label());
-        } else {
-            log.debug("");
-            log.debug(phase.label());
         }
 
         // Before parallel dispatch, prime the sudo credential cache if any

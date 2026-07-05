@@ -128,25 +128,6 @@ impl PlatformCapability {
     }
 }
 
-impl TaskPhase {
-    /// Human-facing milestone label shown as a `::` header in console output.
-    ///
-    /// Unlike [`fmt::Display`] (which returns the bare enum variant name and is
-    /// used in diagnostics and cycle-error messages), this returns an
-    /// outcome-oriented phrase describing what the phase accomplishes for the
-    /// user.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Bootstrap => "Setting up dotfiles",
-            Self::Sync => "Updating the repository",
-            Self::Provision => "Configuring your system",
-            Self::Validation => "Checking the setup",
-            Self::Update => "Updating dependencies",
-        }
-    }
-}
-
 impl fmt::Display for TaskPhase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

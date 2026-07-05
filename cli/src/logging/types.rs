@@ -179,15 +179,6 @@ mod tests {
     }
 
     #[test]
-    fn task_phase_labels() {
-        assert_eq!(TaskPhase::Bootstrap.label(), "Setting up dotfiles");
-        assert_eq!(TaskPhase::Sync.label(), "Updating the repository");
-        assert_eq!(TaskPhase::Provision.label(), "Configuring your system");
-        assert_eq!(TaskPhase::Validation.label(), "Checking the setup");
-        assert_eq!(TaskPhase::Update.label(), "Updating dependencies");
-    }
-
-    #[test]
     fn task_phase_equality() {
         assert_eq!(TaskPhase::Bootstrap, TaskPhase::Bootstrap);
         assert_eq!(TaskPhase::Sync, TaskPhase::Sync);

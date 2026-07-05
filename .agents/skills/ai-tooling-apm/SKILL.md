@@ -80,14 +80,14 @@ After APM config or local plugin changes, run:
 ```
 
 `install` converges to the locked manifest and never advances locked refs:
-the Configure-phase `InstallApmPackages` task only runs `apm install`.  To pull in
-newer plugin/MCP dependency versions, run `./dotfiles.sh update`, which adds a
-separate **Updating dependencies** phase whose `UpdateApmPackages` task runs
-`apm outdated` + `apm update`.  That task guards itself — it only contacts
-APM when the manifest has already been installed successfully (lockfile present
-and the success marker matches) — so a failed/partial install never advances
-locked refs.  The `update`-only scheduling lives in `run_pipeline`
-(`commands/install.rs`); the task itself does not read `ctx.advance_versions`.
+the Provision-phase `InstallApmPackages` task only runs `apm install`.  To pull
+in newer plugin/MCP dependency versions, run `./dotfiles.sh update`, which also
+schedules the Update-phase `UpdateApmPackages` task to run `apm outdated` +
+`apm update`.  That task guards itself — it only contacts APM when the manifest
+has already been installed successfully (lockfile present and the success marker
+matches) — so a failed/partial install never advances locked refs.  The
+`update`-only scheduling lives in `run_pipeline` (`commands/install.rs`); the
+task itself does not read `ctx.advance_versions`.
 
 For changes to `cli/src/tasks/ai/apm/`, also run the Rust checks from the
 `cross-platform-verification` skill.

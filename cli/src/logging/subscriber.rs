@@ -182,9 +182,6 @@ where
             (tracing::Level::INFO, "dotfiles::file_only_stage") => {
                 format!("{prefix} ==> {msg}")
             }
-            (tracing::Level::INFO, "dotfiles::phase") => {
-                format!("{prefix} :: {msg}")
-            }
             _ => format!("{prefix} {msg}"),
         };
 
@@ -199,10 +196,7 @@ fn log_level_label(level: tracing::Level, target: &str) -> &'static str {
         (tracing::Level::INFO, "dotfiles::file_only_error") | (tracing::Level::ERROR, _) => "error",
         (tracing::Level::INFO, "dotfiles::file_only_warn") | (tracing::Level::WARN, _) => "warn",
         (tracing::Level::INFO, "dotfiles::file_only_debug") | (tracing::Level::DEBUG, _) => "debug",
-        (
-            tracing::Level::INFO,
-            "dotfiles::stage" | "dotfiles::file_only_stage" | "dotfiles::phase",
-        ) => "stage",
+        (tracing::Level::INFO, "dotfiles::stage" | "dotfiles::file_only_stage") => "stage",
         (tracing::Level::INFO, _) => "info",
         (tracing::Level::TRACE, _) => "trace",
     }
@@ -263,13 +257,6 @@ where
             tracing::Level::INFO if target == "dotfiles::stage" => {
                 if VERBOSE.load(Ordering::Relaxed) {
                     writeln!(writer, "\x1b[1m{msg}\x1b[0m")
-                } else {
-                    Ok(())
-                }
-            }
-            tracing::Level::INFO if target == "dotfiles::phase" => {
-                if VERBOSE.load(Ordering::Relaxed) {
-                    writeln!(writer, "\x1b[1;34m\u{25cf}\x1b[0m \x1b[1;34m{msg}\x1b[0m")
                 } else {
                     Ok(())
                 }
@@ -386,17 +373,6 @@ mod tests {
         assert!(
             content.contains("==> my stage"),
             "stage should be prefixed with ==>: {content}"
-        );
-    }
-
-    #[test]
-    fn file_layer_formats_phase_with_phase_tag() {
-        let (path, _tmp, _guard) = isolated_file_layer();
-        tracing::info!(target: "dotfiles::phase", "Bootstrap");
-        let content = fs::read_to_string(&path).unwrap();
-        assert!(
-            content.contains(":: Bootstrap"),
-            "phase should include phase marker: {content}"
         );
     }
 

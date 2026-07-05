@@ -19,7 +19,6 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU16;
-#[cfg(test)]
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
@@ -104,6 +103,8 @@ pub struct Logger {
     pub(super) verbose: bool,
     /// Whether the current command is previewing changes without applying them.
     pub(super) dry_run: bool,
+    /// Whether the separator after startup metadata has been emitted.
+    startup_separator_emitted: AtomicBool,
 }
 
 /// Buffered user-facing detail lines emitted by a completed task.
@@ -139,6 +140,7 @@ impl Logger {
             start,
             verbose: true,
             dry_run: false,
+            startup_separator_emitted: AtomicBool::new(false),
         }
     }
 
@@ -180,6 +182,7 @@ impl Logger {
             start,
             verbose: true,
             dry_run: false,
+            startup_separator_emitted: AtomicBool::new(false),
         }
     }
 
@@ -292,6 +295,13 @@ impl Logger {
                 .filter(|t| t.status == TaskStatus::Failed)
                 .count()
         })
+    }
+
+    /// Emit the single blank line that separates startup metadata from details.
+    pub fn separate_from_startup(&self) {
+        if !self.startup_separator_emitted.swap(true, Ordering::Relaxed) {
+            self.always("");
+        }
     }
 }
 

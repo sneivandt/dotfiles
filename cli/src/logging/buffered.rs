@@ -71,6 +71,10 @@ impl LogEntry {
             Self::Warn(_) | Self::Error(_) => self.replay(),
         }
     }
+
+    const fn is_visible_in_non_verbose(&self) -> bool {
+        matches!(self, Self::Warn(_) | Self::Error(_))
+    }
 }
 
 /// Implement the display methods of [`Output`] by buffering each message into
@@ -182,6 +186,9 @@ impl BufferedLog {
                     entry.replay();
                 }
             } else {
+                if entries.iter().any(LogEntry::is_visible_in_non_verbose) {
+                    self.inner.separate_from_startup();
+                }
                 for entry in &entries {
                     entry.replay_non_verbose();
                 }

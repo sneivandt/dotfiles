@@ -231,7 +231,10 @@ impl CommandRunner {
         let updated = std::env::var_os(REEXEC_GUARD_VAR).is_some();
         let profile = resolve_profile(global, &root, platform, updated, &**log)?;
         let overlay = resolve_overlay(global, &root, &**log);
-        let config = load_config(&root, &profile, platform, overlay.as_deref(), &**log)?;
+        if log.is_verbose() {
+            log.separate_from_startup();
+        }
+        let config = load_config(&root, &profile, platform, overlay.as_deref(), log)?;
 
         let executor: Arc<dyn crate::exec::Executor> =
             Arc::new(crate::exec::ManagedExecutor::new(token.clone()));
@@ -338,7 +341,6 @@ fn log_overlay_path(overlay: Option<&std::path::Path>, log: &dyn Output) {
     if let Some(path) = overlay {
         log.always(&format!("\x1b[2moverlay\x1b[0m {}", path.display()));
     }
-    log.always("");
 }
 
 /// Load configuration for the given root, profile, and platform, emitting
@@ -352,7 +354,7 @@ fn load_config(
     profile: &profiles::Profile,
     platform: Platform,
     overlay: Option<&std::path::Path>,
-    log: &dyn Output,
+    log: &Logger,
 ) -> Result<Config> {
     log.stage("Loading configuration");
     let config = Config::load(root, profile, platform, overlay)?;
@@ -362,6 +364,9 @@ fn load_config(
     }
 
     let warnings = config.validate(platform);
+    if !warnings.is_empty() && !log.is_verbose() {
+        log.separate_from_startup();
+    }
     crate::config::helpers::validation::display_validation_warnings(&warnings, log);
 
     Ok(config)
@@ -380,6 +385,7 @@ fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
     use std::process::Stdio;
 
     if !ctx.executor.which("sudo") {
+        log.separate_from_startup();
         log.warn("sudo not found on PATH");
         return false;
     }
@@ -399,6 +405,7 @@ fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
         return true;
     }
 
+    log.separate_from_startup();
     log.always(&format!("sudo is required for: {}", task_names.join(", ")));
     // Flush stdout so the sudo notice is visible before the password prompt.
     drop(std::io::Write::flush(&mut std::io::stdout()));
@@ -418,10 +425,12 @@ fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
     match cmd.status() {
         Ok(status) if status.success() => true,
         Ok(_) => {
+            log.separate_from_startup();
             log.error("sudo credential priming failed");
             false
         }
         Err(e) => {
+            log.separate_from_startup();
             log.error(&format!("failed to run sudo: {e:#}"));
             false
         }

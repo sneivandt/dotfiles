@@ -57,8 +57,15 @@ impl Logger {
         );
         let (text_color, label) = completion_label(failed);
 
+        let specs = task_section_specs(summary_mode);
+        let has_task_sections = specs
+            .iter()
+            .any(|spec| tasks.iter().any(|task| task.status == spec.status));
         let mut emitted_task_section = false;
-        for spec in task_section_specs(summary_mode) {
+        if has_task_sections {
+            self.separate_from_startup();
+        }
+        for spec in specs {
             let emitted = print_task_section(
                 spec.title,
                 &tasks,
@@ -70,7 +77,15 @@ impl Logger {
             emitted_task_section = emitted || emitted_task_section;
         }
 
-        if should_space_before_totals(self.verbose, changed, skipped, dry_run, failed) {
+        if should_space_before_totals(
+            &self.command,
+            self.verbose,
+            emitted_task_section,
+            changed,
+            skipped,
+            dry_run,
+            failed,
+        ) {
             self.task_result("");
         }
         self.always(&format!(
@@ -229,14 +244,22 @@ fn format_summary_counts(
     parts.join(separator)
 }
 
-const fn should_space_before_totals(
+fn should_space_before_totals(
+    command: &str,
     verbose: bool,
+    emitted_task_section: bool,
     changed: u32,
     skipped: u32,
     dry_run: u32,
     failed: u32,
 ) -> bool {
-    verbose || changed > 0 || skipped > 0 || dry_run > 0 || failed > 0
+    verbose
+        || emitted_task_section
+        || changed > 0
+        || skipped > 0
+        || dry_run > 0
+        || failed > 0
+        || !matches!(command, "install" | "update")
 }
 
 fn format_task_line(task: &TaskEntry) -> String {
@@ -386,18 +409,36 @@ mod tests {
     #[test]
     fn summary_totals_skip_extra_blank_for_non_verbose_no_op() {
         assert!(
-            !should_space_before_totals(false, 0, 0, 0, 0),
-            "non-verbose no-op runs already have the header separator"
+            !should_space_before_totals("install", false, false, 0, 0, 0, 0),
+            "install no-op runs should not separate the version and completion lines"
+        );
+        assert!(
+            !should_space_before_totals("update", false, false, 0, 0, 0, 0),
+            "update no-op runs should not separate the version and completion lines"
         );
     }
 
     #[test]
     fn summary_totals_keep_separator_when_output_was_visible() {
-        assert!(should_space_before_totals(false, 1, 0, 0, 0));
-        assert!(should_space_before_totals(false, 0, 1, 0, 0));
-        assert!(should_space_before_totals(false, 0, 0, 1, 0));
-        assert!(should_space_before_totals(false, 0, 0, 0, 1));
-        assert!(should_space_before_totals(true, 0, 0, 0, 0));
+        assert!(should_space_before_totals(
+            "install", false, true, 0, 0, 0, 0
+        ));
+        assert!(should_space_before_totals(
+            "install", false, false, 1, 0, 0, 0
+        ));
+        assert!(should_space_before_totals(
+            "install", false, false, 0, 1, 0, 0
+        ));
+        assert!(should_space_before_totals(
+            "install", false, false, 0, 0, 1, 0
+        ));
+        assert!(should_space_before_totals(
+            "install", false, false, 0, 0, 0, 1
+        ));
+        assert!(should_space_before_totals(
+            "install", true, false, 0, 0, 0, 0
+        ));
+        assert!(should_space_before_totals("test", false, false, 0, 0, 0, 0));
     }
 
     #[test]

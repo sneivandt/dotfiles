@@ -135,20 +135,19 @@ mod startup_log_tests {
             vec![
                 "version line".to_string(),
                 "\x1b[2moverlay\x1b[0m /private/overlay".to_string(),
-                String::new(),
             ],
             "overlay line must immediately follow the version line and must not be indented"
         );
     }
 
     #[test]
-    fn absent_overlay_keeps_single_blank_after_startup_line() {
+    fn absent_overlay_does_not_emit_separator() {
         let log = CapturingOutput::default();
 
         log.always("version line");
         log_overlay_path(None, &log);
 
-        assert_eq!(log.lines(), vec!["version line".to_string(), String::new()]);
+        assert_eq!(log.lines(), vec!["version line".to_string()]);
     }
 }
 

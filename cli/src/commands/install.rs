@@ -58,6 +58,12 @@ pub(crate) fn run_pipeline(
         all_tasks.retain(|t| t.phase() != tasks::TaskPhase::Update);
     }
 
+    if !log.is_verbose()
+        && (has_unmatched_filter(&all_tasks, &opts.only)
+            || has_unmatched_filter(&all_tasks, &opts.skip))
+    {
+        log.separate_from_startup();
+    }
     tasks::filter::warn_unmatched_filters(&all_tasks, &opts.only, "--only", &**log);
     tasks::filter::warn_unmatched_filters(&all_tasks, &opts.skip, "--skip", &**log);
     let filtered: Vec<&dyn tasks::Task> = all_tasks
@@ -91,6 +97,14 @@ pub(crate) fn run_pipeline(
     }
 
     runner.run(filtered)
+}
+
+fn has_unmatched_filter(tasks: &[Box<dyn tasks::Task>], filters: &[String]) -> bool {
+    filters.iter().any(|filter| {
+        !tasks
+            .iter()
+            .any(|task| tasks::filter::task_matches_filter(task.name(), filter))
+    })
 }
 
 /// Resolve the dotfiles root directory from CLI arguments or auto-detection.

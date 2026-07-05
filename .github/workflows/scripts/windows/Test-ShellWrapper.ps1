@@ -6,17 +6,17 @@ $ErrorActionPreference = 'Stop'
 
 function Write-TestStage {
     param([string]$Message)
-    Write-Host "=== $Message"
+    Write-Information "=== $Message" -InformationAction Continue
 }
 
 function Write-TestPass {
     param([string]$Message)
-    Write-Host "PASS: $Message"
+    Write-Information "PASS: $Message" -InformationAction Continue
 }
 
 function Write-TestFail {
     param([string]$Message)
-    Write-Host "FAIL: $Message"
+    Write-Information "FAIL: $Message" -InformationAction Continue
 }
 
 # ---------------------------------------------------------------------------
@@ -27,12 +27,12 @@ function Test-BuildMode {
     Write-TestStage "Testing dotfiles.ps1 --build mode"
 
     if ($env:BINARY_PATH -and (Test-Path $env:BINARY_PATH)) {
-        Write-Host "Skipping: pre-built binary available, build tested separately"
+        Write-Information "Skipping: pre-built binary available, build tested separately" -InformationAction Continue
         return $true
     }
 
     if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-        Write-Host "Skipping: cargo not installed"
+        Write-Information "Skipping: cargo not installed" -InformationAction Continue
         return $true
     }
 
@@ -117,7 +117,7 @@ function Test-VersionDetection {
     Write-TestStage "Testing version detection"
 
     if (-not $env:BINARY_PATH -or -not (Test-Path $env:BINARY_PATH)) {
-        Write-Host "Skipping: BINARY_PATH not set or binary not found"
+        Write-Information "Skipping: BINARY_PATH not set or binary not found" -InformationAction Continue
         return $true
     }
 
@@ -207,7 +207,7 @@ function Test-ArgumentForwarding {
     Write-TestStage "Testing argument forwarding"
 
     if (-not $env:BINARY_PATH -or -not (Test-Path $env:BINARY_PATH)) {
-        Write-Host "Skipping: BINARY_PATH not set or binary not found"
+        Write-Information "Skipping: BINARY_PATH not set or binary not found" -InformationAction Continue
         return $true
     }
 
@@ -231,7 +231,7 @@ function Test-InstallArgumentForwarding {
 
     $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
     if (-not (Test-Path $wrapper)) {
-        Write-Host "Skipping: wrapper not found"
+        Write-Information "Skipping: wrapper not found" -InformationAction Continue
         return $true
     }
 

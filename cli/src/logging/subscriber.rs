@@ -157,20 +157,21 @@ where
         let metadata = event.metadata();
         let level = *metadata.level();
         let target = metadata.target();
-        let task_name = event_task_name(event, &ctx);
+
+        if level == tracing::Level::INFO && target == "dotfiles::task_result" {
+            return;
+        }
 
         let mut extractor = MessageExtractor::default();
         event.record(&mut extractor);
         let raw = strip_ansi(&extractor.message);
         let msg = raw.trim_start();
 
-        if level == tracing::Level::INFO && target == "dotfiles::task_result" {
-            return;
-        }
         if msg.is_empty() {
             return;
         }
 
+        let task_name = event_task_name(event, &ctx);
         let ts = format_utc_time();
         let context = task_name.map_or_else(String::new, |name| format!(" [{name}]"));
         let level_label = log_level_label(level, target);

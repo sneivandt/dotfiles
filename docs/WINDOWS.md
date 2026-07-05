@@ -316,7 +316,7 @@ Changed
       updated to origin/main
 
 Complete · 0.8s
-3 changed · 9 unchanged
+3 Changed · 9 Unchanged
 ```
 
 ## Troubleshooting

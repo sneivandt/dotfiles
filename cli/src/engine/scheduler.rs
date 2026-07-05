@@ -51,12 +51,7 @@ fn record_dependency_block(task: &dyn Task, log: &dyn Log) {
         &format!("skipped: {reason}"),
     );
     log.info(&format!("skipped: {reason}"));
-    log.record_task_outcome(
-        task.name(),
-        task.domain(),
-        TaskStatus::Skipped,
-        Some(reason),
-    );
+    log.record_task(task.name(), TaskStatus::Skipped, Some(reason));
 }
 
 /// Execute a single task, catching any panic.
@@ -99,7 +94,7 @@ fn run_task_buffered(
                 .unwrap_or_else(|| "task panicked".to_string());
             log.diag_task(DiagEvent::TaskFail, task.name(), &msg);
             buf.error(&format!("{}: {msg}", task.name()));
-            log.record_task_outcome(task.name(), task.domain(), TaskStatus::Failed, Some(&msg));
+            log.record_task(task.name(), TaskStatus::Failed, Some(&msg));
             TaskStatus::Failed
         }
     };
@@ -200,6 +195,7 @@ pub(crate) fn run_tasks_parallel(
 
                 if !deps_ok {
                     record_dependency_block(task, &**log);
+                    log.redraw_status();
                     signal_dependents(task.name(), my_senders, DependencySignal::Blocked);
                     return;
                 }
@@ -248,7 +244,8 @@ pub(crate) fn run_tasks_sequential(
             DependencySignal::from_status(status)
         } else {
             if let Some(task) = tasks.get(idx) {
-                record_dependency_block(*task, &*ctx.log);
+                record_dependency_block(*task, &**log);
+                log.redraw_status();
             }
             DependencySignal::Blocked
         };

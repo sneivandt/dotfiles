@@ -517,9 +517,8 @@ pub fn run_tasks_to_completion<'a>(
                     let span = tracing::info_span!("task", name = task.name());
                     let _enter = span.enter();
                     log.info(&format!("skipped: {reason}"));
-                    log.record_task_outcome(
+                    log.record_task(
                         task.name(),
-                        task.domain(),
                         crate::logging::TaskStatus::Skipped,
                         Some(reason),
                     );

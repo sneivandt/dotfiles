@@ -310,7 +310,7 @@ Changed
       enabled: clean-home-tmp.timer
 
 Complete · 1.3s
-3 changed · 42 unchanged · 1 skipped
+3 Changed · 42 Unchanged · 1 Skipped
 ```
 
 ## Parallel Execution
@@ -415,7 +415,7 @@ Changed
       linked: ~/.config/git/config
 
 Complete · 1.3s
-2 changed · 47 unchanged · 1 skipped
+2 Changed · 47 Unchanged · 1 Skipped
 ```
 
 **Status icons:**

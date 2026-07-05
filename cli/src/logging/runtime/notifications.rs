@@ -6,7 +6,10 @@
 
 use super::{Logger, progress::stdout_supports_progress};
 
-#[allow(clippy::print_stderr, reason = "intentional user-facing output")]
+#[allow(
+    clippy::print_stderr,
+    reason = "intentional user-facing diagnostics for poisoned console lock recovery"
+)]
 impl Logger {
     /// Record that a parallel task has started.
     ///
@@ -26,35 +29,86 @@ impl Logger {
             eprintln!("warning: flush lock was poisoned, recovering");
             e.into_inner()
         });
-        if show_progress {
-            self.clear_progress();
+        if let Ok(mut active) = self.active_tasks.lock() {
+            active.push(name.to_string());
         }
-        let names = self.active_tasks.lock().map_or_else(
-            |_| name.to_string(),
-            |mut active| {
-                active.push(name.to_string());
-                self.format_active(&active)
-            },
-        );
-        if show_progress {
-            self.draw_progress(&names);
+        self.redraw_active_status_locked(show_progress);
+    }
+
+    /// Redraw the live result sections and active-task status row.
+    ///
+    /// Must be called while holding `flush_lock`.
+    pub(in crate::logging) fn redraw_status_locked(&self, show_progress: bool) {
+        self.clear_progress();
+        if !show_progress {
+            return;
+        }
+
+        let mut lines = self.live_task_section_lines();
+        let has_active_status = self.active_task_summary().is_some_and(|names| {
+            if !lines.is_empty() {
+                lines.push(String::new());
+            }
+            lines.push(format!("\x1b[2m▹ {names}\x1b[0m"));
+            true
+        });
+        self.draw_status_lines(&lines);
+        self.set_status_row_visible(has_active_status);
+    }
+
+    /// Redraw only the active-task status row when result sections are unchanged.
+    ///
+    /// Must be called while holding `flush_lock`.
+    fn redraw_active_status_locked(&self, show_progress: bool) {
+        if !show_progress {
+            self.clear_progress();
+            return;
+        }
+
+        let Some(names) = self.active_task_summary() else {
+            self.clear_progress();
+            return;
+        };
+        let line = format!("\x1b[2m▹ {names}\x1b[0m");
+        if self.has_status_row() {
+            self.replace_status_line(&line);
+        } else {
+            self.append_status_line(&line, self.has_transient_rows());
         }
     }
 
-    /// Record that a parallel task has completed (successfully or otherwise).
-    ///
-    /// Acquires the flush lock, removes `name` from the active set, and
-    /// redraws the progress line with the remaining tasks.  If no tasks
-    /// remain active the progress line is cleared and `progress_rows` is
-    /// set to `0`.
-    ///
-    /// Must be called while **not** already holding `flush_lock` to avoid
-    /// deadlocking.
-    pub fn notify_task_done(&self, name: &str) {
-        self.notify_task_done_with_progress(name, stdout_supports_progress());
+    /// Redraw the live result sections and active-task status row.
+    pub(crate) fn redraw_status(&self) {
+        self.redraw_status_with_progress(stdout_supports_progress());
+    }
+
+    /// Redraw the live result sections and active-task status row.
+    pub(in crate::logging) fn redraw_status_with_progress(&self, show_progress: bool) {
+        let _guard = self.flush_lock.lock().unwrap_or_else(|e| {
+            eprintln!("warning: flush lock was poisoned, recovering");
+            e.into_inner()
+        });
+        self.redraw_status_locked(show_progress);
+    }
+
+    pub(in crate::logging) fn remove_active_task_locked(&self, name: &str) {
+        if let Ok(mut active) = self.active_tasks.lock() {
+            active.retain(|n| n != name);
+        }
+    }
+
+    fn active_task_summary(&self) -> Option<String> {
+        self.active_tasks.lock().ok().and_then(|active| {
+            if active.is_empty() {
+                None
+            } else {
+                Some(self.format_active(&active))
+            }
+        })
     }
 
     /// Record a task completion, optionally redrawing the interactive progress line.
+    #[cfg(test)]
     pub(in crate::logging) fn notify_task_done_with_progress(
         &self,
         name: &str,
@@ -64,22 +118,8 @@ impl Logger {
             eprintln!("warning: flush lock was poisoned, recovering");
             e.into_inner()
         });
-        if show_progress {
-            self.clear_progress();
-        }
-        let remaining = self.active_tasks.lock().ok().and_then(|mut active| {
-            active.retain(|n| n != name);
-            if active.is_empty() {
-                None
-            } else {
-                Some(self.format_active(&active))
-            }
-        });
-        if let Some(names) = remaining
-            && show_progress
-        {
-            self.draw_progress(&names);
-        }
+        self.remove_active_task_locked(name);
+        self.redraw_status_locked(show_progress);
     }
 
     /// Build the progress-line text describing the currently active tasks.
@@ -113,7 +153,7 @@ impl Logger {
     reason = "test code uses panicking helpers"
 )]
 mod tests {
-    use crate::logging::isolated_logger;
+    use crate::logging::{TaskStatus, isolated_logger};
 
     #[test]
     #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
@@ -263,5 +303,30 @@ mod tests {
             0,
             "progress_rows should stay zero when progress rendering is disabled"
         );
+    }
+
+    #[test]
+    fn notify_task_start_only_replaces_existing_status_row() {
+        let (log, _tmp, _guard) = isolated_logger();
+        log.record_task("changed-task", TaskStatus::Changed, None);
+        log.redraw_status_with_progress(true);
+        assert_eq!(log.progress_rows_count(), 2);
+        assert!(!log.status_row_visible());
+
+        log.notify_task_start_with_progress("task-a", true);
+        assert_eq!(
+            log.progress_rows_count(),
+            4,
+            "status row should be appended below existing result rows with a blank spacer"
+        );
+        assert!(log.status_row_visible());
+
+        log.notify_task_start_with_progress("task-b", true);
+        assert_eq!(
+            log.progress_rows_count(),
+            4,
+            "adding another active task should replace only the existing status row"
+        );
+        assert!(log.status_row_visible());
     }
 }

@@ -448,7 +448,6 @@ mod tests {
     use super::*;
     use crate::logging::Logger;
     use crate::logging::{Output, TaskRecorder, TaskStatus};
-    use crate::tasks::Domain;
     use crate::tasks::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 
@@ -469,14 +468,7 @@ mod tests {
     }
 
     impl TaskRecorder for SilentLog {
-        fn record_task(
-            &self,
-            _name: &str,
-            _domain: Domain,
-            _status: TaskStatus,
-            _message: Option<&str>,
-        ) {
-        }
+        fn record_task(&self, _name: &str, _status: TaskStatus, _message: Option<&str>) {}
     }
 
     #[test]

@@ -1,6 +1,5 @@
 //! Core logging types: task entries, status, and the [`Log`] trait.
 use super::diagnostic::{DiagEvent, DiagnosticLog};
-use crate::tasks::Domain;
 
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]
@@ -31,14 +30,14 @@ pub enum TaskStatus {
 }
 
 impl TaskStatus {
-    /// Icon and ANSI color used for compact status rendering.
+    /// ANSI color used for compact status rendering.
     #[must_use]
-    pub const fn icon_and_color(self) -> Option<(&'static str, &'static str)> {
+    pub const fn color(self) -> Option<&'static str> {
         match self {
-            Self::Changed | Self::Ok => Some(("\u{25cf}", "\x1b[32m")),
-            Self::Skipped => Some(("\u{25cb}", "\x1b[33m")),
-            Self::DryRun => Some(("\u{25cb}", "\x1b[35m")),
-            Self::Failed => Some(("\u{2717}", "\x1b[31m")),
+            Self::Changed | Self::Ok => Some("\x1b[32m"),
+            Self::Skipped => Some("\x1b[33m"),
+            Self::DryRun => Some("\x1b[35m"),
+            Self::Failed => Some("\x1b[31m"),
             Self::NotApplicable => None,
         }
     }
@@ -118,7 +117,7 @@ pub trait Output: Send + Sync {
 /// independently.
 pub trait TaskRecorder: Send + Sync {
     /// Record a task result for the summary.
-    fn record_task(&self, name: &str, domain: Domain, status: TaskStatus, message: Option<&str>);
+    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>);
 }
 
 /// Combined logging interface: user-facing output plus task recording.
@@ -131,18 +130,7 @@ pub trait TaskRecorder: Send + Sync {
 /// A blanket implementation is provided for any type that implements both
 /// sub-traits, so concrete types only need to implement [`Output`] and
 /// [`TaskRecorder`].
-pub trait Log: Output + TaskRecorder {
-    /// Record a task outcome for the final grouped summary.
-    fn record_task_outcome(
-        &self,
-        name: &str,
-        domain: Domain,
-        status: TaskStatus,
-        message: Option<&str>,
-    ) {
-        self.record_task(name, domain, status, message);
-    }
-}
+pub trait Log: Output + TaskRecorder {}
 
 impl<T: Output + TaskRecorder> Log for T {}
 
@@ -156,36 +144,6 @@ impl<T: Output + TaskRecorder> Log for T {}
 mod tests {
     use super::*;
     use crate::tasks::TaskPhase;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    #[derive(Default)]
-    struct RecordingLog {
-        records: AtomicUsize,
-    }
-
-    macro_rules! no_op_output_methods {
-        ($($method:ident),+ $(,)?) => {
-            $(
-                fn $method(&self, _msg: &str) {}
-            )+
-        };
-    }
-
-    impl Output for RecordingLog {
-        no_op_output_methods!(stage, info, debug, warn, error, dry_run, always);
-    }
-
-    impl TaskRecorder for RecordingLog {
-        fn record_task(
-            &self,
-            _name: &str,
-            _domain: Domain,
-            _status: TaskStatus,
-            _message: Option<&str>,
-        ) {
-            self.records.fetch_add(1, Ordering::SeqCst);
-        }
-    }
 
     #[test]
     fn task_status_equality() {
@@ -196,20 +154,6 @@ mod tests {
         assert_ne!(TaskStatus::Changed, TaskStatus::Ok);
         assert_ne!(TaskStatus::Skipped, TaskStatus::DryRun);
         assert_ne!(TaskStatus::NotApplicable, TaskStatus::Ok);
-    }
-
-    #[test]
-    fn record_task_outcome_does_not_emit_inline_task_result() {
-        let log = RecordingLog::default();
-
-        log.record_task_outcome(
-            "skipped-task",
-            Domain::General,
-            TaskStatus::Skipped,
-            Some("not needed"),
-        );
-
-        assert_eq!(log.records.load(Ordering::SeqCst), 1);
     }
 
     #[test]

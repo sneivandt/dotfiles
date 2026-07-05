@@ -413,7 +413,11 @@ symlinks = [
         .run(&ctx)
         .expect("second uninstall symlinks");
     assert!(matches!(second_uninstall, TaskResult::Ok));
-    assert!(!log.has_failures(), "round trip should not record failures");
+    assert_eq!(
+        log.failure_count(),
+        0,
+        "round trip should not record failures"
+    );
 }
 
 #[test]

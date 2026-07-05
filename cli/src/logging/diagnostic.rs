@@ -182,21 +182,20 @@ impl DiagnosticLog {
     /// from the current task context when one is set, otherwise from the OS
     /// thread name when available (e.g. `"main"`). Blank messages are omitted.
     pub fn emit(&self, event: DiagEvent, message: &str) {
-        self.emit_with_context(event, &diag_thread_name(), message);
+        if let Some(formatted_message) = format_diag_message(message) {
+            self.write_event(event, &diag_thread_name(), &formatted_message);
+        }
     }
 
     /// Emit a diagnostic event with an explicit context name.
     fn emit_with_context(&self, event: DiagEvent, context: &str, message: &str) {
-        let clean = strip_ansi(message);
-        let formatted_message = clean
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join(" | ");
-        if formatted_message.is_empty() {
+        let Some(formatted_message) = format_diag_message(message) else {
             return;
-        }
+        };
+        self.write_event(event, context, &formatted_message);
+    }
+
+    fn write_event(&self, event: DiagEvent, context: &str, formatted_message: &str) {
         let Ok(mut f) = self.file.lock() else {
             return;
         };
@@ -224,6 +223,22 @@ impl DiagnosticLog {
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
+    }
+}
+
+fn format_diag_message(message: &str) -> Option<String> {
+    let clean = strip_ansi(message);
+    let mut formatted = String::new();
+    for line in clean.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        if !formatted.is_empty() {
+            formatted.push_str(" | ");
+        }
+        formatted.push_str(line);
+    }
+    if formatted.is_empty() {
+        None
+    } else {
+        Some(formatted)
     }
 }
 

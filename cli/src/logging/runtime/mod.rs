@@ -5,18 +5,19 @@
 //!   methods (info/debug/warn/error/stage/etc.), task recording, and the
 //!   [`Output`] / [`TaskRecorder`] trait impls.
 //! - [`summary`]: end-of-run [`print_summary`](Logger::print_summary).
-//! - [`progress`]: in-progress status line rendering
-//!   ([`clear_progress`](Logger::clear_progress) / [`draw_progress`](Logger::draw_progress)).
-//! - [`notifications`]: parallel-task lifecycle hooks
-//!   ([`notify_task_start`](Logger::notify_task_start) / [`notify_task_done`](Logger::notify_task_done)).
+//! - [`progress`]: transient live status rendering.
+//! - [`notifications`]: parallel-task lifecycle hooks and live status redraws.
 
 mod notifications;
 mod progress;
 mod summary;
 
+pub(in crate::logging) use progress::stdout_supports_progress;
+
 #[cfg(test)]
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU16;
 #[cfg(test)]
 use std::sync::atomic::Ordering;
@@ -27,7 +28,6 @@ use super::types::{Output, TaskEntry, TaskRecorder, TaskStatus};
 use super::utils::dotfiles_cache_dir;
 #[cfg(test)]
 use super::utils::{dotfiles_cache_subdir, log_file_path_in};
-use crate::tasks::Domain;
 
 /// Generate an inherent `pub fn $name(&self, msg: &str)` method on `Logger`
 /// that optionally emits to the diagnostic log and then forwards to the given
@@ -91,11 +91,11 @@ pub struct Logger {
     pub(super) active_tasks: Mutex<Vec<String>>,
     /// Whether a progress line is currently displayed (`0` = no, `1` = yes).
     ///
-    /// The progress line is always truncated to fit within a single terminal
-    /// row, so the only valid values are `0` and `1`.  This avoids multi-row
-    /// cursor arithmetic that can erase real output when the terminal width
-    /// differs from the `COLUMNS` environment variable.
+    /// The transient status area is redrawn from whole rows. Each row is
+    /// truncated to fit the terminal, avoiding wrapped-row cursor arithmetic.
     pub(super) progress_rows: AtomicU16,
+    /// Whether the bottom row in the transient status area is the active-task row.
+    pub(super) status_row_visible: AtomicBool,
     /// High-precision diagnostic log; `None` when the cache dir is unavailable.
     pub(super) diagnostic: Option<DiagnosticLog>,
     /// Instant when the logger was created, used for elapsed time in summary.
@@ -133,6 +133,7 @@ impl Logger {
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
             progress_rows: AtomicU16::new(0),
+            status_row_visible: AtomicBool::new(false),
             diagnostic: dotfiles_cache_dir()
                 .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
             start,
@@ -173,6 +174,7 @@ impl Logger {
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
             progress_rows: AtomicU16::new(0),
+            status_row_visible: AtomicBool::new(false),
             diagnostic: dotfiles_cache_subdir(cache_dir)
                 .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
             start,
@@ -208,6 +210,12 @@ impl Logger {
     #[cfg(test)]
     pub(crate) fn progress_rows_count(&self) -> u16 {
         self.progress_rows.load(Ordering::Relaxed)
+    }
+
+    /// Return whether the active-task status row is currently displayed (test-only).
+    #[cfg(test)]
+    pub(crate) fn status_row_visible(&self) -> bool {
+        self.status_row_visible.load(Ordering::Relaxed)
     }
 
     log_method!(
@@ -257,13 +265,7 @@ impl Logger {
     );
 
     /// Record a task result for the summary.
-    pub fn record_task(
-        &self,
-        name: &str,
-        _domain: Domain,
-        status: TaskStatus,
-        message: Option<&str>,
-    ) {
+    pub fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
         if let Ok(mut guard) = self.tasks.lock() {
             guard.push(TaskEntry {
                 name: name.to_string(),
@@ -284,13 +286,6 @@ impl Logger {
                 lines,
             });
         }
-    }
-
-    /// Return `true` if any recorded task has failed.
-    #[must_use]
-    #[allow(dead_code, reason = "used conditionally via cfg")]
-    pub fn has_failures(&self) -> bool {
-        self.failure_count() > 0
     }
 
     /// Count the number of failed tasks.
@@ -314,8 +309,8 @@ impl Output for Logger {
 }
 
 impl TaskRecorder for Logger {
-    fn record_task(&self, name: &str, domain: Domain, status: TaskStatus, message: Option<&str>) {
-        self.record_task(name, domain, status, message);
+    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
+        self.record_task(name, status, message);
     }
 }
 
@@ -330,7 +325,6 @@ mod tests {
     use super::*;
     use crate::logging::isolated_logger;
     use crate::logging::types::Log;
-    use crate::tasks::Domain;
     use std::fs;
 
     #[test]
@@ -342,7 +336,7 @@ mod tests {
     #[test]
     fn record_task_ok() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task("symlinks", Domain::General, TaskStatus::Ok, None);
+        log.record_task("symlinks", TaskStatus::Ok, None);
         let tasks = log.task_entries();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].name, "symlinks");
@@ -352,12 +346,7 @@ mod tests {
     #[test]
     fn record_task_with_message() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task(
-            "packages",
-            Domain::General,
-            TaskStatus::Skipped,
-            Some("not on arch"),
-        );
+        log.record_task("packages", TaskStatus::Skipped, Some("not on arch"));
         assert_eq!(
             log.task_entries()[0].message,
             Some("not on arch".to_string())
@@ -367,20 +356,10 @@ mod tests {
     #[test]
     fn record_multiple_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task("a", Domain::General, TaskStatus::Ok, None);
-        log.record_task("b", Domain::General, TaskStatus::Failed, Some("error"));
-        log.record_task("c", Domain::General, TaskStatus::DryRun, None);
+        log.record_task("a", TaskStatus::Ok, None);
+        log.record_task("b", TaskStatus::Failed, Some("error"));
+        log.record_task("c", TaskStatus::DryRun, None);
         assert_eq!(log.task_entries().len(), 3);
-    }
-
-    #[test]
-    fn has_failures_detects_failed_task() {
-        let (log, _tmp, _guard) = isolated_logger();
-        assert!(!log.has_failures());
-        log.record_task("a", Domain::General, TaskStatus::Ok, None);
-        assert!(!log.has_failures());
-        log.record_task("b", Domain::General, TaskStatus::Failed, Some("error"));
-        assert!(log.has_failures());
     }
 
     #[test]
@@ -407,10 +386,10 @@ mod tests {
     fn failure_count_returns_correct_count() {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.failure_count(), 0);
-        log.record_task("a", Domain::General, TaskStatus::Ok, None);
-        log.record_task("b", Domain::General, TaskStatus::Failed, Some("error 1"));
-        log.record_task("c", Domain::General, TaskStatus::Failed, Some("error 2"));
-        log.record_task("d", Domain::General, TaskStatus::Skipped, None);
+        log.record_task("a", TaskStatus::Ok, None);
+        log.record_task("b", TaskStatus::Failed, Some("error 1"));
+        log.record_task("c", TaskStatus::Failed, Some("error 2"));
+        log.record_task("d", TaskStatus::Skipped, None);
         assert_eq!(log.failure_count(), 2);
     }
 
@@ -418,7 +397,7 @@ mod tests {
     fn log_trait_delegates_to_logger() {
         let (log, _tmp, _guard) = isolated_logger();
         let log_ref: &dyn Log = &log;
-        log_ref.record_task("via-trait", Domain::General, TaskStatus::Ok, None);
+        log_ref.record_task("via-trait", TaskStatus::Ok, None);
         assert_eq!(log.task_entries().len(), 1);
     }
 
@@ -512,7 +491,7 @@ mod tests {
     #[test]
     fn summary_omits_log_paths() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task("summary-test", Domain::General, TaskStatus::Ok, None);
+        log.record_task("summary-test", TaskStatus::Ok, None);
         log.print_summary();
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();
@@ -536,8 +515,9 @@ mod tests {
             contents.contains("Complete"),
             "file summary should include the final completion line: {contents}"
         );
+        let lower_contents = contents.to_lowercase();
         assert!(
-            contents.contains("0 passed") && contents.contains("1 not run"),
+            lower_contents.contains("0 passed") && lower_contents.contains("1 not run"),
             "file summary should include final counts: {contents}"
         );
     }

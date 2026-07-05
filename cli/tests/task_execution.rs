@@ -392,7 +392,6 @@ fn execute_mixed_skip_and_success() {
     tasks::execute(&InstallGitHooks::new(), &ec.ctx);
 
     assert_eq!(ec.log.failure_count(), 0);
-    assert!(!ec.log.has_failures());
 }
 
 // ===========================================================================
@@ -484,7 +483,7 @@ fn dry_run_pipeline_produces_no_failures() {
     }
 
     assert!(
-        !ec.log.has_failures(),
+        ec.log.failure_count() == 0,
         "dry-run pipeline should produce no failures"
     );
 }

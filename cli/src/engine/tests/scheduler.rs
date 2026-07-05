@@ -318,13 +318,7 @@ fn dependency_block_reason_is_emitted_as_log_detail() {
     }
 
     impl TaskRecorder for RecordingLog {
-        fn record_task(
-            &self,
-            _name: &str,
-            _domain: tasks::Domain,
-            status: TaskStatus,
-            _message: Option<&str>,
-        ) {
+        fn record_task(&self, _name: &str, status: TaskStatus, _message: Option<&str>) {
             self.records
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)

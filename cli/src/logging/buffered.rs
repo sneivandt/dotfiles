@@ -2,9 +2,8 @@
 use std::sync::{Arc, Mutex};
 
 use super::diagnostic::{DiagEvent, DiagnosticLog};
-use super::runtime::Logger;
+use super::runtime::{Logger, stdout_supports_progress};
 use super::types::{Output, TaskRecorder, TaskStatus};
-use crate::tasks::Domain;
 
 /// A single buffered log entry, replayed when flushed.
 #[derive(Debug, Clone)]
@@ -42,9 +41,9 @@ impl LogEntry {
         }
     }
 
-    fn detail_line(&self) -> Option<String> {
+    fn detail_line(&self) -> Option<&str> {
         match self {
-            Self::Info(msg) | Self::DryRun(msg) | Self::Always(msg) => Some(msg.clone()),
+            Self::Info(msg) | Self::DryRun(msg) | Self::Always(msg) => Some(msg),
             Self::Stage(_) | Self::Debug(_) | Self::Warn(_) | Self::Error(_) => None,
         }
     }
@@ -125,10 +124,11 @@ impl BufferedLog {
     /// Replay all buffered entries to the backing [`Logger`].
     #[cfg(test)]
     pub fn flush(&self) {
-        let entries = match self.entries.lock() {
-            Ok(guard) => guard.clone(),
-            Err(_) => return,
-        };
+        let entries = self
+            .entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         if self.inner.is_verbose() {
             for entry in &entries {
                 entry.replay();
@@ -144,26 +144,37 @@ impl BufferedLog {
     ///
     /// Acquires the flush lock on the backing [`Logger`] to prevent
     /// interleaved console output when multiple tasks complete concurrently.
-    /// After replaying the buffered entries, updates the active task display
-    /// by delegating to [`Logger::notify_task_done`].
+    /// After replaying the buffered entries, updates the live task-result and
+    /// active-task display.
     ///
     /// In non-verbose mode task output is written to the log file only. The
     /// durable console task list is rendered once in the final grouped summary.
     #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
-    pub fn flush_and_complete(&self, task_name: &str, _status: TaskStatus) {
+    pub fn flush_and_complete(&self, task_name: &str, status: TaskStatus) {
         {
+            let show_progress = stdout_supports_progress();
             let _guard = self.inner.flush_lock.lock().unwrap_or_else(|e| {
                 eprintln!("warning: flush lock was poisoned, recovering");
                 e.into_inner()
             });
-            self.inner.clear_progress();
-            let entries = match self.entries.lock() {
-                Ok(guard) => guard.clone(),
-                Err(_) => return,
+            if show_progress {
+                self.inner.clear_progress();
+            }
+            let entries = {
+                let mut guard = self
+                    .entries
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                std::mem::take(&mut *guard)
             };
-            let detail_lines: Vec<String> =
-                entries.iter().filter_map(LogEntry::detail_line).collect();
-            self.inner.record_task_details(task_name, detail_lines);
+            if should_record_task_details(status) {
+                let detail_lines: Vec<String> = entries
+                    .iter()
+                    .filter_map(LogEntry::detail_line)
+                    .map(ToString::to_string)
+                    .collect();
+                self.inner.record_task_details(task_name, detail_lines);
+            }
             let span = tracing::info_span!("task", name = task_name);
             let _enter = span.enter();
             if self.inner.is_verbose() {
@@ -175,9 +186,17 @@ impl BufferedLog {
                     entry.replay_non_verbose();
                 }
             }
+            self.inner.remove_active_task_locked(task_name);
+            self.inner.redraw_status_locked(show_progress);
         }
-        self.inner.notify_task_done(task_name);
     }
+}
+
+const fn should_record_task_details(status: TaskStatus) -> bool {
+    matches!(
+        status,
+        TaskStatus::Changed | TaskStatus::Skipped | TaskStatus::DryRun | TaskStatus::Failed
+    )
 }
 
 impl Output for BufferedLog {
@@ -197,8 +216,8 @@ impl Output for BufferedLog {
 }
 
 impl TaskRecorder for BufferedLog {
-    fn record_task(&self, name: &str, domain: Domain, status: TaskStatus, message: Option<&str>) {
-        self.inner.record_task(name, domain, status, message);
+    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
+        self.inner.record_task(name, status, message);
     }
 }
 
@@ -220,7 +239,7 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
         let log = Arc::new(log);
         let buf = BufferedLog::new(Arc::clone(&log));
-        buf.record_task("task-a", Domain::General, TaskStatus::Ok, None);
+        buf.record_task("task-a", TaskStatus::Ok, None);
         assert_eq!(log.task_entries().len(), 1);
         assert_eq!(log.task_entries()[0].name, "task-a");
     }

@@ -94,7 +94,7 @@ mod unix_e2e {
         tasks::execute(&InstallGitHooks::new(), &ec.ctx);
         tasks::execute(&ApplyFilePermissions, &ec.ctx);
 
-        assert!(!ec.log.has_failures(), "no task should fail");
+        assert_eq!(ec.log.failure_count(), 0, "no task should fail");
 
         // 1. Symlink created and points to the repository source.
         let link = ec.ctx.home.join(".bashrc");
@@ -149,7 +149,7 @@ mod unix_e2e {
         tasks::execute(&InstallGitHooks::new(), &ec.ctx);
         tasks::execute(&ApplyFilePermissions, &ec.ctx);
         assert!(
-            !ec.log.has_failures(),
+            ec.log.failure_count() == 0,
             "first run should produce no failures"
         );
 
@@ -158,7 +158,7 @@ mod unix_e2e {
         tasks::execute(&InstallGitHooks::new(), &ec.ctx);
         tasks::execute(&ApplyFilePermissions, &ec.ctx);
         assert!(
-            !ec.log.has_failures(),
+            ec.log.failure_count() == 0,
             "second (idempotent) run should also produce no failures"
         );
 
@@ -199,7 +199,7 @@ mod unix_e2e {
         let (_test, ec) = build_full_fixture();
 
         tasks::execute(&InstallSymlinks, &ec.ctx);
-        assert!(!ec.log.has_failures());
+        assert_eq!(ec.log.failure_count(), 0);
 
         let content = std::fs::read_to_string(ec.ctx.home.join(".bashrc")).unwrap();
         assert_eq!(

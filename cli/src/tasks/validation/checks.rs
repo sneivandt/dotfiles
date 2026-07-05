@@ -242,7 +242,7 @@ impl Task for RunShellcheck {
         }
 
         ctx.log
-            .info(&format!("checking {} shell scripts", scripts.len()));
+            .debug(&format!("checking {} shell scripts", scripts.len()));
 
         let args = build_shellcheck_args(&scripts);
         let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
@@ -295,7 +295,7 @@ impl Task for RunPSScriptAnalyzer {
         }
 
         ctx.log
-            .info(&format!("checking {} PowerShell scripts", ps_files.len()));
+            .debug(&format!("checking {} PowerShell scripts", ps_files.len()));
 
         let script = build_psscriptanalyzer_command(&ps_files);
 

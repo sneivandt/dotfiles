@@ -404,3 +404,38 @@ fn batch_install_winget_skipped_returns_error() {
         "expected 'winget install failed' in: {err}"
     );
 }
+
+#[test]
+fn winget_install_report_tracks_successful_package_names() {
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    mock.expect_run_unchecked()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok(fail_result()));
+    mock.expect_run_unchecked()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok(ok_result("")));
+
+    let executor: Arc<dyn Executor> = Arc::new(mock);
+    let first = PackageResource::new(
+        "First.App".to_string(),
+        PackageManager::Winget,
+        Arc::clone(&executor),
+    );
+    let second = PackageResource::new(
+        "Second.App".to_string(),
+        PackageManager::Winget,
+        Arc::clone(&executor),
+    );
+
+    let report = PackageManager::Winget
+        .provider()
+        .install_missing(&[&first, &second], &*executor)
+        .unwrap();
+
+    assert_eq!(report.applied_packages(), &["Second.App".to_string()]);
+    assert_eq!(report.failures().len(), 1);
+    assert_eq!(report.failures()[0].package, "First.App");
+}

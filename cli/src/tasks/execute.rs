@@ -117,12 +117,17 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context, domain: Domain) -> TaskSta
         Ok(Some(result)) => match result {
             TaskResult::Ok => {
                 ctx.log.diag_task(DiagEvent::TaskDone, task.name(), "");
-                rec(TaskStatus::Ok, None)
+                let status = if domain == Domain::Validation {
+                    TaskStatus::Changed
+                } else {
+                    TaskStatus::Ok
+                };
+                rec(status, None)
             }
             TaskResult::OkWithMessage(message) => {
                 ctx.log
                     .diag_task(DiagEvent::TaskDone, task.name(), &message);
-                rec(TaskStatus::Ok, Some(&message))
+                rec(TaskStatus::Changed, Some(&message))
             }
             TaskResult::NotApplicable(reason) => {
                 ctx.log.diag_task(DiagEvent::TaskSkip, task.name(), &reason);

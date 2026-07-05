@@ -45,22 +45,6 @@ impl Task for UpdateApmPackages {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if ctx.dry_run {
-            let targets = ApmTargets::detect(ctx)?;
-            ctx.log.dry_run(&format!(
-                "run apm outdated -g and apm update -g --yes --target {} to advance any stale \
-                 dependencies",
-                targets.as_str()
-            ));
-            if targets.includes_copilot_app() {
-                ctx.log.dry_run(
-                    "re-assert apm-managed Copilot App workflows to autopilot + enabled in \
-                     ~/.copilot/data.db after advancing dependencies",
-                );
-            }
-            return Ok(TaskResult::DryRun);
-        }
-
         if !ctx.executor.which("apm") {
             return Ok(skip_with_warning(ctx, missing_apm_reason(ctx)));
         }
@@ -95,8 +79,34 @@ impl Task for UpdateApmPackages {
         }
 
         let targets = ApmTargets::detect(ctx)?;
+        if ctx.dry_run {
+            return preview_apm_update(ctx, targets);
+        }
         advance_apm_dependencies(ctx, targets)
     }
+}
+
+fn preview_apm_update(ctx: &Context, targets: ApmTargets) -> Result<TaskResult> {
+    Ok(match apm_dependencies_are_outdated(ctx)? {
+        ApmOutdatedCheck::Outdated(true) => {
+            ctx.log.dry_run(&format!(
+                "run apm update -g --yes --target {} to advance stale dependencies",
+                targets.as_str()
+            ));
+            if targets.includes_copilot_app() {
+                ctx.log.dry_run(
+                    "re-assert apm-managed Copilot App workflows to autopilot + enabled in \
+                     ~/.copilot/data.db after advancing dependencies",
+                );
+            }
+            TaskResult::DryRun
+        }
+        ApmOutdatedCheck::Outdated(false) => {
+            ctx.log.debug("APM dependencies are up-to-date");
+            TaskResult::Ok
+        }
+        ApmOutdatedCheck::Skipped(reason) => TaskResult::Skipped(reason),
+    })
 }
 
 /// Advance locked user-scope dependencies to the latest matching refs.
@@ -115,11 +125,11 @@ fn advance_apm_dependencies(ctx: &Context, targets: ApmTargets) -> Result<TaskRe
                 .then(|| snapshot_desired_apm_workflow_ids(ctx));
             match run_apm_update(ctx, targets)? {
                 ApmUpdateOutcome::Changed => {
-                    ctx.log.always("    update: advanced to latest versions");
+                    ctx.log.always("    updated: advanced to latest versions");
                     if let Some(pre) = pre_workflows {
                         apply_workflow_autopilot_fixup(ctx, &pre);
                     }
-                    TaskResult::Ok
+                    TaskResult::OkWithMessage("advanced APM dependencies to latest versions".into())
                 }
                 ApmUpdateOutcome::Unchanged => {
                     ctx.log.debug("APM dependencies already at latest refs");

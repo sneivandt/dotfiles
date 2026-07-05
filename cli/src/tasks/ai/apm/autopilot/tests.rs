@@ -440,8 +440,8 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok after autopilot fixup, got {result:?}"
+        matches!(result, TaskResult::OkWithMessage(_)),
+        "expected changed result after autopilot fixup, got {result:?}"
     );
 }
 
@@ -464,8 +464,8 @@ fn run_warns_when_python_missing_for_autopilot_fixup() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok when python is missing (non-fatal), got {result:?}"
+        matches!(result, TaskResult::OkWithMessage(_)),
+        "expected changed result when python is missing (non-fatal), got {result:?}"
     );
 }
 
@@ -493,8 +493,8 @@ fn run_warns_when_workflow_db_is_locked() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok despite locked db (non-fatal), got {result:?}"
+        matches!(result, TaskResult::OkWithMessage(_)),
+        "expected changed result despite locked db (non-fatal), got {result:?}"
     );
 }
 
@@ -525,8 +525,8 @@ fn run_warns_when_workflow_db_schema_drifts() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok despite schema drift (non-fatal), got {result:?}"
+        matches!(result, TaskResult::OkWithMessage(_)),
+        "expected changed result despite schema drift (non-fatal), got {result:?}"
     );
 }
 
@@ -554,8 +554,8 @@ fn run_skips_autopilot_fixup_when_lock_lists_no_workflows() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok with the fixup skipped, got {result:?}"
+        matches!(result, TaskResult::OkWithMessage(_)),
+        "expected changed result with the fixup skipped, got {result:?}"
     );
 }
 

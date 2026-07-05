@@ -79,7 +79,7 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
         for resource in resources {
             match self.install(&resource.name, executor) {
                 Ok(ResourceChange::Applied | ResourceChange::AlreadyCorrect) => {
-                    report.record_applied();
+                    report.record_applied(resource.name.clone());
                 }
                 Ok(ResourceChange::Skipped { reason }) => {
                     report.record_failure(resource.name.clone(), reason);
@@ -105,7 +105,7 @@ pub struct PackageInstallFailure {
 /// Outcome of installing a set of missing packages.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PackageInstallReport {
-    applied: usize,
+    applied: Vec<String>,
     failures: Vec<PackageInstallFailure>,
 }
 
@@ -114,16 +114,16 @@ impl PackageInstallReport {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            applied: 0,
+            applied: Vec::new(),
             failures: Vec::new(),
         }
     }
 
     /// Create a report for a successful batch operation.
     #[must_use]
-    pub const fn applied(count: usize) -> Self {
+    pub const fn applied(packages: Vec<String>) -> Self {
         Self {
-            applied: count,
+            applied: packages,
             failures: Vec::new(),
         }
     }
@@ -131,7 +131,13 @@ impl PackageInstallReport {
     /// Number of packages successfully applied.
     #[must_use]
     pub const fn applied_count(&self) -> usize {
-        self.applied
+        self.applied.len()
+    }
+
+    /// Package names successfully applied.
+    #[must_use]
+    pub fn applied_packages(&self) -> &[String] {
+        &self.applied
     }
 
     /// Per-package install failures.
@@ -146,8 +152,8 @@ impl PackageInstallReport {
         !self.failures.is_empty()
     }
 
-    const fn record_applied(&mut self) {
-        self.applied = self.applied.saturating_add(1);
+    fn record_applied(&mut self, package: String) {
+        self.applied.push(package);
     }
 
     fn record_failure(&mut self, package: String, reason: String) {

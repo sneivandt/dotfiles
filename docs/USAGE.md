@@ -285,33 +285,32 @@ Enable verbose logging to see detailed operation information:
 - Stage headers for each task (`==>` markers)
 - Per-item detail (symlinks, packages, etc.)
 - Operations being skipped (with reasons)
-- Full per-task summary grouped by domain
+- Final summary counts
 
-**Default (non-verbose) output** shows compact inline task-result lines as each
-task's buffered output is flushed, followed by a totals line. Within a phase,
-line order can vary because independent tasks run in parallel.
+**Default (non-verbose) output** shows a live progress line while tasks run,
+then a compact summary. Successful no-op tasks are counted as unchanged and are
+not listed individually; only tasks that changed state appear in the final
+changed list.
 
 ```
 version v0.1.317 · profile desktop · Arch Linux
 
-● Setting up dotfiles
-  ~ Install wrapper
-  ~ Configure PATH
+Skipped
+  ○ Update repository
+      local changes present
 
-● Updating the repository
-  ✓ Configure sparse checkout
-  ○ Update repository — local changes present
-  ~ Install Git hooks
-  ✓ Reload configuration
-  ~ Install shell completions
+Changed
+  ● Install symlinks
+      linked: ~/.bashrc
+      linked: ~/.config/git/config
+  ● Install packages
+      installed: fd
+      installed: ripgrep
+  ● Configure systemd units
+      enabled: clean-home-tmp.timer
 
-● Configuring your system
-  ~ Install symlinks
-  ~ Install packages
-  ~ Configure systemd units
-
-dotfiles install complete
-  2 ok · 1 skipped · 7 dry-run · 6 not applicable · 1.3s
+Complete · 1.3s
+3 changed · 42 unchanged · 1 skipped
 ```
 
 ## Parallel Execution
@@ -362,18 +361,18 @@ All operations are logged to persistent log files. Use `dotfiles log` (or
 
 **Linux:**
 - Location: `${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/install.log`
-- Includes: Timestamps, operations, full detail, summary
+- Includes: Timestamps, operations, full detail, final summary counts
 
 **Windows:**
 - Location: `%USERPROFILE%\.cache\dotfiles\install.log`
-- Includes: Timestamps, operations, full detail, summary
+- Includes: Timestamps, operations, full detail, final summary counts
 
 **Log contents:**
 - Installation timestamp
 - Selected profile
 - Structured level and task context for all operations performed
 - Full verbose-level detail (always, regardless of console verbose flag)
-- Summary statistics
+- Final summary counts
 - Error messages and warnings
 
 A **diagnostic log** is also written alongside the main log:
@@ -397,39 +396,30 @@ runs repeating the log path.
 ## Installation Summary
 
 After installation, a summary is displayed. In **non-verbose** mode (default),
-compact task-result lines are shown inline as task buffers flush, followed by
+no-op task completions are not printed inline. Skipped tasks are shown once as
+they happen, while the final summary lists tasks that changed state, failed, or
+would change state in dry-run mode, then ends with `Complete`, the runtime, and task
 totals.
 
-In **verbose** mode (`-v`), a full per-task breakdown grouped by domain is
-appended. This is a logical summary, not the chronological execution order.
+The persistent log file records task output as it happens and ends with the same
+final completion/count lines as the console. Use `dotfiles log` when you need every task result.
 
-**Example (verbose):**
+**Example:**
 ```
-● Summary
-   Core
-     ~ Install wrapper
-     ~ Configure PATH
-   Repository
-     ✓ Configure sparse checkout
-     ○ Update repository (local changes present)
-     ✓ Reload configuration
-   Git
-     ~ Install Git hooks
-   Files
-     ~ Install symlinks
-   Packages
-     ~ Install packages
-   System
-     ~ Configure systemd units
+Changed
+  ● Configure sparse checkout
+      configured: sparse checkout
+  ● Install symlinks
+      linked: ~/.bashrc
+      linked: ~/.config/git/config
 
-dotfiles install complete
-  2 ok · 1 skipped · 6 dry-run · 6 not applicable · 1.3s
+Complete · 1.3s
+2 changed · 47 unchanged · 1 skipped
 ```
 
 **Status icons:**
-- `✓` — task completed successfully (green)
-- `○` — deliberately skipped (yellow)
-- `~` — dry-run preview (magenta)
+- `●` — task changed state successfully (green)
+- `○` — task did not change state: deliberately skipped (yellow) or dry-run preview (magenta)
 - `✗` — task failed (red)
 
 Not-applicable tasks are omitted from the summary display.
@@ -523,13 +513,13 @@ vary unless dependencies constrain it:
 
 ```
 ● Updating the repository
-  ✓ Reload configuration
-  ✓ Load overlay scripts
+  ● Reload configuration
+  ● Load overlay scripts
 
 ● Configuring your system
-  ✓ Install symlinks
-  ✓ Install private files   ← overlay script task
-  ✓ Install packages
+  ● Install symlinks
+  ● Install private files   ← overlay script task
+  ● Install packages
 ```
 
 See [Configuration Reference](CONFIGURATION.md#overlay-configuration) for

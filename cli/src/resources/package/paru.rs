@@ -36,6 +36,11 @@ impl PackageProvider for ParuProvider {
         let names: Vec<&str> = resources.iter().map(|r| r.name.as_str()).collect();
         args.extend(names);
         executor.run("paru", &args)?;
-        Ok(PackageInstallReport::applied(resources.len()))
+        Ok(PackageInstallReport::applied(
+            resources
+                .iter()
+                .map(|resource| resource.name.clone())
+                .collect(),
+        ))
     }
 }

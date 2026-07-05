@@ -81,7 +81,7 @@ impl<'a> ApplyChange<'a> {
                 current: Some(current),
                 ..
             } => Some(format!(
-                "  would {verb} {} (currently {current})",
+                "  would {verb}: {} (currently {current})",
                 self.description
             )),
             ApplyOperation::Apply {
@@ -254,7 +254,7 @@ mod tests {
         );
         assert_eq!(
             plan.dry_run_message().unwrap(),
-            "  would replace thing (currently old)".to_string()
+            "  would replace: thing (currently old)".to_string()
         );
     }
 

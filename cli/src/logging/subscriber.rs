@@ -163,23 +163,25 @@ where
         event.record(&mut extractor);
         let raw = strip_ansi(&extractor.message);
         let msg = raw.trim_start();
-        let ts = format_utc_time();
 
+        if level == tracing::Level::INFO && target == "dotfiles::task_result" {
+            return;
+        }
+        if msg.is_empty() {
+            return;
+        }
+
+        let ts = format_utc_time();
         let level_label = level_label(level, target);
         let context = task_name.map_or_else(String::new, |name| format!(" [{name}]"));
         let prefix = format!("[{ts}] [{level_label}]{context}");
 
-        let line = if msg.is_empty() {
-            prefix
-        } else {
-            match (level, target) {
-                (tracing::Level::INFO, "dotfiles::task_result") => return,
-                (tracing::Level::INFO, "dotfiles::stage") => format!("{prefix} ==> {msg}"),
-                (tracing::Level::INFO, "dotfiles::phase") => {
-                    format!("{prefix} :: {msg}")
-                }
-                _ => format!("{prefix} {msg}"),
+        let line = match (level, target) {
+            (tracing::Level::INFO, "dotfiles::stage") => format!("{prefix} ==> {msg}"),
+            (tracing::Level::INFO, "dotfiles::phase") => {
+                format!("{prefix} :: {msg}")
             }
+            _ => format!("{prefix} {msg}"),
         };
 
         if let Ok(mut f) = self.file.lock() {
@@ -262,7 +264,11 @@ where
                 }
             }
             tracing::Level::INFO if target == "dotfiles::phase" => {
-                writeln!(writer, "\x1b[1;34m\u{25cf}\x1b[0m \x1b[1;34m{msg}\x1b[0m")
+                if VERBOSE.load(Ordering::Relaxed) {
+                    writeln!(writer, "\x1b[1;34m\u{25cf}\x1b[0m \x1b[1;34m{msg}\x1b[0m")
+                } else {
+                    Ok(())
+                }
             }
             tracing::Level::INFO if target == "dotfiles::dry_run" => {
                 writeln!(writer, "  {msg}")
@@ -519,19 +525,22 @@ mod tests {
     }
 
     #[test]
-    fn file_layer_empty_message_has_no_trailing_space() {
+    fn file_layer_omits_empty_messages() {
         let (path, _tmp, _guard) = isolated_file_layer();
+        let before = fs::read_to_string(&path).unwrap();
+
         tracing::info!("");
-        let content = fs::read_to_string(&path).unwrap();
-        // Find the last non-header line (the empty-message event)
-        let event_line = content
-            .lines()
-            .last()
-            .expect("should have at least one line");
-        // Should be just the timestamp bracket with no trailing space
-        assert!(
-            event_line.ends_with(']'),
-            "empty message line should end with ']', got: {event_line:?}"
+        tracing::warn!("   ");
+        tracing::error!("\t");
+        tracing::debug!("\x1b[31m\x1b[0m");
+        tracing::info!(target: "dotfiles::stage", "");
+        tracing::info!(target: "dotfiles::dry_run", "  ");
+        tracing::info!(target: "dotfiles::file_only", "");
+
+        let after = fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            after, before,
+            "empty log messages should not write timestamp-only file lines"
         );
     }
 }

@@ -174,7 +174,7 @@ fn contract_missing_resource_applies_once_then_noops() {
     let first = process_resources(&ctx, [resource.clone()], &opts).unwrap();
     let second = process_resources(&ctx, [resource.clone()], &opts).unwrap();
 
-    assert!(matches!(first, TaskResult::Ok));
+    assert!(matches!(first, TaskResult::OkWithMessage(_)));
     assert!(matches!(second, TaskResult::Ok));
     assert_eq!(resource.state(), ResourceState::Correct);
     assert_eq!(resource.apply_calls(), 1);
@@ -191,7 +191,7 @@ fn contract_incorrect_resource_repairs_once_then_noops() {
     let first = process_resources(&ctx, [resource.clone()], &opts).unwrap();
     let second = process_resources(&ctx, [resource.clone()], &opts).unwrap();
 
-    assert!(matches!(first, TaskResult::Ok));
+    assert!(matches!(first, TaskResult::OkWithMessage(_)));
     assert!(matches!(second, TaskResult::Ok));
     assert_eq!(resource.state(), ResourceState::Correct);
     assert_eq!(resource.apply_calls(), 1);
@@ -257,7 +257,7 @@ fn contract_remove_correct_resource_once_then_noops() {
     let first = process_resources_remove(&ctx, [resource.clone()], "remove").unwrap();
     let second = process_resources_remove(&ctx, [resource.clone()], "remove").unwrap();
 
-    assert!(matches!(first, TaskResult::Ok));
+    assert!(matches!(first, TaskResult::OkWithMessage(_)));
     assert!(matches!(second, TaskResult::Ok));
     assert_eq!(resource.state(), ResourceState::Missing);
     assert_eq!(resource.remove_calls(), 1);
@@ -369,10 +369,11 @@ fn contract_dry_run_process_modes_never_mutate_any_state() -> anyhow::Result<()>
             let resource = ContractResource::new(case.state.clone());
 
             let result = process_resources(&ctx, [resource.clone()], &mode.opts)?;
+            let would_apply = mode_applies_state(&mode, &case.state);
 
             assert!(
-                matches!(result, TaskResult::DryRun),
-                "dry-run mode {} and state {} should report dry-run",
+                matches!(result, TaskResult::DryRun) == would_apply,
+                "dry-run mode {} and state {} should report dry-run only when it would apply",
                 mode.name,
                 case.name
             );
@@ -413,11 +414,19 @@ fn contract_remove_only_mutates_correct_resources() -> anyhow::Result<()> {
 
         let result = process_resources_remove(&ctx, [resource.clone()], "remove")?;
 
-        assert!(
-            matches!(result, TaskResult::Ok),
-            "remove state {} should complete successfully",
-            case.name
-        );
+        if should_remove {
+            assert!(
+                matches!(result, TaskResult::OkWithMessage(_)),
+                "remove state {} should report a change",
+                case.name
+            );
+        } else {
+            assert!(
+                matches!(result, TaskResult::Ok),
+                "remove state {} should complete without a change",
+                case.name
+            );
+        }
         assert_eq!(
             resource.remove_calls(),
             usize::from(should_remove),
@@ -454,10 +463,11 @@ fn contract_remove_dry_run_never_mutates_any_state() -> anyhow::Result<()> {
         let resource = ContractResource::new(case.state.clone());
 
         let result = process_resources_remove(&ctx, [resource.clone()], "remove")?;
+        let would_remove = matches!(case.state, ResourceState::Correct);
 
         assert!(
-            matches!(result, TaskResult::DryRun),
-            "dry-run remove state {} should report dry-run",
+            matches!(result, TaskResult::DryRun) == would_remove,
+            "dry-run remove state {} should report dry-run only when it would remove",
             case.name
         );
         assert_eq!(

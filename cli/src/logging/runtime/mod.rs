@@ -14,6 +14,7 @@ mod notifications;
 mod progress;
 mod summary;
 
+#[cfg(test)]
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicU16;
@@ -23,7 +24,7 @@ use std::time::Instant;
 
 use super::diagnostic::{DiagEvent, DiagnosticLog};
 use super::types::{Output, TaskEntry, TaskRecorder, TaskStatus};
-use super::utils::{dotfiles_cache_dir, log_file_path};
+use super::utils::dotfiles_cache_dir;
 #[cfg(test)]
 use super::utils::{dotfiles_cache_subdir, log_file_path_in};
 use crate::tasks::Domain;
@@ -81,6 +82,9 @@ pub struct Logger {
     /// Command currently being executed (`install`, `update`, etc.).
     pub(super) command: String,
     pub(super) tasks: Mutex<Vec<TaskEntry>>,
+    pub(super) task_details: Mutex<Vec<TaskDetailEntry>>,
+    pub(super) emitted_task_result_sections: Mutex<Vec<TaskStatus>>,
+    #[cfg(test)]
     pub(super) log_file: Option<PathBuf>,
     /// Serializes console output from parallel task flushes.
     pub(super) flush_lock: Mutex<()>,
@@ -99,6 +103,17 @@ pub struct Logger {
     pub(super) start: Instant,
     /// Whether verbose output is enabled (show all stage headers and info).
     pub(super) verbose: bool,
+    /// Whether the current command is previewing changes without applying them.
+    pub(super) dry_run: bool,
+}
+
+/// Buffered user-facing detail lines emitted by a completed task.
+#[derive(Debug, Clone)]
+pub(in crate::logging) struct TaskDetailEntry {
+    /// Human-readable task name.
+    pub(super) name: String,
+    /// Detail lines emitted by the task while it ran.
+    pub(super) lines: Vec<String>,
 }
 
 impl Logger {
@@ -113,7 +128,10 @@ impl Logger {
         Self {
             command: command.to_string(),
             tasks: Mutex::new(Vec::new()),
-            log_file: log_file_path(command),
+            task_details: Mutex::new(Vec::new()),
+            emitted_task_result_sections: Mutex::new(Vec::new()),
+            #[cfg(test)]
+            log_file: super::utils::log_file_path(command),
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
             progress_rows: AtomicU16::new(0),
@@ -121,6 +139,7 @@ impl Logger {
                 .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
             start,
             verbose: true,
+            dry_run: false,
         }
     }
 
@@ -131,6 +150,11 @@ impl Logger {
     pub fn set_verbose(&mut self, verbose: bool) {
         self.verbose = verbose;
         super::subscriber::set_verbose(verbose);
+    }
+
+    /// Set dry-run mode on this logger for summary rendering.
+    pub const fn set_dry_run(&mut self, dry_run: bool) {
+        self.dry_run = dry_run;
     }
 
     /// Create a new logger using an explicit cache base directory.
@@ -146,6 +170,8 @@ impl Logger {
         Self {
             command: command.to_string(),
             tasks: Mutex::new(Vec::new()),
+            task_details: Mutex::new(Vec::new()),
+            emitted_task_result_sections: Mutex::new(Vec::new()),
             log_file: log_file_path_in(command, cache_dir),
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
@@ -154,6 +180,7 @@ impl Logger {
                 .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
             start,
             verbose: true,
+            dry_run: false,
         }
     }
 
@@ -168,6 +195,7 @@ impl Logger {
     }
 
     /// Return the log file path, if available.
+    #[cfg(test)]
     #[must_use]
     pub const fn log_path(&self) -> Option<&PathBuf> {
         self.log_file.as_ref()
@@ -235,17 +263,45 @@ impl Logger {
     pub fn record_task(
         &self,
         name: &str,
-        domain: Domain,
+        _domain: Domain,
         status: TaskStatus,
         message: Option<&str>,
     ) {
         if let Ok(mut guard) = self.tasks.lock() {
             guard.push(TaskEntry {
                 name: name.to_string(),
-                domain,
                 status,
                 message: message.map(String::from),
             });
+        }
+    }
+
+    /// Record buffered user-facing detail lines for a completed task.
+    pub(in crate::logging) fn record_task_details(&self, name: &str, lines: Vec<String>) {
+        if lines.is_empty() {
+            return;
+        }
+        if let Ok(mut guard) = self.task_details.lock() {
+            guard.push(TaskDetailEntry {
+                name: name.to_string(),
+                lines,
+            });
+        }
+    }
+
+    /// Return whether the live task-result section header should be printed.
+    pub(in crate::logging) fn should_emit_task_result_section(&self, status: TaskStatus) -> bool {
+        if status != TaskStatus::Skipped {
+            return false;
+        }
+        let Ok(mut guard) = self.emitted_task_result_sections.lock() else {
+            return false;
+        };
+        if guard.contains(&status) {
+            false
+        } else {
+            guard.push(status);
+            true
         }
     }
 
@@ -286,6 +342,28 @@ impl Output for Logger {
 
     fn diagnostic(&self) -> Option<&DiagnosticLog> {
         self.diagnostic.as_ref()
+    }
+
+    fn emit_task_result(&self, name: &str, status: TaskStatus, message: Option<&str>) {
+        if self.should_emit_task_result_section(status) {
+            self.task_result("\x1b[1mSkipped\x1b[0m");
+        }
+        emit_task_result_lines(self, name, status, message);
+    }
+}
+
+pub(in crate::logging) fn emit_task_result_lines<O: Output + ?Sized>(
+    output: &O,
+    name: &str,
+    status: TaskStatus,
+    message: Option<&str>,
+) {
+    let Some((icon, color)) = status.icon_and_color() else {
+        return;
+    };
+    output.task_result(&format!("{color}  {icon} {name}\x1b[0m"));
+    if let Some(msg) = message {
+        output.task_result(&format!("      {msg}"));
     }
 }
 
@@ -486,19 +564,35 @@ mod tests {
     }
 
     #[test]
-    fn summary_includes_log_paths() {
+    fn summary_omits_log_paths() {
         let (log, _tmp, _guard) = isolated_logger();
         log.record_task("summary-test", Domain::General, TaskStatus::Ok, None);
         log.print_summary();
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();
         assert!(
-            contents.contains("log: "),
-            "summary should include the main log path: {contents}"
+            !contents.contains("log: "),
+            "summary should not repeat the main log path: {contents}"
         );
         assert!(
-            contents.contains("diagnostic log: "),
-            "summary should include the diagnostic log path: {contents}"
+            !contents.contains("diagnostic log: "),
+            "summary should not repeat the diagnostic log path: {contents}"
+        );
+        assert!(
+            !contents.contains("Summary"),
+            "file summary should not include the full task breakdown: {contents}"
+        );
+        assert!(
+            !contents.contains("summary-test"),
+            "file summary should not repeat individual task names: {contents}"
+        );
+        assert!(
+            contents.contains("Complete"),
+            "file summary should include the final completion line: {contents}"
+        );
+        assert!(
+            contents.contains("0 passed") && contents.contains("1 not run"),
+            "file summary should include final counts: {contents}"
         );
     }
 }

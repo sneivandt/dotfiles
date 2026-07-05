@@ -1,5 +1,7 @@
 //! Single-resource processing: check state, apply or remove one resource.
 
+use std::borrow::Cow;
+
 use anyhow::Result;
 
 use super::context::Context;
@@ -62,10 +64,9 @@ pub(super) fn process_single<R: Resource>(
 /// Record the outcome of a single resource change, updating `delta` and
 /// emitting the appropriate log events.
 ///
-/// `verb` is the human-facing action word used in the always-visible log
-/// line (e.g. `"link"` or `"unlink"`).  `applied_label` is the
-/// past-tense word used in the diagnostic trace (`"applied"` or
-/// `"removed"`).
+/// `verb` is the human-facing action word used in dry-run and error output
+/// (e.g. `"link"` or `"unlink"`). `applied_label` is the past-tense word used
+/// in the diagnostic trace (`"applied"` or `"removed"`).
 fn record_resource_change(
     ctx: &Context,
     delta: &mut TaskStats,
@@ -80,7 +81,8 @@ fn record_resource_change(
                 DiagEvent::ResourceResult,
                 &format!("{desc} {applied_label}"),
             );
-            ctx.log.always(&format!("    {verb}: {desc}"));
+            ctx.log
+                .info(&format!("{}: {desc}", completed_action_label(verb)));
             delta.changed = delta.changed.saturating_add(1);
         }
         ResourceChange::AlreadyCorrect => {
@@ -131,6 +133,25 @@ fn apply_resource<R: Resource>(
 
     record_resource_change(ctx, &mut delta, change, desc, verb, "applied");
     Ok(delta)
+}
+
+fn completed_action_label(verb: &str) -> Cow<'_, str> {
+    match verb {
+        "configure" => Cow::Borrowed("configured"),
+        "copy" => Cow::Borrowed("copied"),
+        "create" => Cow::Borrowed("created"),
+        "enable" => Cow::Borrowed("enabled"),
+        "install" => Cow::Borrowed("installed"),
+        "link" => Cow::Borrowed("linked"),
+        "remove" => Cow::Borrowed("removed"),
+        "replace" => Cow::Borrowed("replaced"),
+        "set" => Cow::Borrowed("set"),
+        "unlink" => Cow::Borrowed("unlinked"),
+        "update" => Cow::Borrowed("updated"),
+        "write" => Cow::Borrowed("written"),
+        other if other.ends_with('e') => Cow::Owned(format!("{other}d")),
+        other => Cow::Owned(format!("{other}ed")),
+    }
 }
 
 /// Remove a single resource, returning a stats delta.

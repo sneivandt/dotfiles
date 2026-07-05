@@ -2,7 +2,9 @@
 use std::cell::RefCell;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
@@ -136,7 +138,7 @@ impl DiagEvent {
 #[derive(Debug)]
 pub struct DiagnosticLog {
     file: Mutex<fs::File>,
-    #[cfg_attr(not(test), allow(dead_code, reason = "used conditionally via cfg"))]
+    #[cfg(test)]
     path: PathBuf,
     start: Instant,
     sequence: AtomicU64,
@@ -164,6 +166,7 @@ impl DiagnosticLog {
         let file = fs::OpenOptions::new().append(true).open(&path).ok()?;
         Some(Self {
             file: Mutex::new(file),
+            #[cfg(test)]
             path,
             start,
             sequence: AtomicU64::new(0),
@@ -206,6 +209,7 @@ impl DiagnosticLog {
     }
 
     /// Return the path of the diagnostic log file.
+    #[cfg(test)]
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path

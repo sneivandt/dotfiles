@@ -359,7 +359,7 @@ mod tests {
         let task = InstallGitHooks::new();
 
         let result = task.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Ok));
+        assert!(matches!(result, TaskResult::OkWithMessage(_)));
         assert!(
             git_hooks_dir.join("pre-commit").exists(),
             "pre-commit hook should be installed in .git/hooks/"
@@ -394,7 +394,7 @@ mod tests {
         let task = UninstallGitHooks::new();
 
         let result = task.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Ok));
+        assert!(matches!(result, TaskResult::OkWithMessage(_)));
         assert!(
             !git_hooks_dir.join("pre-commit").exists(),
             "pre-commit hook should be removed from .git/hooks/"

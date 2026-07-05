@@ -7,8 +7,6 @@ use crate::tasks::Domain;
 pub struct TaskEntry {
     /// Human-readable task name.
     pub name: String,
-    /// Subject-matter domain of the task (what it is about).
-    pub domain: Domain,
     /// Final status of the task.
     pub status: TaskStatus,
     /// Optional detail message (e.g., skip reason or error description).
@@ -18,13 +16,15 @@ pub struct TaskEntry {
 /// Status of a completed task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskStatus {
-    /// Task completed successfully.
+    /// Task completed successfully and changed system state.
+    Changed,
+    /// Task completed successfully without a recorded state change.
     Ok,
     /// Task was skipped because it does not apply to the current platform or profile.
     NotApplicable,
     /// Task was explicitly skipped (e.g., tool not found, config empty).
     Skipped,
-    /// Task ran in dry-run mode; no changes were applied.
+    /// Task would change state in dry-run mode; no changes were applied.
     DryRun,
     /// Task encountered an error and could not complete.
     Failed,
@@ -35,10 +35,10 @@ impl TaskStatus {
     #[must_use]
     pub const fn icon_and_color(self) -> Option<(&'static str, &'static str)> {
         match self {
-            Self::Ok => Some(("\u{2713}", "\x1b[32m")),
+            Self::Changed | Self::Ok => Some(("\u{25cf}", "\x1b[32m")),
             Self::Skipped => Some(("\u{25cb}", "\x1b[33m")),
+            Self::DryRun => Some(("\u{25cb}", "\x1b[35m")),
             Self::Failed => Some(("\u{2717}", "\x1b[31m")),
-            Self::DryRun => Some(("~", "\x1b[35m")),
             Self::NotApplicable => None,
         }
     }
@@ -84,11 +84,7 @@ pub trait Output: Send + Sync {
     /// routes through [`always`](Self::always).  `NotApplicable` tasks are
     /// silently ignored.
     fn emit_task_result(&self, name: &str, status: TaskStatus, message: Option<&str>) {
-        let Some((icon, color)) = status.icon_and_color() else {
-            return;
-        };
-        let suffix = message.map_or_else(String::new, |msg| format!(" \u{2014} {msg}"));
-        self.task_result(&format!("{color}  {icon} {name}{suffix}\x1b[0m"));
+        crate::logging::runtime::emit_task_result_lines(self, name, status, message);
     }
     /// Return whether debug logging is currently active on this thread.
     ///
@@ -153,7 +149,7 @@ pub trait TaskRecorder: Send + Sync {
 /// sub-traits, so concrete types only need to implement [`Output`] and
 /// [`TaskRecorder`].
 pub trait Log: Output + TaskRecorder {
-    /// Record a task outcome and emit the compact non-verbose result line.
+    /// Record a task outcome and emit notable non-verbose result lines.
     fn record_task_outcome(
         &self,
         name: &str,
@@ -162,7 +158,7 @@ pub trait Log: Output + TaskRecorder {
         message: Option<&str>,
     ) {
         self.record_task(name, domain, status, message);
-        if !self.is_verbose() {
+        if !self.is_verbose() && matches!(status, TaskStatus::Skipped | TaskStatus::Failed) {
             self.emit_task_result(name, status, message);
         }
     }
@@ -184,8 +180,10 @@ mod tests {
     #[test]
     fn task_status_equality() {
         assert_eq!(TaskStatus::Ok, TaskStatus::Ok);
+        assert_eq!(TaskStatus::Changed, TaskStatus::Changed);
         assert_eq!(TaskStatus::Failed, TaskStatus::Failed);
         assert_ne!(TaskStatus::Ok, TaskStatus::Failed);
+        assert_ne!(TaskStatus::Changed, TaskStatus::Ok);
         assert_ne!(TaskStatus::Skipped, TaskStatus::DryRun);
         assert_ne!(TaskStatus::NotApplicable, TaskStatus::Ok);
     }
@@ -194,13 +192,11 @@ mod tests {
     fn task_entry_clone() {
         let entry = TaskEntry {
             name: "test-task".to_string(),
-            domain: Domain::General,
             status: TaskStatus::Ok,
             message: Some("all good".to_string()),
         };
         let cloned = entry.clone();
         assert_eq!(cloned.name, entry.name);
-        assert_eq!(cloned.domain, entry.domain);
         assert_eq!(cloned.status, entry.status);
         assert_eq!(cloned.message, entry.message);
     }

@@ -70,7 +70,7 @@ impl Task for InstallApmPackages {
         let targets = ApmTargets::detect(ctx)?;
 
         if ctx.dry_run {
-            preview_install(
+            let would_change = preview_install(
                 ctx,
                 targets,
                 state,
@@ -78,7 +78,11 @@ impl Task for InstallApmPackages {
                 &manifest_path,
                 &lock_path,
             );
-            return Ok(TaskResult::DryRun);
+            return Ok(if would_change {
+                TaskResult::DryRun
+            } else {
+                TaskResult::Ok
+            });
         }
 
         let pre_workflows = targets
@@ -105,8 +109,10 @@ impl Task for InstallApmPackages {
             return Ok(install_result);
         }
         if manifest_changed {
-            ctx.log
-                .always(&format!("    install: {}", describe_dependencies(&merged)));
+            ctx.log.always(&format!(
+                "    installed: {}",
+                describe_dependencies(&merged)
+            ));
         }
         write_manifest_marker(&marker_path, &manifest_hash)?;
 
@@ -116,7 +122,11 @@ impl Task for InstallApmPackages {
         if let Some(pre) = pre_workflows {
             apply_workflow_autopilot_fixup(ctx, &pre);
         }
-        Ok(TaskResult::Ok)
+        Ok(if manifest_changed {
+            TaskResult::OkWithMessage(format!("installed {}", describe_dependencies(&merged)))
+        } else {
+            TaskResult::Ok
+        })
     }
 }
 
@@ -127,7 +137,13 @@ fn preview_install(
     fragment_count: usize,
     manifest_path: &Path,
     lock_path: &Path,
-) {
+) -> bool {
+    if !state.manifest_changed() {
+        ctx.log
+            .debug("APM manifest, lockfile, and install marker are already current");
+        return false;
+    }
+
     if targets.includes_copilot_app() {
         ctx.log
             .dry_run("run apm experimental enable copilot-app (idempotent) before install");
@@ -163,6 +179,7 @@ fn preview_install(
             targets.as_str()
         ));
     }
+    true
 }
 
 /// Filesystem-derived signals that decide whether `apm install` must run and

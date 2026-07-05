@@ -196,7 +196,7 @@ mod tests {
         let ctx = ctx.with_home(home_dir.path().to_path_buf());
 
         let result = InstallSymlinks.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Ok));
+        assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
         // Symlink must exist at $HOME/.bashrc and point to symlinks/bashrc
         let link = home_dir.path().join(".bashrc");
@@ -277,7 +277,7 @@ mod tests {
         let ctx = ctx.with_home(home_dir.path().to_path_buf());
 
         let result = UninstallSymlinks.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Ok));
+        assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
         // Must be a regular file (materialized), not a symlink
         let meta = std::fs::symlink_metadata(&link).unwrap();
@@ -331,7 +331,7 @@ mod tests {
             .with_parallel(true);
 
         let result = UninstallSymlinks.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Ok));
+        assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
         let service_meta = std::fs::symlink_metadata(&service_link).unwrap();
         let timer_meta = std::fs::symlink_metadata(&timer_link).unwrap();

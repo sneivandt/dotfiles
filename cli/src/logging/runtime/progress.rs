@@ -47,7 +47,7 @@ impl Logger {
         } else {
             names.to_string()
         };
-        print!("  \x1b[2m▹ {display_names}\x1b[0m");
+        print!("\x1b[2m▹ {display_names}\x1b[0m");
         drop(std::io::stdout().flush());
         self.progress_rows.store(1, Ordering::Relaxed);
     }

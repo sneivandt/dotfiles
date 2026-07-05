@@ -84,17 +84,25 @@ impl Logger {
 
     /// Build the progress-line text describing the currently active tasks.
     ///
-    /// In verbose mode every task name is listed.  Otherwise a single active
-    /// task is named directly so the user can see which one is running, while
-    /// multiple concurrent tasks collapse to a count summary.
+    /// In verbose mode every task name is listed. Otherwise the first three
+    /// active task names are shown, followed by a count of any remaining tasks.
     fn format_active(&self, active: &[String]) -> String {
         if self.verbose {
             return active.join(", ");
         }
-        match active {
-            [only] => format!("{only}\u{2026}"),
-            _ => format!("{} tasks running\u{2026}", active.len()),
+        let mut names = active
+            .iter()
+            .take(3)
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let remaining = active.len().saturating_sub(3);
+        if remaining > 0 {
+            names.push_str(", +");
+            names.push_str(&remaining.to_string());
+            names.push_str(" more");
         }
+        format!("{names}\u{2026}")
     }
 }
 
@@ -131,13 +139,30 @@ mod tests {
     }
 
     #[test]
-    fn format_active_summarizes_multiple_tasks() {
+    fn format_active_names_multiple_tasks() {
         let (mut log, _tmp, _guard) = isolated_logger();
         log.verbose = false;
         assert_eq!(
             log.format_active(&["task-a".to_string(), "task-b".to_string()]),
-            "2 tasks running\u{2026}",
-            "multiple active tasks should collapse to a count"
+            "task-a, task-b\u{2026}",
+            "multiple active tasks should show task names"
+        );
+    }
+
+    #[test]
+    fn format_active_names_first_three_then_remaining_count() {
+        let (mut log, _tmp, _guard) = isolated_logger();
+        log.verbose = false;
+        assert_eq!(
+            log.format_active(&[
+                "task-a".to_string(),
+                "task-b".to_string(),
+                "task-c".to_string(),
+                "task-d".to_string(),
+                "task-e".to_string()
+            ]),
+            "task-a, task-b, task-c, +2 more\u{2026}",
+            "more than three active tasks should show first names plus overflow count"
         );
     }
 

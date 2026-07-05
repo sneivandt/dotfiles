@@ -40,7 +40,7 @@ fn symlinks_install_creates_links_from_config() {
 
     let ec = test.make_context("base");
     let result = InstallSymlinks.run(&ec.ctx).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
     let link = ec.ctx.home.join(".bashrc");
     assert!(link.symlink_metadata().is_ok(), "symlink should exist");
@@ -82,7 +82,7 @@ fn symlinks_install_is_idempotent() {
     let ec = test.make_context("base");
 
     let first = InstallSymlinks.run(&ec.ctx).unwrap();
-    assert!(matches!(first, TaskResult::Ok));
+    assert!(matches!(first, TaskResult::OkWithMessage(_)));
 
     let second = InstallSymlinks.run(&ec.ctx).unwrap();
     assert!(matches!(second, TaskResult::Ok));
@@ -117,7 +117,7 @@ fn symlinks_uninstall_materialises_content() {
 
     // Uninstall
     let result = UninstallSymlinks.run(&ec.ctx).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
     // Target must now be a regular file with the original content
     let meta = std::fs::symlink_metadata(ec.ctx.home.join(".bashrc")).unwrap();
@@ -147,7 +147,7 @@ fn symlinks_install_desktop_profile_includes_both_sections() {
 
     let ec = test.make_context("desktop");
     let result = InstallSymlinks.run(&ec.ctx).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
     assert!(
         ec.ctx
@@ -185,7 +185,7 @@ fn hooks_install_places_hooks_in_git_dir() {
     let ec = test.make_context("base");
     let task = InstallGitHooks::new();
     let result = task.run(&ec.ctx).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
     let installed = test.root_path().join(".git/hooks/pre-commit");
     assert!(
@@ -223,7 +223,7 @@ fn hooks_install_is_idempotent() {
     let task = InstallGitHooks::new();
 
     let first = task.run(&ec.ctx).unwrap();
-    assert!(matches!(first, TaskResult::Ok));
+    assert!(matches!(first, TaskResult::OkWithMessage(_)));
 
     let second = task.run(&ec.ctx).unwrap();
     assert!(matches!(second, TaskResult::Ok));
@@ -244,7 +244,7 @@ fn hooks_uninstall_removes_installed_hook() {
     assert!(test.root_path().join(".git/hooks/pre-commit").exists());
 
     let result = UninstallGitHooks::new().run(&ec.ctx).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::OkWithMessage(_)));
     assert!(
         !test.root_path().join(".git/hooks/pre-commit").exists(),
         "hook should be removed after uninstall"
@@ -303,7 +303,7 @@ fn chmod_applies_permissions_from_config() {
 
     let task = ApplyFilePermissions;
     let result = task.run(&ec.ctx).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
     let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600, "permissions should be 0600 after chmod");

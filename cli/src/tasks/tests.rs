@@ -85,6 +85,26 @@ impl Task for MockTask {
     }
 }
 
+struct ValidationOkTask;
+
+impl Task for ValidationOkTask {
+    fn name(&self) -> &'static str {
+        "validation-ok"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Validation
+    }
+
+    fn domain(&self) -> Domain {
+        Domain::Validation
+    }
+
+    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+        Ok(TaskResult::Ok)
+    }
+}
+
 struct PolicyTask {
     policies: &'static [ExecutionPolicy],
     ran: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -143,26 +163,34 @@ fn execute_records_ok_task() {
 }
 
 #[test]
+fn execute_records_validation_ok_task_as_changed() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, log) = make_static_context(config);
+
+    execute(&ValidationOkTask, &ctx);
+
+    let entries = log.task_entries();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].status, TaskStatus::Changed);
+    assert_eq!(entries[0].name, "validation-ok");
+}
+
+#[test]
 fn execute_records_ok_task_with_message() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, log) = make_static_context(config);
     let task = MockTask {
         name: "ok-task",
         should_run: true,
-        result: Ok(TaskResult::OkWithMessage(
-            "installed 1 Arch package: git".to_string(),
-        )),
+        result: Ok(TaskResult::OkWithMessage("created config file".to_string())),
     };
 
     execute(&task, &ctx);
 
     let entries = log.task_entries();
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].status, TaskStatus::Ok);
-    assert_eq!(
-        entries[0].message.as_deref(),
-        Some("installed 1 Arch package: git")
-    );
+    assert_eq!(entries[0].status, TaskStatus::Changed);
+    assert_eq!(entries[0].message.as_deref(), Some("created config file"));
 }
 
 #[test]

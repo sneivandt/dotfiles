@@ -4,7 +4,7 @@ use super::*;
 use std::sync::Arc;
 
 use crate::config::packages::Package;
-use crate::exec::Executor;
+use crate::exec::{ExecResult, Executor, MockExecutor};
 use crate::platform::Os;
 use crate::resources::Resource;
 use crate::resources::package::{PackageManager, PackageResource};
@@ -190,8 +190,8 @@ fn install_paru_run_returns_ok_when_already_installed_in_dry_run() {
     ctx = ctx.with_dry_run(true);
     let result = InstallParu.run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::DryRun),
-        "expected DryRun when paru already installed in dry-run mode, got {result:?}"
+        matches!(result, TaskResult::Ok),
+        "expected Ok when paru already installed in dry-run mode, got {result:?}"
     );
 }
 
@@ -205,6 +205,48 @@ fn install_paru_run_returns_dry_run_when_not_installed_in_dry_run() {
     assert!(
         matches!(result, TaskResult::DryRun),
         "expected DryRun when paru missing in dry-run mode, got {result:?}"
+    );
+}
+
+#[test]
+fn install_paru_run_returns_changed_result_after_install() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    mock.expect_which()
+        .once()
+        .with(mockall::predicate::eq("paru"))
+        .returning(|_| false);
+    for dep in ["git", "makepkg", "sudo"] {
+        mock.expect_which()
+            .once()
+            .with(mockall::predicate::eq(dep))
+            .returning(|_| true);
+    }
+    mock.expect_run()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|program, args| {
+            assert_eq!(program, "git");
+            assert_eq!(args[0], "clone");
+            Ok(ok_result(""))
+        });
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_, program, args, env| {
+            assert_eq!(program, "makepkg");
+            assert_eq!(args, ["-si", "--noconfirm"]);
+            assert_eq!(env.len(), 1);
+            assert_eq!(env[0].0, "MAKEFLAGS");
+            Ok(ok_result(""))
+        });
+
+    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let result = InstallParu.run(&ctx).unwrap();
+    assert!(
+        matches!(result, TaskResult::OkWithMessage(ref message) if message == "installed paru"),
+        "expected changed result after paru install, got {result:?}"
     );
 }
 
@@ -227,8 +269,6 @@ fn install_aur_packages_run_skips_when_paru_not_found() {
 // -----------------------------------------------------------------------
 // run() — batch install paths (pacman/paru)
 // -----------------------------------------------------------------------
-
-use crate::exec::{ExecResult, MockExecutor};
 
 fn ok_result(stdout: &str) -> ExecResult {
     ExecResult {
@@ -284,9 +324,9 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
         matches!(
             result,
             TaskResult::OkWithMessage(ref message)
-                if message == "installed 1 Arch package: git"
+                if message == "1 changed, 1 already ok"
         ),
-        "expected install detail after batch install, got {result:?}"
+        "expected changed package task result after batch install, got {result:?}"
     );
 }
 
@@ -391,8 +431,8 @@ fn install_packages_winget_installs_per_package() {
         matches!(
             result,
             TaskResult::OkWithMessage(ref message)
-                if message == "installed 1 package: Git.Git"
+                if message == "1 changed, 0 already ok"
         ),
-        "expected install detail after winget per-package install, got {result:?}"
+        "expected changed package task result after winget per-package install, got {result:?}"
     );
 }

@@ -531,9 +531,8 @@ The installer writes two log files per run:
 - **Main log** (`~/.cache/dotfiles/<command>.log`) — human-readable log with timestamps, always written at full verbose detail regardless of the console verbose flag
 - **Diagnostic log** (`~/.cache/dotfiles/<command>.diag.log`) — microsecond-precision chronological log of all events, including parallel execution
 
-The paths are recorded in the main log summary. Routine successful console
-output does not repeat them; use `dotfiles log` or the paths above when you
-need to inspect a previous run.
+Routine successful output does not print log paths; use `dotfiles log` or the
+paths above when you need to inspect a previous run.
 
 ### When to use the diagnostic log
 

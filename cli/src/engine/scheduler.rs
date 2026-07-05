@@ -86,12 +86,12 @@ fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> TaskSt
                 .unwrap_or_else(|| "task panicked".to_string());
             log.diag_task(DiagEvent::TaskFail, task.name(), &msg);
             log.record_task_outcome(task.name(), task.domain(), TaskStatus::Failed, Some(&msg));
-            buf.flush_and_complete(task.name());
+            buf.flush_and_complete(task.name(), TaskStatus::Failed);
             return TaskStatus::Failed;
         }
     };
 
-    buf.flush_and_complete(task.name());
+    buf.flush_and_complete(task.name(), status);
     status
 }
 
@@ -206,7 +206,12 @@ pub(crate) fn run_tasks_parallel(
 ///
 /// Normal task failures block dependent tasks just like the parallel scheduler;
 /// deliberate skips and not-applicable outcomes still satisfy dependencies.
-pub(crate) fn run_tasks_sequential(tasks: &[&dyn Task], graph: &ResolvedTaskGraph, ctx: &Context) {
+pub(crate) fn run_tasks_sequential(
+    tasks: &[&dyn Task],
+    graph: &ResolvedTaskGraph,
+    ctx: &Context,
+    log: &Arc<Logger>,
+) {
     let mut signals: Vec<Option<DependencySignal>> = vec![None; tasks.len()];
 
     for idx in graph.execution_order() {
@@ -226,7 +231,12 @@ pub(crate) fn run_tasks_sequential(tasks: &[&dyn Task], graph: &ResolvedTaskGrap
             let Some(task) = tasks.get(idx) else {
                 continue;
             };
-            DependencySignal::from_status(tasks::execute(*task, ctx))
+            let buf = Arc::new(BufferedLog::new(Arc::clone(log)));
+            let buffered_log: Arc<dyn Log> = Arc::<BufferedLog>::clone(&buf);
+            let task_ctx = ctx.with_log(buffered_log);
+            let status = tasks::execute(*task, &task_ctx);
+            buf.flush_and_complete(task.name(), status);
+            DependencySignal::from_status(status)
         } else {
             if let Some(task) = tasks.get(idx) {
                 record_dependency_block(*task, &*ctx.log);

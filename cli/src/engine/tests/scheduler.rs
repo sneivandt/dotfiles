@@ -234,7 +234,7 @@ fn sequential_runner_skips_dependents_when_dependency_fails() {
     let tasks: Vec<&dyn Task> = vec![&failed_task, &dep_task];
     let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
 
-    run_tasks_sequential(&tasks, &graph, &ctx);
+    run_tasks_sequential(&tasks, &graph, &ctx, &log);
 
     assert!(
         !ran.load(Ordering::SeqCst),
@@ -252,6 +252,50 @@ fn sequential_runner_skips_dependents_when_dependency_fails() {
             .iter()
             .any(|e| e.name == "dep-on-failed" && e.status == TaskStatus::Skipped),
         "dependent task should be recorded as Skipped"
+    );
+}
+
+struct SequentialChangedDetailTask;
+
+impl Task for SequentialChangedDetailTask {
+    fn name(&self) -> &'static str {
+        "sequential-detail-task"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Provision
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        ctx.log.info("installed: demo-package");
+        Ok(TaskResult::OkWithMessage(
+            "1 changed, 0 already ok".to_string(),
+        ))
+    }
+}
+
+#[test]
+fn sequential_runner_records_details_for_final_summary() {
+    let (mut log, _tmp, _guard) = logging::isolated_logger();
+    log.set_verbose(false);
+    let log = Arc::new(log);
+    let log_output: Arc<dyn Log> = Arc::<Logger>::clone(&log);
+    let ctx = ContextBuilder::new(empty_config(PathBuf::from("/tmp")))
+        .build()
+        .with_log(log_output);
+    let task = SequentialChangedDetailTask;
+    let tasks: Vec<&dyn Task> = vec![&task];
+    let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
+
+    run_tasks_sequential(&tasks, &graph, &ctx, &log);
+    log.print_summary();
+
+    let path = log.log_path().expect("log path");
+    let contents = std::fs::read_to_string(path).unwrap();
+    let detail_occurrences = contents.matches("installed: demo-package").count();
+    assert_eq!(
+        detail_occurrences, 1,
+        "detail should be written during task flush but not repeated in the final file summary; log:\n{contents}"
     );
 }
 
@@ -501,8 +545,8 @@ fn stage_header_present_when_info_logged_in_run() {
 
     // Exactly mirrors what run_tasks_parallel does per task thread.
     log.notify_task_start("stats-task");
-    tasks::execute(&StatsTask, &task_ctx);
-    buf.flush_and_complete("stats-task");
+    let status = tasks::execute(&StatsTask, &task_ctx);
+    buf.flush_and_complete("stats-task", status);
 
     let path = log.log_path().expect("log path");
     let contents = std::fs::read_to_string(path).unwrap();
@@ -547,8 +591,8 @@ fn stage_headers_present_for_multiple_concurrent_stats_tasks() {
         let task_ctx = ctx.with_log(buffered_log_arc(&buf));
 
         log.notify_task_start(name);
-        tasks::execute(&task_named, &task_ctx);
-        buf.flush_and_complete(name);
+        let status = tasks::execute(&task_named, &task_ctx);
+        buf.flush_and_complete(name, status);
     }
 
     let path = log.log_path().expect("log path");
@@ -650,8 +694,8 @@ fn stage_header_not_lost_after_debug_fmt_call() {
     let task_ctx = ctx.with_log(buffered_log_arc(&buf));
 
     log.notify_task_start("debug-fmt-task");
-    tasks::execute(&DebugFmtTask, &task_ctx);
-    buf.flush_and_complete("debug-fmt-task");
+    let status = tasks::execute(&DebugFmtTask, &task_ctx);
+    buf.flush_and_complete("debug-fmt-task", status);
 
     let targets = captured
         .lock()

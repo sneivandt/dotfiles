@@ -13,8 +13,6 @@ use crate::tasks::{
 
 /// Default number of parallel jobs for makepkg if nproc detection fails.
 const DEFAULT_NPROC: &str = "4";
-/// Maximum package names to include in a compact task-result detail.
-const PACKAGE_MESSAGE_LIMIT: usize = 8;
 
 // ---------------------------------------------------------------------------
 // Shared helpers — filter, manager detection, and sudo prediction
@@ -198,9 +196,6 @@ impl Task for InstallParu {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if ctx.system().which("paru") {
             ctx.log.debug("paru already in PATH");
-            if ctx.dry_run {
-                return Ok(TaskResult::DryRun);
-            }
             return Ok(TaskResult::Ok);
         }
 
@@ -215,7 +210,7 @@ impl Task for InstallParu {
         build_paru(ctx, guard.path())?;
 
         ctx.log.info("paru installed successfully");
-        Ok(TaskResult::Ok)
+        Ok(TaskResult::OkWithMessage("installed paru".to_string()))
     }
 }
 
@@ -282,41 +277,6 @@ fn build_paru(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
 // ---------------------------------------------------------------------------
 // Package installation
 // ---------------------------------------------------------------------------
-
-const fn package_noun(manager: PackageManager, count: usize) -> &'static str {
-    match (manager, count) {
-        (PackageManager::Pacman, 1) => "Arch package",
-        (PackageManager::Pacman, _) => "Arch packages",
-        (PackageManager::Paru, 1) => "AUR package",
-        (PackageManager::Paru, _) => "AUR packages",
-        (PackageManager::Winget, 1) => "package",
-        (PackageManager::Winget, _) => "packages",
-    }
-}
-
-fn installed_package_message(
-    manager: PackageManager,
-    resources: &[&PackageResource],
-    count: usize,
-) -> String {
-    let shown = resources
-        .iter()
-        .take(PACKAGE_MESSAGE_LIMIT)
-        .map(|resource| resource.name.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
-    let remaining = count.saturating_sub(PACKAGE_MESSAGE_LIMIT);
-    let package_list = if remaining == 0 {
-        shown
-    } else {
-        format!("{shown}, and {remaining} more")
-    };
-
-    format!(
-        "installed {count} {}: {package_list}",
-        package_noun(manager, count)
-    )
-}
 
 /// Install missing packages using the package provider's preferred strategy.
 ///
@@ -386,6 +346,10 @@ fn install_missing(
     stats.changed = u32::try_from(applied_count).unwrap_or(u32::MAX);
     stats.failed = u32::try_from(report.failures().len()).unwrap_or(u32::MAX);
 
+    for package in report.applied_packages() {
+        ctx.log.info(&format!("installed: {package}"));
+    }
+
     if report.has_failures() {
         let reason = format!("{} package install(s) failed", report.failures().len());
         ctx.log.warn(&reason);
@@ -393,15 +357,7 @@ fn install_missing(
         return TaskResult::Failed(reason);
     }
 
-    let result = stats.finish(ctx);
-    if applied_count > 0 {
-        return TaskResult::OkWithMessage(installed_package_message(
-            manager,
-            &missing,
-            applied_count,
-        ));
-    }
-    result
+    stats.finish(ctx)
 }
 
 /// Process a list of packages by querying installed state once and dispatching

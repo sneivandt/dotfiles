@@ -319,6 +319,7 @@ fn resolve_profile(
         "\x1b[2mversion\x1b[0m \x1b[36m{version}\x1b[0m{updated_label} \x1b[2m\u{00b7} profile\x1b[0m {} \x1b[2m\u{00b7} {platform_label}\x1b[0m",
         profile.name
     ));
+    log.always("");
     Ok(profile)
 }
 
@@ -476,8 +477,13 @@ pub fn run_tasks_to_completion<'a>(
             continue;
         }
 
-        log.always("");
-        log.phase(phase.label());
+        if log.is_verbose() {
+            log.always("");
+            log.phase(phase.label());
+        } else {
+            log.debug("");
+            log.debug(phase.label());
+        }
 
         // Before parallel dispatch, prime the sudo credential cache if any
         // task in this phase will need root privileges.  This avoids an
@@ -524,8 +530,8 @@ pub fn run_tasks_to_completion<'a>(
         // A phase with a single task still dispatches through the buffered
         // scheduler (not the sequential fallback) so its result header is
         // replayed before any detail lines — matching multi-task phases.  This
-        // keeps the Update phase's `update:` line below its check mark, the
-        // same way the Provision phase renders the `install:` line.
+        // keeps the Update phase's `updated:` line below its check mark, the
+        // same way the Provision phase renders the `installed:` line.
         if phase_tasks.is_empty() {
             continue;
         }
@@ -542,7 +548,7 @@ pub fn run_tasks_to_completion<'a>(
         if ctx.parallel {
             crate::engine::scheduler::run_tasks_parallel(&phase_tasks, &graph, ctx, log);
         } else {
-            crate::engine::scheduler::run_tasks_sequential(&phase_tasks, &graph, ctx);
+            crate::engine::scheduler::run_tasks_sequential(&phase_tasks, &graph, ctx, log);
         }
     }
 

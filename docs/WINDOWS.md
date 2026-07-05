@@ -278,53 +278,44 @@ This persistent log file includes:
 - Selected profile
 - All operations performed
 - Verbose details (even when not displayed on console)
-- Summary statistics
+- Final summary counts
 
 The log file is useful for troubleshooting installation issues or reviewing what changes were made.
 
 ### Task Summary
 
-In **non-verbose** mode (default), compact task-result lines are shown inline as
-task buffers flush, followed by a totals line. Within a phase, line order can
-vary because independent tasks run in parallel. Status icons:
+In **non-verbose** mode (default), a live progress line is shown while tasks
+run, followed by a compact summary. Successful no-op tasks are counted as
+unchanged and are not listed individually. Dry-run tasks are listed only when
+they would change state. Status icons:
 
-- `✓` — task completed successfully (green)
-- `○` — deliberately skipped (yellow)
-- `~` — dry-run preview (magenta)
+- `●` — task changed state successfully (green)
+- `○` — task did not change state: deliberately skipped (yellow) or dry-run preview (magenta)
 - `✗` — task failed (red)
 
-Not-applicable tasks are omitted from the summary display. In **verbose** mode
-(`-v`), a full per-task breakdown grouped by domain is appended.
+Not-applicable tasks are counted as unchanged in the console summary. The
+persistent log file records task output as it happens and ends with the same
+final completion/count lines as the console.
 
 ### Dry-Run Mode
 
 When using `-d` (dry-run), the logging system:
 - Shows what would be done without making changes
-- Marks tasks with `~` (dry-run) in the summary
+- Marks tasks with `○` (dry-run) in the summary
 - Still writes to the log file for review
 
 Example summary output:
 ```
-● Setting up dotfiles
-  ✓ Enable developer mode
-  ~ Install wrapper
-  ~ Configure PATH
+Changed
+  ● Enable developer mode
+      enabled
+  ● Configure sparse checkout
+      configured: sparse checkout
+  ● Update repository
+      updated to origin/main
 
-● Updating the repository
-  ✓ Configure sparse checkout
-  ✓ Update repository
-  ~ Install Git hooks
-
-● Configuring your system
-  ~ Install packages
-  ~ Install symlinks
-  ~ Configure Git
-  ~ Configure registry settings
-  ~ Install VS Code extensions
-  ~ Install APM packages
-
-dotfiles install complete
-  3 ok · 9 dry-run · 0.8s
+Complete · 0.8s
+3 changed · 9 unchanged
 ```
 
 ## Troubleshooting

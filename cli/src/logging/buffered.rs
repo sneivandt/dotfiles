@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use super::diagnostic::{DiagEvent, DiagnosticLog};
 use super::runtime::Logger;
+use super::runtime::emit_task_result_lines;
 use super::types::{Output, TaskRecorder, TaskStatus};
 use crate::tasks::Domain;
 
@@ -42,6 +43,25 @@ impl LogEntry {
             Self::DryRun(msg) => tracing::info!(target: "dotfiles::dry_run", "{msg}"),
             Self::Always(msg) => tracing::info!(target: "dotfiles::always", "{msg}"),
             Self::TaskResult(msg) => tracing::info!(target: "dotfiles::task_result", "{msg}"),
+        }
+    }
+
+    fn detail_line(&self) -> Option<String> {
+        match self {
+            Self::Info(msg) | Self::DryRun(msg) | Self::Always(msg) => Some(msg.clone()),
+            Self::Stage(_)
+            | Self::Debug(_)
+            | Self::Warn(_)
+            | Self::Error(_)
+            | Self::TaskResult(_) => None,
+        }
+    }
+
+    fn replay_detail_file_only(&self) {
+        if let Some(msg) = self.detail_line() {
+            tracing::info!(target: "dotfiles::file_only", "{msg}");
+        } else {
+            self.replay();
         }
     }
 }
@@ -126,12 +146,11 @@ impl BufferedLog {
     /// After replaying the buffered entries, updates the active task display
     /// by delegating to [`Logger::notify_task_done`].
     ///
-    /// In non-verbose mode the task-result line (a [`TaskResult`](LogEntry::TaskResult)
-    /// entry appended by [`execute`](crate::tasks::execute)) is replayed
-    /// *before* the detail entries so that the compact result header appears
-    /// above any per-resource output (e.g. dry-run lines).
+    /// In non-verbose mode skipped/failed task-result lines are replayed before
+    /// other output. Details for changed and dry-run tasks are written to the log
+    /// file only; they are rendered once in the final summary instead.
     #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
-    pub fn flush_and_complete(&self, task_name: &str) {
+    pub fn flush_and_complete(&self, task_name: &str, status: TaskStatus) {
         {
             let _guard = self.inner.flush_lock.lock().unwrap_or_else(|e| {
                 eprintln!("warning: flush lock was poisoned, recovering");
@@ -142,6 +161,9 @@ impl BufferedLog {
                 Ok(guard) => guard.clone(),
                 Err(_) => return,
             };
+            let detail_lines: Vec<String> =
+                entries.iter().filter_map(LogEntry::detail_line).collect();
+            self.inner.record_task_details(task_name, detail_lines);
             let span = tracing::info_span!("task", name = task_name);
             let _enter = span.enter();
             if self.inner.is_verbose() {
@@ -149,7 +171,12 @@ impl BufferedLog {
                     entry.replay();
                 }
             } else {
-                // Replay task-result header(s) first, then detail entries.
+                if status == TaskStatus::Skipped
+                    && self.inner.should_emit_task_result_section(status)
+                {
+                    tracing::info!(target: "dotfiles::task_result", "\x1b[1mSkipped\x1b[0m");
+                }
+                // Replay skipped/failed task-result header(s) first.
                 for entry in &entries {
                     if matches!(entry, LogEntry::TaskResult(_)) {
                         entry.replay();
@@ -157,7 +184,13 @@ impl BufferedLog {
                 }
                 for entry in &entries {
                     if !matches!(entry, LogEntry::TaskResult(_)) {
-                        entry.replay();
+                        if matches!(status, TaskStatus::Changed | TaskStatus::DryRun)
+                            && entry.detail_line().is_some()
+                        {
+                            entry.replay_detail_file_only();
+                        } else {
+                            entry.replay();
+                        }
                     }
                 }
             }
@@ -184,6 +217,10 @@ impl Output for BufferedLog {
 
     fn diagnostic(&self) -> Option<&DiagnosticLog> {
         self.inner.diagnostic.as_ref()
+    }
+
+    fn emit_task_result(&self, name: &str, status: TaskStatus, message: Option<&str>) {
+        emit_task_result_lines(self, name, status, message);
     }
 }
 
@@ -263,7 +300,7 @@ mod tests {
         let log = Arc::new(log);
         log.notify_task_start("update");
         let buf = BufferedLog::new(Arc::clone(&log));
-        buf.flush_and_complete("update");
+        buf.flush_and_complete("update", TaskStatus::Ok);
         assert_eq!(
             log.progress_rows_count(),
             0,
@@ -352,7 +389,7 @@ mod tests {
         log.notify_task_start("task-a");
         log.notify_task_start("task-b");
         let buf = BufferedLog::new(Arc::clone(&log));
-        buf.flush_and_complete("task-a");
+        buf.flush_and_complete("task-a", TaskStatus::Ok);
         let active = log.active_tasks.lock().unwrap();
         assert!(
             active.contains(&"task-b".to_string()),
@@ -379,7 +416,7 @@ mod tests {
         buf.stage("install-task");
         buf.info("0 changed, 37 already ok");
 
-        buf.flush_and_complete("install-task");
+        buf.flush_and_complete("install-task", TaskStatus::Ok);
 
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();
@@ -412,7 +449,7 @@ mod tests {
         buf.stage("parallel-task");
         buf.info("0 changed, 1 already ok");
 
-        buf.flush_and_complete("parallel-task");
+        buf.flush_and_complete("parallel-task", TaskStatus::Ok);
 
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();
@@ -424,6 +461,37 @@ mod tests {
         assert!(
             contents.contains("0 changed, 1 already ok"),
             "stats info must appear\nlog:\n{contents}"
+        );
+    }
+
+    #[test]
+    fn non_verbose_dry_run_flush_writes_detail_file_only() {
+        let (mut log, _tmp, _guard) = isolated_logger();
+        log.set_verbose(false);
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
+
+        buf.dry_run("would configure beep = true");
+        buf.flush_and_complete("Configure Copilot", TaskStatus::DryRun);
+
+        let details = log
+            .task_details
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert_eq!(details.len(), 1);
+        assert_eq!(details[0].name, "Configure Copilot");
+        assert_eq!(details[0].lines, ["would configure beep = true"]);
+
+        let path = log.log_path().expect("log path");
+        let contents = fs::read_to_string(path).unwrap();
+        assert!(
+            contents.contains("would configure beep = true"),
+            "dry-run details should still be written to the persistent log"
+        );
+        assert!(
+            !contents.contains("[dry-run]"),
+            "non-verbose dry-run detail replay should use file-only output, not the live dry-run target\nlog:\n{contents}"
         );
     }
 }

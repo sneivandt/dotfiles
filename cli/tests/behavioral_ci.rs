@@ -366,7 +366,7 @@ symlinks = [
     let first = test_api::tasks::files::symlinks::InstallSymlinks
         .run(&ctx)
         .expect("install symlinks");
-    assert!(matches!(first, TaskResult::Ok));
+    assert!(matches!(first, TaskResult::OkWithMessage(_)));
 
     for (source, target) in &expected {
         let metadata = std::fs::symlink_metadata(target)
@@ -392,7 +392,7 @@ symlinks = [
     let uninstall = test_api::tasks::files::symlinks::UninstallSymlinks
         .run(&ctx)
         .expect("uninstall symlinks");
-    assert!(matches!(uninstall, TaskResult::Ok));
+    assert!(matches!(uninstall, TaskResult::OkWithMessage(_)));
 
     for (source, target) in &expected {
         let metadata = std::fs::symlink_metadata(target)
@@ -646,7 +646,7 @@ fn vscode_task_queries_once_and_installs_only_missing_extensions() {
         .run(&ctx)
         .expect("install vscode extensions");
 
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::OkWithMessage(_)));
     executor.assert_complete();
 }
 
@@ -710,6 +710,6 @@ fn systemd_task_reloads_then_enables_user_and_system_units() {
         .run(&ctx)
         .expect("configure systemd");
 
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::OkWithMessage(_)));
     executor.assert_complete();
 }

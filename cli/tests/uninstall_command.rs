@@ -232,7 +232,7 @@ fn uninstall_symlinks_is_idempotent() {
         .run(&task_ctx)
         .expect("install run");
     assert!(
-        matches!(install_result, tasks::TaskResult::Ok),
+        matches!(install_result, tasks::TaskResult::OkWithMessage(_)),
         "install run should succeed"
     );
 
@@ -241,7 +241,7 @@ fn uninstall_symlinks_is_idempotent() {
         .run(&task_ctx)
         .expect("first uninstall run");
     assert!(
-        matches!(result1, tasks::TaskResult::Ok),
+        matches!(result1, tasks::TaskResult::OkWithMessage(_)),
         "first uninstall run should succeed"
     );
 
@@ -298,7 +298,10 @@ fn uninstall_symlinks_materializes_file_content() {
     let install_result = tasks::files::symlinks::InstallSymlinks
         .run(&task_ctx)
         .expect("install run");
-    assert!(matches!(install_result, tasks::TaskResult::Ok));
+    assert!(matches!(
+        install_result,
+        tasks::TaskResult::OkWithMessage(_)
+    ));
 
     let target = home_dir.path().join(".bashrc");
     assert!(
@@ -311,7 +314,10 @@ fn uninstall_symlinks_materializes_file_content() {
     let uninstall_result = tasks::files::symlinks::UninstallSymlinks
         .run(&task_ctx)
         .expect("uninstall run");
-    assert!(matches!(uninstall_result, tasks::TaskResult::Ok));
+    assert!(matches!(
+        uninstall_result,
+        tasks::TaskResult::OkWithMessage(_)
+    ));
 
     let meta = std::fs::symlink_metadata(&target).expect("materialized target");
     assert!(!meta.is_symlink(), "uninstall must replace the symlink");

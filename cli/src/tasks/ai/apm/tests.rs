@@ -227,8 +227,8 @@ fn run_installs_when_manifest_changed() {
 
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok after apm install, got {result:?}"
+        matches!(result, TaskResult::OkWithMessage(_)),
+        "expected changed result after apm install, got {result:?}"
     );
     let manifest = std::fs::read_to_string(dir.path().join(".apm").join("apm.yml"))
         .expect("read merged manifest");
@@ -254,8 +254,8 @@ fn run_includes_copilot_app_target_on_windows_when_app_database_exists() {
 
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok after apm install, got {result:?}"
+        matches!(result, TaskResult::OkWithMessage(_)),
+        "expected changed result after apm install, got {result:?}"
     );
 }
 
@@ -281,8 +281,8 @@ fn run_omits_copilot_app_target_when_app_database_missing() {
 
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok after apm install, got {result:?}"
+        matches!(result, TaskResult::OkWithMessage(_)),
+        "expected changed result after apm install, got {result:?}"
     );
 }
 
@@ -372,8 +372,8 @@ fn update_advances_dependencies_when_outdated_reports_stale_lock() {
 
     let result = UpdateApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok after apm update, got {result:?}"
+        matches!(result, TaskResult::OkWithMessage(_)),
+        "expected changed result after apm update, got {result:?}"
     );
 }
 
@@ -442,7 +442,7 @@ fn install_task_converges_without_advancing_dependencies() {
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
-        "expected Ok converging without dependency advancement, got {result:?}"
+        "expected Ok when redeploying without dependency advancement, got {result:?}"
     );
 }
 
@@ -482,8 +482,8 @@ fn run_installs_when_success_marker_is_missing() {
 
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok after installing unmarked manifest, got {result:?}"
+        matches!(result, TaskResult::OkWithMessage(_)),
+        "expected changed result after installing unmarked manifest, got {result:?}"
     );
     assert!(
         dir.path()
@@ -513,16 +513,70 @@ fn run_dry_run_reports_planned_apm_work_without_writing() {
 }
 
 #[test]
-fn update_dry_run_reports_planned_advancement() {
+fn run_dry_run_is_ok_when_apm_install_state_is_current() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    write_default_home_fragment(dir.path());
+    write_current_manifest_lock_and_marker(dir.path());
 
     let ctx = make_home_context(dir.path()).with_dry_run(true);
+
+    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Ok),
+        "expected Ok when dry-run install state is already current, got {result:?}"
+    );
+}
+
+#[test]
+fn update_dry_run_reports_planned_advancement() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_current_manifest_lock_and_marker(dir.path());
+
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    let outdated_cwd = dir.path().to_path_buf();
+    mock.expect_run_in_with_env()
+        .once()
+        .returning(move |cwd, program, args, env| {
+            assert_eq!(cwd, outdated_cwd.as_path());
+            assert_eq!(program, "apm");
+            assert_eq!(args, ["outdated", "-g"]);
+            assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
+            Ok(ok_result("Outdated dependencies:\n- example/plugin\n"))
+        });
+
+    let ctx = make_home_context_with_executor(dir.path(), mock).with_dry_run(true);
 
     let result = UpdateApmPackages.run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::DryRun),
         "expected DryRun for the update task with fragments present, got {result:?}"
+    );
+}
+
+#[test]
+fn update_dry_run_is_ok_when_dependencies_are_current() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_current_manifest_lock_and_marker(dir.path());
+
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    let outdated_cwd = dir.path().to_path_buf();
+    mock.expect_run_in_with_env()
+        .once()
+        .returning(move |cwd, program, args, env| {
+            assert_eq!(cwd, outdated_cwd.as_path());
+            assert_eq!(program, "apm");
+            assert_eq!(args, ["outdated", "-g"]);
+            assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
+            Ok(ok_result("[*] All dependencies are up-to-date\n"))
+        });
+
+    let ctx = make_home_context_with_executor(dir.path(), mock).with_dry_run(true);
+
+    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Ok),
+        "expected Ok when dry-run dependencies are current, got {result:?}"
     );
 }
 
@@ -638,7 +692,7 @@ fn run_continues_when_experimental_enable_fails() {
     let result = InstallApmPackages
         .run(&ctx)
         .expect("install should continue despite enable failure");
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::OkWithMessage(_)));
 }
 
 #[test]
@@ -694,8 +748,8 @@ fn run_tolerates_copilot_app_workflow_encoding_failures() {
         .run(&ctx)
         .expect("benign copilot-app encoding failures should not error");
     assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok when only copilot-app workflow-encoding failed, got {result:?}"
+        matches!(result, TaskResult::OkWithMessage(_)),
+        "expected changed result when only copilot-app workflow-encoding failed, got {result:?}"
     );
     // A successful (if tolerated) install must persist the manifest marker so
     // subsequent runs stay idempotent.

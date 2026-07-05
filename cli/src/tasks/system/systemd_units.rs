@@ -224,8 +224,8 @@ mod tests {
 
         let result = ConfigureSystemd.run(&ctx).unwrap();
         assert!(
-            matches!(result, TaskResult::Ok),
-            "expected Ok after daemon-reload + enable, got {result:?}"
+            matches!(result, TaskResult::OkWithMessage(_)),
+            "expected OkWithMessage after daemon-reload + enable, got {result:?}"
         );
     }
 
@@ -295,8 +295,8 @@ mod tests {
 
         let result = ConfigureSystemd.run(&ctx).unwrap();
         assert!(
-            matches!(result, TaskResult::Ok),
-            "expected Ok after system-scope daemon-reload + enable, got {result:?}"
+            matches!(result, TaskResult::OkWithMessage(_)),
+            "expected OkWithMessage after system-scope daemon-reload + enable, got {result:?}"
         );
     }
 }

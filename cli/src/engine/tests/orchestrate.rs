@@ -76,6 +76,10 @@ impl ResourceStateProvider<PrecomputedResource> for CountingStateProvider {
     }
 }
 
+fn is_success(result: &TaskResult) -> bool {
+    matches!(result, TaskResult::Ok | TaskResult::OkWithMessage(_))
+}
+
 fn process_precomputed_states(
     ctx: &crate::engine::Context,
     resource_states: impl IntoIterator<Item = (MockResource, ResourceState)>,
@@ -126,7 +130,7 @@ fn process_resources_empty_list() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -149,7 +153,7 @@ fn process_precomputed_states_applies_precomputed() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }
 
 #[test]
@@ -164,7 +168,7 @@ fn process_resources_with_provider_empty_list_skips_provider_load() {
 
     let result = process_resources_with_provider(&ctx, resources, &provider, &opts).unwrap();
 
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
     assert_eq!(loads.load(Ordering::SeqCst), 0);
 }
 
@@ -181,7 +185,7 @@ fn process_resources_remove_removes_correct_resources() {
     ];
 
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }
 
 #[test]
@@ -224,7 +228,7 @@ fn process_resources_parallel_single_resource_runs_sequentially() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }
 
 #[test]
@@ -268,7 +272,7 @@ fn process_precomputed_states_parallel_dispatch() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -284,7 +288,7 @@ fn process_resources_remove_parallel_dispatch() {
     ];
 
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -423,7 +427,7 @@ fn process_precomputed_states_empty_list() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -436,7 +440,7 @@ fn process_resources_remove_empty_list() {
     let resources: Vec<MockResource> = vec![];
 
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -572,7 +576,7 @@ fn process_resources_remove_all_missing_skips_silently() {
     ];
 
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -688,7 +692,7 @@ fn process_resources_stops_on_cancellation() {
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
     // Finishes with zero stats (no resources processed)
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -712,7 +716,7 @@ fn process_precomputed_states_stops_on_cancellation() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -730,7 +734,7 @@ fn process_resources_remove_stops_on_cancellation() {
     ];
 
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -749,7 +753,7 @@ fn sequential_opts_forces_sequential_processing() {
     let opts = ProcessOpts::strict("install").sequential();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }
 
 #[test]
@@ -768,5 +772,5 @@ fn sequential_opts_forces_sequential_for_resource_states() {
     let opts = ProcessOpts::strict("install").sequential();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(is_success(&result));
 }

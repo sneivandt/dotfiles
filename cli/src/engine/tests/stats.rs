@@ -53,10 +53,20 @@ fn stats_summary_with_failed() {
 }
 
 #[test]
-fn stats_finish_returns_dry_run_result() {
+fn stats_finish_returns_ok_when_dry_run_has_no_changes() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = dry_run_context(config);
     let stats = TaskStats::new();
+    let result = stats.finish(&ctx);
+    assert!(matches!(result, TaskResult::Ok));
+}
+
+#[test]
+fn stats_finish_returns_dry_run_when_dry_run_would_change() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = dry_run_context(config);
+    let mut stats = TaskStats::new();
+    stats.changed = 1;
     let result = stats.finish(&ctx);
     assert!(matches!(result, TaskResult::DryRun));
 }
@@ -68,6 +78,16 @@ fn stats_finish_returns_ok_result() {
     let stats = TaskStats::new();
     let result = stats.finish(&ctx);
     assert!(matches!(result, TaskResult::Ok));
+}
+
+#[test]
+fn stats_finish_returns_ok_with_message_when_changed() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let mut stats = TaskStats::new();
+    stats.changed = 1;
+    let result = stats.finish(&ctx);
+    assert!(matches!(result, TaskResult::OkWithMessage(_)));
 }
 
 #[test]

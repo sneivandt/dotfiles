@@ -77,6 +77,7 @@ pub fn run() -> ExitCode {
     logging::init_subscriber(args.verbose, command_name);
     let mut raw_log = logging::Logger::new(command_name);
     raw_log.set_verbose(args.verbose);
+    raw_log.set_dry_run(args.global.dry_run);
     let log = std::sync::Arc::new(raw_log);
 
     // Auto-elevate on Windows for install/uninstall when not in dry-run mode

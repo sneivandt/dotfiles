@@ -167,10 +167,12 @@ impl TaskStats {
         } else {
             ctx.log.debug(&msg);
         }
-        if ctx.dry_run {
-            TaskResult::DryRun
-        } else if self.failed > 0 {
+        if self.failed > 0 {
             TaskResult::Failed(msg)
+        } else if ctx.dry_run && self.changed > 0 {
+            TaskResult::DryRun
+        } else if self.changed > 0 {
+            TaskResult::OkWithMessage(msg)
         } else {
             TaskResult::Ok
         }
@@ -295,7 +297,7 @@ mod tests {
     // -------------------------------------------------------------------
 
     #[test]
-    fn finish_returns_ok_when_not_dry_run() {
+    fn finish_returns_ok_with_message_when_changes_were_recorded() {
         let config =
             crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
         let ctx = crate::tasks::test_helpers::make_linux_context(config);
@@ -303,6 +305,34 @@ mod tests {
             changed: 1,
             already_ok: 0,
             skipped: 0,
+            failed: 0,
+        };
+        assert!(matches!(stats.finish(&ctx), TaskResult::OkWithMessage(_)));
+    }
+
+    #[test]
+    fn finish_returns_ok_when_no_changes_were_recorded() {
+        let config =
+            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::tasks::test_helpers::make_linux_context(config);
+        let stats = TaskStats {
+            changed: 0,
+            already_ok: 1,
+            skipped: 0,
+            failed: 0,
+        };
+        assert!(matches!(stats.finish(&ctx), TaskResult::Ok));
+    }
+
+    #[test]
+    fn finish_returns_ok_when_only_resource_skips_were_recorded() {
+        let config =
+            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::tasks::test_helpers::make_linux_context(config);
+        let stats = TaskStats {
+            changed: 0,
+            already_ok: 0,
+            skipped: 1,
             failed: 0,
         };
         assert!(matches!(stats.finish(&ctx), TaskResult::Ok));
@@ -320,6 +350,20 @@ mod tests {
             failed: 0,
         };
         assert!(matches!(stats.finish(&ctx), TaskResult::DryRun));
+    }
+
+    #[test]
+    fn finish_returns_ok_when_dry_run_has_no_changes() {
+        let config =
+            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::tasks::test_helpers::make_linux_context(config).with_dry_run(true);
+        let stats = TaskStats {
+            changed: 0,
+            already_ok: 1,
+            skipped: 0,
+            failed: 0,
+        };
+        assert!(matches!(stats.finish(&ctx), TaskResult::Ok));
     }
 
     #[test]

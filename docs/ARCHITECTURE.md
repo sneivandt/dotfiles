@@ -549,8 +549,8 @@ of tasks with unsatisfied dependencies (common on 2-vCPU CI runners).
 - Each task's console output is captured in a per-task `BufferedLog`; when the
   task completes, the buffer is flushed atomically under a `flush_lock` so
   output from different tasks never interleaves
-- A dim status line (`▹ task1, task2, ...`) shows which tasks are currently
-  running, updated on every task start and completion
+- A dim status line shows which tasks are currently running, updated on every
+  task start and completion
 - Graph validation (including cycle detection via Kahn's algorithm) runs before
   parallel scheduling; if a cycle is found, the run is aborted with an error
 - Dependencies that reference `TaskId`s not present in the task list (e.g.

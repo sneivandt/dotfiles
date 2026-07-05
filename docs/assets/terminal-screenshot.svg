@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="550" viewBox="0 0 960 550" role="img" aria-labelledby="title desc">
   <title id="title">dotfiles terminal preview</title>
-  <desc id="desc">Generated terminal output from the dotfiles CLI install command.</desc>
+  <desc id="desc">Compact final summary output from the dotfiles CLI install command.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#111827"/>
@@ -24,25 +24,14 @@
   <text x="34" y="96" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">$ </tspan><tspan fill="#86efac">dotfiles</tspan><tspan fill="#e2e8f0"> install</tspan></text>
   <text x="34" y="114" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#64748b">version </tspan><tspan fill="#7dd3fc">v0.1.x</tspan><tspan fill="#64748b"> · profile </tspan><tspan fill="#e2e8f0">desktop</tspan><tspan fill="#64748b"> · Arch Linux</tspan></text>
   <text x="34" y="132" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>
-  <text x="34" y="150" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#60a5fa">● Setting up dotfiles</tspan></text>
-  <text x="34" y="168" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Install wrapper</tspan></text>
-  <text x="34" y="186" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Configure PATH</tspan></text>
-  <text x="34" y="204" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>
-  <text x="34" y="222" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#60a5fa">● Updating the repository</tspan></text>
-  <text x="34" y="240" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Configure sparse checkout</tspan></text>
-  <text x="34" y="258" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Update repository</tspan></text>
-  <text x="34" y="276" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Install Git hooks</tspan></text>
-  <text x="34" y="294" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Install shell completions</tspan></text>
-  <text x="34" y="312" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>
-  <text x="34" y="330" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#60a5fa">● Configuring your system</tspan></text>
-  <text x="34" y="348" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Install symlinks</tspan></text>
-  <text x="34" y="366" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">    link: ~/.zshrc -&gt; ./symlinks/zshrc</tspan></text>
-  <text x="34" y="384" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">    link: ~/.config/nvim -&gt; ./symlinks/config/nvim</tspan></text>
-  <text x="34" y="402" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Configure file permissions</tspan></text>
-  <text x="34" y="420" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Install packages</tspan></text>
-  <text x="34" y="438" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Configure systemd units</tspan></text>
-  <text x="34" y="456" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ✓ Install VS Code extensions</tspan></text>
-  <text x="34" y="474" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>
-  <text x="34" y="492" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0" font-weight="700">dotfiles install complete</tspan></text>
-  <text x="34" y="510" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  11 ok</tspan><tspan fill="#64748b"> · 6 not applicable · 4.8s</tspan></text>
+  <text x="34" y="150" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" font-weight="700" xml:space="preserve"><tspan fill="#e2e8f0">Changed</tspan></text>
+  <text x="34" y="168" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ● Install symlinks</tspan></text>
+  <text x="34" y="186" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">      linked: ~/.zshrc -&gt; ./symlinks/zshrc</tspan></text>
+  <text x="34" y="204" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">      linked: ~/.gitconfig -&gt; ./symlinks/gitconfig</tspan></text>
+  <text x="34" y="222" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">      linked: ~/.config/nvim -&gt; ./symlinks/config/nvim</tspan></text>
+  <text x="34" y="240" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">  ● Install packages</tspan></text>
+  <text x="34" y="258" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0">      installed: neovim</tspan></text>
+  <text x="34" y="276" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0"></tspan></text>
+  <text x="34" y="294" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#e2e8f0" font-weight="700">Complete</tspan><tspan fill="#64748b"> · 1.3s</tspan></text>
+  <text x="34" y="312" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="14" xml:space="preserve"><tspan fill="#86efac">2 changed</tspan><tspan fill="#64748b"> · 22 unchanged</tspan></text>
 </svg>

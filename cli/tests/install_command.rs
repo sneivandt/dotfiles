@@ -447,7 +447,7 @@ fn install_symlinks_is_idempotent() {
     // First run: must succeed and create the symlink.
     let result1 = task.run(&ec.ctx).expect("first install run");
     assert!(
-        matches!(result1, tasks::TaskResult::Ok),
+        matches!(result1, tasks::TaskResult::OkWithMessage(_)),
         "first install run should succeed"
     );
 
@@ -537,7 +537,7 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
         .run(&ec.ctx)
         .expect("apply file permissions run");
     assert!(
-        matches!(result, tasks::TaskResult::Ok),
+        matches!(result, tasks::TaskResult::OkWithMessage(_)),
         "apply file permissions should succeed"
     );
 

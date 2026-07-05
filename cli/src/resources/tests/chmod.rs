@@ -77,7 +77,7 @@ fn chmod_resource_invalid_when_target_missing() {
     let resource = ChmodResource::new(temp_dir.path().join("nonexistent"), mode("600"));
 
     let state = resource.current_state().unwrap();
-    assert!(matches!(state, ResourceState::Invalid { .. }));
+    assert_eq!(state, ResourceState::Missing);
 }
 
 #[cfg(unix)]

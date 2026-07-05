@@ -163,11 +163,8 @@ impl Resource for ChmodResource {
 
 impl IntrinsicState for ChmodResource {
     fn current_state(&self) -> Result<ResourceState> {
-        // Check if target exists
         if !self.target.exists() {
-            return Ok(ResourceState::Invalid {
-                reason: format!("target does not exist: {}", self.target.display()),
-            });
+            return Ok(ResourceState::Missing);
         }
 
         // Get current mode (Unix only)

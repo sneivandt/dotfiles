@@ -6,17 +6,17 @@ $ErrorActionPreference = 'Stop'
 
 function Write-TestStage {
     param([string]$Message)
-    Write-Output "=== $Message"
+    Write-Host "=== $Message"
 }
 
 function Write-TestPass {
     param([string]$Message)
-    Write-Output "PASS: $Message"
+    Write-Host "PASS: $Message"
 }
 
 function Write-TestFail {
     param([string]$Message)
-    Write-Output "FAIL: $Message"
+    Write-Host "FAIL: $Message"
 }
 
 # ---------------------------------------------------------------------------
@@ -27,12 +27,12 @@ function Test-BuildMode {
     Write-TestStage "Testing dotfiles.ps1 --build mode"
 
     if ($env:BINARY_PATH -and (Test-Path $env:BINARY_PATH)) {
-        Write-Output "Skipping: pre-built binary available, build tested separately"
+        Write-Host "Skipping: pre-built binary available, build tested separately"
         return $true
     }
 
     if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-        Write-Output "Skipping: cargo not installed"
+        Write-Host "Skipping: cargo not installed"
         return $true
     }
 
@@ -117,7 +117,7 @@ function Test-VersionDetection {
     Write-TestStage "Testing version detection"
 
     if (-not $env:BINARY_PATH -or -not (Test-Path $env:BINARY_PATH)) {
-        Write-Output "Skipping: BINARY_PATH not set or binary not found"
+        Write-Host "Skipping: BINARY_PATH not set or binary not found"
         return $true
     }
 
@@ -207,7 +207,7 @@ function Test-ArgumentForwarding {
     Write-TestStage "Testing argument forwarding"
 
     if (-not $env:BINARY_PATH -or -not (Test-Path $env:BINARY_PATH)) {
-        Write-Output "Skipping: BINARY_PATH not set or binary not found"
+        Write-Host "Skipping: BINARY_PATH not set or binary not found"
         return $true
     }
 
@@ -231,7 +231,7 @@ function Test-InstallArgumentForwarding {
 
     $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
     if (-not (Test-Path $wrapper)) {
-        Write-Output "Skipping: wrapper not found"
+        Write-Host "Skipping: wrapper not found"
         return $true
     }
 

@@ -1,5 +1,6 @@
 //! Task: update the dotfiles repository.
 use anyhow::Result;
+use std::path::{Path, PathBuf};
 
 use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, UpdateSignal, task_metadata};
 
@@ -34,123 +35,296 @@ impl Task for UpdateRepository {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let root = ctx.root();
+        let targets = update_targets(ctx);
         // Pass HOME so git finds the correct global config when running elevated
         // on Windows (elevated token can have a different home path).
         let home_str = ctx.home.to_string_lossy().into_owned();
         let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
 
-        // Skip when not on a branch (e.g. detached HEAD in CI checkouts).
-        let head_ref = if let Ok(result) = ctx.executor.run_in_with_env(
-            &root,
-            "git",
-            &["symbolic-ref", "--quiet", "HEAD"],
-            git_env,
-        ) {
-            result.stdout.trim().to_string()
-        } else {
-            ctx.log.info("detached HEAD, skipping pull");
-            return Ok(TaskResult::Skipped("detached HEAD".to_string()));
-        };
-
-        // Refuse to pull when tracked files are dirty. Untracked files do not
-        // block a fast-forward pull, so they should not prevent updates.
-        if worktree_has_local_changes(ctx, &root, git_env)? {
-            return Ok(TaskResult::Skipped("local changes present".to_string()));
+        let mut repositories = Vec::with_capacity(targets.len());
+        for target in targets {
+            match check_repository_ready(ctx, target, git_env)? {
+                RepositoryReadiness::Ready(repository) => repositories.push(repository),
+                RepositoryReadiness::Skipped(reason) => return Ok(TaskResult::Skipped(reason)),
+            }
         }
 
         if ctx.dry_run {
-            match dry_run_update_status(ctx, &root, git_env, &head_ref)? {
-                DryRunUpdateStatus::AlreadyCurrent => {
-                    ctx.log.debug("already up to date");
-                    return Ok(TaskResult::Ok);
-                }
-                DryRunUpdateStatus::WouldUpdate | DryRunUpdateStatus::Unknown => {
-                    ctx.log.dry_run("git pull");
-                    return Ok(TaskResult::DryRun);
-                }
-            }
+            return dry_run_repositories(ctx, &repositories, git_env);
         }
 
-        ctx.log.debug(&format!("pulling from {}", root.display()));
-
-        // Fetch first so divergence can be evaluated without invoking `git pull`,
-        // which fails noisily when the local branch has diverged from upstream.
-        if let Err(e) = ctx
-            .executor
-            .run_in_with_env(&root, "git", &["fetch", "--quiet"], git_env)
-        {
-            ctx.log.warn(&format!("git fetch failed: {e:#}"));
-            return Ok(TaskResult::Failed("git fetch failed".to_string()));
-        }
-
-        let pre_sha = ctx
-            .executor
-            .run_in_with_env(&root, "git", &["rev-parse", "HEAD"], git_env)?
-            .stdout
-            .trim()
-            .to_string();
-
-        let upstream_sha =
-            match ctx
-                .executor
-                .run_in_with_env(&root, "git", &["rev-parse", "@{u}"], git_env)
-            {
-                Ok(r) => r.stdout.trim().to_string(),
-                Err(e) => {
-                    ctx.log.warn(&format!("no upstream tracking branch: {e:#}"));
-                    return Ok(TaskResult::Skipped(
-                        "no upstream tracking branch".to_string(),
-                    ));
-                }
-            };
-
-        if pre_sha == upstream_sha {
-            ctx.log.debug("already up to date");
-            return Ok(TaskResult::Ok);
-        }
-
-        // Detect a diverged or local-only branch by counting commits on HEAD
-        // that are not on upstream. A non-zero count means `git pull --ff-only`
-        // would fail; skip rather than report a hard failure.
-        let ahead = ctx
-            .executor
-            .run_in_with_env(
-                &root,
-                "git",
-                &["rev-list", "--count", "@{u}..HEAD"],
-                git_env,
-            )?
-            .stdout
-            .trim()
-            .parse::<u64>()
-            .unwrap_or(0);
-
-        if ahead > 0 {
-            ctx.log
-                .info("local branch diverged from upstream, skipping pull");
-            return Ok(TaskResult::Skipped(
-                "local branch diverged from upstream".to_string(),
+        for repository in &repositories {
+            ctx.log.debug(&format!(
+                "pulling from {}",
+                repository.target.root.display()
             ));
+
+            // Fetch first so divergence can be evaluated without invoking `git pull`,
+            // which fails noisily when the local branch has diverged from upstream.
+            if let Err(e) = ctx.executor.run_in_with_env(
+                &repository.target.root,
+                "git",
+                &["fetch", "--quiet"],
+                git_env,
+            ) {
+                let reason = repository.target.reason("git fetch failed");
+                ctx.log.warn(&format!("{reason}: {e:#}"));
+                return Ok(TaskResult::Failed(reason));
+            }
         }
 
-        let result =
-            ctx.executor
-                .run_in_with_env(&root, "git", &["merge", "--ff-only", "@{u}"], git_env);
-        match result {
-            Ok(r) => {
-                ctx.log
-                    .debug(&format!("git merge output: {}", r.stdout.trim()));
-                self.repo_updated.mark_updated();
-                ctx.log.info("repository updated");
-                Ok(TaskResult::Ok)
+        let mut plans = Vec::with_capacity(repositories.len());
+        for repository in repositories {
+            match plan_repository_update(ctx, repository, git_env)? {
+                RepositoryPlanReadiness::Ready(plan) => plans.push(plan),
+                RepositoryPlanReadiness::Skipped(reason) => return Ok(TaskResult::Skipped(reason)),
             }
-            Err(e) => {
-                ctx.log.warn(&format!("git merge --ff-only failed: {e:#}"));
-                Ok(TaskResult::Failed("git merge --ff-only failed".to_string()))
+        }
+
+        let mut updated = false;
+        for plan in plans.iter().filter(|plan| plan.needs_update) {
+            let result = ctx.executor.run_in_with_env(
+                &plan.target.root,
+                "git",
+                &["merge", "--ff-only", "@{u}"],
+                git_env,
+            );
+            match result {
+                Ok(r) => {
+                    ctx.log
+                        .debug(&format!("git merge output: {}", r.stdout.trim()));
+                    ctx.log
+                        .info(&format!("{} updated", plan.target.description()));
+                    updated = true;
+                }
+                Err(e) => {
+                    let reason = plan.target.reason("git merge --ff-only failed");
+                    ctx.log.warn(&format!("{reason}: {e:#}"));
+                    return Ok(TaskResult::Failed(reason));
+                }
+            }
+        }
+
+        if updated {
+            self.repo_updated.mark_updated();
+        }
+        Ok(TaskResult::Ok)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UpdateTargetKind {
+    Main,
+    Overlay,
+}
+
+#[derive(Debug, Clone)]
+struct UpdateTarget {
+    kind: UpdateTargetKind,
+    root: PathBuf,
+}
+
+impl UpdateTarget {
+    const fn new(kind: UpdateTargetKind, root: PathBuf) -> Self {
+        Self { kind, root }
+    }
+
+    const fn description(&self) -> &'static str {
+        match self.kind {
+            UpdateTargetKind::Main => "repository",
+            UpdateTargetKind::Overlay => "overlay repository",
+        }
+    }
+
+    fn reason(&self, reason: &str) -> String {
+        match self.kind {
+            UpdateTargetKind::Main => reason.to_string(),
+            UpdateTargetKind::Overlay => format!("{reason} in {}", self.description()),
+        }
+    }
+
+    fn dry_run_action(&self) -> String {
+        match self.kind {
+            UpdateTargetKind::Main => "git pull".to_string(),
+            UpdateTargetKind::Overlay => format!("git pull ({})", self.description()),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct CheckedRepository {
+    target: UpdateTarget,
+    head_ref: String,
+}
+
+#[derive(Debug)]
+enum RepositoryReadiness {
+    Ready(CheckedRepository),
+    Skipped(String),
+}
+
+#[derive(Debug)]
+struct RepositoryUpdatePlan {
+    target: UpdateTarget,
+    needs_update: bool,
+}
+
+#[derive(Debug)]
+enum RepositoryPlanReadiness {
+    Ready(RepositoryUpdatePlan),
+    Skipped(String),
+}
+
+fn update_targets(ctx: &Context) -> Vec<UpdateTarget> {
+    let config = ctx.config_read();
+    let mut targets = vec![UpdateTarget::new(
+        UpdateTargetKind::Main,
+        config.root.clone(),
+    )];
+
+    if let Some(overlay) = &config.overlay
+        && overlay.join(".git").exists()
+    {
+        targets.push(UpdateTarget::new(
+            UpdateTargetKind::Overlay,
+            overlay.clone(),
+        ));
+    }
+
+    targets
+}
+
+fn check_repository_ready(
+    ctx: &Context,
+    target: UpdateTarget,
+    git_env: &[(&str, &str)],
+) -> Result<RepositoryReadiness> {
+    // Skip when not on a branch (e.g. detached HEAD in CI checkouts).
+    let head_ref = if let Ok(result) = ctx.executor.run_in_with_env(
+        &target.root,
+        "git",
+        &["symbolic-ref", "--quiet", "HEAD"],
+        git_env,
+    ) {
+        result.stdout.trim().to_string()
+    } else {
+        let reason = target.reason("detached HEAD");
+        ctx.log.info(&format!("{reason}, skipping pull"));
+        return Ok(RepositoryReadiness::Skipped(reason));
+    };
+
+    // Refuse to pull when tracked files are dirty. Untracked files do not
+    // block a fast-forward pull, so they should not prevent updates.
+    if worktree_has_local_changes(ctx, &target.root, git_env)? {
+        return Ok(RepositoryReadiness::Skipped(
+            target.reason("local changes present"),
+        ));
+    }
+
+    Ok(RepositoryReadiness::Ready(CheckedRepository {
+        target,
+        head_ref,
+    }))
+}
+
+fn dry_run_repositories(
+    ctx: &Context,
+    repositories: &[CheckedRepository],
+    git_env: &[(&str, &str)],
+) -> Result<TaskResult> {
+    let mut would_update = false;
+    for repository in repositories {
+        match dry_run_update_status(ctx, &repository.target.root, git_env, &repository.head_ref)? {
+            DryRunUpdateStatus::AlreadyCurrent => {
+                ctx.log.debug(&format!(
+                    "{} already up to date",
+                    repository.target.description()
+                ));
+            }
+            DryRunUpdateStatus::WouldUpdate | DryRunUpdateStatus::Unknown => {
+                ctx.log.dry_run(&repository.target.dry_run_action());
+                would_update = true;
             }
         }
     }
+
+    Ok(if would_update {
+        TaskResult::DryRun
+    } else {
+        TaskResult::Ok
+    })
+}
+
+fn plan_repository_update(
+    ctx: &Context,
+    repository: CheckedRepository,
+    git_env: &[(&str, &str)],
+) -> Result<RepositoryPlanReadiness> {
+    let pre_sha = ctx
+        .executor
+        .run_in_with_env(
+            &repository.target.root,
+            "git",
+            &["rev-parse", "HEAD"],
+            git_env,
+        )?
+        .stdout
+        .trim()
+        .to_string();
+
+    let upstream_sha = match ctx.executor.run_in_with_env(
+        &repository.target.root,
+        "git",
+        &["rev-parse", "@{u}"],
+        git_env,
+    ) {
+        Ok(r) => r.stdout.trim().to_string(),
+        Err(e) => {
+            let reason = repository.target.reason("no upstream tracking branch");
+            ctx.log.warn(&format!("{reason}: {e:#}"));
+            return Ok(RepositoryPlanReadiness::Skipped(reason));
+        }
+    };
+
+    if pre_sha == upstream_sha {
+        ctx.log.debug(&format!(
+            "{} already up to date",
+            repository.target.description()
+        ));
+        return Ok(RepositoryPlanReadiness::Ready(RepositoryUpdatePlan {
+            target: repository.target,
+            needs_update: false,
+        }));
+    }
+
+    // Detect a diverged or local-only branch by counting commits on HEAD
+    // that are not on upstream. A non-zero count means `git pull --ff-only`
+    // would fail; skip rather than report a hard failure.
+    let ahead = ctx
+        .executor
+        .run_in_with_env(
+            &repository.target.root,
+            "git",
+            &["rev-list", "--count", "@{u}..HEAD"],
+            git_env,
+        )?
+        .stdout
+        .trim()
+        .parse::<u64>()
+        .unwrap_or(0);
+
+    if ahead > 0 {
+        let reason = repository
+            .target
+            .reason("local branch diverged from upstream");
+        ctx.log.info(&format!("{reason}, skipping pull"));
+        return Ok(RepositoryPlanReadiness::Skipped(reason));
+    }
+
+    Ok(RepositoryPlanReadiness::Ready(RepositoryUpdatePlan {
+        target: repository.target,
+        needs_update: true,
+    }))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,7 +336,7 @@ enum DryRunUpdateStatus {
 
 fn dry_run_update_status(
     ctx: &Context,
-    root: &std::path::Path,
+    root: &Path,
     git_env: &[(&str, &str)],
     head_ref: &str,
 ) -> Result<DryRunUpdateStatus> {
@@ -195,7 +369,7 @@ fn dry_run_update_status(
 
 fn upstream_remote_sha(
     ctx: &Context,
-    root: &std::path::Path,
+    root: &Path,
     git_env: &[(&str, &str)],
     head_ref: &str,
 ) -> Option<String> {
@@ -237,7 +411,7 @@ fn upstream_remote_sha(
 
 fn worktree_has_local_changes(
     ctx: &Context,
-    root: &std::path::Path,
+    root: &Path,
     git_env: &[(&str, &str)],
 ) -> Result<bool> {
     let status = ctx.executor.run_in_with_env(
@@ -273,6 +447,24 @@ mod tests {
             success: true,
             code: Some(0),
         }
+    }
+
+    fn expect_git_success(
+        mock: &mut MockExecutor,
+        seq: &mut mockall::Sequence,
+        expected_dir: PathBuf,
+        expected_args: &'static [&'static str],
+        stdout: &'static str,
+    ) {
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(seq)
+            .returning(move |dir, program, args, _| {
+                assert_eq!(dir, expected_dir.as_path());
+                assert_eq!(program, "git");
+                assert_eq!(args, expected_args);
+                Ok(ok_result(stdout))
+            });
     }
 
     #[test]
@@ -523,6 +715,162 @@ mod tests {
 
         let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Failed(ref s) if s.contains("git fetch failed")));
+    }
+
+    #[test]
+    fn run_skips_when_overlay_has_local_changes() {
+        let main_root = PathBuf::from("/tmp/main");
+        let overlay = tempfile::tempdir().unwrap();
+        std::fs::create_dir(overlay.path().join(".git")).unwrap();
+        let overlay_root = overlay.path().to_path_buf();
+        let mut config = empty_config(main_root.clone());
+        config.overlay = Some(overlay_root.clone());
+
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            main_root.clone(),
+            &["symbolic-ref", "--quiet", "HEAD"],
+            "refs/heads/main",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            main_root,
+            &["status", "--porcelain", "--untracked-files=no"],
+            "",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            overlay_root.clone(),
+            &["symbolic-ref", "--quiet", "HEAD"],
+            "refs/heads/main",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            overlay_root,
+            &["status", "--porcelain", "--untracked-files=no"],
+            "M  private.toml",
+        );
+
+        let ctx = make_update_context(config, mock);
+        let repo_updated = UpdateSignal::new();
+        let task = UpdateRepository::new(repo_updated.clone());
+
+        let result = task.run(&ctx).unwrap();
+        assert!(
+            matches!(result, TaskResult::Skipped(ref s) if s.contains("local changes") && s.contains("overlay"))
+        );
+        assert!(!repo_updated.was_updated());
+    }
+
+    #[test]
+    fn run_updates_overlay_repository_when_behind_upstream() {
+        let main_root = PathBuf::from("/tmp/main");
+        let overlay = tempfile::tempdir().unwrap();
+        std::fs::create_dir(overlay.path().join(".git")).unwrap();
+        let overlay_root = overlay.path().to_path_buf();
+        let mut config = empty_config(main_root.clone());
+        config.overlay = Some(overlay_root.clone());
+
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            main_root.clone(),
+            &["symbolic-ref", "--quiet", "HEAD"],
+            "refs/heads/main",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            main_root.clone(),
+            &["status", "--porcelain", "--untracked-files=no"],
+            "",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            overlay_root.clone(),
+            &["symbolic-ref", "--quiet", "HEAD"],
+            "refs/heads/main",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            overlay_root.clone(),
+            &["status", "--porcelain", "--untracked-files=no"],
+            "",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            main_root.clone(),
+            &["fetch", "--quiet"],
+            "",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            overlay_root.clone(),
+            &["fetch", "--quiet"],
+            "",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            main_root.clone(),
+            &["rev-parse", "HEAD"],
+            "abc123",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            main_root,
+            &["rev-parse", "@{u}"],
+            "abc123",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            overlay_root.clone(),
+            &["rev-parse", "HEAD"],
+            "def456",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            overlay_root.clone(),
+            &["rev-parse", "@{u}"],
+            "fed654",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            overlay_root.clone(),
+            &["rev-list", "--count", "@{u}..HEAD"],
+            "0",
+        );
+        expect_git_success(
+            &mut mock,
+            &mut seq,
+            overlay_root,
+            &["merge", "--ff-only", "@{u}"],
+            "Updating def456..fed654\nFast-forward",
+        );
+
+        let ctx = make_update_context(config, mock);
+        let repo_updated = UpdateSignal::new();
+        let task = UpdateRepository::new(repo_updated.clone());
+
+        let result = task.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+        assert!(repo_updated.was_updated());
     }
 
     // -----------------------------------------------------------------------

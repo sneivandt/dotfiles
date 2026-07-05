@@ -20,6 +20,7 @@ symlinks = [
   "config/nuget/nuget.config",
   "config/powershell/Microsoft.PowerShell_profile.ps1",
   "ssh/config",
+  "ssh/control/.gitkeep",
 ]
 
 [linux]

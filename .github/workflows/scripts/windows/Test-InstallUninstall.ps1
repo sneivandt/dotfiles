@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Test-InstallUninstall.ps1 — Install/uninstall round-trip test for Windows
+# Test-InstallUninstall.ps1 - Install/uninstall round-trip test for Windows
 # Expected: $env:BINARY_PATH (path to pre-built binary), $env:DIR (repo root)
 # -----------------------------------------------------------------------------
 
@@ -7,17 +7,17 @@ $ErrorActionPreference = 'Stop'
 
 function Write-TestStage {
     param([string]$Message)
-    Write-Host "═══ $Message" -ForegroundColor Cyan
+    Write-Information "=== $Message" -InformationAction Continue
 }
 
 function Write-TestPass {
     param([string]$Message)
-    Write-Host "✓ $Message" -ForegroundColor Green
+    Write-Information "PASS: $Message" -InformationAction Continue
 }
 
 function Write-TestFail {
     param([string]$Message)
-    Write-Host "✗ $Message" -ForegroundColor Red
+    Write-Information "FAIL: $Message" -InformationAction Continue
 }
 
 # Verify that a path exists and is a symlink (reparse point on Windows).
@@ -51,7 +51,7 @@ function Assert-Materialized {
 }
 
 # ---------------------------------------------------------------------------
-# Test the full install → uninstall round-trip for the base profile.
+# Test the full install -> uninstall round-trip for the base profile.
 # ---------------------------------------------------------------------------
 
 function Test-InstallUninstallBaseProfile {
@@ -75,26 +75,26 @@ function Test-InstallUninstallBaseProfile {
     # Representative symlinks from the [windows] section of symlinks.toml
     $psProfile = Join-Path $homeDir "Documents\PowerShell\Microsoft.PowerShell_profile.ps1"
 
-    Write-Host "Running install..."
+    Write-Information "Running install..." -InformationAction Continue
     & $env:BINARY_PATH --root $env:DIR -p base install --skip packages --skip apm
     if ($LASTEXITCODE -ne 0) {
         throw "Install command failed with exit code $LASTEXITCODE"
     }
-    Write-Host "Install complete"
+    Write-Information "Install complete" -InformationAction Continue
 
     Assert-Symlink $gitConfig
     Assert-Symlink $psProfile
 
-    Write-Host "Running uninstall..."
+    Write-Information "Running uninstall..." -InformationAction Continue
     & $env:BINARY_PATH --root $env:DIR -p base uninstall
     if ($LASTEXITCODE -ne 0) {
         throw "Uninstall command failed with exit code $LASTEXITCODE"
     }
-    Write-Host "Uninstall complete"
+    Write-Information "Uninstall complete" -InformationAction Continue
 
     Assert-Materialized $gitConfig
     Assert-Materialized $psProfile
 }
 
 Test-InstallUninstallBaseProfile
-Write-Host "`nAll install/uninstall tests passed" -ForegroundColor Green
+Write-Information "`nAll install/uninstall tests passed" -InformationAction Continue

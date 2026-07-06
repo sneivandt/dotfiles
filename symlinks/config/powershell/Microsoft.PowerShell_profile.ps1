@@ -58,9 +58,10 @@ function Prompt
     $red = "$esc[38;2;247;118;142m"
     $yellow = "$esc[38;2;224;175;104m"
 
+    $promptLine = ""
     if ($Global:IsNestedPwsh)
     {
-        [Console]::Write("${cyan}pwsh ${reset}")
+        $promptLine += "${cyan}pwsh ${reset}"
     }
 
     $curPath = $ExecutionContext.SessionState.Path.CurrentLocation.Path
@@ -70,7 +71,7 @@ function Prompt
         $curPath = "~" + $curPath.SubString($Home.Length)
     }
 
-    [Console]::Write("${yellow}${curPath}${reset}")
+    $promptLine += "${yellow}${curPath}${reset}"
 
     if ($Global:GitExists)
     {
@@ -86,29 +87,28 @@ function Prompt
                 $ellipsis = $branchName.IndexOf("...")
                 if ($ellipsis -gt 0) { $branchName = $branchName.Substring(0, $ellipsis) }
 
-                [Console]::Write("${foreground} ${branchName}${reset}")
+                $promptLine += "${foreground} ${branchName}${reset}"
 
                 $changes = $status.Count - 1
                 if ($changes -gt 0)
                 {
-                    [Console]::Write("${red}+$changes${reset}")
+                    $promptLine += "${red}+$changes${reset}"
                 }
             }
         }
     }
 
-    [Console]::WriteLine("")
-
     if ($env:username -eq "root")
     {
-        "${red}# ${reset}"
+        $promptSuffix = "${red}# ${reset}"
     }
     else
     {
-        "${blue}$ ${reset}"
+        $promptSuffix = "${blue}$ ${reset}"
     }
 
     $LASTEXITCODE = $origLastExitCode
+    return "$promptLine`n$promptSuffix"
 }
 
 # AI / GitHub Copilot CLI aliases

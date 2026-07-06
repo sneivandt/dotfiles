@@ -105,6 +105,7 @@ impl Task for ValidateConfigFiles {
             "profiles.toml",
             "symlinks.toml",
             "packages.toml",
+            "pam.toml",
             "manifest.toml",
         ];
 

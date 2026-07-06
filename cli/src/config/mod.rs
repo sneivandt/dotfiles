@@ -13,6 +13,7 @@ pub(crate) mod helpers;
 pub mod manifest;
 pub mod overlay;
 pub mod packages;
+pub mod pam;
 pub mod profiles;
 pub mod registry;
 pub mod scripts;
@@ -130,6 +131,7 @@ const CHMOD_TOML: &str = "chmod.toml";
 const VSCODE_EXTENSIONS_TOML: &str = "vscode-extensions.toml";
 const GIT_CONFIG_TOML: &str = "git-config.toml";
 const COPILOT_TOML: &str = "copilot.toml";
+const PAM_TOML: &str = "pam.toml";
 const MANIFEST_TOML: &str = "manifest.toml";
 const SCRIPTS_TOML: &str = "scripts.toml";
 
@@ -330,6 +332,7 @@ macro_rules! registered_config_validators {
             .validate_with(|config, platform| registry::validate(&config.registry, platform))
             .validate_with(|config, platform| chmod::validate(&config.chmod, platform))
             .validate_with(|config, platform| systemd_units::validate(&config.units, platform))
+            .validate_with(|config, platform| pam::validate(&config.pam_services, platform))
             .validate_with(|config, _platform| {
                 vscode_extensions::validate(&config.vscode_extensions)
             })
@@ -356,6 +359,10 @@ macro_rules! registered_config_counts {
             SectionCount {
                 label: "systemd units",
                 count: $config.units.len(),
+            },
+            SectionCount {
+                label: "PAM services",
+                count: $config.pam_services.len(),
             },
             SectionCount {
                 label: "chmod entries",
@@ -460,6 +467,8 @@ pub struct Config {
     pub registry: Vec<registry::RegistryEntry>,
     /// Systemd user units to enable.
     pub units: Vec<systemd_units::SystemdUnit>,
+    /// PAM service files to configure.
+    pub pam_services: Vec<pam::PamService>,
     /// File permissions to apply (chmod).
     pub chmod: Vec<chmod::ChmodEntry>,
     /// VS Code extensions to install.
@@ -508,6 +517,9 @@ impl Config {
             units: load_if(platform.supports_systemd(), || {
                 sections.collect_filtered(SYSTEMD_UNITS_TOML, systemd_units::load)
             })?,
+            pam_services: load_if(platform.is_linux(), || {
+                sections.collect_filtered(PAM_TOML, pam::load)
+            })?,
             chmod: sections.collect_filtered(CHMOD_TOML, chmod::load)?,
             vscode_extensions: sections
                 .collect_filtered(VSCODE_EXTENSIONS_TOML, vscode_extensions::load)?,
@@ -536,7 +548,7 @@ impl Config {
 
     /// Return configured item counts for debug logging.
     #[must_use]
-    pub(crate) const fn section_counts(&self) -> [SectionCount; 8] {
+    pub(crate) const fn section_counts(&self) -> [SectionCount; 9] {
         registered_config_counts!(self)
     }
 }

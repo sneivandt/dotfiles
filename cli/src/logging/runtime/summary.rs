@@ -10,13 +10,20 @@ use crate::logging::types::{TaskEntry, TaskStatus};
 impl Logger {
     /// Print the summary of all recorded tasks.
     pub fn print_summary(&self) {
-        self.clear_status();
         let tasks = match self.tasks.lock() {
             Ok(guard) => guard.clone(),
             Err(_) => return,
         };
         if tasks.is_empty() {
+            self.clear_status();
             return;
+        }
+
+        let live_sections_are_visible = self.has_transient_rows() && !self.has_status_row();
+        if live_sections_are_visible {
+            self.finalize_status_rows();
+        } else {
+            self.clear_status();
         }
 
         let details = self
@@ -61,20 +68,20 @@ impl Logger {
         let has_task_sections = specs
             .iter()
             .any(|spec| tasks.iter().any(|task| task.status == spec.status));
-        let mut emitted_task_section = false;
-        if has_task_sections {
+        let mut emitted_task_section = live_sections_are_visible;
+        if has_task_sections && !live_sections_are_visible {
             self.separate_from_startup();
-        }
-        for spec in specs {
-            let emitted = print_task_section(
-                spec.title,
-                &tasks,
-                &details,
-                emitted_task_section,
-                |task| task.status == spec.status,
-                |line| self.task_result(line),
-            );
-            emitted_task_section = emitted || emitted_task_section;
+            for spec in specs {
+                let emitted = print_task_section(
+                    spec.title,
+                    &tasks,
+                    &details,
+                    emitted_task_section,
+                    |task| task.status == spec.status,
+                    |line| self.task_result(line),
+                );
+                emitted_task_section = emitted || emitted_task_section;
+            }
         }
 
         if should_space_before_totals(
@@ -536,5 +543,20 @@ mod tests {
                 "    not needed",
             ]
         );
+    }
+
+    #[test]
+    fn print_summary_finalizes_visible_live_sections() {
+        let (log, _tmp, _guard) = crate::logging::isolated_logger();
+        log.record_task("changed-task", TaskStatus::Changed, None);
+        log.redraw_status_with_progress(true);
+
+        assert!(log.has_transient_rows());
+        assert!(!log.has_status_row());
+
+        log.print_summary();
+
+        assert!(!log.has_transient_rows());
+        assert!(!log.has_status_row());
     }
 }

@@ -1,8 +1,12 @@
 //! Task: update the dotfiles repository.
 use anyhow::Result;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
-use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, UpdateSignal, task_metadata};
+use crate::tasks::{
+    Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, UpdateSignal,
+    process_operation, task_metadata,
+};
 
 /// Pull latest changes from the remote repository.
 #[derive(Debug)]
@@ -35,80 +39,92 @@ impl Task for UpdateRepository {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let targets = update_targets(ctx);
-        // Pass HOME so git finds the correct global config when running elevated
-        // on Windows (elevated token can have a different home path).
+        process_operation(
+            ctx,
+            &UpdateRepositoryOperation::new(self.repo_updated.clone()),
+        )
+    }
+}
+
+#[derive(Debug)]
+struct UpdateRepositoryOperation {
+    repo_updated: UpdateSignal,
+    repositories: Mutex<Option<Vec<CheckedRepository>>>,
+}
+
+impl UpdateRepositoryOperation {
+    const fn new(repo_updated: UpdateSignal) -> Self {
+        Self {
+            repo_updated,
+            repositories: Mutex::new(None),
+        }
+    }
+
+    fn repositories(
+        &self,
+        ctx: &Context,
+        git_env: &[(&str, &str)],
+    ) -> Result<RepositorySetReadiness> {
+        {
+            let cached = self
+                .repositories
+                .lock()
+                .map_err(|_| anyhow::anyhow!("repository update state cache is poisoned"))?;
+            if let Some(repositories) = cached.as_ref() {
+                return Ok(RepositorySetReadiness::Ready(repositories.clone()));
+            }
+        }
+
+        match checked_repositories(ctx, git_env)? {
+            RepositorySetReadiness::Ready(repositories) => {
+                let mut cached = self
+                    .repositories
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("repository update state cache is poisoned"))?;
+                *cached = Some(repositories.clone());
+                drop(cached);
+                Ok(RepositorySetReadiness::Ready(repositories))
+            }
+            skipped @ RepositorySetReadiness::Skipped(_) => Ok(skipped),
+        }
+    }
+}
+
+impl Operation for UpdateRepositoryOperation {
+    fn current_state(&self, ctx: &Context) -> Result<OperationState> {
         let home_str = ctx.home.to_string_lossy().into_owned();
         let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
-
-        let mut repositories = Vec::with_capacity(targets.len());
-        for target in targets {
-            match check_repository_ready(ctx, target, git_env)? {
-                RepositoryReadiness::Ready(repository) => repositories.push(repository),
-                RepositoryReadiness::Skipped(reason) => return Ok(TaskResult::Skipped(reason)),
+        match self.repositories(ctx, git_env)? {
+            RepositorySetReadiness::Ready(repositories) if repositories.is_empty() => {
+                Ok(OperationState::Complete)
             }
-        }
-
-        if ctx.dry_run {
-            return dry_run_repositories(ctx, &repositories, git_env);
-        }
-
-        for repository in &repositories {
-            ctx.log.debug(&format!(
-                "pulling from {}",
-                repository.target.root.display()
-            ));
-
-            // Fetch first so divergence can be evaluated without invoking `git pull`,
-            // which fails noisily when the local branch has diverged from upstream.
-            if let Err(e) = ctx.executor.run_in_with_env(
-                &repository.target.root,
-                "git",
-                &["fetch", "--quiet"],
-                git_env,
-            ) {
-                let reason = repository.target.reason("git fetch failed");
-                ctx.log.warn(&format!("{reason}: {e:#}"));
-                return Ok(TaskResult::Failed(reason));
+            RepositorySetReadiness::Ready(_) => {
+                Ok(OperationState::needs_run("update repositories"))
             }
+            RepositorySetReadiness::Skipped(reason) => Ok(OperationState::blocked(reason)),
         }
+    }
 
-        let mut plans = Vec::with_capacity(repositories.len());
-        for repository in repositories {
-            match plan_repository_update(ctx, repository, git_env)? {
-                RepositoryPlanReadiness::Ready(plan) => plans.push(plan),
-                RepositoryPlanReadiness::Skipped(reason) => return Ok(TaskResult::Skipped(reason)),
+    fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        let home_str = ctx.home.to_string_lossy().into_owned();
+        let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
+        match self.repositories(ctx, git_env)? {
+            RepositorySetReadiness::Ready(repositories) => {
+                dry_run_repositories(ctx, &repositories, git_env)
             }
+            RepositorySetReadiness::Skipped(reason) => Ok(TaskResult::Skipped(reason)),
         }
+    }
 
-        let mut updated = false;
-        for plan in plans.iter().filter(|plan| plan.needs_update) {
-            let result = ctx.executor.run_in_with_env(
-                &plan.target.root,
-                "git",
-                &["merge", "--ff-only", "@{u}"],
-                git_env,
-            );
-            match result {
-                Ok(r) => {
-                    ctx.log
-                        .debug(&format!("git merge output: {}", r.stdout.trim()));
-                    ctx.log
-                        .info(&format!("{} updated", plan.target.description()));
-                    updated = true;
-                }
-                Err(e) => {
-                    let reason = plan.target.reason("git merge --ff-only failed");
-                    ctx.log.warn(&format!("{reason}: {e:#}"));
-                    return Ok(TaskResult::Failed(reason));
-                }
+    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        let home_str = ctx.home.to_string_lossy().into_owned();
+        let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
+        match self.repositories(ctx, git_env)? {
+            RepositorySetReadiness::Ready(repositories) => {
+                apply_repository_updates(ctx, repositories, git_env, &self.repo_updated)
             }
+            RepositorySetReadiness::Skipped(reason) => Ok(TaskResult::Skipped(reason)),
         }
-
-        if updated {
-            self.repo_updated.mark_updated();
-        }
-        Ok(TaskResult::Ok)
     }
 }
 
@@ -151,7 +167,7 @@ impl UpdateTarget {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct CheckedRepository {
     target: UpdateTarget,
     head_ref: String,
@@ -160,6 +176,12 @@ struct CheckedRepository {
 #[derive(Debug)]
 enum RepositoryReadiness {
     Ready(CheckedRepository),
+    Skipped(String),
+}
+
+#[derive(Debug)]
+enum RepositorySetReadiness {
+    Ready(Vec<CheckedRepository>),
     Skipped(String),
 }
 
@@ -192,6 +214,84 @@ fn update_targets(ctx: &Context) -> Vec<UpdateTarget> {
     }
 
     targets
+}
+
+fn checked_repositories(ctx: &Context, git_env: &[(&str, &str)]) -> Result<RepositorySetReadiness> {
+    let targets = update_targets(ctx);
+    let mut repositories = Vec::with_capacity(targets.len());
+    for target in targets {
+        match check_repository_ready(ctx, target, git_env)? {
+            RepositoryReadiness::Ready(repository) => repositories.push(repository),
+            RepositoryReadiness::Skipped(reason) => {
+                return Ok(RepositorySetReadiness::Skipped(reason));
+            }
+        }
+    }
+    Ok(RepositorySetReadiness::Ready(repositories))
+}
+
+fn apply_repository_updates(
+    ctx: &Context,
+    repositories: Vec<CheckedRepository>,
+    git_env: &[(&str, &str)],
+    repo_updated: &UpdateSignal,
+) -> Result<TaskResult> {
+    for repository in &repositories {
+        ctx.log.debug(&format!(
+            "pulling from {}",
+            repository.target.root.display()
+        ));
+
+        // Fetch first so divergence can be evaluated without invoking `git pull`,
+        // which fails noisily when the local branch has diverged from upstream.
+        if let Err(e) = ctx.executor.run_in_with_env(
+            &repository.target.root,
+            "git",
+            &["fetch", "--quiet"],
+            git_env,
+        ) {
+            let reason = repository.target.reason("git fetch failed");
+            ctx.log.warn(&format!("{reason}: {e:#}"));
+            return Ok(TaskResult::Failed(reason));
+        }
+    }
+
+    let mut plans = Vec::with_capacity(repositories.len());
+    for repository in repositories {
+        match plan_repository_update(ctx, repository, git_env)? {
+            RepositoryPlanReadiness::Ready(plan) => plans.push(plan),
+            RepositoryPlanReadiness::Skipped(reason) => return Ok(TaskResult::Skipped(reason)),
+        }
+    }
+
+    let mut updated = false;
+    for plan in plans.iter().filter(|plan| plan.needs_update) {
+        let result = ctx.executor.run_in_with_env(
+            &plan.target.root,
+            "git",
+            &["merge", "--ff-only", "@{u}"],
+            git_env,
+        );
+        match result {
+            Ok(r) => {
+                ctx.log
+                    .debug(&format!("git merge output: {}", r.stdout.trim()));
+                ctx.log
+                    .info(&format!("{} updated", plan.target.description()));
+                updated = true;
+            }
+            Err(e) => {
+                let reason = plan.target.reason("git merge --ff-only failed");
+                ctx.log.warn(&format!("{reason}: {e:#}"));
+                return Ok(TaskResult::Failed(reason));
+            }
+        }
+    }
+
+    if updated {
+        repo_updated.mark_updated();
+    }
+    Ok(TaskResult::Ok)
 }
 
 fn check_repository_ready(

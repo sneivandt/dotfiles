@@ -196,7 +196,7 @@ impl std::fmt::Display for PackageManager {
 }
 
 /// A system package resource that can be checked and installed.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PackageResource {
     /// Package name (or winget ID).
     pub name: String,
@@ -249,6 +249,20 @@ pub fn get_installed_packages(
     executor: &dyn Executor,
 ) -> Result<HashSet<String>> {
     manager.provider().query_installed(executor)
+}
+
+/// Install missing package resources through the selected manager's batch API.
+///
+/// # Errors
+///
+/// Returns an error when the package manager's batch operation fails before it
+/// can produce a per-package report.
+pub fn install_missing_packages(
+    manager: PackageManager,
+    resources: &[&PackageResource],
+    executor: &dyn Executor,
+) -> Result<PackageInstallReport> {
+    manager.provider().install_missing(resources, executor)
 }
 
 /// Install a batch of packages, grouped by package manager.

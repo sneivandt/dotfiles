@@ -125,6 +125,18 @@ impl Logger {
         self.progress_rows.load(Ordering::Relaxed) > 0
     }
 
+    /// Stop tracking transient rows without erasing them from the console.
+    ///
+    /// Used when the final live task-result section should remain as the
+    /// durable end-of-run output instead of being cleared and reprinted.
+    #[allow(clippy::print_stdout, reason = "intentional user-facing output")]
+    pub(in crate::logging) fn finalize_status_rows(&self) {
+        println!();
+        drop(std::io::stdout().flush());
+        self.progress_rows.store(0, Ordering::Relaxed);
+        self.status_row_visible.store(false, Ordering::Relaxed);
+    }
+
     /// Clear any transient status rows from the console.
     pub(in crate::logging) fn clear_status(&self) {
         let _guard = self.flush_lock.lock().unwrap_or_else(|e| {

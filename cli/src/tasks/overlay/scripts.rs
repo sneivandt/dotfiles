@@ -13,7 +13,7 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::config::scripts::ScriptEntry;
-use crate::resources::script::ScriptResource;
+use crate::resources::script::{self, ScriptResource};
 use crate::resources::{IntrinsicState, ResourceChange, ResourceState};
 use crate::tasks::{
     Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
@@ -105,6 +105,57 @@ impl OverlayScriptOperation {
     fn resource(&self, ctx: &Context) -> Result<ScriptResource> {
         ScriptResource::from_entry(&self.entry, &self.overlay_root, Arc::clone(&ctx.executor))
     }
+
+    fn run_script(&self, ctx: &Context, mode: ScriptMode) -> Result<(ResourceChange, String)> {
+        let script_path =
+            crate::config::scripts::resolve_script_path(&self.entry, &self.overlay_root)?;
+        if !script_path.exists() {
+            return Ok((
+                ResourceChange::Skipped {
+                    reason: format!("script not found: {}", script_path.display()),
+                },
+                String::new(),
+            ));
+        }
+
+        script::ensure_script_path_within(&self.overlay_root, &script_path)?;
+        let (interpreter, mut args) = script::interpreter_args_for(&script_path, &*ctx.executor)?;
+        let script_str = script_path.display().to_string();
+        args.push(&script_str);
+        if let Some(flag) = mode.flag() {
+            args.push(flag);
+        }
+
+        let action = mode.action();
+        let result = ctx
+            .executor
+            .run_in(&self.overlay_root, interpreter, &args)
+            .map_err(|err| err.context(format!("{action} script: {}", self.entry.name)))?;
+
+        Ok((ResourceChange::Applied, result.stdout))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ScriptMode {
+    Apply,
+    DryRun,
+}
+
+impl ScriptMode {
+    const fn flag(self) -> Option<&'static str> {
+        match self {
+            Self::Apply => None,
+            Self::DryRun => Some("--dryrun"),
+        }
+    }
+
+    const fn action(self) -> &'static str {
+        match self {
+            Self::Apply => "running",
+            Self::DryRun => "dry-run",
+        }
+    }
 }
 
 impl Operation for OverlayScriptOperation {
@@ -123,13 +174,13 @@ impl Operation for OverlayScriptOperation {
     }
 
     fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
-        let output = self.resource(ctx)?.dry_run_output()?;
+        let (_change, output) = self.run_script(ctx, ScriptMode::DryRun)?;
         emit_script_lines(ctx, &output, true);
         Ok(TaskResult::DryRun)
     }
 
     fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
-        let (change, output) = self.resource(ctx)?.apply_verbose()?;
+        let (change, output) = self.run_script(ctx, ScriptMode::Apply)?;
         emit_script_lines(ctx, &output, false);
         match change {
             ResourceChange::Skipped { reason } => {

@@ -45,6 +45,9 @@ impl Logger {
         }
 
         let mut lines = self.live_task_section_lines();
+        if !lines.is_empty() {
+            self.separate_from_startup();
+        }
         let has_active_status = self.active_task_summary().is_some_and(|names| {
             if !lines.is_empty() {
                 lines.push(String::new());

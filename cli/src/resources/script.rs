@@ -73,103 +73,7 @@ impl ScriptResource {
 
     /// Determine the interpreter and arguments for the script based on its extension.
     fn interpreter_args(&self) -> Result<(&str, Vec<&str>)> {
-        let ext = self
-            .script_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
-
-        match ext {
-            "ps1" => {
-                let shell = self.powershell_interpreter()?;
-                Ok((
-                    shell,
-                    vec![
-                        "-NoProfile",
-                        "-NonInteractive",
-                        "-ExecutionPolicy",
-                        "Bypass",
-                        "-File",
-                    ],
-                ))
-            }
-            _ => Ok(("sh", vec![])),
-        }
-    }
-
-    fn powershell_interpreter(&self) -> Result<&'static str> {
-        if self.executor.which("pwsh") {
-            return Ok("pwsh");
-        }
-        if cfg!(windows) && self.executor.which("powershell") {
-            return Ok("powershell");
-        }
-
-        let reason = if cfg!(windows) {
-            "PowerShell scripts require 'pwsh' or 'powershell' on Windows"
-        } else {
-            "PowerShell scripts require 'pwsh' on non-Windows platforms"
-        };
-        Err(ResourceError::not_supported(reason).into())
-    }
-
-    /// Run the script (apply) and return the change along with captured stdout.
-    ///
-    /// Use this instead of [`Resource::apply`] when you want to forward the
-    /// script's per-item log lines through the engine logger.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the script fails to execute or exits with a
-    /// non-zero status code.
-    pub fn apply_verbose(&self) -> Result<(ResourceChange, String)> {
-        if !self.script_path.exists() {
-            return Ok((
-                ResourceChange::Skipped {
-                    reason: format!("script not found: {}", self.script_path.display()),
-                },
-                String::new(),
-            ));
-        }
-        self.ensure_script_path_within_working_dir()?;
-
-        let (interpreter, mut args) = self.interpreter_args()?;
-        let script_str = self.script_path.display().to_string();
-        args.push(&script_str);
-
-        let result = self
-            .executor
-            .run_in(&self.working_dir, interpreter, &args)
-            .with_context(|| format!("running script: {}", self.name))?;
-
-        Ok((ResourceChange::Applied, result.stdout))
-    }
-
-    /// Run the script in dry-run mode and return captured stdout.
-    ///
-    /// Passes `--dryrun` to the script, which should print what it would do
-    /// without making changes.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the script fails to execute.
-    pub fn dry_run_output(&self) -> Result<String> {
-        if !self.script_path.exists() {
-            return Ok(String::new());
-        }
-        self.ensure_script_path_within_working_dir()?;
-
-        let (interpreter, mut args) = self.interpreter_args()?;
-        let script_str = self.script_path.display().to_string();
-        args.push(&script_str);
-        args.push("--dryrun");
-
-        let result = self
-            .executor
-            .run_in(&self.working_dir, interpreter, &args)
-            .with_context(|| format!("dry-run script: {}", self.name))?;
-
-        Ok(result.stdout)
+        interpreter_args_for(&self.script_path, &*self.executor)
     }
 }
 
@@ -249,25 +153,82 @@ impl IntrinsicState for ScriptResource {
 
 impl ScriptResource {
     fn ensure_script_path_within_working_dir(&self) -> Result<()> {
-        let root = self
-            .working_dir
-            .canonicalize()
-            .with_context(|| format!("resolve overlay root: {}", self.working_dir.display()))?;
-        let script = self
-            .script_path
-            .canonicalize()
-            .with_context(|| format!("resolve script path: {}", self.script_path.display()))?;
-
-        if !script.starts_with(&root) {
-            bail!(
-                "script path escapes overlay root: {} is outside {}",
-                script.display(),
-                root.display()
-            );
-        }
-
-        Ok(())
+        ensure_script_path_within(&self.working_dir, &self.script_path)
     }
+}
+
+/// Determine the interpreter and fixed arguments for an overlay script.
+///
+/// # Errors
+///
+/// Returns an error when a PowerShell script cannot be run on the current
+/// platform because the required shell is unavailable.
+pub(crate) fn interpreter_args_for(
+    script_path: &Path,
+    executor: &dyn Executor,
+) -> Result<(&'static str, Vec<&'static str>)> {
+    let ext = script_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+
+    match ext {
+        "ps1" => {
+            let shell = powershell_interpreter(executor)?;
+            Ok((
+                shell,
+                vec![
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                ],
+            ))
+        }
+        _ => Ok(("sh", vec![])),
+    }
+}
+
+fn powershell_interpreter(executor: &dyn Executor) -> Result<&'static str> {
+    if executor.which("pwsh") {
+        return Ok("pwsh");
+    }
+    if cfg!(windows) && executor.which("powershell") {
+        return Ok("powershell");
+    }
+
+    let reason = if cfg!(windows) {
+        "PowerShell scripts require 'pwsh' or 'powershell' on Windows"
+    } else {
+        "PowerShell scripts require 'pwsh' on non-Windows platforms"
+    };
+    Err(ResourceError::not_supported(reason).into())
+}
+
+/// Ensure the resolved script path is inside the overlay root.
+///
+/// # Errors
+///
+/// Returns an error when either path cannot be canonicalized or the script
+/// resolves outside the overlay root.
+pub(crate) fn ensure_script_path_within(working_dir: &Path, script_path: &Path) -> Result<()> {
+    let root = working_dir
+        .canonicalize()
+        .with_context(|| format!("resolve overlay root: {}", working_dir.display()))?;
+    let script = script_path
+        .canonicalize()
+        .with_context(|| format!("resolve script path: {}", script_path.display()))?;
+
+    if !script.starts_with(&root) {
+        bail!(
+            "script path escapes overlay root: {} is outside {}",
+            script.display(),
+            root.display()
+        );
+    }
+
+    Ok(())
 }
 
 fn format_check_failure(name: &str, code: Option<i32>, stdout: &str, stderr: &str) -> String {
@@ -421,54 +382,6 @@ mod tests {
         let err = ScriptResource::from_entry(&entry, Path::new("/overlay"), mock)
             .expect_err("path traversal should be rejected");
         assert!(err.to_string().contains("must not contain '..'"));
-    }
-
-    #[test]
-    fn dry_run_output_returns_stdout_on_success() {
-        let dir = tempfile::tempdir().unwrap();
-        let script_path = dir.path().join("test.sh");
-        std::fs::write(&script_path, "#!/bin/sh\n").unwrap();
-        let mut mock = MockExecutor::new();
-        mock.expect_run_in()
-            .once()
-            .withf(|_, program, args| program == "sh" && args.len() == 2 && args[1] == "--dryrun")
-            .returning(|_, _, _| {
-                Ok(ExecResult {
-                    stdout: "would update\n".to_string(),
-                    stderr: String::new(),
-                    success: true,
-                    code: Some(0),
-                })
-            });
-        let resource = ScriptResource::new(
-            "test".to_string(),
-            script_path,
-            dir.path().to_path_buf(),
-            Arc::new(mock),
-        );
-        assert_eq!(resource.dry_run_output().unwrap(), "would update\n");
-    }
-
-    #[test]
-    fn dry_run_output_errors_when_script_fails() {
-        let dir = tempfile::tempdir().unwrap();
-        let script_path = dir.path().join("test.sh");
-        std::fs::write(&script_path, "#!/bin/sh\n").unwrap();
-        let mut mock = MockExecutor::new();
-        mock.expect_run_in()
-            .once()
-            .withf(|_, program, args| program == "sh" && args.len() == 2 && args[1] == "--dryrun")
-            .returning(|_, _, _| Err(ResourceError::command_failed("sh", "exit 2").into()));
-        let resource = ScriptResource::new(
-            "test".to_string(),
-            script_path,
-            dir.path().to_path_buf(),
-            Arc::new(mock),
-        );
-        let err = resource
-            .dry_run_output()
-            .expect_err("dry-run script failure should propagate");
-        assert!(err.to_string().contains("dry-run script"));
     }
 
     #[test]

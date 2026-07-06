@@ -378,8 +378,8 @@ fn all_install_tasks_count() {
     let tasks = all_install_tasks();
     assert_eq!(
         tasks.len(),
-        23,
-        "expected 23 install tasks — did you add a new task without updating \
+        24,
+        "expected 24 install tasks — did you add a new task without updating \
              all_install_tasks()? Update the registration list and this test."
     );
 }

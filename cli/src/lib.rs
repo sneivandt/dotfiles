@@ -66,13 +66,8 @@ pub fn run() -> ExitCode {
         };
     }
 
-    let command_name = match &args.command {
-        cli::Command::Install(_) => "install",
-        cli::Command::Update(_) => "update",
-        cli::Command::Uninstall(_) => "uninstall",
-        cli::Command::Test(_) => "test",
-        cli::Command::Log(_) => "log",
-        cli::Command::Version | cli::Command::Completions(_) => "version",
+    let Some(command_name) = logged_command_name(&args.command) else {
+        return ExitCode::SUCCESS;
     };
     logging::init_subscriber(args.verbose, command_name);
     let mut raw_log = logging::Logger::new(command_name);
@@ -122,8 +117,8 @@ pub fn run() -> ExitCode {
             commands::version::run();
             return ExitCode::SUCCESS;
         }
-        // Completions are handled above; this arm is unreachable but kept
-        // because the `unreachable!` macro is denied by the lint configuration.
+        // Completions and log are handled above; these arms are unreachable but
+        // kept because the lint configuration denies the `unreachable!` macro.
         cli::Command::Log(_) | cli::Command::Completions(_) => return ExitCode::SUCCESS,
     };
 
@@ -136,4 +131,16 @@ pub fn run() -> ExitCode {
 
     elevation::wait_if_elevated();
     ExitCode::SUCCESS
+}
+
+const fn logged_command_name(command: &cli::Command) -> Option<&'static str> {
+    let name = match command {
+        cli::Command::Install(_) => "install",
+        cli::Command::Update(_) => "update",
+        cli::Command::Uninstall(_) => "uninstall",
+        cli::Command::Test(_) => "test",
+        cli::Command::Version => "version",
+        cli::Command::Log(_) | cli::Command::Completions(_) => return None,
+    };
+    Some(name)
 }

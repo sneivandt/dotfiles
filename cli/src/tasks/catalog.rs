@@ -37,6 +37,7 @@ pub fn all_install_tasks() -> Vec<Box<dyn Task>> {
         Box::new(crate::tasks::files::chmod::ApplyFilePermissions),
         Box::new(crate::tasks::shell::login_shell::ConfigureShell),
         Box::new(crate::tasks::system::systemd_units::ConfigureSystemd),
+        Box::new(crate::tasks::system::pam::ConfigurePam),
         Box::new(crate::tasks::system::registry::ApplyRegistry),
         Box::new(crate::tasks::editors::InstallVsCodeExtensions),
         Box::new(crate::tasks::ai::apm::InstallApmPackages),

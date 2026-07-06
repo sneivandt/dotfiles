@@ -226,6 +226,7 @@ pub mod test_helpers {
             symlinks: vec![],
             registry: vec![],
             units: vec![],
+            pam_services: vec![],
             chmod: vec![],
             vscode_extensions: vec![],
             git_settings: vec![],

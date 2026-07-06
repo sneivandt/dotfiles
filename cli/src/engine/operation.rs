@@ -21,10 +21,6 @@ pub(crate) enum OperationState {
         reason: String,
     },
     /// The operation cannot safely run right now.
-    #[allow(
-        dead_code,
-        reason = "part of the operation state taxonomy; used as more imperative tasks migrate"
-    )]
     Blocked {
         /// Human-readable reason the operation is blocked.
         reason: String,
@@ -45,10 +41,6 @@ impl OperationState {
     }
 
     /// Create a [`Blocked`](Self::Blocked) state.
-    #[allow(
-        dead_code,
-        reason = "part of the operation state taxonomy; used as more imperative tasks migrate"
-    )]
     pub(crate) fn blocked(reason: impl Into<String>) -> Self {
         Self::Blocked {
             reason: reason.into(),

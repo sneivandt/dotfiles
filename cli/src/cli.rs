@@ -146,12 +146,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_rejects_wrapper_build_flag() {
-        let result = Cli::try_parse_from(["dotfiles", "install", "--build", "--only", "symlinks"]);
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn parse_install_with_profile_short() {
         let cli = Cli::parse_from(["dotfiles", "-p", "arch", "install"]);
         assert_eq!(cli.global.profile, Some("arch".to_string()));

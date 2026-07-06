@@ -4,7 +4,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::fs::{FileSystemOps, SystemFileSystemOps};
-use crate::tasks::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
+use crate::tasks::{
+    Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
+    task_metadata,
+};
 
 /// Default sparse checkout pattern that includes all files at root level.
 const DEFAULT_SPARSE_PATTERN: &str = "/*";
@@ -289,11 +292,27 @@ impl Task for ConfigureSparseCheckout {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        process_operation(
+            ctx,
+            &SparseCheckoutOperation {
+                fs_ops: Arc::clone(&self.fs_ops),
+            },
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SparseCheckoutOperation {
+    fs_ops: Arc<dyn FileSystemOps>,
+}
+
+impl Operation for SparseCheckoutOperation {
+    fn current_state(&self, ctx: &Context) -> Result<OperationState> {
         let excluded_files: Vec<String> = ctx.config_read().manifest.excluded_files.clone();
 
         if excluded_files.is_empty() {
             ctx.log.info("no files to exclude from sparse checkout");
-            return Ok(TaskResult::Ok);
+            return Ok(OperationState::Complete);
         }
 
         let patterns_str = build_patterns(&excluded_files);
@@ -306,16 +325,25 @@ impl Task for ConfigureSparseCheckout {
                 "already configured ({} files excluded)",
                 excluded_files.len()
             ));
-            return Ok(TaskResult::Ok);
+            return Ok(OperationState::Complete);
         }
 
-        if ctx.dry_run {
-            ctx.log.dry_run("configure git sparse checkout");
-            for file in &excluded_files {
-                ctx.log.dry_run(&format!("  exclude: {file}"));
-            }
-            return Ok(TaskResult::DryRun);
+        Ok(OperationState::needs_run("configure sparse checkout"))
+    }
+
+    fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        let excluded_files: Vec<String> = ctx.config_read().manifest.excluded_files.clone();
+        ctx.log.dry_run("configure git sparse checkout");
+        for file in &excluded_files {
+            ctx.log.dry_run(&format!("  exclude: {file}"));
         }
+        Ok(TaskResult::DryRun)
+    }
+
+    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        let excluded_files: Vec<String> = ctx.config_read().manifest.excluded_files.clone();
+        let patterns_str = build_patterns(&excluded_files);
+        let sparse_file = ctx.root().join(".git/info/sparse-checkout");
 
         // Clean up broken git config symlinks that prevent git from running.
         remove_broken_git_symlinks(ctx, &*self.fs_ops);

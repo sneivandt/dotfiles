@@ -1,14 +1,16 @@
 //! Tasks: install system packages.
 
 use anyhow::{Context as _, Result};
-use std::collections::HashSet;
+use std::sync::Mutex;
 
 use crate::config::packages::Package;
-use crate::resources::package::{PackageManager, PackageResource, get_installed_packages};
+use crate::resources::package::{
+    PackageManager, PackageResource, get_installed_packages, install_missing_packages,
+};
 use crate::resources::{Resource as _, ResourceState};
 use crate::tasks::{
-    Context, Domain, ExecutionPolicy, PlatformCapability, Task, TaskPhase, TaskResult, TaskStats,
-    task_metadata,
+    Context, Domain, ExecutionPolicy, Operation, OperationState, PlatformCapability, Task,
+    TaskPhase, TaskResult, TaskStats, process_operation, task_metadata,
 };
 
 /// Default number of parallel jobs for makepkg if nproc detection fails.
@@ -116,7 +118,7 @@ impl Task for InstallPackages {
             Err(reason) => return Ok(TaskResult::Skipped(reason)),
         };
 
-        process_packages(ctx, &packages, manager)
+        process_operation(ctx, &PackageInstallOperation::new(packages, manager))
     }
 }
 
@@ -165,7 +167,10 @@ impl Task for InstallAurPackages {
         ctx.log
             .debug(&format!("checking {} AUR packages", packages.len()));
 
-        process_packages(ctx, &packages, PackageManager::Paru)
+        process_operation(
+            ctx,
+            &PackageInstallOperation::new(packages, PackageManager::Paru),
+        )
     }
 }
 
@@ -195,16 +200,31 @@ impl Task for InstallParu {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        process_operation(ctx, &ParuInstallOperation)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ParuInstallOperation;
+
+impl Operation for ParuInstallOperation {
+    fn current_state(&self, ctx: &Context) -> Result<OperationState> {
         if ctx.system().which("paru") {
             ctx.log.debug("paru already in PATH");
-            return Ok(TaskResult::Ok);
+            Ok(OperationState::Complete)
+        } else {
+            Ok(OperationState::needs_run(
+                "install paru from AUR (paru-bin)",
+            ))
         }
+    }
 
-        if ctx.dry_run {
-            ctx.log.dry_run("install paru from AUR (paru-bin)");
-            return Ok(TaskResult::DryRun);
-        }
+    fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        ctx.log.dry_run("install paru from AUR (paru-bin)");
+        Ok(TaskResult::DryRun)
+    }
 
+    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
         check_prerequisites(ctx)?;
         let guard = crate::fs::TempDir::new(prepare_build_directory(ctx)?);
         clone_paru_from_aur(ctx, guard.path())?;
@@ -279,101 +299,164 @@ fn build_paru(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
 // Package installation
 // ---------------------------------------------------------------------------
 
-/// Install missing packages using the package provider's preferred strategy.
-///
-/// Pacman and Paru install in one solver invocation; Winget installs
-/// individually and reports per-package failures without aborting the whole set.
-fn install_missing(
-    ctx: &Context,
-    packages: &[Package],
-    installed: &HashSet<String>,
+#[derive(Debug)]
+struct PackageInstallOperation {
+    packages: Vec<Package>,
     manager: PackageManager,
-) -> TaskResult {
-    let system = ctx.system();
-    let resources: Vec<PackageResource> = packages
-        .iter()
-        .map(|pkg| PackageResource::new(pkg.name.clone(), manager, system.executor_arc()))
-        .collect();
-
-    let mut stats = TaskStats::new();
-    let mut missing = Vec::new();
-
-    for r in &resources {
-        if matches!(r.state_from_installed(installed), ResourceState::Correct) {
-            ctx.debug_fmt(|| format!("ok: {}", r.description()));
-            stats.already_ok = stats.already_ok.saturating_add(1);
-        } else {
-            missing.push(r);
-        }
-    }
-
-    if missing.is_empty() {
-        return stats.finish(ctx);
-    }
-
-    if ctx.dry_run {
-        for r in &missing {
-            ctx.log
-                .dry_run(&format!("would install: {}", r.description()));
-        }
-        stats.changed = u32::try_from(missing.len()).unwrap_or(u32::MAX);
-        return stats.finish(ctx);
-    }
-
-    ctx.log
-        .debug(&format!("installing {} missing packages", missing.len()));
-    let report = match manager
-        .provider()
-        .install_missing(&missing, system.executor())
-    {
-        Ok(report) => report,
-        Err(e) => {
-            let reason = format!("{manager} install failed: {e:#}");
-            ctx.log.warn(&reason);
-            stats.failed = u32::try_from(missing.len()).unwrap_or(u32::MAX);
-            drop(stats.finish(ctx));
-            return TaskResult::Failed(reason);
-        }
-    };
-
-    for failure in report.failures() {
-        ctx.log.warn(&format!(
-            "failed to install {} with {manager}: {}",
-            failure.package, failure.reason
-        ));
-    }
-
-    let applied_count = report.applied_count();
-    stats.changed = u32::try_from(applied_count).unwrap_or(u32::MAX);
-    stats.failed = u32::try_from(report.failures().len()).unwrap_or(u32::MAX);
-
-    for package in report.applied_packages() {
-        ctx.log.info(&format!("installed: {package}"));
-    }
-
-    if report.has_failures() {
-        let reason = format!("{} package install(s) failed", report.failures().len());
-        ctx.log.warn(&reason);
-        drop(stats.finish(ctx));
-        return TaskResult::Failed(reason);
-    }
-
-    stats.finish(ctx)
+    plan: Mutex<Option<PackageInstallPlan>>,
 }
 
-/// Process a list of packages by querying installed state once and dispatching
-/// to the package provider's preferred install strategy.
-fn process_packages(
-    ctx: &Context,
-    packages: &[Package],
-    manager: PackageManager,
-) -> Result<TaskResult> {
-    ctx.debug_fmt(|| {
-        format!(
-            "batch-checking {} packages with a single query",
-            packages.len()
-        )
-    });
-    let installed = get_installed_packages(manager, ctx.system().executor())?;
-    Ok(install_missing(ctx, packages, &installed, manager))
+impl PackageInstallOperation {
+    const fn new(packages: Vec<Package>, manager: PackageManager) -> Self {
+        Self {
+            packages,
+            manager,
+            plan: Mutex::new(None),
+        }
+    }
+
+    fn plan(&self, ctx: &Context) -> Result<PackageInstallPlan> {
+        {
+            let cached = self
+                .plan
+                .lock()
+                .map_err(|_| anyhow::anyhow!("package install plan cache is poisoned"))?;
+            if let Some(plan) = cached.as_ref() {
+                return Ok(plan.clone());
+            }
+        }
+
+        ctx.debug_fmt(|| {
+            format!(
+                "batch-checking {} packages with a single query",
+                self.packages.len()
+            )
+        });
+
+        let system = ctx.system();
+        let installed = get_installed_packages(self.manager, system.executor())?;
+        let resources: Vec<PackageResource> = self
+            .packages
+            .iter()
+            .map(|pkg| PackageResource::new(pkg.name.clone(), self.manager, system.executor_arc()))
+            .collect();
+        let mut missing = Vec::new();
+        let mut already_ok = 0usize;
+
+        for resource in resources {
+            if matches!(
+                resource.state_from_installed(&installed),
+                ResourceState::Correct
+            ) {
+                ctx.debug_fmt(|| format!("ok: {}", resource.description()));
+                already_ok = already_ok.saturating_add(1);
+            } else {
+                missing.push(resource);
+            }
+        }
+
+        let plan = PackageInstallPlan {
+            missing,
+            already_ok,
+        };
+        let mut cached = self
+            .plan
+            .lock()
+            .map_err(|_| anyhow::anyhow!("package install plan cache is poisoned"))?;
+        *cached = Some(plan.clone());
+        drop(cached);
+        Ok(plan)
+    }
+}
+
+impl Operation for PackageInstallOperation {
+    fn current_state(&self, ctx: &Context) -> Result<OperationState> {
+        let plan = self.plan(ctx)?;
+        if plan.missing.is_empty() {
+            Ok(OperationState::Complete)
+        } else {
+            Ok(OperationState::needs_run(format!(
+                "install {} missing package(s)",
+                plan.missing.len()
+            )))
+        }
+    }
+
+    fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        let plan = self.plan(ctx)?;
+        for resource in &plan.missing {
+            ctx.log
+                .dry_run(&format!("would install: {}", resource.description()));
+        }
+        Ok(plan.preview_stats().finish(ctx))
+    }
+
+    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        let plan = self.plan(ctx)?;
+        if plan.missing.is_empty() {
+            return Ok(plan.preview_stats().finish(ctx));
+        }
+
+        ctx.log.debug(&format!(
+            "installing {} missing packages",
+            plan.missing.len()
+        ));
+        let missing_refs: Vec<&PackageResource> = plan.missing.iter().collect();
+        let report =
+            match install_missing_packages(self.manager, &missing_refs, ctx.system().executor()) {
+                Ok(report) => report,
+                Err(e) => {
+                    let reason = format!("{} install failed: {e:#}", self.manager);
+                    ctx.log.warn(&reason);
+                    let mut stats = plan.base_stats();
+                    stats.failed = u32::try_from(plan.missing.len()).unwrap_or(u32::MAX);
+                    drop(stats.finish(ctx));
+                    return Ok(TaskResult::Failed(reason));
+                }
+            };
+
+        for failure in report.failures() {
+            ctx.log.warn(&format!(
+                "failed to install {} with {}: {}",
+                failure.package, self.manager, failure.reason
+            ));
+        }
+
+        let mut stats = plan.base_stats();
+        stats.changed = u32::try_from(report.applied_count()).unwrap_or(u32::MAX);
+        stats.failed = u32::try_from(report.failures().len()).unwrap_or(u32::MAX);
+
+        for package in report.applied_packages() {
+            ctx.log.info(&format!("installed: {package}"));
+        }
+
+        if report.has_failures() {
+            let reason = format!("{} package install(s) failed", report.failures().len());
+            ctx.log.warn(&reason);
+            drop(stats.finish(ctx));
+            return Ok(TaskResult::Failed(reason));
+        }
+
+        Ok(stats.finish(ctx))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PackageInstallPlan {
+    missing: Vec<PackageResource>,
+    already_ok: usize,
+}
+
+impl PackageInstallPlan {
+    fn base_stats(&self) -> TaskStats {
+        let mut stats = TaskStats::new();
+        stats.already_ok = u32::try_from(self.already_ok).unwrap_or(u32::MAX);
+        stats
+    }
+
+    fn preview_stats(&self) -> TaskStats {
+        let mut stats = self.base_stats();
+        stats.changed = u32::try_from(self.missing.len()).unwrap_or(u32::MAX);
+        stats
+    }
 }

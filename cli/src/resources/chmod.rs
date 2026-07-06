@@ -5,6 +5,8 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 use super::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+#[cfg(unix)]
+use crate::error::ResourceError;
 
 /// Unix file permission mask (all permission bits).
 #[cfg(unix)]
@@ -133,8 +135,6 @@ impl Resource for ChmodResource {
     fn apply(&self) -> ResourceResult<ResourceChange> {
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-
             let mode = self.mode.as_u32();
 
             if self.target.is_dir() {
@@ -144,9 +144,7 @@ impl Resource for ChmodResource {
                     strip_file_execute_bits(mode),
                 )?;
             } else {
-                let perms = std::fs::Permissions::from_mode(mode);
-                std::fs::set_permissions(&self.target, perms)
-                    .with_context(|| format!("set permissions: {}", self.target.display()))?;
+                set_permissions(&self.target, mode)?;
             }
 
             Ok(ResourceChange::Applied)
@@ -245,12 +243,9 @@ fn check_dir_recursive(path: &std::path::Path, base_mode: u32) -> Result<Resourc
 }
 
 #[cfg(unix)]
-fn apply_recursive(path: &std::path::Path, dir_mode: u32, file_mode: u32) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
+fn apply_recursive(path: &std::path::Path, dir_mode: u32, file_mode: u32) -> ResourceResult<()> {
     let effective_mode = if path.is_dir() { dir_mode } else { file_mode };
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(effective_mode))
-        .with_context(|| format!("set permissions on {}", path.display()))?;
+    set_permissions(path, effective_mode)?;
 
     if path.is_dir() {
         for entry in std::fs::read_dir(path)
@@ -264,13 +259,27 @@ fn apply_recursive(path: &std::path::Path, dir_mode: u32, file_mode: u32) -> Res
             if entry_path.is_dir() {
                 apply_recursive(&entry_path, dir_mode, file_mode)?;
             } else {
-                std::fs::set_permissions(&entry_path, std::fs::Permissions::from_mode(file_mode))
-                    .with_context(|| format!("set permissions on {}", entry_path.display()))?;
+                set_permissions(&entry_path, file_mode)?;
             }
         }
     }
 
     Ok(())
+}
+
+#[cfg(unix)]
+fn set_permissions(path: &std::path::Path, mode: u32) -> ResourceResult<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::PermissionDenied {
+            ResourceError::permission_denied(path.display().to_string())
+        } else {
+            anyhow::Error::new(error)
+                .context(format!("set permissions on {}", path.display()))
+                .into()
+        }
+    })
 }
 
 /// Add execute bits to a mode for each permission triplet that has read access.

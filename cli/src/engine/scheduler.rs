@@ -195,7 +195,7 @@ pub(crate) fn run_tasks_parallel(
 
                 if !deps_ok {
                     record_dependency_block(task, &**log);
-                    log.redraw_status();
+                    log.emit_task_result_and_redraw(task.name());
                     signal_dependents(task.name(), my_senders, DependencySignal::Blocked);
                     return;
                 }
@@ -245,7 +245,7 @@ pub(crate) fn run_tasks_sequential(
         } else {
             if let Some(task) = tasks.get(idx) {
                 record_dependency_block(*task, &**log);
-                log.redraw_status();
+                log.emit_task_result_and_redraw(task.name());
             }
             DependencySignal::Blocked
         };

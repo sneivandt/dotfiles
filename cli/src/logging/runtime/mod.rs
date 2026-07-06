@@ -88,13 +88,15 @@ pub struct Logger {
     pub(super) flush_lock: Mutex<()>,
     /// Names of tasks currently executing in parallel.
     pub(super) active_tasks: Mutex<Vec<String>>,
-    /// Whether a progress line is currently displayed (`0` = no, `1` = yes).
+    /// Number of transient rows currently displayed.
     ///
     /// The transient status area is redrawn from whole rows. Each row is
     /// truncated to fit the terminal, avoiding wrapped-row cursor arithmetic.
     pub(super) progress_rows: AtomicU16,
     /// Whether the bottom row in the transient status area is the active-task row.
     pub(super) status_row_visible: AtomicBool,
+    /// Whether any completed task has emitted durable console output.
+    pub(super) task_console_output_emitted: AtomicBool,
     /// High-precision diagnostic log; `None` when the cache dir is unavailable.
     pub(super) diagnostic: Option<DiagnosticLog>,
     /// Instant when the logger was created, used for elapsed time in summary.
@@ -135,6 +137,7 @@ impl Logger {
             active_tasks: Mutex::new(Vec::new()),
             progress_rows: AtomicU16::new(0),
             status_row_visible: AtomicBool::new(false),
+            task_console_output_emitted: AtomicBool::new(false),
             diagnostic: dotfiles_cache_dir()
                 .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
             start,
@@ -177,6 +180,7 @@ impl Logger {
             active_tasks: Mutex::new(Vec::new()),
             progress_rows: AtomicU16::new(0),
             status_row_visible: AtomicBool::new(false),
+            task_console_output_emitted: AtomicBool::new(false),
             diagnostic: dotfiles_cache_subdir(cache_dir)
                 .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
             start,
@@ -219,6 +223,12 @@ impl Logger {
     #[cfg(test)]
     pub(crate) fn status_row_visible(&self) -> bool {
         self.status_row_visible.load(Ordering::Relaxed)
+    }
+
+    /// Return whether task console output has been emitted (test-only).
+    #[cfg(test)]
+    pub(crate) fn task_console_output_emitted(&self) -> bool {
+        self.task_console_output_emitted.load(Ordering::Relaxed)
     }
 
     log_method!(

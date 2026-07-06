@@ -287,12 +287,13 @@ The log file is useful for troubleshooting installation issues or reviewing what
 In **non-verbose** mode (default), a live progress line is shown while tasks
 run, followed by a compact summary. Successful no-op tasks are counted as
 unchanged and are not listed individually. Tasks that changed state, were
-skipped, failed, or would change state in dry-run mode appear in grouped final
-sections. Status icons:
+skipped, failed, or would change state in dry-run mode are printed as they
+complete. Status colors:
 
-- `●` — task changed state successfully (green)
-- `○` — task did not change state: deliberately skipped (yellow) or dry-run preview (magenta)
-- `✗` — task failed (red)
+- Green — task changed state successfully
+- Yellow — task was deliberately skipped
+- Magenta — dry-run preview
+- Red — task failed
 
 Not-applicable tasks are counted as unchanged in the console summary. The
 persistent log file records every task's output, replayed as each buffered task
@@ -302,18 +303,17 @@ completes, and ends with the same final completion/count lines as the console.
 
 When using `-d` (dry-run), the logging system:
 - Shows what would be done without making changes
-- Marks tasks with `○` (dry-run) in the summary
+- Prints dry-run task rows in magenta as tasks complete
 - Still writes to the log file for review
 
 Example summary output:
 ```
-Changed
-  ● Enable developer mode
-      enabled
-  ● Configure sparse checkout
-      configured: sparse checkout
-  ● Update repository
-      updated to origin/main
+Enable developer mode
+  enabled
+Configure sparse checkout
+  configured: sparse checkout
+Update repository
+  updated to origin/main
 
 Complete · 0.8s
 3 Changed · 9 Unchanged

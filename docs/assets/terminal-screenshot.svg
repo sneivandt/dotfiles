@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="440" viewBox="0 0 960 440" role="img" aria-labelledby="title desc">
   <title id="title">dotfiles terminal preview</title>
-  <desc id="desc">Compact final summary output from the dotfiles CLI install command.</desc>
+  <desc id="desc">Compact completion-order output from the dotfiles CLI install command.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#111827"/>
@@ -23,15 +23,14 @@
   <text x="34" y="80" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#94a3b8">~</tspan></text>
   <text x="34" y="100" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0">$ </tspan><tspan fill="#86efac">dotfiles</tspan><tspan fill="#e2e8f0"> install</tspan></text>
   <text x="34" y="120" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#64748b">version </tspan><tspan fill="#e2e8f0">v0.1.x</tspan><tspan fill="#64748b"> · profile </tspan><tspan fill="#e2e8f0">desktop</tspan><tspan fill="#64748b"> · Arch Linux</tspan></text>
-  <text x="34" y="154" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" font-weight="700" xml:space="preserve"><tspan fill="#e2e8f0">Changed</tspan></text>
-  <text x="34" y="174" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#86efac">  Install symlinks</tspan></text>
-  <text x="34" y="194" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0">    linked: ~/.config/alacritty/alacritty.toml -&gt; ./symlinks/config/alacritty/alacritty.toml</tspan></text>
-  <text x="34" y="214" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0">    linked: ~/.config/nvim -&gt; ./symlinks/config/nvim</tspan></text>
-  <text x="34" y="234" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0">    linked: ~/.gitconfig -&gt; ./symlinks/gitconfig</tspan></text>
-  <text x="34" y="254" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0">    linked: ~/.zshrc -&gt; ./symlinks/zshrc</tspan></text>
-  <text x="34" y="278" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#86efac">  Install packages</tspan></text>
-  <text x="34" y="298" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0">    installed: neovim</tspan></text>
-  <text x="34" y="318" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0">    installed: ripgrep</tspan></text>
+  <text x="34" y="154" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#86efac">Install symlinks</tspan></text>
+  <text x="34" y="174" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0">  linked: ~/.config/alacritty/alacritty.toml -&gt; ./symlinks/config/alacritty/alacritty.toml</tspan></text>
+  <text x="34" y="194" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0">  linked: ~/.config/nvim -&gt; ./symlinks/config/nvim</tspan></text>
+  <text x="34" y="214" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0">  linked: ~/.gitconfig -&gt; ./symlinks/gitconfig</tspan></text>
+  <text x="34" y="234" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0">  linked: ~/.zshrc -&gt; ./symlinks/zshrc</tspan></text>
+  <text x="34" y="258" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#86efac">Install packages</tspan></text>
+  <text x="34" y="278" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0">  installed: neovim</tspan></text>
+  <text x="34" y="298" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0">  installed: ripgrep</tspan></text>
   <text x="34" y="352" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e2e8f0" font-weight="700">Complete</tspan><tspan fill="#64748b"> · 1.3s</tspan></text>
   <text x="34" y="374" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#86efac">2 Changed</tspan><tspan fill="#64748b"> · 22 Unchanged</tspan></text>
 </svg>

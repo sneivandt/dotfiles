@@ -85,9 +85,9 @@ in verbose mode — all messages appear regardless of the console verbose flag.
 
 Task output is buffered by the scheduler. In non-verbose mode, buffered
 `stage`, `info`, `debug`, `dry_run`, and `always` entries are replayed to the
-main log only and surfaced through the final grouped summary when the task
-status is shown. `warn` and `error` entries remain console-visible immediately
-when the task buffer flushes.
+main log only, then changed/skipped/failed/dry-run task results are printed to
+the console as each task completes. `warn` and `error` entries remain
+console-visible immediately when the task buffer flushes.
 
 ## Task Recording & Summary
 
@@ -112,10 +112,12 @@ pub fn execute(task: &dyn Task, ctx: &Context) {
 }
 ```
 
-`log.print_summary()` shows totals at end of run. The console summary includes
-grouped changed/skipped/failed/dry-run sections when those sections have entries;
-the persistent log file already contains each task's replayed stage/detail output
-and receives the final totals. Don't call `record_task` inside tasks.
+`log.print_summary()` shows only the final completion line and totals at end of
+run. Changed/skipped/failed/dry-run task rows are emitted in completion order as
+tasks finish; successful no-op and not-applicable tasks are counted but not shown
+as rows. The persistent log file already contains each task's replayed
+stage/detail output and receives the final totals. Don't call `record_task`
+inside tasks.
 
 ## Pattern in Task::run()
 
@@ -144,14 +146,16 @@ When `verbose=false`:
 - `stage`, `info`, and `debug` messages are suppressed on the console
 - `warn`, `error`, `dry_run`, and `always` messages stay visible on the console
   for direct `Logger` output; task-buffered `dry_run`/`always` details are
-  deferred to the final summary
-- The summary shows totals plus grouped changed/skipped/failed/dry-run sections
-- The progress line shows the first few task names plus a remaining count
+  surfaced through the compact completed-task row
+- Changed/skipped/failed/dry-run task rows are printed as tasks complete
+- The final summary shows only `Complete`/`Failed`, elapsed time, and totals
+- The progress line starts with `Running ·`, shows the first few task names plus
+  a remaining count, and omits the trailing ellipsis
 
 When `verbose=true`:
 - All messages appear on the console as usual
-- The summary includes grouped changed/skipped/failed/dry-run sections
-- The progress line shows individual task names
+- The final summary shows only `Complete`/`Failed`, elapsed time, and totals
+- The progress line starts with `Running ·` and shows individual task names
 
 The **log file** always receives full output regardless of the verbose setting.
 The **`task_result`** target is internal to summary rendering and never written
@@ -175,10 +179,11 @@ memory while the task runs. This is used in both parallel execution and the
 `--no-parallel` sequential fallback so task headers/details render consistently.
 
 - **On parallel task start**: `Logger::notify_task_start(name)` adds the task
-  name to the active set and prints a dim status line (`▹ task1, task2, ...`)
+  name to the active set and prints a `Running · task1, task2, ...` status line
 - **On task complete**: `BufferedLog::flush_and_complete(name)` atomically
   replays all buffered entries (stage, info, debug, etc.) to the real Logger,
-  removes the task from the active set, and prints the updated status line
+  emits the compact task result row when applicable, removes the task from the
+  active set, and prints the updated status line
 - **Flush lock**: A `Mutex<()>` on Logger serializes flushes so output from
   different tasks never interleaves
 - **Task recording**: `record_task()` is forwarded immediately to the Logger

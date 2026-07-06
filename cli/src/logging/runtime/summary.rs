@@ -1,6 +1,6 @@
 //! End-of-run summary printing for [`Logger`].
 //!
-//! Renders grouped task-result sections and final aggregate counts.
+//! Renders final aggregate counts and compact completed-task rows.
 
 use std::time::Duration;
 
@@ -19,17 +19,7 @@ impl Logger {
             return;
         }
 
-        let live_sections_are_visible = self.has_transient_rows() && !self.has_status_row();
-        if live_sections_are_visible {
-            self.finalize_status_rows();
-        } else {
-            self.clear_status();
-        }
-
-        let details = self
-            .task_details
-            .lock()
-            .map_or_else(|_| Vec::new(), |guard| guard.clone());
+        self.clear_status();
 
         let mut changed = 0u32;
         let mut unchanged = 0u32;
@@ -64,30 +54,9 @@ impl Logger {
         );
         let (text_color, label) = completion_label(failed);
 
-        let specs = task_section_specs(summary_mode);
-        let has_task_sections = specs
-            .iter()
-            .any(|spec| tasks.iter().any(|task| task.status == spec.status));
-        let mut emitted_task_section = live_sections_are_visible;
-        if has_task_sections && !live_sections_are_visible {
-            self.separate_from_startup();
-            for spec in specs {
-                let emitted = print_task_section(
-                    spec.title,
-                    &tasks,
-                    &details,
-                    emitted_task_section,
-                    |task| task.status == spec.status,
-                    |line| self.task_result(line),
-                );
-                emitted_task_section = emitted || emitted_task_section;
-            }
-        }
-
         if should_space_before_totals(
             &self.command,
             self.verbose,
-            emitted_task_section,
             changed,
             skipped,
             dry_run,
@@ -101,70 +70,52 @@ impl Logger {
         self.always(&status_line);
     }
 
-    pub(in crate::logging) fn live_task_section_lines(&self) -> Vec<String> {
-        let tasks = self
-            .tasks
-            .lock()
-            .map_or_else(|_| Vec::new(), |guard| guard.clone());
+    pub(in crate::logging) fn emit_recorded_task_result(&self, task_name: &str) {
+        let task = self.tasks.lock().map_or(None, |guard| {
+            guard
+                .iter()
+                .rev()
+                .find(|task| task.name == task_name)
+                .cloned()
+        });
+        let Some(task) = task else {
+            return;
+        };
         let details = self
             .task_details
             .lock()
             .map_or_else(|_| Vec::new(), |guard| guard.clone());
-        task_section_lines(&tasks, &details, SummaryMode::for_command(&self.command))
+
+        let lines = task_result_lines(&task, &details);
+        if lines.is_empty() {
+            return;
+        }
+
+        self.separate_from_startup();
+        for line in lines {
+            self.task_result(&line);
+        }
+        self.mark_task_console_output();
     }
 }
 
-fn task_section_lines(
-    tasks: &[TaskEntry],
-    details: &[TaskDetailEntry],
-    mode: SummaryMode,
-) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut emitted_task_section = false;
-    for spec in task_section_specs(mode) {
-        let emitted = print_task_section(
-            spec.title,
-            tasks,
-            details,
-            emitted_task_section,
-            |task| task.status == spec.status,
-            |line| lines.push(line.to_string()),
-        );
-        emitted_task_section = emitted || emitted_task_section;
+fn task_result_lines(task: &TaskEntry, details: &[TaskDetailEntry]) -> Vec<String> {
+    if !should_emit_task_result(task.status) {
+        return Vec::new();
+    }
+
+    let mut lines = vec![format_task_line(task)];
+    for detail in task_detail_lines(details, task) {
+        lines.push(format!("  {}", detail.trim_start()));
     }
     lines
 }
 
-fn print_task_section(
-    title: &str,
-    tasks: &[TaskEntry],
-    details: &[TaskDetailEntry],
-    leading_blank: bool,
-    include: impl Fn(&TaskEntry) -> bool,
-    mut emit: impl FnMut(&str),
-) -> bool {
-    let section_tasks: Vec<&TaskEntry> = tasks.iter().filter(|task| include(task)).collect();
-    if section_tasks.is_empty() {
-        return false;
-    }
-
-    if leading_blank {
-        emit("");
-    }
-    emit(&format!("\x1b[1m{title}\x1b[0m"));
-    for task in section_tasks {
-        emit(&format_task_line(task));
-        for detail in task_detail_lines(details, task) {
-            emit(&format!("    {}", detail.trim_start()));
-        }
-    }
-    true
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct TaskSectionSpec {
-    title: &'static str,
-    status: TaskStatus,
+const fn should_emit_task_result(status: TaskStatus) -> bool {
+    matches!(
+        status,
+        TaskStatus::Changed | TaskStatus::Skipped | TaskStatus::DryRun | TaskStatus::Failed
+    )
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -181,31 +132,6 @@ impl SummaryMode {
             Self::Standard
         }
     }
-}
-
-const fn task_section_specs(mode: SummaryMode) -> [TaskSectionSpec; 4] {
-    let changed_title = match mode {
-        SummaryMode::Standard => "Changed",
-        SummaryMode::Test => "Tests",
-    };
-    [
-        TaskSectionSpec {
-            title: changed_title,
-            status: TaskStatus::Changed,
-        },
-        TaskSectionSpec {
-            title: "Skipped",
-            status: TaskStatus::Skipped,
-        },
-        TaskSectionSpec {
-            title: "Failed",
-            status: TaskStatus::Failed,
-        },
-        TaskSectionSpec {
-            title: "Dry-run",
-            status: TaskStatus::DryRun,
-        },
-    ]
 }
 
 const fn completion_label(failed: u32) -> (&'static str, &'static str) {
@@ -254,14 +180,12 @@ fn format_summary_counts(
 fn should_space_before_totals(
     command: &str,
     verbose: bool,
-    emitted_task_section: bool,
     changed: u32,
     skipped: u32,
     dry_run: u32,
     failed: u32,
 ) -> bool {
     verbose
-        || emitted_task_section
         || changed > 0
         || skipped > 0
         || dry_run > 0
@@ -271,9 +195,9 @@ fn should_space_before_totals(
 
 fn format_task_line(task: &TaskEntry) -> String {
     let Some(color) = task.status.color() else {
-        return format!("  {}", task.name);
+        return task.name.clone();
     };
-    format!("{color}  {}\x1b[0m", task.name)
+    format!("{color}{}\x1b[0m", task.name)
 }
 
 fn task_detail_lines(details: &[TaskDetailEntry], task: &TaskEntry) -> Vec<String> {
@@ -387,76 +311,36 @@ mod tests {
     }
 
     #[test]
-    fn task_section_specs_include_skipped_before_failed() {
-        let specs = task_section_specs(SummaryMode::Standard);
-
-        assert_eq!(
-            specs,
-            [
-                TaskSectionSpec {
-                    title: "Changed",
-                    status: TaskStatus::Changed,
-                },
-                TaskSectionSpec {
-                    title: "Skipped",
-                    status: TaskStatus::Skipped,
-                },
-                TaskSectionSpec {
-                    title: "Failed",
-                    status: TaskStatus::Failed,
-                },
-                TaskSectionSpec {
-                    title: "Dry-run",
-                    status: TaskStatus::DryRun,
-                },
-            ]
-        );
-    }
-
-    #[test]
     fn summary_totals_skip_extra_blank_for_non_verbose_no_op() {
         assert!(
-            !should_space_before_totals("install", false, false, 0, 0, 0, 0),
+            !should_space_before_totals("install", false, 0, 0, 0, 0),
             "install no-op runs should not separate the version and completion lines"
         );
         assert!(
-            !should_space_before_totals("update", false, false, 0, 0, 0, 0),
+            !should_space_before_totals("update", false, 0, 0, 0, 0),
             "update no-op runs should not separate the version and completion lines"
         );
     }
 
     #[test]
     fn summary_totals_keep_separator_when_output_was_visible() {
-        assert!(should_space_before_totals(
-            "install", false, true, 0, 0, 0, 0
-        ));
-        assert!(should_space_before_totals(
-            "install", false, false, 1, 0, 0, 0
-        ));
-        assert!(should_space_before_totals(
-            "install", false, false, 0, 1, 0, 0
-        ));
-        assert!(should_space_before_totals(
-            "install", false, false, 0, 0, 1, 0
-        ));
-        assert!(should_space_before_totals(
-            "install", false, false, 0, 0, 0, 1
-        ));
-        assert!(should_space_before_totals(
-            "install", true, false, 0, 0, 0, 0
-        ));
-        assert!(should_space_before_totals("test", false, false, 0, 0, 0, 0));
+        assert!(should_space_before_totals("install", false, 1, 0, 0, 0));
+        assert!(should_space_before_totals("install", false, 0, 1, 0, 0));
+        assert!(should_space_before_totals("install", false, 0, 0, 1, 0));
+        assert!(should_space_before_totals("install", false, 0, 0, 0, 1));
+        assert!(should_space_before_totals("install", true, 0, 0, 0, 0));
+        assert!(should_space_before_totals("test", false, 0, 0, 0, 0));
     }
 
     #[test]
-    fn format_task_line_includes_changed_message() {
+    fn format_task_line_uses_no_leading_indent() {
         let task = TaskEntry {
             name: "symlinks".to_string(),
             status: TaskStatus::Changed,
             message: Some("3 changed, 8 already ok".to_string()),
         };
 
-        assert_eq!(format_task_line(&task), "\x1b[32m  symlinks\x1b[0m");
+        assert_eq!(format_task_line(&task), "\x1b[32msymlinks\x1b[0m");
     }
 
     #[test]
@@ -513,46 +397,42 @@ mod tests {
     }
 
     #[test]
-    fn task_section_lines_match_summary_grouping_for_live_status() {
-        let tasks = vec![
-            TaskEntry {
-                name: "changed-task".to_string(),
-                status: TaskStatus::Changed,
-                message: None,
-            },
-            TaskEntry {
-                name: "skipped-task".to_string(),
-                status: TaskStatus::Skipped,
-                message: Some("not needed".to_string()),
-            },
-        ];
+    fn task_result_lines_are_flat_with_reduced_indent() {
+        let task = TaskEntry {
+            name: "changed-task".to_string(),
+            status: TaskStatus::Changed,
+            message: None,
+        };
         let details = vec![TaskDetailEntry {
             name: "changed-task".to_string(),
             lines: vec!["linked: ~/.example".to_string()],
         }];
 
         assert_eq!(
-            task_section_lines(&tasks, &details, SummaryMode::Standard),
-            vec![
-                "\x1b[1mChanged\x1b[0m",
-                "\x1b[32m  changed-task\x1b[0m",
-                "    linked: ~/.example",
-                "",
-                "\x1b[1mSkipped\x1b[0m",
-                "\x1b[33m  skipped-task\x1b[0m",
-                "    not needed",
-            ]
+            task_result_lines(&task, &details),
+            vec!["\x1b[32mchanged-task\x1b[0m", "  linked: ~/.example",]
         );
     }
 
     #[test]
-    fn print_summary_finalizes_visible_live_sections() {
+    fn task_result_lines_skip_unchanged_tasks() {
+        let task = TaskEntry {
+            name: "unchanged-task".to_string(),
+            status: TaskStatus::Ok,
+            message: None,
+        };
+
+        assert!(task_result_lines(&task, &[]).is_empty());
+    }
+
+    #[test]
+    fn print_summary_clears_visible_progress() {
         let (log, _tmp, _guard) = crate::logging::isolated_logger();
         log.record_task("changed-task", TaskStatus::Changed, None);
-        log.redraw_status_with_progress(true);
+        log.notify_task_start_with_progress("active-task", true);
 
         assert!(log.has_transient_rows());
-        assert!(!log.has_status_row());
+        assert!(log.has_status_row());
 
         log.print_summary();
 

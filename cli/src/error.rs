@@ -37,6 +37,10 @@ pub enum ResourceError {
 
     /// The operation was denied due to insufficient permissions.
     #[error("permission denied: {path}")]
+    #[allow(
+        dead_code,
+        reason = "part of the resource error taxonomy; currently constructed only by Unix-only resources"
+    )]
     PermissionDenied {
         /// Path that could not be accessed.
         path: String,
@@ -99,6 +103,10 @@ impl ResourceError {
 
     /// Create a [`PermissionDenied`](Self::PermissionDenied) error.
     #[must_use]
+    #[allow(
+        dead_code,
+        reason = "part of the resource error taxonomy; currently used only by Unix-only resources"
+    )]
     pub fn permission_denied(path: impl Into<String>) -> Self {
         Self::PermissionDenied { path: path.into() }
     }

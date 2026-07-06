@@ -291,24 +291,21 @@ Enable verbose logging to see detailed operation information:
 **Default (non-verbose) output** shows a live progress line while tasks run,
 then a compact summary. Successful no-op tasks are counted as unchanged and are
 not listed individually; tasks that changed state, were skipped, failed, or
-would change state in dry-run mode appear in grouped final sections.
+would change state in dry-run mode are printed as they complete.
 
 ```
 version v0.1.317 · profile desktop · Arch Linux
 
-Skipped
-  ○ Update repository
-      local changes present
-
-Changed
-  ● Install symlinks
-      linked: ~/.bashrc
-      linked: ~/.config/git/config
-  ● Install packages
-      installed: fd
-      installed: ripgrep
-  ● Configure systemd units
-      enabled: clean-home-tmp.timer
+Update repository
+  local changes present
+Install symlinks
+  linked: ~/.bashrc
+  linked: ~/.config/git/config
+Install packages
+  installed: fd
+  installed: ripgrep
+Configure systemd units
+  enabled: clean-home-tmp.timer
 
 Complete · 1.3s
 3 Changed · 42 Unchanged · 1 Skipped
@@ -398,9 +395,9 @@ runs repeating the log path.
 ## Installation Summary
 
 After installation, a summary is displayed. In **non-verbose** mode (default),
-no-op task completions are not printed inline. The final summary lists tasks
-that changed state, were skipped, failed, or would change state in dry-run mode,
-then ends with `Complete`, the runtime, and task totals.
+no-op task completions are not printed inline. Tasks that changed state, were
+skipped, failed, or would change state in dry-run mode are printed as they
+complete. The command then ends with `Complete`, the runtime, and task totals.
 
 The persistent log file records every task's output, replayed as each buffered
 task completes, and ends with the same final completion/count lines as the
@@ -408,21 +405,21 @@ console. Use `dotfiles log` when you need every task result.
 
 **Example:**
 ```
-Changed
-  ● Configure sparse checkout
-      configured: sparse checkout
-  ● Install symlinks
-      linked: ~/.bashrc
-      linked: ~/.config/git/config
+Configure sparse checkout
+  configured: sparse checkout
+Install symlinks
+  linked: ~/.bashrc
+  linked: ~/.config/git/config
 
 Complete · 1.3s
 2 Changed · 47 Unchanged · 1 Skipped
 ```
 
-**Status icons:**
-- `●` — task changed state successfully (green)
-- `○` — task did not change state: deliberately skipped (yellow) or dry-run preview (magenta)
-- `✗` — task failed (red)
+**Status colors:**
+- Green — task changed state successfully
+- Yellow — task was deliberately skipped
+- Magenta — dry-run preview
+- Red — task failed
 
 Not-applicable tasks are omitted from the summary display.
 
@@ -511,8 +508,9 @@ need to specify `--overlay` once:
 
 Each configured overlay script is scheduled as its own Provision task. In normal
 output it can appear in the live progress line and, when it changes, skips,
-fails, or dry-runs, in the final grouped summary; verbose logs include its task
-details. Its relative position can vary unless dependencies constrain it.
+fails, or dry-runs, as a completed task row; verbose logs include its task
+details. Its relative position reflects completion order and can vary unless
+dependencies constrain it.
 
 See [Configuration Reference](CONFIGURATION.md#overlay-configuration) for
 the overlay file format.

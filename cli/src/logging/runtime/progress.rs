@@ -55,28 +55,6 @@ impl Logger {
         self.status_row_visible.store(false, Ordering::Relaxed);
     }
 
-    /// Print transient status rows to the console and mark them as shown.
-    ///
-    /// Must be called while holding `flush_lock`.
-    pub(in crate::logging) fn draw_status_lines(&self, lines: &[String]) {
-        if lines.is_empty() {
-            return;
-        }
-
-        let cols = terminal_columns();
-        for (idx, line) in lines.iter().enumerate() {
-            if idx > 0 {
-                println!();
-            }
-            print!("{}", transient_display_line(line, cols));
-        }
-        drop(std::io::stdout().flush());
-        self.progress_rows.store(
-            u16::try_from(lines.len()).unwrap_or(u16::MAX),
-            Ordering::Relaxed,
-        );
-    }
-
     /// Replace the currently displayed active-task row in place.
     ///
     /// Must be called while holding `flush_lock`.
@@ -95,7 +73,12 @@ impl Logger {
     pub(in crate::logging) fn append_status_line(&self, line: &str, leading_blank: bool) {
         let rows = self.progress_rows.load(Ordering::Relaxed);
         let added_rows = if rows == 0 {
-            1
+            if leading_blank {
+                println!();
+                2
+            } else {
+                1
+            }
         } else if leading_blank {
             print!("\n\n");
             2
@@ -125,16 +108,15 @@ impl Logger {
         self.progress_rows.load(Ordering::Relaxed) > 0
     }
 
-    /// Stop tracking transient rows without erasing them from the console.
-    ///
-    /// Used when the final live task-result section should remain as the
-    /// durable end-of-run output instead of being cleared and reprinted.
-    #[allow(clippy::print_stdout, reason = "intentional user-facing output")]
-    pub(in crate::logging) fn finalize_status_rows(&self) {
-        println!();
-        drop(std::io::stdout().flush());
-        self.progress_rows.store(0, Ordering::Relaxed);
-        self.status_row_visible.store(false, Ordering::Relaxed);
+    /// Return whether completed tasks have emitted durable console output.
+    pub(in crate::logging) fn has_task_console_output(&self) -> bool {
+        self.task_console_output_emitted.load(Ordering::Relaxed)
+    }
+
+    /// Remember that a completed task emitted durable console output.
+    pub(in crate::logging) fn mark_task_console_output(&self) {
+        self.task_console_output_emitted
+            .store(true, Ordering::Relaxed);
     }
 
     /// Clear any transient status rows from the console.
@@ -160,18 +142,6 @@ mod tests {
     fn progress_rows_zero_initially() {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.progress_rows_count(), 0);
-    }
-
-    #[test]
-    fn draw_status_lines_records_rendered_row_count() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let long_names = "a".repeat(500);
-        log.draw_status_lines(&[long_names]);
-        assert_eq!(
-            log.progress_rows_count(),
-            1,
-            "a single rendered status line should record one row"
-        );
     }
 
     #[test]

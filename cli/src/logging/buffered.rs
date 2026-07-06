@@ -148,11 +148,11 @@ impl BufferedLog {
     ///
     /// Acquires the flush lock on the backing [`Logger`] to prevent
     /// interleaved console output when multiple tasks complete concurrently.
-    /// After replaying the buffered entries, updates the live task-result and
-    /// active-task display.
+    /// After replaying the buffered entries, appends the completed task result
+    /// and updates the active-task display.
     ///
-    /// In non-verbose mode task output is written to the log file only. The
-    /// durable console task list is rendered once in the final grouped summary.
+    /// In non-verbose mode verbose task output is written to the log file only,
+    /// then a compact task result is written to the console immediately.
     #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
     pub fn flush_and_complete(&self, task_name: &str, status: TaskStatus) {
         {
@@ -185,16 +185,26 @@ impl BufferedLog {
                 for entry in &entries {
                     entry.replay();
                 }
+                if !entries.is_empty() {
+                    self.inner.mark_task_console_output();
+                }
             } else {
-                if entries.iter().any(LogEntry::is_visible_in_non_verbose) {
+                let has_visible_entries = entries.iter().any(LogEntry::is_visible_in_non_verbose);
+                if has_visible_entries {
                     self.inner.separate_from_startup();
                 }
                 for entry in &entries {
                     entry.replay_non_verbose();
                 }
+                if has_visible_entries {
+                    self.inner.mark_task_console_output();
+                }
             }
             self.inner.remove_active_task_locked(task_name);
-            self.inner.redraw_status_locked(show_progress);
+            if !self.inner.is_verbose() {
+                self.inner.emit_recorded_task_result(task_name);
+            }
+            self.inner.redraw_active_status_locked(show_progress);
         }
     }
 }

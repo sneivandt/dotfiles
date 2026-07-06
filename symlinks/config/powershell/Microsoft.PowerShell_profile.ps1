@@ -7,6 +7,21 @@ if (Get-Module PSReadLine)
     Set-PSReadLineOption -BellStyle None
     Set-PSReadLineOption -HistorySearchCursorMovesToEnd
     Set-PSReadLineOption -MaximumHistoryCount 10000
+    Set-PSReadLineOption -Colors @{
+        "Command"   = "#7aa2f7"
+        "Comment"   = "#565f89"
+        "Default"   = "#c0caf5"
+        "Emphasis"  = "#bb9af7"
+        "Error"     = "#f7768e"
+        "Keyword"   = "#bb9af7"
+        "Member"    = "#7dcfff"
+        "Number"    = "#ff9e64"
+        "Operator"  = "#7dcfff"
+        "Parameter" = "#e0af68"
+        "String"    = "#9ece6a"
+        "Type"      = "#7dcfff"
+        "Variable"  = "#7aa2f7"
+    }
 }
 
 $Global:GitExists = [bool](Get-Command "git" -ErrorAction SilentlyContinue)
@@ -30,18 +45,22 @@ if ($null -eq $env:windir)
 
 function Prompt
 {
-    # Write-Host justified: direct console output for prompt display (not pipeline data)
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSAvoidUsingWriteHost", "")]
     param (
     )
 
     $origLastExitCode = $LASTEXITCODE
 
-    $Host.UI.RawUI.ForegroundColor = "White"
+    $esc = [char]27
+    $reset = "$esc[0m"
+    $blue = "$esc[38;2;122;162;247m"
+    $cyan = "$esc[38;2;125;207;255m"
+    $foreground = "$esc[38;2;192;202;245m"
+    $red = "$esc[38;2;247;118;142m"
+    $yellow = "$esc[38;2;224;175;104m"
 
     if ($Global:IsNestedPwsh)
     {
-        Write-Host "pwsh " -NoNewLine -ForegroundColor Cyan
+        [Console]::Write("${cyan}pwsh ${reset}")
     }
 
     $curPath = $ExecutionContext.SessionState.Path.CurrentLocation.Path
@@ -51,7 +70,7 @@ function Prompt
         $curPath = "~" + $curPath.SubString($Home.Length)
     }
 
-    Write-Host $curPath -NoNewLine -ForegroundColor Yellow
+    [Console]::Write("${yellow}${curPath}${reset}")
 
     if ($Global:GitExists)
     {
@@ -67,26 +86,26 @@ function Prompt
                 $ellipsis = $branchName.IndexOf("...")
                 if ($ellipsis -gt 0) { $branchName = $branchName.Substring(0, $ellipsis) }
 
-                Write-Host " $branchName" -NoNewLine -ForegroundColor White
+                [Console]::Write("${foreground} ${branchName}${reset}")
 
                 $changes = $status.Count - 1
                 if ($changes -gt 0)
                 {
-                    Write-Host "+$changes" -NoNewLine -ForegroundColor Red
+                    [Console]::Write("${red}+$changes${reset}")
                 }
             }
         }
     }
 
-    Write-Host ""
+    [Console]::WriteLine("")
 
     if ($env:username -eq "root")
     {
-        "# "
+        "${red}# ${reset}"
     }
     else
     {
-        "$ "
+        "${blue}$ ${reset}"
     }
 
     $LASTEXITCODE = $origLastExitCode

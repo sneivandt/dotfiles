@@ -39,10 +39,10 @@
     {
         "defaults":
         {
-            "background": "#151515",
+            "background": "#1A1B26",
             "closeOnExit": "graceful",
-            "colorScheme": "MyTheme",
-            "cursorColor": "#FFFFFF",
+            "colorScheme": "Tokyo Night",
+            "cursorColor": "#C0CAF5",
             "cursorShape": "bar",
             "font":
             {
@@ -101,27 +101,27 @@
     "schemes":
     [
         {
-            "background": "#151515",
-            "black": "#151515",
-            "blue": "#7697D6",
-            "brightBlack": "#767676",
-            "brightBlue": "#3B78FF",
-            "brightCyan": "#61D6D6",
-            "brightGreen": "#16C60C",
-            "brightPurple": "#B4009E",
-            "brightRed": "#E74856",
-            "brightWhite": "#F2F2F2",
-            "brightYellow": "#F9F1A5",
-            "cursorColor": "#FFFFFF",
-            "cyan": "#C6B6EE",
-            "foreground": "#F2F2F2",
-            "green": "#99AD6A",
-            "name": "MyTheme",
-            "purple": "#881798",
-            "red": "#CF6A4C",
-            "selectionBackground": "#FFFFFF",
-            "white": "#E8E8D3",
-            "yellow": "#FAD07A"
+            "background": "#1A1B26",
+            "black": "#15161E",
+            "blue": "#7AA2F7",
+            "brightBlack": "#414868",
+            "brightBlue": "#7AA2F7",
+            "brightCyan": "#7DCFFF",
+            "brightGreen": "#9ECE6A",
+            "brightPurple": "#BB9AF7",
+            "brightRed": "#F7768E",
+            "brightWhite": "#C0CAF5",
+            "brightYellow": "#E0AF68",
+            "cursorColor": "#C0CAF5",
+            "cyan": "#7DCFFF",
+            "foreground": "#C0CAF5",
+            "green": "#9ECE6A",
+            "name": "Tokyo Night",
+            "purple": "#BB9AF7",
+            "red": "#F7768E",
+            "selectionBackground": "#283457",
+            "white": "#A9B1D6",
+            "yellow": "#E0AF68"
         }
     ],
     "theme": "dark",

@@ -1,8 +1,9 @@
 //! Tracing subscriber setup: console formatter, file layer, and initialisation.
 use std::fs;
+use std::io::IsTerminal as _;
 use std::io::Write as _;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 
 use super::utils::{format_utc_datetime, format_utc_time, log_file_path, strip_ansi};
 
@@ -11,6 +12,7 @@ use super::utils::{format_utc_datetime, format_utc_time, log_file_path, strip_an
 /// Set once by [`init_subscriber`] and checked by [`DotfilesFormatter`] to
 /// decide whether stage headers and plain info messages appear on the console.
 static VERBOSE: AtomicBool = AtomicBool::new(true);
+static TRANSIENT_PROGRESS_ROWS: AtomicU16 = AtomicU16::new(0);
 
 /// Update the global verbose flag.
 ///
@@ -18,6 +20,18 @@ static VERBOSE: AtomicBool = AtomicBool::new(true);
 /// that the formatter and file layer stay in sync with the logger.
 pub(super) fn set_verbose(verbose: bool) {
     VERBOSE.store(verbose, Ordering::Relaxed);
+}
+
+pub(in crate::logging) fn set_transient_progress(rows: u16) {
+    TRANSIENT_PROGRESS_ROWS.store(rows, Ordering::Relaxed);
+}
+
+pub(in crate::logging) fn transient_progress_rows() -> u16 {
+    TRANSIENT_PROGRESS_ROWS.load(Ordering::Relaxed)
+}
+
+pub(in crate::logging) fn take_transient_progress_rows() -> u16 {
+    TRANSIENT_PROGRESS_ROWS.swap(0, Ordering::Relaxed)
 }
 
 /// Extracts the `message` field from a [`tracing::Event`].
@@ -225,6 +239,42 @@ where
 /// console output.
 struct DotfilesFormatter;
 
+fn progress_clear_sequence(rows: u16) -> String {
+    if rows == 0 {
+        return String::new();
+    }
+
+    let mut clear = String::from("\r\x1b[K");
+    for _ in 1..usize::from(rows) {
+        clear.push_str("\x1b[1A\r\x1b[K");
+    }
+    clear
+}
+
+fn clear_transient_console_prefix() -> String {
+    if !std::io::stdout().is_terminal() {
+        return String::new();
+    }
+
+    progress_clear_sequence(take_transient_progress_rows())
+}
+
+fn console_line(level: tracing::Level, target: &str, msg: &str) -> Option<String> {
+    match level {
+        _ if target.starts_with("dotfiles::file_only") => None,
+        tracing::Level::ERROR => Some(format!("\x1b[31mERROR\x1b[0m {msg}")),
+        tracing::Level::WARN => Some(format!("\x1b[33mWARN\x1b[0m  {msg}")),
+        tracing::Level::INFO if target == "dotfiles::always" => Some(msg.to_string()),
+        tracing::Level::INFO if target == "dotfiles::task_result" => Some(msg.to_string()),
+        tracing::Level::INFO if target == "dotfiles::stage" => VERBOSE
+            .load(Ordering::Relaxed)
+            .then(|| format!("\x1b[1m{msg}\x1b[0m")),
+        tracing::Level::INFO if target == "dotfiles::dry_run" => Some(format!("  {msg}")),
+        tracing::Level::INFO => VERBOSE.load(Ordering::Relaxed).then(|| format!("  {msg}")),
+        _ => Some(format!("  \x1b[2m{msg}\x1b[0m")),
+    }
+}
+
 impl<S, N> tracing_subscriber::fmt::FormatEvent<S, N> for DotfilesFormatter
 where
     S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
@@ -244,35 +294,11 @@ where
         event.record(&mut extractor);
         let msg = &extractor.message;
 
-        match level {
-            _ if target.starts_with("dotfiles::file_only") => Ok(()),
-            tracing::Level::ERROR => writeln!(writer, "\x1b[31mERROR\x1b[0m {msg}"),
-            tracing::Level::WARN => writeln!(writer, "\x1b[33mWARN\x1b[0m  {msg}"),
-            tracing::Level::INFO if target == "dotfiles::always" => {
-                writeln!(writer, "{msg}")
-            }
-            tracing::Level::INFO if target == "dotfiles::task_result" => {
-                writeln!(writer, "{msg}")
-            }
-            tracing::Level::INFO if target == "dotfiles::stage" => {
-                if VERBOSE.load(Ordering::Relaxed) {
-                    writeln!(writer, "\x1b[1m{msg}\x1b[0m")
-                } else {
-                    Ok(())
-                }
-            }
-            tracing::Level::INFO if target == "dotfiles::dry_run" => {
-                writeln!(writer, "  {msg}")
-            }
-            tracing::Level::INFO => {
-                if VERBOSE.load(Ordering::Relaxed) {
-                    writeln!(writer, "  {msg}")
-                } else {
-                    Ok(())
-                }
-            }
-            _ => writeln!(writer, "  \x1b[2m{msg}\x1b[0m"),
-        }
+        let Some(line) = console_line(level, target, msg) else {
+            return Ok(());
+        };
+        write!(writer, "{}", clear_transient_console_prefix())?;
+        writeln!(writer, "{line}")
     }
 }
 

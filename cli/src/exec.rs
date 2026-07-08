@@ -324,7 +324,7 @@ fn log_stream(label: &str, stream: &str, output: &str, success: bool) {
 
     if success {
         tracing::debug!(
-            target: "dotfiles::exec",
+            target: "dotfiles::file_only_debug",
             "{label} {stream}: {summary} suppressed on success"
         );
         return;

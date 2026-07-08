@@ -5,6 +5,7 @@ use std::io::Write as _;
 use std::sync::atomic::Ordering;
 
 use super::Logger;
+use crate::logging::subscriber;
 use crate::logging::utils::{strip_ansi, terminal_columns};
 
 const PROGRESS_ELLIPSIS: &str = " …";
@@ -40,8 +41,9 @@ impl Logger {
     /// No-op if no status rows are currently shown.
     /// Must be called while holding `flush_lock`.
     pub(in crate::logging) fn clear_progress(&self) {
-        let rows = self.progress_rows.load(Ordering::Relaxed);
+        let rows = subscriber::take_transient_progress_rows();
         if rows == 0 {
+            self.progress_rows.store(0, Ordering::Relaxed);
             self.status_row_visible.store(false, Ordering::Relaxed);
             return;
         }
@@ -59,11 +61,18 @@ impl Logger {
     ///
     /// Must be called while holding `flush_lock`.
     pub(in crate::logging) fn replace_status_line(&self, line: &str) {
+        let rows = if subscriber::transient_progress_rows() == 0 {
+            1
+        } else {
+            self.progress_rows.load(Ordering::Relaxed).max(1)
+        };
         print!(
             "\r\x1b[K{}",
             transient_display_line(line, terminal_columns())
         );
         drop(std::io::stdout().flush());
+        self.progress_rows.store(rows, Ordering::Relaxed);
+        subscriber::set_transient_progress(rows);
         self.set_status_row_visible(true);
     }
 
@@ -88,8 +97,9 @@ impl Logger {
         };
         print!("{}", transient_display_line(line, terminal_columns()));
         drop(std::io::stdout().flush());
-        self.progress_rows
-            .store(rows.saturating_add(added_rows), Ordering::Relaxed);
+        let rows = rows.saturating_add(added_rows);
+        self.progress_rows.store(rows, Ordering::Relaxed);
+        subscriber::set_transient_progress(rows);
         self.set_status_row_visible(true);
     }
 

@@ -4,6 +4,7 @@
 //! and complete, ensuring active-task updates never overlap other console output.
 
 use super::{Logger, progress::stdout_supports_progress};
+use crate::logging::style::{TextStyle, stdout_style};
 
 #[allow(
     clippy::print_stderr,
@@ -47,7 +48,10 @@ impl Logger {
             self.clear_progress();
             return;
         };
-        let line = format!("Running \x1b[2m\u{00b7} {names}\x1b[0m");
+        let line = format!(
+            "Running {}",
+            stdout_style().paint(TextStyle::Dim, &format!("\u{00b7} {names}"))
+        );
         if self.has_status_row() {
             self.replace_status_line(&line);
         } else {

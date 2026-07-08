@@ -5,6 +5,7 @@ use std::io::Write as _;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 
+use super::style::{StyleChoice, TextStyle, stderr_style, stdout_style};
 use super::utils::{format_utc_datetime, format_utc_time, log_file_path, strip_ansi};
 
 /// Whether verbose console output is enabled.
@@ -259,19 +260,37 @@ fn clear_transient_console_prefix() -> String {
     progress_clear_sequence(take_transient_progress_rows())
 }
 
+fn console_style(level: tracing::Level) -> StyleChoice {
+    if matches!(level, tracing::Level::ERROR | tracing::Level::WARN) {
+        stderr_style()
+    } else {
+        stdout_style()
+    }
+}
+
 fn console_line(level: tracing::Level, target: &str, msg: &str) -> Option<String> {
+    console_line_with_style(level, target, msg, console_style(level))
+}
+
+fn console_line_with_style(
+    level: tracing::Level,
+    target: &str,
+    msg: &str,
+    style: StyleChoice,
+) -> Option<String> {
+    let msg = style.clean(msg);
     match level {
         _ if target.starts_with("dotfiles::file_only") => None,
-        tracing::Level::ERROR => Some(format!("\x1b[31mERROR\x1b[0m {msg}")),
-        tracing::Level::WARN => Some(format!("\x1b[33mWARN\x1b[0m  {msg}")),
-        tracing::Level::INFO if target == "dotfiles::always" => Some(msg.to_string()),
-        tracing::Level::INFO if target == "dotfiles::task_result" => Some(msg.to_string()),
+        tracing::Level::ERROR => Some(format!("{} {msg}", style.paint(TextStyle::Red, "ERROR"))),
+        tracing::Level::WARN => Some(format!("{}  {msg}", style.paint(TextStyle::Yellow, "WARN"))),
+        tracing::Level::INFO if target == "dotfiles::always" => Some(msg),
+        tracing::Level::INFO if target == "dotfiles::task_result" => Some(msg),
         tracing::Level::INFO if target == "dotfiles::stage" => VERBOSE
             .load(Ordering::Relaxed)
-            .then(|| format!("\x1b[1m{msg}\x1b[0m")),
+            .then(|| style.paint(TextStyle::Bold, &msg)),
         tracing::Level::INFO if target == "dotfiles::dry_run" => Some(format!("  {msg}")),
         tracing::Level::INFO => VERBOSE.load(Ordering::Relaxed).then(|| format!("  {msg}")),
-        _ => Some(format!("  \x1b[2m{msg}\x1b[0m")),
+        _ => Some(format!("  {}", style.paint(TextStyle::Dim, &msg))),
     }
 }
 
@@ -558,5 +577,45 @@ mod tests {
             after, before,
             "empty log messages should not write timestamp-only file lines"
         );
+    }
+
+    #[test]
+    fn console_line_uses_ansi_when_style_enabled() {
+        let line = console_line_with_style(
+            tracing::Level::WARN,
+            "dotfiles",
+            "careful",
+            StyleChoice::colored(),
+        )
+        .unwrap();
+
+        assert_eq!(line, "\x1b[33mWARN\x1b[0m  careful");
+    }
+
+    #[test]
+    fn console_line_strips_ansi_when_style_disabled() {
+        let line = console_line_with_style(
+            tracing::Level::INFO,
+            "dotfiles::always",
+            "\x1b[32m3 Changed\x1b[0m",
+            StyleChoice::plain(),
+        )
+        .unwrap();
+
+        assert_eq!(line, "3 Changed");
+    }
+
+    #[test]
+    fn console_line_plain_stderr_warning_has_no_ansi() {
+        let line = console_line_with_style(
+            tracing::Level::WARN,
+            "dotfiles",
+            "\x1b[1mcareful\x1b[0m",
+            StyleChoice::plain(),
+        )
+        .unwrap();
+
+        assert_eq!(line, "WARN  careful");
+        assert!(!line.contains("\x1b["));
     }
 }

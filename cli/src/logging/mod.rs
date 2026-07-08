@@ -3,6 +3,7 @@
 mod buffered;
 mod diagnostic;
 mod runtime;
+mod style;
 mod subscriber;
 mod types;
 mod utils;

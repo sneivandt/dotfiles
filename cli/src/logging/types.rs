@@ -1,5 +1,6 @@
 //! Core logging types: task entries, status, and the [`Log`] trait.
 use super::diagnostic::{DiagEvent, DiagnosticLog};
+use super::style::TextStyle;
 
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]
@@ -30,14 +31,14 @@ pub enum TaskStatus {
 }
 
 impl TaskStatus {
-    /// ANSI color used for compact status rendering.
+    /// Text style used for compact status rendering.
     #[must_use]
-    pub const fn color(self) -> Option<&'static str> {
+    pub(in crate::logging) const fn text_style(self) -> Option<TextStyle> {
         match self {
-            Self::Changed | Self::Ok => Some("\x1b[32m"),
-            Self::Skipped => Some("\x1b[33m"),
-            Self::DryRun => Some("\x1b[35m"),
-            Self::Failed => Some("\x1b[31m"),
+            Self::Changed | Self::Ok => Some(TextStyle::Green),
+            Self::Skipped => Some(TextStyle::Yellow),
+            Self::DryRun => Some(TextStyle::Magenta),
+            Self::Failed => Some(TextStyle::Red),
             Self::NotApplicable => None,
         }
     }

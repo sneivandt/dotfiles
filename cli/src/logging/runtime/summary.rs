@@ -5,6 +5,7 @@
 use std::time::Duration;
 
 use super::{Logger, TaskDetailEntry};
+use crate::logging::style::{StyleChoice, TextStyle, stdout_style};
 use crate::logging::types::{TaskEntry, TaskStatus};
 
 impl Logger {
@@ -43,16 +44,16 @@ impl Logger {
         let elapsed_str = format_elapsed(elapsed);
 
         let summary_mode = SummaryMode::for_command(&self.command);
-        let status_line = format_summary_counts(
+        let counts = SummaryCounts {
             changed,
             unchanged,
             skipped,
             dry_run,
             failed,
-            summary_mode,
-            self.dry_run,
-        );
-        let (text_color, label) = completion_label(failed);
+        };
+        let style = stdout_style();
+        let status_line = format_summary_counts(counts, summary_mode, self.dry_run, style);
+        let (label_style, label) = completion_label(failed);
 
         if should_space_before_totals(
             &self.command,
@@ -65,7 +66,9 @@ impl Logger {
             self.task_result("");
         }
         self.always(&format!(
-            "{text_color}\x1b[1m{label}\x1b[0m \x1b[2m\u{00b7} {elapsed_str}\x1b[0m"
+            "{} {}",
+            style.paint(label_style, label),
+            style.paint(TextStyle::Dim, &format!("\u{00b7} {elapsed_str}"))
         ));
         self.always(&status_line);
     }
@@ -86,7 +89,7 @@ impl Logger {
             .lock()
             .map_or_else(|_| Vec::new(), |guard| guard.clone());
 
-        let lines = task_result_lines(&task, &details);
+        let lines = task_result_lines(&task, &details, stdout_style());
         if lines.is_empty() {
             return;
         }
@@ -99,12 +102,16 @@ impl Logger {
     }
 }
 
-fn task_result_lines(task: &TaskEntry, details: &[TaskDetailEntry]) -> Vec<String> {
+fn task_result_lines(
+    task: &TaskEntry,
+    details: &[TaskDetailEntry],
+    style: StyleChoice,
+) -> Vec<String> {
     if !should_emit_task_result(task.status) {
         return Vec::new();
     }
 
-    let mut lines = vec![format_task_line(task)];
+    let mut lines = vec![format_task_line(task, style)];
     for detail in task_detail_lines(details, task) {
         lines.push(format!("  {}", detail.trim_start()));
     }
@@ -134,47 +141,55 @@ impl SummaryMode {
     }
 }
 
-const fn completion_label(failed: u32) -> (&'static str, &'static str) {
-    if failed > 0 {
-        ("\x1b[31m", "Failed")
-    } else {
-        ("", "Complete")
-    }
-}
-
-fn format_summary_counts(
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SummaryCounts {
     changed: u32,
     unchanged: u32,
     skipped: u32,
     dry_run: u32,
     failed: u32,
+}
+
+const fn completion_label(failed: u32) -> (TextStyle, &'static str) {
+    if failed > 0 {
+        (TextStyle::RedBold, "Failed")
+    } else {
+        (TextStyle::Bold, "Complete")
+    }
+}
+
+fn format_summary_counts(
+    counts: SummaryCounts,
     mode: SummaryMode,
     show_dry_run_count: bool,
+    style: StyleChoice,
 ) -> String {
     let mut parts: Vec<String> = match mode {
         SummaryMode::Standard => vec![
-            format!("\x1b[32m{changed} Changed\x1b[0m"),
-            format!("\x1b[2m{unchanged} Unchanged\x1b[0m"),
+            style.paint(TextStyle::Green, &format!("{} Changed", counts.changed)),
+            style.paint(TextStyle::Dim, &format!("{} Unchanged", counts.unchanged)),
         ],
         SummaryMode::Test => {
-            let mut test_parts = vec![format!("\x1b[32m{changed} Passed\x1b[0m")];
-            if unchanged > 0 {
-                test_parts.push(format!("\x1b[2m{unchanged} Not run\x1b[0m"));
+            let mut test_parts =
+                vec![style.paint(TextStyle::Green, &format!("{} Passed", counts.changed))];
+            if counts.unchanged > 0 {
+                test_parts
+                    .push(style.paint(TextStyle::Dim, &format!("{} Not run", counts.unchanged)));
             }
             test_parts
         }
     };
-    if skipped > 0 {
-        parts.push(format!("\x1b[33m{skipped} Skipped\x1b[0m"));
+    if counts.skipped > 0 {
+        parts.push(style.paint(TextStyle::Yellow, &format!("{} Skipped", counts.skipped)));
     }
-    if dry_run > 0 || show_dry_run_count {
-        parts.push(format!("\x1b[35m{dry_run} Dry-run\x1b[0m"));
+    if counts.dry_run > 0 || show_dry_run_count {
+        parts.push(style.paint(TextStyle::Magenta, &format!("{} Dry-run", counts.dry_run)));
     }
-    if failed > 0 {
-        parts.push(format!("\x1b[31m{failed} Failed\x1b[0m"));
+    if counts.failed > 0 {
+        parts.push(style.paint(TextStyle::Red, &format!("{} Failed", counts.failed)));
     }
-    let separator = " \x1b[2m\u{00b7}\x1b[0m ";
-    parts.join(separator)
+    let separator = format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}"));
+    parts.join(&separator)
 }
 
 fn should_space_before_totals(
@@ -193,11 +208,11 @@ fn should_space_before_totals(
         || !matches!(command, "install" | "update")
 }
 
-fn format_task_line(task: &TaskEntry) -> String {
-    let Some(color) = task.status.color() else {
+fn format_task_line(task: &TaskEntry, style: StyleChoice) -> String {
+    let Some(text_style) = task.status.text_style() else {
         return task.name.clone();
     };
-    format!("{color}{}\x1b[0m", task.name)
+    style.paint(text_style, &task.name)
 }
 
 fn task_detail_lines(details: &[TaskDetailEntry], task: &TaskEntry) -> Vec<String> {
@@ -282,7 +297,18 @@ mod tests {
 
     #[test]
     fn format_summary_counts_uses_colored_text_without_symbols() {
-        let summary = format_summary_counts(3, 17, 1, 0, 0, SummaryMode::Standard, false);
+        let summary = format_summary_counts(
+            SummaryCounts {
+                changed: 3,
+                unchanged: 17,
+                skipped: 1,
+                dry_run: 0,
+                failed: 0,
+            },
+            SummaryMode::Standard,
+            false,
+            StyleChoice::colored(),
+        );
         assert_eq!(
             summary,
             "\x1b[32m3 Changed\x1b[0m \x1b[2m\u{00b7}\x1b[0m \x1b[2m17 Unchanged\x1b[0m \x1b[2m\u{00b7}\x1b[0m \x1b[33m1 Skipped\x1b[0m"
@@ -294,7 +320,18 @@ mod tests {
 
     #[test]
     fn format_summary_counts_uses_test_terms_for_test_command() {
-        let summary = format_summary_counts(6, 0, 0, 0, 1, SummaryMode::Test, false);
+        let summary = format_summary_counts(
+            SummaryCounts {
+                changed: 6,
+                unchanged: 0,
+                skipped: 0,
+                dry_run: 0,
+                failed: 1,
+            },
+            SummaryMode::Test,
+            false,
+            StyleChoice::colored(),
+        );
         assert_eq!(
             summary,
             "\x1b[32m6 Passed\x1b[0m \x1b[2m\u{00b7}\x1b[0m \x1b[31m1 Failed\x1b[0m"
@@ -303,7 +340,18 @@ mod tests {
 
     #[test]
     fn format_summary_counts_keeps_zero_dry_run_when_previewing() {
-        let summary = format_summary_counts(0, 22, 1, 0, 0, SummaryMode::Standard, true);
+        let summary = format_summary_counts(
+            SummaryCounts {
+                changed: 0,
+                unchanged: 22,
+                skipped: 1,
+                dry_run: 0,
+                failed: 0,
+            },
+            SummaryMode::Standard,
+            true,
+            StyleChoice::colored(),
+        );
         assert_eq!(
             summary,
             "\x1b[32m0 Changed\x1b[0m \x1b[2m\u{00b7}\x1b[0m \x1b[2m22 Unchanged\x1b[0m \x1b[2m\u{00b7}\x1b[0m \x1b[33m1 Skipped\x1b[0m \x1b[2m\u{00b7}\x1b[0m \x1b[35m0 Dry-run\x1b[0m"
@@ -340,7 +388,40 @@ mod tests {
             message: Some("3 changed, 8 already ok".to_string()),
         };
 
-        assert_eq!(format_task_line(&task), "\x1b[32msymlinks\x1b[0m");
+        assert_eq!(
+            format_task_line(&task, StyleChoice::colored()),
+            "\x1b[32msymlinks\x1b[0m"
+        );
+    }
+
+    #[test]
+    fn format_summary_counts_omits_ansi_when_plain() {
+        let summary = format_summary_counts(
+            SummaryCounts {
+                changed: 3,
+                unchanged: 17,
+                skipped: 1,
+                dry_run: 0,
+                failed: 0,
+            },
+            SummaryMode::Standard,
+            false,
+            StyleChoice::plain(),
+        );
+
+        assert_eq!(summary, "3 Changed · 17 Unchanged · 1 Skipped");
+        assert!(!summary.contains("\x1b["));
+    }
+
+    #[test]
+    fn format_task_line_omits_ansi_when_plain() {
+        let task = TaskEntry {
+            name: "symlinks".to_string(),
+            status: TaskStatus::Changed,
+            message: Some("3 changed, 8 already ok".to_string()),
+        };
+
+        assert_eq!(format_task_line(&task, StyleChoice::plain()), "symlinks");
     }
 
     #[test]
@@ -409,7 +490,7 @@ mod tests {
         }];
 
         assert_eq!(
-            task_result_lines(&task, &details),
+            task_result_lines(&task, &details, StyleChoice::colored()),
             vec!["\x1b[32mchanged-task\x1b[0m", "  linked: ~/.example",]
         );
     }
@@ -422,7 +503,7 @@ mod tests {
             message: None,
         };
 
-        assert!(task_result_lines(&task, &[]).is_empty());
+        assert!(task_result_lines(&task, &[], StyleChoice::colored()).is_empty());
     }
 
     #[test]

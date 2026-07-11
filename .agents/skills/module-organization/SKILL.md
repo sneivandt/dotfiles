@@ -11,7 +11,9 @@ this repository.
 ## Preferences
 
 - Use the standard Rust module layout; do not use custom `#[path = "..."]`
-  module path settings.
+  module path settings for production modules.
+- `#[path = "..."]` is permitted only for externalized test modules behind
+  `#[cfg(test)]` when following established repository test layouts.
 - Use `mod.rs` for module wiring and public re-exports.
 - Keep most implementation logic out of `mod.rs`.
 - Put domain-specific logic in separate, focused files with names that describe

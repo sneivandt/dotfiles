@@ -78,22 +78,18 @@ scripts/
 - **Application tests**: Install with base profile, then test each app (git config,
   zsh completion, vim/nvim open and plugins)
 
-### Local CI Failure Guards
+### CI-Specific Local Reproduction
 
-Recent CI failures in this repository have most often been dependency-policy,
-config-drift, wrapper-forwarding, cross-platform, or Rust unit-test failures. Do
-not rely on CI as the first place these fail:
+Use this section for parity with CI workflow behavior; for the canonical general
+Rust/cross-platform validation sequence, use `cross-platform-verification`.
 
-| Change touches | Local guard |
-|---|---|
-| `cli/src/**/*.rs` | `hooks/check-rust.sh` runs fmt and host clippy; `DOTFILES_HOOKS_FULL=1` also runs Windows-target clippy and `cargo test --profile ci` |
-| `cli/Cargo.toml`, `cli/Cargo.lock`, `cli/deny.toml` | `hooks/check-ci-guards.sh` rejects wildcard dependencies; full mode also runs `cargo deny check bans licenses sources` when installed |
-| `conf/*.toml`, `symlinks/**` | `hooks/check-ci-guards.sh` runs shell config validators; full mode also runs `cargo test --profile ci --test config_drift` when Cargo is installed |
-| `dotfiles.sh`, hook scripts, CI shell scripts | `hooks/check-ci-guards.sh` runs ShellCheck on staged shell files when installed; full mode also runs Linux wrapper tests |
+Common CI-profile reproduction commands:
 
-The hooks intentionally keep pre-commit fast. Slower CI-parity checks are opt-in
-with `DOTFILES_HOOKS_FULL=1`, and optional tools still skip with a notice rather
-than making the repository unusable on minimal machines.
+```bash
+cargo test --profile ci --manifest-path cli/Cargo.toml
+cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+cargo test --profile ci --manifest-path cli/Cargo.toml --test config_drift
+```
 
 ## Release Pipeline (`release.yml`)
 

@@ -88,15 +88,6 @@ cli/src/
 
 ## Validation
 
-For Rust changes, run the local checks described in `cross-platform-verification`:
-
-```sh
-cd cli
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings
-cargo test
-```
-
-If the Windows target/toolchain is unavailable, say so explicitly in the final
-handoff instead of silently skipping it.
+Use the canonical local sequence in `cross-platform-verification` for general
+Rust/cross-platform checks. Keep this skill focused on routing and Rust
+conventions.

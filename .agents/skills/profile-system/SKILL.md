@@ -9,7 +9,7 @@ description: >
 
 Profiles control which files are checked out and which config sections are processed. Profile resolution is in `cli/src/config/profiles.rs`.
 
-## Available Profiles
+## Currently Configured Profiles
 
 - **`base`**: Minimal core config without desktop apps (excludes desktop)
 - **`desktop`**: Full config with desktop apps (includes desktop)
@@ -74,7 +74,7 @@ pub struct Profile {
   - AND logic: all categories must be in `active_categories`
 - **Platform categories** (`linux`, `windows`, `arch`): Auto-detected, use in config sections for platform-specific items (e.g., `[linux]` for chmod entries)
 
-## Adding a New Profile
+## Adding a New Profile Definition
 
 Add to `conf/profiles.toml`:
 ```toml
@@ -83,7 +83,16 @@ include = ["mycategory"]
 exclude = []
 ```
 
-Profile names are loaded dynamically from `profiles.toml` via `load_definitions()` — no code changes needed.
+The loader can read additional profile definitions dynamically from
+`profiles.toml` via `load_definitions()`; architecture is not hardcoded to only
+two names.
+
+Before adding a new profile, review and update assumptions across:
+
+- tests and snapshots that assume only `base`/`desktop`
+- user-facing docs and examples
+- config/validation rules tied to known profile names
+- sparse-checkout behavior and manifest coverage for new category combinations
 
 ## Usage
 
@@ -95,7 +104,7 @@ Profile names are loaded dynamically from `profiles.toml` via `load_definitions(
 ## Rules
 
 - Platform detection always overrides profile config for safety
-- Profile names are `base` or `desktop`; config section categories use hyphens (e.g. `[arch-desktop]`)
+- `base` and `desktop` are the currently configured/default profiles; additional profile definitions are possible but require coordinated docs/tests/config/manifest review
 - `active_categories` always contains `Category::Base` plus auto-detected platform categories
 - Use `filter_by_categories(sections, active_categories)` for normal config filtering (AND logic)
 - Use `filter_by_categories(sections, excluded_categories)` for manifest filtering; `[arch-desktop]` is excluded only when both categories are excluded

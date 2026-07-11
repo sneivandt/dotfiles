@@ -8,225 +8,77 @@ description: >
 
 # Engine Orchestration
 
-The engine has two levels of parallelism: **task-level** (scheduler) and
-**resource-level** (Rayon). Both are gated by `ctx.parallel`.
+## Use this skill when
 
-## Phase Barrier
+- changing task phase ordering, dependencies, or scheduler behavior
+- deciding between `Task` + resources and `Task` + `Operation`
+- changing resource processing strategy (`process_resources*`, `ProcessMode`)
 
-`run_tasks_to_completion()` in `commands/mod.rs` enforces a strict phased
-execution model: all **Bootstrap** tasks complete before any **Sync** task
-starts, all **Sync** tasks complete before any **Provision** task starts, and
-all **Provision** tasks complete before any **Validation** or **Update** task
-starts.
-The function loops over
-`[TaskPhase::Bootstrap, TaskPhase::Sync, TaskPhase::Provision, TaskPhase::Validation, TaskPhase::Update]`,
-filtering and dispatching tasks per phase.  A phase with no tasks is skipped
-silently.  The **Update** phase advances pinned/locked dependency versions and
-is only populated by the `update` command — `install` filters Update-phase tasks
-out of the schedule (see `run_pipeline` in `commands/install.rs`). Cross-phase
-ordering is guaranteed solely by this sequential loop (the per-phase scheduler
-only resolves dependencies among tasks present in the same phase).  Within each
-phase, tasks run via the scheduler when `ctx.parallel` is enabled, or
-sequentially under `--no-parallel`.
+## Do not use this skill when
 
-Before parallel dispatch, the runner evaluates task execution policies and
-`should_run()` as part of `requires_elevation()`. It primes sudo only for tasks
-that declare `ExecutionPolicy::RequiresElevation`, are supported on the current
-platform, are not skipped by dry-run policy, are applicable, and predict a
-privileged mutation via `needs_elevation()`.
+- implementing a concrete resource type without scheduler changes (use
+  `resource-implementation`)
+- defining test structure/layout details (use `testing-patterns`)
 
-## Task-Level: Scheduler
+## Decision guide / invariants
 
-Within each phase, `run_tasks_to_completion()` dispatches:
+- Keep metadata/policies/dependencies in `Task`; keep convergence logic in
+  resources or `Operation`.
+- Phase barrier is strict (`Bootstrap -> Sync -> Provision -> Validation -> Update`).
+- Task-level parallelism uses scoped OS threads; resource-level parallelism uses
+  Rayon.
+- `ctx.parallel` gates both levels.
+- Resource tasks should use orchestration helpers from `engine/orchestrate.rs`
+  (re-exported by `tasks/mod.rs`) instead of custom dry-run/apply loops.
 
-1. If `ctx.parallel` and the phase has tasks → build a
-   `ResolvedTaskGraph` with `ResolvedTaskGraph::resolve(&phase_tasks)`.
-2. If graph resolution finds duplicate task IDs or a cycle → bail with an error
-   (abort the run).
-3. Otherwise → pass the resolved graph to `engine::scheduler`.
-   `run_tasks_parallel()` spawns OS threads when `ctx.parallel` is enabled; a
-   single-task phase still goes through the scheduler so buffered output ordering
-   matches multi-task phases. `run_tasks_sequential()` uses the same resolved
-   graph under `--no-parallel`.
+## Implementation procedure / core patterns
 
-Each dispatched task is still passed through `tasks::execute()`, which applies
-`execution_policies()` before `should_run()` and `run_if_applicable()`.
+1. **Task graph:** resolve with `ResolvedTaskGraph::resolve()` and fail on
+   duplicate IDs/cycles.
+2. **Scheduler wiring:** keep dependency channels strict; failed dependency
+   blocks dependents.
+3. **Task execution path:** route all tasks through `tasks::execute()` so policy,
+   `should_run()`, and result recording stay consistent.
+4. **Resource flow:** use one of:
+   - `process_resources(...)`
+   - `process_resources_with_provider(...)`
+   - `process_resources_remove(...)`
+5. **Operation flow:** use `Operation` + `process_operation()` when convergence is
+   workflow-shaped, not item-shaped.
 
-### Why OS Threads (Not Rayon)
-
-Tasks block on `mpsc::Receiver` waiting for dependencies. Blocking inside a
-Rayon worker would exhaust the fixed-size thread pool and deadlock on machines
-with fewer cores than tasks (e.g., 2-vCPU CI runners). `std::thread::scope`
-gives each task its own thread.
-
-### Channel Wiring
-
-For each task with dependencies:
-- A `(Sender, Receiver)` channel is created
-- Each dependency holds a clone of the task's `Sender`
-- The original sender is dropped after wiring so an unexpected panic before
-  signalling closes dependent receivers instead of leaving them blocked
-- When a dependency finishes, it sends a `DependencySignal` on all cloned senders
-- `TaskStatus::Failed` maps to `DependencySignal::Blocked`; all other recorded
-  statuses (`Ok`, `DryRun`, `Skipped`, `NotApplicable`) satisfy dependencies
-- The task blocks on `rx.recv()` once per dependency
-- If any dependency sends `Blocked` or a sender is dropped before signalling,
-  the task is skipped and propagates `Blocked` to its own dependents
-
-### Buffered Output
-
-Each parallel task receives a `BufferedLog` via `ctx.with_log()`. Output is
-captured in memory and flushed atomically via `buf.flush_and_complete(name)`
-after the task finishes.
-
-### Sequential Fallback
-
-When `ctx.parallel` is false, `run_tasks_sequential()` still uses the resolved
-phase graph. Tasks run in dependency-safe topological order, and normal task
-failures block dependents the same way they do in the parallel scheduler.
-
-## Resource-Level: Rayon
-
-Within a single task, resources are processed in parallel when
-`ctx.parallel` is true and there is more than one resource.
-
-`engine/orchestrate.rs` dispatches to `engine/parallel.rs`:
-
-```rust
-if ctx.parallel && resources.len() > 1 {
-    parallel::process_apply_parallel(ctx, resources, opts, get_resource_state)
-} else {
-    // sequential apply loop
-}
-```
-
-### How It Works
-
-`process_apply_parallel()` handles resources after the caller-provided state
-provider closure maps each resource to `(Resource, ResourceState)`. It delegates
-to `collect_parallel_stats()`, which uses Rayon's `try_fold` / `try_reduce`
-pattern:
-- Each item runs `process_single()` independently after the caller-provided
-  state extraction closure returns `(Resource, ResourceState)`
-- Each worker accumulates local `TaskStats`, then results are merged without a
-  shared stats lock
-- Diagnostic thread names are re-set per iteration since Rayon reuses threads
-
-Removal still uses `process_remove_parallel()`, which calls `remove_single()` for
-resources whose current state is `Correct`.
-
-### Resource `Send` Requirement
-
-Resources must implement `Send` for parallel processing. Because
-`Executor: Sync`, all resources holding `&dyn Executor` satisfy `Send`
-automatically.
-
-## Resource Processing Helpers
-
-`engine/orchestrate.rs` provides three helpers that drive the
-check→plan/diff→dry-run/apply loop so individual tasks don't repeat it. They
-are re-exported from `tasks/mod.rs`:
-
-- **`process_resources(ctx, resources, opts)`** — convenience wrapper for resources implementing `IntrinsicState`.
-- **`process_resources_with_provider(ctx, resources, provider, opts)`** — loads provider state once, then maps each resource to a `ResourceState` from intrinsic, preloaded, borrowed, or cached state.
-- **`process_resources_remove(ctx, resources, verb)`** — uninstall counterpart: removes resources in `Correct` state, skips others.
-
-Use these helpers for **all** new resource-based tasks. They build typed
-`ApplyChange` / `RemoveChange` plans, then handle dry-run checks, error
-categorisation, parallel dispatch, and stats accumulation.
-
-## Operation-Level: Checkable Workflows
-
-Use `Operation` for task bodies that are still idempotent but do not fit the
-per-resource lifecycle. An operation reports an `OperationState`, then
-`process_operation()` enforces the same high-level ordering as resource
-processing:
-
-1. `current_state()` checks without mutation.
-2. `preview()` runs only in dry-run mode for `NeedsRun` state.
-3. `apply()` runs only outside dry-run mode for `NeedsRun` state.
-
-`OperationState::Complete` returns `TaskResult::Ok`,
-`OperationState::NotApplicable` returns `TaskResult::NotApplicable`, and
-`OperationState::Blocked` returns `TaskResult::Skipped`.
-
-Good operation candidates are generated files, config reload coordination,
-custom overlay script execution, repository/sparse-checkout workflows, bootstrap
-flows, and APM install/update workflows. Keep `Task` responsible for metadata
-(name, phase, domain, dependencies, execution policies) and let the operation
-own the checkable workflow body.
-
-### ProcessMode
-
-`ProcessMode` makes the intent of each processing strategy explicit:
+### Process mode reference
 
 | Mode | `fix_incorrect()` | `fix_missing()` | `bail_on_error()` | Typical use |
 |---|---|---|---|---|
 | `Strict` | yes | yes | yes | symlinks, hooks, git config |
 | `Lenient` | yes | yes | no | packages, registry, developer mode |
 | `InstallMissing` | no | yes | no | VS Code extensions, systemd units |
-| `FixExisting` | yes | no | yes | chmod (files may not exist yet) |
+| `FixExisting` | yes | no | yes | chmod |
 
-### Resource Plans
+Use `ProcessOpts::{strict,lenient,install_missing,fix_existing}` with canonical
+verbs (`install`, `configure`, `update`, `enable`, `link`, `unlink`, `remove`).
 
-`ProcessMode::action_for(&ResourceState)` returns a low-level `ResourceAction`.
-`engine/plan.rs` wraps that decision with the resource description and renderable
-metadata:
+## Validation
 
-```rust
-ApplyChange::from_state(description, state, opts);
-RemoveChange::from_state(description, state, "unlink");
-```
+- Use `cross-platform-verification` for canonical local Rust/cross-platform
+  checks.
+- Add/adjust targeted scheduler and orchestration tests under `cli/src/engine/`
+  and affected task modules.
 
-The processing loop (`process_single` / `remove_single`) executes these plans
-instead of nesting matches on `ResourceState` and mode flags. This keeps the
-lifecycle state machine explicit, side-effect-free, and independently testable.
+## Common mistakes / anti-patterns
 
-### ProcessOpts
+- Running subprocesses outside the executor abstraction
+- Holding a config read guard during long-running or parallel work
+- Mutating in `should_run()`
+- Duplicating resource-processing dry-run logic in task bodies
+- Adding static tasks without catalog registration
+- Adding conditional symlink behavior without matching manifest coverage
+- Hardcoded OS checks where capability methods exist
+- Duplicating the canonical validation sequence in multiple skills
 
-`ProcessOpts` pairs a `ProcessMode` with a human-readable `verb` for log messages.
-Use named constructors:
+## Related skills
 
-```rust
-ProcessOpts::strict("link")            // fix Missing+Incorrect, bail on errors
-ProcessOpts::lenient("install")        // fix Missing+Incorrect, warn on errors
-ProcessOpts::install_missing("enable") // only fix Missing, warn on errors
-ProcessOpts::fix_existing("configure") // only fix Incorrect, bail on errors
-```
-
-The `verb` renders as the per-resource detail line `    {verb}: {desc}` (and
-`would {verb}: {desc}` in dry-run).  Keep it to the **canonical vocabulary** so
-console language stays consistent across tasks: **install** (provision a new
-artifact), **configure** (adjust settings of something that exists), **update**
-(advance versions), **enable** (toggle on), **link**/**unlink** (symlinks), and
-**remove** (uninstall).  Use the bare verb — don't append the noun (the `desc`
-and task name already carry it): write `"configure"`, not `"set git config"`.
-
-## Dependency Graph
-
-`engine/graph.rs` provides `ResolvedTaskGraph::resolve()`:
-- Maps task IDs to phase-local indices and rejects duplicate IDs
-- Builds dependency and dependent adjacency lists once for both validation and
-  scheduler wiring
-- Validates acyclicity with Kahn's algorithm; if `processed != total` → cycle exists
-- Missing dependencies (filtered tasks) are silently ignored
-
-## Diagnostic Events
-
-The scheduler emits structured events to the diagnostic log:
-
-| Event | Meaning |
-|---|---|
-| `TaskWait` | Task spawned, listing dependencies |
-| `TaskStart` | All dependencies satisfied, executing |
-| `TaskDone` | Task completed |
-| `TaskSkip` | Skipped due to failed dependency |
-
-## Rules
-
-- Task parallelism uses `std::thread::scope` — never Rayon for task scheduling
-- Resource parallelism uses Rayon — never OS threads for resource processing
-- Both levels are gated by `ctx.parallel`
-- Tests set `parallel: false` to keep execution deterministic
-- Parallel graph validation bails with an error — never falls back to sequential
-- `BufferedLog` must be flushed via `flush_and_complete()` after each parallel task
+- `resource-implementation`
+- `error-handling-patterns`
+- `logging-patterns`
+- `cross-platform-verification`

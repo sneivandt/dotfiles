@@ -1,12 +1,38 @@
 use crate::engine::apply;
 use crate::engine::mode::ProcessOpts;
+use crate::logging::{Output, TaskRecorder, TaskStatus};
 use crate::resources::{ResourceChange, ResourceState};
 use crate::tasks::test_helpers::empty_config;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use super::{
     MockResource, TypedErrorResource, bail_opts, default_opts, dry_run_context, test_context,
 };
+
+#[derive(Debug)]
+struct WarningCapture {
+    warnings: Arc<Mutex<Vec<String>>>,
+}
+
+impl Output for WarningCapture {
+    fn stage(&self, _msg: &str) {}
+    fn info(&self, _msg: &str) {}
+    fn debug(&self, _msg: &str) {}
+    fn warn(&self, msg: &str) {
+        self.warnings.lock().unwrap().push(msg.to_string());
+    }
+    fn error(&self, _msg: &str) {}
+    fn dry_run(&self, _msg: &str) {}
+    fn always(&self, _msg: &str) {}
+    fn debug_enabled(&self) -> bool {
+        false
+    }
+}
+
+impl TaskRecorder for WarningCapture {
+    fn record_task(&self, _name: &str, _status: TaskStatus, _message: Option<&str>) {}
+}
 
 // -----------------------------------------------------------------------
 // process_single
@@ -30,6 +56,10 @@ fn process_single_correct_increments_already_ok() {
 fn process_single_invalid_increments_failed() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
+    let warnings = Arc::new(Mutex::new(Vec::new()));
+    let ctx = ctx.with_log(Arc::new(WarningCapture {
+        warnings: Arc::clone(&warnings),
+    }));
     let resource = MockResource::new(ResourceState::Invalid {
         reason: "test".to_string(),
     });
@@ -48,6 +78,10 @@ fn process_single_invalid_increments_failed() {
     assert_eq!(stats.failed, 1);
     assert_eq!(stats.skipped, 0);
     assert_eq!(stats.changed, 0);
+    assert_eq!(
+        warnings.lock().unwrap().as_slice(),
+        ["skipping mock resource: test"]
+    );
 }
 
 #[test]

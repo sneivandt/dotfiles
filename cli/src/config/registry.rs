@@ -110,8 +110,8 @@ fn classify_value(value: &toml::Value) -> (String, RegistryValueType) {
     }
 }
 
-/// Valid Windows registry hive prefixes.
-const VALID_HIVE_PREFIXES: &[&str] = &["HKCU:", "HKLM:", "HKCR:", "HKU:", "HKCC:"];
+/// Windows registry hive prefixes supported by the registry resource.
+const SUPPORTED_HIVE_PREFIXES: &[&str] = &["HKCU:", "HKLM:", "HKCR:"];
 
 /// Validate registry entries and return any warnings.
 #[must_use]
@@ -129,18 +129,18 @@ pub fn validate(
         )
         .check_each(entries, |e| &e.value_name, |e| {
             let upper = e.key_path.to_uppercase();
-            let has_valid_hive = VALID_HIVE_PREFIXES
+            let has_supported_hive = SUPPORTED_HIVE_PREFIXES
                 .iter()
                 .any(|prefix| upper.starts_with(prefix));
             [
                 check(e.key_path.trim().is_empty(), "registry key path is empty"),
                 check(e.value_name.trim().is_empty(), "registry value name is empty"),
                 check(
-                    !has_valid_hive,
-                    "registry key path should start with a valid hive (HKCU:, HKLM:, HKCR:, HKU:, HKCC:)",
+                    !has_supported_hive,
+                    "registry key path should start with a supported hive (HKCU:, HKLM:, HKCR:)",
                 ),
                 check(
-                    has_valid_hive && !upper.starts_with("HKCU:"),
+                    has_supported_hive && !upper.starts_with("HKCU:"),
                     "non-HKCU registry hive requires elevated privileges and may fail without admin rights",
                 ),
             ]
@@ -236,7 +236,28 @@ mod tests {
         }];
         let warnings = validate(&entries, Platform::new(Os::Windows, false));
         assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("valid hive"));
+        assert!(warnings[0].message.contains("supported hive"));
+    }
+
+    #[test]
+    fn validate_rejects_unimplemented_hives() {
+        use crate::platform::{Os, Platform};
+
+        for hive in ["HKU", "HKCC"] {
+            let entries = vec![RegistryEntry {
+                key_path: format!("{hive}:\\Software\\Test"),
+                value_name: "Setting".to_string(),
+                value_data: "1".to_string(),
+                value_type: RegistryValueType::Dword,
+            }];
+            let warnings = validate(&entries, Platform::new(Os::Windows, false));
+            assert!(
+                warnings
+                    .iter()
+                    .any(|warning| warning.message.contains("supported hive")),
+                "{hive} should be rejected because the registry resource does not implement it: {warnings:?}"
+            );
+        }
     }
 
     #[test]

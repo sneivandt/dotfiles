@@ -158,6 +158,7 @@ NormalForeground = 0xF
 ```
 
 Section names are logical identifiers (not registry paths). The `path` field holds the actual registry path.
+Supported registry hives are `HKCU:`, `HKLM:`, and `HKCR:`; other hives are rejected during configuration validation.
 
 **Note:** Registry configuration doesn't use profile filtering since registry settings are Windows-only by nature.
 

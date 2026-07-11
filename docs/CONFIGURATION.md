@@ -251,6 +251,7 @@ extensions = ["ms-vscode-remote.remote-wsl"]
 **Purpose**: Configures Windows registry settings.
 
 **Format**: Logical section names with a `path` key (the registry path) and a `[section.values]` subtable for key-value pairs.
+Paths must use a supported hive: `HKCU:`, `HKLM:`, or `HKCR:`.
 
 **Example**:
 ```toml

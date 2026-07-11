@@ -30,10 +30,12 @@ pub(super) fn process_single<R: Resource>(
             delta.already_ok = delta.already_ok.saturating_add(1);
         }
         ApplyOperation::Skip { reason, failed } => {
-            ctx.debug_fmt(|| format!("skipping {}: {reason}", plan.description()));
             if *failed {
+                ctx.log
+                    .warn(&format!("skipping {}: {reason}", plan.description()));
                 delta.failed = delta.failed.saturating_add(1);
             } else {
+                ctx.debug_fmt(|| format!("skipping {}: {reason}", plan.description()));
                 delta.skipped = delta.skipped.saturating_add(1);
             }
         }

@@ -27,7 +27,7 @@ companions. Avoid unrelated skills to reduce conflicting guidance.
 | [`sparse-checkout-patterns`](./skills/sparse-checkout-patterns/SKILL.md) | `manifest.toml` category exclusions and sparse-checkout behavior | `toml-configuration` |
 | [`symlink-management`](./skills/symlink-management/SKILL.md) | `conf/symlinks.toml`, symlink resource behavior, and manifest alignment | `config-validation` |
 | [`testing-patterns`](./skills/testing-patterns/SKILL.md) | Test construction/layout/snapshots and test helper usage | none |
-| [`toml-configuration`](./skills/toml-configuration/SKILL.md) | TOML section format, category filtering, and loader patterns for `conf/` and `cli/src/config/` | none |
+| [`toml-configuration`](./skills/toml-configuration/SKILL.md) | TOML section format, category filtering, and loader patterns for `conf/`, `app/config/`, and domain config modules | none |
 | [`windows-specific-patterns`](./skills/windows-specific-patterns/SKILL.md) | Windows-only behavior (registry/symlink capability/platform details) | none |
 
 ## Task-to-skill routes

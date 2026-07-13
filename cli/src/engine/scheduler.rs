@@ -6,10 +6,10 @@
 use std::sync::{Arc, mpsc};
 
 use super::graph::ResolvedTaskGraph;
-use crate::logging::{self, BufferedLog, DiagEvent, Log, Logger, Output as _, TaskStatus};
 #[cfg(test)]
-use crate::tasks::TaskPhase;
-use crate::tasks::{self, Context, Task};
+use crate::engine::TaskPhase;
+use crate::engine::{self, Context, Task};
+use crate::runtime::logging::{self, BufferedLog, DiagEvent, Log, Logger, Output as _, TaskStatus};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DependencySignal {
@@ -77,7 +77,7 @@ fn run_task_buffered(
     let task_ctx = ctx.with_log(buffered_log);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        tasks::execute(task, &task_ctx)
+        engine::execute(task, &task_ctx)
     }));
 
     let status = match result {

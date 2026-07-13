@@ -51,7 +51,7 @@ EnableAutoTray = 0
 
 ### Registry Rust Task
 
-The registry task in `cli/src/tasks/system/registry.rs`:
+The registry task in `cli/src/domains/system/tasks/registry.rs`:
 1. Parses `conf/registry.toml` into path → key/value maps
 2. Batch-checks all current values via `batch_check_values(&resources)`
 3. Compares each entry's current value with the desired value
@@ -60,10 +60,15 @@ The registry task in `cli/src/tasks/system/registry.rs`:
 
 `RegistryResource` uses the `winreg` crate for native registry access (no executor needed):
 ```rust
-let resources: Vec<_> = ctx.config_read().registry.iter()
-    .map(RegistryResource::from_entry)
-    .collect();
-let cached = batch_check_values(&resources)?;
+config_resource_task! {
+    pub ApplyRegistry {
+        config: Vec<RegistryEntry>,
+        items: |cfg| cfg.clone(),
+        cache: |resources, _ctx| batch_check_values(resources),
+        build: |entry, _ctx| RegistryResource::from_entry(&entry),
+        // metadata, state mapping, and options omitted
+    }
+}
 ```
 
 ## Symlink Differences on Windows

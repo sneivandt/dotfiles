@@ -1,0 +1,400 @@
+//! Tasks: install and uninstall Git hooks.
+use std::sync::Arc;
+
+use anyhow::{Context as _, Result};
+
+use crate::domains::git::resources::hook::HookFileResource;
+use crate::engine::{
+    Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, process_resources,
+    process_resources_remove, task_metadata,
+};
+use crate::runtime::fs::{FileSystemOps, SystemFileSystemOps};
+
+/// Discover hook file resources from the `hooks/` directory.
+///
+/// Returns one [`HookFileResource`] per file that has no extension (i.e.
+/// conventional hook scripts such as `pre-commit`, `commit-msg`), pairing
+/// each source file with its destination path under `.git/hooks/`.
+///
+/// # Errors
+///
+/// Returns an error if the `hooks/` directory cannot be read.
+fn discover_hooks(ctx: &Context, fs_ops: &Arc<dyn FileSystemOps>) -> Result<Vec<HookFileResource>> {
+    let paths = ctx.paths();
+    let hooks_src = paths.hooks_dir().to_path_buf();
+    let hooks_dst = paths.root().join(".git/hooks");
+
+    let mut resources = Vec::new();
+    for path in fs_ops
+        .read_dir(&hooks_src)
+        .with_context(|| format!("reading hooks directory: {}", hooks_src.display()))?
+    {
+        // Only install executable hook files; skip data files like .ini
+        // Skip paths with no filename component (e.g., root or empty paths).
+        let Some(file_name) = path.file_name().map(std::path::PathBuf::from) else {
+            continue;
+        };
+        if fs_ops.is_file(&path) && path.extension().is_none() {
+            resources.push(HookFileResource::new(path, hooks_dst.join(file_name)));
+        }
+    }
+    Ok(resources)
+}
+
+/// Install git hooks from hooks/ into .git/hooks/.
+#[derive(Debug)]
+pub struct InstallGitHooks {
+    fs_ops: Arc<dyn FileSystemOps>,
+}
+
+impl InstallGitHooks {
+    /// Create using the real filesystem.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            fs_ops: Arc::new(SystemFileSystemOps),
+        }
+    }
+
+    /// Create with a custom [`FileSystemOps`] implementation (for testing).
+    #[cfg(test)]
+    pub fn with_fs_ops(fs_ops: Arc<dyn FileSystemOps>) -> Self {
+        Self { fs_ops }
+    }
+
+    fn discover(&self, ctx: &Context) -> Result<Vec<HookFileResource>> {
+        discover_hooks(ctx, &self.fs_ops)
+    }
+}
+
+impl Default for InstallGitHooks {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Task for InstallGitHooks {
+    task_metadata! {
+        name: "Install Git hooks",
+        phase: TaskPhase::Sync,
+        domain: Domain::Git,
+    }
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        let paths = ctx.paths();
+        self.fs_ops.exists(paths.hooks_dir()) && self.fs_ops.exists(&paths.root().join(".git"))
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let resources = self.discover(ctx)?;
+        process_resources(ctx, resources, &ProcessOpts::strict("install"))
+    }
+}
+
+/// Remove git hooks that were installed from hooks/.
+#[derive(Debug)]
+pub struct UninstallGitHooks {
+    fs_ops: Arc<dyn FileSystemOps>,
+}
+
+impl UninstallGitHooks {
+    /// Create using the real filesystem.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            fs_ops: Arc::new(SystemFileSystemOps),
+        }
+    }
+
+    /// Create with a custom [`FileSystemOps`] implementation (for testing).
+    #[cfg(test)]
+    pub fn with_fs_ops(fs_ops: Arc<dyn FileSystemOps>) -> Self {
+        Self { fs_ops }
+    }
+
+    fn discover(&self, ctx: &Context) -> Result<Vec<HookFileResource>> {
+        discover_hooks(ctx, &self.fs_ops)
+    }
+}
+
+impl Default for UninstallGitHooks {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Task for UninstallGitHooks {
+    task_metadata! {
+        name: "Remove Git hooks",
+        phase: TaskPhase::Sync,
+        domain: Domain::Git,
+    }
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        let paths = ctx.paths();
+        self.fs_ops.exists(paths.hooks_dir())
+            && self.fs_ops.exists(&paths.root().join(".git/hooks"))
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        let resources = self.discover(ctx)?;
+        process_resources_remove(ctx, resources, "remove")
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
+mod tests {
+    use super::*;
+    use crate::runtime::fs::MockFileSystemOps;
+    use crate::test_helpers::{empty_config, make_linux_context};
+    use std::path::PathBuf;
+
+    // ------------------------------------------------------------------
+    // InstallGitHooks::should_run — using MockFileSystemOps
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn install_should_run_false_when_hooks_dir_missing() {
+        let config = empty_config(PathBuf::from("/repo"));
+        let ctx = make_linux_context(config);
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists().returning(|_| false);
+        let task = InstallGitHooks::with_fs_ops(Arc::new(mock));
+        assert!(!task.should_run(&ctx));
+    }
+
+    #[test]
+    fn install_should_run_false_when_git_dir_missing() {
+        let config = empty_config(PathBuf::from("/repo"));
+        // hooks/ exists but .git/ does not
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists()
+            .withf(|p| p == std::path::Path::new("/repo/hooks"))
+            .returning(|_| true);
+        mock.expect_exists()
+            .withf(|p| p == std::path::Path::new("/repo/.git"))
+            .returning(|_| false);
+        let ctx = make_linux_context(config);
+        let task = InstallGitHooks::with_fs_ops(Arc::new(mock));
+        assert!(!task.should_run(&ctx));
+    }
+
+    #[test]
+    fn install_should_run_true_when_both_dirs_exist() {
+        let config = empty_config(PathBuf::from("/repo"));
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists().returning(|_| true);
+        let ctx = make_linux_context(config);
+        let task = InstallGitHooks::with_fs_ops(Arc::new(mock));
+        assert!(task.should_run(&ctx));
+    }
+
+    #[test]
+    fn install_declares_no_cross_domain_dependencies() {
+        // The dependency on `UpdateRepository` is applied by the application
+        // catalog (which is the only layer allowed to name tasks across
+        // domains), not by this domain task itself.
+        let mock = MockFileSystemOps::new();
+        let task = InstallGitHooks::with_fs_ops(Arc::new(mock));
+        assert!(task.dependencies().is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // UninstallGitHooks::should_run — using MockFileSystemOps
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn uninstall_should_run_false_when_git_hooks_missing() {
+        let config = empty_config(PathBuf::from("/repo"));
+        let ctx = make_linux_context(config);
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists().returning(|_| false);
+        let task = UninstallGitHooks::with_fs_ops(Arc::new(mock));
+        assert!(!task.should_run(&ctx));
+    }
+
+    #[test]
+    fn uninstall_should_run_true_when_both_dirs_exist() {
+        let config = empty_config(PathBuf::from("/repo"));
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_exists().returning(|_| true);
+        let ctx = make_linux_context(config);
+        let task = UninstallGitHooks::with_fs_ops(Arc::new(mock));
+        assert!(task.should_run(&ctx));
+    }
+
+    // ------------------------------------------------------------------
+    // discover_hooks — using MockFileSystemOps
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn discover_hooks_returns_hook_files_without_extension() {
+        let config = empty_config(PathBuf::from("/repo"));
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_read_dir().returning(|_| {
+            Ok(vec![
+                PathBuf::from("/repo/hooks/pre-commit"),
+                PathBuf::from("/repo/hooks/commit-msg"),
+                PathBuf::from("/repo/hooks/hooks.ini"), // should be skipped (has extension)
+            ])
+        });
+        mock.expect_is_file()
+            .withf(|p| p == std::path::Path::new("/repo/hooks/pre-commit"))
+            .returning(|_| true);
+        mock.expect_is_file()
+            .withf(|p| p == std::path::Path::new("/repo/hooks/commit-msg"))
+            .returning(|_| true);
+        mock.expect_is_file()
+            .withf(|p| p == std::path::Path::new("/repo/hooks/hooks.ini"))
+            .returning(|_| true);
+        let ctx = make_linux_context(config);
+
+        let resources = InstallGitHooks::with_fs_ops(Arc::new(mock))
+            .discover(&ctx)
+            .unwrap();
+        assert_eq!(resources.len(), 2);
+        let names: Vec<_> = resources
+            .iter()
+            .map(|r| r.source.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(names.contains(&"pre-commit".to_string()));
+        assert!(names.contains(&"commit-msg".to_string()));
+    }
+
+    #[test]
+    fn discover_hooks_skips_directories() {
+        let config = empty_config(PathBuf::from("/repo"));
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_read_dir().returning(|_| {
+            Ok(vec![
+                PathBuf::from("/repo/hooks/pre-commit"),
+                PathBuf::from("/repo/hooks/subdir"), // directory, not a file
+            ])
+        });
+        mock.expect_is_file()
+            .withf(|p| p == std::path::Path::new("/repo/hooks/pre-commit"))
+            .returning(|_| true);
+        mock.expect_is_file()
+            .withf(|p| p == std::path::Path::new("/repo/hooks/subdir"))
+            .returning(|_| false);
+        let ctx = make_linux_context(config);
+
+        let resources = InstallGitHooks::with_fs_ops(Arc::new(mock))
+            .discover(&ctx)
+            .unwrap();
+        assert_eq!(resources.len(), 1);
+    }
+
+    #[test]
+    fn discover_hooks_targets_point_to_git_hooks_dir() {
+        let config = empty_config(PathBuf::from("/repo"));
+        let mut mock = MockFileSystemOps::new();
+        mock.expect_read_dir()
+            .returning(|_| Ok(vec![PathBuf::from("/repo/hooks/pre-commit")]));
+        mock.expect_is_file().returning(|_| true);
+        let ctx = make_linux_context(config);
+
+        let resources = InstallGitHooks::with_fs_ops(Arc::new(mock))
+            .discover(&ctx)
+            .unwrap();
+        assert_eq!(resources.len(), 1);
+        assert_eq!(
+            resources[0].target,
+            PathBuf::from("/repo/.git/hooks/pre-commit")
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Real-filesystem tests (kept for integration coverage)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn install_should_run_true_when_both_dirs_exist_real_fs() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("hooks")).unwrap();
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+        let config = empty_config(dir.path().to_path_buf());
+        let ctx = make_linux_context(config);
+        assert!(InstallGitHooks::new().should_run(&ctx));
+    }
+
+    #[test]
+    fn uninstall_should_run_true_when_both_dirs_exist_real_fs() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("hooks")).unwrap();
+        std::fs::create_dir_all(dir.path().join(".git/hooks")).unwrap();
+        let config = empty_config(dir.path().to_path_buf());
+        let ctx = make_linux_context(config);
+        assert!(UninstallGitHooks::new().should_run(&ctx));
+    }
+
+    // ------------------------------------------------------------------
+    // InstallGitHooks::run / UninstallGitHooks::run — real filesystem
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn install_run_installs_hook_into_git_hooks() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Create hooks/ dir with a hook file (no extension)
+        let hooks_dir = dir.path().join("hooks");
+        std::fs::create_dir(&hooks_dir).unwrap();
+        std::fs::write(hooks_dir.join("pre-commit"), "#!/bin/sh\nexit 0").unwrap();
+
+        // Create .git/hooks/ dir
+        let git_hooks_dir = dir.path().join(".git").join("hooks");
+        std::fs::create_dir_all(&git_hooks_dir).unwrap();
+
+        let config = empty_config(dir.path().to_path_buf());
+        let ctx = make_linux_context(config);
+        let task = InstallGitHooks::new();
+
+        let result = task.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::OkWithMessage(_)));
+        assert!(
+            git_hooks_dir.join("pre-commit").exists(),
+            "pre-commit hook should be installed in .git/hooks/"
+        );
+    }
+
+    #[test]
+    fn uninstall_run_removes_installed_hook() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Create hooks/ dir with a hook file
+        let hooks_dir = dir.path().join("hooks");
+        std::fs::create_dir(&hooks_dir).unwrap();
+        std::fs::write(hooks_dir.join("pre-commit"), "#!/bin/sh\nexit 0").unwrap();
+
+        // Create .git/hooks/ with the hook already installed (executable, as apply() would)
+        let git_hooks_dir = dir.path().join(".git").join("hooks");
+        std::fs::create_dir_all(&git_hooks_dir).unwrap();
+        std::fs::write(git_hooks_dir.join("pre-commit"), "#!/bin/sh\nexit 0").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                git_hooks_dir.join("pre-commit"),
+                std::fs::Permissions::from_mode(0o755),
+            )
+            .unwrap();
+        }
+
+        let config = empty_config(dir.path().to_path_buf());
+        let ctx = make_linux_context(config);
+        let task = UninstallGitHooks::new();
+
+        let result = task.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::OkWithMessage(_)));
+        assert!(
+            !git_hooks_dir.join("pre-commit").exists(),
+            "pre-commit hook should be removed from .git/hooks/"
+        );
+    }
+}

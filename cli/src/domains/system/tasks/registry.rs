@@ -1,0 +1,106 @@
+//! Task: apply Windows registry entries.
+
+use crate::domains::system::config::registry::RegistryEntry;
+use crate::domains::system::resources::registry::{RegistryResource, batch_check_values};
+use crate::engine::{Domain, PlatformCapability, ProcessOpts, TaskPhase, config_resource_task};
+
+config_resource_task! {
+    /// Apply Windows registry settings.
+    pub ApplyRegistry {
+        name: "Configure registry settings",
+        phase: TaskPhase::Provision,
+        domain: Domain::System,
+        config: Vec<RegistryEntry>,
+        policy: [PlatformCapability::WindowsRegistry.policy()],
+        guard: |_cfg, ctx| ctx.platform.has_registry(),
+        items: |cfg| cfg.clone(),
+        cache: |resources, _ctx| batch_check_values(resources),
+        build: |entry, _ctx| RegistryResource::from_entry(&entry),
+        state: |r, cached| {
+            let key = format!("{}\\{}", r.key_path, r.value_name);
+            let val = cached.get(&key).and_then(|v| v.as_deref());
+            r.state_from_cached(val)
+        },
+        opts: ProcessOpts::lenient("configure"),
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
+mod tests {
+    use super::*;
+    use crate::domains::system::config::registry::RegistryEntry;
+    use crate::engine::Task;
+    use crate::engine::TaskResult;
+    use crate::runtime::ConfigHandle;
+    use crate::test_helpers::{empty_config, make_linux_context, make_windows_context};
+    use std::path::PathBuf;
+
+    fn entry() -> RegistryEntry {
+        RegistryEntry {
+            key_path: r"HKCU:\Console".to_string(),
+            value_name: "QuickEdit".to_string(),
+            value_data: "1".to_string(),
+            value_type: crate::domains::system::config::registry::RegistryValueType::Dword,
+        }
+    }
+
+    #[test]
+    fn should_run_false_on_linux() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = make_linux_context(config);
+        assert!(!ApplyRegistry::new(ConfigHandle::new(vec![])).should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_true_on_windows_when_guard_passes() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = make_windows_context(config);
+        assert!(ApplyRegistry::new(ConfigHandle::new(vec![])).should_run(&ctx));
+    }
+
+    #[test]
+    fn should_run_true_on_windows_with_registry_entries() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = make_windows_context(config);
+        let task = ApplyRegistry::new(ConfigHandle::new(vec![entry()]));
+        assert!(task.should_run(&ctx));
+    }
+
+    // ------------------------------------------------------------------
+    // ApplyRegistry::run
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn run_with_empty_registry_returns_not_applicable() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = make_windows_context(config);
+        let result = ApplyRegistry::new(ConfigHandle::new(vec![]))
+            .run(&ctx)
+            .unwrap();
+        assert!(matches!(result, TaskResult::NotApplicable(_)));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn run_with_entries_on_non_windows_skips_gracefully() {
+        // On non-Windows, batch_check_values() returns an empty map.
+        // Every entry therefore has state Missing, and apply() returns an
+        // error ("registry operations are only supported on Windows").
+        // Because ProcessOpts is lenient, each error is caught and counted
+        // as a non-fatal failure rather than propagating the error.
+        // Use a Windows-platform context so the task logic runs (should_run
+        // would normally gate this, but run() is called directly in unit tests).
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = make_windows_context(config);
+        let result = ApplyRegistry::new(ConfigHandle::new(vec![entry()]))
+            .run(&ctx)
+            .unwrap();
+        assert!(matches!(result, TaskResult::Failed(_)));
+    }
+}

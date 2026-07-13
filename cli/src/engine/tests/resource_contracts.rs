@@ -4,9 +4,9 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
+use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::engine::{ProcessOpts, TaskResult, process_resources, process_resources_remove};
-use crate::resources::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::tasks::test_helpers::empty_config;
+use crate::test_helpers::empty_config;
 
 use super::{bail_opts, default_opts, dry_run_context, test_context};
 

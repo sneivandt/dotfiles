@@ -29,7 +29,7 @@ description: >
   Rayon.
 - `ctx.parallel` gates both levels.
 - Resource tasks should use orchestration helpers from `engine/orchestrate.rs`
-  (re-exported by `tasks/mod.rs`) instead of custom dry-run/apply loops.
+  (re-exported by `engine/mod.rs`) instead of custom dry-run/apply loops.
 
 ## Implementation procedure / core patterns
 
@@ -37,7 +37,7 @@ description: >
    duplicate IDs/cycles.
 2. **Scheduler wiring:** keep dependency channels strict; failed dependency
    blocks dependents.
-3. **Task execution path:** route all tasks through `tasks::execute()` so policy,
+3. **Task execution path:** route all tasks through `engine::execute()` so policy,
    `should_run()`, and result recording stay consistent.
 4. **Resource flow:** use one of:
    - `process_resources(...)`

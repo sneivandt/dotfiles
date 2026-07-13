@@ -5,9 +5,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::Result;
 
 use super::*;
-use crate::logging::{Output, TaskRecorder};
-use crate::tasks::test_helpers::{ContextBuilder, empty_config, make_static_context};
-use crate::tasks::{TaskResult, task_deps};
+use crate::engine::{TaskResult, execute, task_deps};
+use crate::runtime::logging::{Output, TaskRecorder};
+use crate::test_helpers::{ContextBuilder, empty_config, make_static_context};
 
 fn make_test_log_and_ctx() -> (Arc<Logger>, Context, logging::TestDispatchLock) {
     let dispatch_lock = logging::test_dispatch_lock();
@@ -644,7 +644,7 @@ fn stage_header_present_when_info_logged_in_run() {
 
     // Exactly mirrors what run_tasks_parallel does per task thread.
     log.notify_task_start("stats-task");
-    let status = tasks::execute(&StatsTask, &task_ctx);
+    let status = execute(&StatsTask, &task_ctx);
     buf.flush_and_complete("stats-task", status);
 
     let path = log.log_path().expect("log path");
@@ -690,7 +690,7 @@ fn stage_headers_present_for_multiple_concurrent_stats_tasks() {
         let task_ctx = ctx.with_log(buffered_log_arc(&buf));
 
         log.notify_task_start(name);
-        let status = tasks::execute(&task_named, &task_ctx);
+        let status = execute(&task_named, &task_ctx);
         buf.flush_and_complete(name, status);
     }
 
@@ -793,7 +793,7 @@ fn stage_header_not_lost_after_debug_fmt_call() {
     let task_ctx = ctx.with_log(buffered_log_arc(&buf));
 
     log.notify_task_start("debug-fmt-task");
-    let status = tasks::execute(&DebugFmtTask, &task_ctx);
+    let status = execute(&DebugFmtTask, &task_ctx);
     buf.flush_and_complete("debug-fmt-task", status);
 
     let targets = captured

@@ -4,44 +4,46 @@
 //! feature-gated surface for tests that need to exercise the real engine.
 
 pub mod cli {
-    pub use crate::cli::{GlobalOpts, InstallOpts, TestOpts, UpdateOpts};
+    pub use crate::app::cli::{GlobalOpts, InstallOpts, TestOpts, UpdateOpts};
 }
 
 pub mod commands {
     pub mod install {
-        pub use crate::commands::install::run;
+        pub use crate::app::commands::install::run;
     }
 
     pub mod log {
-        pub use crate::commands::log::run;
+        pub use crate::app::commands::log::run;
     }
 
     pub mod test {
-        pub use crate::commands::test::run;
+        pub use crate::app::commands::test::run;
     }
 
     pub mod uninstall {
-        pub use crate::commands::uninstall::run;
+        pub use crate::app::commands::uninstall::run;
     }
 
     pub mod update {
-        pub use crate::commands::update::run;
+        pub use crate::app::commands::update::run;
     }
 
     pub mod version {
-        pub use crate::commands::version::run;
+        pub use crate::app::commands::version::run;
     }
 }
 
 pub mod config {
-    pub use crate::config::Config;
+    pub use crate::app::config::Config;
+    pub use crate::app::config::store::ConfigStore;
+    pub use crate::runtime::ConfigHandle;
 
     pub mod category_matcher {
-        pub use crate::config::category_matcher::{Category, matches};
+        pub use crate::runtime::config_support::category_matcher::{Category, matches};
     }
 
     pub mod profiles {
-        pub use crate::config::profiles::*;
+        pub use crate::app::config::profiles::*;
     }
 }
 
@@ -57,83 +59,84 @@ pub mod engine {
         ///
         /// Returns [`GraphError::DuplicateId`] if two tasks share a task ID,
         /// or [`GraphError::Cycle`] if the graph contains a cycle.
-        pub fn validate(tasks: &[&dyn crate::tasks::Task]) -> Result<(), GraphError> {
+        pub fn validate(tasks: &[&dyn crate::engine::Task]) -> Result<(), GraphError> {
             crate::engine::graph::ResolvedTaskGraph::resolve(tasks).map(|_| ())
         }
     }
 }
 
 pub mod exec {
-    pub use crate::exec::{ExecResult, Executor, SystemExecutor};
+    pub use crate::runtime::exec::{ExecResult, Executor, SystemExecutor};
 }
 
 pub mod error {
-    pub use crate::error::ResourceError;
+    pub use crate::engine::resource::ResourceError;
 }
 
 pub mod logging {
-    pub use crate::logging::{Log, Logger};
+    pub use crate::runtime::logging::{Log, Logger};
 }
 
 pub mod tasks {
-    pub use crate::tasks::{
+    pub use crate::app::catalog::{all_install_tasks, all_uninstall_tasks};
+    pub use crate::engine::{
         Context, ContextOpts, ProcessMode, ProcessOpts, ResourceAction, Task, TaskId, TaskPhase,
-        TaskResult, TaskStats, all_install_tasks, all_uninstall_tasks, execute,
+        TaskResult, TaskStats, execute,
     };
 
     pub mod filter {
-        pub use crate::tasks::filter::task_matches_filter;
+        pub use crate::app::filter::task_matches_filter;
     }
 
     pub mod files {
         pub mod chmod {
-            pub use crate::tasks::files::chmod::ApplyFilePermissions;
+            pub use crate::domains::files::tasks::chmod::ApplyFilePermissions;
         }
 
         pub mod symlinks {
-            pub use crate::tasks::files::symlinks::{InstallSymlinks, UninstallSymlinks};
+            pub use crate::domains::files::tasks::symlinks::{InstallSymlinks, UninstallSymlinks};
         }
     }
 
     pub mod editors {
         pub mod vscode_extensions {
-            pub use crate::tasks::editors::InstallVsCodeExtensions;
+            pub use crate::domains::editors::tasks::InstallVsCodeExtensions;
         }
     }
 
     pub mod git {
         pub mod git_config {
-            pub use crate::tasks::git::git_config::ConfigureGit;
+            pub use crate::domains::git::tasks::git_config::ConfigureGit;
         }
 
         pub mod hooks {
-            pub use crate::tasks::git::hooks::{InstallGitHooks, UninstallGitHooks};
+            pub use crate::domains::git::tasks::hooks::{InstallGitHooks, UninstallGitHooks};
         }
     }
 
     pub mod packages {
-        pub use crate::tasks::packages::{InstallAurPackages, InstallPackages};
+        pub use crate::domains::packages::tasks::{InstallAurPackages, InstallPackages};
     }
 
     pub mod system {
         pub mod systemd_units {
-            pub use crate::tasks::system::systemd_units::ConfigureSystemd;
+            pub use crate::domains::system::tasks::systemd_units::ConfigureSystemd;
         }
     }
 }
 
 pub mod platform {
-    pub use crate::platform::{Os, Platform};
+    pub use crate::runtime::platform::{Os, Platform};
 }
 
 pub mod resources {
-    pub use crate::resources::{IntrinsicState, ResourceChange, ResourceState};
+    pub use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
 
     pub mod chmod {
-        pub use crate::resources::chmod::OctalMode;
+        pub use crate::domains::files::resources::chmod::OctalMode;
     }
 
     pub mod symlink {
-        pub use crate::resources::symlink::SymlinkResource;
+        pub use crate::domains::files::resources::symlink::SymlinkResource;
     }
 }

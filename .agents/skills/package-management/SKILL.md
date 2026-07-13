@@ -8,8 +8,8 @@ description: >
 # Package Management
 
 System packages are declared in `conf/packages.toml`, parsed by
-`cli/src/config/packages.rs`, represented by package resources, and converged by
-tasks under `cli/src/tasks/packages/`.
+`cli/src/domains/packages/config/packages.rs`, represented by package resources,
+and converged by tasks under `cli/src/domains/packages/tasks/`.
 
 ## Configuration Contract
 
@@ -30,10 +30,10 @@ than inferring it from package names.
 
 | Responsibility | Owner |
 |---|---|
-| deserialize and validate entries | `cli/src/config/packages.rs` |
-| manager-specific query/install behavior | `PackageProvider` implementations |
-| resource state and mutation | package resource module |
-| applicability, policy, and orchestration | package tasks |
+| deserialize and validate entries | `domains/packages/config/packages.rs` |
+| manager-specific query/install behavior | `domains/packages/resources/{pacman,paru,winget}.rs` |
+| resource state and mutation | `domains/packages/resources/package.rs` |
+| applicability, policy, and orchestration | `domains/packages/tasks/` |
 
 `PackageManager` selects a provider. Add a provider implementation rather than
 branching manager-specific command logic through tasks.

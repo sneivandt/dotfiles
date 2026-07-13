@@ -90,9 +90,9 @@ mod unix_e2e {
 
         let (test, ec) = build_full_fixture();
 
-        tasks::execute(&InstallSymlinks, &ec.ctx);
+        tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
         tasks::execute(&InstallGitHooks::new(), &ec.ctx);
-        tasks::execute(&ApplyFilePermissions, &ec.ctx);
+        tasks::execute(&ApplyFilePermissions::new(ec.store.chmod.clone()), &ec.ctx);
 
         assert_eq!(ec.log.failure_count(), 0, "no task should fail");
 
@@ -145,18 +145,18 @@ mod unix_e2e {
         let (test, ec) = build_full_fixture();
 
         // ── First run ───────────────────────────────────────────────────────
-        tasks::execute(&InstallSymlinks, &ec.ctx);
+        tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
         tasks::execute(&InstallGitHooks::new(), &ec.ctx);
-        tasks::execute(&ApplyFilePermissions, &ec.ctx);
+        tasks::execute(&ApplyFilePermissions::new(ec.store.chmod.clone()), &ec.ctx);
         assert!(
             ec.log.failure_count() == 0,
             "first run should produce no failures"
         );
 
         // ── Second run (same context, same tasks) ────────────────────────────
-        tasks::execute(&InstallSymlinks, &ec.ctx);
+        tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
         tasks::execute(&InstallGitHooks::new(), &ec.ctx);
-        tasks::execute(&ApplyFilePermissions, &ec.ctx);
+        tasks::execute(&ApplyFilePermissions::new(ec.store.chmod.clone()), &ec.ctx);
         assert!(
             ec.log.failure_count() == 0,
             "second (idempotent) run should also produce no failures"
@@ -198,7 +198,7 @@ mod unix_e2e {
     fn apply_pipeline_symlink_resolves_to_source_content() {
         let (_test, ec) = build_full_fixture();
 
-        tasks::execute(&InstallSymlinks, &ec.ctx);
+        tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
         assert_eq!(ec.log.failure_count(), 0);
 
         let content = std::fs::read_to_string(ec.ctx.home.join(".bashrc")).unwrap();

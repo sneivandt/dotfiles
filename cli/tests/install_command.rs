@@ -16,10 +16,18 @@ mod common;
 use dotfiles_cli::testing as test_api;
 use std::collections::HashSet;
 
+use test_api::config::ConfigStore;
 use test_api::platform::{Os, Platform};
 use test_api::tasks;
 use test_api::tasks::TaskId;
 use test_api::tasks::filter::task_matches_filter;
+
+/// Build an install task list backed by a store loaded from a minimal repo.
+fn install_tasks() -> Vec<Box<dyn tasks::Task>> {
+    let ctx = common::IntegrationTestContext::new();
+    let store = ConfigStore::from_config(ctx.load_config("base"));
+    tasks::all_install_tasks(store)
+}
 
 // ---------------------------------------------------------------------------
 // Snapshot: full install task list
@@ -31,7 +39,7 @@ use test_api::tasks::filter::task_matches_filter;
 /// an install task will cause it to fail, prompting a deliberate snapshot update.
 #[test]
 fn install_task_names() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = install_tasks();
     let task_names: Vec<&str> = all_tasks.iter().map(|t| t.name()).collect();
     insta::assert_snapshot!("install_task_names", task_names.join("\n"));
 }
@@ -43,13 +51,13 @@ fn install_task_names() {
 /// The install task list must contain exactly the expected number of tasks.
 #[test]
 fn install_task_count() {
-    assert_eq!(tasks::all_install_tasks().len(), 24);
+    assert_eq!(install_tasks().len(), 24);
 }
 
 /// Every task name must be non-empty.
 #[test]
 fn install_task_names_are_non_empty() {
-    for task in tasks::all_install_tasks() {
+    for task in install_tasks() {
         assert!(!task.name().is_empty(), "install task has an empty name");
     }
 }
@@ -57,7 +65,7 @@ fn install_task_names_are_non_empty() {
 /// No two install tasks may share the same name.
 #[test]
 fn install_task_names_are_unique() {
-    let tasks = tasks::all_install_tasks();
+    let tasks = install_tasks();
     let mut seen: HashSet<&str> = HashSet::new();
     for task in &tasks {
         assert!(
@@ -71,7 +79,7 @@ fn install_task_names_are_unique() {
 /// No two install tasks may share the same [`TaskId`].
 #[test]
 fn install_task_type_ids_are_unique() {
-    let tasks = tasks::all_install_tasks();
+    let tasks = install_tasks();
     let ids: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
     assert_eq!(
         ids.len(),
@@ -84,7 +92,7 @@ fn install_task_type_ids_are_unique() {
 /// task in the same list (i.e., no dangling dependency references).
 #[test]
 fn install_task_dependencies_are_resolvable() {
-    let tasks = tasks::all_install_tasks();
+    let tasks = install_tasks();
     let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
     for task in &tasks {
         for dep in task.dependencies() {
@@ -104,7 +112,7 @@ fn install_task_dependencies_are_resolvable() {
 /// Tasks matching the skip selector must be excluded from the filtered list.
 #[test]
 fn skip_filter_excludes_matching_tasks() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = install_tasks();
     let skip_keyword = "packages";
 
     let filtered: Vec<&str> = all_tasks
@@ -129,7 +137,7 @@ fn skip_filter_excludes_matching_tasks() {
 /// When the skip keyword does not match any task name the full list is returned.
 #[test]
 fn skip_filter_with_no_match_returns_all_tasks() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = install_tasks();
     let skip_keyword = "zzznomatch";
     let total = all_tasks.len();
 
@@ -151,7 +159,7 @@ fn skip_filter_with_no_match_returns_all_tasks() {
 /// Only tasks matching the `--only` selector should remain.
 #[test]
 fn only_filter_includes_only_matching_tasks() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = install_tasks();
     let only_keyword = "symlinks";
 
     let filtered: Vec<&str> = all_tasks
@@ -170,7 +178,7 @@ fn only_filter_includes_only_matching_tasks() {
 /// Canonical selectors disambiguate similar task names.
 #[test]
 fn only_filter_disambiguates_update_tasks() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = install_tasks();
     let filtered: Vec<&str> = all_tasks
         .iter()
         .filter(|t| task_matches_filter(t.name(), "repository"))
@@ -192,7 +200,7 @@ fn only_filter_disambiguates_update_tasks() {
 /// Canonical selector leading tokens should match non-generic task names.
 #[test]
 fn only_filter_matches_reload_task_by_keyword() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = install_tasks();
     let filtered: Vec<&str> = all_tasks
         .iter()
         .filter(|t| task_matches_filter(t.name(), "reload"))
@@ -205,7 +213,7 @@ fn only_filter_matches_reload_task_by_keyword() {
 /// When `--only` matches nothing the result is an empty list.
 #[test]
 fn only_filter_with_no_match_returns_empty() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = install_tasks();
     let only_keyword = "zzznomatch";
 
     let any_match = all_tasks
@@ -237,7 +245,7 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
         },
     );
 
-    let tasks = tasks::all_install_tasks();
+    let tasks = install_tasks();
     // Calling should_run on every task must not panic.
     for task in &tasks {
         let _ = task.should_run(&ec.ctx);
@@ -257,7 +265,7 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
 fn install_tasks_form_acyclic_dependency_graph() {
     use test_api::engine::graph::validate;
 
-    let tasks = tasks::all_install_tasks();
+    let tasks = install_tasks();
     let task_refs: Vec<&dyn tasks::Task> = tasks.iter().map(Box::as_ref).collect();
     assert_eq!(
         validate(&task_refs),
@@ -273,7 +281,7 @@ fn install_tasks_form_acyclic_dependency_graph() {
 /// The install task list must contain "Install symlinks".
 #[test]
 fn install_task_list_contains_install_symlinks() {
-    let tasks = tasks::all_install_tasks();
+    let tasks = install_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
         names.contains(&"Install symlinks"),
@@ -284,7 +292,7 @@ fn install_task_list_contains_install_symlinks() {
 /// The install task list must contain "Install git hooks".
 #[test]
 fn install_task_list_contains_install_git_hooks() {
-    let tasks = tasks::all_install_tasks();
+    let tasks = install_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
         names.contains(&"Install Git hooks"),
@@ -295,7 +303,7 @@ fn install_task_list_contains_install_git_hooks() {
 /// The install task list must contain "Configure Git".
 #[test]
 fn install_task_list_contains_configure_git() {
-    let tasks = tasks::all_install_tasks();
+    let tasks = install_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
         names.contains(&"Configure Git"),
@@ -331,7 +339,7 @@ fn install_tasks_should_run_with_windows_platform() {
         },
     );
 
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = install_tasks();
     for task in &all_tasks {
         let _ = task.should_run(&ec.ctx);
     }
@@ -345,7 +353,7 @@ fn install_tasks_should_run_with_windows_platform() {
 /// be excluded.
 #[test]
 fn skip_with_multiple_keywords_excludes_all_matching() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = install_tasks();
     let skip_keywords = ["packages", "registry"];
 
     let filtered: Vec<&str> = all_tasks
@@ -380,7 +388,7 @@ fn skip_with_multiple_keywords_excludes_all_matching() {
 /// all be included (union, not intersection).
 #[test]
 fn only_with_multiple_keywords_includes_all_matching() {
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = install_tasks();
     let only_keywords = ["symlinks", "git-hooks"];
 
     let filtered: Vec<&str> = all_tasks
@@ -442,7 +450,7 @@ fn install_symlinks_is_idempotent() {
         },
     );
 
-    let task = tasks::files::symlinks::InstallSymlinks;
+    let task = tasks::files::symlinks::InstallSymlinks::new(ec.store.symlinks.clone());
 
     // First run: must succeed and create the symlink.
     let result1 = task.run(&ec.ctx).expect("first install run");
@@ -533,7 +541,7 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
     std::fs::set_permissions(&ssh_config, std::fs::Permissions::from_mode(0o644))
         .expect("set initial permissions");
 
-    let result = tasks::files::chmod::ApplyFilePermissions
+    let result = tasks::files::chmod::ApplyFilePermissions::new(ec.store.chmod.clone())
         .run(&ec.ctx)
         .expect("apply file permissions run");
     assert!(
@@ -648,7 +656,7 @@ fn install_tasks_should_run_with_parallel_enabled() {
         },
     );
 
-    let all_tasks = tasks::all_install_tasks();
+    let all_tasks = install_tasks();
     for task in &all_tasks {
         let _ = task.should_run(&ec.ctx);
     }

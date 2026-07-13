@@ -6,8 +6,8 @@ use super::apply::{process_single, remove_single};
 use super::context::Context;
 use super::mode::ProcessOpts;
 use super::stats::TaskStats;
-use crate::logging::{diag_thread_name, set_diag_thread_name};
-use crate::resources::{IntrinsicState, Resource, ResourceState};
+use crate::engine::{IntrinsicState, Resource, ResourceState};
+use crate::runtime::logging::{diag_thread_name, set_diag_thread_name};
 
 /// Process resource-like items in parallel using Rayon.
 ///

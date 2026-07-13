@@ -13,7 +13,7 @@ only relevant skills plus listed companions.
 - Mutations must be idempotent and dry-run safe.
 - Prefer capability methods over direct OS checks where available.
 - Static install/uninstall tasks must be registered in
-  `cli/src/tasks/catalog.rs`; command-specific tasks belong in their command's
+  `cli/src/app/catalog.rs`; command-specific tasks belong in their command's
   task list.
 - Conditional symlink behavior and manifest coverage must stay synchronized.
 

@@ -58,7 +58,7 @@ impl<Plan> OperationState<Plan> {
     }
 }
 
-/// Idempotent, checkable task body that does not fit the [`Resource`](crate::resources::Resource)
+/// Idempotent, checkable task body that does not fit the [`Resource`](crate::engine::Resource)
 /// model.
 pub(crate) trait Operation {
     /// Immutable data discovered during state inspection and consumed by
@@ -122,7 +122,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use crate::test_helpers::{empty_config, make_linux_context};
 
     #[derive(Debug, Clone)]
     struct TestOperation {

@@ -15,7 +15,7 @@ description: >
   classifiable.
 - Tasks own execution policy and result reporting; resources and operations own
   convergence.
-- `tasks::execute()` records task failures and allows independent work to
+- `engine::execute()` records task failures and allows independent work to
   continue.
 
 Use `engine-orchestration` for process modes and scheduling, and
@@ -28,7 +28,7 @@ Use `engine-orchestration` for process modes and scheduling, and
 | command/task | `anyhow::Result` plus `.context(...)` |
 | resource mutation | typed `ResourceError` variants |
 | optional cleanup | explicit handling with diagnostic logging |
-| task execution | return the error; let `tasks::execute()` record it |
+| task execution | return the error; let `engine::execute()` record it |
 
 Prefer typed variants such as `CommandFailed`, `PermissionDenied`,
 `ConflictingState`, and `NotSupported` when callers benefit from category-aware
@@ -57,8 +57,9 @@ Prefer existing abstractions:
 - Fully custom tasks: implement the same order manually only when neither
   abstraction fits.
 
-Clone config data out of `ctx.config_read()` before long-running or parallel
-work. Route subprocesses through `ctx.executor`.
+Config-backed tasks receive typed `ConfigHandle<T>` values; keep their read
+guards out of long-running or parallel work. Route subprocesses through the
+context's executor abstraction.
 
 ## Result Semantics
 

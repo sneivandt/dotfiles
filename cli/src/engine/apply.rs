@@ -8,8 +8,8 @@ use super::context::Context;
 use super::mode::ProcessOpts;
 use super::plan::{ApplyChange, ApplyOperation, RemoveChange, RemoveOperation};
 use super::stats::TaskStats;
-use crate::logging::DiagEvent;
-use crate::resources::{Resource, ResourceChange, ResourceState};
+use crate::engine::{Resource, ResourceChange, ResourceState};
+use crate::runtime::logging::DiagEvent;
 
 /// Process a single resource given its current state, returning a stats delta.
 pub(super) fn process_single<R: Resource>(

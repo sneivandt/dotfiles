@@ -17,6 +17,7 @@ use dotfiles_cli::testing as test_api;
 use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use test_api::config::ConfigStore;
 
 use test_api::exec::{ExecResult, Executor};
 use test_api::logging::{Log, Logger};
@@ -206,12 +207,16 @@ fn make_context(
     profile: &str,
     platform: Platform,
     executor: Arc<dyn Executor>,
-) -> (Context, Arc<Logger>, tempfile::TempDir) {
+) -> (Context, ConfigStore, Arc<Logger>, tempfile::TempDir) {
     let config = repo.load_config_for_platform(profile, platform);
     let home = tempfile::tempdir().expect("create temp home");
     let log = Arc::new(Logger::new("behavioral-ci"));
+    let root = config.root.clone();
+    let overlay = config.overlay.clone();
+    let store = ConfigStore::from_config(config);
     let ctx = Context::from_raw(
-        Arc::new(std::sync::RwLock::new(Arc::new(config))),
+        root,
+        overlay,
         platform,
         log_arc(&log),
         executor,
@@ -223,7 +228,7 @@ fn make_context(
             is_ci: Some(false),
         },
     );
-    (ctx, log, home)
+    (ctx, store, log, home)
 }
 
 #[cfg(unix)]
@@ -350,15 +355,14 @@ symlinks = [
             "{ \"editor.fontSize\": 14 }\n",
         )
         .build();
-    let (ctx, log, _home) = make_context(
+    let (ctx, store, log, _home) = make_context(
         &repo,
         "base",
         platform(Os::Linux, false),
         Arc::new(common::StubExecutor),
     );
-    let config = ctx.config_read();
-    let expected: Vec<_> = config
-        .symlinks
+    let symlinks = store.symlinks.read();
+    let expected: Vec<_> = symlinks
         .iter()
         .map(|symlink| {
             (
@@ -367,9 +371,9 @@ symlinks = [
             )
         })
         .collect();
-    drop(config);
+    drop(symlinks);
 
-    let first = test_api::tasks::files::symlinks::InstallSymlinks
+    let first = test_api::tasks::files::symlinks::InstallSymlinks::new(store.symlinks.clone())
         .run(&ctx)
         .expect("install symlinks");
     assert!(matches!(first, TaskResult::OkWithMessage(_)));
@@ -390,14 +394,15 @@ symlinks = [
         );
     }
 
-    let second = test_api::tasks::files::symlinks::InstallSymlinks
+    let second = test_api::tasks::files::symlinks::InstallSymlinks::new(store.symlinks.clone())
         .run(&ctx)
         .expect("second install symlinks");
     assert!(matches!(second, TaskResult::Ok));
 
-    let uninstall = test_api::tasks::files::symlinks::UninstallSymlinks
-        .run(&ctx)
-        .expect("uninstall symlinks");
+    let uninstall =
+        test_api::tasks::files::symlinks::UninstallSymlinks::new(store.symlinks.clone())
+            .run(&ctx)
+            .expect("uninstall symlinks");
     assert!(matches!(uninstall, TaskResult::OkWithMessage(_)));
 
     for (source, target) in &expected {
@@ -415,7 +420,7 @@ symlinks = [
         assert_eq!(target_content, source_content);
     }
 
-    let second_uninstall = test_api::tasks::files::symlinks::UninstallSymlinks
+    let second_uninstall = test_api::tasks::files::symlinks::UninstallSymlinks::new(store.symlinks)
         .run(&ctx)
         .expect("second uninstall symlinks");
     assert!(matches!(second_uninstall, TaskResult::Ok));
@@ -501,7 +506,7 @@ fn pacman_task_installs_only_missing_native_packages_in_one_batch() {
             ),
         ],
     ));
-    let (ctx, _log, _home) = make_context(
+    let (ctx, store, _log, _home) = make_context(
         &repo,
         "base",
         Platform {
@@ -512,7 +517,7 @@ fn pacman_task_installs_only_missing_native_packages_in_one_batch() {
         executor_arc(&executor),
     );
 
-    let result = test_api::tasks::packages::InstallPackages
+    let result = test_api::tasks::packages::InstallPackages::new(store.packages)
         .run(&ctx)
         .expect("install packages");
 
@@ -550,7 +555,7 @@ fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
             ),
         ],
     ));
-    let (ctx, _log, _home) = make_context(
+    let (ctx, store, _log, _home) = make_context(
         &repo,
         "base",
         Platform {
@@ -561,7 +566,7 @@ fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
         executor_arc(&executor),
     );
 
-    let result = test_api::tasks::packages::InstallAurPackages
+    let result = test_api::tasks::packages::InstallAurPackages::new(store.packages)
         .run(&ctx)
         .expect("install aur packages");
 
@@ -607,14 +612,14 @@ fn winget_task_uses_exact_ids_and_installs_each_missing_package() {
             ),
         ],
     ));
-    let (ctx, _log, _home) = make_context(
+    let (ctx, store, _log, _home) = make_context(
         &repo,
         "base",
         platform(Os::Windows, false),
         executor_arc(&executor),
     );
 
-    let result = test_api::tasks::packages::InstallPackages
+    let result = test_api::tasks::packages::InstallPackages::new(store.packages)
         .run(&ctx)
         .expect("install winget packages");
 
@@ -645,16 +650,18 @@ fn vscode_task_queries_once_and_installs_only_missing_extensions() {
             ),
         ],
     ));
-    let (ctx, _log, _home) = make_context(
+    let (ctx, store, _log, _home) = make_context(
         &repo,
         "desktop",
         platform(Os::Linux, false),
         executor_arc(&executor),
     );
 
-    let result = test_api::tasks::editors::vscode_extensions::InstallVsCodeExtensions
-        .run(&ctx)
-        .expect("install vscode extensions");
+    let result = test_api::tasks::editors::vscode_extensions::InstallVsCodeExtensions::new(
+        store.vscode_extensions,
+    )
+    .run(&ctx)
+    .expect("install vscode extensions");
 
     assert!(matches!(result, TaskResult::OkWithMessage(_)));
     executor.assert_complete();
@@ -709,14 +716,14 @@ fn systemd_task_reloads_then_enables_user_and_system_units() {
             ),
         ],
     ));
-    let (ctx, _log, _home) = make_context(
+    let (ctx, store, _log, _home) = make_context(
         &repo,
         "base",
         platform(Os::Linux, false),
         executor_arc(&executor),
     );
 
-    let result = test_api::tasks::system::systemd_units::ConfigureSystemd
+    let result = test_api::tasks::system::systemd_units::ConfigureSystemd::new(store.units)
         .run(&ctx)
         .expect("configure systemd");
 

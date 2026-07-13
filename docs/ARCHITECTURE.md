@@ -51,6 +51,13 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 
 ## High-Level Architecture
 
+The crate is organized into four layers with a strict dependency direction:
+`app` may depend on everything; `domains` depend on `engine` and `runtime`;
+`engine` depends on `runtime`; `runtime` depends only on `std` and external
+crates. `engine` and `runtime` never import `app` or `domains`.
+The feature-gated `testing` facade is not a production layer; it preserves
+stable integration-test access while forwarding to the new internal modules.
+
 ```mermaid
 flowchart TD
     linux["dotfiles.sh<br/>Linux wrapper"]
@@ -60,27 +67,39 @@ flowchart TD
     windows --> cli
 
     subgraph rust_binary["cli/ Rust binary"]
-        cli["cli.rs<br/>clap arguments"]
-        commands["commands/<br/>install, update, uninstall, test, version"]
-        config["config/<br/>TOML loading and profile resolution"]
-        engine["engine/<br/>context, plan, graph, scheduler"]
-        resources["resources/<br/>idempotent check/apply primitives"]
-        tasks["tasks/<br/>task implementations grouped by domain"]
-        platform["platform.rs<br/>OS detection"]
-        logging["logging/<br/>structured logs and summaries"]
-        exec["exec/<br/>subprocess execution, output, process trees,<br/>safe Windows shell commands"]
+        subgraph app_layer["app/ — application layer"]
+            cli["app/cli.rs<br/>clap arguments"]
+            commands["app/commands/<br/>install, update, uninstall, test, version"]
+            appconfig["app/config/<br/>aggregate Config + profiles + ConfigStore"]
+            catalog["app/catalog.rs + app/filter.rs + app/reload.rs<br/>task registry, filtering, cross-domain wiring, reload"]
+            validation["app/validation/<br/>cross-domain validation checks"]
+        end
+        subgraph domains_layer["domains/ — concrete domains"]
+            domains["ai, dotfiles, editors, files, git, overlay,<br/>packages, repository, shell, system<br/>(each colocates config + resources + tasks)"]
+        end
+        subgraph engine_layer["engine/ — generic engine"]
+            engine["context, plan, apply, orchestrate, mode,<br/>operation, parallel, graph, scheduler,<br/>stats, update_signal"]
+            task["engine/task/<br/>Task trait, metadata, macros, executor"]
+            resource["engine/resource.rs<br/>generic Resource contract"]
+        end
+        subgraph runtime_layer["runtime/ — runtime facilities"]
+            runtime["exec, fs, logging, platform,<br/>elevation, error, cancellation,<br/>config_support (generic TOML helpers),<br/>config_handle (ConfigHandle&lt;T&gt;)"]
+        end
     end
 
     cli --> commands
-    commands --> config
+    commands --> appconfig
     commands --> engine
-    engine --> tasks
-    engine --> resources
-    tasks --> resources
-    tasks --> exec
-    config --> platform
-    commands --> logging
-    config --> conf["conf/ TOML files<br/>packages, symlinks, profiles, manifest,<br/>systemd units, PAM, registry, chmod, git config, AI tooling/APM"]
+    commands --> catalog
+    catalog --> domains
+    domains --> engine
+    domains --> runtime
+    engine --> resource
+    engine --> task
+    engine --> runtime
+    appconfig --> domains
+    appconfig --> runtime
+    appconfig --> conf["conf/ TOML files<br/>packages, symlinks, profiles, manifest,<br/>systemd units, PAM, registry, chmod, git config, AI tooling/APM"]
 ```
 
 ## Component Architecture
@@ -110,11 +129,14 @@ The binary is built with `cargo` from `cli/Cargo.toml`. Key dependencies:
 - **clap** — CLI argument parsing with derive macros
 - **anyhow** — error handling and context propagation
 
-#### Entry Point (`main.rs`)
+#### Entry Point (`main.rs` / `lib.rs`)
 
-Parses CLI arguments via `cli::Cli`, creates a `Logger`, and dispatches to the matching command handler.
+`main.rs` delegates to the public `dotfiles_cli::run` entry point in `lib.rs`,
+which forwards to `app::run::run`. That function parses CLI arguments via
+`app::cli::Cli`, creates a `Logger`, sets up cancellation and elevation, and
+dispatches to the matching command handler.
 
-#### CLI (`cli.rs`)
+#### CLI (`app/cli.rs`)
 
 Defines the command structure using clap derive:
 
@@ -135,44 +157,51 @@ Install/update options:
 
 The wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`) handle only the `--build` flag and then forward all remaining arguments to the binary unchanged. All binary flags — including `-p`, `-d`, `-v`, `--skip`, `--only`, `--root`, and `--no-parallel` — are available when invoking via the wrappers.
 
-#### Commands (`commands/`)
+#### Commands (`app/commands/`)
 
 - **`install.rs`** — Uses `CommandRunner` to resolve the profile, load `Config`, build the task list, filter by `--skip`/`--only`, and execute the phased task pipeline. Before the task graph, it may self-update the binary and re-exec so the rest of the run uses the latest engine. It also attempts safe fast-forward-only repository synchronization in the task graph but leaves pinned dependency versions untouched. Exposes `run_pipeline(advance_versions)`, the shared implementation behind both `install` and `update`
 - **`update.rs`** — Delegates to `install::run_pipeline` with `advance_versions = true`, so it runs the same base task graph as `install` and additionally schedules the final Update phase to advance pinned dependency versions (currently the APM dependency refresh)
 - **`uninstall.rs`** — Conservatively removes detachable managed state: symlinks, installed Git hooks, and the wrapper entry point. It intentionally does not remove packages or roll back registry, systemd, shell, editor, AI tooling/APM, WSL, or overlay-script changes
 - **`test.rs`** — Runs configuration validation
 
-#### Config (`config/`)
+#### Config (`app/config/` + `domains/<domain>/config/`)
 
-`Config::load()` reads all TOML files from `conf/` and filters sections against the active profile's categories:
+The aggregate `Config` struct and its `Config::load()` composition live in
+`app/config/`, alongside `profiles.rs`. Each domain owns its own config model
+under `domains/<domain>/config/`; generic TOML parsing helpers live in
+`runtime/config_support/`. `Config::load()` reads all TOML files from `conf/`
+and filters sections against the active profile's categories:
 
 | Module | File | Description |
 | --- | --- | --- |
-| `profiles.rs` | `profiles.toml` | Profile resolution and category computation |
-| `helpers/toml_loader.rs` | (all) | Generic TOML loader |
-| `packages.rs` | `packages.toml` | System packages (pacman, AUR, winget) |
-| `symlinks.rs` | `symlinks.toml` | Symlink mappings |
-| `systemd_units.rs` | `systemd-units.toml` | Systemd units (Linux only) |
-| `pam.rs` | `pam.toml` | PAM service files (Linux only) |
-| `chmod.rs` | `chmod.toml` | File permissions |
-| `vscode_extensions.rs` | `vscode-extensions.toml` | VS Code extensions |
-| `registry.rs` | `registry.toml` | Windows registry entries |
-| `git_config.rs` | `git-config.toml` | Git configuration settings |
-| `copilot.rs` | `copilot.toml` | Copilot CLI settings (`~/.copilot/settings.json`) |
-| `manifest.rs` | `manifest.toml` | Sparse checkout file mappings |
-| `overlay.rs` | — | Overlay path resolution and persistence |
-| `scripts.rs` | `scripts.toml` | Custom script entries from overlay repo |
+| `app/config/profiles.rs` | `profiles.toml` | Profile resolution and category computation |
+| `runtime/config_support/toml_loader.rs` | (all) | Generic TOML loader |
+| `domains/packages/config/packages.rs` | `packages.toml` | System packages (pacman, AUR, winget) |
+| `domains/files/config/symlinks.rs` | `symlinks.toml` | Symlink mappings |
+| `domains/system/config/systemd_units.rs` | `systemd-units.toml` | Systemd units (Linux only) |
+| `domains/system/config/pam.rs` | `pam.toml` | PAM service files (Linux only) |
+| `domains/files/config/chmod.rs` | `chmod.toml` | File permissions |
+| `domains/editors/config/vscode_extensions.rs` | `vscode-extensions.toml` | VS Code extensions |
+| `domains/system/config/registry.rs` | `registry.toml` | Windows registry entries |
+| `domains/git/config/git_config.rs` | `git-config.toml` | Git configuration settings |
+| `domains/ai/config/copilot.rs` | `copilot.toml` | Copilot CLI settings (`~/.copilot/settings.json`) |
+| `domains/repository/config/manifest.rs` | `manifest.toml` | Sparse checkout file mappings |
+| `domains/overlay/config/overlay.rs` | — | Overlay path resolution and persistence |
+| `domains/overlay/config/scripts.rs` | `scripts.toml` | Custom script entries from overlay repo |
 
-#### Tasks (`tasks/`)
+#### Tasks (`engine/task/` + `domains/<domain>/tasks/`)
 
-Each task implements the `Task` trait:
+The generic `Task` trait, task metadata vocabulary, macros, and executor live in
+`engine/task/`; concrete task implementations live under
+`domains/<domain>/tasks/`. Each task implements the `Task` trait:
 
 ```rust
 pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
 
-    /// Which phase this task belongs to (Bootstrap, Sync, Provision, or Update).
+    /// Which phase this task belongs to
+    /// (Bootstrap, Sync, Provision, Validation, or Update).
     ///
     /// This is per-task metadata returned by the task itself — it is **not**
     /// derived from the folder the task lives in. A task can therefore live in
@@ -203,7 +232,17 @@ pub trait Task: Send + Sync + 'static {
 }
 ```
 
-A shared `Context` struct (defined in `engine/context.rs`) carries the loaded `Config`, `Platform`, `Logger`, and flags (`dry_run`, `parallel`, `home` path). Task-specific dependencies are injected via constructors: `UpdateRepository` and `ReloadConfig` share an `UpdateSignal` (`engine/update_signal.rs`) to coordinate config reloading, and hook tasks (`InstallGitHooks`, `UninstallGitHooks`) hold an `Arc<dyn FileSystemOps>` for testable filesystem access.
+A shared `Context` struct (defined in `engine/context.rs`) carries only generic
+execution and path state: repository and home paths, optional overlay path,
+platform, executor, logger, cancellation token, and execution flags. It does
+**not** carry the aggregate `Config`: the engine depends on `runtime` only and
+must not know about the application configuration type.
+
+Configuration reaches tasks through typed handles instead. The application layer loads the aggregate `Config`, splits it into one `runtime::ConfigHandle<T>` per domain slice (`app/config/store.rs`'s `ConfigStore`), and injects each handle into the task that needs it via that task's constructor (for example `InstallSymlinks::new(store.symlinks.clone())`). A `ConfigHandle<T>` is a cheaply-cloneable `Arc<RwLock<Arc<T>>>`; the app-owned `ReloadConfig` task (`app/reload.rs`) re-loads configuration after a pull and swaps every handle in place, so downstream tasks observe the new values without being rebuilt. App-only validation tasks hold a `ConfigHandle<Config>` for the whole aggregate.
+
+Other task-specific dependencies are injected the same way: `UpdateRepository` and `ReloadConfig` share an `UpdateSignal` (`engine/update_signal.rs`) to coordinate config reloading, and hook tasks (`InstallGitHooks`, `UninstallGitHooks`) hold an `Arc<dyn FileSystemOps>` for testable filesystem access.
+
+Cross-domain ordering constraints are **not** declared inside domains (which may name only same-domain tasks). Instead the application catalog (`app/catalog.rs`) wraps a task in `engine::TaskWithExtraDeps` to merge the extra dependency `TaskId`s — for example making `ConfigureSystemd` depend on `InstallSymlinks`, or `GenerateCompletions` depend on `UpdateRepository`. The decorator forwards the inner task's identity and behaviour unchanged, so tasks that depend on the wrapped task by type still resolve.
 
 The `execute()` function first evaluates `execution_policies()` (platform support, dry-run skip rules, and elevation declarations), then checks `should_run()` and calls `run_if_applicable()`, recording `Ok`, `NotApplicable`, `Skipped`, `DryRun`, or `Failed` in the logger. Before parallel phase dispatch, `run_tasks_to_completion()` calls `requires_elevation()` only for tasks whose policies and `should_run()` pass, then primes sudo for the tasks that predict a privileged mutation.
 
@@ -211,7 +250,8 @@ The `execute()` function first evaluates `execution_policies()` (platform suppor
 
 The execution engine provides the generic resource processing loop, dependency graph, and shared context used by all tasks. Key components:
 
-- **`context.rs`** — `Context` and `ContextOpts`: shared state (config, platform, logger, flags) threaded through every task
+- **`context.rs`** — `Context` and `ContextOpts`: generic paths, platform,
+  executor, logger, cancellation, and execution flags threaded through tasks
 - **`plan.rs`** — pure resource plan/diff construction from `ResourceState` + `ProcessOpts`
 - **`apply.rs`** — single-resource plan execution: log/dry-run → apply/remove → stats
 - **`orchestrate.rs`** — top-level resource orchestration with `process_resources()`, `process_resources_with_provider()`, and `process_resources_remove()`
@@ -223,16 +263,23 @@ The execution engine provides the generic resource processing loop, dependency g
   and cycle detection (Kahn's algorithm)
 - **`scheduler.rs`** — dependency-driven parallel task scheduling using OS threads and `mpsc` channels
 - **`stats.rs`** — `TaskResult` and `TaskStats` types
-- **`update_signal.rs`** — `Arc<AtomicBool>` signalling between `UpdateRepository` and `ReloadConfig`
+- **`task/`** — the generic `Task` trait, task metadata (`TaskPhase`, `Domain`, `TaskId`), task/resource macros, and the `execute()` runner
+- **`resource.rs`** — the generic `Resource`/`IntrinsicState`/`ResourceStateProvider` contract
+- **`update_signal.rs`** — `UpdateSignal` (backed by a `runtime::atomic_flag::AtomicFlag`) signalling between `UpdateRepository` and `ReloadConfig`
+
+The cooperative `CancellationToken` and its backing `AtomicFlag` are generic
+concurrency primitives that live in `runtime/` (so `runtime::exec` can honour
+cancellation without depending on `engine`); `engine` re-exports
+`CancellationToken` for its consumers.
 
 **Two axes: domain and phase.** Task files are organized by **domain** (what a
-task is about) under `cli/src/tasks/`, while each task independently declares its
-**phase** (when it runs) via `phase()`. The axes are orthogonal: a domain folder
-can hold tasks from different phases, and a single domain can span phases. Domain
-folders:
+task is about) under `cli/src/domains/<domain>/tasks/`, while each task
+independently declares its **phase** (when it runs) via `phase()`. The axes are
+orthogonal: a domain folder can hold tasks from different phases, and a single
+domain can span phases. Domains:
 
-- `core/` — self-update, CLI wrapper install, `PATH` setup
-- `repository/` — git pull, sparse checkout, config reload
+- `dotfiles/` — self-update, CLI wrapper install, `PATH` setup
+- `repository/` — git pull and sparse checkout
 - `git/` — git config, git hooks
 - `files/` — symlinks, file permissions
 - `shell/` — login shell, zsh completions
@@ -241,23 +288,28 @@ folders:
 - `editors/` — VS Code/editor extensions
 - `packages/` — system and AUR packages
 - `overlay/` — overlay script discovery and execution
-- `validation/` — configuration checks
 
-Every domain is a folder, so `tasks/` reads uniformly. A domain folder typically
-uses a thin `mod.rs` with per-task submodules (as in `system/`, `git/`, and
-`ai/apm/`). Cohesive modules can instead keep production code in `mod.rs` and
-move large tests to a sibling `tests.rs` (as in `editors/`, `overlay/`,
-`packages/`, `validation/`, and `repository/sparse_checkout/`). The framework
-itself — the `Task` trait, `TaskPhase`, `Domain`, the
-`resource_task!`/`task_deps!` macros, the task catalog, and the `--skip`/`--only`
-filter — lives in `mod.rs`, `macros.rs`, `catalog.rs`, and `filter.rs`.
+Cross-domain validation checks live in `app/validation/` (not a domain).
+
+Every domain is a folder under `domains/`, each colocating its config models
+(`config/`), resource implementations (`resources/`), and task implementations
+(`tasks/`). A domain's tasks folder typically uses a thin `mod.rs` with per-task
+submodules (as in `system/`, `git/`, and `ai/apm/`). Cohesive modules can
+instead keep production code in `mod.rs` and move large tests to a sibling
+`tests.rs` (as in `editors/`, `overlay/`, `packages/`, and
+`repository/sparse_checkout/`). The framework itself — the `Task` trait,
+`TaskPhase`, `Domain`, and the task/resource macros — lives in
+`engine/task/` (`mod.rs`, `types.rs`, `macros.rs`), while the task catalog and
+the `--skip`/`--only` filter live in `app/catalog.rs` and `app/filter.rs`.
 
 Task bodies generally use one of two convergence abstractions:
 
 - **Resources** for concrete desired state items such as symlinks, files,
   package entries, registry values, editor extensions, Git settings, and systemd
   units. Resources expose current state and apply/remove one item, and are
-  processed through the engine's resource helpers.
+  processed through the engine's resource helpers. The generic `Resource`
+  contracts, state providers, and `ResourceError` taxonomy live under
+  `engine::resource`; concrete implementations live in their owning domains.
 - **Operations** for idempotent workflows with ordered side effects, generated
   content, external-tool orchestration, or coordination state that does not map
   cleanly to one resource. `current_state()` returns an `OperationState<Plan>`;
@@ -277,20 +329,20 @@ soon as dependencies allow, so sibling tasks may complete in any order. Each tas
 is annotated with its domain folder:
 
 Pre-scheduler action:
-- `self_update` (core) — Updates the dotfiles binary from the latest GitHub release. Runs **before** the task graph (directly from `install.rs`) so all subsequent tasks use the latest code. It caches the latest release tag for one hour, but a cached tag newer than the running binary still triggers installation; update-available checks only write the cache after a successful install. If the binary is replaced, the process re-execs itself with a guard variable (`DOTFILES_REEXEC_GUARD`) to prevent an infinite loop.
+- `self_update` (dotfiles) — Updates the dotfiles binary from the latest GitHub release. Runs **before** the task graph (directly from `install.rs`) so all subsequent tasks use the latest code. It caches the latest release tag for one hour, but a cached tag newer than the running binary still triggers installation; update-available checks only write the cache after a successful install. If the binary is replaced, the process re-execs itself with a guard variable (`DOTFILES_REEXEC_GUARD`) to prevent an infinite loop.
 
 Bootstrap phase — prepares the tool itself:
 - `developer_mode` (system) — Enable Windows developer mode (required for symlinks)
-- `wrapper` (core) — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
-- `path` (core) — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
+- `wrapper` (dotfiles) — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
+- `path` (dotfiles) — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
 
 Sync phase — synchronize the dotfiles repository:
 - `update` (repository) — Update repository (`git pull --ff-only`)
 - `sparse_checkout` (repository) — Configure git sparse checkout
-- `reload_config` (repository) — Reload config from disk after `update` pulls new commits
+- `reload_config` (app) — Reload config from disk after `update` pulls new commits, swapping the shared `ConfigStore` handles. Owned by the application layer (`app/reload.rs`) because it re-composes the aggregate `Config` across every domain
 - `hooks` (git) — Install git hooks (copies `hooks/*` into `.git/hooks/`)
 - `completions` (shell) — Generate the zsh completion script into `symlinks/config/zsh/completions/`
-- `overlay_scripts` (overlay) — Discover overlay script definitions and log script count. The overlay *domain* spans two phases: this discovery task runs in the Sync phase, while the generated `OverlayScriptTask`s run in the Provision phase. Both live in `tasks/overlay/mod.rs` because phase is per-task metadata (see `phase()` above), not folder-derived.
+- `overlay_scripts` (overlay) — Discover overlay script definitions and log script count. The overlay *domain* spans two phases: this discovery task runs in the Sync phase, while the generated `OverlayScriptTask`s run in the Provision phase. Both live in `domains/overlay/tasks/mod.rs` because phase is per-task metadata (see `phase()` above), not folder-derived.
 
 Provision phase — converge declared configuration to its target state:
 - `packages` (packages) — Install system packages (pacman or winget)
@@ -313,8 +365,11 @@ Update phase — advance pinned/locked dependency versions (the `update` command
 Key dependency edges are `wrapper → path`, `sparse_checkout → update_repository
 → reload_config`, `update_repository → hooks/completions`, `reload_config →
 overlay_scripts`, `paru → aur_packages`, `symlinks → chmod/systemd/apm`, and
-`packages → shell/apm`. Other tasks in the same phase are peers and may run or
-finish in any order.
+`packages → shell/apm`. Cross-domain edges (everything except the same-domain
+`wrapper → path`, `paru → aur_packages`, and `sparse_checkout → update_repository`
+edges) are applied by the application catalog via `engine::TaskWithExtraDeps`,
+not declared inside the domains. Other tasks in the same phase are peers and may
+run or finish in any order.
 
 #### Overlay System
 
@@ -332,7 +387,7 @@ config.  When an overlay is set:
    (exit 0 = correct, exit 1 = apply needed), `--dryrun` (preview), and
    `--remove` (undo)
 
-#### Platform Detection (`platform.rs`)
+#### Platform Detection (`runtime/platform.rs`)
 
 The `Platform` struct detects the OS at compile time (`cfg!(target_os)`) and checks for Arch Linux at runtime (`/etc/arch-release`).
 
@@ -356,17 +411,17 @@ The `Platform` struct detects the OS at compile time (`cfg!(target_os)`) and che
 **Profile Integration:**
 - `excludes_category(category)` — returns true if the given category is incompatible with this platform
 
-Tasks use these methods in their `should_run()` implementation to determine platform compatibility. For example:
+Tasks use these methods in their `should_run()` implementation to determine platform compatibility. For example a config-backed task reads its injected `ConfigHandle` slice rather than an aggregate config on the context:
 
 ```rust
 fn should_run(&self, ctx: &Context) -> bool {
-    ctx.platform.supports_systemd() && !ctx.config_read().units.is_empty()
+    ctx.platform.supports_systemd() && !self.config.read().is_empty()
 }
 ```
 
 This is more expressive than `ctx.platform.is_linux()` because it clearly states *why* the platform matters (systemd support) rather than just checking the OS type.
 
-#### Logging (`logging/`)
+#### Logging (`runtime/logging/`)
 
 Structured logger that:
 - Prints bold console stage headers for each task (`==>` markers in the main
@@ -374,6 +429,9 @@ Structured logger that:
 - Records task outcomes (Ok, Skipped, DryRun, Failed)
 - Tracks operation counters
 - Prints a summary at the end of execution
+
+`logging/mod.rs` exposes the facade; the `logging/logger/` submodule owns
+`Logger` plus its progress, notification, and summary implementations.
 
 A **diagnostic log** is written alongside the main log under the dotfiles cache
 directory (`$XDG_CACHE_HOME/dotfiles/`, or `~/.cache/dotfiles/` when
@@ -438,15 +496,22 @@ packages::load(&conf.join("packages.toml"), active_categories)
     .context("loading packages.toml")?;
 ```
 
-Task failures are caught by `tasks::execute()` and recorded as `TaskStatus::Failed`. Independent tasks can continue, but dependent tasks are skipped if a prerequisite failed; all failures are reported in the summary.
+Task failures are caught by `engine::execute()` and recorded as
+`TaskStatus::Failed`. Independent tasks can continue, but dependent tasks are
+skipped if a prerequisite failed; all failures are reported in the summary.
 
 ## Testing Architecture
 
 ### Rust Tests
 
-- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `platform.rs`, `cli.rs`, `config/toml_loader.rs`, `tasks/core/*.rs`, `tasks/repository/*.rs`, `tasks/files/*.rs`)
+- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `runtime/platform.rs`, `app/cli.rs`, `runtime/config_support/toml_loader.rs`, `domains/dotfiles/tasks/*.rs`, `domains/repository/tasks/*.rs`, `domains/files/tasks/*.rs`)
 - **Integration tests**: Separate test binaries in `cli/tests/` (`install_command.rs`, `uninstall_command.rs`, `test_command.rs`), using `IntegrationTestContext` and `TestContextBuilder` helpers from `cli/tests/common/mod.rs`
 - **Snapshot tests**: Task list snapshots via the `insta` crate (`cli/tests/snapshots/`). Update with `INSTA_UPDATE=unseen cargo test` or `cargo insta review`
+
+Integration tests import the feature-gated `cli/src/testing/mod.rs` facade. Its
+legacy-shaped namespaces (`testing::tasks`, `testing::resources`, and similar)
+are compatibility exports only; production ownership remains in
+`app`, `domains`, `engine`, and `runtime`.
 
 The project uses `tempfile` as a dev-dependency for tests that need temporary directories.
 
@@ -501,19 +566,19 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers automatically 
 
 ### Adding New Tasks
 
-1. Create a new file in the relevant domain folder under `cli/src/tasks/<domain>/` (e.g. `core/`, `repository/`, `git/`, `files/`, `shell/`, `system/`, `ai/`), implementing the `Task` trait and declaring its `phase()` (Bootstrap, Sync, Provision, or Update)
-2. Add the module to that domain's `cli/src/tasks/<domain>/mod.rs`
-3. Add the task to `all_install_tasks()` in `cli/src/tasks/catalog.rs`
+1. Create a new file in the relevant domain's tasks folder under `cli/src/domains/<domain>/tasks/` (e.g. `dotfiles/`, `repository/`, `git/`, `files/`, `shell/`, `system/`, `ai/`), implementing the `Task` trait and declaring its `phase()` (Bootstrap, Sync, Provision, or Update)
+2. Add the module to that domain's `cli/src/domains/<domain>/tasks/mod.rs`
+3. Add the task to `all_install_tasks()` in `cli/src/app/catalog.rs`
 
 ### Adding New Configuration Types
 
 1. Create TOML file in `conf/`
-2. Add a config parser in `cli/src/config/`
+2. Add a config parser under `cli/src/domains/<domain>/config/`
 3. Add the field to the `Config` struct and a single `SectionLoader` call in
    `Config::load()` (e.g. `sections.collect_filtered(...)`). The same call
    loads the main config and merges the overlay, so there is no separate
    overlay-merge step to keep in sync.
-4. Create a task in the relevant domain folder under `cli/src/tasks/` (declaring the Provision phase) that consumes the config
+4. Create a task in the relevant domain's tasks folder under `cli/src/domains/<domain>/tasks/` (declaring the Provision phase) that consumes the config
 5. Document in CONFIGURATION.md
 
 ### Adding Overlay Scripts
@@ -544,7 +609,7 @@ such as Update under `install`, is skipped with no header).  Within each
 phase, tasks are executed in parallel using a dependency-graph scheduler.
 
 Each task declares its dependencies using the `task_deps!` macro (defined in
-`tasks/macros.rs`, re-exported from `tasks/mod.rs`), which implements
+`engine/task/macros.rs`, re-exported from `engine/task/mod.rs`), which implements
 `Task::dependencies()` returning `TaskId`s for prerequisite task structs.
 Before scheduling, `ResolvedTaskGraph::resolve()` maps those IDs to phase-local
 task indices, builds dependency/dependent adjacency lists, rejects duplicate

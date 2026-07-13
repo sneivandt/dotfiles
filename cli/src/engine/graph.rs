@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::tasks::{Task, TaskId};
+use crate::engine::{Task, TaskId};
 
 /// Reason a task dependency graph failed validation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -164,7 +164,7 @@ mod tests {
     use super::*;
     use std::any::TypeId;
 
-    use crate::tasks::{Context, TaskId, TaskPhase, TaskResult};
+    use crate::engine::{Context, TaskId, TaskPhase, TaskResult};
 
     use anyhow::Result;
 
@@ -327,39 +327,5 @@ mod tests {
     fn duplicate_task_ids_are_treated_as_invalid() {
         let tasks: Vec<&dyn Task> = vec![&DuplicateIdA, &DuplicateIdB];
         assert_eq!(validate(&tasks), Err(GraphError::DuplicateId));
-    }
-
-    // -----------------------------------------------------------------------
-    // install order: verify real tasks form a valid DAG
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn install_tasks_have_resolvable_dependencies() {
-        use std::collections::HashSet;
-        let tasks = crate::tasks::all_install_tasks();
-        let ids: Vec<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
-        let unique: HashSet<TaskId> = ids.iter().copied().collect();
-        assert_eq!(ids.len(), unique.len(), "duplicate task TaskIds found");
-        let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
-        for task in &tasks {
-            for dep in task.dependencies() {
-                assert!(
-                    present.contains(dep),
-                    "task '{}' depends on a TaskId not in the task list",
-                    task.name()
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn install_tasks_have_no_cycles() {
-        let tasks = crate::tasks::all_install_tasks();
-        let task_refs: Vec<&dyn Task> = tasks.iter().map(Box::as_ref).collect();
-        assert_eq!(
-            validate(&task_refs),
-            Ok(()),
-            "install task graph should be a valid DAG"
-        );
     }
 }

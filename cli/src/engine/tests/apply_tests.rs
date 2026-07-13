@@ -1,8 +1,8 @@
 use crate::engine::apply;
 use crate::engine::mode::ProcessOpts;
-use crate::logging::{Output, TaskRecorder, TaskStatus};
-use crate::resources::{Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::tasks::test_helpers::empty_config;
+use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::runtime::logging::{Output, TaskRecorder, TaskStatus};
+use crate::test_helpers::empty_config;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 

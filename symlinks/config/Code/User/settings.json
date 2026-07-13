@@ -86,7 +86,7 @@
     "explorer.confirmDelete": false,
     "explorer.confirmDragAndDrop": false,
     "explorer.fileNesting.enabled": true,
-    "explorer.fileNesting.expand": true,
+    "explorer.fileNesting.expand": false,
     "explorer.fileNesting.patterns": {
         "*.csproj": "$(capture).csproj.user",
         "*.sln": "$(capture).suo, $(capture).sln.DotSettings, $(capture).sln.DotSettings.user",

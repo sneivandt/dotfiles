@@ -114,26 +114,29 @@ Prefer the existing task macros over hand-written `Task` implementations:
 1. Check `.agents/skills/resource-implementation/SKILL.md`,
    `.agents/skills/rust-patterns/SKILL.md`, and the closest existing task for
    the current pattern.
-2. Use `resource_task!` for config-backed tasks that process a list of
-   resources through the shared resource engine.
+2. Use `config_resource_task!` for tasks with an injected config handle, or
+   `resource_task!` for config-free tasks that process resources through the
+   shared engine.
 3. Use `task_metadata!` for hand-written tasks that need custom control flow
    but still have static name, phase, domain, policies, and dependency
    metadata.
 4. Declare dependencies with `task_deps![...]` instead of ad-hoc ordering.
-5. Add the module to the domain's `cli/src/tasks/<domain>/mod.rs`.
+5. Add the module to the domain's
+   `cli/src/domains/<domain>/tasks/mod.rs`.
 6. Register the task in `all_install_tasks()` or `all_uninstall_tasks()` in
-   `cli/src/tasks/catalog.rs`.
+   `cli/src/app/catalog.rs`.
 7. Add unit or integration tests for gating, idempotency, and dry-run behavior.
 
 #### Adding New Configuration Types
 
 1. Create TOML file in `conf/`
-2. Add a parser module in `cli/src/config/`; prefer `config_section!` for
-   sectioned TOML lists
+2. Add a parser module under `cli/src/domains/<domain>/config/`; prefer
+   `config_section!` for sectioned TOML lists
 3. Add the field to the `Config` struct and a single `SectionLoader` call in
    `Config::load()`. One call (e.g. `sections.collect_filtered(...)`) loads the
    main config *and* merges the overlay, so there is no separate merge step.
-4. Create a task in the appropriate `cli/src/tasks/<domain>/` folder that consumes the config
+4. Create a task in `cli/src/domains/<domain>/tasks/` that consumes an injected
+   typed config handle
 
 #### Creating New Profiles
 
@@ -147,7 +150,10 @@ exclude = ["windows", "desktop"]
 ### Rust Code Guidelines
 
 - **Error Handling**: Use `anyhow::Result` with `.context()` for all fallible operations
-- **Task Pattern**: Prefer `resource_task!` for resource-backed tasks and `task_metadata!` for custom tasks; use `should_run()` only for platform/profile gating that cannot be represented by execution policies
+- **Task Pattern**: Prefer `config_resource_task!` for config-backed resources,
+  `resource_task!` for config-free resources, and `task_metadata!` for custom
+  tasks; use `should_run()` only for gating that cannot be represented by
+  execution policies
 - **Idempotency**: Always check if action is needed before taking it
 - **No Trailing Whitespace**: Remove all trailing whitespace from files
 - **Formatting**: Run `cargo fmt` before committing

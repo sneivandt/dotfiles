@@ -52,13 +52,14 @@ cargo test --manifest-path cli/Cargo.toml -- test_name
 
 Unit tests live alongside the code they test in `cli/src/`. Small modules keep
 tests inline; larger test modules can live in sibling files such as `tests.rs`,
-or in a grouped test folder such as `resources/tests/<resource>.rs`, and are
-included from the production module with `#[cfg(test)]` plus `#[path = "..."]`.
+with related resource suites separated by nested modules inside that file.
+Standard sibling module wiring is preferred; `#[path]` is reserved for
+established externalized test layouts.
 Examples:
-- `platform.rs` — Platform detection and category exclusion logic
-- `cli.rs` — CLI argument parsing and command structure
-- `config/toml_loader.rs` — TOML file parsing
-- `tasks/<domain>/*.rs` — Task `should_run` logic and helper functions
+- `runtime/platform.rs` — Platform detection and category exclusion logic
+- `app/cli.rs` — CLI argument parsing and command structure
+- `runtime/config_support/toml_loader.rs` — TOML file parsing
+- `domains/<domain>/tasks/*.rs` — Task applicability and helper functions
 
 ```rust
 #[cfg(test)]
@@ -72,9 +73,10 @@ mod tests {
 }
 ```
 
-Task tests use context builder helpers defined in `tasks/mod.rs` (available in `#[cfg(test)]` scope):
+Task tests use context builder helpers from `app/test_helpers.rs` (available in
+`#[cfg(test)]` scope):
 - `make_linux_context(config)`, `make_arch_context(config)`, `make_windows_context(config)`
-- `make_platform_context(config, os, is_arch)`, `make_platform_context_with_which(...)`
+- `ContextBuilder`, `make_platform_context_with_which(...)`
 - `empty_config(root)` — creates a `Config` with all empty vecs
 
 For tasks that use their own `fs_ops` field (e.g., `InstallGitHooks`), inject a
@@ -170,7 +172,7 @@ The `test` subcommand validates all configuration files at runtime:
 ./dotfiles.sh --build test
 ```
 
-This runs the same validation tasks as `commands/test.rs`, covering:
+This runs the same validation tasks as `app/commands/test.rs`, covering:
 - structured configuration diagnostics reported by `Config::validate()`
 - symlink source file existence
 - required config file presence

@@ -5,7 +5,7 @@
 //! rendered for dry-run output, and then handed to the apply layer for mutation.
 
 use super::mode::{ProcessOpts, ResourceAction};
-use crate::resources::ResourceState;
+use crate::engine::ResourceState;
 
 /// Planned operation for installing or updating one resource.
 #[derive(Debug, Clone, PartialEq, Eq)]

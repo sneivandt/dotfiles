@@ -2,7 +2,8 @@
 name: toml-configuration
 description: >
   TOML structure, category filtering, and loader conventions for conf/ and
-  cli/src/config/. Use when adding or changing declarative configuration.
+  the app/domain config modules. Use when adding or changing declarative
+  configuration.
 ---
 
 # TOML Configuration
@@ -57,10 +58,11 @@ Keep one clear path from file to desired state:
    supports overlays.
 5. Return typed values without embedding task behavior in the loader.
 
-`cli/src/config/mod.rs` owns top-level loading. Domain modules under
-`cli/src/config/` own their formats and validators. Consult the target module
-and the real file under `conf/` rather than relying on a duplicated inventory in
-this skill.
+`cli/src/app/config/mod.rs` owns aggregate loading. Modules under
+`cli/src/domains/<domain>/config/` own their formats and validators; generic
+TOML/category helpers live in `cli/src/runtime/config_support/`. Consult the
+target module and real file under `conf/` rather than duplicating an inventory
+here.
 
 ## Change Checklist
 

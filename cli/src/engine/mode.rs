@@ -1,6 +1,6 @@
 //! Processing strategy and action types for the resource lifecycle state machine.
 
-use crate::resources::ResourceState;
+use crate::engine::ResourceState;
 
 /// Processing strategy that determines how each [`ResourceState`] variant is handled.
 ///

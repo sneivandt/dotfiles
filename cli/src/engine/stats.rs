@@ -345,9 +345,8 @@ mod tests {
 
     #[test]
     fn finish_returns_ok_with_message_when_changes_were_recorded() {
-        let config =
-            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::tasks::test_helpers::make_linux_context(config);
+        let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::test_helpers::make_linux_context(config);
         let stats = TaskStats {
             changed: 1,
             already_ok: 0,
@@ -359,9 +358,8 @@ mod tests {
 
     #[test]
     fn finish_returns_ok_when_no_changes_were_recorded() {
-        let config =
-            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::tasks::test_helpers::make_linux_context(config);
+        let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::test_helpers::make_linux_context(config);
         let stats = TaskStats {
             changed: 0,
             already_ok: 1,
@@ -373,9 +371,8 @@ mod tests {
 
     #[test]
     fn finish_returns_ok_when_only_resource_skips_were_recorded() {
-        let config =
-            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::tasks::test_helpers::make_linux_context(config);
+        let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::test_helpers::make_linux_context(config);
         let stats = TaskStats {
             changed: 0,
             already_ok: 0,
@@ -387,9 +384,8 @@ mod tests {
 
     #[test]
     fn finish_returns_dry_run_when_dry_run() {
-        let config =
-            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::tasks::test_helpers::make_linux_context(config).with_dry_run(true);
+        let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::test_helpers::make_linux_context(config).with_dry_run(true);
         let stats = TaskStats {
             changed: 1,
             already_ok: 0,
@@ -401,9 +397,8 @@ mod tests {
 
     #[test]
     fn finish_returns_ok_when_dry_run_has_no_changes() {
-        let config =
-            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::tasks::test_helpers::make_linux_context(config).with_dry_run(true);
+        let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::test_helpers::make_linux_context(config).with_dry_run(true);
         let stats = TaskStats {
             changed: 0,
             already_ok: 1,
@@ -415,9 +410,8 @@ mod tests {
 
     #[test]
     fn finish_returns_failed_when_non_fatal_failures_were_recorded() {
-        let config =
-            crate::tasks::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::tasks::test_helpers::make_linux_context(config);
+        let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
+        let ctx = crate::test_helpers::make_linux_context(config);
         let stats = TaskStats {
             changed: 0,
             already_ok: 1,

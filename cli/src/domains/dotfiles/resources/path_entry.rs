@@ -1,0 +1,400 @@
+//! `PATH` entry resource.
+//!
+//! Ensures a directory is on the user's `PATH` by appending to
+//! `~/.profile` (Unix) or modifying the user `PATH` via the registry
+//! (Windows).
+use anyhow::{Context as _, Result};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::runtime::exec::Executor;
+
+/// Source for checking whether a directory is already on `PATH`.
+///
+/// Production code reads the real `PATH` variable; tests inject a fixed
+/// value to avoid depending on the host environment.
+#[derive(Debug, Clone)]
+enum PathSource {
+    /// Read from the `PATH` environment variable at check time.
+    Environment,
+    /// Use a fixed result (for testing).
+    #[cfg(test)]
+    Fixed(bool),
+}
+
+impl PathSource {
+    fn is_on_path(&self, dir: &Path) -> bool {
+        match self {
+            Self::Environment => std::env::var_os("PATH")
+                .is_some_and(|p| std::env::split_paths(&p).any(|entry| entry == dir)),
+            #[cfg(test)]
+            Self::Fixed(result) => *result,
+        }
+    }
+}
+
+/// Strategy for persisting a `PATH` addition.
+#[derive(Debug)]
+enum PathStrategy {
+    /// Append an `export` line to a POSIX shell profile file.
+    ShellProfile {
+        /// The profile file to modify (e.g. `~/.profile`).
+        path: PathBuf,
+        /// The export line to append.
+        line: String,
+    },
+    /// Modify the Windows user `PATH` via the registry.
+    ///
+    /// Writes directly via the `winreg` crate to preserve the original
+    /// value type (`REG_EXPAND_SZ` vs `REG_SZ`).  Using
+    /// `[Environment]::SetEnvironmentVariable` would silently coerce the
+    /// user's `PATH` to `REG_SZ`, baking the current expansion of tokens
+    /// like `%USERPROFILE%\bin` into permanent literals — a data-destroying
+    /// transformation with no in-band recovery.
+    WindowsRegistry {
+        /// Directory string to add to `PATH`.
+        dir: String,
+        /// Executor for broadcasting the environment change to other
+        /// processes after the registry write.
+        #[cfg_attr(not(windows), allow(dead_code, reason = "used conditionally via cfg"))]
+        executor: Arc<dyn Executor>,
+    },
+}
+
+/// A resource that ensures a directory is on the user's `PATH`.
+#[derive(Debug)]
+pub struct PathEntryResource {
+    /// The directory that should be on `PATH`.
+    dir: PathBuf,
+    /// How to persist the `PATH` change.
+    strategy: PathStrategy,
+    /// Source for the runtime `PATH` check.
+    path_source: PathSource,
+}
+
+impl PathEntryResource {
+    /// Create a new `PATH` entry resource.
+    ///
+    /// On Unix the resource appends to `~/.profile`; on Windows it modifies
+    /// the user `PATH` via the registry.
+    #[must_use]
+    pub fn new(
+        home: &Path,
+        platform: crate::runtime::platform::Platform,
+        executor: Arc<dyn Executor>,
+    ) -> Self {
+        let dir = home.join(".local").join("bin");
+
+        let strategy = if platform.is_windows() {
+            PathStrategy::WindowsRegistry {
+                dir: dir.to_string_lossy().into_owned(),
+                executor,
+            }
+        } else {
+            PathStrategy::ShellProfile {
+                path: home.join(".profile"),
+                line: "export PATH=\"$HOME/.local/bin:$PATH\"".to_string(),
+            }
+        };
+
+        Self {
+            dir,
+            strategy,
+            path_source: PathSource::Environment,
+        }
+    }
+
+    /// Override the `PATH` source with a fixed value (for testing).
+    #[cfg(test)]
+    #[must_use]
+    pub(super) const fn with_path_source(mut self, on_path: bool) -> Self {
+        self.path_source = PathSource::Fixed(on_path);
+        self
+    }
+
+    fn shell_profile_contains_managed_line(path: &Path, line: &str) -> Result<bool> {
+        if !path.exists() {
+            return Ok(false);
+        }
+
+        Ok(std::fs::read_to_string(path)
+            .with_context(|| format!("read {}", path.display()))?
+            .contains(line))
+    }
+}
+
+impl Resource for PathEntryResource {
+    fn description(&self) -> String {
+        format!("PATH \u{2192} {}", self.dir.display())
+    }
+
+    fn apply(&self) -> ResourceResult<ResourceChange> {
+        use std::io::Write;
+
+        match &self.strategy {
+            PathStrategy::ShellProfile { path, line } => {
+                if Self::shell_profile_contains_managed_line(path, line)? {
+                    return Ok(ResourceChange::AlreadyCorrect);
+                }
+
+                let mut file = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .with_context(|| format!("open {}", path.display()))?;
+                writeln!(file)?;
+                writeln!(file, "# Added by dotfiles")?;
+                writeln!(file, "{line}")?;
+                Ok(ResourceChange::Applied)
+            }
+            PathStrategy::WindowsRegistry { dir, executor } => {
+                if self.path_source.is_on_path(&self.dir) {
+                    return Ok(ResourceChange::AlreadyCorrect);
+                }
+
+                append_user_path(dir)?;
+                // Best-effort broadcast of the environment change so already-
+                // running shells / Explorer pick up the new PATH without a
+                // logoff.  SetEnvironmentVariable would do this automatically
+                // but also silently rewrites the value type, which is exactly
+                // what we are avoiding here — so we broadcast ourselves.
+                if let Err(e) = broadcast_environment_change(&**executor) {
+                    tracing::debug!("best-effort PATH broadcast failed: {e}");
+                }
+                Ok(ResourceChange::Applied)
+            }
+        }
+    }
+
+    fn remove(&self) -> ResourceResult<ResourceChange> {
+        // Leaving the directory on PATH is harmless; removing it from
+        // profile files or registry is fragile and surprising.
+        Ok(ResourceChange::AlreadyCorrect)
+    }
+}
+
+impl IntrinsicState for PathEntryResource {
+    fn current_state(&self) -> Result<ResourceState> {
+        match &self.strategy {
+            PathStrategy::ShellProfile { path, line } => {
+                if Self::shell_profile_contains_managed_line(path, line)? {
+                    Ok(ResourceState::Correct)
+                } else {
+                    Ok(ResourceState::Missing)
+                }
+            }
+            #[cfg(windows)]
+            PathStrategy::WindowsRegistry { dir, .. } => {
+                // Fast path: directory is already on the runtime PATH.
+                if self.path_source.is_on_path(&self.dir) {
+                    return Ok(ResourceState::Correct);
+                }
+
+                // Also check the persisted user PATH in the registry — it may
+                // already contain the directory even if the current process's
+                // environment block does not.
+                match user_path_contains(dir) {
+                    Ok(true) => return Ok(ResourceState::Correct),
+                    Ok(false) => {}
+                    Err(e) => {
+                        return Ok(ResourceState::Unknown {
+                            reason: e.to_string(),
+                        });
+                    }
+                }
+
+                Ok(ResourceState::Missing)
+            }
+            #[cfg(not(windows))]
+            PathStrategy::WindowsRegistry { .. } => {
+                if self.path_source.is_on_path(&self.dir) {
+                    return Ok(ResourceState::Correct);
+                }
+
+                Ok(ResourceState::Missing)
+            }
+        }
+    }
+}
+
+/// Append `dir` to the Windows user `PATH` in the registry, preserving the
+/// original value type (`REG_EXPAND_SZ` by default).
+#[cfg(windows)]
+fn append_user_path(dir: &str) -> Result<()> {
+    use winreg::RegKey;
+    use winreg::RegValue;
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_EXPAND_SZ};
+
+    let env = RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey_with_flags("Environment", KEY_READ | KEY_WRITE)
+        .context("opening HKCU\\Environment")?;
+
+    let (existing_value, existing_vtype) = match env.get_raw_value("Path") {
+        Ok(v) => {
+            let s = decode_reg_string(&v.bytes);
+            let vtype = v.vtype;
+            (s, vtype)
+        }
+        Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => (String::new(), REG_EXPAND_SZ),
+        Err(e) => {
+            return Err(anyhow::Error::from(e).context("reading HKCU\\Environment\\Path"));
+        }
+    };
+
+    if path_contains_entry(&existing_value, dir) {
+        return Ok(());
+    }
+
+    let new_value = if existing_value.is_empty() {
+        dir.to_string()
+    } else {
+        format!("{existing_value};{dir}")
+    };
+
+    let new_raw = RegValue {
+        bytes: encode_reg_string(&new_value).into(),
+        vtype: existing_vtype,
+    };
+    env.set_raw_value("Path", &new_raw)
+        .context("writing HKCU\\Environment\\Path")?;
+    Ok(())
+}
+
+/// No-op non-Windows backend so the cross-platform strategy enum can compile.
+#[cfg(not(windows))]
+#[allow(
+    clippy::unnecessary_wraps,
+    clippy::missing_const_for_fn,
+    reason = "matches Windows backend signature"
+)]
+fn append_user_path(_dir: &str) -> Result<()> {
+    Ok(())
+}
+
+/// Return `true` when the persisted user `PATH` in the registry already
+/// contains `dir`.
+#[cfg(windows)]
+fn user_path_contains(dir: &str) -> Result<bool> {
+    use winreg::RegKey;
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+
+    let env =
+        match RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags("Environment", KEY_READ) {
+            Ok(k) => k,
+            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(e) => {
+                return Err(anyhow::Error::from(e).context("opening HKCU\\Environment"));
+            }
+        };
+    match env.get_raw_value("Path") {
+        Ok(v) => Ok(path_contains_entry(&decode_reg_string(&v.bytes), dir)),
+        Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(anyhow::Error::from(e).context("reading HKCU\\Environment\\Path")),
+    }
+}
+
+/// Broadcast `WM_SETTINGCHANGE` for the `"Environment"` setting so Explorer
+/// and other top-level windows re-read their environment block.
+#[cfg(windows)]
+fn broadcast_environment_change(executor: &dyn Executor) -> Result<()> {
+    const BROADCAST_SCRIPT: &str = "Add-Type -Namespace Win32 -Name NativeMethods -MemberDefinition '[System.Runtime.InteropServices.DllImport(\"user32.dll\", SetLastError=true, CharSet=System.Runtime.InteropServices.CharSet.Auto)] public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.UIntPtr lpdwResult);'; $r = [System.UIntPtr]::Zero; [void][Win32.NativeMethods]::SendMessageTimeout([System.IntPtr]0xffff, 0x001A, [System.UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$r)";
+    let shell = if executor.which("pwsh") {
+        "pwsh"
+    } else {
+        "powershell"
+    };
+    executor.run(shell, &["-NoProfile", "-Command", BROADCAST_SCRIPT])?;
+    Ok(())
+}
+
+/// Non-Windows environment broadcast fallback.
+#[cfg(not(windows))]
+#[allow(
+    clippy::unnecessary_wraps,
+    clippy::missing_const_for_fn,
+    reason = "matches Windows backend signature"
+)]
+fn broadcast_environment_change(_executor: &dyn Executor) -> Result<()> {
+    Ok(())
+}
+
+/// Return `true` when `dir` already appears as a `;`-separated entry in
+/// `path` (case-insensitive on Windows).
+#[cfg(windows)]
+fn path_contains_entry(path: &str, dir: &str) -> bool {
+    let target = normalize_path_entry(&expand_env_vars(dir));
+    path.split(';')
+        .map(|entry| normalize_path_entry(&expand_env_vars(entry)))
+        .any(|entry| entry.eq_ignore_ascii_case(&target))
+}
+
+/// Expand `%VAR%` tokens in `value` against the current process environment.
+#[cfg(windows)]
+#[allow(
+    clippy::arithmetic_side_effects,
+    reason = "byte offsets returned by `find` on `%` (1 byte) are bounded by string length"
+)]
+fn expand_env_vars(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(start) = rest.find('%') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        if let Some(end) = after.find('%') {
+            let name = &after[..end];
+            if !name.is_empty()
+                && let Some(val) = std::env::var_os(name)
+            {
+                out.push_str(&val.to_string_lossy());
+                rest = &after[end + 1..];
+                continue;
+            }
+            out.push('%');
+            out.push_str(name);
+            out.push('%');
+            rest = &after[end + 1..];
+        } else {
+            out.push('%');
+            out.push_str(after);
+            rest = "";
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Normalize a path entry for comparison.
+#[cfg(windows)]
+fn normalize_path_entry(entry: &str) -> String {
+    let trimmed = entry.trim();
+    let unified: String = trimmed
+        .chars()
+        .map(|c| if c == '/' { '\\' } else { c })
+        .collect();
+    unified.trim_end_matches('\\').to_string()
+}
+
+/// Decode a UTF-16LE registry string payload, stripping any trailing NUL.
+#[cfg(windows)]
+fn decode_reg_string(bytes: &[u8]) -> String {
+    let wide: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|c| {
+            let lo = *c.first().unwrap_or(&0);
+            let hi = *c.get(1).unwrap_or(&0);
+            u16::from_le_bytes([lo, hi])
+        })
+        .collect();
+    String::from_utf16_lossy(&wide)
+        .trim_end_matches('\0')
+        .to_string()
+}
+
+/// Encode `value` as a NUL-terminated UTF-16LE byte buffer.
+#[cfg(windows)]
+fn encode_reg_string(value: &str) -> Vec<u8> {
+    let mut out: Vec<u8> = value.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    out.extend_from_slice(&[0, 0]);
+    out
+}

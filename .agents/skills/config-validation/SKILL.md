@@ -13,7 +13,7 @@ Validation happens at two levels: **runtime** (the `test` command) and
 
 ## Runtime: The `test` Command
 
-`commands/test.rs` runs seven validation tasks:
+`cli/src/app/commands/test.rs` runs seven validation tasks:
 
 | Task | What it checks |
 |---|---|
@@ -25,14 +25,14 @@ Validation happens at two levels: **runtime** (the `test` command) and
 | `RunShellcheck` | Shell scripts pass shellcheck (skipped if unavailable) |
 | `RunPSScriptAnalyzer` | PowerShell scripts pass PSScriptAnalyzer (skipped if unavailable) |
 
-Implementations live under `cli/src/tasks/validation/` and implement the
-`Task` trait. Keep `cli/src/commands/test.rs` as the authoritative task list.
+Implementations live under `cli/src/app/validation/` and implement the `Task`
+trait. Keep `cli/src/app/commands/test.rs` as the authoritative task list.
 
 ## Per-Module `validate()` Functions
 
-Each config module in `cli/src/config/` exposes a `validate()` function
-returning `Vec<Diagnostic>`. `Config::validate()` delegates aggregation to
-the internal `ConfigValidator` helper in `config/mod.rs`:
+Each domain config module exposes a `validate()` function returning
+`Vec<Diagnostic>`. `Config::validate()` delegates aggregation to the internal
+`ConfigValidator` helper in `app/config/mod.rs`:
 
 ```rust
 pub fn validate(&self, platform: Platform) -> Vec<Diagnostic> {
@@ -58,7 +58,7 @@ rule.
 
 ### Validator Builder
 
-`config/helpers/validation.rs` provides a fluent builder:
+`runtime/config_support/validation.rs` provides a fluent builder:
 
 ```rust
 let diagnostics = Validator::new("packages.toml")
@@ -87,7 +87,7 @@ Key API:
 2. Use the `Validator` builder for consistency
 3. Assign a stable dotted code to every rule and classify unsafe/structurally
    invalid values as `Severity::Error`
-4. Wire it into `ConfigValidator::validate_all()` in `config/mod.rs`
+4. Wire it into `ConfigValidator::validate_all()` in `app/config/mod.rs`
 
 ## Integration Tests: Config Drift
 
@@ -119,6 +119,6 @@ config_drift` so manifest/symlink drift is caught before CI.
 
 - Use the `Validator` builder for all per-module validation — avoid manual `Vec::push()` loops
 - Every config module should have a `validate()` function
-- Wire new validators into `ConfigValidator::validate_all()` in `config/mod.rs`
+- Wire new validators into `ConfigValidator::validate_all()` in `app/config/mod.rs`
 - Config drift tests read real files — keep them self-contained with private TOML types
-- Validation tasks in `tasks/validation/mod.rs` follow the standard `Task` trait pattern
+- Validation tasks in `app/validation/mod.rs` follow the standard `Task` trait pattern

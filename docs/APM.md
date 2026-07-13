@@ -13,9 +13,9 @@ except during `dotfiles update`.
 | `symlinks/apm/config/*.yml` | Manifest fragments linked into `~/.apm/config/`. |
 | `symlinks/apm/plugins/dot-*` | Local APM plugins for reusable personal skills and agent workflows. |
 | `conf/symlinks.toml` | Links APM config fragments and local plugins into `~/.apm/`. |
-| `cli/src/tasks/ai/apm/` | Rust tasks that merge fragments, install/update APM deps, choose targets, and repair Copilot App workflows. |
-| `cli/src/config/apm.rs` | Config validation for APM fragments, local plugin references, and direct MCP declarations. |
-| `cli/src/tasks/validation/checks.rs` | `ValidateApmPlugins`, which runs APM's own package dry-run validator. |
+| `cli/src/domains/ai/tasks/apm/` | Rust tasks that merge fragments, install/update APM deps, choose targets, and repair Copilot App workflows. |
+| `cli/src/domains/ai/config/apm.rs` | Config validation for APM fragments, local plugin references, and direct MCP declarations. |
+| `cli/src/app/validation/checks.rs` | `ValidateApmPlugins`, which runs APM's own package dry-run validator. |
 
 The checked-in `base.yml` fragment declares the local `dot-*` plugins plus
 external dependencies. Platform-specific fragments, such as `arch.yml`, add
@@ -186,7 +186,7 @@ cd symlinks/apm/plugins/dot-code
 apm pack --dry-run --verbose
 ```
 
-Rust changes under `cli/src/tasks/ai/apm/` also need the normal Rust checks:
+Rust changes under `cli/src/domains/ai/tasks/apm/` also need the normal Rust checks:
 
 ```bash
 cd cli

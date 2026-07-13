@@ -39,7 +39,9 @@ fn symlinks_install_creates_links_from_config() {
         .build();
 
     let ec = test.make_context("base");
-    let result = InstallSymlinks.run(&ec.ctx).unwrap();
+    let result = InstallSymlinks::new(ec.store.symlinks.clone())
+        .run(&ec.ctx)
+        .unwrap();
     assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
     let link = ec.ctx.home.join(".bashrc");
@@ -62,7 +64,9 @@ fn symlinks_install_dry_run_creates_no_links() {
         .build();
 
     let ec = test.make_dry_run_context("base");
-    let result = InstallSymlinks.run(&ec.ctx).unwrap();
+    let result = InstallSymlinks::new(ec.store.symlinks.clone())
+        .run(&ec.ctx)
+        .unwrap();
     assert!(matches!(result, TaskResult::DryRun));
 
     let link = ec.ctx.home.join(".bashrc");
@@ -81,10 +85,14 @@ fn symlinks_install_is_idempotent() {
 
     let ec = test.make_context("base");
 
-    let first = InstallSymlinks.run(&ec.ctx).unwrap();
+    let first = InstallSymlinks::new(ec.store.symlinks.clone())
+        .run(&ec.ctx)
+        .unwrap();
     assert!(matches!(first, TaskResult::OkWithMessage(_)));
 
-    let second = InstallSymlinks.run(&ec.ctx).unwrap();
+    let second = InstallSymlinks::new(ec.store.symlinks.clone())
+        .run(&ec.ctx)
+        .unwrap();
     assert!(matches!(second, TaskResult::Ok));
 
     // Symlink must still be valid after both runs
@@ -105,7 +113,11 @@ fn symlinks_uninstall_materialises_content() {
     let ec = test.make_context("base");
 
     // Install first
-    drop(InstallSymlinks.run(&ec.ctx).unwrap());
+    drop(
+        InstallSymlinks::new(ec.store.symlinks.clone())
+            .run(&ec.ctx)
+            .unwrap(),
+    );
     assert!(
         ec.ctx
             .home
@@ -116,7 +128,9 @@ fn symlinks_uninstall_materialises_content() {
     );
 
     // Uninstall
-    let result = UninstallSymlinks.run(&ec.ctx).unwrap();
+    let result = UninstallSymlinks::new(ec.store.symlinks.clone())
+        .run(&ec.ctx)
+        .unwrap();
     assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
     // Target must now be a regular file with the original content
@@ -146,7 +160,9 @@ fn symlinks_install_desktop_profile_includes_both_sections() {
         .build();
 
     let ec = test.make_context("desktop");
-    let result = InstallSymlinks.run(&ec.ctx).unwrap();
+    let result = InstallSymlinks::new(ec.store.symlinks.clone())
+        .run(&ec.ctx)
+        .unwrap();
     assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
     assert!(
@@ -301,7 +317,7 @@ fn chmod_applies_permissions_from_config() {
     std::fs::write(&target, "Host *\n").unwrap();
     std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-    let task = ApplyFilePermissions;
+    let task = ApplyFilePermissions::new(ec.store.chmod.clone());
     let result = task.run(&ec.ctx).unwrap();
     assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
@@ -328,7 +344,7 @@ fn chmod_is_idempotent() {
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "Host *\n").unwrap();
 
-    let task = ApplyFilePermissions;
+    let task = ApplyFilePermissions::new(ec.store.chmod.clone());
     drop(task.run(&ec.ctx).unwrap());
     let second = task.run(&ec.ctx).unwrap();
     assert!(matches!(second, TaskResult::Ok));
@@ -351,7 +367,7 @@ fn execute_records_no_failures_for_successful_task() {
         .build();
 
     let ec = test.make_context("base");
-    tasks::execute(&InstallSymlinks, &ec.ctx);
+    tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
 
     assert_eq!(
         ec.log.failure_count(),
@@ -366,7 +382,7 @@ fn execute_records_not_applicable_when_skipped() {
     let test = common::TestContextBuilder::new().build();
     let ec = test.make_context("base");
 
-    tasks::execute(&InstallSymlinks, &ec.ctx);
+    tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
     assert_eq!(
         ec.log.failure_count(),
         0,
@@ -387,7 +403,7 @@ fn execute_mixed_skip_and_success() {
     let ec = test.make_context("base");
 
     // Symlinks task has empty config → skipped
-    tasks::execute(&InstallSymlinks, &ec.ctx);
+    tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
     // Hooks task has real hooks → succeeds
     tasks::execute(&InstallGitHooks::new(), &ec.ctx);
 
@@ -418,7 +434,9 @@ fn chmod_dry_run_preserves_permissions() {
     std::fs::write(&target, "Host *\n").unwrap();
     std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-    let result = ApplyFilePermissions.run(&ec.ctx).unwrap();
+    let result = ApplyFilePermissions::new(ec.store.chmod.clone())
+        .run(&ec.ctx)
+        .unwrap();
     assert!(matches!(result, TaskResult::DryRun));
 
     let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
@@ -440,7 +458,9 @@ fn git_config_dry_run_makes_no_changes() {
         .build();
 
     let ec = test.make_dry_run_context("base");
-    let result = ConfigureGit.run(&ec.ctx).unwrap();
+    let result = ConfigureGit::new(ec.store.git_settings.clone())
+        .run(&ec.ctx)
+        .unwrap();
     assert!(matches!(result, TaskResult::DryRun));
 }
 
@@ -476,7 +496,7 @@ fn dry_run_pipeline_produces_no_failures() {
 
     let ec = test.make_dry_run_context("base");
 
-    for task in tasks::all_install_tasks() {
+    for task in tasks::all_install_tasks(ec.store.clone()) {
         if FILESYSTEM_TASKS.contains(&task.name()) && task.should_run(&ec.ctx) {
             tasks::execute(task.as_ref(), &ec.ctx);
         }

@@ -1,11 +1,11 @@
 use crate::engine::mode::ProcessOpts;
 use crate::engine::{
-    TaskResult, process_resources, process_resources_remove, process_resources_with_provider,
-};
-use crate::resources::{
     Resource, ResourceChange, ResourceResult, ResourceState, ResourceStateProvider,
 };
-use crate::tasks::test_helpers::empty_config;
+use crate::engine::{
+    TaskResult, process_resources, process_resources_remove, process_resources_with_provider,
+};
+use crate::test_helpers::empty_config;
 use std::{
     path::PathBuf,
     sync::{

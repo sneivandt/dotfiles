@@ -16,31 +16,25 @@ commands. Shell wrappers only bootstrap and invoke the binary.
 
 | Work area | Primary files | Use this skill |
 |---|---|---|
-| New or changed resource type | `cli/src/resources/`, `cli/src/tasks/<domain>/` | `resource-implementation` |
-| Operation-style task bodies, scheduling, dependencies, parallelism | `cli/src/engine/`, `cli/src/tasks/<domain>/`, `cli/src/commands/mod.rs` | `engine-orchestration` |
-| Error handling, idempotency, dry-run behaviour | `cli/src/resources/`, `cli/src/tasks/` | `error-handling-patterns` |
-| Console output, task recording, summaries | `cli/src/logging/` | `logging-patterns` |
-| TOML parsing or config sections | `cli/src/config/`, `conf/` | `toml-configuration`, `config-validation` |
-| Profiles or sparse checkout | `cli/src/config/profiles.rs`, `cli/src/tasks/repository/sparse_checkout/mod.rs` | `profile-system`, `sparse-checkout-patterns` |
+| New or changed resource type | `cli/src/domains/<domain>/resources/`, `cli/src/domains/<domain>/tasks/` | `resource-implementation` |
+| Operation-style task bodies, scheduling, dependencies, parallelism | `cli/src/engine/`, domain tasks, `cli/src/app/commands/` | `engine-orchestration` |
+| Error handling, idempotency, dry-run behaviour | domain resources/tasks, `cli/src/engine/` | `error-handling-patterns` |
+| Console output, task recording, summaries | `cli/src/runtime/logging/`, `cli/src/engine/task/execute.rs` | `logging-patterns` |
+| TOML parsing or config sections | `cli/src/app/config/`, domain config modules, `conf/` | `toml-configuration`, `config-validation` |
+| Profiles or sparse checkout | `cli/src/app/config/profiles.rs`, `cli/src/domains/repository/tasks/sparse_checkout/` | `profile-system`, `sparse-checkout-patterns` |
 | Windows-specific features | registry, symlinks, PowerShell wrapper, platform gates | `windows-specific-patterns`, `cross-platform-verification` |
-| Package installation | `cli/src/resources/package.rs`, `cli/src/tasks/packages/mod.rs` | `package-management` |
-| Overlay config or script tasks | `cli/src/config/overlay.rs`, `cli/src/resources/script.rs` | `overlay-scripts` |
+| Package installation | `cli/src/domains/packages/` | `package-management` |
+| Overlay config or script tasks | `cli/src/domains/overlay/` | `overlay-scripts` |
 
 ## Project Layout
 
 ```text
 cli/src/
-├── main.rs         # Entry point: logging setup and command dispatch
-├── cli.rs          # clap CLI definitions
-├── config/         # TOML loading, profile/category filtering, validation
-├── resources/      # Declarative Resource, IntrinsicState, providers
-├── engine/         # Context, resource/operation plans, orchestration, scheduler
-├── tasks/          # Task trait, macros, task catalog, domain-grouped tasks
-├── commands/       # install, update, uninstall, test, version, log command runners
-├── logging/        # Logger, buffered parallel output, diagnostic logs
-├── exec/           # Executor, captured output, and process-tree management
-├── fs/             # Filesystem facade, recursive copy, and temporary guards
-└── platform.rs     # OS/capability detection
+├── app/            # CLI, commands, aggregate config, catalog, validation
+├── domains/        # Vertical domains colocating config, resources, and tasks
+├── engine/         # Generic task/resource/operation contracts and scheduling
+├── runtime/        # Execution, filesystem, logging, platform, config support
+└── testing/        # Feature-gated compatibility facade for integration tests
 ```
 
 ## Core Conventions
@@ -48,11 +42,12 @@ cli/src/
 - Use `anyhow::Result` with contextual `?` propagation in commands/tasks, and
   typed `ResourceError` values in resource implementations when a resource-level
   failure needs classification.
-- Prefer the `resource_task!` macro for config-to-resource tasks. For
+- Prefer `config_resource_task!` for tasks with an injected
+  `ConfigHandle<T>` and `resource_task!` for config-free resource tasks. For
   idempotent multi-step workflows that do not fit one resource, implement
   `Operation` and call `process_operation()` from the task body.
 - Declare dependencies with `task_deps![...]`; register static tasks in
-  `cli/src/tasks/catalog.rs`.
+  `cli/src/app/catalog.rs`.
 - Use `ExecutionPolicy` for central platform, dry-run, and elevation gates.
   Tasks that declare `RequiresElevation` must implement `needs_elevation()` so
   sudo is primed only when a privileged mutation is actually needed.
@@ -73,8 +68,8 @@ cli/src/
 
 ## Task and Resource Rules
 
-- Tasks live in domain folders under `cli/src/tasks/<domain>/` or
-  `cli/src/tasks/validation/mod.rs`.
+- Concrete tasks live under `cli/src/domains/<domain>/tasks/`; cross-domain
+  validation tasks live in `cli/src/app/validation/`.
 - Resource state should be discovered through `IntrinsicState` or a
   `ResourceStateProvider`, then applied through `process_resources()`,
   `process_resources_with_provider()`, or `process_resources_remove()`.
@@ -84,8 +79,8 @@ cli/src/
   centralize check -> dry-run -> mutate order.
 - Fully custom tasks that cannot use resources or operations must still follow
   check -> dry-run -> mutate order manually.
-- Clone config data out of `ctx.config_read()` before long-running work or
-  parallel processing.
+- Inject typed `ConfigHandle<T>` values into config-backed tasks and keep read
+  guards out of long-running or parallel work.
 - Keep behaviour idempotent: re-running should converge to the same state.
 
 ## Validation

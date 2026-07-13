@@ -9,9 +9,10 @@
 
 use dotfiles_cli::testing as test_api;
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use test_api::config::Config;
+use test_api::config::ConfigStore;
 use test_api::config::profiles;
 use test_api::exec::{ExecResult, Executor, SystemExecutor};
 use test_api::logging::{Log, Logger};
@@ -218,6 +219,8 @@ impl Executor for StubExecutor {
 pub(crate) struct ExecutionContext {
     /// Task execution context.
     pub ctx: Context,
+    /// Shared configuration store for building tasks bound to config slices.
+    pub store: ConfigStore,
     /// Logger for inspecting task outcomes.
     pub log: Arc<Logger>,
     /// Temporary home directory — dropped when this struct is dropped.
@@ -246,8 +249,12 @@ impl IntegrationTestContext {
         let config = self.load_config(profile);
         let home = tempfile::tempdir().expect("create home dir");
         let log = Arc::new(Logger::new("test"));
+        let root = config.root.clone();
+        let overlay = config.overlay.clone();
+        let store = ConfigStore::from_config(config);
         let ctx = Context::from_raw(
-            Arc::new(RwLock::new(Arc::new(config))),
+            root,
+            overlay,
             Platform::detect(),
             log_arc(&log),
             Arc::new(StubExecutor),
@@ -261,6 +268,7 @@ impl IntegrationTestContext {
         );
         ExecutionContext {
             ctx,
+            store,
             log,
             _home: home,
         }
@@ -285,8 +293,12 @@ impl IntegrationTestContext {
         let config = self.load_config_for_platform(profile, platform);
         let home = tempfile::tempdir().expect("create home dir");
         let log = Arc::new(Logger::new("test"));
+        let root = config.root.clone();
+        let overlay = config.overlay.clone();
+        let store = ConfigStore::from_config(config);
         let ctx = Context::from_raw(
-            Arc::new(RwLock::new(Arc::new(config))),
+            root,
+            overlay,
             platform,
             log_arc(&log),
             Arc::new(SystemExecutor),
@@ -295,6 +307,7 @@ impl IntegrationTestContext {
         );
         ExecutionContext {
             ctx,
+            store,
             log,
             _home: home,
         }

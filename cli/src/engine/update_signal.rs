@@ -1,14 +1,15 @@
-//! Typed signal shared between [`crate::tasks::repository::update::UpdateRepository`] and
-//! [`crate::tasks::repository::reload_config::ReloadConfig`].
+//! Typed signal shared between the repository-update task and the
+//! configuration-reload task.
 //!
-//! `UpdateSignal` wraps an [`AtomicFlag`](super::atomic_flag::AtomicFlag) but
+//! `UpdateSignal` wraps an `AtomicFlag` but
 //! exposes only the two operations that matter for this use-case:
 //! [`UpdateSignal::mark_updated`](crate::engine::update_signal::UpdateSignal::mark_updated)
-//! (called by `UpdateRepository`) and [`UpdateSignal::was_updated`](crate::engine::update_signal::UpdateSignal::was_updated) (called
-//! by `ReloadConfig`).  This makes the cross-task coupling explicit and
-//! self-documenting while remaining zero-cost at runtime.
+//! (called after a successful pull) and
+//! [`UpdateSignal::was_updated`](crate::engine::update_signal::UpdateSignal::was_updated)
+//! (called to decide whether a reload is necessary).  This makes the cross-task
+//! coupling explicit and self-documenting while remaining zero-cost at runtime.
 
-use super::atomic_flag::AtomicFlag;
+use crate::runtime::atomic_flag::AtomicFlag;
 
 /// A lightweight, cheaply-clonable flag that records whether the dotfiles
 /// repository was updated during the current run.
@@ -29,16 +30,16 @@ impl UpdateSignal {
 
     /// Record that the repository was updated.
     ///
-    /// Called by [`crate::tasks::repository::update::UpdateRepository`] after a successful
-    /// `git pull` that fetched new commits.
+    /// Called by the repository-update task after a successful `git pull` that
+    /// fetched new commits.
     pub fn mark_updated(&self) {
         self.flag.set();
     }
 
     /// Returns `true` if [`Self::mark_updated`] has been called.
     ///
-    /// Called by [`crate::tasks::repository::reload_config::ReloadConfig`] to decide whether
-    /// a config reload is necessary.
+    /// Called by the configuration-reload task to decide whether a config
+    /// reload is necessary.
     #[must_use]
     pub fn was_updated(&self) -> bool {
         self.flag.get()

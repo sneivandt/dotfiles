@@ -11,7 +11,7 @@ description: >
 
 - changing console/log-file output behavior
 - adding task result recording or summary behavior
-- touching `cli/src/logging/` or logger usage in task execution
+- touching `cli/src/runtime/logging/` or logger usage in task execution
 
 ## Do not use this skill when
 
@@ -23,16 +23,16 @@ description: >
 
 - Initialize subscriber once at startup, then create one shared `Logger`.
 - Access logging through `ctx.log`; do not construct additional loggers in tasks.
-- Task result recording is owned by `tasks::execute()`; tasks should not call
+- Task result recording is owned by `engine::execute()`; tasks should not call
   `record_task()` directly.
 - Debug-level detail may be suppressed on terminal in non-verbose mode, but
   persistent logs remain complete.
 
 Canonical implementations:
-- `cli/src/logging/mod.rs`
-- `cli/src/logging/subscriber.rs`
-- `cli/src/logging/logger.rs`
-- `cli/src/tasks/mod.rs` (task result recording path)
+- `cli/src/runtime/logging/mod.rs`
+- `cli/src/runtime/logging/subscriber.rs`
+- `cli/src/runtime/logging/logger/`
+- `cli/src/engine/task/execute.rs` (task result recording)
 
 ## Implementation procedure / core patterns
 

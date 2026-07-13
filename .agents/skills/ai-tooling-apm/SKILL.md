@@ -21,7 +21,7 @@ the Rust `InstallApmPackages` task.
 | `symlinks/apm/plugins/dot-agent` | Local agent interaction workflow skills |
 | `symlinks/apm/plugins/dot-skill` | Local skill/plugin maintenance skills |
 | `conf/symlinks.toml` | Links `apm/config/base.yml` and `apm/plugins/*` from this repo |
-| `cli/src/tasks/ai/apm/` | `InstallApmPackages` (Provision phase) merges fragments + runs `apm install` for Copilot and Codex targets; `UpdateApmPackages` (Update phase, `update` command only) advances locked deps via `apm outdated` + `apm update` with the same target selection. The module is split into focused files: `install.rs`, `update.rs`, `commands.rs`, `targets.rs`, `fragments.rs`, `manifest.rs`, `outdated.rs`, and the `autopilot/` submodule; `mod.rs` only wires modules, re-exports tasks, and owns shared constants/test imports. |
+| `cli/src/domains/ai/tasks/apm/` | `InstallApmPackages` (Provision phase) merges fragments + runs `apm install` for Copilot and Codex targets; `UpdateApmPackages` (Update phase, `update` command only) advances locked deps via `apm outdated` + `apm update` with the same target selection. The module is split into focused files: `install.rs`, `update.rs`, `commands.rs`, `targets.rs`, `fragments.rs`, `manifest.rs`, `outdated.rs`, and the `autopilot/` submodule; `mod.rs` only wires modules, re-exports tasks, and owns shared constants/test imports. |
 
 ## When to Change What
 
@@ -86,8 +86,9 @@ schedules the Update-phase `UpdateApmPackages` task to run `apm outdated` +
 `apm update`.  That task guards itself — it only contacts APM when the manifest
 has already been installed successfully (lockfile present and the success marker
 matches) — so a failed/partial install never advances locked refs.  The
-`update`-only scheduling lives in `run_pipeline` (`commands/install.rs`); the
+`update`-only scheduling lives in `run_pipeline`
+(`app/commands/install.rs`); the
 task itself does not read `ctx.advance_versions`.
 
-For changes to `cli/src/tasks/ai/apm/`, also run the Rust checks from the
+For changes to `cli/src/domains/ai/tasks/apm/`, also run the Rust checks from the
 `cross-platform-verification` skill.

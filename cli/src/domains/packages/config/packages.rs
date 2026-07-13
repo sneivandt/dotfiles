@@ -1,0 +1,163 @@
+//! Package configuration loading.
+use serde::Deserialize;
+
+use crate::runtime::config_support::Diagnostic;
+use crate::runtime::config_support::config_section;
+
+/// A package to install.
+#[derive(Debug, Clone)]
+pub struct Package {
+    /// Package name or identifier (e.g., "git", "Git.Git" for winget).
+    pub name: String,
+    /// Whether this is an AUR (Arch User Repository) package.
+    pub is_aur: bool,
+}
+
+/// TOML package entry - can be either a string or a table with metadata.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum PackageEntry {
+    Simple(String),
+    WithMetadata { name: String, aur: Option<bool> },
+}
+
+config_section! {
+    field: "packages",
+    entry: PackageEntry,
+    item: Package,
+    map: |entry| match entry {
+        PackageEntry::Simple(name) => Package {
+            name,
+            is_aur: false,
+        },
+        PackageEntry::WithMetadata { name, aur } => Package {
+            name,
+            is_aur: aur.unwrap_or(false),
+        },
+    },
+}
+
+/// Validate package entries and return any warnings.
+#[must_use]
+pub fn validate(
+    packages: &[Package],
+    platform: crate::runtime::platform::Platform,
+) -> Vec<Diagnostic> {
+    use crate::runtime::config_support::validation::{Validator, check};
+
+    Validator::new(PACKAGES_TOML)
+        .check_each(
+            packages,
+            |pkg| &pkg.name,
+            |pkg| {
+                [
+                    check(
+                        pkg.is_aur && !platform.is_arch_linux(),
+                        "package.aur-not-arch",
+                        "AUR package specified but platform is not Arch Linux",
+                    ),
+                    check(
+                        pkg.name.trim().is_empty(),
+                        "package.empty-name",
+                        "package name is empty",
+                    ),
+                ]
+            },
+        )
+        .finish()
+}
+
+/// TOML filename that backs this config section.
+pub(crate) const PACKAGES_TOML: &str = "packages.toml";
+
+#[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test code uses panicking helpers"
+)]
+mod tests {
+    use super::*;
+    use crate::runtime::config_support::category_matcher::Category;
+    use crate::runtime::config_support::test_helpers::write_temp_toml;
+    use crate::runtime::config_support::test_load_missing_returns_empty;
+
+    #[test]
+    fn load_filters_by_category() {
+        let (_dir, path) = write_temp_toml(
+            r#"[arch]
+packages = ["git", "vim", { name = "paru-bin", aur = true }]
+
+[windows]
+packages = ["winget-pkg"]
+"#,
+        );
+        let packages = load(&path, &[Category::Base, Category::Arch]).unwrap();
+        assert_eq!(packages.len(), 3);
+        assert!(!packages[0].is_aur);
+        assert_eq!(packages[0].name, "git");
+        assert!(packages[2].is_aur);
+        assert_eq!(packages[2].name, "paru-bin");
+    }
+
+    #[test]
+    fn aur_packages_detected() {
+        let (_dir, path) = write_temp_toml(
+            r#"[arch]
+packages = [{ name = "paru-bin", aur = true }, { name = "yay", aur = true }]
+"#,
+        );
+        let packages = load(&path, &[Category::Base, Category::Arch]).unwrap();
+        assert_eq!(packages.len(), 2);
+        assert!(packages[0].is_aur);
+        assert!(packages[1].is_aur);
+    }
+
+    test_load_missing_returns_empty!(load);
+
+    #[test]
+    fn validate_warns_aur_on_non_arch() {
+        use crate::runtime::platform::{Os, Platform};
+
+        let packages = vec![Package {
+            name: "yay".to_string(),
+            is_aur: true,
+        }];
+        let warnings = validate(&packages, Platform::new(Os::Linux, false));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("not Arch Linux"));
+    }
+
+    #[test]
+    fn load_returns_error_on_malformed_toml() {
+        let (_dir, path) = write_temp_toml("[base\npackages = [\"git\"");
+        let result = load(&path, &[Category::Base]);
+        assert!(result.is_err(), "malformed TOML should return error");
+    }
+
+    #[test]
+    fn load_returns_error_on_type_mismatch() {
+        let (_dir, path) = write_temp_toml("[base]\npackages = 42\n");
+        let result = load(&path, &[Category::Base]);
+        assert!(
+            result.is_err(),
+            "integer instead of array should return error"
+        );
+    }
+
+    #[test]
+    fn validate_warns_empty_package_name() {
+        use crate::runtime::platform::{Os, Platform};
+
+        let packages = vec![Package {
+            name: "  ".to_string(),
+            is_aur: false,
+        }];
+        let warnings = validate(&packages, Platform::new(Os::Linux, false));
+        assert!(
+            warnings.iter().any(|w| w.message.contains("empty")),
+            "should warn about empty package name: {warnings:?}"
+        );
+    }
+}

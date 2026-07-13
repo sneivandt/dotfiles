@@ -1,12 +1,11 @@
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 
-use crate::config::Config;
-use crate::exec::Executor;
-use crate::logging::Log;
-use crate::platform::Platform;
+use crate::runtime::exec::Executor;
+use crate::runtime::logging::Log;
+use crate::runtime::platform::Platform;
 
 use super::CancellationToken;
 
@@ -38,7 +37,7 @@ pub struct ContextOpts {
     pub advance_versions: bool,
 }
 
-/// Repository-relative paths derived from a single config snapshot.
+/// Repository-relative paths derived from the repository root.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RepoPaths {
     /// Root directory of the dotfiles repository.
@@ -137,13 +136,19 @@ impl SystemContext {
               are clearer as separate fields than folded into a state enum"
 )]
 pub struct Context {
-    /// Configuration loaded from TOML files.
+    /// Root directory of the dotfiles repository.
     ///
-    /// Private — access via [`Context::config_read`] (read) or
-    /// [`Context::config_swap`] (write).  Intentionally not `pub` so that
-    /// callers cannot bypass the poisoning-recovery logic or hold the lock
-    /// longer than necessary.
-    config: Arc<RwLock<Arc<Config>>>,
+    /// Path state fixed at construction time.  The repository root does not
+    /// change across a run (a reload re-parses configuration content but never
+    /// relocates the repository), so it is stored directly rather than derived
+    /// from configuration.  Private — access via [`Context::root`] and the
+    /// [`Context::paths`] view.
+    root: std::path::PathBuf,
+    /// Optional path to a private overlay repository.
+    ///
+    /// Path state fixed at construction time, resolved by the application layer
+    /// from CLI arguments, environment, or persisted git config.
+    overlay: Option<std::path::PathBuf>,
     /// Detected platform information.
     pub platform: Platform,
     /// Logger for output and task recording.
@@ -179,7 +184,8 @@ pub struct Context {
 impl std::fmt::Debug for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Context")
-            .field("config", &"<Config>")
+            .field("root", &self.root)
+            .field("overlay", &self.overlay)
             .field("platform", &self.platform)
             .field("log", &"<dyn Log>")
             .field("dry_run", &self.dry_run)
@@ -207,7 +213,8 @@ impl Context {
     /// Returns an error if the HOME (or USERPROFILE on Windows) environment variable
     /// is not set.
     pub fn new(
-        config: Arc<RwLock<Arc<Config>>>,
+        root: std::path::PathBuf,
+        overlay: Option<std::path::PathBuf>,
         platform: Platform,
         log: Arc<dyn Log>,
         executor: Arc<dyn Executor>,
@@ -224,7 +231,8 @@ impl Context {
         let is_ci = opts.is_ci.unwrap_or_else(|| std::env::var("CI").is_ok());
 
         Ok(Self {
-            config,
+            root,
+            overlay,
             platform,
             log,
             dry_run: opts.dry_run,
@@ -244,7 +252,8 @@ impl Context {
     /// environment.  Prefer [`Context::new`] in production code.
     #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn from_raw(
-        config: Arc<RwLock<Arc<Config>>>,
+        root: std::path::PathBuf,
+        overlay: Option<std::path::PathBuf>,
         platform: Platform,
         log: Arc<dyn Log>,
         executor: Arc<dyn Executor>,
@@ -252,7 +261,8 @@ impl Context {
         opts: ContextOpts,
     ) -> Self {
         Self {
-            config,
+            root,
+            overlay,
             platform,
             log,
             dry_run: opts.dry_run,
@@ -265,34 +275,24 @@ impl Context {
         }
     }
 
-    /// Get a snapshot of the current configuration.
-    ///
-    /// The returned `Arc<Config>` is a cheap clone; the read lock is held
-    /// only for the duration of the `Arc::clone`.  Callers can hold the
-    /// snapshot as long as needed without blocking `ReloadConfig`.
-    #[must_use]
-    pub fn config_read(&self) -> Arc<Config> {
-        Arc::clone(&*self.config.read().unwrap_or_else(|e| {
-            self.log
-                .warn(&format!("config read lock was poisoned, recovering: {e}"));
-            e.into_inner()
-        }))
-    }
-
-    /// Repository-relative paths derived from one config snapshot.
+    /// Repository-relative paths derived from the repository root.
     ///
     /// Prefer this over multiple calls to [`Context::root`],
     /// [`Context::symlinks_dir`], and [`Context::hooks_dir`] when the caller
-    /// needs more than one path from the same config version.
+    /// needs more than one path.
     #[must_use]
     pub(crate) fn repo_paths(&self) -> RepoPaths {
-        let config = self.config_read();
-        let root = config.root.clone();
         RepoPaths {
-            symlinks_dir: root.join("symlinks"),
-            hooks_dir: root.join("hooks"),
-            root,
+            symlinks_dir: self.root.join("symlinks"),
+            hooks_dir: self.root.join("hooks"),
+            root: self.root.clone(),
         }
+    }
+
+    /// Path to the optional overlay repository, if one is configured.
+    #[must_use]
+    pub fn overlay(&self) -> Option<&Path> {
+        self.overlay.as_deref()
     }
 
     /// Return a focused view of filesystem paths used by task code.
@@ -423,19 +423,6 @@ impl Context {
             self.log.debug(&f());
         }
     }
-
-    /// Atomically replace the shared configuration.
-    ///
-    /// Used by [`crate::tasks::repository::reload_config::ReloadConfig`] after a `git pull`
-    /// to swap in the freshly-loaded config.
-    pub fn config_swap(&self, new_config: Config) {
-        let mut guard = self.config.write().unwrap_or_else(|e| {
-            self.log
-                .warn(&format!("config write lock was poisoned, recovering: {e}"));
-            e.into_inner()
-        });
-        *guard = Arc::new(new_config);
-    }
 }
 
 #[cfg(test)]
@@ -446,9 +433,9 @@ impl Context {
 )]
 mod tests {
     use super::*;
-    use crate::logging::Logger;
-    use crate::logging::{Output, TaskRecorder, TaskStatus};
-    use crate::tasks::test_helpers::{empty_config, make_linux_context};
+    use crate::runtime::logging::Logger;
+    use crate::runtime::logging::{Output, TaskRecorder, TaskStatus};
+    use crate::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 
     #[derive(Debug)]
@@ -515,11 +502,10 @@ mod tests {
     }
 
     #[test]
-    fn config_read_returns_config() {
+    fn root_reflects_construction_value() {
         let config = empty_config(PathBuf::from("/my/root"));
         let ctx = make_linux_context(config);
-        let root = ctx.config_read().root.clone();
-        assert_eq!(root, PathBuf::from("/my/root"));
+        assert_eq!(ctx.root(), PathBuf::from("/my/root"));
     }
 
     #[test]
@@ -541,7 +527,6 @@ mod tests {
         assert_eq!(ctx2.dry_run, ctx.dry_run);
         assert_eq!(ctx2.home, ctx.home);
         assert_eq!(ctx2.parallel, ctx.parallel);
-        assert!(Arc::ptr_eq(&ctx.config_read(), &ctx2.config_read()));
         assert_eq!(ctx.platform, ctx2.platform);
     }
 

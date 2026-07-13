@@ -8,7 +8,7 @@ use super::context::Context;
 use super::mode::ProcessOpts;
 use super::parallel;
 use super::stats::{TaskResult, TaskStats};
-use crate::resources::{
+use crate::engine::{
     IntrinsicState, IntrinsicStateProvider, Resource, ResourceState, ResourceStateProvider,
 };
 

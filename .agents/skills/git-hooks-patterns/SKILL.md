@@ -7,12 +7,13 @@ description: >
 
 # Git Hooks Patterns
 
-The project uses git hooks for pre-commit security scanning. Hook installation is handled by `cli/src/tasks/git/hooks.rs` which implements the `Task` trait.
+The project uses git hooks for pre-commit security scanning. Hook installation
+is handled by `cli/src/domains/git/tasks/hooks.rs`, which implements `Task`.
 
 ## Overview
 
 - **Pre-commit scanning**: Detect sensitive information before commits
-- **Automatic installation**: `tasks::git::hooks::InstallGitHooks` copies hooks during install
+- **Automatic installation**: `domains::git::tasks::hooks::InstallGitHooks` copies hooks during install
 - **Pattern-based detection**: Configurable patterns in `hooks/sensitive-patterns.ini`
 - **Bypassable**: `git commit --no-verify` for false positives
 
@@ -20,7 +21,7 @@ Hooks live in `hooks/` and are copied to `.git/hooks/` by the Rust engine.
 
 ## Hook Installation Task
 
-The `InstallGitHooks` task in `cli/src/tasks/git/hooks.rs` holds its own
+The `InstallGitHooks` task in `cli/src/domains/git/tasks/hooks.rs` holds its own
 `fs_ops` field for injectable filesystem access:
 
 ```rust
@@ -38,9 +39,10 @@ impl InstallGitHooks {
 
 impl Task for InstallGitHooks {
     fn name(&self) -> &'static str { "Install git hooks" }
-    task_deps![crate::tasks::repository::reload_config::ReloadConfig];
     fn should_run(&self, ctx: &Context) -> bool {
-        self.fs_ops.exists(&ctx.hooks_dir()) && self.fs_ops.exists(&ctx.root().join(".git"))
+        let paths = ctx.paths();
+        self.fs_ops.exists(paths.hooks_dir())
+            && self.fs_ops.exists(&paths.root().join(".git"))
     }
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let resources = self.discover(ctx)?;
@@ -48,6 +50,9 @@ impl Task for InstallGitHooks {
     }
 }
 ```
+
+The app catalog adds the cross-domain dependency on `UpdateRepository`; domains
+do not import one another to declare ordering.
 
 `should_run` uses `self.fs_ops.exists()` (the `FileSystemOps` abstraction) rather than
 calling `.exists()` directly on the path. This allows tests to inject a

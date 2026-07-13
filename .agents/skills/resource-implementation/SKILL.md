@@ -2,7 +2,7 @@
 name: resource-implementation
 description: >
   Patterns for implementing concrete Resource, IntrinsicState, and
-  ResourceStateProvider types in cli/src/resources/. Use when adding a new
+  ResourceStateProvider types in domain resource modules. Use when adding a new
   resource or modifying existing resource behaviour.
 ---
 
@@ -10,7 +10,7 @@ description: >
 
 ## Use this skill when
 
-- adding/modifying a concrete resource in `cli/src/resources/`
+- adding/modifying a concrete resource in `cli/src/domains/<domain>/resources/`
 - deciding between `IntrinsicState` and `ResourceStateProvider`
 - wiring config-backed resource tasks through orchestration helpers
 
@@ -41,20 +41,21 @@ description: >
 - Use executor abstraction for subprocesses.
 
 Canonical references:
-- `cli/src/resources/mod.rs`
+- `cli/src/engine/resource.rs`
 - `cli/src/engine/orchestrate.rs`
 - `cli/src/engine/mode.rs`
-- `cli/src/tasks/macros.rs`
+- `cli/src/engine/task/macros.rs`
 
 ## Implementation procedure / core patterns
 
-1. Implement resource struct in `cli/src/resources/<name>.rs`.
+1. Implement the resource in its owning domain's `resources/` module.
 2. Implement `Resource` and choose:
    - `IntrinsicState` when each item can check itself
    - `ResourceStateProvider` when one cached query should feed many resources
-3. Add/adjust config section in `cli/src/config/` and `conf/<name>.toml`.
-4. Wire task (prefer `resource_task!`), select `ProcessOpts`, and register static
-   task in `cli/src/tasks/catalog.rs`.
+3. Add/adjust the owning domain's config module and `conf/<name>.toml`.
+4. Wire the task (prefer `config_resource_task!` for injected config or
+   `resource_task!` for config-free resources), select `ProcessOpts`, and
+   register static tasks in `cli/src/app/catalog.rs`.
 5. Export modules from the relevant `mod.rs` files.
 6. Add or update focused tests (resource + config/task wiring as needed).
 

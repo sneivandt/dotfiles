@@ -7,7 +7,8 @@ description: >
 
 # Profile System
 
-Profiles control which files are checked out and which config sections are processed. Profile resolution is in `cli/src/config/profiles.rs`.
+Profiles control which files are checked out and which config sections are
+processed. Profile resolution is in `cli/src/app/config/profiles.rs`.
 
 ## Currently Configured Profiles
 
@@ -56,7 +57,7 @@ which uses `git2` to write directly — no `git` subprocess needed. Running
 ## Profile Data Structure
 
 ```rust
-use crate::config::category_matcher::Category;
+use crate::runtime::config_support::category_matcher::Category;
 
 pub struct Profile {
     pub name: String,

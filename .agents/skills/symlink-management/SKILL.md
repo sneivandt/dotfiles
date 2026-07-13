@@ -8,8 +8,8 @@ description: >
 # Symlink Management
 
 Symlinks connect config files from `symlinks/` to `$HOME`. Config in
-`conf/symlinks.toml` is loaded by `config::symlinks` and installed by
-`tasks::files::symlinks`.
+`conf/symlinks.toml` is owned by `domains::files::config::symlinks` and
+installed by `domains::files::tasks::symlinks`.
 
 ## Configuration
 
@@ -39,7 +39,7 @@ applied.
 
 ## Target Path
 
-`compute_target()` in `tasks/files/symlinks.rs` always prepends a dot:
+`compute_target()` in `domains/files/tasks/symlinks.rs` always prepends a dot:
 
 ```rust
 fn compute_target(home: &Path, source: &str) -> PathBuf {
@@ -58,19 +58,22 @@ The explicit target is joined to `$HOME` directly: `home.join(target)`.
 
 ## Task Implementation
 
-The install task is generated with `resource_task!` and uses `SymlinkResource`
-for declarative state management via `process_resources()`:
+The install task is generated with `config_resource_task!` and uses
+`SymlinkResource` for declarative state management via `process_resources()`:
 
 ```rust
-resource_task! {
+config_resource_task! {
     /// Create symlinks from symlinks/ to $HOME.
     pub InstallSymlinks {
         name: "Install symlinks",
         phase: TaskPhase::Provision,
-        items: |ctx| ctx.config_read().symlinks.clone(),
+        domain: Domain::Files,
+        config: Vec<Symlink>,
+        items: |cfg| cfg.clone(),
         build: |s, ctx| {
-            let repo_root = ctx.root();
-            build_resource(&s, &repo_root, &ctx.home, &ctx.executor)
+            let paths = ctx.paths();
+            let executor = ctx.system().executor_arc();
+            build_resource(&s, paths.root(), paths.home(), &executor)
         },
         opts: ProcessOpts::strict("link"),
     }

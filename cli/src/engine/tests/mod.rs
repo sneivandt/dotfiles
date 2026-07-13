@@ -4,9 +4,9 @@ mod resource_contracts;
 mod stats;
 
 use crate::engine::mode::ProcessOpts;
-use crate::error::ResourceError;
-use crate::resources::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::tasks::test_helpers::make_static_context;
+use crate::engine::resource::ResourceError;
+use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::test_helpers::make_static_context;
 
 // -----------------------------------------------------------------------
 // Test doubles
@@ -107,19 +107,19 @@ impl Resource for TypedErrorResource {
 // -----------------------------------------------------------------------
 
 pub(super) fn test_context(
-    config: crate::config::Config,
+    config: crate::Config,
 ) -> (
-    crate::tasks::Context,
-    std::sync::Arc<crate::logging::Logger>,
+    crate::engine::Context,
+    std::sync::Arc<crate::runtime::logging::Logger>,
 ) {
     make_static_context(config)
 }
 
 pub(super) fn dry_run_context(
-    config: crate::config::Config,
+    config: crate::Config,
 ) -> (
-    crate::tasks::Context,
-    std::sync::Arc<crate::logging::Logger>,
+    crate::engine::Context,
+    std::sync::Arc<crate::runtime::logging::Logger>,
 ) {
     let (mut ctx, log) = test_context(config);
     ctx = ctx.with_dry_run(true);
@@ -127,10 +127,10 @@ pub(super) fn dry_run_context(
 }
 
 pub(super) fn parallel_context(
-    config: crate::config::Config,
+    config: crate::Config,
 ) -> (
-    crate::tasks::Context,
-    std::sync::Arc<crate::logging::Logger>,
+    crate::engine::Context,
+    std::sync::Arc<crate::runtime::logging::Logger>,
 ) {
     let (mut ctx, log) = test_context(config);
     ctx = ctx.with_parallel(true);

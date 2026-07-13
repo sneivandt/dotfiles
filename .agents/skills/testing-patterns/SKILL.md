@@ -23,16 +23,16 @@ description: >
 
 - Small cohesive tests: inline `#[cfg(test)] mod tests { ... }`
 - Large cohesive tests: sibling `tests.rs` with `#[cfg(test)] mod tests;`
-- Grouped large tests (especially resources): `tests/<module>.rs` wired via
-  `#[cfg(test)] #[path = "tests/<module>.rs"] mod tests;`
+- Several related resource suites: one sibling `tests.rs`, with nested test
+  modules when names or imports need separation.
 - `#[path]` is allowed for externalized test modules only; never for production
-  module wiring.
+  module wiring. Prefer standard sibling wiring for new layouts.
 
 ## Implementation procedure
 
 1. Put unit tests with the module unless they are large enough to externalize.
 2. Reuse existing helpers:
-   - `cli/src/tasks/mod.rs` context/config helpers
+   - `cli/src/app/test_helpers.rs` context/config helpers for unit tests
    - `cli/tests/common/mod.rs` integration helpers and builders
 3. Keep assertions specific and behavior-focused.
 4. Update snapshots intentionally (`INSTA_UPDATE=unseen cargo test`, then
@@ -41,7 +41,7 @@ description: >
 
 ### Common module patterns
 
-- **Config parsers**: use `config::test_helpers` temp-file helpers.
+- **Config parsers**: use `runtime::config_support::test_helpers`.
 - **Resources**: construct directly for state checks; use executor-backed setup
   where needed.
 - **Tasks**: test pure helper logic and task applicability/result behavior.

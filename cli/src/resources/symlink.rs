@@ -48,6 +48,18 @@ impl Resource for SymlinkResource {
         format!("{} -> {}", self.target.display(), self.source.display())
     }
 
+    fn pre_apply_warning(&self) -> ResourceResult<Option<String>> {
+        let metadata = crate::fs::symlink_metadata_optional(&self.target, "stat target")?;
+        Ok(metadata
+            .filter(|meta| !is_link_like(&self.target, meta))
+            .map(|_| {
+                format!(
+                    "replacing existing non-symlink target without backup: {}",
+                    self.target.display()
+                )
+            }))
+    }
+
     fn apply(&self) -> ResourceResult<ResourceChange> {
         crate::fs::ensure_parent_dir(&self.target)?;
 
@@ -83,7 +95,7 @@ impl Resource for SymlinkResource {
         // stat failure).  A missing target is fine: we still materialize so
         // the user retains the file/directory after uninstall.
         match crate::fs::symlink_metadata_optional(&self.target, "stat target")? {
-            Some(meta) if is_link_like(&meta) => {
+            Some(meta) if is_link_like(&self.target, &meta) => {
                 // Proceed with the normal materialize-then-remove path below.
             }
             Some(_) => {
@@ -182,7 +194,7 @@ fn copy_file_into_place(source: &Path, target: &Path, executor: &dyn Executor) -
     let mut guard = crate::fs::TempPath::new(tmp.clone());
 
     match crate::fs::symlink_metadata_optional(target, "stat target")? {
-        Some(meta) if is_link_like(&meta) => {
+        Some(meta) if is_link_like(target, &meta) => {
             remove_symlink(target, executor)
                 .with_context(|| format!("remove symlink: {}", target.display()))?;
         }
@@ -218,7 +230,7 @@ fn copy_dir_into_place(source: &Path, target: &Path, executor: &dyn Executor) ->
         .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;
 
     match crate::fs::symlink_metadata_optional(target, "stat target")? {
-        Some(meta) if is_link_like(&meta) => {
+        Some(meta) if is_link_like(target, &meta) => {
             remove_symlink(target, executor)
                 .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
         }
@@ -355,16 +367,10 @@ fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result
 /// On Windows, directory symlinks must be removed with `remove_dir` (not
 /// `remove_file`). Rust's `symlink_metadata().is_dir()` returns `false` for
 /// symlinks, so the raw `FILE_ATTRIBUTE_DIRECTORY` flag detects directory
-/// symlinks. If `remove_dir` still fails with OS error 5 (access denied), a
-/// `cmd /c rmdir` fallback runs in a separate process.
-#[cfg_attr(
-    not(windows),
-    allow(
-        unused_variables,
-        reason = "executor is only used by the Windows rmdir fallback"
-    )
-)]
-fn remove_symlink(path: &Path, executor: &dyn Executor) -> Result<()> {
+/// symlinks. If `remove_dir` still fails with OS error 5 (access denied),
+/// `remove_dir_all` retries through the standard library without invoking a
+/// command shell.
+fn remove_symlink(path: &Path, _executor: &dyn Executor) -> Result<()> {
     let meta = match std::fs::symlink_metadata(path) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(e.into()),
@@ -379,7 +385,8 @@ fn remove_symlink(path: &Path, executor: &dyn Executor) -> Result<()> {
             Ok(()) => {}
             #[cfg(windows)]
             Err(e) if e.raw_os_error() == Some(5) => {
-                remove_dir_fallback(path, executor)?;
+                std::fs::remove_dir_all(path)
+                    .with_context(|| format!("removing directory symlink: {}", path.display()))?;
             }
             Err(e) => return Err(e.into()),
         }
@@ -390,11 +397,18 @@ fn remove_symlink(path: &Path, executor: &dyn Executor) -> Result<()> {
 }
 
 /// Check if metadata represents a managed link-like entry.
-fn is_link_like(meta: &std::fs::Metadata) -> bool {
+#[cfg_attr(
+    not(windows),
+    allow(
+        unused_variables,
+        reason = "path is only needed to validate Windows reparse points"
+    )
+)]
+fn is_link_like(path: &Path, meta: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
-        meta.file_attributes() & 0x400 != 0 // FILE_ATTRIBUTE_REPARSE_POINT
+        meta.file_attributes() & 0x400 != 0 && std::fs::read_link(path).is_ok()
     }
     #[cfg(not(windows))]
     {
@@ -420,8 +434,11 @@ fn is_dir_like(meta: &std::fs::Metadata) -> bool {
 fn create_junction(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
     let link_arg = link.to_string_lossy();
     let target_arg = target.to_string_lossy();
-    let args = ["/c", "mklink", "/J", link_arg.as_ref(), target_arg.as_ref()];
-    let result = executor.run_unchecked("cmd", &args)?;
+    let result = crate::windows_process::CmdCommand::new("mklink")
+        .arg("/J")
+        .arg(link_arg.as_ref())
+        .arg(target_arg.as_ref())
+        .run_unchecked(executor)?;
     if result.success {
         Ok(())
     } else {
@@ -448,25 +465,6 @@ fn command_output(result: &crate::exec::ExecResult) -> String {
         (true, false) => stderr.to_string(),
         (false, false) => format!("{stdout}; {stderr}"),
     }
-}
-
-/// Fallback directory removal on Windows using `cmd /c rmdir`.
-#[cfg(windows)]
-fn remove_dir_fallback(path: &Path, executor: &dyn Executor) -> Result<()> {
-    let path_arg = path.to_string_lossy();
-    let result = executor.run_unchecked("cmd", &["/c", "rmdir", "/s", "/q", &path_arg])?;
-    if !result.success {
-        return Err(crate::error::ResourceError::command_failed(
-            "rmdir",
-            format!(
-                "remove directory/symlink '{}': {}",
-                path.display(),
-                result.stderr.trim()
-            ),
-        )
-        .into());
-    }
-    Ok(())
 }
 
 #[cfg(test)]

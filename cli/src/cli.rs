@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "dotfiles",
     about = "Cross-platform dotfiles management engine",
-    version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
+    version = option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION"))),
     disable_version_flag = true,
     disable_help_flag = true,
     help_template = "\

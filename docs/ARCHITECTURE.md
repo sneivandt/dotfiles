@@ -263,6 +263,12 @@ Task bodies generally use one of two convergence abstractions:
   `apply()`, and are processed through `process_operation()` so check → dry-run
   → mutate order stays centralized.
 
+The resource and operation engines gate `apply()`/`remove()` behind the dry-run
+check, with regression tests covering sequential and parallel execution.
+Overlay scripts are the explicit exception at the trust boundary: their
+`--check` and `--dryrun` modes execute external code and must honor the
+non-mutation contract themselves.
+
 **Implemented tasks** (inventory only, not execution order). The engine schedules
 by **phase**, completing each phase before the next; within a phase, tasks run as
 soon as dependencies allow, so sibling tasks may complete in any order. Each task
@@ -629,13 +635,13 @@ wildcard dependency detection, and ShellCheck on staged shell files.
 ### Symlink Safety
 
 - No automatic backup of existing files
-- User must manually handle existing files
-- Prevents accidental data loss
+- Installing a configured symlink replaces an existing non-symlink target
+- A visible warning is emitted immediately before replacement
 
 ### Registry Safety (Windows)
 
-- Only modifies HKCU (user scope)
-- No HKLM (system scope) modifications
+- Only HKCU (user scope) paths are accepted
+- HKLM, HKCR, and other registry hives are rejected
 - Dry-run mode available for preview
 
 ### Package Installation

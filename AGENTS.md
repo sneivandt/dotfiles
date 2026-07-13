@@ -12,7 +12,9 @@ only relevant skills plus listed companions.
 - Tasks own metadata, policies, dependencies, and orchestration boundaries.
 - Mutations must be idempotent and dry-run safe.
 - Prefer capability methods over direct OS checks where available.
-- Static tasks must be registered in `cli/src/tasks/catalog.rs`.
+- Static install/uninstall tasks must be registered in
+  `cli/src/tasks/catalog.rs`; command-specific tasks belong in their command's
+  task list.
 - Conditional symlink behavior and manifest coverage must stay synchronized.
 
 ## Entry matrix (pick layer, then skill)
@@ -30,7 +32,7 @@ only relevant skills plus listed companions.
 ## Standard change workflow
 
 1. Identify the primary layer and routing skill.
-2. Read companion skills from `.agents/README.md`.
+2. Load only conditional companions whose subsystem is touched; do not recurse.
 3. Find the closest existing implementation before editing.
 4. Make the smallest complete vertical change (not a partial wiring).
 5. Add/update focused tests.
@@ -49,18 +51,20 @@ only relevant skills plus listed companions.
 
 ## Definition of done
 
-- Full vertical slice wired (implementation, config, registration/export).
+- Full vertical slice wired (implementation and applicable config,
+  registration/export).
 - Tests added/updated where behavior changed.
 - User-facing docs updated when behavior/workflow changed.
 - Targeted validation run and passing.
 - Checks not run are called out explicitly.
-- No unrelated, generated, private, or secret-bearing changes.
+- No unrelated changes, unreviewed generated artifacts, private files, or
+  secret-bearing changes.
 
 ## Vertical-slice checklists
 
-### New resource
+### New config-backed resource
 
-`config type -> loader -> validator -> conf file -> resource -> task -> catalog -> module exports -> tests -> cross-platform checks`
+`config type -> loader -> validator -> conf file -> resource -> task -> command registration (catalog for install/uninstall) -> module exports -> tests -> cross-platform checks`
 
 ### New symlink
 
@@ -68,4 +72,4 @@ only relevant skills plus listed companions.
 
 ### New task
 
-`task implementation -> metadata/domain/phase/policies -> dependencies -> catalog registration (if static) -> command/test coverage -> targeted validation`
+`task implementation -> metadata/domain/phase/policies -> dependencies -> command registration (catalog for install/uninstall) -> command/test coverage -> targeted validation`

@@ -400,7 +400,7 @@ fn plan_repository_update(
     // Detect a diverged or local-only branch by counting commits on HEAD
     // that are not on upstream. A non-zero count means `git pull --ff-only`
     // would fail; skip rather than report a hard failure.
-    let ahead = ctx
+    let ahead_output = ctx
         .executor
         .run_in_with_env(
             &repository.target.root,
@@ -410,8 +410,19 @@ fn plan_repository_update(
         )?
         .stdout
         .trim()
-        .parse::<u64>()
-        .unwrap_or(0);
+        .to_string();
+    let ahead = match ahead_output.parse::<u64>() {
+        Ok(ahead) => ahead,
+        Err(error) => {
+            let reason = repository
+                .target
+                .reason("could not determine whether the local branch diverged");
+            ctx.log.warn(&format!(
+                "{reason}: invalid rev-list count {ahead_output:?}: {error}"
+            ));
+            return Ok(RepositoryPlanReadiness::Skipped(reason));
+        }
+    };
 
     if ahead > 0 {
         let reason = repository
@@ -787,6 +798,37 @@ mod tests {
 
         let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("diverged")));
+        assert!(!repo_updated.was_updated());
+    }
+
+    #[test]
+    fn run_returns_skipped_when_rev_list_count_is_malformed() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        for stdout in [
+            "refs/heads/main",
+            "",
+            "",
+            "abc1234",
+            "def5678",
+            "not-a-count",
+        ] {
+            let output = stdout.to_string();
+            mock.expect_run_in_with_env()
+                .once()
+                .in_sequence(&mut seq)
+                .returning(move |_, _, _, _| Ok(ok_result(&output)));
+        }
+        let ctx = make_update_context(config, mock);
+        let repo_updated = UpdateSignal::new();
+        let task = UpdateRepository::new(repo_updated.clone());
+
+        let result = task.run(&ctx).unwrap();
+
+        assert!(
+            matches!(result, TaskResult::Skipped(ref reason) if reason.contains("could not determine"))
+        );
         assert!(!repo_updated.was_updated());
     }
 

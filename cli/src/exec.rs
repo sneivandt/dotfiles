@@ -177,6 +177,20 @@ fn execute_unchecked(
     collect_result(Some(status), stdout_reader, stderr_reader)
 }
 
+#[cfg(windows)]
+fn execute_windows_cmd_unchecked(
+    command_line: &str,
+    settings: &CommandSettings,
+) -> Result<ExecResult> {
+    use std::os::windows::process::CommandExt as _;
+
+    let mut cmd = new_command("cmd");
+    cmd.args(["/D", "/V:OFF", "/S", "/C"]).raw_arg(command_line);
+    let result = execute_unchecked(cmd, "cmd", settings)?;
+    log_command_output("cmd", &result);
+    Ok(result)
+}
+
 fn spawn_reader<R: Read + Send + 'static>(
     mut stream: R,
     name: &'static str,
@@ -231,14 +245,35 @@ fn terminate_child(child: &mut Child) {
     }
 }
 
+#[cfg(unix)]
+fn wait_after_terminate(child: &mut Child) {
+    let started = Instant::now();
+    loop {
+        match child_exited_without_reaping(child) {
+            Ok(true) => break,
+            Ok(false) if started.elapsed() >= TERMINATION_GRACE => break,
+            Ok(false) => std::thread::sleep(POLL_INTERVAL),
+            Err(err) => {
+                tracing::debug!(target: "dotfiles::exec", "failed waiting after terminate: {err}");
+                break;
+            }
+        }
+    }
+
+    // The leader has not been reaped, so its PID still identifies the original
+    // process group and cannot be reused before this final escalation.
+    force_kill_child(child);
+    if let Err(err) = child.wait() {
+        tracing::debug!(target: "dotfiles::exec", "failed waiting after force kill: {err}");
+    }
+}
+
+#[cfg(windows)]
 fn wait_after_terminate(child: &mut Child) {
     let started = Instant::now();
     loop {
         match child.try_wait() {
-            Ok(Some(_)) => {
-                force_kill_child(child);
-                return;
-            }
+            Ok(Some(_)) => return,
             Ok(None) if started.elapsed() >= TERMINATION_GRACE => break,
             Ok(None) => std::thread::sleep(POLL_INTERVAL),
             Err(err) => {
@@ -251,6 +286,42 @@ fn wait_after_terminate(child: &mut Child) {
     if let Err(err) = child.wait() {
         tracing::debug!(target: "dotfiles::exec", "failed waiting after force kill: {err}");
     }
+}
+
+#[cfg(any(
+    target_os = "android",
+    target_os = "freebsd",
+    target_os = "haiku",
+    target_os = "linux"
+))]
+fn child_exited_without_reaping(child: &Child) -> nix::Result<bool> {
+    use nix::sys::wait::{Id, WaitPidFlag, WaitStatus, waitid};
+
+    let Ok(pid_raw) = i32::try_from(child.id()) else {
+        return Ok(false);
+    };
+    let pid = nix::unistd::Pid::from_raw(pid_raw);
+    let status = waitid(
+        Id::Pid(pid),
+        WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT,
+    )?;
+    Ok(matches!(
+        status,
+        WaitStatus::Exited(..) | WaitStatus::Signaled(..)
+    ))
+}
+
+#[cfg(all(
+    unix,
+    not(any(
+        target_os = "android",
+        target_os = "freebsd",
+        target_os = "haiku",
+        target_os = "linux"
+    ))
+))]
+fn child_exited_without_reaping(_child: &Child) -> nix::Result<bool> {
+    Ok(false)
 }
 
 #[cfg(unix)]
@@ -417,6 +488,22 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     #[cfg_attr(test, mockall::concretize)]
     fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
 
+    /// Execute a pre-quoted `cmd.exe /D /V:OFF /S /C` command line, allowing a
+    /// non-zero exit status.
+    ///
+    /// Real Windows executors append `command_line` with
+    /// [`CommandExt::raw_arg`](std::os::windows::process::CommandExt::raw_arg)
+    /// so Rust's CRT argument quoting cannot alter `cmd.exe` syntax.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `cmd.exe` cannot be executed.
+    #[cfg(any(windows, test))]
+    #[cfg_attr(test, mockall::concretize)]
+    fn run_windows_cmd_unchecked(&self, command_line: &str) -> Result<ExecResult> {
+        self.run_unchecked("cmd", &["/D", "/V:OFF", "/S", "/C", command_line])
+    }
+
     /// Execute a command in a specific directory, allowing non-zero exit.
     ///
     /// The default implementation ignores `dir` and delegates to
@@ -489,6 +576,11 @@ impl Executor for SystemExecutor {
         let result = execute_unchecked(cmd, program, &CommandSettings::default_timeout())?;
         log_command_output(program, &result);
         Ok(result)
+    }
+
+    #[cfg(windows)]
+    fn run_windows_cmd_unchecked(&self, command_line: &str) -> Result<ExecResult> {
+        execute_windows_cmd_unchecked(command_line, &CommandSettings::default_timeout())
     }
 
     fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
@@ -566,6 +658,11 @@ impl Executor for ManagedExecutor {
         let result = execute_unchecked(cmd, program, &self.settings())?;
         log_command_output(program, &result);
         Ok(result)
+    }
+
+    #[cfg(windows)]
+    fn run_windows_cmd_unchecked(&self, command_line: &str) -> Result<ExecResult> {
+        execute_windows_cmd_unchecked(command_line, &self.settings())
     }
 
     fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {

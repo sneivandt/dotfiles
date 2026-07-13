@@ -67,6 +67,7 @@ jobs:
           sh test-config.sh toml_syntax
           sh test-config.sh category_consistency
           sh test-config.sh empty_sections
+          python3 test-fullscreen-waybar.py
 
   # ── Security ──────────────────────────────────────────
   audit:

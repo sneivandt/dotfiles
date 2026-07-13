@@ -8,7 +8,11 @@ description: >
 
 # CI/CD Patterns
 
-Three GitHub Actions workflows in `.github/workflows/`:
+Use this skill for workflow topology, CI-only reproduction, and publishing
+changes. Treat `.github/workflows/*.yml` as authoritative; avoid copying action
+versions or complete job inventories into guidance.
+
+## Workflow Boundaries
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
@@ -18,72 +22,27 @@ Three GitHub Actions workflows in `.github/workflows/`:
 
 ## CI Pipeline (`ci.yml`)
 
-### Job Structure
+Current gating areas include formatting, script linting, config validation,
+`cargo-audit`, `cargo-deny`, Linux/Windows builds, the MSRV check, integration
+tests, install/uninstall tests, application tests, hook tests, and wrapper tests.
+The `coverage` job is informational (`continue-on-error`) and intentionally does
+not gate `ci-success`.
 
-```
-rust-fmt ─────────────────────────────────────────────┐
-lint (ShellCheck, PSScriptAnalyzer) ──────────────────┤
-validate-config ──────────────────────────────────────┤
-audit (cargo-audit) ──────────────────────────────────┤
-build-linux ──┬── integration-linux (base, desktop) ──┤
-              ├── test-install-uninstall ──────────────┤
-              ├── test-applications (git, zsh, vim…) ──┤
-              ├── test-git-hooks ──────────────────────┤
-              └── test-shell-wrapper-linux ────────────┤
-build-windows ┬── integration-windows (base, desktop) ┤
-              ├── test-install-uninstall-windows ──────┤
-              └── test-shell-wrapper-windows ──────────┤
-ci-success (gate) ────────────────────────────────────┘
-```
+Maintain these invariants:
 
-Key patterns:
-- `concurrency: ci-${{ github.ref }}` with `cancel-in-progress: true`
-- `permissions: contents: read` (least privilege)
-- Uses `--profile ci` for faster builds (optimised dev profile)
-- Build artifacts uploaded with 1-day retention for downstream jobs
-- `ci-success` gate job uses `if: always()` with failure/cancelled check
+- Keep workflow permissions least-privilege.
+- Use concurrency cancellation for superseded runs.
+- Use `--profile ci` for CI builds and tests; reserve `--release` for publishing.
+- Upload build artifacts for downstream integration jobs rather than rebuilding.
+- Keep `ci-success` on `if: always()` and list every **gating** job in `needs`.
+- Do not add informational jobs such as coverage to the required gate unless
+  intentionally making them blocking.
 
-### Build Profiles
+Integration logic belongs in `.github/workflows/scripts/linux/` and
+`.github/workflows/scripts/windows/`, with shared shell helpers under
+`scripts/linux/lib/`. Prefer scripts over large inline workflow steps.
 
-CI uses `cargo build --profile ci` (not `--release`) for faster compilation
-while still catching release-mode issues. The release workflow uses
-`cargo build --release`.
-
-### Test Scripts
-
-Integration test logic lives in `.github/workflows/scripts/`:
-
-```
-scripts/
-├── linux/
-│   ├── lib/test-helpers.sh     # Shared test helpers
-│   ├── test-applications.sh    # App-specific tests (git, zsh, vim, nvim)
-│   ├── test-config.sh          # Config validation checks
-│   ├── test-git-hooks.sh       # Pre-commit hook tests
-│   ├── test-paru.sh            # Paru/AUR helper tests (Arch; not wired into a ci.yml job)
-│   ├── test-shell-wrapper.sh   # dotfiles.sh wrapper tests
-│   ├── test-static-analysis.sh # ShellCheck/PSScriptAnalyzer runners
-│   └── test-uninstall.sh       # Install/uninstall round-trip
-└── windows/
-    ├── Test-ShellWrapper.ps1   # dotfiles.ps1 wrapper tests
-    └── Test-InstallUninstall.ps1
-```
-
-### Integration Test Strategy
-
-- **Dry-run profile tests**: Run `bin/dotfiles --root . -p <profile> -d install` for
-  each profile on both Linux and Windows
-- **Config validation**: Run `bin/dotfiles --root . -p <profile> test`
-- **Install/uninstall round-trip**: Install then uninstall, verify cleanup
-- **Application tests**: Install with base profile, then test each app (git config,
-  zsh completion, vim/nvim open and plugins)
-
-### CI-Specific Local Reproduction
-
-Use this section for parity with CI workflow behavior; for the canonical general
-Rust/cross-platform validation sequence, use `cross-platform-verification`.
-
-Common CI-profile reproduction commands:
+For CI-profile reproduction:
 
 ```bash
 cargo test --profile ci --manifest-path cli/Cargo.toml
@@ -91,54 +50,37 @@ cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D war
 cargo test --profile ci --manifest-path cli/Cargo.toml --test config_drift
 ```
 
-## Release Pipeline (`release.yml`)
+Use `cross-platform-verification` for the canonical general Rust and wrapper
+sequence.
 
-Release is a publishing workflow. Its `check-ci` job must only proceed when the
-completed CI run:
+## Publishing Workflows
 
-- concluded successfully
-- came from a `push`
-- ran on `main`
-- came from the same repository (`head_repository.full_name == github.repository`)
+`release.yml` and `docker.yml` consume `workflow_run`. Their initial guard must
+verify that the completed CI run:
 
-This guard prevents publishing jobs from running for pull-request or fork-owned
-workflow runs before any job that uses write permissions or secrets can start.
+- succeeded
+- came from a push to `main`
+- came from the same repository
 
-1. Builds release binaries for Linux x86_64, Linux aarch64, and Windows x86_64
-2. Sets `DOTFILES_VERSION=v0.1.${{ github.run_number }}` as env var
-3. `build.rs` embeds this version via `cargo:rustc-env=DOTFILES_VERSION`
-4. Renames artifacts to `dotfiles-linux-x86_64`, `dotfiles-linux-aarch64`, and
-   `dotfiles-windows-x86_64.exe`
-5. Generates `checksums.sha256` via `sha256sum`
-6. Creates a GitHub Release with `softprops/action-gh-release@v3`
+Apply the guard before jobs that receive write permissions or secrets. Release
+artifacts must retain the wrapper-expected names and publish SHA-256 checksums.
+Docker publishing must check out the exact successful CI head SHA.
 
-The shell wrappers (`dotfiles.sh`, `dotfiles.ps1`) download these release
-binaries, verify the SHA256 checksum, and cache the installed version.
-
-## Docker Pipeline (`docker.yml`)
-
-Docker publishing mirrors the release workflow's `workflow_run` guard before
-using Docker Hub secrets. It checks out the exact CI head SHA, logs in to Docker
-Hub, builds the repository Dockerfile, pushes `sneivandt/dotfiles:latest`, and
-updates the Docker Hub description from `README.md`.
-
-## Adding a New CI Job
+## Change Checklist
 
 1. Add the job to `ci.yml` with appropriate `needs:` dependencies
-2. Add the job name to the `ci-success` gate's `needs:` list
-3. Use `fail-fast: false` in matrix strategies for independent test cases
-4. Use the shared test helper library in `scripts/linux/lib/test-helpers.sh`
-5. Download build artifacts when tests need the compiled binary
+2. Decide explicitly whether it is gating or informational
+3. Add gating jobs to `ci-success.needs`
+4. Use `fail-fast: false` for independent matrix cases
+5. Put recurring test logic in the platform script directories
+6. Download existing artifacts when the job needs the compiled binary
 
 ## Rules
 
-- All CI jobs must be listed in the `ci-success` gate's `needs:` array
-- Use `--profile ci` in CI builds, `--release` only in release workflow
-- Test scripts go in `.github/workflows/scripts/` — not inline in YAML
-- Integration tests use `--root .` to run against the checked-out repo
-- Release version comes from `github.run_number` — no manual tagging
-- Binary checksums are always generated and published with releases
+- All gating CI jobs must be listed in `ci-success.needs`
+- Test scripts go in `.github/workflows/scripts/`
+- Integration tests run against the checked-out repository with `--root .`
+- Release binaries always ship with checksums
 - Publishing workflows triggered by `workflow_run` must gate on successful
   same-repo pushes to `main` before using write permissions or secrets
-- When a new recurring CI failure class appears, add the narrowest practical local
-  guard to `hooks/check-ci-guards.sh` or `hooks/check-rust.sh`, and document it here
+- Add the narrowest practical local guard for recurring CI-only failures

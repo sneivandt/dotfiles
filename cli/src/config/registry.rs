@@ -110,8 +110,13 @@ fn classify_value(value: &toml::Value) -> (String, RegistryValueType) {
     }
 }
 
-/// Valid Windows registry hive prefixes.
-const VALID_HIVE_PREFIXES: &[&str] = &["HKCU:", "HKLM:", "HKCR:", "HKU:", "HKCC:"];
+const SUPPORTED_HIVE_PREFIX: &str = r"HKCU:\";
+
+fn has_supported_hive(key_path: &str) -> bool {
+    key_path
+        .get(..SUPPORTED_HIVE_PREFIX.len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(SUPPORTED_HIVE_PREFIX))
+}
 
 /// Validate registry entries and return any warnings.
 #[must_use]
@@ -128,20 +133,12 @@ pub fn validate(
             "registry entries defined but platform does not support the Windows registry",
         )
         .check_each(entries, |e| &e.value_name, |e| {
-            let upper = e.key_path.to_uppercase();
-            let has_valid_hive = VALID_HIVE_PREFIXES
-                .iter()
-                .any(|prefix| upper.starts_with(prefix));
             [
                 check(e.key_path.trim().is_empty(), "registry key path is empty"),
                 check(e.value_name.trim().is_empty(), "registry value name is empty"),
                 check(
-                    !has_valid_hive,
-                    "registry key path should start with a valid hive (HKCU:, HKLM:, HKCR:, HKU:, HKCC:)",
-                ),
-                check(
-                    has_valid_hive && !upper.starts_with("HKCU:"),
-                    "non-HKCU registry hive requires elevated privileges and may fail without admin rights",
+                    !has_supported_hive(&e.key_path),
+                    r"registry key path must start with HKCU:\; other registry hives are not supported",
                 ),
             ]
         })
@@ -225,7 +222,7 @@ mod tests {
     test_load_missing_unfiltered_returns_empty!(load);
 
     #[test]
-    fn validate_detects_invalid_hive() {
+    fn validate_rejects_invalid_hive() {
         use crate::platform::{Os, Platform};
 
         let entries = vec![RegistryEntry {
@@ -236,7 +233,7 @@ mod tests {
         }];
         let warnings = validate(&entries, Platform::new(Os::Windows, false));
         assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("valid hive"));
+        assert!(warnings[0].message.contains("must start with HKCU"));
     }
 
     #[test]
@@ -276,7 +273,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_warns_non_hkcu_hive() {
+    fn validate_rejects_non_hkcu_hive() {
         use crate::platform::{Os, Platform};
 
         let entries = vec![RegistryEntry {
@@ -289,8 +286,8 @@ mod tests {
         assert!(
             warnings
                 .iter()
-                .any(|w| w.message.contains("elevated privileges")),
-            "should warn about non-HKCU hive needing elevation: {warnings:?}"
+                .any(|w| w.message.contains("other registry hives are not supported")),
+            "should reject non-HKCU hives: {warnings:?}"
         );
     }
 

@@ -27,11 +27,3 @@
 *.min.js diff=min
 *.min.css diff=min
 *.json diff=json
-
-# Binary files - do not diff
-*.lock binary
-package-lock.json binary
-yarn.lock binary
-go.sum binary
-
-

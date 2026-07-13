@@ -13,7 +13,7 @@
 [base]
 settings = [
   # Core behaviour
-  { key = "model",          value = "gpt-5.5"         },
+  { key = "model",          value = "gpt-5.6-sol"     },
   { key = "effortLevel",    value = "high"            },
   { key = "banner",         value = "never"           },
   { key = "beep",           value = false             },

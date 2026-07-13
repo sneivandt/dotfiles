@@ -11,6 +11,10 @@
 //!   mutating state.
 //! - **Remove**: Run the script with `--remove` to undo the applied state.
 //!
+//! Dry-run safety is cooperative for these opaque external scripts: the engine
+//! passes `--check` and `--dryrun`, but cannot prevent a script from mutating
+//! state if it violates that contract.
+//!
 //! `PowerShell` scripts (`.ps1`) are invoked via `pwsh`/`powershell`, shell
 //! scripts (`.sh`) are invoked via `sh`.
 use anyhow::{Context as _, Result, bail};

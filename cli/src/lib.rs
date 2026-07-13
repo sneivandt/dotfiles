@@ -31,6 +31,8 @@ mod logging;
 mod platform;
 mod resources;
 mod tasks;
+#[cfg(any(windows, test))]
+mod windows_process;
 
 #[cfg(any(feature = "internal-api", doctest))]
 #[doc(hidden)]
@@ -123,14 +125,20 @@ pub fn run() -> ExitCode {
     };
 
     if let Err(e) = result {
-        log.error(&format!("{e:#}"));
-        log.error("Run 'dotfiles log' for details.");
+        report_failure(&e, &*log);
         elevation::wait_if_elevated();
         return ExitCode::FAILURE;
     }
 
     elevation::wait_if_elevated();
     ExitCode::SUCCESS
+}
+
+fn report_failure(error: &anyhow::Error, log: &dyn logging::Output) {
+    if error.downcast_ref::<error::TaskFailures>().is_none() {
+        log.error(&format!("{error:#}"));
+    }
+    log.always("Run 'dotfiles log' for details.");
 }
 
 const fn logged_command_name(command: &cli::Command) -> Option<&'static str> {
@@ -143,4 +151,77 @@ const fn logged_command_name(command: &cli::Command) -> Option<&'static str> {
         cli::Command::Log(_) | cli::Command::Completions(_) => return None,
     };
     Some(name)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Mutex, PoisonError};
+
+    use super::*;
+
+    #[derive(Default)]
+    struct CapturingOutput {
+        errors: Mutex<Vec<String>>,
+        always: Mutex<Vec<String>>,
+    }
+
+    impl logging::Output for CapturingOutput {
+        fn stage(&self, _msg: &str) {}
+        fn info(&self, _msg: &str) {}
+        fn debug(&self, _msg: &str) {}
+        fn warn(&self, _msg: &str) {}
+        fn error(&self, msg: &str) {
+            self.errors
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(msg.to_string());
+        }
+        fn dry_run(&self, _msg: &str) {}
+        fn always(&self, msg: &str) {
+            self.always
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(msg.to_string());
+        }
+    }
+
+    #[test]
+    fn aggregate_task_failure_only_prints_plain_log_hint() {
+        let log = CapturingOutput::default();
+        let error = anyhow::Error::from(error::TaskFailures::new(2));
+
+        report_failure(&error, &log);
+
+        assert!(
+            log.errors
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .is_empty(),
+            "aggregate task failure should not repeat the failed task count"
+        );
+        assert_eq!(
+            *log.always.lock().unwrap_or_else(PoisonError::into_inner),
+            ["Run 'dotfiles log' for details."],
+            "log hint should use the always-visible plain-text channel"
+        );
+    }
+
+    #[test]
+    fn unexpected_failure_still_prints_error_and_plain_log_hint() {
+        let log = CapturingOutput::default();
+        let error = anyhow::anyhow!("configuration failed");
+
+        report_failure(&error, &log);
+
+        assert_eq!(
+            *log.errors.lock().unwrap_or_else(PoisonError::into_inner),
+            ["configuration failed"],
+            "unexpected command failures should remain visible as errors"
+        );
+        assert_eq!(
+            *log.always.lock().unwrap_or_else(PoisonError::into_inner),
+            ["Run 'dotfiles log' for details."],
+            "log hint should use the always-visible plain-text channel"
+        );
+    }
 }

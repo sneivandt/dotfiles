@@ -19,11 +19,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /build
-COPY rust-toolchain.toml rust-toolchain.toml
-COPY cli/ cli/
 COPY .git .git
-RUN cargo build --release --manifest-path cli/Cargo.toml \
-    && strip cli/target/release/dotfiles
 RUN mkdir -p /build/source \
     && git archive --format=tar HEAD | tar -x -C /build/source \
     && (git config --unset-all http.https://github.com/.extraheader || true) \
@@ -31,8 +27,14 @@ RUN mkdir -p /build/source \
     && git remote add origin https://github.com/sneivandt/dotfiles.git \
     && git checkout -B main HEAD \
     && (git branch --set-upstream-to=origin/main main || true)
+WORKDIR /build/source
+ARG DOTFILES_VERSION
+RUN version="${DOTFILES_VERSION:-$(git --git-dir=/build/.git describe --tags --abbrev=0 --match 'v[0-9]*')}" \
+    && DOTFILES_VERSION="$version" cargo build --release --manifest-path cli/Cargo.toml \
+    && strip cli/target/release/dotfiles
 
 FROM ubuntu:24.04
+ARG PROFILE=base
 
 LABEL org.opencontainers.image.title="dotfiles" \
       org.opencontainers.image.description="Cross-platform dotfiles for Linux/Arch/Windows" \
@@ -74,7 +76,7 @@ ENV SHELL=/bin/zsh
 # update and sparse-checkout tasks can operate inside the image.
 COPY --from=builder --chown=sneivandt:sneivandt /build/source/ /home/sneivandt/dotfiles/
 COPY --from=builder --chown=sneivandt:sneivandt /build/.git /home/sneivandt/dotfiles/.git
-COPY --from=builder /build/cli/target/release/dotfiles /home/sneivandt/dotfiles/bin/dotfiles
+COPY --from=builder --chown=sneivandt:sneivandt /build/source/cli/target/release/dotfiles /home/sneivandt/dotfiles/bin/dotfiles
 USER sneivandt
-RUN /home/sneivandt/dotfiles/bin/dotfiles --root /home/sneivandt/dotfiles -p base install
+RUN /home/sneivandt/dotfiles/bin/dotfiles --root /home/sneivandt/dotfiles -p "$PROFILE" install
 CMD ["/usr/bin/zsh"]

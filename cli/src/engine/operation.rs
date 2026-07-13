@@ -59,9 +59,16 @@ impl OperationState {
 /// model.
 pub(crate) trait Operation {
     /// Inspect current state without mutating anything.
+    ///
+    /// Implementations that invoke opaque external scripts can only enforce
+    /// this contract cooperatively. In particular, overlay scripts must honor
+    /// their documented `--check` mode.
     fn current_state(&self, ctx: &Context) -> Result<OperationState>;
 
     /// Preview the change for dry-run mode.
+    ///
+    /// External scripts must honor their documented dry-run argument because
+    /// the engine cannot sandbox or otherwise prevent script-side mutations.
     fn preview(&self, ctx: &Context, state: &OperationState) -> Result<TaskResult>;
 
     /// Apply the operation after [`current_state`](Self::current_state) reports

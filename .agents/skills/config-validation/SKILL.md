@@ -13,18 +13,20 @@ Validation happens at two levels: **runtime** (the `test` command) and
 
 ## Runtime: The `test` Command
 
-`commands/test.rs` runs six validation tasks:
+`commands/test.rs` runs seven validation tasks:
 
 | Task | What it checks |
 |---|---|
 | `ValidateConfigWarnings` | Fails when `Config::validate()` emits warnings |
 | `ValidateSymlinkSources` | Every symlink source file exists on disk |
-| `ValidateConfigFiles` | Required config files (`profiles.toml`, `symlinks.toml`, `packages.toml`, `manifest.toml`) exist |
+| `ValidateConfigFiles` | Required config files (`profiles.toml`, `symlinks.toml`, `packages.toml`, `pam.toml`, `manifest.toml`) exist |
 | `ValidateManifestSync` | `symlinks.toml` and `manifest.toml` expose the same non-base category sections |
+| `ValidateApmPlugins` | Local APM plugins pass `apm pack --dry-run --verbose` when APM is available |
 | `RunShellcheck` | Shell scripts pass shellcheck (skipped if unavailable) |
 | `RunPSScriptAnalyzer` | PowerShell scripts pass PSScriptAnalyzer (skipped if unavailable) |
 
-All live in `cli/src/tasks/validation/mod.rs` and implement the `Task` trait.
+Implementations live under `cli/src/tasks/validation/` and implement the
+`Task` trait. Keep `cli/src/commands/test.rs` as the authoritative task list.
 
 ## Per-Module `validate()` Functions
 

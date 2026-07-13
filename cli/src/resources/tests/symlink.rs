@@ -11,19 +11,13 @@ fn create_junction_invokes_mklink_with_directory_args() {
     use crate::exec::{ExecResult, MockExecutor};
 
     let mut mock = MockExecutor::new();
-    mock.expect_run_unchecked()
+    mock.expect_run_windows_cmd_unchecked()
         .once()
-        .withf(|program, args| {
-            let expected = [
-                "/c",
-                "mklink",
-                "/J",
-                r"C:\Users\test\.config\templates",
-                r"C:\repo\symlinks\config\git\templates",
-            ];
-            program == "cmd" && args == expected.as_slice()
+        .withf(|command_line| {
+            command_line
+                == r#"""mklink" "/J" "C:\Users\test\.config\templates" "C:\repo\symlinks\config\git\templates"""#
         })
-        .returning(|_, _| {
+        .returning(|_| {
             Ok(ExecResult {
                 stdout: String::new(),
                 stderr: String::new(),
@@ -196,6 +190,44 @@ fn symlink_resource_incorrect_when_target_is_regular_file() {
 
     let state = resource.current_state().unwrap();
     assert!(matches!(state, ResourceState::Incorrect { .. }));
+}
+
+#[test]
+fn symlink_resource_warns_before_replacing_regular_file() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let source = temp_dir.path().join("source");
+    let target = temp_dir.path().join("target");
+    std::fs::write(&source, "managed content").unwrap();
+    std::fs::write(&target, "user content").unwrap();
+    let resource = SymlinkResource::new(source, target.clone(), system_executor());
+
+    let warning = resource.pre_apply_warning().unwrap();
+
+    assert_eq!(
+        warning.as_deref(),
+        Some(
+            format!(
+                "replacing existing non-symlink target without backup: {}",
+                target.display()
+            )
+            .as_str()
+        )
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_resource_does_not_warn_before_replacing_wrong_symlink() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let source = temp_dir.path().join("source");
+    let other = temp_dir.path().join("other");
+    let target = temp_dir.path().join("target");
+    std::fs::write(&source, "managed content").unwrap();
+    std::fs::write(&other, "other content").unwrap();
+    std::os::unix::fs::symlink(&other, &target).unwrap();
+    let resource = SymlinkResource::new(source, target, system_executor());
+
+    assert_eq!(resource.pre_apply_warning().unwrap(), None);
 }
 
 #[cfg(unix)]

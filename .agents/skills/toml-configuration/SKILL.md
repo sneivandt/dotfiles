@@ -1,180 +1,89 @@
 ---
 name: toml-configuration
 description: >
-  Guide for working with TOML configuration files in the dotfiles project.
-  Use when creating, modifying, or parsing TOML files in conf/ directory.
+  TOML structure, category filtering, and loader conventions for conf/ and
+  cli/src/config/. Use when adding or changing declarative configuration.
 ---
 
-# TOML Configuration Guide
+# TOML Configuration
 
-All configuration in `conf/` uses TOML format, deserialized via Serde.
+Configuration under `conf/` is declarative desired state and is deserialized
+with Serde. Keep parsing, validation, resource wiring, and real config changes
+in sync.
 
-## Array Format (most files)
+## Stable Conventions
+
+- Use typed Serde models; do not add ad hoc text parsing.
+- Use `#[serde(untagged)]` when an entry intentionally supports both a concise
+  string and structured metadata.
+- Keep deterministic section ordering where output or diagnostics depend on it.
+- Include trailing commas in multiline arrays.
+- Prefer `config_section!` for ordinary category-filtered lists.
+- Use `load_optional_config()` only when a missing file legitimately means
+  empty configuration; otherwise use `load_required_config()`.
+
+## Category Sections
+
+Most files use table names as category expressions:
 
 ```toml
-# Comments start with #
-[section-name]
+[arch-desktop]
 items = [
-  "entry-one",
-  "entry-two",
+  "example",
 ]
 ```
 
-Deserialized using `#[derive(Deserialize)]` structs with wrapper types containing `Vec<T>`.
+Category names are lowercased and split on `-`. Matching uses AND semantics:
+every category in the section name must be present in the category set supplied
+by the caller.
 
-## Structured Metadata Format
+- Normal config loaders filter against `active_categories`.
+- `manifest.toml` filters against `excluded_categories`.
+- Do not use dotted table names for category expressions; dots create nested
+  TOML tables.
 
-Many config files support both simple strings and structured metadata:
+Built-in categories are `base`, `desktop`, `linux`, `windows`, and `arch`.
+Profiles may also define custom categories. Coordinate new categories with
+profiles, manifest handling, validation, tests, and documentation.
 
-```toml
-# packages.toml — Simple string or object with metadata
-[base]
-packages = [
-  "git",
-  "vim",
-  { name = "yay", aur = true },
-]
-```
+## Loader Pattern
 
-Deserialized using `#[serde(untagged)] enum` for polymorphic types.
+Keep one clear path from file to desired state:
 
-## Multi-Category Sections
+1. Deserialize sections into typed values.
+2. Convert sections into category plus item collections.
+3. Filter with the shared category helper.
+4. Merge overlay entries through `SectionLoader` when that config surface
+   supports overlays.
+5. Return typed values without embedding task behavior in the loader.
 
-Use **hyphen-separated** table names for multi-category sections (AND logic):
+`cli/src/config/mod.rs` owns top-level loading. Domain modules under
+`cli/src/config/` own their formats and validators. Consult the target module
+and the real file under `conf/` rather than relying on a duplicated inventory in
+this skill.
 
-```toml
-# Hyphen-separated categories
-[arch-desktop]
-packages = ["wofi", "dunst"]
-```
+## Change Checklist
 
-The TOML loader splits section names on `-` to extract category tags.
-Do **not** use dots or commas — dots create nested TOML tables and commas are
-not valid in unquoted table names.
+For a new or changed config-backed surface:
 
-## Section Filtering
+1. Update the config type and loader.
+2. Add or update validation.
+3. Update the real `conf/*.toml` file.
+4. Wire the resource or operation and its task.
+5. Register static tasks and export modules where required.
+6. Add focused parser, validation, and drift coverage.
+7. Review profile, manifest, and overlay implications.
 
-```rust
-use crate::config::toml_loader;
+## Validation
 
-// Load and filter by category in one step
-let items = toml_loader::filter_by_categories(parsed_sections, active_categories);
-```
-
-`filter_by_categories()` always uses AND logic: a section matches only when all
-of its category tags are present in the category slice passed by the caller.
-Most config modules pass `active_categories`; `manifest.rs` passes
-`excluded_categories`.
-
-## Config Loader Pattern
-
-Each module in `cli/src/config/` follows:
-
-```rust
-use serde::Deserialize;
-use std::collections::BTreeMap;
-use crate::config::toml_loader;
-
-#[derive(Deserialize)]
-struct MySection {
-    items: Vec<MyType>,
-}
-
-pub fn load(path: &Path, active_categories: &[Category]) -> Result<Vec<MyType>> {
-    // Load optional TOML into deterministic section order.
-    let config: BTreeMap<String, MySection> = toml_loader::load_optional_config(path)?;
-
-    // Convert to (category, Vec<items>) pairs
-    let sections: Vec<(String, Vec<MyType>)> = config
-        .into_iter()
-        .map(|(cat, section)| (cat, section.items))
-        .collect();
-
-    // Filter by active categories and flatten
-    Ok(toml_loader::filter_by_categories(sections, active_categories))
-}
-```
-
-Prefer `config_section!` for simple sectioned lists. Use
-`toml_loader::load_optional_config()` when missing files should behave as empty
-TOML, and `toml_loader::load_required_config()` when a file must exist.
-
-## Configuration Files
-
-| File | Format | Notes |
-|------|--------|-------|
-| `profiles.toml` | table | Profile definitions with `include`/`exclude` arrays |
-| `manifest.toml` | arrays | Sparse checkout exclusions using `excluded_categories` with the same AND logic |
-| `symlinks.toml` | arrays | Profile-filtered symlink paths; strings, or `{ source, target }` for paths that must not get a dot-prefix target. A complete path segment of `*` is supported for directory globs. |
-| `packages.toml` | arrays | Simple strings or `{ name, aur }` objects |
-| `systemd-units.toml` | arrays | Systemd unit names; strings default to user scope, objects can set `scope` |
-| `chmod.toml` | arrays | `permissions` entries with `mode` and `path` fields |
-| `vscode-extensions.toml` | arrays | Extension IDs |
-| `git-config.toml` | arrays | `settings` entries with `key` and `value` fields |
-| `registry.toml` | tables | `path` field + `values` table for registry keys |
-| `copilot.toml` | arrays | Copilot CLI settings entries with dot-path `key` and TOML `value` fields |
-| `scripts.toml` | arrays | Overlay script entries with `name`, `path`, optional `description` |
-
-## TOML Format Examples
-
-### Simple Array (systemd-units.toml)
-
-```toml
-[base]
-units = ["clean-home-tmp.timer"]
-
-[arch-desktop]
-units = [
-  "dunst.service",
-  { name = "sshd.service", scope = "system" },
-]
-```
-
-Plain systemd unit strings default to `scope = "user"`. Use
-`{ name = "...", scope = "system" }` only for units that should be managed via
-`sudo systemctl`; valid scopes are `user` and `system`.
-
-### Structured Objects (chmod.toml)
-
-```toml
-[base]
-permissions = [
-  { mode = "600", path = "ssh/config" },
-  { mode = "700", path = "gnupg" },
-]
-```
-
-### Polymorphic Types (packages.toml)
-
-```toml
-[base]
-packages = [
-  "git",
-  { name = "yay", aur = true },
-]
-```
-
-### Nested Tables (registry.toml)
-
-```toml
-[explorer]
-path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-
-[explorer.values]
-HideFileExt = 0x00000000
-ShowHidden = 0x00000001
-```
+- Use `config-validation` for validator and drift-test conventions.
+- Run the repository test command for real-config validation.
+- Use `cross-platform-verification` when Rust code changes.
 
 ## Rules
 
-- Use **hyphen-separated** table names for multi-category sections: `[arch-desktop]`
-- All config files use TOML arrays or tables — no custom parsing
-- Categories are extracted from table names (lowercased, split on `-`)
-- Valid categories are `base`, `desktop`, `linux`, `windows`, and `arch`
-- Include a trailing comma after the last array element
-- Do not use dots or commas in section names; dots create nested TOML tables
-- Serde handles deserialization with strong typing
-- Use `#[serde(untagged)]` for polymorphic enums (string vs object)
-- Always validate TOML syntax — malformed files cause deserialization errors
-- Config loaders are called in `Config::load()` (`cli/src/config/mod.rs`) via a
-  single `SectionLoader` call per section, which also handles overlay merging
+- Configuration describes desired state; orchestration stays in tasks.
+- Invalid or unsafe paths must produce explicit validation diagnostics.
+- Preserve strong typing across strings, numbers, booleans, and structured
+  values.
+- Do not duplicate exhaustive config-file inventories in skills.

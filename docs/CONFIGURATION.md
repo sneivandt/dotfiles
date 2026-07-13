@@ -366,6 +366,8 @@ scripts = [
   - **`--check`**: Verify state (exit 0 = correct, exit 1 = needs apply, any other non-zero exit = check failure)
   - **`--dryrun`**: Preview what apply would do without mutating state
   - **`--remove`**: Undo the applied state
+- `--check` and `--dryrun` are cooperative safety contracts: these modes execute
+  the external script, so the script itself must not mutate state
 - `.ps1` scripts are invoked via `pwsh` when available; Windows falls back to `powershell`, while non-Windows platforms require `pwsh`
 - `.sh` scripts are invoked via `sh`
 - Scripts run with `-NonInteractive` to prevent interactive prompts
@@ -445,6 +447,9 @@ path = 'HKCU:\Console'
 FaceName = "Cascadia Mono"
 QuickEdit = 1
 ```
+
+Only `HKCU:\` paths are accepted. System-wide hives such as `HKLM:\` and
+`HKCR:\` are outside the managed scope and are rejected.
 
 Keep registry settings in Windows-only sections when they are tied to a
 profile/category split.

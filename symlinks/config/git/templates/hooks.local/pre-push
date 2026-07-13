@@ -1,8 +1,7 @@
 #!/bin/sh
 
 github_user=$(git config github.user 2>/dev/null || git config github.username 2>/dev/null || true)
-remote=$(git config --get remote.origin.url)
-branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+remote=${2:-}
 remote_owner=
 
 # Skip for GitHub repos you own.
@@ -26,10 +25,15 @@ then
   exit 0
 fi
 
-# Block pushing to master or main or develop
-if [ "$branch" = "master" ] || [ "$branch" = "main" ] || [ "$branch" = "develop" ]
-then
-  echo "You are on branch $branch. Are you sure you want to push to this branch?"
-  echo "If so, push with --no-verify to bypass this pre-push hook."
-  exit 1
-fi
+# Block updates to protected branches on repositories you do not own.
+while read -r _local_ref _local_sha remote_ref _remote_sha
+do
+  case "$remote_ref" in
+    refs/heads/master|refs/heads/main|refs/heads/develop)
+      branch=${remote_ref#refs/heads/}
+      echo "You are pushing to protected branch $branch."
+      echo "Push with --no-verify to bypass this pre-push hook."
+      exit 1
+      ;;
+  esac
+done

@@ -650,9 +650,9 @@ fn config_validate_no_warning_for_valid_registry_on_windows() {
     );
 }
 
-/// A registry entry using a non-HKCU hive must produce a validation warning on Windows.
+/// A registry entry outside HKCU must be rejected by validation on Windows.
 #[test]
-fn config_validate_warns_on_non_hkcu_registry_hive() {
+fn config_validate_rejects_non_hkcu_registry_hive() {
     let ctx = common::TestContextBuilder::new()
         .with_config_file(
             "registry.toml",
@@ -669,10 +669,9 @@ fn config_validate_warns_on_non_hkcu_registry_hive() {
     let warnings = config.validate(platform);
 
     assert!(
-        warnings
-            .iter()
-            .any(|w| w.source == "registry.toml" && w.message.contains("non-HKCU")),
-        "expected a registry.toml warning for non-HKCU hive, got: {warnings:?}"
+        warnings.iter().any(|w| w.source == "registry.toml"
+            && w.message.contains("other registry hives are not supported")),
+        "expected registry.toml to reject the non-HKCU hive, got: {warnings:?}"
     );
 }
 

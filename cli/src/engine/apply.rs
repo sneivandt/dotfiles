@@ -111,6 +111,9 @@ fn apply_resource<R: Resource>(
     verb: &str,
     bail_on_error: bool,
 ) -> Result<TaskStats> {
+    if let Some(warning) = resource.pre_apply_warning()? {
+        ctx.log.warn(&warning);
+    }
     ctx.log
         .diag(DiagEvent::ResourceApply, &format!("{verb} {desc}"));
     let mut delta = TaskStats::new();

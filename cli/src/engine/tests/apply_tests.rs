@@ -1,12 +1,55 @@
 use crate::engine::apply;
 use crate::engine::mode::ProcessOpts;
-use crate::resources::{ResourceChange, ResourceState};
+use crate::logging::{Output, TaskRecorder, TaskStatus};
+use crate::resources::{Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::tasks::test_helpers::empty_config;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use super::{
     MockResource, TypedErrorResource, bail_opts, default_opts, dry_run_context, test_context,
 };
+
+#[derive(Debug)]
+struct OrderedEventLog {
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+impl Output for OrderedEventLog {
+    fn stage(&self, _msg: &str) {}
+    fn info(&self, _msg: &str) {}
+    fn debug(&self, _msg: &str) {}
+    fn warn(&self, msg: &str) {
+        self.events.lock().unwrap().push(format!("warn: {msg}"));
+    }
+    fn error(&self, _msg: &str) {}
+    fn dry_run(&self, _msg: &str) {}
+    fn always(&self, _msg: &str) {}
+}
+
+impl TaskRecorder for OrderedEventLog {
+    fn record_task(&self, _name: &str, _status: TaskStatus, _message: Option<&str>) {}
+}
+
+#[derive(Debug)]
+struct DestructiveResource {
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+impl Resource for DestructiveResource {
+    fn description(&self) -> String {
+        "destructive resource".to_string()
+    }
+
+    fn pre_apply_warning(&self) -> ResourceResult<Option<String>> {
+        Ok(Some("existing data will be replaced".to_string()))
+    }
+
+    fn apply(&self) -> ResourceResult<ResourceChange> {
+        self.events.lock().unwrap().push("apply".to_string());
+        Ok(ResourceChange::Applied)
+    }
+}
 
 // -----------------------------------------------------------------------
 // process_single
@@ -179,6 +222,64 @@ fn process_single_dry_run_incorrect_increments_changed() {
     .unwrap();
 
     assert_eq!(stats.changed, 1);
+}
+
+#[test]
+fn process_single_warns_before_destructive_apply() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let ctx = ctx.with_log(Arc::new(OrderedEventLog {
+        events: Arc::clone(&events),
+    }));
+    let resource = DestructiveResource {
+        events: Arc::clone(&events),
+    };
+
+    let stats = apply::process_single(
+        &ctx,
+        &resource,
+        &ResourceState::Incorrect {
+            current: "user data".to_string(),
+        },
+        &default_opts(),
+    )
+    .unwrap();
+
+    assert_eq!(stats.changed, 1);
+    assert_eq!(
+        events.lock().unwrap().as_slice(),
+        ["warn: existing data will be replaced", "apply",]
+    );
+}
+
+#[test]
+fn process_single_dry_run_neither_warns_nor_applies() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = dry_run_context(config);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let ctx = ctx.with_log(Arc::new(OrderedEventLog {
+        events: Arc::clone(&events),
+    }));
+    let resource = DestructiveResource {
+        events: Arc::clone(&events),
+    };
+
+    let stats = apply::process_single(
+        &ctx,
+        &resource,
+        &ResourceState::Incorrect {
+            current: "user data".to_string(),
+        },
+        &default_opts(),
+    )
+    .unwrap();
+
+    assert_eq!(stats.changed, 1);
+    assert!(
+        events.lock().unwrap().is_empty(),
+        "dry-run must not enter the mutation boundary"
+    );
 }
 
 // -----------------------------------------------------------------------

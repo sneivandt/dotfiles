@@ -30,17 +30,9 @@ deny = []
 skip = [
     # Transitive crates that pin a single version, blocked on upstream
     # consolidation. Re-evaluate periodically and remove when possible.
-    { crate = "getrandom", reason = "rand 0.8 still pulls 0.2; rand 0.9 uses 0.3" },
-    { crate = "windows-sys", reason = "winreg/git2/terminal_size pin different majors" },
-    { crate = "windows-targets", reason = "transitive of windows-sys" },
-    { crate = "windows_aarch64_gnullvm", reason = "transitive of windows-targets" },
-    { crate = "windows_aarch64_msvc", reason = "transitive of windows-targets" },
-    { crate = "windows_i686_gnu", reason = "transitive of windows-targets" },
-    { crate = "windows_i686_gnullvm", reason = "transitive of windows-targets" },
-    { crate = "windows_i686_msvc", reason = "transitive of windows-targets" },
-    { crate = "windows_x86_64_gnu", reason = "transitive of windows-targets" },
-    { crate = "windows_x86_64_gnullvm", reason = "transitive of windows-targets" },
-    { crate = "windows_x86_64_msvc", reason = "transitive of windows-targets" },
+    { crate = "getrandom@0.2.17", reason = "ring still pins getrandom 0.2" },
+    { crate = "getrandom@0.3.4", reason = "jobserver still pins getrandom 0.3" },
+    { crate = "windows-sys@0.52.0", reason = "ring still pins windows-sys 0.52" },
 ]
 
 [sources]

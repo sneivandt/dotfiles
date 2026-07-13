@@ -60,6 +60,7 @@ packages = [
   "noto-fonts",
   "noto-fonts-emoji",
   "playerctl",
+  "python",
   "uwsm",
   "otf-font-awesome",
   "papirus-icon-theme",

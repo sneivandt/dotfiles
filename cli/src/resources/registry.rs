@@ -4,6 +4,8 @@ use std::collections::HashMap;
 #[cfg(windows)]
 use anyhow::Context as _;
 use anyhow::Result;
+#[cfg(any(windows, test))]
+use anyhow::bail;
 
 use super::{Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::config::registry::RegistryValueType;
@@ -11,29 +13,22 @@ use crate::config::registry::RegistryValueType;
 /// Native Windows registry access via the `winreg` crate.
 #[cfg(windows)]
 mod native {
-    use anyhow::{Context as _, Result, bail};
+    use anyhow::{Context as _, Result};
     use winreg::RegKey;
-    use winreg::enums::{HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::enums::HKEY_CURRENT_USER;
     use winreg::enums::{
         REG_BINARY, REG_DWORD, REG_DWORD_BIG_ENDIAN, REG_EXPAND_SZ, REG_FULL_RESOURCE_DESCRIPTOR,
         REG_LINK, REG_MULTI_SZ, REG_NONE, REG_QWORD, REG_RESOURCE_LIST,
         REG_RESOURCE_REQUIREMENTS_LIST, REG_SZ,
     };
 
+    use super::parse_hkcu_subkey;
     use crate::config::registry::RegistryValueType;
 
     /// Parse a `PowerShell`-style registry path into a root key and subkey.
     fn parse_path(key_path: &str) -> Result<(RegKey, &str)> {
-        let (root_str, subkey) = key_path
-            .split_once(r":\")
-            .ok_or_else(|| anyhow::anyhow!("invalid registry path: {key_path}"))?;
-        let root = match root_str {
-            "HKCU" => RegKey::predef(HKEY_CURRENT_USER),
-            "HKLM" => RegKey::predef(HKEY_LOCAL_MACHINE),
-            "HKCR" => RegKey::predef(HKEY_CLASSES_ROOT),
-            _ => bail!("unsupported registry root: {root_str}"),
-        };
-        Ok((root, subkey))
+        let subkey = parse_hkcu_subkey(key_path)?;
+        Ok((RegKey::predef(HKEY_CURRENT_USER), subkey))
     }
 
     /// Read a registry value and return it as a string.
@@ -139,6 +134,17 @@ mod native {
             | REG_QWORD => format!("{:?}", val.bytes),
         }
     }
+}
+
+#[cfg(any(windows, test))]
+fn parse_hkcu_subkey(key_path: &str) -> Result<&str> {
+    let (root, subkey) = key_path
+        .split_once(r":\")
+        .ok_or_else(|| anyhow::anyhow!("invalid registry path: {key_path}"))?;
+    if !root.eq_ignore_ascii_case("HKCU") {
+        bail!("unsupported registry root '{root}': only HKCU is allowed");
+    }
+    Ok(subkey)
 }
 
 /// A Windows registry resource that can be checked and applied.
@@ -329,6 +335,21 @@ mod tests {
             RegistryValueType::Dword,
         );
         assert_eq!(resource.description(), "HKCU:\\Console\\FontSize = 14");
+    }
+
+    #[test]
+    fn parse_hkcu_subkey_accepts_current_user_paths_case_insensitively() {
+        assert_eq!(parse_hkcu_subkey(r"HKCU:\Console").unwrap(), "Console");
+        assert_eq!(parse_hkcu_subkey(r"hkcu:\Console").unwrap(), "Console");
+    }
+
+    #[test]
+    fn parse_hkcu_subkey_rejects_other_hives() {
+        let error = parse_hkcu_subkey(r"HKLM:\Software\Test").unwrap_err();
+        assert!(
+            error.to_string().contains("only HKCU is allowed"),
+            "unexpected registry scope error: {error}"
+        );
     }
 
     #[test]

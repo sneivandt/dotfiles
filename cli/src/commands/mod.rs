@@ -133,14 +133,9 @@ fn spawn_windows_restart_helper() -> Result<()> {
     let helper_script =
         build_windows_restart_helper_script(&exe, &pending, &pending_version, &cache, &args);
 
-    std::process::Command::new(crate::elevation::preferred_powershell())
-        .args([
-            "-NoProfile",
-            "-EncodedCommand",
-            &crate::elevation::powershell_encode_command(&helper_script),
-        ])
-        .spawn()
-        .context("spawning restart helper")?;
+    let mut command = std::process::Command::new(crate::elevation::preferred_powershell());
+    crate::windows_process::PowerShellCommand::new(&helper_script).configure(&mut command);
+    command.spawn().context("spawning restart helper")?;
 
     Ok(())
 }
@@ -189,12 +184,12 @@ fn build_windows_restart_helper_script(
                      }} \
                  }}; \
                  exit 1",
-        exe = crate::elevation::powershell_single_quote(&exe.display().to_string()),
-        pending = crate::elevation::powershell_single_quote(&pending.display().to_string()),
+        exe = crate::windows_process::powershell_single_quote(&exe.display().to_string()),
+        pending = crate::windows_process::powershell_single_quote(&pending.display().to_string()),
         pending_version =
-            crate::elevation::powershell_single_quote(&pending_version.display().to_string()),
-        cache = crate::elevation::powershell_single_quote(&cache.display().to_string()),
-        args = crate::elevation::powershell_arg_list(args),
+            crate::windows_process::powershell_single_quote(&pending_version.display().to_string()),
+        cache = crate::windows_process::powershell_single_quote(&cache.display().to_string()),
+        args = crate::windows_process::powershell_arg_list(args),
         guard = REEXEC_GUARD_VAR,
     )
 }
@@ -308,7 +303,8 @@ fn resolve_profile(
 ) -> Result<profiles::Profile> {
     log.stage("Resolving profile");
     let profile = profiles::resolve_from_args(global.profile.as_deref(), root, platform)?;
-    let version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    let version =
+        option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
     let updated_label = if updated {
         " \x1b[2m\u{00b7} refreshed\x1b[0m"
     } else {
@@ -562,7 +558,7 @@ pub fn run_tasks_to_completion<'a>(
 
     let count = log.failure_count();
     if count > 0 {
-        anyhow::bail!("{count} task(s) failed");
+        return Err(crate::error::TaskFailures::new(count).into());
     }
     Ok(())
 }

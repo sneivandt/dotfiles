@@ -1,147 +1,94 @@
 ---
 name: overlay-scripts
 description: >
-  Overlay repository system and convention-based script tasks. Use when
-  working with private overlay config, custom script resources, or the
-  dynamic task injection mechanism.
+  Overlay configuration and convention-based script task workflow. Use when
+  changing private overlay loading, script resources, or dynamic task injection.
 ---
 
 # Overlay Scripts
 
-The overlay system allows a separate repository to extend the main dotfiles
-configuration with private TOML config and custom script tasks.
+An overlay repository extends the main declarative config without placing
+private state in this repository. Keep overlay discovery, config merging,
+script execution, and dynamic task injection as separate responsibilities.
 
-## Overlay Path Resolution
+## Overlay Resolution
 
-Resolved in priority order (same pattern as profiles):
+Resolve the overlay once at startup in this priority order:
 
-1. `--overlay` CLI flag
-2. `DOTFILES_OVERLAY` environment variable
-3. `dotfiles.overlay` in the repo's local git config
+1. `--overlay`
+2. `DOTFILES_OVERLAY`
+3. repository-local `dotfiles.overlay` git config
 
-Implemented in `cli/src/config/overlay.rs` with `resolve_from_args()`.
-Persisted via `git2` crate to local git config.
+Resolution and persistence live in `cli/src/config/overlay.rs`. Do not repeatedly
+resolve the path inside loaders or tasks.
 
 ## Config Merging
 
-`Config::load()` accepts an optional overlay path. When set, each section's
-`SectionLoader` call reads the matching TOML file from `<overlay>/conf/` (if
-present) and appends its entries to the main config list. The same category
-filtering applies.
+`SectionLoader` loads the main config and the matching overlay file, then
+appends overlay entries under the same category rules. Overlay files extend the
+main desired state; they do not replace it.
 
-```rust
-// In Config::load() — each SectionLoader call loads main config AND
-// merges the overlay for that section in one step.
-let sections = SectionLoader::new(root, overlay, profile);
-let packages = sections.collect_filtered(PACKAGES_TOML, packages::load)?;
-```
+When adding an overlay-aware config surface:
 
-## Script Convention
+- route it through `SectionLoader`
+- preserve typed deserialization and category filtering
+- keep missing overlay files optional
+- add merge-order and category tests
 
-Scripts in the overlay follow a four-mode interface:
+## Script Contract
 
-| Invocation | Purpose | Expected behaviour |
-|---|---|---|
-| No args | **Apply** | Create/install the desired state |
-| `--check` | **Check** | Exit 0 if correct, exit 1 if needs apply; other non-zero exits are check failures |
-| `--dryrun` | **Dry-run** | Preview what apply would do without mutating state |
-| `--remove` | **Remove** | Undo the applied state |
+Overlay scripts implement four modes:
 
-### PowerShell scripts (`.ps1`)
+| Invocation | Meaning |
+|---|---|
+| no arguments | apply desired state |
+| `--check` | exit 0 when correct, 1 when apply is needed, other non-zero on failure |
+| `--dryrun` | preview without mutation |
+| `--remove` | undo managed state |
 
-```powershell
-param([switch]$Check, [switch]$DryRun, [switch]$Remove)
+Shell scripts must be POSIX `sh`. PowerShell scripts must support non-interactive
+execution. Every mode must return failures rather than printing an error and
+exiting successfully.
 
-if ($Check)  { <# verify state, exit 0/1 #> }
-elseif ($DryRun) { <# print planned changes without mutating #> }
-elseif ($Remove) { <# undo #> }
-else { <# apply #> }
-```
+Script paths are relative to the overlay root. Reject absolute paths and `..`
+components before execution.
 
-Invoked with: `pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File` when available. Windows falls back to `powershell`; non-Windows platforms require `pwsh`.
+## Runtime Boundaries
 
-### Shell scripts (`.sh`)
+- `cli/src/config/scripts.rs` parses script entries.
+- `cli/src/resources/script.rs` owns check, preview, apply, and remove behavior.
+- `LoadOverlayScripts` reports scripts already loaded into config during Sync.
+- `OverlayScriptTask` provides one dynamic Provision task per entry.
+- The command runner builds dynamic tasks from preloaded config before filtering
+  and scheduling.
 
-```sh
-#!/bin/sh
-case "$1" in
-  --check)  # verify state, exit 0/1 ;;
-  --dryrun) # print planned changes without mutating ;;
-  --remove) # undo ;;
-  *)        # apply ;;
-esac
-```
+Dynamic tasks are not registered as individual static catalog entries. Keep the
+loader task registered for Sync-phase reporting; dynamic task creation itself
+happens before scheduler execution.
 
-Invoked with: `sh`
+All subprocesses go through the executor abstraction. Preserve interpreter
+selection and non-interactive PowerShell behavior when changing command
+construction.
 
-## Script Resource
+## Change Checklist
 
-`cli/src/resources/script.rs` — `ScriptResource` implements both
-`Resource` and `IntrinsicState`:
+1. Update the typed config contract.
+2. Preserve path validation and overlay-root containment.
+3. Keep all four script modes wired.
+4. Update dynamic task creation and phase assumptions together.
+5. Add focused tests for exit-code mapping, dry-run failures, path rejection,
+   and overlay merging.
 
-- `current_state()` — runs `--check`, maps exit code to `Correct`/`Missing`
-- `dry_run_output()` — runs `--dryrun` and propagates failures
-- `apply()` — runs script with no args
-- `remove()` — runs script with `--remove`
-- Returns `Skipped`/`Invalid` when the script file is missing
+## Validation
 
-The `interpreter_args()` method selects the interpreter based on file extension.
-
-## Dynamic Task Injection
-
-Unlike static tasks in the catalog, overlay scripts produce dynamic tasks:
-
-1. `LoadOverlayScripts` is a static task in `all_install_tasks()` — runs in
-   the Sync phase, validates overlay is configured and logs script count
-2. `CommandRunner::overlay_script_tasks()` creates one `OverlayScriptTask`
-   per `ScriptEntry` from the loaded config
-3. `install.rs` extends the static task list with these dynamic tasks before
-   filtering and execution
-4. Each `OverlayScriptTask` runs in the Provision phase; the phase barrier
-   guarantees `LoadOverlayScripts` (Sync) completes first
-
-```rust
-// In install.rs
-let mut all_tasks = tasks::all_install_tasks();
-all_tasks.extend(runner.overlay_script_tasks());
-```
-
-## Overlay Repository Structure
-
-```
-overlay-repo/
-  conf/
-    scripts.toml        # Script task definitions
-    packages.toml       # Additional packages (optional)
-    symlinks.toml       # Additional symlinks (optional)
-    ...                 # Any standard conf/*.toml file
-  scripts/
-    config.ps1           # Convention-based script
-    ssh.sh              # Another script
-```
-
-## `scripts.toml` Format
-
-```toml
-[linux]
-scripts = [
-  { name = "Setup work SSH", path = "scripts/ssh.sh" },
-]
-```
-
-Parsed by `cli/src/config/scripts.rs` using the `config_section!` macro.
-Paths are relative to the overlay root and must not be absolute or contain `..`
-components.
+- Use `resource-implementation` for `ScriptResource` behavior.
+- Use `profile-system` and `toml-configuration` for category-aware merging.
+- Use `cross-platform-verification` after Rust or interpreter changes.
 
 ## Rules
 
-- Scripts must handle all four modes: apply, `--check`, `--dryrun`, `--remove`
-- Script paths must be relative to the overlay root and must not contain `..`
-- `--check` must exit 0 when state is correct, exit 1 when apply is needed, and any other non-zero exit for check failures
-- `--dryrun` must not mutate state and must exit non-zero on preview failures
-- PowerShell scripts run with `-NonInteractive` to prevent prompts
-- Use `[System.IO.Directory]::Delete()` for directory symlinks in
-  PowerShell (avoids `Remove-Item` confirmation prompts)
-- Overlay TOML files are **appended** to main config, never replace
-- The overlay path is resolved once at startup; changes require a re-run
-- Dynamic tasks use the script entry's `name` field as the task name
+- Overlay config appends; it never silently replaces main config.
+- Dry-run mode must not mutate.
+- Check failures are distinct from “state missing.”
+- PowerShell execution must remain non-interactive.
+- Private overlay content must not be copied into this repository or its skills.

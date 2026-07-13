@@ -3,6 +3,13 @@
 //! Detects whether the process has administrator privileges and re-launches
 //! elevated via UAC when needed. No-op on non-Windows platforms.
 
+#[cfg(windows)]
+use crate::windows_process::PowerShellCommand;
+#[cfg(test)]
+use crate::windows_process::powershell_encode_command;
+#[cfg(any(windows, test))]
+use crate::windows_process::{powershell_arg_list, powershell_single_quote};
+
 /// Check if the current process is running with administrator privileges.
 ///
 /// On Windows, runs `net session` which succeeds only when elevated.
@@ -70,9 +77,8 @@ pub fn elevate_and_exit(
 
     log.always("Not running as administrator. Requesting elevation...");
 
-    let encoded = powershell_encode_command(&ps_script);
-    let result = executor
-        .run_unchecked(ps_exe, &["-NoProfile", "-EncodedCommand", &encoded])
+    let result = PowerShellCommand::new(&ps_script)
+        .run_unchecked(executor, ps_exe)
         .context("failed to start elevated process")?;
 
     if result.success {
@@ -103,42 +109,6 @@ pub fn wait_if_elevated() {
 /// No-op on non-Windows platforms.
 #[cfg(not(windows))]
 pub const fn wait_if_elevated() {}
-
-/// Wrap `value` in `PowerShell` single quotes, doubling any embedded single
-/// quotes so the value is interpreted literally by `PowerShell`.
-#[cfg(any(windows, test))]
-pub(crate) fn powershell_single_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
-}
-
-/// Build a `PowerShell` `@(…)` array literal from a slice of argument strings.
-///
-/// Each element is individually single-quoted via [`powershell_single_quote`].
-/// Returns `"@()"` for an empty slice.
-#[cfg(any(windows, test))]
-pub(crate) fn powershell_arg_list(args: &[String]) -> String {
-    if args.is_empty() {
-        "@()".to_string()
-    } else {
-        format!(
-            "@({})",
-            args.iter()
-                .map(|a| powershell_single_quote(a))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    }
-}
-
-/// Encode a `PowerShell` script string as Base64 UTF-16LE, suitable for the
-/// `PowerShell` `-EncodedCommand` parameter.
-#[cfg(any(windows, test))]
-pub(crate) fn powershell_encode_command(script: &str) -> String {
-    use base64::Engine as _;
-
-    let utf16_le: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
-    base64::engine::general_purpose::STANDARD.encode(utf16_le)
-}
 
 /// Detect which `PowerShell` executable is available on the current system.
 ///

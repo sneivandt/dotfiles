@@ -159,6 +159,9 @@ NormalForeground = 0xF
 
 Section names are logical identifiers (not registry paths). The `path` field holds the actual registry path.
 
+Only `HKCU:\` paths are supported. `HKLM:\`, `HKCR:\`, and other hives are
+rejected so registry management remains scoped to the current user.
+
 **Note:** Registry configuration doesn't use profile filtering since registry settings are Windows-only by nature.
 
 To add custom registry settings:
@@ -182,6 +185,9 @@ symlinks = [
 ```
 
 Each entry is a path relative to `$env:USERPROFILE`. The source file is located at `symlinks/<same-path>` in the repository. Forward slashes are automatically converted to backslashes for Windows.
+
+If installation replaces an existing non-symlink file or directory, the CLI
+prints a warning immediately before the replacement. No backup is created.
 
 ### Target Path Handling
 
@@ -324,7 +330,7 @@ Complete · 0.8s
 | Symptom | Check |
 |---------|-------|
 | No output / nothing changes | Ensure you are running an elevated PowerShell session. |
-| Symlink not created | Entry present in `conf/symlinks.toml` under `[windows]` section? Does source file exist in `symlinks/`? Does a real file already exist at target path (preventing link)? Running as admin? |
+| Symlink not created | Entry present in `conf/symlinks.toml` under `[windows]` section? Does source file exist in `symlinks/`? If replacement was warned, could the existing target be removed? Running as admin? |
 | Registry values unchanged | Verify keys under `HKCU:\Console` – did policy or another tool override them? Run as admin. |
 | VS Code extensions not installing | `code` CLI available? Run `code --version` in the same session. |
 
@@ -332,8 +338,8 @@ Complete · 0.8s
 
 * **Cross-Edition Compatible**: Scripts work with both PowerShell Core and Windows PowerShell (5.1+)
 * **Dry-Run Mode**: The `-d` (dry-run) flag allows previewing changes without administrator privileges
-* The binary does not delete existing regular files that block symlink creation; you'll need to back them up and remove manually
-* Registry writes are limited to HKCU (user scope) console keys and additional configured paths; no HKLM modifications occur
+* Symlink installation warns before replacing an existing regular file or directory; no automatic backup is created
+* Registry configuration accepts only HKCU (user scope) paths; HKLM and other hives are rejected
 * Re-running is safe; tasks skip work that is already complete
 
 ## See Also

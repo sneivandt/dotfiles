@@ -38,6 +38,20 @@ pub trait Resource {
     /// Human-readable description of this resource.
     fn description(&self) -> String;
 
+    /// Return a user-visible warning that must be emitted immediately before
+    /// applying this resource.
+    ///
+    /// Resources should override this when applying the current state can
+    /// irreversibly discard user data. The default is no warning.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ResourceError`] if the resource cannot safely determine
+    /// whether applying it is destructive.
+    fn pre_apply_warning(&self) -> ResourceResult<Option<String>> {
+        Ok(None)
+    }
+
     /// Apply the resource change.
     ///
     /// This method should:

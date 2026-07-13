@@ -106,7 +106,8 @@ fn classify_update(current: &str, latest: String) -> UpdateCheck {
 /// Only triggers an update when the latest release is strictly newer than the
 /// running version (semantic version comparison), preventing silent downgrades.
 fn check_for_update(root: &std::path::Path, client: &dyn HttpClient) -> Result<UpdateCheck> {
-    let raw_version = option_env!("DOTFILES_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    let raw_version =
+        option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
     check_for_update_with_current(root, client, raw_version)
 }
 

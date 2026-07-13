@@ -1,140 +1,90 @@
 ---
 name: package-management
 description: >
-  Package installation patterns for the dotfiles project.
-  Use when working with system packages on Linux (pacman/AUR) or Windows (winget).
+  System package resource and provider conventions for pacman, AUR helpers, and
+  winget. Use when changing package config, state discovery, or installation.
 ---
 
 # Package Management
 
-System packages are declared in `conf/packages.toml`, loaded by `cli/src/config/packages.rs`, and installed by tasks in `cli/src/tasks/packages/mod.rs`.
+System packages are declared in `conf/packages.toml`, parsed by
+`cli/src/config/packages.rs`, represented by package resources, and converged by
+tasks under `cli/src/tasks/packages/`.
 
-## Configuration
+## Configuration Contract
+
+Package entries support a concise name or structured metadata:
 
 ```toml
 [arch]
 packages = [
   "git",
-  "neovim",
   { name = "powershell-bin", aur = true },
 ]
-
-[arch-desktop]
-packages = [
-  "alacritty",
-  { name = "visual-studio-code-insiders-bin", aur = true },
-]
-
-[windows]
-packages = [
-  "Git.Git",
-  "Microsoft.PowerShell",
-]
 ```
 
-Packages with `aur = true` are tagged with `is_aur = true` in the loaded config.
+Use exact manager identifiers. Keep AUR intent in structured metadata rather
+than inferring it from package names.
 
-## Task Structure
+## Architecture
 
-Three tasks handle package installation:
+| Responsibility | Owner |
+|---|---|
+| deserialize and validate entries | `cli/src/config/packages.rs` |
+| manager-specific query/install behavior | `PackageProvider` implementations |
+| resource state and mutation | package resource module |
+| applicability, policy, and orchestration | package tasks |
 
-### `InstallPackages` — pacman / winget
-```rust
-impl Task for InstallPackages {
-    fn name(&self) -> &str { "Install packages" }
-    fn should_run(&self, ctx: &Context) -> bool {
-        ctx.config_read().packages.iter().any(|p| !p.is_aur)
-    }
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let all_packages = ctx.config_read().packages.clone();
-        let packages: Vec<&Package> = all_packages.iter().filter(|p| !p.is_aur).collect();
-        let manager = if ctx.platform.is_linux() { PackageManager::Pacman }
-                      else { PackageManager::Winget };
-        process_packages(ctx, &packages, manager)
-    }
-}
-```
+`PackageManager` selects a provider. Add a provider implementation rather than
+branching manager-specific command logic through tasks.
 
-### `InstallParu` — AUR helper bootstrap
-Runs only on Arch when `paru` is missing. Clones `paru-bin` from AUR and builds with `makepkg`.
+## Convergence Flow
 
-### `InstallAurPackages` — paru
-Runs only on Arch with `paru` installed. Uses `paru -S --needed --noconfirm`.
+1. Select applicable entries and manager from platform capabilities.
+2. Verify the manager executable is available.
+3. Query installed packages once per manager.
+4. Share the cached state with package resources.
+5. Let `PackageInstallOperation` and `process_operation()` plan and converge the
+   missing entries.
+6. Preserve provider-level batching where supported; otherwise install
+   individually.
 
-## Implementation Patterns
+Do not run one installed-state command per package. Keep manager commands behind
+the executor abstraction and preserve idempotent manager options.
 
-### PackageProvider Trait
+## Platform Rules
 
-All package manager operations are abstracted behind the `PackageProvider` trait
-(`resources/package.rs`). Concrete provider implementations live as focused
-files under `resources/package/` (for example `pacman.rs`, `paru.rs`, and
-`winget.rs`), so `package.rs` stays focused on the public resource API and
-manager dispatch. New managers require a new `PackageProvider` impl and a
-`PackageManager` enum variant:
+- Pacman handles ordinary Arch packages.
+- The AUR helper bootstrap and AUR package task remain separate from ordinary
+  package installation.
+- AUR commands must not add an extra sudo layer around tools that manage their
+  own elevation.
+- Winget uses exact package IDs and may require per-package installation.
+- Prefer platform capability methods over direct OS checks.
 
-```rust
-pub trait PackageProvider: std::fmt::Debug + Send + Sync {
-    fn name(&self) -> &'static str;
-    fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>>;
-    fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange>;
-    fn supports_batch(&self) -> bool { false }
-    fn batch_install(&self, names: &[&str], executor: &dyn Executor) -> Result<()> { ... }
-}
-```
+When a package manager is unavailable, return an explicit skipped result or
+capability diagnostic consistent with task policy; do not silently report
+success.
 
-Concrete implementations:
-- `PacmanProvider` — `pacman -Syu --needed --noconfirm`
-- `ParuProvider` — `paru -S --needed --noconfirm` (delegates `query_installed` to `PacmanProvider`)
-- `WingetProvider` — `winget install --id --exact` (no batch support)
+## Change Checklist
 
-### PackageManager::provider()
+1. Update config parsing and validation for new metadata.
+2. Extend `PackageManager` and add a focused provider when adding a manager.
+3. Preserve one-query state discovery and batch behavior.
+4. Route subprocesses through `ctx.executor`.
+5. Add provider command, state mapping, missing-manager, and dry-run tests.
+6. Review Linux and Windows behavior.
 
-The `PackageManager` enum maps to its provider via `provider()`:
+## Validation
 
-```rust
-let provider: &'static dyn PackageProvider = PackageManager::Pacman.provider();
-```
-
-Providers are `&'static` (zero-cost, no `Arc`). `PackageResource` stores both
-the `PackageManager` enum and its `provider` reference.
-
-### Resource-Based Package Installation
-
-All package managers use `process_resources_with_provider()` with
-batch-queried state.
-The `batch_install_packages()` function groups resources by manager and delegates
-to each provider:
-
-```rust
-let installed = get_installed_packages(manager, &*ctx.executor)?;
-// Build PackageResource values and share installed through a BorrowedStateProvider
-// Then call process_resources_with_provider() for dry-run/apply logic
-// Finally batch_install_packages() for the actual install
-```
-
-Providers that support batch installation (pacman, paru) install all missing
-packages in one command; providers that do not (winget) install individually.
-
-### Batch State Checking
-
-For efficiency, all installed packages are queried once via `get_installed_packages(manager, executor)`,
-which delegates to `provider.query_installed()`, then each resource checks
-membership via `state_from_installed(&installed)` (a `HashSet` lookup).
-This avoids running one command per package.
-
-## Key Patterns
-
-- **Batch state check**: Query all installed packages once, then check each via `HashSet` lookup
-- **Executor injection**: `PackageResource` and `get_installed_packages()` take `&dyn Executor`
-- **Idempotent**: `--needed` flag skips already-installed packages
-- **Guard with `executor.which()`**: Skip gracefully if package manager not found
-- **No sudo for paru**: paru manages elevation internally
-- **`run_unchecked` for winget**: Allows handling non-zero exits without failing the task
+- Use `resource-implementation` for resource/provider changes.
+- Use `windows-specific-patterns` for winget or Windows behavior.
+- Use `cross-platform-verification` after Rust changes.
 
 ## Rules
 
-1. Always check `ctx.executor.which("pacman")` / `ctx.executor.which("winget")` before calling
-2. Use `-Syu --needed --noconfirm` for pacman to synchronize before installing and keep installs idempotent
-3. Mark AUR packages with `aur = true` in structured metadata format: `{ name = "pkg", aur = true }`
-4. Use exact package IDs on Windows (case-sensitive)
-5. Return `TaskResult::Skipped` with reason when package manager is missing
+- Package installation must be idempotent.
+- Installed state is queried once per manager.
+- Manager-specific behavior stays in providers.
+- Missing capabilities are surfaced, not swallowed.
+- Configuration remains the source of desired package state.

@@ -81,7 +81,8 @@ For everything else (tasks, config, logging), edit the Rust code in `cli/src/`.
 
 ## Rules
 
-- Keep wrapper scripts as short as practical (dotfiles.sh ~180 lines, dotfiles.ps1 ~300 lines)
+- Keep wrapper scripts as short as practical; avoid line-count targets that
+  encourage moving domain behavior into wrappers
 - Never add task logic to shell scripts — use the domain folders under `cli/src/tasks/<domain>/`
 - The wrapper must resolve and export `DOTFILES_ROOT` before launching the binary
 - The wrapper must export `DOTFILES_WRAPPER` (`sh` or `pwsh`) so the CLI knows which wrapper invoked it

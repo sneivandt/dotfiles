@@ -92,11 +92,58 @@ test_hook_wiring() {
   pass "Pre-commit hook calls all helper scripts"
 }
 
+test_pre_push_protection() {
+  repo_root="${DIR:-$(git rev-parse --show-toplevel)}"
+  hook="$repo_root/symlinks/config/git/templates/hooks.local/pre-push"
+  repo="$(mktemp -d)"
+  sha=1111111111111111111111111111111111111111
+  zero=0000000000000000000000000000000000000000
+
+  git init -q "$repo"
+  git -C "$repo" config github.user ci-owner
+  git -C "$repo" remote add origin https://github.com/ci-owner/repo.git
+
+  if (
+    cd "$repo"
+    printf "refs/heads/feature %s refs/heads/main %s\n" "$sha" "$zero" |
+      sh "$hook" upstream https://github.com/upstream/repo.git >/dev/null 2>&1
+  ); then
+    fail "Pre-push hook allowed a protected branch on the actual upstream remote"
+  else
+    pass "Pre-push hook blocks protected branches on the actual remote"
+  fi
+
+  if (
+    cd "$repo"
+    printf "refs/heads/main %s refs/heads/main %s\n" "$sha" "$zero" |
+      sh "$hook" origin https://github.com/ci-owner/repo.git >/dev/null 2>&1
+  ); then
+    pass "Pre-push hook allows protected branches on owned repositories"
+  else
+    fail "Pre-push hook blocked an owned repository"
+  fi
+
+  if (
+    cd "$repo"
+    printf "refs/heads/feature %s refs/heads/feature %s\n" "$sha" "$zero" |
+      sh "$hook" upstream https://github.com/upstream/repo.git >/dev/null 2>&1
+  ); then
+    pass "Pre-push hook allows non-protected branches"
+  else
+    fail "Pre-push hook blocked a non-protected branch"
+  fi
+
+  rm -rf "$repo"
+}
+
 printf "Testing pre-commit hook sensitive pattern detection\n"
 printf "==================================================\n\n"
 
 printf "Testing hook wiring...\n"
 test_hook_wiring
+
+printf "Testing pre-push protection...\n"
+test_pre_push_protection
 
 # Test AWS credentials
 printf "Testing AWS patterns...\n"

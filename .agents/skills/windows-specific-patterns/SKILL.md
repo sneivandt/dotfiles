@@ -43,7 +43,8 @@ EnableAutoTray = 0
 ```
 
 **Format rules:**
-- Section headers are logical names with a `path` key for the registry path (`HKCU:\`, `HKLM:\`)
+- Section headers are logical names with an `HKCU:\` registry `path`
+- Other hives such as `HKLM:\` and `HKCR:\` are rejected
 - Values are defined in a `[section.values]` subtable as `ValueName = Value` pairs
 - Values can be hex (`0x...`), numeric, or string
 - No profile filtering — all entries are applied on Windows
@@ -115,9 +116,10 @@ The PowerShell wrapper mirrors `dotfiles.sh`:
 1. **Gate Windows-only tasks** with `ctx.platform.is_windows()` in `should_run()`
 2. **Use `MetadataExt::file_attributes()`** for directory-symlink checks on Windows
 3. **`registry.toml` uses logical section names** with `path` key and `[section.values]` subtable
-4. **No profile sections** in `registry.toml` — all settings always apply
-5. **Test symlink capability** before attempting creation; report Developer Mode hint on failure
-6. **Use `Join-Path`** in `dotfiles.ps1` — never hardcode backslashes
+4. **Registry paths are HKCU-only** — system and shared hives are outside scope
+5. **No profile sections** in `registry.toml` — all settings always apply
+6. **Test symlink capability** before attempting creation; report Developer Mode hint on failure
+7. **Use `Join-Path`** in `dotfiles.ps1` — never hardcode backslashes
 
 ## Related
 

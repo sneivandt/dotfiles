@@ -1,157 +1,90 @@
 ---
 name: error-handling-patterns
 description: >
-  Idempotency and error handling conventions, which are core design principles.
-  Use when implementing tasks that modify system state, handle errors, or support dry-run mode.
+  Idempotency, dry-run, and error propagation conventions for dotfiles tasks,
+  resources, and operations. Use when implementing mutations or handling
+  failures in cli/src/.
 ---
 
 # Error Handling Patterns
 
-Idempotency, error handling, and dry-run patterns used in the Rust core engine and shell wrappers.
+## Boundaries
 
-## Principles
+- Commands and tasks return `anyhow::Result` with contextual errors.
+- Resources return `ResourceResult<ResourceChange>` so failures remain
+  classifiable.
+- Tasks own execution policy and result reporting; resources and operations own
+  convergence.
+- `tasks::execute()` records task failures and allows independent work to
+  continue.
 
-- **Idempotent**: Re-running produces the same result without side effects
-- **Defensive**: Check existing state before making changes
-- **Fail-Fast**: Errors propagate via `anyhow::Result`; task failures are recorded, not fatal
-- **Dry-Run**: Preview mode shows what would change without modifications
+Use `engine-orchestration` for process modes and scheduling, and
+`logging-patterns` for user-visible output and summary behavior.
 
-## Rust Error Handling
+## Error Layers
 
-### anyhow::Result
+| Layer | Pattern |
+|---|---|
+| command/task | `anyhow::Result` plus `.context(...)` |
+| resource mutation | typed `ResourceError` variants |
+| optional cleanup | explicit handling with diagnostic logging |
+| task execution | return the error; let `tasks::execute()` record it |
 
-All fallible functions return `anyhow::Result`. Add context with `.context()`:
+Prefer typed variants such as `CommandFailed`, `PermissionDenied`,
+`ConflictingState`, and `NotSupported` when callers benefit from category-aware
+diagnostics. Let `?` convert ordinary I/O and context-rich internal errors where
+the conversion preserves useful context.
 
-```rust
-packages::load(&conf.join("packages.toml"), active_categories)
-    .context("loading packages.toml")?;
-```
+Do not use broad catches, success-shaped fallbacks, `.ok()`, or `let _ =` to
+hide failures. If cleanup is intentionally best-effort, handle `Err` explicitly
+and log at the level appropriate to its impact.
 
-### ResourceError in Resources
+## Convergence Order
 
-`Resource::apply`/`remove` return `ResourceResult<ResourceChange>` (alias for
-`Result<_, ResourceError>`). Return typed `ResourceError` variants directly for
-classifiable, resource-level failures instead of `anyhow::bail!()`. This lets
-`ResourceError::category()` label failures for diagnostic logging:
+Every mutation path follows:
 
-```rust
-use crate::error::ResourceError;
+1. Discover current state.
+2. Return without mutation when already correct.
+3. Produce the dry-run preview when `ctx.dry_run`.
+4. Apply the mutation.
+5. Return the accurate `TaskResult` or `ResourceChange`.
 
-// Platform-unsupported operations (no `.into()` needed — already ResourceError):
-Err(ResourceError::not_supported(
-    "registry operations are only supported on Windows",
-))
+Prefer existing abstractions:
 
-// External command failures:
-Err(ResourceError::command_failed("pacman", format!("exit code {code}")))
-```
+- Independent declarative items: `Resource` with
+  `process_resources*()` helpers.
+- Workflow-shaped convergence: `Operation` with `process_operation()`.
+- Fully custom tasks: implement the same order manually only when neither
+  abstraction fits.
 
-Inside `apply`/`remove`, `?` auto-converts errors from internal helpers:
-`std::io::Error` → `ResourceError::Io`, and context-rich `anyhow::Error` (e.g.
-from `crate::fs` or `git2`) → `ResourceError::Other`. When a helper returns
-`anyhow::Result`, finish with `.map_err(Into::into)` or wrap with
-`anyhow::Error::new(e).context(...).into()`.
+Clone config data out of `ctx.config_read()` before long-running or parallel
+work. Route subprocesses through `ctx.executor`.
 
-Variants: `CommandFailed`, `PermissionDenied`, `ConflictingState`,
-`NotSupported`, `Io`, `Other`. `category()` recurses through `Other` so a typed
-error round-tripped through `anyhow` keeps its original category label.
+## Result Semantics
 
-### Task Failure Recording
+- `TaskResult::NotApplicable`: task applicability or execution policy excluded
+  it from this run.
+- `TaskResult::Skipped`: an applicable task deliberately did not perform its
+  work and reported why.
+- `TaskResult::DryRun`: changes were identified but not applied.
+- `TaskResult::Ok`: execution completed successfully, including no-op success
+  where the orchestration helper reports it that way.
+- `ResourceChange::AlreadyCorrect`: resource was already converged.
+- `ResourceChange::Skipped`: resource was intentionally not changed, with a
+  reason.
 
-Task failures don't abort the run. `tasks::execute()` catches errors and
-records `TaskStatus::Failed`; remaining tasks still execute. The summary
-reports all failures at the end.
+Do not convert an invalid or unknown state into success. Surface the reason so
+the resource processor can apply its configured strict or lenient policy.
 
-### Intentionally Ignored Errors
+## Validation
 
-The `let_underscore_drop` and `unused_result_ok` lints forbid both `let _ =
-result` and bare `result.ok();`. Always handle the error explicitly — either
-log it, or `drop(...)` an infallible value:
-
-```rust
-if let Err(e) = fs::remove_file(&path) {
-    tracing::debug!("could not remove {}: {e}", path.display());
-}
-```
-
-For a value that genuinely needs to be discarded (not a `Result`), use `drop()`
-so the intent is explicit:
-
-```rust
-drop(some_owned_resource);
-```
-
-## Idempotency in Tasks
-
-### Resource-Based Tasks (preferred)
-
-For tasks that manage declarative resources (`Resource` trait), use the generic
-`process_resources()` / `process_resources_with_provider()` helpers. They enforce the
-correct check→plan/diff→dry-run/apply order automatically:
-
-```rust
-fn run(&self, ctx: &Context) -> Result<TaskResult> {
-    let items = ctx.config_read().items.clone();
-    let resources = items.iter()
-        .map(|entry| MyResource::from_entry(entry, &*ctx.executor));
-    process_resources(ctx, resources, &ProcessOpts::lenient("install"))
-}
-```
-
-`ProcessOpts` controls behaviour per state variant via a `ProcessMode` enum
-(`Strict`, `Lenient`, `InstallMissing`, `FixExisting`). See the
-**`engine-orchestration`** skill for the full mode table and constructor
-helpers.
-
-### Custom Tasks (non-resource)
-
-For tasks that don't use the `Resource` trait, write the check→dry-run→mutate
-loop manually:
-
-```rust
-fn run(&self, ctx: &Context) -> Result<TaskResult> {
-    if already_in_desired_state() {
-        return Ok(TaskResult::Ok);
-    }
-    if ctx.dry_run {
-        ctx.log.dry_run("would do something");
-        return Ok(TaskResult::DryRun);
-    }
-    perform_mutation()?;
-    Ok(TaskResult::Ok)
-}
-```
-
-### Pattern Order
-
-1. Check if already in desired state → skip or count as `already_ok`
-2. Check dry-run flag → log and return `DryRun`
-3. Perform the mutation → `Ok`
-
-This order ensures dry-run never mutates, and re-runs skip completed work.
-
-## Shell Wrapper Error Handling
-
-The shell wrappers (`dotfiles.sh`, `dotfiles.ps1`) are thin but strict:
-
-- `dotfiles.sh` uses `set -o errexit` and `set -o nounset`
-- `dotfiles.ps1` uses `$ErrorActionPreference = 'Stop'`
-
-Both verify checksums after downloading binaries and fall back to existing binaries when GitHub is unreachable.
+- Add focused tests for already-correct, dry-run, mutation, and failure paths.
+- Use `cross-platform-verification` for the canonical Rust checks.
 
 ## Rules
 
-1. **Use `anyhow::Result` with `.context()`** for all fallible Rust code
-2. **Use `process_resources()` / `process_resources_with_provider()`** for resource-based tasks — they enforce idempotency and dry-run automatically
-3. **Check existing state** before mutations (idempotency) in custom tasks
-4. **Check `ctx.dry_run`** before any side effect in custom tasks
-5. **Do not use `.ok()` to ignore errors**; handle them explicitly
-6. **Use `if let Err(e)` with debug logging** for errors worth noting
-7. **Return `TaskResult` variants** correctly: `Skipped`, `DryRun`, `Ok`
-8. **Don't abort on task failure** — record and continue
-
-## Related
-
-- **`rust-patterns`** skill — Task trait and Context struct
-- **`logging-patterns`** skill — Logger API and task recording
-- **`engine-orchestration`** skill — `ProcessMode` / `ProcessOpts` reference
+- Mutations must be idempotent and dry-run safe.
+- Add context at subsystem boundaries.
+- Preserve typed resource errors when classification matters.
+- Never mutate in `should_run()`.
+- Never silently discard a fallible result.

@@ -8,15 +8,15 @@
 
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use crate::exec::{ExecResult, MockExecutor};
 use crate::platform::{Os, Platform};
-use crate::tasks::test_helpers::{empty_config, make_context};
 use crate::tasks::{Context, Task, TaskResult};
 
-use super::super::fragments::{discover_fragment_files, merge_fragments};
-use super::super::manifest::{manifest_fingerprint, write_manifest_marker};
+use super::super::test_fixture::{
+    TARGET_ALL, make_context_with_home, ok_result, write_copilot_app_db,
+    write_current_manifest_lock_and_marker, write_home_fragment,
+};
 use super::super::{InstallApmPackages, UpdateApmPackages};
 use super::DesiredApmWorkflows;
 use super::lockfile::parse_deployed_workflow_ids;
@@ -30,69 +30,12 @@ fn id_set(ids: &[&str]) -> HashSet<String> {
     ids.iter().map(|s| (*s).to_string()).collect()
 }
 
-fn ok_result(stdout: &str) -> ExecResult {
-    ExecResult {
-        stdout: stdout.to_string(),
-        stderr: String::new(),
-        success: true,
-        code: Some(0),
-    }
-}
-
-const DEFAULT_FRAGMENT: &str =
-    "name: base\nversion: 1.0.0\ndependencies:\n  apm:\n    - example/plugin\n";
-
-/// Shared fragment that forces the changed-manifest install path.
+/// Fragment that forces the changed-manifest install path in autopilot tests.
 const AUTOPILOT_FIXTURE_FRAGMENT: &str = "name: base\nversion: 1.0.0\ndependencies:\n  apm:\n    - github/awesome-copilot/plugins/project-planning\n";
-const TARGET_ALL: &str = "copilot,codex,copilot-app";
-
-fn write_home_fragment(home: &Path, filename: &str, content: &str) {
-    let fragment_dir = home.join(".apm").join("config");
-    std::fs::create_dir_all(&fragment_dir).expect("create fragment dir");
-    std::fs::write(fragment_dir.join(filename), content).expect("write manifest fragment");
-}
-
-fn write_default_home_fragment(home: &Path) {
-    write_home_fragment(home, "base.yml", DEFAULT_FRAGMENT);
-}
-
-fn write_current_manifest_and_lock(home: &Path) {
-    write_default_home_fragment(home);
-    let fragments = discover_fragment_files(home).expect("discover fragments");
-    let merged = merge_fragments(&fragments).expect("merge fragments");
-    std::fs::write(home.join(".apm").join("apm.yml"), merged).expect("write manifest");
-    std::fs::write(home.join(".apm").join("apm.lock.yaml"), "lock\n").expect("write lock");
-}
-
-fn write_current_manifest_lock_and_marker(home: &Path) {
-    write_current_manifest_and_lock(home);
-    let manifest =
-        std::fs::read_to_string(home.join(".apm").join("apm.yml")).expect("read manifest");
-    write_manifest_marker(
-        &home.join(".apm").join(".dotfiles-manifest.sha256"),
-        &manifest_fingerprint(&manifest),
-    )
-    .expect("write marker");
-}
 
 fn make_home_context_with_executor(home: &Path, executor: MockExecutor) -> Context {
-    write_workflow_db(home);
-    make_context(
-        empty_config(home.to_path_buf()),
-        Platform::new(Os::Linux, false),
-        Arc::new(executor),
-    )
-    .with_home(home.to_path_buf())
-}
-
-/// Create `<home>/.copilot/data.db` so the autopilot fixup runs instead of
-/// short-circuiting on the missing-database gate. Returns the db path.
-fn write_workflow_db(home: &Path) -> PathBuf {
-    let copilot_dir = home.join(".copilot");
-    std::fs::create_dir_all(&copilot_dir).expect("create .copilot dir");
-    let db_path = copilot_dir.join("data.db");
-    std::fs::write(&db_path, b"db").expect("write data.db");
-    db_path
+    write_copilot_app_db(home);
+    make_context_with_home(home, Platform::new(Os::Linux, false), executor)
 }
 
 /// Write a `<home>/.apm/apm.lock.yaml` whose `deployed_files` record `ids` as
@@ -112,7 +55,7 @@ fn write_workflow_lock(home: &Path, ids: &[&str]) {
 
 fn write_autopilot_fixture(home: &Path, ids: &[&str]) -> PathBuf {
     write_home_fragment(home, "base.yml", AUTOPILOT_FIXTURE_FRAGMENT);
-    let db_path = write_workflow_db(home);
+    let db_path = write_copilot_app_db(home);
     write_workflow_lock(home, ids);
     db_path
 }
@@ -538,7 +481,7 @@ fn run_skips_autopilot_fixup_when_lock_lists_no_workflows() {
     // the database -- even though `~/.copilot/data.db` exists.
     let dir = tempfile::tempdir().expect("create temp dir");
     write_home_fragment(dir.path(), "base.yml", AUTOPILOT_FIXTURE_FRAGMENT);
-    write_workflow_db(dir.path());
+    write_copilot_app_db(dir.path());
     std::fs::write(
         dir.path().join(".apm").join("apm.lock.yaml"),
         "dependencies:\n- repo_url: test/pkg\n  deployed_files:\n  - .agents/skills/foo\n",
@@ -568,7 +511,7 @@ fn update_re_arms_apm_workflows_after_apm_update() {
     // it. This is the regression scenario: `apm update` redeploys the workflow
     // secure-by-default (disabled), and the fixup must re-arm it.
     write_workflow_lock(dir.path(), &["apm--a"]);
-    let db_path = write_workflow_db(dir.path());
+    let db_path = write_copilot_app_db(dir.path());
     let db_str = db_path.to_str().expect("db path utf-8").to_string();
 
     let mut seq = mockall::Sequence::new();
@@ -639,7 +582,7 @@ fn update_re_arms_apm_workflows_even_when_apm_update_reports_no_changes() {
     // `apm update` reports no advanced refs it can still redeploy the workflow
     // disabled, so the fixup must run defensively on this path too.
     write_workflow_lock(dir.path(), &["apm--a"]);
-    let db_path = write_workflow_db(dir.path());
+    let db_path = write_copilot_app_db(dir.path());
     let db_str = db_path.to_str().expect("db path utf-8").to_string();
 
     let mut seq = mockall::Sequence::new();

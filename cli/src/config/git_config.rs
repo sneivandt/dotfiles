@@ -1,7 +1,7 @@
 //! Git configuration loading.
 use serde::Deserialize;
 
-use super::ValidationWarning;
+use super::Diagnostic;
 use super::config_section;
 
 /// A git config key-value pair to apply globally.
@@ -18,7 +18,7 @@ config_section!(field: "settings", ty: GitSetting);
 
 /// Validate git config entries and return any warnings.
 #[must_use]
-pub fn validate(settings: &[GitSetting]) -> Vec<ValidationWarning> {
+pub fn validate(settings: &[GitSetting]) -> Vec<Diagnostic> {
     use super::helpers::validation::{Validator, check};
 
     Validator::new(super::GIT_CONFIG_TOML)
@@ -27,10 +27,19 @@ pub fn validate(settings: &[GitSetting]) -> Vec<ValidationWarning> {
             |setting| &setting.key,
             |setting| {
                 [
-                    check(setting.key.trim().is_empty(), "config key is empty"),
-                    check(setting.value.trim().is_empty(), "config value is empty"),
+                    check(
+                        setting.key.trim().is_empty(),
+                        "git.empty-key",
+                        "config key is empty",
+                    ),
+                    check(
+                        setting.value.trim().is_empty(),
+                        "git.empty-value",
+                        "config value is empty",
+                    ),
                     check(
                         !setting.key.contains('.'),
+                        "git.key-missing-section",
                         "config key should contain a section separator (e.g. 'core.autocrlf')",
                     ),
                 ]

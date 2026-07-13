@@ -22,6 +22,8 @@ Scans staged changes for sensitive information before allowing commits. Detects:
 - **GitHub/GitLab Tokens**: Personal access tokens
 - **Database Credentials**: Connection strings with embedded credentials
 - **Cloud Provider Keys**: Google Cloud, Stripe, Slack, Heroku
+- **Personally Identifiable Information**: Email addresses, phone numbers, SSNs, payment-card patterns, and IP addresses
+- **UUIDs/GUIDs**: Standard identifier format that may expose sensitive references
 - **Generic Secrets**: High-entropy strings in secret-related variables
 
 #### Usage
@@ -62,6 +64,8 @@ The detection patterns are defined in [sensitive-patterns.ini](../hooks/sensitiv
 - `stripe` - Stripe API keys
 - `google` - Google Cloud and Firebase API keys
 - `heroku` - Heroku API keys
+- `pii` - Email addresses, phone numbers, SSNs, payment-card patterns, and IP addresses
+- `uuid` - UUID and GUID identifiers
 - `generic` - High-entropy generic secrets
 
 The INI file uses a simple, clean format with raw regex patterns under section headers. The file includes comprehensive documentation about:

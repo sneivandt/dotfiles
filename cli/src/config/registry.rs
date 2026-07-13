@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use super::ValidationWarning;
+use super::Diagnostic;
 use super::helpers::toml_loader;
 
 /// Declared type for a registry value.
@@ -120,24 +120,23 @@ fn has_supported_hive(key_path: &str) -> bool {
 
 /// Validate registry entries and return any warnings.
 #[must_use]
-pub fn validate(
-    entries: &[RegistryEntry],
-    platform: crate::platform::Platform,
-) -> Vec<ValidationWarning> {
-    use super::helpers::validation::{Validator, check};
+pub fn validate(entries: &[RegistryEntry], platform: crate::platform::Platform) -> Vec<Diagnostic> {
+    use super::helpers::validation::{Validator, check, check_error};
 
     Validator::new(super::REGISTRY_TOML)
         .warn_if(
             !entries.is_empty() && !platform.has_registry(),
+            "registry.platform-unsupported",
             "registry entries",
             "registry entries defined but platform does not support the Windows registry",
         )
         .check_each(entries, |e| &e.value_name, |e| {
             [
-                check(e.key_path.trim().is_empty(), "registry key path is empty"),
-                check(e.value_name.trim().is_empty(), "registry value name is empty"),
-                check(
+                check(e.key_path.trim().is_empty(), "registry.empty-key-path", "registry key path is empty"),
+                check(e.value_name.trim().is_empty(), "registry.empty-value-name", "registry value name is empty"),
+                check_error(
                     !has_supported_hive(&e.key_path),
+                    "registry.unsupported-hive",
                     r"registry key path must start with HKCU:\; other registry hives are not supported",
                 ),
             ]

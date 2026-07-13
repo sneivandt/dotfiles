@@ -4,11 +4,11 @@
 //! elevated via UAC when needed. No-op on non-Windows platforms.
 
 #[cfg(windows)]
-use crate::windows_process::PowerShellCommand;
+use crate::exec::windows::PowerShellCommand;
 #[cfg(test)]
-use crate::windows_process::powershell_encode_command;
+use crate::exec::windows::powershell_encode_command;
 #[cfg(any(windows, test))]
-use crate::windows_process::{powershell_arg_list, powershell_single_quote};
+use crate::exec::windows::{powershell_arg_list, powershell_single_quote};
 
 /// Check if the current process is running with administrator privileges.
 ///

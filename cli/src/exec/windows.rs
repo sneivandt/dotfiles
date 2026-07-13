@@ -1,4 +1,4 @@
-//! Typed Windows shell command construction.
+//! Typed, injection-safe Windows shell command construction.
 //!
 //! Keep the small number of unavoidable `cmd.exe` and encoded `PowerShell`
 //! launches behind one boundary so call sites cannot accidentally pass
@@ -7,7 +7,7 @@
 use anyhow::{Result, bail};
 use base64::Engine as _;
 
-use crate::exec::{ExecResult, Executor};
+use super::{ExecResult, Executor};
 
 /// A `cmd.exe` command whose arguments are treated as quoted literals.
 #[derive(Debug, Clone)]

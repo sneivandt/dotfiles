@@ -1,24 +1,17 @@
 //! Unit tests for the APM package install task.
 
 use super::*;
-use crate::exec::{ExecResult, MockExecutor};
+use crate::exec::MockExecutor;
 use crate::platform::{Os, Platform};
-use crate::tasks::test_helpers::{empty_config, make_context, make_linux_context};
-use std::sync::Arc;
+use crate::tasks::test_helpers::{empty_config, make_linux_context};
 
-fn ok_result(stdout: &str) -> ExecResult {
-    ExecResult {
-        stdout: stdout.to_string(),
-        stderr: String::new(),
-        success: true,
-        code: Some(0),
-    }
-}
+use super::test_fixture::{
+    TARGET_ALL, make_context_with_home, ok_result, write_copilot_app_db,
+    write_current_manifest_and_lock, write_current_manifest_lock_and_marker,
+    write_default_home_fragment, write_home_fragment,
+};
 
-const DEFAULT_FRAGMENT: &str =
-    "name: base\nversion: 1.0.0\ndependencies:\n  apm:\n    - example/plugin\n";
 const INSTALL_FIXTURE_FRAGMENT: &str = "name: base\nversion: 1.0.0\ndependencies:\n  apm:\n    - github/awesome-copilot/plugins/project-planning\n";
-const TARGET_ALL: &str = "copilot,codex,copilot-app";
 const TARGET_WITHOUT_APP: &str = "copilot,codex";
 
 fn write_fragment(dir: &Path, filename: &str, content: &str) {
@@ -34,35 +27,8 @@ fn write_repo_fragment(root: &Path, filename: &str, content: &str) {
     );
 }
 
-fn write_home_fragment(home: &Path, filename: &str, content: &str) {
-    write_fragment(&home.join(".apm").join("config"), filename, content);
-}
-
-fn write_default_home_fragment(home: &Path) {
-    write_home_fragment(home, "base.yml", DEFAULT_FRAGMENT);
-}
-
 fn write_install_home_fragment(home: &Path) {
     write_home_fragment(home, "base.yml", INSTALL_FIXTURE_FRAGMENT);
-}
-
-fn write_current_manifest_and_lock(home: &Path) {
-    write_default_home_fragment(home);
-    let fragments = discover_fragment_files(home).expect("discover fragments");
-    let merged = merge_fragments(&fragments).expect("merge fragments");
-    std::fs::write(home.join(".apm").join("apm.yml"), merged).expect("write manifest");
-    std::fs::write(home.join(".apm").join("apm.lock.yaml"), "lock\n").expect("write lock");
-}
-
-fn write_current_manifest_lock_and_marker(home: &Path) {
-    write_current_manifest_and_lock(home);
-    let manifest =
-        std::fs::read_to_string(home.join(".apm").join("apm.yml")).expect("read manifest");
-    write_manifest_marker(
-        &home.join(".apm").join(".dotfiles-manifest.sha256"),
-        &manifest_fingerprint(&manifest),
-    )
-    .expect("write marker");
 }
 
 fn make_home_context(home: &Path) -> Context {
@@ -86,12 +52,7 @@ fn make_home_context_for_platform_with_executor(
     platform: Platform,
     executor: MockExecutor,
 ) -> Context {
-    make_context(
-        empty_config(home.to_path_buf()),
-        platform,
-        Arc::new(executor),
-    )
-    .with_home(home.to_path_buf())
+    make_context_with_home(home, platform, executor)
 }
 
 fn make_home_context_for_platform(home: &Path, platform: Platform) -> Context {
@@ -284,14 +245,6 @@ fn run_omits_copilot_app_target_when_app_database_missing() {
         matches!(result, TaskResult::OkWithMessage(_)),
         "expected changed result after apm install, got {result:?}"
     );
-}
-
-/// Create `<home>/.copilot/data.db` so the `copilot-app` target is available.
-fn write_copilot_app_db(home: &Path) {
-    let copilot_dir = home.join(".copilot");
-    std::fs::create_dir_all(&copilot_dir).expect("create .copilot dir");
-    let db_path = copilot_dir.join("data.db");
-    std::fs::write(&db_path, b"db").expect("write data.db");
 }
 
 #[test]

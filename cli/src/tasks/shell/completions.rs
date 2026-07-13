@@ -17,6 +17,12 @@ const ZSH_COMPLETIONS_SUBDIR: &str = "config/zsh/completions";
 #[derive(Debug, Clone, Copy)]
 struct ZshCompletionOperation;
 
+#[derive(Debug)]
+struct ZshCompletionPlan {
+    destination: std::path::PathBuf,
+    content: String,
+}
+
 impl ZshCompletionOperation {
     fn destination(ctx: &Context) -> std::path::PathBuf {
         ctx.paths()
@@ -34,7 +40,9 @@ impl ZshCompletionOperation {
 }
 
 impl Operation for ZshCompletionOperation {
-    fn current_state(&self, ctx: &Context) -> Result<OperationState> {
+    type Plan = ZshCompletionPlan;
+
+    fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         let dest = Self::destination(ctx);
         let content = Self::content()?;
 
@@ -45,21 +53,23 @@ impl Operation for ZshCompletionOperation {
             return Ok(OperationState::Complete);
         }
 
-        Ok(OperationState::needs_run(format!(
-            "write {}",
-            dest.display()
-        )))
+        Ok(OperationState::needs_run(
+            format!("write {}", dest.display()),
+            ZshCompletionPlan {
+                destination: dest,
+                content,
+            },
+        ))
     }
 
-    fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+    fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         ctx.log
-            .dry_run(&format!("write {}", Self::destination(ctx).display()));
+            .dry_run(&format!("write {}", plan.destination.display()));
         Ok(TaskResult::DryRun)
     }
 
-    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
-        let dest = Self::destination(ctx);
-        crate::fs::write_with_parent(&dest, Self::content()?)?;
+    fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+        crate::fs::write_with_parent(&plan.destination, &plan.content)?;
         ctx.log.info("zsh completions written");
         Ok(TaskResult::Ok)
     }

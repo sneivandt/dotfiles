@@ -38,7 +38,8 @@ cli/src/
 ├── tasks/          # Task trait, macros, task catalog, domain-grouped tasks
 ├── commands/       # install, update, uninstall, test, version, log command runners
 ├── logging/        # Logger, buffered parallel output, diagnostic logs
-├── exec.rs         # Executor abstraction for subprocesses
+├── exec/           # Executor, captured output, and process-tree management
+├── fs/             # Filesystem facade, recursive copy, and temporary guards
 └── platform.rs     # OS/capability detection
 ```
 
@@ -77,9 +78,10 @@ cli/src/
 - Resource state should be discovered through `IntrinsicState` or a
   `ResourceStateProvider`, then applied through `process_resources()`,
   `process_resources_with_provider()`, or `process_resources_remove()`.
-- Operation-style task bodies should implement `OperationState`,
-  `Operation::preview()`, and `Operation::apply()`, then use
-  `process_operation()` to centralize check -> dry-run -> mutate order.
+- Operation-style task bodies define an immutable `Operation::Plan`,
+  return it through `OperationState::NeedsRun`, and consume that exact plan in
+  `Operation::preview()` or `Operation::apply()`. Use `process_operation()` to
+  centralize check -> dry-run -> mutate order.
 - Fully custom tasks that cannot use resources or operations must still follow
   check -> dry-run -> mutate order manually.
 - Clone config data out of `ctx.config_read()` before long-running work or

@@ -44,13 +44,12 @@ use crate::tasks::Task;
 #[cfg(test)]
 use commands::{looks_like_auth_failure, tolerable_workflow_encode_failures};
 #[cfg(test)]
-use fragments::{discover_fragment_files, merge_fragments};
-#[cfg(test)]
-use manifest::{manifest_fingerprint, write_manifest_marker};
-#[cfg(test)]
 use std::path::Path;
 #[cfg(test)]
 use targets::missing_apm_reason;
+
+#[cfg(test)]
+mod test_fixture;
 
 #[cfg(test)]
 #[allow(

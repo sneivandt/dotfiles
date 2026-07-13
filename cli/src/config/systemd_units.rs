@@ -1,7 +1,7 @@
 //! Systemd unit configuration loading.
 use serde::Deserialize;
 
-use super::ValidationWarning;
+use super::Diagnostic;
 use super::config_section;
 
 /// A systemd unit to enable.
@@ -44,15 +44,13 @@ const VALID_UNIT_EXTENSIONS: &[&str] = &[
 
 /// Validate systemd unit entries and return any warnings.
 #[must_use]
-pub fn validate(
-    units: &[SystemdUnit],
-    platform: crate::platform::Platform,
-) -> Vec<ValidationWarning> {
+pub fn validate(units: &[SystemdUnit], platform: crate::platform::Platform) -> Vec<Diagnostic> {
     use super::helpers::validation::{Validator, check};
 
     Validator::new(super::SYSTEMD_UNITS_TOML)
         .warn_if(
             !units.is_empty() && !platform.supports_systemd(),
+            "systemd.platform-unsupported",
             "systemd units",
             "systemd units defined but platform does not support systemd",
         )
@@ -66,13 +64,15 @@ pub fn validate(
                 .iter()
                 .any(|ext| u.name.ends_with(ext));
             [
-                check(u.name.trim().is_empty(), "unit name is empty"),
+                check(u.name.trim().is_empty(), "systemd.empty-name", "unit name is empty"),
                 check(
                     !matches!(u.scope.as_str(), "user" | "system"),
+                    "systemd.invalid-scope",
                     "unit scope should be 'user' or 'system'",
                 ),
                 check(
                     !has_valid_ext,
+                    "systemd.invalid-extension",
                     "unit name should end with a valid systemd extension (.service, .timer, .socket, etc.)",
                 ),
             ]

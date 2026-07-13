@@ -44,7 +44,9 @@ description: >
    - `process_resources_with_provider(...)`
    - `process_resources_remove(...)`
 5. **Operation flow:** use `Operation` + `process_operation()` when convergence is
-   workflow-shaped, not item-shaped.
+   workflow-shaped, not item-shaped. State discovery returns
+   `OperationState<Plan>`, and the engine passes the same immutable plan to
+   preview or apply; do not cache or recompute it inside the operation.
 
 ### Process mode reference
 

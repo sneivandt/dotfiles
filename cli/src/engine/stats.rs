@@ -155,27 +155,40 @@ impl TaskStats {
         self.failed = self.failed.saturating_add(other.failed);
     }
 
-    /// Log the summary and return the appropriate `TaskResult`.
+    /// Log the summary without constructing a [`TaskResult`].
     ///
     /// Only prints to the console when something actually changed, was
     /// skipped, or failed non-fatally. Quiet idempotent runs reduce noise on
     /// no-op invocations.
-    pub fn finish(self, ctx: &Context) -> TaskResult {
+    pub fn log_summary(&self, ctx: &Context) {
         let msg = self.summary(ctx.dry_run);
         if self.changed > 0 || self.skipped > 0 || self.failed > 0 {
             ctx.log.info(&msg);
         } else {
             ctx.log.debug(&msg);
         }
+    }
+
+    /// Convert these counters into the appropriate [`TaskResult`] without
+    /// logging.
+    pub fn into_result(self, dry_run: bool) -> TaskResult {
+        let msg = self.summary(dry_run);
         if self.failed > 0 {
             TaskResult::Failed(msg)
-        } else if ctx.dry_run && self.changed > 0 {
+        } else if dry_run && self.changed > 0 {
             TaskResult::DryRun
         } else if self.changed > 0 {
             TaskResult::OkWithMessage(msg)
         } else {
             TaskResult::Ok
         }
+    }
+
+    /// Log the summary and return the appropriate [`TaskResult`].
+    pub fn finish(self, ctx: &Context) -> TaskResult {
+        self.log_summary(ctx);
+        let dry_run = ctx.dry_run;
+        self.into_result(dry_run)
     }
 }
 
@@ -290,6 +303,40 @@ mod tests {
         };
         let s = stats.summary(false);
         assert!(!s.contains("skipped"), "should not mention skipped: {s}");
+    }
+
+    // -------------------------------------------------------------------
+    // TaskStats::into_result
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn into_result_returns_dry_run_without_context() {
+        let stats = TaskStats {
+            changed: 1,
+            already_ok: 0,
+            skipped: 0,
+            failed: 0,
+        };
+
+        assert!(matches!(stats.into_result(true), TaskResult::DryRun));
+    }
+
+    #[test]
+    fn into_result_preserves_failure_summary() {
+        let stats = TaskStats {
+            changed: 0,
+            already_ok: 2,
+            skipped: 0,
+            failed: 1,
+        };
+
+        assert!(
+            matches!(
+                stats.into_result(false),
+                TaskResult::Failed(message) if message == "0 changed, 2 already ok, 1 failed"
+            ),
+            "failed stats should become a failure with the formatted summary"
+        );
     }
 
     // -------------------------------------------------------------------

@@ -1,6 +1,5 @@
 # PAM service files managed by the dotfiles engine.
 
 [arch-desktop]
-services = [
-  { name = "hyprlock", content = "# PAM configuration file for hyprlock\n# the 'login' configuration file (see /etc/pam.d/login)\n\nauth        include     login\n\n" },
-]
+# The hyprlock package owns /etc/pam.d/hyprlock and keeps its complete stack current.
+services = []

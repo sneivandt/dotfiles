@@ -27,8 +27,8 @@ docker run --rm -it dotfiles:local
 
 The official image is automatically built and published to Docker Hub:
 - **Repository**: [sneivandt/dotfiles](https://hub.docker.com/r/sneivandt/dotfiles)
-- **Trigger**: Pushes to `main` branch
-- **Workflow**: `.github/workflows/docker.yml`
+- **Trigger**: Successful CI runs from same-repository pushes to `main`
+- **Workflow**: [`.github/workflows/docker.yml`](../.github/workflows/docker.yml)
 
 ### Pulling the Image
 
@@ -397,24 +397,11 @@ docker run --rm -it sneivandt/dotfiles
 
 The project includes automated Docker image publishing:
 
-```yaml
-# .github/workflows/docker.yml
-name: Publish Docker
-
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  push_to_registry:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: docker/build-push-action@v4
-        with:
-          push: true
-          tags: sneivandt/dotfiles:latest
-```
+The authoritative [Docker workflow](../.github/workflows/docker.yml) runs after
+the CI workflow completes. Before using Docker Hub credentials, it verifies
+that CI succeeded for a same-repository push to `main`. The publish job then
+checks out the exact commit SHA validated by CI and publishes the `latest`
+image.
 
 ### GitLab CI
 

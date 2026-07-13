@@ -134,7 +134,7 @@ fn spawn_windows_restart_helper() -> Result<()> {
         build_windows_restart_helper_script(&exe, &pending, &pending_version, &cache, &args);
 
     let mut command = std::process::Command::new(crate::elevation::preferred_powershell());
-    crate::windows_process::PowerShellCommand::new(&helper_script).configure(&mut command);
+    crate::exec::windows::PowerShellCommand::new(&helper_script).configure(&mut command);
     command.spawn().context("spawning restart helper")?;
 
     Ok(())
@@ -184,12 +184,12 @@ fn build_windows_restart_helper_script(
                      }} \
                  }}; \
                  exit 1",
-        exe = crate::windows_process::powershell_single_quote(&exe.display().to_string()),
-        pending = crate::windows_process::powershell_single_quote(&pending.display().to_string()),
+        exe = crate::exec::windows::powershell_single_quote(&exe.display().to_string()),
+        pending = crate::exec::windows::powershell_single_quote(&pending.display().to_string()),
         pending_version =
-            crate::windows_process::powershell_single_quote(&pending_version.display().to_string()),
-        cache = crate::windows_process::powershell_single_quote(&cache.display().to_string()),
-        args = crate::windows_process::powershell_arg_list(args),
+            crate::exec::windows::powershell_single_quote(&pending_version.display().to_string()),
+        cache = crate::exec::windows::powershell_single_quote(&cache.display().to_string()),
+        args = crate::exec::windows::powershell_arg_list(args),
         guard = REEXEC_GUARD_VAR,
     )
 }
@@ -363,7 +363,7 @@ fn load_config(
     if !warnings.is_empty() && !log.is_verbose() {
         log.separate_from_startup();
     }
-    crate::config::helpers::validation::display_validation_warnings(&warnings, log);
+    crate::config::helpers::validation::display_diagnostics(&warnings, log);
 
     Ok(config)
 }

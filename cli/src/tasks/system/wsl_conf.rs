@@ -20,25 +20,28 @@ const DESIRED_KEY_NAME: &str = "generateResolvConf";
 struct WslConfOperation;
 
 impl Operation for WslConfOperation {
-    fn current_state(&self, ctx: &Context) -> Result<OperationState> {
+    type Plan = ();
+
+    fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         if !ctx.platform.is_wsl() {
             return Ok(OperationState::not_applicable("not running inside WSL"));
         }
         if is_correct("/etc/wsl.conf") {
             return Ok(OperationState::Complete);
         }
-        Ok(OperationState::needs_run(format!(
-            "update {DESIRED_KEY} in /etc/wsl.conf"
-        )))
+        Ok(OperationState::needs_run(
+            format!("update {DESIRED_KEY} in /etc/wsl.conf"),
+            (),
+        ))
     }
 
-    fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+    fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         ctx.log
             .dry_run(&format!("would update {DESIRED_KEY} in /etc/wsl.conf"));
         Ok(TaskResult::DryRun)
     }
 
-    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+    fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         install_wsl_conf(ctx, "/etc/wsl.conf")
     }
 }

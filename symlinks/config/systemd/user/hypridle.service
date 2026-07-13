@@ -13,6 +13,7 @@ Type=simple
 ExecStart=/usr/bin/hypridle
 Restart=on-failure
 RestartSec=5
+# The locker runs in its own transient unit so this daemon can remain sandboxed.
 NoNewPrivileges=true
 PrivateTmp=true
 

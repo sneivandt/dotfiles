@@ -179,12 +179,18 @@ fn expect(kind: CallKind, program: &str, args: &[&str], result: ExecResult) -> E
 fn expect_code_cmd(cmd: &str, args: &[&str], result: ExecResult) -> ExpectedCall {
     #[cfg(target_os = "windows")]
     {
-        let mut full_args = vec!["/C".to_string(), cmd.to_string()];
-        full_args.extend(args.iter().map(|arg| (*arg).to_string()));
+        let quoted = std::iter::once(cmd)
+            .chain(args.iter().copied())
+            .map(|arg| format!(r#""{arg}""#))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let command_line = format!(r#""{quoted}""#);
         ExpectedCall {
             kind: CallKind::RunUnchecked,
             program: "cmd".to_string(),
-            args: full_args,
+            args: ["/D", "/V:OFF", "/S", "/C", &command_line]
+                .map(String::from)
+                .to_vec(),
             result,
         }
     }

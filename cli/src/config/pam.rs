@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use super::ValidationWarning;
+use super::Diagnostic;
 use super::config_section;
 
 /// A PAM service file to manage under `/etc/pam.d`.
@@ -21,15 +21,13 @@ config_section! {
 
 /// Validate PAM service entries and return any warnings.
 #[must_use]
-pub fn validate(
-    services: &[PamService],
-    platform: crate::platform::Platform,
-) -> Vec<ValidationWarning> {
-    use super::helpers::validation::{Validator, check};
+pub fn validate(services: &[PamService], platform: crate::platform::Platform) -> Vec<Diagnostic> {
+    use super::helpers::validation::{Validator, check, check_error};
 
     Validator::new(super::PAM_TOML)
         .warn_if(
             !services.is_empty() && !platform.is_linux(),
+            "pam.platform-unsupported",
             "PAM services",
             "PAM services defined but platform does not support PAM",
         )
@@ -38,21 +36,29 @@ pub fn validate(
             |service| &service.name,
             |service| {
                 [
-                    check(service.name.trim().is_empty(), "service name is empty"),
                     check(
+                        service.name.trim().is_empty(),
+                        "pam.empty-name",
+                        "service name is empty",
+                    ),
+                    check_error(
                         service.name.chars().any(|c| matches!(c, '/' | '\\' | '\0')),
+                        "pam.name-contains-separator",
                         "service name must be a file name, not a path",
                     ),
-                    check(
+                    check_error(
                         matches!(service.name.as_str(), "." | ".."),
+                        "pam.name-is-dot",
                         "service name cannot be '.' or '..'",
                     ),
                     check(
                         service.content.is_empty(),
+                        "pam.empty-content",
                         "service content must not be empty",
                     ),
                     check(
                         !service.content.ends_with('\n'),
+                        "pam.content-missing-newline",
                         "service content should end with a newline",
                     ),
                 ]

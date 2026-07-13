@@ -160,13 +160,16 @@ cd ~\dotfiles
 
 ### Switching Profiles
 
-**Change profile and apply changes:**
+**Change the saved profile and apply changes:**
 ```bash
-./dotfiles.sh install -p base
+git config --local dotfiles.profile base
+./dotfiles.sh install
 # Switches to base profile
 # Materializes/removes desktop-specific symlinks and files
-# New profile is saved for future runs
 ```
+
+Passing `-p, --profile` or setting `DOTFILES_PROFILE` overrides the saved
+profile for that invocation without changing it.
 
 ### Uninstalling
 
@@ -447,17 +450,21 @@ All operations are idempotent - safe to run multiple times:
 
 ## Profile Persistence
 
-Your profile selection is automatically saved:
+Profiles selected at the interactive prompt are automatically saved:
 
 ```bash
-# First run with explicit profile
-./dotfiles.sh install -p desktop
-# Profile is saved to .git/config
+# First run without an explicit profile
+./dotfiles.sh install
+# The prompted selection is saved to .git/config
 
 # Subsequent runs
 ./dotfiles.sh install
 # Uses saved profile automatically, no need to specify
 ```
+
+Profile resolution uses this precedence:
+`-p, --profile` > `DOTFILES_PROFILE` > `.git/config` > interactive prompt.
+Explicit CLI and environment overrides are not persisted.
 
 **Manual profile management:**
 ```bash
@@ -570,7 +577,7 @@ The wrappers forward all arguments unchanged to the binary, so these work with
 `dotfiles.sh` / `dotfiles.ps1` as well.
 
 ```bash
-./dotfiles.sh install --skip packages,fonts
+./dotfiles.sh install --skip packages,git-hooks
 ./dotfiles.sh install --only symlinks
 ./dotfiles.sh --no-parallel install
 ```
@@ -598,7 +605,7 @@ written — no manual steps are required after `install`.
 To regenerate completions without running a full install:
 
 ```bash
-./dotfiles.sh install --only completions
+./dotfiles.sh install --only shell-completions
 ```
 
 To print a completion script for a specific shell without installing:

@@ -1,6 +1,6 @@
 //! VS Code extension configuration loading.
 
-use super::ValidationWarning;
+use super::Diagnostic;
 use super::config_section;
 
 /// A VS Code extension to install.
@@ -19,7 +19,7 @@ config_section! {
 
 /// Validate VS Code extension entries and return any warnings.
 #[must_use]
-pub fn validate(extensions: &[VsCodeExtension]) -> Vec<ValidationWarning> {
+pub fn validate(extensions: &[VsCodeExtension]) -> Vec<Diagnostic> {
     use super::helpers::validation::{Validator, check};
 
     Validator::new(super::VSCODE_EXTENSIONS_TOML)
@@ -28,9 +28,14 @@ pub fn validate(extensions: &[VsCodeExtension]) -> Vec<ValidationWarning> {
             |ext| &ext.id,
             |ext| {
                 [
-                    check(ext.id.trim().is_empty(), "extension ID is empty"),
+                    check(
+                        ext.id.trim().is_empty(),
+                        "vscode.empty-id",
+                        "extension ID is empty",
+                    ),
                     check(
                         !ext.id.contains('.'),
+                        "vscode.invalid-id-format",
                         "extension ID should be in format 'publisher.name'",
                     ),
                 ]

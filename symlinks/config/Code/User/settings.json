@@ -88,15 +88,10 @@
     "explorer.fileNesting.enabled": true,
     "explorer.fileNesting.expand": true,
     "explorer.fileNesting.patterns": {
-        "*.csproj": "$(capture).csproj.user, packages.lock.json",
+        "*.csproj": "$(capture).csproj.user",
         "*.sln": "$(capture).suo, $(capture).sln.DotSettings, $(capture).sln.DotSettings.user",
-        "Cargo.toml": "Cargo.lock, rust-toolchain.toml, rustfmt.toml, clippy.toml",
         "CMakeLists.txt": "CMakePresets.json, CMakeUserPresets.json",
-        "Directory.Build.props": "Directory.Build.targets, Directory.Packages.props, Directory.Packages.targets",
-        "go.mod": "go.sum",
-        "package.json": "package-lock.json, pnpm-lock.yaml, yarn.lock, bun.lock, bun.lockb, npm-shrinkwrap.json",
-        "settings.json": "keybindings.json, extensions.json, tasks.json, launch.json",
-        "tsconfig.json": "tsconfig.*.json"
+        "package.json": "package-lock.json, pnpm-lock.yaml, yarn.lock, bun.lock, bun.lockb, npm-shrinkwrap.json"
     },
     "extensions.ignoreRecommendations": true,
     "files.associations": {

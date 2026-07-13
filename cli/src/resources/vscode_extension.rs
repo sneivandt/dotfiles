@@ -123,7 +123,7 @@ pub fn find_code_command(executor: &dyn Executor) -> Option<String> {
 fn run_code_cmd(cmd: &str, args: &[&str], executor: &dyn Executor) -> Result<exec::ExecResult> {
     #[cfg(target_os = "windows")]
     {
-        crate::windows_process::CmdCommand::new(cmd)
+        exec::windows::CmdCommand::new(cmd)
             .args(args)
             .run_unchecked(executor)
     }

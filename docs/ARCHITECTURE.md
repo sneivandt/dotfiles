@@ -68,7 +68,7 @@ flowchart TD
         tasks["tasks/<br/>task implementations grouped by domain"]
         platform["platform.rs<br/>OS detection"]
         logging["logging/<br/>structured logs and summaries"]
-        exec["exec.rs<br/>subprocess execution"]
+        exec["exec/<br/>subprocess execution, output, process trees,<br/>safe Windows shell commands"]
     end
 
     cli --> commands
@@ -216,7 +216,8 @@ The execution engine provides the generic resource processing loop, dependency g
 - **`apply.rs`** — single-resource plan execution: log/dry-run → apply/remove → stats
 - **`orchestrate.rs`** — top-level resource orchestration with `process_resources()`, `process_resources_with_provider()`, and `process_resources_remove()`
 - **`mode.rs`** — `ProcessMode` enum (`Strict`, `Lenient`, `InstallMissing`, `FixExisting`) and `ProcessOpts` that control which states are fixable and whether errors bail or warn
-- **`operation.rs`** — checkable, idempotent multi-step operations for task bodies that do not fit the one-resource lifecycle
+- **`operation.rs`** — checkable, idempotent multi-step operations whose state
+  check produces the immutable plan consumed by preview or apply
 - **`parallel.rs`** — Rayon-based parallel dispatch when `ctx.parallel` is true
 - **`graph.rs`** — phase-local dependency graph resolution, duplicate-ID checks,
   and cycle detection (Kahn's algorithm)
@@ -259,9 +260,10 @@ Task bodies generally use one of two convergence abstractions:
   processed through the engine's resource helpers.
 - **Operations** for idempotent workflows with ordered side effects, generated
   content, external-tool orchestration, or coordination state that does not map
-  cleanly to one resource. Operations expose `current_state()`, `preview()`, and
-  `apply()`, and are processed through `process_operation()` so check → dry-run
-  → mutate order stays centralized.
+  cleanly to one resource. `current_state()` returns an `OperationState<Plan>`;
+  when work is needed, the immutable plan is passed directly to `preview()` or
+  `apply()`. `process_operation()` keeps check → dry-run → mutate order
+  centralized and prevents preview/apply from rediscovering state.
 
 The resource and operation engines gate `apply()`/`remove()` behind the dry-run
 check, with regression tests covering sequential and parallel execution.
@@ -450,6 +452,11 @@ The project uses `tempfile` as a dev-dependency for tests that need temporary di
 
 ### Configuration Validation
 
+`Config::validate()` emits structured diagnostics with a stable rule code,
+severity, source file, item, and human-readable message. Both warning and error
+diagnostics fail the `test` command; severity describes the finding rather than
+changing the command's pass/fail policy.
+
 The `test` command validates:
 - TOML file syntax
 - Section format
@@ -458,16 +465,18 @@ The `test` command validates:
 
 ### CI Pipeline
 
-GitHub Actions CI (`.github/workflows/ci.yml`) runs on pull requests:
+GitHub Actions CI (`.github/workflows/ci.yml`) runs these gating jobs on pull
+requests:
 
 | Job | What it checks |
 | --- | --- |
 | `rust-fmt` | Rust format check (`cargo fmt --check`) |
 | `lint` | ShellCheck and PSScriptAnalyzer (matrix: ShellCheck, PSScriptAnalyzer) |
-| `validate-config` | Config checks: TOML syntax, file references, category consistency, empty sections, local APM plugin package shape |
+| `validate-config` | Manifest/profile consistency, symlink/chmod references, TOML whitespace, category consistency, empty sections, and fullscreen Waybar rules |
 | `audit` | Cargo security audit (vulnerability scan) |
 | `deny` | Cargo deny: license and advisory policy |
 | `build-linux` | Linux build + Clippy + unit/integration tests |
+| `msrv` | Compatibility check against the minimum supported Rust version (1.91) |
 | `build-windows` | Windows build + Clippy + unit/integration tests |
 | `integration-linux` | Dry-run install and validation per profile on Linux (matrix: base, desktop) |
 | `integration-windows` | Dry-run install and validation per profile on Windows (matrix: base, desktop) |
@@ -477,6 +486,9 @@ GitHub Actions CI (`.github/workflows/ci.yml`) runs on pull requests:
 | `test-git-hooks` | Pre-commit sensitive data detection |
 | `test-shell-wrapper-linux` | Linux wrapper script (`dotfiles.sh`) validation |
 | `test-shell-wrapper-windows` | Windows wrapper script (`dotfiles.ps1`) validation |
+
+The separate `coverage` job is informational and does not gate CI success. The
+workflow is authoritative for the current job definitions.
 
 ### Release Pipeline
 

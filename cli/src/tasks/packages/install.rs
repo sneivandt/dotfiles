@@ -1,7 +1,6 @@
 //! Tasks: install system packages.
 
 use anyhow::{Context as _, Result};
-use std::sync::Mutex;
 
 use crate::config::packages::Package;
 use crate::resources::package::{
@@ -208,23 +207,26 @@ impl Task for InstallParu {
 struct ParuInstallOperation;
 
 impl Operation for ParuInstallOperation {
-    fn current_state(&self, ctx: &Context) -> Result<OperationState> {
+    type Plan = ();
+
+    fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         if ctx.system().which("paru") {
             ctx.log.debug("paru already in PATH");
             Ok(OperationState::Complete)
         } else {
             Ok(OperationState::needs_run(
                 "install paru from AUR (paru-bin)",
+                (),
             ))
         }
     }
 
-    fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+    fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         ctx.log.dry_run("install paru from AUR (paru-bin)");
         Ok(TaskResult::DryRun)
     }
 
-    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+    fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         check_prerequisites(ctx)?;
         let guard = crate::fs::TempDir::new(prepare_build_directory(ctx)?);
         clone_paru_from_aur(ctx, guard.path())?;
@@ -303,29 +305,14 @@ fn build_paru(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
 struct PackageInstallOperation {
     packages: Vec<Package>,
     manager: PackageManager,
-    plan: Mutex<Option<PackageInstallPlan>>,
 }
 
 impl PackageInstallOperation {
     const fn new(packages: Vec<Package>, manager: PackageManager) -> Self {
-        Self {
-            packages,
-            manager,
-            plan: Mutex::new(None),
-        }
+        Self { packages, manager }
     }
 
     fn plan(&self, ctx: &Context) -> Result<PackageInstallPlan> {
-        {
-            let cached = self
-                .plan
-                .lock()
-                .map_err(|_| anyhow::anyhow!("package install plan cache is poisoned"))?;
-            if let Some(plan) = cached.as_ref() {
-                return Ok(plan.clone());
-            }
-        }
-
         ctx.debug_fmt(|| {
             format!(
                 "batch-checking {} packages with a single query",
@@ -355,35 +342,29 @@ impl PackageInstallOperation {
             }
         }
 
-        let plan = PackageInstallPlan {
+        Ok(PackageInstallPlan {
             missing,
             already_ok,
-        };
-        let mut cached = self
-            .plan
-            .lock()
-            .map_err(|_| anyhow::anyhow!("package install plan cache is poisoned"))?;
-        *cached = Some(plan.clone());
-        drop(cached);
-        Ok(plan)
+        })
     }
 }
 
 impl Operation for PackageInstallOperation {
-    fn current_state(&self, ctx: &Context) -> Result<OperationState> {
+    type Plan = PackageInstallPlan;
+
+    fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         let plan = self.plan(ctx)?;
         if plan.missing.is_empty() {
             Ok(OperationState::Complete)
         } else {
-            Ok(OperationState::needs_run(format!(
-                "install {} missing package(s)",
-                plan.missing.len()
-            )))
+            Ok(OperationState::needs_run(
+                format!("install {} missing package(s)", plan.missing.len()),
+                plan,
+            ))
         }
     }
 
-    fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
-        let plan = self.plan(ctx)?;
+    fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         for resource in &plan.missing {
             ctx.log
                 .dry_run(&format!("would install: {}", resource.description()));
@@ -391,12 +372,7 @@ impl Operation for PackageInstallOperation {
         Ok(plan.preview_stats().finish(ctx))
     }
 
-    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
-        let plan = self.plan(ctx)?;
-        if plan.missing.is_empty() {
-            return Ok(plan.preview_stats().finish(ctx));
-        }
-
+    fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         ctx.log.debug(&format!(
             "installing {} missing packages",
             plan.missing.len()
@@ -410,7 +386,7 @@ impl Operation for PackageInstallOperation {
                     ctx.log.warn(&reason);
                     let mut stats = plan.base_stats();
                     stats.failed = u32::try_from(plan.missing.len()).unwrap_or(u32::MAX);
-                    drop(stats.finish(ctx));
+                    stats.log_summary(ctx);
                     return Ok(TaskResult::Failed(reason));
                 }
             };
@@ -433,7 +409,7 @@ impl Operation for PackageInstallOperation {
         if report.has_failures() {
             let reason = format!("{} package install(s) failed", report.failures().len());
             ctx.log.warn(&reason);
-            drop(stats.finish(ctx));
+            stats.log_summary(ctx);
             return Ok(TaskResult::Failed(reason));
         }
 

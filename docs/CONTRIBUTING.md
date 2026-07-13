@@ -49,15 +49,21 @@ After installation, ensure `cargo` is on your PATH (open a new terminal if neede
 # Build the binary
 cargo build --manifest-path cli/Cargo.toml
 
-# Run all checks (same as CI)
+# Run the core Rust checks used by CI
 cargo fmt  --check --manifest-path cli/Cargo.toml
-cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
-cargo clippy --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
-cargo test --manifest-path cli/Cargo.toml
+cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+cargo clippy --profile ci --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
+cargo test --profile ci --manifest-path cli/Cargo.toml
 
 # Run end-to-end with --build flag (builds from source)
 ./dotfiles.sh --build install -p base -d
 ```
+
+CI additionally enforces the MSRV, dependency audit and policy checks,
+configuration validation, platform integration tests, application tests, hook
+tests, and wrapper tests. See [Testing](TESTING.md) for the checks relevant to
+each type of change; [the CI workflow](../.github/workflows/ci.yml) is
+authoritative.
 
 ### Making Changes
 

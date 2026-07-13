@@ -2,7 +2,7 @@
 use serde::Deserialize;
 use std::path::Path;
 
-use super::ValidationWarning;
+use super::Diagnostic;
 use super::config_section;
 
 /// A file permission directive.
@@ -19,16 +19,15 @@ config_section!(field: "permissions", ty: ChmodEntry);
 
 /// Validate chmod entries and return any warnings.
 #[must_use]
-pub fn validate(
-    entries: &[ChmodEntry],
-    platform: crate::platform::Platform,
-) -> Vec<ValidationWarning> {
-    use super::helpers::validation::{Validator, check};
+pub fn validate(entries: &[ChmodEntry], platform: crate::platform::Platform) -> Vec<Diagnostic> {
+    use super::Severity;
+    use super::helpers::validation::{Validator, check, check_error};
     use crate::resources::chmod::OctalMode;
 
     Validator::new(super::CHMOD_TOML)
         .warn_if(
             !entries.is_empty() && !platform.supports_chmod(),
+            "chmod.platform-unsupported",
             "chmod entries",
             "chmod entries defined but platform does not support chmod",
         )
@@ -37,15 +36,19 @@ pub fn validate(
             |e| &e.path,
             |e| {
                 [
-                    OctalMode::parse(&e.mode).err(),
+                    OctalMode::parse(&e.mode)
+                        .err()
+                        .map(|message| ("chmod.invalid-mode", Severity::Warning, message)),
                     check(
                         Path::new(&e.path).is_absolute() || e.path.starts_with('/'),
+                        "chmod.absolute-path",
                         "path should be relative to $HOME directory",
                     ),
-                    check(
+                    check_error(
                         Path::new(&e.path)
                             .components()
                             .any(|c| c == std::path::Component::ParentDir),
+                        "chmod.parent-in-path",
                         "path must not contain '..' components",
                     ),
                 ]

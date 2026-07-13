@@ -43,12 +43,16 @@ git sparse-checkout list
 # Check current profile
 git config --local --get dotfiles.profile
 
-# Reapply profile to fix sparse checkout
-./dotfiles.sh install -p <your-profile>
+# Sparse-checkout updates require a clean worktree
+git status --short
 
-# Force git to update working directory
-git checkout HEAD -- .
+# After committing or stashing any local changes, reapply the profile
+./dotfiles.sh install -p <your-profile>
 ```
+
+The installer skips sparse-checkout changes while the worktree has local
+changes. Do not force a checkout to recover; commit or stash the changes first
+so they are not discarded.
 
 #### Desktop files missing on Arch Linux
 **Symptoms**: No desktop configuration files even though you're on Arch.
@@ -65,15 +69,17 @@ The `base` profile excludes desktop files and is intended for headless/minimal s
 
 **Solution**:
 ```bash
-# Verify sparse checkout is enabled
-git sparse-checkout list
+# Check the mode managed by the installer
+git config --get core.sparseCheckout
+git config --get core.sparseCheckoutCone
 
-# If empty, reinitialize
-git sparse-checkout init --cone
-
-# Reapply profile
+# After committing or stashing local changes, regenerate sparse-checkout rules
 ./dotfiles.sh install -p <your-profile>
 ```
+
+The expected settings are `true` for `core.sparseCheckout` and `false` for
+`core.sparseCheckoutCone`. Do not run `git sparse-checkout init --cone`; the
+installer owns the non-cone patterns and working-tree update.
 
 ### Symlink Issues
 
@@ -145,19 +151,31 @@ rm ~/.<path>
 
 1. **Wrong section in packages.toml**:
    ```bash
-   # Verify package is in correct section
-   # On Arch with desktop profile, package should be in [arch] or [arch-desktop]
-   grep -B2 "package-name" conf/packages.toml
+   # Print the section containing the package
+   package=package-name
+   awk -v package="$package" '
+     /^\[/ { section = $0 }
+     index($0, package) { print section; print NR ":" $0 }
+   ' conf/packages.toml
    ```
 
 2. **Profile excludes the category**:
    ```bash
-   # Check profile definition
-   grep -A2 "\[desktop\]" conf/profiles.toml
+   # Check profile overrides and the saved profile
+   printf 'DOTFILES_PROFILE=%s\n' "${DOTFILES_PROFILE:-<not set>}"
+   git config --local --get dotfiles.profile || echo "<no saved profile>"
 
-   # Verify section isn't excluded
-   ./dotfiles.sh install -v | grep "Skipping section"
+   # Print the complete definition for the profile you intend to use
+   profile=desktop
+   awk -v header="[$profile]" '
+     /^\[/ { in_profile = ($0 == header) }
+     in_profile { print }
+   ' conf/profiles.toml
    ```
+
+   Profile precedence is `-p, --profile`, then `DOTFILES_PROFILE`, then the
+   saved profile. Confirm that every category in the package section is active
+   for the selected profile and platform.
 
 3. **Package manager not available**:
    ```bash

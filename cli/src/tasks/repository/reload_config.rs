@@ -33,9 +33,11 @@ impl ReloadConfigOperation {
 }
 
 impl Operation for ReloadConfigOperation {
-    fn current_state(&self, _ctx: &Context) -> Result<OperationState> {
+    type Plan = ();
+
+    fn current_state(&self, _ctx: &Context) -> Result<OperationState<Self::Plan>> {
         if self.repo_updated.was_updated() {
-            Ok(OperationState::needs_run("repository changed"))
+            Ok(OperationState::needs_run("repository changed", ()))
         } else {
             Ok(OperationState::not_applicable(
                 "repository was already current",
@@ -43,11 +45,11 @@ impl Operation for ReloadConfigOperation {
         }
     }
 
-    fn preview(&self, _ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+    fn preview(&self, _ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         Ok(TaskResult::DryRun)
     }
 
-    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+    fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         reload_config(ctx)
     }
 }

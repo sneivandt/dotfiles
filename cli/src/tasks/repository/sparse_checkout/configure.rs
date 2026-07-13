@@ -307,7 +307,9 @@ struct SparseCheckoutOperation {
 }
 
 impl Operation for SparseCheckoutOperation {
-    fn current_state(&self, ctx: &Context) -> Result<OperationState> {
+    type Plan = Vec<String>;
+
+    fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         let excluded_files: Vec<String> = ctx.config_read().manifest.excluded_files.clone();
 
         if excluded_files.is_empty() {
@@ -328,21 +330,22 @@ impl Operation for SparseCheckoutOperation {
             return Ok(OperationState::Complete);
         }
 
-        Ok(OperationState::needs_run("configure sparse checkout"))
+        Ok(OperationState::needs_run(
+            "configure sparse checkout",
+            excluded_files,
+        ))
     }
 
-    fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
-        let excluded_files: Vec<String> = ctx.config_read().manifest.excluded_files.clone();
+    fn preview(&self, ctx: &Context, excluded_files: &Self::Plan) -> Result<TaskResult> {
         ctx.log.dry_run("configure git sparse checkout");
-        for file in &excluded_files {
+        for file in excluded_files {
             ctx.log.dry_run(&format!("  exclude: {file}"));
         }
         Ok(TaskResult::DryRun)
     }
 
-    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
-        let excluded_files: Vec<String> = ctx.config_read().manifest.excluded_files.clone();
-        let patterns_str = build_patterns(&excluded_files);
+    fn apply(&self, ctx: &Context, excluded_files: &Self::Plan) -> Result<TaskResult> {
+        let patterns_str = build_patterns(excluded_files);
         let sparse_file = ctx.root().join(".git/info/sparse-checkout");
 
         // Clean up broken git config symlinks that prevent git from running.
@@ -366,7 +369,7 @@ impl Operation for SparseCheckoutOperation {
         });
 
         write_sparse_patterns(&sparse_file, &patterns_str)?;
-        reset_excluded_to_head(ctx, &root, &excluded_files);
+        reset_excluded_to_head(ctx, &root, excluded_files);
         apply_read_tree_with_restore(ctx, &root, &sparse_file, previous_patterns.as_deref())?;
 
         ctx.log.info(&format!(

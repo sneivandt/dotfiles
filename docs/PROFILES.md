@@ -27,11 +27,12 @@ The profile system operates through several coordinated mechanisms:
 
 ### 1. Profile Selection
 
-Profiles can be selected in three ways, in order of priority:
+Profiles can be selected in four ways, in order of priority:
 
 1. **Explicit CLI argument**: `-p, --profile desktop` (highest priority)
-2. **Persisted profile**: Automatically read from `.git/config`
-3. **Interactive prompt**: If no profile is set, you'll be prompted to select one
+2. **Environment variable**: `DOTFILES_PROFILE=desktop`
+3. **Persisted profile**: Automatically read from `.git/config`
+4. **Interactive prompt**: If no profile is set, you'll be prompted to select one
 
 **Example - First time setup:**
 ```bash
@@ -49,7 +50,7 @@ Profiles can be selected in three ways, in order of priority:
 **Example - Override saved profile:**
 ```bash
 ./dotfiles.sh install -p base
-# Uses 'base' and updates saved profile
+# Uses 'base' for this invocation without changing the saved profile
 ```
 
 ### 2. Sparse Checkout
@@ -103,7 +104,9 @@ This prevents incompatible operations regardless of profile selection.
 
 ### 5. Profile Persistence
 
-Selected profiles are saved to `.git/config` for seamless reuse:
+Profiles selected through the interactive prompt are saved to `.git/config`
+for seamless reuse. CLI and `DOTFILES_PROFILE` overrides are not persisted.
+Manage the saved profile directly when you want to change it:
 
 ```bash
 # Save profile
@@ -113,7 +116,7 @@ git config --local dotfiles.profile desktop
 git config --local --get dotfiles.profile
 ```
 
-The installation script handles this automatically.
+The installation script writes this setting only after interactive selection.
 
 ## Profile Definitions
 
@@ -145,20 +148,25 @@ task when WSL is detected to manage `/etc/wsl.conf`.
 
 ## Switching Profiles
 
-When you switch profiles, the sparse checkout automatically adjusts:
+When you switch profiles, the sparse checkout automatically adjusts. To make
+the switch persistent, update the repository setting before installing:
 
 ```bash
 # Switch from desktop to base
-./dotfiles.sh install -p base
+git config --local dotfiles.profile base
+./dotfiles.sh install
 # Desktop-specific files are automatically removed from workspace
 # Symlinks to desktop files are removed
-# Your selection is saved for future runs
 
 # Switch back to desktop
-./dotfiles.sh install -p desktop
+git config --local dotfiles.profile desktop
+./dotfiles.sh install
 # Desktop files are checked out again
 # Desktop symlinks are created
 ```
+
+For a one-run override, pass `-p, --profile` or set `DOTFILES_PROFILE`; the
+saved profile remains unchanged.
 
 ## Creating Custom Profiles
 

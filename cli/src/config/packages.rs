@@ -1,7 +1,7 @@
 //! Package configuration loading.
 use serde::Deserialize;
 
-use super::ValidationWarning;
+use super::Diagnostic;
 use super::config_section;
 
 /// A package to install.
@@ -39,10 +39,7 @@ config_section! {
 
 /// Validate package entries and return any warnings.
 #[must_use]
-pub fn validate(
-    packages: &[Package],
-    platform: crate::platform::Platform,
-) -> Vec<ValidationWarning> {
+pub fn validate(packages: &[Package], platform: crate::platform::Platform) -> Vec<Diagnostic> {
     use super::helpers::validation::{Validator, check};
 
     Validator::new(super::PACKAGES_TOML)
@@ -53,9 +50,14 @@ pub fn validate(
                 [
                     check(
                         pkg.is_aur && !platform.is_arch_linux(),
+                        "package.aur-not-arch",
                         "AUR package specified but platform is not Arch Linux",
                     ),
-                    check(pkg.name.trim().is_empty(), "package name is empty"),
+                    check(
+                        pkg.name.trim().is_empty(),
+                        "package.empty-name",
+                        "package name is empty",
+                    ),
                 ]
             },
         )

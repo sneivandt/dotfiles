@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::path::{Component, Path, PathBuf};
 
-use super::ValidationWarning;
+use super::Diagnostic;
 use super::config_section;
 
 /// A symlink to create: source (in symlinks/) → target (in $HOME).
@@ -359,8 +359,8 @@ fn target_key(symlink: &Symlink) -> String {
 
 /// Validate symlink entries and return any warnings.
 #[must_use]
-pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<ValidationWarning> {
-    use super::helpers::validation::{Validator, check};
+pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<Diagnostic> {
+    use super::helpers::validation::{CheckItem, Validator, check, check_error};
 
     Validator::new(super::SYMLINKS_TOML)
         .check_each(
@@ -369,30 +369,34 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<ValidationWarning> {
             |s| {
                 let symlinks_dir = resolve_symlinks_dir(s, root);
                 let source_path = symlinks_dir.join(&s.source);
-                let target_checks: Vec<Option<String>> =
-                    s.target.as_ref().map_or_else(Vec::new, |t| {
-                        vec![
-                            check(
-                                is_absolute_like(t),
-                                "target path should be relative to $HOME directory",
-                            ),
-                            check(
-                                has_parent_component(t),
-                                "target path must not contain '..' components",
-                            ),
-                        ]
-                    });
-                let mut checks = vec![
+                let target_checks: Vec<CheckItem> = s.target.as_ref().map_or_else(Vec::new, |t| {
+                    vec![
+                        check(
+                            is_absolute_like(t),
+                            "symlink.absolute-target",
+                            "target path should be relative to $HOME directory",
+                        ),
+                        check_error(
+                            has_parent_component(t),
+                            "symlink.parent-in-target",
+                            "target path must not contain '..' components",
+                        ),
+                    ]
+                });
+                let mut checks: Vec<CheckItem> = vec![
                     check(
                         !source_path.exists(),
+                        "symlink.source-missing",
                         format!("source file does not exist: {}", source_path.display()),
                     ),
                     check(
                         is_absolute_like(&s.source),
+                        "symlink.absolute-source",
                         "source path should be relative to symlinks/ directory",
                     ),
-                    check(
+                    check_error(
                         has_parent_component(&s.source),
+                        "symlink.parent-in-source",
                         "source path must not contain '..' components",
                     ),
                 ];

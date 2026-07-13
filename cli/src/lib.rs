@@ -31,8 +31,6 @@ mod logging;
 mod platform;
 mod resources;
 mod tasks;
-#[cfg(any(windows, test))]
-mod windows_process;
 
 #[cfg(any(feature = "internal-api", doctest))]
 #[doc(hidden)]

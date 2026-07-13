@@ -159,12 +159,14 @@ impl ScriptMode {
 }
 
 impl Operation for OverlayScriptOperation {
-    fn current_state(&self, ctx: &Context) -> Result<OperationState> {
+    type Plan = ();
+
+    fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         let resource = self.resource(ctx)?;
         Ok(match resource.current_state()? {
             ResourceState::Correct => OperationState::Complete,
             ResourceState::Missing | ResourceState::Incorrect { .. } => {
-                OperationState::needs_run(format!("run {}", self.entry.name))
+                OperationState::needs_run(format!("run {}", self.entry.name), ())
             }
             ResourceState::Invalid { reason } | ResourceState::Unknown { reason } => {
                 ctx.log.warn(&format!("skipping: {reason}"));
@@ -173,13 +175,13 @@ impl Operation for OverlayScriptOperation {
         })
     }
 
-    fn preview(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+    fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         let (_change, output) = self.run_script(ctx, ScriptMode::DryRun)?;
         emit_script_lines(ctx, &output, true);
         Ok(TaskResult::DryRun)
     }
 
-    fn apply(&self, ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+    fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         let (change, output) = self.run_script(ctx, ScriptMode::Apply)?;
         emit_script_lines(ctx, &output, false);
         match change {

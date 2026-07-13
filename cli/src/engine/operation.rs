@@ -10,15 +10,17 @@ use anyhow::Result;
 use super::context::Context;
 use super::stats::TaskResult;
 
-/// Current lifecycle state for an [`Operation`].
+/// Current lifecycle state and immutable execution plan for an [`Operation`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum OperationState {
+pub(crate) enum OperationState<Plan> {
     /// The operation's desired post-condition is already satisfied.
     Complete,
     /// The operation should run to converge state.
     NeedsRun {
         /// Human-readable reason the operation needs to run.
         reason: String,
+        /// Immutable data discovered while checking current state.
+        plan: Plan,
     },
     /// The operation cannot safely run right now.
     Blocked {
@@ -32,11 +34,12 @@ pub(crate) enum OperationState {
     },
 }
 
-impl OperationState {
+impl<Plan> OperationState<Plan> {
     /// Create a [`NeedsRun`](Self::NeedsRun) state.
-    pub(crate) fn needs_run(reason: impl Into<String>) -> Self {
+    pub(crate) fn needs_run(reason: impl Into<String>, plan: Plan) -> Self {
         Self::NeedsRun {
             reason: reason.into(),
+            plan,
         }
     }
 
@@ -58,22 +61,26 @@ impl OperationState {
 /// Idempotent, checkable task body that does not fit the [`Resource`](crate::resources::Resource)
 /// model.
 pub(crate) trait Operation {
+    /// Immutable data discovered during state inspection and consumed by
+    /// preview or apply.
+    type Plan;
+
     /// Inspect current state without mutating anything.
     ///
     /// Implementations that invoke opaque external scripts can only enforce
     /// this contract cooperatively. In particular, overlay scripts must honor
     /// their documented `--check` mode.
-    fn current_state(&self, ctx: &Context) -> Result<OperationState>;
+    fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>>;
 
     /// Preview the change for dry-run mode.
     ///
     /// External scripts must honor their documented dry-run argument because
     /// the engine cannot sandbox or otherwise prevent script-side mutations.
-    fn preview(&self, ctx: &Context, state: &OperationState) -> Result<TaskResult>;
+    fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult>;
 
     /// Apply the operation after [`current_state`](Self::current_state) reports
     /// [`OperationState::NeedsRun`].
-    fn apply(&self, ctx: &Context, state: &OperationState) -> Result<TaskResult>;
+    fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult>;
 }
 
 /// Execute an [`Operation`] using the standard check → dry-run → apply order.
@@ -83,21 +90,21 @@ pub(crate) trait Operation {
 /// Returns an error if state discovery, dry-run preview, or apply fails.
 pub(crate) fn process_operation(ctx: &Context, operation: &impl Operation) -> Result<TaskResult> {
     let state = operation.current_state(ctx)?;
-    match &state {
+    match state {
         OperationState::Complete => {
             ctx.log.debug("already complete");
             Ok(TaskResult::Ok)
         }
         OperationState::NotApplicable { reason } => {
             ctx.debug_fmt(|| format!("not applicable: {reason}"));
-            Ok(TaskResult::NotApplicable(reason.clone()))
+            Ok(TaskResult::NotApplicable(reason))
         }
         OperationState::Blocked { reason } => {
             ctx.log.info(&format!("skipped: {reason}"));
-            Ok(TaskResult::Skipped(reason.clone()))
+            Ok(TaskResult::Skipped(reason))
         }
-        OperationState::NeedsRun { .. } if ctx.dry_run => operation.preview(ctx, &state),
-        OperationState::NeedsRun { .. } => operation.apply(ctx, &state),
+        OperationState::NeedsRun { plan, .. } if ctx.dry_run => operation.preview(ctx, &plan),
+        OperationState::NeedsRun { plan, .. } => operation.apply(ctx, &plan),
     }
 }
 
@@ -119,13 +126,13 @@ mod tests {
 
     #[derive(Debug, Clone)]
     struct TestOperation {
-        state: OperationState,
+        state: OperationState<&'static str>,
         preview_calls: Arc<AtomicUsize>,
         apply_calls: Arc<AtomicUsize>,
     }
 
     impl TestOperation {
-        fn new(state: OperationState) -> Self {
+        fn new(state: OperationState<&'static str>) -> Self {
             Self {
                 state,
                 preview_calls: Arc::new(AtomicUsize::new(0)),
@@ -143,16 +150,23 @@ mod tests {
     }
 
     impl Operation for TestOperation {
-        fn current_state(&self, _ctx: &Context) -> Result<OperationState> {
+        type Plan = &'static str;
+
+        fn current_state(&self, _ctx: &Context) -> Result<OperationState<Self::Plan>> {
             Ok(self.state.clone())
         }
 
-        fn preview(&self, _ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        fn preview(&self, _ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+            assert_eq!(
+                *plan, "planned change",
+                "preview should receive checked plan"
+            );
             self.preview_calls.fetch_add(1, Ordering::SeqCst);
             Ok(TaskResult::DryRun)
         }
 
-        fn apply(&self, _ctx: &Context, _state: &OperationState) -> Result<TaskResult> {
+        fn apply(&self, _ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+            assert_eq!(*plan, "planned change", "apply should receive checked plan");
             self.apply_calls.fetch_add(1, Ordering::SeqCst);
             Ok(TaskResult::Ok)
         }
@@ -177,7 +191,8 @@ mod tests {
     #[test]
     fn dry_run_previews_without_applying() {
         let ctx = test_context().with_dry_run(true);
-        let operation = TestOperation::new(OperationState::needs_run("write file"));
+        let operation =
+            TestOperation::new(OperationState::needs_run("write file", "planned change"));
 
         let result = process_operation(&ctx, &operation).unwrap();
 
@@ -189,7 +204,8 @@ mod tests {
     #[test]
     fn needs_run_applies_outside_dry_run() {
         let ctx = test_context();
-        let operation = TestOperation::new(OperationState::needs_run("write file"));
+        let operation =
+            TestOperation::new(OperationState::needs_run("write file", "planned change"));
 
         let result = process_operation(&ctx, &operation).unwrap();
 

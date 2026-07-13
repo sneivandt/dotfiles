@@ -17,7 +17,7 @@ Validation happens at two levels: **runtime** (the `test` command) and
 
 | Task | What it checks |
 |---|---|
-| `ValidateConfigWarnings` | Fails when `Config::validate()` emits warnings |
+| `ValidateConfigWarnings` | Fails when `Config::validate()` emits diagnostics |
 | `ValidateSymlinkSources` | Every symlink source file exists on disk |
 | `ValidateConfigFiles` | Required config files (`profiles.toml`, `symlinks.toml`, `packages.toml`, `pam.toml`, `manifest.toml`) exist |
 | `ValidateManifestSync` | `symlinks.toml` and `manifest.toml` expose the same non-base category sections |
@@ -31,35 +31,41 @@ Implementations live under `cli/src/tasks/validation/` and implement the
 ## Per-Module `validate()` Functions
 
 Each config module in `cli/src/config/` exposes a `validate()` function
-returning `Vec<ValidationWarning>`. `Config::validate()` delegates aggregation to
+returning `Vec<Diagnostic>`. `Config::validate()` delegates aggregation to
 the internal `ConfigValidator` helper in `config/mod.rs`:
 
 ```rust
-pub fn validate(&self, platform: Platform) -> Vec<ValidationWarning> {
+pub fn validate(&self, platform: Platform) -> Vec<Diagnostic> {
     ConfigValidator::new(self, platform).validate_all().finish()
 }
 ```
 
-### ValidationWarning
+### Diagnostic
 
 ```rust
-pub struct ValidationWarning {
-    pub source: String,   // e.g., "packages.toml"
-    pub item: String,     // e.g., "git"
-    pub message: String,  // e.g., "package name is empty"
+pub struct Diagnostic {
+    pub source: String,       // e.g., "packages.toml"
+    pub item: String,         // e.g., "git"
+    pub severity: Severity,   // Warning or Error
+    pub code: &'static str,   // e.g., "package.empty-name"
+    pub message: String,      // e.g., "package name is empty"
 }
 ```
+
+Both severities fail `dotfiles test`; severity classifies the finding and
+controls rendering. Codes are stable, concise identifiers for the validation
+rule.
 
 ### Validator Builder
 
 `config/helpers/validation.rs` provides a fluent builder:
 
 ```rust
-let warnings = Validator::new("packages.toml")
+let diagnostics = Validator::new("packages.toml")
     .check_each(&packages, |pkg| &pkg.name, |pkg| {
-        vec![
-            check(pkg.name.trim().is_empty(), "package name is empty"),
-            check(pkg.name.contains(' '), "package name contains spaces"),
+        [
+            check(pkg.name.trim().is_empty(), "package.empty-name", "package name is empty"),
+            check(pkg.name.contains(' '), "package.spaces", "package name contains spaces"),
         ]
     })
     .finish();
@@ -67,17 +73,21 @@ let warnings = Validator::new("packages.toml")
 
 Key API:
 - `Validator::new(source)` — captures the TOML filename once
-- `.check_each(items, label_fn, check_fn)` — validates each item; `check_fn` returns `Vec<Option<String>>`
-- `.warn(item, message)` — standalone warning
-- `.warn_if(condition, item, message)` — conditional warning
-- `.finish()` — consumes the builder and returns collected warnings
-- `check(condition, message)` — free function returning `Some(message)` if condition is `true`
+- `.check_each(items, label_fn, check_fn)` — validates each item; `check_fn`
+  returns `CheckItem` values containing code, severity, and message
+- `.warn(code, item, message)` — standalone warning diagnostic
+- `.warn_if(condition, code, item, message)` — conditional warning diagnostic
+- `.finish()` — consumes the builder and returns collected diagnostics
+- `check(condition, code, message)` — warning check
+- `check_error(condition, code, message)` — structurally invalid or unsafe check
 
 ### Adding Validation to a Config Module
 
-1. Add a `pub fn validate(items: &[MyType], ...) -> Vec<ValidationWarning>` function
+1. Add a `pub fn validate(items: &[MyType], ...) -> Vec<Diagnostic>` function
 2. Use the `Validator` builder for consistency
-3. Wire it into `ConfigValidator::validate_all()` in `config/mod.rs`
+3. Assign a stable dotted code to every rule and classify unsafe/structurally
+   invalid values as `Severity::Error`
+4. Wire it into `ConfigValidator::validate_all()` in `config/mod.rs`
 
 ## Integration Tests: Config Drift
 

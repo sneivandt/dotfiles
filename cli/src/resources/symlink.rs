@@ -434,7 +434,7 @@ fn is_dir_like(meta: &std::fs::Metadata) -> bool {
 fn create_junction(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
     let link_arg = link.to_string_lossy();
     let target_arg = target.to_string_lossy();
-    let result = crate::windows_process::CmdCommand::new("mklink")
+    let result = crate::exec::windows::CmdCommand::new("mklink")
         .arg("/J")
         .arg(link_arg.as_ref())
         .arg(target_arg.as_ref())

@@ -25,22 +25,26 @@ impl Task for ValidateConfigWarnings {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let warnings = ctx.config_read().validate(ctx.platform);
-        if warnings.is_empty() {
-            ctx.log.info("no configuration warnings found");
+        let diagnostics = ctx.config_read().validate(ctx.platform);
+        if diagnostics.is_empty() {
+            ctx.log.info("no configuration diagnostics found");
             return Ok(TaskResult::Ok);
         }
 
-        for warning in &warnings {
+        for d in &diagnostics {
             ctx.log.error(&format!(
-                "{} [{}]: {}",
-                warning.source, warning.item, warning.message
+                "[{}] {} [{}] ({}): {}",
+                d.severity.label(),
+                d.source,
+                d.item,
+                d.code,
+                d.message
             ));
         }
 
         anyhow::bail!(
-            "test failed: {} configuration warning(s) found",
-            warnings.len()
+            "test failed: {} configuration diagnostic(s) found",
+            diagnostics.len()
         );
     }
 }

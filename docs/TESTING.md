@@ -171,7 +171,7 @@ The `test` subcommand validates all configuration files at runtime:
 ```
 
 This runs the same validation tasks as `commands/test.rs`, covering:
-- configuration warnings reported by `Config::validate()`
+- structured configuration diagnostics reported by `Config::validate()`
 - symlink source file existence
 - required config file presence
 - `symlinks.toml` / `manifest.toml` section drift
@@ -208,17 +208,18 @@ Test different profiles to ensure sparse checkout and configuration work correct
 
 ### GitHub Actions CI (`.github/workflows/ci.yml`)
 
-Runs automatically on pull requests with the following jobs:
+Runs automatically on pull requests with the following gating jobs:
 
 | Job | Matrix | Purpose |
 | --- | --- | --- |
 | `rust-fmt` | — | Rust format check (`cargo fmt --check`) |
 | `lint` | ShellCheck, PSScriptAnalyzer | Static analysis for shell and PowerShell scripts |
-| `validate-config` | — | 6 config checks: TOML syntax, file references, category consistency, empty sections |
+| `validate-config` | — | Manifest/profile consistency, file references, TOML whitespace, categories, empty sections, and fullscreen Waybar rules |
 | `audit` | — | Cargo security audit (vulnerability scan via `cargo-audit`) |
 | `deny` | — | Cargo deny: license and advisory policy check |
-| `build-linux` | — | Linux release build + Clippy + unit/integration tests |
-| `build-windows` | — | Windows release build + Clippy + unit/integration tests |
+| `build-linux` | — | Linux CI-profile build + Clippy + unit/integration tests |
+| `msrv` | — | Compatibility check against the minimum supported Rust version (1.91) |
+| `build-windows` | — | Windows CI-profile build + Clippy + unit/integration tests |
 | `integration-linux` | base, desktop | Dry-run install and config validation per profile on Linux |
 | `integration-windows` | base, desktop | Dry-run install and config validation per profile on Windows |
 | `test-install-uninstall` | — | Install/uninstall round-trip test (Linux) |
@@ -227,6 +228,9 @@ Runs automatically on pull requests with the following jobs:
 | `test-git-hooks` | — | Pre-commit sensitive data detection |
 | `test-shell-wrapper-linux` | — | Linux wrapper script (`dotfiles.sh`) validation |
 | `test-shell-wrapper-windows` | — | Windows wrapper script (`dotfiles.ps1`) validation |
+
+The separate `coverage` job is informational and does not gate CI success. The
+workflow is authoritative for the current job definitions.
 
 ### Release Pipeline (`.github/workflows/release.yml`)
 
@@ -237,21 +241,26 @@ Triggers automatically when the CI workflow completes successfully on `main`:
 
 ### Running CI Checks Locally
 
-Replicate the full CI validation locally:
+Run the common local checks before pushing. CI remains authoritative and also
+runs the MSRV, dependency audit and policy, platform integration, application,
+hook, and wrapper jobs:
 
 ```bash
 # Formatting
 cargo fmt --check --manifest-path cli/Cargo.toml
 
 # Linting
-cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
-cargo clippy --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
+cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+cargo clippy --profile ci --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
 
 # Tests
-cargo test --manifest-path cli/Cargo.toml
+cargo test --profile ci --manifest-path cli/Cargo.toml
 
-# Release build
-cargo build --release --manifest-path cli/Cargo.toml
+# CI-profile build
+cargo build --profile ci --manifest-path cli/Cargo.toml
+
+# Configuration validation
+./dotfiles.sh test
 
 # Integration: dry-run per profile
 ./dotfiles.sh --build install -p base -d

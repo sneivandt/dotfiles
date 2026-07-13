@@ -394,7 +394,7 @@ pub(crate) struct SectionCount {
 struct ConfigValidator<'a> {
     config: &'a Config,
     platform: Platform,
-    warnings: Vec<ValidationWarning>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> ConfigValidator<'a> {
@@ -402,7 +402,7 @@ impl<'a> ConfigValidator<'a> {
         Self {
             config,
             platform,
-            warnings: Vec::new(),
+            diagnostics: Vec::new(),
         }
     }
 
@@ -412,41 +412,96 @@ impl<'a> ConfigValidator<'a> {
 
     fn validate_with(
         mut self,
-        validate: impl FnOnce(&Config, Platform) -> Vec<ValidationWarning>,
+        validate: impl FnOnce(&Config, Platform) -> Vec<Diagnostic>,
     ) -> Self {
-        self.warnings.extend(validate(self.config, self.platform));
+        self.diagnostics
+            .extend(validate(self.config, self.platform));
         self
     }
 
-    fn finish(self) -> Vec<ValidationWarning> {
-        self.warnings
+    fn finish(self) -> Vec<Diagnostic> {
+        self.diagnostics
     }
 }
 
-/// A validation warning detected during configuration loading.
+/// Severity level of a configuration diagnostic.
+///
+/// Severity affects rendering and metadata only — both variants cause
+/// `dotfiles test` to fail when any diagnostic is present.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    /// A suspicious or suboptimal configuration value.
+    Warning,
+    /// Structurally invalid or unsafe configuration that will likely cause
+    /// failures or unsafe behaviour at apply time.
+    Error,
+}
+
+impl Severity {
+    /// Short ASCII label used in diagnostic output (`"warn"` or `"err"`).
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Warning => "warn",
+            Self::Error => "err",
+        }
+    }
+}
+
+/// A structured diagnostic emitted during configuration validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidationWarning {
-    /// The configuration source (e.g., "symlinks.toml", "packages.toml").
+pub struct Diagnostic {
+    /// Configuration source file (e.g., `"symlinks.toml"`, `"packages.toml"`).
     pub source: String,
-    /// The specific item or section that triggered the warning.
+    /// The specific item or section that triggered the finding.
     pub item: String,
-    /// Human-readable warning message.
+    /// Severity of the finding.
+    pub severity: Severity,
+    /// Stable machine-readable rule code (e.g., `"package.empty-name"`).
+    pub code: &'static str,
+    /// Human-readable description.
     pub message: String,
 }
 
-impl ValidationWarning {
-    /// Create a new validation warning.
+impl Diagnostic {
+    /// Create a diagnostic with explicit severity and code.
     #[must_use]
     pub fn new(
         source: impl Into<String>,
         item: impl Into<String>,
+        severity: Severity,
+        code: &'static str,
         message: impl Into<String>,
     ) -> Self {
         Self {
             source: source.into(),
             item: item.into(),
+            severity,
+            code,
             message: message.into(),
         }
+    }
+
+    /// Create a [`Severity::Warning`] diagnostic.
+    #[must_use]
+    pub fn warning(
+        source: impl Into<String>,
+        item: impl Into<String>,
+        code: &'static str,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::new(source, item, Severity::Warning, code, message)
+    }
+
+    /// Create a [`Severity::Error`] diagnostic.
+    #[must_use]
+    pub fn error(
+        source: impl Into<String>,
+        item: impl Into<String>,
+        code: &'static str,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::new(source, item, Severity::Error, code, message)
     }
 }
 
@@ -535,14 +590,14 @@ impl Config {
         Ok(config)
     }
 
-    /// Validate the configuration and return any warnings.
+    /// Validate the configuration and return any diagnostics.
     ///
     /// This method checks for common configuration issues such as:
     /// - Missing source files for symlinks
     /// - Invalid values (e.g., invalid octal modes for chmod)
     /// - Platform incompatibilities
     #[must_use]
-    pub fn validate(&self, platform: Platform) -> Vec<ValidationWarning> {
+    pub fn validate(&self, platform: Platform) -> Vec<Diagnostic> {
         ConfigValidator::new(self, platform).validate_all().finish()
     }
 

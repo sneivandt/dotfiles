@@ -1,7 +1,7 @@
 //! Copilot CLI settings loading.
 use serde::Deserialize;
 
-use super::ValidationWarning;
+use super::Diagnostic;
 use super::config_section;
 
 /// A single Copilot settings key to converge inside a JSON settings document.
@@ -54,7 +54,7 @@ config_section!(field: "settings", ty: CopilotSetting);
 
 /// Validate Copilot settings entries and return any warnings.
 #[must_use]
-pub fn validate(settings: &[CopilotSetting]) -> Vec<ValidationWarning> {
+pub fn validate(settings: &[CopilotSetting]) -> Vec<Diagnostic> {
     use super::helpers::validation::{Validator, check};
 
     Validator::new(super::COPILOT_TOML)
@@ -63,9 +63,14 @@ pub fn validate(settings: &[CopilotSetting]) -> Vec<ValidationWarning> {
             |setting| &setting.key,
             |setting| {
                 [
-                    check(setting.key.trim().is_empty(), "settings key is empty"),
+                    check(
+                        setting.key.trim().is_empty(),
+                        "copilot.empty-key",
+                        "settings key is empty",
+                    ),
                     check(
                         setting.key.split('.').any(str::is_empty),
+                        "copilot.key-empty-segment",
                         "settings key has an empty path segment (e.g. 'a..b')",
                     ),
                 ]

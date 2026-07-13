@@ -7,6 +7,11 @@ use anyhow::Result;
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::runtime::exec::{self, Executor};
 
+#[cfg(target_os = "windows")]
+const CODE_COMMANDS: [&str; 2] = ["code-insiders.cmd", "code.cmd"];
+#[cfg(not(target_os = "windows"))]
+const CODE_COMMANDS: [&str; 2] = ["code-insiders", "code"];
+
 /// A VS Code extension resource that can be checked and installed.
 #[derive(Debug)]
 pub struct VsCodeExtensionResource {
@@ -104,12 +109,17 @@ impl Resource for VsCodeExtensionResource {
     }
 }
 
-/// Find the VS Code CLI command, preferring code-insiders.
+/// Find the VS Code CLI command, preferring Code Insiders.
+///
+/// Windows installations include both an extensionless POSIX shell script and
+/// a `.cmd` launcher in the same directory. The Windows command must include
+/// the extension and be resolved to an absolute path because the launcher uses
+/// `%~dp0` to locate the adjacent VS Code executable.
 #[must_use]
 pub fn find_code_command(executor: &dyn Executor) -> Option<String> {
-    for cmd in ["code-insiders", "code"] {
-        if executor.which(cmd) {
-            return Some(cmd.to_string());
+    for cmd in CODE_COMMANDS {
+        if let Ok(path) = executor.which_path(cmd) {
+            return Some(path.to_string_lossy().into_owned());
         }
     }
     None
@@ -186,6 +196,51 @@ mod tests {
             Arc::clone(&executor),
         );
         assert_eq!(resource.description(), "github.copilot-chat");
+    }
+
+    #[test]
+    fn find_code_command_prefers_platform_specific_insiders_launcher() {
+        let mut mock = MockExecutor::new();
+        let expected = std::path::PathBuf::from(CODE_COMMANDS[0]);
+        mock.expect_which_path()
+            .once()
+            .with(mockall::predicate::eq(CODE_COMMANDS[0]))
+            .return_once({
+                let expected = expected.clone();
+                |_| Ok(expected)
+            });
+
+        assert_eq!(
+            find_code_command(&mock).as_deref(),
+            expected.to_str(),
+            "the platform-specific Code Insiders launcher should be preferred"
+        );
+    }
+
+    #[test]
+    fn find_code_command_falls_back_to_platform_specific_stable_launcher() {
+        let mut sequence = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        let expected = std::path::PathBuf::from(CODE_COMMANDS[1]);
+        mock.expect_which_path()
+            .once()
+            .with(mockall::predicate::eq(CODE_COMMANDS[0]))
+            .in_sequence(&mut sequence)
+            .returning(|cmd| anyhow::bail!("{cmd} not found"));
+        mock.expect_which_path()
+            .once()
+            .with(mockall::predicate::eq(CODE_COMMANDS[1]))
+            .in_sequence(&mut sequence)
+            .return_once({
+                let expected = expected.clone();
+                |_| Ok(expected)
+            });
+
+        assert_eq!(
+            find_code_command(&mock).as_deref(),
+            expected.to_str(),
+            "the platform-specific stable launcher should be used as fallback"
+        );
     }
 
     #[test]

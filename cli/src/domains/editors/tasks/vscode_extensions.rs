@@ -46,8 +46,7 @@ impl Task for InstallVsCodeExtensions {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let Some(cmd) = find_code_command(&*ctx.executor) else {
-            ctx.log
-                .debug("neither code-insiders nor code found in PATH");
+            ctx.log.debug("no VS Code CLI launcher found in PATH");
             return Ok(TaskResult::Skipped("VS Code CLI not found".to_string()));
         };
 

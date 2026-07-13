@@ -629,6 +629,12 @@ fn winget_task_uses_exact_ids_and_installs_each_missing_package() {
 
 #[test]
 fn vscode_task_queries_once_and_installs_only_missing_extensions() {
+    #[cfg(target_os = "windows")]
+    let code_command = "code-insiders.cmd";
+    #[cfg(not(target_os = "windows"))]
+    let code_command = "code-insiders";
+    let resolved_code_command = format!("/fake/bin/{code_command}");
+
     let repo = common::TestContextBuilder::new()
         .with_config_file(
             "vscode-extensions.toml",
@@ -636,15 +642,15 @@ fn vscode_task_queries_once_and_installs_only_missing_extensions() {
         )
         .build();
     let executor = Arc::new(RecordingExecutor::new(
-        &["code-insiders"],
+        &[code_command],
         vec![
             expect_code_cmd(
-                "code-insiders",
+                &resolved_code_command,
                 &["--list-extensions"],
                 ok("GitHub.Copilot-Chat\n"),
             ),
             expect_code_cmd(
-                "code-insiders",
+                &resolved_code_command,
                 &["--install-extension", "ms-python.python", "--force"],
                 ok(""),
             ),

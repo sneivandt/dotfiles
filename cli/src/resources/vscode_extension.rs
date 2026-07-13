@@ -163,6 +163,20 @@ mod tests {
         }
     }
 
+    fn expect_list_extensions(mock: &mut MockExecutor, result: ExecResult) {
+        #[cfg(target_os = "windows")]
+        mock.expect_run_windows_cmd_unchecked()
+            .once()
+            .withf(|command_line| command_line == r#"""code" "--list-extensions"""#)
+            .return_once(|_| Ok(result));
+
+        #[cfg(not(target_os = "windows"))]
+        mock.expect_run_unchecked()
+            .once()
+            .withf(|program, args| program == "code" && args == ["--list-extensions"])
+            .return_once(|_, _| Ok(result));
+    }
+
     #[test]
     fn description_returns_extension_id() {
         let executor: Arc<dyn Executor> = Arc::new(exec::SystemExecutor);
@@ -228,11 +242,10 @@ mod tests {
     #[test]
     fn get_installed_extensions_parses_and_lowercases() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked().once().returning(|_, _| {
-            Ok(ok_result(
-                "GitHub.Copilot\nms-python.python\nRust-lang.Rust-analyzer\n",
-            ))
-        });
+        expect_list_extensions(
+            &mut mock,
+            ok_result("GitHub.Copilot\nms-python.python\nRust-lang.Rust-analyzer\n"),
+        );
         let installed = get_installed_extensions("code", &mock).unwrap();
         assert!(installed.contains("github.copilot"));
         assert!(installed.contains("ms-python.python"));
@@ -242,9 +255,7 @@ mod tests {
     #[test]
     fn get_installed_extensions_returns_error_when_command_fails() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
-            .once()
-            .returning(|_, _| Ok(fail_result()));
+        expect_list_extensions(&mut mock, fail_result());
         let result = get_installed_extensions("code", &mock);
         assert!(
             result.is_err(),
@@ -255,9 +266,7 @@ mod tests {
     #[test]
     fn get_installed_extensions_uses_single_bulk_query() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
-            .times(1)
-            .returning(|_, _| Ok(ok_result("github.copilot-chat\n")));
+        expect_list_extensions(&mut mock, ok_result("github.copilot-chat\n"));
         let installed = get_installed_extensions("code", &mock).unwrap();
         assert!(
             installed.contains("github.copilot-chat"),

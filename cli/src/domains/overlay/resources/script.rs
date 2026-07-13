@@ -76,9 +76,84 @@ impl ScriptResource {
         ))
     }
 
-    /// Determine the interpreter and arguments for the script based on its extension.
-    fn interpreter_args(&self) -> Result<(&str, Vec<&str>)> {
-        interpreter_args_for(&self.script_path, &*self.executor)
+    /// Run the script in apply mode and return its captured stdout.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the script path is invalid, its interpreter is
+    /// unavailable, or execution fails.
+    pub fn apply_with_output(&self) -> Result<(ResourceChange, String)> {
+        self.execute(ScriptMode::Apply)
+    }
+
+    /// Run the script in dry-run mode and return its captured stdout.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the script path is invalid, its interpreter is
+    /// unavailable, or execution fails.
+    pub fn preview_with_output(&self) -> Result<(ResourceChange, String)> {
+        self.execute(ScriptMode::DryRun)
+    }
+
+    /// Determine the interpreter and complete argument vector for a mode.
+    fn command(&self, flag: Option<&str>) -> Result<(&'static str, Vec<String>)> {
+        let (interpreter, fixed_args) = interpreter_args_for(&self.script_path, &*self.executor)?;
+        let mut args = fixed_args
+            .into_iter()
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+        args.push(self.script_path.display().to_string());
+        if let Some(flag) = flag {
+            args.push(flag.to_string());
+        }
+        Ok((interpreter, args))
+    }
+
+    fn execute(&self, mode: ScriptMode) -> Result<(ResourceChange, String)> {
+        if !self.script_path.exists() {
+            return Ok((
+                ResourceChange::Skipped {
+                    reason: format!("script not found: {}", self.script_path.display()),
+                },
+                String::new(),
+            ));
+        }
+        self.ensure_script_path_within_working_dir()?;
+
+        let (interpreter, args) = self.command(mode.flag())?;
+        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+        let result = self
+            .executor
+            .run_in(&self.working_dir, interpreter, &args)
+            .with_context(|| format!("{} script: {}", mode.action(), self.name))?;
+
+        Ok((ResourceChange::Applied, result.stdout))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ScriptMode {
+    Apply,
+    DryRun,
+    Remove,
+}
+
+impl ScriptMode {
+    const fn flag(self) -> Option<&'static str> {
+        match self {
+            Self::Apply => None,
+            Self::DryRun => Some("--dryrun"),
+            Self::Remove => Some("--remove"),
+        }
+    }
+
+    const fn action(self) -> &'static str {
+        match self {
+            Self::Apply => "running",
+            Self::DryRun => "dry-run",
+            Self::Remove => "removing",
+        }
     }
 }
 
@@ -88,42 +163,15 @@ impl Resource for ScriptResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        if !self.script_path.exists() {
-            return Ok(ResourceChange::Skipped {
-                reason: format!("script not found: {}", self.script_path.display()),
-            });
-        }
-        self.ensure_script_path_within_working_dir()?;
-
-        let (interpreter, mut args) = self.interpreter_args()?;
-        let script_str = self.script_path.display().to_string();
-        args.push(&script_str);
-
-        self.executor
-            .run_in(&self.working_dir, interpreter, &args)
-            .with_context(|| format!("running script: {}", self.name))?;
-
-        Ok(ResourceChange::Applied)
+        self.execute(ScriptMode::Apply)
+            .map(|(change, _output)| change)
+            .map_err(ResourceError::from)
     }
 
     fn remove(&self) -> ResourceResult<ResourceChange> {
-        if !self.script_path.exists() {
-            return Ok(ResourceChange::Skipped {
-                reason: format!("script not found: {}", self.script_path.display()),
-            });
-        }
-        self.ensure_script_path_within_working_dir()?;
-
-        let (interpreter, mut args) = self.interpreter_args()?;
-        let script_str = self.script_path.display().to_string();
-        args.push(&script_str);
-        args.push("--remove");
-
-        self.executor
-            .run_in(&self.working_dir, interpreter, &args)
-            .with_context(|| format!("removing script: {}", self.name))?;
-
-        Ok(ResourceChange::Applied)
+        self.execute(ScriptMode::Remove)
+            .map(|(change, _output)| change)
+            .map_err(ResourceError::from)
     }
 }
 
@@ -136,10 +184,8 @@ impl IntrinsicState for ScriptResource {
         }
         self.ensure_script_path_within_working_dir()?;
 
-        let (interpreter, mut args) = self.interpreter_args()?;
-        let script_str = self.script_path.display().to_string();
-        args.push(&script_str);
-        args.push("--check");
+        let (interpreter, args) = self.command(Some("--check"))?;
+        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
 
         let result = self
             .executor
@@ -306,7 +352,7 @@ mod tests {
     fn interpreter_uses_sh_for_shell_scripts() {
         let mock = Arc::new(MockExecutor::new());
         let resource = make_script_resource("test", Path::new("/scripts/test.sh"), mock);
-        let (interpreter, _) = resource.interpreter_args().unwrap();
+        let (interpreter, _) = resource.command(None).unwrap();
         assert_eq!(interpreter, "sh");
     }
 
@@ -323,9 +369,9 @@ mod tests {
             .returning(|_| true);
         let mock = Arc::new(mock);
         let resource = make_script_resource("test", Path::new("/scripts/test.ps1"), mock);
-        let (interpreter, args) = resource.interpreter_args().unwrap();
+        let (interpreter, args) = resource.command(None).unwrap();
         assert_eq!(interpreter, "powershell");
-        assert!(args.contains(&"-File"));
+        assert!(args.iter().any(|arg| arg == "-File"));
     }
 
     #[test]
@@ -338,7 +384,7 @@ mod tests {
         let mock = Arc::new(mock);
         let resource = make_script_resource("test", Path::new("/scripts/test.ps1"), mock);
         let err = resource
-            .interpreter_args()
+            .command(None)
             .expect_err("missing pwsh should fail off Windows");
         assert!(
             err.to_string()
@@ -354,9 +400,9 @@ mod tests {
             .returning(|_| true);
         let mock = Arc::new(mock);
         let resource = make_script_resource("test", Path::new("/scripts/test.ps1"), mock);
-        let (interpreter, args) = resource.interpreter_args().unwrap();
+        let (interpreter, args) = resource.command(None).unwrap();
         assert_eq!(interpreter, "pwsh");
-        assert!(args.contains(&"-File"));
+        assert!(args.iter().any(|arg| arg == "-File"));
     }
 
     #[test]

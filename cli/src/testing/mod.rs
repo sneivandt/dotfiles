@@ -133,7 +133,7 @@ pub mod resources {
     pub use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
 
     pub mod chmod {
-        pub use crate::domains::files::resources::chmod::OctalMode;
+        pub use crate::domains::files::OctalMode;
     }
 
     pub mod symlink {

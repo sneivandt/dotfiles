@@ -47,18 +47,24 @@ fn context_with_executor(overlay: &Path, executor: MockExecutor) -> Context {
 }
 
 #[test]
-fn load_should_run_false_without_overlay() {
+fn snapshot_report_should_run_false_without_overlay() {
     let config = empty_config(PathBuf::from("/tmp"));
     let ctx = make_linux_context(config);
-    assert!(!LoadOverlayScripts::new(crate::runtime::ConfigHandle::new(vec![])).should_run(&ctx));
+    assert!(
+        !ReportOverlayScriptSnapshot::new(crate::runtime::ConfigHandle::new(vec![]))
+            .should_run(&ctx)
+    );
 }
 
 #[test]
-fn load_should_run_true_with_overlay() {
+fn snapshot_report_should_run_true_with_overlay() {
     let mut config = empty_config(PathBuf::from("/tmp"));
     config.overlay = Some(PathBuf::from("/overlay"));
     let ctx = make_linux_context(config);
-    assert!(LoadOverlayScripts::new(crate::runtime::ConfigHandle::new(vec![])).should_run(&ctx));
+    assert!(
+        ReportOverlayScriptSnapshot::new(crate::runtime::ConfigHandle::new(vec![]))
+            .should_run(&ctx)
+    );
 }
 
 #[test]

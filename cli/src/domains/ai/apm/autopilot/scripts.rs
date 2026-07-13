@@ -36,7 +36,7 @@ pub(super) fn build_workflow_script_args<'a>(
 /// build time via [`include_str!`] so its real four-space indentation survives
 /// verbatim; the repository pins `*.py` to LF endings so the embedded bytes are
 /// stable across platforms.
-pub(in crate::domains::ai::tasks::apm) const WORKFLOW_DESIRED_IDS_SCRIPT: &str =
+pub(in crate::domains::ai::apm) const WORKFLOW_DESIRED_IDS_SCRIPT: &str =
     include_str!("../scripts/workflow_desired_ids.py");
 
 /// Python stdlib `sqlite3` program that de-duplicates the dotfiles-managed
@@ -56,7 +56,7 @@ pub(in crate::domains::ai::tasks::apm) const WORKFLOW_DESIRED_IDS_SCRIPT: &str =
 /// build time via [`include_str!`] so its real four-space indentation survives
 /// verbatim; the repository pins `*.py` to LF endings so the embedded bytes are
 /// stable across platforms.
-pub(in crate::domains::ai::tasks::apm) const WORKFLOW_AUTOPILOT_SCRIPT: &str =
+pub(in crate::domains::ai::apm) const WORKFLOW_AUTOPILOT_SCRIPT: &str =
     include_str!("../scripts/workflow_autopilot.py");
 
 /// Parse the output of [`WORKFLOW_AUTOPILOT_SCRIPT`].

@@ -1,10 +1,10 @@
 //! Application-owned configuration reload after a repository update.
 //!
 //! Reloading re-parses every TOML file and re-composes the aggregate
-//! [`Config`](crate::app::config::Config), then swaps each per-domain handle in
-//! the shared [`ConfigStore`].  Because composing the aggregate configuration is
-//! an application concern (it spans every domain), this task lives in the `app`
-//! layer rather than in any single domain.
+//! [`Config`](crate::app::config::Config), then swaps each reloadable per-domain
+//! handle in the shared [`ConfigStore`]. Because composing the aggregate
+//! configuration is an application concern (it spans every domain), this task
+//! lives in the `app` layer rather than in any single domain.
 
 use anyhow::{Context as _, Result};
 
@@ -18,9 +18,10 @@ use crate::engine::{
 /// Re-parse all configuration files after `UpdateRepository` has pulled the
 /// latest changes and swap the freshly-loaded values into the shared store.
 ///
-/// Every task that reads configuration does so through a handle owned by the
-/// [`ConfigStore`]; swapping those handles here makes the new configuration
-/// visible to all downstream tasks without rebuilding them.
+/// Tasks read configuration through handles owned by the [`ConfigStore`];
+/// swapping the reloadable handles here makes new values visible downstream.
+/// Overlay script tasks are the exception because their startup snapshot cannot
+/// be rebuilt once scheduling has begun.
 #[derive(Debug)]
 pub struct ReloadConfig {
     /// Shared flag set by the repository-update task when new commits were

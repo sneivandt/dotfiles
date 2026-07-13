@@ -6,7 +6,7 @@ mod scripts;
     unused_imports,
     reason = "OverlayScriptTask is re-exported for documentation links and test access"
 )]
-pub use scripts::{LoadOverlayScripts, OverlayScriptTask, overlay_script_tasks};
+pub use scripts::{OverlayScriptTask, ReportOverlayScriptSnapshot, overlay_script_tasks};
 
 #[cfg(test)]
 #[allow(

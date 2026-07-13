@@ -93,7 +93,7 @@ pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
 pub(crate) fn prepare_self_update(global: &GlobalOpts, log: &Arc<Logger>) -> Result<()> {
     let root = install::resolve_root(global)?;
     if std::env::var_os(REEXEC_GUARD_VAR).is_none()
-        && crate::domains::dotfiles::tasks::self_update::pre_update(&root, &**log, global.dry_run)?
+        && crate::domains::dotfiles::self_update::pre_update(&root, &**log, global.dry_run)?
     {
         re_exec(&root, &**log);
     }
@@ -293,11 +293,12 @@ impl CommandRunner {
         self.store.aggregate.clone()
     }
 
-    /// Create dynamic overlay script tasks from the loaded configuration.
+    /// Create dynamic overlay script tasks from the startup configuration.
     ///
     /// Returns one [`OverlayScriptTask`](crate::domains::overlay::tasks::OverlayScriptTask)
-    /// per script entry in the overlay config.  Returns an empty list when no
-    /// overlay is configured.
+    /// per script entry in the overlay config. The returned list is a startup
+    /// snapshot and is not rebuilt after repository synchronization. Returns an
+    /// empty list when no overlay is configured.
     #[must_use]
     pub fn overlay_script_tasks(&self) -> Vec<Box<dyn Task>> {
         self.overlay.as_ref().map_or_else(Vec::new, |root| {

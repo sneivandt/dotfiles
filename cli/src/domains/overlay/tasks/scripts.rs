@@ -1,7 +1,7 @@
 //! Task: load and run custom scripts from the overlay repository.
 //!
-//! [`LoadOverlayScripts`] is a lightweight static task that validates the
-//! overlay is configured and reports how many scripts were discovered.
+//! [`ReportOverlayScriptSnapshot`] is a lightweight static task that reports
+//! how many script tasks were created from the startup configuration snapshot.
 //!
 //! Each individual script gets its own [`OverlayScriptTask`] created
 //! dynamically at startup (in `install.rs`).  These tasks appear in the
@@ -13,7 +13,7 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::domains::overlay::config::scripts::ScriptEntry;
-use crate::domains::overlay::resources::script::{self, ScriptResource};
+use crate::domains::overlay::resources::script::ScriptResource;
 use crate::engine::{
     Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
 };
@@ -21,20 +21,21 @@ use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
 use crate::runtime::ConfigHandle;
 
 // ---------------------------------------------------------------------------
-// Static task: Load overlay scripts
+// Static task: report the startup snapshot
 // ---------------------------------------------------------------------------
 
-/// Load overlay script definitions from configuration.
+/// Report overlay script definitions captured at startup.
 ///
-/// This task validates that an overlay is configured and logs the number of
-/// script entries discovered.  The actual execution of each script is handled
-/// by individual [`OverlayScriptTask`] instances.
+/// Dynamic script tasks cannot be rebuilt after repository synchronization, so
+/// this task reports the startup snapshot rather than implying that scripts
+/// were rediscovered during configuration reload. The actual execution of each
+/// script is handled by individual [`OverlayScriptTask`] instances.
 #[derive(Debug)]
-pub struct LoadOverlayScripts {
+pub struct ReportOverlayScriptSnapshot {
     config: ConfigHandle<Vec<ScriptEntry>>,
 }
 
-impl LoadOverlayScripts {
+impl ReportOverlayScriptSnapshot {
     /// Create the task with a handle to the overlay script configuration.
     #[must_use]
     pub const fn new(config: ConfigHandle<Vec<ScriptEntry>>) -> Self {
@@ -42,9 +43,9 @@ impl LoadOverlayScripts {
     }
 }
 
-impl Task for LoadOverlayScripts {
+impl Task for ReportOverlayScriptSnapshot {
     fn name(&self) -> &'static str {
-        "Load overlay scripts"
+        "Report overlay script snapshot"
     }
 
     fn phase(&self) -> TaskPhase {
@@ -66,8 +67,9 @@ impl Task for LoadOverlayScripts {
         }
         let count = scripts.len();
         ctx.log.stage(self.name());
-        ctx.log
-            .info(&format!("discovered {count} overlay script(s)"));
+        ctx.log.info(&format!(
+            "using {count} overlay script(s) captured at startup"
+        ));
         Ok(Some(TaskResult::Ok))
     }
 
@@ -82,8 +84,9 @@ impl Task for LoadOverlayScripts {
             return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
         }
         let count = scripts.len();
-        ctx.log
-            .info(&format!("discovered {count} overlay script(s)"));
+        ctx.log.info(&format!(
+            "using {count} overlay script(s) captured at startup"
+        ));
         Ok(TaskResult::Ok)
     }
 }
@@ -120,59 +123,6 @@ impl OverlayScriptOperation {
     fn resource(&self, ctx: &Context) -> Result<ScriptResource> {
         ScriptResource::from_entry(&self.entry, &self.overlay_root, Arc::clone(&ctx.executor))
     }
-
-    fn run_script(&self, ctx: &Context, mode: ScriptMode) -> Result<(ResourceChange, String)> {
-        let script_path = crate::domains::overlay::config::scripts::resolve_script_path(
-            &self.entry,
-            &self.overlay_root,
-        )?;
-        if !script_path.exists() {
-            return Ok((
-                ResourceChange::Skipped {
-                    reason: format!("script not found: {}", script_path.display()),
-                },
-                String::new(),
-            ));
-        }
-
-        script::ensure_script_path_within(&self.overlay_root, &script_path)?;
-        let (interpreter, mut args) = script::interpreter_args_for(&script_path, &*ctx.executor)?;
-        let script_str = script_path.display().to_string();
-        args.push(&script_str);
-        if let Some(flag) = mode.flag() {
-            args.push(flag);
-        }
-
-        let action = mode.action();
-        let result = ctx
-            .executor
-            .run_in(&self.overlay_root, interpreter, &args)
-            .map_err(|err| err.context(format!("{action} script: {}", self.entry.name)))?;
-
-        Ok((ResourceChange::Applied, result.stdout))
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum ScriptMode {
-    Apply,
-    DryRun,
-}
-
-impl ScriptMode {
-    const fn flag(self) -> Option<&'static str> {
-        match self {
-            Self::Apply => None,
-            Self::DryRun => Some("--dryrun"),
-        }
-    }
-
-    const fn action(self) -> &'static str {
-        match self {
-            Self::Apply => "running",
-            Self::DryRun => "dry-run",
-        }
-    }
 }
 
 impl Operation for OverlayScriptOperation {
@@ -193,13 +143,13 @@ impl Operation for OverlayScriptOperation {
     }
 
     fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
-        let (_change, output) = self.run_script(ctx, ScriptMode::DryRun)?;
+        let (_change, output) = self.resource(ctx)?.preview_with_output()?;
         emit_script_lines(ctx, &output, true);
         Ok(TaskResult::DryRun)
     }
 
     fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
-        let (change, output) = self.run_script(ctx, ScriptMode::Apply)?;
+        let (change, output) = self.resource(ctx)?.apply_with_output()?;
         emit_script_lines(ctx, &output, false);
         match change {
             ResourceChange::Skipped { reason } => {

@@ -235,7 +235,7 @@ run in parallel whenever their dependencies allow.
 | Sync | Install Git hooks | Copies repository git hooks into `.git/hooks/` after repository update. |
 | Sync | Reload configuration | Reloads config after repository update. |
 | Sync | Install shell completions | Writes the zsh completion script into the managed `symlinks/config/zsh/completions/` directory after repository update. |
-| Sync | Load overlay scripts | Discovers overlay script tasks after config reload, when `--overlay` is set. |
+| Sync | Report overlay script snapshot | Reports the script tasks captured at process startup, when `--overlay` is set. Newly pulled script definitions take effect on the next run. |
 | Provision | Install packages | Installs packages from `conf/packages.toml` using pacman. |
 | Provision | Install paru | Bootstraps paru AUR helper (Arch Linux only). |
 | Provision | Install AUR packages | Installs AUR packages via paru after paru is available (Arch Linux only). |
@@ -266,7 +266,7 @@ the latest GitHub release and re-exec the process.
 | Sync | Update repository | Pulls latest changes (`git pull --ff-only`) after sparse checkout is configured. |
 | Sync | Install Git hooks | Copies repository git hooks into `.git/hooks/` after repository update. |
 | Sync | Reload configuration | Reloads config after repository update. |
-| Sync | Load overlay scripts | Discovers overlay script tasks after config reload, when `--overlay` is set. |
+| Sync | Report overlay script snapshot | Reports the script tasks captured at process startup, when `--overlay` is set. Newly pulled script definitions take effect on the next run. |
 | Provision | Install packages | Installs packages using winget. |
 | Provision | Install symlinks | Links files from `symlinks/` to `%USERPROFILE%`. |
 | Provision | Configure Git | Sets `core.symlinks=true`, `core.autocrlf=false`, and credential helper. |

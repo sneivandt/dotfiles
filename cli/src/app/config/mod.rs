@@ -18,7 +18,6 @@ use crate::runtime::config_support::{Diagnostic, category_matcher};
 use crate::runtime::platform::Platform;
 
 const MANIFEST_TOML: &str = "manifest.toml";
-const SCRIPTS_TOML: &str = "scripts.toml";
 
 #[derive(Debug, Clone, Copy)]
 enum ConfigSource {
@@ -223,6 +222,7 @@ macro_rules! registered_config_validators {
             })
             .validate_with(|config, _platform| git_config::validate(&config.git_settings))
             .validate_with(|config, _platform| copilot::validate(&config.copilot_settings))
+            .validate_with(|config, _platform| scripts::validate(&config.scripts))
     };
 }
 
@@ -388,7 +388,7 @@ impl Config {
                 .collect_filtered(git_config::GIT_CONFIG_TOML, git_config::load)?,
             copilot_settings: sections.collect_filtered(copilot::COPILOT_TOML, copilot::load)?,
             manifest: sections.load_excluded(MANIFEST_TOML, manifest::load)?,
-            scripts: sections.collect_overlay_only(SCRIPTS_TOML, scripts::load)?,
+            scripts: sections.collect_overlay_only(scripts::SCRIPTS_TOML, scripts::load)?,
         };
 
         config.symlinks = symlinks::expand_glob_patterns(&config.symlinks, root)

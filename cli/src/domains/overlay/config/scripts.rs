@@ -5,8 +5,10 @@
 //! the overlay root, and an optional description.
 use anyhow::{Result, bail};
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 
+use crate::runtime::config_support::Diagnostic;
 use crate::runtime::config_support::config_section;
 
 /// A custom script entry loaded from `scripts.toml`.
@@ -24,6 +26,53 @@ pub struct ScriptEntry {
 
 config_section!(field: "scripts", ty: ScriptEntry);
 
+/// TOML filename that backs this config section.
+pub(crate) const SCRIPTS_TOML: &str = "scripts.toml";
+
+/// Validate overlay script entries.
+#[must_use]
+pub fn validate(entries: &[ScriptEntry]) -> Vec<Diagnostic> {
+    use crate::runtime::config_support::Severity;
+    use crate::runtime::config_support::validation::{Validator, check_error};
+
+    let mut identities = HashSet::<(&str, &str)>::new();
+    let mut duplicates = HashSet::<(&str, &str)>::new();
+    for entry in entries {
+        let identity = (entry.name.as_str(), entry.path.as_str());
+        if !identities.insert(identity) {
+            duplicates.insert(identity);
+        }
+    }
+
+    Validator::new(SCRIPTS_TOML)
+        .check_each(
+            entries,
+            |entry| &entry.name,
+            |entry| {
+                [
+                    check_error(
+                        entry.name.trim().is_empty(),
+                        "scripts.empty-name",
+                        "script name must not be empty",
+                    ),
+                    validate_relative_script_path(entry).err().map(|error| {
+                        (
+                            "scripts.invalid-path",
+                            Severity::Error,
+                            error.to_string(),
+                        )
+                    }),
+                    check_error(
+                        duplicates.contains(&(entry.name.as_str(), entry.path.as_str())),
+                        "scripts.duplicate-identity",
+                        "duplicate script name and path would create the same dynamic task identity",
+                    ),
+                ]
+            },
+        )
+        .finish()
+}
+
 /// Resolve the absolute path for a script entry relative to the overlay root.
 ///
 /// # Errors
@@ -39,6 +88,16 @@ fn validate_relative_script_path(entry: &ScriptEntry) -> Result<()> {
     let path = Path::new(&entry.path);
     if path.as_os_str().is_empty() {
         bail!("script path for '{}' is empty", entry.name);
+    }
+    if entry.path.starts_with('/')
+        || entry.path.starts_with('\\')
+        || entry
+            .path
+            .as_bytes()
+            .get(1)
+            .is_some_and(|byte| *byte == b':')
+    {
+        bail!("script path for '{}' must be relative", entry.name);
     }
 
     for component in path.components() {
@@ -101,6 +160,36 @@ scripts = [
     test_load_missing_returns_empty!(load);
 
     #[test]
+    fn validate_rejects_empty_names_invalid_paths_and_duplicate_identities() {
+        let entries = vec![
+            ScriptEntry {
+                name: " ".to_string(),
+                path: String::new(),
+                description: None,
+            },
+            ScriptEntry {
+                name: "Duplicate".to_string(),
+                path: "../escape.sh".to_string(),
+                description: None,
+            },
+            ScriptEntry {
+                name: "Duplicate".to_string(),
+                path: "../escape.sh".to_string(),
+                description: None,
+            },
+        ];
+
+        let diagnostics = validate(&entries);
+        let codes = diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>();
+        assert!(codes.contains(&"scripts.empty-name"));
+        assert!(codes.contains(&"scripts.invalid-path"));
+        assert!(codes.contains(&"scripts.duplicate-identity"));
+    }
+
+    #[test]
     fn resolve_script_path_joins_overlay_root() {
         let entry = ScriptEntry {
             name: "test".to_string(),
@@ -121,6 +210,18 @@ scripts = [
         };
         let err = resolve_script_path(&entry, Path::new("/overlay"))
             .expect_err("absolute script path should be rejected");
+        assert!(err.to_string().contains("must be relative"));
+    }
+
+    #[test]
+    fn resolve_script_path_rejects_windows_absolute_paths_on_every_platform() {
+        let entry = ScriptEntry {
+            name: "test".to_string(),
+            path: r"C:\tmp\test.ps1".to_string(),
+            description: None,
+        };
+        let err = resolve_script_path(&entry, Path::new("/overlay"))
+            .expect_err("Windows absolute script path should be rejected");
         assert!(err.to_string().contains("must be relative"));
     }
 

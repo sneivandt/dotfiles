@@ -23,7 +23,7 @@ pub fn validate(
     entries: &[ChmodEntry],
     platform: crate::runtime::platform::Platform,
 ) -> Vec<Diagnostic> {
-    use crate::domains::files::resources::chmod::OctalMode;
+    use crate::domains::files::OctalMode;
     use crate::runtime::config_support::Severity;
     use crate::runtime::config_support::validation::{Validator, check, check_error};
 

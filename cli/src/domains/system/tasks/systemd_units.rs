@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use crate::domains::system::config::systemd_units::SystemdUnit;
 use crate::domains::system::resources::systemd_unit::SystemdUnitResource;
@@ -65,7 +65,7 @@ impl Task for ConfigureSystemd {
             return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
         }
 
-        reload_daemons(ctx, &units);
+        reload_daemons(ctx, &units)?;
 
         let resources = units
             .iter()
@@ -88,26 +88,28 @@ fn systemd_available(ctx: &Context) -> bool {
     }
 }
 
-fn reload_daemons(ctx: &Context, units: &[SystemdUnit]) {
+fn reload_daemons(ctx: &Context, units: &[SystemdUnit]) -> Result<()> {
     if ctx.dry_run {
-        return;
+        return Ok(());
     }
 
     if units.iter().any(|unit| unit.scope == "user") {
         ctx.log.debug("running systemctl --user daemon-reload");
-        match ctx.executor.run("systemctl", &["--user", "daemon-reload"]) {
-            Ok(_) => ctx.log.debug("user daemon-reload succeeded"),
-            Err(e) => ctx.debug_fmt(|| format!("user daemon-reload failed: {e}")),
-        }
+        ctx.executor
+            .run("systemctl", &["--user", "daemon-reload"])
+            .context("reloading user systemd daemon")?;
+        ctx.log.debug("user daemon-reload succeeded");
     }
 
     if units.iter().any(|unit| unit.scope == "system") {
         ctx.log.debug("running sudo systemctl daemon-reload");
-        match ctx.executor.run("sudo", &["systemctl", "daemon-reload"]) {
-            Ok(_) => ctx.log.debug("system daemon-reload succeeded"),
-            Err(e) => ctx.debug_fmt(|| format!("system daemon-reload failed: {e}")),
-        }
+        ctx.executor
+            .run("sudo", &["systemctl", "daemon-reload"])
+            .context("reloading system systemd daemon")?;
+        ctx.log.debug("system daemon-reload succeeded");
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -286,6 +288,52 @@ mod tests {
         assert!(
             matches!(result, TaskResult::DryRun),
             "expected DryRun when unit is missing in dry-run mode, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn run_propagates_user_daemon_reload_failure() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.units.push(SystemdUnit {
+            name: "dunst.service".to_string(),
+            scope: "user".to_string(),
+        });
+        let mut mock = MockExecutor::new();
+        mock.expect_run()
+            .once()
+            .withf(|program, args| program == "systemctl" && args == ["--user", "daemon-reload"])
+            .returning(|_, _| Err(anyhow::anyhow!("reload failed")));
+        let units = ConfigHandle::new(config.units.clone());
+        let ctx = make_systemd_context(config, mock);
+
+        let error = ConfigureSystemd::new(units)
+            .run(&ctx)
+            .expect_err("daemon-reload failure should abort the task");
+        assert!(error.to_string().contains("reloading user systemd daemon"));
+    }
+
+    #[test]
+    fn run_propagates_system_daemon_reload_failure() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.units.push(SystemdUnit {
+            name: "sshd.service".to_string(),
+            scope: "system".to_string(),
+        });
+        let mut mock = MockExecutor::new();
+        mock.expect_run()
+            .once()
+            .withf(|program, args| program == "sudo" && args == ["systemctl", "daemon-reload"])
+            .returning(|_, _| Err(anyhow::anyhow!("reload failed")));
+        let units = ConfigHandle::new(config.units.clone());
+        let ctx = make_systemd_context(config, mock);
+
+        let error = ConfigureSystemd::new(units)
+            .run(&ctx)
+            .expect_err("daemon-reload failure should abort the task");
+        assert!(
+            error
+                .to_string()
+                .contains("reloading system systemd daemon")
         );
     }
 

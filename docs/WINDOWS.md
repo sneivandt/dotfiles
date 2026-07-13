@@ -50,7 +50,7 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 | Sync | Update Repository | Updates the repository from remote (`git pull --ff-only`) after sparse checkout is configured. | Skips if already up to date. |
 | Sync | Git Hooks | Copies repository git hooks into `.git/hooks/` after repository update. | Skips if hooks already match. |
 | Sync | Reload Configuration | Reloads config after repository update. | Skips when no repository update happened. |
-| Sync | Load Overlay Scripts | Discovers overlay script tasks after config reload, when `--overlay` is set. | Skips when no overlay scripts are configured. |
+| Sync | Report Overlay Script Snapshot | Reports script tasks captured at process startup, when `--overlay` is set. Newly pulled definitions take effect on the next run. | Skips when no overlay scripts are configured. |
 | Provision | Packages | Installs missing packages from `conf/packages.toml` using winget. | Skips already-installed packages. |
 | Provision | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
 | Provision | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |

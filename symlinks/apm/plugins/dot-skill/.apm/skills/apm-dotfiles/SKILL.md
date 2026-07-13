@@ -70,7 +70,7 @@ dotfiles repo:
 
 - After public APM config or local plugin changes, run `./dotfiles.sh install -d`
   to verify symlinks, manifest merging, and install planning.
-- For Rust changes under `cli/src/domains/ai/tasks/apm/`, also run the repo's Rust and
+- For Rust changes under `cli/src/domains/ai/apm/`, also run the repo's Rust and
   cross-platform checks.
 - If the change is private-overlay-only, validate from a checkout where the
   overlay is configured so the merged `~/.apm/config/*.yml` view is exercised.

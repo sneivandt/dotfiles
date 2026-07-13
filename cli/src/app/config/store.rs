@@ -3,9 +3,11 @@
 //! The application layer loads the aggregate [`Config`] and then splits it into
 //! one typed [`ConfigHandle`] per domain slice.  Each concrete task holds a
 //! clone of exactly the handle it needs, so no task depends on the aggregate
-//! configuration type.  During an app-owned reload the store swaps every handle
-//! in place, and because tasks share those handles the update is visible without
-//! rebuilding any task.
+//! configuration type. During an app-owned reload the store swaps each
+//! reloadable handle in place, and because tasks share those handles the update
+//! is visible without rebuilding any task. Overlay scripts are the exception:
+//! their dynamic task objects are created at startup, so their handle remains a
+//! startup snapshot for the lifetime of the process.
 
 use crate::app::config::Config;
 use crate::domains::ai::config::copilot::CopilotSetting;
@@ -51,7 +53,10 @@ pub struct ConfigStore {
     pub copilot_settings: ConfigHandle<Vec<CopilotSetting>>,
     /// Sparse checkout manifest for file exclusions.
     pub manifest: ConfigHandle<Manifest>,
-    /// Custom scripts from the overlay repository.
+    /// Startup snapshot of custom scripts from the overlay repository.
+    ///
+    /// Dynamic overlay tasks are built before execution starts and cannot be
+    /// safely regenerated during a repository reload.
     pub scripts: ConfigHandle<Vec<ScriptEntry>>,
 }
 
@@ -78,10 +83,17 @@ impl ConfigStore {
         }
     }
 
-    /// Atomically replace every handle from a freshly-loaded [`Config`].
+    /// Replace reloadable handles from a freshly-loaded [`Config`].
     ///
-    /// Called by the application-owned reload task after a repository update.
-    pub fn reload(&self, config: Config) {
+    /// Each individual handle swap is atomic, but the complete store update is
+    /// not one aggregate transaction. Phase ordering ensures tasks cannot read
+    /// the store while this app-owned reload runs. The `scripts` handle is
+    /// intentionally not replaced because dynamic overlay tasks are startup
+    /// snapshots.
+    pub fn reload(&self, mut config: Config) {
+        // Keep the aggregate view consistent with the non-reloadable script
+        // handle. Newly pulled scripts take effect on the next process run.
+        config.scripts.clone_from(self.scripts.read().as_ref());
         self.packages.swap(config.packages.clone());
         self.symlinks.swap(config.symlinks.clone());
         self.registry.swap(config.registry.clone());
@@ -93,7 +105,40 @@ impl ConfigStore {
         self.git_settings.swap(config.git_settings.clone());
         self.copilot_settings.swap(config.copilot_settings.clone());
         self.manifest.swap(config.manifest.clone());
-        self.scripts.swap(config.scripts.clone());
         self.aggregate.swap(config);
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::indexing_slicing,
+    reason = "test code uses direct indexing for focused assertions"
+)]
+mod tests {
+    use super::*;
+    use crate::domains::overlay::config::scripts::ScriptEntry;
+    use crate::test_helpers::empty_config;
+    use std::path::PathBuf;
+
+    fn script(name: &str) -> ScriptEntry {
+        ScriptEntry {
+            name: name.to_string(),
+            path: format!("scripts/{name}.sh"),
+            description: None,
+        }
+    }
+
+    #[test]
+    fn reload_preserves_script_startup_snapshot_in_both_handles() {
+        let mut initial = empty_config(PathBuf::from("/tmp"));
+        initial.scripts = vec![script("initial")];
+        let store = ConfigStore::from_config(initial);
+
+        let mut reloaded = empty_config(PathBuf::from("/tmp"));
+        reloaded.scripts = vec![script("reloaded")];
+        store.reload(reloaded);
+
+        assert_eq!(store.scripts.read()[0].name, "initial");
+        assert_eq!(store.aggregate.read().scripts[0].name, "initial");
     }
 }

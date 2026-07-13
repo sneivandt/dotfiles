@@ -2,4 +2,5 @@
 //! self-update.
 
 pub mod resources;
+pub mod self_update;
 pub mod tasks;

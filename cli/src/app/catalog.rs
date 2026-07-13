@@ -13,7 +13,7 @@ use clap::CommandFactory as _;
 use crate::app::cli::Cli;
 use crate::app::config::store::ConfigStore;
 use crate::app::reload::ReloadConfig;
-use crate::domains::ai::tasks::apm::{InstallApmPackages, UpdateApmPackages};
+use crate::domains::ai::apm::{InstallApmPackages, UpdateApmPackages};
 use crate::domains::ai::tasks::copilot_settings::ConfigureCopilot;
 use crate::domains::dotfiles::tasks::path::ConfigurePath;
 use crate::domains::dotfiles::tasks::wrapper::{InstallWrapper, UninstallWrapper};
@@ -22,7 +22,7 @@ use crate::domains::files::tasks::chmod::ApplyFilePermissions;
 use crate::domains::files::tasks::symlinks::{InstallSymlinks, UninstallSymlinks};
 use crate::domains::git::tasks::git_config::ConfigureGit;
 use crate::domains::git::tasks::hooks::{InstallGitHooks, UninstallGitHooks};
-use crate::domains::overlay::tasks::LoadOverlayScripts;
+use crate::domains::overlay::tasks::ReportOverlayScriptSnapshot;
 use crate::domains::packages::tasks::{InstallAurPackages, InstallPackages, InstallParu};
 use crate::domains::repository::tasks::sparse_checkout::ConfigureSparseCheckout;
 use crate::domains::repository::tasks::update::UpdateRepository;
@@ -124,7 +124,7 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
         Box::new(UpdateApmPackages),
         Box::new(InstallWslConf),
         with_deps(
-            LoadOverlayScripts::new(store.scripts.clone()),
+            ReportOverlayScriptSnapshot::new(store.scripts.clone()),
             &[id::<ReloadConfig>()],
         ),
         Box::new(InstallWrapper),
@@ -261,10 +261,10 @@ mod tests {
             "completions must depend on repository update (app-injected)"
         );
         assert!(
-            find("Load overlay scripts")
+            find("Report overlay script snapshot")
                 .dependencies()
                 .contains(&id::<ReloadConfig>()),
-            "overlay scripts must depend on reload (app-injected)"
+            "overlay script snapshot report must depend on reload (app-injected)"
         );
         assert!(
             find("Install Git hooks")

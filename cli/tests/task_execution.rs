@@ -120,7 +120,7 @@ fn symlinks_uninstall_materialises_content() {
     );
     assert!(
         ec.ctx
-            .home
+            .home()
             .join(".bashrc")
             .symlink_metadata()
             .unwrap()
@@ -167,7 +167,7 @@ fn symlinks_install_desktop_profile_includes_both_sections() {
 
     assert!(
         ec.ctx
-            .home
+            .home()
             .join(".bashrc")
             .symlink_metadata()
             .unwrap()
@@ -176,7 +176,7 @@ fn symlinks_install_desktop_profile_includes_both_sections() {
     );
     assert!(
         ec.ctx
-            .home
+            .home()
             .join(".config/Code/User/settings.json")
             .symlink_metadata()
             .unwrap()

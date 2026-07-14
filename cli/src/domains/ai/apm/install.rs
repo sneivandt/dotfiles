@@ -38,11 +38,13 @@ impl Task for InstallApmPackages {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if !ctx.dry_run && !ctx.executor.which("apm") {
+        let system = ctx.system();
+        let home = system.home();
+        if !ctx.dry_run() && !system.which("apm") {
             return Ok(skip_with_warning(ctx, missing_apm_reason(ctx)));
         }
 
-        let fragments = discover_fragment_files(&ctx.home)?;
+        let fragments = discover_fragment_files(home)?;
         if fragments.is_empty() {
             return Ok(skip_with_warning(
                 ctx,
@@ -50,9 +52,9 @@ impl Task for InstallApmPackages {
             ));
         }
 
-        let manifest_path = ctx.home.join(".apm").join("apm.yml");
-        let lock_path = ctx.home.join(".apm").join("apm.lock.yaml");
-        let marker_path = ctx.home.join(".apm").join(".dotfiles-manifest.sha256");
+        let manifest_path = home.join(".apm").join("apm.yml");
+        let lock_path = home.join(".apm").join("apm.lock.yaml");
+        let marker_path = home.join(".apm").join(".dotfiles-manifest.sha256");
         let merged = merge_fragments(&fragments)?;
         let manifest_hash = manifest_fingerprint(&merged);
         let state = ApmInstallState::detect(
@@ -64,7 +66,7 @@ impl Task for InstallApmPackages {
         )?;
         let targets = ApmTargets::detect(ctx)?;
 
-        if ctx.dry_run {
+        if ctx.dry_run() {
             let would_change = preview_install(
                 ctx,
                 targets,
@@ -104,7 +106,7 @@ impl Task for InstallApmPackages {
             return Ok(install_result);
         }
         if manifest_changed {
-            ctx.log.always(&format!(
+            ctx.log().always(&format!(
                 "    installed: {}",
                 describe_dependencies(&merged)
             ));
@@ -134,43 +136,43 @@ fn preview_install(
     lock_path: &Path,
 ) -> bool {
     if !state.manifest_changed() {
-        ctx.log
+        ctx.log()
             .debug("APM manifest, lockfile, and install marker are already current");
         return false;
     }
 
     if targets.includes_copilot_app() {
-        ctx.log
+        ctx.log()
             .dry_run("run apm experimental enable copilot-app (idempotent) before install");
-        ctx.log.dry_run(
+        ctx.log().dry_run(
             "re-assert apm-managed Copilot App workflows to autopilot + enabled in \
              ~/.copilot/data.db after a successful install",
         );
     }
     if state.manifest_needs_write {
-        ctx.log.dry_run(&format!(
+        ctx.log().dry_run(&format!(
             "merge {fragment_count} APM manifest fragment(s) into {}",
             manifest_path.display()
         ));
-        ctx.log
+        ctx.log()
             .dry_run("run apm install -g with auto-detected runtimes to sync changed manifest");
     } else if state.lock_missing {
-        ctx.log.dry_run(&format!(
+        ctx.log().dry_run(&format!(
             "run apm install -g with auto-detected runtimes because {} is missing",
             lock_path.display()
         ));
     } else if state.marker_missing_or_stale {
-        ctx.log.dry_run(
+        ctx.log().dry_run(
             "run apm install -g with auto-detected runtimes because the current manifest has not \
              been installed successfully yet",
         );
     } else {
-        ctx.log.dry_run(
+        ctx.log().dry_run(
             "run apm install -g with auto-detected runtimes to redeploy current manifest content",
         );
     }
     if targets.includes_copilot_app() {
-        ctx.log.dry_run(
+        ctx.log().dry_run(
             "run apm install -g --target copilot-app to sync Copilot App workflows separately",
         );
     }
@@ -237,7 +239,7 @@ pub(super) fn apm_task_should_run(ctx: &Context) -> bool {
         Ok(fragments) if !fragments.is_empty() => return true,
         Ok(_) => {}
         Err(err) => {
-            ctx.log.warn(&format!(
+            ctx.log().warn(&format!(
                 "could not inspect symlinks/apm/config; task will run to avoid hiding the \
                  error: {err:#}"
             ));
@@ -245,10 +247,10 @@ pub(super) fn apm_task_should_run(ctx: &Context) -> bool {
         }
     }
 
-    match discover_fragment_files(&ctx.home) {
+    match discover_fragment_files(ctx.home()) {
         Ok(fragments) => !fragments.is_empty(),
         Err(err) => {
-            ctx.log.warn(&format!(
+            ctx.log().warn(&format!(
                 "could not inspect ~/.apm/config; task will run to surface the error: {err:#}"
             ));
             true

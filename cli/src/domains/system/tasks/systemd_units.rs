@@ -1,7 +1,5 @@
 //! Task: configure systemd units.
 
-use std::sync::Arc;
-
 use anyhow::{Context as _, Result};
 
 use crate::domains::system::config::systemd_units::SystemdUnit;
@@ -48,11 +46,12 @@ impl Task for ConfigureSystemd {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.supports_systemd()
+        let system = ctx.system();
+        system.platform().supports_systemd()
             && !self.config.read().is_empty()
-            && ctx.executor.which("systemctl")
+            && system.which("systemctl")
             && systemd_available(ctx)
-            && !ctx.is_ci
+            && !system.is_ci()
     }
 
     fn needs_elevation(&self, _ctx: &Context) -> bool {
@@ -67,9 +66,10 @@ impl Task for ConfigureSystemd {
 
         reload_daemons(ctx, &units)?;
 
+        let system = ctx.system();
         let resources = units
             .iter()
-            .map(|entry| SystemdUnitResource::from_entry(entry, Arc::clone(&ctx.executor)));
+            .map(|entry| SystemdUnitResource::from_entry(entry, system.executor_arc()));
         process_resources(
             ctx,
             resources,
@@ -79,8 +79,10 @@ impl Task for ConfigureSystemd {
 }
 
 fn systemd_available(ctx: &Context) -> bool {
-    if ctx.platform.is_wsl() {
-        ctx.executor
+    let system = ctx.system();
+    if system.platform().is_wsl() {
+        system
+            .executor()
             .run_unchecked("systemctl", &["is-system-running"])
             .is_ok_and(|result| result.success || result.stdout.trim() == "degraded")
     } else {
@@ -89,24 +91,24 @@ fn systemd_available(ctx: &Context) -> bool {
 }
 
 fn reload_daemons(ctx: &Context, units: &[SystemdUnit]) -> Result<()> {
-    if ctx.dry_run {
+    if ctx.dry_run() {
         return Ok(());
     }
 
     if units.iter().any(|unit| unit.scope == "user") {
-        ctx.log.debug("running systemctl --user daemon-reload");
-        ctx.executor
+        ctx.log().debug("running systemctl --user daemon-reload");
+        ctx.executor()
             .run("systemctl", &["--user", "daemon-reload"])
             .context("reloading user systemd daemon")?;
-        ctx.log.debug("user daemon-reload succeeded");
+        ctx.log().debug("user daemon-reload succeeded");
     }
 
     if units.iter().any(|unit| unit.scope == "system") {
-        ctx.log.debug("running sudo systemctl daemon-reload");
-        ctx.executor
+        ctx.log().debug("running sudo systemctl daemon-reload");
+        ctx.executor()
             .run("sudo", &["systemctl", "daemon-reload"])
             .context("reloading system systemd daemon")?;
-        ctx.log.debug("system daemon-reload succeeded");
+        ctx.log().debug("system daemon-reload succeeded");
     }
 
     Ok(())

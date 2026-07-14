@@ -22,7 +22,7 @@ const COPILOT_APP_WORKFLOW_URI_PREFIX: &str = "copilot-app-db://workflows/";
 /// primitives are ignored. Best-effort: a malformed lockfile yields an empty
 /// set rather than an error so the fixup simply does nothing.
 pub(super) fn read_deployed_workflow_ids(ctx: &Context) -> Option<BTreeSet<String>> {
-    let lock = ctx.home.join(".apm").join("apm.lock.yaml");
+    let lock = ctx.home().join(".apm").join("apm.lock.yaml");
     let content = match std::fs::read_to_string(&lock) {
         Ok(content) => content,
         Err(e) => {

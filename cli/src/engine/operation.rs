@@ -92,7 +92,7 @@ pub(crate) fn process_operation(ctx: &Context, operation: &impl Operation) -> Re
     let state = operation.current_state(ctx)?;
     match state {
         OperationState::Complete => {
-            ctx.log.debug("already complete");
+            ctx.log().debug("already complete");
             Ok(TaskResult::Ok)
         }
         OperationState::NotApplicable { reason } => {
@@ -100,10 +100,10 @@ pub(crate) fn process_operation(ctx: &Context, operation: &impl Operation) -> Re
             Ok(TaskResult::NotApplicable(reason))
         }
         OperationState::Blocked { reason } => {
-            ctx.log.info(&format!("skipped: {reason}"));
+            ctx.log().info(&format!("skipped: {reason}"));
             Ok(TaskResult::Skipped(reason))
         }
-        OperationState::NeedsRun { plan, .. } if ctx.dry_run => operation.preview(ctx, &plan),
+        OperationState::NeedsRun { plan, .. } if ctx.dry_run() => operation.preview(ctx, &plan),
         OperationState::NeedsRun { plan, .. } => operation.apply(ctx, &plan),
     }
 }

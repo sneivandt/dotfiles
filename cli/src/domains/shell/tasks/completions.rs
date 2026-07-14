@@ -54,14 +54,14 @@ impl Operation for ZshCompletionOperation<'_> {
     }
 
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
-        ctx.log
+        ctx.log()
             .dry_run(&format!("write {}", plan.destination.display()));
         Ok(TaskResult::DryRun)
     }
 
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         crate::runtime::fs::write_with_parent(&plan.destination, &plan.content)?;
-        ctx.log.info("zsh completions written");
+        ctx.log().info("zsh completions written");
         Ok(TaskResult::Ok)
     }
 }

@@ -209,7 +209,7 @@ macro_rules! resource_task {
                     let $guard_ctx = ctx;
                     if !{ $guard_expr } { return Ok(None); }
                 )?
-                ctx.log.stage($task_name);
+                ctx.log().stage($task_name);
                 let result = Self::run_batch(ctx)?;
                 if matches!(result, $crate::engine::TaskResult::NotApplicable(_)) {
                     return Ok(None);
@@ -285,7 +285,7 @@ macro_rules! resource_task {
                 if items.is_empty() {
                     return Ok(None);
                 }
-                ctx.log.stage($task_name);
+                ctx.log().stage($task_name);
                 $(
                     let $setup_ctx = ctx;
                     { $setup_expr }
@@ -430,7 +430,7 @@ macro_rules! config_resource_task {
                         if !{ $guard_expr } { return Ok(None); }
                     }
                 )?
-                ctx.log.stage($task_name);
+                ctx.log().stage($task_name);
                 let result = self.run_batch(ctx)?;
                 if matches!(result, $crate::engine::TaskResult::NotApplicable(_)) {
                     return Ok(None);
@@ -517,7 +517,7 @@ macro_rules! config_resource_task {
                 if items.is_empty() {
                     return Ok(None);
                 }
-                ctx.log.stage($task_name);
+                ctx.log().stage($task_name);
                 $(
                     let $setup_ctx = ctx;
                     { $setup_expr }

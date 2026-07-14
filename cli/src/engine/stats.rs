@@ -161,11 +161,11 @@ impl TaskStats {
     /// skipped, or failed non-fatally. Quiet idempotent runs reduce noise on
     /// no-op invocations.
     pub fn log_summary(&self, ctx: &Context) {
-        let msg = self.summary(ctx.dry_run);
+        let msg = self.summary(ctx.dry_run());
         if self.changed > 0 || self.skipped > 0 || self.failed > 0 {
-            ctx.log.info(&msg);
+            ctx.log().info(&msg);
         } else {
-            ctx.log.debug(&msg);
+            ctx.log().debug(&msg);
         }
     }
 
@@ -187,7 +187,7 @@ impl TaskStats {
     /// Log the summary and return the appropriate [`TaskResult`].
     pub fn finish(self, ctx: &Context) -> TaskResult {
         self.log_summary(ctx);
-        let dry_run = ctx.dry_run;
+        let dry_run = ctx.dry_run();
         self.into_result(dry_run)
     }
 }

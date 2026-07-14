@@ -64,7 +64,7 @@ mod unix_e2e {
         let ec = test.make_context("base");
 
         // Pre-create the ssh/config file that ApplyFilePermissions targets.
-        let ssh_config = ec.ctx.home.join(".ssh/config");
+        let ssh_config = ec.ctx.home().join(".ssh/config");
         std::fs::create_dir_all(ssh_config.parent().unwrap()).unwrap();
         std::fs::write(&ssh_config, "Host *\n").unwrap();
 
@@ -97,7 +97,7 @@ mod unix_e2e {
         assert_eq!(ec.log.failure_count(), 0, "no task should fail");
 
         // 1. Symlink created and points to the repository source.
-        let link = ec.ctx.home.join(".bashrc");
+        let link = ec.ctx.home().join(".bashrc");
         assert!(
             link.symlink_metadata().is_ok(),
             "symlink .bashrc should exist in sandbox home"
@@ -121,7 +121,7 @@ mod unix_e2e {
         );
 
         // 3. File permissions applied to the sandbox home target.
-        let mode = std::fs::metadata(ec.ctx.home.join(".ssh/config"))
+        let mode = std::fs::metadata(ec.ctx.home().join(".ssh/config"))
             .unwrap()
             .permissions()
             .mode()
@@ -163,7 +163,7 @@ mod unix_e2e {
         );
 
         // Filesystem state must still be correct after the second run.
-        let link = ec.ctx.home.join(".bashrc");
+        let link = ec.ctx.home().join(".bashrc");
         assert!(
             link.symlink_metadata().unwrap().is_symlink(),
             ".bashrc should still be a symlink after idempotent run"
@@ -177,7 +177,7 @@ mod unix_e2e {
             test.root_path().join(".git/hooks/pre-commit").exists(),
             "hook should still be present after idempotent run"
         );
-        let mode = std::fs::metadata(ec.ctx.home.join(".ssh/config"))
+        let mode = std::fs::metadata(ec.ctx.home().join(".ssh/config"))
             .unwrap()
             .permissions()
             .mode()
@@ -201,7 +201,7 @@ mod unix_e2e {
         tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
         assert_eq!(ec.log.failure_count(), 0);
 
-        let content = std::fs::read_to_string(ec.ctx.home.join(".bashrc")).unwrap();
+        let content = std::fs::read_to_string(ec.ctx.home().join(".bashrc")).unwrap();
         assert_eq!(
             content, "# bash config\n",
             "reading through symlink should return source file content"

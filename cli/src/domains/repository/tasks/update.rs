@@ -73,7 +73,7 @@ impl Operation for UpdateRepositoryOperation {
     type Plan = Vec<CheckedRepository>;
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
-        let home_str = ctx.home.to_string_lossy().into_owned();
+        let home_str = ctx.home().to_string_lossy().into_owned();
         let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
         match checked_repositories(ctx, git_env)? {
             RepositorySetReadiness::Ready(repositories) if repositories.is_empty() => {
@@ -88,13 +88,13 @@ impl Operation for UpdateRepositoryOperation {
     }
 
     fn preview(&self, ctx: &Context, repositories: &Self::Plan) -> Result<TaskResult> {
-        let home_str = ctx.home.to_string_lossy().into_owned();
+        let home_str = ctx.home().to_string_lossy().into_owned();
         let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
         dry_run_repositories(ctx, repositories, git_env)
     }
 
     fn apply(&self, ctx: &Context, repositories: &Self::Plan) -> Result<TaskResult> {
-        let home_str = ctx.home.to_string_lossy().into_owned();
+        let home_str = ctx.home().to_string_lossy().into_owned();
         let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
         apply_repository_updates(ctx, repositories, git_env, &self.repo_updated)
     }

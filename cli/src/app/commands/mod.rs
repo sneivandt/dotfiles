@@ -413,7 +413,7 @@ fn load_config(
 fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
     use std::process::Stdio;
 
-    if !ctx.executor.which("sudo") {
+    if !ctx.executor().which("sudo") {
         log.separate_from_startup();
         log.warn("sudo not found on PATH");
         return false;
@@ -523,15 +523,16 @@ pub fn run_tasks_to_completion<'a>(
         // interactive password prompt appearing mid-way through interleaved
         // parallel output.  If priming fails, record sudo-dependent tasks as
         // failed and exclude them from this phase's dispatch.
-        let sudo_task_names: Vec<&str> = if ctx.parallel && !ctx.dry_run && phase_tasks.len() > 1 {
-            phase_tasks
-                .iter()
-                .filter(|t| t.requires_elevation(ctx))
-                .map(|t| t.name())
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let sudo_task_names: Vec<&str> =
+            if ctx.parallel() && !ctx.dry_run() && phase_tasks.len() > 1 {
+                phase_tasks
+                    .iter()
+                    .filter(|t| t.requires_elevation(ctx))
+                    .map(|t| t.name())
+                    .collect()
+            } else {
+                Vec::new()
+            };
         let sudo_failed = !sudo_task_names.is_empty() && !prime_sudo(ctx, log, &sudo_task_names);
 
         if sudo_failed {
@@ -580,7 +581,7 @@ pub fn run_tasks_to_completion<'a>(
             }
         };
 
-        if ctx.parallel {
+        if ctx.parallel() {
             crate::engine::scheduler::run_tasks_parallel(&phase_tasks, &graph, ctx, log);
         } else {
             crate::engine::scheduler::run_tasks_sequential(&phase_tasks, &graph, ctx, log);

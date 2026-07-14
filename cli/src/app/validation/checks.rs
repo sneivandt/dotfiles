@@ -37,14 +37,14 @@ impl Task for ValidateConfigWarnings {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let diagnostics = self.config.read().validate(ctx.platform);
+        let diagnostics = self.config.read().validate(ctx.platform());
         if diagnostics.is_empty() {
-            ctx.log.info("no configuration diagnostics found");
+            ctx.log().info("no configuration diagnostics found");
             return Ok(TaskResult::Ok);
         }
 
         for d in &diagnostics {
-            ctx.log.error(&format!(
+            ctx.log().error(&format!(
                 "[{}] {} [{}] ({}): {}",
                 d.severity.label(),
                 d.source,
@@ -98,7 +98,7 @@ impl Task for ValidateSymlinkSources {
                 crate::domains::files::config::symlinks::resolve_symlinks_dir(symlink, &repo_root);
             let source = symlinks_dir.join(&symlink.source);
             if !source.exists() {
-                ctx.log
+                ctx.log()
                     .error(&format!("symlink source missing: {}", source.display()));
                 missing = missing.saturating_add(1);
             }
@@ -108,7 +108,7 @@ impl Task for ValidateSymlinkSources {
             anyhow::bail!("{missing} symlink source(s) missing");
         }
 
-        ctx.log
+        ctx.log()
             .info(&format!("all {} symlink sources exist", symlinks.len()));
         Ok(TaskResult::Ok)
     }
@@ -142,7 +142,7 @@ impl Task for ValidateConfigFiles {
             if path.exists() {
                 ctx.debug_fmt(|| format!("found conf/{config_file}"));
             } else {
-                ctx.log
+                ctx.log()
                     .error(&format!("missing config: conf/{config_file}"));
                 errors = errors.saturating_add(1);
             }
@@ -150,15 +150,15 @@ impl Task for ValidateConfigFiles {
 
         let hooks_dir = root.join("hooks");
         if hooks_dir.exists() {
-            ctx.log.debug("found hooks directory");
+            ctx.log().debug("found hooks directory");
         } else {
-            ctx.log.warn("hooks directory missing");
+            ctx.log().warn("hooks directory missing");
         }
 
         if errors > 0 {
             anyhow::bail!("{errors} required config file(s) missing");
         }
-        ctx.log.info(&format!(
+        ctx.log().info(&format!(
             "all {} required config files present",
             required.len()
         ));
@@ -216,13 +216,13 @@ impl Task for ValidateManifestSync {
         warnings.sort_unstable();
 
         if warnings.is_empty() {
-            ctx.log
+            ctx.log()
                 .info("symlinks.toml and manifest.toml sections are in sync");
             return Ok(TaskResult::Ok);
         }
 
         for warning in &warnings {
-            ctx.log.error(warning);
+            ctx.log().error(warning);
         }
         anyhow::bail!(
             "test failed: {} section(s) differ between symlinks.toml and manifest.toml",
@@ -243,14 +243,14 @@ impl Task for ValidateApmPlugins {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.executor.which("apm")
+        ctx.executor().which("apm")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let plugins =
             discover_apm_plugin_dirs(&ctx.root().join("symlinks").join("apm").join("plugins"))?;
         if plugins.is_empty() {
-            ctx.log.info("no local APM plugins found");
+            ctx.log().info("no local APM plugins found");
             return Ok(TaskResult::Ok);
         }
 
@@ -258,18 +258,18 @@ impl Task for ValidateApmPlugins {
         for plugin in &plugins {
             ctx.debug_fmt(|| format!("validating APM plugin {}", plugin.display()));
             let result = ctx
-                .executor
+                .executor()
                 .run_unchecked_in(plugin, "apm", &["pack", "--dry-run", "--verbose"])
                 .with_context(|| format!("running apm pack validation in {}", plugin.display()))?;
             if result.success {
                 continue;
             }
 
-            ctx.log.error(&format!(
+            ctx.log().error(&format!(
                 "APM plugin validation failed: {}",
                 plugin.display()
             ));
-            log_exec_output(&*ctx.log, &result);
+            log_exec_output(ctx.log(), &result);
             failures = failures.saturating_add(1);
         }
 
@@ -277,7 +277,7 @@ impl Task for ValidateApmPlugins {
             anyhow::bail!("{failures} APM plugin(s) failed validation");
         }
 
-        ctx.log
+        ctx.log()
             .info(&format!("validated {} local APM plugins", plugins.len()));
         Ok(TaskResult::Ok)
     }
@@ -295,7 +295,7 @@ impl Task for RunShellcheck {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.executor.which("shellcheck")
+        ctx.executor().which("shellcheck")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -317,22 +317,22 @@ impl Task for RunShellcheck {
         }
 
         if scripts.is_empty() {
-            ctx.log.info("no shell scripts found");
+            ctx.log().info("no shell scripts found");
             return Ok(TaskResult::Ok);
         }
 
-        ctx.log
+        ctx.log()
             .debug(&format!("checking {} shell scripts", scripts.len()));
 
         let args = build_shellcheck_args(&scripts);
         let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
 
-        let result = ctx.executor.run_unchecked("shellcheck", &arg_refs)?;
+        let result = ctx.executor().run_unchecked("shellcheck", &arg_refs)?;
         if result.success {
-            ctx.log.info("shellcheck passed");
+            ctx.log().info("shellcheck passed");
             Ok(TaskResult::Ok)
         } else {
-            log_exec_output(&*ctx.log, &result);
+            log_exec_output(ctx.log(), &result);
             anyhow::bail!("shellcheck found issues");
         }
     }
@@ -350,7 +350,7 @@ impl Task for RunPSScriptAnalyzer {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.executor.which("pwsh")
+        ctx.executor().which("pwsh")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -370,23 +370,23 @@ impl Task for RunPSScriptAnalyzer {
         }
 
         if ps_files.is_empty() {
-            ctx.log.info("no PowerShell scripts found");
+            ctx.log().info("no PowerShell scripts found");
             return Ok(TaskResult::Ok);
         }
 
-        ctx.log
+        ctx.log()
             .debug(&format!("checking {} PowerShell scripts", ps_files.len()));
 
         let script = build_psscriptanalyzer_command(&ps_files);
 
         let result = ctx
-            .executor
+            .executor()
             .run_unchecked("pwsh", &["-NoProfile", "-Command", &script])?;
         if result.success {
-            ctx.log.info("PSScriptAnalyzer passed");
+            ctx.log().info("PSScriptAnalyzer passed");
             Ok(TaskResult::Ok)
         } else {
-            log_exec_output(&*ctx.log, &result);
+            log_exec_output(ctx.log(), &result);
             anyhow::bail!("PSScriptAnalyzer found issues");
         }
     }

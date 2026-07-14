@@ -475,7 +475,7 @@ mod tests {
     }
 
     /// Regression test: tasks that produce stats output by calling
-    /// `ctx.log.info()` inside `run()` — as `process_resources` does via
+    /// `ctx.log().info()` inside `run()` — as `process_resources` does via
     /// `stats.finish(ctx)` — must have their `==>` stage header replayed
     /// by `flush_and_complete()`.
     ///
@@ -488,7 +488,7 @@ mod tests {
         let buf = BufferedLog::new(Arc::clone(&log));
 
         // Simulate the order execute() + stats.finish(ctx) produce entries:
-        // execute() calls ctx.log.stage() first, then run() calls ctx.log.info()
+        // execute() calls ctx.log().stage() first, then run() calls ctx.log().info()
         // via stats.finish() before returning Ok.
         buf.stage("install-task");
         buf.info("0 changed, 37 already ok");

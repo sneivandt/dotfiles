@@ -40,7 +40,7 @@ pub(super) fn is_up_to_date(sparse_file: &Path, patterns_str: &str) -> bool {
 /// Checking the flag lets [`ConfigureSparseCheckout::run`] re-enable sparse
 /// checkout instead of short-circuiting on the still-matching file.
 fn sparse_checkout_config_enabled(ctx: &Context, root: &Path) -> bool {
-    ctx.executor
+    ctx.executor()
         .run_unchecked_in(root, "git", &["config", "--get", "core.sparseCheckout"])
         .is_ok_and(|result| result.success && result.stdout.trim() == "true")
 }
@@ -81,7 +81,7 @@ fn read_existing_patterns(sparse_file: &Path) -> Result<Option<String>> {
 /// `git config` there would be silently shadowed and sparse checkout would
 /// never re-enable.
 pub(super) fn enable_sparse_checkout_config(ctx: &Context, root: &Path) -> Result<()> {
-    ctx.log
+    ctx.log()
         .debug("enabling sparse checkout (non-cone mode via git config)");
     let scope: &[&str] = if worktree_config_enabled(ctx, root) {
         &["--worktree"]
@@ -106,14 +106,14 @@ fn set_git_config(
     args.extend_from_slice(scope);
     args.push(key);
     args.push(value);
-    ctx.executor.run_in(root, "git", &args)?;
+    ctx.executor().run_in(root, "git", &args)?;
     Ok(())
 }
 
 /// Return whether the `extensions.worktreeConfig` extension is enabled, in
 /// which case `core.*` overrides live in the per-worktree config scope.
 fn worktree_config_enabled(ctx: &Context, root: &Path) -> bool {
-    ctx.executor
+    ctx.executor()
         .run_unchecked_in(
             root,
             "git",
@@ -158,7 +158,7 @@ pub(super) fn reset_excluded_to_head(ctx: &Context, root: &Path, excluded_files:
             excluded.len()
         )
     });
-    if let Err(e) = ctx.executor.run_in(root, "git", &checkout_args) {
+    if let Err(e) = ctx.executor().run_in(root, "git", &checkout_args) {
         ctx.debug_fmt(|| format!("git checkout reset failed: {e}"));
     }
 }
@@ -174,16 +174,16 @@ fn apply_read_tree_with_restore(
     sparse_file: &Path,
     previous_patterns: Option<&str>,
 ) -> Result<()> {
-    ctx.log
+    ctx.log()
         .debug("wrote sparse-checkout file, running read-tree");
     if let Err(err) = ctx
-        .executor
+        .executor()
         .run_in(root, "git", &["read-tree", "-mu", "HEAD"])
     {
-        ctx.log
+        ctx.log()
             .warn("git read-tree failed; restoring previous sparse-checkout configuration");
         restore_sparse_checkout_file(sparse_file, previous_patterns)?;
-        ctx.executor
+        ctx.executor()
             .run_in(root, "git", &["read-tree", "-mu", "HEAD"])
             .context("restoring worktree after failed sparse-checkout update")?;
         return Err(err.context("applying sparse-checkout patterns"));
@@ -219,16 +219,17 @@ pub(super) fn restore_sparse_checkout_file(
 /// excludes `symlinks/`, which then prevents git from running at all because
 /// it cannot read its own XDG config / exclude files.
 pub(super) fn remove_broken_git_symlinks(ctx: &Context, fs: &dyn FileSystemOps) {
-    let git_config_dir = ctx.home.join(".config").join("git");
+    let paths = ctx.paths();
+    let git_config_dir = paths.home().join(".config").join("git");
     if !fs.exists(&git_config_dir) {
         return;
     }
-    let symlinks_dir = ctx.symlinks_dir();
+    let symlinks_dir = paths.symlinks_dir();
     let Ok(entries) = fs.read_dir(&git_config_dir) else {
         return;
     };
     for path in entries {
-        if !is_broken_symlink_into(fs, &path, &symlinks_dir) {
+        if !is_broken_symlink_into(fs, &path, symlinks_dir) {
             continue;
         }
         ctx.debug_fmt(|| format!("removing broken git config symlink: {}", path.display()));
@@ -313,7 +314,7 @@ impl Operation for SparseCheckoutOperation {
         let excluded_files: Vec<String> = self.config.read().excluded_files.clone();
 
         if excluded_files.is_empty() {
-            ctx.log.info("no files to exclude from sparse checkout");
+            ctx.log().info("no files to exclude from sparse checkout");
             return Ok(OperationState::Complete);
         }
 
@@ -321,9 +322,9 @@ impl Operation for SparseCheckoutOperation {
         let sparse_file = ctx.root().join(".git/info/sparse-checkout");
 
         if is_up_to_date(&sparse_file, &patterns_str)
-            && sparse_checkout_config_enabled(ctx, &ctx.root())
+            && sparse_checkout_config_enabled(ctx, ctx.root())
         {
-            ctx.log.debug(&format!(
+            ctx.log().debug(&format!(
                 "already configured ({} files excluded)",
                 excluded_files.len()
             ));
@@ -337,9 +338,9 @@ impl Operation for SparseCheckoutOperation {
     }
 
     fn preview(&self, ctx: &Context, excluded_files: &Self::Plan) -> Result<TaskResult> {
-        ctx.log.dry_run("configure git sparse checkout");
+        ctx.log().dry_run("configure git sparse checkout");
         for file in excluded_files {
-            ctx.log.dry_run(&format!("  exclude: {file}"));
+            ctx.log().dry_run(&format!("  exclude: {file}"));
         }
         Ok(TaskResult::DryRun)
     }
@@ -359,7 +360,7 @@ impl Operation for SparseCheckoutOperation {
 
         let root = ctx.root();
 
-        enable_sparse_checkout_config(ctx, &root)?;
+        enable_sparse_checkout_config(ctx, root)?;
 
         ctx.debug_fmt(|| {
             format!(
@@ -369,10 +370,10 @@ impl Operation for SparseCheckoutOperation {
         });
 
         write_sparse_patterns(&sparse_file, &patterns_str)?;
-        reset_excluded_to_head(ctx, &root, excluded_files);
-        apply_read_tree_with_restore(ctx, &root, &sparse_file, previous_patterns.as_deref())?;
+        reset_excluded_to_head(ctx, root, excluded_files);
+        apply_read_tree_with_restore(ctx, root, &sparse_file, previous_patterns.as_deref())?;
 
-        ctx.log.info(&format!(
+        ctx.log().info(&format!(
             "excluded {} files from checkout",
             excluded_files.len()
         ));
@@ -382,8 +383,8 @@ impl Operation for SparseCheckoutOperation {
 }
 
 pub(super) fn worktree_has_local_changes(ctx: &Context) -> Result<bool> {
-    let status = ctx.executor.run_in(
-        &ctx.root(),
+    let status = ctx.executor().run_in(
+        ctx.root(),
         "git",
         &["status", "--porcelain", "--untracked-files=no"],
     )?;

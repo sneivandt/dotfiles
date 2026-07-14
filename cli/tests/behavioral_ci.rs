@@ -367,7 +367,7 @@ symlinks = [
         .map(|symlink| {
             (
                 symlink.source.clone(),
-                symlink_target(&ctx.home, &symlink.source, symlink.target.as_deref()),
+                symlink_target(ctx.home(), &symlink.source, symlink.target.as_deref()),
             )
         })
         .collect();

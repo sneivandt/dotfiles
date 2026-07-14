@@ -682,7 +682,7 @@ fn process_resources_remove_parallel_error_propagates() {
 fn process_resources_stops_on_cancellation() {
     let ctx = test_ctx();
     // Cancel before processing begins
-    ctx.cancelled.cancel();
+    ctx.cancellation_token().cancel();
     // apply() would error if called — cancellation should prevent it
     let resources = vec![
         MockResource::new(ResourceState::Missing).with_apply(Err("should not call".into())),
@@ -702,7 +702,7 @@ fn process_resources_stops_on_cancellation() {
 #[test]
 fn process_precomputed_states_stops_on_cancellation() {
     let ctx = test_ctx();
-    ctx.cancelled.cancel();
+    ctx.cancellation_token().cancel();
     let resource_states = vec![
         (
             MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
@@ -726,7 +726,7 @@ fn process_precomputed_states_stops_on_cancellation() {
 #[test]
 fn process_resources_remove_stops_on_cancellation() {
     let ctx = test_ctx();
-    ctx.cancelled.cancel();
+    ctx.cancellation_token().cancel();
     // remove() would error if called
     let resources = vec![
         MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),

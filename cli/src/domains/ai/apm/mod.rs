@@ -34,7 +34,7 @@ pub(super) const APM_UP_TO_DATE_MARKER: &str = "all dependencies are up-to-date"
 
 fn skip_with_warning(ctx: &Context, reason: impl Into<String>) -> TaskResult {
     let reason = reason.into();
-    ctx.log.warn(&format!("skipping: {reason}"));
+    ctx.log().warn(&format!("skipping: {reason}"));
     TaskResult::Skipped(reason)
 }
 

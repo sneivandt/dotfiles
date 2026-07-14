@@ -63,19 +63,20 @@ impl ApmTargets {
 
 /// Return the user-scope Copilot App database path used by APM.
 pub(super) fn copilot_app_db_path(ctx: &Context) -> PathBuf {
-    ctx.home.join(".copilot").join("data.db")
+    ctx.home().join(".copilot").join("data.db")
 }
 
 /// Return a platform-specific reason for skipping APM work when `apm` is absent.
 pub(super) fn missing_apm_reason(ctx: &Context) -> String {
-    let hint = if ctx.platform.is_wsl() {
+    let platform = ctx.system().platform();
+    let hint = if platform.is_wsl() {
         Some(
             "install the Windows package with `winget.exe install Microsoft.APM` and re-open your \
              WSL shell",
         )
-    } else if ctx.platform.is_windows() {
+    } else if platform.is_windows() {
         Some("install it with `winget install Microsoft.APM`")
-    } else if ctx.platform.supports_aur() {
+    } else if platform.supports_aur() {
         Some("install it with `paru -S apm-bin`")
     } else {
         None

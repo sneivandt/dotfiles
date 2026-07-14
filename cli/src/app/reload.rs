@@ -51,7 +51,7 @@ impl ReloadConfig {
             Config::load(
                 &old.root,
                 &old.profile,
-                ctx.platform,
+                ctx.platform(),
                 old.overlay.as_deref(),
             )
             .context("reloading configuration after repository update")?
@@ -67,7 +67,7 @@ impl ReloadConfig {
 
         self.store.reload(new_config);
 
-        ctx.log.info("configuration reloaded");
+        ctx.log().info("configuration reloaded");
         Ok(TaskResult::Ok)
     }
 }

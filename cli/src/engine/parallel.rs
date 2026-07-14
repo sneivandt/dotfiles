@@ -19,7 +19,7 @@ pub(super) fn process_apply_parallel<T: Send, R: Resource + Send>(
     opts: &ProcessOpts,
     get_resource_state: impl Fn(T) -> Result<(R, ResourceState)> + Sync + Send,
 ) -> Result<super::stats::TaskResult> {
-    let cancelled = ctx.cancelled.clone();
+    let cancelled = ctx.cancellation_token();
     let stats = collect_parallel_stats(
         items,
         |item| {
@@ -37,7 +37,7 @@ pub(super) fn process_remove_parallel<R: IntrinsicState + Send>(
     resources: Vec<R>,
     verb: &str,
 ) -> Result<super::stats::TaskResult> {
-    let cancelled = ctx.cancelled.clone();
+    let cancelled = ctx.cancellation_token();
     let stats = collect_parallel_stats(
         resources,
         |resource| {

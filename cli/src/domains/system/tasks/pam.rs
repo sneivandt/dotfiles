@@ -1,7 +1,5 @@
 //! Task: configure PAM service files.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 
 use crate::domains::system::config::pam::PamService;
@@ -29,7 +27,7 @@ impl ConfigurePam {
         self.config
             .read()
             .iter()
-            .map(|entry| PamServiceResource::from_entry(entry, Arc::clone(&ctx.executor)))
+            .map(|entry| PamServiceResource::from_entry(entry, ctx.executor_arc()))
             .collect()
     }
 }
@@ -59,7 +57,7 @@ impl Task for ConfigurePam {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_linux() && !self.config.read().is_empty()
+        ctx.platform().is_linux() && !self.config.read().is_empty()
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {

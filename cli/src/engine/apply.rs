@@ -19,7 +19,7 @@ pub(super) fn process_single<R: Resource>(
     opts: &ProcessOpts,
 ) -> Result<TaskStats> {
     let plan = ApplyChange::from_state(resource.description(), resource_state, opts);
-    ctx.log.diag(
+    ctx.log().diag(
         DiagEvent::ResourceCheck,
         &format!("{} state={resource_state}", plan.description()),
     );
@@ -42,9 +42,9 @@ pub(super) fn process_single<R: Resource>(
             bail_on_error,
             ..
         } => {
-            if ctx.dry_run {
+            if ctx.dry_run() {
                 if let Some(message) = plan.dry_run_message() {
-                    ctx.log.dry_run(&message);
+                    ctx.log().dry_run(&message);
                 }
                 delta.changed = delta.changed.saturating_add(1);
                 return Ok(delta);
@@ -77,27 +77,27 @@ fn record_resource_change(
 ) {
     match change {
         ResourceChange::Applied => {
-            ctx.log.diag(
+            ctx.log().diag(
                 DiagEvent::ResourceResult,
                 &format!("{desc} {applied_label}"),
             );
-            ctx.log
+            ctx.log()
                 .info(&format!("{}: {desc}", completed_action_label(verb)));
             delta.changed = delta.changed.saturating_add(1);
         }
         ResourceChange::AlreadyCorrect => {
-            ctx.log.diag(
+            ctx.log().diag(
                 DiagEvent::ResourceResult,
                 &format!("{desc} already_correct"),
             );
             delta.already_ok = delta.already_ok.saturating_add(1);
         }
         ResourceChange::Skipped { reason } => {
-            ctx.log.diag(
+            ctx.log().diag(
                 DiagEvent::ResourceResult,
                 &format!("{desc} skipped: {reason}"),
             );
-            ctx.log.warn(&format!("skipping {desc}: {reason}"));
+            ctx.log().warn(&format!("skipping {desc}: {reason}"));
             delta.failed = delta.failed.saturating_add(1);
         }
     }
@@ -112,23 +112,23 @@ fn apply_resource<R: Resource>(
     bail_on_error: bool,
 ) -> Result<TaskStats> {
     if let Some(warning) = resource.pre_apply_warning()? {
-        ctx.log.warn(&warning);
+        ctx.log().warn(&warning);
     }
-    ctx.log
+    ctx.log()
         .diag(DiagEvent::ResourceApply, &format!("{verb} {desc}"));
     let mut delta = TaskStats::new();
     let change = match resource.apply() {
         Ok(change) => change,
         Err(e) => {
             let category = e.category();
-            ctx.log.diag(
+            ctx.log().diag(
                 DiagEvent::ResourceResult,
                 &format!("{desc} error [{category}]: {e}"),
             );
             if bail_on_error {
                 return Err(e.into());
             }
-            ctx.log.warn(&format!("failed to {verb} {desc}: {e}"));
+            ctx.log().warn(&format!("failed to {verb} {desc}: {e}"));
             delta.failed = delta.failed.saturating_add(1);
             return Ok(delta);
         }
@@ -168,14 +168,14 @@ pub(super) fn remove_single<R: Resource>(
     let mut delta = TaskStats::new();
     match plan.operation() {
         RemoveOperation::Remove { verb: remove_verb } => {
-            if ctx.dry_run {
+            if ctx.dry_run() {
                 if let Some(message) = plan.dry_run_message() {
-                    ctx.log.dry_run(&message);
+                    ctx.log().dry_run(&message);
                 }
                 delta.changed = delta.changed.saturating_add(1);
                 return Ok(delta);
             }
-            ctx.log.diag(
+            ctx.log().diag(
                 DiagEvent::ResourceRemove,
                 &format!("{remove_verb} {}", plan.description()),
             );
@@ -192,7 +192,7 @@ pub(super) fn remove_single<R: Resource>(
         RemoveOperation::Skip { reason } => {
             // Cannot determine if this resource is ours — skip removal rather
             // than risking removing something we did not install.
-            ctx.log.warn(&format!(
+            ctx.log().warn(&format!(
                 "skipping removal of {}: {reason}",
                 plan.description()
             ));

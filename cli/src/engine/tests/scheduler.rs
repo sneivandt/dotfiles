@@ -366,7 +366,7 @@ impl Task for SequentialChangedDetailTask {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        ctx.log.info("installed: demo-package");
+        ctx.log().info("installed: demo-package");
         Ok(TaskResult::OkWithMessage(
             "1 changed, 0 already ok".to_string(),
         ))
@@ -569,7 +569,7 @@ fn dependency_not_in_list_is_ignored() {
 // -----------------------------------------------------------------------
 // Stage-header regression tests.
 //
-// Tasks that call `ctx.log.info()` inside `run()` — as `process_resources`
+// Tasks that call `ctx.log().info()` inside `run()` — as `process_resources`
 // does via `stats.finish(ctx)` — must have their `==>` stage header
 // buffered by `execute()` and replayed by `flush_and_complete()`.
 //
@@ -596,7 +596,7 @@ impl Task for StatsTask {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         // Simulates `stats.finish(ctx)` called inside process_resources.
-        ctx.log.info("0 changed, 37 already ok");
+        ctx.log().info("0 changed, 37 already ok");
         Ok(TaskResult::Ok)
     }
 }
@@ -621,14 +621,14 @@ impl Task for NamedStatsTask {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        ctx.log
+        ctx.log()
             .info(&format!("0 changed, {} already ok", self.count));
         Ok(TaskResult::Ok)
     }
 }
 
 /// Regression test: stage header must be present in the log when a task
-/// calls `ctx.log.info()` from within `run()` (the `stats.finish` path).
+/// calls `ctx.log().info()` from within `run()` (the `stats.finish` path).
 ///
 /// Before the regression was detected, tasks producing `"0 changed, X
 /// already ok"` output via `process_resources` were missing their `==>`
@@ -652,7 +652,7 @@ fn stage_header_present_when_info_logged_in_run() {
 
     let stage_pos = contents
         .find("==> stats-task")
-        .expect("stage header must appear in log for task that calls ctx.log.info in run()");
+        .expect("stage header must appear in log for task that calls ctx.log().info in run()");
     let info_pos = contents
         .find("0 changed, 37 already ok")
         .expect("stats info must appear in log");
@@ -773,7 +773,7 @@ fn stage_header_not_lost_after_debug_fmt_call() {
             // left stale FilterState bits that silently dropped the
             // subsequent stage INFO event replayed by flush_and_complete.
             ctx.debug_fmt(|| "ok: some/resource".to_string());
-            ctx.log.info("1 changed, 0 already ok");
+            ctx.log().info("1 changed, 0 already ok");
             Ok(TaskResult::Ok)
         }
     }

@@ -23,7 +23,7 @@ impl Operation for WslConfOperation {
     type Plan = ();
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
-        if !ctx.platform.is_wsl() {
+        if !ctx.platform().is_wsl() {
             return Ok(OperationState::not_applicable("not running inside WSL"));
         }
         if is_correct("/etc/wsl.conf") {
@@ -36,7 +36,7 @@ impl Operation for WslConfOperation {
     }
 
     fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
-        ctx.log
+        ctx.log()
             .dry_run(&format!("would update {DESIRED_KEY} in /etc/wsl.conf"));
         Ok(TaskResult::DryRun)
     }
@@ -67,7 +67,7 @@ impl Task for InstallWslConf {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform.is_wsl()
+        ctx.platform().is_wsl()
     }
 
     fn needs_elevation(&self, _ctx: &Context) -> bool {
@@ -82,7 +82,8 @@ impl Task for InstallWslConf {
 fn install_wsl_conf(ctx: &Context, target: &str) -> Result<TaskResult> {
     let desired_content = desired_content_for_path(target)?;
 
-    ctx.log.info(&format!("updating {DESIRED_KEY} in {target}"));
+    ctx.log()
+        .info(&format!("updating {DESIRED_KEY} in {target}"));
 
     // Try a direct write first (works when running as root).  If that
     // fails with a permission error, fall back to staging via a temp file
@@ -92,14 +93,14 @@ fn install_wsl_conf(ctx: &Context, target: &str) -> Result<TaskResult> {
     match std::fs::write(target, &desired_content) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-            ctx.log.info("direct write failed, falling back to sudo");
+            ctx.log().info("direct write failed, falling back to sudo");
             let tmp = sudo_fallback_tmp_path();
             std::fs::write(&tmp, &desired_content).map_err(|write_error| {
                 anyhow::anyhow!("failed to write temp file {tmp}: {write_error}")
             })?;
             let _cleanup = crate::runtime::fs::TempPath::new(std::path::PathBuf::from(&tmp));
 
-            ctx.executor.run("sudo", &["cp", &tmp, target])?;
+            ctx.executor().run("sudo", &["cp", &tmp, target])?;
         }
         Err(e) => return Err(anyhow::anyhow!("failed to write {target}: {e}")),
     }

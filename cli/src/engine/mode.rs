@@ -264,347 +264,107 @@ impl<'a> ProcessOpts<'a> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
 
-    // -------------------------------------------------------------------
-    // ProcessMode flag methods
-    // -------------------------------------------------------------------
-
     #[test]
-    fn strict_fixes_both_and_bails() {
-        let m = ProcessMode::Strict;
-        assert!(m.fix_incorrect());
-        assert!(m.fix_missing());
-        assert!(m.bail_on_error());
-    }
+    fn mode_matrix_covers_flags_and_state_transitions() {
+        let cases = [
+            (ProcessMode::Strict, true, true, true),
+            (ProcessMode::Lenient, true, true, false),
+            (ProcessMode::InstallMissing, false, true, false),
+            (ProcessMode::FixExisting, true, false, true),
+        ];
 
-    #[test]
-    fn lenient_fixes_both_without_bail() {
-        let m = ProcessMode::Lenient;
-        assert!(m.fix_incorrect());
-        assert!(m.fix_missing());
-        assert!(!m.bail_on_error());
-    }
+        for (mode, fixes_incorrect, fixes_missing, bails) in cases {
+            assert_eq!(mode.fix_incorrect(), fixes_incorrect, "mode {mode:?}");
+            assert_eq!(mode.fix_missing(), fixes_missing, "mode {mode:?}");
+            assert_eq!(mode.bail_on_error(), bails, "mode {mode:?}");
 
-    #[test]
-    fn install_missing_fixes_only_missing() {
-        let m = ProcessMode::InstallMissing;
-        assert!(!m.fix_incorrect());
-        assert!(m.fix_missing());
-        assert!(!m.bail_on_error());
-    }
-
-    #[test]
-    fn fix_existing_fixes_only_incorrect() {
-        let m = ProcessMode::FixExisting;
-        assert!(m.fix_incorrect());
-        assert!(!m.fix_missing());
-        assert!(m.bail_on_error());
-    }
-
-    // -------------------------------------------------------------------
-    // action_for — exhaustive state machine (4 modes × 5 states)
-    // -------------------------------------------------------------------
-
-    // -- Correct state: always Noop regardless of mode --
-
-    #[test]
-    fn action_for_correct_is_always_noop() {
-        for mode in [
-            ProcessMode::Strict,
-            ProcessMode::Lenient,
-            ProcessMode::InstallMissing,
-            ProcessMode::FixExisting,
-        ] {
             assert_eq!(
                 mode.action_for(&ResourceState::Correct),
                 ResourceAction::Noop,
-                "mode {mode:?} should Noop on Correct",
+                "mode {mode:?}, state Correct",
+            );
+            assert_eq!(
+                mode.action_for(&ResourceState::Invalid {
+                    reason: "invalid target".to_string(),
+                }),
+                ResourceAction::Skip {
+                    reason: "invalid target".to_string(),
+                    failed: true,
+                },
+                "mode {mode:?}, state Invalid",
+            );
+            assert_eq!(
+                mode.action_for(&ResourceState::Unknown {
+                    reason: "tool missing".to_string(),
+                }),
+                ResourceAction::Skip {
+                    reason: "state unknown: tool missing".to_string(),
+                    failed: true,
+                },
+                "mode {mode:?}, state Unknown",
+            );
+            assert_eq!(
+                mode.action_for(&ResourceState::Missing),
+                if fixes_missing {
+                    ResourceAction::Apply
+                } else {
+                    ResourceAction::Skip {
+                        reason: "mode skips missing resources".to_string(),
+                        failed: false,
+                    }
+                },
+                "mode {mode:?}, state Missing",
+            );
+            assert_eq!(
+                mode.action_for(&ResourceState::Incorrect {
+                    current: "old".to_string(),
+                }),
+                if fixes_incorrect {
+                    ResourceAction::Apply
+                } else {
+                    ResourceAction::Skip {
+                        reason: "mode skips incorrect resources".to_string(),
+                        failed: false,
+                    }
+                },
+                "mode {mode:?}, state Incorrect",
             );
         }
     }
 
-    // -- Invalid state: always Skip regardless of mode --
-
     #[test]
-    fn action_for_invalid_is_always_skip() {
-        let state = ResourceState::Invalid {
-            reason: "dir exists".into(),
-        };
-        for mode in [
-            ProcessMode::Strict,
-            ProcessMode::Lenient,
-            ProcessMode::InstallMissing,
-            ProcessMode::FixExisting,
-        ] {
-            assert!(
-                matches!(
-                    mode.action_for(&state),
-                    ResourceAction::Skip { failed: true, .. },
-                ),
-                "mode {mode:?} should Skip on Invalid",
-            );
+    fn option_constructors_preserve_mode_verb_and_sequential_policy() {
+        let cases = [
+            (ProcessOpts::strict("link"), ProcessMode::Strict, "link"),
+            (
+                ProcessOpts::lenient("install"),
+                ProcessMode::Lenient,
+                "install",
+            ),
+            (
+                ProcessOpts::install_missing("enable"),
+                ProcessMode::InstallMissing,
+                "enable",
+            ),
+            (
+                ProcessOpts::fix_existing("configure"),
+                ProcessMode::FixExisting,
+                "configure",
+            ),
+        ];
+
+        for (opts, expected_mode, expected_verb) in cases {
+            assert_eq!(opts.mode, expected_mode);
+            assert_eq!(opts.verb, expected_verb);
+            assert!(!opts.sequential);
         }
-    }
 
-    // -- Unknown state: always Skip regardless of mode --
-
-    #[test]
-    fn action_for_unknown_is_always_skip() {
-        let state = ResourceState::Unknown {
-            reason: "tool missing".into(),
-        };
-        for mode in [
-            ProcessMode::Strict,
-            ProcessMode::Lenient,
-            ProcessMode::InstallMissing,
-            ProcessMode::FixExisting,
-        ] {
-            let action = mode.action_for(&state);
-            assert!(
-                matches!(action, ResourceAction::Skip { failed: true, .. }),
-                "mode {mode:?} should Skip on Unknown",
-            );
-        }
-    }
-
-    #[test]
-    fn action_for_unknown_skip_reason_includes_state_unknown() {
-        let state = ResourceState::Unknown {
-            reason: "SHELL not set".into(),
-        };
-        match ProcessMode::Strict.action_for(&state) {
-            ResourceAction::Skip {
-                reason,
-                failed: true,
-            } => {
-                assert!(reason.contains("state unknown"), "reason: {reason}");
-                assert!(reason.contains("SHELL not set"), "reason: {reason}");
-            }
-            other
-            @ (ResourceAction::Apply | ResourceAction::Noop | ResourceAction::Skip { .. }) => {
-                panic!("expected Skip, got {other:?}")
-            }
-        }
-    }
-
-    // -- Missing state: Apply when fix_missing is true, Skip otherwise --
-
-    #[test]
-    fn action_for_missing_strict_applies() {
-        assert_eq!(
-            ProcessMode::Strict.action_for(&ResourceState::Missing),
-            ResourceAction::Apply,
-        );
-    }
-
-    #[test]
-    fn action_for_missing_lenient_applies() {
-        assert_eq!(
-            ProcessMode::Lenient.action_for(&ResourceState::Missing),
-            ResourceAction::Apply,
-        );
-    }
-
-    #[test]
-    fn action_for_missing_install_missing_applies() {
-        assert_eq!(
-            ProcessMode::InstallMissing.action_for(&ResourceState::Missing),
-            ResourceAction::Apply,
-        );
-    }
-
-    #[test]
-    fn action_for_missing_fix_existing_skips() {
-        assert!(matches!(
-            ProcessMode::FixExisting.action_for(&ResourceState::Missing),
-            ResourceAction::Skip { failed: false, .. },
-        ));
-    }
-
-    // -- Incorrect state: Apply when fix_incorrect is true, Skip otherwise --
-
-    #[test]
-    fn action_for_incorrect_strict_applies() {
-        let state = ResourceState::Incorrect {
-            current: "old".into(),
-        };
-        assert_eq!(
-            ProcessMode::Strict.action_for(&state),
-            ResourceAction::Apply,
-        );
-    }
-
-    #[test]
-    fn action_for_incorrect_lenient_applies() {
-        let state = ResourceState::Incorrect {
-            current: "old".into(),
-        };
-        assert_eq!(
-            ProcessMode::Lenient.action_for(&state),
-            ResourceAction::Apply,
-        );
-    }
-
-    #[test]
-    fn action_for_incorrect_install_missing_skips() {
-        let state = ResourceState::Incorrect {
-            current: "old".into(),
-        };
-        assert!(matches!(
-            ProcessMode::InstallMissing.action_for(&state),
-            ResourceAction::Skip { failed: false, .. },
-        ));
-    }
-
-    #[test]
-    fn action_for_incorrect_fix_existing_applies() {
-        let state = ResourceState::Incorrect {
-            current: "old".into(),
-        };
-        assert_eq!(
-            ProcessMode::FixExisting.action_for(&state),
-            ResourceAction::Apply,
-        );
-    }
-
-    // -------------------------------------------------------------------
-    // ResourceAction equality
-    // -------------------------------------------------------------------
-
-    #[test]
-    fn resource_action_apply_eq() {
-        assert_eq!(ResourceAction::Apply, ResourceAction::Apply);
-    }
-
-    #[test]
-    fn resource_action_noop_eq() {
-        assert_eq!(ResourceAction::Noop, ResourceAction::Noop);
-    }
-
-    #[test]
-    fn resource_action_skip_eq_same_reason() {
-        assert_eq!(
-            ResourceAction::Skip {
-                reason: "x".into(),
-                failed: false,
-            },
-            ResourceAction::Skip {
-                reason: "x".into(),
-                failed: false,
-            },
-        );
-    }
-
-    #[test]
-    fn resource_action_skip_ne_different_reason() {
-        assert_ne!(
-            ResourceAction::Skip {
-                reason: "a".into(),
-                failed: false,
-            },
-            ResourceAction::Skip {
-                reason: "b".into(),
-                failed: false,
-            },
-        );
-    }
-
-    #[test]
-    fn resource_action_variants_ne() {
-        assert_ne!(ResourceAction::Apply, ResourceAction::Noop);
-        assert_ne!(
-            ResourceAction::Apply,
-            ResourceAction::Skip {
-                reason: "x".into(),
-                failed: false,
-            },
-        );
-        assert_ne!(
-            ResourceAction::Noop,
-            ResourceAction::Skip {
-                reason: "x".into(),
-                failed: false,
-            },
-        );
-    }
-
-    // -------------------------------------------------------------------
-    // ProcessOpts constructors
-    // -------------------------------------------------------------------
-
-    #[test]
-    fn strict_opts_has_strict_mode() {
-        let opts = ProcessOpts::strict("link");
-        assert_eq!(opts.mode, ProcessMode::Strict);
-        assert_eq!(opts.verb, "link");
-        assert!(!opts.sequential);
-    }
-
-    #[test]
-    fn lenient_opts_has_lenient_mode() {
-        let opts = ProcessOpts::lenient("install");
-        assert_eq!(opts.mode, ProcessMode::Lenient);
-        assert_eq!(opts.verb, "install");
-        assert!(!opts.sequential);
-    }
-
-    #[test]
-    fn install_missing_opts_has_install_missing_mode() {
-        let opts = ProcessOpts::install_missing("enable");
-        assert_eq!(opts.mode, ProcessMode::InstallMissing);
-        assert_eq!(opts.verb, "enable");
-        assert!(!opts.sequential);
-    }
-
-    #[test]
-    fn fix_existing_opts_has_fix_existing_mode() {
-        let opts = ProcessOpts::fix_existing("chmod");
-        assert_eq!(opts.mode, ProcessMode::FixExisting);
-        assert_eq!(opts.verb, "chmod");
-        assert!(!opts.sequential);
-    }
-
-    #[test]
-    fn sequential_builder_sets_flag() {
-        let opts = ProcessOpts::strict("link").sequential();
-        assert!(opts.sequential);
-        assert_eq!(opts.mode, ProcessMode::Strict);
-        assert_eq!(opts.verb, "link");
-    }
-
-    #[test]
-    fn sequential_builder_chains_with_any_constructor() {
-        assert!(ProcessOpts::lenient("install").sequential().sequential);
-        assert!(
-            ProcessOpts::install_missing("enable")
-                .sequential()
-                .sequential
-        );
-        assert!(ProcessOpts::fix_existing("chmod").sequential().sequential);
-    }
-
-    // -------------------------------------------------------------------
-    // ProcessMode Debug + Clone + Copy
-    // -------------------------------------------------------------------
-
-    #[test]
-    fn process_mode_debug_format() {
-        assert_eq!(format!("{:?}", ProcessMode::Strict), "Strict");
-        assert_eq!(format!("{:?}", ProcessMode::Lenient), "Lenient");
-    }
-
-    #[test]
-    fn process_mode_clone_eq() {
-        let a = ProcessMode::InstallMissing;
-        let b = a;
-        assert_eq!(a, b);
+        let sequential = ProcessOpts::strict("link").sequential();
+        assert_eq!(sequential.mode, ProcessMode::Strict);
+        assert_eq!(sequential.verb, "link");
+        assert!(sequential.sequential);
     }
 }

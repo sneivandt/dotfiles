@@ -180,7 +180,7 @@ impl ContextBuilder {
 /// that returns the given `which_result`.
 ///
 /// Use this when a task's `should_run` or `run` method gates on tool
-/// availability via `ctx.executor.which(...)`.
+/// availability via `ctx.executor().which(...)`.
 #[must_use]
 pub fn make_platform_context_with_which(
     config: Config,

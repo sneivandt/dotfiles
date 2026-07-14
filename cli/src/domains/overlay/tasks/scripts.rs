@@ -8,7 +8,6 @@
 //! output identically to any other task.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use anyhow::Result;
 
@@ -66,8 +65,8 @@ impl Task for ReportOverlayScriptSnapshot {
             return Ok(None);
         }
         let count = scripts.len();
-        ctx.log.stage(self.name());
-        ctx.log.info(&format!(
+        ctx.log().stage(self.name());
+        ctx.log().info(&format!(
             "using {count} overlay script(s) captured at startup"
         ));
         Ok(Some(TaskResult::Ok))
@@ -84,7 +83,7 @@ impl Task for ReportOverlayScriptSnapshot {
             return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
         }
         let count = scripts.len();
-        ctx.log.info(&format!(
+        ctx.log().info(&format!(
             "using {count} overlay script(s) captured at startup"
         ));
         Ok(TaskResult::Ok)
@@ -121,7 +120,7 @@ impl OverlayScriptOperation {
     }
 
     fn resource(&self, ctx: &Context) -> Result<ScriptResource> {
-        ScriptResource::from_entry(&self.entry, &self.overlay_root, Arc::clone(&ctx.executor))
+        ScriptResource::from_entry(&self.entry, &self.overlay_root, ctx.executor_arc())
     }
 }
 
@@ -136,7 +135,7 @@ impl Operation for OverlayScriptOperation {
                 OperationState::needs_run(format!("run {}", self.entry.name), ())
             }
             ResourceState::Invalid { reason } | ResourceState::Unknown { reason } => {
-                ctx.log.warn(&format!("skipping: {reason}"));
+                ctx.log().warn(&format!("skipping: {reason}"));
                 OperationState::not_applicable(reason)
             }
         })
@@ -153,7 +152,7 @@ impl Operation for OverlayScriptOperation {
         emit_script_lines(ctx, &output, false);
         match change {
             ResourceChange::Skipped { reason } => {
-                ctx.log.warn(&format!("skipping: {reason}"));
+                ctx.log().warn(&format!("skipping: {reason}"));
                 Ok(TaskResult::Skipped(reason))
             }
             ResourceChange::Applied | ResourceChange::AlreadyCorrect => Ok(TaskResult::Ok),
@@ -205,9 +204,9 @@ impl Task for OverlayScriptTask {
     }
 
     fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        ctx.log.stage(self.name());
+        ctx.log().stage(self.name());
         if let Some(description) = &self.entry.description {
-            ctx.log.info(description);
+            ctx.log().info(description);
         }
         self.run(ctx).map(Some)
     }
@@ -228,9 +227,9 @@ fn emit_script_lines(ctx: &Context, output: &str, dry_run: bool) {
     for line in output.lines() {
         if !line.is_empty() {
             if dry_run {
-                ctx.log.dry_run(line);
+                ctx.log().dry_run(line);
             } else {
-                ctx.log.always(line);
+                ctx.log().always(line);
             }
         }
     }

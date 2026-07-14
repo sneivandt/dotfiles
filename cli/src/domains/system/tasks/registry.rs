@@ -12,7 +12,7 @@ config_resource_task! {
         domain: Domain::System,
         config: Vec<RegistryEntry>,
         policy: [PlatformCapability::WindowsRegistry.policy()],
-        guard: |_cfg, ctx| ctx.platform.has_registry(),
+        guard: |_cfg, ctx| ctx.platform().has_registry(),
         items: |cfg| cfg.clone(),
         cache: |resources, _ctx| batch_check_values(resources),
         build: |entry, _ctx| RegistryResource::from_entry(&entry),

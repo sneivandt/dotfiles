@@ -10,7 +10,7 @@ resource_task! {
         phase: TaskPhase::Bootstrap,
         domain: Domain::System,
         policy: [PlatformCapability::Windows.policy()],
-        guard: |ctx| ctx.platform.is_windows(),
+        guard: |ctx| ctx.platform().is_windows(),
         items: |_ctx| vec![()],
         build: |_unit, _ctx| DeveloperModeResource::new(),
         opts: ProcessOpts::lenient("enable"),

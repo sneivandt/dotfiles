@@ -44,11 +44,13 @@ impl Task for UpdateApmPackages {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if !ctx.executor.which("apm") {
+        let system = ctx.system();
+        let home = system.home();
+        if !system.which("apm") {
             return Ok(skip_with_warning(ctx, missing_apm_reason(ctx)));
         }
 
-        let fragments = discover_fragment_files(&ctx.home)?;
+        let fragments = discover_fragment_files(home)?;
         if fragments.is_empty() {
             return Ok(skip_with_warning(
                 ctx,
@@ -61,24 +63,24 @@ impl Task for UpdateApmPackages {
         // restores the "advance only after a successful install" invariant that
         // the single-task design enforced via early return, now that
         // convergence runs in a separate, independently-failing phase.
-        let lock_path = ctx.home.join(".apm").join("apm.lock.yaml");
+        let lock_path = home.join(".apm").join("apm.lock.yaml");
         let lock_present = lock_path
             .try_exists()
             .with_context(|| format!("checking APM lockfile {}", lock_path.display()))?;
         let merged = merge_fragments(&fragments)?;
         let manifest_hash = manifest_fingerprint(&merged);
-        let marker_path = ctx.home.join(".apm").join(".dotfiles-manifest.sha256");
+        let marker_path = home.join(".apm").join(".dotfiles-manifest.sha256");
         let marker_matches = manifest_marker_matches(&marker_path, &manifest_hash)?;
         if !lock_present || !marker_matches {
             let reason = "APM manifest has not been installed successfully yet; skipping \
                           dependency advancement"
                 .to_string();
-            ctx.log.debug(&reason);
+            ctx.log().debug(&reason);
             return Ok(TaskResult::Skipped(reason));
         }
 
         let targets = ApmTargets::detect(ctx)?;
-        if ctx.dry_run {
+        if ctx.dry_run() {
             return preview_apm_update(ctx, targets);
         }
         advance_apm_dependencies(ctx, targets)
@@ -88,11 +90,11 @@ impl Task for UpdateApmPackages {
 fn preview_apm_update(ctx: &Context, targets: ApmTargets) -> Result<TaskResult> {
     Ok(match apm_dependencies_are_outdated(ctx)? {
         ApmOutdatedCheck::Outdated(true) => {
-            ctx.log.dry_run(
+            ctx.log().dry_run(
                 "run apm update -g --yes with auto-detected runtimes to advance stale dependencies",
             );
             if targets.includes_copilot_app() {
-                ctx.log.dry_run(
+                ctx.log().dry_run(
                     "run apm install -g --target copilot-app to redeploy updated Copilot App \
                      workflows separately, then re-assert them to autopilot + enabled in \
                      ~/.copilot/data.db",
@@ -101,7 +103,7 @@ fn preview_apm_update(ctx: &Context, targets: ApmTargets) -> Result<TaskResult> 
             TaskResult::DryRun
         }
         ApmOutdatedCheck::Outdated(false) => {
-            ctx.log.debug("APM dependencies are up-to-date");
+            ctx.log().debug("APM dependencies are up-to-date");
             TaskResult::Ok
         }
         ApmOutdatedCheck::Skipped(reason) => TaskResult::Skipped(reason),
@@ -125,14 +127,14 @@ fn advance_apm_dependencies(ctx: &Context, targets: ApmTargets) -> Result<TaskRe
                 .then(|| snapshot_desired_apm_workflow_ids(ctx));
             match run_apm_update(ctx, targets)? {
                 ApmUpdateOutcome::Changed => {
-                    ctx.log.always("    updated: advanced to latest versions");
+                    ctx.log().always("    updated: advanced to latest versions");
                     if let Some(pre) = pre_workflows {
                         apply_workflow_autopilot_fixup(ctx, &pre);
                     }
                     TaskResult::OkWithMessage("advanced APM dependencies to latest versions".into())
                 }
                 ApmUpdateOutcome::Unchanged => {
-                    ctx.log.debug("APM dependencies already at latest refs");
+                    ctx.log().debug("APM dependencies already at latest refs");
                     if let Some(pre) = pre_workflows {
                         apply_workflow_autopilot_fixup(ctx, &pre);
                     }
@@ -142,7 +144,7 @@ fn advance_apm_dependencies(ctx: &Context, targets: ApmTargets) -> Result<TaskRe
             }
         }
         ApmOutdatedCheck::Outdated(false) => {
-            ctx.log.debug("APM dependencies are up-to-date");
+            ctx.log().debug("APM dependencies are up-to-date");
             TaskResult::Ok
         }
         ApmOutdatedCheck::Skipped(reason) => TaskResult::Skipped(reason),
@@ -151,11 +153,12 @@ fn advance_apm_dependencies(ctx: &Context, targets: ApmTargets) -> Result<TaskRe
 
 /// Return whether any locked user-scope dependency has a newer matching ref.
 fn apm_dependencies_are_outdated(ctx: &Context) -> Result<ApmOutdatedCheck> {
-    let cwd = ctx.home.clone();
+    let system = ctx.system();
+    let cwd = system.home();
     ctx.debug_fmt(|| format!("running `apm outdated -g` in {}", cwd.display()));
-    match ctx
-        .executor
-        .run_in_with_env(&cwd, "apm", &["outdated", "-g"], APM_NONINTERACTIVE_ENV)
+    match system
+        .executor()
+        .run_in_with_env(cwd, "apm", &["outdated", "-g"], APM_NONINTERACTIVE_ENV)
     {
         Ok(result) => {
             report_apm_output(ctx, &result.stdout, &result.stderr);
@@ -170,7 +173,7 @@ fn apm_dependencies_are_outdated(ctx: &Context) -> Result<ApmOutdatedCheck> {
                 let reason = "apm outdated requires GitHub authentication; run \
                               `gh auth login` or set GH_TOKEN/GITHUB_TOKEN and re-run"
                     .to_string();
-                ctx.log.warn(&format!(
+                ctx.log().warn(&format!(
                     "skipping APM update check: {reason} (details: {})",
                     msg.trim()
                 ));
@@ -192,7 +195,7 @@ fn apm_dependencies_are_outdated(ctx: &Context) -> Result<ApmOutdatedCheck> {
 /// changes when a pinned ref actually advances, making it the authoritative
 /// change signal.
 fn run_apm_update(ctx: &Context, targets: ApmTargets) -> Result<ApmUpdateOutcome> {
-    let lock_path = ctx.home.join(".apm").join("apm.lock.yaml");
+    let lock_path = ctx.home().join(".apm").join("apm.lock.yaml");
     let lock_before = read_lock_snapshot(&lock_path);
     match run_apm_command(ctx, ApmCommand::Update, targets)? {
         ApmCommandResult::Success | ApmCommandResult::ToleratedWorkflowEncodeFailures => {

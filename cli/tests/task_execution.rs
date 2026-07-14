@@ -44,7 +44,7 @@ fn symlinks_install_creates_links_from_config() {
         .unwrap();
     assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
-    let link = ec.ctx.home.join(".bashrc");
+    let link = ec.ctx.home().join(".bashrc");
     assert!(link.symlink_metadata().is_ok(), "symlink should exist");
     let target = std::fs::read_link(&link).unwrap();
     assert_eq!(
@@ -69,7 +69,7 @@ fn symlinks_install_dry_run_creates_no_links() {
         .unwrap();
     assert!(matches!(result, TaskResult::DryRun));
 
-    let link = ec.ctx.home.join(".bashrc");
+    let link = ec.ctx.home().join(".bashrc");
     assert!(!link.exists(), "dry-run should not create any symlinks");
 }
 
@@ -96,7 +96,7 @@ fn symlinks_install_is_idempotent() {
     assert!(matches!(second, TaskResult::Ok));
 
     // Symlink must still be valid after both runs
-    let link = ec.ctx.home.join(".bashrc");
+    let link = ec.ctx.home().join(".bashrc");
     assert!(link.symlink_metadata().unwrap().is_symlink());
 }
 
@@ -134,13 +134,13 @@ fn symlinks_uninstall_materialises_content() {
     assert!(matches!(result, TaskResult::OkWithMessage(_)));
 
     // Target must now be a regular file with the original content
-    let meta = std::fs::symlink_metadata(ec.ctx.home.join(".bashrc")).unwrap();
+    let meta = std::fs::symlink_metadata(ec.ctx.home().join(".bashrc")).unwrap();
     assert!(
         !meta.is_symlink(),
         "target should be a regular file after uninstall"
     );
     assert_eq!(
-        std::fs::read_to_string(ec.ctx.home.join(".bashrc")).unwrap(),
+        std::fs::read_to_string(ec.ctx.home().join(".bashrc")).unwrap(),
         "# restored content"
     );
 }
@@ -312,7 +312,7 @@ fn chmod_applies_permissions_from_config() {
     let ec = test.make_context("base");
 
     // Create the target file in the home directory
-    let target = ec.ctx.home.join(".ssh/config");
+    let target = ec.ctx.home().join(".ssh/config");
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "Host *\n").unwrap();
     std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
@@ -340,7 +340,7 @@ fn chmod_is_idempotent() {
 
     let ec = test.make_context("base");
 
-    let target = ec.ctx.home.join(".ssh/config");
+    let target = ec.ctx.home().join(".ssh/config");
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "Host *\n").unwrap();
 
@@ -429,7 +429,7 @@ fn chmod_dry_run_preserves_permissions() {
 
     let ec = test.make_dry_run_context("base");
 
-    let target = ec.ctx.home.join(".ssh/config");
+    let target = ec.ctx.home().join(".ssh/config");
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "Host *\n").unwrap();
     std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();

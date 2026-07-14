@@ -122,7 +122,7 @@ pub trait Task: Send + Sync + 'static {
     ///
     /// Returns an error if the task fails to execute.
     fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        ctx.log.stage(self.name());
+        ctx.log().stage(self.name());
         self.run(ctx).map(Some)
     }
 
@@ -141,7 +141,7 @@ pub trait Task: Send + Sync + 'static {
             .execution_policies()
             .iter()
             .any(|p| matches!(p, ExecutionPolicy::RequiresElevation));
-        !ctx.dry_run
+        !ctx.dry_run()
             && declares_elevation
             && evaluate_policy_decision(self.execution_policies(), ctx).is_none()
             && self.should_run(ctx)

@@ -14,21 +14,21 @@ pub(super) fn apply_repository_updates(
     repo_updated: &UpdateSignal,
 ) -> Result<TaskResult> {
     for repository in repositories {
-        ctx.log.debug(&format!(
+        ctx.log().debug(&format!(
             "pulling from {}",
             repository.target.root.display()
         ));
 
         // Fetch first so divergence can be evaluated without invoking `git pull`,
         // which fails noisily when the local branch has diverged from upstream.
-        if let Err(e) = ctx.executor.run_in_with_env(
+        if let Err(e) = ctx.executor().run_in_with_env(
             &repository.target.root,
             "git",
             &["fetch", "--quiet"],
             git_env,
         ) {
             let reason = repository.target.reason("git fetch failed");
-            ctx.log.warn(&format!("{reason}: {e:#}"));
+            ctx.log().warn(&format!("{reason}: {e:#}"));
             return Ok(TaskResult::Failed(reason));
         }
     }
@@ -43,7 +43,7 @@ pub(super) fn apply_repository_updates(
 
     let mut updated = false;
     for plan in plans.iter().filter(|plan| plan.needs_update) {
-        let result = ctx.executor.run_in_with_env(
+        let result = ctx.executor().run_in_with_env(
             &plan.target.root,
             "git",
             &["merge", "--ff-only", "@{u}"],
@@ -51,15 +51,15 @@ pub(super) fn apply_repository_updates(
         );
         match result {
             Ok(r) => {
-                ctx.log
+                ctx.log()
                     .debug(&format!("git merge output: {}", r.stdout.trim()));
-                ctx.log
+                ctx.log()
                     .info(&format!("{} updated", plan.target.description()));
                 updated = true;
             }
             Err(e) => {
                 let reason = plan.target.reason("git merge --ff-only failed");
-                ctx.log.warn(&format!("{reason}: {e:#}"));
+                ctx.log().warn(&format!("{reason}: {e:#}"));
                 return Ok(TaskResult::Failed(reason));
             }
         }
@@ -79,7 +79,7 @@ pub(super) fn plan_repository_update(
     git_env: &[(&str, &str)],
 ) -> Result<RepositoryPlanReadiness> {
     let pre_sha = ctx
-        .executor
+        .executor()
         .run_in_with_env(
             &repository.target.root,
             "git",
@@ -90,7 +90,7 @@ pub(super) fn plan_repository_update(
         .trim()
         .to_string();
 
-    let upstream_sha = match ctx.executor.run_in_with_env(
+    let upstream_sha = match ctx.executor().run_in_with_env(
         &repository.target.root,
         "git",
         &["rev-parse", "@{u}"],
@@ -99,13 +99,13 @@ pub(super) fn plan_repository_update(
         Ok(r) => r.stdout.trim().to_string(),
         Err(e) => {
             let reason = repository.target.reason("no upstream tracking branch");
-            ctx.log.warn(&format!("{reason}: {e:#}"));
+            ctx.log().warn(&format!("{reason}: {e:#}"));
             return Ok(RepositoryPlanReadiness::Skipped(reason));
         }
     };
 
     if pre_sha == upstream_sha {
-        ctx.log.debug(&format!(
+        ctx.log().debug(&format!(
             "{} already up to date",
             repository.target.description()
         ));
@@ -119,7 +119,7 @@ pub(super) fn plan_repository_update(
     // that are not on upstream. A non-zero count means `git pull --ff-only`
     // would fail; skip rather than report a hard failure.
     let ahead_output = ctx
-        .executor
+        .executor()
         .run_in_with_env(
             &repository.target.root,
             "git",
@@ -135,7 +135,7 @@ pub(super) fn plan_repository_update(
             let reason = repository
                 .target
                 .reason("could not determine whether the local branch diverged");
-            ctx.log.warn(&format!(
+            ctx.log().warn(&format!(
                 "{reason}: invalid rev-list count {ahead_output:?}: {error}"
             ));
             return Ok(RepositoryPlanReadiness::Skipped(reason));
@@ -146,7 +146,7 @@ pub(super) fn plan_repository_update(
         let reason = repository
             .target
             .reason("local branch diverged from upstream");
-        ctx.log.info(&format!("{reason}, skipping pull"));
+        ctx.log().info(&format!("{reason}, skipping pull"));
         return Ok(RepositoryPlanReadiness::Skipped(reason));
     }
 

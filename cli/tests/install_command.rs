@@ -461,7 +461,7 @@ fn install_symlinks_is_idempotent() {
 
     // Build the resource to inspect state directly.
     let source = ctx.root_path().join("symlinks").join("bashrc");
-    let target = ec.ctx.home.join(".bashrc");
+    let target = ec.ctx.home().join(".bashrc");
     let resource = test_api::resources::symlink::SymlinkResource::new(
         source,
         target,
@@ -534,7 +534,7 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
     );
 
     // Create $HOME/.ssh/config with mode 0o644.
-    let ssh_dir = ec.ctx.home.join(".ssh");
+    let ssh_dir = ec.ctx.home().join(".ssh");
     std::fs::create_dir_all(&ssh_dir).expect("create .ssh dir");
     let ssh_config = ssh_dir.join("config");
     std::fs::write(&ssh_config, "").expect("create ssh config");

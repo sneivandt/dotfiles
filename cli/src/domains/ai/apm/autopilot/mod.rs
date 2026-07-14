@@ -92,13 +92,13 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
             return;
         }
         WorkflowDbProbe::DbPathNotUtf8 { path } => {
-            ctx.log.warn(&format!(
+            ctx.log().warn(&format!(
                 "skipping autopilot fixup: database path {path} is not valid UTF-8"
             ));
             return;
         }
         WorkflowDbProbe::PythonMissing => {
-            ctx.log.warn(
+            ctx.log().warn(
                 "skipping autopilot fixup: neither python3 nor python found in PATH; enable the \
                  apm workflows manually from the Copilot App's Workflows tab",
             );
@@ -107,20 +107,24 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
     };
 
     let args = build_workflow_script_args(WORKFLOW_AUTOPILOT_SCRIPT, &db_str, &ids);
-    match ctx.executor.run_unchecked_in(&ctx.home, python, &args) {
+    let system = ctx.system();
+    match system
+        .executor()
+        .run_unchecked_in(system.home(), python, &args)
+    {
         Ok(r) if r.success => {
             report_fixup_outcome(ctx, decide_fixup_outcome(&r.stdout, pre), &r.stdout);
         }
         Ok(r) => {
             let stderr = r.stderr.trim();
             if stderr.contains("database is locked") {
-                ctx.log.warn(
+                ctx.log().warn(
                     "autopilot fixup: ~/.copilot/data.db is locked -- close the Copilot App and \
                      re-run `dotfiles install` or `dotfiles update`, or enable the apm workflows \
                      manually from the Workflows tab",
                 );
             } else if stderr.contains("no such table") {
-                ctx.log.warn(
+                ctx.log().warn(
                     "autopilot fixup: the workflows table is missing from ~/.copilot/data.db; open \
                      the Copilot App once to initialize it, then re-run `dotfiles install` or \
                      `dotfiles update`",
@@ -133,7 +137,7 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
                 // and `next_run_at`). Surface it loudly and name the contract so
                 // the scripts can be updated, rather than letting a renamed
                 // column degrade to a generic failure line.
-                ctx.log.warn(&format!(
+                ctx.log().warn(&format!(
                     "autopilot fixup: ~/.copilot/data.db no longer matches the expected workflows \
                      schema (columns id, name, prompt, mode, enabled, interval, schedule_hour, \
                      schedule_minute, schedule_day, next_run_at); the Copilot App database format \
@@ -141,13 +145,13 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
                      report this so the dotfiles autopilot scripts can be updated: {stderr}"
                 ));
             } else {
-                ctx.log.warn(&format!(
+                ctx.log().warn(&format!(
                     "autopilot fixup failed (the apm operation still succeeded): {stderr}"
                 ));
             }
         }
         Err(e) => {
-            ctx.log.warn(&format!(
+            ctx.log().warn(&format!(
                 "autopilot fixup could not run {python} (the apm operation still succeeded): {e:#}"
             ));
         }
@@ -218,7 +222,11 @@ pub(super) fn snapshot_desired_apm_workflow_ids(ctx: &Context) -> DesiredApmWork
     };
 
     let args = build_workflow_script_args(WORKFLOW_DESIRED_IDS_SCRIPT, &db_str, &ids);
-    match ctx.executor.run_unchecked_in(&ctx.home, python, &args) {
+    let system = ctx.system();
+    match system
+        .executor()
+        .run_unchecked_in(system.home(), python, &args)
+    {
         Ok(r) if r.success => DesiredApmWorkflows::Known(parse_desired_ids(&r.stdout)),
         Ok(r) => {
             if r.stderr.contains("no such table") {

@@ -38,28 +38,25 @@ pub struct ContextOpts {
 }
 
 /// Repository-relative paths derived from the repository root.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct RepoPaths {
-    /// Root directory of the dotfiles repository.
-    pub root: std::path::PathBuf,
-    /// Symlinks source directory.
-    pub symlinks_dir: std::path::PathBuf,
-    /// Hooks source directory.
-    pub hooks_dir: std::path::PathBuf,
+    root: std::path::PathBuf,
+    symlinks_dir: std::path::PathBuf,
+    hooks_dir: std::path::PathBuf,
 }
 
 /// Filesystem paths exposed to task code as a focused context view.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PathContext {
-    home: std::path::PathBuf,
-    repo: RepoPaths,
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PathContext<'a> {
+    home: &'a Path,
+    repo: &'a RepoPaths,
 }
 
-impl PathContext {
+impl PathContext<'_> {
     /// User home directory.
     #[must_use]
-    pub(crate) fn home(&self) -> &Path {
-        &self.home
+    pub(crate) const fn home(&self) -> &Path {
+        self.home
     }
 
     /// Dotfiles repository root.
@@ -82,15 +79,15 @@ impl PathContext {
 }
 
 /// Platform and process-execution access exposed as a focused context view.
-#[derive(Debug, Clone)]
-pub(crate) struct SystemContext {
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SystemContext<'a> {
     platform: Platform,
-    home: std::path::PathBuf,
-    executor: Arc<dyn Executor>,
+    home: &'a Path,
+    executor: &'a Arc<dyn Executor>,
     is_ci: bool,
 }
 
-impl SystemContext {
+impl SystemContext<'_> {
     /// Detected platform.
     #[must_use]
     pub(crate) const fn platform(&self) -> Platform {
@@ -99,20 +96,20 @@ impl SystemContext {
 
     /// User home directory.
     #[must_use]
-    pub(crate) fn home(&self) -> &Path {
-        &self.home
+    pub(crate) const fn home(&self) -> &Path {
+        self.home
     }
 
     /// Shared command executor.
     #[must_use]
     pub(crate) fn executor(&self) -> &dyn Executor {
-        &*self.executor
+        self.executor.as_ref()
     }
 
     /// Clone the shared command executor for resource construction.
     #[must_use]
     pub(crate) fn executor_arc(&self) -> Arc<dyn Executor> {
-        Arc::clone(&self.executor)
+        Arc::clone(self.executor)
     }
 
     /// Return whether the process is running in CI.
@@ -136,55 +133,42 @@ impl SystemContext {
               are clearer as separate fields than folded into a state enum"
 )]
 pub struct Context {
-    /// Root directory of the dotfiles repository.
-    ///
-    /// Path state fixed at construction time.  The repository root does not
-    /// change across a run (a reload re-parses configuration content but never
-    /// relocates the repository), so it is stored directly rather than derived
-    /// from configuration.  Private — access via [`Context::root`] and the
-    /// [`Context::paths`] view.
-    root: std::path::PathBuf,
+    paths: Arc<RepoPaths>,
     /// Optional path to a private overlay repository.
     ///
     /// Path state fixed at construction time, resolved by the application layer
     /// from CLI arguments, environment, or persisted git config.
     overlay: Option<std::path::PathBuf>,
-    /// Detected platform information.
-    pub platform: Platform,
-    /// Logger for output and task recording.
-    pub log: Arc<dyn Log>,
-    /// Whether to perform a dry run (preview changes without applying).
-    pub dry_run: bool,
-    /// User's home directory path.
-    pub home: std::path::PathBuf,
-    /// Command executor (for testing or real system calls).
-    pub executor: Arc<dyn Executor>,
-    /// Whether to process resources in parallel using Rayon.
-    pub parallel: bool,
+    platform: Platform,
+    log: Arc<dyn Log>,
+    dry_run: bool,
+    home: Arc<std::path::PathBuf>,
+    executor: Arc<dyn Executor>,
+    parallel: bool,
     /// Whether to advance locked dependency versions beyond the declared state.
     ///
     /// Set by the `update` command; `false` for `install`.  Gates the APM
     /// dependency refresh (`apm outdated` / `apm update`) so that
     /// `install` converges to the declared state without bumping locked refs.
-    pub advance_versions: bool,
+    advance_versions: bool,
     /// Whether the process is running inside a CI environment.
     ///
     /// Derived from the `CI` environment variable at construction time (or
     /// supplied directly via [`ContextOpts::is_ci`]) so that tasks can check
     /// this without reading env-globals themselves and tests can inject the
     /// value without mutating process state.
-    pub is_ci: bool,
+    is_ci: bool,
     /// Token for cooperative cancellation (e.g. Ctrl-C).
     ///
     /// Processing loops check this before dispatching each work item so that
     /// in-flight operations finish cleanly and a partial summary is printed.
-    pub cancelled: CancellationToken,
+    cancelled: CancellationToken,
 }
 
 impl std::fmt::Debug for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Context")
-            .field("root", &self.root)
+            .field("paths", &self.paths)
             .field("overlay", &self.overlay)
             .field("platform", &self.platform)
             .field("log", &"<dyn Log>")
@@ -231,12 +215,12 @@ impl Context {
         let is_ci = opts.is_ci.unwrap_or_else(|| std::env::var("CI").is_ok());
 
         Ok(Self {
-            root,
+            paths: Arc::new(RepoPaths::new(root)),
             overlay,
             platform,
             log,
             dry_run: opts.dry_run,
-            home: std::path::PathBuf::from(home),
+            home: Arc::new(std::path::PathBuf::from(home)),
             executor,
             parallel: opts.parallel,
             advance_versions: opts.advance_versions,
@@ -261,12 +245,12 @@ impl Context {
         opts: ContextOpts,
     ) -> Self {
         Self {
-            root,
+            paths: Arc::new(RepoPaths::new(root)),
             overlay,
             platform,
             log,
             dry_run: opts.dry_run,
-            home,
+            home: Arc::new(home),
             executor,
             parallel: opts.parallel,
             advance_versions: opts.advance_versions,
@@ -281,12 +265,8 @@ impl Context {
     /// [`Context::symlinks_dir`], and [`Context::hooks_dir`] when the caller
     /// needs more than one path.
     #[must_use]
-    pub(crate) fn repo_paths(&self) -> RepoPaths {
-        RepoPaths {
-            symlinks_dir: self.root.join("symlinks"),
-            hooks_dir: self.root.join("hooks"),
-            root: self.root.clone(),
-        }
+    pub(crate) fn repo_paths(&self) -> &RepoPaths {
+        self.paths.as_ref()
     }
 
     /// Path to the optional overlay repository, if one is configured.
@@ -297,48 +277,83 @@ impl Context {
 
     /// Return a focused view of filesystem paths used by task code.
     #[must_use]
-    pub(crate) fn paths(&self) -> PathContext {
+    pub(crate) fn paths(&self) -> PathContext<'_> {
         PathContext {
-            home: self.home.clone(),
+            home: self.home.as_path(),
             repo: self.repo_paths(),
         }
     }
 
     /// Return a focused view of platform and process-execution dependencies.
     #[must_use]
-    pub(crate) fn system(&self) -> SystemContext {
+    pub(crate) fn system(&self) -> SystemContext<'_> {
         SystemContext {
             platform: self.platform,
-            home: self.home.clone(),
-            executor: Arc::clone(&self.executor),
+            home: self.home.as_path(),
+            executor: &self.executor,
             is_ci: self.is_ci,
         }
     }
 
     /// Root directory of the dotfiles repository.
     #[must_use]
-    pub fn root(&self) -> std::path::PathBuf {
-        self.repo_paths().root
+    pub fn root(&self) -> &Path {
+        &self.paths.root
     }
 
-    /// Symlinks source directory.
+    /// Detected platform information.
     #[must_use]
-    pub fn symlinks_dir(&self) -> std::path::PathBuf {
-        self.repo_paths().symlinks_dir
+    pub const fn platform(&self) -> Platform {
+        self.platform
     }
 
-    /// Hooks source directory.
+    /// Logger used for output and task recording.
     #[must_use]
-    #[cfg(any(test, feature = "internal-api", doctest))]
-    pub fn hooks_dir(&self) -> std::path::PathBuf {
-        self.repo_paths().hooks_dir
+    pub fn log(&self) -> &dyn Log {
+        &*self.log
+    }
+
+    /// Whether mutations are being previewed rather than applied.
+    #[must_use]
+    pub const fn dry_run(&self) -> bool {
+        self.dry_run
+    }
+
+    /// User home directory.
+    #[must_use]
+    pub fn home(&self) -> &Path {
+        self.home.as_path()
+    }
+
+    /// Command executor.
+    #[must_use]
+    pub fn executor(&self) -> &dyn Executor {
+        &*self.executor
+    }
+
+    /// Clone the shared command executor for resource construction.
+    #[must_use]
+    pub fn executor_arc(&self) -> Arc<dyn Executor> {
+        Arc::clone(&self.executor)
+    }
+
+    /// Whether task and resource parallelism is enabled.
+    #[must_use]
+    pub const fn parallel(&self) -> bool {
+        self.parallel
+    }
+
+    /// Clone the cooperative cancellation token.
+    #[must_use]
+    pub fn cancellation_token(&self) -> CancellationToken {
+        self.cancelled.clone()
     }
 
     /// Create a copy of this context with a different logger.
     ///
-    /// All other fields are cloned by reference (via `Arc`). This is used by
-    /// the parallel scheduler to give each task its own buffered logger while
-    /// sharing the rest of the context.
+    /// Shared dependencies and immutable paths are cloned by reference (via
+    /// `Arc`). This is used by the parallel scheduler to give each task its own
+    /// buffered logger while sharing the rest of the context.
     #[must_use]
     pub fn with_log(&self, log: Arc<dyn Log>) -> Self {
         self.clone_with(|ctx| ctx.log = log)
@@ -371,7 +386,7 @@ impl Context {
     #[must_use]
     #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn with_home(&self, home: std::path::PathBuf) -> Self {
-        self.clone_with(|ctx| ctx.home = home)
+        self.clone_with(|ctx| ctx.home = Arc::new(home))
     }
 
     /// Create a copy of this context with the CI flag overridden.
@@ -419,8 +434,18 @@ impl Context {
     /// `run()`.  The guard has therefore been removed.
     #[inline]
     pub fn debug_fmt(&self, f: impl FnOnce() -> String) {
-        if self.log.debug_enabled() {
-            self.log.debug(&f());
+        if self.log().debug_enabled() {
+            self.log().debug(&f());
+        }
+    }
+}
+
+impl RepoPaths {
+    fn new(root: std::path::PathBuf) -> Self {
+        Self {
+            symlinks_dir: root.join("symlinks"),
+            hooks_dir: root.join("hooks"),
+            root,
         }
     }
 }
@@ -462,21 +487,17 @@ mod tests {
     fn root_returns_config_root() {
         let config = empty_config(PathBuf::from("/dotfiles"));
         let ctx = make_linux_context(config);
-        assert_eq!(ctx.root(), PathBuf::from("/dotfiles"));
+        assert_eq!(ctx.root(), Path::new("/dotfiles"));
     }
 
     #[test]
-    fn symlinks_dir_returns_root_joined_symlinks() {
+    fn path_view_returns_derived_paths() {
         let config = empty_config(PathBuf::from("/dotfiles"));
         let ctx = make_linux_context(config);
-        assert_eq!(ctx.symlinks_dir(), PathBuf::from("/dotfiles/symlinks"));
-    }
-
-    #[test]
-    fn hooks_dir_returns_root_joined_hooks() {
-        let config = empty_config(PathBuf::from("/dotfiles"));
-        let ctx = make_linux_context(config);
-        assert_eq!(ctx.hooks_dir(), PathBuf::from("/dotfiles/hooks"));
+        let paths = ctx.paths();
+        assert_eq!(paths.root(), Path::new("/dotfiles"));
+        assert_eq!(paths.symlinks_dir(), Path::new("/dotfiles/symlinks"));
+        assert_eq!(paths.hooks_dir(), Path::new("/dotfiles/hooks"));
     }
 
     #[test]
@@ -496,16 +517,16 @@ mod tests {
         let new_log: Arc<dyn Log> = Arc::new(Logger::new("new"));
         let ctx2 = ctx.with_log(new_log);
         assert_eq!(ctx2.root(), ctx.root());
-        assert_eq!(ctx2.dry_run, ctx.dry_run);
-        assert_eq!(ctx2.home, ctx.home);
-        assert_eq!(ctx2.parallel, ctx.parallel);
+        assert_eq!(ctx2.dry_run(), ctx.dry_run());
+        assert_eq!(ctx2.home(), ctx.home());
+        assert_eq!(ctx2.parallel(), ctx.parallel());
     }
 
     #[test]
     fn root_reflects_construction_value() {
         let config = empty_config(PathBuf::from("/my/root"));
         let ctx = make_linux_context(config);
-        assert_eq!(ctx.root(), PathBuf::from("/my/root"));
+        assert_eq!(ctx.root(), Path::new("/my/root"));
     }
 
     #[test]
@@ -524,10 +545,10 @@ mod tests {
         let ctx = make_linux_context(config);
         let ctx2 = ctx.clone();
         assert_eq!(ctx2.root(), ctx.root());
-        assert_eq!(ctx2.dry_run, ctx.dry_run);
-        assert_eq!(ctx2.home, ctx.home);
-        assert_eq!(ctx2.parallel, ctx.parallel);
-        assert_eq!(ctx.platform, ctx2.platform);
+        assert_eq!(ctx2.dry_run(), ctx.dry_run());
+        assert_eq!(ctx2.home(), ctx.home());
+        assert_eq!(ctx2.parallel(), ctx.parallel());
+        assert_eq!(ctx.platform(), ctx2.platform());
     }
 
     #[test]

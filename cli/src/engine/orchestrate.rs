@@ -24,7 +24,7 @@ where
     let mut stats = TaskStats::new();
     for item in items {
         if ctx.is_cancelled() {
-            ctx.log.warn("cancelled — stopping before next resource");
+            ctx.log().warn("cancelled — stopping before next resource");
             break;
         }
         stats.merge(&process_one(ctx, item)?);
@@ -50,7 +50,7 @@ where
         count = items.len()
     );
     let _enter = span.enter();
-    if ctx.parallel && !opts.sequential && items.len() > 1 {
+    if ctx.parallel() && !opts.sequential && items.len() > 1 {
         ctx.debug_fmt(|| format!("processing {} resources in parallel", items.len()));
         return parallel::process_apply_parallel(ctx, items, opts, get_resource_state);
     }
@@ -130,7 +130,7 @@ pub fn process_resources_remove<R: IntrinsicState + Send>(
     let resources: Vec<R> = resources.into_iter().collect();
     let span = tracing::debug_span!("process_resources_remove", verb, count = resources.len());
     let _enter = span.enter();
-    if ctx.parallel && resources.len() > 1 {
+    if ctx.parallel() && resources.len() > 1 {
         ctx.debug_fmt(|| format!("processing {} resources in parallel", resources.len()));
         return parallel::process_remove_parallel(ctx, resources, verb);
     }

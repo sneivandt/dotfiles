@@ -1,8 +1,4 @@
 //! Task: install VS Code extensions.
-use anyhow::Result;
-use std::collections::HashSet;
-use std::sync::Arc;
-
 use crate::domains::editors::config::vscode_extensions::VsCodeExtension;
 use crate::domains::editors::resources::vscode_extension::{
     VsCodeExtensionResource, find_code_command, get_installed_extensions,
@@ -12,6 +8,8 @@ use crate::engine::{
     process_resources_with_borrowed_cache,
 };
 use crate::runtime::ConfigHandle;
+use anyhow::Result;
+use std::collections::HashSet;
 
 /// Install VS Code extensions.
 #[derive(Debug)]
@@ -45,8 +43,9 @@ impl Task for InstallVsCodeExtensions {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let Some(cmd) = find_code_command(&*ctx.executor) else {
-            ctx.log.debug("no VS Code CLI launcher found in PATH");
+        let system = ctx.system();
+        let Some(cmd) = find_code_command(system.executor()) else {
+            ctx.log().debug("no VS Code CLI launcher found in PATH");
             return Ok(TaskResult::Skipped("VS Code CLI not found".to_string()));
         };
 
@@ -58,10 +57,10 @@ impl Task for InstallVsCodeExtensions {
                 extensions.len()
             )
         });
-        let installed = get_installed_extensions(&cmd, &*ctx.executor)?;
+        let installed = get_installed_extensions(&cmd, system.executor())?;
 
         let resources = extensions.iter().map(|ext| {
-            VsCodeExtensionResource::new(ext.id.clone(), cmd.clone(), Arc::clone(&ctx.executor))
+            VsCodeExtensionResource::new(ext.id.clone(), cmd.clone(), system.executor_arc())
         });
         process_resources_with_borrowed_cache(
             ctx,

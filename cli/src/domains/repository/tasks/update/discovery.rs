@@ -11,7 +11,10 @@ use super::models::{
 
 /// Build the list of repositories to consider for update (main + optional overlay).
 pub(super) fn update_targets(ctx: &Context) -> Vec<UpdateTarget> {
-    let mut targets = vec![UpdateTarget::new(UpdateTargetKind::Main, ctx.root())];
+    let mut targets = vec![UpdateTarget::new(
+        UpdateTargetKind::Main,
+        ctx.root().to_path_buf(),
+    )];
 
     if let Some(overlay) = ctx.overlay()
         && overlay.join(".git").exists()
@@ -52,7 +55,7 @@ pub(super) fn check_repository_ready(
     git_env: &[(&str, &str)],
 ) -> Result<RepositoryReadiness> {
     // Skip when not on a branch (e.g. detached HEAD in CI checkouts).
-    let head_ref = if let Ok(result) = ctx.executor.run_in_with_env(
+    let head_ref = if let Ok(result) = ctx.executor().run_in_with_env(
         &target.root,
         "git",
         &["symbolic-ref", "--quiet", "HEAD"],
@@ -61,7 +64,7 @@ pub(super) fn check_repository_ready(
         result.stdout.trim().to_string()
     } else {
         let reason = target.reason("detached HEAD");
-        ctx.log.info(&format!("{reason}, skipping pull"));
+        ctx.log().info(&format!("{reason}, skipping pull"));
         return Ok(RepositoryReadiness::Skipped(reason));
     };
 
@@ -90,13 +93,13 @@ pub(super) fn dry_run_repositories(
     for repository in repositories {
         match dry_run_update_status(ctx, &repository.target.root, git_env, &repository.head_ref)? {
             DryRunUpdateStatus::AlreadyCurrent => {
-                ctx.log.debug(&format!(
+                ctx.log().debug(&format!(
                     "{} already up to date",
                     repository.target.description()
                 ));
             }
             DryRunUpdateStatus::WouldUpdate | DryRunUpdateStatus::Unknown => {
-                ctx.log.dry_run(&repository.target.dry_run_action());
+                ctx.log().dry_run(&repository.target.dry_run_action());
                 would_update = true;
             }
         }
@@ -118,7 +121,7 @@ pub(super) fn dry_run_update_status(
     head_ref: &str,
 ) -> Result<DryRunUpdateStatus> {
     let head = ctx
-        .executor
+        .executor()
         .run_in_with_env(root, "git", &["rev-parse", "HEAD"], git_env)?;
     let head_sha = head.stdout.trim().to_string();
 
@@ -130,9 +133,9 @@ pub(super) fn dry_run_update_status(
         });
     }
 
-    if let Ok(upstream) = ctx
-        .executor
-        .run_in_with_env(root, "git", &["rev-parse", "@{u}"], git_env)
+    if let Ok(upstream) =
+        ctx.executor()
+            .run_in_with_env(root, "git", &["rev-parse", "@{u}"], git_env)
     {
         return Ok(if head_sha == upstream.stdout.trim() {
             DryRunUpdateStatus::AlreadyCurrent
@@ -157,11 +160,11 @@ pub(super) fn upstream_remote_sha(
     let merge_key = format!("branch.{branch}.merge");
 
     let remote = ctx
-        .executor
+        .executor()
         .run_in_with_env(root, "git", &["config", "--get", &remote_key], git_env)
         .ok()?;
     let merge_ref = ctx
-        .executor
+        .executor()
         .run_in_with_env(root, "git", &["config", "--get", &merge_key], git_env)
         .ok()?;
 
@@ -172,7 +175,7 @@ pub(super) fn upstream_remote_sha(
     }
 
     let ls_remote = ctx
-        .executor
+        .executor()
         .run_in_with_env(
             root,
             "git",
@@ -195,7 +198,7 @@ pub(super) fn worktree_has_local_changes(
     root: &Path,
     git_env: &[(&str, &str)],
 ) -> Result<bool> {
-    let status = ctx.executor.run_in_with_env(
+    let status = ctx.executor().run_in_with_env(
         root,
         "git",
         &["status", "--porcelain", "--untracked-files=no"],

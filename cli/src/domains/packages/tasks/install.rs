@@ -37,13 +37,13 @@ fn select_packages(packages: &[Package], is_aur: bool) -> Vec<Package> {
 fn resolve_native_manager(ctx: &Context) -> Result<PackageManager, String> {
     let system = ctx.system();
     if system.platform().is_linux() {
-        ctx.log.debug("using pacman package manager");
+        ctx.log().debug("using pacman package manager");
         if !system.which("pacman") {
             return Err("pacman not found".to_string());
         }
         Ok(PackageManager::Pacman)
     } else {
-        ctx.log.debug("using winget package manager");
+        ctx.log().debug("using winget package manager");
         if !system.which("winget") {
             return Err("winget not found".to_string());
         }
@@ -119,7 +119,7 @@ impl Task for InstallPackages {
             return Ok(TaskResult::Skipped("no packages to install".to_string()));
         }
 
-        ctx.log
+        ctx.log()
             .debug(&format!("{} non-AUR packages to process", packages.len()));
 
         let manager = match resolve_native_manager(ctx) {
@@ -177,12 +177,12 @@ impl Task for InstallAurPackages {
         }
 
         if !ctx.system().which("paru") {
-            ctx.log
+            ctx.log()
                 .debug("paru not found in PATH, skipping AUR packages");
             return Ok(TaskResult::Skipped("paru not installed".to_string()));
         }
 
-        ctx.log
+        ctx.log()
             .debug(&format!("checking {} AUR packages", packages.len()));
 
         process_operation(
@@ -230,7 +230,7 @@ impl Operation for ParuInstallOperation {
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         if ctx.system().which("paru") {
-            ctx.log.debug("paru already in PATH");
+            ctx.log().debug("paru already in PATH");
             Ok(OperationState::Complete)
         } else {
             Ok(OperationState::needs_run(
@@ -241,7 +241,7 @@ impl Operation for ParuInstallOperation {
     }
 
     fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
-        ctx.log.dry_run("install paru from AUR (paru-bin)");
+        ctx.log().dry_run("install paru from AUR (paru-bin)");
         Ok(TaskResult::DryRun)
     }
 
@@ -251,7 +251,7 @@ impl Operation for ParuInstallOperation {
         clone_paru_from_aur(ctx, guard.path())?;
         build_paru(ctx, guard.path())?;
 
-        ctx.log.info("paru installed successfully");
+        ctx.log().info("paru installed successfully");
         Ok(TaskResult::OkWithMessage("installed paru".to_string()))
     }
 }
@@ -263,7 +263,7 @@ impl Operation for ParuInstallOperation {
 /// Check that required tools are available for building paru.
 fn check_prerequisites(ctx: &Context) -> Result<()> {
     for dep in ["git", "makepkg", "sudo"] {
-        if !ctx.executor.which(dep) {
+        if !ctx.executor().which(dep) {
             anyhow::bail!("missing prerequisite: {dep}");
         }
         ctx.debug_fmt(|| format!("prerequisite ok: {dep}"));
@@ -275,7 +275,7 @@ fn check_prerequisites(ctx: &Context) -> Result<()> {
 fn prepare_build_directory(ctx: &Context) -> Result<std::path::PathBuf> {
     let tmp = std::env::temp_dir().join("paru-build");
     if tmp.exists() {
-        ctx.log.debug("removing previous paru build directory");
+        ctx.log().debug("removing previous paru build directory");
         std::fs::remove_dir_all(&tmp).context("removing previous paru build directory")?;
     }
     Ok(tmp)
@@ -283,8 +283,8 @@ fn prepare_build_directory(ctx: &Context) -> Result<std::path::PathBuf> {
 
 /// Clone the paru-bin AUR package.
 fn clone_paru_from_aur(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
-    ctx.log.debug("cloning paru-bin from AUR");
-    ctx.executor
+    ctx.log().debug("cloning paru-bin from AUR");
+    ctx.executor()
         .run(
             "git",
             &[
@@ -303,9 +303,9 @@ fn build_paru(ctx: &Context, tmp: &std::path::Path) -> Result<()> {
         .map_or_else(|_| DEFAULT_NPROC.to_string(), |n| n.get().to_string());
 
     let makeflags = format!("-j{nproc}");
-    ctx.log
+    ctx.log()
         .debug(&format!("building with MAKEFLAGS={makeflags}"));
-    ctx.executor
+    ctx.executor()
         .run_in_with_env(
             tmp,
             "makepkg",
@@ -385,14 +385,14 @@ impl Operation for PackageInstallOperation {
 
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         for resource in &plan.missing {
-            ctx.log
+            ctx.log()
                 .dry_run(&format!("would install: {}", resource.description()));
         }
         Ok(plan.preview_stats().finish(ctx))
     }
 
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
-        ctx.log.debug(&format!(
+        ctx.log().debug(&format!(
             "installing {} missing packages",
             plan.missing.len()
         ));
@@ -402,7 +402,7 @@ impl Operation for PackageInstallOperation {
                 Ok(report) => report,
                 Err(e) => {
                     let reason = format!("{} install failed: {e:#}", self.manager);
-                    ctx.log.warn(&reason);
+                    ctx.log().warn(&reason);
                     let mut stats = plan.base_stats();
                     stats.failed = u32::try_from(plan.missing.len()).unwrap_or(u32::MAX);
                     stats.log_summary(ctx);
@@ -411,7 +411,7 @@ impl Operation for PackageInstallOperation {
             };
 
         for failure in report.failures() {
-            ctx.log.warn(&format!(
+            ctx.log().warn(&format!(
                 "failed to install {} with {}: {}",
                 failure.package, self.manager, failure.reason
             ));
@@ -422,12 +422,12 @@ impl Operation for PackageInstallOperation {
         stats.failed = u32::try_from(report.failures().len()).unwrap_or(u32::MAX);
 
         for package in report.applied_packages() {
-            ctx.log.info(&format!("installed: {package}"));
+            ctx.log().info(&format!("installed: {package}"));
         }
 
         if report.has_failures() {
             let reason = format!("{} package install(s) failed", report.failures().len());
-            ctx.log.warn(&reason);
+            ctx.log().warn(&reason);
             stats.log_summary(ctx);
             return Ok(TaskResult::Failed(reason));
         }

@@ -102,7 +102,8 @@ fn run_apm_invocation(
     args: &[&str],
     tolerate_workflow_encode_failures: bool,
 ) -> Result<ApmCommandResult> {
-    let cwd = ctx.home.clone();
+    let system = ctx.system();
+    let cwd = system.home();
     let rendered = args.join(" ");
     ctx.debug_fmt(|| {
         format!(
@@ -111,9 +112,9 @@ fn run_apm_invocation(
         )
     });
 
-    match ctx
-        .executor
-        .run_in_with_env(&cwd, "apm", args, APM_NONINTERACTIVE_ENV)
+    match system
+        .executor()
+        .run_in_with_env(cwd, "apm", args, APM_NONINTERACTIVE_ENV)
     {
         Ok(result) => {
             report_apm_output(ctx, &result.stdout, &result.stderr);
@@ -132,7 +133,7 @@ fn classify_apm_error(
     let msg = format!("{err:#}");
     if looks_like_auth_failure(&msg) {
         let reason = command.auth_reason();
-        ctx.log
+        ctx.log()
             .warn(&format!("skipping: {reason} (details: {})", msg.trim()));
         return Ok(ApmCommandResult::AuthSkipped(reason));
     }
@@ -142,7 +143,7 @@ fn classify_apm_error(
         .flatten()
     {
         report_apm_output(ctx, &msg, "");
-        ctx.log.info(&format!(
+        ctx.log().info(&format!(
             "apm {} succeeded; ignoring {count} experimental copilot-app \
              workflow-encoding error(s) for non-workflow primitives (e.g. .agent.md agents). \
              Other primitives deployed normally; full apm output is in the log.",
@@ -166,15 +167,16 @@ fn classify_apm_error(
 /// `experimental` subcommand will error, but auto-detected runtimes and standard
 /// primitives must still install. Any error is logged as a warning and swallowed.
 pub(super) fn ensure_copilot_app_enabled(ctx: &Context) {
-    let cwd = ctx.home.clone();
+    let system = ctx.system();
+    let cwd = system.home();
     ctx.debug_fmt(|| {
         format!(
             "running `apm experimental enable copilot-app` in {} (idempotent)",
             cwd.display()
         )
     });
-    match ctx.executor.run_in_with_env(
-        &cwd,
+    match system.executor().run_in_with_env(
+        cwd,
         "apm",
         &["experimental", "enable", "copilot-app"],
         APM_NONINTERACTIVE_ENV,
@@ -182,7 +184,7 @@ pub(super) fn ensure_copilot_app_enabled(ctx: &Context) {
         Ok(result) => report_apm_output(ctx, &result.stdout, &result.stderr),
         Err(err) => {
             let msg = format!("{err:#}");
-            ctx.log.warn(&format!(
+            ctx.log().warn(&format!(
                 "could not enable apm experimental copilot-app target; continuing without it \
                  (details: {})",
                 msg.trim()
@@ -216,14 +218,14 @@ pub(super) fn report_apm_output(ctx: &Context, stdout: &str, stderr: &str) {
         if trimmed.trim().is_empty() {
             continue;
         }
-        ctx.log.debug(trimmed);
+        ctx.log().debug(trimmed);
     }
     for line in stderr.lines() {
         let trimmed = line.trim_end();
         if trimmed.trim().is_empty() {
             continue;
         }
-        ctx.log.debug(trimmed);
+        ctx.log().debug(trimmed);
     }
 }
 

@@ -225,7 +225,7 @@ pub(crate) fn run_tasks_sequential(
 
     for idx in graph.execution_order() {
         if ctx.is_cancelled() {
-            ctx.log.warn("cancelled - stopping before next task");
+            ctx.log().warn("cancelled - stopping before next task");
             break;
         }
 

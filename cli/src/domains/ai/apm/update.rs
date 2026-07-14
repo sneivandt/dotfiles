@@ -88,14 +88,14 @@ impl Task for UpdateApmPackages {
 fn preview_apm_update(ctx: &Context, targets: ApmTargets) -> Result<TaskResult> {
     Ok(match apm_dependencies_are_outdated(ctx)? {
         ApmOutdatedCheck::Outdated(true) => {
-            ctx.log.dry_run(&format!(
-                "run apm update -g --yes --target {} to advance stale dependencies",
-                targets.as_str()
-            ));
+            ctx.log.dry_run(
+                "run apm update -g --yes with auto-detected runtimes to advance stale dependencies",
+            );
             if targets.includes_copilot_app() {
                 ctx.log.dry_run(
-                    "re-assert apm-managed Copilot App workflows to autopilot + enabled in \
-                     ~/.copilot/data.db after advancing dependencies",
+                    "run apm install -g --target copilot-app to redeploy updated Copilot App \
+                     workflows separately, then re-assert them to autopilot + enabled in \
+                     ~/.copilot/data.db",
                 );
             }
             TaskResult::DryRun
@@ -118,7 +118,8 @@ fn advance_apm_dependencies(ctx: &Context, targets: ApmTargets) -> Result<TaskRe
     Ok(match apm_dependencies_are_outdated(ctx)? {
         ApmOutdatedCheck::Outdated(true) => {
             // Snapshot which dotfiles-managed workflows are already armed before
-            // `apm update` redeploys the `copilot-app` target secure-by-default.
+            // the follow-up Copilot App install redeploys workflows
+            // secure-by-default after the unscoped dependency update.
             let pre_workflows = targets
                 .includes_copilot_app()
                 .then(|| snapshot_desired_apm_workflow_ids(ctx));

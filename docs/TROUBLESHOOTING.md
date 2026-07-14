@@ -311,10 +311,16 @@ code --install-extension <extension-id>
 ./dotfiles.sh update
 
 # Or run APM directly at user scope.
-# Add ,copilot-app only after the Copilot App has initialized ~/.copilot/data.db.
-apm install -g --target copilot,codex
+# Leave the primary commands unscoped so APM auto-detects Copilot CLI, Codex,
+# and other installed MCP runtimes together.
+apm install -g
 apm outdated -g
-apm update -g --yes --target copilot,codex
+apm update -g --yes
+
+# After the Copilot App has initialized ~/.copilot/data.db, deploy its
+# experimental workflow primitives separately.
+apm experimental enable copilot-app
+apm install -g --target copilot-app
 
 # Inspect the manifest (deployed location)
 cat ~/.apm/apm.yml

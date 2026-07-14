@@ -14,7 +14,7 @@ use crate::runtime::exec::{ExecResult, MockExecutor};
 use crate::runtime::platform::{Os, Platform};
 
 use super::super::test_fixture::{
-    TARGET_ALL, make_context_with_home, ok_result, write_copilot_app_db,
+    make_context_with_home, ok_result, write_copilot_app_db,
     write_current_manifest_lock_and_marker, write_home_fragment,
 };
 use super::super::{InstallApmPackages, UpdateApmPackages};
@@ -102,8 +102,16 @@ fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
         .in_sequence(seq)
         .returning(|_, program, args, _| {
             assert_eq!(program, "apm");
-            assert_eq!(args, ["install", "-g", "--target", TARGET_ALL]);
+            assert_eq!(args, ["install", "-g"]);
             Ok(ok_result("installed\n"))
+        });
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(seq)
+        .returning(|_, program, args, _| {
+            assert_eq!(program, "apm");
+            assert_eq!(args, ["install", "-g", "--target", "copilot-app"]);
+            Ok(ok_result("installed workflows\n"))
         });
 }
 
@@ -548,8 +556,16 @@ fn update_re_arms_apm_workflows_after_apm_update() {
         .in_sequence(&mut seq)
         .returning(move |_, program, args, _| {
             assert_eq!(program, "apm");
-            assert_eq!(args, ["update", "-g", "--yes", "--target", TARGET_ALL]);
+            assert_eq!(args, ["update", "-g", "--yes"]);
             Ok(ok_result("updated\n"))
+        });
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |_, program, args, _| {
+            assert_eq!(program, "apm");
+            assert_eq!(args, ["install", "-g", "--target", "copilot-app"]);
+            Ok(ok_result("installed workflows\n"))
         });
     // Post-update fixup re-arms the workflow to autopilot + enabled; the diff
     // against the empty pre-snapshot reports one newly desired workflow.
@@ -619,8 +635,15 @@ fn update_re_arms_apm_workflows_even_when_apm_update_reports_no_changes() {
         .once()
         .in_sequence(&mut seq)
         .returning(move |_, _, args, _| {
-            assert_eq!(args, ["update", "-g", "--yes", "--target", TARGET_ALL]);
+            assert_eq!(args, ["update", "-g", "--yes"]);
             Ok(ok_result("  [+] github.com/example/plugin (cached)\n"))
+        });
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |_, _, args, _| {
+            assert_eq!(args, ["install", "-g", "--target", "copilot-app"]);
+            Ok(ok_result("installed workflows\n"))
         });
     // The fixup still runs; with the workflow already desired the delta is
     // net-zero, so it stays quiet but must not be skipped.

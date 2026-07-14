@@ -23,9 +23,6 @@ use super::manifest::{manifest_fingerprint, write_manifest_marker};
 pub const DEFAULT_FRAGMENT: &str =
     "name: base\nversion: 1.0.0\ndependencies:\n  apm:\n    - example/plugin\n";
 
-/// All three targets, including `copilot-app`.
-pub const TARGET_ALL: &str = "copilot,codex,copilot-app";
-
 /// Build a successful [`ExecResult`] with the given stdout.
 pub fn ok_result(stdout: &str) -> ExecResult {
     ExecResult {

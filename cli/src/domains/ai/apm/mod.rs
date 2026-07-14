@@ -10,7 +10,7 @@
 //! - [`install`] converges the generated manifest and runs `apm install`.
 //! - [`update`] advances locked dependency refs for the `update` command.
 //! - [`commands`] centralizes APM process invocation and common error handling.
-//! - [`targets`] chooses the safe target set for this machine.
+//! - [`targets`] detects whether Copilot App needs a separate primitive deploy.
 //! - [`autopilot`] re-arms dotfiles-managed Copilot App workflows.
 
 mod autopilot;

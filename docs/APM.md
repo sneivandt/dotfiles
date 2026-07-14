@@ -114,23 +114,29 @@ moving locked refs forward.
 
 ## Target Selection
 
-Dotfiles installs APM packages globally for the supported AI runtimes:
+Dotfiles installs APM packages globally without an explicit selector:
 
 ```text
-copilot,codex
+apm install -g
 ```
 
-When `~/.copilot/data.db` exists, dotfiles also adds the experimental
-`copilot-app` target:
+This lets APM auto-detect every installed MCP runtime in one pass, including
+Copilot CLI and Codex, so their shared deployment ledger stays converged.
+
+When `~/.copilot/data.db` exists, dotfiles separately deploys the experimental
+`copilot-app` workflow target:
 
 ```text
-copilot,codex,copilot-app
+apm install -g --target copilot-app
 ```
 
 That database check avoids materializing Copilot App workflows before the app
 has initialized its local state. When `copilot-app` is active, dotfiles
 idempotently enables APM's `copilot-app` experimental flag before running the
-install/update command.
+primary command and follow-up workflow install. During `dotfiles update`, the
+primary command is the unscoped `apm update -g --yes`; the follow-up remains an
+install so updated workflow primitives are redeployed without resolving
+dependencies a second time.
 
 ## Copilot App Workflow Fixup
 

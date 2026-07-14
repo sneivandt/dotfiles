@@ -57,7 +57,7 @@ Re‑run the script at any time; operations are skipped when already satisfied (
 | Provision | Copilot Settings | Applies Copilot CLI settings from `conf/copilot.toml`. | Skips if settings already match. |
 | Provision | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
 | Provision | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
-| Provision | APM Packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install -g --target copilot,codex`, adding `copilot-app` only when `~/.copilot/data.db` exists. | Idempotent via APM's lockfile. |
+| Provision | APM Packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml`, runs unscoped `apm install -g` for runtime auto-detection, then separately deploys `copilot-app` workflows when `~/.copilot/data.db` exists. | Idempotent via APM's lockfile. |
 | Provision | Overlay Scripts | Runs custom scripts loaded from the overlay repository, when `--overlay` is set. | Script-defined checks decide whether each script runs. |
 | Update | APM Packages | `dotfiles update` only: runs `apm outdated -g` and `apm update -g --yes` when locked refs are stale. | Skips when locked refs are current. |
 
@@ -233,8 +233,8 @@ dependencies:
 
 **How it works**:
 - `Install symlinks` links `symlinks/apm/config/base.yml` → `~/.apm/config/base.yml`
-- `Install APM packages` runs `apm install -g --target copilot,codex`, adding `copilot-app` only when the Copilot App has initialized `~/.copilot/data.db`, when the merged manifest, lockfile, or local plugin content needs redeploying. This converges to the locked manifest and never advances locked refs
-- `Update APM packages` (the `update` command only) runs after provisioning: it checks `apm outdated -g` and runs `apm update -g --yes` with the same target selection to advance any stale locked dependencies. It is absent from `install`
+- `Install APM packages` runs unscoped `apm install -g` so APM auto-detects installed runtimes together, then runs `apm install -g --target copilot-app` only when the Copilot App has initialized `~/.copilot/data.db`. This converges to the locked manifest and never advances locked refs
+- `Update APM packages` (the `update` command only) runs after provisioning: it checks `apm outdated -g`, runs unscoped `apm update -g --yes` to advance stale locked dependencies, then separately redeploys Copilot App workflows when applicable. It is absent from `install`
 - Idempotency is provided by APM itself via its lockfile / no-op behaviour
 - Plugin primitives are deployed to `~/.copilot/`, `~/.claude/`, `~/.cursor/`, etc.
 

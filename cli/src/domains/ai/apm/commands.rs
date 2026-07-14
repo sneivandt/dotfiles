@@ -16,8 +16,8 @@ pub(super) const APM_NONINTERACTIVE_ENV: &[(&str, &str)] = &[
 /// apm's `apm--<owner>--<pkg>--<prompt>` workflow namespace.
 ///
 /// This happens for `.agent.md` agent files shipped by third-party packages:
-/// the `copilot` target still deploys those agents correctly, so the failure is
-/// a benign, upstream-only limitation of the experimental target. APM has
+/// the primary unscoped install still deploys those agents correctly, so the
+/// failure is a benign, upstream-only limitation of the experimental target. APM has
 /// changed the prefix for this diagnostic across releases, so match the stable
 /// refusal text and still fail closed unless the count equals APM's error total.
 const APM_WORKFLOW_ENCODE_FAILURE_MARKER: &str = "Refusing to lockfile-encode non-APM workflow id";
@@ -36,10 +36,10 @@ impl ApmCommand {
         }
     }
 
-    fn args(self, targets: ApmTargets) -> Vec<&'static str> {
+    const fn args(self) -> &'static [&'static str] {
         match self {
-            Self::Install => targets.install_args(),
-            Self::Update => targets.update_args(),
+            Self::Install => ApmTargets::install_args(),
+            Self::Update => ApmTargets::update_args(),
         }
     }
 
@@ -69,6 +69,11 @@ pub(super) enum ApmCommandResult {
 /// Run an APM install/update command with shared environment, logging, and
 /// failure classification.
 ///
+/// The primary command deliberately omits `--target` so APM 0.25 can
+/// auto-detect all installed MCP runtimes and reconcile their shared ledger
+/// together. Copilot App workflows require an explicit experimental target,
+/// so they are deployed by a separate install after the primary command.
+///
 /// # Errors
 ///
 /// Returns an error when APM exits unsuccessfully for anything other than a
@@ -79,8 +84,25 @@ pub(super) fn run_apm_command(
     command: ApmCommand,
     targets: ApmTargets,
 ) -> Result<ApmCommandResult> {
+    match run_apm_invocation(ctx, command, command.args(), false)? {
+        ApmCommandResult::Success => {}
+        result @ (ApmCommandResult::AuthSkipped(_)
+        | ApmCommandResult::ToleratedWorkflowEncodeFailures) => return Ok(result),
+    }
+
+    let Some(copilot_app_args) = targets.copilot_app_install_args() else {
+        return Ok(ApmCommandResult::Success);
+    };
+    run_apm_invocation(ctx, ApmCommand::Install, copilot_app_args, true)
+}
+
+fn run_apm_invocation(
+    ctx: &Context,
+    command: ApmCommand,
+    args: &[&str],
+    tolerate_workflow_encode_failures: bool,
+) -> Result<ApmCommandResult> {
     let cwd = ctx.home.clone();
-    let args = command.args(targets);
     let rendered = args.join(" ");
     ctx.debug_fmt(|| {
         format!(
@@ -91,20 +113,20 @@ pub(super) fn run_apm_command(
 
     match ctx
         .executor
-        .run_in_with_env(&cwd, "apm", &args, APM_NONINTERACTIVE_ENV)
+        .run_in_with_env(&cwd, "apm", args, APM_NONINTERACTIVE_ENV)
     {
         Ok(result) => {
             report_apm_output(ctx, &result.stdout, &result.stderr);
             Ok(ApmCommandResult::Success)
         }
-        Err(err) => classify_apm_error(ctx, command, targets, err),
+        Err(err) => classify_apm_error(ctx, command, tolerate_workflow_encode_failures, err),
     }
 }
 
 fn classify_apm_error(
     ctx: &Context,
     command: ApmCommand,
-    targets: ApmTargets,
+    tolerate_workflow_encode_failures: bool,
     err: anyhow::Error,
 ) -> Result<ApmCommandResult> {
     let msg = format!("{err:#}");
@@ -115,8 +137,7 @@ fn classify_apm_error(
         return Ok(ApmCommandResult::AuthSkipped(reason));
     }
 
-    if let Some(count) = targets
-        .includes_copilot_app()
+    if let Some(count) = tolerate_workflow_encode_failures
         .then(|| tolerable_workflow_encode_failures(&msg))
         .flatten()
     {
@@ -124,7 +145,7 @@ fn classify_apm_error(
         ctx.log.info(&format!(
             "apm {} succeeded; ignoring {count} experimental copilot-app \
              workflow-encoding error(s) for non-workflow primitives (e.g. .agent.md agents). \
-             The copilot/codex targets deployed normally; full apm output is in the log.",
+             Other primitives deployed normally; full apm output is in the log.",
             command.verb()
         ));
         return Ok(ApmCommandResult::ToleratedWorkflowEncodeFailures);
@@ -142,8 +163,8 @@ fn classify_apm_error(
 /// already enabled on repeat runs), so it is safe to call on every apply.
 ///
 /// Failure is intentionally non-fatal: an older apm that predates the
-/// `experimental` subcommand will error, but the supported `copilot`/`vscode`
-/// targets must still install.  Any error is logged as a warning and swallowed.
+/// `experimental` subcommand will error, but auto-detected runtimes and standard
+/// primitives must still install. Any error is logged as a warning and swallowed.
 pub(super) fn ensure_copilot_app_enabled(ctx: &Context) {
     let cwd = ctx.home.clone();
     ctx.debug_fmt(|| {

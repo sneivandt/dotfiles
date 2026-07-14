@@ -152,27 +152,27 @@ fn preview_install(
             "merge {fragment_count} APM manifest fragment(s) into {}",
             manifest_path.display()
         ));
-        ctx.log.dry_run(&format!(
-            "run apm install -g --target {} to sync changed manifest",
-            targets.as_str()
-        ));
+        ctx.log
+            .dry_run("run apm install -g with auto-detected runtimes to sync changed manifest");
     } else if state.lock_missing {
         ctx.log.dry_run(&format!(
-            "run apm install -g --target {} because {} is missing",
-            targets.as_str(),
+            "run apm install -g with auto-detected runtimes because {} is missing",
             lock_path.display()
         ));
     } else if state.marker_missing_or_stale {
-        ctx.log.dry_run(&format!(
-            "run apm install -g --target {} because the current manifest has not been installed \
-             successfully yet",
-            targets.as_str()
-        ));
+        ctx.log.dry_run(
+            "run apm install -g with auto-detected runtimes because the current manifest has not \
+             been installed successfully yet",
+        );
     } else {
-        ctx.log.dry_run(&format!(
-            "run apm install -g --target {} to redeploy current manifest content",
-            targets.as_str()
-        ));
+        ctx.log.dry_run(
+            "run apm install -g with auto-detected runtimes to redeploy current manifest content",
+        );
+    }
+    if targets.includes_copilot_app() {
+        ctx.log.dry_run(
+            "run apm install -g --target copilot-app to sync Copilot App workflows separately",
+        );
     }
     true
 }

@@ -17,10 +17,53 @@ permissions:
   contents: read
 
 jobs:
+  classify-changes:
+    name: "CI: Classify changes"
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      run_lint: ${{ steps.classify.outputs.run_lint }}
+      run_validate_config: ${{ steps.classify.outputs.run_validate_config }}
+      run_rust_checks: ${{ steps.classify.outputs.run_rust_checks }}
+      run_build_artifacts: ${{ steps.classify.outputs.run_build_artifacts }}
+      run_profile_integration: ${{ steps.classify.outputs.run_profile_integration }}
+      run_app_tests: ${{ steps.classify.outputs.run_app_tests }}
+      run_git_hooks: ${{ steps.classify.outputs.run_git_hooks }}
+      run_wrapper_linux: ${{ steps.classify.outputs.run_wrapper_linux }}
+      run_wrapper_windows: ${{ steps.classify.outputs.run_wrapper_windows }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Determine comparison range
+        id: range
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "base_sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+            echo "head_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "push" && "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
+            echo "base_sha=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+            echo "head_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "base_sha=" >> "$GITHUB_OUTPUT"
+            echo "head_sha=" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Classify changed paths
+        id: classify
+        env:
+          DIR: ${{ github.workspace }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ steps.range.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.range.outputs.head_sha }}
+        run: sh .github/workflows/scripts/linux/classify-ci-changes.sh
+
   # ── Rust Format Check ──────────────────────────────────
   rust-fmt:
     name: "Rust: Format Check"
     runs-on: ubuntu-latest
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_rust_checks == 'true'
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust toolchain
@@ -31,6 +74,8 @@ jobs:
   lint:
     name: "Lint: ${{ matrix.name }}"
     runs-on: ubuntu-latest
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_lint == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -55,6 +100,8 @@ jobs:
   validate-config:
     name: "Config: Validate all"
     runs-on: ubuntu-latest
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_validate_config == 'true'
     steps:
       - uses: actions/checkout@v7
       - name: Validate all config
@@ -73,6 +120,8 @@ jobs:
   audit:
     name: "Security: Cargo Audit"
     runs-on: ubuntu-latest
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_rust_checks == 'true'
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust toolchain
@@ -87,6 +136,8 @@ jobs:
   deny:
     name: "Security: Cargo Deny"
     runs-on: ubuntu-latest
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_rust_checks == 'true'
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust toolchain
@@ -102,6 +153,8 @@ jobs:
   build-linux:
     name: "Build: Linux"
     runs-on: ubuntu-latest
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_build_artifacts == 'true'
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust toolchain
@@ -126,6 +179,8 @@ jobs:
   msrv:
     name: "Rust: MSRV (1.91)"
     runs-on: ubuntu-latest
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_rust_checks == 'true'
     steps:
       - uses: actions/checkout@v7
       - name: Install MSRV toolchain
@@ -144,6 +199,8 @@ jobs:
     name: "Rust: Coverage"
     runs-on: ubuntu-latest
     continue-on-error: true
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_rust_checks == 'true'
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust toolchain
@@ -160,6 +217,8 @@ jobs:
   build-windows:
     name: "Build: Windows"
     runs-on: windows-latest
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_build_artifacts == 'true'
     steps:
       - uses: actions/checkout@v7
       - name: Disable Windows Defender real-time monitoring
@@ -192,7 +251,8 @@ jobs:
   integration-linux:
     name: "Integration: ${{ matrix.profile }} on Linux"
     runs-on: ubuntu-latest
-    needs: [build-linux]
+    needs: [classify-changes, build-linux]
+    if: needs.classify-changes.outputs.run_profile_integration == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -213,7 +273,8 @@ jobs:
   integration-windows:
     name: "Integration: ${{ matrix.profile }} on Windows"
     runs-on: windows-latest
-    needs: [build-windows]
+    needs: [classify-changes, build-windows]
+    if: needs.classify-changes.outputs.run_profile_integration == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -234,7 +295,8 @@ jobs:
   test-install-uninstall:
     name: "Integration: Install/Uninstall round-trip"
     runs-on: ubuntu-latest
-    needs: [build-linux]
+    needs: [classify-changes, build-linux]
+    if: needs.classify-changes.outputs.run_profile_integration == 'true'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -251,7 +313,8 @@ jobs:
   test-install-uninstall-windows:
     name: "Integration: Install/Uninstall round-trip (Windows)"
     runs-on: windows-latest
-    needs: [build-windows]
+    needs: [classify-changes, build-windows]
+    if: needs.classify-changes.outputs.run_profile_integration == 'true'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -269,7 +332,8 @@ jobs:
   test-applications:
     name: "App: ${{ matrix.application }}"
     runs-on: ubuntu-latest
-    needs: [build-linux]
+    needs: [classify-changes, build-linux]
+    if: needs.classify-changes.outputs.run_app_tests == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -308,6 +372,8 @@ jobs:
   test-git-hooks:
     name: "Security: Pre-commit Sensitive Data Detection"
     runs-on: ubuntu-latest
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_git_hooks == 'true'
     steps:
       - uses: actions/checkout@v7
       - name: Install and test pre-commit hook
@@ -321,7 +387,8 @@ jobs:
   test-shell-wrapper-linux:
     name: "Shell Wrapper: Linux (dotfiles.sh)"
     runs-on: ubuntu-latest
-    needs: [build-linux]
+    needs: [classify-changes, build-linux]
+    if: needs.classify-changes.outputs.run_wrapper_linux == 'true'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -338,7 +405,8 @@ jobs:
   test-shell-wrapper-windows:
     name: "Shell Wrapper: Windows (dotfiles.ps1)"
     runs-on: windows-latest
-    needs: [build-windows]
+    needs: [classify-changes, build-windows]
+    if: needs.classify-changes.outputs.run_wrapper_windows == 'true'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -357,6 +425,7 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     needs:
+      - classify-changes
       - rust-fmt
       - lint
       - validate-config
@@ -380,4 +449,4 @@ jobs:
             echo "One or more CI jobs failed or were cancelled"
             exit 1
           fi
-          echo "All CI jobs passed"
+          echo "All required CI jobs passed or were intentionally skipped"

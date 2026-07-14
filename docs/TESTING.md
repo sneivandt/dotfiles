@@ -210,7 +210,13 @@ Test different profiles to ensure sparse checkout and configuration work correct
 
 ### GitHub Actions CI (`.github/workflows/ci.yml`)
 
-Runs automatically on pull requests with the following gating jobs:
+Runs automatically on pull requests with a lightweight `classify-changes` job
+first. That job uses the actual Git diff to skip expensive Rust and
+cross-platform jobs for documentation-only changes (including `.agents/`
+documentation) while still running the relevant validation for workflow, source,
+dependency, configuration, wrapper, and hook changes.
+
+The following gating jobs may run depending on the changed paths:
 
 | Job | Matrix | Purpose |
 | --- | --- | --- |
@@ -234,6 +240,10 @@ Runs automatically on pull requests with the following gating jobs:
 The separate `coverage` job is informational and does not gate CI success. The
 workflow is authoritative for the current job definitions.
 
+`All CI Checks Passed` remains the single dependable required check. It runs on
+`if: always()`, fails when any required job fails or is cancelled, and treats
+intentional path-filter skips as success.
+
 ### Release Pipeline (`.github/workflows/release.yml`)
 
 Triggers automatically when the CI workflow completes successfully on `main`:
@@ -245,7 +255,7 @@ Triggers automatically when the CI workflow completes successfully on `main`:
 
 Run the common local checks before pushing. CI remains authoritative and also
 runs the MSRV, dependency audit and policy, platform integration, application,
-hook, and wrapper jobs:
+hook, and wrapper jobs when the changed paths require them:
 
 ```bash
 # Formatting
@@ -261,8 +271,11 @@ cargo test --profile ci --manifest-path cli/Cargo.toml
 # CI-profile build
 cargo build --profile ci --manifest-path cli/Cargo.toml
 
-# Configuration validation
-./dotfiles.sh test
+# Configuration drift checks
+cargo test --profile ci --manifest-path cli/Cargo.toml --test config_drift
+
+# Configuration validation via a locally built binary
+./dotfiles.sh --build -p base test
 
 # Integration: dry-run per profile
 ./dotfiles.sh --build install -p base -d
@@ -270,7 +283,17 @@ cargo build --profile ci --manifest-path cli/Cargo.toml
 
 # Shell wrapper lint
 shellcheck --severity=warning --shell=sh --exclude=SC1090,SC1091,SC3043,SC2154 --enable=avoid-nullary-conditions dotfiles.sh install.sh
+
+# Workflow helper lint / PowerShell analysis
+export DIR="$(pwd)"
+cd .github/workflows/scripts/linux
+sh test-static-analysis.sh test_shellcheck
+sh test-static-analysis.sh test_psscriptanalyzer
 ```
+
+Pure documentation-only or `.agents/` documentation-only changes should now run
+only the classifier plus the final CI gate, while workflow edits and other
+uncategorized changes still force the full CI workflow for release confidence.
 
 ## Best Practices
 
@@ -290,7 +313,8 @@ When contributing changes:
 
 3. **Run configuration validation when changing config, symlinks, hooks, or wrappers:**
    ```bash
-   ./dotfiles.sh test
+   cargo test --profile ci --manifest-path cli/Cargo.toml --test config_drift
+   ./dotfiles.sh --build -p base test
    ```
 
 4. **Test with dry-run:**

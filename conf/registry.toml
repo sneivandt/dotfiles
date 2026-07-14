@@ -88,33 +88,82 @@ path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer'
 [explorer.values]
 EnableAutoTray = 0                     # Disable auto-hide inactive tray icons
 
+# Taskbar settings
+# Existing-user pins are intentionally excluded because Windows stores them in
+# opaque binary values that are not stable across updates or installations.
+[taskbar]
+path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+
+[taskbar.values]
+TaskbarAl = 0                          # Align taskbar icons to the left
+TaskbarDa = 0                          # Hide Widgets button
+ShowTaskViewButton = 0                 # Hide Task View button
+ShowCopilotButton = 0                  # Hide Copilot button
+ShowCortanaButton = 0                  # Hide Cortana button
+TaskbarAnimations = 0                  # Disable taskbar animations
+TaskbarSizeMove = 0                    # Lock taskbar size and position
+TaskbarGlomLevel = 0                   # Always combine taskbar buttons
+MMTaskbarGlomLevel = 0                 # Always combine on other monitors
+TaskbarSmallIcons = 0                  # Use normal-sized icons where supported
+DisablePreviewDesktop = 1              # Disable desktop preview
+ShowSecondsInSystemClock = 1           # Show seconds in system clock
+
+# Taskbar search settings
+[taskbar_search]
+path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Search'
+
+[taskbar_search.values]
+SearchboxTaskbarMode = 0                # Hide taskbar search box
+BingSearchEnabled = 0                   # Disable web results in Windows Search
+
+# Start menu settings
+# Existing-user pins are intentionally excluded because Windows does not expose
+# a stable supported API for converging them.
+[start_menu]
+path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+
+[start_menu.values]
+Start_TrackDocs = 0                     # Don't show recently opened documents
+Start_TrackProgs = 0                    # Don't track recently used programs
+Start_SearchFiles = 2                   # Preserve current Start file-search mode
+
+# Start menu suggestions and silent app installation
+[start_suggestions]
+path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+
+[start_suggestions.values]
+SilentInstalledAppsEnabled = 0          # Don't silently install suggested apps
+SystemPaneSuggestionsEnabled = 0        # Don't show suggestions in Start
+
 # File Explorer advanced settings
 [explorer_advanced]
 path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
 
 [explorer_advanced.values]
-Hidden = 1                             # Show hidden files and folders
-HideFileExt = 0                        # Show file extensions
-LaunchTo = 1                           # Open File Explorer to This PC (vs Quick Access)
-ShowTaskViewButton = 0                 # Hide Task View button from taskbar
-TaskbarAnimations = 0                  # Disable taskbar animations
-TaskbarSizeMove = 0                    # Lock taskbar size and position
-TaskbarGlomLevel = 0                   # Never combine taskbar buttons
-MMTaskbarGlomLevel = 0                 # Never combine taskbar buttons on multi-monitor
-TaskbarSmallIcons = 0                  # Use large taskbar icons
-DisablePreviewDesktop = 1              # Disable Aero Peek (desktop preview)
-MultiTaskingAltTabFilter = 3           # Don't show Edge tabs in Alt+Tab (only windows)
-AutoCheckSelect = 0                    # Disable checkbox item selection
-IconsOnly = 0                          # Show icons and text in taskbar
-ListviewAlphaSelect = 1                # Enable alpha selection in list views
-ListviewShadow = 1                     # Show shadows under icon text
-ShowCortanaButton = 0                  # Hide Cortana button from taskbar
-ShowSecondsInSystemClock = 1           # Show seconds in system clock
-Start_TrackDocs = 0                    # Don't track recently opened documents
-Start_TrackProgs = 0                   # Don't track recently used programs
-SnapAssist = 0                         # Disable Snap Assist suggestions
-EnableSnapAssistFlyout = 0             # Disable Snap Assist flyout layout
-SnapFill = 0                           # Disable Snap Fill (auto-resize to fill gaps)
+Hidden = 1                              # Show hidden files and folders
+HideFileExt = 0                         # Show file extensions
+ShowSuperHidden = 0                     # Keep protected OS files hidden
+HideIcons = 0                           # Don't hide all desktop icons
+LaunchTo = 1                            # Open File Explorer to This PC
+SeparateProcess = 0                     # Use a shared Explorer process
+AutoCheckSelect = 0                     # Disable checkbox item selection
+IconsOnly = 0                           # Show thumbnails instead of only icons
+ListviewAlphaSelect = 1                 # Enable alpha selection in list views
+ListviewShadow = 1                      # Show shadows under icon text
+ShowCompColor = 1                       # Color compressed and encrypted files
+ShowInfoTip = 1                         # Show file and folder infotips
+ShowStatusBar = 1                       # Show Explorer status bar
+ShowTypeOverlay = 1                     # Show file-type overlays on thumbnails
+
+# Window management settings stored with Explorer preferences
+[window_management]
+path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+
+[window_management.values]
+MultiTaskingAltTabFilter = 3             # Show windows, not Edge tabs, in Alt+Tab
+SnapAssist = 0                           # Disable Snap Assist suggestions
+EnableSnapAssistFlyout = 0               # Disable Snap Assist layout flyout
+SnapFill = 0                             # Don't resize windows to fill snap gaps
 
 # People/contacts taskbar button
 [explorer_people]

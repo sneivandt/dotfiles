@@ -7,6 +7,25 @@ use crate::app::filter;
 use crate::engine::{Task, TaskPhase};
 use crate::runtime::logging::Logger;
 
+/// Install pipeline behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RunMode {
+    /// Converge to declared state without advancing locked versions.
+    Install,
+    /// Converge and advance locked dependency versions.
+    Update,
+}
+
+impl RunMode {
+    pub(super) const fn advances_versions(self) -> bool {
+        matches!(self, Self::Update)
+    }
+
+    const fn includes_phase(self, phase: TaskPhase) -> bool {
+        self.advances_versions() || !matches!(phase, TaskPhase::Update)
+    }
+}
+
 /// Run the install command.
 ///
 /// Converges the system to the declared state without advancing locked
@@ -21,15 +40,13 @@ pub fn run(
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
-    run_pipeline(global, opts, log, token, false)
+    run_pipeline(global, opts, log, token, RunMode::Install)
 }
 
 /// Shared implementation behind both `install` and `update`.
 ///
-/// The two commands run the identical task graph; `advance_versions`
-/// distinguishes them.  When `false` (install) the pipeline converges to the
-/// declared state.  When `true` (update) version-advancing tasks — currently
-/// the APM dependency refresh — additionally move locked refs forward.
+/// The two commands run the identical task graph; `mode` determines whether
+/// version-advancing tasks additionally move locked refs forward.
 ///
 /// # Errors
 ///
@@ -39,12 +56,11 @@ pub(crate) fn run_pipeline(
     opts: &InstallOpts,
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
-    advance_versions: bool,
+    mode: RunMode,
 ) -> Result<()> {
     super::prepare_self_update(global, log)?;
 
-    let runner =
-        super::CommandRunner::new(global, log, token)?.with_advance_versions(advance_versions);
+    let runner = super::CommandRunner::new(global, log, token)?.with_run_mode(mode);
 
     // Build the full task list: static tasks + dynamic overlay script tasks.
     let mut all_tasks = runner.install_tasks();
@@ -55,9 +71,7 @@ pub(crate) fn run_pipeline(
     // dependencies` phase is empty (its header is suppressed) and so `--only`/
     // `--skip` warnings and matching below reason about the command-eligible
     // task set rather than tasks that could never run.
-    if !advance_versions {
-        all_tasks.retain(|t| t.phase() != TaskPhase::Update);
-    }
+    all_tasks.retain(|task| mode.includes_phase(task.phase()));
 
     if !log.is_verbose()
         && (has_unmatched_filter(&all_tasks, &opts.only)
@@ -174,6 +188,13 @@ fn resolve_root_from_dir(
 )]
 mod tests {
     use super::*;
+
+    #[test]
+    fn install_mode_excludes_update_phase() {
+        assert!(!RunMode::Install.includes_phase(TaskPhase::Update));
+        assert!(RunMode::Install.includes_phase(TaskPhase::Provision));
+        assert!(RunMode::Update.includes_phase(TaskPhase::Update));
+    }
 
     #[test]
     fn resolve_root_uses_explicit_root() {

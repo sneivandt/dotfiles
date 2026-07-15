@@ -8,7 +8,7 @@ use super::context::Context;
 use super::mode::ProcessOpts;
 use super::plan::{ApplyChange, ApplyOperation, RemoveChange, RemoveOperation};
 use super::stats::TaskStats;
-use crate::engine::{Resource, ResourceChange, ResourceState};
+use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::runtime::logging::DiagEvent;
 
 /// Process a single resource given its current state, returning a stats delta.
@@ -42,19 +42,19 @@ pub(super) fn process_single<R: Resource>(
             bail_on_error,
             ..
         } => {
-            if ctx.dry_run() {
-                if let Some(message) = plan.dry_run_message() {
-                    ctx.log().dry_run(&message);
-                }
-                delta.changed = delta.changed.saturating_add(1);
-                return Ok(delta);
-            }
-            delta.merge(&apply_resource(
+            delta.merge(&execute_mutation(
                 ctx,
                 resource,
-                plan.description(),
-                verb,
-                *bail_on_error,
+                ResourceMutation {
+                    description: plan.description(),
+                    verb,
+                    dry_run_message: plan.dry_run_message(),
+                    event: DiagEvent::ResourceApply,
+                    applied_label: "applied",
+                    bail_on_error: *bail_on_error,
+                    warn_before_apply: true,
+                },
+                Resource::apply,
             )?);
         }
     }
@@ -103,38 +103,73 @@ fn record_resource_change(
     }
 }
 
-/// Apply a single resource change, returning a stats delta.
-fn apply_resource<R: Resource>(
+#[derive(Debug)]
+struct ResourceMutation<'a> {
+    description: &'a str,
+    verb: &'a str,
+    dry_run_message: Option<String>,
+    event: DiagEvent,
+    applied_label: &'a str,
+    bail_on_error: bool,
+    warn_before_apply: bool,
+}
+
+fn execute_mutation<R, F>(
     ctx: &Context,
     resource: &R,
-    desc: &str,
-    verb: &str,
-    bail_on_error: bool,
-) -> Result<TaskStats> {
-    if let Some(warning) = resource.pre_apply_warning()? {
+    mutation: ResourceMutation<'_>,
+    mutate: F,
+) -> Result<TaskStats>
+where
+    R: Resource,
+    F: FnOnce(&R) -> ResourceResult<ResourceChange>,
+{
+    if ctx.dry_run() {
+        if let Some(message) = mutation.dry_run_message {
+            ctx.log().dry_run(&message);
+        }
+        let mut delta = TaskStats::new();
+        delta.changed = delta.changed.saturating_add(1);
+        return Ok(delta);
+    }
+    if mutation.warn_before_apply
+        && let Some(warning) = resource.pre_apply_warning()?
+    {
         ctx.log().warn(&warning);
     }
-    ctx.log()
-        .diag(DiagEvent::ResourceApply, &format!("{verb} {desc}"));
+    ctx.log().diag(
+        mutation.event,
+        &format!("{} {}", mutation.verb, mutation.description),
+    );
     let mut delta = TaskStats::new();
-    let change = match resource.apply() {
+    let change = match mutate(resource) {
         Ok(change) => change,
         Err(e) => {
             let category = e.category();
             ctx.log().diag(
                 DiagEvent::ResourceResult,
-                &format!("{desc} error [{category}]: {e}"),
+                &format!("{} error [{category}]: {e}", mutation.description),
             );
-            if bail_on_error {
+            if mutation.bail_on_error {
                 return Err(e.into());
             }
-            ctx.log().warn(&format!("failed to {verb} {desc}: {e}"));
+            ctx.log().warn(&format!(
+                "failed to {} {}: {e}",
+                mutation.verb, mutation.description
+            ));
             delta.failed = delta.failed.saturating_add(1);
             return Ok(delta);
         }
     };
 
-    record_resource_change(ctx, &mut delta, change, desc, verb, "applied");
+    record_resource_change(
+        ctx,
+        &mut delta,
+        change,
+        mutation.description,
+        mutation.verb,
+        mutation.applied_label,
+    );
     Ok(delta)
 }
 
@@ -168,26 +203,20 @@ pub(super) fn remove_single<R: Resource>(
     let mut delta = TaskStats::new();
     match plan.operation() {
         RemoveOperation::Remove { verb: remove_verb } => {
-            if ctx.dry_run() {
-                if let Some(message) = plan.dry_run_message() {
-                    ctx.log().dry_run(&message);
-                }
-                delta.changed = delta.changed.saturating_add(1);
-                return Ok(delta);
-            }
-            ctx.log().diag(
-                DiagEvent::ResourceRemove,
-                &format!("{remove_verb} {}", plan.description()),
-            );
-            let change = resource.remove()?;
-            record_resource_change(
+            delta.merge(&execute_mutation(
                 ctx,
-                &mut delta,
-                change,
-                plan.description(),
-                remove_verb,
-                "removed",
-            );
+                resource,
+                ResourceMutation {
+                    description: plan.description(),
+                    verb: remove_verb,
+                    dry_run_message: plan.dry_run_message(),
+                    event: DiagEvent::ResourceRemove,
+                    applied_label: "removed",
+                    bail_on_error: true,
+                    warn_before_apply: false,
+                },
+                Resource::remove,
+            )?);
         }
         RemoveOperation::Skip { reason } => {
             // Cannot determine if this resource is ours — skip removal rather

@@ -3,35 +3,18 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
+use crate::domains::system::config::systemd_units::UnitScope;
 use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::runtime::exec::Executor;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SystemdScope {
-    User,
-    System,
-}
-
-impl SystemdScope {
-    fn parse(scope: &str) -> Result<Self> {
-        match scope {
-            "user" => Ok(Self::User),
-            "system" => Ok(Self::System),
-            _ => Err(
-                ResourceError::not_supported(format!("unsupported systemd scope '{scope}'")).into(),
-            ),
-        }
-    }
-}
 
 /// A systemd unit resource that can be checked and enabled.
 #[derive(Debug)]
 pub struct SystemdUnitResource {
     /// Unit name (e.g. "clean-home-tmp.timer").
     pub name: String,
-    /// Systemd scope (`user` or `system`).
-    pub scope: String,
+    /// Systemd scope.
+    pub scope: UnitScope,
     /// Executor for running systemctl commands.
     executor: Arc<dyn Executor>,
 }
@@ -39,14 +22,10 @@ pub struct SystemdUnitResource {
 impl SystemdUnitResource {
     /// Create a new systemd unit resource.
     #[must_use]
-    pub fn new(
-        name: impl Into<String>,
-        scope: impl Into<String>,
-        executor: Arc<dyn Executor>,
-    ) -> Self {
+    pub fn new(name: impl Into<String>, scope: UnitScope, executor: Arc<dyn Executor>) -> Self {
         Self {
             name: name.into(),
-            scope: scope.into(),
+            scope,
             executor,
         }
     }
@@ -60,21 +39,23 @@ impl SystemdUnitResource {
         Self::new(entry.name.clone(), entry.scope.clone(), executor)
     }
 
-    fn parsed_scope(&self) -> Result<SystemdScope> {
-        SystemdScope::parse(&self.scope)
-    }
-
-    fn check_args(&self, scope: SystemdScope) -> Vec<&str> {
-        match scope {
-            SystemdScope::User => vec!["--user", "is-enabled", &self.name],
-            SystemdScope::System => vec!["is-enabled", &self.name],
+    fn check_args(&self) -> ResourceResult<Vec<&str>> {
+        match self.scope {
+            UnitScope::User => Ok(vec!["--user", "is-enabled", &self.name]),
+            UnitScope::System => Ok(vec!["is-enabled", &self.name]),
+            UnitScope::Invalid(ref value) => Err(ResourceError::not_supported(format!(
+                "unsupported systemd scope '{value}'"
+            ))),
         }
     }
 
-    fn apply_invocation(&self, scope: SystemdScope) -> (&'static str, Vec<&str>) {
-        match scope {
-            SystemdScope::User => ("systemctl", vec!["--user", "enable", "--now", &self.name]),
-            SystemdScope::System => ("sudo", vec!["systemctl", "enable", "--now", &self.name]),
+    fn apply_invocation(&self) -> ResourceResult<(&'static str, Vec<&str>)> {
+        match self.scope {
+            UnitScope::User => Ok(("systemctl", vec!["--user", "enable", "--now", &self.name])),
+            UnitScope::System => Ok(("sudo", vec!["systemctl", "enable", "--now", &self.name])),
+            UnitScope::Invalid(ref value) => Err(ResourceError::not_supported(format!(
+                "unsupported systemd scope '{value}'"
+            ))),
         }
     }
 
@@ -127,16 +108,17 @@ const fn output_if_present(output: &str) -> &str {
 
 impl Resource for SystemdUnitResource {
     fn description(&self) -> String {
-        if self.scope == "user" {
-            self.name.clone()
-        } else {
-            format!("{} ({} scope)", self.name, self.scope)
+        match self.scope {
+            UnitScope::User => self.name.clone(),
+            UnitScope::System => format!("{} (system scope)", self.name),
+            UnitScope::Invalid(ref value) => {
+                format!("{} (invalid '{value}' scope)", self.name)
+            }
         }
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        let scope = self.parsed_scope()?;
-        let (program, args) = self.apply_invocation(scope);
+        let (program, args) = self.apply_invocation()?;
         let result = self.executor.run_unchecked(program, &args)?;
         if result.success {
             Ok(ResourceChange::Applied)
@@ -150,15 +132,14 @@ impl Resource for SystemdUnitResource {
 
 impl IntrinsicState for SystemdUnitResource {
     fn current_state(&self) -> Result<ResourceState> {
-        let scope = match self.parsed_scope() {
-            Ok(scope) => scope,
-            Err(e) => {
+        let args = match self.check_args() {
+            Ok(args) => args,
+            Err(error) => {
                 return Ok(ResourceState::Invalid {
-                    reason: e.to_string(),
+                    reason: error.to_string(),
                 });
             }
         };
-        let args = self.check_args(scope);
         let result = self.executor.run_unchecked("systemctl", &args)?;
         Ok(self.state_from_is_enabled(&result))
     }
@@ -198,8 +179,11 @@ mod tests {
     #[test]
     fn description_returns_unit_name() {
         let executor: Arc<dyn Executor> = Arc::new(crate::runtime::exec::SystemExecutor);
-        let resource =
-            SystemdUnitResource::new("clean-home-tmp.timer".to_string(), "user", executor);
+        let resource = SystemdUnitResource::new(
+            "clean-home-tmp.timer".to_string(),
+            UnitScope::User,
+            executor,
+        );
         assert_eq!(resource.description(), "clean-home-tmp.timer");
     }
 
@@ -208,11 +192,11 @@ mod tests {
         let executor: Arc<dyn Executor> = Arc::new(crate::runtime::exec::SystemExecutor);
         let entry = crate::domains::system::config::systemd_units::SystemdUnit {
             name: "dunst.service".to_string(),
-            scope: "user".to_string(),
+            scope: UnitScope::User,
         };
         let resource = SystemdUnitResource::from_entry(&entry, executor);
         assert_eq!(resource.name, "dunst.service");
-        assert_eq!(resource.scope, "user");
+        assert_eq!(resource.scope, UnitScope::User);
     }
 
     // ------------------------------------------------------------------
@@ -229,7 +213,7 @@ mod tests {
             })
         });
         let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = SystemdUnitResource::new("dunst.service".to_string(), "user", executor);
+        let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 
@@ -243,7 +227,7 @@ mod tests {
             })
         });
         let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = SystemdUnitResource::new("dunst.service".to_string(), "user", executor);
+        let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
     }
 
@@ -257,7 +241,7 @@ mod tests {
             })
         });
         let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = SystemdUnitResource::new("dunst.service".to_string(), "user", executor);
+        let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert!(matches!(
             resource.current_state().unwrap(),
             ResourceState::Unknown { .. }
@@ -272,7 +256,7 @@ mod tests {
             .withf(|program, args| program == "systemctl" && args == ["is-enabled", "sshd.service"])
             .returning(|_, _| Ok(ok_result()));
         let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = SystemdUnitResource::new("sshd.service".to_string(), "system", executor);
+        let resource = SystemdUnitResource::new("sshd.service", UnitScope::System, executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 
@@ -280,7 +264,11 @@ mod tests {
     fn current_state_invalid_for_unknown_scope() {
         let mock = MockExecutor::new();
         let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = SystemdUnitResource::new("dunst.service".to_string(), "global", executor);
+        let resource = SystemdUnitResource::new(
+            "dunst.service",
+            UnitScope::Invalid("global".to_string()),
+            executor,
+        );
         assert!(matches!(
             resource.current_state().unwrap(),
             ResourceState::Invalid { .. }
@@ -298,7 +286,7 @@ mod tests {
             .once()
             .returning(|_, _| Ok(ok_result()));
         let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = SystemdUnitResource::new("dunst.service".to_string(), "user", executor);
+        let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
 
@@ -309,7 +297,7 @@ mod tests {
             .once()
             .returning(|_, _| Ok(fail_result()));
         let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = SystemdUnitResource::new("dunst.service".to_string(), "user", executor);
+        let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert!(
             matches!(resource.apply().unwrap(), ResourceChange::Skipped { .. }),
             "expected Skipped when systemctl enable fails"
@@ -326,7 +314,7 @@ mod tests {
             })
             .returning(|_, _| Ok(ok_result()));
         let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = SystemdUnitResource::new("sshd.service".to_string(), "system", executor);
+        let resource = SystemdUnitResource::new("sshd.service", UnitScope::System, executor);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
 }

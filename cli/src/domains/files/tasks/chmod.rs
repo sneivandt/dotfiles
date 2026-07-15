@@ -15,22 +15,9 @@ config_resource_task! {
         deps: [crate::domains::files::tasks::symlinks::InstallSymlinks],
         guard: |_cfg, ctx| ctx.system().platform().supports_chmod(),
         items: |cfg| cfg.clone(),
-        build: |entry, ctx| build_resource(&entry, ctx.paths().home()),
+        build: |entry, ctx| ChmodResource::from_entry(&entry, ctx.paths().home()),
         opts: ProcessOpts::fix_existing("configure"),
     }
-}
-
-/// Build a [`ChmodResource`] from a config entry.
-///
-/// Mode validity is verified by config validation before tasks run, so a
-/// parse failure here indicates a bug in the validation pipeline.
-#[allow(
-    clippy::expect_used,
-    reason = "panicking allowed at this trust boundary"
-)]
-fn build_resource(entry: &ChmodEntry, home: &std::path::Path) -> ChmodResource {
-    ChmodResource::from_entry(entry, home)
-        .expect("invalid octal mode should have been caught by config validation")
 }
 
 #[cfg(test)]
@@ -66,10 +53,10 @@ mod tests {
     fn should_run_true_when_chmod_entries_present_on_linux() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);
-        let task = ApplyFilePermissions::new(ConfigHandle::new(vec![ChmodEntry {
-            mode: "600".to_string(),
-            path: "ssh/config".to_string(),
-        }]));
+        let task = ApplyFilePermissions::new(ConfigHandle::new(vec![ChmodEntry::new(
+            "600",
+            "ssh/config",
+        )]));
         assert!(task.should_run(&ctx));
     }
 }

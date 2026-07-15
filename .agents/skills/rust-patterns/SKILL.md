@@ -79,6 +79,9 @@ cli/src/
   centralize check -> dry-run -> mutate order.
 - Fully custom tasks that cannot use resources or operations must still follow
   check -> dry-run -> mutate order manually.
+- Keep applicability centralized: execution policies and `should_run()` decide
+  eligibility, while `run_configured()` only suppresses tasks with no configured
+  work.
 - Inject typed `ConfigHandle<T>` values into config-backed tasks and keep read
   guards out of long-running or parallel work.
 - Keep behaviour idempotent: re-running should converge to the same state.

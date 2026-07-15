@@ -159,8 +159,8 @@ The wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`) handle only the `--build` f
 
 #### Commands (`app/commands/`)
 
-- **`install.rs`** — Uses `CommandRunner` to resolve the profile, load `Config`, build the task list, filter by `--skip`/`--only`, and execute the phased task pipeline. Before the task graph, it may self-update the binary and re-exec so the rest of the run uses the latest engine. It also attempts safe fast-forward-only repository synchronization in the task graph but leaves pinned dependency versions untouched. Exposes `run_pipeline(advance_versions)`, the shared implementation behind both `install` and `update`
-- **`update.rs`** — Delegates to `install::run_pipeline` with `advance_versions = true`, so it runs the same base task graph as `install` and additionally schedules the final Update phase to advance pinned dependency versions (currently the APM dependency refresh)
+- **`install.rs`** — Uses `CommandRunner` to resolve the profile, load `Config`, build the task list, filter by `--skip`/`--only`, and execute the phased task pipeline. Before the task graph, it may self-update the binary and re-exec so the rest of the run uses the latest engine. It also attempts safe fast-forward-only repository synchronization in the task graph but leaves pinned dependency versions untouched. Exposes `run_pipeline(RunMode)`, the shared implementation behind both `install` and `update`
+- **`update.rs`** — Delegates to `install::run_pipeline` with `RunMode::Update`, so it runs the same base task graph as `install` and additionally schedules the final Update phase to advance pinned dependency versions (currently the APM dependency refresh)
 - **`uninstall.rs`** — Conservatively removes detachable managed state: symlinks, installed Git hooks, and the wrapper entry point. It intentionally does not remove packages or roll back registry, systemd, shell, editor, AI tooling/APM, WSL, or overlay-script changes
 - **`test.rs`** — Runs configuration validation
 
@@ -220,8 +220,8 @@ pub trait Task: Send + Sync + 'static {
     /// Whether this task should run on the current platform/profile.
     fn should_run(&self, ctx: &Context) -> bool;
 
-    /// Combine applicability checks with execution.
-    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>>;
+    /// Execute only when the task has configured work.
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>>;
 
     /// Predict whether an applicable task will need elevation.
     fn needs_elevation(&self, ctx: &Context) -> bool { false }
@@ -243,7 +243,13 @@ Other task-specific dependencies are injected the same way: `UpdateRepository` a
 
 Cross-domain ordering constraints are **not** declared inside domains (which may name only same-domain tasks). Instead the application catalog (`app/catalog.rs`) wraps a task in `engine::TaskWithExtraDeps` to merge the extra dependency `TaskId`s — for example making `ConfigureSystemd` depend on `InstallSymlinks`, or `GenerateCompletions` depend on `UpdateRepository`. The decorator forwards the inner task's identity and behaviour unchanged, so tasks that depend on the wrapped task by type still resolve.
 
-The `execute()` function first evaluates `execution_policies()` (platform support, dry-run skip rules, and elevation declarations), then checks `should_run()` and calls `run_if_applicable()`, recording `Ok`, `NotApplicable`, `Skipped`, `DryRun`, or `Failed` in the logger. Before parallel phase dispatch, `run_tasks_to_completion()` calls `requires_elevation()` only for tasks whose policies and `should_run()` pass, then primes sudo for the tasks that predict a privileged mutation.
+The `execute()` function owns the canonical applicability path: it evaluates
+`execution_policies()`, checks `should_run()` once, and then calls
+`run_configured()`. The configured-work hook can return `None` for an empty
+configuration without re-evaluating policy or guards. The executor records
+`Ok`, `NotApplicable`, `Skipped`, `DryRun`, or `Failed` in the logger. Before
+parallel phase dispatch, `run_tasks_to_completion()` uses the same applicability
+decision before priming sudo for tasks that predict a privileged mutation.
 
 #### Engine (`engine/`)
 
@@ -252,14 +258,14 @@ The execution engine provides the generic resource processing loop, dependency g
 - **`context.rs`** — `Context` and `ContextOpts`: generic paths, platform,
   executor, logger, cancellation, and execution flags threaded through tasks
 - **`plan.rs`** — pure resource plan/diff construction from `ResourceState` + `ProcessOpts`
-- **`apply.rs`** — single-resource plan execution: log/dry-run → apply/remove → stats
+- **`apply.rs`** — single-resource plan execution with one shared mutation lifecycle for apply/remove: log/dry-run → mutate → stats
 - **`orchestrate.rs`** — top-level resource orchestration with `process_resources()`, `process_resources_with_provider()`, and `process_resources_remove()`
 - **`mode.rs`** — `ProcessMode` enum (`Strict`, `Lenient`, `InstallMissing`, `FixExisting`) and `ProcessOpts` that control which states are fixable and whether errors bail or warn
 - **`operation.rs`** — checkable, idempotent multi-step operations whose state
   check produces the immutable plan consumed by preview or apply
 - **`parallel.rs`** — Rayon-based parallel dispatch when `ctx.parallel` is true
 - **`graph.rs`** — phase-local dependency graph resolution, duplicate-ID checks,
-  and cycle detection (Kahn's algorithm)
+  and one cached dependency-safe order produced by Kahn's algorithm
 - **`scheduler.rs`** — dependency-driven parallel task scheduling using OS threads and `mpsc` channels
 - **`stats.rs`** — `TaskResult` and `TaskStats` types
 - **`task/`** — the generic `Task` trait, task metadata (`TaskPhase`, `Domain`, `TaskId`), task/resource macros, and the `execute()` runner

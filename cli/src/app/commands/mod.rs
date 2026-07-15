@@ -265,13 +265,10 @@ impl CommandRunner {
         })
     }
 
-    /// Return a runner whose context advances locked dependency versions.
-    ///
-    /// Used by the `update` command so that version-advancing tasks (currently
-    /// the APM dependency refresh) run; `install` leaves this `false`.
+    /// Configure command-specific pipeline behavior.
     #[must_use]
-    pub fn with_advance_versions(mut self, advance_versions: bool) -> Self {
-        self.ctx = self.ctx.with_advance_versions(advance_versions);
+    pub(crate) fn with_run_mode(mut self, mode: install::RunMode) -> Self {
+        self.ctx = self.ctx.with_advance_versions(mode.advances_versions());
         self
     }
 

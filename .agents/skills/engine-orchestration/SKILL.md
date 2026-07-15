@@ -37,8 +37,10 @@ description: >
    duplicate IDs/cycles.
 2. **Scheduler wiring:** keep dependency channels strict; failed dependency
    blocks dependents.
-3. **Task execution path:** route all tasks through `engine::execute()` so policy,
-   `should_run()`, and result recording stay consistent.
+3. **Task execution path:** route all tasks through `engine::execute()` so policy
+   and `should_run()` are evaluated once. Override `run_configured()` only when
+   an otherwise-applicable task can have no configured work; do not repeat policy
+   or guard checks there.
 4. **Resource flow:** use one of:
    - `process_resources(...)`
    - `process_resources_with_provider(...)`

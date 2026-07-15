@@ -10,8 +10,9 @@ mod types;
 
 pub use execute::execute;
 pub(crate) use macros::{
-    config_resource_task, execution_policies_impl, process_config_resources,
-    process_config_resources_with_provider, resource_task, task_deps, task_metadata,
+    config_resource_task, configured_task_result, execution_policies_impl,
+    process_config_resources, process_config_resources_with_provider, resource_task, task_deps,
+    task_metadata,
 };
 pub use types::{Domain, ExecutionPolicy, PlatformCapability, TaskId, TaskPhase};
 
@@ -19,7 +20,7 @@ use std::any::TypeId;
 
 use anyhow::Result;
 
-use execute::evaluate_policy_decision;
+use execute::not_applicable_reason;
 
 use super::resource::{BorrowedStateProvider, Resource, ResourceState};
 use super::{Context, ProcessOpts, TaskResult, process_resources_with_provider};
@@ -109,8 +110,7 @@ pub trait Task: Send + Sync + 'static {
         true
     }
 
-    /// Execute the task when it is applicable, combining the applicability
-    /// check and run step into a single call.
+    /// Execute the task when it has configured work.
     ///
     /// Returning `Ok(None)` means the task is not applicable and should be
     /// recorded as such without treating the task as a failure. The default
@@ -121,7 +121,7 @@ pub trait Task: Send + Sync + 'static {
     /// # Errors
     ///
     /// Returns an error if the task fails to execute.
-    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
         ctx.log().stage(self.name());
         self.run(ctx).map(Some)
     }
@@ -143,8 +143,7 @@ pub trait Task: Send + Sync + 'static {
             .any(|p| matches!(p, ExecutionPolicy::RequiresElevation));
         !ctx.dry_run()
             && declares_elevation
-            && evaluate_policy_decision(self.execution_policies(), ctx).is_none()
-            && self.should_run(ctx)
+            && not_applicable_reason(self, ctx).is_none()
             && self.needs_elevation(ctx)
     }
 
@@ -233,8 +232,8 @@ impl Task for TaskWithExtraDeps {
         self.inner.should_run(ctx)
     }
 
-    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        self.inner.run_if_applicable(ctx)
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        self.inner.run_configured(ctx)
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {

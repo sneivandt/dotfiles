@@ -9,8 +9,34 @@ use crate::runtime::config_support::config_section;
 pub struct SystemdUnit {
     /// Unit name including extension (e.g., `"clean-home-tmp.timer"`).
     pub name: String,
-    /// Systemd scope: `"user"` or `"system"` (default: `"user"`).
-    pub scope: String,
+    /// Systemd scope.
+    pub scope: UnitScope,
+}
+
+/// Scope in which a systemd unit is managed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum UnitScope {
+    /// Manage the unit for the current user.
+    #[default]
+    User,
+    /// Manage the system-wide unit.
+    System,
+    /// Preserve an unsupported configured value for aggregated validation.
+    Invalid(String),
+}
+
+impl<'de> Deserialize<'de> for UnitScope {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = <String as Deserialize>::deserialize(deserializer)?;
+        Ok(match value.as_str() {
+            "user" => Self::User,
+            "system" => Self::System,
+            _ => Self::Invalid(value),
+        })
+    }
 }
 
 /// A single entry in a units section — either a plain name string or a
@@ -21,7 +47,7 @@ enum UnitEntry {
     /// Plain string: `"dunst.service"` — defaults to user scope.
     Simple(String),
     /// Structured: `{ name = "foo.service", scope = "system" }`.
-    WithScope { name: String, scope: String },
+    WithScope { name: String, scope: UnitScope },
 }
 
 config_section! {
@@ -31,7 +57,7 @@ config_section! {
     map: |entry| match entry {
         UnitEntry::Simple(name) => SystemdUnit {
             name,
-            scope: "user".to_string(),
+            scope: UnitScope::User,
         },
         UnitEntry::WithScope { name, scope } => SystemdUnit { name, scope },
     },
@@ -69,7 +95,7 @@ pub fn validate(
             [
                 check(u.name.trim().is_empty(), "systemd.empty-name", "unit name is empty"),
                 check(
-                    !matches!(u.scope.as_str(), "user" | "system"),
+                    matches!(u.scope, UnitScope::Invalid(_)),
                     "systemd.invalid-scope",
                     "unit scope should be 'user' or 'system'",
                 ),
@@ -112,7 +138,7 @@ units = ["dunst.service"]
         let units: Vec<SystemdUnit> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(units.len(), 1);
         assert_eq!(units[0].name, "clean-home-tmp.timer");
-        assert_eq!(units[0].scope, "user");
+        assert_eq!(units[0].scope, UnitScope::User);
     }
 
     #[test]
@@ -123,7 +149,7 @@ units = ["clean-home-tmp.timer"]
 "#,
         );
         let units = load(&path, &[Category::Base]).unwrap();
-        assert_eq!(units[0].scope, "user");
+        assert_eq!(units[0].scope, UnitScope::User);
     }
 
     #[test]
@@ -135,7 +161,7 @@ units = [{ name = "some-daemon.service", scope = "system" }]
         );
         let units = load(&path, &[Category::Base]).unwrap();
         assert_eq!(units[0].name, "some-daemon.service");
-        assert_eq!(units[0].scope, "system");
+        assert_eq!(units[0].scope, UnitScope::System);
     }
 
     test_load_missing_returns_empty!(load);
@@ -146,7 +172,7 @@ units = [{ name = "some-daemon.service", scope = "system" }]
 
         let units = vec![SystemdUnit {
             name: "myunit".to_string(),
-            scope: "user".to_string(),
+            scope: UnitScope::User,
         }];
         let warnings = validate(&units, Platform::new(Os::Linux, false));
         assert_eq!(warnings.len(), 1);
@@ -176,7 +202,7 @@ units = [{ name = "some-daemon.service", scope = "system" }]
 
         let units = vec![SystemdUnit {
             name: "  ".to_string(),
-            scope: "user".to_string(),
+            scope: UnitScope::User,
         }];
         let warnings = validate(&units, Platform::new(Os::Linux, false));
         assert!(
@@ -191,7 +217,7 @@ units = [{ name = "some-daemon.service", scope = "system" }]
 
         let units = vec![SystemdUnit {
             name: "test.service".to_string(),
-            scope: "user".to_string(),
+            scope: UnitScope::User,
         }];
         let warnings = validate(&units, Platform::new(Os::Windows, false));
         assert!(
@@ -206,15 +232,16 @@ units = [{ name = "some-daemon.service", scope = "system" }]
     fn validate_warns_on_invalid_scope() {
         use crate::runtime::platform::{Os, Platform};
 
-        let units = vec![SystemdUnit {
-            name: "example.service".to_string(),
-            scope: "global".to_string(),
-        }];
-
+        let (_dir, path) = write_temp_toml(
+            "[base]\nunits = [{ name = \"example.service\", scope = \"global\" }]\n",
+        );
+        let units = load(&path, &[Category::Base]).unwrap();
+        assert_eq!(units[0].scope, UnitScope::Invalid("global".to_string()));
         let warnings = validate(&units, Platform::new(Os::Linux, false));
         assert!(
-            warnings.iter().any(|w| w.message.contains("scope")),
-            "should warn about invalid scope: {warnings:?}"
+            warnings
+                .iter()
+                .any(|warning| warning.code == "systemd.invalid-scope")
         );
     }
 }

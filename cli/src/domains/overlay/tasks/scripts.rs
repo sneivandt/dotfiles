@@ -59,9 +59,9 @@ impl Task for ReportOverlayScriptSnapshot {
         ctx.overlay().is_some()
     }
 
-    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
         let scripts = self.config.read();
-        if ctx.overlay().is_none() || scripts.is_empty() {
+        if scripts.is_empty() {
             return Ok(None);
         }
         let count = scripts.len();
@@ -203,7 +203,7 @@ impl Task for OverlayScriptTask {
         ctx.overlay().is_some()
     }
 
-    fn run_if_applicable(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
         ctx.log().stage(self.name());
         if let Some(description) = &self.entry.description {
             ctx.log().info(description);

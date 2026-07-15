@@ -2,17 +2,53 @@
 use serde::Deserialize;
 use std::path::Path;
 
+use crate::domains::files::OctalMode;
 use crate::runtime::config_support::Diagnostic;
 use crate::runtime::config_support::config_section;
 
 /// A file permission directive.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 #[allow(dead_code, reason = "used conditionally via cfg")] // fields used on unix only (tasks/chmod.rs)
 pub struct ChmodEntry {
-    /// Permission mode (e.g., "600", "755").
+    /// Configured permission mode (e.g., `"600"`, `"755"`).
     pub mode: String,
     /// Relative path under $HOME.
     pub path: String,
+    parsed_mode: Result<OctalMode, String>,
+}
+
+#[derive(Deserialize)]
+struct RawChmodEntry {
+    mode: String,
+    path: String,
+}
+
+impl<'de> Deserialize<'de> for ChmodEntry {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawChmodEntry::deserialize(deserializer)?;
+        Ok(Self::new(raw.mode, raw.path))
+    }
+}
+
+impl ChmodEntry {
+    /// Create an entry and parse its mode once for validation and resource use.
+    #[must_use]
+    pub fn new(mode: impl Into<String>, path: impl Into<String>) -> Self {
+        let mode = mode.into();
+        let parsed_mode = OctalMode::parse(&mode);
+        Self {
+            mode,
+            path: path.into(),
+            parsed_mode,
+        }
+    }
+
+    pub(crate) const fn parsed_mode(&self) -> &Result<OctalMode, String> {
+        &self.parsed_mode
+    }
 }
 
 config_section!(field: "permissions", ty: ChmodEntry);
@@ -23,7 +59,6 @@ pub fn validate(
     entries: &[ChmodEntry],
     platform: crate::runtime::platform::Platform,
 ) -> Vec<Diagnostic> {
-    use crate::domains::files::OctalMode;
     use crate::runtime::config_support::Severity;
     use crate::runtime::config_support::validation::{Validator, check, check_error};
 
@@ -39,9 +74,10 @@ pub fn validate(
             |e| &e.path,
             |e| {
                 [
-                    OctalMode::parse(&e.mode)
+                    e.parsed_mode
+                        .as_ref()
                         .err()
-                        .map(|message| ("chmod.invalid-mode", Severity::Warning, message)),
+                        .map(|message| ("chmod.invalid-mode", Severity::Warning, message.clone())),
                     check(
                         Path::new(&e.path).is_absolute() || e.path.starts_with('/'),
                         "chmod.absolute-path",
@@ -99,10 +135,7 @@ permissions = [
     fn validate_detects_invalid_mode() {
         use crate::runtime::platform::{Os, Platform};
 
-        let entries = vec![ChmodEntry {
-            mode: "999".to_string(),
-            path: ".ssh/config".to_string(),
-        }];
+        let entries = vec![ChmodEntry::new("999", ".ssh/config")];
         let warnings = validate(&entries, Platform::new(Os::Linux, false));
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("invalid octal digit"));
@@ -112,10 +145,7 @@ permissions = [
     fn validate_detects_invalid_mode_length() {
         use crate::runtime::platform::{Os, Platform};
 
-        let entries = vec![ChmodEntry {
-            mode: "12".to_string(),
-            path: ".ssh/config".to_string(),
-        }];
+        let entries = vec![ChmodEntry::new("12", ".ssh/config")];
         let warnings = validate(&entries, Platform::new(Os::Linux, false));
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("must be 3 or 4 digits"));
@@ -125,10 +155,7 @@ permissions = [
     fn validate_detects_path_traversal() {
         use crate::runtime::platform::{Os, Platform};
 
-        let entries = vec![ChmodEntry {
-            mode: "600".to_string(),
-            path: "../../etc/shadow".to_string(),
-        }];
+        let entries = vec![ChmodEntry::new("600", "../../etc/shadow")];
         let warnings = validate(&entries, Platform::new(Os::Linux, false));
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("'..'"));

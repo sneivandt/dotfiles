@@ -12,16 +12,8 @@ use crate::runtime::logging::{DiagEvent, TaskStatus, diag_task_context};
 
 use super::{Domain, ExecutionPolicy, Task};
 
-#[derive(Debug)]
-pub(super) enum PolicyDecision {
-    NotApplicable(String),
-}
-
-pub(super) fn evaluate_policy_decision(
-    policies: &[ExecutionPolicy],
-    ctx: &Context,
-) -> Option<PolicyDecision> {
-    for policy in policies {
+pub(super) fn not_applicable_reason<T: Task + ?Sized>(task: &T, ctx: &Context) -> Option<String> {
+    for policy in task.execution_policies() {
         match *policy {
             // Elevation is evaluated in Task::requires_elevation() after
             // platform support and task applicability are known; at execution
@@ -29,30 +21,23 @@ pub(super) fn evaluate_policy_decision(
             ExecutionPolicy::Always | ExecutionPolicy::RequiresElevation => {}
             ExecutionPolicy::PlatformSupported(capability, is_supported) => {
                 if !is_supported(&ctx.platform()) {
-                    return Some(PolicyDecision::NotApplicable(format!(
-                        "{capability} not supported on {}",
-                        ctx.platform()
-                    )));
+                    return Some(format!("{capability} not supported on {}", ctx.platform()));
                 }
             }
         }
     }
-    None
-}
-
-fn evaluate_policy(task: &dyn Task, ctx: &Context) -> Option<PolicyDecision> {
-    evaluate_policy_decision(task.execution_policies(), ctx)
-}
-
-fn record_policy_decision(ctx: &Context, name: &str, decision: PolicyDecision) {
-    match decision {
-        PolicyDecision::NotApplicable(reason) => {
-            ctx.log().diag_task(DiagEvent::TaskSkip, name, &reason);
-            ctx.log().debug_stage(name);
-            ctx.debug_fmt(|| format!("not applicable: {reason}"));
-            ctx.log().record_task(name, TaskStatus::NotApplicable, None);
-        }
+    if task.should_run(ctx) {
+        None
+    } else {
+        Some("not applicable".to_string())
     }
+}
+
+fn record_not_applicable(ctx: &Context, name: &str, reason: &str) {
+    ctx.log().diag_task(DiagEvent::TaskSkip, name, reason);
+    ctx.log().debug_stage(name);
+    ctx.debug_fmt(|| format!("not applicable: {reason}"));
+    ctx.log().record_task(name, TaskStatus::NotApplicable, None);
 }
 
 /// Execute a task, recording the result in the logger.
@@ -71,19 +56,8 @@ pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
     let _diag_context = diag_task_context(task.name());
     let domain = task.domain();
 
-    if let Some(decision) = evaluate_policy(task, ctx) {
-        record_policy_decision(ctx, task.name(), decision);
-        return TaskStatus::NotApplicable;
-    }
-
-    if !task.should_run(ctx) {
-        ctx.log()
-            .diag_task(DiagEvent::TaskSkip, task.name(), "not applicable");
-        ctx.log().debug_stage(task.name());
-        ctx.log()
-            .debug(&format!("skipping task: {} (not applicable)", task.name()));
-        ctx.log()
-            .record_task(task.name(), TaskStatus::NotApplicable, None);
+    if let Some(reason) = not_applicable_reason(task, ctx) {
+        record_not_applicable(ctx, task.name(), &reason);
         return TaskStatus::NotApplicable;
     }
 
@@ -102,7 +76,7 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context, domain: Domain) -> TaskSta
         ctx.log().record_task(task.name(), status, msg);
         status
     };
-    match task.run_if_applicable(ctx) {
+    match task.run_configured(ctx) {
         Ok(None) => {
             ctx.log()
                 .diag_task(DiagEvent::TaskSkip, task.name(), "nothing configured");

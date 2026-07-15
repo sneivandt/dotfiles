@@ -15,6 +15,10 @@ in sync.
 ## Stable Conventions
 
 - Use typed Serde models; do not add ad hoc text parsing.
+- Preserve semantic validation aggregation. When a domain validator owns an
+  invalid-value diagnostic, deserialize into a parsed wrapper or explicit
+  `Invalid` variant instead of failing the whole file at the Serde boundary.
+  Syntax errors and structural type mismatches should still fail loading.
 - Use `#[serde(untagged)]` when an entry intentionally supports both a concise
   string and structured metadata.
 - Keep deterministic section ordering where output or diagnostics depend on it.

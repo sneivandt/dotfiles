@@ -147,41 +147,36 @@ mod chmod {
 
     #[test]
     fn from_entry_creates_resource() {
-        let entry = crate::domains::files::config::chmod::ChmodEntry {
-            mode: "600".to_string(),
-            path: "ssh/config".to_string(),
-        };
+        let entry = crate::domains::files::config::chmod::ChmodEntry::new("600", "ssh/config");
 
         let home = std::path::Path::new("/home/user");
-        let resource = ChmodResource::from_entry(&entry, home).unwrap();
+        let resource = ChmodResource::from_entry(&entry, home);
 
-        assert_eq!(resource.mode, mode("600"));
+        assert_eq!(resource.mode.as_ref().unwrap(), &mode("600"));
         assert_eq!(resource.target, PathBuf::from("/home/user/.ssh/config"));
     }
 
     #[test]
     fn from_entry_normalizes_leading_dot_path() {
-        let entry = crate::domains::files::config::chmod::ChmodEntry {
-            mode: "600".to_string(),
-            path: ".ssh/config".to_string(),
-        };
+        let entry = crate::domains::files::config::chmod::ChmodEntry::new("600", ".ssh/config");
 
         let home = std::path::Path::new("/home/user");
-        let resource = ChmodResource::from_entry(&entry, home).unwrap();
+        let resource = ChmodResource::from_entry(&entry, home);
 
-        assert_eq!(resource.mode, mode("600"));
+        assert_eq!(resource.mode.as_ref().unwrap(), &mode("600"));
         assert_eq!(resource.target, PathBuf::from("/home/user/.ssh/config"));
         assert_ne!(resource.target, PathBuf::from("/home/user/..ssh/config"));
     }
 
     #[test]
-    fn from_entry_rejects_invalid_mode() {
-        let entry = crate::domains::files::config::chmod::ChmodEntry {
-            mode: "999".to_string(),
-            path: "ssh/config".to_string(),
-        };
-        let home = std::path::Path::new("/home/user");
-        assert!(ChmodResource::from_entry(&entry, home).is_err());
+    fn from_entry_preserves_invalid_mode_as_invalid_state() {
+        let entry = crate::domains::files::config::chmod::ChmodEntry::new("999", "ssh/config");
+        let resource = ChmodResource::from_entry(&entry, std::path::Path::new("/home/user"));
+
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Invalid { .. }
+        ));
     }
 
     #[cfg(unix)]

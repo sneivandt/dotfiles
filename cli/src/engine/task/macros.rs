@@ -118,6 +118,15 @@ where
     crate::engine::process_resources_with_provider(ctx, resources, &provider, opts)
 }
 
+/// Convert an optional configured-task result into the direct [`Task::run`] result.
+pub(crate) fn configured_task_result(
+    result: Option<crate::engine::TaskResult>,
+) -> crate::engine::TaskResult {
+    result.unwrap_or_else(|| {
+        crate::engine::TaskResult::NotApplicable("nothing configured".to_string())
+    })
+}
+
 /// Define a task that reads config items, builds resources, and processes them.
 ///
 /// Supports the standard intrinsic-state path and a batch path (`cache:` +
@@ -152,13 +161,15 @@ macro_rules! resource_task {
             #[allow(clippy::shadow_unrelated, reason = "macro hygiene")]
             fn run_batch(
                 ctx: &$crate::engine::Context,
-            ) -> ::anyhow::Result<$crate::engine::TaskResult> {
+                emit_stage: bool,
+            ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
                 let $items_ctx = ctx;
                 let items: Vec<_> = { $items_expr };
                 if items.is_empty() {
-                    return Ok($crate::engine::TaskResult::NotApplicable(
-                        "nothing configured".to_string(),
-                    ));
+                    return Ok(None);
+                }
+                if emit_stage {
+                    ctx.log().stage($task_name);
                 }
                 ctx.debug_fmt(|| {
                     format!(
@@ -174,6 +185,7 @@ macro_rules! resource_task {
                     |$state_res, $state_cache| Ok($state_expr),
                     &$opts,
                 )
+                .map(Some)
             }
         }
 
@@ -201,27 +213,20 @@ macro_rules! resource_task {
             }
             )?
 
-            fn run_if_applicable(
+            fn run_configured(
                 &self,
                 ctx: &$crate::engine::Context,
             ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
-                $(
-                    let $guard_ctx = ctx;
-                    if !{ $guard_expr } { return Ok(None); }
-                )?
-                ctx.log().stage($task_name);
-                let result = Self::run_batch(ctx)?;
-                if matches!(result, $crate::engine::TaskResult::NotApplicable(_)) {
-                    return Ok(None);
-                }
-                Ok(Some(result))
+                Self::run_batch(ctx, true)
             }
 
             fn run(
                 &self,
                 ctx: &$crate::engine::Context,
             ) -> ::anyhow::Result<$crate::engine::TaskResult> {
-                Self::run_batch(ctx)
+                Ok($crate::engine::configured_task_result(
+                    Self::run_batch(ctx, false)?,
+                ))
             }
         }
     };
@@ -248,6 +253,34 @@ macro_rules! resource_task {
         #[derive(Debug)]
         $vis struct $name;
 
+        impl $name {
+            #[allow(clippy::shadow_unrelated, reason = "macro hygiene")]
+            fn run_resources(
+                ctx: &$crate::engine::Context,
+                emit_stage: bool,
+            ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
+                let $items_ctx = ctx;
+                let items: Vec<_> = { $items_expr };
+                if items.is_empty() {
+                    return Ok(None);
+                }
+                if emit_stage {
+                    ctx.log().stage($task_name);
+                }
+                $(
+                    let $setup_ctx = ctx;
+                    { $setup_expr }
+                )?
+                $crate::engine::process_config_resources(
+                    ctx,
+                    items,
+                    |$item, $build_ctx| $build_expr,
+                    &$opts,
+                )
+                .map(Some)
+            }
+        }
+
         impl $crate::engine::Task for $name {
             fn name(&self) -> &'static str {
                 $task_name
@@ -272,54 +305,20 @@ macro_rules! resource_task {
             }
             )?
 
-            fn run_if_applicable(
+            fn run_configured(
                 &self,
                 ctx: &$crate::engine::Context,
             ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
-                $(
-                    let $guard_ctx = ctx;
-                    if !{ $guard_expr } { return Ok(None); }
-                )?
-                let $items_ctx = ctx;
-                let items: Vec<_> = { $items_expr };
-                if items.is_empty() {
-                    return Ok(None);
-                }
-                ctx.log().stage($task_name);
-                $(
-                    let $setup_ctx = ctx;
-                    { $setup_expr }
-                )?
-                $crate::engine::process_config_resources(
-                    ctx,
-                    items,
-                    |$item, $build_ctx| $build_expr,
-                    &$opts,
-                )
-                .map(Some)
+                Self::run_resources(ctx, true)
             }
 
             fn run(
                 &self,
                 ctx: &$crate::engine::Context,
             ) -> ::anyhow::Result<$crate::engine::TaskResult> {
-                let $items_ctx = ctx;
-                let items: Vec<_> = { $items_expr };
-                if items.is_empty() {
-                    return Ok($crate::engine::TaskResult::NotApplicable(
-                        "nothing configured".to_string(),
-                    ));
-                }
-                $(
-                    let $setup_ctx = ctx;
-                    { $setup_expr }
-                )?
-                $crate::engine::process_config_resources(
-                    ctx,
-                    items,
-                    |$item, $build_ctx| $build_expr,
-                    &$opts,
-                )
+                Ok($crate::engine::configured_task_result(
+                    Self::run_resources(ctx, false)?,
+                ))
             }
         }
     };
@@ -373,16 +372,18 @@ macro_rules! config_resource_task {
             fn run_batch(
                 &self,
                 ctx: &$crate::engine::Context,
-            ) -> ::anyhow::Result<$crate::engine::TaskResult> {
+                emit_stage: bool,
+            ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
                 let items: Vec<_> = {
                     let snapshot = self.config.read();
                     let $items_cfg = &*snapshot;
                     $items_expr
                 };
                 if items.is_empty() {
-                    return Ok($crate::engine::TaskResult::NotApplicable(
-                        "nothing configured".to_string(),
-                    ));
+                    return Ok(None);
+                }
+                if emit_stage {
+                    ctx.log().stage($task_name);
                 }
                 ctx.debug_fmt(|| {
                     format!(
@@ -398,6 +399,7 @@ macro_rules! config_resource_task {
                     |$state_res, $state_cache| Ok($state_expr),
                     &$opts,
                 )
+                .map(Some)
             }
         }
 
@@ -418,31 +420,20 @@ macro_rules! config_resource_task {
             }
             )?
 
-            fn run_if_applicable(
+            fn run_configured(
                 &self,
                 ctx: &$crate::engine::Context,
             ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
-                $(
-                    {
-                        let snapshot = self.config.read();
-                        let $guard_cfg = &*snapshot;
-                        let $guard_ctx = ctx;
-                        if !{ $guard_expr } { return Ok(None); }
-                    }
-                )?
-                ctx.log().stage($task_name);
-                let result = self.run_batch(ctx)?;
-                if matches!(result, $crate::engine::TaskResult::NotApplicable(_)) {
-                    return Ok(None);
-                }
-                Ok(Some(result))
+                self.run_batch(ctx, true)
             }
 
             fn run(
                 &self,
                 ctx: &$crate::engine::Context,
             ) -> ::anyhow::Result<$crate::engine::TaskResult> {
-                self.run_batch(ctx)
+                Ok($crate::engine::configured_task_result(
+                    self.run_batch(ctx, false)?,
+                ))
             }
         }
     };
@@ -478,6 +469,36 @@ macro_rules! config_resource_task {
             pub const fn new(config: $crate::runtime::ConfigHandle<$cfg_ty>) -> Self {
                 Self { config }
             }
+
+            #[allow(clippy::shadow_unrelated, reason = "macro hygiene")]
+            fn run_resources(
+                &self,
+                ctx: &$crate::engine::Context,
+                emit_stage: bool,
+            ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
+                let items: Vec<_> = {
+                    let snapshot = self.config.read();
+                    let $items_cfg = &*snapshot;
+                    $items_expr
+                };
+                if items.is_empty() {
+                    return Ok(None);
+                }
+                if emit_stage {
+                    ctx.log().stage($task_name);
+                }
+                $(
+                    let $setup_ctx = ctx;
+                    { $setup_expr }
+                )?
+                $crate::engine::process_config_resources(
+                    ctx,
+                    items,
+                    |$item, $build_ctx| $build_expr,
+                    &$opts,
+                )
+                .map(Some)
+            }
         }
 
         impl $crate::engine::Task for $name {
@@ -497,64 +518,20 @@ macro_rules! config_resource_task {
             }
             )?
 
-            fn run_if_applicable(
+            fn run_configured(
                 &self,
                 ctx: &$crate::engine::Context,
             ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
-                $(
-                    {
-                        let snapshot = self.config.read();
-                        let $guard_cfg = &*snapshot;
-                        let $guard_ctx = ctx;
-                        if !{ $guard_expr } { return Ok(None); }
-                    }
-                )?
-                let items: Vec<_> = {
-                    let snapshot = self.config.read();
-                    let $items_cfg = &*snapshot;
-                    $items_expr
-                };
-                if items.is_empty() {
-                    return Ok(None);
-                }
-                ctx.log().stage($task_name);
-                $(
-                    let $setup_ctx = ctx;
-                    { $setup_expr }
-                )?
-                $crate::engine::process_config_resources(
-                    ctx,
-                    items,
-                    |$item, $build_ctx| $build_expr,
-                    &$opts,
-                )
-                .map(Some)
+                self.run_resources(ctx, true)
             }
 
             fn run(
                 &self,
                 ctx: &$crate::engine::Context,
             ) -> ::anyhow::Result<$crate::engine::TaskResult> {
-                let items: Vec<_> = {
-                    let snapshot = self.config.read();
-                    let $items_cfg = &*snapshot;
-                    $items_expr
-                };
-                if items.is_empty() {
-                    return Ok($crate::engine::TaskResult::NotApplicable(
-                        "nothing configured".to_string(),
-                    ));
-                }
-                $(
-                    let $setup_ctx = ctx;
-                    { $setup_expr }
-                )?
-                $crate::engine::process_config_resources(
-                    ctx,
-                    items,
-                    |$item, $build_ctx| $build_expr,
-                    &$opts,
-                )
+                Ok($crate::engine::configured_task_result(
+                    self.run_resources(ctx, false)?,
+                ))
             }
         }
     };

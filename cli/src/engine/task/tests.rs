@@ -355,12 +355,12 @@ fn batch_task_should_run_does_not_evaluate_items() {
 }
 
 #[test]
-fn batch_task_run_if_applicable_evaluates_items_once() {
+fn batch_task_run_configured_evaluates_items_once() {
     BATCH_TASK_ITEM_EVALS.with(|count| count.set(0));
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _) = make_static_context(config);
 
-    let result = CountingBatchTask.run_if_applicable(&ctx).unwrap();
+    let result = CountingBatchTask.run_configured(&ctx).unwrap();
     assert!(result.is_none());
     BATCH_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
 }

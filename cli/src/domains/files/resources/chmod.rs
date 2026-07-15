@@ -18,42 +18,57 @@ pub(super) const MODE_BITS_MASK: u32 = 0o7777;
 pub struct ChmodResource {
     /// Target file path (absolute).
     pub target: PathBuf,
-    /// Validated permission mode.
-    pub mode: OctalMode,
+    pub(super) mode: Result<OctalMode, String>,
 }
 
 impl ChmodResource {
     /// Create a new chmod resource.
     #[must_use]
+    #[cfg(test)]
     pub const fn new(target: PathBuf, mode: OctalMode) -> Self {
-        Self { target, mode }
+        Self {
+            target,
+            mode: Ok(mode),
+        }
     }
 
     /// Create from a config entry and home directory.
     ///
-    /// # Errors
-    ///
-    /// Returns an error if the mode string in the entry is not valid octal.
     pub fn from_entry(
         entry: &crate::domains::files::config::chmod::ChmodEntry,
         home: &std::path::Path,
-    ) -> Result<Self> {
+    ) -> Self {
         let relative_path = entry.path.strip_prefix('.').unwrap_or(&entry.path);
         let target = home.join(format!(".{relative_path}"));
-        let mode = OctalMode::parse(&entry.mode).map_err(|msg| anyhow::anyhow!("{msg}"))?;
-        Ok(Self::new(target, mode))
+        Self {
+            target,
+            mode: entry.parsed_mode().clone(),
+        }
     }
 }
 
 impl Resource for ChmodResource {
     fn description(&self) -> String {
-        format!("{} {}", self.mode, self.target.display())
+        match &self.mode {
+            Ok(mode) => format!("{mode} {}", self.target.display()),
+            Err(reason) => format!(
+                "invalid chmod mode ({reason}) for {}",
+                self.target.display()
+            ),
+        }
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
         #[cfg(unix)]
         {
-            let mode = self.mode.as_u32();
+            let mode = self.mode.as_ref().map_err(|reason| {
+                ResourceError::conflicting_state(
+                    self.target.display().to_string(),
+                    "valid octal mode",
+                    reason,
+                )
+            })?;
+            let mode = mode.as_u32();
 
             if self.target.is_dir() {
                 apply_recursive(
@@ -79,6 +94,11 @@ impl Resource for ChmodResource {
 
 impl IntrinsicState for ChmodResource {
     fn current_state(&self) -> Result<ResourceState> {
+        if let Err(reason) = &self.mode {
+            return Ok(ResourceState::Invalid {
+                reason: reason.clone(),
+            });
+        }
         if !self.target.exists() {
             return Ok(ResourceState::Missing);
         }
@@ -87,7 +107,11 @@ impl IntrinsicState for ChmodResource {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let desired_mode = self.mode.as_u32();
+            let mode = self
+                .mode
+                .as_ref()
+                .map_err(|reason| anyhow::anyhow!("{reason}"))?;
+            let desired_mode = mode.as_u32();
             if self.target.is_dir() {
                 check_dir_recursive(&self.target, desired_mode)
             } else {

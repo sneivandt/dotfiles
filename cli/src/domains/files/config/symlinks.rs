@@ -1,12 +1,14 @@
 //! Symlink configuration loading.
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Result, bail};
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::collections::hash_map::Entry;
 use std::path::{Component, Path, PathBuf};
 
 use crate::runtime::config_support::Diagnostic;
 use crate::runtime::config_support::config_section;
+
+mod glob_expansion;
+mod target_capture;
+mod target_validation;
 
 /// A symlink to create: source (in symlinks/) → target (in $HOME).
 #[derive(Debug, Clone)]
@@ -80,12 +82,7 @@ pub(crate) fn set_origin(symlinks: &mut [Symlink], root: &Path) {
 /// Returns an error when a glob is malformed, matches no entries, has
 /// mismatched source/target wildcard counts, or expands to duplicate targets.
 pub fn expand_glob_patterns(symlinks: &[Symlink], fallback: &Path) -> Result<Vec<Symlink>> {
-    let mut expanded = Vec::new();
-    for symlink in symlinks {
-        expanded.extend(expand_one(symlink, fallback)?);
-    }
-    validate_unique_targets(&expanded)?;
-    Ok(expanded)
+    glob_expansion::expand_glob_patterns(symlinks, fallback)
 }
 
 /// Resolve the symlinks directory for a single entry.
@@ -99,83 +96,6 @@ pub fn resolve_symlinks_dir(symlink: &Symlink, fallback: &Path) -> PathBuf {
         .as_deref()
         .unwrap_or(fallback)
         .join("symlinks")
-}
-
-#[derive(Debug)]
-struct GlobMatch {
-    relative_source: PathBuf,
-    captures: Vec<String>,
-}
-
-fn expand_one(symlink: &Symlink, fallback: &Path) -> Result<Vec<Symlink>> {
-    validate_supported_pattern("source", &symlink.source)?;
-    if let Some(target) = &symlink.target {
-        validate_supported_pattern("target", target)?;
-    }
-
-    let source_wildcards = wildcard_count(&symlink.source);
-    let target_wildcards = symlink
-        .target
-        .as_ref()
-        .map_or(0, |target| wildcard_count(target));
-    if source_wildcards == 0 {
-        if target_wildcards != 0 {
-            bail!(
-                "target pattern '{}' contains '*' but source '{}' is not a glob",
-                symlink.target.as_deref().unwrap_or_default(),
-                symlink.source
-            );
-        }
-        return Ok(vec![symlink.clone()]);
-    }
-    validate_paths(symlink)?;
-    if symlink.target.is_some() && source_wildcards != target_wildcards {
-        bail!(
-            "source pattern '{}' has {source_wildcards} wildcard(s), but target pattern '{}' has {target_wildcards}",
-            symlink.source,
-            symlink.target.as_deref().unwrap_or_default()
-        );
-    }
-
-    let symlinks_dir = resolve_symlinks_dir(symlink, fallback);
-    let matches = expand_segments(
-        &symlinks_dir,
-        &path_segments(&symlink.source),
-        Path::new(""),
-        &[],
-    )
-    .with_context(|| {
-        format!(
-            "expanding symlink glob '{}' under {}",
-            symlink.source,
-            symlinks_dir.display()
-        )
-    })?;
-    if matches.is_empty() {
-        bail!(
-            "symlink glob '{}' matched no entries under {}",
-            symlink.source,
-            symlinks_dir.display()
-        );
-    }
-
-    let mut expanded: Vec<Symlink> = matches
-        .into_iter()
-        .map(|glob_match| {
-            let target = symlink
-                .target
-                .as_ref()
-                .map(|target| apply_target_captures(target, &glob_match.captures))
-                .transpose()?;
-            Ok(Symlink {
-                source: path_to_config_string(&glob_match.relative_source),
-                target,
-                origin: symlink.origin.clone(),
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    expanded.sort_by(|left, right| left.source.cmp(&right.source));
-    Ok(expanded)
 }
 
 fn validate_relative_config_path(kind: &str, path: &str) -> Result<()> {
@@ -213,148 +133,11 @@ fn has_parent_component(path: &str) -> bool {
         || path.split(['/', '\\']).any(|segment| segment == "..")
 }
 
-fn validate_supported_pattern(kind: &str, pattern: &str) -> Result<()> {
-    for segment in path_segments(pattern) {
-        if segment == "**" {
-            bail!("{kind} pattern '{pattern}' uses unsupported recursive wildcard '**'");
-        }
-        if segment.contains('*') && segment != "*" {
-            bail!(
-                "{kind} pattern '{pattern}' uses unsupported wildcard segment '{segment}'; only a full path segment '*' is supported"
-            );
-        }
-    }
-    Ok(())
-}
-
-fn wildcard_count(pattern: &str) -> usize {
-    path_segments(pattern)
-        .into_iter()
-        .filter(|segment| segment == "*")
-        .count()
-}
-
-fn path_segments(path: &str) -> Vec<String> {
+pub(super) fn path_segments(path: &str) -> Vec<String> {
     path.split(['/', '\\'])
         .filter(|segment| !segment.is_empty())
         .map(ToOwned::to_owned)
         .collect()
-}
-
-/// Reports whether `path` is a real directory, without following symlinks.
-///
-/// Glob expansion recurses into directories via [`std::fs::read_dir`]. Using
-/// [`Path::is_dir`] would follow a symlink-to-directory and recurse outside the
-/// managed `symlinks/` tree. `symlink_metadata` inspects the entry itself, so a
-/// symlink is never treated as a directory to descend into.
-fn is_real_dir(path: &Path) -> bool {
-    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
-}
-
-fn expand_segments(
-    base: &Path,
-    remaining: &[String],
-    relative: &Path,
-    captures: &[String],
-) -> Result<Vec<GlobMatch>> {
-    let Some((segment, tail)) = remaining.split_first() else {
-        return Ok(base
-            .join(relative)
-            .exists()
-            .then(|| GlobMatch {
-                relative_source: relative.to_path_buf(),
-                captures: captures.to_vec(),
-            })
-            .into_iter()
-            .collect());
-    };
-
-    if segment == "*" {
-        let current = base.join(relative);
-        if !is_real_dir(&current) {
-            return Ok(Vec::new());
-        }
-        let mut entries: Vec<_> = std::fs::read_dir(&current)
-            .with_context(|| format!("reading directory {}", current.display()))?
-            .collect::<std::io::Result<Vec<_>>>()
-            .with_context(|| format!("reading directory entry in {}", current.display()))?;
-        entries.sort_by_key(std::fs::DirEntry::path);
-
-        let mut matches = Vec::new();
-        for entry in entries {
-            let capture = entry.file_name().to_string_lossy().into_owned();
-            let mut next_captures = captures.to_vec();
-            next_captures.push(capture.clone());
-            matches.extend(expand_segments(
-                base,
-                tail,
-                &relative.join(capture),
-                &next_captures,
-            )?);
-        }
-        return Ok(matches);
-    }
-
-    let next_relative = relative.join(segment);
-    if !base.join(&next_relative).exists() {
-        return Ok(Vec::new());
-    }
-    expand_segments(base, tail, &next_relative, captures)
-}
-
-fn apply_target_captures(target: &str, captures: &[String]) -> Result<String> {
-    let mut captures = captures.iter();
-    let mut segments = Vec::new();
-    for segment in path_segments(target) {
-        if segment == "*" {
-            let Some(capture) = captures.next() else {
-                bail!("target pattern '{target}' has more '*' wildcards than the source pattern");
-            };
-            segments.push(capture.clone());
-        } else {
-            segments.push(segment);
-        }
-    }
-    if captures.next().is_some() {
-        bail!("target pattern '{target}' has fewer '*' wildcards than the source pattern");
-    }
-    Ok(segments.join("/"))
-}
-
-fn path_to_config_string(path: &Path) -> String {
-    path.components()
-        .map(|component| component.as_os_str().to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-fn validate_unique_targets(symlinks: &[Symlink]) -> Result<()> {
-    let mut targets = HashMap::new();
-    for symlink in symlinks {
-        let target = target_key(symlink);
-        match targets.entry(target) {
-            Entry::Vacant(entry) => {
-                entry.insert(symlink.source.clone());
-            }
-            Entry::Occupied(entry) => {
-                bail!(
-                    "symlink target collision for '{}': '{}' and '{}' both map to the same target",
-                    entry.key(),
-                    entry.get(),
-                    symlink.source
-                );
-            }
-        }
-    }
-    Ok(())
-}
-
-fn target_key(symlink: &Symlink) -> String {
-    symlink
-        .target
-        .clone()
-        .unwrap_or_else(|| format!(".{}", symlink.source))
-        .replace('\\', "/")
 }
 
 /// Validate symlink entries and return any warnings.

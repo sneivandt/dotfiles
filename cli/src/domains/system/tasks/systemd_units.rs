@@ -2,7 +2,7 @@
 
 use anyhow::{Context as _, Result};
 
-use crate::domains::system::config::systemd_units::SystemdUnit;
+use crate::domains::system::config::systemd_units::{SystemdUnit, UnitScope};
 use crate::domains::system::resources::systemd_unit::SystemdUnitResource;
 use crate::engine::{
     Context, Domain, ExecutionPolicy, PlatformCapability, ProcessOpts, Task, TaskPhase, TaskResult,
@@ -55,7 +55,10 @@ impl Task for ConfigureSystemd {
     }
 
     fn needs_elevation(&self, _ctx: &Context) -> bool {
-        self.config.read().iter().any(|unit| unit.scope == "system")
+        self.config
+            .read()
+            .iter()
+            .any(|unit| unit.scope == UnitScope::System)
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -95,7 +98,7 @@ fn reload_daemons(ctx: &Context, units: &[SystemdUnit]) -> Result<()> {
         return Ok(());
     }
 
-    if units.iter().any(|unit| unit.scope == "user") {
+    if units.iter().any(|unit| unit.scope == UnitScope::User) {
         ctx.log().debug("running systemctl --user daemon-reload");
         ctx.executor()
             .run("systemctl", &["--user", "daemon-reload"])
@@ -103,7 +106,7 @@ fn reload_daemons(ctx: &Context, units: &[SystemdUnit]) -> Result<()> {
         ctx.log().debug("user daemon-reload succeeded");
     }
 
-    if units.iter().any(|unit| unit.scope == "system") {
+    if units.iter().any(|unit| unit.scope == UnitScope::System) {
         ctx.log().debug("running sudo systemctl daemon-reload");
         ctx.executor()
             .run("sudo", &["systemctl", "daemon-reload"])
@@ -165,7 +168,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
-            scope: "user".to_string(),
+            scope: UnitScope::User,
         });
         let units = ConfigHandle::new(config.units.clone());
         let ctx = make_platform_context_with_which(config, Os::Windows, false, true);
@@ -185,7 +188,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
-            scope: "user".to_string(),
+            scope: UnitScope::User,
         });
         let units = ConfigHandle::new(config.units.clone());
         let ctx = make_linux_context(config); // which() returns false
@@ -197,7 +200,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
-            scope: "user".to_string(),
+            scope: UnitScope::User,
         });
         let units = ConfigHandle::new(config.units.clone());
         let ctx = ContextBuilder::new(config)
@@ -213,7 +216,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
-            scope: "user".to_string(),
+            scope: UnitScope::User,
         });
         let units = ConfigHandle::new(config.units.clone());
         let ctx = ContextBuilder::new(config)
@@ -238,7 +241,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
-            scope: "user".to_string(),
+            scope: UnitScope::User,
         });
         // Ordered expectations:
         //   1. run("systemctl", ["--user", "daemon-reload"]) -> success
@@ -273,7 +276,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
-            scope: "user".to_string(),
+            scope: UnitScope::User,
         });
         // In dry-run mode daemon-reload is NOT called (guarded by `!ctx.dry_run`).
         // current_state() still runs to decide whether change would be needed.
@@ -298,7 +301,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "dunst.service".to_string(),
-            scope: "user".to_string(),
+            scope: UnitScope::User,
         });
         let mut mock = MockExecutor::new();
         mock.expect_run()
@@ -319,7 +322,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "sshd.service".to_string(),
-            scope: "system".to_string(),
+            scope: UnitScope::System,
         });
         let mut mock = MockExecutor::new();
         mock.expect_run()
@@ -344,7 +347,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "sshd.service".to_string(),
-            scope: "system".to_string(),
+            scope: UnitScope::System,
         });
         let units = ConfigHandle::new(config.units.clone());
         let ctx = make_platform_context_with_which(config, Os::Linux, false, true);
@@ -357,7 +360,7 @@ mod tests {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "sshd.service".to_string(),
-            scope: "system".to_string(),
+            scope: UnitScope::System,
         });
         let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();

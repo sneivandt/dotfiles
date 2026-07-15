@@ -23,5 +23,5 @@ pub fn run(
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
-    super::install::run_pipeline(global, opts, log, token, true)
+    super::install::run_pipeline(global, opts, log, token, super::install::RunMode::Update)
 }

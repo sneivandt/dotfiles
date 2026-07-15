@@ -1,9 +1,32 @@
 //! Execution: fetch, divergence check, and fast-forward merge.
+use std::time::Duration;
+
 use anyhow::Result;
 
 use crate::engine::{Context, TaskResult, UpdateSignal};
 
 use super::models::{CheckedRepository, RepositoryPlanReadiness, RepositoryUpdatePlan};
+
+const MAX_FETCH_ATTEMPTS: u32 = 3;
+
+const TRANSIENT_FETCH_ERROR_MARKERS: &[&str] = &[
+    "broken pipe",
+    "connection closed by remote host",
+    "connection refused",
+    "connection reset by peer",
+    "connection timed out",
+    "could not resolve hostname",
+    "early eof",
+    "failed to connect to new control master",
+    "mux_client_request_session",
+    "network is unreachable",
+    "operation timed out",
+    "recv failure: connection was reset",
+    "remote end hung up unexpectedly",
+    "remote host closed the connection",
+    "temporary failure in name resolution",
+    "unexpected disconnect while reading sideband packet",
+];
 
 /// Run `git fetch` for every repository, then fast-forward merge those that
 /// have upstream commits.
@@ -21,12 +44,7 @@ pub(super) fn apply_repository_updates(
 
         // Fetch first so divergence can be evaluated without invoking `git pull`,
         // which fails noisily when the local branch has diverged from upstream.
-        if let Err(e) = ctx.executor().run_in_with_env(
-            &repository.target.root,
-            "git",
-            &["fetch", "--quiet"],
-            git_env,
-        ) {
+        if let Err(e) = fetch_with_retry(ctx, repository, git_env) {
             let reason = repository.target.reason("git fetch failed");
             ctx.log().warn(&format!("{reason}: {e:#}"));
             return Ok(TaskResult::Failed(reason));
@@ -69,6 +87,50 @@ pub(super) fn apply_repository_updates(
         repo_updated.mark_updated();
     }
     Ok(TaskResult::Ok)
+}
+
+fn fetch_with_retry(
+    ctx: &Context,
+    repository: &CheckedRepository,
+    git_env: &[(&str, &str)],
+) -> Result<()> {
+    let mut attempt = 1_u32;
+    loop {
+        match ctx.executor().run_in_with_env(
+            &repository.target.root,
+            "git",
+            &["fetch", "--quiet"],
+            git_env,
+        ) {
+            Ok(_) => return Ok(()),
+            Err(error) if attempt < MAX_FETCH_ATTEMPTS && is_transient_fetch_error(&error) => {
+                ctx.log().warn(&format!(
+                    "transient git fetch failure for {} (attempt {attempt}/{MAX_FETCH_ATTEMPTS}), retrying: {error:#}",
+                    repository.target.description()
+                ));
+                std::thread::sleep(fetch_retry_delay(attempt));
+                attempt = attempt.saturating_add(1);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn is_transient_fetch_error(error: &anyhow::Error) -> bool {
+    let message = format!("{error:#}").to_ascii_lowercase();
+    TRANSIENT_FETCH_ERROR_MARKERS
+        .iter()
+        .any(|marker| message.contains(marker))
+}
+
+#[cfg(not(test))]
+fn fetch_retry_delay(attempt: u32) -> Duration {
+    Duration::from_secs(u64::from(attempt))
+}
+
+#[cfg(test)]
+const fn fetch_retry_delay(_attempt: u32) -> Duration {
+    Duration::ZERO
 }
 
 /// Check whether the repository needs a merge by comparing HEAD with the

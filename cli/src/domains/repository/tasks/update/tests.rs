@@ -316,6 +316,68 @@ fn run_returns_failed_when_fetch_fails() {
 }
 
 #[test]
+fn run_retries_transient_fetch_failure() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    for stdout in ["refs/heads/main", ""] {
+        let output = stdout.to_string();
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_, _, _, _| Ok(ok_result(&output)));
+    }
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_, _, _, _| {
+            Err(anyhow::anyhow!(
+                "mux_client_request_session: read from master failed: Connection reset by peer\n\
+                 Failed to connect to new control master"
+            ))
+        });
+    for stdout in ["", "abc123", "abc123"] {
+        let output = stdout.to_string();
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_, _, _, _| Ok(ok_result(&output)));
+    }
+    let ctx = make_update_context(config, mock);
+    let repo_updated = UpdateSignal::new();
+    let task = UpdateRepository::new(repo_updated.clone());
+
+    let result = task.run(&ctx).unwrap();
+
+    assert!(matches!(result, TaskResult::Ok));
+    assert!(!repo_updated.was_updated());
+}
+
+#[test]
+fn run_stops_after_transient_fetch_retries_are_exhausted() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    for stdout in ["refs/heads/main", ""] {
+        let output = stdout.to_string();
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_, _, _, _| Ok(ok_result(&output)));
+    }
+    mock.expect_run_in_with_env()
+        .times(3)
+        .in_sequence(&mut seq)
+        .returning(|_, _, _, _| Err(anyhow::anyhow!("connection reset by peer")));
+    let ctx = make_update_context(config, mock);
+    let task = UpdateRepository::new(UpdateSignal::new());
+
+    let result = task.run(&ctx).unwrap();
+
+    assert!(matches!(result, TaskResult::Failed(ref s) if s.contains("git fetch failed")));
+}
+
+#[test]
 fn run_skips_when_overlay_has_local_changes() {
     let main_root = PathBuf::from("/tmp/main");
     let overlay = tempfile::tempdir().unwrap();

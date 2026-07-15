@@ -19,7 +19,7 @@ Validation happens at two levels: **runtime** (the `test` command) and
 |---|---|
 | `ValidateConfigWarnings` | Fails when `Config::validate()` emits diagnostics |
 | `ValidateSymlinkSources` | Every symlink source file exists on disk |
-| `ValidateConfigFiles` | Required config files (`profiles.toml`, `symlinks.toml`, `packages.toml`, `pam.toml`, `manifest.toml`) exist |
+| `ValidateConfigFiles` | Required config files (`profiles.toml`, `symlinks.toml`, `packages.toml`, `manifest.toml`) exist |
 | `ValidateManifestSync` | `symlinks.toml` and `manifest.toml` expose the same non-base category sections |
 | `ValidateApmPlugins` | Local APM plugins pass `apm pack --dry-run --verbose` when APM is available |
 | `RunShellcheck` | Shell scripts pass shellcheck (skipped if unavailable) |

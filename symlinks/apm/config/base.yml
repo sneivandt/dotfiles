@@ -16,7 +16,5 @@ dependencies:
 
     # Agent workflow
     - github/awesome-copilot/agents/context-architect.agent.md#main
-    - github/awesome-copilot/skills/context-map#main
     - github/awesome-copilot/skills/refactor-plan#main
-    - github/awesome-copilot/skills/what-context-needed#main
     - github/awesome-copilot/skills/agent-supply-chain#main

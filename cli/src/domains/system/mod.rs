@@ -1,4 +1,4 @@
-//! System domain: PAM, registry, systemd units, developer mode, WSL.
+//! System domain: registry, systemd units, developer mode, WSL.
 
 pub mod config;
 pub mod resources;

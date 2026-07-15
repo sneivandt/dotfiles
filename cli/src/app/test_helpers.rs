@@ -36,7 +36,6 @@ pub fn empty_config(root: PathBuf) -> Config {
         symlinks: vec![],
         registry: vec![],
         units: vec![],
-        pam_services: vec![],
         chmod: vec![],
         vscode_extensions: vec![],
         git_settings: vec![],

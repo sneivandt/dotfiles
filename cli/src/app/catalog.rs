@@ -29,7 +29,6 @@ use crate::domains::repository::tasks::update::UpdateRepository;
 use crate::domains::shell::tasks::completions::GenerateCompletions;
 use crate::domains::shell::tasks::login_shell::ConfigureShell;
 use crate::domains::system::tasks::developer_mode::EnableDeveloperMode;
-use crate::domains::system::tasks::pam::ConfigurePam;
 use crate::domains::system::tasks::registry::ApplyRegistry;
 use crate::domains::system::tasks::systemd_units::ConfigureSystemd;
 use crate::domains::system::tasks::wsl_conf::InstallWslConf;
@@ -103,10 +102,6 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
                 id::<InstallAurPackages>(),
                 id::<InstallSymlinks>(),
             ],
-        ),
-        with_deps(
-            ConfigurePam::new(store.pam_services.clone()),
-            &[id::<InstallPackages>(), id::<InstallAurPackages>()],
         ),
         Box::new(ApplyRegistry::new(store.registry.clone())),
         with_deps(
@@ -193,8 +188,8 @@ mod tests {
         let tasks = all_install_tasks(test_params());
         assert_eq!(
             tasks.len(),
-            24,
-            "expected 24 install tasks — did you add a new task without updating \
+            23,
+            "expected 23 install tasks — did you add a new task without updating \
              all_install_tasks()? Update the registration list and this test."
         );
     }

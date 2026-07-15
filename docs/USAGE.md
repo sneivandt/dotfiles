@@ -245,7 +245,6 @@ run in parallel whenever their dependencies allow.
 | Provision | Configure Copilot | Applies Copilot CLI settings from `conf/copilot.toml`. |
 | Provision | Configure default shell | Sets the default shell after packages are installed. |
 | Provision | Configure systemd units | Enables and starts user or system units from `conf/systemd-units.toml` after symlinks exist. |
-| Provision | Configure PAM services | Writes PAM service files from `conf/pam.toml` under `/etc/pam.d` (Linux only, via sudo when not root). |
 | Provision | Install VS Code extensions | Installs extensions from `conf/vscode-extensions.toml`. |
 | Provision | Install APM packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml` and runs `apm install` to converge locked dependencies and redeploy local plugin content. It never advances locked refs. See [APM Tooling](APM.md). |
 | Provision | Write wsl.conf | Writes `/etc/wsl.conf` with `generateResolvConf = true` under `[network]` (WSL only, via sudo when not root). |

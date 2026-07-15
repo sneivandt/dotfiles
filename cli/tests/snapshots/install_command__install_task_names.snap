@@ -16,7 +16,6 @@ Install symlinks
 Configure file permissions
 Configure default shell
 Configure systemd units
-Configure PAM services
 Configure registry settings
 Install VS Code extensions
 Install APM packages

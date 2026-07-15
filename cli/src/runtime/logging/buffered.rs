@@ -41,9 +41,10 @@ impl LogEntry {
         }
     }
 
-    fn detail_line(&self) -> Option<&str> {
+    fn detail_line(&self, status: TaskStatus) -> Option<&str> {
         match self {
             Self::Info(msg) | Self::DryRun(msg) | Self::Always(msg) => Some(msg),
+            Self::Warn(msg) | Self::Error(msg) if status == TaskStatus::Failed => Some(msg),
             Self::Stage(_) | Self::Debug(_) | Self::Warn(_) | Self::Error(_) => None,
         }
     }
@@ -63,7 +64,12 @@ impl LogEntry {
         }
     }
 
-    fn replay_non_verbose(&self) {
+    fn replay_non_verbose(&self, status: TaskStatus) {
+        if status == TaskStatus::Failed {
+            self.replay_file_only();
+            return;
+        }
+
         match self {
             Self::Stage(_) | Self::Info(_) | Self::Debug(_) | Self::DryRun(_) | Self::Always(_) => {
                 self.replay_file_only();
@@ -72,8 +78,8 @@ impl LogEntry {
         }
     }
 
-    const fn is_visible_in_non_verbose(&self) -> bool {
-        matches!(self, Self::Warn(_) | Self::Error(_))
+    fn is_visible_in_non_verbose(&self, status: TaskStatus) -> bool {
+        status != TaskStatus::Failed && matches!(self, Self::Warn(_) | Self::Error(_))
     }
 }
 
@@ -139,7 +145,7 @@ impl BufferedLog {
             }
         } else {
             for entry in &entries {
-                entry.replay_non_verbose();
+                entry.replay_non_verbose(TaskStatus::Ok);
             }
         }
     }
@@ -174,7 +180,7 @@ impl BufferedLog {
             if should_record_task_details(status) {
                 let detail_lines: Vec<String> = entries
                     .iter()
-                    .filter_map(LogEntry::detail_line)
+                    .filter_map(|entry| entry.detail_line(status))
                     .map(ToString::to_string)
                     .collect();
                 self.inner.record_task_details(task_name, detail_lines);
@@ -189,12 +195,14 @@ impl BufferedLog {
                     self.inner.mark_task_console_output();
                 }
             } else {
-                let has_visible_entries = entries.iter().any(LogEntry::is_visible_in_non_verbose);
+                let has_visible_entries = entries
+                    .iter()
+                    .any(|entry| entry.is_visible_in_non_verbose(status));
                 if has_visible_entries {
                     self.inner.separate_from_startup();
                 }
                 for entry in &entries {
-                    entry.replay_non_verbose();
+                    entry.replay_non_verbose(status);
                 }
                 if has_visible_entries {
                     self.inner.mark_task_console_output();
@@ -417,7 +425,7 @@ mod tests {
             LogEntry::DryRun("dry-run".to_string()),
             LogEntry::Always("always".to_string()),
         ] {
-            entry.replay_non_verbose();
+            entry.replay_non_verbose(TaskStatus::Ok);
         }
 
         let targets = targets
@@ -442,6 +450,48 @@ mod tests {
             )),
             "warnings and errors must not be demoted to file-only replay: {targets:?}"
         );
+    }
+
+    #[test]
+    fn non_verbose_failed_replay_keeps_errors_file_only() {
+        use tracing_subscriber::layer::SubscriberExt as _;
+
+        let targets = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry().with(TargetCaptureLayer {
+            targets: Arc::clone(&targets),
+        });
+        let dispatch = tracing::Dispatch::new(subscriber);
+        let _guard = crate::runtime::logging::test_dispatch_guard(&dispatch);
+
+        LogEntry::Warn("warn".to_string()).replay_non_verbose(TaskStatus::Failed);
+        LogEntry::Error("error".to_string()).replay_non_verbose(TaskStatus::Failed);
+
+        let targets = targets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert_eq!(
+            targets,
+            vec!["dotfiles::file_only_warn", "dotfiles::file_only_error"],
+            "failed-task errors should be persisted without separate console lines"
+        );
+    }
+
+    #[test]
+    fn failed_task_errors_become_task_details() {
+        let warning = LogEntry::Warn("failed: package install".to_string());
+        let error = LogEntry::Error("packages: command failed".to_string());
+
+        assert_eq!(
+            warning.detail_line(TaskStatus::Failed),
+            Some("failed: package install")
+        );
+        assert_eq!(
+            error.detail_line(TaskStatus::Failed),
+            Some("packages: command failed")
+        );
+        assert_eq!(warning.detail_line(TaskStatus::Ok), None);
+        assert_eq!(error.detail_line(TaskStatus::Ok), None);
     }
 
     #[test]

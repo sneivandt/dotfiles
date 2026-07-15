@@ -19,7 +19,6 @@ fn setup_load(
         "symlinks.toml",
         "registry.toml",
         "systemd-units.toml",
-        "pam.toml",
         "chmod.toml",
         "vscode-extensions.toml",
         "git-config.toml",
@@ -64,7 +63,6 @@ fn load_with_empty_config_files() {
     assert!(config.symlinks.is_empty());
     assert!(config.registry.is_empty());
     assert!(config.units.is_empty());
-    assert!(config.pam_services.is_empty());
     assert!(config.chmod.is_empty());
     assert!(config.vscode_extensions.is_empty());
 }
@@ -209,36 +207,6 @@ fn load_populates_systemd_units_on_linux() {
     );
     let config = Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
     assert_eq!(config.units.len(), 1);
-}
-
-#[test]
-fn load_populates_pam_services_on_linux() {
-    let (dir, profile, platform) = setup_load(
-        linux(),
-        &[(
-            "pam.toml",
-            "[base]\nservices = [{ name = \"hyprlock\", content = \"auth include login\\n\" }]\n",
-        )],
-    );
-    let config = Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
-    assert_eq!(config.pam_services.len(), 1);
-    assert_eq!(config.pam_services[0].name, "hyprlock");
-}
-
-#[test]
-fn load_skips_pam_services_on_windows() {
-    let (dir, profile, platform) = setup_load(
-        windows(),
-        &[(
-            "pam.toml",
-            "[base]\nservices = [{ name = \"hyprlock\", content = \"auth include login\\n\" }]\n",
-        )],
-    );
-    let config = Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
-    assert!(
-        config.pam_services.is_empty(),
-        "PAM services skipped on windows"
-    );
 }
 
 #[test]

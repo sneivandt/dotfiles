@@ -18,7 +18,6 @@ use crate::domains::git::config::git_config::GitSetting;
 use crate::domains::overlay::config::scripts::ScriptEntry;
 use crate::domains::packages::config::packages::Package;
 use crate::domains::repository::config::manifest::Manifest;
-use crate::domains::system::config::pam::PamService;
 use crate::domains::system::config::registry::RegistryEntry;
 use crate::domains::system::config::systemd_units::SystemdUnit;
 use crate::runtime::ConfigHandle;
@@ -41,8 +40,6 @@ pub struct ConfigStore {
     pub registry: ConfigHandle<Vec<RegistryEntry>>,
     /// Systemd user units to enable.
     pub units: ConfigHandle<Vec<SystemdUnit>>,
-    /// PAM service files to configure.
-    pub pam_services: ConfigHandle<Vec<PamService>>,
     /// File permissions to apply (chmod).
     pub chmod: ConfigHandle<Vec<ChmodEntry>>,
     /// VS Code extensions to install.
@@ -72,7 +69,6 @@ impl ConfigStore {
             symlinks: ConfigHandle::new(config.symlinks.clone()),
             registry: ConfigHandle::new(config.registry.clone()),
             units: ConfigHandle::new(config.units.clone()),
-            pam_services: ConfigHandle::new(config.pam_services.clone()),
             chmod: ConfigHandle::new(config.chmod.clone()),
             vscode_extensions: ConfigHandle::new(config.vscode_extensions.clone()),
             git_settings: ConfigHandle::new(config.git_settings.clone()),
@@ -98,7 +94,6 @@ impl ConfigStore {
         self.symlinks.swap(config.symlinks.clone());
         self.registry.swap(config.registry.clone());
         self.units.swap(config.units.clone());
-        self.pam_services.swap(config.pam_services.clone());
         self.chmod.swap(config.chmod.clone());
         self.vscode_extensions
             .swap(config.vscode_extensions.clone());

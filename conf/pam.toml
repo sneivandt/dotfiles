@@ -1,5 +1,0 @@
-# PAM service files managed by the dotfiles engine.
-
-[arch-desktop]
-# The hyprlock package owns /etc/pam.d/hyprlock and keeps its complete stack current.
-services = []

@@ -184,23 +184,6 @@ units = [
 
 ---
 
-### `pam.toml`
-**Purpose**: Manages PAM service files under `/etc/pam.d`.
-
-**Format**: Sections represent categories; entries are inline tables with `name` and exact `content`.
-
-**Example**:
-```toml
-[arch-desktop]
-services = [
-  { name = "hyprlock", content = "# PAM configuration file for hyprlock\n# the 'login' configuration file (see /etc/pam.d/login)\n\nauth        include     login\n" },
-]
-```
-
-**Note**: PAM files are authentication-critical system configuration and are written with `sudo` when needed. Service names must be plain file names, not paths.
-
----
-
 ### `chmod.toml`
 **Purpose**: Specifies file permissions to apply.
 

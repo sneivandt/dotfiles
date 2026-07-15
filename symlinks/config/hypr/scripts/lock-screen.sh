@@ -18,4 +18,6 @@ exec systemd-run \
   --unit=hyprlock \
   --property=Type=exec \
   --property=NoNewPrivileges=no \
+  --property=Restart=on-abnormal \
+  --property=RestartSec=1 \
   /usr/bin/hyprlock --no-fade-in

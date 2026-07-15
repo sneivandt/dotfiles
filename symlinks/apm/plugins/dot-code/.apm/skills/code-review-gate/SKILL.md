@@ -51,9 +51,11 @@ immediately.
    when context determines correctness.
 3. Trace inputs to outputs for changed behavior, especially across config,
    filesystem, shell/process, network, auth, or persistence boundaries.
-4. Check whether existing tests or validation commands actually exercise the
+4. When an LSP is available, use semantic references, implementations, and call
+   hierarchy to verify affected code paths before relying on text search.
+5. Check whether existing tests or validation commands actually exercise the
    behavior. Recommend targeted tests when coverage is missing.
-5. Self-check every finding: "Can I point to exact evidence and a plausible
+6. Self-check every finding: "Can I point to exact evidence and a plausible
    failure mode?" If not, omit it or label it as a question.
 
 ## Output

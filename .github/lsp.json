@@ -1,0 +1,12 @@
+{
+  "lspServers": {
+    "rust-analyzer": {
+      "command": "rust-analyzer",
+      "args": [],
+      "fileExtensions": {
+        ".rs": "rust"
+      },
+      "rootUri": "cli"
+    }
+  }
+}

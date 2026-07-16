@@ -5,8 +5,6 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::engine::{Context, Task, TaskPhase};
-#[cfg(unix)]
-use crate::infra::logging::Log;
 use crate::infra::logging::Logger;
 
 use super::error::TaskFailures;

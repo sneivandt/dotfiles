@@ -11,7 +11,7 @@ description: >
 
 - changing console/log-file output behavior
 - adding task result recording or summary behavior
-- touching `cli/src/runtime/logging/` or logger usage in task execution
+- touching `cli/src/infra/logging/` or logger usage in task execution
 
 ## Do not use this skill when
 
@@ -29,9 +29,9 @@ description: >
   persistent logs remain complete.
 
 Canonical implementations:
-- `cli/src/runtime/logging/mod.rs`
-- `cli/src/runtime/logging/subscriber.rs`
-- `cli/src/runtime/logging/logger/`
+- `cli/src/infra/logging/mod.rs`
+- `cli/src/infra/logging/subscriber.rs`
+- `cli/src/infra/logging/logger/`
 - `cli/src/engine/task/execute.rs` (task result recording)
 
 ## Implementation procedure / core patterns

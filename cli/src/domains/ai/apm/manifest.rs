@@ -152,7 +152,7 @@ pub(super) fn write_merged_manifest(target: &Path, content: &str) -> Result<()> 
     let tmp = manifest_temp_path(target);
     std::fs::write(&tmp, content)
         .with_context(|| format!("writing temporary merged manifest {}", tmp.display()))?;
-    let mut guard = crate::runtime::fs::TempPath::new(tmp.clone());
+    let mut guard = crate::infra::fs::TempPath::new(tmp.clone());
     std::fs::rename(&tmp, target).with_context(|| {
         format!(
             "renaming {} into place at {}",

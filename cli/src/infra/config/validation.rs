@@ -1,6 +1,6 @@
 //! Declarative validation helpers for configuration items.
 use super::diagnostics::{Diagnostic, Severity};
-use crate::runtime::logging::Output;
+use crate::infra::logging::Output;
 
 /// A single check result: `(code, severity, message)`.
 ///
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn display_diagnostics_formats_severity_and_code() {
-        use crate::runtime::logging::isolated_logger;
+        use crate::infra::logging::isolated_logger;
 
         let (logger, _tmp, _guard) = isolated_logger();
         let diagnostics = vec![

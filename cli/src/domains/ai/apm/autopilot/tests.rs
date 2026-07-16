@@ -10,8 +10,8 @@ use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::engine::{Context, Task, TaskResult};
-use crate::runtime::exec::{ExecResult, MockExecutor};
-use crate::runtime::platform::{Os, Platform};
+use crate::infra::exec::{ExecResult, MockExecutor};
+use crate::infra::platform::{Os, Platform};
 
 use super::super::test_fixture::{
     make_context_with_home, ok_result, write_copilot_app_db,

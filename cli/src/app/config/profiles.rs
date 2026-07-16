@@ -1,223 +1,32 @@
-//! Profile definition and resolution.
-use anyhow::{Context as _, Result, bail};
-use serde::Deserialize;
-use std::collections::HashMap;
-use std::io::{self, Write};
+//! Profile selection and resolution.
+
+mod definitions;
+mod environment;
+mod persistence;
+mod prompt;
+mod resolution;
+
+use anyhow::Result;
 use std::path::Path;
 
-use crate::runtime::config_support::category_matcher::Category;
-use crate::runtime::error::ConfigError;
-use crate::runtime::platform::Platform;
+use crate::infra::platform::Platform;
 
-/// A resolved profile with its active and excluded categories.
-#[derive(Debug, Clone)]
-pub struct Profile {
-    /// The profile name (e.g., "base", "desktop").
-    pub name: String,
-    /// Categories that are active for this profile.
-    pub active_categories: Vec<Category>,
-    /// Categories that are excluded for this profile.
-    pub excluded_categories: Vec<Category>,
-}
+use definitions::load_definitions;
+use prompt::prompt_interactive_with_defs;
+use resolution::resolve_with_defs;
 
-/// Raw profile definition from profiles.toml.
-#[derive(Debug, Clone, Deserialize)]
-struct ProfileDef {
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    include: Vec<String>,
-    #[serde(default)]
-    exclude: Vec<String>,
-}
-
-/// Load profile definitions from profiles.toml.
-fn load_definitions(path: &Path) -> Result<HashMap<String, ProfileDef>, ConfigError> {
-    if !path.exists() {
-        return Ok(default_definitions());
-    }
-
-    let content = std::fs::read_to_string(path).map_err(|e| ConfigError::Io {
-        path: path.display().to_string(),
-        source: e,
-    })?;
-
-    toml::from_str(&content).map_err(|e| ConfigError::TomlParse {
-        path: path.display().to_string(),
-        source: e,
-    })
-}
-
-fn default_definitions() -> HashMap<String, ProfileDef> {
-    let mut map = HashMap::new();
-    map.insert(
-        "base".to_string(),
-        ProfileDef {
-            description: Some("Core shell environment, no desktop GUI".to_string()),
-            include: vec![],
-            exclude: vec!["desktop".to_string()],
-        },
-    );
-    map.insert(
-        "desktop".to_string(),
-        ProfileDef {
-            description: Some("Full graphical desktop (Arch + Hyprland/Wayland)".to_string()),
-            include: vec!["desktop".to_string()],
-            exclude: vec![],
-        },
-    );
-    map
-}
-
-/// Resolve a profile by name: compute the active and excluded categories,
-/// applying platform auto-detection overrides.
-///
-/// # Errors
-///
-/// Returns an error if the profile is not found or the profiles.toml file cannot be parsed.
+pub use environment::read_from_env;
+pub use persistence::{persist, read_persisted};
 #[cfg(any(test, feature = "internal-api", doctest))]
-pub fn resolve(name: &str, conf_dir: &Path, platform: Platform) -> Result<Profile, ConfigError> {
-    let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
-    resolve_with_defs(name, &defs, platform)
-}
-
-/// Resolve a profile from already-loaded definitions, applying platform
-/// auto-detection overrides.
-fn resolve_with_defs(
-    name: &str,
-    defs: &HashMap<String, ProfileDef>,
-    platform: Platform,
-) -> Result<Profile, ConfigError> {
-    let mut available_names: Vec<&str> = defs.keys().map(String::as_str).collect();
-    available_names.sort_unstable();
-    let available = available_names.join(", ");
-    let def = defs.get(name).ok_or_else(|| ConfigError::InvalidProfile {
-        name: name.to_string(),
-        available: available.clone(),
-    })?;
-
-    // Start with the profile's own include/exclude
-    let mut active: Vec<Category> = vec![Category::Base];
-    active.extend(def.include.iter().map(|s| Category::from_tag(s)));
-
-    let mut excluded: Vec<Category> = def.exclude.iter().map(|s| Category::from_tag(s)).collect();
-
-    // Auto-add platform-detected categories
-    for category in [Category::Linux, Category::Windows, Category::Arch] {
-        if !platform.excludes_category(&category) {
-            active.push(category);
-        } else if !excluded.contains(&category) {
-            excluded.push(category);
-        }
-    }
-
-    // Remove any active categories that are also excluded
-    active.retain(|c| !excluded.contains(c));
-
-    // Deduplicate
-    active.sort();
-    active.dedup();
-    excluded.sort();
-    excluded.dedup();
-
-    Ok(Profile {
-        name: name.to_string(),
-        active_categories: active,
-        excluded_categories: excluded,
-    })
-}
-
-/// Try to read the profile from the `DOTFILES_PROFILE` environment variable.
-#[must_use]
-pub fn read_from_env() -> Option<String> {
-    parse_env_profile(std::env::var("DOTFILES_PROFILE").ok())
-}
-
-fn parse_env_profile(raw: Option<String>) -> Option<String> {
-    raw.filter(|v| !v.is_empty())
-}
-
-/// The git config key used to persist the selected profile.
-const PROFILE_KEY: &str = "dotfiles.profile";
-
-/// Try to read the persisted profile from the repository's local git config
-/// (`dotfiles.profile`).
-#[must_use]
-pub fn read_persisted(root: &Path) -> Option<String> {
-    crate::runtime::config_support::git_state::read_local(root, PROFILE_KEY)
-}
-
-/// Persist the profile name to the repository's local git config so future
-/// runs don't need to prompt interactively.
-///
-/// # Errors
-///
-/// Returns an error if the repository cannot be discovered or the config
-/// cannot be written.
-pub fn persist(root: &Path, name: &str) -> Result<()> {
-    crate::runtime::config_support::git_state::persist_local(root, PROFILE_KEY, name)
-}
-
-/// Interactively prompt the user to select a profile.
-///
-/// Profile names and descriptions are read from `conf/profiles.toml`.
-///
-/// # Errors
-///
-/// Returns an error if profiles cannot be loaded or user input cannot be read.
+pub use prompt::prompt_interactive;
+pub use resolution::Profile;
 #[cfg(any(test, feature = "internal-api", doctest))]
-pub fn prompt_interactive(conf_dir: &Path) -> Result<String> {
-    let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
-    prompt_interactive_with_defs(&defs)
-}
+pub use resolution::resolve;
 
-/// Interactively prompt the user to select a profile from already-loaded
-/// definitions.
-#[allow(clippy::print_stdout, reason = "intentional user-facing output")]
-fn prompt_interactive_with_defs(defs: &HashMap<String, ProfileDef>) -> Result<String> {
-    let mut options: Vec<(&str, Option<&str>)> = defs
-        .iter()
-        .map(|(name, def)| (name.as_str(), def.description.as_deref()))
-        .collect();
-    options.sort_by_key(|(a, _)| *a);
-
-    if options.is_empty() {
-        bail!("no compatible profiles found");
-    }
-
-    println!("\nSelect a profile:");
-    for (i, (name, desc)) in options.iter().enumerate() {
-        if let Some(d) = desc {
-            println!(
-                "  \x1b[1m{}\x1b[0m) {name} \u{2014} {d}",
-                i.saturating_add(1)
-            );
-        } else {
-            println!("  \x1b[1m{}\x1b[0m) {name}", i.saturating_add(1));
-        }
-    }
-    print!("\nProfile [1-{}]: ", options.len());
-    io::stdout().flush().context("flushing stdout")?;
-
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .context("reading profile selection")?;
-
-    let choice: usize = input
-        .trim()
-        .parse()
-        .map_err(|_| anyhow::anyhow!("invalid selection"))?;
-
-    if choice == 0 || choice > options.len() {
-        bail!("selection out of range");
-    }
-
-    options
-        .get(choice.saturating_sub(1))
-        .map(|(name, _)| (*name).to_string())
-        .context("selection out of range")
-}
+#[cfg(test)]
+use definitions::default_definitions;
+#[cfg(test)]
+use environment::parse_env_profile;
 
 /// Resolve the profile from CLI arg, `DOTFILES_PROFILE` env var, persisted
 /// git config, or interactive prompt.
@@ -265,8 +74,8 @@ pub fn resolve_from_args(
 )]
 mod tests {
     use super::*;
-    use crate::runtime::config_support::category_matcher::Category;
-    use crate::runtime::platform::{Os, Platform};
+    use crate::infra::config::category_matcher::Category;
+    use crate::infra::platform::{Os, Platform};
 
     fn linux_platform() -> Platform {
         Platform::new(Os::Linux, false)

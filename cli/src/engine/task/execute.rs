@@ -8,7 +8,7 @@
 //! recorded result.
 
 use crate::engine::{Context, TaskResult};
-use crate::runtime::logging::{DiagEvent, TaskStatus, diag_task_context};
+use crate::infra::logging::{DiagEvent, TaskStatus, diag_task_context};
 
 use super::{Domain, ExecutionPolicy, Task};
 

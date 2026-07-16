@@ -17,7 +17,7 @@ use crate::engine::{
     Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
 };
 use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
-use crate::runtime::ConfigHandle;
+use crate::infra::ConfigHandle;
 
 // ---------------------------------------------------------------------------
 // Static task: report the startup snapshot

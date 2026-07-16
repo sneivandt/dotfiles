@@ -1,7 +1,7 @@
 use super::*;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::runtime::logging::TaskStatus;
-use crate::runtime::platform::Platform;
+use crate::infra::logging::TaskStatus;
+use crate::infra::platform::Platform;
 use crate::test_helpers::{empty_config, make_static_context};
 use anyhow::Result;
 use std::cell::Cell;

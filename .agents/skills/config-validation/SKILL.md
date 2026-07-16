@@ -58,7 +58,7 @@ rule.
 
 ### Validator Builder
 
-`runtime/config_support/validation.rs` provides a fluent builder:
+`infra/config/validation.rs` provides a fluent builder:
 
 ```rust
 let diagnostics = Validator::new("packages.toml")

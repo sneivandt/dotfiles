@@ -6,7 +6,7 @@ use super::platform::is_link_like;
 use crate::engine::{ResourceResult, ResourceState};
 
 pub(super) fn pre_apply_warning(target: &Path) -> ResourceResult<Option<String>> {
-    let metadata = crate::runtime::fs::symlink_metadata_optional(target, "stat target")?;
+    let metadata = crate::infra::fs::symlink_metadata_optional(target, "stat target")?;
     Ok(metadata
         .filter(|meta| !is_link_like(target, meta))
         .map(|_| {
@@ -24,12 +24,12 @@ pub(super) fn current_state(resource: &SymlinkResource) -> Result<ResourceState>
         });
     }
 
-    if let Some(reason) = crate::runtime::fs::missing_source_reason(&resource.source) {
+    if let Some(reason) = crate::infra::fs::missing_source_reason(&resource.source) {
         return Ok(ResourceState::Invalid { reason });
     }
 
     std::fs::read_link(&resource.target).map_or_else(
-        |_| match crate::runtime::fs::symlink_metadata_optional(&resource.target, "stat target")? {
+        |_| match crate::infra::fs::symlink_metadata_optional(&resource.target, "stat target")? {
             Some(_) => Ok(ResourceState::Incorrect {
                 current: "target is a regular file or dangling symlink".to_string(),
             }),

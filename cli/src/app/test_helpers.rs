@@ -10,10 +10,10 @@ use std::sync::Arc;
 use crate::app::config::Config;
 use crate::app::config::profiles::Profile;
 use crate::domains::repository::config::manifest::Manifest;
-use crate::runtime::config_support::category_matcher::Category;
-use crate::runtime::exec::{Executor, MockExecutor};
-use crate::runtime::logging::Logger;
-use crate::runtime::platform::Platform;
+use crate::infra::config::category_matcher::Category;
+use crate::infra::exec::{Executor, MockExecutor};
+use crate::infra::logging::Logger;
+use crate::infra::platform::Platform;
 
 use crate::engine::Context;
 
@@ -96,7 +96,7 @@ pub fn stub_executor(which_result: bool) -> MockExecutor {
 ///
 /// ```ignore
 /// let ctx = ContextBuilder::new(config)
-///     .os(crate::runtime::platform::Os::Linux)
+///     .os(crate::infra::platform::Os::Linux)
 ///     .arch(true)
 ///     .which(true)
 ///     .build();
@@ -106,7 +106,7 @@ pub fn stub_executor(which_result: bool) -> MockExecutor {
 #[allow(clippy::struct_excessive_bools, reason = "test fixture")]
 pub struct ContextBuilder {
     config: Config,
-    os: crate::runtime::platform::Os,
+    os: crate::infra::platform::Os,
     is_arch: bool,
     is_wsl: bool,
     which_result: bool,
@@ -118,7 +118,7 @@ impl ContextBuilder {
     pub fn new(config: Config) -> Self {
         Self {
             config,
-            os: crate::runtime::platform::Os::Linux,
+            os: crate::infra::platform::Os::Linux,
             is_arch: false,
             is_wsl: false,
             which_result: false,
@@ -127,7 +127,7 @@ impl ContextBuilder {
     }
 
     /// Set the target OS.
-    pub fn os(mut self, os: crate::runtime::platform::Os) -> Self {
+    pub fn os(mut self, os: crate::infra::platform::Os) -> Self {
         self.os = os;
         self
     }
@@ -183,7 +183,7 @@ impl ContextBuilder {
 #[must_use]
 pub fn make_platform_context_with_which(
     config: Config,
-    os: crate::runtime::platform::Os,
+    os: crate::infra::platform::Os,
     is_arch: bool,
     which_result: bool,
 ) -> Context {
@@ -208,7 +208,7 @@ pub fn make_linux_context(config: Config) -> Context {
 #[must_use]
 pub fn make_windows_context(config: Config) -> Context {
     ContextBuilder::new(config)
-        .os(crate::runtime::platform::Os::Windows)
+        .os(crate::infra::platform::Os::Windows)
         .build()
 }
 
@@ -226,7 +226,7 @@ pub fn make_arch_context(config: Config) -> Context {
 #[must_use]
 pub fn make_static_context(config: Config) -> (Context, Arc<Logger>) {
     let log = Arc::new(Logger::new("test"));
-    let log_output: Arc<dyn crate::runtime::logging::Log> = Arc::<Logger>::clone(&log);
+    let log_output: Arc<dyn crate::infra::logging::Log> = Arc::<Logger>::clone(&log);
     let ctx = make_linux_context(config).with_log(log_output);
     (ctx, log)
 }

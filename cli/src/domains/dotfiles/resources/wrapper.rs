@@ -21,7 +21,7 @@ impl WrapperType {
     /// Detect the wrapper type from the `DOTFILES_WRAPPER` environment
     /// variable, falling back to platform heuristics.
     #[must_use]
-    pub fn detect(platform: crate::runtime::platform::Platform) -> Self {
+    pub fn detect(platform: crate::infra::platform::Platform) -> Self {
         match std::env::var("DOTFILES_WRAPPER").as_deref() {
             Ok("sh") => Self::Sh,
             Ok("pwsh") => Self::Pwsh,
@@ -102,7 +102,7 @@ impl WrapperResource {
     }
 
     fn target_metadata(&self) -> Result<Option<std::fs::Metadata>> {
-        crate::runtime::fs::symlink_metadata_optional(&self.target, "stat wrapper")
+        crate::infra::fs::symlink_metadata_optional(&self.target, "stat wrapper")
     }
 }
 
@@ -122,7 +122,7 @@ impl Resource for WrapperResource {
     fn apply(&self) -> ResourceResult<ResourceChange> {
         if let Some(metadata) = self.target_metadata()? {
             if metadata.file_type().is_symlink() {
-                crate::runtime::fs::remove_file(&self.target)?;
+                crate::infra::fs::remove_file(&self.target)?;
             } else if metadata.is_dir() {
                 return Err(crate::engine::resource::ResourceError::conflicting_state(
                     self.description(),
@@ -132,10 +132,10 @@ impl Resource for WrapperResource {
             }
         }
 
-        crate::runtime::fs::write_with_parent(&self.target, &self.content)?;
+        crate::infra::fs::write_with_parent(&self.target, &self.content)?;
 
         #[cfg(unix)]
-        crate::runtime::fs::set_executable(&self.target)?;
+        crate::infra::fs::set_executable(&self.target)?;
 
         Ok(ResourceChange::Applied)
     }
@@ -150,7 +150,7 @@ impl Resource for WrapperResource {
                 ))
             }
             Some(_) => {
-                crate::runtime::fs::remove_file(&self.target)?;
+                crate::infra::fs::remove_file(&self.target)?;
                 Ok(ResourceChange::Applied)
             }
             None => Ok(ResourceChange::AlreadyCorrect),
@@ -178,7 +178,7 @@ impl IntrinsicState for WrapperResource {
             });
         }
 
-        let current = crate::runtime::fs::read_string(&self.target)?;
+        let current = crate::infra::fs::read_string(&self.target)?;
 
         if current == self.content {
             Ok(ResourceState::Correct)

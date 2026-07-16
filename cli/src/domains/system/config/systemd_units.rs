@@ -1,8 +1,8 @@
 //! Systemd unit configuration loading.
 use serde::Deserialize;
 
-use crate::runtime::config_support::Diagnostic;
-use crate::runtime::config_support::config_section;
+use crate::infra::config::Diagnostic;
+use crate::infra::config::config_section;
 
 /// A systemd unit to enable.
 #[derive(Debug, Clone)]
@@ -72,9 +72,9 @@ const VALID_UNIT_EXTENSIONS: &[&str] = &[
 #[must_use]
 pub fn validate(
     units: &[SystemdUnit],
-    platform: crate::runtime::platform::Platform,
+    platform: crate::infra::platform::Platform,
 ) -> Vec<Diagnostic> {
-    use crate::runtime::config_support::validation::{Validator, check};
+    use crate::infra::config::validation::{Validator, check};
 
     Validator::new(SYSTEMD_UNITS_TOML)
         .warn_if(
@@ -121,9 +121,9 @@ pub(crate) const SYSTEMD_UNITS_TOML: &str = "systemd-units.toml";
 )]
 mod tests {
     use super::*;
-    use crate::runtime::config_support::category_matcher::Category;
-    use crate::runtime::config_support::test_helpers::write_temp_toml;
-    use crate::runtime::config_support::test_load_missing_returns_empty;
+    use crate::infra::config::category_matcher::Category;
+    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_load_missing_returns_empty;
 
     #[test]
     fn load_base_units() {
@@ -168,7 +168,7 @@ units = [{ name = "some-daemon.service", scope = "system" }]
 
     #[test]
     fn validate_detects_invalid_extension() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let units = vec![SystemdUnit {
             name: "myunit".to_string(),
@@ -198,7 +198,7 @@ units = [{ name = "some-daemon.service", scope = "system" }]
 
     #[test]
     fn validate_detects_empty_unit_name() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let units = vec![SystemdUnit {
             name: "  ".to_string(),
@@ -213,7 +213,7 @@ units = [{ name = "some-daemon.service", scope = "system" }]
 
     #[test]
     fn validate_warns_systemd_on_non_linux() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let units = vec![SystemdUnit {
             name: "test.service".to_string(),
@@ -230,7 +230,7 @@ units = [{ name = "some-daemon.service", scope = "system" }]
 
     #[test]
     fn validate_warns_on_invalid_scope() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let (_dir, path) = write_temp_toml(
             "[base]\nunits = [{ name = \"example.service\", scope = \"global\" }]\n",

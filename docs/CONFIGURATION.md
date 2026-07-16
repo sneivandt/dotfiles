@@ -571,7 +571,7 @@ packages = [
 
 ## Implementation references
 
-- `cli/src/runtime/config_support/toml_loader.rs` - generic TOML loader
+- `cli/src/infra/config/toml_loader.rs` - generic TOML loader
 - `cli/src/app/config/` - aggregate configuration and profiles
 - `cli/src/domains/*/config/` - domain-owned models and validators
 

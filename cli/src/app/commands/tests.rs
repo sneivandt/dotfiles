@@ -84,6 +84,7 @@ mod unix_tests {
 #[cfg(test)]
 mod startup_log_tests {
     use super::*;
+    use crate::infra::logging::Output;
     use std::path::Path;
     use std::sync::{Mutex, PoisonError};
 
@@ -158,8 +159,8 @@ mod startup_log_tests {
     reason = "test code uses panicking helpers"
 )]
 mod task_graph_tests {
-    use super::*;
-    use crate::engine::{TaskResult, task_deps};
+    use super::execution::run_tasks_to_completion;
+    use crate::engine::{Context, Task, TaskPhase, TaskResult, task_deps};
     use crate::test_helpers::{empty_config, make_static_context};
     use anyhow::Result;
     use std::path::PathBuf;

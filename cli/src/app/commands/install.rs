@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::app::cli::{GlobalOpts, InstallOpts};
 use crate::app::filter;
 use crate::engine::{Task, TaskPhase};
-use crate::runtime::logging::Logger;
+use crate::infra::logging::Logger;
 
 /// Install pipeline behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -144,7 +144,7 @@ fn resolve_root_from_dir(
     cwd: Option<&std::path::Path>,
 ) -> Result<std::path::PathBuf> {
     if let Some(ref root) = global.root {
-        return crate::runtime::fs::canonicalize(root);
+        return crate::infra::fs::canonicalize(root);
     }
 
     // Auto-detect: binary location, DOTFILES_ROOT env, or current dir
@@ -163,7 +163,7 @@ fn resolve_root_from_dir(
         ];
         for candidate in &candidates {
             if candidate.join("conf").exists() && candidate.join("symlinks").exists() {
-                return crate::runtime::fs::canonicalize(candidate);
+                return crate::infra::fs::canonicalize(candidate);
             }
         }
     }
@@ -173,7 +173,7 @@ fn resolve_root_from_dir(
         && cwd.join("conf").exists()
         && cwd.join("symlinks").exists()
     {
-        return crate::runtime::fs::canonicalize(cwd);
+        return crate::infra::fs::canonicalize(cwd);
     }
 
     anyhow::bail!("cannot determine dotfiles root. Use --root or set DOTFILES_ROOT env var");
@@ -211,7 +211,7 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(),
-            crate::runtime::fs::canonicalize(temp_dir.path()).unwrap()
+            crate::infra::fs::canonicalize(temp_dir.path()).unwrap()
         );
     }
 
@@ -231,7 +231,7 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(),
-            crate::runtime::fs::canonicalize(temp_dir.path()).unwrap()
+            crate::infra::fs::canonicalize(temp_dir.path()).unwrap()
         );
     }
 
@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn warn_unmatched_filters_warns_on_no_match() {
-        use crate::runtime::logging::Logger;
+        use crate::infra::logging::Logger;
         let log = Logger::new("test");
         let all = sample_install_tasks();
 
@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn warn_unmatched_filters_silent_on_valid_match() {
-        use crate::runtime::logging::Logger;
+        use crate::infra::logging::Logger;
         let log = Logger::new("test");
         let all = sample_install_tasks();
 

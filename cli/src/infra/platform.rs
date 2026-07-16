@@ -168,9 +168,9 @@ impl Platform {
     #[must_use]
     pub fn excludes_category(
         &self,
-        category: &crate::runtime::config_support::category_matcher::Category,
+        category: &crate::infra::config::category_matcher::Category,
     ) -> bool {
-        use crate::runtime::config_support::category_matcher::Category;
+        use crate::infra::config::category_matcher::Category;
         match category {
             Category::Linux => self.os != Os::Linux,
             Category::Windows => self.os != Os::Windows,
@@ -219,7 +219,7 @@ impl Platform {
 )]
 mod tests {
     use super::*;
-    use crate::runtime::config_support::category_matcher::Category;
+    use crate::infra::config::category_matcher::Category;
 
     #[test]
     fn platform_detect_returns_valid() {

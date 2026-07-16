@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use crate::app::config::Config;
 use crate::engine::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
-use crate::runtime::ConfigHandle;
+use crate::infra::ConfigHandle;
 
 const SHELLCHECK_SEVERITY_ARG: &str = "--severity=warning";
 const SHELLCHECK_ENABLE_ARG: &str = "--enable=avoid-nullary-conditions";
@@ -187,7 +187,7 @@ impl Task for ValidateManifestSync {
 
         use toml::Value;
 
-        use crate::runtime::config_support::toml_loader;
+        use crate::infra::config::toml_loader;
 
         let conf = ctx.root().join("conf");
         let symlinks_path = conf.join("symlinks.toml");
@@ -548,10 +548,7 @@ fn read_first_line(path: &Path) -> Vec<u8> {
 }
 
 /// Log command output (stdout and stderr) through the logger.
-fn log_exec_output(
-    log: &dyn crate::runtime::logging::Log,
-    result: &crate::runtime::exec::ExecResult,
-) {
+fn log_exec_output(log: &dyn crate::infra::logging::Log, result: &crate::infra::exec::ExecResult) {
     for line in result.stdout.lines().chain(result.stderr.lines()) {
         log.error(line);
     }

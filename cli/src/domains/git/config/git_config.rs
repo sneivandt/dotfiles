@@ -1,8 +1,8 @@
 //! Git configuration loading.
 use serde::Deserialize;
 
-use crate::runtime::config_support::Diagnostic;
-use crate::runtime::config_support::config_section;
+use crate::infra::config::Diagnostic;
+use crate::infra::config::config_section;
 
 /// A git config key-value pair to apply globally.
 #[derive(Debug, Clone, Deserialize)]
@@ -19,7 +19,7 @@ config_section!(field: "settings", ty: GitSetting);
 /// Validate git config entries and return any warnings.
 #[must_use]
 pub fn validate(settings: &[GitSetting]) -> Vec<Diagnostic> {
-    use crate::runtime::config_support::validation::{Validator, check};
+    use crate::infra::config::validation::{Validator, check};
 
     Validator::new(GIT_CONFIG_TOML)
         .check_each(
@@ -60,9 +60,9 @@ pub(crate) const GIT_CONFIG_TOML: &str = "git-config.toml";
 )]
 mod tests {
     use super::*;
-    use crate::runtime::config_support::category_matcher::Category;
-    use crate::runtime::config_support::test_helpers::write_temp_toml;
-    use crate::runtime::config_support::test_load_missing_returns_empty;
+    use crate::infra::config::category_matcher::Category;
+    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_load_missing_returns_empty;
 
     #[test]
     fn load_windows_settings() {

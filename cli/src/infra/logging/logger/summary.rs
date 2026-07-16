@@ -5,8 +5,8 @@
 use std::time::Duration;
 
 use super::{Logger, TaskDetailEntry};
-use crate::runtime::logging::style::{StyleChoice, TextStyle, stdout_style};
-use crate::runtime::logging::types::{TaskEntry, TaskStatus};
+use crate::infra::logging::style::{StyleChoice, TextStyle, stdout_style};
+use crate::infra::logging::types::{TaskEntry, TaskStatus};
 
 impl Logger {
     /// Print the summary of all recorded tasks.
@@ -73,7 +73,7 @@ impl Logger {
         self.always(&status_line);
     }
 
-    pub(in crate::runtime::logging) fn emit_recorded_task_result(&self, task_name: &str) {
+    pub(in crate::infra::logging) fn emit_recorded_task_result(&self, task_name: &str) {
         let task = self.tasks.lock().map_or(None, |guard| {
             guard
                 .iter()
@@ -508,7 +508,7 @@ mod tests {
 
     #[test]
     fn print_summary_clears_visible_progress() {
-        let (log, _tmp, _guard) = crate::runtime::logging::isolated_logger();
+        let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
         log.record_task("changed-task", TaskStatus::Changed, None);
         log.notify_task_start_with_progress("active-task", true);
 

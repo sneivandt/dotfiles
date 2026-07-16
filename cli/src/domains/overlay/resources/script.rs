@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::runtime::exec::Executor;
+use crate::infra::exec::Executor;
 
 /// A resource that runs a custom script from an overlay repository.
 #[derive(Debug)]
@@ -307,7 +307,7 @@ fn format_check_failure(name: &str, code: Option<i32>, stdout: &str, stderr: &st
 )]
 mod tests {
     use super::*;
-    use crate::runtime::exec::{ExecResult, MockExecutor};
+    use crate::infra::exec::{ExecResult, MockExecutor};
 
     fn make_script_resource(
         name: &str,

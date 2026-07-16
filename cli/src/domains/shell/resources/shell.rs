@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::sync::Arc;
 
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::runtime::exec::Executor;
+use crate::infra::exec::Executor;
 
 /// Source for reading the current login shell.
 ///
@@ -114,14 +114,14 @@ mod tests {
 
     #[test]
     fn description_includes_shell_name() {
-        let executor: Arc<dyn Executor> = Arc::new(crate::runtime::exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
         let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor));
         assert_eq!(resource.description(), "default shell → zsh");
     }
 
     #[test]
     fn current_state_correct_when_shell_matches() {
-        let executor: Arc<dyn Executor> = Arc::new(crate::runtime::exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
         let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor))
             .with_shell(Some("/usr/bin/zsh"));
         let state = resource.current_state().unwrap();
@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn current_state_incorrect_when_different_shell_set() {
-        let executor: Arc<dyn Executor> = Arc::new(crate::runtime::exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
         let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor))
             .with_shell(Some("/bin/bash"));
         let state = resource.current_state().unwrap();
@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn current_state_unknown_when_shell_not_set() {
-        let executor: Arc<dyn Executor> = Arc::new(crate::runtime::exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
         let resource =
             DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor)).with_shell(None);
         let state = resource.current_state().unwrap();
@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn current_state_missing_when_shell_is_empty_string() {
-        let executor: Arc<dyn Executor> = Arc::new(crate::runtime::exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
         let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor))
             .with_shell(Some(""));
         let state = resource.current_state().unwrap();

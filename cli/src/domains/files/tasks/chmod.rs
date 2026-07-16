@@ -31,7 +31,7 @@ mod tests {
     use super::*;
     use crate::domains::files::config::chmod::ChmodEntry;
     use crate::engine::Task;
-    use crate::runtime::ConfigHandle;
+    use crate::infra::ConfigHandle;
     use crate::test_helpers::{empty_config, make_linux_context, make_windows_context};
     use std::path::PathBuf;
 

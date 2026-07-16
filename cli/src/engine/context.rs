@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 
-use crate::runtime::exec::Executor;
-use crate::runtime::logging::Log;
-use crate::runtime::platform::Platform;
+use crate::infra::exec::Executor;
+use crate::infra::logging::Log;
+use crate::infra::platform::Platform;
 
 use super::CancellationToken;
 
@@ -458,8 +458,8 @@ impl RepoPaths {
 )]
 mod tests {
     use super::*;
-    use crate::runtime::logging::Logger;
-    use crate::runtime::logging::{Output, TaskRecorder, TaskStatus};
+    use crate::infra::logging::Logger;
+    use crate::infra::logging::{Output, TaskRecorder, TaskStatus};
     use crate::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 

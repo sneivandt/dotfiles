@@ -6,7 +6,7 @@ use anyhow::Result;
 
 use super::package::{PackageInstallReport, PackageProvider, PackageResource};
 use crate::engine::ResourceChange;
-use crate::runtime::exec::Executor;
+use crate::infra::exec::Executor;
 
 #[derive(Clone, Copy)]
 enum ParseMode {
@@ -112,7 +112,7 @@ impl PackageProvider for PacmanProvider {
 #[allow(clippy::unwrap_used, reason = "test code uses panicking helpers")]
 mod tests {
     use super::*;
-    use crate::runtime::exec::{ExecResult, MockExecutor};
+    use crate::infra::exec::{ExecResult, MockExecutor};
 
     fn ok_result(stdout: &str) -> ExecResult {
         ExecResult {

@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result};
 use std::path::Path;
 
-use crate::runtime::exec::Executor;
+use crate::infra::exec::Executor;
 
 /// Create a symlink at `link` pointing to `target`.
 #[cfg(unix)]
@@ -113,7 +113,7 @@ fn is_dir_like(meta: &std::fs::Metadata) -> bool {
 pub(super) fn create_junction(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
     let link_arg = link.to_string_lossy();
     let target_arg = target.to_string_lossy();
-    let result = crate::runtime::exec::windows::CmdCommand::new("mklink")
+    let result = crate::infra::exec::windows::CmdCommand::new("mklink")
         .arg("/J")
         .arg(link_arg.as_ref())
         .arg(target_arg.as_ref())
@@ -135,7 +135,7 @@ pub(super) fn create_junction(target: &Path, link: &Path, executor: &dyn Executo
 }
 
 #[cfg(windows)]
-fn command_output(result: &crate::runtime::exec::ExecResult) -> String {
+fn command_output(result: &crate::infra::exec::ExecResult) -> String {
     let stdout = result.stdout.trim();
     let stderr = result.stderr.trim();
     match (stdout.is_empty(), stderr.is_empty()) {

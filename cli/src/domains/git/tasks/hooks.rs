@@ -8,7 +8,7 @@ use crate::engine::{
     Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, process_resources,
     process_resources_remove, task_metadata,
 };
-use crate::runtime::fs::{FileSystemOps, SystemFileSystemOps};
+use crate::infra::fs::{FileSystemOps, SystemFileSystemOps};
 
 /// Discover hook file resources from the `hooks/` directory.
 ///
@@ -151,7 +151,7 @@ impl Task for UninstallGitHooks {
 )]
 mod tests {
     use super::*;
-    use crate::runtime::fs::MockFileSystemOps;
+    use crate::infra::fs::MockFileSystemOps;
     use crate::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 

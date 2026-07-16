@@ -12,7 +12,7 @@ mod notifications;
 mod progress;
 mod summary;
 
-pub(in crate::runtime::logging) use progress::stdout_supports_progress;
+pub(in crate::infra::logging) use progress::stdout_supports_progress;
 
 #[cfg(test)]
 use std::path::PathBuf;
@@ -111,7 +111,7 @@ pub struct Logger {
 
 /// Buffered user-facing detail lines emitted by a completed task.
 #[derive(Debug, Clone)]
-pub(in crate::runtime::logging) struct TaskDetailEntry {
+pub(in crate::infra::logging) struct TaskDetailEntry {
     /// Human-readable task name.
     pub(super) name: String,
     /// Detail lines emitted by the task while it ran.
@@ -284,7 +284,7 @@ impl Logger {
     }
 
     /// Record buffered user-facing detail lines for a completed task.
-    pub(in crate::runtime::logging) fn record_task_details(&self, name: &str, lines: Vec<String>) {
+    pub(in crate::infra::logging) fn record_task_details(&self, name: &str, lines: Vec<String>) {
         if lines.is_empty() {
             return;
         }
@@ -338,8 +338,8 @@ impl TaskRecorder for Logger {
 )]
 mod tests {
     use super::*;
-    use crate::runtime::logging::isolated_logger;
-    use crate::runtime::logging::types::Log;
+    use crate::infra::logging::isolated_logger;
+    use crate::infra::logging::types::Log;
     use std::fs;
 
     #[test]

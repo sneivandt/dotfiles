@@ -8,8 +8,8 @@ use serde::Deserialize;
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 
-use crate::runtime::config_support::Diagnostic;
-use crate::runtime::config_support::config_section;
+use crate::infra::config::Diagnostic;
+use crate::infra::config::config_section;
 
 /// A custom script entry loaded from `scripts.toml`.
 #[derive(Debug, Clone, Deserialize)]
@@ -32,8 +32,8 @@ pub(crate) const SCRIPTS_TOML: &str = "scripts.toml";
 /// Validate overlay script entries.
 #[must_use]
 pub fn validate(entries: &[ScriptEntry]) -> Vec<Diagnostic> {
-    use crate::runtime::config_support::Severity;
-    use crate::runtime::config_support::validation::{Validator, check_error};
+    use crate::infra::config::Severity;
+    use crate::infra::config::validation::{Validator, check_error};
 
     let mut identities = HashSet::<(&str, &str)>::new();
     let mut duplicates = HashSet::<(&str, &str)>::new();
@@ -124,9 +124,9 @@ fn validate_relative_script_path(entry: &ScriptEntry) -> Result<()> {
 )]
 mod tests {
     use super::*;
-    use crate::runtime::config_support::category_matcher::Category;
-    use crate::runtime::config_support::test_helpers::write_temp_toml;
-    use crate::runtime::config_support::test_load_missing_returns_empty;
+    use crate::infra::config::category_matcher::Category;
+    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_load_missing_returns_empty;
 
     #[test]
     fn load_scripts_from_toml() {

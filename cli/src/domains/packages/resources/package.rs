@@ -13,7 +13,7 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::runtime::exec::Executor;
+use crate::infra::exec::Executor;
 
 use super::pacman::PacmanProvider;
 use super::paru::ParuProvider;

@@ -1,14 +1,13 @@
-//! Windows privilege elevation.
+//! Cross-platform privilege elevation mechanisms.
 //!
-//! Detects whether the process has administrator privileges and re-launches
-//! elevated via UAC when needed. No-op on non-Windows platforms.
+//! Provides Windows UAC re-launching and Unix sudo credential-cache support.
 
 #[cfg(windows)]
-use crate::runtime::exec::windows::PowerShellCommand;
+use crate::infra::exec::windows::PowerShellCommand;
 #[cfg(test)]
-use crate::runtime::exec::windows::powershell_encode_command;
+use crate::infra::exec::windows::powershell_encode_command;
 #[cfg(any(windows, test))]
-use crate::runtime::exec::windows::{powershell_arg_list, powershell_single_quote};
+use crate::infra::exec::windows::{powershell_arg_list, powershell_single_quote};
 
 /// Check if the current process is running with administrator privileges.
 ///
@@ -17,9 +16,9 @@ use crate::runtime::exec::windows::{powershell_arg_list, powershell_single_quote
 #[cfg(windows)]
 #[must_use]
 pub fn is_elevated() -> bool {
-    use crate::runtime::exec::Executor as _;
+    use crate::infra::exec::Executor as _;
 
-    crate::runtime::exec::SystemExecutor
+    crate::infra::exec::SystemExecutor
         .run_unchecked("net", &["session"])
         .is_ok_and(|result| result.success)
 }
@@ -35,6 +34,51 @@ pub fn is_elevated() -> bool {
 )]
 pub const fn is_elevated() -> bool {
     false
+}
+
+/// Return whether `sudo` is available through the configured executor.
+#[cfg(unix)]
+#[must_use]
+pub fn sudo_available(executor: &dyn crate::infra::exec::Executor) -> bool {
+    executor.which("sudo")
+}
+
+/// Return whether sudo credentials are already cached.
+#[cfg(unix)]
+#[must_use]
+pub fn sudo_credentials_cached() -> bool {
+    use std::process::Stdio;
+
+    std::process::Command::new("sudo")
+        .args(["-n", "-v"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+/// Prompt for sudo credentials through the controlling terminal.
+///
+/// # Errors
+///
+/// Returns an error if the `sudo` process cannot be started.
+#[cfg(unix)]
+pub fn prime_sudo_credentials() -> std::io::Result<bool> {
+    use std::process::Stdio;
+
+    let tty_in = std::fs::File::open("/dev/tty");
+    let tty_out = std::fs::OpenOptions::new().write(true).open("/dev/tty");
+    let mut command = std::process::Command::new("sudo");
+    command.arg("-v");
+    if let Ok(file) = tty_in {
+        command.stdin(Stdio::from(file));
+    }
+    if let Ok(file) = tty_out {
+        command.stderr(Stdio::from(file));
+    }
+
+    command.status().map(|status| status.success())
 }
 
 /// Re-launch the current process with administrator privileges via UAC.
@@ -53,8 +97,8 @@ pub const fn is_elevated() -> bool {
 /// process fails to start.
 #[cfg(windows)]
 pub fn elevate_and_exit(
-    executor: &dyn crate::runtime::exec::Executor,
-    log: &dyn crate::runtime::logging::Output,
+    executor: &dyn crate::infra::exec::Executor,
+    log: &dyn crate::infra::logging::Output,
 ) -> anyhow::Result<()> {
     use anyhow::{Context, bail};
 
@@ -116,9 +160,9 @@ pub const fn wait_if_elevated() {}
 /// falls back to `powershell` (Windows `PowerShell` 5.1) otherwise.
 #[cfg(windows)]
 pub(crate) fn preferred_powershell() -> &'static str {
-    use crate::runtime::exec::Executor as _;
+    use crate::infra::exec::Executor as _;
 
-    if crate::runtime::exec::SystemExecutor
+    if crate::infra::exec::SystemExecutor
         .run_unchecked("pwsh", &["-NoProfile", "-Command", "exit 0"])
         .is_ok_and(|result| result.success)
     {

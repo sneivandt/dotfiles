@@ -4,7 +4,7 @@
 //! and complete, ensuring active-task updates never overlap other console output.
 
 use super::{Logger, progress::stdout_supports_progress};
-use crate::runtime::logging::style::{TextStyle, stdout_style};
+use crate::infra::logging::style::{TextStyle, stdout_style};
 
 #[allow(
     clippy::print_stderr,
@@ -20,7 +20,7 @@ impl Logger {
     }
 
     /// Record a task start, optionally drawing the interactive progress line.
-    pub(in crate::runtime::logging) fn notify_task_start_with_progress(
+    pub(in crate::infra::logging) fn notify_task_start_with_progress(
         &self,
         name: &str,
         show_progress: bool,
@@ -38,7 +38,7 @@ impl Logger {
     /// Redraw only the active-task status row.
     ///
     /// Must be called while holding `flush_lock`.
-    pub(in crate::runtime::logging) fn redraw_active_status_locked(&self, show_progress: bool) {
+    pub(in crate::infra::logging) fn redraw_active_status_locked(&self, show_progress: bool) {
         if !show_progress {
             self.clear_progress();
             return;
@@ -78,7 +78,7 @@ impl Logger {
         self.redraw_active_status_locked(show_progress);
     }
 
-    pub(in crate::runtime::logging) fn remove_active_task_locked(&self, name: &str) {
+    pub(in crate::infra::logging) fn remove_active_task_locked(&self, name: &str) {
         if let Ok(mut active) = self.active_tasks.lock() {
             active.retain(|n| n != name);
         }
@@ -96,7 +96,7 @@ impl Logger {
 
     /// Record a task completion, optionally redrawing the interactive progress line.
     #[cfg(test)]
-    pub(in crate::runtime::logging) fn notify_task_done_with_progress(
+    pub(in crate::infra::logging) fn notify_task_done_with_progress(
         &self,
         name: &str,
         show_progress: bool,
@@ -141,7 +141,7 @@ impl Logger {
     reason = "test code uses panicking helpers"
 )]
 mod tests {
-    use crate::runtime::logging::isolated_logger;
+    use crate::infra::logging::isolated_logger;
 
     #[test]
     #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]

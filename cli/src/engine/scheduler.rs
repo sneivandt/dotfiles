@@ -9,7 +9,7 @@ use super::graph::ResolvedTaskGraph;
 #[cfg(test)]
 use crate::engine::TaskPhase;
 use crate::engine::{self, Context, Task};
-use crate::runtime::logging::{self, BufferedLog, DiagEvent, Log, Logger, Output as _, TaskStatus};
+use crate::infra::logging::{self, BufferedLog, DiagEvent, Log, Logger, Output as _, TaskStatus};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DependencySignal {

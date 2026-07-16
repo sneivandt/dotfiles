@@ -24,7 +24,7 @@ const OVERLAY_KEY: &str = "dotfiles.overlay";
 /// config (`dotfiles.overlay`).
 #[must_use]
 pub fn read_persisted(root: &Path) -> Option<PathBuf> {
-    crate::runtime::config_support::git_state::read_local(root, OVERLAY_KEY).map(PathBuf::from)
+    crate::infra::config::git_state::read_local(root, OVERLAY_KEY).map(PathBuf::from)
 }
 
 /// Persist the overlay path to the repository's local git config so future
@@ -35,7 +35,7 @@ pub fn read_persisted(root: &Path) -> Option<PathBuf> {
 /// Returns an error if the repository cannot be discovered or the config
 /// cannot be written.
 pub fn persist(root: &Path, overlay_path: &Path) -> Result<()> {
-    crate::runtime::config_support::git_state::persist_local(
+    crate::infra::config::git_state::persist_local(
         root,
         OVERLAY_KEY,
         &overlay_path.display().to_string(),

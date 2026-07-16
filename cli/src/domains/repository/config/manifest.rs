@@ -4,8 +4,8 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::runtime::config_support::category_matcher::Category;
-use crate::runtime::config_support::toml_loader;
+use crate::infra::config::category_matcher::Category;
+use crate::infra::config::toml_loader;
 
 /// Sparse checkout manifest — files to exclude by category.
 #[derive(Debug, Clone)]
@@ -47,7 +47,7 @@ pub fn load(path: &Path, excluded_categories: &[Category]) -> Result<Manifest> {
 )]
 mod tests {
     use super::*;
-    use crate::runtime::config_support::test_helpers::write_temp_toml;
+    use crate::infra::config::test_helpers::write_temp_toml;
 
     #[test]
     fn and_exclusion_logic() {

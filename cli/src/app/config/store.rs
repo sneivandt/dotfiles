@@ -20,7 +20,7 @@ use crate::domains::packages::config::packages::Package;
 use crate::domains::repository::config::manifest::Manifest;
 use crate::domains::system::config::registry::RegistryEntry;
 use crate::domains::system::config::systemd_units::SystemdUnit;
-use crate::runtime::ConfigHandle;
+use crate::infra::ConfigHandle;
 
 /// Shared, atomically-swappable configuration split into per-domain handles.
 ///

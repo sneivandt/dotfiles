@@ -7,8 +7,8 @@ use std::process::ExitCode;
 use clap::{CommandFactory, Parser};
 
 #[cfg(windows)]
-use crate::runtime::exec;
-use crate::runtime::{elevation, error, logging};
+use crate::infra::exec;
+use crate::infra::{elevation, logging};
 
 use super::{cli, commands};
 
@@ -109,7 +109,10 @@ pub fn run() -> ExitCode {
 }
 
 fn report_failure(error: &anyhow::Error, log: &dyn logging::Output) {
-    if error.downcast_ref::<error::TaskFailures>().is_none() {
+    if error
+        .downcast_ref::<commands::error::TaskFailures>()
+        .is_none()
+    {
         log.error(&format!("{error:#}"));
     }
     log.always("Run 'dotfiles log' for details.");
@@ -162,7 +165,7 @@ mod tests {
     #[test]
     fn aggregate_task_failure_only_prints_plain_log_hint() {
         let log = CapturingOutput::default();
-        let error = anyhow::Error::from(error::TaskFailures::new(2));
+        let error = anyhow::Error::from(commands::error::TaskFailures::new(2));
 
         report_failure(&error, &log);
 

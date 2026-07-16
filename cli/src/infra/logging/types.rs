@@ -33,7 +33,7 @@ pub enum TaskStatus {
 impl TaskStatus {
     /// Text style used for compact status rendering.
     #[must_use]
-    pub(in crate::runtime::logging) const fn text_style(self) -> Option<TextStyle> {
+    pub(in crate::infra::logging) const fn text_style(self) -> Option<TextStyle> {
         match self {
             Self::Changed | Self::Ok => Some(TextStyle::Green),
             Self::Skipped => Some(TextStyle::Yellow),

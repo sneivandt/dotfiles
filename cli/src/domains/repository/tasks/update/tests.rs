@@ -1,8 +1,8 @@
 //! Unit tests for the repository update task.
 use super::*;
 use crate::engine::UpdateSignal;
-use crate::runtime::exec::{ExecResult, Executor, MockExecutor};
-use crate::runtime::platform::{Os, Platform};
+use crate::infra::exec::{ExecResult, Executor, MockExecutor};
+use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{empty_config, make_context, make_linux_context};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

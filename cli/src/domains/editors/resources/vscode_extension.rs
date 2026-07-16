@@ -5,7 +5,7 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::runtime::exec::{self, Executor};
+use crate::infra::exec::{self, Executor};
 
 #[cfg(target_os = "windows")]
 const CODE_COMMANDS: [&str; 2] = ["code-insiders.cmd", "code.cmd"];
@@ -153,7 +153,7 @@ fn run_code_cmd(cmd: &str, args: &[&str], executor: &dyn Executor) -> Result<exe
 )]
 mod tests {
     use super::*;
-    use crate::runtime::exec::{ExecResult, MockExecutor};
+    use crate::infra::exec::{ExecResult, MockExecutor};
 
     fn ok_result(stdout: &str) -> ExecResult {
         ExecResult {

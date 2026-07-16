@@ -4,8 +4,8 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::runtime::config_support::Diagnostic;
-use crate::runtime::config_support::toml_loader;
+use crate::infra::config::Diagnostic;
+use crate::infra::config::toml_loader;
 
 /// Declared type for a registry value.
 ///
@@ -122,9 +122,9 @@ fn has_supported_hive(key_path: &str) -> bool {
 #[must_use]
 pub fn validate(
     entries: &[RegistryEntry],
-    platform: crate::runtime::platform::Platform,
+    platform: crate::infra::platform::Platform,
 ) -> Vec<Diagnostic> {
-    use crate::runtime::config_support::validation::{Validator, check, check_error};
+    use crate::infra::config::validation::{Validator, check, check_error};
 
     Validator::new(REGISTRY_TOML)
         .warn_if(
@@ -159,7 +159,7 @@ pub(crate) const REGISTRY_TOML: &str = "registry.toml";
 )]
 mod tests {
     use super::*;
-    use crate::runtime::config_support::test_load_missing_unfiltered_returns_empty;
+    use crate::infra::config::test_load_missing_unfiltered_returns_empty;
 
     #[test]
     fn load_registry_from_file() {
@@ -228,7 +228,7 @@ mod tests {
 
     #[test]
     fn validate_rejects_invalid_hive() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let entries = vec![RegistryEntry {
             key_path: "INVALID:\\Key".to_string(),
@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn validate_detects_empty_key_path() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let entries = vec![RegistryEntry {
             key_path: "  ".to_string(),
@@ -260,7 +260,7 @@ mod tests {
 
     #[test]
     fn validate_detects_empty_value_name() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let entries = vec![RegistryEntry {
             key_path: "HKCU:\\Console".to_string(),
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn validate_rejects_non_hkcu_hive() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let entries = vec![RegistryEntry {
             key_path: "HKLM:\\Software\\Test".to_string(),
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn validate_warns_registry_on_non_windows() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let entries = vec![RegistryEntry {
             key_path: "HKCU:\\Console".to_string(),
@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn validate_valid_hkcu_entry_produces_no_warnings() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let entries = vec![RegistryEntry {
             key_path: "HKCU:\\Console".to_string(),
@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn validate_empty_entries_produces_no_warnings() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let warnings = validate(&[], Platform::new(Os::Windows, false));
         assert!(
@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn validate_case_insensitive_hive_prefix() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let entries = vec![RegistryEntry {
             key_path: "hkcu:\\Console".to_string(),

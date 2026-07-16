@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::runtime::exec::Executor;
+use crate::infra::exec::Executor;
 
 mod materialize;
 mod platform;
@@ -61,7 +61,7 @@ impl Resource for SymlinkResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        crate::runtime::fs::ensure_parent_dir(&self.target)?;
+        crate::infra::fs::ensure_parent_dir(&self.target)?;
 
         // Attempt to remove any existing target; ignore NotFound since the
         // path may already be absent.  This avoids a TOCTOU race between a
@@ -94,7 +94,7 @@ impl Resource for SymlinkResource {
         // the source into place — the wrong thing to do for a transient
         // stat failure).  A missing target is fine: we still materialize so
         // the user retains the file/directory after uninstall.
-        match crate::runtime::fs::symlink_metadata_optional(&self.target, "stat target")? {
+        match crate::infra::fs::symlink_metadata_optional(&self.target, "stat target")? {
             Some(meta) if is_link_like(&self.target, &meta) => {
                 // Proceed with the normal materialize-then-remove path below.
             }

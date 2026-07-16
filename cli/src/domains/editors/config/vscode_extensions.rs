@@ -1,7 +1,7 @@
 //! VS Code extension configuration loading.
 
-use crate::runtime::config_support::Diagnostic;
-use crate::runtime::config_support::config_section;
+use crate::infra::config::Diagnostic;
+use crate::infra::config::config_section;
 
 /// A VS Code extension to install.
 #[derive(Debug, Clone)]
@@ -20,7 +20,7 @@ config_section! {
 /// Validate VS Code extension entries and return any warnings.
 #[must_use]
 pub fn validate(extensions: &[VsCodeExtension]) -> Vec<Diagnostic> {
-    use crate::runtime::config_support::validation::{Validator, check};
+    use crate::infra::config::validation::{Validator, check};
 
     Validator::new(VSCODE_EXTENSIONS_TOML)
         .check_each(
@@ -56,9 +56,9 @@ pub(crate) const VSCODE_EXTENSIONS_TOML: &str = "vscode-extensions.toml";
 )]
 mod tests {
     use super::*;
-    use crate::runtime::config_support::category_matcher::Category;
-    use crate::runtime::config_support::test_helpers::write_temp_toml;
-    use crate::runtime::config_support::test_load_missing_returns_empty;
+    use crate::infra::config::category_matcher::Category;
+    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_load_missing_returns_empty;
 
     #[test]
     fn load_desktop_extensions() {

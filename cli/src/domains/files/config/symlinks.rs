@@ -3,8 +3,8 @@ use anyhow::{Result, bail};
 use serde::Deserialize;
 use std::path::{Component, Path, PathBuf};
 
-use crate::runtime::config_support::Diagnostic;
-use crate::runtime::config_support::config_section;
+use crate::infra::config::Diagnostic;
+use crate::infra::config::config_section;
 
 mod glob_expansion;
 mod target_capture;
@@ -143,7 +143,7 @@ pub(super) fn path_segments(path: &str) -> Vec<String> {
 /// Validate symlink entries and return any warnings.
 #[must_use]
 pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<Diagnostic> {
-    use crate::runtime::config_support::validation::{CheckItem, Validator, check, check_error};
+    use crate::infra::config::validation::{CheckItem, Validator, check, check_error};
 
     Validator::new(SYMLINKS_TOML)
         .check_each(
@@ -202,9 +202,9 @@ pub(crate) const SYMLINKS_TOML: &str = "symlinks.toml";
 )]
 mod tests {
     use super::*;
-    use crate::runtime::config_support::category_matcher::Category;
-    use crate::runtime::config_support::test_helpers::write_temp_toml;
-    use crate::runtime::config_support::test_load_missing_returns_empty;
+    use crate::infra::config::category_matcher::Category;
+    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_load_missing_returns_empty;
 
     #[test]
     fn load_base_symlinks() {

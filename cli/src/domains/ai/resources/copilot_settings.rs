@@ -126,7 +126,7 @@ impl Resource for CopilotSettingResource {
             .with_context(|| format!("serializing {}", self.path.display()))?;
         serialized.push('\n');
 
-        crate::runtime::fs::write_with_parent(&self.path, serialized)?;
+        crate::infra::fs::write_with_parent(&self.path, serialized)?;
         Ok(ResourceChange::Applied)
     }
 }

@@ -7,7 +7,7 @@ pub use configure::ConfigureSparseCheckout;
 #[cfg(test)]
 use crate::engine::{Task, TaskResult};
 #[cfg(test)]
-use crate::runtime::fs::SystemFileSystemOps;
+use crate::infra::fs::SystemFileSystemOps;
 #[cfg(test)]
 use anyhow::Result;
 #[cfg(test)]

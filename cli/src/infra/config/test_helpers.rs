@@ -35,10 +35,10 @@ pub fn write_temp_toml(content: &str) -> (tempfile::TempDir, PathBuf) {
 pub fn assert_load_missing_returns_empty<T>(
     loader: impl Fn(
         &std::path::Path,
-        &[crate::runtime::config_support::category_matcher::Category],
+        &[crate::infra::config::category_matcher::Category],
     ) -> anyhow::Result<Vec<T>>,
 ) {
-    use crate::runtime::config_support::category_matcher::Category;
+    use crate::infra::config::category_matcher::Category;
     let dir = tempfile::tempdir().expect("failed to create temp dir");
     let path = dir.path().join("nonexistent.toml");
     let result = loader(&path, &[Category::Base]).expect("loader should not fail");

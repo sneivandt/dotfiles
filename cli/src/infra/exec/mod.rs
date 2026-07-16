@@ -6,7 +6,7 @@ use std::process::{Command, Output, Stdio};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use crate::runtime::cancellation::CancellationToken;
+use crate::infra::cancellation::CancellationToken;
 
 mod output;
 mod process;

@@ -52,9 +52,9 @@ This dotfiles project is a cross-platform, profile-based configuration managemen
 ## High-Level Architecture
 
 The crate is organized into four layers with a strict dependency direction:
-`app` may depend on everything; `domains` depend on `engine` and `runtime`;
-`engine` depends on `runtime`; `runtime` depends only on `std` and external
-crates. `engine` and `runtime` never import `app` or `domains`.
+`app` may depend on everything; `domains` depend on `engine` and `infra`;
+`engine` depends on `infra`; `infra` depends only on `std` and external
+crates. `engine` and `infra` never import `app` or `domains`.
 The feature-gated `testing` facade is not a production layer; it preserves
 stable integration-test access while forwarding to the new internal modules.
 
@@ -82,8 +82,8 @@ flowchart TD
             task["engine/task/<br/>Task trait, metadata, macros, executor"]
             resource["engine/resource/<br/>contract, errors, providers"]
         end
-        subgraph runtime_layer["runtime/ — runtime facilities"]
-            runtime["exec, fs, logging, platform,<br/>elevation, error, cancellation,<br/>config_support (generic TOML helpers),<br/>config_handle (ConfigHandle&lt;T&gt;)"]
+        subgraph infra_layer["infra/ — infrastructure mechanisms"]
+            infra["exec, fs, logging, platform,<br/>elevation, cancellation,<br/>config (generic TOML helpers + ConfigHandle&lt;T&gt;)"]
         end
     end
 
@@ -93,12 +93,12 @@ flowchart TD
     commands --> catalog
     catalog --> domains
     domains --> engine
-    domains --> runtime
+    domains --> infra
     engine --> resource
     engine --> task
-    engine --> runtime
+    engine --> infra
     appconfig --> domains
-    appconfig --> runtime
+    appconfig --> infra
     appconfig --> conf["conf/ TOML files<br/>packages, symlinks, profiles, manifest,<br/>systemd units, registry, chmod, git config, AI tooling/APM"]
 ```
 
@@ -159,7 +159,10 @@ The wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`) handle only the `--build` f
 
 #### Commands (`app/commands/`)
 
-- **`install.rs`** — Uses `CommandRunner` to resolve the profile, load `Config`, build the task list, filter by `--skip`/`--only`, and execute the phased task pipeline. Before the task graph, it may self-update the binary and re-exec so the rest of the run uses the latest engine. It also attempts safe fast-forward-only repository synchronization in the task graph but leaves pinned dependency versions untouched. Exposes `run_pipeline(RunMode)`, the shared implementation behind both `install` and `update`
+- **`runner.rs`** — Composes startup state: profile and overlay resolution, aggregate config loading, execution context, and task filtering/execution
+- **`execution.rs`** — Owns phased application execution policy, including phase barriers, sudo preparation decisions, summaries, and aggregate failures
+- **`reexec.rs`** — Owns self-update and process restart policy
+- **`install.rs`** — Builds the install/update task list and delegates shared startup and execution to `CommandRunner`. Exposes `run_pipeline(RunMode)`, the shared implementation behind both `install` and `update`
 - **`update.rs`** — Delegates to `install::run_pipeline` with `RunMode::Update`, so it runs the same base task graph as `install` and additionally schedules the final Update phase to advance pinned dependency versions (currently the APM dependency refresh)
 - **`uninstall.rs`** — Conservatively removes detachable managed state: symlinks, installed Git hooks, and the wrapper entry point. It intentionally does not remove packages or roll back registry, systemd, shell, editor, AI tooling/APM, WSL, or overlay-script changes
 - **`test.rs`** — Runs configuration validation
@@ -169,13 +172,15 @@ The wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`) handle only the `--build` f
 The aggregate `Config` struct and its `Config::load()` composition live in
 `app/config/`, alongside `profiles.rs`. Each domain owns its own config model
 under `domains/<domain>/config/`; generic TOML parsing helpers live in
-`runtime/config_support/`. `Config::load()` reads all TOML files from `conf/`
+`infra/config/`. Profile selection is split into definition loading,
+environment lookup, Git persistence, interactive prompting, and category
+resolution under `app/config/profiles/`. `Config::load()` reads all TOML files from `conf/`
 and filters sections against the active profile's categories:
 
 | Module | File | Description |
 | --- | --- | --- |
 | `app/config/profiles.rs` | `profiles.toml` | Profile resolution and category computation |
-| `runtime/config_support/toml_loader.rs` | (all) | Generic TOML loader |
+| `infra/config/toml_loader.rs` | (all) | Generic TOML loader |
 | `domains/packages/config/packages.rs` | `packages.toml` | System packages (pacman, AUR, winget) |
 | `domains/files/config/symlinks.rs` | `symlinks.toml` | Symlink mappings |
 | `domains/system/config/systemd_units.rs` | `systemd-units.toml` | Systemd units (Linux only) |
@@ -234,10 +239,10 @@ pub trait Task: Send + Sync + 'static {
 A shared `Context` struct (defined in `engine/context.rs`) carries only generic
 execution and path state: repository and home paths, optional overlay path,
 platform, executor, logger, cancellation token, and execution flags. It does
-**not** carry the aggregate `Config`: the engine depends on `runtime` only and
+**not** carry the aggregate `Config`: the engine depends on `infra` only and
 must not know about the application configuration type.
 
-Configuration reaches tasks through typed handles instead. The application layer loads the aggregate `Config`, splits it into one `runtime::ConfigHandle<T>` per domain slice (`app/config/store.rs`'s `ConfigStore`), and injects each handle into the task that needs it via that task's constructor (for example `InstallSymlinks::new(store.symlinks.clone())`). A `ConfigHandle<T>` is a cheaply-cloneable `Arc<RwLock<Arc<T>>>`; the app-owned `ReloadConfig` task (`app/reload.rs`) re-loads configuration after a pull and swaps every handle in place, so downstream tasks observe the new values without being rebuilt. App-only validation tasks hold a `ConfigHandle<Config>` for the whole aggregate.
+Configuration reaches tasks through typed handles instead. The application layer loads the aggregate `Config`, splits it into one `infra::ConfigHandle<T>` per domain slice (`app/config/store.rs`'s `ConfigStore`), and injects each handle into the task that needs it via that task's constructor (for example `InstallSymlinks::new(store.symlinks.clone())`). A `ConfigHandle<T>` is a cheaply-cloneable `Arc<RwLock<Arc<T>>>`; the app-owned `ReloadConfig` task (`app/reload.rs`) re-loads configuration after a pull and swaps every handle in place, so downstream tasks observe the new values without being rebuilt. App-only validation tasks hold a `ConfigHandle<Config>` for the whole aggregate.
 
 Other task-specific dependencies are injected the same way: `UpdateRepository` and `ReloadConfig` share an `UpdateSignal` (`engine/update_signal.rs`) to coordinate config reloading, and hook tasks (`InstallGitHooks`, `UninstallGitHooks`) hold an `Arc<dyn FileSystemOps>` for testable filesystem access.
 
@@ -272,10 +277,10 @@ The execution engine provides the generic resource processing loop, dependency g
 - **`resource/`** — the generic `Resource`/`IntrinsicState` contract
   (`contract.rs`), typed resource errors (`error.rs`), and state providers
   (`provider.rs`)
-- **`update_signal.rs`** — `UpdateSignal` (backed by a `runtime::atomic_flag::AtomicFlag`) signalling between `UpdateRepository` and `ReloadConfig`
+- **`update_signal.rs`** — `UpdateSignal` (backed by an `infra::atomic_flag::AtomicFlag`) signalling between `UpdateRepository` and `ReloadConfig`
 
 The cooperative `CancellationToken` and its backing `AtomicFlag` are generic
-concurrency primitives that live in `runtime/` (so `runtime::exec` can honour
+concurrency primitives that live in `infra/` (so `infra::exec` can honour
 cancellation without depending on `engine`); `engine` re-exports
 `CancellationToken` for its consumers.
 
@@ -393,7 +398,7 @@ config.  When an overlay is set:
    (exit 0 = correct, exit 1 = apply needed), `--dryrun` (preview), and
    `--remove` (undo)
 
-#### Platform Detection (`runtime/platform.rs`)
+#### Platform Detection (`infra/platform.rs`)
 
 The `Platform` struct detects the OS at compile time (`cfg!(target_os)`) and checks for Arch Linux at runtime (`/etc/arch-release`).
 
@@ -427,7 +432,7 @@ fn should_run(&self, ctx: &Context) -> bool {
 
 This is more expressive than `ctx.platform.is_linux()` because it clearly states *why* the platform matters (systemd support) rather than just checking the OS type.
 
-#### Logging (`runtime/logging/`)
+#### Logging (`infra/logging/`)
 
 Structured logger that:
 - Prints bold console stage headers for each task (`==>` markers in the main
@@ -510,7 +515,7 @@ skipped if a prerequisite failed; all failures are reported in the summary.
 
 ### Rust Tests
 
-- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `runtime/platform.rs`, `app/cli.rs`, `runtime/config_support/toml_loader.rs`, `domains/dotfiles/tasks/*.rs`, `domains/repository/tasks/*.rs`, `domains/files/tasks/*.rs`)
+- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `infra/platform.rs`, `app/cli.rs`, `infra/config/toml_loader.rs`, `domains/dotfiles/tasks/*.rs`, `domains/repository/tasks/*.rs`, `domains/files/tasks/*.rs`)
 - **Integration tests**: Separate test binaries in `cli/tests/` for behavioral
   CI contracts, configuration drift, domain boundaries, end-to-end apply,
   command structure, task execution, and configuration validation. See
@@ -522,7 +527,7 @@ skipped if a prerequisite failed; all failures are reported in the summary.
 Integration tests import the feature-gated `cli/src/testing/mod.rs` facade. Its
 legacy-shaped namespaces (`testing::tasks`, `testing::resources`, and similar)
 are compatibility exports only; production ownership remains in
-`app`, `domains`, `engine`, and `runtime`.
+`app`, `domains`, `engine`, and `infra`.
 
 The project uses `tempfile` as a dev-dependency for tests that need temporary directories.
 

@@ -56,9 +56,9 @@ with related resource suites separated by nested modules inside that file.
 Standard sibling module wiring is preferred; `#[path]` is reserved for
 established externalized test layouts.
 Examples:
-- `runtime/platform.rs` — Platform detection and category exclusion logic
+- `infra/platform.rs` — Platform detection and category exclusion logic
 - `app/cli.rs` — CLI argument parsing and command structure
-- `runtime/config_support/toml_loader.rs` — TOML file parsing
+- `infra/config/toml_loader.rs` — TOML file parsing
 - `domains/<domain>/tasks/*.rs` — Task applicability and helper functions
 
 ```rust

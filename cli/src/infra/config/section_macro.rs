@@ -18,7 +18,7 @@ macro_rules! config_section {
             entries: Vec<$ty>,
         }
 
-        impl $crate::runtime::config_support::toml_loader::ConfigSection for Section {
+        impl $crate::infra::config::toml_loader::ConfigSection for Section {
             type Entry = $ty;
             type Item = $ty;
 
@@ -38,12 +38,9 @@ macro_rules! config_section {
         /// Returns an error if the file exists but cannot be parsed.
         pub fn load(
             path: &::std::path::Path,
-            active_categories: &[$crate::runtime::config_support::category_matcher::Category],
+            active_categories: &[$crate::infra::config::category_matcher::Category],
         ) -> ::anyhow::Result<Vec<$ty>> {
-            $crate::runtime::config_support::toml_loader::load_section::<Section>(
-                path,
-                active_categories,
-            )
+            $crate::infra::config::toml_loader::load_section::<Section>(path, active_categories)
         }
     };
 
@@ -61,7 +58,7 @@ macro_rules! config_section {
             entries: Vec<$entry>,
         }
 
-        impl $crate::runtime::config_support::toml_loader::ConfigSection for Section {
+        impl $crate::infra::config::toml_loader::ConfigSection for Section {
             type Entry = $entry;
             type Item = $item;
 
@@ -81,12 +78,9 @@ macro_rules! config_section {
         /// Returns an error if the file exists but cannot be parsed.
         pub fn load(
             path: &::std::path::Path,
-            active_categories: &[$crate::runtime::config_support::category_matcher::Category],
+            active_categories: &[$crate::infra::config::category_matcher::Category],
         ) -> ::anyhow::Result<Vec<$item>> {
-            $crate::runtime::config_support::toml_loader::load_section::<Section>(
-                path,
-                active_categories,
-            )
+            $crate::infra::config::toml_loader::load_section::<Section>(path, active_categories)
         }
     };
 }

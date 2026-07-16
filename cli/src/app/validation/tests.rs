@@ -3,7 +3,7 @@
 use super::*;
 use std::io::Write;
 
-use crate::runtime::exec::{ExecResult, MockExecutor};
+use crate::infra::exec::{ExecResult, MockExecutor};
 use crate::test_helpers::{empty_config, make_context, make_linux_context};
 
 #[test]
@@ -119,7 +119,7 @@ fn apm_plugin_validation_runs_pack_dry_run_in_each_plugin() {
 
     let ctx = make_context(
         empty_config(dir.path().to_path_buf()),
-        crate::runtime::platform::Platform::new(crate::runtime::platform::Os::Linux, false),
+        crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
         std::sync::Arc::new(executor),
     );
 

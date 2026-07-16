@@ -64,7 +64,7 @@ Keep one clear path from file to desired state:
 
 `cli/src/app/config/mod.rs` owns aggregate loading. Modules under
 `cli/src/domains/<domain>/config/` own their formats and validators; generic
-TOML/category helpers live in `cli/src/runtime/config_support/`. Consult the
+TOML/category helpers live in `cli/src/infra/config/`. Consult the
 target module and real file under `conf/` rather than duplicating an inventory
 here.
 

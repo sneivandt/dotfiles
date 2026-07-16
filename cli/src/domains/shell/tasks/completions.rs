@@ -60,7 +60,7 @@ impl Operation for ZshCompletionOperation<'_> {
     }
 
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
-        crate::runtime::fs::write_with_parent(&plan.destination, &plan.content)?;
+        crate::infra::fs::write_with_parent(&plan.destination, &plan.content)?;
         ctx.log().info("zsh completions written");
         Ok(TaskResult::Ok)
     }
@@ -127,7 +127,7 @@ impl Task for GenerateCompletions {
 mod tests {
     use super::*;
     use crate::engine::Task;
-    use crate::runtime::platform::Os;
+    use crate::infra::platform::Os;
     use crate::test_helpers::{ContextBuilder, empty_config, make_linux_context};
     use std::path::PathBuf;
 

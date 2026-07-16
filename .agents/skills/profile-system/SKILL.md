@@ -57,7 +57,7 @@ which uses `git2` to write directly — no `git` subprocess needed. Running
 ## Profile Data Structure
 
 ```rust
-use crate::runtime::config_support::category_matcher::Category;
+use crate::infra::config::category_matcher::Category;
 
 pub struct Profile {
     pub name: String,

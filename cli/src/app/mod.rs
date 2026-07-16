@@ -3,7 +3,7 @@
 //! wiring.
 //!
 //! The app layer may depend on every other layer ([`crate::engine`],
-//! [`crate::runtime`], and [`crate::domains`]); nothing else may depend on it.
+//! [`crate::infra`], and [`crate::domains`]); nothing else may depend on it.
 
 pub mod catalog;
 pub mod cli;

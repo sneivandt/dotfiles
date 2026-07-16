@@ -3,8 +3,8 @@ use serde::Deserialize;
 use std::path::Path;
 
 use crate::domains::files::OctalMode;
-use crate::runtime::config_support::Diagnostic;
-use crate::runtime::config_support::config_section;
+use crate::infra::config::Diagnostic;
+use crate::infra::config::config_section;
 
 /// A file permission directive.
 #[derive(Debug, Clone)]
@@ -57,10 +57,10 @@ config_section!(field: "permissions", ty: ChmodEntry);
 #[must_use]
 pub fn validate(
     entries: &[ChmodEntry],
-    platform: crate::runtime::platform::Platform,
+    platform: crate::infra::platform::Platform,
 ) -> Vec<Diagnostic> {
-    use crate::runtime::config_support::Severity;
-    use crate::runtime::config_support::validation::{Validator, check, check_error};
+    use crate::infra::config::Severity;
+    use crate::infra::config::validation::{Validator, check, check_error};
 
     Validator::new(CHMOD_TOML)
         .warn_if(
@@ -108,9 +108,9 @@ pub(crate) const CHMOD_TOML: &str = "chmod.toml";
 )]
 mod tests {
     use super::*;
-    use crate::runtime::config_support::category_matcher::Category;
-    use crate::runtime::config_support::test_helpers::write_temp_toml;
-    use crate::runtime::config_support::test_load_missing_returns_empty;
+    use crate::infra::config::category_matcher::Category;
+    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_load_missing_returns_empty;
 
     #[test]
     fn parse_chmod_entry() {
@@ -133,7 +133,7 @@ permissions = [
 
     #[test]
     fn validate_detects_invalid_mode() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let entries = vec![ChmodEntry::new("999", ".ssh/config")];
         let warnings = validate(&entries, Platform::new(Os::Linux, false));
@@ -143,7 +143,7 @@ permissions = [
 
     #[test]
     fn validate_detects_invalid_mode_length() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let entries = vec![ChmodEntry::new("12", ".ssh/config")];
         let warnings = validate(&entries, Platform::new(Os::Linux, false));
@@ -153,7 +153,7 @@ permissions = [
 
     #[test]
     fn validate_detects_path_traversal() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let entries = vec![ChmodEntry::new("600", "../../etc/shadow")];
         let warnings = validate(&entries, Platform::new(Os::Linux, false));

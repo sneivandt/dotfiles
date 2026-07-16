@@ -5,14 +5,14 @@ use std::io::Write as _;
 use std::sync::atomic::Ordering;
 
 use super::Logger;
-use crate::runtime::logging::subscriber;
-use crate::runtime::logging::utils::{strip_ansi, terminal_columns};
+use crate::infra::logging::subscriber;
+use crate::infra::logging::utils::{strip_ansi, terminal_columns};
 
 const PROGRESS_ELLIPSIS: &str = " …";
 
 /// Return whether stdout is an interactive terminal that can handle redraws.
 #[must_use]
-pub(in crate::runtime::logging) fn stdout_supports_progress() -> bool {
+pub(in crate::infra::logging) fn stdout_supports_progress() -> bool {
     std::io::stdout().is_terminal()
 }
 
@@ -40,7 +40,7 @@ impl Logger {
     ///
     /// No-op if no status rows are currently shown.
     /// Must be called while holding `flush_lock`.
-    pub(in crate::runtime::logging) fn clear_progress(&self) {
+    pub(in crate::infra::logging) fn clear_progress(&self) {
         let rows = subscriber::take_transient_progress_rows();
         if rows == 0 {
             self.progress_rows.store(0, Ordering::Relaxed);
@@ -60,7 +60,7 @@ impl Logger {
     /// Replace the currently displayed active-task row in place.
     ///
     /// Must be called while holding `flush_lock`.
-    pub(in crate::runtime::logging) fn replace_status_line(&self, line: &str) {
+    pub(in crate::infra::logging) fn replace_status_line(&self, line: &str) {
         let rows = if subscriber::transient_progress_rows() == 0 {
             1
         } else {
@@ -79,7 +79,7 @@ impl Logger {
     /// Append an active-task row below the existing transient details.
     ///
     /// Must be called while holding `flush_lock`.
-    pub(in crate::runtime::logging) fn append_status_line(&self, line: &str, leading_blank: bool) {
+    pub(in crate::infra::logging) fn append_status_line(&self, line: &str, leading_blank: bool) {
         let rows = self.progress_rows.load(Ordering::Relaxed);
         let added_rows = if rows == 0 {
             if leading_blank {
@@ -104,33 +104,33 @@ impl Logger {
     }
 
     /// Mark whether the current transient status area ends with an active-task row.
-    pub(in crate::runtime::logging) fn set_status_row_visible(&self, visible: bool) {
+    pub(in crate::infra::logging) fn set_status_row_visible(&self, visible: bool) {
         self.status_row_visible.store(visible, Ordering::Relaxed);
     }
 
     /// Return whether the current transient status area ends with an active-task row.
-    pub(in crate::runtime::logging) fn has_status_row(&self) -> bool {
+    pub(in crate::infra::logging) fn has_status_row(&self) -> bool {
         self.status_row_visible.load(Ordering::Relaxed)
     }
 
     /// Return whether any transient status rows are currently displayed.
-    pub(in crate::runtime::logging) fn has_transient_rows(&self) -> bool {
+    pub(in crate::infra::logging) fn has_transient_rows(&self) -> bool {
         self.progress_rows.load(Ordering::Relaxed) > 0
     }
 
     /// Return whether completed tasks have emitted durable console output.
-    pub(in crate::runtime::logging) fn has_task_console_output(&self) -> bool {
+    pub(in crate::infra::logging) fn has_task_console_output(&self) -> bool {
         self.task_console_output_emitted.load(Ordering::Relaxed)
     }
 
     /// Remember that a completed task emitted durable console output.
-    pub(in crate::runtime::logging) fn mark_task_console_output(&self) {
+    pub(in crate::infra::logging) fn mark_task_console_output(&self) {
         self.task_console_output_emitted
             .store(true, Ordering::Relaxed);
     }
 
     /// Clear any transient status rows from the console.
-    pub(in crate::runtime::logging) fn clear_status(&self) {
+    pub(in crate::infra::logging) fn clear_status(&self) {
         let _guard = self.flush_lock.lock().unwrap_or_else(|e| {
             eprintln!("warning: flush lock was poisoned, recovering");
             e.into_inner()
@@ -146,7 +146,7 @@ impl Logger {
     reason = "test code uses panicking helpers"
 )]
 mod tests {
-    use crate::runtime::logging::isolated_logger;
+    use crate::infra::logging::isolated_logger;
 
     #[test]
     fn progress_rows_zero_initially() {

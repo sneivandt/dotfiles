@@ -59,7 +59,7 @@ fn nibble_to_upper(n: u8) -> char {
 
 use anyhow::Result;
 
-use crate::runtime::logging::Output;
+use crate::infra::logging::Output;
 /// GitHub repository used for release lookups.
 pub(super) const REPO: &str = "sneivandt/dotfiles";
 

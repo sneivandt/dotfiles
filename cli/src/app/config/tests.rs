@@ -1,8 +1,8 @@
 //! Unit tests for configuration loading and validation.
 
 use super::*;
-use crate::runtime::config_support::category_matcher::Category;
-use crate::runtime::platform::{Os, Platform};
+use crate::infra::config::category_matcher::Category;
+use crate::infra::platform::{Os, Platform};
 
 /// Create a temporary directory tree with the minimal conf/ files required
 /// by `Config::load` and return the `TempDir` (keep alive) + profile.

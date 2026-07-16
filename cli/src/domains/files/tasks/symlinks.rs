@@ -9,14 +9,14 @@ use crate::engine::{
     Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, config_resource_task,
     process_resources_remove,
 };
-use crate::runtime::ConfigHandle;
+use crate::infra::ConfigHandle;
 
 /// Build a single [`SymlinkResource`] from a config entry.
 fn build_resource(
     s: &Symlink,
     repo_root: &Path,
     home: &Path,
-    executor: &Arc<dyn crate::runtime::exec::Executor>,
+    executor: &Arc<dyn crate::infra::exec::Executor>,
 ) -> SymlinkResource {
     let symlinks_dir = crate::domains::files::config::symlinks::resolve_symlinks_dir(s, repo_root);
     let source = symlinks_dir.join(&s.source);

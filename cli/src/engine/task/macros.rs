@@ -327,7 +327,7 @@ macro_rules! resource_task {
 pub(crate) use resource_task;
 
 /// Like [`resource_task!`] but for tasks whose item list is backed by a typed
-/// [`ConfigHandle`](crate::runtime::ConfigHandle) rather than read from the
+/// [`ConfigHandle`](crate::infra::ConfigHandle) rather than read from the
 /// execution context.
 ///
 /// The generated struct owns a `ConfigHandle<$config>` and a `new(handle)`
@@ -358,13 +358,13 @@ macro_rules! config_resource_task {
         $(#[$meta])*
         #[derive(Debug)]
         $vis struct $name {
-            config: $crate::runtime::ConfigHandle<$cfg_ty>,
+            config: $crate::infra::ConfigHandle<$cfg_ty>,
         }
 
         impl $name {
             /// Create the task with a handle to its configuration slice.
             #[must_use]
-            pub const fn new(config: $crate::runtime::ConfigHandle<$cfg_ty>) -> Self {
+            pub const fn new(config: $crate::infra::ConfigHandle<$cfg_ty>) -> Self {
                 Self { config }
             }
 
@@ -460,13 +460,13 @@ macro_rules! config_resource_task {
         $(#[$meta])*
         #[derive(Debug)]
         $vis struct $name {
-            config: $crate::runtime::ConfigHandle<$cfg_ty>,
+            config: $crate::infra::ConfigHandle<$cfg_ty>,
         }
 
         impl $name {
             /// Create the task with a handle to its configuration slice.
             #[must_use]
-            pub const fn new(config: $crate::runtime::ConfigHandle<$cfg_ty>) -> Self {
+            pub const fn new(config: $crate::infra::ConfigHandle<$cfg_ty>) -> Self {
                 Self { config }
             }
 

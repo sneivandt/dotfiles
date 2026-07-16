@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::runtime::exec::Executor;
+use crate::infra::exec::Executor;
 
 /// Source for checking whether a directory is already on `PATH`.
 ///
@@ -81,7 +81,7 @@ impl PathEntryResource {
     #[must_use]
     pub fn new(
         home: &Path,
-        platform: crate::runtime::platform::Platform,
+        platform: crate::infra::platform::Platform,
         executor: Arc<dyn Executor>,
     ) -> Self {
         let dir = home.join(".local").join("bin");

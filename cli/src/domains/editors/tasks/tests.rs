@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::domains::editors::config::vscode_extensions::VsCodeExtension;
-use crate::runtime::ConfigHandle;
+use crate::infra::ConfigHandle;
 use crate::test_helpers::{empty_config, make_linux_context};
 use std::path::PathBuf;
 

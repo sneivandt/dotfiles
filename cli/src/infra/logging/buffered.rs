@@ -113,7 +113,7 @@ macro_rules! buffer_log_methods {
 /// parallel tasks do not interleave their console output.  The captured
 /// entries are replayed in order when `flush_and_complete` is called.
 ///
-/// [`record_task`](crate::runtime::logging::TaskRecorder::record_task) is forwarded directly to the underlying
+/// [`record_task`](crate::infra::logging::TaskRecorder::record_task) is forwarded directly to the underlying
 /// [`Logger`] because the summary collection is already thread-safe.
 #[derive(Debug)]
 pub struct BufferedLog {
@@ -255,7 +255,7 @@ impl TaskRecorder for BufferedLog {
 )]
 mod tests {
     use super::*;
-    use crate::runtime::logging::isolated_logger;
+    use crate::infra::logging::isolated_logger;
     use std::fs;
     use std::sync::Arc;
 
@@ -414,7 +414,7 @@ mod tests {
             targets: Arc::clone(&targets),
         });
         let dispatch = tracing::Dispatch::new(subscriber);
-        let _guard = crate::runtime::logging::test_dispatch_guard(&dispatch);
+        let _guard = crate::infra::logging::test_dispatch_guard(&dispatch);
 
         for entry in [
             LogEntry::Stage("stage".to_string()),
@@ -461,7 +461,7 @@ mod tests {
             targets: Arc::clone(&targets),
         });
         let dispatch = tracing::Dispatch::new(subscriber);
-        let _guard = crate::runtime::logging::test_dispatch_guard(&dispatch);
+        let _guard = crate::infra::logging::test_dispatch_guard(&dispatch);
 
         LogEntry::Warn("warn".to_string()).replay_non_verbose(TaskStatus::Failed);
         LogEntry::Error("error".to_string()).replay_non_verbose(TaskStatus::Failed);

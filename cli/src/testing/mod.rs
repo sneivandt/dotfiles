@@ -36,10 +36,10 @@ pub mod commands {
 pub mod config {
     pub use crate::app::config::Config;
     pub use crate::app::config::store::ConfigStore;
-    pub use crate::runtime::ConfigHandle;
+    pub use crate::infra::ConfigHandle;
 
     pub mod category_matcher {
-        pub use crate::runtime::config_support::category_matcher::{Category, matches};
+        pub use crate::infra::config::category_matcher::{Category, matches};
     }
 
     pub mod profiles {
@@ -66,7 +66,7 @@ pub mod engine {
 }
 
 pub mod exec {
-    pub use crate::runtime::exec::{ExecResult, Executor, SystemExecutor};
+    pub use crate::infra::exec::{ExecResult, Executor, SystemExecutor};
 }
 
 pub mod error {
@@ -74,7 +74,7 @@ pub mod error {
 }
 
 pub mod logging {
-    pub use crate::runtime::logging::{Log, Logger};
+    pub use crate::infra::logging::{Log, Logger};
 }
 
 pub mod tasks {
@@ -126,7 +126,7 @@ pub mod tasks {
 }
 
 pub mod platform {
-    pub use crate::runtime::platform::{Os, Platform};
+    pub use crate::infra::platform::{Os, Platform};
 }
 
 pub mod resources {

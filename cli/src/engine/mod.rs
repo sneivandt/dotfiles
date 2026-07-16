@@ -36,7 +36,7 @@ pub mod resource;
 /// Generic task contract, metadata vocabulary, macros, and executor.
 pub mod task;
 
-pub use crate::runtime::cancellation::CancellationToken;
+pub use crate::infra::cancellation::CancellationToken;
 pub use context::Context;
 pub use context::ContextOpts;
 pub use mode::ProcessOpts;

@@ -1,4 +1,5 @@
 //! Configuration loading and validation for all TOML config files.
+mod error;
 pub mod profiles;
 pub mod store;
 
@@ -14,8 +15,8 @@ use crate::domains::overlay::config::scripts;
 use crate::domains::packages::config::packages;
 use crate::domains::repository::config::manifest;
 use crate::domains::system::config::{registry, systemd_units};
-use crate::runtime::config_support::{Diagnostic, category_matcher};
-use crate::runtime::platform::Platform;
+use crate::infra::config::{Diagnostic, category_matcher};
+use crate::infra::platform::Platform;
 
 const MANIFEST_TOML: &str = "manifest.toml";
 

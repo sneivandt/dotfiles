@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use serde_json::Value as JsonValue;
 use serde_yaml_ng::Value as YamlValue;
 
-use crate::runtime::config_support::Diagnostic;
-use crate::runtime::config_support::validation::Validator;
+use crate::infra::config::Diagnostic;
+use crate::infra::config::validation::Validator;
 
 const SOURCE: &str = "apm/config/*.yml";
 const LOCAL_PLUGIN_PREFIX: &str = "~/.apm/plugins/";

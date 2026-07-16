@@ -8,7 +8,7 @@ use crate::app::validation::{
     ValidateConfigWarnings, ValidateManifestSync, ValidateSymlinkSources,
 };
 use crate::engine::Task;
-use crate::runtime::logging::Logger;
+use crate::infra::logging::Logger;
 
 /// Run the test/validation command.
 ///

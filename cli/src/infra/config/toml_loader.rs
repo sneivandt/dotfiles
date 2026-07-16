@@ -168,7 +168,7 @@ pub(crate) fn filter_by_categories<T>(
 )]
 mod tests {
     use super::*;
-    use crate::runtime::config_support::test_helpers::write_temp_toml;
+    use crate::infra::config::test_helpers::write_temp_toml;
     use serde::Deserialize;
 
     // -----------------------------------------------------------------------

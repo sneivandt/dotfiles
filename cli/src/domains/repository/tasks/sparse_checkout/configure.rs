@@ -8,8 +8,8 @@ use crate::engine::{
     Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
     task_metadata,
 };
-use crate::runtime::ConfigHandle;
-use crate::runtime::fs::{FileSystemOps, SystemFileSystemOps};
+use crate::infra::ConfigHandle;
+use crate::infra::fs::{FileSystemOps, SystemFileSystemOps};
 
 /// Default sparse checkout pattern that includes all files at root level.
 const DEFAULT_SPARSE_PATTERN: &str = "/*";

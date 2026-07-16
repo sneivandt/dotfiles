@@ -6,9 +6,9 @@ use std::sync::Arc;
 use crate::domains::packages::config::packages::Package;
 use crate::domains::packages::resources::package::{PackageManager, PackageResource};
 use crate::engine::Resource;
-use crate::runtime::ConfigHandle;
-use crate::runtime::exec::{ExecResult, Executor, MockExecutor};
-use crate::runtime::platform::Os;
+use crate::infra::ConfigHandle;
+use crate::infra::exec::{ExecResult, Executor, MockExecutor};
+use crate::infra::platform::Os;
 use crate::test_helpers::{
     empty_config, make_arch_context, make_linux_context, make_platform_context_with_which,
     make_windows_context,
@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 #[test]
 fn package_resource_description() {
-    let executor: Arc<dyn Executor> = Arc::new(crate::runtime::exec::SystemExecutor);
+    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
     let pacman_resource = PackageResource::new(
         "git".to_string(),
         PackageManager::Pacman,
@@ -299,7 +299,7 @@ fn make_package_context(
     is_arch: bool,
     executor: MockExecutor,
 ) -> Context {
-    use crate::runtime::platform::Platform;
+    use crate::infra::platform::Platform;
     crate::test_helpers::make_context(config, Platform::new(os, is_arch), Arc::new(executor))
 }
 

@@ -41,7 +41,7 @@ description: >
 
 ### Common module patterns
 
-- **Config parsers**: use `runtime::config_support::test_helpers`.
+- **Config parsers**: use `infra::config::test_helpers`.
 - **Resources**: construct directly for state checks; use executor-backed setup
   where needed.
 - **Tasks**: test pure helper logic and task applicability/result behavior.

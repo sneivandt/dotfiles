@@ -1,10 +1,10 @@
 //! Unit tests for sparse checkout configuration.
 
 use super::*;
-use crate::runtime::ConfigHandle;
-use crate::runtime::exec::{ExecResult, Executor, MockExecutor};
-use crate::runtime::fs::MockFileSystemOps;
-use crate::runtime::platform::{Os, Platform};
+use crate::infra::ConfigHandle;
+use crate::infra::exec::{ExecResult, Executor, MockExecutor};
+use crate::infra::fs::MockFileSystemOps;
+use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{empty_config, make_context, make_linux_context};
 use std::path::PathBuf;
 use std::sync::Arc;

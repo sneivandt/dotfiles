@@ -7,7 +7,7 @@ use anyhow::Result;
 use super::package::{PackageInstallReport, PackageProvider, PackageResource};
 use super::pacman::PacmanProvider;
 use crate::engine::ResourceChange;
-use crate::runtime::exec::Executor;
+use crate::infra::exec::Executor;
 
 /// Paru provider for AUR packages.
 #[derive(Debug, Clone, Copy)]

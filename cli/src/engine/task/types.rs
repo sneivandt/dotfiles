@@ -10,7 +10,7 @@
 use std::any::TypeId;
 use std::fmt;
 
-use crate::runtime::platform::Platform;
+use crate::infra::platform::Platform;
 
 /// Unique identifier for a task in the dependency graph.
 ///

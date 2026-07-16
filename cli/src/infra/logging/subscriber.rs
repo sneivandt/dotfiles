@@ -23,15 +23,15 @@ pub(super) fn set_verbose(verbose: bool) {
     VERBOSE.store(verbose, Ordering::Relaxed);
 }
 
-pub(in crate::runtime::logging) fn set_transient_progress(rows: u16) {
+pub(in crate::infra::logging) fn set_transient_progress(rows: u16) {
     TRANSIENT_PROGRESS_ROWS.store(rows, Ordering::Relaxed);
 }
 
-pub(in crate::runtime::logging) fn transient_progress_rows() -> u16 {
+pub(in crate::infra::logging) fn transient_progress_rows() -> u16 {
     TRANSIENT_PROGRESS_ROWS.load(Ordering::Relaxed)
 }
 
-pub(in crate::runtime::logging) fn take_transient_progress_rows() -> u16 {
+pub(in crate::infra::logging) fn take_transient_progress_rows() -> u16 {
     TRANSIENT_PROGRESS_ROWS.swap(0, Ordering::Relaxed)
 }
 

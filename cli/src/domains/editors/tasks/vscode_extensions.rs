@@ -7,7 +7,7 @@ use crate::engine::{
     Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult,
     process_resources_with_borrowed_cache,
 };
-use crate::runtime::ConfigHandle;
+use crate::infra::ConfigHandle;
 use anyhow::Result;
 use std::collections::HashSet;
 

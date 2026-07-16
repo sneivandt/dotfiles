@@ -19,7 +19,7 @@ use std::process::ExitCode;
 mod app;
 mod domains;
 mod engine;
-mod runtime;
+mod infra;
 
 #[cfg(any(feature = "internal-api", doctest))]
 #[doc(hidden)]

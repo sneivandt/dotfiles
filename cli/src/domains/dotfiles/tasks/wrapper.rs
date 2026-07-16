@@ -68,7 +68,7 @@ impl Task for UninstallWrapper {
 mod tests {
     use super::*;
     use crate::engine::Task;
-    use crate::runtime::platform::Os;
+    use crate::infra::platform::Os;
     use crate::test_helpers::{ContextBuilder, empty_config};
     use std::path::PathBuf;
 

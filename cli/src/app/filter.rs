@@ -1,6 +1,6 @@
 //! Task filter matching helpers for `install --only` and `install --skip`.
 
-use crate::runtime::logging::Output;
+use crate::infra::logging::Output;
 
 use crate::engine::Task;
 

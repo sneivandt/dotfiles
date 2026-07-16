@@ -8,7 +8,7 @@ use crate::engine::{
     Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, configured_task_result,
     process_resources,
 };
-use crate::runtime::ConfigHandle;
+use crate::infra::ConfigHandle;
 
 /// Configure git settings from git-config.toml.
 #[derive(Debug)]
@@ -99,7 +99,7 @@ mod tests {
     use super::*;
     use crate::domains::git::config::git_config::GitSetting;
     use crate::engine::Task;
-    use crate::runtime::ConfigHandle;
+    use crate::infra::ConfigHandle;
     use crate::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 

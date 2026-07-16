@@ -6,7 +6,7 @@ use anyhow::Result;
 
 use super::*;
 use crate::engine::{TaskResult, execute, task_deps};
-use crate::runtime::logging::{Output, TaskRecorder};
+use crate::infra::logging::{Output, TaskRecorder};
 use crate::test_helpers::{ContextBuilder, empty_config, make_static_context};
 
 fn make_test_log_and_ctx() -> (Arc<Logger>, Context, logging::TestDispatchLock) {

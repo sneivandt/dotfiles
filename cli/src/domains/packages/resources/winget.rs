@@ -6,7 +6,7 @@ use anyhow::Result;
 
 use super::package::PackageProvider;
 use crate::engine::ResourceChange;
-use crate::runtime::exec::Executor;
+use crate::infra::exec::Executor;
 
 /// Parses the column header row of `winget list` output into a list of
 /// `(display-column, name)` pairs, one per column.
@@ -170,7 +170,7 @@ impl PackageProvider for WingetProvider {
 )]
 mod tests {
     use super::*;
-    use crate::runtime::exec::{ExecResult, MockExecutor};
+    use crate::infra::exec::{ExecResult, MockExecutor};
 
     fn ok_result(stdout: &str) -> ExecResult {
         ExecResult {

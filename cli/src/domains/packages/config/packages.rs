@@ -1,8 +1,8 @@
 //! Package configuration loading.
 use serde::Deserialize;
 
-use crate::runtime::config_support::Diagnostic;
-use crate::runtime::config_support::config_section;
+use crate::infra::config::Diagnostic;
+use crate::infra::config::config_section;
 
 /// A package to install.
 #[derive(Debug, Clone)]
@@ -41,9 +41,9 @@ config_section! {
 #[must_use]
 pub fn validate(
     packages: &[Package],
-    platform: crate::runtime::platform::Platform,
+    platform: crate::infra::platform::Platform,
 ) -> Vec<Diagnostic> {
-    use crate::runtime::config_support::validation::{Validator, check};
+    use crate::infra::config::validation::{Validator, check};
 
     Validator::new(PACKAGES_TOML)
         .check_each(
@@ -79,9 +79,9 @@ pub(crate) const PACKAGES_TOML: &str = "packages.toml";
 )]
 mod tests {
     use super::*;
-    use crate::runtime::config_support::category_matcher::Category;
-    use crate::runtime::config_support::test_helpers::write_temp_toml;
-    use crate::runtime::config_support::test_load_missing_returns_empty;
+    use crate::infra::config::category_matcher::Category;
+    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_load_missing_returns_empty;
 
     #[test]
     fn load_filters_by_category() {
@@ -118,7 +118,7 @@ packages = [{ name = "paru-bin", aur = true }, { name = "yay", aur = true }]
 
     #[test]
     fn validate_warns_aur_on_non_arch() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let packages = vec![Package {
             name: "yay".to_string(),
@@ -148,7 +148,7 @@ packages = [{ name = "paru-bin", aur = true }, { name = "yay", aur = true }]
 
     #[test]
     fn validate_warns_empty_package_name() {
-        use crate::runtime::platform::{Os, Platform};
+        use crate::infra::platform::{Os, Platform};
 
         let packages = vec![Package {
             name: "  ".to_string(),

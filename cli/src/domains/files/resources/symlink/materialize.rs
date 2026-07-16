@@ -2,12 +2,12 @@ use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
 use super::platform::{is_link_like, remove_symlink};
-use crate::runtime::exec::Executor;
+use crate::infra::exec::Executor;
 
 /// Copy `source` into `target`, replacing the symlink that currently lives at
 /// `target`. Files are staged to a sibling temp path first so that the window
 /// where `target` is absent is as small as possible. Directories are handled
-/// recursively via [`crate::runtime::fs::copy_dir_recursive`]; symlinks within
+/// recursively via [`crate::infra::fs::copy_dir_recursive`]; symlinks within
 /// the source tree are recreated as symlinks rather than followed, preventing
 /// unintended traversal outside the source tree.
 pub(super) fn copy_into_place(source: &Path, target: &Path, executor: &dyn Executor) -> Result<()> {
@@ -32,11 +32,11 @@ pub(super) fn sibling_temp_path(target: &Path, suffix: &str) -> PathBuf {
 /// the temp file into place.
 fn copy_file_into_place(source: &Path, target: &Path, executor: &dyn Executor) -> Result<()> {
     let tmp = sibling_temp_path(target, ".dotfiles_tmp");
-    crate::runtime::fs::copy_file(source, &tmp)?;
+    crate::infra::fs::copy_file(source, &tmp)?;
 
-    let mut guard = crate::runtime::fs::TempPath::new(tmp.clone());
+    let mut guard = crate::infra::fs::TempPath::new(tmp.clone());
 
-    match crate::runtime::fs::symlink_metadata_optional(target, "stat target")? {
+    match crate::infra::fs::symlink_metadata_optional(target, "stat target")? {
         Some(meta) if is_link_like(target, &meta) => {
             remove_symlink(target, executor)
                 .with_context(|| format!("remove symlink: {}", target.display()))?;
@@ -67,12 +67,12 @@ pub(super) fn copy_dir_into_place(
 ) -> Result<()> {
     let tmp = sibling_temp_path(target, "_dotfiles_tmp");
     remove_stale_temp_dir(&tmp)?;
-    let mut guard = crate::runtime::fs::TempDir::new(tmp.clone());
+    let mut guard = crate::infra::fs::TempDir::new(tmp.clone());
 
-    crate::runtime::fs::copy_dir_recursive(source, &tmp, false)
+    crate::infra::fs::copy_dir_recursive(source, &tmp, false)
         .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;
 
-    match crate::runtime::fs::symlink_metadata_optional(target, "stat target")? {
+    match crate::infra::fs::symlink_metadata_optional(target, "stat target")? {
         Some(meta) if is_link_like(target, &meta) => {
             remove_symlink(target, executor)
                 .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
@@ -89,7 +89,7 @@ pub(super) fn copy_dir_into_place(
     match std::fs::rename(&tmp, target) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
-            crate::runtime::fs::copy_dir_recursive(&tmp, target, false).with_context(|| {
+            crate::infra::fs::copy_dir_recursive(&tmp, target, false).with_context(|| {
                 format!("cross-fs copy {} to {}", tmp.display(), target.display())
             })?;
             guard.persist();
@@ -114,7 +114,7 @@ pub(super) fn copy_dir_into_place(
 }
 
 fn remove_stale_temp_dir(tmp: &Path) -> Result<()> {
-    let Some(meta) = crate::runtime::fs::symlink_metadata_optional(tmp, "stat temp path")? else {
+    let Some(meta) = crate::infra::fs::symlink_metadata_optional(tmp, "stat temp path")? else {
         return Ok(());
     };
 

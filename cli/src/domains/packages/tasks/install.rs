@@ -11,7 +11,7 @@ use crate::engine::{
     Context, Domain, ExecutionPolicy, Operation, OperationState, PlatformCapability, Task,
     TaskPhase, TaskResult, process_operation, task_metadata,
 };
-use crate::runtime::ConfigHandle;
+use crate::infra::ConfigHandle;
 
 mod paru;
 mod planning;
@@ -197,7 +197,7 @@ impl Operation for ParuInstallOperation {
 
     fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         check_prerequisites(ctx)?;
-        let guard = crate::runtime::fs::TempDir::new(prepare_build_directory(ctx)?);
+        let guard = crate::infra::fs::TempDir::new(prepare_build_directory(ctx)?);
         clone_paru_from_aur(ctx, guard.path())?;
         build_paru(ctx, guard.path())?;
 

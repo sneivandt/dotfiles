@@ -181,9 +181,7 @@ mod tests {
         let mut config = empty_config(dir.path().to_path_buf());
         config.profile = Profile {
             name: "base".to_string(),
-            active_categories: vec![
-                crate::runtime::config_support::category_matcher::Category::Base,
-            ],
+            active_categories: vec![crate::infra::config::category_matcher::Category::Base],
             excluded_categories: vec![],
         };
         let store = ConfigStore::from_config(config);

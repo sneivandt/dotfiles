@@ -1,8 +1,8 @@
 //! Unit tests for the APM package install task.
 
 use super::*;
-use crate::runtime::exec::MockExecutor;
-use crate::runtime::platform::{Os, Platform};
+use crate::infra::exec::MockExecutor;
+use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{empty_config, make_linux_context};
 
 use super::test_fixture::{

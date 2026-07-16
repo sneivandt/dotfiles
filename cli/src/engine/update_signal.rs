@@ -9,7 +9,7 @@
 //! (called to decide whether a reload is necessary).  This makes the cross-task
 //! coupling explicit and self-documenting while remaining zero-cost at runtime.
 
-use crate::runtime::atomic_flag::AtomicFlag;
+use crate::infra::atomic_flag::AtomicFlag;
 
 /// A lightweight, cheaply-clonable flag that records whether the dotfiles
 /// repository was updated during the current run.

@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::engine::Context;
-use crate::runtime::exec::{ExecResult, MockExecutor};
-use crate::runtime::platform::Platform;
+use crate::infra::exec::{ExecResult, MockExecutor};
+use crate::infra::platform::Platform;
 use crate::test_helpers::{empty_config, make_context};
 
 use super::fragments::{discover_fragment_files, merge_fragments};

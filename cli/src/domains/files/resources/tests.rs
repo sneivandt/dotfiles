@@ -278,7 +278,7 @@ mod chmod {
 mod symlink {
     use super::super::symlink::*;
     use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceState};
-    use crate::runtime::exec::{Executor, SystemExecutor};
+    use crate::infra::exec::{Executor, SystemExecutor};
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
@@ -289,7 +289,7 @@ mod symlink {
     #[cfg(windows)]
     #[test]
     fn create_junction_invokes_mklink_with_directory_args() {
-        use crate::runtime::exec::{ExecResult, MockExecutor};
+        use crate::infra::exec::{ExecResult, MockExecutor};
 
         let mut mock = MockExecutor::new();
         mock.expect_run_windows_cmd_unchecked()

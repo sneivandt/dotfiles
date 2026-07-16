@@ -6,7 +6,7 @@ use anyhow::Result;
 use crate::domains::system::config::systemd_units::UnitScope;
 use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::runtime::exec::Executor;
+use crate::infra::exec::Executor;
 
 /// A systemd unit resource that can be checked and enabled.
 #[derive(Debug)]
@@ -59,7 +59,7 @@ impl SystemdUnitResource {
         }
     }
 
-    fn state_from_is_enabled(&self, result: &crate::runtime::exec::ExecResult) -> ResourceState {
+    fn state_from_is_enabled(&self, result: &crate::infra::exec::ExecResult) -> ResourceState {
         if result.success {
             return ResourceState::Correct;
         }
@@ -80,7 +80,7 @@ impl SystemdUnitResource {
     }
 }
 
-fn command_output(result: &crate::runtime::exec::ExecResult) -> String {
+fn command_output(result: &crate::infra::exec::ExecResult) -> String {
     let stdout = result.stdout.trim();
     let stderr = result.stderr.trim();
     match (stdout.is_empty(), stderr.is_empty()) {
@@ -91,7 +91,7 @@ fn command_output(result: &crate::runtime::exec::ExecResult) -> String {
     }
 }
 
-fn exit_status(result: &crate::runtime::exec::ExecResult) -> String {
+fn exit_status(result: &crate::infra::exec::ExecResult) -> String {
     result.code.map_or_else(
         || "terminated by signal".to_string(),
         |code| format!("exit {code}"),
@@ -156,7 +156,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::runtime::exec::{ExecResult, MockExecutor};
+    use crate::infra::exec::{ExecResult, MockExecutor};
 
     fn ok_result() -> ExecResult {
         ExecResult {
@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn description_returns_unit_name() {
-        let executor: Arc<dyn Executor> = Arc::new(crate::runtime::exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
         let resource = SystemdUnitResource::new(
             "clean-home-tmp.timer".to_string(),
             UnitScope::User,
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn from_entry_copies_name() {
-        let executor: Arc<dyn Executor> = Arc::new(crate::runtime::exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
         let entry = crate::domains::system::config::systemd_units::SystemdUnit {
             name: "dunst.service".to_string(),
             scope: UnitScope::User,

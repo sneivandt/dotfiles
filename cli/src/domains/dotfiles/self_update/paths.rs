@@ -59,8 +59,8 @@ pub(super) fn is_running_from_bin(root: &Path) -> bool {
         return false;
     };
     let expected = binary_path(root);
-    let resolved_exe = crate::runtime::fs::canonicalize(&exe).unwrap_or(exe);
-    let resolved_expected = crate::runtime::fs::canonicalize(&expected).unwrap_or(expected);
+    let resolved_exe = crate::infra::fs::canonicalize(&exe).unwrap_or(exe);
+    let resolved_expected = crate::infra::fs::canonicalize(&expected).unwrap_or(expected);
     let matched = resolved_exe == resolved_expected;
     tracing::debug!(
         "is_running_from_bin: resolved_exe={resolved_exe:?} resolved_expected={resolved_expected:?} match={matched}"

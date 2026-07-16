@@ -8,7 +8,7 @@ use crate::engine::{
     Context, Domain, ExecutionPolicy, PlatformCapability, ProcessOpts, Task, TaskPhase, TaskResult,
     process_resources,
 };
-use crate::runtime::ConfigHandle;
+use crate::infra::ConfigHandle;
 
 /// Enable and start systemd units.
 #[derive(Debug)]
@@ -128,9 +128,9 @@ mod tests {
     use super::*;
     use crate::domains::system::config::systemd_units::SystemdUnit;
     use crate::engine::{Context, Task, TaskResult};
-    use crate::runtime::ConfigHandle;
-    use crate::runtime::exec::{ExecResult, MockExecutor};
-    use crate::runtime::platform::{Os, Platform};
+    use crate::infra::ConfigHandle;
+    use crate::infra::exec::{ExecResult, MockExecutor};
+    use crate::infra::platform::{Os, Platform};
     use crate::test_helpers::{
         ContextBuilder, empty_config, make_context, make_linux_context,
         make_platform_context_with_which,

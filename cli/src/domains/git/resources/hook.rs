@@ -30,17 +30,17 @@ impl Resource for HookFileResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        crate::runtime::fs::prepare_target(&self.target)?;
-        crate::runtime::fs::copy_file(&self.source, &self.target)?;
+        crate::infra::fs::prepare_target(&self.target)?;
+        crate::infra::fs::copy_file(&self.source, &self.target)?;
 
         #[cfg(unix)]
-        crate::runtime::fs::set_executable(&self.target)?;
+        crate::infra::fs::set_executable(&self.target)?;
 
         Ok(ResourceChange::Applied)
     }
 
     fn remove(&self) -> ResourceResult<ResourceChange> {
-        if crate::runtime::fs::remove_file_if_present(&self.target, "stat hook")? {
+        if crate::infra::fs::remove_file_if_present(&self.target, "stat hook")? {
             Ok(ResourceChange::Applied)
         } else {
             Ok(ResourceChange::AlreadyCorrect)
@@ -50,12 +50,12 @@ impl Resource for HookFileResource {
 
 impl IntrinsicState for HookFileResource {
     fn current_state(&self) -> Result<ResourceState> {
-        if let Some(reason) = crate::runtime::fs::missing_source_reason(&self.source) {
+        if let Some(reason) = crate::infra::fs::missing_source_reason(&self.source) {
             return Ok(ResourceState::Invalid { reason });
         }
 
         // Detect broken symlinks at the target location
-        match crate::runtime::fs::symlink_metadata_optional(&self.target, "stat target")? {
+        match crate::infra::fs::symlink_metadata_optional(&self.target, "stat target")? {
             Some(_) if !self.target.exists() => {
                 return Ok(ResourceState::Incorrect {
                     current: "broken symlink".to_string(),
@@ -82,8 +82,8 @@ impl IntrinsicState for HookFileResource {
         }
 
         // Compare file contents
-        let src_content = crate::runtime::fs::read_bytes(&self.source)?;
-        let dst_content = crate::runtime::fs::read_bytes(&self.target)?;
+        let src_content = crate::infra::fs::read_bytes(&self.source)?;
+        let dst_content = crate::infra::fs::read_bytes(&self.target)?;
 
         if src_content == dst_content {
             Ok(ResourceState::Correct)

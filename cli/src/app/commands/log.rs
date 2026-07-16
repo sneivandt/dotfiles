@@ -13,7 +13,7 @@ const NO_LOG_FOUND: &str = "No dotfiles log found yet.";
 ///
 /// Returns an error if the log directory or selected log file cannot be read.
 pub fn run(verbose: bool) -> Result<()> {
-    let cache_dir = crate::runtime::logging::dotfiles_cache_dir_readonly();
+    let cache_dir = crate::infra::logging::dotfiles_cache_dir_readonly();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     run_with_cache_dir(&cache_dir, verbose, &mut out)

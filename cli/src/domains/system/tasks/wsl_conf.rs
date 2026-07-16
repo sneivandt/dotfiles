@@ -98,7 +98,7 @@ fn install_wsl_conf(ctx: &Context, target: &str) -> Result<TaskResult> {
             std::fs::write(&tmp, &desired_content).map_err(|write_error| {
                 anyhow::anyhow!("failed to write temp file {tmp}: {write_error}")
             })?;
-            let _cleanup = crate::runtime::fs::TempPath::new(std::path::PathBuf::from(&tmp));
+            let _cleanup = crate::infra::fs::TempPath::new(std::path::PathBuf::from(&tmp));
 
             ctx.executor().run("sudo", &["cp", &tmp, target])?;
         }
@@ -247,7 +247,7 @@ mod tests {
     fn should_run_false_on_windows() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = ContextBuilder::new(config)
-            .os(crate::runtime::platform::Os::Windows)
+            .os(crate::infra::platform::Os::Windows)
             .which(true)
             .build();
         assert!(!InstallWslConf.should_run(&ctx));
@@ -257,7 +257,7 @@ mod tests {
     fn should_run_false_on_linux_non_wsl() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = ContextBuilder::new(config)
-            .os(crate::runtime::platform::Os::Linux)
+            .os(crate::infra::platform::Os::Linux)
             .which(true)
             .build();
         assert!(!InstallWslConf.should_run(&ctx));
@@ -267,7 +267,7 @@ mod tests {
     fn should_run_true_on_wsl() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = ContextBuilder::new(config)
-            .os(crate::runtime::platform::Os::Linux)
+            .os(crate::infra::platform::Os::Linux)
             .wsl(true)
             .which(true)
             .build();

@@ -3,8 +3,8 @@
 use super::*;
 use crate::domains::overlay::config::scripts::ScriptEntry;
 use crate::engine::{Context, Task, TaskResult};
-use crate::runtime::exec::{ExecResult, MockExecutor};
-use crate::runtime::platform::{Os, Platform};
+use crate::infra::exec::{ExecResult, MockExecutor};
+use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{empty_config, make_context, make_linux_context};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -51,8 +51,7 @@ fn snapshot_report_should_run_false_without_overlay() {
     let config = empty_config(PathBuf::from("/tmp"));
     let ctx = make_linux_context(config);
     assert!(
-        !ReportOverlayScriptSnapshot::new(crate::runtime::ConfigHandle::new(vec![]))
-            .should_run(&ctx)
+        !ReportOverlayScriptSnapshot::new(crate::infra::ConfigHandle::new(vec![])).should_run(&ctx)
     );
 }
 
@@ -62,8 +61,7 @@ fn snapshot_report_should_run_true_with_overlay() {
     config.overlay = Some(PathBuf::from("/overlay"));
     let ctx = make_linux_context(config);
     assert!(
-        ReportOverlayScriptSnapshot::new(crate::runtime::ConfigHandle::new(vec![]))
-            .should_run(&ctx)
+        ReportOverlayScriptSnapshot::new(crate::infra::ConfigHandle::new(vec![])).should_run(&ctx)
     );
 }
 

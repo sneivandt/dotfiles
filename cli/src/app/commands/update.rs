@@ -10,7 +10,7 @@ use anyhow::Result;
 use std::sync::Arc;
 
 use crate::app::cli::{GlobalOpts, UpdateOpts};
-use crate::runtime::logging::Logger;
+use crate::infra::logging::Logger;
 
 /// Run the update command.
 ///

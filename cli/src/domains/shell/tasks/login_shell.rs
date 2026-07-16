@@ -30,7 +30,7 @@ resource_task! {
 mod tests {
     use super::*;
     use crate::engine::Task;
-    use crate::runtime::platform::Os;
+    use crate::infra::platform::Os;
     use crate::test_helpers::{
         ContextBuilder, empty_config, make_linux_context, make_platform_context_with_which,
     };

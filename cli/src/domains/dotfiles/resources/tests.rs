@@ -2,15 +2,15 @@
 
 use super::path_entry::*;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceState};
-use crate::runtime::exec::Executor;
+use crate::infra::exec::Executor;
 use std::path::Path;
 use std::sync::Arc;
 use tempfile::TempDir;
 
 fn make_path_entry(home: &Path, on_path: bool) -> PathEntryResource {
-    let executor: Arc<dyn Executor> = Arc::new(crate::runtime::exec::SystemExecutor);
-    let platform = crate::runtime::platform::Platform {
-        os: crate::runtime::platform::Os::Linux,
+    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
+    let platform = crate::infra::platform::Platform {
+        os: crate::infra::platform::Os::Linux,
         is_arch: false,
         is_wsl: false,
     };

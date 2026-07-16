@@ -19,7 +19,7 @@ commands. Shell wrappers only bootstrap and invoke the binary.
 | New or changed resource type | `cli/src/domains/<domain>/resources/`, `cli/src/domains/<domain>/tasks/` | `resource-implementation` |
 | Operation-style task bodies, scheduling, dependencies, parallelism | `cli/src/engine/`, domain tasks, `cli/src/app/commands/` | `engine-orchestration` |
 | Error handling, idempotency, dry-run behaviour | domain resources/tasks, `cli/src/engine/` | `error-handling-patterns` |
-| Console output, task recording, summaries | `cli/src/runtime/logging/`, `cli/src/engine/task/execute.rs` | `logging-patterns` |
+| Console output, task recording, summaries | `cli/src/infra/logging/`, `cli/src/engine/task/execute.rs` | `logging-patterns` |
 | TOML parsing or config sections | `cli/src/app/config/`, domain config modules, `conf/` | `toml-configuration`, `config-validation` |
 | Profiles or sparse checkout | `cli/src/app/config/profiles.rs`, `cli/src/domains/repository/tasks/sparse_checkout/` | `profile-system`, `sparse-checkout-patterns` |
 | Windows-specific features | registry, symlinks, PowerShell wrapper, platform gates | `windows-specific-patterns`, `cross-platform-verification` |
@@ -33,7 +33,7 @@ cli/src/
 ├── app/            # CLI, commands, aggregate config, catalog, validation
 ├── domains/        # Vertical domains colocating config, resources, and tasks
 ├── engine/         # Generic task/resource/operation contracts and scheduling
-├── runtime/        # Execution, filesystem, logging, platform, config support
+├── infra/          # Execution, filesystem, logging, platform, config support
 └── testing/        # Feature-gated compatibility facade for integration tests
 ```
 

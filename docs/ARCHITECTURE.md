@@ -80,7 +80,7 @@ flowchart TD
         subgraph engine_layer["engine/ — generic engine"]
             engine["context, plan, apply, orchestrate, mode,<br/>operation, parallel, graph, scheduler,<br/>stats, update_signal"]
             task["engine/task/<br/>Task trait, metadata, macros, executor"]
-            resource["engine/resource.rs<br/>generic Resource contract"]
+            resource["engine/resource/<br/>contract, errors, providers"]
         end
         subgraph runtime_layer["runtime/ — runtime facilities"]
             runtime["exec, fs, logging, platform,<br/>elevation, error, cancellation,<br/>config_support (generic TOML helpers),<br/>config_handle (ConfigHandle&lt;T&gt;)"]
@@ -269,7 +269,9 @@ The execution engine provides the generic resource processing loop, dependency g
 - **`scheduler.rs`** — dependency-driven parallel task scheduling using OS threads and `mpsc` channels
 - **`stats.rs`** — `TaskResult` and `TaskStats` types
 - **`task/`** — the generic `Task` trait, task metadata (`TaskPhase`, `Domain`, `TaskId`), task/resource macros, and the `execute()` runner
-- **`resource.rs`** — the generic `Resource`/`IntrinsicState`/`ResourceStateProvider` contract
+- **`resource/`** — the generic `Resource`/`IntrinsicState` contract
+  (`contract.rs`), typed resource errors (`error.rs`), and state providers
+  (`provider.rs`)
 - **`update_signal.rs`** — `UpdateSignal` (backed by a `runtime::atomic_flag::AtomicFlag`) signalling between `UpdateRepository` and `ReloadConfig`
 
 The cooperative `CancellationToken` and its backing `AtomicFlag` are generic
@@ -509,7 +511,12 @@ skipped if a prerequisite failed; all failures are reported in the summary.
 ### Rust Tests
 
 - **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `runtime/platform.rs`, `app/cli.rs`, `runtime/config_support/toml_loader.rs`, `domains/dotfiles/tasks/*.rs`, `domains/repository/tasks/*.rs`, `domains/files/tasks/*.rs`)
-- **Integration tests**: Separate test binaries in `cli/tests/` (`install_command.rs`, `uninstall_command.rs`, `test_command.rs`), using `IntegrationTestContext` and `TestContextBuilder` helpers from `cli/tests/common/mod.rs`
+- **Integration tests**: Separate test binaries in `cli/tests/` for behavioral
+  CI contracts, configuration drift, domain boundaries, end-to-end apply,
+  command structure, task execution, and configuration validation. See
+  [`TESTING.md`](TESTING.md#2-integration-tests-clitests) for the maintained
+  inventory. They share `IntegrationTestContext` and `TestContextBuilder`
+  helpers from `cli/tests/common/mod.rs`.
 - **Snapshot tests**: Task list snapshots via the `insta` crate (`cli/tests/snapshots/`). Update with `INSTA_UPDATE=unseen cargo test` or `cargo insta review`
 
 Integration tests import the feature-gated `cli/src/testing/mod.rs` facade. Its

@@ -458,10 +458,63 @@ fn git_config_dry_run_makes_no_changes() {
         .build();
 
     let ec = test.make_dry_run_context("base");
-    let result = ConfigureGit::new(ec.store.git_settings.clone())
+    let config_path = ec.ctx.home().join("gitconfig");
+    std::fs::write(&config_path, "").unwrap();
+    let result = ConfigureGit::with_config_path(ec.store.git_settings.clone(), config_path.clone())
         .run(&ec.ctx)
         .unwrap();
     assert!(matches!(result, TaskResult::DryRun));
+
+    let config = git2::Config::open(&config_path).unwrap();
+    assert!(
+        config.get_string("core.autocrlf").is_err(),
+        "dry-run should leave the isolated config unchanged"
+    );
+}
+
+#[test]
+fn git_config_replaces_incorrect_isolated_value() {
+    let test = common::TestContextBuilder::new()
+        .with_config_file(
+            "git-config.toml",
+            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n",
+        )
+        .build();
+
+    let ec = test.make_context("base");
+    let config_path = ec.ctx.home().join("gitconfig");
+    let mut initial_config = git2::Config::open(&config_path).unwrap();
+    initial_config.set_str("core.autocrlf", "true").unwrap();
+    drop(initial_config);
+
+    let result = ConfigureGit::with_config_path(ec.store.git_settings.clone(), config_path.clone())
+        .run(&ec.ctx)
+        .unwrap();
+    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+
+    let actual_config = git2::Config::open(&config_path).unwrap();
+    assert_eq!(actual_config.get_string("core.autocrlf").unwrap(), "false");
+}
+
+#[test]
+fn git_config_is_idempotent_when_isolated_value_matches() {
+    let test = common::TestContextBuilder::new()
+        .with_config_file(
+            "git-config.toml",
+            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n",
+        )
+        .build();
+
+    let ec = test.make_context("base");
+    let config_path = ec.ctx.home().join("gitconfig");
+    let mut config = git2::Config::open(&config_path).unwrap();
+    config.set_str("core.autocrlf", "false").unwrap();
+    drop(config);
+
+    let result = ConfigureGit::with_config_path(ec.store.git_settings.clone(), config_path)
+        .run(&ec.ctx)
+        .unwrap();
+    assert!(matches!(result, TaskResult::Ok));
 }
 
 // ===========================================================================

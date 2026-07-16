@@ -1,19 +1,90 @@
 //! Task: configure Git settings.
+use anyhow::Result;
+use std::path::PathBuf;
 
 use crate::domains::git::config::git_config::GitSetting;
 use crate::domains::git::resources::git_config::GitConfigResource;
-use crate::engine::{Domain, ProcessOpts, TaskPhase, config_resource_task};
+use crate::engine::{
+    Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, configured_task_result,
+    process_resources,
+};
+use crate::runtime::ConfigHandle;
 
-config_resource_task! {
-    /// Configure git settings from git-config.toml.
-    pub ConfigureGit {
-        name: "Configure Git",
-        phase: TaskPhase::Provision,
-        domain: Domain::Git,
-        config: Vec<GitSetting>,
-        items: |cfg| cfg.clone(),
-        build: |s, _ctx| GitConfigResource::new(s.key, s.value),
-        opts: ProcessOpts::strict("configure").sequential(),
+/// Configure git settings from git-config.toml.
+#[derive(Debug)]
+pub struct ConfigureGit {
+    config: ConfigHandle<Vec<GitSetting>>,
+    config_path: Option<PathBuf>,
+}
+
+impl ConfigureGit {
+    /// Create the task using the user's global Git configuration.
+    #[must_use]
+    pub const fn new(config: ConfigHandle<Vec<GitSetting>>) -> Self {
+        Self {
+            config,
+            config_path: None,
+        }
+    }
+
+    /// Create the task using one explicit Git configuration file.
+    #[cfg(any(test, feature = "internal-api"))]
+    #[must_use]
+    pub const fn with_config_path(
+        config: ConfigHandle<Vec<GitSetting>>,
+        config_path: PathBuf,
+    ) -> Self {
+        Self {
+            config,
+            config_path: Some(config_path),
+        }
+    }
+
+    fn run_resources(&self, ctx: &Context, emit_stage: bool) -> Result<Option<TaskResult>> {
+        let settings = self.config.read();
+        if settings.is_empty() {
+            return Ok(None);
+        }
+        if emit_stage {
+            ctx.log().stage(self.name());
+        }
+
+        let config_path = self.config_path.clone();
+        let resources = settings.iter().cloned().map(|setting| {
+            if let Some(path) = &config_path {
+                GitConfigResource::with_config_path(setting.key, setting.value, path.clone())
+            } else {
+                GitConfigResource::new(setting.key, setting.value)
+            }
+        });
+        process_resources(
+            ctx,
+            resources,
+            &ProcessOpts::strict("configure").sequential(),
+        )
+        .map(Some)
+    }
+}
+
+impl Task for ConfigureGit {
+    fn name(&self) -> &'static str {
+        "Configure Git"
+    }
+
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Provision
+    }
+
+    fn domain(&self) -> Domain {
+        Domain::Git
+    }
+
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        self.run_resources(ctx, true)
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(self.run_resources(ctx, false)?))
     }
 }
 

@@ -85,14 +85,23 @@ mockall-generated `MockFileSystemOps` via the task's own constructor, e.g.
 
 #### 2. Integration Tests (`cli/tests/`)
 
-Separate test binaries in `cli/tests/` test the full command output:
-- `install_command.rs` — verifies the install task list
-- `uninstall_command.rs` — verifies the uninstall task list
-- `test_command.rs` — verifies config validation
+Separate test binaries in `cli/tests/` cover cross-module contracts:
+
+| Test binary | Coverage |
+|---|---|
+| `behavioral_ci.rs` | Profile/platform filtering, filesystem outcomes, idempotency, and emitted external commands |
+| `config_drift.rs` | Synchronization between conditional symlinks and sparse-checkout manifest coverage |
+| `domain_boundaries.rs` | Domain import-boundary architecture rules |
+| `e2e_apply.rs` | Hermetic, non-dry-run config-to-filesystem apply pipeline |
+| `install_command.rs` | Install task list, selectors, and dependency graph |
+| `task_execution.rs` | Real task execution, dry-run safety, and isolated filesystem/config outcomes |
+| `test_command.rs` | Configuration loading and validation diagnostics |
+| `uninstall_command.rs` | Uninstall task list structure and naming |
 
 Integration tests use helpers from `cli/tests/common/mod.rs`:
 - `IntegrationTestContext::new()` — sets up a temp-dir-backed repo clone
 - `TestContextBuilder` — builder for custom repo layouts
+- `ExecutionContext` — owns an isolated home, config store, context, and logger
 
 ##### Writing New Integration Tests
 

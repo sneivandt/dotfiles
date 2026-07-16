@@ -1,5 +1,6 @@
 //! Git configuration resource.
 use anyhow::{Context as _, Result};
+use std::path::PathBuf;
 
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 
@@ -13,13 +14,47 @@ pub struct GitConfigResource {
     pub key: String,
     /// Desired value (e.g., "false").
     pub desired_value: String,
+    config_path: Option<PathBuf>,
 }
 
 impl GitConfigResource {
     /// Create a new git config resource.
     #[must_use]
     pub const fn new(key: String, desired_value: String) -> Self {
-        Self { key, desired_value }
+        Self {
+            key,
+            desired_value,
+            config_path: None,
+        }
+    }
+
+    /// Create a resource backed by one explicit config file.
+    #[must_use]
+    pub(crate) const fn with_config_path(
+        key: String,
+        desired_value: String,
+        config_path: PathBuf,
+    ) -> Self {
+        Self {
+            key,
+            desired_value,
+            config_path: Some(config_path),
+        }
+    }
+
+    fn open_config(&self) -> Result<git2::Config> {
+        self.config_path.as_deref().map_or_else(
+            || {
+                let config = git2::Config::open_default().context("opening git config")?;
+                config
+                    .open_level(git2::ConfigLevel::Global)
+                    .context("opening global git config")
+            },
+            |path| {
+                git2::Config::open(path)
+                    .with_context(|| format!("opening git config {}", path.display()))
+            },
+        )
     }
 
     /// Check resource state against a pre-opened config snapshot.
@@ -53,21 +88,15 @@ impl Resource for GitConfigResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        let config = git2::Config::open_default().context("opening git config")?;
-        let mut global = config
-            .open_level(git2::ConfigLevel::Global)
-            .context("opening global git config")?;
-        self.apply_to_config(&mut global).map_err(Into::into)
+        let mut config = self.open_config()?;
+        self.apply_to_config(&mut config).map_err(Into::into)
     }
 }
 
 impl IntrinsicState for GitConfigResource {
     fn current_state(&self) -> Result<ResourceState> {
-        let config = git2::Config::open_default().context("opening git config")?;
-        let global = config
-            .open_level(git2::ConfigLevel::Global)
-            .context("opening global git config for state check")?;
-        self.state_from_config(&global)
+        let config = self.open_config()?;
+        self.state_from_config(&config)
     }
 }
 
@@ -182,5 +211,23 @@ mod tests {
 
         let val = config.get_string("core.autocrlf").unwrap();
         assert_eq!(val, "false");
+    }
+
+    #[test]
+    fn explicit_config_path_is_used_for_state_and_apply() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let resource = GitConfigResource::with_config_path(
+            "core.autocrlf".to_string(),
+            "false".to_string(),
+            path.clone(),
+        );
+
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+
+        let config = git2::Config::open(&path).unwrap();
+        assert_eq!(config.get_string("core.autocrlf").unwrap(), "false");
     }
 }

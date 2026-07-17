@@ -1,6 +1,7 @@
 //! Profile category resolution.
 
 use std::collections::HashMap;
+#[cfg(any(test, feature = "internal-api", doctest))]
 use std::path::Path;
 
 use anyhow::Result;
@@ -9,7 +10,9 @@ use crate::app::config::error::ConfigError;
 use crate::infra::config::category_matcher::Category;
 use crate::infra::platform::Platform;
 
-use super::definitions::{ProfileDef, load_definitions};
+use super::definitions::ProfileDef;
+#[cfg(any(test, feature = "internal-api", doctest))]
+use super::definitions::load_definitions;
 
 /// A resolved profile with its active and excluded categories.
 #[derive(Debug, Clone)]

@@ -10,8 +10,8 @@
 
 use crate::domains::dotfiles::resources::wrapper::{WrapperResource, WrapperType};
 use crate::engine::{
-    Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, process_resources,
-    process_resources_remove, task_metadata,
+    Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, process_resources_remove,
+    task_metadata,
 };
 
 /// Install the CLI wrapper script in `~/.local/bin`.
@@ -22,7 +22,6 @@ impl Task for InstallWrapper {
     task_metadata! {
         name: "Install wrapper",
         phase: TaskPhase::Bootstrap,
-        domain: Domain::Core,
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {
@@ -46,7 +45,6 @@ impl Task for UninstallWrapper {
     task_metadata! {
         name: "Remove wrapper",
         phase: TaskPhase::Bootstrap,
-        domain: Domain::Core,
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {

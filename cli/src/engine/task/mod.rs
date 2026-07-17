@@ -1,5 +1,4 @@
-//! Generic task contract: the [`Task`] trait, execution-policy vocabulary,
-//! task metadata types, task macros, and the central task executor.
+//! Generic task contract, metadata types, task macros, and central executor.
 //!
 //! Concrete task implementations live in the domain layer; this module only
 //! defines the reusable machinery they build on.
@@ -10,22 +9,17 @@ mod types;
 
 pub use execute::execute;
 pub(crate) use macros::{
-    config_resource_task, configured_task_result, execution_policies_impl,
-    process_config_resources, process_config_resources_with_provider, resource_task, task_deps,
-    task_metadata,
+    config_resource_task, configured_task_result, process_config_resources,
+    process_config_resources_with_provider, resource_task, task_deps, task_metadata,
 };
-pub use types::{Domain, ExecutionPolicy, PlatformCapability, TaskId, TaskPhase};
+pub use types::{TaskId, TaskPhase};
 
 use std::any::TypeId;
 
 use anyhow::Result;
 
-use execute::not_applicable_reason;
-
 use super::resource::{BorrowedStateProvider, Resource, ResourceState};
 use super::{Context, ProcessOpts, TaskResult, process_resources_with_provider};
-
-const ALWAYS_POLICY: &[ExecutionPolicy] = &[ExecutionPolicy::Always];
 
 /// Process resources whose current state is derived from a borrowed cache.
 ///
@@ -57,18 +51,12 @@ pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
 
-    /// Execution phase: [`TaskPhase::Bootstrap`], [`TaskPhase::Sync`],
-    /// [`TaskPhase::Provision`], [`TaskPhase::Validation`], or [`TaskPhase::Update`].
-    fn phase(&self) -> TaskPhase;
-
-    /// Subject area this task belongs to, used to group summary output.
+    /// Execution phase used for scheduler ordering barriers.
     ///
-    /// Independent of [`phase`](Task::phase): the phase controls *when* the
-    /// task runs, the domain describes *what* it is about.  The default is
-    /// [`Domain::General`], reserved for test and mock tasks; every production
-    /// task declares an explicit domain (enforced by a registry guard test).
-    fn domain(&self) -> Domain {
-        Domain::General
+    /// Most tasks converge declared state and therefore run in the provision
+    /// phase. Tasks in another barrier override this method.
+    fn phase(&self) -> TaskPhase {
+        TaskPhase::Provision
     }
 
     /// The unique identifier of this task, used by the scheduler to build the
@@ -97,15 +85,10 @@ pub trait Task: Send + Sync + 'static {
         &[]
     }
 
-    /// Execution rules that are enforced centrally before the task runs.
-    fn execution_policies(&self) -> &[ExecutionPolicy] {
-        ALWAYS_POLICY
-    }
-
     /// Whether this task should run on the current platform/profile.
     ///
-    /// Most tasks are always eligible once their execution policies pass; tasks
-    /// with platform, tool-availability, or configuration gates override this.
+    /// Tasks with platform, tool-availability, or configuration gates override
+    /// this method.
     fn should_run(&self, _ctx: &Context) -> bool {
         true
     }
@@ -135,16 +118,9 @@ pub trait Task: Send + Sync + 'static {
         false
     }
 
-    /// Whether the task's policies and current state require elevation.
+    /// Whether the applicable task's current state requires elevation.
     fn requires_elevation(&self, ctx: &Context) -> bool {
-        let declares_elevation = self
-            .execution_policies()
-            .iter()
-            .any(|p| matches!(p, ExecutionPolicy::RequiresElevation));
-        !ctx.dry_run()
-            && declares_elevation
-            && not_applicable_reason(self, ctx).is_none()
-            && self.needs_elevation(ctx)
+        !ctx.dry_run() && self.should_run(ctx) && self.needs_elevation(ctx)
     }
 
     /// Execute the task.
@@ -212,20 +188,12 @@ impl Task for TaskWithExtraDeps {
         self.inner.phase()
     }
 
-    fn domain(&self) -> Domain {
-        self.inner.domain()
-    }
-
     fn task_id(&self) -> TaskId {
         self.inner.task_id()
     }
 
     fn dependencies(&self) -> &[TaskId] {
         &self.deps
-    }
-
-    fn execution_policies(&self) -> &[ExecutionPolicy] {
-        self.inner.execution_policies()
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -238,10 +206,6 @@ impl Task for TaskWithExtraDeps {
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
         self.inner.needs_elevation(ctx)
-    }
-
-    fn requires_elevation(&self, ctx: &Context) -> bool {
-        self.inner.requires_elevation(ctx)
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

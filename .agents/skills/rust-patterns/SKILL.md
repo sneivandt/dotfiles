@@ -56,9 +56,12 @@ cli/src/
   `Operation` and call `process_operation()` from the task body.
 - Declare dependencies with `task_deps![...]`; register static tasks in
   `cli/src/app/catalog.rs`.
-- Use `ExecutionPolicy` for central platform, dry-run, and elevation gates.
-  Tasks that declare `RequiresElevation` must implement `needs_elevation()` so
-  sudo is primed only when a privileged mutation is actually needed.
+- Use `should_run()` for platform, tool-availability, and configuration
+  eligibility. Implement `needs_elevation()` only when an applicable task's
+  current state predicts a privileged mutation, so sudo is primed only when
+  needed. Dry-run suppression is handled centrally.
+- Provision is the default task phase; override `phase()` only for another
+  scheduler barrier.
 - Use capability methods such as `supports_systemd()`, `supports_chmod()`,
   `has_registry()`, `supports_aur()`, and `uses_pacman()` before direct OS checks.
 - Route all subprocess calls through `ctx.executor`; do not call process helpers
@@ -87,9 +90,8 @@ cli/src/
   centralize check -> dry-run -> mutate order.
 - Fully custom tasks that cannot use resources or operations must still follow
   check -> dry-run -> mutate order manually.
-- Keep applicability centralized: execution policies and `should_run()` decide
-  eligibility, while `run_configured()` only suppresses tasks with no configured
-  work.
+- Keep applicability centralized: `should_run()` decides eligibility, while
+  `run_configured()` only suppresses tasks with no configured work.
 - Inject typed `ConfigHandle<T>` values into config-backed tasks and keep read
   guards out of long-running or parallel work.
 - Keep behaviour idempotent: re-running should converge to the same state.

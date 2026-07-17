@@ -13,7 +13,7 @@ description: >
 - Commands and tasks return `anyhow::Result` with contextual errors.
 - Resources return `ResourceResult<ResourceChange>` so failures remain
   classifiable.
-- Tasks own execution policy and result reporting; resources and operations own
+- Tasks own eligibility and result reporting; resources and operations own
   convergence.
 - `engine::execute()` records task failures and allows independent work to
   continue.
@@ -63,8 +63,8 @@ context's executor abstraction.
 
 ## Result Semantics
 
-- `TaskResult::NotApplicable`: task applicability or execution policy excluded
-  it from this run.
+- `TaskResult::NotApplicable`: the task is ineligible for this run or discovered
+  that it has no applicable work.
 - `TaskResult::Skipped`: an applicable task deliberately did not perform its
   work and reported why.
 - `TaskResult::DryRun`: changes were identified but not applied.

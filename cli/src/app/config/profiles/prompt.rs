@@ -2,11 +2,14 @@
 
 use std::collections::HashMap;
 use std::io::{self, Write};
+#[cfg(any(test, feature = "internal-api", doctest))]
 use std::path::Path;
 
 use anyhow::{Context as _, Result, bail};
 
-use super::definitions::{ProfileDef, load_definitions};
+use super::definitions::ProfileDef;
+#[cfg(any(test, feature = "internal-api", doctest))]
+use super::definitions::load_definitions;
 
 /// Interactively prompt the user to select a profile.
 ///

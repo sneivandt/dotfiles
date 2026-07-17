@@ -204,14 +204,10 @@ pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
 
-    /// Which phase this task belongs to
-    /// (Bootstrap, Sync, Provision, Validation, or Update).
+    /// Which scheduler barrier this task belongs to.
     ///
-    /// This is per-task metadata returned by the task itself — it is **not**
-    /// derived from the folder the task lives in. A task can therefore live in
-    /// any module yet declare any phase, which is how a single domain (e.g.
-    /// the overlay system) can span more than one phase.
-    fn phase(&self) -> TaskPhase;
+    /// Most tasks converge declared state, so Provision is the default.
+    fn phase(&self) -> TaskPhase { TaskPhase::Provision }
 
     /// Stable identifier for dependency matching.
     fn task_id(&self) -> TaskId { TaskId::Type(TypeId::of::<Self>()) }
@@ -219,14 +215,14 @@ pub trait Task: Send + Sync + 'static {
     /// TaskIds of tasks that must complete before this one starts.
     fn dependencies(&self) -> &[TaskId] { &[] }
 
-    /// Declarative rules enforced before the task runs.
-    fn execution_policies(&self) -> &[ExecutionPolicy] { ALWAYS_POLICY }
-
     /// Whether this task should run on the current platform/profile.
-    fn should_run(&self, ctx: &Context) -> bool;
+    fn should_run(&self, ctx: &Context) -> bool { true }
 
     /// Execute only when the task has configured work.
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>>;
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        ctx.log().stage(self.name());
+        self.run(ctx).map(Some)
+    }
 
     /// Predict whether an applicable task will need elevation.
     fn needs_elevation(&self, ctx: &Context) -> bool { false }
@@ -248,13 +244,14 @@ Other task-specific dependencies are injected the same way: `UpdateRepository` a
 
 Cross-domain ordering constraints are **not** declared inside domains (which may name only same-domain tasks). Instead the application catalog (`app/catalog.rs`) wraps a task in `engine::TaskWithExtraDeps` to merge the extra dependency `TaskId`s — for example making `ConfigureSystemd` depend on `InstallSymlinks`, or `GenerateCompletions` depend on `UpdateRepository`. The decorator forwards the inner task's identity and behaviour unchanged, so tasks that depend on the wrapped task by type still resolve.
 
-The `execute()` function owns the canonical applicability path: it evaluates
-`execution_policies()`, checks `should_run()` once, and then calls
-`run_configured()`. The configured-work hook can return `None` for an empty
-configuration without re-evaluating policy or guards. The executor records
-`Ok`, `NotApplicable`, `Skipped`, `DryRun`, or `Failed` in the logger. Before
-parallel phase dispatch, `run_tasks_to_completion()` uses the same applicability
-decision before priming sudo for tasks that predict a privileged mutation.
+The `execute()` function owns the canonical applicability path: it checks
+`should_run()` and then calls `run_configured()`. The configured-work hook can
+return `None` for an empty configuration without repeating the eligibility
+check. The executor records `Ok`, `NotApplicable`, `Skipped`, `DryRun`, or
+`Failed` in the logger. Before parallel phase dispatch,
+`run_tasks_to_completion()` calls `requires_elevation()`, which suppresses
+dry-run and inapplicable tasks before consulting `needs_elevation()`, then
+primes sudo only for tasks that predict a privileged mutation.
 
 #### Engine (`engine/`)
 
@@ -273,7 +270,7 @@ The execution engine provides the generic resource processing loop, dependency g
   and one cached dependency-safe order produced by Kahn's algorithm
 - **`scheduler.rs`** — dependency-driven parallel task scheduling using OS threads and `mpsc` channels
 - **`stats.rs`** — `TaskResult` and `TaskStats` types
-- **`task/`** — the generic `Task` trait, task metadata (`TaskPhase`, `Domain`, `TaskId`), task/resource macros, and the `execute()` runner
+- **`task/`** — the generic `Task` trait, task metadata (`TaskPhase`, `TaskId`), task/resource macros, and the `execute()` runner
 - **`resource/`** — the generic `Resource`/`IntrinsicState` contract
   (`contract.rs`), typed resource errors (`error.rs`), and state providers
   (`provider.rs`)
@@ -285,10 +282,10 @@ cancellation without depending on `engine`); `engine` re-exports
 `CancellationToken` for its consumers.
 
 **Two axes: domain and phase.** Task files are organized by **domain** (what a
-task is about) under `cli/src/domains/<domain>/tasks/`, while each task
-independently declares its **phase** (when it runs) via `phase()`. The axes are
-orthogonal: a domain folder can hold tasks from different phases, and a single
-domain can span phases. Domains:
+task is about) under `cli/src/domains/<domain>/tasks/`, while each task uses the
+default Provision **phase** or overrides `phase()` for another scheduler
+barrier. The axes are orthogonal: a domain folder can hold tasks from different
+phases, and a single domain can span phases. Domains:
 
 - `dotfiles/` — self-update, CLI wrapper install, `PATH` setup
 - `repository/` — git pull and sparse checkout
@@ -310,9 +307,9 @@ submodules (as in `system/`, `git/`, and `ai/apm/`). Cohesive modules can
 instead keep production code in `mod.rs` and move large tests to a sibling
 `tests.rs` (as in `editors/`, `overlay/`, `packages/`, and
 `repository/sparse_checkout/`). The framework itself — the `Task` trait,
-`TaskPhase`, `Domain`, and the task/resource macros — lives in
-`engine/task/` (`mod.rs`, `types.rs`, `macros.rs`), while the task catalog and
-the `--skip`/`--only` filter live in `app/catalog.rs` and `app/filter.rs`.
+`TaskPhase`, `TaskId`, and the task/resource macros — lives in `engine/task/`
+(`mod.rs`, `types.rs`, `macros.rs`), while the task catalog and the
+`--skip`/`--only` filter live in `app/catalog.rs` and `app/filter.rs`.
 
 Task bodies generally use one of two convergence abstractions:
 
@@ -582,7 +579,7 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers automatically 
 
 ### Adding New Tasks
 
-1. Create a new file in the relevant domain's tasks folder under `cli/src/domains/<domain>/tasks/` (e.g. `dotfiles/`, `repository/`, `git/`, `files/`, `shell/`, `system/`, `ai/`), implementing the `Task` trait and declaring its `phase()` (Bootstrap, Sync, Provision, or Update)
+1. Create a new file in the relevant domain's tasks folder under `cli/src/domains/<domain>/tasks/` (e.g. `dotfiles/`, `repository/`, `git/`, `files/`, `shell/`, `system/`, `ai/`), implementing the `Task` trait. Provision is the default phase; override `phase()` only for Bootstrap, Sync, Validation, or Update.
 2. Add the module to that domain's `cli/src/domains/<domain>/tasks/mod.rs`
 3. Add the task to `all_install_tasks()` in `cli/src/app/catalog.rs`
 
@@ -594,7 +591,7 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers automatically 
    `Config::load()` (e.g. `sections.collect_filtered(...)`). The same call
    loads the main config and merges the overlay, so there is no separate
    overlay-merge step to keep in sync.
-4. Create a task in the relevant domain's tasks folder under `cli/src/domains/<domain>/tasks/` (declaring the Provision phase) that consumes the config
+4. Create a Provision-default task in the relevant domain's tasks folder under `cli/src/domains/<domain>/tasks/` that consumes the config
 5. Document in CONFIGURATION.md
 
 ### Adding Overlay Scripts
@@ -614,15 +611,15 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers automatically 
 
 ### Parallel Task Execution
 
-Execution is split into four phases: **Bootstrap** (prepare the tool
-itself), **Sync** (synchronise the dotfiles repository),
-**Provision** (apply declared state), then **Update** (advance pinned/locked
-dependency versions — `update` command only).  `run_tasks_to_completion()`
-loops over
-`[TaskPhase::Bootstrap, TaskPhase::Sync, TaskPhase::Provision, TaskPhase::Update]`,
+Execution is split into five phases: **Bootstrap** (prepare the tool itself),
+**Sync** (synchronise the dotfiles repository), **Provision** (apply declared
+state), **Validation** (run post-convergence checks), then **Update** (advance
+pinned/locked dependency versions — `update` command only).
+`run_tasks_to_completion()` loops over
+`[TaskPhase::Bootstrap, TaskPhase::Sync, TaskPhase::Provision, TaskPhase::Validation, TaskPhase::Update]`,
 completing all tasks in one phase before starting the next (an empty phase,
-such as Update under `install`, is skipped with no header).  Within each
-phase, tasks are executed in parallel using a dependency-graph scheduler.
+such as Update under `install`, is skipped with no header). Within each phase,
+tasks are executed in parallel using a dependency-graph scheduler.
 
 Each task declares its dependencies using the `task_deps!` macro (defined in
 `engine/task/macros.rs`, re-exported from `engine/task/mod.rs`), which implements

@@ -8,8 +8,7 @@ use crate::domains::packages::resources::package::{
 };
 use crate::engine::Resource as _;
 use crate::engine::{
-    Context, Domain, ExecutionPolicy, Operation, OperationState, PlatformCapability, Task,
-    TaskPhase, TaskResult, process_operation, task_metadata,
+    Context, Operation, OperationState, Task, TaskResult, process_operation, task_metadata,
 };
 use crate::infra::ConfigHandle;
 
@@ -42,9 +41,6 @@ impl InstallPackages {
 impl Task for InstallPackages {
     task_metadata! {
         name: "Install packages",
-        phase: TaskPhase::Provision,
-        domain: Domain::Packages,
-        policy: [ExecutionPolicy::RequiresElevation],
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -98,9 +94,6 @@ impl InstallAurPackages {
 impl Task for InstallAurPackages {
     task_metadata! {
         name: "Install AUR packages",
-        phase: TaskPhase::Provision,
-        domain: Domain::Packages,
-        policy: [PlatformCapability::Aur.policy(), ExecutionPolicy::RequiresElevation],
         deps: [InstallParu],
     }
 
@@ -149,12 +142,6 @@ pub struct InstallParu;
 impl Task for InstallParu {
     task_metadata! {
         name: "Install paru",
-        phase: TaskPhase::Provision,
-        domain: Domain::Packages,
-        policy: [
-            PlatformCapability::Pacman.policy(),
-            ExecutionPolicy::RequiresElevation,
-        ],
         deps: [InstallPackages],
     }
 

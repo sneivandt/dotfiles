@@ -2,16 +2,13 @@
 
 use crate::domains::files::config::chmod::ChmodEntry;
 use crate::domains::files::resources::chmod::ChmodResource;
-use crate::engine::{Domain, PlatformCapability, ProcessOpts, TaskPhase, config_resource_task};
+use crate::engine::{ProcessOpts, config_resource_task};
 
 config_resource_task! {
     /// Configure file permissions from chmod.toml.
     pub ApplyFilePermissions {
         name: "Configure file permissions",
-        phase: TaskPhase::Provision,
-        domain: Domain::Files,
         config: Vec<ChmodEntry>,
-        policy: [PlatformCapability::Chmod.policy()],
         deps: [crate::domains::files::tasks::symlinks::InstallSymlinks],
         guard: |_cfg, ctx| ctx.system().platform().supports_chmod(),
         items: |cfg| cfg.clone(),

@@ -51,14 +51,11 @@ pub use resource::{
     ResourceResult, ResourceState, ResourceStateProvider,
 };
 pub use stats::{TaskResult, TaskStats};
-pub use task::{
-    Domain, ExecutionPolicy, PlatformCapability, Task, TaskId, TaskPhase, TaskWithExtraDeps,
-    execute,
-};
+pub use task::{Task, TaskId, TaskPhase, TaskWithExtraDeps, execute};
 pub(crate) use task::{
-    config_resource_task, configured_task_result, execution_policies_impl,
-    process_config_resources, process_config_resources_with_provider,
-    process_resources_with_borrowed_cache, resource_task, task_deps, task_metadata,
+    config_resource_task, configured_task_result, process_config_resources,
+    process_config_resources_with_provider, process_resources_with_borrowed_cache, resource_task,
+    task_deps, task_metadata,
 };
 pub use update_signal::UpdateSignal;
 

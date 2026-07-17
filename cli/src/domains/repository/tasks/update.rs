@@ -5,7 +5,7 @@
 use anyhow::Result;
 
 use crate::engine::{
-    Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, UpdateSignal,
+    Context, Operation, OperationState, Task, TaskPhase, TaskResult, UpdateSignal,
     process_operation, task_metadata,
 };
 
@@ -42,7 +42,6 @@ impl Task for UpdateRepository {
     task_metadata! {
         name: "Update repository",
         phase: TaskPhase::Sync,
-        domain: Domain::Repository,
         deps: [crate::domains::repository::tasks::sparse_checkout::ConfigureSparseCheckout],
     }
 

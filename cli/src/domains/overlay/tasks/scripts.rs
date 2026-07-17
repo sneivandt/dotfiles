@@ -14,7 +14,7 @@ use anyhow::Result;
 use crate::domains::overlay::config::scripts::ScriptEntry;
 use crate::domains::overlay::resources::script::ScriptResource;
 use crate::engine::{
-    Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
+    Context, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
 };
 use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
 use crate::infra::ConfigHandle;
@@ -49,10 +49,6 @@ impl Task for ReportOverlayScriptSnapshot {
 
     fn phase(&self) -> TaskPhase {
         TaskPhase::Sync
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Overlay
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -174,14 +170,6 @@ impl OverlayScriptTask {
 impl Task for OverlayScriptTask {
     fn name(&self) -> &str {
         &self.entry.name
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Overlay
     }
 
     /// Returns a per-instance [`TaskId::Dynamic`](crate::engine::TaskId::Dynamic) derived from the script's

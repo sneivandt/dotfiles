@@ -3,8 +3,7 @@
 use anyhow::Result;
 
 use crate::engine::{
-    Context, Domain, ExecutionPolicy, Operation, OperationState, PlatformCapability, Task,
-    TaskPhase, TaskResult, process_operation, task_metadata,
+    Context, Operation, OperationState, Task, TaskResult, process_operation, task_metadata,
 };
 
 /// The single setting this task enforces.
@@ -58,12 +57,6 @@ pub struct InstallWslConf;
 impl Task for InstallWslConf {
     task_metadata! {
         name: "Install wsl.conf",
-        phase: TaskPhase::Provision,
-        domain: Domain::System,
-        policy: [
-            PlatformCapability::Wsl.policy(),
-            ExecutionPolicy::RequiresElevation,
-        ],
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

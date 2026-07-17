@@ -1,15 +1,13 @@
 //! Task: enable Windows Developer Mode.
 
 use crate::domains::system::resources::developer_mode::DeveloperModeResource;
-use crate::engine::{Domain, PlatformCapability, ProcessOpts, TaskPhase, resource_task};
+use crate::engine::{ProcessOpts, TaskPhase, resource_task};
 
 resource_task! {
     /// Enable Windows Developer Mode (allows symlink creation without admin).
     pub EnableDeveloperMode {
         name: "Enable developer mode",
         phase: TaskPhase::Bootstrap,
-        domain: Domain::System,
-        policy: [PlatformCapability::Windows.policy()],
         guard: |ctx| ctx.platform().is_windows(),
         items: |_ctx| vec![()],
         build: |_unit, _ctx| DeveloperModeResource::new(),

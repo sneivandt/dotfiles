@@ -14,7 +14,7 @@ use super::manifest::{manifest_fingerprint, manifest_marker_matches};
 use super::outdated::{ApmOutdatedCheck, ApmUpdateOutcome, outdated_output_has_updates};
 use super::skip_with_warning;
 use super::targets::{ApmTargets, missing_apm_reason};
-use crate::engine::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
+use crate::engine::{Context, Task, TaskPhase, TaskResult, task_metadata};
 
 /// Advance pinned APM dependency versions — the `update` command only.
 ///
@@ -36,7 +36,6 @@ impl Task for UpdateApmPackages {
     task_metadata! {
         name: "Update APM packages",
         phase: TaskPhase::Update,
-        domain: Domain::Ai,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

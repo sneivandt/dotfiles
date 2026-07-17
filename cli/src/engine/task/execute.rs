@@ -1,31 +1,15 @@
-//! Task execution engine: policy evaluation and outcome recording.
+//! Task execution engine: applicability evaluation and outcome recording.
 //!
 //! This module is the runner that the orchestration layer drives.  Given a
-//! [`Task`](super::Task) trait object it evaluates the declarative
-//! [`ExecutionPolicy`] rules, decides applicability, runs the task, and records
-//! the outcome into the logger.  It deliberately holds no task *definitions* —
-//! only the machinery that turns a `&dyn Task` plus a [`Context`] into a
-//! recorded result.
+//! [`Task`](super::Task) trait object it decides applicability, runs the task,
+//! and records the outcome into the logger.
 
 use crate::engine::{Context, TaskResult};
 use crate::infra::logging::{DiagEvent, TaskStatus, diag_task_context};
 
-use super::{Domain, ExecutionPolicy, Task};
+use super::{Task, TaskPhase};
 
 pub(super) fn not_applicable_reason<T: Task + ?Sized>(task: &T, ctx: &Context) -> Option<String> {
-    for policy in task.execution_policies() {
-        match *policy {
-            // Elevation is evaluated in Task::requires_elevation() after
-            // platform support and task applicability are known; at execution
-            // time this policy is only a declaration.
-            ExecutionPolicy::Always | ExecutionPolicy::RequiresElevation => {}
-            ExecutionPolicy::PlatformSupported(capability, is_supported) => {
-                if !is_supported(&ctx.platform()) {
-                    return Some(format!("{capability} not supported on {}", ctx.platform()));
-                }
-            }
-        }
-    }
     if task.should_run(ctx) {
         None
     } else {
@@ -54,8 +38,6 @@ pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
     let _diag_context = diag_task_context(task.name());
-    let domain = task.domain();
-
     if let Some(reason) = not_applicable_reason(task, ctx) {
         record_not_applicable(ctx, task.name(), &reason);
         return TaskStatus::NotApplicable;
@@ -63,7 +45,7 @@ pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
 
     ctx.log()
         .diag_task(DiagEvent::TaskStart, task.name(), "executing");
-    record_run_outcome(task, ctx, domain)
+    record_run_outcome(task, ctx)
 }
 
 /// Run a task and record its outcome.
@@ -71,7 +53,7 @@ pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
 /// Cancellation-induced failures (Ctrl-C) are downgraded to
 /// [`TaskStatus::Skipped`] so the summary does not count signal
 /// interruptions as real failures.
-fn record_run_outcome(task: &dyn Task, ctx: &Context, domain: Domain) -> TaskStatus {
+fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
     let rec = |status: TaskStatus, msg: Option<&str>| {
         ctx.log().record_task(task.name(), status, msg);
         status
@@ -89,7 +71,7 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context, domain: Domain) -> TaskSta
         Ok(Some(result)) => match result {
             TaskResult::Ok => {
                 ctx.log().diag_task(DiagEvent::TaskDone, task.name(), "ok");
-                let status = if domain == Domain::Validation {
+                let status = if task.phase() == TaskPhase::Validation {
                     TaskStatus::Changed
                 } else {
                     TaskStatus::Ok

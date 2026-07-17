@@ -66,8 +66,6 @@ config_resource_task! {
     /// Create symlinks from symlinks/ to $HOME.
     pub InstallSymlinks {
         name: "Install symlinks",
-        phase: TaskPhase::Provision,
-        domain: Domain::Files,
         config: Vec<Symlink>,
         items: |cfg| cfg.clone(),
         build: |s, ctx| {

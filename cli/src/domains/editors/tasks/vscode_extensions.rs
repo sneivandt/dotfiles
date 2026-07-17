@@ -4,8 +4,7 @@ use crate::domains::editors::resources::vscode_extension::{
     VsCodeExtensionResource, find_code_command, get_installed_extensions,
 };
 use crate::engine::{
-    Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult,
-    process_resources_with_borrowed_cache,
+    Context, ProcessOpts, Task, TaskResult, process_resources_with_borrowed_cache,
 };
 use crate::infra::ConfigHandle;
 use anyhow::Result;
@@ -28,14 +27,6 @@ impl InstallVsCodeExtensions {
 impl Task for InstallVsCodeExtensions {
     fn name(&self) -> &'static str {
         "Install VS Code extensions"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Editors
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {

@@ -4,10 +4,7 @@ use anyhow::{Context as _, Result};
 
 use crate::domains::system::config::systemd_units::{SystemdUnit, UnitScope};
 use crate::domains::system::resources::systemd_unit::SystemdUnitResource;
-use crate::engine::{
-    Context, Domain, ExecutionPolicy, PlatformCapability, ProcessOpts, Task, TaskPhase, TaskResult,
-    process_resources,
-};
+use crate::engine::{Context, ProcessOpts, Task, TaskResult, process_resources};
 use crate::infra::ConfigHandle;
 
 /// Enable and start systemd units.
@@ -27,22 +24,6 @@ impl ConfigureSystemd {
 impl Task for ConfigureSystemd {
     fn name(&self) -> &'static str {
         "Configure systemd units"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::System
-    }
-
-    fn execution_policies(&self) -> &[ExecutionPolicy] {
-        const POLICIES: &[ExecutionPolicy] = &[
-            PlatformCapability::Systemd.policy(),
-            ExecutionPolicy::RequiresElevation,
-        ];
-        POLICIES
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

@@ -2,16 +2,13 @@
 
 use crate::domains::system::config::registry::RegistryEntry;
 use crate::domains::system::resources::registry::{RegistryResource, batch_check_values};
-use crate::engine::{Domain, PlatformCapability, ProcessOpts, TaskPhase, config_resource_task};
+use crate::engine::{ProcessOpts, config_resource_task};
 
 config_resource_task! {
     /// Apply Windows registry settings.
     pub ApplyRegistry {
         name: "Configure registry settings",
-        phase: TaskPhase::Provision,
-        domain: Domain::System,
         config: Vec<RegistryEntry>,
-        policy: [PlatformCapability::WindowsRegistry.policy()],
         guard: |_cfg, ctx| ctx.platform().has_registry(),
         items: |cfg| cfg.clone(),
         cache: |resources, _ctx| batch_check_values(resources),

@@ -1,7 +1,6 @@
 use super::*;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::infra::logging::TaskStatus;
-use crate::infra::platform::Platform;
 use crate::test_helpers::{empty_config, make_static_context};
 use anyhow::Result;
 use std::cell::Cell;
@@ -35,8 +34,6 @@ resource_task! {
     /// Test-only task for resource-task macro behaviour.
     CountingResourceTask {
         name: "Counting resource task",
-        phase: TaskPhase::Provision,
-        domain: Domain::General,
         items: |_ctx| {
             RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
             Vec::<()>::new()
@@ -50,8 +47,6 @@ resource_task! {
     /// Test-only task for batch-resource-task macro behaviour.
     CountingBatchTask {
         name: "Counting batch task",
-        phase: TaskPhase::Provision,
-        domain: Domain::General,
         items: |_ctx| {
             BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
             Vec::<()>::new()
@@ -74,9 +69,6 @@ impl Task for MockTask {
     fn name(&self) -> &str {
         self.name
     }
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
     fn should_run(&self, _ctx: &Context) -> bool {
         self.should_run
     }
@@ -96,31 +88,20 @@ impl Task for ValidationOkTask {
         TaskPhase::Validation
     }
 
-    fn domain(&self) -> Domain {
-        Domain::Validation
-    }
-
     fn run(&self, _ctx: &Context) -> Result<TaskResult> {
         Ok(TaskResult::Ok)
     }
 }
 
-struct PolicyTask {
-    policies: &'static [ExecutionPolicy],
+struct GatedTask {
     ran: std::sync::Arc<std::sync::atomic::AtomicBool>,
     should_run: bool,
     needs_elevation: bool,
 }
 
-impl Task for PolicyTask {
+impl Task for GatedTask {
     fn name(&self) -> &'static str {
-        "policy-task"
-    }
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-    fn execution_policies(&self) -> &[ExecutionPolicy] {
-        self.policies
+        "gated-task"
     }
     fn should_run(&self, _ctx: &Context) -> bool {
         self.should_run
@@ -250,18 +231,13 @@ fn execute_records_dry_run_task() {
 }
 
 #[test]
-fn execute_applies_platform_policy_before_running_task() {
-    const POLICIES: &[ExecutionPolicy] = &[ExecutionPolicy::PlatformSupported(
-        "Windows",
-        Platform::is_windows,
-    )];
+fn execute_checks_applicability_before_running_task() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, log) = make_static_context(config);
     let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let task = PolicyTask {
-        policies: POLICIES,
+    let task = GatedTask {
         ran: std::sync::Arc::clone(&ran),
-        should_run: true,
+        should_run: false,
         needs_elevation: false,
     };
 
@@ -272,13 +248,11 @@ fn execute_applies_platform_policy_before_running_task() {
 }
 
 #[test]
-fn requires_elevation_respects_policy_and_dry_run() {
-    const POLICIES: &[ExecutionPolicy] = &[ExecutionPolicy::RequiresElevation];
+fn requires_elevation_respects_prediction_and_dry_run() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _) = make_static_context(config);
     let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let task = PolicyTask {
-        policies: POLICIES,
+    let task = GatedTask {
         ran,
         should_run: true,
         needs_elevation: true,
@@ -289,19 +263,14 @@ fn requires_elevation_respects_policy_and_dry_run() {
 }
 
 #[test]
-fn requires_elevation_respects_platform_policy() {
-    const POLICIES: &[ExecutionPolicy] = &[
-        ExecutionPolicy::PlatformSupported("Windows", Platform::is_windows),
-        ExecutionPolicy::RequiresElevation,
-    ];
+fn requires_elevation_respects_prediction() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _) = make_static_context(config);
     let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let task = PolicyTask {
-        policies: POLICIES,
+    let task = GatedTask {
         ran,
         should_run: true,
-        needs_elevation: true,
+        needs_elevation: false,
     };
 
     assert!(!task.requires_elevation(&ctx));
@@ -309,18 +278,21 @@ fn requires_elevation_respects_platform_policy() {
 
 #[test]
 fn requires_elevation_respects_should_run() {
-    const POLICIES: &[ExecutionPolicy] = &[ExecutionPolicy::RequiresElevation];
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _) = make_static_context(config);
     let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let task = PolicyTask {
-        policies: POLICIES,
+    let task = GatedTask {
         ran,
         should_run: false,
         needs_elevation: true,
     };
 
     assert!(!task.requires_elevation(&ctx));
+}
+
+#[test]
+fn task_phase_defaults_to_provision() {
+    assert_eq!(CountingResourceTask.phase(), TaskPhase::Provision);
 }
 
 #[test]

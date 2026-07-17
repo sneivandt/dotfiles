@@ -137,11 +137,6 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
 )]
 mod tests {
     use super::*;
-    use crate::app::validation::{
-        RunPSScriptAnalyzer, RunShellcheck, ValidateConfigFiles, ValidateConfigWarnings,
-        ValidateManifestSync, ValidateSymlinkSources,
-    };
-    use crate::engine::Domain;
     use crate::test_helpers::empty_config;
     use std::path::PathBuf;
 
@@ -151,35 +146,6 @@ mod tests {
 
     fn test_store() -> ConfigStore {
         ConfigStore::from_config(empty_config(PathBuf::from("/tmp")))
-    }
-
-    /// Every production task must declare an explicit [`Domain`]; only test and
-    /// mock tasks are allowed to keep the [`Domain::General`] default.
-    #[test]
-    fn all_registered_tasks_declare_a_domain() {
-        let store = test_store();
-        let mut tasks = all_install_tasks(test_params());
-        tasks.extend(all_uninstall_tasks(&store));
-        // Tasks run outside the catalog (the test command).
-        tasks.push(Box::new(ValidateConfigWarnings::new(
-            store.aggregate.clone(),
-        )));
-        tasks.push(Box::new(ValidateSymlinkSources::new(
-            store.aggregate.clone(),
-        )));
-        tasks.push(Box::new(ValidateConfigFiles));
-        tasks.push(Box::new(ValidateManifestSync));
-        tasks.push(Box::new(RunShellcheck));
-        tasks.push(Box::new(RunPSScriptAnalyzer));
-
-        for task in &tasks {
-            assert_ne!(
-                task.domain(),
-                Domain::General,
-                "task `{}` is missing an explicit domain",
-                task.name()
-            );
-        }
     }
 
     /// Guard against forgetting to register a new task.

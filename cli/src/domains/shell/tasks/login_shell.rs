@@ -1,15 +1,12 @@
 //! Task: configure the login shell.
 
 use crate::domains::shell::resources::shell::DefaultShellResource;
-use crate::engine::{Domain, PlatformCapability, ProcessOpts, TaskPhase, resource_task};
+use crate::engine::{ProcessOpts, resource_task};
 
 resource_task! {
     /// Configure the default shell to zsh.
     pub ConfigureShell {
         name: "Configure default shell",
-        phase: TaskPhase::Provision,
-        domain: Domain::Shell,
-        policy: [PlatformCapability::LinuxShell.policy()],
         guard: |ctx| {
             let system = ctx.system();
             system.platform().is_linux() && system.which("zsh") && !system.is_ci()

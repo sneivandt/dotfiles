@@ -2,7 +2,7 @@
 
 use crate::domains::ai::config::copilot::CopilotSetting;
 use crate::domains::ai::resources::copilot_settings::CopilotSettingResource;
-use crate::engine::{Domain, ProcessOpts, TaskPhase, config_resource_task};
+use crate::engine::{ProcessOpts, config_resource_task};
 
 config_resource_task! {
     /// Configure Copilot CLI settings from copilot.toml.
@@ -12,8 +12,6 @@ config_resource_task! {
     /// sequential because every resource reads and rewrites the same file.
     pub ConfigureCopilot {
         name: "Configure Copilot",
-        phase: TaskPhase::Provision,
-        domain: Domain::Ai,
         config: Vec<CopilotSetting>,
         items: |cfg| cfg.clone(),
         build: |s, ctx| CopilotSettingResource::new(

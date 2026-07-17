@@ -22,8 +22,8 @@ description: >
 
 ## Decision guide / invariants
 
-- Keep metadata/policies/dependencies in `Task`; keep convergence logic in
-  resources or `Operation`.
+- Keep identity, phase, eligibility, elevation prediction, and dependencies in
+  `Task`; keep convergence logic in resources or `Operation`.
 - Phase barrier is strict (`Bootstrap -> Sync -> Provision -> Validation -> Update`).
 - Task-level parallelism uses scoped OS threads; resource-level parallelism uses
   Rayon.
@@ -37,10 +37,10 @@ description: >
    duplicate IDs/cycles.
 2. **Scheduler wiring:** keep dependency channels strict; failed dependency
    blocks dependents.
-3. **Task execution path:** route all tasks through `engine::execute()` so policy
-   and `should_run()` are evaluated once. Override `run_configured()` only when
-   an otherwise-applicable task can have no configured work; do not repeat policy
-   or guard checks there.
+3. **Task execution path:** route all tasks through `engine::execute()` so
+   `should_run()` owns execution eligibility. Override `run_configured()` only
+   when an otherwise-applicable task can have no configured work; do not repeat
+   eligibility checks there.
 4. **Resource flow:** use one of:
    - `process_resources(...)`
    - `process_resources_with_provider(...)`

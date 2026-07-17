@@ -16,7 +16,7 @@ use super::manifest::{
 };
 use super::skip_with_warning;
 use super::targets::{ApmTargets, missing_apm_reason};
-use crate::engine::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
+use crate::engine::{Context, Task, TaskResult, task_metadata};
 
 /// Converge AI plugin manifests via Microsoft APM.
 ///
@@ -29,8 +29,6 @@ pub struct InstallApmPackages;
 impl Task for InstallApmPackages {
     task_metadata! {
         name: "Install APM packages",
-        phase: TaskPhase::Provision,
-        domain: Domain::Ai,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

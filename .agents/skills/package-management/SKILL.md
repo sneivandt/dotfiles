@@ -33,7 +33,7 @@ than inferring it from package names.
 | deserialize and validate entries | `domains/packages/config/packages.rs` |
 | manager-specific query/install behavior | `domains/packages/resources/{pacman,paru,winget}.rs` |
 | resource state and mutation | `domains/packages/resources/package.rs` |
-| applicability, policy, and orchestration | `domains/packages/tasks/` |
+| applicability and orchestration | `domains/packages/tasks/` |
 
 `PackageManager` selects a provider. Add a provider implementation rather than
 branching manager-specific command logic through tasks.
@@ -63,8 +63,8 @@ the executor abstraction and preserve idempotent manager options.
 - Prefer platform capability methods over direct OS checks.
 
 When a package manager is unavailable, return an explicit skipped result or
-capability diagnostic consistent with task policy; do not silently report
-success.
+capability diagnostic consistent with task result semantics; do not silently
+report success.
 
 ## Change Checklist
 

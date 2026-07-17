@@ -5,8 +5,7 @@ use std::path::PathBuf;
 use crate::domains::git::config::git_config::GitSetting;
 use crate::domains::git::resources::git_config::GitConfigResource;
 use crate::engine::{
-    Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, configured_task_result,
-    process_resources,
+    Context, ProcessOpts, Task, TaskResult, configured_task_result, process_resources,
 };
 use crate::infra::ConfigHandle;
 
@@ -69,14 +68,6 @@ impl ConfigureGit {
 impl Task for ConfigureGit {
     fn name(&self) -> &'static str {
         "Configure Git"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Git
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {

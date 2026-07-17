@@ -28,7 +28,7 @@ description: >
 | independent items with individual state | `Resource` (+ usually `IntrinsicState`) |
 | expensive shared state query | `ResourceStateProvider` |
 | idempotent multi-step workflow | `Operation` |
-| metadata/scheduling/dependencies/policies | `Task` |
+| identity/phase/eligibility/dependencies | `Task` |
 | pure parsing/transformation | plain function/module |
 
 ## Invariants
@@ -36,8 +36,8 @@ description: >
 - `Resource::apply/remove` return `ResourceResult<ResourceChange>` for typed,
   classifiable failures.
 - State checking remains separate from mutation (`IntrinsicState` or provider).
-- Tasks own metadata/policies/dependencies; resources own item-level state and
-  convergence.
+- Tasks own identity, phase, eligibility, elevation prediction, and
+  dependencies; resources own item-level state and convergence.
 - Use executor abstraction for subprocesses.
 
 Canonical references:

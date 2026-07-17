@@ -118,8 +118,7 @@ Prefer the existing task macros over hand-written `Task` implementations:
    `resource_task!` for config-free tasks that process resources through the
    shared engine.
 3. Use `task_metadata!` for hand-written tasks that need custom control flow
-   but still have static name, phase, domain, policies, and dependency
-   metadata.
+   but still have a static name, optional non-default phase, and dependencies.
 4. Declare dependencies with `task_deps![...]` instead of ad-hoc ordering.
 5. Add the module to the domain's
    `cli/src/domains/<domain>/tasks/mod.rs`.
@@ -152,8 +151,8 @@ exclude = ["windows", "desktop"]
 - **Error Handling**: Use `anyhow::Result` with `.context()` for all fallible operations
 - **Task Pattern**: Prefer `config_resource_task!` for config-backed resources,
   `resource_task!` for config-free resources, and `task_metadata!` for custom
-  tasks; use `should_run()` only for gating that cannot be represented by
-  execution policies
+  tasks; use `should_run()` for platform, tool-availability, and configuration
+  eligibility gates
 - **Idempotency**: Always check if action is needed before taking it
 - **No Trailing Whitespace**: Remove all trailing whitespace from files
 - **Formatting**: Run `cargo fmt` before committing

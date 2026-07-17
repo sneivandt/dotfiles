@@ -2,7 +2,7 @@
 use anyhow::Result;
 
 use crate::engine::{
-    Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
+    Context, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
 };
 
 /// Filename of the generated zsh completion script.
@@ -97,10 +97,6 @@ impl Task for GenerateCompletions {
 
     fn phase(&self) -> TaskPhase {
         TaskPhase::Sync
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Shell
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

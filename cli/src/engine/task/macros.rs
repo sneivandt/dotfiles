@@ -24,59 +24,36 @@ macro_rules! task_deps {
 
 pub(crate) use task_deps;
 
-/// Implement [`Task::execution_policies`](crate::engine::Task::execution_policies)
-/// from a static policy list.
-macro_rules! execution_policies_impl {
-    [$($policy:expr),+ $(,)?] => {
-        fn execution_policies(&self) -> &[$crate::engine::ExecutionPolicy] {
-            const POLICIES: &[$crate::engine::ExecutionPolicy] = &[$($policy),+];
-            POLICIES
-        }
-    };
-}
-
-pub(crate) use execution_policies_impl;
-
 /// Implement common [`Task`](crate::engine::Task) metadata methods.
 ///
 /// Use this for hand-written tasks whose body cannot use [`resource_task!`] but
-/// whose `name`, `phase`, `domain`, dependencies, and policies are static.
+/// whose name, optional non-default phase, and dependencies are static.
 ///
 /// # Examples
 ///
 /// ```ignore
 /// task_metadata! {
 ///     name: "Install packages",
-///     phase: TaskPhase::Provision,
-///     domain: Domain::Packages,
-///     policy: [ExecutionPolicy::RequiresElevation],
 ///     deps: [InstallParu],
 /// }
 /// ```
 macro_rules! task_metadata {
     (
         name: $task_name:expr,
-        phase: $phase:expr,
-        domain: $domain:expr
-        $(, policy: [$($policy:expr),+ $(,)?])?
-        $(, deps: [$($dep:ty),+ $(,)?])?
-        $(,)?
+        $(phase: $phase:expr,)?
+        $(deps: [$($dep:ty),+ $(,)?],)?
     ) => {
         fn name(&self) -> &'static str {
             $task_name
         }
 
-        fn phase(&self) -> $crate::engine::TaskPhase {
-            $phase
-        }
-
-        fn domain(&self) -> $crate::engine::Domain {
-            $domain
-        }
+        $(
+            fn phase(&self) -> $crate::engine::TaskPhase {
+                $phase
+            }
+        )?
 
         $($crate::engine::task_deps![$($dep),+];)?
-
-        $($crate::engine::execution_policies_impl![$($policy),+];)?
     };
 }
 
@@ -131,8 +108,8 @@ pub(crate) fn configured_task_result(
 ///
 /// Supports the standard intrinsic-state path and a batch path (`cache:` +
 /// `state:`) for resources whose current state comes from one shared query.
-/// Optional `policy`, `deps`, `guard`, and `setup` clauses cover the common
-/// task variations without hand-writing [`Task`](crate::engine::Task) metadata.
+/// Optional `phase`, `deps`, `guard`, and `setup` clauses cover the common task
+/// variations without hand-writing [`Task`](crate::engine::Task) metadata.
 macro_rules! resource_task {
     // -----------------------------------------------------------------
     // Batch variant — `cache:` and `state:` blocks are present.
@@ -141,9 +118,7 @@ macro_rules! resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
-            phase: $phase:expr,
-            domain: $domain:expr,
-            $(policy: [$($policy:expr),+ $(,)?],)?
+            $(phase: $phase:expr,)?
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
             items: |$items_ctx:ident| $items_expr:expr,
@@ -194,17 +169,13 @@ macro_rules! resource_task {
                 $task_name
             }
 
+            $(
             fn phase(&self) -> $crate::engine::TaskPhase {
                 $phase
             }
-
-            fn domain(&self) -> $crate::engine::Domain {
-                $domain
-            }
+            )?
 
             $($crate::engine::task_deps![$($dep),+];)?
-
-            $($crate::engine::execution_policies_impl![$($policy),+];)?
 
             $(
             fn should_run(&self, ctx: &$crate::engine::Context) -> bool {
@@ -238,9 +209,7 @@ macro_rules! resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
-            phase: $phase:expr,
-            domain: $domain:expr,
-            $(policy: [$($policy:expr),+ $(,)?],)?
+            $(phase: $phase:expr,)?
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
             $(setup: |$setup_ctx:ident| $setup_expr:expr,)?
@@ -286,17 +255,13 @@ macro_rules! resource_task {
                 $task_name
             }
 
+            $(
             fn phase(&self) -> $crate::engine::TaskPhase {
                 $phase
             }
-
-            fn domain(&self) -> $crate::engine::Domain {
-                $domain
-            }
+            )?
 
             $($crate::engine::task_deps![$($dep),+];)?
-
-            $($crate::engine::execution_policies_impl![$($policy),+];)?
 
             $(
             fn should_run(&self, ctx: &$crate::engine::Context) -> bool {
@@ -342,10 +307,8 @@ macro_rules! config_resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
-            phase: $phase:expr,
-            domain: $domain:expr,
+            $(phase: $phase:expr,)?
             config: $cfg_ty:ty,
-            $(policy: [$($policy:expr),+ $(,)?],)?
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_cfg:ident, $guard_ctx:ident| $guard_expr:expr,)?
             items: |$items_cfg:ident| $items_expr:expr,
@@ -405,11 +368,12 @@ macro_rules! config_resource_task {
 
         impl $crate::engine::Task for $name {
             fn name(&self) -> &'static str { $task_name }
+
+            $(
             fn phase(&self) -> $crate::engine::TaskPhase { $phase }
-            fn domain(&self) -> $crate::engine::Domain { $domain }
+            )?
 
             $($crate::engine::task_deps![$($dep),+];)?
-            $($crate::engine::execution_policies_impl![$($policy),+];)?
 
             $(
             fn should_run(&self, ctx: &$crate::engine::Context) -> bool {
@@ -445,10 +409,8 @@ macro_rules! config_resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
-            phase: $phase:expr,
-            domain: $domain:expr,
+            $(phase: $phase:expr,)?
             config: $cfg_ty:ty,
-            $(policy: [$($policy:expr),+ $(,)?],)?
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_cfg:ident, $guard_ctx:ident| $guard_expr:expr,)?
             $(setup: |$setup_ctx:ident| $setup_expr:expr,)?
@@ -503,11 +465,12 @@ macro_rules! config_resource_task {
 
         impl $crate::engine::Task for $name {
             fn name(&self) -> &'static str { $task_name }
+
+            $(
             fn phase(&self) -> $crate::engine::TaskPhase { $phase }
-            fn domain(&self) -> $crate::engine::Domain { $domain }
+            )?
 
             $($crate::engine::task_deps![$($dep),+];)?
-            $($crate::engine::execution_policies_impl![$($policy),+];)?
 
             $(
             fn should_run(&self, ctx: &$crate::engine::Context) -> bool {

@@ -6,8 +6,7 @@ use std::sync::Arc;
 use crate::domains::files::config::symlinks::Symlink;
 use crate::domains::files::resources::symlink::SymlinkResource;
 use crate::engine::{
-    Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, config_resource_task,
-    process_resources_remove,
+    Context, ProcessOpts, Task, TaskResult, config_resource_task, process_resources_remove,
 };
 use crate::infra::ConfigHandle;
 
@@ -46,8 +45,6 @@ config_resource_task! {
     /// Create symlinks from symlinks/ to $HOME.
     pub InstallSymlinks {
         name: "Install symlinks",
-        phase: TaskPhase::Provision,
-        domain: Domain::Files,
         config: Vec<Symlink>,
         items: |cfg| cfg.clone(),
         build: |s, ctx| {
@@ -76,14 +73,6 @@ impl UninstallSymlinks {
 impl Task for UninstallSymlinks {
     fn name(&self) -> &'static str {
         "Materialize symlinks"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
-    fn domain(&self) -> Domain {
-        Domain::Files
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {

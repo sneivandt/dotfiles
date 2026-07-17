@@ -8,7 +8,7 @@ use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
 use crate::app::config::Config;
-use crate::engine::{Context, Domain, Task, TaskPhase, TaskResult, task_metadata};
+use crate::engine::{Context, Task, TaskPhase, TaskResult, task_metadata};
 use crate::infra::ConfigHandle;
 
 const SHELLCHECK_SEVERITY_ARG: &str = "--severity=warning";
@@ -33,7 +33,6 @@ impl Task for ValidateConfigWarnings {
     task_metadata! {
         name: "Validate config warnings",
         phase: TaskPhase::Validation,
-        domain: Domain::Validation,
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -79,7 +78,6 @@ impl Task for ValidateSymlinkSources {
     task_metadata! {
         name: "Validate symlink sources",
         phase: TaskPhase::Validation,
-        domain: Domain::Validation,
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -122,7 +120,6 @@ impl Task for ValidateConfigFiles {
     task_metadata! {
         name: "Validate config files",
         phase: TaskPhase::Validation,
-        domain: Domain::Validation,
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -179,7 +176,6 @@ impl Task for ValidateManifestSync {
     task_metadata! {
         name: "Validate manifest sync",
         phase: TaskPhase::Validation,
-        domain: Domain::Validation,
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -238,7 +234,6 @@ impl Task for ValidateApmPlugins {
     task_metadata! {
         name: "Validate APM plugins",
         phase: TaskPhase::Validation,
-        domain: Domain::Validation,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -290,7 +285,6 @@ impl Task for RunShellcheck {
     task_metadata! {
         name: "Shellcheck",
         phase: TaskPhase::Validation,
-        domain: Domain::Validation,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -345,7 +339,6 @@ impl Task for RunPSScriptAnalyzer {
     task_metadata! {
         name: "PSScriptAnalyzer",
         phase: TaskPhase::Validation,
-        domain: Domain::Validation,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

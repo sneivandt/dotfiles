@@ -11,7 +11,7 @@ use anyhow::{Context as _, Result};
 use crate::app::config::Config;
 use crate::app::config::store::ConfigStore;
 use crate::engine::{
-    Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, UpdateSignal,
+    Context, Operation, OperationState, Task, TaskPhase, TaskResult, UpdateSignal,
     process_operation, task_metadata,
 };
 
@@ -102,7 +102,6 @@ impl Task for ReloadConfig {
     task_metadata! {
         name: "Reload configuration",
         phase: TaskPhase::Sync,
-        domain: Domain::Repository,
         deps: [crate::domains::repository::tasks::update::UpdateRepository],
     }
 

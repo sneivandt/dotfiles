@@ -5,8 +5,8 @@ use anyhow::{Context as _, Result};
 
 use crate::domains::git::resources::hook::HookFileResource;
 use crate::engine::{
-    Context, Domain, ProcessOpts, Task, TaskPhase, TaskResult, process_resources,
-    process_resources_remove, task_metadata,
+    Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, process_resources_remove,
+    task_metadata,
 };
 use crate::infra::fs::{FileSystemOps, SystemFileSystemOps};
 
@@ -77,7 +77,6 @@ impl Task for InstallGitHooks {
     task_metadata! {
         name: "Install Git hooks",
         phase: TaskPhase::Sync,
-        domain: Domain::Git,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -127,7 +126,6 @@ impl Task for UninstallGitHooks {
     task_metadata! {
         name: "Remove Git hooks",
         phase: TaskPhase::Sync,
-        domain: Domain::Git,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

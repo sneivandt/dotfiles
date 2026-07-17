@@ -1,16 +1,10 @@
-//! Core task type definitions: identity, phase, policy, and domain.
+//! Core task type definitions: identity and execution phase.
 //!
-//! These are the value types that describe a task's metadata — *what* it is
-//! ([`Domain`]), *when* it runs ([`TaskPhase`]), *how* it is identified
-//! ([`TaskId`]), and the declarative pre-run rules the orchestration layer
-//! enforces ([`ExecutionPolicy`]).  The [`Task`](super::Task) trait and the
-//! execution engine (`super::execute`) consume these types; keeping them in a
-//! dedicated module separates the data model from the trait and the runner.
+//! [`TaskPhase`] controls scheduler barriers and [`TaskId`] provides stable
+//! dependency-graph identity.
 
 use std::any::TypeId;
 use std::fmt;
-
-use crate::infra::platform::Platform;
 
 /// Unique identifier for a task in the dependency graph.
 ///
@@ -72,61 +66,6 @@ pub enum TaskPhase {
     Update,
 }
 
-/// Declarative rules that the orchestration layer evaluates before a task runs.
-#[derive(Debug, Clone, Copy)]
-pub enum ExecutionPolicy {
-    /// Run whenever the task's own applicability check passes.
-    Always,
-    /// Run only when the current platform supports the named capability.
-    PlatformSupported(&'static str, fn(&Platform) -> bool),
-    /// The task may require elevated privileges when it predicts a mutation.
-    RequiresElevation,
-}
-
-/// Named platform capabilities used to build [`ExecutionPolicy`] values.
-#[derive(Debug, Clone, Copy)]
-pub enum PlatformCapability {
-    /// POSIX chmod support.
-    Chmod,
-    /// Linux login-shell configuration.
-    LinuxShell,
-    /// Systemd support.
-    Systemd,
-    /// Windows Subsystem for Linux.
-    Wsl,
-    /// Native Windows support.
-    Windows,
-    /// Windows registry support.
-    WindowsRegistry,
-    /// Arch User Repository support.
-    Aur,
-    /// Pacman package manager support.
-    Pacman,
-}
-
-impl PlatformCapability {
-    /// Build an execution policy for this capability.
-    #[must_use]
-    pub const fn policy(self) -> ExecutionPolicy {
-        match self {
-            Self::Chmod => ExecutionPolicy::PlatformSupported("chmod", Platform::supports_chmod),
-            Self::LinuxShell => {
-                ExecutionPolicy::PlatformSupported("Linux shell configuration", Platform::is_linux)
-            }
-            Self::Systemd => {
-                ExecutionPolicy::PlatformSupported("systemd", Platform::supports_systemd)
-            }
-            Self::Wsl => ExecutionPolicy::PlatformSupported("WSL", Platform::is_wsl),
-            Self::Windows => ExecutionPolicy::PlatformSupported("Windows", Platform::is_windows),
-            Self::WindowsRegistry => {
-                ExecutionPolicy::PlatformSupported("Windows registry", Platform::has_registry)
-            }
-            Self::Aur => ExecutionPolicy::PlatformSupported("AUR", Platform::supports_aur),
-            Self::Pacman => ExecutionPolicy::PlatformSupported("pacman", Platform::uses_pacman),
-        }
-    }
-}
-
 impl fmt::Display for TaskPhase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -137,45 +76,6 @@ impl fmt::Display for TaskPhase {
             Self::Update => f.write_str("Update"),
         }
     }
-}
-
-/// Subject area a task is about, independent of its execution [`TaskPhase`].
-///
-/// Where [`TaskPhase`] answers *when* a task runs (the scheduler groups by
-/// phase to enforce ordering barriers), `Domain` answers *what* a task is
-/// about.  The end-of-run summary groups by domain so the report matches the
-/// user's mental model (git, packages, files…) rather than internal timing.
-///
-/// The two axes are genuinely independent: a single domain may span multiple
-/// phases.  For example the [`Overlay`](Domain::Overlay) domain loads
-/// configuration during [`TaskPhase::Sync`] and runs scripts during
-/// [`TaskPhase::Provision`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Domain {
-    /// The dotfiles tool itself (binary self-update, wrapper, PATH).
-    Core,
-    /// The dotfiles repository (sparse checkout, pull, config reload).
-    Repository,
-    /// Git configuration and hooks.
-    Git,
-    /// System and language package installation.
-    Packages,
-    /// Files materialised into place (symlinks, permissions).
-    Files,
-    /// Shell configuration and completions.
-    Shell,
-    /// Operating-system integration (systemd, registry, WSL, developer mode).
-    System,
-    /// Editor configuration (VS Code extensions).
-    Editors,
-    /// AI tooling (client settings, APM packages).
-    Ai,
-    /// Overlay-provided configuration and custom scripts.
-    Overlay,
-    /// Configuration and lint validation checks.
-    Validation,
-    /// Default for tasks with no specific subject area (test/mock tasks only).
-    General,
 }
 
 #[cfg(test)]

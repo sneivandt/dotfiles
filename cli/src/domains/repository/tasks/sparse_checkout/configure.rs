@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::domains::repository::config::manifest::Manifest;
 use crate::engine::{
-    Context, Domain, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
+    Context, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
     task_metadata,
 };
 use crate::infra::ConfigHandle;
@@ -282,7 +282,6 @@ impl Task for ConfigureSparseCheckout {
     task_metadata! {
         name: "Configure sparse checkout",
         phase: TaskPhase::Sync,
-        domain: Domain::Repository,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

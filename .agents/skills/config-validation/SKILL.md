@@ -103,10 +103,10 @@ consistency:
 These tests use private TOML structs (not library types) to stay self-contained.
 The `is_covered_by()` helper handles directory prefix matching (trailing `/`).
 
-`hooks/check-ci-guards.sh` runs the shell config validators whenever staged
-changes touch `conf/*.toml` or `symlinks/`. With `DOTFILES_HOOKS_FULL=1`, it
-also runs `cargo test --profile ci --manifest-path cli/Cargo.toml --test
-config_drift` so manifest/symlink drift is caught before CI.
+With `DOTFILES_HOOKS_FULL=1`, `hooks/check-ci-guards.sh` runs the shell config
+validators whenever staged changes touch `conf/*.toml` or `symlinks/`, plus
+`cargo test --profile ci --manifest-path cli/Cargo.toml --test config_drift`
+so manifest/symlink drift is caught before CI.
 
 ### Adding a New Drift Test
 

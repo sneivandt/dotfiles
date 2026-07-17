@@ -56,13 +56,14 @@ Windows PowerShell wrapper with identical logic:
 ## Git Hooks
 
 The `hooks/pre-commit` script is the only other POSIX shell entrypoint. It scans
-staged changes for sensitive patterns and delegates targeted CI parity checks to
-helper scripts in `hooks/`.
+staged changes for sensitive patterns and runs staged Rust/PowerShell checks.
+With `DOTFILES_HOOKS_FULL=1`, it also delegates targeted CI parity checks to
+`hooks/check-ci-guards.sh`.
 
 When editing `dotfiles.sh`, keep argument forwarding unchanged unless the wrapper
-itself consumes a flag. `hooks/check-ci-guards.sh` runs ShellCheck on staged
-shell files by default; with `DOTFILES_HOOKS_FULL=1`, it also runs the Linux
-wrapper test script for staged `dotfiles.sh` changes.
+itself consumes a flag. In full hook mode, `hooks/check-ci-guards.sh` runs
+ShellCheck on staged shell files and the Linux wrapper test script for staged
+`dotfiles.sh` changes.
 
 ## Code Style Rules
 

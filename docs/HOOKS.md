@@ -6,9 +6,9 @@ The `hooks/` directory contains git hooks that are automatically installed by th
 
 ### pre-commit - Orchestrator
 
-A thin delegator that runs each check script in sequence. Adding a new check
-is as simple as dropping a new `check-*.sh` script in `hooks/` and calling it
-from `pre-commit`.
+The default hook runs `check-sensitive.sh` and `check-rust.sh`. Set
+`DOTFILES_HOOKS_FULL=1` to also run the CI-derived checks in
+`check-ci-guards.sh` before committing.
 
 ### check-sensitive.sh - Sensitive Data Scanner
 
@@ -78,8 +78,7 @@ Edit `hooks/sensitive-patterns.ini` to add, modify, or remove detection patterns
 
 ### check-rust.sh - Code Quality
 
-Runs the following checks against staged files. Pre-commit stays fast by default;
-set `DOTFILES_HOOKS_FULL=1` to run the slower CI-parity checks locally.
+Runs the following checks against staged files on every commit:
 
 1. **`cargo fmt --check`** — fails the commit if any `.rs` files are not formatted.
    Run `cargo fmt --manifest-path cli/Cargo.toml` to fix.
@@ -96,8 +95,8 @@ set `DOTFILES_HOOKS_FULL=1` to run the slower CI-parity checks locally.
 
 ### check-ci-guards.sh - Targeted CI Guards
 
-Runs fast targeted checks for staged files that commonly break CI. Slower checks
-are full-mode only (`DOTFILES_HOOKS_FULL=1`):
+Runs targeted checks for staged files that commonly break CI when full hook mode
+is enabled, or when the helper is invoked directly:
 
 1. **Config and symlink changes** — run the shell config validators. Full mode
    also runs `cargo test --profile ci --test config_drift` when Cargo is installed.
@@ -111,7 +110,7 @@ are full-mode only (`DOTFILES_HOOKS_FULL=1`):
 
 | File | Installed as git hook | Purpose |
 | --- | --- | --- |
-| `pre-commit` | yes | Orchestrator — calls each check script |
+| `pre-commit` | yes | Sensitive-data and code-quality checks, with optional CI guards |
 | `check-sensitive.sh` | no | Sensitive data scanning |
 | `check-rust.sh` | no | Rust formatting, clippy, tests, and PowerShell linting |
 | `check-ci-guards.sh` | no | Targeted local guards for common CI failure classes |

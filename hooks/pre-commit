@@ -18,6 +18,11 @@ HOOKS_DIR="$(git rev-parse --show-toplevel)/hooks"
 
 sh "$HOOKS_DIR/check-sensitive.sh"
 sh "$HOOKS_DIR/check-rust.sh"
-sh "$HOOKS_DIR/check-ci-guards.sh"
+
+case "${DOTFILES_HOOKS_FULL:-0}" in
+  1 | true | yes)
+    sh "$HOOKS_DIR/check-ci-guards.sh"
+    ;;
+esac
 
 exit 0

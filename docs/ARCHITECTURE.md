@@ -698,7 +698,7 @@ matching the behaviour of `process_resources()` and `process_resources_with_prov
 
 ### Git Hooks
 
-The pre-commit hook runs targeted checks via dedicated scripts in `hooks/`:
+The default pre-commit hook runs sensitive-data and staged code-quality checks:
 
 `check-sensitive.sh` scans staged files for sensitive data:
 - API keys, tokens, passwords
@@ -711,11 +711,10 @@ The pre-commit hook runs targeted checks via dedicated scripts in `hooks/`:
 - `cargo clippy --profile ci -- -D warnings` — lint enforcement (same policy as CI)
 - PSScriptAnalyzer for staged PowerShell files when available
 
-`DOTFILES_HOOKS_FULL=1` enables slower CI-parity checks: Windows-target clippy,
-`cargo test --profile ci`, config drift tests, cargo-deny, and Linux shell
-wrapper argument-forwarding tests. `check-ci-guards.sh` keeps default
-pre-commit checks fast by running cheap guards first: config reference checks,
-wildcard dependency detection, and ShellCheck on staged shell files.
+`DOTFILES_HOOKS_FULL=1` additionally enables Windows-target clippy,
+`cargo test --profile ci`, config reference and drift tests, wildcard dependency
+detection, cargo-deny, ShellCheck, and Linux shell wrapper argument-forwarding
+tests. The CI-derived checks are delegated to `check-ci-guards.sh`.
 
 ### Binary Verification
 

@@ -29,9 +29,9 @@ rustup target add x86_64-pc-windows-gnu
 cargo clippy --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
 ```
 
-The target also requires a mingw-w64 GCC toolchain on Linux. If it is not
-installed, the pre-commit hook skips this check with a notice unless full mode
-is explicitly enabled.
+The target also requires a mingw-w64 GCC toolchain on Linux. The pre-commit hook
+runs this check only when full mode is explicitly enabled, and then skips it
+with a notice if the toolchain is unavailable.
 
 ### Running Tests
 

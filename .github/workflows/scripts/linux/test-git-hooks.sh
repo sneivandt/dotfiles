@@ -89,7 +89,50 @@ test_hook_wiring() {
     fi
   done
 
-  pass "Pre-commit hook calls all helper scripts"
+  pass "Pre-commit hook references all helper scripts"
+}
+
+test_hook_modes() {
+  repo="$(mktemp -d)"
+  hook_log="$repo/hook.log"
+
+  git init -q "$repo"
+  mkdir -p "$repo/hooks"
+  cp "${DIR:-$(git rev-parse --show-toplevel)}/hooks/pre-commit" "$repo/hooks/pre-commit"
+
+  for script in check-sensitive.sh check-rust.sh check-ci-guards.sh; do
+    cat > "$repo/hooks/$script" <<EOF
+#!/bin/sh
+printf '%s\n' '$script' >> "\$HOOK_LOG"
+EOF
+  done
+
+  (
+    cd "$repo"
+    HOOK_LOG="$hook_log" sh hooks/pre-commit
+  )
+
+  expected=$(printf '%s\n' check-sensitive.sh check-rust.sh)
+  if [ "$(cat "$hook_log")" = "$expected" ]; then
+    pass "Default hook runs sensitive-data and Rust checks"
+  else
+    fail "Default hook did not run the expected checks"
+  fi
+
+  : > "$hook_log"
+  (
+    cd "$repo"
+    HOOK_LOG="$hook_log" DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
+  )
+
+  expected=$(printf '%s\n' check-sensitive.sh check-rust.sh check-ci-guards.sh)
+  if [ "$(cat "$hook_log")" = "$expected" ]; then
+    pass "Full hook mode runs all helper scripts"
+  else
+    fail "Full hook mode did not run all helper scripts"
+  fi
+
+  rm -rf "$repo"
 }
 
 test_pre_push_protection() {
@@ -141,6 +184,9 @@ printf "==================================================\n\n"
 
 printf "Testing hook wiring...\n"
 test_hook_wiring
+
+printf "Testing hook modes...\n"
+test_hook_modes
 
 printf "Testing pre-push protection...\n"
 test_pre_push_protection

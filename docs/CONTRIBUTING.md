@@ -275,13 +275,16 @@ chore(ci): update shellcheck version
    - Note any breaking changes
 
 3. **Checklist** (automatically provided by PR template):
-   - [ ] Ran `cargo test` successfully
-   - [ ] Ran `cargo clippy` with no warnings
+   - [ ] Ran `cargo fmt --check`
+   - [ ] Ran host Clippy with no warnings
    - [ ] Ran Windows-target Clippy for Rust changes
-   - [ ] Ran `./dotfiles.sh test` for configuration/symlink/hook/wrapper changes
-   - [ ] Tested with `-d` (dry-run) mode
-   - [ ] No trailing whitespace
-   - [ ] Updated documentation
+   - [ ] Ran `cargo test` successfully
+   - [ ] Ran source-built config validation for configuration/symlink/hook/wrapper changes
+   - [ ] Tested affected profiles from source with `-d` (dry-run) mode
+   - [ ] Verified idempotency for changes that mutate machine state
+   - [ ] Kept conditional symlink and manifest coverage synchronized
+   - [ ] Included no private files, credentials, or other secrets
+   - [ ] Updated relevant documentation and tests when needed
 
 4. **Review Process**:
    - Address feedback from maintainers

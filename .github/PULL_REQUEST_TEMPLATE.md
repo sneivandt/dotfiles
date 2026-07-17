@@ -1,57 +1,62 @@
 # Pull Request
 
-## Description
-<!-- Provide a brief description of the changes in this PR -->
+## Summary
+<!-- What changed, and why is this change needed? -->
 
-## Type of Change
-<!-- Check the relevant option(s) -->
-- [ ] New feature (dotfiles, configuration, or script addition)
-- [ ] Bug fix (corrects an issue without changing functionality)
-- [ ] Configuration update (packages, symlinks, units, etc.)
-- [ ] Refactoring (no functional changes)
-- [ ] Documentation update
-- [ ] CI/CD changes
+## Related Issues
+<!-- Use "Fixes #123", link related issues, or write "N/A". -->
 
-## Affected Profiles
-<!-- Check all profiles/categories that are affected by these changes -->
-- [ ] `base` (core shell configuration)
-- [ ] `desktop` (desktop tools and GUI configuration)
-- [ ] Platform-specific: `arch`, `windows`, `linux` (auto-detected categories)
-- [ ] Profile-agnostic (utilities, CI, documentation)
+## Change Type
+<!-- Check all that apply. -->
+- [ ] Feature
+- [ ] Bug fix
+- [ ] Configuration or dotfiles update
+- [ ] Refactoring
+- [ ] Tests
+- [ ] Documentation
+- [ ] CI, build, or dependency maintenance
 
-## Testing Performed
-<!-- Describe the testing you've done -->
-- [ ] Ran `./dotfiles.sh test` (static analysis and validation)
-- [ ] Tested installation with affected profile(s)
-- [ ] Verified idempotency (re-running doesn't cause errors)
-- [ ] Tested in dry-run mode (`./dotfiles.sh install -d`)
-- [ ] Tested with verbose mode (`./dotfiles.sh install -v`)
+## Scope
+<!-- Check all affected profiles and platform categories. -->
+- [ ] `base`
+- [ ] `desktop`
+- [ ] `linux`
+- [ ] `arch`
+- [ ] `windows`
+- [ ] Profile/platform agnostic
 
-**Test environment:**
-- OS: <!-- e.g., Arch Linux, Ubuntu, Windows 11 -->
-- Profile tested: <!-- e.g., desktop -->
+## Validation
+<!-- Check only commands or behaviors you verified. Explain omitted relevant checks below. -->
 
-## Configuration Changes
-<!-- If you've modified TOML files, list the changes -->
-- [ ] Updated `conf/packages.toml`
-- [ ] Updated `conf/symlinks.toml`
-- [ ] Updated `conf/systemd-units.toml`
-- [ ] Updated `conf/manifest.toml`
-- [ ] Updated `conf/profiles.toml`
-- [ ] Other: <!-- specify -->
+### Rust changes
+- [ ] `cargo fmt --check --manifest-path cli/Cargo.toml`
+- [ ] `cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings`
+- [ ] `cargo clippy --profile ci --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings`
+- [ ] `cargo test --profile ci --manifest-path cli/Cargo.toml`
 
-## Documentation
-- [ ] Updated README.md if needed
-- [ ] Updated docs/WINDOWS.md if needed
-- [ ] Updated docs/CONFIGURATION.md if needed
-- [ ] Code comments added/updated for complex logic
+### Configuration, wrappers, hooks, and behavior
+- [ ] Ran config validation from source for the affected platform/profile
+      (`./dotfiles.sh --build -p base test` or `.\dotfiles.ps1 --build -p base test`)
+- [ ] Ran a source-built dry-run for each affected profile
+      (`./dotfiles.sh --build install -p <profile> -d` or Windows equivalent)
+- [ ] Verified idempotency when the change mutates machine state
 
-## Checklist
-- [ ] Rust code passes `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`
-- [ ] Shell wrappers follow POSIX sh compatibility
-- [ ] All new tasks are idempotent
-- [ ] Added items to TOML config files rather than hardcoding
-- [ ] CI checks pass (automatically verified)
+**Test environment**
+- OS: <!-- e.g. Arch Linux, Ubuntu, Windows 11 -->
+- Profiles: <!-- e.g. base, desktop, or N/A -->
+- Checks not run: <!-- Explain why, or write "None". -->
 
-## Additional Notes
-<!-- Any additional context, concerns, or discussion points -->
+## User-Facing Impact
+- Configuration or manifest changes: <!-- Summarize, or write "None". -->
+- Breaking changes or migration steps: <!-- Summarize, or write "None". -->
+- Documentation updated: <!-- Link files, or explain why no update is needed. -->
+
+## Final Checklist
+- [ ] The change is focused and contains no unrelated files
+- [ ] Mutations are idempotent and dry-run safe, or this is not applicable
+- [ ] Conditional symlink and manifest coverage remain synchronized, or this is not applicable
+- [ ] No private files, credentials, or other secrets are included
+- [ ] Relevant documentation and tests are updated, or no update is needed
+
+## Review Notes
+<!-- Call out risks, tradeoffs, follow-up work, or areas needing extra attention. -->

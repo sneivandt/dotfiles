@@ -325,7 +325,7 @@ pub struct Config {
     /// File permissions to apply (chmod).
     pub chmod: Vec<chmod::ChmodEntry>,
     /// VS Code extensions to install.
-    pub vscode_extensions: Vec<vscode_extensions::VsCodeExtension>,
+    pub vscode_extensions: Vec<String>,
     /// Git configuration settings to apply globally.
     pub git_settings: Vec<git_config::GitSetting>,
     /// GitHub Copilot CLI settings to converge in `~/.copilot/settings.json`.

@@ -1,15 +1,12 @@
 //! Unit tests for the VS Code extension install task.
 
 use super::*;
-use crate::domains::editors::config::vscode_extensions::VsCodeExtension;
 use crate::infra::ConfigHandle;
 use crate::test_helpers::{empty_config, make_linux_context};
 use std::path::PathBuf;
 
-fn ext() -> VsCodeExtension {
-    VsCodeExtension {
-        id: "github.copilot".to_string(),
-    }
+fn ext() -> String {
+    "github.copilot".to_string()
 }
 
 #[test]

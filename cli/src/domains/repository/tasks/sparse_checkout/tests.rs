@@ -435,6 +435,13 @@ impl Executor for UntrackedAwareExecutor {
         anyhow::bail!("unexpected run_unchecked() call")
     }
 
+    fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
+        anyhow::bail!(
+            "unexpected run_unchecked_in() call: {program} {args:?} in {}",
+            dir.display()
+        )
+    }
+
     fn which(&self, _: &str) -> bool {
         false
     }

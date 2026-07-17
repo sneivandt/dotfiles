@@ -290,6 +290,18 @@ impl Executor for RecordingExecutor {
         self.run(program, args)
     }
 
+    fn run_unchecked_in(
+        &self,
+        dir: &std::path::Path,
+        program: &str,
+        args: &[&str],
+    ) -> Result<ExecResult> {
+        anyhow::bail!(
+            "unexpected run_unchecked_in() call in package tests: {program} {args:?} in {}",
+            dir.display()
+        )
+    }
+
     fn which(&self, program: &str) -> bool {
         program == "sudo"
     }

@@ -312,22 +312,12 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
 
     /// Execute a command in a specific directory, allowing non-zero exit.
     ///
-    /// The default implementation ignores `dir` and delegates to
-    /// [`run_unchecked`](Executor::run_unchecked); concrete executors should
-    /// override it to actually run the command in `dir`.
-    ///
     /// # Errors
     ///
     /// Returns an error if the command fails to execute or cannot be found,
     /// but does NOT fail on non-zero exit codes (which are captured in the result).
     #[cfg_attr(test, mockall::concretize)]
-    #[allow(
-        unused_variables,
-        reason = "default implementation intentionally ignores the working directory"
-    )]
-    fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
-        self.run_unchecked(program, args)
-    }
+    fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult>;
 
     /// Check if a program is available on PATH.
     #[cfg_attr(not(test), must_use)]

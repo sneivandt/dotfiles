@@ -203,6 +203,18 @@ impl Executor for StubExecutor {
         panic!("unexpected executor call in integration test: {program} {args:?}")
     }
 
+    fn run_unchecked_in(
+        &self,
+        dir: &Path,
+        program: &str,
+        args: &[&str],
+    ) -> anyhow::Result<ExecResult> {
+        panic!(
+            "unexpected executor call in integration test: {program} {args:?} in {}",
+            dir.display()
+        )
+    }
+
     fn which(&self, _: &str) -> bool {
         false
     }

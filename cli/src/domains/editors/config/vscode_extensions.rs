@@ -3,38 +3,29 @@
 use crate::infra::config::Diagnostic;
 use crate::infra::config::config_section;
 
-/// A VS Code extension to install.
-#[derive(Debug, Clone)]
-pub struct VsCodeExtension {
-    /// Extension identifier in `publisher.name` format (e.g., `"github.copilot-chat"`).
-    pub id: String,
-}
-
 config_section! {
     field: "extensions",
-    entry: String,
-    item: VsCodeExtension,
-    map: |id| VsCodeExtension { id },
+    ty: String,
 }
 
 /// Validate VS Code extension entries and return any warnings.
 #[must_use]
-pub fn validate(extensions: &[VsCodeExtension]) -> Vec<Diagnostic> {
+pub fn validate(extensions: &[String]) -> Vec<Diagnostic> {
     use crate::infra::config::validation::{Validator, check};
 
     Validator::new(VSCODE_EXTENSIONS_TOML)
         .check_each(
             extensions,
-            |ext| &ext.id,
-            |ext| {
+            |id| id,
+            |id| {
                 [
                     check(
-                        ext.id.trim().is_empty(),
+                        id.trim().is_empty(),
                         "vscode.empty-id",
                         "extension ID is empty",
                     ),
                     check(
-                        !ext.id.contains('.'),
+                        !id.contains('.'),
                         "vscode.invalid-id-format",
                         "extension ID should be in format 'publisher.name'",
                     ),
@@ -67,10 +58,9 @@ mod tests {
 extensions = ["github.copilot-chat", "ms-python.python"]
 "#,
         );
-        let extensions: Vec<VsCodeExtension> =
-            load(&path, &[Category::Base, Category::Desktop]).unwrap();
+        let extensions: Vec<String> = load(&path, &[Category::Base, Category::Desktop]).unwrap();
         assert_eq!(extensions.len(), 2);
-        assert_eq!(extensions[0].id, "github.copilot-chat");
+        assert_eq!(extensions[0], "github.copilot-chat");
     }
 
     #[test]
@@ -83,21 +73,25 @@ extensions = ["github.copilot"]
 extensions = ["github.copilot-chat"]
 "#,
         );
-        let extensions: Vec<VsCodeExtension> = load(&path, &[Category::Base]).unwrap();
+        let extensions: Vec<String> = load(&path, &[Category::Base]).unwrap();
         assert_eq!(extensions.len(), 1, "desktop section should not be loaded");
-        assert_eq!(extensions[0].id, "github.copilot");
+        assert_eq!(extensions[0], "github.copilot");
     }
 
     test_load_missing_returns_empty!(load);
 
     #[test]
     fn validate_detects_invalid_format() {
-        let extensions = vec![VsCodeExtension {
-            id: "invalid_no_publisher".to_string(),
-        }];
+        let extensions = vec!["invalid_no_publisher".to_string()];
         let warnings = validate(&extensions);
         assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].message.contains("publisher.name"));
+        assert_eq!(warnings[0].source, VSCODE_EXTENSIONS_TOML);
+        assert_eq!(warnings[0].item, "invalid_no_publisher");
+        assert_eq!(warnings[0].code, "vscode.invalid-id-format");
+        assert_eq!(
+            warnings[0].message,
+            "extension ID should be in format 'publisher.name'"
+        );
     }
 
     #[test]
@@ -119,13 +113,14 @@ extensions = ["github.copilot-chat"]
 
     #[test]
     fn validate_detects_empty_extension_id() {
-        let extensions = vec![VsCodeExtension {
-            id: "  ".to_string(),
-        }];
+        let extensions = vec!["  ".to_string()];
         let warnings = validate(&extensions);
-        assert!(
-            warnings.iter().any(|w| w.message.contains("empty")),
-            "should warn about empty extension ID: {warnings:?}"
-        );
+        let warning = warnings
+            .iter()
+            .find(|warning| warning.code == "vscode.empty-id")
+            .expect("empty ID diagnostic");
+        assert_eq!(warning.source, VSCODE_EXTENSIONS_TOML);
+        assert_eq!(warning.item, "  ");
+        assert_eq!(warning.message, "extension ID is empty");
     }
 }

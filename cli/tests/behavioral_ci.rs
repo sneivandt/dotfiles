@@ -130,6 +130,18 @@ impl Executor for RecordingExecutor {
         Ok(self.next(CallKind::RunUnchecked, program, args))
     }
 
+    fn run_unchecked_in(
+        &self,
+        dir: &Path,
+        program: &str,
+        args: &[&str],
+    ) -> anyhow::Result<ExecResult> {
+        panic!(
+            "unexpected working-directory executor call: {program} {args:?} in {}",
+            dir.display()
+        )
+    }
+
     fn which(&self, program: &str) -> bool {
         self.available.contains(program)
     }

@@ -518,13 +518,13 @@ fn config_loads_vscode_extensions_correctly() {
         config
             .vscode_extensions
             .iter()
-            .any(|e| e.id == "ms-vscode.cpptools")
+            .any(|id| id == "ms-vscode.cpptools")
     );
     assert!(
         config
             .vscode_extensions
             .iter()
-            .any(|e| e.id == "rust-lang.rust-analyzer")
+            .any(|id| id == "rust-lang.rust-analyzer")
     );
 }
 

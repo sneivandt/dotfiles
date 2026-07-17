@@ -11,7 +11,6 @@
 
 use crate::app::config::Config;
 use crate::domains::ai::config::copilot::CopilotSetting;
-use crate::domains::editors::config::vscode_extensions::VsCodeExtension;
 use crate::domains::files::config::chmod::ChmodEntry;
 use crate::domains::files::config::symlinks::Symlink;
 use crate::domains::git::config::git_config::GitSetting;
@@ -43,7 +42,7 @@ pub struct ConfigStore {
     /// File permissions to apply (chmod).
     pub chmod: ConfigHandle<Vec<ChmodEntry>>,
     /// VS Code extensions to install.
-    pub vscode_extensions: ConfigHandle<Vec<VsCodeExtension>>,
+    pub vscode_extensions: ConfigHandle<Vec<String>>,
     /// Git configuration settings to apply globally.
     pub git_settings: ConfigHandle<Vec<GitSetting>>,
     /// GitHub Copilot CLI settings to converge.

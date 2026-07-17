@@ -1,5 +1,4 @@
 //! Task: install VS Code extensions.
-use crate::domains::editors::config::vscode_extensions::VsCodeExtension;
 use crate::domains::editors::resources::vscode_extension::{
     VsCodeExtensionResource, find_code_command, get_installed_extensions,
 };
@@ -13,13 +12,13 @@ use std::collections::HashSet;
 /// Install VS Code extensions.
 #[derive(Debug)]
 pub struct InstallVsCodeExtensions {
-    config: ConfigHandle<Vec<VsCodeExtension>>,
+    config: ConfigHandle<Vec<String>>,
 }
 
 impl InstallVsCodeExtensions {
     /// Create the task with a handle to the extension configuration.
     #[must_use]
-    pub const fn new(config: ConfigHandle<Vec<VsCodeExtension>>) -> Self {
+    pub const fn new(config: ConfigHandle<Vec<String>>) -> Self {
         Self { config }
     }
 }
@@ -50,9 +49,9 @@ impl Task for InstallVsCodeExtensions {
         });
         let installed = get_installed_extensions(&cmd, system.executor())?;
 
-        let resources = extensions.iter().map(|ext| {
-            VsCodeExtensionResource::new(ext.id.clone(), cmd.clone(), system.executor_arc())
-        });
+        let resources = extensions
+            .iter()
+            .map(|id| VsCodeExtensionResource::new(id.clone(), cmd.clone(), system.executor_arc()));
         process_resources_with_borrowed_cache(
             ctx,
             resources,

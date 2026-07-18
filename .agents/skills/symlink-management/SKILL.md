@@ -104,6 +104,10 @@ current source file or directory into the target path, replacing the symlink
 with a real file/directory. Existing non-symlink targets are skipped to avoid
 overwriting user data.
 
+Profile changes use the same materialization path before sparse checkout
+removes newly excluded sources, preserving the user's current configuration as
+real files/directories.
+
 ```rust
 fn run(&self, ctx: &Context) -> Result<TaskResult> {
     process_resources_remove(ctx, build_resources(ctx), "materialize")

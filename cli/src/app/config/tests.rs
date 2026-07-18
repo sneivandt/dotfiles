@@ -61,6 +61,7 @@ fn load_with_empty_config_files() {
     let config = Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
     assert!(config.packages.is_empty());
     assert!(config.symlinks.is_empty());
+    assert!(config.all_symlinks.is_empty());
     assert!(config.registry.is_empty());
     assert!(config.units.is_empty());
     assert!(config.chmod.is_empty());
@@ -80,6 +81,43 @@ fn load_populates_symlinks() {
     assert_eq!(config.symlinks.len(), 2);
     assert_eq!(config.symlinks[0].source, ".bashrc");
     assert_eq!(config.symlinks[1].source, ".vimrc");
+    assert_eq!(config.all_symlinks.len(), 2);
+}
+
+#[test]
+fn load_keeps_profile_excluded_main_symlinks_for_materialization() {
+    let (dir, profile, platform) = setup_load(
+        linux(),
+        &[(
+            "symlinks.toml",
+            "[base]\nsymlinks = [\"bashrc\"]\n[desktop]\nsymlinks = [\"config/i3\"]\n",
+        )],
+    );
+
+    let config = Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
+
+    assert_eq!(
+        config
+            .symlinks
+            .iter()
+            .map(|symlink| symlink.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["bashrc"]
+    );
+    assert_eq!(
+        config
+            .all_symlinks
+            .iter()
+            .map(|symlink| symlink.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["bashrc", "config/i3"]
+    );
+    assert!(
+        config
+            .all_symlinks
+            .iter()
+            .all(|symlink| symlink.origin.as_deref() == Some(dir.path()))
+    );
 }
 
 #[test]

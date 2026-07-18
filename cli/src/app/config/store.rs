@@ -5,9 +5,8 @@
 //! clone of exactly the handle it needs, so no task depends on the aggregate
 //! configuration type. During an app-owned reload the store swaps each
 //! reloadable handle in place, and because tasks share those handles the update
-//! is visible without rebuilding any task. Overlay scripts are the exception:
-//! their dynamic task objects are created at startup, so their handle remains a
-//! startup snapshot for the lifetime of the process.
+//! is visible without rebuilding static tasks. Dynamic overlay script tasks are
+//! rebuilt after the Sync phase from their freshly swapped handle.
 
 use crate::app::config::Config;
 use crate::domains::ai::config::copilot::CopilotSetting;
@@ -35,6 +34,8 @@ pub struct ConfigStore {
     pub packages: ConfigHandle<Vec<Package>>,
     /// Symlinks to create in the user's home directory.
     pub symlinks: ConfigHandle<Vec<Symlink>>,
+    /// Every main-repository symlink definition, before category filtering.
+    pub all_symlinks: ConfigHandle<Vec<Symlink>>,
     /// Windows registry entries to configure.
     pub registry: ConfigHandle<Vec<RegistryEntry>>,
     /// Systemd user units to enable.
@@ -49,10 +50,7 @@ pub struct ConfigStore {
     pub copilot_settings: ConfigHandle<Vec<CopilotSetting>>,
     /// Sparse checkout manifest for file exclusions.
     pub manifest: ConfigHandle<Manifest>,
-    /// Startup snapshot of custom scripts from the overlay repository.
-    ///
-    /// Dynamic overlay tasks are built before execution starts and cannot be
-    /// safely regenerated during a repository reload.
+    /// Custom scripts from the overlay repository.
     pub scripts: ConfigHandle<Vec<ScriptEntry>>,
 }
 
@@ -66,6 +64,7 @@ impl ConfigStore {
         Self {
             packages: ConfigHandle::new(config.packages.clone()),
             symlinks: ConfigHandle::new(config.symlinks.clone()),
+            all_symlinks: ConfigHandle::new(config.all_symlinks.clone()),
             registry: ConfigHandle::new(config.registry.clone()),
             units: ConfigHandle::new(config.units.clone()),
             chmod: ConfigHandle::new(config.chmod.clone()),
@@ -82,15 +81,11 @@ impl ConfigStore {
     ///
     /// Each individual handle swap is atomic, but the complete store update is
     /// not one aggregate transaction. Phase ordering ensures tasks cannot read
-    /// the store while this app-owned reload runs. The `scripts` handle is
-    /// intentionally not replaced because dynamic overlay tasks are startup
-    /// snapshots.
-    pub fn reload(&self, mut config: Config) {
-        // Keep the aggregate view consistent with the non-reloadable script
-        // handle. Newly pulled scripts take effect on the next process run.
-        config.scripts.clone_from(self.scripts.read().as_ref());
+    /// the store while this app-owned reload runs.
+    pub fn reload(&self, config: Config) {
         self.packages.swap(config.packages.clone());
         self.symlinks.swap(config.symlinks.clone());
+        self.all_symlinks.swap(config.all_symlinks.clone());
         self.registry.swap(config.registry.clone());
         self.units.swap(config.units.clone());
         self.chmod.swap(config.chmod.clone());
@@ -99,6 +94,7 @@ impl ConfigStore {
         self.git_settings.swap(config.git_settings.clone());
         self.copilot_settings.swap(config.copilot_settings.clone());
         self.manifest.swap(config.manifest.clone());
+        self.scripts.swap(config.scripts.clone());
         self.aggregate.swap(config);
     }
 }
@@ -123,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    fn reload_preserves_script_startup_snapshot_in_both_handles() {
+    fn reload_swaps_script_configuration_in_both_handles() {
         let mut initial = empty_config(PathBuf::from("/tmp"));
         initial.scripts = vec![script("initial")];
         let store = ConfigStore::from_config(initial);
@@ -132,7 +128,7 @@ mod tests {
         reloaded.scripts = vec![script("reloaded")];
         store.reload(reloaded);
 
-        assert_eq!(store.scripts.read()[0].name, "initial");
-        assert_eq!(store.aggregate.read().scripts[0].name, "initial");
+        assert_eq!(store.scripts.read()[0].name, "reloaded");
+        assert_eq!(store.aggregate.read().scripts[0].name, "reloaded");
     }
 }

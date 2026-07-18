@@ -79,10 +79,45 @@ pub(crate) fn set_origin(symlinks: &mut [Symlink], root: &Path) {
 ///
 /// # Errors
 ///
-/// Returns an error when a glob is malformed, matches no entries, has
-/// mismatched source/target wildcard counts, or expands to duplicate targets.
+/// Returns an error when a glob is malformed, matches no entries, or has
+/// mismatched source/target wildcard counts.
 pub fn expand_glob_patterns(symlinks: &[Symlink], fallback: &Path) -> Result<Vec<Symlink>> {
     glob_expansion::expand_glob_patterns(symlinks, fallback)
+}
+
+/// Reject symlink entries that resolve to the same target.
+///
+/// # Errors
+///
+/// Returns an error identifying the colliding sources and target.
+pub(crate) fn validate_unique_targets(symlinks: &[Symlink]) -> Result<()> {
+    target_validation::validate_unique_targets(symlinks)
+}
+
+/// Expand glob entries whose sources are currently present.
+///
+/// Unlike [`expand_glob_patterns`], unmatched globs are omitted. This is used
+/// while reconciling profile exclusions, where sources excluded by an earlier
+/// sparse checkout are expected to be absent.
+///
+/// # Errors
+///
+/// Returns an error when a configured glob is malformed or has mismatched
+/// source/target wildcard counts.
+pub(crate) fn expand_present_glob_patterns(
+    symlinks: &[Symlink],
+    fallback: &Path,
+) -> Result<Vec<Symlink>> {
+    glob_expansion::expand_present_glob_patterns(symlinks, fallback)
+}
+
+/// Load symlink entries from every category without filtering.
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be parsed.
+pub(crate) fn load_all(path: &Path) -> Result<Vec<Symlink>> {
+    crate::infra::config::toml_loader::load_section_unfiltered::<Section>(path)
 }
 
 /// Resolve the symlinks directory for a single entry.
@@ -255,6 +290,28 @@ symlinks = [
         assert_eq!(symlinks[1].target.as_deref(), Some(".custom-name"));
     }
 
+    #[test]
+    fn load_all_ignores_category_filters() {
+        let (_dir, path) = write_temp_toml(
+            r#"[base]
+symlinks = ["bashrc"]
+
+[desktop]
+symlinks = ["config/i3"]
+
+[windows]
+symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
+"#,
+        );
+
+        let symlinks = load_all(&path).unwrap();
+
+        assert_eq!(symlinks.len(), 3);
+        assert_eq!(symlinks[0].source, "bashrc");
+        assert_eq!(symlinks[1].source, "config/i3");
+        assert_eq!(symlinks[2].source, "Documents/pwsh");
+    }
+
     test_load_missing_returns_empty!(load);
 
     #[test]
@@ -364,6 +421,30 @@ symlinks = [
     }
 
     #[test]
+    fn validate_unique_targets_rejects_explicit_and_computed_collision() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let symlinks_dir = temp_dir.path().join("symlinks");
+        std::fs::create_dir_all(&symlinks_dir).unwrap();
+        std::fs::write(symlinks_dir.join("bashrc"), "").unwrap();
+        std::fs::write(symlinks_dir.join("other"), "").unwrap();
+        let symlinks = vec![
+            Symlink {
+                source: "bashrc".to_string(),
+                target: None,
+                origin: None,
+            },
+            Symlink {
+                source: "other".to_string(),
+                target: Some(".bashrc".to_string()),
+                origin: None,
+            },
+        ];
+
+        let error = validate_unique_targets(&symlinks).unwrap_err();
+        assert!(error.to_string().contains("collision"));
+    }
+
+    #[test]
     fn expand_glob_patterns_expands_skill_directories() {
         let temp_dir = tempfile::tempdir().unwrap();
         let skills_dir = temp_dir.path().join("symlinks").join("skills");
@@ -430,7 +511,7 @@ symlinks = [
     }
 
     #[test]
-    fn expand_glob_patterns_rejects_duplicate_targets() {
+    fn validate_unique_targets_rejects_duplicate_explicit_targets() {
         let temp_dir = tempfile::tempdir().unwrap();
         let symlinks_dir = temp_dir.path().join("symlinks");
         std::fs::create_dir_all(&symlinks_dir).unwrap();
@@ -449,7 +530,7 @@ symlinks = [
             },
         ];
 
-        let result = expand_glob_patterns(&symlinks, temp_dir.path());
+        let result = validate_unique_targets(&symlinks);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("collision"));
     }

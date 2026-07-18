@@ -20,8 +20,8 @@ use crate::engine::{
 ///
 /// Tasks read configuration through handles owned by the [`ConfigStore`];
 /// swapping the reloadable handles here makes new values visible downstream.
-/// Overlay script tasks are the exception because their startup snapshot cannot
-/// be rebuilt once scheduling has begun.
+/// Dynamic overlay script tasks are rebuilt from the refreshed script handle
+/// after the Sync phase completes.
 #[derive(Debug)]
 pub struct ReloadConfig {
     /// Shared flag set by the repository-update task when new commits were

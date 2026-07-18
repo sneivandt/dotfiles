@@ -14,6 +14,21 @@ pub struct Manifest {
     pub excluded_files: Vec<String>,
 }
 
+impl Manifest {
+    /// Return whether a symlink source is covered by an excluded manifest path.
+    #[must_use]
+    pub fn excludes_source(&self, source: &str) -> bool {
+        let source = source.replace('\\', "/");
+        self.excluded_files.iter().any(|excluded| {
+            let excluded = excluded.replace('\\', "/");
+            excluded.strip_suffix('/').map_or_else(
+                || source == excluded,
+                |directory| source == directory || source.starts_with(&excluded),
+            )
+        })
+    }
+}
+
 /// TOML section containing excluded paths.
 #[derive(Debug, Deserialize)]
 struct ManifestSection {
@@ -108,6 +123,23 @@ paths = ["file2"]
             manifest.excluded_files.is_empty(),
             "no categories matched — nothing should be excluded"
         );
+    }
+
+    #[test]
+    fn excludes_source_matches_files_and_directory_contents() {
+        let manifest = Manifest {
+            excluded_files: vec![
+                "config/i3/".to_string(),
+                "config/Code/User/settings.json".to_string(),
+            ],
+        };
+
+        assert!(manifest.excludes_source("config/i3"));
+        assert!(manifest.excludes_source("config/i3/config"));
+        assert!(manifest.excludes_source("config/i3/*"));
+        assert!(manifest.excludes_source("config/Code/User/settings.json"));
+        assert!(!manifest.excludes_source("config/i3status/config"));
+        assert!(!manifest.excludes_source("config/Code/User/keybindings.json"));
     }
 
     #[test]

@@ -58,14 +58,15 @@ components before execution.
 
 - `cli/src/domains/overlay/config/scripts.rs` parses script entries.
 - `cli/src/domains/overlay/resources/script.rs` owns check, preview, apply, and remove behavior.
-- `LoadOverlayScripts` reports scripts already loaded into config during Sync.
+- `ReportOverlayScriptSnapshot` reports scripts loaded into config during Sync.
 - `OverlayScriptTask` provides one dynamic Provision task per entry.
-- The command runner builds dynamic tasks from preloaded config before filtering
-  and scheduling.
+- The command runner reloads the script handle with the rest of configuration,
+  then builds and injects dynamic tasks after Sync so newly pulled definitions
+  run in the same command.
 
 Dynamic tasks are not registered as individual static catalog entries. Keep the
-loader task registered for Sync-phase reporting; dynamic task creation itself
-happens before scheduler execution.
+reporting task registered in Sync; dynamic task creation happens at the
+Sync-to-Provision phase boundary.
 
 All subprocesses go through the executor abstraction. Preserve interpreter
 selection and non-interactive PowerShell behavior when changing command

@@ -3,6 +3,7 @@ source: tests/install_command.rs
 expression: "task_names.join(\"\\n\")"
 ---
 Enable developer mode
+Materialize excluded symlinks
 Configure sparse checkout
 Update repository
 Configure Git
@@ -21,7 +22,7 @@ Install VS Code extensions
 Install APM packages
 Update APM packages
 Install wsl.conf
-Report overlay script snapshot
+Report overlay scripts
 Install wrapper
 Configure PATH
 Reload configuration

@@ -1,11 +1,11 @@
 //! Task: load and run custom scripts from the overlay repository.
 //!
 //! [`ReportOverlayScriptSnapshot`] is a lightweight static task that reports
-//! how many script tasks were created from the startup configuration snapshot.
+//! how many script tasks were discovered after configuration synchronization.
 //!
 //! Each individual script gets its own [`OverlayScriptTask`] created
-//! dynamically at startup (in `install.rs`).  These tasks appear in the
-//! output identically to any other task.
+//! dynamically after the Sync phase (in `install.rs`). These tasks appear in
+//! the output identically to any other task.
 
 use std::path::PathBuf;
 
@@ -20,15 +20,13 @@ use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
 use crate::infra::ConfigHandle;
 
 // ---------------------------------------------------------------------------
-// Static task: report the startup snapshot
+// Static task: report discovered scripts
 // ---------------------------------------------------------------------------
 
-/// Report overlay script definitions captured at startup.
+/// Report overlay script definitions discovered after configuration reload.
 ///
-/// Dynamic script tasks cannot be rebuilt after repository synchronization, so
-/// this task reports the startup snapshot rather than implying that scripts
-/// were rediscovered during configuration reload. The actual execution of each
-/// script is handled by individual [`OverlayScriptTask`] instances.
+/// The actual execution of each script is handled by individual
+/// [`OverlayScriptTask`] instances injected after the Sync phase.
 #[derive(Debug)]
 pub struct ReportOverlayScriptSnapshot {
     config: ConfigHandle<Vec<ScriptEntry>>,
@@ -44,7 +42,7 @@ impl ReportOverlayScriptSnapshot {
 
 impl Task for ReportOverlayScriptSnapshot {
     fn name(&self) -> &'static str {
-        "Report overlay script snapshot"
+        "Report overlay scripts"
     }
 
     fn phase(&self) -> TaskPhase {
@@ -62,9 +60,8 @@ impl Task for ReportOverlayScriptSnapshot {
         }
         let count = scripts.len();
         ctx.log().stage(self.name());
-        ctx.log().info(&format!(
-            "using {count} overlay script(s) captured at startup"
-        ));
+        ctx.log()
+            .info(&format!("discovered {count} overlay script(s)"));
         Ok(Some(TaskResult::Ok))
     }
 
@@ -79,9 +76,8 @@ impl Task for ReportOverlayScriptSnapshot {
             return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
         }
         let count = scripts.len();
-        ctx.log().info(&format!(
-            "using {count} overlay script(s) captured at startup"
-        ));
+        ctx.log()
+            .info(&format!("discovered {count} overlay script(s)"));
         Ok(TaskResult::Ok)
     }
 }
@@ -92,9 +88,8 @@ impl Task for ReportOverlayScriptSnapshot {
 
 /// A dynamically created task that runs a single overlay script.
 ///
-/// Instances are created at startup from the loaded configuration and
-/// injected into the task list so they appear in the output like any
-/// other task.
+/// Instances are created after configuration synchronization and injected into
+/// the task list so they appear in the output like any other task.
 #[derive(Debug)]
 pub struct OverlayScriptTask {
     entry: ScriptEntry,
@@ -225,8 +220,8 @@ fn emit_script_lines(ctx: &Context, output: &str, dry_run: bool) {
 
 /// Create [`OverlayScriptTask`] instances for every script in the config.
 ///
-/// Called from `install.rs` after config is loaded to inject dynamic tasks
-/// into the task list alongside the static ones.
+/// Called from `install.rs` after the Sync phase to inject dynamic tasks into
+/// the task list alongside the static ones.
 #[must_use]
 pub fn overlay_script_tasks(
     scripts: &[ScriptEntry],

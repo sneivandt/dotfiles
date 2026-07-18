@@ -34,6 +34,7 @@ pub fn empty_config(root: PathBuf) -> Config {
         },
         packages: vec![],
         symlinks: vec![],
+        all_symlinks: vec![],
         registry: vec![],
         units: vec![],
         chmod: vec![],

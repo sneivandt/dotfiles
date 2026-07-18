@@ -62,9 +62,9 @@ pub(crate) fn run_pipeline(
 
     let runner = super::CommandRunner::new(global, log, token)?.with_run_mode(mode);
 
-    // Build the full task list: static tasks + dynamic overlay script tasks.
+    // Build the static task list. Dynamic overlay scripts are rebuilt after
+    // Sync so they observe configuration pulled and reloaded in this run.
     let mut all_tasks = runner.install_tasks();
-    all_tasks.extend(runner.overlay_script_tasks());
 
     // Version-advancing tasks (the `Update` phase) are only scheduled by the
     // `update` command.  Drop them here for `install` so the `Updating
@@ -73,32 +73,23 @@ pub(crate) fn run_pipeline(
     // task set rather than tasks that could never run.
     all_tasks.retain(|task| mode.includes_phase(task.phase()));
 
+    let startup_overlay_tasks = runner.overlay_script_tasks();
+    let known_task_refs: Vec<&dyn Task> = all_tasks
+        .iter()
+        .chain(&startup_overlay_tasks)
+        .map(Box::as_ref)
+        .collect();
     if !log.is_verbose()
-        && (has_unmatched_filter(&all_tasks, &opts.only)
-            || has_unmatched_filter(&all_tasks, &opts.skip))
+        && (has_unmatched_filter(&known_task_refs, &opts.only)
+            || has_unmatched_filter(&known_task_refs, &opts.skip))
     {
         log.separate_from_startup();
     }
-    filter::warn_unmatched_filters(&all_tasks, &opts.only, "--only", &**log);
-    filter::warn_unmatched_filters(&all_tasks, &opts.skip, "--skip", &**log);
+    filter::warn_unmatched_filters(&known_task_refs, &opts.only, "--only", &**log);
+    filter::warn_unmatched_filters(&known_task_refs, &opts.skip, "--skip", &**log);
     let filtered: Vec<&dyn Task> = all_tasks
         .iter()
-        .filter(|t| {
-            // Both --only and --skip can be active simultaneously.
-            // A task runs if it matches an --only filter (or no --only was given)
-            // AND it doesn't match any --skip filter.
-            let passes_only = opts.only.is_empty()
-                || opts
-                    .only
-                    .iter()
-                    .any(|filter| filter::task_matches_filter(t.name(), filter));
-            let passes_skip = opts.skip.is_empty()
-                || !opts
-                    .skip
-                    .iter()
-                    .any(|filter| filter::task_matches_filter(t.name(), filter));
-            passes_only && passes_skip
-        })
+        .filter(|task| task_passes_filters(task.name(), &opts.only, &opts.skip))
         .map(Box::as_ref)
         .collect();
 
@@ -111,10 +102,28 @@ pub(crate) fn run_pipeline(
         ));
     }
 
-    runner.run(filtered)
+    runner.run_with_late_tasks(filtered, TaskPhase::Sync, || {
+        runner
+            .overlay_script_tasks()
+            .into_iter()
+            .filter(|task| task_passes_filters(task.name(), &opts.only, &opts.skip))
+            .collect()
+    })
 }
 
-fn has_unmatched_filter(tasks: &[Box<dyn Task>], filters: &[String]) -> bool {
+fn task_passes_filters(task_name: &str, only: &[String], skip: &[String]) -> bool {
+    let passes_only = only.is_empty()
+        || only
+            .iter()
+            .any(|filter| filter::task_matches_filter(task_name, filter));
+    let passes_skip = skip.is_empty()
+        || !skip
+            .iter()
+            .any(|filter| filter::task_matches_filter(task_name, filter));
+    passes_only && passes_skip
+}
+
+fn has_unmatched_filter(tasks: &[&dyn Task], filters: &[String]) -> bool {
     filters.iter().any(|filter| {
         !tasks
             .iter()
@@ -276,9 +285,10 @@ mod tests {
         use crate::infra::logging::Logger;
         let log = Logger::new("test");
         let all = sample_install_tasks();
+        let task_refs: Vec<&dyn Task> = all.iter().map(Box::as_ref).collect();
 
         // "xyznonexistent" should not match any task
-        filter::warn_unmatched_filters(&all, &["xyznonexistent".to_string()], "--only", &log);
+        filter::warn_unmatched_filters(&task_refs, &["xyznonexistent".to_string()], "--only", &log);
         // Verification: the function runs without panic; the warning is
         // emitted via log.warn() which is captured by the Logger.
     }
@@ -288,7 +298,8 @@ mod tests {
         use crate::infra::logging::Logger;
         let log = Logger::new("test");
         let all = sample_install_tasks();
+        let task_refs: Vec<&dyn Task> = all.iter().map(Box::as_ref).collect();
 
-        filter::warn_unmatched_filters(&all, &["symlinks".to_string()], "--only", &log);
+        filter::warn_unmatched_filters(&task_refs, &["symlinks".to_string()], "--only", &log);
     }
 }

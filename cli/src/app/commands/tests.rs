@@ -159,7 +159,7 @@ mod startup_log_tests {
     reason = "test code uses panicking helpers"
 )]
 mod task_graph_tests {
-    use super::execution::run_tasks_to_completion;
+    use super::execution::{run_tasks_to_completion, run_tasks_to_completion_with_late_tasks};
     use crate::engine::{Context, Task, TaskPhase, TaskResult, task_deps};
     use crate::test_helpers::{empty_config, make_static_context};
     use anyhow::Result;
@@ -323,5 +323,73 @@ mod task_graph_tests {
 
         assert_eq!(completed_bootstrap.load(Ordering::SeqCst), 1);
         assert!(provision_ran.load(Ordering::SeqCst));
+    }
+
+    struct SyncMarkTask {
+        completed: Arc<AtomicBool>,
+    }
+
+    impl Task for SyncMarkTask {
+        fn name(&self) -> &'static str {
+            "sync-mark"
+        }
+
+        fn phase(&self) -> TaskPhase {
+            TaskPhase::Sync
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.completed.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    struct LateProvisionTask {
+        sync_completed: Arc<AtomicBool>,
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for LateProvisionTask {
+        fn name(&self) -> &'static str {
+            "late-provision"
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            if !self.sync_completed.load(Ordering::SeqCst) {
+                return Ok(TaskResult::Failed(
+                    "late task ran before Sync completed".to_string(),
+                ));
+            }
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    #[test]
+    fn late_tasks_are_built_after_sync_and_run_in_provision() {
+        let (ctx, log) = make_static_context(empty_config(PathBuf::from("/repo")));
+        let sync_completed = Arc::new(AtomicBool::new(false));
+        let late_ran = Arc::new(AtomicBool::new(false));
+        let sync = SyncMarkTask {
+            completed: Arc::clone(&sync_completed),
+        };
+        let provider_sync_completed = Arc::clone(&sync_completed);
+        let task_sync_completed = Arc::clone(&sync_completed);
+        let task_late_ran = Arc::clone(&late_ran);
+        let tasks: [&dyn Task; 1] = [&sync];
+
+        run_tasks_to_completion_with_late_tasks(tasks, &ctx, &log, TaskPhase::Sync, move || {
+            assert!(
+                provider_sync_completed.load(Ordering::SeqCst),
+                "late task provider must run after Sync completes"
+            );
+            vec![Box::new(LateProvisionTask {
+                sync_completed: task_sync_completed,
+                ran: task_late_ran,
+            })]
+        })
+        .expect("late Provision task should execute in the same pipeline");
+
+        assert!(late_ran.load(Ordering::SeqCst));
     }
 }

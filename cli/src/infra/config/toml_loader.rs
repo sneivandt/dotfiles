@@ -52,6 +52,20 @@ pub(crate) fn load_section<S: ConfigSection>(
     load_filtered(path, S::extract, S::map, active_categories)
 }
 
+/// Load every item from a TOML config using a [`ConfigSection`]
+/// implementation, without category filtering.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read or parsed.
+pub(crate) fn load_section_unfiltered<S: ConfigSection>(path: &Path) -> Result<Vec<S::Item>> {
+    Ok(load_section_items(path, S::extract)?
+        .into_iter()
+        .flat_map(|(_, entries)| entries)
+        .map(S::map)
+        .collect())
+}
+
 /// Load and filter TOML config sections by active categories.
 ///
 /// Generic loader that deserializes a TOML file and extracts items from

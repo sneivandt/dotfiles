@@ -16,7 +16,7 @@ const TASK_FILTER_STOP_WORDS: &[&str] = &[
 
 /// Warn when a filter does not match any known task.
 pub(crate) fn warn_unmatched_filters(
-    tasks: &[Box<dyn Task>],
+    tasks: &[&dyn Task],
     filters: &[String],
     flag: &str,
     log: &dyn Output,

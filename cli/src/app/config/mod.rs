@@ -318,6 +318,11 @@ pub struct Config {
     pub packages: Vec<packages::Package>,
     /// Symlinks to create in the user's home directory.
     pub symlinks: Vec<symlinks::Symlink>,
+    /// Every main-repository symlink definition, before category filtering.
+    ///
+    /// Used to preserve managed targets before sparse checkout removes newly
+    /// excluded sources.
+    pub all_symlinks: Vec<symlinks::Symlink>,
     /// Windows registry entries to configure.
     pub registry: Vec<registry::RegistryEntry>,
     /// Systemd user units to enable.
@@ -354,6 +359,10 @@ impl Config {
         // Each field is loaded and overlay-merged by a single `SectionLoader`
         // call, so adding a new config section means adding one struct field
         // and one line here — never a second edit in a separate merge step.
+        let mut all_symlinks = sections
+            .main
+            .load(symlinks::SYMLINKS_TOML, symlinks::load_all)?;
+        symlinks::set_origin(&mut all_symlinks, root);
         let mut config = Self {
             root: root.to_path_buf(),
             overlay: overlay.map(Path::to_path_buf),
@@ -364,6 +373,7 @@ impl Config {
                 symlinks::load,
                 symlinks::set_origin,
             )?,
+            all_symlinks,
             registry: load_if(platform.has_registry(), || {
                 sections.collect_unfiltered(registry::REGISTRY_TOML, registry::load)
             })?,
@@ -384,6 +394,8 @@ impl Config {
 
         config.symlinks = symlinks::expand_glob_patterns(&config.symlinks, root)
             .context("expanding symlink glob patterns")?;
+        symlinks::validate_unique_targets(&config.symlinks)
+            .context("validating symlink targets")?;
 
         Ok(config)
     }

@@ -32,7 +32,7 @@ fn build_resource(
 }
 
 /// Build [`SymlinkResource`] instances from a symlink configuration slice.
-fn build_resources(ctx: &Context, symlinks: &[Symlink]) -> Vec<SymlinkResource> {
+pub(crate) fn build_resources(ctx: &Context, symlinks: &[Symlink]) -> Vec<SymlinkResource> {
     let paths = ctx.paths();
     let executor = ctx.system().executor_arc();
     symlinks

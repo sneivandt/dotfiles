@@ -8,12 +8,12 @@ use crate::app::cli::GlobalOpts;
 use crate::app::config::Config;
 use crate::app::config::profiles;
 use crate::app::config::store::ConfigStore;
-use crate::engine::{Context, Task};
+use crate::engine::{Context, Task, TaskPhase};
 use crate::infra::ConfigHandle;
 use crate::infra::logging::{Log, Logger, Output};
 use crate::infra::platform::Platform;
 
-use super::execution::run_tasks_to_completion;
+use super::execution::{run_tasks_to_completion, run_tasks_to_completion_with_late_tasks};
 use super::install;
 use super::reexec::REEXEC_GUARD_VAR;
 
@@ -100,7 +100,7 @@ impl CommandRunner {
         self.store.aggregate.clone()
     }
 
-    /// Create dynamic overlay script tasks from the startup configuration.
+    /// Create dynamic overlay script tasks from the current configuration.
     #[must_use]
     pub fn overlay_script_tasks(&self) -> Vec<Box<dyn Task>> {
         self.overlay.as_ref().map_or_else(Vec::new, |root| {
@@ -116,6 +116,20 @@ impl CommandRunner {
     /// Returns an error if one or more tasks fail.
     pub fn run<'a>(&self, tasks: impl IntoIterator<Item = &'a dyn Task>) -> Result<()> {
         run_tasks_to_completion(tasks, &self.ctx, &self.log)
+    }
+
+    /// Execute tasks and inject additional tasks after a phase completes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if graph validation fails or one or more tasks fail.
+    pub fn run_with_late_tasks<'a>(
+        &'a self,
+        tasks: impl IntoIterator<Item = &'a dyn Task>,
+        after_phase: TaskPhase,
+        provider: impl FnOnce() -> Vec<Box<dyn Task>> + 'a,
+    ) -> Result<()> {
+        run_tasks_to_completion_with_late_tasks(tasks, &self.ctx, &self.log, after_phase, provider)
     }
 }
 

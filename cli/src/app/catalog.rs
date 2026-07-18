@@ -12,6 +12,7 @@ use clap::CommandFactory as _;
 
 use crate::app::cli::Cli;
 use crate::app::config::store::ConfigStore;
+use crate::app::preserve::MaterializeExcludedSymlinks;
 use crate::app::reload::ReloadConfig;
 use crate::domains::ai::apm::{InstallApmPackages, UpdateApmPackages};
 use crate::domains::ai::tasks::copilot_settings::ConfigureCopilot;
@@ -80,7 +81,14 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
 
     vec![
         Box::new(EnableDeveloperMode),
-        Box::new(ConfigureSparseCheckout::new(store.manifest.clone())),
+        Box::new(MaterializeExcludedSymlinks::new(
+            store.all_symlinks.clone(),
+            store.manifest.clone(),
+        )),
+        with_deps(
+            ConfigureSparseCheckout::new(store.manifest.clone()),
+            &[id::<MaterializeExcludedSymlinks>()],
+        ),
         Box::new(UpdateRepository::new(repo_updated.clone())),
         Box::new(ConfigureGit::new(store.git_settings.clone())),
         Box::new(ConfigureCopilot::new(store.copilot_settings.clone())),
@@ -154,8 +162,8 @@ mod tests {
         let tasks = all_install_tasks(test_params());
         assert_eq!(
             tasks.len(),
-            23,
-            "expected 23 install tasks — did you add a new task without updating \
+            24,
+            "expected 24 install tasks — did you add a new task without updating \
              all_install_tasks()? Update the registration list and this test."
         );
     }
@@ -210,6 +218,12 @@ mod tests {
                 .expect("task present")
         };
         assert!(
+            find("Configure sparse checkout")
+                .dependencies()
+                .contains(&id::<MaterializeExcludedSymlinks>()),
+            "sparse checkout must preserve excluded managed symlinks first"
+        );
+        assert!(
             find("Configure systemd units")
                 .dependencies()
                 .contains(&id::<InstallSymlinks>()),
@@ -222,10 +236,10 @@ mod tests {
             "completions must depend on repository update (app-injected)"
         );
         assert!(
-            find("Report overlay script snapshot")
+            find("Report overlay scripts")
                 .dependencies()
                 .contains(&id::<ReloadConfig>()),
-            "overlay script snapshot report must depend on reload (app-injected)"
+            "overlay script report must depend on reload (app-injected)"
         );
         assert!(
             find("Install Git hooks")

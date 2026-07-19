@@ -35,13 +35,7 @@ impl Logger {
     }
 
     pub(in crate::infra::logging) fn emit_recorded_task_result(&self, task_name: &str) {
-        let task = self.tasks.lock().map_or(None, |guard| {
-            guard
-                .iter()
-                .rev()
-                .find(|task| task.name == task_name)
-                .cloned()
-        });
+        let task = self.recorded_task(task_name);
         let Some(task) = task else {
             return;
         };
@@ -65,6 +59,33 @@ impl Logger {
             self.task_result(&line);
         }
         self.mark_task_console_output();
+    }
+
+    pub(in crate::infra::logging) fn emit_recorded_task_status(&self, task_name: &str) {
+        let Some(task) = self.recorded_task(task_name) else {
+            return;
+        };
+        if task.status == TaskStatus::NotApplicable {
+            return;
+        }
+
+        self.separate_from_startup();
+        self.task_result(&format_task_line(
+            &task,
+            SummaryMode::for_command(&self.command),
+            stdout_style(),
+        ));
+        self.mark_task_console_output();
+    }
+
+    fn recorded_task(&self, task_name: &str) -> Option<TaskEntry> {
+        self.tasks.lock().map_or(None, |guard| {
+            guard
+                .iter()
+                .rev()
+                .find(|task| task.name == task_name)
+                .cloned()
+        })
     }
 }
 
@@ -325,7 +346,8 @@ fn format_task_line(task: &TaskEntry, mode: SummaryMode, style: StyleChoice) -> 
         TaskStatus::DryRun => "would change",
         TaskStatus::Skipped => "skipped",
         TaskStatus::Failed => "failed",
-        TaskStatus::Ok | TaskStatus::NotApplicable => return task.name.clone(),
+        TaskStatus::Ok => "unchanged",
+        TaskStatus::NotApplicable => return task.name.clone(),
     };
     format!(
         "{} {} {}",
@@ -557,6 +579,25 @@ mod tests {
         assert_eq!(
             format_task_line(&task, SummaryMode::Standard, StyleChoice::plain()),
             "symlinks · changed"
+        );
+    }
+
+    #[test]
+    fn unchanged_task_line_has_status() {
+        let task = TaskEntry {
+            name: "Install packages".to_string(),
+            status: TaskStatus::Ok,
+            message: None,
+            actions: ActionCounts::default(),
+        };
+
+        assert_eq!(
+            format_task_line(&task, SummaryMode::Standard, StyleChoice::plain()),
+            "Install packages · unchanged"
+        );
+        assert_eq!(
+            format_task_line(&task, SummaryMode::Standard, StyleChoice::colored()),
+            "Install packages \x1b[2m·\x1b[0m \x1b[2munchanged\x1b[0m"
         );
     }
 

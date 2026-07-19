@@ -43,7 +43,7 @@ test_wrapper_build_mode()
   cd "$DIR"
 
   # Test --build flag builds and runs
-  output=$("$DIR/dotfiles.sh" --build version 2>&1 || true)
+  output=$("$DIR/dotfiles.sh" --build --version 2>&1 || true)
 
   if echo "$output" | grep -q "dotfiles"; then
     log_verbose "✓ --build mode successfully builds and runs binary"
@@ -135,7 +135,7 @@ test_wrapper_uses_local_binary()
   fi
 
   # Binary should be executable and report version
-  if ! "$BINARY_PATH" version >/dev/null 2>&1; then
+  if ! "$BINARY_PATH" --version >/dev/null 2>&1; then
     printf "%sERROR: Binary cannot execute version command%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
@@ -258,7 +258,7 @@ test_wrapper_forwarded_args()
   chmod +x "$tmpdir/bin/dotfiles"
 
   # Validate wrapper argument forwarding by executing through dotfiles.sh.
-  if "$tmpdir/dotfiles.sh" version >/dev/null 2>&1; then
+  if "$tmpdir/dotfiles.sh" --version >/dev/null 2>&1; then
     log_verbose "✓ Arguments forwarded correctly"
   else
     printf "%sERROR: Argument forwarding failed%s\n" "${RED}" "${NC}" >&2

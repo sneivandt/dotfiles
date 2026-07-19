@@ -127,8 +127,12 @@ fn execute_skips_non_applicable_task() {
         result: Ok(TaskResult::Ok),
     };
 
-    execute(&task, &ctx);
+    assert_eq!(execute(&task, &ctx), TaskStatus::NotApplicable);
     assert_eq!(log.failure_count(), 0);
+    let entries = log.task_entries();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].name, "test-task");
+    assert_eq!(entries[0].status, TaskStatus::NotApplicable);
 }
 
 #[test]

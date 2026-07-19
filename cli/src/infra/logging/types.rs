@@ -66,7 +66,8 @@ impl TaskStatus {
     #[must_use]
     pub(in crate::infra::logging) const fn text_style(self) -> Option<TextStyle> {
         match self {
-            Self::Changed | Self::Ok => Some(TextStyle::Green),
+            Self::Changed => Some(TextStyle::Green),
+            Self::Ok => Some(TextStyle::Dim),
             Self::Skipped => Some(TextStyle::Yellow),
             Self::DryRun => Some(TextStyle::Magenta),
             Self::Failed => Some(TextStyle::Red),
@@ -87,6 +88,10 @@ impl TaskStatus {
 pub trait Output: Send + Sync {
     /// Log a stage header (major section).
     fn stage(&self, msg: &str);
+    /// Log a task name without major-section emphasis.
+    fn task_stage(&self, msg: &str) {
+        self.stage(msg);
+    }
     /// Log an informational message.
     fn info(&self, msg: &str);
     /// Log a debug message (may be suppressed on console).
@@ -109,12 +114,6 @@ pub trait Output: Send + Sync {
     /// DEBUG-capable file layer whenever logging is active.
     fn debug_enabled(&self) -> bool {
         tracing::dispatcher::has_been_set()
-    }
-    /// Emit a stage header only when debug logging is active.
-    fn debug_stage(&self, msg: &str) {
-        if self.debug_enabled() {
-            self.stage(msg);
-        }
     }
     /// Access the high-precision diagnostic log, if available.
     fn diagnostic(&self) -> Option<&DiagnosticLog> {

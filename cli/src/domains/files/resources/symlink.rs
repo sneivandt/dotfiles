@@ -73,8 +73,15 @@ impl SymlinkResource {
             .as_deref()
             .and_then(|home| self.target.strip_prefix(home).ok())
             .map_or_else(
-                || self.target.display().to_string(),
-                |relative| PathBuf::from("~").join(relative).display().to_string(),
+                || display_path(&self.target),
+                |relative| {
+                    let relative = display_path(relative);
+                    if relative.is_empty() {
+                        "~".to_string()
+                    } else {
+                        format!("~/{relative}")
+                    }
+                },
             )
     }
 
@@ -82,11 +89,12 @@ impl SymlinkResource {
         self.display_root
             .as_deref()
             .and_then(|root| self.source.strip_prefix(root).ok())
-            .map_or_else(
-                || self.source.display().to_string(),
-                |relative| relative.display().to_string(),
-            )
+            .map_or_else(|| display_path(&self.source), display_path)
     }
+}
+
+fn display_path(path: &std::path::Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 impl Resource for SymlinkResource {

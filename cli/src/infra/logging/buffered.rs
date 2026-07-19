@@ -10,6 +10,8 @@ use super::types::{ActionCounts, Output, TaskRecorder, TaskStatus};
 enum LogEntry {
     /// A stage header entry.
     Stage(String),
+    /// An unstyled task-name entry.
+    TaskStage(String),
     /// An informational entry.
     Info(String),
     /// A debug entry.
@@ -32,6 +34,7 @@ impl LogEntry {
     fn replay(&self) {
         match self {
             Self::Stage(msg) => tracing::info!(target: "dotfiles::stage", "{msg}"),
+            Self::TaskStage(msg) => tracing::info!(target: "dotfiles::task_stage", "{msg}"),
             Self::Info(msg) => tracing::info!("{msg}"),
             Self::Debug(msg) => tracing::debug!("{msg}"),
             Self::Warn(msg) => tracing::warn!("{msg}"),
@@ -41,17 +44,37 @@ impl LogEntry {
         }
     }
 
+    fn replay_verbose_task_detail(&self) {
+        match self {
+            Self::TaskStage(_) => self.replay_file_only(),
+            Self::Stage(_)
+            | Self::Info(_)
+            | Self::Debug(_)
+            | Self::Warn(_)
+            | Self::Error(_)
+            | Self::DryRun(_)
+            | Self::Always(_) => self.replay(),
+        }
+    }
+
     fn detail_line(&self, status: TaskStatus) -> Option<&str> {
         match self {
             Self::Info(msg) | Self::DryRun(msg) | Self::Always(msg) => Some(msg),
             Self::Warn(msg) | Self::Error(msg) if status == TaskStatus::Failed => Some(msg),
-            Self::Stage(_) | Self::Debug(_) | Self::Warn(_) | Self::Error(_) => None,
+            Self::Stage(_)
+            | Self::TaskStage(_)
+            | Self::Debug(_)
+            | Self::Warn(_)
+            | Self::Error(_) => None,
         }
     }
 
     fn replay_file_only(&self) {
         match self {
             Self::Stage(msg) => tracing::info!(target: "dotfiles::file_only_stage", "{msg}"),
+            Self::TaskStage(msg) => {
+                tracing::info!(target: "dotfiles::file_only_task_stage", "{msg}");
+            }
             Self::Info(msg) => {
                 tracing::info!(target: "dotfiles::file_only", "{msg}");
             }
@@ -71,9 +94,12 @@ impl LogEntry {
         }
 
         match self {
-            Self::Stage(_) | Self::Info(_) | Self::Debug(_) | Self::DryRun(_) | Self::Always(_) => {
-                self.replay_file_only();
-            }
+            Self::Stage(_)
+            | Self::TaskStage(_)
+            | Self::Info(_)
+            | Self::Debug(_)
+            | Self::DryRun(_)
+            | Self::Always(_) => self.replay_file_only(),
             Self::Warn(_) | Self::Error(_) => self.replay(),
         }
     }
@@ -187,12 +213,14 @@ impl BufferedLog {
             }
             let span = tracing::info_span!("task", name = task_name);
             let _enter = span.enter();
-            if self.inner.is_verbose() {
+            if status == TaskStatus::NotApplicable {
                 for entry in &entries {
-                    entry.replay();
+                    entry.replay_file_only();
                 }
-                if !entries.is_empty() {
-                    self.inner.mark_task_console_output();
+            } else if self.inner.is_verbose() {
+                self.inner.emit_recorded_task_status(task_name);
+                for entry in &entries {
+                    entry.replay_verbose_task_detail();
                 }
             } else {
                 let has_visible_entries = entries
@@ -209,7 +237,7 @@ impl BufferedLog {
                 }
             }
             self.inner.remove_active_task_locked(task_name);
-            if !self.inner.is_verbose() {
+            if !self.inner.is_verbose() && status != TaskStatus::NotApplicable {
                 self.inner.emit_recorded_task_result(task_name);
             }
             self.inner.redraw_active_status_locked(show_progress);
@@ -226,13 +254,14 @@ const fn should_record_task_details(status: TaskStatus) -> bool {
 
 impl Output for BufferedLog {
     buffer_log_methods! {
-        stage   => Stage   => Stage,
-        info    => Info    => Info,
-        debug   => Debug   => Debug,
-        warn    => Warn    => Warn,
-        error   => Error   => Error,
-        dry_run => DryRun  => DryRun,
-        always  => Always  => Info,
+        stage      => Stage      => Stage,
+        task_stage => TaskStage  => Stage,
+        info       => Info       => Info,
+        debug      => Debug      => Debug,
+        warn       => Warn       => Warn,
+        error      => Error      => Error,
+        dry_run    => DryRun     => DryRun,
+        always     => Always     => Info,
     }
 
     fn diagnostic(&self) -> Option<&DiagnosticLog> {
@@ -556,7 +585,7 @@ mod tests {
     /// by `flush_and_complete()`.
     ///
     /// Before this was caught, tasks producing `"0 changed, X already ok"`
-    /// output were observed without their stage headers in the console.
+    /// output were observed without their stage headers in the persistent log.
     #[test]
     fn flush_and_complete_replays_stage_before_info() {
         let (log, _tmp, _guard) = isolated_logger();
@@ -615,6 +644,23 @@ mod tests {
             contents.contains("0 changed, 1 already ok"),
             "stats info must appear\nlog:\n{contents}"
         );
+    }
+
+    #[test]
+    fn verbose_flush_keeps_not_applicable_task_output_off_console() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
+        buf.task_stage("windows-only-task");
+        buf.debug("not applicable: requires Windows");
+
+        buf.flush_and_complete("windows-only-task", TaskStatus::NotApplicable);
+
+        assert!(!log.task_console_output_emitted());
+        let path = log.log_path().expect("log path");
+        let contents = fs::read_to_string(path).unwrap();
+        assert!(contents.contains("windows-only-task"));
+        assert!(contents.contains("not applicable: requires Windows"));
     }
 
     #[test]

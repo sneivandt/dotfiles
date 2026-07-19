@@ -59,7 +59,7 @@ impl Task for ReportOverlayScriptSnapshot {
             return Ok(None);
         }
         let count = scripts.len();
-        ctx.log().stage(self.name());
+        ctx.log().task_stage(self.name());
         ctx.log()
             .info(&format!("discovered {count} overlay script(s)"));
         Ok(Some(TaskResult::Ok))
@@ -187,7 +187,7 @@ impl Task for OverlayScriptTask {
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        ctx.log().stage(self.name());
+        ctx.log().task_stage(self.name());
         if let Some(description) = &self.entry.description {
             ctx.log().info(description);
         }

@@ -432,8 +432,9 @@ This is more expressive than `ctx.platform.is_linux()` because it clearly states
 #### Logging (`infra/logging/`)
 
 Structured logger that:
-- Prints bold console stage headers for each task (`==>` markers in the main
-  log)
+- Prints completion-order status rows for every applicable task in verbose mode,
+  while keeping non-applicable tasks out of console output
+- Keeps task stage markers and diagnostic detail in persistent logs
 - Records task outcomes (Ok, Skipped, DryRun, Failed)
 - Tracks operation counters
 - Prints a summary at the end of execution

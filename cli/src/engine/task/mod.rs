@@ -105,7 +105,7 @@ pub trait Task: Send + Sync + 'static {
     ///
     /// Returns an error if the task fails to execute.
     fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        ctx.log().stage(self.name());
+        ctx.log().task_stage(self.name());
         self.run(ctx).map(Some)
     }
 

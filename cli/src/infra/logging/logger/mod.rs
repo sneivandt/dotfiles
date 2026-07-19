@@ -101,7 +101,7 @@ pub struct Logger {
     pub(super) diagnostic: Option<DiagnosticLog>,
     /// Instant when the logger was created, used for elapsed time in summary.
     pub(super) start: Instant,
-    /// Whether verbose output is enabled (show all stage headers and info).
+    /// Whether verbose output is enabled (show applicable task statuses and details).
     pub(super) verbose: bool,
     /// Whether the current command is previewing changes without applying them.
     pub(super) dry_run: bool,
@@ -259,6 +259,11 @@ impl Logger {
     );
 
     log_method!(
+        /// Log a task name without major-section emphasis.
+        task_stage, Stage, tracing::info, target: "dotfiles::task_stage"
+    );
+
+    log_method!(
         /// Log an informational message.
         info, Info, tracing::info
     );
@@ -340,7 +345,7 @@ impl Logger {
 }
 
 impl Output for Logger {
-    forward_log_methods!(stage, info, debug, warn, error, dry_run, always);
+    forward_log_methods!(stage, task_stage, info, debug, warn, error, dry_run, always);
 
     fn diagnostic(&self) -> Option<&DiagnosticLog> {
         self.diagnostic.as_ref()

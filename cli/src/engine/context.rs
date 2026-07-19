@@ -428,8 +428,8 @@ impl Context {
     /// debug level was disabled.  That check goes through the tracing
     /// per-layer `FilterState` machinery and leaves stale filter-pass bits
     /// on the calling thread.  Those bits interfere with the subsequent
-    /// `tracing::info!(target: "dotfiles::stage", …)` call in
-    /// `flush_and_complete`, causing stage headers to be silently dropped
+    /// `tracing::info!(target: "dotfiles::task_result", …)` call in
+    /// `flush_and_complete`, causing task statuses to be silently dropped
     /// from the console for any task that called `debug_fmt` during its
     /// `run()`.  The guard has therefore been removed.
     #[inline]

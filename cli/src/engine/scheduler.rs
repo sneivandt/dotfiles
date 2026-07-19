@@ -45,12 +45,8 @@ fn record_dependency_block(task: &dyn Task, log: &dyn Log) {
     let reason = "dependency failed";
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
-    log.diag_task(
-        DiagEvent::TaskSkip,
-        task.name(),
-        &format!("skipped: {reason}"),
-    );
-    log.info(&format!("skipped: {reason}"));
+    log.diag_task(DiagEvent::TaskSkip, task.name(), reason);
+    log.debug(reason);
     log.record_task(task.name(), TaskStatus::Skipped, Some(reason));
 }
 

@@ -72,9 +72,7 @@ impl Logger {
         if show_progress {
             self.clear_progress();
         }
-        if !self.is_verbose() {
-            self.emit_recorded_task_result(task_name);
-        }
+        self.emit_recorded_task_result(task_name);
         self.redraw_active_status_locked(show_progress);
     }
 

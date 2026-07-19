@@ -95,14 +95,8 @@ pub(crate) fn process_operation(ctx: &Context, operation: &impl Operation) -> Re
             ctx.log().debug("already complete");
             Ok(TaskResult::Ok)
         }
-        OperationState::NotApplicable { reason } => {
-            ctx.debug_fmt(|| format!("not applicable: {reason}"));
-            Ok(TaskResult::NotApplicable(reason))
-        }
-        OperationState::Blocked { reason } => {
-            ctx.log().info(&format!("skipped: {reason}"));
-            Ok(TaskResult::Skipped(reason))
-        }
+        OperationState::NotApplicable { reason } => Ok(TaskResult::NotApplicable(reason)),
+        OperationState::Blocked { reason } => Ok(TaskResult::Skipped(reason)),
         OperationState::NeedsRun { plan, .. } if ctx.dry_run() => operation.preview(ctx, &plan),
         OperationState::NeedsRun { plan, .. } => operation.apply(ctx, &plan),
     }
@@ -117,12 +111,39 @@ pub(crate) fn process_operation(ctx: &Context, operation: &impl Operation) -> Re
 mod tests {
     use std::path::PathBuf;
     use std::sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     };
 
     use super::*;
+    use crate::infra::logging::{Output, TaskRecorder, TaskStatus};
     use crate::test_helpers::{empty_config, make_linux_context};
+
+    #[derive(Default)]
+    struct CapturingLog {
+        info: Mutex<Vec<String>>,
+    }
+
+    impl Output for CapturingLog {
+        fn stage(&self, _msg: &str) {}
+
+        fn info(&self, msg: &str) {
+            self.info
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(msg.to_string());
+        }
+
+        fn debug(&self, _msg: &str) {}
+        fn warn(&self, _msg: &str) {}
+        fn error(&self, _msg: &str) {}
+        fn dry_run(&self, _msg: &str) {}
+        fn always(&self, _msg: &str) {}
+    }
+
+    impl TaskRecorder for CapturingLog {
+        fn record_task(&self, _name: &str, _status: TaskStatus, _message: Option<&str>) {}
+    }
 
     #[derive(Debug, Clone)]
     struct TestOperation {
@@ -216,12 +237,20 @@ mod tests {
 
     #[test]
     fn blocked_operation_skips_without_preview_or_apply() {
-        let ctx = test_context();
+        let log = Arc::new(CapturingLog::default());
+        let ctx = test_context().with_log(Arc::<CapturingLog>::clone(&log));
         let operation = TestOperation::new(OperationState::blocked("local changes present"));
 
         let result = process_operation(&ctx, &operation).unwrap();
 
         assert!(matches!(result, TaskResult::Skipped(reason) if reason == "local changes present"));
+        assert!(
+            log.info
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_empty(),
+            "task execution owns rendering the skipped outcome"
+        );
         assert_eq!(operation.preview_calls(), 0);
         assert_eq!(operation.apply_calls(), 0);
     }

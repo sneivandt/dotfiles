@@ -76,7 +76,7 @@ impl Task for MaterializeExcludedSymlinks {
         if resources.is_empty() {
             return Ok(None);
         }
-        ctx.log().stage(self.name());
+        ctx.log().task_stage(self.name());
         process_resources_remove(ctx, resources, "materialize").map(Some)
     }
 

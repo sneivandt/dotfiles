@@ -137,7 +137,7 @@ fn resolve_profile(
     platform: Platform,
     log: &Logger,
 ) -> Result<profiles::Profile> {
-    log.stage("Resolving profile");
+    log.debug("Resolving profile");
     let profile = profiles::resolve_from_args(global.profile.as_deref(), root, platform)?;
     log.always(&startup_context_line(
         log.command_title(),
@@ -188,7 +188,7 @@ fn load_config(
     overlay: Option<&std::path::Path>,
     log: &Logger,
 ) -> Result<Config> {
-    log.stage("Loading configuration");
+    log.debug("Loading configuration");
     let config = Config::load(root, profile, platform, overlay)?;
 
     for section in config.section_counts() {

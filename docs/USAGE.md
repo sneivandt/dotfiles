@@ -288,13 +288,14 @@ Enable verbose output to see the complete user-facing action plan:
 ```
 
 **Verbose output includes:**
-- Stage headers for each task
+- A status for every applicable task, including unchanged tasks
 - Every changed or planned action, including concise source paths where useful
-- Operations being skipped (with reasons)
+- Task messages and skip reasons beneath their status
 - Final summary counts
 
-Internal diagnostics and already-correct resource details remain in the
-persistent log instead of being mixed into interactive verbose output.
+Internal diagnostics, non-applicable tasks, and already-correct resource details
+remain in the persistent log instead of being mixed into interactive verbose
+output.
 
 **Default (non-verbose) output** shows a live progress line while tasks run,
 then a compact summary. Successful no-op tasks are omitted; tasks that changed

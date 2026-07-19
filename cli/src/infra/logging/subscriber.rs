@@ -193,8 +193,13 @@ where
         let prefix = format!("[{ts}]{context} [{level_label}]");
 
         let line = match (level, target) {
-            (tracing::Level::INFO, "dotfiles::stage") => format!("{prefix} ==> {msg}"),
-            (tracing::Level::INFO, "dotfiles::file_only_stage") => {
+            (
+                tracing::Level::INFO,
+                "dotfiles::stage"
+                | "dotfiles::task_stage"
+                | "dotfiles::file_only_stage"
+                | "dotfiles::file_only_task_stage",
+            ) => {
                 format!("{prefix} ==> {msg}")
             }
             _ => format!("{prefix} {msg}"),
@@ -211,7 +216,13 @@ fn log_level_label(level: tracing::Level, target: &str) -> &'static str {
         (tracing::Level::INFO, "dotfiles::file_only_error") | (tracing::Level::ERROR, _) => "error",
         (tracing::Level::INFO, "dotfiles::file_only_warn") | (tracing::Level::WARN, _) => "warn",
         (tracing::Level::INFO, "dotfiles::file_only_debug") | (tracing::Level::DEBUG, _) => "debug",
-        (tracing::Level::INFO, "dotfiles::stage" | "dotfiles::file_only_stage") => "stage",
+        (
+            tracing::Level::INFO,
+            "dotfiles::stage"
+            | "dotfiles::task_stage"
+            | "dotfiles::file_only_stage"
+            | "dotfiles::file_only_task_stage",
+        ) => "stage",
         (tracing::Level::INFO, _) => "info",
         (tracing::Level::TRACE, _) => "trace",
     }
@@ -269,7 +280,13 @@ fn console_style(level: tracing::Level) -> StyleChoice {
 }
 
 fn console_line(level: tracing::Level, target: &str, msg: &str) -> Option<String> {
-    console_line_with_style(level, target, msg, console_style(level))
+    console_line_with_style(
+        level,
+        target,
+        msg,
+        console_style(level),
+        VERBOSE.load(Ordering::Relaxed),
+    )
 }
 
 fn console_line_with_style(
@@ -277,6 +294,7 @@ fn console_line_with_style(
     target: &str,
     msg: &str,
     style: StyleChoice,
+    verbose: bool,
 ) -> Option<String> {
     let msg = style.clean(msg);
     match level {
@@ -285,11 +303,10 @@ fn console_line_with_style(
         tracing::Level::WARN => Some(format!("{}  {msg}", style.paint(TextStyle::Yellow, "WARN"))),
         tracing::Level::INFO if target == "dotfiles::always" => Some(msg),
         tracing::Level::INFO if target == "dotfiles::task_result" => Some(msg),
-        tracing::Level::INFO if target == "dotfiles::stage" => VERBOSE
-            .load(Ordering::Relaxed)
-            .then(|| style.paint(TextStyle::Bold, &msg)),
+        tracing::Level::INFO if target == "dotfiles::stage" => verbose.then(|| msg.clone()),
+        tracing::Level::INFO if target == "dotfiles::task_stage" => verbose.then(|| msg.clone()),
         tracing::Level::INFO if target == "dotfiles::dry_run" => Some(format!("  {msg}")),
-        tracing::Level::INFO => VERBOSE.load(Ordering::Relaxed).then(|| format!("  {msg}")),
+        tracing::Level::INFO => verbose.then(|| format!("  {msg}")),
         tracing::Level::DEBUG | tracing::Level::TRACE => None,
     }
 }
@@ -580,6 +597,7 @@ mod tests {
             "dotfiles",
             "careful",
             StyleChoice::colored(),
+            true,
         )
         .unwrap();
 
@@ -593,6 +611,7 @@ mod tests {
             "dotfiles::always",
             "\x1b[32m3 Changed\x1b[0m",
             StyleChoice::plain(),
+            true,
         )
         .unwrap();
 
@@ -606,6 +625,7 @@ mod tests {
             "dotfiles",
             "\x1b[1mcareful\x1b[0m",
             StyleChoice::plain(),
+            true,
         )
         .unwrap();
 
@@ -621,8 +641,30 @@ mod tests {
                 "dotfiles",
                 "internal detail",
                 StyleChoice::plain(),
+                true,
             ),
             None
         );
+    }
+
+    #[test]
+    fn console_stage_and_task_stage_are_plain() {
+        let task = console_line_with_style(
+            tracing::Level::INFO,
+            "dotfiles::task_stage",
+            "Install packages",
+            StyleChoice::colored(),
+            true,
+        );
+        let stage = console_line_with_style(
+            tracing::Level::INFO,
+            "dotfiles::stage",
+            "Loading configuration",
+            StyleChoice::colored(),
+            true,
+        );
+
+        assert_eq!(task.as_deref(), Some("Install packages"));
+        assert_eq!(stage.as_deref(), Some("Loading configuration"));
     }
 }

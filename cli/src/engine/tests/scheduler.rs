@@ -289,10 +289,11 @@ fn sequential_runner_records_panics_as_failures() {
 }
 
 #[test]
-fn dependency_block_reason_is_emitted_as_log_detail() {
+fn dependency_block_reason_is_owned_by_recorded_task_result() {
     #[derive(Default)]
     struct RecordingLog {
         info_lines: std::sync::Mutex<Vec<String>>,
+        debug_lines: std::sync::Mutex<Vec<String>>,
         records: std::sync::Mutex<Vec<TaskStatus>>,
     }
 
@@ -306,7 +307,12 @@ fn dependency_block_reason_is_emitted_as_log_detail() {
                 .push(msg.to_string());
         }
 
-        fn debug(&self, _msg: &str) {}
+        fn debug(&self, msg: &str) {
+            self.debug_lines
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(msg.to_string());
+        }
 
         fn warn(&self, _msg: &str) {}
 
@@ -338,10 +344,18 @@ fn dependency_block_reason_is_emitted_as_log_detail() {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone();
     assert!(
-        info_lines
-            .iter()
-            .any(|line| line == "skipped: dependency failed"),
-        "dependency skip reason should be emitted as an info log detail: {info_lines:?}"
+        info_lines.is_empty(),
+        "dependency skip reason should not be emitted before its task status: {info_lines:?}"
+    );
+    let debug_lines = log
+        .debug_lines
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    assert_eq!(
+        debug_lines,
+        ["dependency failed"],
+        "dependency skip reason should remain in the persistent debug log"
     );
     let records = log
         .records
@@ -632,7 +646,7 @@ impl Task for NamedStatsTask {
 ///
 /// Before the regression was detected, tasks producing `"0 changed, X
 /// already ok"` output via `process_resources` were missing their `==>`
-/// stage headers in the console output.
+/// stage headers in the persistent log.
 #[test]
 fn stage_header_present_when_info_logged_in_run() {
     let (log, _tmp, _guard) = logging::isolated_logger();
@@ -709,7 +723,7 @@ fn stage_headers_present_for_multiple_concurrent_stats_tasks() {
     }
 }
 
-/// Regression test: stage header must not be lost when a task calls
+/// Regression test: task status must not be lost when a task calls
 /// `ctx.debug_fmt()` during `run()`.
 ///
 /// The regression was introduced by `debug_fmt()` using
@@ -719,7 +733,7 @@ fn stage_headers_present_for_multiple_concurrent_stats_tasks() {
 /// dispatching an event to clean them up.  With a two-layer subscriber
 /// (INFO-level console + DEBUG-level file), the stale bits caused the
 /// `Filtered` console layer to silently drop the subsequent
-/// `tracing::info!(target: "dotfiles::stage", …)` replay.
+/// `tracing::info!(target: "dotfiles::task_result", …)` emission.
 ///
 /// This test uses a lightweight custom `Layer` (rather than
 /// `tracing_subscriber::fmt::Layer`) to record which event targets pass
@@ -728,7 +742,7 @@ fn stage_headers_present_for_multiple_concurrent_stats_tasks() {
 /// while still exercising the `Filtered` machinery that the original bug
 /// corrupted.
 #[test]
-fn stage_header_not_lost_after_debug_fmt_call() {
+fn task_status_not_lost_after_debug_fmt_call() {
     use std::sync::{Arc, Mutex};
     use tracing::Subscriber;
     use tracing_subscriber::{
@@ -801,8 +815,8 @@ fn stage_header_not_lost_after_debug_fmt_call() {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone();
     assert!(
-        targets.iter().any(|t| t == "dotfiles::stage"),
-        "stage event must reach the INFO-filtered layer after debug_fmt() was called;\nreceived targets:\n{targets:?}"
+        targets.iter().any(|t| t == "dotfiles::task_result"),
+        "task status must reach the INFO-filtered layer after debug_fmt() was called;\nreceived targets:\n{targets:?}"
     );
 }
 

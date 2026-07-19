@@ -45,7 +45,7 @@ impl ConfigureGit {
             return Ok(None);
         }
         if emit_stage {
-            ctx.log().stage(self.name());
+            ctx.log().task_stage(self.name());
         }
 
         let config_path = self.config_path.clone();

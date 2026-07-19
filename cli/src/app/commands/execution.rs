@@ -138,12 +138,13 @@ fn run_tasks_to_completion_inner<'a>(
                     if task.requires_elevation(ctx) {
                         let span = tracing::info_span!("task", name = task.name());
                         let _enter = span.enter();
-                        log.info(&format!("skipped: {reason}"));
+                        log.debug(reason);
                         log.record_task(
                             task.name(),
                             crate::infra::logging::TaskStatus::Skipped,
                             Some(reason),
                         );
+                        log.emit_task_result_and_redraw(task.name());
                         false
                     } else {
                         true

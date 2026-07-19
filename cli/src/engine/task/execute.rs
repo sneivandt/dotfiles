@@ -19,7 +19,6 @@ pub(super) fn not_applicable_reason<T: Task + ?Sized>(task: &T, ctx: &Context) -
 
 fn record_not_applicable(ctx: &Context, name: &str, reason: &str) {
     ctx.log().diag_task(DiagEvent::TaskSkip, name, reason);
-    ctx.log().debug_stage(name);
     ctx.debug_fmt(|| format!("not applicable: {reason}"));
     ctx.log().record_task(name, TaskStatus::NotApplicable, None);
 }
@@ -63,7 +62,6 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
         Ok(None) => {
             ctx.log()
                 .diag_task(DiagEvent::TaskSkip, task.name(), "nothing configured");
-            ctx.log().debug_stage(task.name());
             ctx.log().debug("nothing configured");
             ctx.log()
                 .record_task(task.name(), TaskStatus::NotApplicable, None);
@@ -82,6 +80,7 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
             TaskResult::OkWithMessage(message) => {
                 ctx.log()
                     .diag_task(DiagEvent::TaskDone, task.name(), &message);
+                ctx.log().info(&message);
                 rec(
                     TaskStatus::Changed,
                     Some(&message),
@@ -102,7 +101,7 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
             TaskResult::Skipped(reason) => {
                 ctx.log()
                     .diag_task(DiagEvent::TaskSkip, task.name(), &reason);
-                ctx.log().info(&format!("skipped: {reason}"));
+                ctx.log().info(&reason);
                 rec(TaskStatus::Skipped, Some(&reason), ActionCounts::default())
             }
             TaskResult::Failed(reason) => record_failed_outcome(task, ctx, &reason),

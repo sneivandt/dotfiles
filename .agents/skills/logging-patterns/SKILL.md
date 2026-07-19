@@ -25,6 +25,9 @@ description: >
 - Access logging through `ctx.log`; do not construct additional loggers in tasks.
 - Task result recording is owned by `engine::execute()`; tasks should not call
   `record_task()` directly.
+- Verbose console output shows one completion-order status row for every
+  applicable task. Unchanged statuses are dim, non-applicable tasks are hidden,
+  and task messages follow beneath the status row.
 - Debug-level detail may be suppressed on terminal in non-verbose mode, but
   persistent logs remain complete.
 

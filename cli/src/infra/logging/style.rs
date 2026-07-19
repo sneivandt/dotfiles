@@ -13,7 +13,6 @@ pub(in crate::infra::logging) struct StyleChoice {
 /// Text styles used by the logging UI.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::infra::logging) enum TextStyle {
-    Bold,
     Dim,
     Red,
     Yellow,
@@ -24,7 +23,6 @@ pub(in crate::infra::logging) enum TextStyle {
 impl TextStyle {
     const fn ansi_code(self) -> &'static str {
         match self {
-            Self::Bold => "1",
             Self::Dim => "2",
             Self::Red => "31",
             Self::Yellow => "33",
@@ -113,7 +111,7 @@ mod tests {
     #[test]
     fn plain_paint_strips_embedded_ansi() {
         assert_eq!(
-            StyleChoice::plain().paint(TextStyle::Bold, "\x1b[31mred\x1b[0m"),
+            StyleChoice::plain().paint(TextStyle::Green, "\x1b[31mred\x1b[0m"),
             "red"
         );
     }

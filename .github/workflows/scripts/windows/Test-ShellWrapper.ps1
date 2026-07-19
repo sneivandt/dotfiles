@@ -37,7 +37,7 @@ function Test-BuildMode {
     }
 
     try {
-        $output = & "$PSScriptRoot\..\..\..\..\dotfiles.ps1" --build -Action version 2>&1
+        $output = & "$PSScriptRoot\..\..\..\..\dotfiles.ps1" --build --version 2>&1
         if ($output -match 'dotfiles') {
             Write-TestPass "Build mode successfully builds and runs binary"
             return $true
@@ -122,7 +122,7 @@ function Test-VersionDetection {
     }
 
     try {
-        $output = & $env:BINARY_PATH version 2>&1
+        $output = & $env:BINARY_PATH --version 2>&1
         if ($output -match 'dotfiles\s+(.+)') {
             $version = $Matches[1]
             Write-TestPass "Version detected: $version"

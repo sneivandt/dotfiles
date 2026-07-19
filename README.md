@@ -2,7 +2,7 @@
 
 My personal dotfiles manager built around a **Rust CLI** and declarative TOML configuration. It keeps my Linux and Windows environments consistent across shell, editor, Git, packages, AI tooling and more.
 
-![Generated terminal preview of a dotfiles dry-run install](docs/assets/terminal-screenshot.svg)
+![Generated terminal preview of a dotfiles install](docs/assets/terminal-screenshot.svg)
 
 ## Core ideas
 

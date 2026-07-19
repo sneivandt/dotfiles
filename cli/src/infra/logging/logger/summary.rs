@@ -337,12 +337,15 @@ fn should_space_before_totals(command: &str, verbose: bool, has_visible_tasks: b
 }
 
 fn format_task_line(task: &TaskEntry, mode: SummaryMode, style: StyleChoice) -> String {
+    if task.status == TaskStatus::Changed && mode == SummaryMode::Standard {
+        return task.name.clone();
+    }
+
     let Some(text_style) = task.status.text_style() else {
         return task.name.clone();
     };
     let status = match task.status {
-        TaskStatus::Changed if mode == SummaryMode::Test => "passed",
-        TaskStatus::Changed => "changed",
+        TaskStatus::Changed => "passed",
         TaskStatus::DryRun => "would change",
         TaskStatus::Skipped => "skipped",
         TaskStatus::Failed => "failed",
@@ -564,7 +567,7 @@ mod tests {
     }
 
     #[test]
-    fn task_line_colors_only_explicit_status_text() {
+    fn changed_task_line_omits_redundant_status() {
         let task = TaskEntry {
             name: "symlinks".to_string(),
             status: TaskStatus::Changed,
@@ -574,11 +577,11 @@ mod tests {
 
         assert_eq!(
             format_task_line(&task, SummaryMode::Standard, StyleChoice::colored()),
-            "symlinks \x1b[2m·\x1b[0m \x1b[32mchanged\x1b[0m"
+            "symlinks"
         );
         assert_eq!(
             format_task_line(&task, SummaryMode::Standard, StyleChoice::plain()),
-            "symlinks · changed"
+            "symlinks"
         );
     }
 
@@ -677,10 +680,7 @@ mod tests {
                 SummaryMode::Standard,
                 StyleChoice::colored(),
             ),
-            vec![
-                "changed-task \x1b[2m·\x1b[0m \x1b[32mchanged\x1b[0m",
-                "  link ~/.example",
-            ]
+            vec!["changed-task", "  link ~/.example"]
         );
     }
 

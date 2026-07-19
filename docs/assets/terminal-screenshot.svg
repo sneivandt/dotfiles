@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="438" viewBox="0 0 960 438" role="img" aria-labelledby="title desc">
   <title id="title">dotfiles terminal preview</title>
-  <desc id="desc">Compact dry-run preview from the dotfiles CLI install command.</desc>
+  <desc id="desc">Compact example of symlinks, packages, and a default shell being installed by the dotfiles CLI.</desc>
   <defs>
     <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%">
       <feDropShadow dx="0" dy="0" stdDeviation="16" flood-color="#16161e" flood-opacity="0.45"/>
@@ -16,17 +16,17 @@
   <circle cx="84" cy="39" r="6" fill="#9ece6a"/>
   <text x="480" y="44" text-anchor="middle" fill="#a9b1d6" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="13" font-weight="600">user@workstation: ~</text>
   <text x="34" y="80" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e0af68">~</tspan></text>
-  <text x="34" y="100" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">$ </tspan><tspan fill="#9ece6a">dotfiles</tspan><tspan fill="#c0caf5"> install --dry-run</tspan></text>
-  <text x="34" y="126" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Install · profile desktop · Arch Linux · </tspan><tspan fill="#bb9af7">preview</tspan></text>
-  <text x="34" y="160" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Install symlinks </tspan><tspan fill="#565f89">· </tspan><tspan fill="#bb9af7">would change</tspan></text>
-  <text x="34" y="182" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  link ~/.config/alacritty/alacritty.toml</tspan></text>
-  <text x="34" y="204" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  link ~/.config/nvim</tspan></text>
-  <text x="34" y="226" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  link ~/.config/git/config</tspan></text>
-  <text x="34" y="248" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  link ~/.zshrc</tspan></text>
-  <text x="34" y="270" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#565f89">  … 77 more; use -v for the full plan</tspan></text>
-  <text x="34" y="316" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Preview complete</tspan><tspan fill="#565f89"> · 0.1s</tspan></text>
-  <text x="34" y="338" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Tasks:</tspan><tspan fill="#bb9af7"> 1 would change</tspan><tspan fill="#565f89"> · </tspan><tspan fill="#c0caf5">Actions:</tspan><tspan fill="#bb9af7"> 81 planned</tspan></text>
-  <text x="34" y="366" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e0af68">~</tspan></text>
-  <text x="34" y="386" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">$ </tspan></text>
-  <rect x="54" y="372" width="8" height="18" rx="1" fill="#c0caf5"/>
+  <text x="34" y="100" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">$ </tspan><tspan fill="#9ece6a">dotfiles</tspan><tspan fill="#c0caf5"> install</tspan></text>
+  <text x="34" y="126" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Install · profile desktop · Arch Linux</tspan></text>
+  <text x="34" y="158" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Install symlinks</tspan></text>
+  <text x="34" y="179" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  link ~/.config/git/config</tspan></text>
+  <text x="34" y="200" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  link ~/.config/nvim</tspan></text>
+  <text x="34" y="221" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  link ~/.zshrc</tspan></text>
+  <text x="34" y="253" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Install packages</tspan></text>
+  <text x="34" y="274" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  install neovim</tspan></text>
+  <text x="34" y="295" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  install ripgrep</tspan></text>
+  <text x="34" y="327" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Configure default shell</tspan></text>
+  <text x="34" y="348" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  configure default shell → zsh</tspan></text>
+  <text x="34" y="382" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5" font-weight="700">Complete</tspan><tspan fill="#565f89"> · 1.3s</tspan></text>
+  <text x="34" y="404" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Tasks:</tspan><tspan fill="#9ece6a"> 3 changed</tspan><tspan fill="#565f89"> · </tspan><tspan fill="#c0caf5">Actions:</tspan><tspan fill="#9ece6a"> 6 applied</tspan></text>
 </svg>

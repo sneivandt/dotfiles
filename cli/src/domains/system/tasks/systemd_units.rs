@@ -247,8 +247,8 @@ mod tests {
 
         let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
         assert!(
-            matches!(result, TaskResult::OkWithMessage(_)),
-            "expected OkWithMessage after daemon-reload + enable, got {result:?}"
+            matches!(result, TaskResult::Batch(ref stats) if stats.changed == 1),
+            "expected one changed action after daemon-reload + enable, got {result:?}"
         );
     }
 
@@ -272,8 +272,8 @@ mod tests {
 
         let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
         assert!(
-            matches!(result, TaskResult::DryRun),
-            "expected DryRun when unit is missing in dry-run mode, got {result:?}"
+            matches!(result, TaskResult::Batch(ref stats) if stats.changed == 1),
+            "expected one planned action when unit is missing in dry-run mode, got {result:?}"
         );
     }
 
@@ -367,8 +367,8 @@ mod tests {
 
         let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
         assert!(
-            matches!(result, TaskResult::OkWithMessage(_)),
-            "expected OkWithMessage after system-scope daemon-reload + enable, got {result:?}"
+            matches!(result, TaskResult::Batch(ref stats) if stats.changed == 1),
+            "expected one changed action after system-scope daemon-reload + enable, got {result:?}"
         );
     }
 }

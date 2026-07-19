@@ -27,7 +27,9 @@ fn build_resource(
         .err()
         .map(|e| e.to_string())
         .or_else(|| git_symlink_placeholder_reason(&source, repo_root));
+    let display_root = s.origin.as_deref().unwrap_or(repo_root);
     SymlinkResource::new(source, target, Arc::clone(executor))
+        .with_display_roots(home, display_root)
         .with_validation_error(validation_error)
 }
 
@@ -134,6 +136,7 @@ const fn git_symlink_placeholder_reason(_source: &Path, _repo_root: &Path) -> Op
 mod tests {
     use super::*;
     use crate::domains::files::config::symlinks::Symlink;
+    use crate::engine::Resource as _;
     use crate::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 
@@ -165,6 +168,30 @@ mod tests {
         let home = PathBuf::from("/home/user");
         let target = compute_target(&home, "config/git/config");
         assert_eq!(target, PathBuf::from("/home/user/.config/git/config"));
+    }
+
+    #[test]
+    fn overlay_resource_description_uses_overlay_relative_source() {
+        let root = PathBuf::from("/repo");
+        let overlay = PathBuf::from("/private/overlay");
+        let home = PathBuf::from("/home/user");
+        let symlink = Symlink {
+            source: "config/example".to_string(),
+            target: None,
+            origin: Some(overlay),
+        };
+        let ctx = make_linux_context(empty_config(root.clone())).with_home(home);
+        let resource = build_resource(
+            &symlink,
+            &root,
+            ctx.paths().home(),
+            &ctx.system().executor_arc(),
+        );
+
+        assert_eq!(
+            resource.description(),
+            "~/.config/example \u{2190} symlinks/config/example"
+        );
     }
 
     #[test]
@@ -228,7 +255,10 @@ mod tests {
 
         let task = InstallSymlinks::new(handle(vec![sym("bashrc", None)]));
         let result = task.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::OkWithMessage(_)));
+        assert!(matches!(
+            result,
+            TaskResult::Batch(stats) if stats.changed == 1
+        ));
 
         // Symlink must exist at $HOME/.bashrc and point to symlinks/bashrc
         let link = home_dir.path().join(".bashrc");
@@ -253,7 +283,10 @@ mod tests {
 
         let task = InstallSymlinks::new(handle(vec![sym("../outside", Some("escaped-source"))]));
         let result = task.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Failed(_)));
+        assert!(matches!(
+            result,
+            TaskResult::Batch(stats) if stats.failed == 1
+        ));
         assert!(!home_dir.path().join("escaped-source").exists());
     }
 
@@ -272,7 +305,10 @@ mod tests {
 
         let task = InstallSymlinks::new(handle(vec![sym("bashrc", Some("../outside-target"))]));
         let result = task.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Failed(_)));
+        assert!(matches!(
+            result,
+            TaskResult::Batch(stats) if stats.failed == 1
+        ));
         assert!(!outside_target.exists());
     }
 
@@ -296,7 +332,10 @@ mod tests {
 
         let task = UninstallSymlinks::new(handle(vec![sym("bashrc", None)]));
         let result = task.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::OkWithMessage(_)));
+        assert!(matches!(
+            result,
+            TaskResult::Batch(stats) if stats.changed == 1
+        ));
 
         // Must be a regular file (materialized), not a symlink
         let meta = std::fs::symlink_metadata(&link).unwrap();
@@ -343,7 +382,10 @@ mod tests {
             sym("config/systemd/user/clean-home-tmp.timer", None),
         ]));
         let result = task.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::OkWithMessage(_)));
+        assert!(matches!(
+            result,
+            TaskResult::Batch(stats) if stats.changed == 2
+        ));
 
         let service_meta = std::fs::symlink_metadata(&service_link).unwrap();
         let timer_meta = std::fs::symlink_metadata(&timer_link).unwrap();

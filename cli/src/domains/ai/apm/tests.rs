@@ -142,7 +142,8 @@ fn run_skips_when_apm_not_found() {
         | TaskResult::OkWithMessage(_)
         | TaskResult::NotApplicable(_)
         | TaskResult::Failed(_)
-        | TaskResult::DryRun) => panic!("expected TaskResult::Skipped, got {other:?}"),
+        | TaskResult::DryRun
+        | TaskResult::Batch(_)) => panic!("expected TaskResult::Skipped, got {other:?}"),
     }
 }
 
@@ -584,7 +585,8 @@ fn run_skips_auth_failures() {
         | TaskResult::OkWithMessage(_)
         | TaskResult::NotApplicable(_)
         | TaskResult::Failed(_)
-        | TaskResult::DryRun) => panic!("expected TaskResult::Skipped, got {other:?}"),
+        | TaskResult::DryRun
+        | TaskResult::Batch(_)) => panic!("expected TaskResult::Skipped, got {other:?}"),
     }
 }
 

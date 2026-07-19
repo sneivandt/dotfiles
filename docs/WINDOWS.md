@@ -291,19 +291,18 @@ The log file is useful for troubleshooting installation issues or reviewing what
 ### Task Summary
 
 In **non-verbose** mode (default), a live progress line is shown while tasks
-run, followed by a compact summary. Successful no-op tasks are counted as
-unchanged and are not listed individually. Tasks that changed state, were
-skipped, failed, or would change state in dry-run mode are printed as they
-complete. Status colors:
+run, followed by a compact summary. Successful no-op tasks are omitted from
+the visible rows and totals. Tasks that changed state, were skipped, failed, or
+would change state in preview mode are printed as they complete. Status colors:
 
 - Green — task changed state successfully
 - Yellow — task was deliberately skipped
 - Magenta — dry-run preview
 - Red — task failed
 
-Not-applicable tasks are counted as unchanged in the console summary. The
-persistent log file records every task's output, replayed as each buffered task
-completes, and ends with the same final completion/count lines as the console.
+Not-applicable tasks are omitted from the console summary. The persistent log
+file records every task's output, replayed as each buffered task completes, and
+ends with the same final completion/count lines as the console.
 
 ### Dry-Run Mode
 
@@ -314,15 +313,15 @@ When using `-d` (dry-run), the logging system:
 
 Example summary output:
 ```
-Enable developer mode
-  enabled
-Configure sparse checkout
-  configured: sparse checkout
-Update repository
-  updated to origin/main
+Install · profile desktop · Windows 11 · preview
 
-Complete · 0.8s
-3 Changed · 9 Unchanged
+Install symlinks · would change
+  link ~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1
+Configure registry · would change
+  set HKCU\Console\VirtualTerminalLevel
+
+Preview complete · 0.8s
+Tasks: 2 would change · Actions: 2 planned
 ```
 
 ## Troubleshooting

@@ -80,15 +80,12 @@ impl<'a> ApplyChange<'a> {
                 verb,
                 current: Some(current),
                 ..
-            } => Some(format!(
-                "  would {verb}: {} (currently {current})",
-                self.description
-            )),
+            } => Some(format!("{verb} {} (currently {current})", self.description)),
             ApplyOperation::Apply {
                 verb,
                 current: None,
                 ..
-            } => Some(format!("  would {verb}: {}", self.description)),
+            } => Some(format!("{verb} {}", self.description)),
             ApplyOperation::Noop | ApplyOperation::Skip { .. } => None,
         }
     }
@@ -153,9 +150,7 @@ impl<'a> RemoveChange<'a> {
     #[must_use]
     pub(crate) fn dry_run_message(&self) -> Option<String> {
         match &self.operation {
-            RemoveOperation::Remove { verb } => {
-                Some(format!("  would {verb}: {}", self.description))
-            }
+            RemoveOperation::Remove { verb } => Some(format!("{verb} {}", self.description)),
             RemoveOperation::Noop | RemoveOperation::Skip { .. } => None,
         }
     }
@@ -228,10 +223,7 @@ mod tests {
                 bail_on_error: true,
             }
         );
-        assert_eq!(
-            plan.dry_run_message().unwrap(),
-            "  would install: thing".to_string()
-        );
+        assert_eq!(plan.dry_run_message().unwrap(), "install thing".to_string());
     }
 
     #[test]
@@ -254,7 +246,7 @@ mod tests {
         );
         assert_eq!(
             plan.dry_run_message().unwrap(),
-            "  would replace: thing (currently old)".to_string()
+            "replace thing (currently old)".to_string()
         );
     }
 
@@ -287,10 +279,7 @@ mod tests {
             plan.operation(),
             &RemoveOperation::Remove { verb: "unlink" }
         );
-        assert_eq!(
-            plan.dry_run_message().unwrap(),
-            "  would unlink: thing".to_string()
-        );
+        assert_eq!(plan.dry_run_message().unwrap(), "unlink thing".to_string());
     }
 
     #[test]

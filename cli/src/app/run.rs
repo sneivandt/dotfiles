@@ -89,10 +89,6 @@ pub fn run() -> ExitCode {
             commands::uninstall::run(&args.global, &opts, &log, &token)
         }
         cli::Command::Test(opts) => commands::test::run(&args.global, &opts, &log, &token),
-        cli::Command::Version => {
-            commands::version::run();
-            return ExitCode::SUCCESS;
-        }
         // Completions and log are handled above; these arms are unreachable but
         // kept because the lint configuration denies the `unreachable!` macro.
         cli::Command::Log(_) | cli::Command::Completions(_) => return ExitCode::SUCCESS,
@@ -124,7 +120,6 @@ const fn logged_command_name(command: &cli::Command) -> Option<&'static str> {
         cli::Command::Update(_) => "update",
         cli::Command::Uninstall(_) => "uninstall",
         cli::Command::Test(_) => "test",
-        cli::Command::Version => "version",
         cli::Command::Log(_) | cli::Command::Completions(_) => return None,
     };
     Some(name)

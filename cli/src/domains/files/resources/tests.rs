@@ -364,6 +364,18 @@ mod symlink {
     }
 
     #[test]
+    fn symlink_resource_description_abbreviates_managed_paths() {
+        let resource = SymlinkResource::new(
+            PathBuf::from("/repo/symlinks/bashrc"),
+            PathBuf::from("/home/user/.bashrc"),
+            system_executor(),
+        )
+        .with_display_roots("/home/user", "/repo");
+
+        assert_eq!(resource.description(), "~/.bashrc \u{2190} symlinks/bashrc");
+    }
+
+    #[test]
     fn sibling_temp_path_appends_suffix_without_clobbering_dotfile_name() {
         let bashrc_tmp = sibling_temp_path(Path::new("/home/test/.bashrc"), ".dotfiles_tmp");
         let vimrc_tmp = sibling_temp_path(Path::new("/home/test/.vimrc"), ".dotfiles_tmp");

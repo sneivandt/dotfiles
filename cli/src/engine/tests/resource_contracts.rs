@@ -165,6 +165,21 @@ fn state_reports_nonfatal_failure(state: &ResourceState) -> bool {
     )
 }
 
+const fn batch_changed(result: &TaskResult) -> bool {
+    matches!(result, TaskResult::Batch(stats) if stats.changed > 0)
+}
+
+const fn batch_failed(result: &TaskResult) -> bool {
+    matches!(result, TaskResult::Batch(stats) if stats.failed > 0)
+}
+
+const fn batch_unchanged(result: &TaskResult) -> bool {
+    matches!(
+        result,
+        TaskResult::Batch(stats) if stats.changed == 0 && stats.failed == 0
+    )
+}
+
 #[test]
 fn contract_missing_resource_applies_once_then_noops() {
     let ctx = contract_context();
@@ -174,8 +189,8 @@ fn contract_missing_resource_applies_once_then_noops() {
     let first = process_resources(&ctx, [resource.clone()], &opts).unwrap();
     let second = process_resources(&ctx, [resource.clone()], &opts).unwrap();
 
-    assert!(matches!(first, TaskResult::OkWithMessage(_)));
-    assert!(matches!(second, TaskResult::Ok));
+    assert!(batch_changed(&first));
+    assert!(batch_unchanged(&second));
     assert_eq!(resource.state(), ResourceState::Correct);
     assert_eq!(resource.apply_calls(), 1);
 }
@@ -191,8 +206,8 @@ fn contract_incorrect_resource_repairs_once_then_noops() {
     let first = process_resources(&ctx, [resource.clone()], &opts).unwrap();
     let second = process_resources(&ctx, [resource.clone()], &opts).unwrap();
 
-    assert!(matches!(first, TaskResult::OkWithMessage(_)));
-    assert!(matches!(second, TaskResult::Ok));
+    assert!(batch_changed(&first));
+    assert!(batch_unchanged(&second));
     assert_eq!(resource.state(), ResourceState::Correct);
     assert_eq!(resource.apply_calls(), 1);
 }
@@ -208,7 +223,7 @@ fn contract_dry_run_never_applies_missing_or_incorrect_resources() {
 
     let result = process_resources(&ctx, [missing.clone(), incorrect.clone()], &opts).unwrap();
 
-    assert!(matches!(result, TaskResult::DryRun));
+    assert!(batch_changed(&result));
     assert_eq!(missing.state(), ResourceState::Missing);
     assert_eq!(
         incorrect.state(),
@@ -233,7 +248,7 @@ fn contract_invalid_and_unknown_resources_are_not_applied() {
 
     let result = process_resources(&ctx, [invalid.clone(), unknown.clone()], &opts).unwrap();
 
-    assert!(matches!(result, TaskResult::Failed(_)));
+    assert!(batch_failed(&result));
     assert_eq!(invalid.apply_calls(), 0);
     assert_eq!(unknown.apply_calls(), 0);
 }
@@ -246,7 +261,7 @@ fn contract_lenient_apply_errors_are_nonfatal_failures() {
 
     let result = process_resources(&ctx, [resource], &opts).unwrap();
 
-    assert!(matches!(result, TaskResult::Failed(_)));
+    assert!(batch_failed(&result));
 }
 
 #[test]
@@ -257,8 +272,8 @@ fn contract_remove_correct_resource_once_then_noops() {
     let first = process_resources_remove(&ctx, [resource.clone()], "remove").unwrap();
     let second = process_resources_remove(&ctx, [resource.clone()], "remove").unwrap();
 
-    assert!(matches!(first, TaskResult::OkWithMessage(_)));
-    assert!(matches!(second, TaskResult::Ok));
+    assert!(batch_changed(&first));
+    assert!(batch_unchanged(&second));
     assert_eq!(resource.state(), ResourceState::Missing);
     assert_eq!(resource.remove_calls(), 1);
 }
@@ -270,7 +285,7 @@ fn contract_remove_dry_run_never_mutates_correct_resources() {
 
     let result = process_resources_remove(&ctx, [resource.clone()], "remove").unwrap();
 
-    assert!(matches!(result, TaskResult::DryRun));
+    assert!(batch_changed(&result));
     assert_eq!(resource.state(), ResourceState::Correct);
     assert_eq!(resource.remove_calls(), 0);
 }
@@ -301,7 +316,7 @@ fn contract_remove_does_not_touch_unmanaged_or_unsafe_states() {
     )
     .unwrap();
 
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(batch_unchanged(&result));
     assert_eq!(missing.remove_calls(), 0);
     assert_eq!(incorrect.remove_calls(), 0);
     assert_eq!(invalid.remove_calls(), 0);
@@ -321,7 +336,7 @@ fn contract_process_modes_apply_only_their_fixable_states() -> anyhow::Result<()
 
             let expected_failure = state_reports_nonfatal_failure(&case.state);
             assert_eq!(
-                matches!(result, TaskResult::Failed(_)),
+                batch_failed(&result),
                 expected_failure,
                 "mode {} and state {} should report failure only for unsafe states",
                 mode.name,
@@ -372,7 +387,7 @@ fn contract_dry_run_process_modes_never_mutate_any_state() -> anyhow::Result<()>
             let would_apply = mode_applies_state(&mode, &case.state);
 
             assert!(
-                matches!(result, TaskResult::DryRun) == would_apply,
+                batch_changed(&result) == would_apply,
                 "dry-run mode {} and state {} should report dry-run only when it would apply",
                 mode.name,
                 case.name
@@ -416,13 +431,13 @@ fn contract_remove_only_mutates_correct_resources() -> anyhow::Result<()> {
 
         if should_remove {
             assert!(
-                matches!(result, TaskResult::OkWithMessage(_)),
+                batch_changed(&result),
                 "remove state {} should report a change",
                 case.name
             );
         } else {
             assert!(
-                matches!(result, TaskResult::Ok),
+                batch_unchanged(&result),
                 "remove state {} should complete without a change",
                 case.name
             );
@@ -466,7 +481,7 @@ fn contract_remove_dry_run_never_mutates_any_state() -> anyhow::Result<()> {
         let would_remove = matches!(case.state, ResourceState::Correct);
 
         assert!(
-            matches!(result, TaskResult::DryRun) == would_remove,
+            batch_changed(&result) == would_remove,
             "dry-run remove state {} should report dry-run only when it would remove",
             case.name
         );

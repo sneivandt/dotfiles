@@ -227,7 +227,7 @@ impl Operation for PackageInstallOperation {
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         for resource in &plan.missing {
             ctx.log()
-                .dry_run(&format!("would install: {}", resource.description()));
+                .dry_run(&format!("install {}", resource.description()));
         }
         Ok(plan.preview_stats().finish(ctx))
     }
@@ -246,8 +246,7 @@ impl Operation for PackageInstallOperation {
                     ctx.log().warn(&reason);
                     let mut stats = plan.base_stats();
                     stats.failed = u32::try_from(plan.missing.len()).unwrap_or(u32::MAX);
-                    stats.log_summary(ctx);
-                    return Ok(TaskResult::Failed(reason));
+                    return Ok(stats.finish(ctx));
                 }
             };
 
@@ -263,14 +262,13 @@ impl Operation for PackageInstallOperation {
         stats.failed = u32::try_from(report.failures().len()).unwrap_or(u32::MAX);
 
         for package in report.applied_packages() {
-            ctx.log().info(&format!("installed: {package}"));
+            ctx.log().info(&format!("install {package}"));
         }
 
         if report.has_failures() {
             let reason = format!("{} package install(s) failed", report.failures().len());
             ctx.log().warn(&reason);
-            stats.log_summary(ctx);
-            return Ok(TaskResult::Failed(reason));
+            return Ok(stats.finish(ctx));
         }
 
         Ok(stats.finish(ctx))

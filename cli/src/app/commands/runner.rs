@@ -15,7 +15,6 @@ use crate::infra::platform::Platform;
 
 use super::execution::{run_tasks_to_completion, run_tasks_to_completion_with_late_tasks};
 use super::install;
-use super::reexec::REEXEC_GUARD_VAR;
 
 /// Shared orchestration helper that combines setup and task execution.
 #[derive(Debug)]
@@ -40,8 +39,7 @@ impl CommandRunner {
     ) -> Result<Self> {
         let platform = Platform::detect();
         let root = install::resolve_root(global)?;
-        let updated = std::env::var_os(REEXEC_GUARD_VAR).is_some();
-        let profile = resolve_profile(global, &root, platform, updated, &**log)?;
+        let profile = resolve_profile(global, &root, platform, log)?;
         let overlay = resolve_overlay(global, &root, &**log);
         if log.is_verbose() {
             log.separate_from_startup();
@@ -137,27 +135,31 @@ fn resolve_profile(
     global: &GlobalOpts,
     root: &std::path::Path,
     platform: Platform,
-    updated: bool,
-    log: &dyn Output,
+    log: &Logger,
 ) -> Result<profiles::Profile> {
     log.stage("Resolving profile");
     let profile = profiles::resolve_from_args(global.profile.as_deref(), root, platform)?;
-    let version =
-        option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
-    let updated_label = if updated {
-        " \x1b[2m\u{00b7} refreshed\x1b[0m"
-    } else {
-        ""
-    };
+    log.always(&startup_context_line(
+        log.command_title(),
+        &profile.name,
+        platform,
+        global.dry_run,
+    ));
+    Ok(profile)
+}
+
+pub(super) fn startup_context_line(
+    command_title: &str,
+    profile_name: &str,
+    platform: Platform,
+    dry_run: bool,
+) -> String {
     let mut platform_label = platform.description().to_string();
     if platform.is_wsl() {
         platform_label.push_str(" \u{00b7} WSL");
     }
-    log.always(&format!(
-        "\x1b[2mversion\x1b[0m {version}{updated_label} \x1b[2m\u{00b7} profile\x1b[0m {} \x1b[2m\u{00b7} {platform_label}\x1b[0m",
-        profile.name
-    ));
-    Ok(profile)
+    let preview = if dry_run { " \u{00b7} preview" } else { "" };
+    format!("{command_title} \u{00b7} profile {profile_name} \u{00b7} {platform_label}{preview}")
 }
 
 fn resolve_overlay(

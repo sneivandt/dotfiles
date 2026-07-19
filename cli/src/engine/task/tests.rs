@@ -1,5 +1,7 @@
 use super::*;
-use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::engine::{
+    IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState, TaskStats,
+};
 use crate::infra::logging::TaskStatus;
 use crate::test_helpers::{empty_config, make_static_context};
 use anyhow::Result;
@@ -172,6 +174,7 @@ fn execute_records_ok_task_with_message() {
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].status, TaskStatus::Changed);
     assert_eq!(entries[0].message.as_deref(), Some("created config file"));
+    assert_eq!(entries[0].actions.applied, 1);
 }
 
 #[test]
@@ -203,6 +206,116 @@ fn execute_records_skipped_task() {
 }
 
 #[test]
+fn execute_records_batch_action_counts() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, log) = make_static_context(config);
+    let task = MockTask {
+        name: "batch-task",
+        should_run: true,
+        result: Ok(TaskResult::Batch(TaskStats {
+            changed: 3,
+            already_ok: 5,
+            skipped: 2,
+            failed: 0,
+        })),
+    };
+
+    assert_eq!(execute(&task, &ctx), TaskStatus::Changed);
+
+    let entry = &log.task_entries()[0];
+    assert_eq!(entry.actions.applied, 3);
+    assert_eq!(entry.actions.planned, 0);
+    assert_eq!(entry.actions.skipped, 2);
+    assert_eq!(entry.actions.failed, 0);
+}
+
+#[test]
+fn execute_records_dry_run_batch_as_planned_actions() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, log) = make_static_context(config);
+    let ctx = ctx.with_dry_run(true);
+    let task = MockTask {
+        name: "batch-task",
+        should_run: true,
+        result: Ok(TaskResult::Batch(TaskStats {
+            changed: 4,
+            already_ok: 1,
+            skipped: 0,
+            failed: 0,
+        })),
+    };
+
+    assert_eq!(execute(&task, &ctx), TaskStatus::DryRun);
+
+    let entry = &log.task_entries()[0];
+    assert_eq!(entry.actions.applied, 0);
+    assert_eq!(entry.actions.planned, 4);
+}
+
+#[test]
+fn execute_records_failed_batch_and_preserves_action_counts() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, log) = make_static_context(config);
+    let task = MockTask {
+        name: "batch-task",
+        should_run: true,
+        result: Ok(TaskResult::Batch(TaskStats {
+            changed: 1,
+            already_ok: 0,
+            skipped: 2,
+            failed: 3,
+        })),
+    };
+
+    assert_eq!(execute(&task, &ctx), TaskStatus::Failed);
+
+    let entry = &log.task_entries()[0];
+    assert_eq!(entry.actions.applied, 1);
+    assert_eq!(entry.actions.skipped, 2);
+    assert_eq!(entry.actions.failed, 3);
+}
+
+#[test]
+fn execute_records_skipped_only_batch_as_skipped() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, log) = make_static_context(config);
+    let task = MockTask {
+        name: "batch-task",
+        should_run: true,
+        result: Ok(TaskResult::Batch(TaskStats {
+            changed: 0,
+            already_ok: 2,
+            skipped: 3,
+            failed: 0,
+        })),
+    };
+
+    assert_eq!(execute(&task, &ctx), TaskStatus::Skipped);
+    assert_eq!(log.task_entries()[0].actions.skipped, 3);
+}
+
+#[test]
+fn execute_downgrades_cancelled_batch_failure_to_skipped() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, log) = make_static_context(config);
+    ctx.cancellation_token().cancel();
+    let task = MockTask {
+        name: "batch-task",
+        should_run: true,
+        result: Ok(TaskResult::Batch(TaskStats {
+            changed: 0,
+            already_ok: 0,
+            skipped: 0,
+            failed: 1,
+        })),
+    };
+
+    assert_eq!(execute(&task, &ctx), TaskStatus::Skipped);
+    assert_eq!(log.failure_count(), 0);
+    assert_eq!(log.task_entries()[0].actions.failed, 1);
+}
+
+#[test]
 fn execute_records_task_result_failed_as_failure() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, log) = make_static_context(config);
@@ -214,6 +327,7 @@ fn execute_records_task_result_failed_as_failure() {
 
     execute(&task, &ctx);
     assert_eq!(log.failure_count(), 1);
+    assert_eq!(log.task_entries()[0].actions.failed, 1);
 }
 
 #[test]
@@ -228,6 +342,7 @@ fn execute_records_dry_run_task() {
 
     execute(&task, &ctx);
     assert_eq!(log.failure_count(), 0);
+    assert_eq!(log.task_entries()[0].actions.planned, 1);
 }
 
 #[test]

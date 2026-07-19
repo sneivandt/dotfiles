@@ -27,10 +27,6 @@ pub mod commands {
     pub mod update {
         pub use crate::app::commands::update::run;
     }
-
-    pub mod version {
-        pub use crate::app::commands::version::run;
-    }
 }
 
 pub mod config {

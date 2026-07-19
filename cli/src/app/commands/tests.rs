@@ -83,8 +83,10 @@ mod unix_tests {
 
 #[cfg(test)]
 mod startup_log_tests {
+    use super::runner::startup_context_line;
     use super::*;
     use crate::infra::logging::Output;
+    use crate::infra::platform::{Os, Platform};
     use std::path::Path;
     use std::sync::{Mutex, PoisonError};
 
@@ -124,20 +126,33 @@ mod startup_log_tests {
     }
 
     #[test]
+    fn startup_context_uses_command_profile_platform_and_preview() {
+        assert_eq!(
+            startup_context_line(
+                "Install",
+                "workstation",
+                Platform::new(Os::Linux, false),
+                true,
+            ),
+            "Install · profile workstation · Linux · preview"
+        );
+    }
+
+    #[test]
     fn overlay_path_is_optional_second_startup_line() {
         let log = CapturingOutput::default();
 
-        log.always("version line");
+        log.always("Install · profile workstation · Linux");
         log_overlay_path(Some(Path::new("/private/overlay")), &log);
 
         let lines = log.lines();
         assert_eq!(
             lines,
             vec![
-                "version line".to_string(),
+                "Install · profile workstation · Linux".to_string(),
                 "\x1b[2moverlay\x1b[0m /private/overlay".to_string(),
             ],
-            "overlay line must immediately follow the version line and must not be indented"
+            "overlay line must immediately follow startup context and must not be indented"
         );
     }
 
@@ -145,10 +160,13 @@ mod startup_log_tests {
     fn absent_overlay_does_not_emit_separator() {
         let log = CapturingOutput::default();
 
-        log.always("version line");
+        log.always("Install · profile workstation · Linux");
         log_overlay_path(None, &log);
 
-        assert_eq!(log.lines(), vec!["version line".to_string()]);
+        assert_eq!(
+            log.lines(),
+            vec!["Install · profile workstation · Linux".to_string()]
+        );
     }
 }
 

@@ -25,6 +25,10 @@ pub struct SymlinkResource {
     executor: Arc<dyn Executor>,
     /// Configuration validation error that makes this resource unsafe to apply.
     validation_error: Option<String>,
+    /// Home directory used to abbreviate user-facing target paths.
+    display_home: Option<PathBuf>,
+    /// Repository root used to abbreviate user-facing source paths.
+    display_root: Option<PathBuf>,
 }
 
 impl SymlinkResource {
@@ -40,6 +44,8 @@ impl SymlinkResource {
             target: target.into(),
             executor,
             validation_error: None,
+            display_home: None,
+            display_root: None,
         }
     }
 
@@ -49,11 +55,47 @@ impl SymlinkResource {
         self.validation_error = validation_error;
         self
     }
+
+    /// Attach roots used to render concise user-facing paths.
+    #[must_use]
+    pub fn with_display_roots(
+        mut self,
+        home: impl Into<PathBuf>,
+        root: impl Into<PathBuf>,
+    ) -> Self {
+        self.display_home = Some(home.into());
+        self.display_root = Some(root.into());
+        self
+    }
+
+    fn display_target(&self) -> String {
+        self.display_home
+            .as_deref()
+            .and_then(|home| self.target.strip_prefix(home).ok())
+            .map_or_else(
+                || self.target.display().to_string(),
+                |relative| PathBuf::from("~").join(relative).display().to_string(),
+            )
+    }
+
+    fn display_source(&self) -> String {
+        self.display_root
+            .as_deref()
+            .and_then(|root| self.source.strip_prefix(root).ok())
+            .map_or_else(
+                || self.source.display().to_string(),
+                |relative| relative.display().to_string(),
+            )
+    }
 }
 
 impl Resource for SymlinkResource {
     fn description(&self) -> String {
-        format!("{} -> {}", self.target.display(), self.source.display())
+        format!(
+            "{} \u{2190} {}",
+            self.display_target(),
+            self.display_source()
+        )
     }
 
     fn pre_apply_warning(&self) -> ResourceResult<Option<String>> {

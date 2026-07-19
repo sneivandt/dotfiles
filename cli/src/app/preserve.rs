@@ -129,7 +129,10 @@ mod tests {
             .run(&ctx)
             .unwrap();
 
-        assert!(matches!(result, TaskResult::OkWithMessage(_)));
+        assert!(matches!(
+            result,
+            TaskResult::Batch(stats) if stats.changed == 1
+        ));
         assert!(!std::fs::symlink_metadata(&target).unwrap().is_symlink());
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "i3 config");
     }
@@ -154,7 +157,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            TaskResult::Ok | TaskResult::OkWithMessage(_)
+            TaskResult::Batch(stats) if stats.changed == 0 && stats.failed == 0
         ));
         assert!(std::fs::symlink_metadata(&target).unwrap().is_symlink());
     }

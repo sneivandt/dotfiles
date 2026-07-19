@@ -46,7 +46,7 @@ dotfiles.sh [--build] update    [-p PROFILE] [-d] [-v]
 dotfiles.sh [--build] uninstall [-p PROFILE] [-d] [-v]
 dotfiles.sh [--build] test      [-p PROFILE] [-v]
 dotfiles.sh [--build] log       [-v]
-dotfiles.sh [--build] version
+dotfiles.sh [--build] --version
 ```
 
 **Options:**
@@ -56,12 +56,13 @@ dotfiles.sh [--build] version
 - **`uninstall`** - Materialize managed symlinks, then remove managed hooks/wrappers
 - **`test`** - Run configuration validation
 - **`log`** - Print the most recent dotfiles operation log
-- **`version`** - Print version information
 - **`--build`** - Build and run from source (requires `cargo`)
-- **`-p, --profile PROFILE`** - Use specific profile (base, desktop)
-- **`--overlay DIR`** - Use a private overlay repository for additional configuration
-- **`-v, --verbose`** - Enable verbose logging
-- **`-d, --dry-run`** - Preview changes without modifying system
+- **`-p, --profile PROFILE`** - Use a specific profile
+- **`--overlay PATH`** - Merge configuration from an overlay repository
+- **`-v, --verbose`** - Show complete task and action details
+- **`-d, --dry-run`** - Preview changes without applying them
+- **`-h, --help`** - Print help
+- **`--version`** - Print version
 
 `install` and `update` run the same base task graph and accept the same
 `--skip` / `--only` selectors. `update` additionally schedules the final
@@ -77,16 +78,18 @@ pinned.
 .\dotfiles.ps1 [--build] uninstall [-d]
 .\dotfiles.ps1 [--build] test
 .\dotfiles.ps1 [--build] log [-v]
-.\dotfiles.ps1 [--build] version
+.\dotfiles.ps1 [--build] --version
 ```
 
 **Parameters:**
 
 - **`--build`** - Build and run from source (requires `cargo`)
-- **`-p PROFILE`** - Use specific profile (base, desktop)
-- **`--overlay DIR`** - Use a private overlay repository for additional configuration
-- **`-d`** - Preview changes without applying (dry-run)
-- **`-v, --verbose`** - Enable verbose logging
+- **`-p, --profile PROFILE`** - Use a specific profile
+- **`--overlay PATH`** - Merge configuration from an overlay repository
+- **`-d, --dry-run`** - Preview changes without applying them
+- **`-v, --verbose`** - Show complete task and action details
+- **`-h, --help`** - Print help
+- **`--version`** - Print version
 
 ## Common Workflows
 
@@ -278,39 +281,41 @@ the latest GitHub release and re-exec the process.
 
 ## Verbose Mode
 
-Enable verbose logging to see detailed operation information:
+Enable verbose output to see the complete user-facing action plan:
 
 ```bash
 ./dotfiles.sh install -v
 ```
 
 **Verbose output includes:**
-- Bold stage headers for each task (the main log renders these with `==>` markers)
-- Per-item detail (symlinks, packages, etc.)
+- Stage headers for each task
+- Every changed or planned action, including concise source paths where useful
 - Operations being skipped (with reasons)
 - Final summary counts
 
+Internal diagnostics and already-correct resource details remain in the
+persistent log instead of being mixed into interactive verbose output.
+
 **Default (non-verbose) output** shows a live progress line while tasks run,
-then a compact summary. Successful no-op tasks are counted as unchanged and are
-not listed individually; tasks that changed state, were skipped, failed, or
-would change state in dry-run mode are printed as they complete.
+then a compact summary. Successful no-op tasks are omitted; tasks that changed
+state, were skipped, failed, or would change state in preview mode are printed
+as they complete. Long action lists show the first eight entries and direct the
+user to `-v` for the complete plan.
 
 ```
-version v0.1.317 · profile desktop · Arch Linux
+Install · profile desktop · Arch Linux
 
-Update repository
-  local changes present
-Install symlinks
-  linked: ~/.bashrc
-  linked: ~/.config/git/config
-Install packages
-  installed: fd
-  installed: ripgrep
-Configure systemd units
-  enabled: clean-home-tmp.timer
+Install symlinks · changed
+  link ~/.bashrc
+  link ~/.config/git/config
+Install packages · changed
+  install fd
+  install ripgrep
+Configure systemd units · changed
+  enable clean-home-tmp.timer
 
 Complete · 1.3s
-3 Changed · 42 Unchanged · 1 Skipped
+Tasks: 3 changed · Actions: 5 applied
 ```
 
 ## Parallel Execution
@@ -342,7 +347,7 @@ Preview what would be done without making changes:
 ```
 
 **Dry-run mode:**
-- Shows all operations that would be performed
+- Shows a bounded preview of operations that would be performed
 - Doesn't modify system state
 - Useful for testing configuration changes
 - Safe to run without privileges
@@ -397,9 +402,10 @@ runs repeating the log path.
 ## Installation Summary
 
 After installation, a summary is displayed. In **non-verbose** mode (default),
-no-op task completions are not printed inline. Tasks that changed state, were
-skipped, failed, or would change state in dry-run mode are printed as they
-complete. The command then ends with `Complete`, the runtime, and task totals.
+no-op task completions are not printed inline or counted in the visible totals.
+Tasks that changed state, were skipped, failed, or would change state in preview
+mode are printed as they complete. The final lines distinguish task outcomes
+from the underlying action count.
 
 The persistent log file records every task's output, replayed as each buffered
 task completes, and ends with the same final completion/count lines as the
@@ -407,14 +413,15 @@ console. Use `dotfiles log` when you need every task result.
 
 **Example:**
 ```
-Configure sparse checkout
-  configured: sparse checkout
-Install symlinks
-  linked: ~/.bashrc
-  linked: ~/.config/git/config
+Install · profile desktop · Arch Linux · preview
 
-Complete · 1.3s
-2 Changed · 47 Unchanged · 1 Skipped
+Install symlinks · would change
+  link ~/.bashrc
+  link ~/.config/git/config
+  … 79 more; use -v for the full plan
+
+Preview complete · 0.1s
+Tasks: 1 would change · Actions: 81 planned
 ```
 
 **Status colors:**
@@ -586,6 +593,12 @@ The wrappers forward all arguments unchanged to the binary, so these work with
 - **`--overlay DIR`** - Use a private overlay repository
 - **`--root DIR`** - Override dotfiles root directory (set automatically by wrapper scripts)
 - **`--no-parallel`** - Disable task-level and resource-level parallel execution
+
+Task selectors are case-insensitive. A selector matches a task's normalized
+name (`install-symlinks`), canonical selector (`symlinks`, `git-hooks`,
+`reload-configuration`), or the leading token of that selector (`reload`).
+When `--only` and `--skip` are combined, a task must match `--only` and must not
+match `--skip`.
 
 ## Shell Completions
 

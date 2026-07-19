@@ -290,7 +290,7 @@ fn console_line_with_style(
             .then(|| style.paint(TextStyle::Bold, &msg)),
         tracing::Level::INFO if target == "dotfiles::dry_run" => Some(format!("  {msg}")),
         tracing::Level::INFO => VERBOSE.load(Ordering::Relaxed).then(|| format!("  {msg}")),
-        _ => Some(format!("  {}", style.paint(TextStyle::Dim, &msg))),
+        tracing::Level::DEBUG | tracing::Level::TRACE => None,
     }
 }
 
@@ -336,12 +336,6 @@ pub fn init_subscriber(verbose: bool, command: &str) {
 
     VERBOSE.store(verbose, Ordering::Relaxed);
 
-    let console_level = if verbose {
-        LevelFilter::DEBUG
-    } else {
-        LevelFilter::INFO
-    };
-
     let make_writer = std::io::stderr
         .with_max_level(tracing::Level::WARN)
         .and(std::io::stdout.with_min_level(tracing::Level::INFO));
@@ -349,7 +343,7 @@ pub fn init_subscriber(verbose: bool, command: &str) {
     let console_layer = fmt::layer()
         .event_format(DotfilesFormatter)
         .with_writer(make_writer)
-        .with_filter(console_level);
+        .with_filter(LevelFilter::INFO);
 
     let file_layer = FileLayer::new(command).map(|l| l.with_filter(LevelFilter::DEBUG));
 
@@ -617,5 +611,18 @@ mod tests {
 
         assert_eq!(line, "WARN  careful");
         assert!(!line.contains("\x1b["));
+    }
+
+    #[test]
+    fn console_line_never_emits_debug_events() {
+        assert_eq!(
+            console_line_with_style(
+                tracing::Level::DEBUG,
+                "dotfiles",
+                "internal detail",
+                StyleChoice::plain(),
+            ),
+            None
+        );
     }
 }

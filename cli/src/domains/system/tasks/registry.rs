@@ -98,6 +98,9 @@ mod tests {
         let result = ApplyRegistry::new(ConfigHandle::new(vec![entry()]))
             .run(&ctx)
             .unwrap();
-        assert!(matches!(result, TaskResult::Failed(_)));
+        assert!(matches!(
+            result,
+            TaskResult::Batch(stats) if stats.failed == 1
+        ));
     }
 }

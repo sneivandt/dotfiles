@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use super::diagnostic::{DiagEvent, DiagnosticLog};
 use super::logger::{Logger, stdout_supports_progress};
-use super::types::{Output, TaskRecorder, TaskStatus};
+use super::types::{ActionCounts, Output, TaskRecorder, TaskStatus};
 
 /// A single buffered log entry, replayed when flushed.
 #[derive(Debug, Clone)]
@@ -244,6 +244,17 @@ impl TaskRecorder for BufferedLog {
     fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
         self.inner.record_task(name, status, message);
     }
+
+    fn record_task_with_actions(
+        &self,
+        name: &str,
+        status: TaskStatus,
+        message: Option<&str>,
+        actions: ActionCounts,
+    ) {
+        self.inner
+            .record_task_with_actions(name, status, message, actions);
+    }
 }
 
 #[cfg(test)]
@@ -267,6 +278,21 @@ mod tests {
         buf.record_task("task-a", TaskStatus::Ok, None);
         assert_eq!(log.task_entries().len(), 1);
         assert_eq!(log.task_entries()[0].name, "task-a");
+    }
+
+    #[test]
+    fn buffered_log_record_task_with_actions_forwards_counts() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
+        let actions = ActionCounts {
+            applied: 2,
+            ..ActionCounts::default()
+        };
+
+        buf.record_task_with_actions("task-a", TaskStatus::Changed, None, actions);
+
+        assert_eq!(log.task_entries()[0].actions, actions);
     }
 
     #[test]

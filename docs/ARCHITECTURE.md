@@ -664,6 +664,9 @@ etc.) are also processed in parallel using Rayon.
   resource to process
 - Each worker accumulates local `TaskStats`, then the results are reduced
   without a shared stats lock
+- `TaskStats` is preserved as structured action counts when task results are
+  recorded, allowing final summaries to report task outcomes separately from
+  applied or planned resource actions
 - The `Executor` trait requires `Sync` so resources holding `&dyn Executor` are safe
   to share across threads
 - The `Logger` uses `Mutex<Vec<TaskEntry>>` internally for thread-safe task recording

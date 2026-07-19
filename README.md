@@ -32,7 +32,7 @@ For a first run, preview the selected profile before applying it:
 | Detach managed files | `dotfiles uninstall` |
 | Validate config | `dotfiles test` |
 | Inspect logs | `dotfiles log` |
-| Show version | `dotfiles version` |
+| Show version | `dotfiles --version` |
 
 Use `install` for normal repeatable convergence. Use `update` only when you
 also want to advance pinned dependency versions. `uninstall` detaches managed

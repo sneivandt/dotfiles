@@ -12,7 +12,7 @@ pub use buffered::BufferedLog;
 pub use diagnostic::{DiagEvent, diag_task_context, diag_thread_name, set_diag_thread_name};
 pub use logger::Logger;
 pub use subscriber::init_subscriber;
-pub use types::{Log, Output, TaskStatus};
+pub use types::{ActionCounts, Log, Output, TaskStatus};
 // Only the in-crate unit tests reach `TaskRecorder` from outside the `logging`
 // module; production code uses the `super::types` path directly.
 #[cfg(test)]

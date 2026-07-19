@@ -32,6 +32,18 @@ fn executor_arc<T: Executor + 'static>(executor: &Arc<T>) -> Arc<dyn Executor> {
     Arc::<T>::clone(executor)
 }
 
+const fn batch_changed(result: &TaskResult) -> bool {
+    matches!(result, TaskResult::Batch(stats) if stats.changed > 0)
+}
+
+#[cfg(unix)]
+const fn batch_unchanged(result: &TaskResult) -> bool {
+    matches!(
+        result,
+        TaskResult::Batch(stats) if stats.changed == 0 && stats.failed == 0
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CallKind {
     Run,
@@ -388,7 +400,7 @@ symlinks = [
     let first = test_api::tasks::files::symlinks::InstallSymlinks::new(store.symlinks.clone())
         .run(&ctx)
         .expect("install symlinks");
-    assert!(matches!(first, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&first));
 
     for (source, target) in &expected {
         let metadata = std::fs::symlink_metadata(target)
@@ -409,13 +421,13 @@ symlinks = [
     let second = test_api::tasks::files::symlinks::InstallSymlinks::new(store.symlinks.clone())
         .run(&ctx)
         .expect("second install symlinks");
-    assert!(matches!(second, TaskResult::Ok));
+    assert!(batch_unchanged(&second));
 
     let uninstall =
         test_api::tasks::files::symlinks::UninstallSymlinks::new(store.symlinks.clone())
             .run(&ctx)
             .expect("uninstall symlinks");
-    assert!(matches!(uninstall, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&uninstall));
 
     for (source, target) in &expected {
         let metadata = std::fs::symlink_metadata(target)
@@ -435,7 +447,7 @@ symlinks = [
     let second_uninstall = test_api::tasks::files::symlinks::UninstallSymlinks::new(store.symlinks)
         .run(&ctx)
         .expect("second uninstall symlinks");
-    assert!(matches!(second_uninstall, TaskResult::Ok));
+    assert!(batch_unchanged(&second_uninstall));
     assert_eq!(
         log.failure_count(),
         0,
@@ -533,7 +545,7 @@ fn pacman_task_installs_only_missing_native_packages_in_one_batch() {
         .run(&ctx)
         .expect("install packages");
 
-    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&result));
     executor.assert_complete();
     assert_eq!(
         executor.calls().len(),
@@ -582,7 +594,7 @@ fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
         .run(&ctx)
         .expect("install aur packages");
 
-    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&result));
     executor.assert_complete();
 }
 
@@ -635,7 +647,7 @@ fn winget_task_uses_exact_ids_and_installs_each_missing_package() {
         .run(&ctx)
         .expect("install winget packages");
 
-    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&result));
     executor.assert_complete();
 }
 
@@ -681,7 +693,7 @@ fn vscode_task_queries_once_and_installs_only_missing_extensions() {
     .run(&ctx)
     .expect("install vscode extensions");
 
-    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&result));
     executor.assert_complete();
 }
 
@@ -745,6 +757,6 @@ fn systemd_task_reloads_then_enables_user_and_system_units() {
         .run(&ctx)
         .expect("configure systemd");
 
-    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&result));
     executor.assert_complete();
 }

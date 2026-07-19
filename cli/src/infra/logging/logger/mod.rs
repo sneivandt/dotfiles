@@ -23,7 +23,7 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use super::diagnostic::{DiagEvent, DiagnosticLog};
-use super::types::{Output, TaskEntry, TaskRecorder, TaskStatus};
+use super::types::{ActionCounts, Output, TaskEntry, TaskRecorder, TaskStatus};
 use super::utils::dotfiles_cache_dir;
 #[cfg(test)]
 use super::utils::{dotfiles_cache_subdir, log_file_path_in};
@@ -200,6 +200,18 @@ impl Logger {
         self.verbose
     }
 
+    /// Return the sentence-case title of the current command.
+    #[must_use]
+    pub fn command_title(&self) -> &str {
+        match self.command.as_str() {
+            "install" => "Install",
+            "update" => "Update",
+            "uninstall" => "Uninstall",
+            "test" => "Test",
+            _ => &self.command,
+        }
+    }
+
     /// Return the log file path, if available.
     #[cfg(test)]
     #[must_use]
@@ -252,8 +264,8 @@ impl Logger {
     );
 
     log_method!(
-        /// Log a debug message (suppressed on console unless verbose; always
-        /// written to the log file via the [`FileLayer`](super::subscriber::FileLayer)).
+        /// Log a debug message to the persistent
+        /// [`FileLayer`](super::subscriber::FileLayer), never the console.
         debug, Debug, tracing::debug
     );
 
@@ -274,11 +286,23 @@ impl Logger {
 
     /// Record a task result for the summary.
     pub fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
+        self.record_task_with_actions(name, status, message, ActionCounts::default());
+    }
+
+    /// Record a task result and its structured action totals for the summary.
+    pub fn record_task_with_actions(
+        &self,
+        name: &str,
+        status: TaskStatus,
+        message: Option<&str>,
+        actions: ActionCounts,
+    ) {
         if let Ok(mut guard) = self.tasks.lock() {
             guard.push(TaskEntry {
                 name: name.to_string(),
                 status,
                 message: message.map(String::from),
+                actions,
             });
         }
     }
@@ -327,6 +351,16 @@ impl TaskRecorder for Logger {
     fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
         self.record_task(name, status, message);
     }
+
+    fn record_task_with_actions(
+        &self,
+        name: &str,
+        status: TaskStatus,
+        message: Option<&str>,
+        actions: ActionCounts,
+    ) {
+        self.record_task_with_actions(name, status, message, actions);
+    }
 }
 
 #[cfg(test)]
@@ -349,6 +383,20 @@ mod tests {
     }
 
     #[test]
+    fn command_titles_are_sentence_case() {
+        let cache = tempfile::tempdir().expect("temporary cache should be created");
+        for (command, expected) in [
+            ("install", "Install"),
+            ("update", "Update"),
+            ("uninstall", "Uninstall"),
+            ("test", "Test"),
+        ] {
+            let log = Logger::new_in(command, cache.path());
+            assert_eq!(log.command_title(), expected);
+        }
+    }
+
+    #[test]
     fn record_task_ok() {
         let (log, _tmp, _guard) = isolated_logger();
         log.record_task("symlinks", TaskStatus::Ok, None);
@@ -356,6 +404,22 @@ mod tests {
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].name, "symlinks");
         assert_eq!(tasks[0].status, TaskStatus::Ok);
+        assert_eq!(tasks[0].actions, ActionCounts::default());
+    }
+
+    #[test]
+    fn record_task_with_actions_stores_structured_counts() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let actions = ActionCounts {
+            applied: 4,
+            planned: 0,
+            skipped: 1,
+            failed: 0,
+        };
+
+        log.record_task_with_actions("symlinks", TaskStatus::Changed, None, actions);
+
+        assert_eq!(log.task_entries()[0].actions, actions);
     }
 
     #[test]
@@ -527,13 +591,13 @@ mod tests {
             "file summary should not repeat individual task names: {contents}"
         );
         assert!(
-            contents.contains("Complete"),
+            contents.contains("Complete ·"),
             "file summary should include the final completion line: {contents}"
         );
         let lower_contents = contents.to_lowercase();
         assert!(
-            lower_contents.contains("0 passed") && lower_contents.contains("1 not run"),
-            "file summary should include final counts: {contents}"
+            !lower_contents.contains("not run") && !lower_contents.contains("checks:"),
+            "test summary should omit unchanged checks: {contents}"
         );
     }
 }

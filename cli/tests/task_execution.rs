@@ -24,6 +24,17 @@ use test_api::tasks::git::git_config::ConfigureGit;
 use test_api::tasks::git::hooks::{InstallGitHooks, UninstallGitHooks};
 use test_api::tasks::{self, Task, TaskResult};
 
+const fn batch_changed(result: &TaskResult) -> bool {
+    matches!(result, TaskResult::Batch(stats) if stats.changed > 0)
+}
+
+const fn batch_unchanged(result: &TaskResult) -> bool {
+    matches!(
+        result,
+        TaskResult::Batch(stats) if stats.changed == 0 && stats.failed == 0
+    )
+}
+
 // ===========================================================================
 // Symlink task execution
 // ===========================================================================
@@ -42,7 +53,7 @@ fn symlinks_install_creates_links_from_config() {
     let result = InstallSymlinks::new(ec.store.symlinks.clone())
         .run(&ec.ctx)
         .unwrap();
-    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&result));
 
     let link = ec.ctx.home().join(".bashrc");
     assert!(link.symlink_metadata().is_ok(), "symlink should exist");
@@ -67,7 +78,7 @@ fn symlinks_install_dry_run_creates_no_links() {
     let result = InstallSymlinks::new(ec.store.symlinks.clone())
         .run(&ec.ctx)
         .unwrap();
-    assert!(matches!(result, TaskResult::DryRun));
+    assert!(batch_changed(&result));
 
     let link = ec.ctx.home().join(".bashrc");
     assert!(!link.exists(), "dry-run should not create any symlinks");
@@ -88,12 +99,12 @@ fn symlinks_install_is_idempotent() {
     let first = InstallSymlinks::new(ec.store.symlinks.clone())
         .run(&ec.ctx)
         .unwrap();
-    assert!(matches!(first, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&first));
 
     let second = InstallSymlinks::new(ec.store.symlinks.clone())
         .run(&ec.ctx)
         .unwrap();
-    assert!(matches!(second, TaskResult::Ok));
+    assert!(batch_unchanged(&second));
 
     // Symlink must still be valid after both runs
     let link = ec.ctx.home().join(".bashrc");
@@ -131,7 +142,7 @@ fn symlinks_uninstall_materialises_content() {
     let result = UninstallSymlinks::new(ec.store.symlinks.clone())
         .run(&ec.ctx)
         .unwrap();
-    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&result));
 
     // Target must now be a regular file with the original content
     let meta = std::fs::symlink_metadata(ec.ctx.home().join(".bashrc")).unwrap();
@@ -163,7 +174,7 @@ fn symlinks_install_desktop_profile_includes_both_sections() {
     let result = InstallSymlinks::new(ec.store.symlinks.clone())
         .run(&ec.ctx)
         .unwrap();
-    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&result));
 
     assert!(
         ec.ctx
@@ -201,7 +212,7 @@ fn hooks_install_places_hooks_in_git_dir() {
     let ec = test.make_context("base");
     let task = InstallGitHooks::new();
     let result = task.run(&ec.ctx).unwrap();
-    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&result));
 
     let installed = test.root_path().join(".git/hooks/pre-commit");
     assert!(
@@ -221,7 +232,7 @@ fn hooks_install_dry_run_preserves_state() {
     let ec = test.make_dry_run_context("base");
     let task = InstallGitHooks::new();
     let result = task.run(&ec.ctx).unwrap();
-    assert!(matches!(result, TaskResult::DryRun));
+    assert!(batch_changed(&result));
 
     let installed = test.root_path().join(".git/hooks/pre-commit");
     assert!(!installed.exists(), "dry-run should not install any hooks");
@@ -239,10 +250,10 @@ fn hooks_install_is_idempotent() {
     let task = InstallGitHooks::new();
 
     let first = task.run(&ec.ctx).unwrap();
-    assert!(matches!(first, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&first));
 
     let second = task.run(&ec.ctx).unwrap();
-    assert!(matches!(second, TaskResult::Ok));
+    assert!(batch_unchanged(&second));
 
     assert!(test.root_path().join(".git/hooks/pre-commit").exists());
 }
@@ -260,7 +271,7 @@ fn hooks_uninstall_removes_installed_hook() {
     assert!(test.root_path().join(".git/hooks/pre-commit").exists());
 
     let result = UninstallGitHooks::new().run(&ec.ctx).unwrap();
-    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&result));
     assert!(
         !test.root_path().join(".git/hooks/pre-commit").exists(),
         "hook should be removed after uninstall"
@@ -319,7 +330,7 @@ fn chmod_applies_permissions_from_config() {
 
     let task = ApplyFilePermissions::new(ec.store.chmod.clone());
     let result = task.run(&ec.ctx).unwrap();
-    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&result));
 
     let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600, "permissions should be 0600 after chmod");
@@ -347,7 +358,7 @@ fn chmod_is_idempotent() {
     let task = ApplyFilePermissions::new(ec.store.chmod.clone());
     drop(task.run(&ec.ctx).unwrap());
     let second = task.run(&ec.ctx).unwrap();
-    assert!(matches!(second, TaskResult::Ok));
+    assert!(batch_unchanged(&second));
 
     let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600);
@@ -437,7 +448,7 @@ fn chmod_dry_run_preserves_permissions() {
     let result = ApplyFilePermissions::new(ec.store.chmod.clone())
         .run(&ec.ctx)
         .unwrap();
-    assert!(matches!(result, TaskResult::DryRun));
+    assert!(batch_changed(&result));
 
     let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o644, "dry-run should not change permissions");
@@ -463,7 +474,7 @@ fn git_config_dry_run_makes_no_changes() {
     let result = ConfigureGit::with_config_path(ec.store.git_settings.clone(), config_path.clone())
         .run(&ec.ctx)
         .unwrap();
-    assert!(matches!(result, TaskResult::DryRun));
+    assert!(batch_changed(&result));
 
     let config = git2::Config::open(&config_path).unwrap();
     assert!(
@@ -490,7 +501,7 @@ fn git_config_replaces_incorrect_isolated_value() {
     let result = ConfigureGit::with_config_path(ec.store.git_settings.clone(), config_path.clone())
         .run(&ec.ctx)
         .unwrap();
-    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+    assert!(batch_changed(&result));
 
     let actual_config = git2::Config::open(&config_path).unwrap();
     assert_eq!(actual_config.get_string("core.autocrlf").unwrap(), "false");
@@ -514,7 +525,7 @@ fn git_config_is_idempotent_when_isolated_value_matches() {
     let result = ConfigureGit::with_config_path(ec.store.git_settings.clone(), config_path)
         .run(&ec.ctx)
         .unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(batch_unchanged(&result));
 }
 
 // ===========================================================================

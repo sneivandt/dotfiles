@@ -5,7 +5,6 @@ pub mod log;
 pub mod test;
 pub mod uninstall;
 pub mod update;
-pub mod version;
 
 pub(crate) mod error;
 mod execution;

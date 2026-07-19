@@ -76,8 +76,20 @@ impl ResourceStateProvider<PrecomputedResource> for CountingStateProvider {
     }
 }
 
-fn is_success(result: &TaskResult) -> bool {
+const fn is_success(result: &TaskResult) -> bool {
     matches!(result, TaskResult::Ok | TaskResult::OkWithMessage(_))
+        || matches!(
+            result,
+            TaskResult::Batch(stats) if stats.failed == 0
+        )
+}
+
+const fn is_batch_failure(result: &TaskResult) -> bool {
+    matches!(result, TaskResult::Batch(stats) if stats.failed > 0)
+}
+
+const fn is_batch_change(result: &TaskResult) -> bool {
+    matches!(result, TaskResult::Batch(stats) if stats.changed > 0)
 }
 
 fn process_precomputed_states(
@@ -120,7 +132,7 @@ fn process_resources_mixed_states() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Failed(_)));
+    assert!(is_batch_failure(&result));
 }
 
 #[test]
@@ -196,7 +208,7 @@ fn process_resources_remove_dry_run() {
         vec![MockResource::new(ResourceState::Correct).with_remove(Err("should not call".into()))];
 
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(matches!(result, TaskResult::DryRun));
+    assert!(is_batch_change(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -217,7 +229,7 @@ fn process_resources_parallel_accumulates_stats() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Failed(_)));
+    assert!(is_batch_failure(&result));
 }
 
 #[test]
@@ -367,7 +379,7 @@ fn process_precomputed_states_stats_accumulate_across_resources() {
 
     // Just verify it succeeds — individual counts are exercised by process_single tests
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Failed(_)));
+    assert!(is_batch_failure(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -384,7 +396,7 @@ fn process_resources_parallel_dry_run() {
     ];
     let opts = default_opts();
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(matches!(result, TaskResult::DryRun));
+    assert!(is_batch_change(&result));
 }
 
 #[test]
@@ -395,7 +407,7 @@ fn process_resources_remove_parallel_dry_run() {
         MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),
     ];
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(matches!(result, TaskResult::DryRun));
+    assert!(is_batch_change(&result));
 }
 
 #[test]
@@ -413,7 +425,7 @@ fn process_precomputed_states_parallel_no_bail_reports_failure() {
     ];
     let opts = default_opts(); // no_bail
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Failed(_)));
+    assert!(is_batch_failure(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -481,7 +493,7 @@ fn process_precomputed_states_lenient_reports_failure() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Failed(_)));
+    assert!(is_batch_failure(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -498,7 +510,7 @@ fn process_resources_lenient_reports_apply_errors() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Failed(_)));
+    assert!(is_batch_failure(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -614,7 +626,7 @@ fn process_precomputed_states_dry_run() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::DryRun));
+    assert!(is_batch_change(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -637,7 +649,7 @@ fn process_precomputed_states_parallel_dry_run() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::DryRun));
+    assert!(is_batch_change(&result));
 }
 
 // -----------------------------------------------------------------------
@@ -655,7 +667,7 @@ fn process_resources_lenient_reports_multiple_apply_errors() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Failed(_)));
+    assert!(is_batch_failure(&result));
 }
 
 // -----------------------------------------------------------------------

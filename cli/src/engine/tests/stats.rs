@@ -53,51 +53,55 @@ fn stats_summary_with_failed() {
 }
 
 #[test]
-fn stats_finish_returns_ok_when_dry_run_has_no_changes() {
+fn stats_finish_returns_batch_when_dry_run_has_no_changes() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = dry_run_context(config);
     let stats = TaskStats::new();
     let result = stats.finish(&ctx);
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(result, TaskResult::Batch(batch) if batch.changed == 0));
 }
 
 #[test]
-fn stats_finish_returns_dry_run_when_dry_run_would_change() {
+fn stats_finish_returns_batch_when_dry_run_would_change() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = dry_run_context(config);
     let mut stats = TaskStats::new();
     stats.changed = 1;
     let result = stats.finish(&ctx);
-    assert!(matches!(result, TaskResult::DryRun));
+    assert!(matches!(result, TaskResult::Batch(batch) if batch.changed == 1));
 }
 
 #[test]
-fn stats_finish_returns_ok_result() {
+fn stats_finish_returns_empty_batch() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let stats = TaskStats::new();
     let result = stats.finish(&ctx);
-    assert!(matches!(result, TaskResult::Ok));
+    assert!(matches!(
+        result,
+        TaskResult::Batch(batch)
+            if batch.changed == 0 && batch.already_ok == 0 && batch.failed == 0
+    ));
 }
 
 #[test]
-fn stats_finish_returns_ok_with_message_when_changed() {
+fn stats_finish_returns_changed_batch() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let mut stats = TaskStats::new();
     stats.changed = 1;
     let result = stats.finish(&ctx);
-    assert!(matches!(result, TaskResult::OkWithMessage(_)));
+    assert!(matches!(result, TaskResult::Batch(batch) if batch.changed == 1));
 }
 
 #[test]
-fn stats_finish_returns_failed_result() {
+fn stats_finish_returns_failed_batch() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
     let mut stats = TaskStats::new();
     stats.failed = 1;
     let result = stats.finish(&ctx);
-    assert!(matches!(result, TaskResult::Failed(_)));
+    assert!(matches!(result, TaskResult::Batch(batch) if batch.failed == 1));
 }
 
 // -----------------------------------------------------------------------

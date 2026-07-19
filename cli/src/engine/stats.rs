@@ -49,6 +49,8 @@ pub enum TaskResult {
     Failed(String),
     /// Task ran in dry-run mode.
     DryRun,
+    /// Task processed a batch of actions with structured counters.
+    Batch(TaskStats),
 }
 
 /// Counters for batch tasks that process many items.
@@ -80,7 +82,7 @@ pub enum TaskResult {
 /// stats.failed = 1;
 /// assert_eq!(stats.summary(false), "1 changed, 2 already ok, 3 skipped, 1 failed");
 /// ```
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct TaskStats {
     /// Number of items changed or applied.
     pub changed: u32,
@@ -171,6 +173,7 @@ impl TaskStats {
 
     /// Convert these counters into the appropriate [`TaskResult`] without
     /// logging.
+    #[cfg(test)]
     pub fn into_result(self, dry_run: bool) -> TaskResult {
         let msg = self.summary(dry_run);
         if self.failed > 0 {
@@ -187,8 +190,7 @@ impl TaskStats {
     /// Log the summary and return the appropriate [`TaskResult`].
     pub fn finish(self, ctx: &Context) -> TaskResult {
         self.log_summary(ctx);
-        let dry_run = ctx.dry_run();
-        self.into_result(dry_run)
+        TaskResult::Batch(self)
     }
 }
 
@@ -344,7 +346,7 @@ mod tests {
     // -------------------------------------------------------------------
 
     #[test]
-    fn finish_returns_ok_with_message_when_changes_were_recorded() {
+    fn finish_returns_batch_when_changes_were_recorded() {
         let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
         let ctx = crate::test_helpers::make_linux_context(config);
         let stats = TaskStats {
@@ -353,11 +355,14 @@ mod tests {
             skipped: 0,
             failed: 0,
         };
-        assert!(matches!(stats.finish(&ctx), TaskResult::OkWithMessage(_)));
+        assert!(matches!(
+            stats.finish(&ctx),
+            TaskResult::Batch(stats) if stats.changed == 1
+        ));
     }
 
     #[test]
-    fn finish_returns_ok_when_no_changes_were_recorded() {
+    fn finish_returns_batch_when_no_changes_were_recorded() {
         let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
         let ctx = crate::test_helpers::make_linux_context(config);
         let stats = TaskStats {
@@ -366,11 +371,14 @@ mod tests {
             skipped: 0,
             failed: 0,
         };
-        assert!(matches!(stats.finish(&ctx), TaskResult::Ok));
+        assert!(matches!(
+            stats.finish(&ctx),
+            TaskResult::Batch(stats) if stats.already_ok == 1
+        ));
     }
 
     #[test]
-    fn finish_returns_ok_when_only_resource_skips_were_recorded() {
+    fn finish_returns_batch_when_only_resource_skips_were_recorded() {
         let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
         let ctx = crate::test_helpers::make_linux_context(config);
         let stats = TaskStats {
@@ -379,11 +387,14 @@ mod tests {
             skipped: 1,
             failed: 0,
         };
-        assert!(matches!(stats.finish(&ctx), TaskResult::Ok));
+        assert!(matches!(
+            stats.finish(&ctx),
+            TaskResult::Batch(stats) if stats.skipped == 1
+        ));
     }
 
     #[test]
-    fn finish_returns_dry_run_when_dry_run() {
+    fn finish_returns_batch_when_dry_run() {
         let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
         let ctx = crate::test_helpers::make_linux_context(config).with_dry_run(true);
         let stats = TaskStats {
@@ -392,11 +403,14 @@ mod tests {
             skipped: 0,
             failed: 0,
         };
-        assert!(matches!(stats.finish(&ctx), TaskResult::DryRun));
+        assert!(matches!(
+            stats.finish(&ctx),
+            TaskResult::Batch(stats) if stats.changed == 1
+        ));
     }
 
     #[test]
-    fn finish_returns_ok_when_dry_run_has_no_changes() {
+    fn finish_returns_batch_when_dry_run_has_no_changes() {
         let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
         let ctx = crate::test_helpers::make_linux_context(config).with_dry_run(true);
         let stats = TaskStats {
@@ -405,11 +419,14 @@ mod tests {
             skipped: 0,
             failed: 0,
         };
-        assert!(matches!(stats.finish(&ctx), TaskResult::Ok));
+        assert!(matches!(
+            stats.finish(&ctx),
+            TaskResult::Batch(stats) if stats.already_ok == 1
+        ));
     }
 
     #[test]
-    fn finish_returns_failed_when_non_fatal_failures_were_recorded() {
+    fn finish_returns_batch_when_non_fatal_failures_were_recorded() {
         let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
         let ctx = crate::test_helpers::make_linux_context(config);
         let stats = TaskStats {
@@ -419,7 +436,10 @@ mod tests {
             failed: 1,
         };
 
-        assert!(matches!(stats.finish(&ctx), TaskResult::Failed(_)));
+        assert!(matches!(
+            stats.finish(&ctx),
+            TaskResult::Batch(stats) if stats.failed == 1
+        ));
     }
 
     // -------------------------------------------------------------------
@@ -485,7 +505,8 @@ mod tests {
             | TaskResult::OkWithMessage(_)
             | TaskResult::Skipped(_)
             | TaskResult::Failed(_)
-            | TaskResult::DryRun) => panic!("expected NotApplicable, got {other:?}"),
+            | TaskResult::DryRun
+            | TaskResult::Batch(_)) => panic!("expected NotApplicable, got {other:?}"),
         }
     }
 
@@ -498,7 +519,8 @@ mod tests {
             | TaskResult::OkWithMessage(_)
             | TaskResult::NotApplicable(_)
             | TaskResult::Failed(_)
-            | TaskResult::DryRun) => panic!("expected Skipped, got {other:?}"),
+            | TaskResult::DryRun
+            | TaskResult::Batch(_)) => panic!("expected Skipped, got {other:?}"),
         }
     }
 
@@ -511,7 +533,8 @@ mod tests {
             | TaskResult::OkWithMessage(_)
             | TaskResult::NotApplicable(_)
             | TaskResult::Skipped(_)
-            | TaskResult::DryRun) => panic!("expected Failed, got {other:?}"),
+            | TaskResult::DryRun
+            | TaskResult::Batch(_)) => panic!("expected Failed, got {other:?}"),
         }
     }
 

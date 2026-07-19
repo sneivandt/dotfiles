@@ -2,6 +2,35 @@
 use super::diagnostic::{DiagEvent, DiagnosticLog};
 use super::style::TextStyle;
 
+/// Structured action totals contributed by a task.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ActionCounts {
+    /// Actions applied to the system.
+    pub applied: u32,
+    /// Actions planned during a dry run.
+    pub planned: u32,
+    /// Actions deliberately skipped.
+    pub skipped: u32,
+    /// Actions that failed.
+    pub failed: u32,
+}
+
+impl ActionCounts {
+    /// Merge another set of action totals, saturating each counter.
+    pub const fn merge(&mut self, other: Self) {
+        self.applied = self.applied.saturating_add(other.applied);
+        self.planned = self.planned.saturating_add(other.planned);
+        self.skipped = self.skipped.saturating_add(other.skipped);
+        self.failed = self.failed.saturating_add(other.failed);
+    }
+
+    /// Return whether all action counters are zero.
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.applied == 0 && self.planned == 0 && self.skipped == 0 && self.failed == 0
+    }
+}
+
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]
 pub struct TaskEntry {
@@ -11,6 +40,8 @@ pub struct TaskEntry {
     pub status: TaskStatus,
     /// Optional detail message (e.g., skip reason or error description).
     pub message: Option<String>,
+    /// Structured action totals produced by the task.
+    pub actions: ActionCounts,
 }
 
 /// Status of a completed task.
@@ -119,6 +150,20 @@ pub trait Output: Send + Sync {
 pub trait TaskRecorder: Send + Sync {
     /// Record a task result for the summary.
     fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>);
+
+    /// Record a task result and its structured action totals.
+    ///
+    /// The default preserves compatibility with recorders that only collect
+    /// task-level outcomes.
+    fn record_task_with_actions(
+        &self,
+        name: &str,
+        status: TaskStatus,
+        message: Option<&str>,
+        _actions: ActionCounts,
+    ) {
+        self.record_task(name, status, message);
+    }
 }
 
 /// Combined logging interface: user-facing output plus task recording.
@@ -162,10 +207,38 @@ mod tests {
             name: "test-task".to_string(),
             status: TaskStatus::Ok,
             message: Some("all good".to_string()),
+            actions: ActionCounts::default(),
         };
         let cloned = entry.clone();
         assert_eq!(cloned.name, entry.name);
         assert_eq!(cloned.status, entry.status);
         assert_eq!(cloned.message, entry.message);
+        assert_eq!(cloned.actions, entry.actions);
+    }
+
+    #[test]
+    fn action_counts_merge_saturates() {
+        let mut counts = ActionCounts {
+            applied: u32::MAX,
+            planned: 1,
+            skipped: 2,
+            failed: 3,
+        };
+        counts.merge(ActionCounts {
+            applied: 1,
+            planned: 4,
+            skipped: 5,
+            failed: 6,
+        });
+
+        assert_eq!(
+            counts,
+            ActionCounts {
+                applied: u32::MAX,
+                planned: 5,
+                skipped: 7,
+                failed: 9,
+            }
+        );
     }
 }

@@ -5,12 +5,17 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(
     name = "dotfiles",
-    about = "Cross-platform dotfiles management engine",
+    about = "Manage system configuration from this dotfiles repository",
     version = option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION"))),
     disable_version_flag = true,
-    disable_help_flag = true,
+    disable_help_subcommand = true,
+    after_help = "\
+Examples:
+  dotfiles install
+  dotfiles install --dry-run
+  dotfiles install --only symlinks
+  dotfiles test",
     help_template = "\
-{name} {version}
 {about-with-newline}
 {usage-heading} {usage}
 
@@ -22,9 +27,13 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
 
-    /// Enable verbose output
+    /// Show complete task and action details
     #[arg(short, long, global = true)]
     pub verbose: bool,
+
+    /// Print version
+    #[arg(long, action = clap::ArgAction::Version)]
+    pub version: Option<bool>,
 
     /// Options shared across all subcommands.
     #[command(flatten)]
@@ -34,23 +43,23 @@ pub struct Cli {
 /// Options shared across all subcommands.
 #[derive(Parser, Debug, Clone)]
 pub struct GlobalOpts {
-    /// Profile to use (base, desktop)
-    #[arg(short, long, global = true)]
+    /// Use a specific profile
+    #[arg(short, long, global = true, value_name = "PROFILE")]
     pub profile: Option<String>,
 
-    /// Preview changes without applying
+    /// Preview changes without applying them
     #[arg(short = 'd', long, global = true)]
     pub dry_run: bool,
 
-    /// Override dotfiles root directory
-    #[arg(long, global = true)]
+    /// Use PATH as the dotfiles repository
+    #[arg(long, global = true, value_name = "PATH")]
     pub root: Option<std::path::PathBuf>,
 
-    /// Path to a private overlay repository with additional configuration
-    #[arg(long, global = true)]
+    /// Merge configuration from an overlay repository
+    #[arg(long, global = true, value_name = "PATH")]
     pub overlay: Option<std::path::PathBuf>,
 
-    /// Disable parallel task execution
+    /// Run tasks sequentially
     #[arg(long = "no-parallel", global = true, action = clap::ArgAction::SetFalse)]
     pub parallel: bool,
 }
@@ -58,18 +67,16 @@ pub struct GlobalOpts {
 /// Available subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Install dotfiles and configure system
+    /// Apply dotfiles and system configuration
     Install(InstallOpts),
-    /// Update dotfiles and advance pinned dependency versions
+    /// Apply configuration and advance pinned dependencies
     Update(UpdateOpts),
-    /// Materialize managed symlinks and remove installed hooks/wrappers
+    /// Remove managed integrations while preserving user files
     Uninstall(UninstallOpts),
-    /// Run self-tests and validation
+    /// Validate configuration and run self-tests
     Test(TestOpts),
-    /// Print the most recent dotfiles log
+    /// Show the latest run log
     Log(LogOpts),
-    /// Print version information
-    Version,
     /// Generate shell completions for the given shell
     #[command(hide = true)]
     Completions(CompletionsOpts),
@@ -78,20 +85,12 @@ pub enum Command {
 /// Options for the `install` subcommand.
 #[derive(Parser, Debug, Clone)]
 pub struct InstallOpts {
-    /// Task selectors to skip (comma-separated, case-insensitive selector match).
-    ///
-    /// A filter matches either a task's normalized name (`install-symlinks`),
-    /// its canonical selector (`symlinks`, `git-hooks`, `reload-configuration`),
-    /// or the leading token of that canonical selector (`reload`).
-    /// Can be combined with --only: a task runs when it matches an --only filter
-    /// AND does not match any --skip filter.
-    #[arg(long, value_delimiter = ',')]
+    /// Skip matching tasks (comma-separated)
+    #[arg(long, value_delimiter = ',', value_name = "TASKS")]
     pub skip: Vec<String>,
 
-    /// Run only these task selectors (comma-separated, case-insensitive selector match).
-    ///
-    /// Filters use the same matching rules as `--skip`.
-    #[arg(long, value_delimiter = ',')]
+    /// Run only matching tasks (comma-separated)
+    #[arg(long, value_delimiter = ',', value_name = "TASKS")]
     pub only: Vec<String>,
 }
 
@@ -131,11 +130,130 @@ pub struct CompletionsOpts {
 )]
 mod tests {
     use super::*;
-    use clap::CommandFactory;
+    use clap::{CommandFactory, error::ErrorKind};
+
+    fn display_output(args: &[&str], expected_kind: ErrorKind) -> String {
+        let error = Cli::try_parse_from(args.iter().copied())
+            .expect_err("display arguments should stop normal parsing");
+        assert_eq!(
+            error.kind(),
+            expected_kind,
+            "display argument should return the expected clap result"
+        );
+        error.to_string()
+    }
 
     #[test]
     fn verify_cli() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn standard_help_flags_are_enabled() {
+        for flag in ["-h", "--help"] {
+            let help = display_output(&["dotfiles", flag], ErrorKind::DisplayHelp);
+            assert!(
+                help.starts_with("Manage system configuration from this dotfiles repository\n"),
+                "{flag} should show top-level help without a version header"
+            );
+        }
+    }
+
+    #[test]
+    fn version_flag_is_long_only() {
+        let version = display_output(&["dotfiles", "--version"], ErrorKind::DisplayVersion);
+        let command = Cli::command();
+        let expected_version = command.get_version().expect("CLI should define a version");
+        assert_eq!(
+            version,
+            format!("dotfiles {expected_version}\n"),
+            "--version should use clap's standard version output"
+        );
+
+        let error = Cli::try_parse_from(["dotfiles", "-V"])
+            .expect_err("-V should not be accepted as a version flag");
+        assert_eq!(
+            error.kind(),
+            ErrorKind::UnknownArgument,
+            "-V should remain unavailable"
+        );
+    }
+
+    #[test]
+    fn help_and_version_subcommands_are_disabled() {
+        for subcommand in ["help", "version"] {
+            let error = Cli::try_parse_from(["dotfiles", subcommand])
+                .expect_err("removed subcommands should be rejected");
+            assert_eq!(
+                error.kind(),
+                ErrorKind::InvalidSubcommand,
+                "{subcommand} should not be a user-visible subcommand"
+            );
+        }
+
+        let command = Cli::command();
+        assert!(
+            command
+                .get_subcommands()
+                .all(|subcommand| !matches!(subcommand.get_name(), "help" | "version")),
+            "help and version should not appear in the command model"
+        );
+    }
+
+    #[test]
+    fn top_level_help_uses_user_facing_copy_and_examples() {
+        let help = display_output(&["dotfiles", "--help"], ErrorKind::DisplayHelp);
+
+        for description in [
+            "install    Apply dotfiles and system configuration",
+            "update     Apply configuration and advance pinned dependencies",
+            "uninstall  Remove managed integrations while preserving user files",
+            "test       Validate configuration and run self-tests",
+            "log        Show the latest run log",
+            "-v, --verbose            Show complete task and action details",
+            "-p, --profile <PROFILE>  Use a specific profile",
+            "-d, --dry-run            Preview changes without applying them",
+            "--root <PATH>        Use PATH as the dotfiles repository",
+            "--overlay <PATH>     Merge configuration from an overlay repository",
+            "--no-parallel        Run tasks sequentially",
+            "-h, --help               Print help",
+        ] {
+            assert!(
+                help.contains(description),
+                "top-level help should contain: {description}"
+            );
+        }
+
+        assert!(
+            help.contains(
+                "Examples:\n  dotfiles install\n  dotfiles install --dry-run\n  \
+                 dotfiles install --only symlinks\n  dotfiles test"
+            ),
+            "top-level help should show the concise examples"
+        );
+        assert!(
+            !help.contains("Cross-platform dotfiles management engine"),
+            "implementation-oriented copy should be removed"
+        );
+    }
+
+    #[test]
+    fn install_and_update_help_use_concise_task_selectors() {
+        for command in ["install", "update"] {
+            let help = display_output(&["dotfiles", command, "--help"], ErrorKind::DisplayHelp);
+            assert!(
+                help.contains("--only <TASKS>       Run only matching tasks (comma-separated)"),
+                "{command} help should describe --only in one line"
+            );
+            assert!(
+                help.contains("--skip <TASKS>       Skip matching tasks (comma-separated)"),
+                "{command} help should describe --skip in one line"
+            );
+            assert!(
+                !help.contains("case-insensitive selector match"),
+                "{command} help should omit selector implementation details"
+            );
+        }
     }
 
     #[test]
@@ -186,12 +304,6 @@ mod tests {
         if let Command::Install(opts) = cli.command {
             assert_eq!(opts.only, vec!["symlinks"]);
         }
-    }
-
-    #[test]
-    fn parse_version() {
-        let cli = Cli::parse_from(["dotfiles", "version"]);
-        assert!(matches!(cli.command, Command::Version));
     }
 
     #[test]

@@ -334,8 +334,8 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
     assert!(
         matches!(
             result,
-            TaskResult::OkWithMessage(ref message)
-                if message == "1 changed, 1 already ok"
+            TaskResult::Batch(ref stats)
+                if stats.changed == 1 && stats.already_ok == 1 && stats.failed == 0
         ),
         "expected changed package task result after batch install, got {result:?}"
     );
@@ -360,7 +360,7 @@ fn install_packages_all_already_installed_returns_ok() {
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     assert!(
         matches!(result, TaskResult::Ok),
-        "expected Ok when all packages already installed, got {result:?}"
+        "expected Ok when all packages are installed, got {result:?}"
     );
 }
 
@@ -383,8 +383,8 @@ fn install_packages_dry_run_reports_missing_packages() {
     ctx = ctx.with_dry_run(true);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::DryRun),
-        "expected DryRun, got {result:?}"
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed == 1),
+        "expected one planned package action, got {result:?}"
     );
 }
 
@@ -413,8 +413,8 @@ fn install_packages_returns_failed_when_batch_install_fails() {
     let ctx = make_package_context(config, Os::Linux, true, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::Failed(_)),
-        "expected Failed when batch install fails, got {result:?}"
+        matches!(result, TaskResult::Batch(ref stats) if stats.failed == 1),
+        "expected one failed package action, got {result:?}"
     );
 }
 
@@ -445,8 +445,8 @@ fn install_packages_winget_installs_per_package() {
     assert!(
         matches!(
             result,
-            TaskResult::OkWithMessage(ref message)
-                if message == "1 changed, 0 already ok"
+            TaskResult::Batch(ref stats)
+                if stats.changed == 1 && stats.already_ok == 0 && stats.failed == 0
         ),
         "expected changed package task result after winget per-package install, got {result:?}"
     );

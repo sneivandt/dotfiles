@@ -51,7 +51,7 @@ EnableAutoTray = 0
 
 ### Registry Rust Task
 
-The registry task in `cli/src/domains/system/tasks/registry.rs`:
+The registry task in `cli/src/domains/system/registry.rs`:
 1. Parses `conf/registry.toml` into path → key/value maps
 2. Batch-checks all current values via `batch_check_values(&resources)`
 3. Compares each entry's current value with the desired value

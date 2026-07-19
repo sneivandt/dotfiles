@@ -9,7 +9,7 @@ config_resource_task! {
     pub ApplyFilePermissions {
         name: "Configure file permissions",
         config: Vec<ChmodEntry>,
-        deps: [crate::domains::files::tasks::symlinks::InstallSymlinks],
+        deps: [crate::domains::files::symlinks::InstallSymlinks],
         guard: |_cfg, ctx| ctx.system().platform().supports_chmod(),
         items: |cfg| cfg.clone(),
         build: |entry, ctx| ChmodResource::from_entry(&entry, ctx.paths().home()),

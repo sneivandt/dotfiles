@@ -13,7 +13,7 @@ impl Task for ConfigurePath {
     task_metadata! {
         name: "Configure PATH",
         phase: TaskPhase::Bootstrap,
-        deps: [crate::domains::dotfiles::tasks::wrapper::InstallWrapper],
+        deps: [crate::domains::dotfiles::wrapper::InstallWrapper],
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {

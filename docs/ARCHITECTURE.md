@@ -193,11 +193,12 @@ and filters sections against the active profile's categories:
 | `domains/overlay/config/overlay.rs` | — | Overlay path resolution and persistence |
 | `domains/overlay/config/scripts.rs` | `scripts.toml` | Custom script entries from overlay repo |
 
-#### Tasks (`engine/task/` + `domains/<domain>/tasks/`)
+#### Tasks (`engine/task/` + `domains/<domain>/*.rs`)
 
 The generic `Task` trait, task metadata vocabulary, macros, and executor live in
 `engine/task/`; concrete task implementations live under
-`domains/<domain>/tasks/`. Each task implements the `Task` trait:
+`domains/<domain>/` as root-level task entry modules. Each task implements the
+`Task` trait:
 
 ```rust
 pub trait Task: Send + Sync + 'static {
@@ -281,11 +282,11 @@ concurrency primitives that live in `infra/` (so `infra::exec` can honour
 cancellation without depending on `engine`); `engine` re-exports
 `CancellationToken` for its consumers.
 
-**Two axes: domain and phase.** Task files are organized by **domain** (what a
-task is about) under `cli/src/domains/<domain>/tasks/`, while each task uses the
-default Provision **phase** or overrides `phase()` for another scheduler
-barrier. The axes are orthogonal: a domain folder can hold tasks from different
-phases, and a single domain can span phases. Domains:
+**Two axes: domain and phase.** Task entry files are organized by **domain**
+(what a task is about) directly under `cli/src/domains/<domain>/`, while each
+task uses the default Provision **phase** or overrides `phase()` for another
+scheduler barrier. The axes are orthogonal: a domain folder can hold tasks from
+different phases, and a single domain can span phases. Domains:
 
 - `dotfiles/` — self-update, CLI wrapper install, `PATH` setup
 - `repository/` — git pull and sparse checkout
@@ -300,16 +301,18 @@ phases, and a single domain can span phases. Domains:
 
 Cross-domain validation checks live in `app/validation/` (not a domain).
 
-Every domain is a folder under `domains/`, each colocating its config models
-(`config/`), resource implementations (`resources/`), and task implementations
-(`tasks/`). A domain's tasks folder typically uses a thin `mod.rs` with per-task
-submodules (as in `system/`, `git/`, and `ai/apm/`). Cohesive modules can
-instead keep production code in `mod.rs` and move large tests to a sibling
-`tests.rs` (as in `editors/`, `overlay/`, `packages/`, and
-`repository/sparse_checkout/`). The framework itself — the `Task` trait,
-`TaskPhase`, `TaskId`, and the task/resource macros — lives in `engine/task/`
-(`mod.rs`, `types.rs`, `macros.rs`), while the task catalog and the
-`--skip`/`--only` filter live in `app/catalog.rs` and `app/filter.rs`.
+Every domain is a folder under `domains/`, each colocating config models
+(`config/`), resource implementations (`resources/`), and root-level task entry
+files such as `git/hooks.rs` or `ai/copilot_settings.rs`. `config/` and
+`resources/` are the shared production subdirectory categories; externalized
+domain tests live under `tests/`. Large features use a root entry file plus a
+same-named production support directory, such as `ai/apm.rs` with `ai/apm/`,
+`packages/install.rs` with `packages/install/`, and `repository/update.rs` with
+`repository/update/`. A feature folder is not created only to hold tests. The
+framework itself — the `Task` trait, `TaskPhase`, `TaskId`, and the task/resource
+macros — lives in `engine/task/` (`mod.rs`, `types.rs`, `macros.rs`), while the
+task catalog and the `--skip`/`--only` filter live in `app/catalog.rs` and
+`app/filter.rs`.
 
 Task bodies generally use one of two convergence abstractions:
 
@@ -351,7 +354,7 @@ Sync phase — synchronize the dotfiles repository:
 - `reload_config` (app) — Reload config from disk after `update` pulls new commits, swapping the shared `ConfigStore` handles. Owned by the application layer (`app/reload.rs`) because it re-composes the aggregate `Config` across every domain
 - `hooks` (git) — Install git hooks (copies `hooks/*` into `.git/hooks/`)
 - `completions` (shell) — Generate the zsh completion script into `symlinks/config/zsh/completions/`
-- `overlay_scripts` (overlay) — Discover overlay script definitions and log script count. The overlay *domain* spans two phases: this discovery task runs in the Sync phase, while the generated `OverlayScriptTask`s run in the Provision phase. Both live in `domains/overlay/tasks/mod.rs` because phase is per-task metadata (see `phase()` above), not folder-derived.
+- `overlay_scripts` (overlay) — Discover overlay script definitions and log script count. The overlay *domain* spans two phases: this discovery task runs in the Sync phase, while the generated `OverlayScriptTask`s run in the Provision phase. Both live in `domains/overlay/scripts.rs` because phase is per-task metadata (see `phase()` above), not folder-derived.
 
 Provision phase — converge declared configuration to its target state:
 - `packages` (packages) — Install system packages (pacman or winget)
@@ -513,7 +516,7 @@ skipped if a prerequisite failed; all failures are reported in the summary.
 
 ### Rust Tests
 
-- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `infra/platform.rs`, `app/cli.rs`, `infra/config/toml_loader.rs`, `domains/dotfiles/tasks/*.rs`, `domains/repository/tasks/*.rs`, `domains/files/tasks/*.rs`)
+- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `infra/platform.rs`, `app/cli.rs`, `infra/config/toml_loader.rs`, `domains/dotfiles/*.rs`, `domains/repository/*.rs`, `domains/files/*.rs`)
 - **Integration tests**: Separate test binaries in `cli/tests/` for behavioral
   CI contracts, configuration drift, domain boundaries, end-to-end apply,
   command structure, task execution, and configuration validation. See
@@ -580,8 +583,8 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers automatically 
 
 ### Adding New Tasks
 
-1. Create a new file in the relevant domain's tasks folder under `cli/src/domains/<domain>/tasks/` (e.g. `dotfiles/`, `repository/`, `git/`, `files/`, `shell/`, `system/`, `ai/`), implementing the `Task` trait. Provision is the default phase; override `phase()` only for Bootstrap, Sync, Validation, or Update.
-2. Add the module to that domain's `cli/src/domains/<domain>/tasks/mod.rs`
+1. Create a task entry file directly under `cli/src/domains/<domain>/` (for example `ai/copilot_settings.rs`), implementing the `Task` trait. For a large feature, keep the entry point in `<feature>.rs` and supporting implementation in `<feature>/`. Provision is the default phase; override `phase()` only for Bootstrap, Sync, Validation, or Update.
+2. Add the module to that domain's `cli/src/domains/<domain>/mod.rs`
 3. Add the task to `all_install_tasks()` in `cli/src/app/catalog.rs`
 
 ### Adding New Configuration Types
@@ -592,7 +595,7 @@ GitHub Actions release (`.github/workflows/release.yml`) triggers automatically 
    `Config::load()` (e.g. `sections.collect_filtered(...)`). The same call
    loads the main config and merges the overlay, so there is no separate
    overlay-merge step to keep in sync.
-4. Create a Provision-default task in the relevant domain's tasks folder under `cli/src/domains/<domain>/tasks/` that consumes the config
+4. Create a Provision-default task entry file under `cli/src/domains/<domain>/` that consumes the config
 5. Document in CONFIGURATION.md
 
 ### Adding Overlay Scripts

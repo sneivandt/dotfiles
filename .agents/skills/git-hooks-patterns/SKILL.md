@@ -8,12 +8,12 @@ description: >
 # Git Hooks Patterns
 
 The project uses git hooks for pre-commit security scanning. Hook installation
-is handled by `cli/src/domains/git/tasks/hooks.rs`, which implements `Task`.
+is handled by `cli/src/domains/git/hooks.rs`, which implements `Task`.
 
 ## Overview
 
 - **Pre-commit scanning**: Detect sensitive information before commits
-- **Automatic installation**: `domains::git::tasks::hooks::InstallGitHooks` copies hooks during install
+- **Automatic installation**: `domains::git::hooks::InstallGitHooks` copies hooks during install
 - **Pattern-based detection**: Configurable patterns in `hooks/sensitive-patterns.ini`
 - **Bypassable**: `git commit --no-verify` for false positives
 
@@ -21,7 +21,7 @@ Hooks live in `hooks/` and are copied to `.git/hooks/` by the Rust engine.
 
 ## Hook Installation Task
 
-The `InstallGitHooks` task in `cli/src/domains/git/tasks/hooks.rs` holds its own
+The `InstallGitHooks` task in `cli/src/domains/git/hooks.rs` holds its own
 `fs_ops` field for injectable filesystem access:
 
 ```rust

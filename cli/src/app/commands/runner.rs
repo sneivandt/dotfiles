@@ -103,7 +103,7 @@ impl CommandRunner {
     pub fn overlay_script_tasks(&self) -> Vec<Box<dyn Task>> {
         self.overlay.as_ref().map_or_else(Vec::new, |root| {
             let scripts = self.store.scripts.read();
-            crate::domains::overlay::tasks::overlay_script_tasks(&scripts, root)
+            crate::domains::overlay::scripts::overlay_script_tasks(&scripts, root)
         })
     }
 

@@ -2,4 +2,4 @@
 
 pub mod config;
 pub mod resources;
-pub mod tasks;
+pub mod vscode_extensions;

@@ -54,12 +54,14 @@ Unit tests live alongside the code they test in `cli/src/`. Small modules keep
 tests inline; larger test modules can live in sibling files such as `tests.rs`,
 with related resource suites separated by nested modules inside that file.
 Standard sibling module wiring is preferred; `#[path]` is reserved for
-established externalized test layouts.
+established externalized test layouts. Domain-root task entry points put
+tests-only externalized modules under `domains/<domain>/tests/` rather than
+creating a same-named feature folder solely for tests.
 Examples:
 - `infra/platform.rs` — Platform detection and category exclusion logic
 - `app/cli.rs` — CLI argument parsing and command structure
 - `infra/config/toml_loader.rs` — TOML file parsing
-- `domains/<domain>/tasks/*.rs` — Task applicability and helper functions
+- `domains/<domain>/*.rs` — Task applicability and helper functions
 
 ```rust
 #[cfg(test)]

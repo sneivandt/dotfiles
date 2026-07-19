@@ -8,7 +8,7 @@ use crate::infra::config::config_section;
 
 /// A file permission directive.
 #[derive(Debug, Clone)]
-#[allow(dead_code, reason = "used conditionally via cfg")] // fields used on unix only (tasks/chmod.rs)
+#[allow(dead_code, reason = "used conditionally via cfg")] // fields used on unix only (chmod.rs)
 pub struct ChmodEntry {
     /// Configured permission mode (e.g., `"600"`, `"755"`).
     pub mode: String,

@@ -1,8 +1,9 @@
 //! Files domain: managed symlinks and file permissions.
 
+pub mod chmod;
 pub mod config;
 pub mod resources;
-pub mod tasks;
+pub mod symlinks;
 
 /// A validated octal file permission mode (e.g., `"600"`, `"0755"`).
 ///

@@ -102,7 +102,7 @@ impl Task for ReloadConfig {
     task_metadata! {
         name: "Reload configuration",
         phase: TaskPhase::Sync,
-        deps: [crate::domains::repository::tasks::update::UpdateRepository],
+        deps: [crate::domains::repository::update::UpdateRepository],
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {

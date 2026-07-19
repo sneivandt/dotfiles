@@ -18,6 +18,12 @@ this repository.
 - Keep most implementation logic out of `mod.rs`.
 - Put domain-specific logic in separate, focused files with names that describe
   the responsibility.
+- Put concrete task entry modules directly in `cli/src/domains/<domain>/`; do
+  not introduce a generic `tasks/` subdirectory.
+- Keep `config/` and `resources/` as shared production domain subdirectory
+  categories and `tests/` for externalized domain tests. A large feature may use
+  `<feature>.rs` as its root entry point with focused production support modules
+  under `<feature>/`; do not create that feature folder solely for tests.
 - Keep module boundaries easy to navigate: `mod.rs` should show what exists, not
   become the place where everything lives.
 - If a module grows multiple responsibilities, split it by domain rather than by

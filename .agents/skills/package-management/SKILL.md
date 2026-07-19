@@ -9,7 +9,8 @@ description: >
 
 System packages are declared in `conf/packages.toml`, parsed by
 `cli/src/domains/packages/config/packages.rs`, represented by package resources,
-and converged by tasks under `cli/src/domains/packages/tasks/`.
+and converged by the `cli/src/domains/packages/install.rs` task entry point with
+supporting implementation under `cli/src/domains/packages/install/`.
 
 ## Configuration Contract
 
@@ -33,7 +34,7 @@ than inferring it from package names.
 | deserialize and validate entries | `domains/packages/config/packages.rs` |
 | manager-specific query/install behavior | `domains/packages/resources/{pacman,paru,winget}.rs` |
 | resource state and mutation | `domains/packages/resources/package.rs` |
-| applicability and orchestration | `domains/packages/tasks/` |
+| applicability and orchestration | `domains/packages/install.rs` + `domains/packages/install/` |
 
 `PackageManager` selects a provider. Add a provider implementation rather than
 branching manager-specific command logic through tasks.

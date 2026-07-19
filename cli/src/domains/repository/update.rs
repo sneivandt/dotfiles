@@ -42,7 +42,7 @@ impl Task for UpdateRepository {
     task_metadata! {
         name: "Update repository",
         phase: TaskPhase::Sync,
-        deps: [crate::domains::repository::tasks::sparse_checkout::ConfigureSparseCheckout],
+        deps: [crate::domains::repository::sparse_checkout::ConfigureSparseCheckout],
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

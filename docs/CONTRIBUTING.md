@@ -120,8 +120,9 @@ Prefer the existing task macros over hand-written `Task` implementations:
 3. Use `task_metadata!` for hand-written tasks that need custom control flow
    but still have a static name, optional non-default phase, and dependencies.
 4. Declare dependencies with `task_deps![...]` instead of ad-hoc ordering.
-5. Add the module to the domain's
-   `cli/src/domains/<domain>/tasks/mod.rs`.
+5. Put the task entry file directly in `cli/src/domains/<domain>/` and add the
+   module to that domain's `mod.rs`. Large features may keep supporting code in
+   a same-named subdirectory behind the root entry file.
 6. Register the task in `all_install_tasks()` or `all_uninstall_tasks()` in
    `cli/src/app/catalog.rs`.
 7. Add unit or integration tests for gating, idempotency, and dry-run behavior.
@@ -134,8 +135,8 @@ Prefer the existing task macros over hand-written `Task` implementations:
 3. Add the field to the `Config` struct and a single `SectionLoader` call in
    `Config::load()`. One call (e.g. `sections.collect_filtered(...)`) loads the
    main config *and* merges the overlay, so there is no separate merge step.
-4. Create a task in `cli/src/domains/<domain>/tasks/` that consumes an injected
-   typed config handle
+4. Create a task entry file in `cli/src/domains/<domain>/` that consumes an
+   injected typed config handle
 
 #### Creating New Profiles
 

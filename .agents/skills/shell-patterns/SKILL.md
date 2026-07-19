@@ -8,8 +8,7 @@ description: >
 # Shell Wrapper Patterns
 
 Shell scripts in this project are **thin wrappers** that bootstrap the Rust
-binary. Task logic lives in domain folders under
-`cli/src/domains/<domain>/tasks/`.
+binary. Task entry points live directly under `cli/src/domains/<domain>/`.
 
 ## Entry Point: `dotfiles.sh`
 
@@ -86,7 +85,8 @@ For everything else (tasks, config, logging), edit the Rust code in `cli/src/`.
 
 - Keep wrapper scripts as short as practical; avoid line-count targets that
   encourage moving domain behavior into wrappers
-- Never add task logic to shell scripts — use `cli/src/domains/<domain>/tasks/`
+- Never add task logic to shell scripts — use a root task entry module under
+  `cli/src/domains/<domain>/`
 - The wrapper must resolve and export `DOTFILES_ROOT` before launching the binary
 - The wrapper must export `DOTFILES_WRAPPER` (`sh` or `pwsh`) so the CLI knows which wrapper invoked it
 - Wrapper arguments should pass through to the Rust CLI unless the wrapper itself must consume them (for example `--build`)

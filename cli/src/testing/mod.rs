@@ -86,37 +86,37 @@ pub mod tasks {
 
     pub mod files {
         pub mod chmod {
-            pub use crate::domains::files::tasks::chmod::ApplyFilePermissions;
+            pub use crate::domains::files::chmod::ApplyFilePermissions;
         }
 
         pub mod symlinks {
-            pub use crate::domains::files::tasks::symlinks::{InstallSymlinks, UninstallSymlinks};
+            pub use crate::domains::files::symlinks::{InstallSymlinks, UninstallSymlinks};
         }
     }
 
     pub mod editors {
         pub mod vscode_extensions {
-            pub use crate::domains::editors::tasks::InstallVsCodeExtensions;
+            pub use crate::domains::editors::vscode_extensions::InstallVsCodeExtensions;
         }
     }
 
     pub mod git {
         pub mod git_config {
-            pub use crate::domains::git::tasks::git_config::ConfigureGit;
+            pub use crate::domains::git::git_config::ConfigureGit;
         }
 
         pub mod hooks {
-            pub use crate::domains::git::tasks::hooks::{InstallGitHooks, UninstallGitHooks};
+            pub use crate::domains::git::hooks::{InstallGitHooks, UninstallGitHooks};
         }
     }
 
     pub mod packages {
-        pub use crate::domains::packages::tasks::{InstallAurPackages, InstallPackages};
+        pub use crate::domains::packages::install::{InstallAurPackages, InstallPackages};
     }
 
     pub mod system {
         pub mod systemd_units {
-            pub use crate::domains::system::tasks::systemd_units::ConfigureSystemd;
+            pub use crate::domains::system::systemd_units::ConfigureSystemd;
         }
     }
 }

@@ -16,12 +16,12 @@ commands. Shell wrappers only bootstrap and invoke the binary.
 
 | Work area | Primary files | Use this skill |
 |---|---|---|
-| New or changed resource type | `cli/src/domains/<domain>/resources/`, `cli/src/domains/<domain>/tasks/` | `resource-implementation` |
+| New or changed resource type | `cli/src/domains/<domain>/resources/`, `cli/src/domains/<domain>/<task>.rs` | `resource-implementation` |
 | Operation-style task bodies, scheduling, dependencies, parallelism | `cli/src/engine/`, domain tasks, `cli/src/app/commands/` | `engine-orchestration` |
 | Error handling, idempotency, dry-run behaviour | domain resources/tasks, `cli/src/engine/` | `error-handling-patterns` |
 | Console output, task recording, summaries | `cli/src/infra/logging/`, `cli/src/engine/task/execute.rs` | `logging-patterns` |
 | TOML parsing or config sections | `cli/src/app/config/`, domain config modules, `conf/` | `toml-configuration`, `config-validation` |
-| Profiles or sparse checkout | `cli/src/app/config/profiles.rs`, `cli/src/domains/repository/tasks/sparse_checkout/` | `profile-system`, `sparse-checkout-patterns` |
+| Profiles or sparse checkout | `cli/src/app/config/profiles.rs`, `cli/src/domains/repository/sparse_checkout.rs`, `cli/src/domains/repository/sparse_checkout/` | `profile-system`, `sparse-checkout-patterns` |
 | Windows-specific features | registry, symlinks, PowerShell wrapper, platform gates | `windows-specific-patterns`, `cross-platform-verification` |
 | Package installation | `cli/src/domains/packages/` | `package-management` |
 | Overlay config or script tasks | `cli/src/domains/overlay/` | `overlay-scripts` |
@@ -79,8 +79,10 @@ cli/src/
 
 ## Task and Resource Rules
 
-- Concrete tasks live under `cli/src/domains/<domain>/tasks/`; cross-domain
-  validation tasks live in `cli/src/app/validation/`.
+- Concrete task entry modules live directly under
+  `cli/src/domains/<domain>/`; large features may keep supporting modules in a
+  same-named subdirectory. Cross-domain validation tasks live in
+  `cli/src/app/validation/`.
 - Resource state should be discovered through `IntrinsicState` or a
   `ResourceStateProvider`, then applied through `process_resources()`,
   `process_resources_with_provider()`, or `process_resources_remove()`.

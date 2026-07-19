@@ -25,6 +25,9 @@ description: >
 - Large cohesive tests: sibling `tests.rs` with `#[cfg(test)] mod tests;`
 - Several related resource suites: one sibling `tests.rs`, with nested test
   modules when names or imports need separation.
+- Externalized tests for domain-root task entry files:
+  `domains/<domain>/tests/<feature>.rs`, wired with a test-only `#[path]`; do not
+  create `<feature>/` solely to hold tests.
 - `#[path]` is allowed for externalized test modules only; never for production
   module wiring. Prefer standard sibling wiring for new layouts.
 

@@ -2,5 +2,5 @@
 
 pub mod apm;
 pub mod config;
+pub mod copilot_settings;
 pub mod resources;
-pub mod tasks;

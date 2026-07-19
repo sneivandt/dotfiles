@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use crate::domains::files::config::symlinks::{self, Symlink};
 use crate::domains::files::resources::symlink::SymlinkResource;
-use crate::domains::files::tasks::symlinks::build_resources;
+use crate::domains::files::symlinks::build_resources;
 use crate::domains::repository::config::manifest::Manifest;
 use crate::engine::{
     Context, IntrinsicState, ResourceState, Task, TaskPhase, TaskResult, process_resources_remove,

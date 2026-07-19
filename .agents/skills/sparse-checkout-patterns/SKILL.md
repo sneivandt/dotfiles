@@ -13,7 +13,8 @@ by controlling which files are checked out based on the selected profile.
 **Key files:**
 - `conf/manifest.toml` — maps `symlinks/` paths to exclusion categories
 - `conf/profiles.toml` — defines which categories each profile excludes
-- `cli/src/domains/repository/tasks/sparse_checkout/mod.rs` — task implementation
+- `cli/src/domains/repository/sparse_checkout.rs` — task entry point
+- `cli/src/domains/repository/sparse_checkout/` — supporting implementation and tests
 
 ## How It Works
 

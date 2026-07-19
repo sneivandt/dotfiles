@@ -26,6 +26,56 @@ fn rust_files(root: &Path) -> Vec<PathBuf> {
 }
 
 #[test]
+fn domain_subdirectories_are_shared_layers_or_feature_support() {
+    let domains_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/domains");
+    let mut violations = Vec::new();
+
+    for domain_entry in std::fs::read_dir(&domains_root).expect("read domains directory") {
+        let domain_path = domain_entry.expect("read domain entry").path();
+        if !domain_path.is_dir() {
+            continue;
+        }
+
+        for entry in std::fs::read_dir(&domain_path).expect("read domain directory") {
+            let path = entry.expect("read domain entry").path();
+            if !path.is_dir() {
+                continue;
+            }
+
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("domain subdirectory should be valid UTF-8");
+            if name == "tasks" {
+                violations.push(format!(
+                    "{} is a forbidden generic task directory",
+                    path.display()
+                ));
+                continue;
+            }
+            if matches!(name, "config" | "resources" | "tests") {
+                continue;
+            }
+
+            let entry_point = domain_path.join(format!("{name}.rs"));
+            if !entry_point.is_file() {
+                violations.push(format!(
+                    "{} has no root task entry point {}",
+                    path.display(),
+                    entry_point.display()
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "domain layout violations:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn domains_do_not_import_the_app_or_sibling_domains() {
     let domains_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/domains");
     let mut violations = Vec::new();

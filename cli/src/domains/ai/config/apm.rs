@@ -374,14 +374,16 @@ fn validate_native_skill_sources(validator: &mut Validator, item: &str, plugin_d
             }
         }
         Err(err) if err.kind() == ErrorKind::NotFound => {
-            validator.warn(
-                "apm.skill-dir-missing",
-                item,
-                format!(
-                    "native APM plugin is missing .apm/skills directory: {}",
-                    skills_dir.display()
-                ),
-            );
+            if !has_native_prompt_sources(plugin_dir) {
+                validator.warn(
+                    "apm.skill-dir-missing",
+                    item,
+                    format!(
+                        "native APM plugin is missing .apm/skills directory: {}",
+                        skills_dir.display()
+                    ),
+                );
+            }
         }
         Err(err) => {
             validator.warn(
@@ -391,6 +393,19 @@ fn validate_native_skill_sources(validator: &mut Validator, item: &str, plugin_d
             );
         }
     }
+}
+
+fn has_native_prompt_sources(plugin_dir: &Path) -> bool {
+    let prompts_dir = plugin_dir.join(".apm").join("prompts");
+    std::fs::read_dir(prompts_dir).is_ok_and(|entries| {
+        entries.filter_map(Result::ok).any(|entry| {
+            entry.path().is_file()
+                && entry
+                    .file_name()
+                    .to_str()
+                    .is_some_and(|name| name.ends_with(".prompt.md"))
+        })
+    })
 }
 
 fn validate_legacy_skill_sources(validator: &mut Validator, item: &str, plugin_dir: &Path) {
@@ -504,6 +519,16 @@ mod tests {
             .expect("write skill");
     }
 
+    fn write_prompt(plugin_dir: &Path, prompt_name: &str) {
+        let prompts_dir = plugin_dir.join(".apm").join("prompts");
+        std::fs::create_dir_all(&prompts_dir).expect("create prompts dir");
+        std::fs::write(
+            prompts_dir.join(format!("{prompt_name}.prompt.md")),
+            "---\nname: example\n---\n",
+        )
+        .expect("write prompt");
+    }
+
     fn write_dot_code_fragment(root: &Path) {
         write_fragment(root, DOT_CODE_FRAGMENT);
     }
@@ -532,6 +557,27 @@ mod tests {
             "dot-code",
             "name: dot-code\nversion: 1.0.0\n",
         );
+
+        assert!(validate(temp_dir.path(), None).is_empty());
+    }
+
+    #[test]
+    fn validate_accepts_native_prompt_only_plugin_ref() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_dot_code_fragment(temp_dir.path());
+        let plugin_dir = temp_dir
+            .path()
+            .join("symlinks")
+            .join("apm")
+            .join("plugins")
+            .join("dot-code");
+        std::fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+        std::fs::write(
+            plugin_dir.join("apm.yml"),
+            "name: dot-code\nversion: 1.0.0\n",
+        )
+        .expect("write apm manifest");
+        write_prompt(&plugin_dir, "example");
 
         assert!(validate(temp_dir.path(), None).is_empty());
     }

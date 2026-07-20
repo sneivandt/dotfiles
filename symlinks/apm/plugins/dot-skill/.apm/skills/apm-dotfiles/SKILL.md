@@ -20,15 +20,14 @@ fragments, local plugins, skills, hooks, MCP servers, and instructions.
   fragment and private overlay fragments compose into one user-level agent
   environment.
 - Local APM plugins are the preferred way to distribute reusable personal
-  primitives. Keep plugin names short and scoped, such as `dot-code`,
-  `dot-agent`, and `dot-skill`.
+  primitives. Keep plugin names short and scoped, such as `dot-agent` and
+  `dot-skill`.
 
 ## Per-Agent Organization
 
-- Put coding, review, refactoring, and implementation preferences in
-  `dot-code`.
-- Put agent interaction behavior, status-update style, chat workflows, and
-  user-experience preferences in `dot-agent`.
+- Put agent interaction behavior, coding/review workflow preferences,
+  status-update style, chat workflows, and user-experience preferences in
+  `dot-agent`.
 - Put skill/plugin authoring, curation, maintenance, and APM workflow guidance
   in `dot-skill`.
 - Prefer one small composable skill per recurring behavior. Do not bury

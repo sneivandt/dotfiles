@@ -4,7 +4,6 @@ dependencies:
   apm:
     # Local plugins
     - ~/.apm/plugins/dot-agent
-    - ~/.apm/plugins/dot-code
     - ~/.apm/plugins/dot-skill
 
     # External dependencies track upstream main branches. APM records exact

@@ -53,23 +53,10 @@ description: >
 
 ## Validation
 
-- For canonical local Rust/cross-platform validation, use
-  `cross-platform-verification`.
-- For CI-specific parity or workflow reproduction, use `ci-cd-patterns`.
-- In this skill, run focused test commands for the area you changed (for example
-  targeted `cargo test` by module/test target, snapshot review flow).
+Run focused tests for the changed behavior before escalating to broader suites.
 
 ## Common mistakes / anti-patterns
 
 - Using `#[path]` for production modules
 - Rewriting snapshots without review
 - Skipping task/helper conventions and rebuilding test scaffolding ad hoc
-- Duplicating the canonical general validation command block instead of
-  referencing `cross-platform-verification`
-
-## Related skills
-
-- `cross-platform-verification`
-- `ci-cd-patterns`
-- `module-organization`
-- `resource-implementation`

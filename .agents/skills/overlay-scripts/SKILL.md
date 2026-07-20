@@ -81,16 +81,6 @@ construction.
 5. Add focused tests for exit-code mapping, dry-run failures, path rejection,
    and overlay merging.
 
-## Validation
+## Privacy
 
-- Use `resource-implementation` for `ScriptResource` behavior.
-- Use `profile-system` and `toml-configuration` for category-aware merging.
-- Use `cross-platform-verification` after Rust or interpreter changes.
-
-## Rules
-
-- Overlay config appends; it never silently replaces main config.
-- Dry-run mode must not mutate.
-- Check failures are distinct from “state missing.”
-- PowerShell execution must remain non-interactive.
-- Private overlay content must not be copied into this repository or its skills.
+Never copy private overlay content into this repository or its skills.

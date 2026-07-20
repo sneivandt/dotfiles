@@ -1,8 +1,9 @@
 ---
 name: sparse-checkout-patterns
 description: >
-  Patterns for the sparse checkout and manifest system, which is central to the profile-based file filtering.
-  Use when working with file exclusion categories, sparse checkout configuration, or manifest management.
+  Sparse-checkout manifest conventions for this dotfiles repo. Use when changing
+  conf/manifest.toml, category-based file exclusions, profile-driven checkout
+  filtering, or sparse-checkout application.
 ---
 
 # Sparse Checkout Patterns
@@ -52,6 +53,7 @@ paths = ["config/hypr/", "config/dunst/"]    # excluded only if BOTH arch AND de
 1. Determine which categories should **not** have the file
 2. Add to the appropriate section in `conf/manifest.toml` (relative to `symlinks/`)
 3. Run `./dotfiles.sh install -p <profile> -d` to verify the exclusion
+4. Apply sparse checkout only from a clean working tree
 
 ## Relationship with Config Processing
 
@@ -63,17 +65,3 @@ The AND-logic section name means different things depending on context:
 | `packages.toml`, `symlinks.toml`, etc. | `active_categories` | include only if **both** arch and desktop are active |
 
 This ensures files are available whenever their corresponding config items are active.
-
-## Rules
-
-1. Use the same AND logic as all other category-filtered TOML files
-2. Trailing slash required for directories
-3. Use hyphen-separated names for multi-category sections: `[arch-desktop]`
-4. Paths are relative to `symlinks/` — no prefix in the manifest
-5. Base files are never excluded — only list files that need conditional checkout
-6. Clean working directory required before applying sparse checkout
-
-## Related
-
-- **`profile-system`** skill — profile selection and category mapping
-- **`toml-configuration`** skill — TOML format and category AND logic

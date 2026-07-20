@@ -52,9 +52,7 @@ Canonical implementations:
 
 ## Validation
 
-- Run canonical local Rust/cross-platform validation from
-  `cross-platform-verification`.
-- Run focused tests for touched logging/scheduler areas.
+Run focused tests for touched logging and scheduler behavior.
 
 ## Common mistakes / anti-patterns
 
@@ -62,10 +60,3 @@ Canonical implementations:
 - Logging dry-run previews after mutation checks instead of before side effects
 - Duplicating task recording in task implementations
 - Re-implementing buffered output behavior in tasks
-- Duplicating the canonical validation sequence in this skill
-
-## Related skills
-
-- `engine-orchestration`
-- `error-handling-patterns`
-- `testing-patterns`

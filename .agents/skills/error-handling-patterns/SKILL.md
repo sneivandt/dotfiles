@@ -80,12 +80,3 @@ the resource processor can apply its configured strict or lenient policy.
 ## Validation
 
 - Add focused tests for already-correct, dry-run, mutation, and failure paths.
-- Use `cross-platform-verification` for the canonical Rust checks.
-
-## Rules
-
-- Mutations must be idempotent and dry-run safe.
-- Add context at subsystem boundaries.
-- Preserve typed resource errors when classification matters.
-- Never mutate in `should_run()`.
-- Never silently discard a fallible result.

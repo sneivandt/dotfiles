@@ -1,8 +1,9 @@
 ---
 name: shell-patterns
 description: >
-  Patterns for the thin shell wrapper scripts (dotfiles.sh and hooks).
-  Use when modifying the entry point scripts or POSIX shell hooks.
+  Thin wrapper and POSIX hook conventions for this dotfiles repo. Use when
+  modifying dotfiles.sh, dotfiles.ps1, wrapper bootstrap/argument forwarding,
+  or POSIX hook scripts.
 ---
 
 # Shell Wrapper Patterns
@@ -12,29 +13,14 @@ binary. Task entry points live directly under `cli/src/domains/<domain>/`.
 
 ## Entry Point: `dotfiles.sh`
 
-The main shell script handles binary management and forwards args to the Rust engine:
-
-```sh
-#!/bin/sh
-set -o errexit
-set -o nounset
-
-DOTFILES_ROOT="$(dirname "$(readlink -f "$0")")"
-export DOTFILES_ROOT
-```
+The main shell script resolves and exports `DOTFILES_ROOT`, identifies itself
+through `DOTFILES_WRAPPER`, handles bootstrap, and forwards arguments to the
+Rust engine.
 
 ### Two Modes
 
 1. **Production mode** (default): Downloads latest binary from GitHub Releases if missing, verifies checksum, then lets the binary self-update
 2. **Build mode** (`--build`): Builds from source with `cargo build --profile dev-opt`, runs directly
-
-```sh
-if [ "$BUILD_MODE" = true ]; then
-  cd "$DOTFILES_ROOT/cli"
-  cargo build --profile dev-opt
-  exec "$DOTFILES_ROOT/cli/target/dev-opt/dotfiles" "$@"
-fi
-```
 
 The wrapper resolves `DOTFILES_ROOT`, handles bootstrap/build concerns, and
 otherwise forwards arguments to the Rust binary unchanged. The Rust CLI owns
@@ -50,7 +36,7 @@ checksum verification, and re-exec.
 Windows PowerShell wrapper with identical logic:
 - `--build` flag for build-from-source mode
 - Downloads `dotfiles-windows-x86_64.exe` from releases
-- Same caching and checksum verification
+- Same bootstrap download and checksum verification
 
 ## Git Hooks
 
@@ -77,7 +63,7 @@ ShellCheck on staged shell files and the Linux wrapper test script for staged
 Edit `dotfiles.sh` or `dotfiles.ps1` only for:
 - Binary download/update logic changes
 - New CLI flags that need wrapper-level handling
-- Version caching behavior
+- Bootstrap behavior before the Rust binary is available
 
 For everything else (tasks, config, logging), edit the Rust code in `cli/src/`.
 
@@ -87,6 +73,3 @@ For everything else (tasks, config, logging), edit the Rust code in `cli/src/`.
   encourage moving domain behavior into wrappers
 - Never add task logic to shell scripts — use a root task entry module under
   `cli/src/domains/<domain>/`
-- The wrapper must resolve and export `DOTFILES_ROOT` before launching the binary
-- The wrapper must export `DOTFILES_WRAPPER` (`sh` or `pwsh`) so the CLI knows which wrapper invoked it
-- Wrapper arguments should pass through to the Rust CLI unless the wrapper itself must consume them (for example `--build`)

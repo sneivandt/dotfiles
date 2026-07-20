@@ -1,9 +1,9 @@
 ---
 name: config-validation
 description: >
-  Configuration validation system: the Validator builder, per-module validate()
-  functions, the test command, and config drift integration tests. Use when
-  adding validation rules or extending the test command.
+  Configuration validation for this dotfiles repo. Use when adding or changing
+  Validator rules, per-module validate() functions, test-command validation
+  tasks, or config drift integration tests.
 ---
 
 # Config Validation
@@ -13,20 +13,11 @@ Validation happens at two levels: **runtime** (the `test` command) and
 
 ## Runtime: The `test` Command
 
-`cli/src/app/commands/test.rs` runs seven validation tasks:
-
-| Task | What it checks |
-|---|---|
-| `ValidateConfigWarnings` | Fails when `Config::validate()` emits diagnostics |
-| `ValidateSymlinkSources` | Every symlink source file exists on disk |
-| `ValidateConfigFiles` | Required config files (`profiles.toml`, `symlinks.toml`, `packages.toml`, `manifest.toml`) exist |
-| `ValidateManifestSync` | `symlinks.toml` and `manifest.toml` expose the same non-base category sections |
-| `ValidateApmPlugins` | Local APM plugins pass `apm pack --dry-run --verbose` when APM is available |
-| `RunShellcheck` | Shell scripts pass shellcheck (skipped if unavailable) |
-| `RunPSScriptAnalyzer` | PowerShell scripts pass PSScriptAnalyzer (skipped if unavailable) |
-
-Implementations live under `cli/src/app/validation/` and implement the `Task`
-trait. Keep `cli/src/app/commands/test.rs` as the authoritative task list.
+Validation tasks live under `cli/src/app/validation/` and implement `Task`.
+Keep `cli/src/app/commands/test.rs` as the authoritative task list rather than
+duplicating its inventory elsewhere. New tasks must report whether a required
+tool is missing according to the existing command policy instead of silently
+passing.
 
 ## Per-Module `validate()` Functions
 
@@ -40,38 +31,13 @@ pub fn validate(&self, platform: Platform) -> Vec<Diagnostic> {
 }
 ```
 
-### Diagnostic
-
-```rust
-pub struct Diagnostic {
-    pub source: String,       // e.g., "packages.toml"
-    pub item: String,         // e.g., "git"
-    pub severity: Severity,   // Warning or Error
-    pub code: &'static str,   // e.g., "package.empty-name"
-    pub message: String,      // e.g., "package name is empty"
-}
-```
-
-Both severities fail `dotfiles test`; severity classifies the finding and
-controls rendering. Codes are stable, concise identifiers for the validation
-rule.
+Each `Diagnostic` identifies its source and item, carries a stable dotted code,
+classifies the finding as warning or error, and includes a user-facing message.
+Both severities fail `dotfiles test`; severity controls rendering and meaning.
 
 ### Validator Builder
 
-`infra/config/validation.rs` provides a fluent builder:
-
-```rust
-let diagnostics = Validator::new("packages.toml")
-    .check_each(&packages, |pkg| &pkg.name, |pkg| {
-        [
-            check(pkg.name.trim().is_empty(), "package.empty-name", "package name is empty"),
-            check(pkg.name.contains(' '), "package.spaces", "package name contains spaces"),
-        ]
-    })
-    .finish();
-```
-
-Key API:
+`infra/config/validation.rs` provides the fluent builder. Key API:
 - `Validator::new(source)` — captures the TOML filename once
 - `.check_each(items, label_fn, check_fn)` — validates each item; `check_fn`
   returns `CheckItem` values containing code, severity, and message
@@ -114,11 +80,3 @@ so manifest/symlink drift is caught before CI.
 2. Load real config files from `repo_root().join("conf")`
 3. Assert cross-file invariants
 4. Use descriptive assertion messages listing the offending items
-
-## Rules
-
-- Use the `Validator` builder for all per-module validation — avoid manual `Vec::push()` loops
-- Every config module should have a `validate()` function
-- Wire new validators into `ConfigValidator::validate_all()` in `app/config/mod.rs`
-- Config drift tests read real files — keep them self-contained with private TOML types
-- Validation tasks in `app/validation/mod.rs` follow the standard `Task` trait pattern

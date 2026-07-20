@@ -20,7 +20,7 @@ the Rust `InstallApmPackages` task.
 | `symlinks/apm/plugins/dot-agent` | Local agent interaction workflow skills |
 | `symlinks/apm/plugins/dot-skill` | Local skill/plugin maintenance skills |
 | `conf/symlinks.toml` | Links `apm/config/base.yml` and `apm/plugins/*` from this repo |
-| `cli/src/domains/ai/apm.rs` + `cli/src/domains/ai/apm/` | APM task entry point and capability implementation. `InstallApmPackages` (Provision phase) merges fragments + runs unscoped `apm install` so APM auto-detects installed runtimes together; `UpdateApmPackages` (Update phase, `update` command only) advances locked deps via `apm outdated` + unscoped `apm update`. Copilot App workflows use a separate explicit install when its database exists. The root `apm.rs` wires focused support modules under `apm/`, re-exports tasks, and owns shared constants/test imports. |
+| `cli/src/domains/ai/apm.rs` + `cli/src/domains/ai/apm/` | APM install/update tasks and support code |
 
 ## When to Change What
 
@@ -77,16 +77,10 @@ After APM config or local plugin changes, run:
 ./dotfiles.sh install -d
 ```
 
-`install` converges to the locked manifest and never advances locked refs:
-the Provision-phase `InstallApmPackages` task only runs `apm install`.  To pull
-in newer plugin/MCP dependency versions, run `./dotfiles.sh update`, which also
-schedules the Update-phase `UpdateApmPackages` task to run `apm outdated` +
-`apm update`.  That task guards itself — it only contacts APM when the manifest
-has already been installed successfully (lockfile present and the success marker
-matches) — so a failed/partial install never advances locked refs.  The
-`update`-only scheduling lives in `run_pipeline`
-(`app/commands/install.rs`); the
-task itself does not read `ctx.advance_versions`.
+`install` converges to the lockfile without advancing refs. `update` may run
+`apm outdated` and `apm update`, but only after a successful installed state is
+confirmed. Keep update-only scheduling in the command pipeline rather than
+teaching the task to inspect command flags.
 
 For changes to `cli/src/domains/ai/apm.rs` or `cli/src/domains/ai/apm/`, also
 run the Rust checks from the `cross-platform-verification` skill.

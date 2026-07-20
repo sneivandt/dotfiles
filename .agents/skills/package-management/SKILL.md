@@ -75,17 +75,3 @@ report success.
 4. Route subprocesses through `ctx.executor`.
 5. Add provider command, state mapping, missing-manager, and dry-run tests.
 6. Review Linux and Windows behavior.
-
-## Validation
-
-- Use `resource-implementation` for resource/provider changes.
-- Use `windows-specific-patterns` for winget or Windows behavior.
-- Use `cross-platform-verification` after Rust changes.
-
-## Rules
-
-- Package installation must be idempotent.
-- Installed state is queried once per manager.
-- Manager-specific behavior stays in providers.
-- Missing capabilities are surfaced, not swallowed.
-- Configuration remains the source of desired package state.

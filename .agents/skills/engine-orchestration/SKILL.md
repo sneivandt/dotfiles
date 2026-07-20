@@ -1,9 +1,9 @@
 ---
 name: engine-orchestration
 description: >
-  Task scheduling and resource parallelism in the dotfiles engine. Use when
-  working with task dependencies, parallel execution, the scheduler, or
-  the Rayon-based resource processing pipeline.
+  Task and operation orchestration in the dotfiles engine. Use when changing
+  task dependencies, phases, scheduling, ProcessMode, Operation workflows,
+  parallel execution, or the Rayon-based resource pipeline.
 ---
 
 # Engine Orchestration
@@ -64,10 +64,8 @@ verbs (`install`, `configure`, `update`, `enable`, `link`, `unlink`, `remove`).
 
 ## Validation
 
-- Use `cross-platform-verification` for canonical local Rust/cross-platform
-  checks.
-- Add/adjust targeted scheduler and orchestration tests under `cli/src/engine/`
-  and affected task modules.
+Add targeted scheduler and orchestration tests under `cli/src/engine/` and the
+affected task modules.
 
 ## Common mistakes / anti-patterns
 
@@ -78,11 +76,3 @@ verbs (`install`, `configure`, `update`, `enable`, `link`, `unlink`, `remove`).
 - Adding static tasks without catalog registration
 - Adding conditional symlink behavior without matching manifest coverage
 - Hardcoded OS checks where capability methods exist
-- Duplicating the canonical validation sequence in multiple skills
-
-## Related skills
-
-- `resource-implementation`
-- `error-handling-patterns`
-- `logging-patterns`
-- `cross-platform-verification`

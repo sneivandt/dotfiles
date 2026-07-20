@@ -84,12 +84,3 @@ For a new or changed config-backed surface:
 
 - Use `config-validation` for validator and drift-test conventions.
 - Run the repository test command for real-config validation.
-- Use `cross-platform-verification` when Rust code changes.
-
-## Rules
-
-- Configuration describes desired state; orchestration stays in tasks.
-- Invalid or unsafe paths must produce explicit validation diagnostics.
-- Preserve strong typing across strings, numbers, booleans, and structured
-  values.
-- Do not duplicate exhaustive config-file inventories in skills.

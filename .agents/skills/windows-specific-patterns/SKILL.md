@@ -1,8 +1,9 @@
 ---
 name: windows-specific-patterns
 description: >
-  Windows-specific implementation patterns and considerations beyond general PowerShell patterns.
-  Use when working with Windows features, registry, admin privileges, or Windows-specific architecture.
+  Windows-specific patterns for this dotfiles repo. Use when changing registry
+  resources, Windows symlink capability, elevation behavior, platform-specific
+  Rust code, or the dotfiles.ps1 wrapper.
 ---
 
 # Windows-Specific Patterns
@@ -11,7 +12,10 @@ Windows-specific implementation patterns in the Rust core engine and `dotfiles.p
 
 ## Overview
 
-The project uses a single Rust binary on both platforms. The `dotfiles.ps1` wrapper downloads (or builds) the binary the same way `dotfiles.sh` does. Windows-specific behaviour lives in the Rust task implementations, gated by `ctx.platform.is_windows()`.
+The project uses a single Rust binary on both platforms. The `dotfiles.ps1`
+wrapper downloads or builds it the same way `dotfiles.sh` does. Prefer capability
+methods for applicability; use a direct Windows platform check only when the
+behavior is inherently Windows-specific and has no narrower capability.
 
 Key differences from Linux:
 - **Registry Configuration**: Managed via `conf/registry.toml` (no Linux equivalent)
@@ -26,20 +30,11 @@ Key differences from Linux:
 Registry settings use TOML format with logical section names and a `path` key:
 
 ```toml
-# Section = logical name, path = Registry path (PowerShell format)
 [console]
 path = 'HKCU:\Console'
 
 [console.values]
-WindowSize = 0x00200078
-ScreenBufferSize = 0x0BB80078
 FaceName = "Cascadia Mono"
-
-[explorer]
-path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer'
-
-[explorer.values]
-EnableAutoTray = 0
 ```
 
 **Format rules:**
@@ -58,35 +53,16 @@ The registry task in `cli/src/domains/system/registry.rs`:
 4. Skips entries that already match (idempotent)
 5. In dry-run mode, logs what would change without writing
 
-`RegistryResource` uses the `winreg` crate for native registry access (no executor needed):
-```rust
-config_resource_task! {
-    pub ApplyRegistry {
-        config: Vec<RegistryEntry>,
-        items: |cfg| cfg.clone(),
-        cache: |resources, _ctx| batch_check_values(resources),
-        build: |entry, _ctx| RegistryResource::from_entry(&entry),
-        // metadata, state mapping, and options omitted
-    }
-}
-```
+`RegistryResource` uses `winreg` for native registry access. Preserve the
+single batch state query rather than checking values individually.
 
 ## Symlink Differences on Windows
 
 ### MetadataExt Workaround
 
-Rust's `symlink_metadata().is_dir()` returns `false` for directory symlinks on Windows. Use the raw file attributes instead:
-
-```rust
-#[cfg(windows)]
-fn is_dir_like(path: &Path) -> bool {
-    use std::os::windows::fs::MetadataExt;
-    match path.symlink_metadata() {
-        Ok(m) => m.file_attributes() & 0x10 != 0, // FILE_ATTRIBUTE_DIRECTORY
-        Err(_) => false,
-    }
-}
-```
+Rust's `symlink_metadata().is_dir()` is not reliable for Windows directory
+symlinks. Use `MetadataExt::file_attributes()` and the directory attribute, as
+the existing implementation does.
 
 ### Developer Mode and Admin Privileges
 
@@ -95,40 +71,16 @@ fn is_dir_like(path: &Path) -> bool {
 - The Rust binary checks for symlink capability and reports a clear error if neither condition is met
 - Dry-run mode never requires elevation
 
-## Cross-Platform Feature Parity
-
-| Feature | Linux | Windows |
-|---|---|---|
-| Package management | `pacman`/`paru` | `winget` |
-| Symlinks | `std::os::unix::fs::symlink` | `std::os::windows::fs::symlink_file/dir` |
-| Service management | `systemctl` | N/A (skipped) |
-| File permissions | `chmod.toml` | N/A (skipped) |
-| Registry | N/A | `registry.toml` |
-| Profile | User-selected (`base`/`desktop`) | User-selected (`base`/`desktop`) |
-| Sparse checkout | Profile-filtered | Profile-filtered |
-
 ## Shell Wrapper (`dotfiles.ps1`)
 
-The PowerShell wrapper mirrors `dotfiles.sh`:
-- Downloads a pre-built binary from GitHub Releases (or `cargo build` with `--build`)
-- Verifies SHA256 checksum after download
-- Falls back to an existing binary when GitHub is unreachable
-- Uses `$ErrorActionPreference = 'Stop'` for fail-fast behaviour
-- Caches the installed version in `bin/.dotfiles-version-cache`
+The PowerShell wrapper mirrors `dotfiles.sh`. Keep it limited to bootstrap,
+checksum verification, build mode, and argument forwarding; use
+`$ErrorActionPreference = 'Stop'` and `Join-Path`.
 
 ## Rules
 
-1. **Gate Windows-only tasks** with `ctx.platform.is_windows()` in `should_run()`
-2. **Use `MetadataExt::file_attributes()`** for directory-symlink checks on Windows
-3. **`registry.toml` uses logical section names** with `path` key and `[section.values]` subtable
-4. **Registry paths are HKCU-only** — system and shared hives are outside scope
-5. **No profile sections** in `registry.toml` — all settings always apply
-6. **Test symlink capability** before attempting creation; report Developer Mode hint on failure
-7. **Use `Join-Path`** in `dotfiles.ps1` — never hardcode backslashes
-
-## Related
-
-- **`toml-configuration`** skill — TOML format rules
-- **`error-handling-patterns`** skill — Idempotency and dry-run
-- **`docs/WINDOWS.md`** — User-facing Windows guide
-- **`docs/CONFIGURATION.md`** — Configuration reference
+1. Prefer capability gates; use a platform check only when no narrower
+   capability represents the requirement.
+2. Registry paths remain HKCU-only and unfiltered by profile.
+3. Test symlink capability before mutation and report the Developer Mode hint
+   when unavailable.

@@ -1,9 +1,10 @@
 # Agent Skill Index and Routing
 
-Use this index to load only the skills needed for the current change. Start with
-the narrowest matching skill. Companion skills are conditional: load one only
-when its subsystem is also touched, and do not recursively load that skill's
-companions. Avoid unrelated skills to reduce conflicting guidance.
+Use this index to load only the skills needed for the current change. For Rust
+changes under `cli/src/`, start with `rust-patterns` as the router, then load the
+narrowest matching subsystem skill. For other work, start with the narrowest
+matching skill. Companion skills are conditional: load one only when its
+subsystem is also touched, and do not recursively load companions.
 
 ## Skill index
 
@@ -23,22 +24,9 @@ companions. Avoid unrelated skills to reduce conflicting guidance.
 | [`profile-system`](./skills/profile-system/SKILL.md) | Profile resolution, category activation/exclusion, profile selection/persistence | `sparse-checkout-patterns`, `symlink-management`, `toml-configuration` |
 | [`resource-implementation`](./skills/resource-implementation/SKILL.md) | Choosing and implementing `Resource`, `IntrinsicState`, or `ResourceStateProvider` | `error-handling-patterns`, `testing-patterns` |
 | [`rust-patterns`](./skills/rust-patterns/SKILL.md) | Router for `cli/src/` changes and core Rust conventions | load the focused skill for the touched subsystem |
-| [`shell-patterns`](./skills/shell-patterns/SKILL.md) | Wrapper/bootstrap shell behavior and POSIX hook script patterns | `windows-specific-patterns` |
+| [`shell-patterns`](./skills/shell-patterns/SKILL.md) | `dotfiles.sh`/`dotfiles.ps1` bootstrap behavior and POSIX hook scripts | `windows-specific-patterns` |
 | [`sparse-checkout-patterns`](./skills/sparse-checkout-patterns/SKILL.md) | `manifest.toml` category exclusions and sparse-checkout behavior | `toml-configuration` |
 | [`symlink-management`](./skills/symlink-management/SKILL.md) | `conf/symlinks.toml`, symlink resource behavior, and manifest alignment | `config-validation` |
 | [`testing-patterns`](./skills/testing-patterns/SKILL.md) | Test construction/layout/snapshots and test helper usage | none |
 | [`toml-configuration`](./skills/toml-configuration/SKILL.md) | TOML section format, category filtering, and loader patterns for `conf/`, `app/config/`, and domain config modules | none |
-| [`windows-specific-patterns`](./skills/windows-specific-patterns/SKILL.md) | Windows-only behavior (registry/symlink capability/platform details) | none |
-
-## Task-to-skill routes
-
-| Task | Read first | Then |
-|---|---|---|
-| Add/change config-backed resource behavior | `rust-patterns` | `resource-implementation`, `toml-configuration`, `config-validation`, `testing-patterns` |
-| Change scheduling, dependencies, phases, or operation flow | `engine-orchestration` | `logging-patterns`, `error-handling-patterns`, `testing-patterns` |
-| Change symlinks, profiles, or sparse checkout | `symlink-management` | `profile-system`, `sparse-checkout-patterns`, `toml-configuration`, `config-validation` |
-| Change Windows behavior | `windows-specific-patterns` | `cross-platform-verification`, `testing-patterns`, `shell-patterns` |
-| Change agent/APM configuration | `ai-tooling-apm` | `toml-configuration`, `config-validation`, `cross-platform-verification` |
-| Add or update tests | `testing-patterns` | `cross-platform-verification`, `ci-cd-patterns` |
-| Modify wrappers | `shell-patterns` | `cross-platform-verification`, `windows-specific-patterns` |
-| Modify CI workflows/release publishing | `ci-cd-patterns` | `cross-platform-verification`, `testing-patterns` |
+| [`windows-specific-patterns`](./skills/windows-specific-patterns/SKILL.md) | Windows-only behavior (registry, symlink capability, elevation, platform details) | none |

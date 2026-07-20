@@ -1,8 +1,9 @@
 ---
 name: profile-system
 description: >
-  Understanding the profile-based configuration system in the dotfiles project.
-  Use when working with profiles, sparse checkout, or multi-environment support.
+  Profile resolution and category selection for this dotfiles repo. Use when
+  changing profile definitions, selection priority, persistence, active or
+  excluded categories, or profile-to-sparse-checkout integration.
 ---
 
 # Profile System
@@ -31,42 +32,13 @@ Platform categories (`linux`, `windows`, `arch`) are auto-detected — users onl
 CLI `-p` (`--profile`) > DOTFILES_PROFILE env var > git config dotfiles.profile > interactive prompt
 ```
 
-Implemented in `profiles::resolve_from_args()`:
-```rust
-pub fn resolve_from_args(cli_profile: Option<&str>, root: &Path, platform: Platform) -> Result<Profile> {
-    let conf_dir = root.join("conf");
-    let name = if let Some(name) = cli_profile { name.to_string() }
-    else if let Some(name) = read_from_env() { name }
-    else if let Some(name) = read_persisted(root) { name }
-    else {
-        let name = prompt_interactive(&conf_dir)?;
-        if let Err(e) = persist(root, &name) {
-            eprintln!("warning: could not persist profile to git config: {e}");
-        }
-        name
-    };
-    // ...
-}
-```
+`profiles::resolve_from_args()` persists interactive selection to repository-local git config as
+`dotfiles.profile`. Preserve the priority order and keep persistence failure
+visible without turning a valid selection into a failed install.
 
-When the profile is selected via the interactive prompt it is persisted to the
-repository's local git config (`dotfiles.profile`) via `profiles::persist()`,
-which uses `git2` to write directly — no `git` subprocess needed. Running
-`git config --local dotfiles.profile <name>` manually produces the same result.
-
-## Profile Data Structure
-
-```rust
-use crate::infra::config::category_matcher::Category;
-
-pub struct Profile {
-    pub name: String,
-    pub active_categories: Vec<Category>,   // e.g., [Base, Arch, Desktop]
-    pub excluded_categories: Vec<Category>, // e.g., [Windows]
-}
-```
-
-`active_categories` always includes `Category::Base`. Platform categories (`Linux`, `Windows`, `Arch`) are auto-added or auto-excluded based on `Platform::excludes_category()`. Users only choose the role (`base` or `desktop`).
+`Profile` carries its name plus active and excluded categories.
+`active_categories` always includes `base`; platform categories are added or
+excluded by platform capability, while users choose the role profile.
 
 ## Section Naming Convention
 
@@ -94,18 +66,3 @@ Before adding a new profile, review and update assumptions across:
 - user-facing docs and examples
 - config/validation rules tied to known profile names
 - sparse-checkout behavior and manifest coverage for new category combinations
-
-## Usage
-
-```bash
-./dotfiles.sh install -p desktop -d
-./dotfiles.sh install -p base
-```
-
-## Rules
-
-- Platform detection always overrides profile config for safety
-- `base` and `desktop` are the currently configured/default profiles; additional profile definitions are possible but require coordinated docs/tests/config/manifest review
-- `active_categories` always contains `Category::Base` plus auto-detected platform categories
-- Use `filter_by_categories(sections, active_categories)` for normal config filtering (AND logic)
-- Use `filter_by_categories(sections, excluded_categories)` for manifest filtering; `[arch-desktop]` is excluded only when both categories are excluded

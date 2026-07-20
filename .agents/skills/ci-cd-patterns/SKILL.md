@@ -40,7 +40,8 @@ Maintain these invariants:
 
 Integration logic belongs in `.github/workflows/scripts/linux/` and
 `.github/workflows/scripts/windows/`, with shared shell helpers under
-`scripts/linux/lib/`. Prefer scripts over large inline workflow steps.
+`scripts/linux/lib/`. Prefer scripts over large inline workflow steps, and run
+dotfiles integration cases against the checkout with `--root .`.
 
 For CI-profile reproduction:
 
@@ -74,13 +75,4 @@ Docker publishing must check out the exact successful CI head SHA.
 4. Use `fail-fast: false` for independent matrix cases
 5. Put recurring test logic in the platform script directories
 6. Download existing artifacts when the job needs the compiled binary
-
-## Rules
-
-- All gating CI jobs must be listed in `ci-success.needs`
-- Test scripts go in `.github/workflows/scripts/`
-- Integration tests run against the checked-out repository with `--root .`
-- Release binaries always ship with checksums
-- Publishing workflows triggered by `workflow_run` must gate on successful
-  same-repo pushes to `main` before using write permissions or secrets
-- Add the narrowest practical local guard for recurring CI-only failures
+7. Add the narrowest practical local guard for recurring CI-only failures

@@ -75,7 +75,6 @@ Canonical references:
 
 ## Validation
 
-- Use `cross-platform-verification` for canonical Rust/cross-platform checks.
 - Add targeted tests for state mapping, apply/remove behavior, and task wiring.
 
 ## Common mistakes / anti-patterns
@@ -87,12 +86,3 @@ Canonical references:
 - static task added without catalog registration
 - conditional symlink handling without manifest coverage
 - hardcoded OS checks where capability helpers exist
-- duplicated canonical validation sequence
-
-## Related skills
-
-- `engine-orchestration`
-- `error-handling-patterns`
-- `toml-configuration`
-- `config-validation`
-- `testing-patterns`

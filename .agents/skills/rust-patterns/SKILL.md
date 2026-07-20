@@ -37,14 +37,6 @@ cli/src/
 └── testing/        # Feature-gated compatibility facade for integration tests
 ```
 
-## Code Navigation
-
-- Prefer rust-analyzer LSP for symbol lookup, definitions, references,
-  implementations, call hierarchy, hover information, and semantic renames.
-- Use glob or `rg` for filenames, literals, configuration, generated code, or
-  when LSP is unavailable.
-- Check references and callers before changing shared traits or public symbols.
-
 ## Core Conventions
 
 - Use `anyhow::Result` with contextual `?` propagation in commands/tasks, and
@@ -97,9 +89,3 @@ cli/src/
 - Inject typed `ConfigHandle<T>` values into config-backed tasks and keep read
   guards out of long-running or parallel work.
 - Keep behaviour idempotent: re-running should converge to the same state.
-
-## Validation
-
-Use the canonical local sequence in `cross-platform-verification` for general
-Rust/cross-platform checks. Keep this skill focused on routing and Rust
-conventions.

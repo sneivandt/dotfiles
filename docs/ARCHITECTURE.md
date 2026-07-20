@@ -190,7 +190,7 @@ and filters sections against the active profile's categories:
 | `domains/git/config/git_config.rs` | `git-config.toml` | Git configuration settings |
 | `domains/ai/config/copilot.rs` | `copilot.toml` | Copilot CLI settings (`~/.copilot/settings.json`) |
 | `domains/repository/config/manifest.rs` | `manifest.toml` | Sparse checkout file mappings |
-| `domains/overlay/config/overlay.rs` | — | Overlay path resolution and persistence |
+| `domains/overlay/resolution.rs` | — | Overlay path resolution and persistence |
 | `domains/overlay/config/scripts.rs` | `scripts.toml` | Custom script entries from overlay repo |
 
 #### Tasks (`engine/task/` + `domains/<domain>/*.rs`)

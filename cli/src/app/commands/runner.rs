@@ -167,10 +167,8 @@ fn resolve_overlay(
     root: &std::path::Path,
     log: &dyn Output,
 ) -> Option<std::path::PathBuf> {
-    let overlay = crate::domains::overlay::config::overlay::resolve_from_args(
-        global.overlay.as_deref(),
-        root,
-    );
+    let overlay =
+        crate::domains::overlay::resolution::resolve_from_args(global.overlay.as_deref(), root);
     log_overlay_path(overlay.as_deref(), log);
     overlay
 }

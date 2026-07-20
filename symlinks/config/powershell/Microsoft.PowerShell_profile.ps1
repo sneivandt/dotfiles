@@ -75,26 +75,10 @@ function Prompt
 
     if ($Global:GitExists)
     {
-        # Performance: Use --porcelain=v1 and --untracked-files=no for faster git status
-        $status = @(git --no-optional-locks status --short --branch --porcelain=v1 --untracked-files=no 2> $null)
-
-        if ($status.Count -gt 0)
+        $branchName = git rev-parse --abbrev-ref HEAD 2> $null
+        if (-not [string]::IsNullOrWhiteSpace($branchName))
         {
-            $branchLine = $status[0]
-            if ($branchLine.StartsWith("## "))
-            {
-                $branchName = $branchLine.Substring(3)
-                $ellipsis = $branchName.IndexOf("...")
-                if ($ellipsis -gt 0) { $branchName = $branchName.Substring(0, $ellipsis) }
-
-                $promptLine += "${foreground} ${branchName}${reset}"
-
-                $changes = $status.Count - 1
-                if ($changes -gt 0)
-                {
-                    $promptLine += "${red}+$changes${reset}"
-                }
-            }
+            $promptLine += "${foreground} ${branchName}${reset}"
         }
     }
 

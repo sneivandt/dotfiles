@@ -20,7 +20,7 @@ Resolve the overlay once at startup in this priority order:
 3. repository-local `dotfiles.overlay` git config
 
 Resolution and persistence live in
-`cli/src/domains/overlay/config/overlay.rs`. Do not repeatedly resolve the path
+`cli/src/domains/overlay/resolution.rs`. Do not repeatedly resolve the path
 inside loaders or tasks.
 
 ## Config Merging

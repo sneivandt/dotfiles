@@ -4,9 +4,6 @@ Host *
   ServerAliveCountMax 2
   AddKeysToAgent yes
   Compression yes
-  ControlMaster auto
-  ControlPersist 10m
-  ControlPath ~/.ssh/control/%C
 
 Host github.com
   User git

@@ -17,7 +17,6 @@ the Rust `InstallApmPackages` task.
 | Path | Purpose |
 |---|---|
 | `symlinks/apm/config/base.yml` | APM manifest fragment linked to `~/.apm/config/base.yml` |
-| `symlinks/apm/plugins/dot-code` | Local coding workflow skills |
 | `symlinks/apm/plugins/dot-agent` | Local agent interaction workflow skills |
 | `symlinks/apm/plugins/dot-skill` | Local skill/plugin maintenance skills |
 | `conf/symlinks.toml` | Links `apm/config/base.yml` and `apm/plugins/*` from this repo |
@@ -57,8 +56,7 @@ through APM instead of raw symlinks:
 
 ## Local Plugin Rules
 
-- Keep local plugin names short and `dot-*`: `dot-code`, `dot-agent`,
-  `dot-skill`.
+- Keep local plugin names short and `dot-*`: `dot-agent`, `dot-skill`.
 - Use native APM package layout for each local plugin: `apm.yml` at the plugin
   root and source primitives under `.apm/` (for example,
   `.apm/skills/<skill>/SKILL.md`). Set `includes: auto` unless a plugin needs a

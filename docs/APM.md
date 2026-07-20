@@ -32,11 +32,11 @@ with `dot-`.
 Each plugin uses APM's native layout:
 
 ```text
-symlinks/apm/plugins/dot-code/
+symlinks/apm/plugins/dot-agent/
 ├── apm.yml
 └── .apm/
     └── skills/
-        └── project-hygiene/
+        └── status-update/
             └── SKILL.md
 ```
 
@@ -44,9 +44,9 @@ The plugin manifest should include package metadata and a dependency block so
 `apm pack --dry-run --verbose` can validate it:
 
 ```yaml
-name: dot-code
+name: dot-agent
 version: 1.0.0
-description: Coding workflows and preferences
+description: Agent interaction workflows and preferences
 license: MIT
 includes: auto
 dependencies:
@@ -188,7 +188,7 @@ Use these checks when changing APM files:
 ./dotfiles.sh install -d
 
 # Validate one local plugin directly.
-cd symlinks/apm/plugins/dot-code
+cd symlinks/apm/plugins/dot-agent
 apm pack --dry-run --verbose
 ```
 

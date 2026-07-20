@@ -16,22 +16,10 @@ fi
 # Fast git prompt info
 git_prompt_info()
 {
-  # Performance: Fast check if in git repo
-  if ! git rev-parse --git-dir >/dev/null 2>&1; then
-    return
-  fi
-
   local current_branch
-  current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || return
   if [ -n "$current_branch" ]; then
     echo -n " %F{white}${current_branch}%f"
-    [[ "${DOTFILES_FAST_PROMPT:-0}" = "1" ]] && return
-
-    # Performance: Use --porcelain=v1 and --untracked-files=no for speed
-    local changes=$(git --no-optional-locks status --porcelain=v1 --untracked-files=no 2>/dev/null | wc -l)
-    if [ "${changes:-0}" -gt 0 ]; then
-      echo -n "%F{red}+${changes// /}%f"
-    fi
   fi
 }
 

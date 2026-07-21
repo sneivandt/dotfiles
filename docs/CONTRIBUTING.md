@@ -1,335 +1,136 @@
-# Contributing to Dotfiles
+# Contributing
 
-Thank you for your interest in contributing! This document provides guidelines for contributing to this dotfiles project.
+Changes should preserve the separation between wrappers, declarative desired
+state, domain behavior, and application orchestration.
 
-## Getting Started
+## Development setup
 
-1. Fork the repository
-2. Clone your fork:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/dotfiles.git
-   cd dotfiles
-   ```
-3. Create a feature branch:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
+Requirements:
 
-**Before making changes**, familiarize yourself with:
-- [Architecture Documentation](ARCHITECTURE.md) - Understanding the system design
-- [Profile System](PROFILES.md) - How profiles work
-- [Configuration Reference](CONFIGURATION.md) - Configuration file formats
-- [Testing Documentation](TESTING.md) - How to test your changes
+- Git
+- the Rust toolchain declared by the repository
+- PowerShell on Windows
+- ShellCheck for shell-script checks
+- PowerShell 7 and the PSScriptAnalyzer module for PowerShell-script checks
 
-**Agent Skills**: For technical coding patterns, Copilot and Codex use shared
-skills in `.agents/skills/`. See `AGENTS.md` for the complete context map.
-
-## Prerequisites
-
-Install the Rust toolchain via [rustup](https://rustup.rs/):
-
-- **Linux**: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- **Windows**: `winget install Rustlang.Rustup`
-
-After installation, ensure `cargo` is on your PATH (open a new terminal if needed). The repository pins its Rust version in `rust-toolchain.toml`, and `rustup` will automatically select or install that toolchain when you run `cargo` from this repository.
-
-## Development Workflow
-
-### Before Making Changes
-
-1. Understand the profile system (base, desktop) and auto-detected platform categories (linux, windows, arch)
-2. Run existing tests:
-   ```bash
-   cd cli && cargo test
-   ```
-
-### Building and Testing Locally
+Build and run the CLI:
 
 ```bash
-# Build the binary
 cargo build --manifest-path cli/Cargo.toml
+cargo run --manifest-path cli/Cargo.toml -- --root . test
+```
 
-# Run the core Rust checks used by CI
-cargo fmt  --check --manifest-path cli/Cargo.toml
-cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings
-cargo clippy --profile ci --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
+On Windows, the wrapper can build and invoke the local binary in one step:
+
+```powershell
+.\dotfiles.ps1 --build test
+```
+
+## Before editing
+
+1. Identify the owning layer and read the nearest implementation.
+2. Treat `conf\` and the command/task catalogs as authoritative.
+3. Check whether an existing resource, provider, task, or operation can be
+   reused.
+4. Preserve user-owned working-tree changes and private overlay content.
+
+Do not add command behavior to `dotfiles.sh` or `dotfiles.ps1`; wrappers only
+bootstrap and forward.
+
+## Change patterns
+
+### Configuration-only change
+
+1. Edit the appropriate `conf\*.toml`.
+2. Keep platform and role entries in the narrowest category.
+3. If a conditional symlink changes, update `conf\manifest.toml`.
+4. Run the configuration drift test and `dotfiles test`.
+5. Preview the affected task with `--dry-run`.
+
+### New config-backed resource
+
+Implement the full vertical slice:
+
+```text
+config type -> loader -> validator -> conf entry -> resource/provider
+-> task -> command registration -> exports -> tests
+```
+
+Static install or uninstall tasks must be registered in
+`cli\src\app\catalog.rs`. Command-specific tasks belong in that command's task
+list.
+
+### New task
+
+Define:
+
+- stable task identity
+- clear display name
+- phase
+- applicability
+- same-domain dependencies
+- elevation policy
+- dry-run-safe execution
+
+Add cross-domain dependency edges in the application catalog. Do not rely on
+catalog insertion order.
+
+### New workflow
+
+Use an operation when state must converge as one coherent workflow rather than
+as independent records. The operation should provide explicit current-state,
+preview, and apply behavior.
+
+### Platform-specific change
+
+Prefer platform capability methods and adapters over direct operating-system
+checks scattered through task logic. Ensure the other platform still compiles
+by guarding imports, types, and calls at the right boundary.
+
+## Code quality
+
+- Propagate failures with context; do not return success for invalid input.
+- Keep mutations idempotent.
+- Ensure `--dry-run` does not perform the mutation.
+- Avoid broad exception handling or silent fallbacks.
+- Reuse typed configuration and engine helpers.
+- Add comments only where behavior is not self-explanatory.
+- Keep generated artifacts and private files out of commits.
+
+## Targeted checks
+
+Use the narrowest existing check that covers the change:
+
+```bash
+cargo fmt --manifest-path cli/Cargo.toml -- --check
+cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path cli/Cargo.toml
+cargo test --manifest-path cli/Cargo.toml --test config_drift
+```
+
+CI reproductions use the repository's `ci` Cargo profile:
+
+```bash
 cargo test --profile ci --manifest-path cli/Cargo.toml
-
-# Run end-to-end with --build flag (builds from source)
-./dotfiles.sh --build install -p base -d
+cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+cargo test --profile ci --manifest-path cli/Cargo.toml --test config_drift
 ```
 
-CI additionally enforces the MSRV, dependency audit and policy checks,
-configuration validation, platform integration tests, application tests, hook
-tests, and wrapper tests. See [Testing](TESTING.md) for the checks relevant to
-each type of change; [the CI workflow](../.github/workflows/ci.yml) is
-authoritative.
+See [Testing](TESTING.md) for script, wrapper, hook, and integration checks.
 
-### Making Changes
+## CI and publishing
 
-#### Adding Configuration Files
+`.github\workflows\ci.yml` is the pull-request and push gate. Its build, lint,
+test, security, validation, wrapper, hook, and integration jobs are reflected
+in a final `ci-success` gate. Coverage is informational.
 
-1. **Symlinks**: Add files to `symlinks/` directory, then add entries to `conf/symlinks.toml`:
-   ```toml
-   [base]
-   symlinks = [
-     "config/mynewconfig",
-     "apm/config/base.yml",
-     "apm/plugins/*",
-   ]
-   ```
-   Use a full path-segment `*` when a directory should expand into one symlink per direct child.
+Release and Docker publishing run only after successful same-repository pushes
+to `main`. Publishing builds use release mode; ordinary CI uses the `ci`
+profile. Recurring integration logic belongs in
+`.github\workflows\scripts\`, not large inline workflow blocks.
 
-2. **Packages**: Add to appropriate section in `conf/packages.toml`:
-   ```toml
-   [arch]
-   packages = ["my-new-package"]
-   ```
+## Documentation changes
 
-3. **Systemd Units**: Add to `conf/systemd-units.toml`:
-   ```toml
-   [arch-desktop]
-   units = ["my-service.service"]
-   ```
-
-4. **Git Configuration**: Add Windows git settings to `conf/git-config.toml`:
-   ```toml
-   [windows]
-   settings = [
-     { key = "core.autocrlf", value = "false" },
-     { key = "core.symlinks", value = "true" },
-   ]
-   ```
-
-5. **File Categorization**: If the file should be excluded in certain profiles, add to `conf/manifest.toml`:
-   ```toml
-   [desktop]
-   paths = ["config/mynewconfig"]
-   ```
-
-#### Adding New Tasks
-
-Prefer the existing task macros over hand-written `Task` implementations:
-
-1. Check `.agents/skills/resource-implementation/SKILL.md`,
-   `.agents/skills/rust-patterns/SKILL.md`, and the closest existing task for
-   the current pattern.
-2. Use `config_resource_task!` for tasks with an injected config handle, or
-   `resource_task!` for config-free tasks that process resources through the
-   shared engine.
-3. Use `task_metadata!` for hand-written tasks that need custom control flow
-   but still have a static name, optional non-default phase, and dependencies.
-4. Declare dependencies with `task_deps![...]` instead of ad-hoc ordering.
-5. Put the task entry file directly in `cli/src/domains/<domain>/` and add the
-   module to that domain's `mod.rs`. Large features may keep supporting code in
-   a same-named subdirectory behind the root entry file.
-6. Register the task in `all_install_tasks()` or `all_uninstall_tasks()` in
-   `cli/src/app/catalog.rs`.
-7. Add unit or integration tests for gating, idempotency, and dry-run behavior.
-
-#### Adding New Configuration Types
-
-1. Create TOML file in `conf/`
-2. Add a parser module under `cli/src/domains/<domain>/config/`; prefer
-   `config_section!` for sectioned TOML lists
-3. Add the field to the `Config` struct and a single `SectionLoader` call in
-   `Config::load()`. One call (e.g. `sections.collect_filtered(...)`) loads the
-   main config *and* merges the overlay, so there is no separate merge step.
-4. Create a task entry file in `cli/src/domains/<domain>/` that consumes an
-   injected typed config handle
-
-#### Creating New Profiles
-
-Define in `conf/profiles.toml`:
-```toml
-[my-profile]
-include = []
-exclude = ["windows", "desktop"]
-```
-
-### Rust Code Guidelines
-
-- **Error Handling**: Use `anyhow::Result` with `.context()` for all fallible operations
-- **Task Pattern**: Prefer `config_resource_task!` for config-backed resources,
-  `resource_task!` for config-free resources, and `task_metadata!` for custom
-  tasks; use `should_run()` for platform, tool-availability, and configuration
-  eligibility gates
-- **Idempotency**: Always check if action is needed before taking it
-- **No Trailing Whitespace**: Remove all trailing whitespace from files
-- **Formatting**: Run `cargo fmt` before committing
-- **Linting**: Ensure host and Windows-target `cargo clippy --all-targets -- -D warnings` pass with no warnings. `cli/Cargo.toml` is the source of truth for strict lints, including bans on silent `as` conversions, ambiguous ref-counted pointer clones, wildcard enum arms, unrelated shadowing, and ignored `#[must_use]` results
-- **Lint Allows**: Every `#[allow(...)]` must include a `reason = "..."`
-  argument; avoid `.unwrap()` and `.expect()` in production code
-
-### Shell Wrapper Guidelines
-
-The shell wrappers (`dotfiles.sh`, `dotfiles.ps1`) are thin entry points that download or build the binary. When modifying them:
-
-- **POSIX Compliance**: `dotfiles.sh` uses `#!/bin/sh` — avoid Bash-specific features
-- **Minimal Logic**: Keep the wrappers thin; add new logic to the Rust binary instead
-- **Error Handling**: `set -o errexit` and `set -o nounset` in `dotfiles.sh`
-
-### TOML Configuration Format
-
-See [Configuration Reference](CONFIGURATION.md) and the `toml-configuration` skill for TOML format details. Key points:
-- Section names use hyphen-separated categories (logical AND): `[arch-desktop]`
-- `registry.toml` uses logical section names with `path` key and nested `[section.values]` subtable; `profiles.toml` uses profile names
-
-## Testing
-
-### Required Before Submitting
-
-1. **Rust Checks**:
-   ```bash
-   cargo fmt  --check --manifest-path cli/Cargo.toml
-   cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
-   cargo clippy --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
-   cargo test --manifest-path cli/Cargo.toml
-   ```
-   Install the Windows target first when needed:
-   `rustup target add x86_64-pc-windows-gnu` plus a mingw-w64 GCC toolchain.
-
-   For changes under `conf/`, `symlinks/`, `hooks/`, or wrapper scripts, also
-   run:
-   ```bash
-   ./dotfiles.sh test
-   ```
-
-2. **Dry-Run Testing**:
-   ```bash
-   ./dotfiles.sh --build install -p desktop -d
-   ```
-   Verify the binary detects your changes correctly
-
-3. **Profile-Specific Testing**:
-   Test with relevant profiles:
-   - `base` - Minimal (no desktop tools)
-   - `desktop` - Full configuration (includes desktop tools)
-
-   Platform categories (`linux`, `windows`, `arch`) are auto-detected and don't need to be specified.
-
-### CI Testing
-
-GitHub Actions automatically runs on pull requests:
-- Rust formatting (`cargo fmt --check`)
-- Rust linting (`cargo clippy`)
-- Rust tests (`cargo test`)
-- Security audit (`cargo audit`, `cargo deny`)
-- Release builds (Linux and Windows)
-- Integration tests (dry-run install per profile)
-- Install/uninstall round-trip tests
-- Shell wrapper linting (shellcheck on `dotfiles.sh` and `install.sh`)
-- Application tests (git, zsh, vim, nvim)
-- Git hooks tests
-
-## Commit Guidelines
-
-### Commit Messages
-
-Follow conventional commit format:
-
-```
-type(scope): brief description
-
-Optional longer description explaining the change.
-
-Fixes #issue_number
-```
-
-**Types**:
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `style`: Code style changes (formatting, no logic change)
-- `refactor`: Code refactoring
-- `test`: Adding or updating tests
-- `chore`: Maintenance tasks
-
-**Examples**:
-```
-feat(symlinks): add neovim configuration
-fix(tasks): correct symlink permission check
-docs(readme): update installation instructions
-chore(ci): update shellcheck version
-```
-
-### Commits
-
-- Keep commits atomic (one logical change per commit)
-- Write clear, descriptive commit messages
-- Reference issues when applicable
-
-## Pull Request Process
-
-1. **Before Submitting**:
-   - Ensure all Rust checks pass (`cargo fmt --check`, host Clippy,
-     Windows-target Clippy, and `cargo test`)
-   - Run `./dotfiles.sh test` for configuration, symlink, hook, or wrapper changes
-   - Test with `-d` (dry-run) mode
-   - Update documentation if needed
-   - Remove trailing whitespace from all files
-
-2. **PR Description**:
-   - Describe what changes you made and why
-   - Reference related issues
-   - Include testing notes (which profiles tested)
-   - Note any breaking changes
-
-3. **Checklist** (automatically provided by PR template):
-   - [ ] Ran `cargo fmt --check`
-   - [ ] Ran host Clippy with no warnings
-   - [ ] Ran Windows-target Clippy for Rust changes
-   - [ ] Ran `cargo test` successfully
-   - [ ] Ran source-built config validation for configuration/symlink/hook/wrapper changes
-   - [ ] Tested affected profiles from source with `-d` (dry-run) mode
-   - [ ] Verified idempotency for changes that mutate machine state
-   - [ ] Kept conditional symlink and manifest coverage synchronized
-   - [ ] Included no private files, credentials, or other secrets
-   - [ ] Updated relevant documentation and tests when needed
-
-4. **Review Process**:
-   - Address feedback from maintainers
-   - Keep PR focused on single feature/fix
-   - Rebase if requested to maintain clean history
-
-## Code Style
-
-See the `rust-patterns` and `shell-patterns` skills in `.agents/skills/` for
-detailed coding conventions. Summary:
-
-- **Rust**: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `anyhow::Result` with `.context()`
-- **Shell**: POSIX `#!/bin/sh`, 2-space indent, minimal logic in wrappers
-- **PowerShell**: 4-space indent, minimal logic in `dotfiles.ps1`
-- **Config files**: One entry per line, comment non-obvious entries
-
-## Documentation Updates
-
-When adding features or changing behavior:
-
-1. Update main [README.md](../README.md) if it affects core usage
-2. Update specialized documentation:
-   - [USAGE.md](USAGE.md) - For installation and usage changes
-   - [PROFILES.md](PROFILES.md) - For profile system changes
-   - [CONFIGURATION.md](CONFIGURATION.md) - For configuration file changes
-   - [WINDOWS.md](WINDOWS.md) - For Windows-specific changes
-   - [ARCHITECTURE.md](ARCHITECTURE.md) - For implementation changes
-   - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - For common issues
-3. Add examples to help users understand the feature
-4. Update cross-references in related documents
-5. Update the [documentation index](README.md) if adding new documentation files
-
-## Questions or Help
-
-- Open an issue for questions
-- Check existing issues and PRs for similar topics
-- Review project documentation thoroughly first
-
-## Next read
-
-- [Testing](TESTING.md) - Exact local and CI validation commands
-- [Architecture](ARCHITECTURE.md) - How tasks, resources, and scheduling fit together
-- [Configuration Reference](CONFIGURATION.md) - TOML formats and cookbook examples
-
-## License
-
-By contributing, you agree that your contributions will be licensed under the MIT License.
+Update the guide closest to the behavior. If a task is added, removed, renamed,
+rephased, or rewired, update [Task reference](TASKS.md). Keep the root README as
+a landing page and place detailed guidance in `docs\`.

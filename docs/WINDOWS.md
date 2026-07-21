@@ -1,350 +1,145 @@
-# Windows Usage
+# Windows Guide
 
-Windows dotfiles management powered by the Rust core engine. The PowerShell entrypoint (`dotfiles.ps1`) is a thin wrapper that downloads (or builds) the Rust binary and forwards all arguments to it, providing registry personalization, symlinks, package installation, VS Code extensions, and AI agent skills in an idempotent fashion.
+Windows is a first-class target. The PowerShell wrapper bootstraps the Rust CLI,
+and platform tasks converge Developer Mode, packages, symlinks, registry state,
+VS Code extensions, PATH, and optional WSL configuration.
 
-**See Also:**
-- [Usage Guide](USAGE.md) - General usage instructions
-- [Configuration Reference](CONFIGURATION.md) - Configuration file formats
-- [Architecture](ARCHITECTURE.md) - Implementation details
-- [Troubleshooting](TROUBLESHOOTING.md) - Windows-specific troubleshooting
+## Requirements
 
-## Quick Start
+- 64-bit Windows on x86-64 for release-binary downloads
+- PowerShell
+- Git
+- winget for package installation
+- Rust only when using wrapper `--build`
 
-**Requirements:**
-- **PowerShell**: Compatible with both PowerShell Core (pwsh) and Windows PowerShell (5.1+)
-- **Administrator privileges**: Required for registry modification and symlink creation (not needed for dry-run mode)
+The published Windows asset currently targets x86-64. On an unsupported
+architecture, build the CLI locally instead.
 
-The Windows profile is used by default when running on Windows.
-
-### Initial Installation
-
-Open an elevated PowerShell session (either PowerShell Core or Windows PowerShell) then run:
+## Bootstrap
 
 ```powershell
-git clone https://github.com/sneivandt/dotfiles.git
-cd dotfiles
-.\dotfiles.ps1 install -p desktop
-
-# Dry-run mode (preview changes without modification, no admin required)
-.\dotfiles.ps1 install -p desktop -d
-
-# With verbose output
-.\dotfiles.ps1 install -p desktop -v
-
-# Build and run from source (development)
-.\dotfiles.ps1 --build install -p desktop
+Set-Location C:\Code\sneivandt\dotfiles
+.\dotfiles.ps1 install --profile desktop --dry-run
+.\dotfiles.ps1 install --profile desktop
 ```
 
-Re‑run the script at any time; operations are skipped when already satisfied (extensions installed, registry values unchanged, symlinks existing).
+The wrapper looks for `bin\dotfiles.exe`. If absent, it downloads the matching
+release asset and checksum and verifies SHA-256 before execution.
 
-## What the Binary Does
-
-`dotfiles.ps1` downloads (or builds) the Rust binary and forwards all arguments to it. Before scheduled tasks start, self-update may replace the binary and re-exec the process. The remaining Windows work runs in phase order, but rows within the same phase are inventory, not a strict sequence; tasks run in parallel when their dependencies allow.
-
-| Phase | Task | Description | Idempotency Cue |
-|-------|------|-------------|-----------------|
-| Bootstrap | Developer Mode | Enables Windows developer mode (required for symlink creation). | Skips if already enabled. |
-| Bootstrap | Install Wrapper | Installs the `dotfiles` wrapper script so the CLI is on PATH from any directory. | Skips if wrapper is already up to date. |
-| Bootstrap | Configure PATH | Ensures dotfiles bin directory is on PATH after the wrapper task completes. | Skips if already on PATH. |
-| Sync | Sparse Checkout | Configures git sparse checkout based on profile. | Skips if already configured. |
-| Sync | Update Repository | Updates the repository from remote (`git pull --ff-only`) after sparse checkout is configured. | Skips if already up to date. |
-| Sync | Git Hooks | Copies repository git hooks into `.git/hooks/` after repository update. | Skips if hooks already match. |
-| Sync | Reload Configuration | Reloads config after repository update. | Skips when no repository update happened. |
-| Sync | Report Overlay Script Snapshot | Reports script tasks captured at process startup, when `--overlay` is set. Newly pulled definitions take effect on the next run. | Skips when no overlay scripts are configured. |
-| Provision | Packages | Installs missing packages from `conf/packages.toml` using winget. | Skips already-installed packages. |
-| Provision | Symlinks | Creates Windows user profile symlinks from `conf/symlinks.toml`. | Only creates links whose targets do not already exist. |
-| Provision | Git Config | Configures git settings (e.g., `core.symlinks=true`, `core.autocrlf=false`). | Skips if already configured. |
-| Provision | Copilot Settings | Applies Copilot CLI settings from `conf/copilot.toml`. | Skips if settings already match. |
-| Provision | Registry | Applies registry values from `conf/registry.toml`. | Each value compared to existing; paths created only if missing. |
-| Provision | VS Code Extensions | Installs VS Code extensions from `conf/vscode-extensions.toml`. | Checks against `code --list-extensions`. |
-| Provision | APM Packages | Merges every `~/.apm/config/*.yml` fragment into `~/.apm/apm.yml`, runs unscoped `apm install -g` for runtime auto-detection, then separately deploys `copilot-app` workflows when `~/.copilot/data.db` exists. | Idempotent via APM's lockfile. |
-| Provision | Overlay Scripts | Runs custom scripts loaded from the overlay repository, when `--overlay` is set. | Script-defined checks decide whether each script runs. |
-| Update | APM Packages | `dotfiles update` only: runs `apm outdated -g` and `apm update -g --yes` when locked refs are stale. | Skips when locked refs are current. |
-
-Tasks that don't apply to Windows (systemd, shell, chmod, paru) are automatically skipped via platform detection.
-
-## Git Configuration
-
-The repository contains symlinks (e.g., `symlinks/config/nvim` → `../vim`) that are tracked in Git. On Windows, creating actual symlinks during Git operations requires Developer Mode enabled or Administrator privileges.
-
-The binary **automatically configures** Git to enable symlink support, since Developer Mode is enabled during the Bootstrap phase:
+To build from the current checkout:
 
 ```powershell
-git config core.symlinks true
-git config core.autocrlf false
-git config credential.helper manager
+.\dotfiles.ps1 --build test
 ```
 
-This configuration:
-- Enables proper symlink creation in the working directory
-- Requires Developer Mode (enabled automatically during the Bootstrap phase)
-- Is applied automatically on first run (idempotent—won't change if already set)
+The wrapper can also replace itself through a pending self-update. Installation
+uses a rollback-safe replacement sequence so a failed update does not leave the
+entry point missing.
 
-**Manual Workaround:** If you encounter symlink permission errors before running the script (e.g., during initial `git clone`), you can temporarily disable symlinks:
+## Developer Mode and symlinks
+
+**Enable developer mode** runs in Bootstrap before symlinks are provisioned.
+Developer Mode allows normal users to create symbolic links without running the
+entire CLI elevated.
+
+If symlink creation still fails:
+
+1. Confirm Windows Developer Mode is enabled.
+2. Start a fresh shell so capability changes are visible.
+3. Check that the target is not an unrelated existing file.
+4. Run only the symlink task with verbose output:
+
 ```powershell
-git config core.symlinks false
+dotfiles install --only symlinks --dry-run --verbose
 ```
 
-## Automatic Repository Updates
+The CLI plans elevation when a mutation requires it; do not run every command as
+Administrator by default.
 
-The installation process includes an automatic repository update task that updates the dotfiles repository from the remote using a fast-forward-only merge:
+## Packages
 
-```
-git pull --ff-only
-```
-
-### Behavior
-
-- **Clean, fast-forwardable**: Update proceeds normally
-- **Already up to date**: Skips silently
-- **Non-fast-forwardable**: The pull fails and the task reports an error — manual resolution is required
-- **Dirty working tree**: Git will refuse the pull if there are conflicting changes
-
-If the update fails, resolve the situation manually (e.g., commit or stash local changes, then re-run).
-
-## Package Management
-
-Package installation uses Windows Package Manager (winget) to install missing packages from `conf/packages.toml`.
-
-**Requirements:**
-- **winget**: Built into Windows 11 and modern Windows 10. If not available, install from: https://aka.ms/getwinget
-
-Configuration lives in `conf/packages.toml` under the **`[windows]` section**:
+Windows package identifiers in `conf\packages.toml` are winget package IDs:
 
 ```toml
 [windows]
 packages = [
   "Git.Git",
   "Microsoft.PowerShell",
-  "Microsoft.VisualStudioCode",
 ]
 ```
 
-Each entry is a **winget package ID** (case-sensitive). The binary:
-- Checks if each package is already installed (idempotent)
-- Installs only missing packages
-- Uses silent installation with automatic acceptance of licenses
-- Handles elevation automatically when packages require it
+Only missing packages are installed. AUR and paru tasks are not applicable on
+Windows.
 
-To find package IDs, use:
-```powershell
-winget search <package-name>
-```
+## Registry settings
 
-To add packages:
-1. Add the winget package ID to the `[windows]` section in `conf/packages.toml`
-2. Re-run `./dotfiles.ps1`
-
-**Note:** Package installation respects the profile system. Only packages in sections matching your active categories (including auto-detected `windows`) will be installed.
-
-## Registry Customization
-
-Registry configuration lives in `conf/registry.toml`. Each section uses a logical name with a `path` key (the registry path) and a `[section.values]` subtable:
+`conf\registry.toml` declares named paths and value tables. Current
+configuration covers console colors and behavior, PSReadLine colors, regional
+formatting, Explorer, taskbar, search, Start, desktop icons, and window
+management.
 
 ```toml
-[console]
-path = 'HKCU:\Console'
+[explorer]
+path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer'
 
-[console.values]
-WindowSize = 0x00200078
-FaceName = "Cascadia Mono"
-QuickEdit = 1
-
-[psreadline]
-path = 'HKCU:\Console\PSReadLine'
-
-[psreadline.values]
-NormalForeground = 0xF
+[explorer.values]
+EnableAutoTray = 0
 ```
 
-Section names are logical identifiers (not registry paths). The `path` field holds the actual registry path.
+The task converges declared values without deleting undeclared values. Existing
+taskbar and Start pins are intentionally not managed because Windows stores
+them in unstable opaque formats.
 
-Only `HKCU:\` paths are supported. `HKLM:\`, `HKCR:\`, and other hives are
-rejected so registry management remains scoped to the current user.
-
-**Note:** Registry configuration doesn't use profile filtering since registry settings are Windows-only by nature.
-
-To add custom registry settings:
-1. Add entries to appropriate section in `conf/registry.toml` (or create a new section with a logical name and `path` key).
-2. Re-run `./dotfiles.ps1`.
-
-The script will create missing registry keys automatically.
-
-## Symlinks
-
-Symlink definitions live in `conf/symlinks.toml` under the **`[windows]` section**:
-
-```toml
-[windows]
-symlinks = [
-  { source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" },
-  { source = "AppData/Roaming/Code - Insiders/User/settings.json", target = "AppData/Roaming/Code - Insiders/User/settings.json" },
-  { source = "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json", target = "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json" },
-  "config/git/windows",
-]
-```
-
-Each entry is a path relative to `$env:USERPROFILE`. The source file is located at `symlinks/<same-path>` in the repository. Forward slashes are automatically converted to backslashes for Windows.
-
-If installation replaces an existing non-symlink file or directory, the CLI
-prints a warning immediately before the replacement. No backup is created.
-
-### Target Path Handling
-
-By default, a symlink entry `"foo/bar"` maps to `%USERPROFILE%\.foo\bar` (a dot is prepended). For Windows paths that must **not** receive a dot prefix — such as `AppData\` or `Documents\` — specify an explicit `target` field:
-
-```toml
-{ source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }
-```
-
-This maps `symlinks/AppData/Roaming/Code/User/settings.json` →
-`%USERPROFILE%\AppData\Roaming\Code\User\settings.json`.
-
-Unix-style paths (no explicit target) continue to receive the dot prefix automatically:
-- `"config/git/windows"` → `%USERPROFILE%\.config\git\windows`
-- `"ssh/config"` → `%USERPROFILE%\.ssh\config`
-
-**Note:** Windows symlinks use the same configuration file as Linux (`conf/symlinks.toml`) but use the `[windows]` section.
-
-To add a new link:
-1. Place the source file under `symlinks/<path>` (create directories as needed).
-2. Add the path to the `[windows]` section in `conf/symlinks.toml`. Use a plain string for Unix-style paths (dot prefix applied automatically) or `{ source, target }` for Windows paths that need no dot prefix.
-3. Re-run `./dotfiles.ps1`.
-
-Symlink entries also support a full path-segment `*` glob. Each `*` in `source` captures one path segment and each `*` in an explicit `target` is replaced by the matching capture, for example `apm/plugins/*` links each local APM plugin into `~/.apm/plugins/<plugin>`.
-
-## VS Code Extensions
-
-The file `conf/vscode-extensions.toml` contains extensions under category sections (`[desktop]`, `[windows]`, etc.). The `extensions` key holds an array of extension IDs. Remove an entry and re-run to keep new installs from occurring (does not uninstall). Add entries to expand your standard environment. The script requires the `code` CLI on PATH (Enable via VS Code: Command Palette → Shell Command: Install 'code' command in PATH).
-
-## AI Plugins (Microsoft APM)
-
-The file `symlinks/apm/config/base.yml` is a [Microsoft APM](https://github.com/microsoft/apm) manifest fragment. It is symlinked to `~/.apm/config/base.yml`. The `apm` task merges every `~/.apm/config/*.yml` (including overlay-supplied fragments) into a generated `~/.apm/apm.yml`, then APM consumes it at user scope and deploys AI tooling (Copilot, Codex, Claude, Cursor, etc.) plugin sources globally — nothing is written into this repository.
-
-**Format**:
-```yaml
-name: dotfiles
-version: 1.0.0
-dependencies:
-  apm:
-    - dotnet/skills/plugins/dotnet-diag
-    - github/awesome-copilot/plugins/awesome-copilot
-```
-
-**How it works**:
-- `Install symlinks` links `symlinks/apm/config/base.yml` → `~/.apm/config/base.yml`
-- `Install APM packages` runs unscoped `apm install -g` so APM auto-detects installed runtimes together, then runs `apm install -g --target copilot-app` only when the Copilot App has initialized `~/.copilot/data.db`. This converges to the locked manifest and never advances locked refs
-- `Update APM packages` (the `update` command only) runs after provisioning: it checks `apm outdated -g`, runs unscoped `apm update -g --yes` to advance stale locked dependencies, then separately redeploys Copilot App workflows when applicable. It is absent from `install`
-- Idempotency is provided by APM itself via its lockfile / no-op behaviour
-- Plugin primitives are deployed to `~/.copilot/`, `~/.claude/`, `~/.cursor/`, etc.
-
-**Requirements**:
-- The `apm` binary must be on PATH (`Microsoft.APM` via winget on Windows; `apm-bin` AUR package on Arch Linux — both are listed in `conf/packages.toml`)
-
-## Updating
-
-The dotfiles repository is automatically updated during installation. The binary handles local changes safely.
-
-### Automatic Updates (Recommended)
-
-Re-run the engine. Use `update` to also advance pinned dependency versions
-(e.g. APM plugin dependencies), or `install` to re-apply without bumping
-pinned versions:
+Preview registry changes:
 
 ```powershell
-.\dotfiles.ps1 update -p desktop    # install + advance pinned dependency versions
-.\dotfiles.ps1 install -p desktop   # re-apply only, versions stay pinned
+dotfiles install --only registry --dry-run --verbose
 ```
 
-The binary automatically fetches and merges updates from remote using `git pull --ff-only`.
+Some Explorer settings are read only when Explorer or the user session
+restarts.
 
-See the [Automatic Repository Updates](#automatic-repository-updates) section for details on conflict handling.
+## PATH and wrapper
 
-### Manual Updates
+The wrapper task installs `dotfiles` beneath:
 
-If you prefer to update manually:
+```text
+%USERPROFILE%\.local\bin
+```
+
+The PATH task adds that location to the user's persistent PATH when needed.
+Open a new terminal after the first installation before relying on the bare
+`dotfiles` command.
+
+## PowerShell configuration
+
+PowerShell profile files are delivered from the repository's `symlinks\` tree.
+The active Windows category selects them, and normal symlink convergence keeps
+the home targets pointed at the checkout.
+
+`dotfiles test` attempts PSScriptAnalyzer whenever `pwsh` is available. If the
+PSScriptAnalyzer module is missing, the PowerShell validation task fails and
+reports the module error.
+
+## WSL
+
+When the Linux binary runs inside WSL, **Install wsl.conf** can install the
+repository-managed system configuration. This is separate from running the
+Windows executable on the host.
+
+Because `wsl.conf` is system-level:
+
+- the operation may need elevation inside the distribution
+- changes generally require `wsl --shutdown` from Windows before taking effect
+- the task is not applicable on native Linux or the Windows host
+
+## Uninstall
 
 ```powershell
-git pull
-.\dotfiles.ps1 update -p desktop
+dotfiles uninstall --dry-run
+dotfiles uninstall
 ```
 
-Note: If the working tree has conflicting changes, commit or resolve them before pulling.
-
-## Logging and Summary
-
-The dotfiles installation includes a comprehensive logging system that tracks all operations and provides detailed summaries.
-
-### Log File Location
-
-All installation operations are logged to: `%USERPROFILE%\.cache\dotfiles\install.log`
-
-This persistent log file includes:
-- Timestamp of installation
-- Selected profile
-- All operations performed
-- Verbose details (even when not displayed on console)
-- Final summary counts
-
-The log file is useful for troubleshooting installation issues or reviewing what changes were made.
-
-### Task Summary
-
-In **non-verbose** mode (default), a live progress line is shown while tasks
-run, followed by a compact summary. Successful no-op tasks are omitted from
-the visible rows and totals. Tasks that changed state, were skipped, failed, or
-would change state in preview mode are printed as they complete. Status colors:
-
-- Green — task changed state successfully
-- Yellow — task was deliberately skipped
-- Magenta — dry-run preview
-- Red — task failed
-
-Not-applicable tasks are omitted from the console summary. The persistent log
-file records every task's output, replayed as each buffered task completes, and
-ends with the same final completion/count lines as the console.
-
-### Dry-Run Mode
-
-When using `-d` (dry-run), the logging system:
-- Shows what would be done without making changes
-- Prints dry-run task rows in magenta as tasks complete
-- Still writes to the log file for review
-
-Example summary output:
-```
-Install · profile desktop · Windows 11 · preview
-
-Install symlinks · would change
-  link ~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1
-Configure registry · would change
-  set HKCU\Console\VirtualTerminalLevel
-
-Preview complete · 0.8s
-Tasks: 2 would change · Actions: 2 planned
-```
-
-## Troubleshooting
-
-| Symptom | Check |
-|---------|-------|
-| No output / nothing changes | Ensure you are running an elevated PowerShell session. |
-| Symlink not created | Entry present in `conf/symlinks.toml` under `[windows]` section? Does source file exist in `symlinks/`? If replacement was warned, could the existing target be removed? Running as admin? |
-| Registry values unchanged | Verify keys under `HKCU:\Console` – did policy or another tool override them? Run as admin. |
-| VS Code extensions not installing | `code` CLI available? Run `code --version` in the same session. |
-
-## Safety & Idempotency Notes
-
-* **Cross-Edition Compatible**: Scripts work with both PowerShell Core and Windows PowerShell (5.1+)
-* **Dry-Run Mode**: The `-d` (dry-run) flag allows previewing changes without administrator privileges
-* Symlink installation warns before replacing an existing regular file or directory; no automatic backup is created
-* Registry configuration accepts only HKCU (user scope) paths; HKLM and other hives are rejected
-* Re-running is safe; tasks skip work that is already complete
-
-## See Also
-
-- [Configuration Reference](CONFIGURATION.md) - Details on `conf/packages.toml`, `conf/registry.toml`, `conf/symlinks.toml`
-- [Usage Guide](USAGE.md) - General installation and usage
-- [Troubleshooting](TROUBLESHOOTING.md) - Windows troubleshooting
-- [Architecture](ARCHITECTURE.md) - Windows module architecture
-- [Testing](TESTING.md) - Testing Windows changes
+Uninstall materializes managed links and removes the hook and wrapper
+integrations. It does not uninstall winget packages or restore registry values.
+Those boundaries prevent broad destructive rollback of shared machine state.

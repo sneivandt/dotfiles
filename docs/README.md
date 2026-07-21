@@ -1,48 +1,44 @@
-# Documentation Index
+# Documentation
 
-This directory contains comprehensive documentation for the dotfiles project.
+This directory documents the Rust-based dotfiles manager, its declarative
+configuration, and the workflows used to develop and operate it.
 
-## Quick Links
+## Start here
 
-### Getting Started
-- **[Main README](../README.md)** - Quick start and overview
-- **[Installation & Usage](USAGE.md)** - Detailed installation and usage guide
-- **[Profiles](PROFILES.md)** - Understanding and using the profile system
-- **[Configuration](CONFIGURATION.md)** - Configuration file reference
+| Guide | Purpose |
+|---|---|
+| [Usage](USAGE.md) | Bootstrap the CLI and use every command and global option |
+| [Task reference](TASKS.md) | Understand every install, update, uninstall, validation, and overlay task |
+| [Configuration](CONFIGURATION.md) | Edit the TOML desired-state files safely |
+| [Profiles](PROFILES.md) | Control role and platform-specific configuration |
+| [Troubleshooting](TROUBLESHOOTING.md) | Diagnose common bootstrap, configuration, and convergence failures |
 
-### Platform-Specific
-- **[Windows Usage](WINDOWS.md)** - Windows-specific documentation
-- **[Docker](DOCKER.md)** - Docker image usage and building
+## Design and development
 
-### Development
-- **[Contributing](CONTRIBUTING.md)** - Contribution guidelines
-- **[Testing](TESTING.md)** - Testing and CI documentation
-- **[Architecture](ARCHITECTURE.md)** - Implementation and design details
-- **[APM Tooling](APM.md)** - AI tooling packages, local plugins, and APM install/update flow
-- **[Git Hooks](HOOKS.md)** - Repository git hooks
+| Guide | Purpose |
+|---|---|
+| [Architecture](ARCHITECTURE.md) | Learn the CLI layers, task engine, resource model, and execution flow |
+| [Contributing](CONTRIBUTING.md) | Build, test, and change the project |
+| [Testing](TESTING.md) | Run local checks and understand CI coverage |
+| [Hooks](HOOKS.md) | Understand installed Git hooks and sensitive-data checks |
+| [Security](SECURITY.md) | Review trust boundaries, download verification, and secret handling |
 
-### Reference
-- **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
-- **[Security](SECURITY.md)** - Security policy and best practices
+## Platforms and integrations
 
-## Documentation Organization
+| Guide | Purpose |
+|---|---|
+| [Windows](WINDOWS.md) | Windows bootstrap, Developer Mode, registry, PATH, and WSL behavior |
+| [APM](APM.md) | Manage AI tooling packages, plugins, and generated configuration |
+| [Docker](DOCKER.md) | Build and use the container image |
 
-The documentation is organized to support different audiences and use cases:
+## Source-of-truth boundaries
 
-1. **Quick Start**: Main README provides essential information to get started
-2. **Platform Guides**: Platform-specific documentation for Linux and Windows
-3. **Deep Dives**: Detailed guides for specific features (profiles, configuration, etc.)
-4. **Developer Resources**: Contributing, testing, and architecture documentation
-5. **Reference**: Troubleshooting and security information
+- `conf\` contains declarative desired state.
+- `cli\src\app\catalog.rs` contains the static install and uninstall task
+  catalogs.
+- `cli\src\app\commands\test.rs` contains the validation task list.
+- `dotfiles.sh` and `dotfiles.ps1` only bootstrap a binary and forward CLI
+  arguments.
+- `.github\workflows\` is authoritative for CI and publishing behavior.
 
-## Contributing to Documentation
-
-When updating documentation:
-- Keep the main README concise and focused
-- Move detailed content to appropriate specialized files
-- Maintain cross-references between related documents
-- Include practical examples
-- Update this index when adding new documentation files
-- Follow the project's markdown formatting standards
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
+The documentation explains those sources; it does not replace them.

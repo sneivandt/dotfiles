@@ -94,7 +94,9 @@ From the repo root, build from source and preview changes against the active con
 
 | Guide | What's in it |
 |-------|--------------|
+| [Documentation Index](docs/README.md) | All project guides by topic |
 | [Usage Guide](docs/USAGE.md) | All commands and flags |
+| [CLI Task Reference](docs/TASKS.md) | Every install, update, uninstall, validation, and overlay task |
 | [Profile System](docs/PROFILES.md) | How profiles work |
 | [Configuration Reference](docs/CONFIGURATION.md) | TOML format details |
 | [Architecture](docs/ARCHITECTURE.md) | Rust CLI design |

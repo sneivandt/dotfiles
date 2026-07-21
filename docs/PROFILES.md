@@ -1,318 +1,96 @@
-# Profile System
+# Profiles and Categories
 
-The profile system allows a single dotfiles repository to serve multiple environments without checking out unnecessary files. Profiles control which files are included via git sparse checkout and which configuration sections are processed.
+Profiles select the role of a machine. Categories describe the layers of
+configuration that apply. The CLI combines a selected role profile with
+automatically detected platform categories.
 
-## Available Profiles
+## Built-in role profiles
 
-Profiles are defined in `conf/profiles.toml` and control the `desktop` role category. Platform categories (`linux`, `windows`, `arch`) are auto-detected and cannot be selected manually.
+| Profile | Includes | Excludes | Intended use |
+|---|---|---|---|
+| `base` | No optional role category | `desktop` | Servers, WSL, and minimal shell environments |
+| `desktop` | `desktop` | Nothing | Workstations with GUI packages and configuration |
 
-| Profile | Description | Use Case |
-|---------|-------------|----------|
-| `base` | Minimal core shell configuration (excludes `desktop`) | Shared shell configs without desktop-specific files |
-| `desktop` | Full configuration including desktop tools (includes `desktop`) | Workstation with GUI, VS Code, fonts, etc. |
+`base` configuration is always active regardless of the selected role.
 
-### Auto-Detected Platform Categories
+## Automatic categories
 
-These categories are determined automatically based on the running OS and are always applied — they are not profiles you select:
+| Category | Active when |
+|---|---|
+| `linux` | The CLI is running on Linux |
+| `windows` | The CLI is running on Windows |
+| `arch` | The Linux distribution is Arch Linux |
 
-| Category | When Active | Effect |
-|----------|-------------|--------|
-| `linux` | Running on Linux | Includes Linux-specific packages, shell config, systemd units |
-| `windows` | Running on Windows | Includes Windows packages, registry settings, git config |
-| `arch` | Running on Arch Linux | Includes pacman/AUR packages, Arch-specific config |
+These categories are detected; users do not select them as profiles.
 
-## How Profiles Work
+Examples:
 
-The profile system operates through several coordinated mechanisms:
+| Machine and profile | Active categories | Typical matching sections |
+|---|---|---|
+| Windows + `base` | `base`, `windows` | `[base]`, `[windows]` |
+| Windows + `desktop` | `base`, `windows`, `desktop` | Plus `[desktop]`, `[windows-desktop]` |
+| Arch + `base` | `base`, `linux`, `arch` | Plus `[linux]`, `[arch]` |
+| Arch + `desktop` | `base`, `linux`, `arch`, `desktop` | Plus `[linux-desktop]`, `[arch-desktop]` |
 
-### 1. Profile Selection
+## Section matching
 
-Profiles can be selected in four ways, in order of priority:
+Section names are split on hyphens and every tag must be active:
 
-1. **Explicit CLI argument**: `-p, --profile desktop` (highest priority)
-2. **Environment variable**: `DOTFILES_PROFILE=desktop`
-3. **Persisted profile**: Automatically read from `.git/config`
-4. **Interactive prompt**: If no profile is set, you'll be prompted to select one
-
-**Example - First time setup:**
-```bash
-./dotfiles.sh install
-# Prompts: "Select profile (1-2): "
-# Selection is saved to .git/config for future runs
-```
-
-**Example - Subsequent runs:**
-```bash
-./dotfiles.sh install
-# Uses saved profile, no prompt
-```
-
-**Example - Override saved profile:**
-```bash
-./dotfiles.sh install -p base
-# Uses 'base' for this invocation without changing the saved profile
-```
-
-### 2. Sparse Checkout
-
-Git's sparse checkout feature controls which files are checked out to your working directory based on your profile. Files excluded by your profile are automatically removed from the workspace but remain in the repository.
-
-**How it works:**
-- Profile definitions in `conf/profiles.toml` specify which categories to exclude
-- File categories are mapped in `conf/manifest.toml`
-- Git sparse checkout rules are automatically configured
-- Excluded files don't clutter your workspace
-
-**Example:**
-```bash
-# Check what files are included in sparse checkout
-git sparse-checkout list
-```
-
-### 3. Configuration Processing
-
-Configuration files (packages, symlinks, units, etc.) use section headers to determine which items are processed:
-
-**Single category sections:**
-```toml
-[arch]
-packages = [
-  "base-devel",
-  "git",
-]
-```
-These items are processed when the `arch` category is NOT excluded.
-
-**Multi-category sections:**
 ```toml
 [arch-desktop]
-packages = [
-  "hyprland",
-  "alacritty",
-]
+packages = ["waybar"]
 ```
-These items require ALL listed categories to be active (AND logic).
 
-### 4. OS Detection Overrides
+This section applies only when both `arch` and `desktop` are active. Ordering
+does not turn it into a hierarchy, and matching is not OR-based.
 
-The system applies automatic overrides to ensure compatibility:
+## Resolution priority
 
-- **Non-Arch Linux systems**: Always exclude `arch` category (even if profile includes it)
-- **All Linux systems**: Always exclude `windows` category (even if profile includes it)
+The role profile is resolved in this order:
 
-This prevents incompatible operations regardless of profile selection.
+1. `--profile <name>`
+2. `DOTFILES_PROFILE`
+3. Repository-local Git config `dotfiles.profile`
+4. Interactive selection
 
-### 5. Profile Persistence
-
-Profiles selected through the interactive prompt are saved to `.git/config`
-for seamless reuse. CLI and `DOTFILES_PROFILE` overrides are not persisted.
-Manage the saved profile directly when you want to change it:
+An explicitly supplied unknown profile is an error. During interactive
+selection, the chosen profile is persisted to repository-local Git config for
+future runs.
 
 ```bash
-# Save profile
-git config --local dotfiles.profile desktop
-
-# Read saved profile
-git config --local --get dotfiles.profile
+dotfiles install --profile desktop
 ```
 
-The installation script writes this setting only after interactive selection.
-
-## Profile Definitions
-
-Profiles are defined in `conf/profiles.toml`:
-
-```toml
-[base]
-include = []
-exclude = ["desktop"]
-
-[desktop]
-include = ["desktop"]
-exclude = []
-```
-
-Platform categories (`linux`, `windows`, `arch`) are not defined in profiles.toml — they are auto-detected at runtime based on the operating system.
-
-### WSL Behavior
-
-WSL is not a separate profile or category. On WSL, use the normal Linux profiles
-(`base` or `desktop`), and the installer will additionally run the `wsl_conf`
-task when WSL is detected to manage `/etc/wsl.conf`.
-
-### Profile Syntax
-
-- **Profile names**: Section headers in `profiles.toml` (e.g., `[base]`, `[desktop]`)
-- **include**: Array of categories to include
-- **exclude**: Array of categories to exclude
-
-## Switching Profiles
-
-When you switch profiles, the sparse checkout automatically adjusts. To make
-the switch persistent, update the repository setting before installing:
-
-```bash
-# Switch from desktop to base
-git config --local dotfiles.profile base
-./dotfiles.sh install
-# Desktop-specific files are automatically removed from workspace
-# Symlinks to desktop files are removed
-
-# Switch back to desktop
-git config --local dotfiles.profile desktop
-./dotfiles.sh install
-# Desktop files are checked out again
-# Desktop symlinks are created
-```
-
-For a one-run override, pass `-p, --profile` or set `DOTFILES_PROFILE`; the
-saved profile remains unchanged.
-
-## Creating Custom Profiles
-
-You can create custom profiles for specific needs:
-
-1. **Edit `conf/profiles.toml`:**
-   ```toml
-   [my-custom]
-   include = ["mycategory"]
-   exclude = []
-   ```
-
-2. **Use your profile:**
-   ```bash
-   ./dotfiles.sh install -p my-custom
-   ```
-
-3. **Add profile-specific configuration:**
-   - Add sections to `conf/packages.toml`, `conf/symlinks.toml`, etc.
-   - Use section name `[my-custom]` or multi-category like `[arch-my-custom]`
-
-### Profile-Specific APM Tooling
-
-APM config is delivered through symlinked manifest fragments under
-`symlinks/apm/config/*.yml`. The base fragment is linked by the `[base]`
-section in `conf/symlinks.toml`, so it is installed for every profile.
-
-To make AI tooling profile-specific, split optional dependencies into their own
-fragment and link that fragment from the matching profile category:
-
-```toml
-# conf/symlinks.toml
-[desktop]
-symlinks = [
-  "apm/config/desktop.yml",
-]
-```
-
-```yaml
-# symlinks/apm/config/desktop.yml
-name: dotfiles-desktop
-version: 1.0.0
-dependencies:
-  apm:
-    - github/awesome-copilot/plugins/automate-this#<pinned-sha>
-```
-
-Also list `apm/config/desktop.yml` under the matching section in
-`conf/manifest.toml` so sparse checkout includes the fragment when that
-category is active. On install, the APM task merges every linked
-`~/.apm/config/*.yml` fragment into `~/.apm/apm.yml`, so each selected profile
-gets the base AI tooling plus its profile-specific fragments.
-
-## Profile Categories
-
-Categories are logical groups used throughout the configuration system:
-
-| Category | Purpose | Used In |
-|----------|---------|---------|
-| `linux` | Linux-specific configuration | Linux systems (auto-detected) |
-| `windows` | Windows-specific configuration | Windows systems (auto-detected) |
-| `arch` | Arch Linux-specific configuration | Arch Linux systems (auto-detected) |
-| `desktop` | Desktop/GUI configuration | Systems using `desktop` profile |
-
-Custom categories can be created by:
-1. Adding them to profile definitions in `conf/profiles.toml`
-2. Creating corresponding sections in other `.toml` files
-3. Mapping files to categories in `conf/manifest.toml`
-
-## Advanced: Profile Dependencies
-
-Profiles can have implicit dependencies through category combinations:
-
-```toml
-# This section requires BOTH arch AND desktop to be active
-[arch-desktop]
-packages = [
-  "alacritty",
-  "dunst",
-]
-```
-
-This allows fine-grained control over which items are installed in different environments.
-
-## Examples
-
-### Minimal Server Setup
-```bash
-git clone https://github.com/sneivandt/dotfiles.git
-cd dotfiles
-./dotfiles.sh install -p base
-# Only core shell configs, no desktop or OS-specific files
-```
-
-### Arch Linux Workstation
-```bash
-git clone https://github.com/sneivandt/dotfiles.git
-cd dotfiles
-./dotfiles.sh install -p desktop
-# Full desktop environment with Arch packages
-```
-
-### Generic Linux Desktop (Ubuntu, Fedora, etc.)
-```bash
-git clone https://github.com/sneivandt/dotfiles.git
-cd dotfiles
-./dotfiles.sh install -p desktop
-# Desktop tools without Arch-specific packages
-```
-
-### Windows System
 ```powershell
-git clone https://github.com/sneivandt/dotfiles.git
-cd dotfiles
-.\dotfiles.ps1 install -p desktop
-# Windows profile is automatically used
+$env:DOTFILES_PROFILE = "base"
+.\dotfiles.ps1 install
 ```
 
-## Troubleshooting
+## Sparse checkout
 
-### Wrong files checked out
+Profiles affect both desired state and which platform-specific files remain in
+the checkout. `conf\manifest.toml` maps category exclusions to paths under
+`symlinks\`.
+
+When switching from `desktop` to `base`, desktop paths may be removed from the
+sparse checkout. Before applying those exclusions, the CLI materializes managed
+home symlinks whose sources would disappear. This preserves usable user files
+rather than leaving broken links.
+
+Preview profile changes:
+
 ```bash
-# Check current profile
-git config --local --get dotfiles.profile
-
-# Check sparse checkout rules
-git sparse-checkout list
-
-# Reapply profile
-./dotfiles.sh install -p <your-profile>
+dotfiles install --profile base --dry-run --verbose
 ```
 
-### Desktop files missing on Arch
-Use the `desktop` profile (the `arch` category is auto-detected):
-```bash
-./dotfiles.sh install -p desktop
-```
+## Adding a profile or category
 
-### Package installation failing
-Check that the package is defined in a section matching your active profile:
-```bash
-# Enable verbose mode to see what sections are being processed
-./dotfiles.sh install -v
-```
+1. Add the role definition to `conf\profiles.toml`.
+2. Add category sections to relevant configuration files.
+3. Add matching sparse-checkout coverage to `conf\manifest.toml` for every
+   non-`base` symlink section.
+4. Run `dotfiles test`.
+5. Preview both inclusion and exclusion transitions with `--dry-run`.
 
-## See Also
-
-- [Configuration Reference](CONFIGURATION.md) - Details on configuration file formats
-- [Usage Guide](USAGE.md) - Detailed usage examples
+Prefer a small vocabulary of orthogonal categories. A new profile should
+compose categories rather than duplicate large configuration lists.

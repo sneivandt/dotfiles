@@ -1,629 +1,234 @@
 # Troubleshooting
 
-Common issues and their solutions when working with the dotfiles system.
+Start with a dry run and verbose output:
 
-## Installation Issues
-
-### Profile Selection
-
-#### Profile not saved after selection
-**Symptoms**: Asked to select profile every time you run the installer.
-
-**Solution**:
 ```bash
-# Manually save profile
-git config --local dotfiles.profile desktop
-
-# Verify it's saved
-git config --local --get dotfiles.profile
+dotfiles install --dry-run --verbose
+dotfiles log --verbose
 ```
 
-#### Wrong profile being used
-**Symptoms**: Unexpected files or packages being installed.
+Then narrow the command with `--only` using a display name from
+[Task reference](TASKS.md).
 
-**Solution**:
+## The wrapper cannot find or download the binary
+
+Symptoms:
+
+- no compatible release asset
+- checksum download failure
+- checksum mismatch
+- unsupported architecture
+
+Actions:
+
+1. Confirm GitHub is reachable over HTTPS.
+2. Confirm the operating system and architecture have a published asset.
+3. Remove only a known incomplete binary download, then rerun the wrapper.
+4. Build from the checkout:
+
 ```bash
-# Check current profile
-git config --local --get dotfiles.profile
-
-# Override with explicit profile
-./dotfiles.sh install -p <correct-profile>
+./dotfiles.sh --build --version
 ```
 
-### Sparse Checkout Issues
-
-#### Wrong files checked out
-**Symptoms**: Files that shouldn't be in your workspace are present, or expected files are missing.
-
-**Solution**:
-```bash
-# Check sparse checkout status
-git sparse-checkout list
-
-# Check current profile
-git config --local --get dotfiles.profile
-
-# Sparse-checkout updates require a clean worktree
-git status --short
-
-# After committing or stashing any local changes, reapply the profile
-./dotfiles.sh install -p <your-profile>
-```
-
-The installer skips sparse-checkout changes while the worktree has local
-changes. Do not force a checkout to recover; commit or stash the changes first
-so they are not discarded.
-
-#### Desktop files missing on Arch Linux
-**Symptoms**: No desktop configuration files even though you're on Arch.
-
-**Solution**: Use the `desktop` profile to include desktop files (platform categories like `arch` are auto-detected):
-```bash
-./dotfiles.sh install -p desktop
-```
-
-The `base` profile excludes desktop files and is intended for headless/minimal setups.
-
-#### Sparse checkout not working
-**Symptoms**: All files present regardless of profile.
-
-**Solution**:
-```bash
-# Check the mode managed by the installer
-git config --get core.sparseCheckout
-git config --get core.sparseCheckoutCone
-
-# After committing or stashing local changes, regenerate sparse-checkout rules
-./dotfiles.sh install -p <your-profile>
-```
-
-The expected settings are `true` for `core.sparseCheckout` and `false` for
-`core.sparseCheckoutCone`. Do not run `git sparse-checkout init --cone`; the
-installer owns the non-cone patterns and working-tree update.
-
-### Symlink Issues
-
-#### Symlink not created
-**Symptoms**: Expected symlink doesn't exist in `$HOME`.
-
-**Possible causes and solutions**:
-
-1. **Source file excluded by sparse checkout**:
-   ```bash
-   # Check if source file exists
-   ls -la symlinks/<path>
-
-   # If missing, check sparse checkout
-   git sparse-checkout list
-   ```
-
-2. **Target file/directory already exists**:
-   ```bash
-   # Check if regular file exists at target
-   ls -la ~/.<path>
-
-   # If it's a regular file, back it up and remove
-   mv ~/.<path> ~/.<path>.backup
-   ./dotfiles.sh install
-   ```
-
-3. **Entry not in correct section**:
-   ```bash
-   # Check conf/symlinks.toml
-   # Verify entry is in a section matching your profile
-   grep -A5 "\[base\]" conf/symlinks.toml
-   ```
-
-4. **Parent directory doesn't exist**:
-   ```bash
-   # Symlink creation should create parents automatically
-   # If not, create manually:
-   mkdir -p ~/.config/
-   ./dotfiles.sh install
-   ```
-
-#### Symlink points to wrong location
-**Symptoms**: Symlink exists but target is incorrect.
-
-**Solution**:
-```bash
-# Remove incorrect symlink
-rm ~/.<path>
-
-# Reinstall
-./dotfiles.sh install
-```
-
-#### Permission denied creating symlink (Windows)
-**Symptoms**: Error creating symlinks on Windows.
-
-**Solution**:
-- Run PowerShell as Administrator
-- Or enable Developer Mode (Windows 10+):
-  - Settings → Update & Security → For developers → Developer Mode
-
-### Package Installation Issues
-
-#### Package not installed
-**Symptoms**: Package from `packages.toml` wasn't installed.
-
-**Possible causes and solutions**:
-
-1. **Wrong section in packages.toml**:
-   ```bash
-   # Print the section containing the package
-   package=package-name
-   awk -v package="$package" '
-     /^\[/ { section = $0 }
-     index($0, package) { print section; print NR ":" $0 }
-   ' conf/packages.toml
-   ```
-
-2. **Profile excludes the category**:
-   ```bash
-   # Check profile overrides and the saved profile
-   printf 'DOTFILES_PROFILE=%s\n' "${DOTFILES_PROFILE:-<not set>}"
-   git config --local --get dotfiles.profile || echo "<no saved profile>"
-
-   # Print the complete definition for the profile you intend to use
-   profile=desktop
-   awk -v header="[$profile]" '
-     /^\[/ { in_profile = ($0 == header) }
-     in_profile { print }
-   ' conf/profiles.toml
-   ```
-
-   Profile precedence is `-p, --profile`, then `DOTFILES_PROFILE`, then the
-   saved profile. Confirm that every category in the package section is active
-   for the selected profile and platform.
-
-3. **Package manager not available**:
-   ```bash
-   # Check if pacman is installed
-   which pacman
-
-   # For AUR packages, check if paru is installed
-   which paru
-   ```
-
-4. **Package name incorrect**:
-   ```bash
-   # Search for correct package name
-   pacman -Ss <package-name>
-   paru -Ss <package-name>
-   ```
-
-#### AUR package installation fails
-**Symptoms**: Error installing package from AUR.
-
-**Solution**:
-```bash
-# Ensure paru is installed
-which paru
-
-# Install paru if missing
-./dotfiles.sh install -p desktop
-
-# Try installing package manually to see error
-paru -S <package-name>
-```
-
-#### winget package installation fails (Windows)
-**Symptoms**: Error installing package on Windows.
-
-**Solution**:
 ```powershell
-# Verify winget is installed
-winget --version
-
-# Search for correct package ID
-winget search <package-name>
-
-# Try installing manually
-winget install <PackageId>
-
-# Update package ID in conf/packages.toml if needed
+.\dotfiles.ps1 --build --version
 ```
 
-### Systemd Unit Issues
+Do not bypass checksum verification.
 
-#### Unit not enabled
-**Symptoms**: Systemd unit from `systemd-units.toml` isn't running.
+## Cargo build fails
 
-**Solution**:
+Confirm the repository's required Rust toolchain and native dependencies are
+installed, then run:
+
 ```bash
-# Check unit status
-systemctl --user status <unit-name>
-
-# Verify unit file exists (should be symlinked)
-ls -la ~/.config/systemd/user/<unit-name>
-
-# Manually enable and start
-systemctl --user enable --now <unit-name>
-
-# Check logs
-journalctl --user -u <unit-name>
+cargo build --manifest-path cli/Cargo.toml
 ```
 
-#### Unit fails to start
-**Symptoms**: Unit enabled but fails to start.
+If only the wrapper build fails, running Cargo directly usually exposes the
+underlying compiler or linker error without wrapper output.
 
-**Solution**:
+## No profile can be selected
+
+Profile priority is CLI, environment, local Git config, then an interactive
+prompt. In a non-interactive environment, provide one explicitly:
+
 ```bash
-# Check unit logs
-journalctl --user -u <unit-name> -n 50
-
-# Verify dependencies are met
-systemctl --user list-dependencies <unit-name>
-
-# Check unit file syntax
-systemctl --user cat <unit-name>
+dotfiles install --profile base
 ```
 
-### VS Code Extension Issues
+To inspect a persisted choice:
 
-#### Extensions not installed
-**Symptoms**: VS Code extensions from config not installed.
-
-**Solution**:
 ```bash
-# Verify code CLI is available
-which code
-code --version
-
-# Check if extension exists
-code --list-extensions | grep <extension-id>
-
-# Install manually
-code --install-extension <extension-id>
-
-# Verify extension ID in conf/vscode-extensions.toml
-   cat conf/vscode-extensions.toml
+git config --local --get dotfiles.profile
 ```
 
-#### Extension installation hangs
-**Symptoms**: Installation process hangs during extension installation.
+An unknown explicit profile is an error; use a name declared in
+`conf\profiles.toml`.
 
-**Solution**:
-- Press Ctrl+C to cancel
-- Try installing extensions manually
-- Check VS Code marketplace availability
-- Temporarily comment out extensions in `conf/vscode-extensions.toml` to skip them
+## Configuration does not parse
 
-### Microsoft APM (AI Plugins) Issues
+Run:
 
-#### `apm` not found
-**Symptoms**: `Install APM packages` task fails with `apm not found in PATH`.
-
-**Solution**:
-- Windows: `winget install Microsoft.APM`
-- WSL: install the Windows package with `winget.exe install Microsoft.APM`, then re-open the WSL shell
-- Arch Linux: install the `apm-bin` AUR package (included in `conf/packages.toml`)
-- Verify: `apm --version`
-
-#### Plugins not deployed
-**Symptoms**: Files under `.github/`, `.claude/`, `.cursor/`, etc. are missing or out of date.
-
-**Solution**:
 ```bash
-# Re-run the engine. `update` redeploys the manifest AND advances stale
-# dependencies; `install` only redeploys without bumping locked refs.
-./dotfiles.sh update
-
-# Or run APM directly at user scope.
-# Leave the primary commands unscoped so APM auto-detects Copilot CLI, Codex,
-# and other installed MCP runtimes together.
-apm install -g
-apm outdated -g
-apm update -g --yes
-
-# After the Copilot App has initialized ~/.copilot/data.db, deploy its
-# experimental workflow primitives separately.
-apm experimental enable copilot-app
-apm install -g --target copilot-app
-
-# Inspect the manifest (deployed location)
-cat ~/.apm/apm.yml
+dotfiles --root . test --verbose
 ```
 
-## Permission Issues
+Core required files are `profiles.toml`, `symlinks.toml`, `packages.toml`, and
+`manifest.toml`. Common causes include:
 
-### Linux
+- malformed TOML
+- a value placed under the wrong section
+- a nonexistent symlink source
+- a conditional symlink missing manifest coverage
+- an invalid package or APM reference
 
-#### Cannot install packages
-**Symptoms**: Permission denied when installing packages.
+Use the complete path from the reported diagnostic rather than editing a
+similarly named overlay file.
 
-**Solution**:
+## An overlay appears to be ignored
+
+Confirm the path points to the overlay repository root and pass it to both
+validation and install:
+
 ```bash
-# Ensure sudo is configured
-sudo -v
-
-# Check if user is in required groups
-groups
-
-# For Arch Linux, user should be in 'wheel' group
-sudo usermod -aG wheel $USER
-
-# Re-login for group changes to take effect
+dotfiles --root . --overlay C:\path\to\overlay test --verbose
+dotfiles --root . --overlay C:\path\to\overlay install --dry-run --verbose
 ```
 
-#### Cannot enable systemd units
-**Symptoms**: Permission denied when enabling units.
+Remember:
 
-**Solution**:
+- supported records append; they do not override main entries
+- missing overlay config files are empty
+- `manifest.toml` is not loaded from overlays
+- `scripts.toml` is loaded only from the overlay
+- script paths are relative to the overlay
+
+## A task does not run
+
+A task can be absent from execution because:
+
+- its phase is excluded (`install` excludes Update)
+- it is not applicable to the host
+- its configuration list is empty
+- `--only` did not match its display name
+- `--skip` removed it
+- a dependency failed
+- current state already matches desired state
+
+Retry with the full display name or a canonical selector and verbose output.
+Selectors are normalized whole names or tokens, not arbitrary substrings:
+
 ```bash
-# Use --user flag (script should do this automatically)
-systemctl --user enable <unit>
-
-# Verify systemd user instance is running
-systemctl --user status
+dotfiles install --only "Configure systemd units" --dry-run --verbose
 ```
 
-### Windows
+Use `dotfiles update` for **Update APM packages**.
 
-#### Script requires elevation
-**Symptoms**: Error messages about requiring administrator privileges.
+## A symlink cannot be created on Windows
 
-**Solution**:
-- Right-click PowerShell
-- Select "Run as Administrator"
-- Re-run script
+Run:
 
-#### Cannot modify registry
-**Symptoms**: Access denied when setting registry values.
-
-**Solution**:
-- Run PowerShell as Administrator
-- Verify registry path is under HKCU (not HKLM)
-- Check for policies preventing registry modification
-
-## Git Issues
-
-### Cannot pull updates
-**Symptoms**: Git errors when pulling repository updates.
-
-**Solution**:
-```bash
-# Stash local changes
-git stash
-
-# Pull updates
-git pull
-
-# Reapply changes
-git stash pop
-
-# Or re-run the install (uses git pull --ff-only)
-.\dotfiles.ps1 install -p desktop
+```powershell
+dotfiles install --only "developer mode,symlinks" --dry-run --verbose
 ```
 
-### Merge conflicts
-**Symptoms**: Conflicts when pulling updates.
+Confirm Developer Mode is enabled, open a new terminal, and check whether an
+unrelated file already occupies the target. Avoid running the whole workflow
+elevated when only a specific capability requires it.
 
-**Solution**:
+## A profile switch would remove files
+
+Conditional sources may leave the sparse checkout. The Sync phase first runs
+**Materialize excluded symlinks**, copying linked content into the home target
+before applying exclusions.
+
+Always preview profile transitions:
+
 ```bash
-# Check conflict status
+dotfiles install --profile base --dry-run --verbose
+```
+
+If preservation fails, do not force the sparse-checkout change; resolve the
+reported source or target problem first.
+
+## Repository update fails
+
+Repository synchronization requires a suitable Git checkout and upstream. Check:
+
+```bash
 git status
-
-# Resolve conflicts manually
-# Edit conflicted files
-git add <resolved-files>
-git commit
-
-# Or abort merge and start over
-git merge --abort
-git pull
+git remote -v
+git branch -vv
 ```
 
-### Symlink errors (Windows)
-**Symptoms**: `error: unable to create symlink: Permission denied` during git operations.
+Resolve authentication, upstream, or conflicting local changes without
+discarding user work. `--root` must identify the intended checkout.
 
-**Solution**:
+If update changes configuration, the CLI reloads it before Provision tasks.
+Verbose logs show whether the reload signal was consumed.
+
+## Packages do not install
+
+On Arch, regular packages use pacman and AUR records use paru. On Windows,
+packages use winget.
+
+Check the configured identifier and provider directly, then preview the package
+tasks:
+
+```bash
+dotfiles install --only packages --dry-run --verbose
+```
+
+An AUR failure may originate in **Install paru** before **Install AUR packages**.
+Do not mark a provider failure as already installed.
+
+## APM update is skipped
+
+APM updates require a successful install fingerprint for the current merged
+manifest. First converge install state:
+
+```bash
+dotfiles install --only APM --verbose
+dotfiles update --only APM --dry-run --verbose
+```
+
+Also confirm active main and overlay fragments are valid and APM is available.
+
+## Optional analyzers are not running
+
+ShellCheck and APM validation are skipped when their executables are absent.
+The PowerShell task runs whenever `pwsh` is available; if the PSScriptAnalyzer
+module is missing, validation fails with the PowerShell error. Install the
+required executable or module, open a new shell if PATH changed, and rerun the
+test.
+
+## systemd changes are not visible
+
+The task manages user units. Check the user manager:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user status <unit>
+```
+
+Confirm the unit source was linked and its packages were installed. The task
+depends on package, AUR, and symlink convergence.
+
+## WSL settings did not change
+
+`wsl.conf` changes generally require the distribution to stop completely:
+
 ```powershell
-# Ensure Developer Mode is enabled, then configure git for symlinks
-git config core.symlinks true
-
-# Or let script configure it automatically (enables Developer Mode + git config)
-.\dotfiles.ps1 install -p base
+wsl --shutdown
 ```
 
-## Test Failures
+Then start the distribution again. Confirm the task ran inside WSL, not through
+the Windows host executable.
 
-### Shellcheck failures
-**Symptoms**: CI reports shellcheck errors on wrapper scripts.
+## Uninstall did not restore machine defaults
 
-**Solution**:
-```bash
-# Run shellcheck directly to see details
-shellcheck --severity=warning --shell=sh --exclude=SC1090,SC1091,SC3043,SC2154 --enable=avoid-nullary-conditions dotfiles.sh install.sh
-
-# Fix issues in reported files
-# Common issues:
-# - Missing quotes around variables
-# - Using non-POSIX features
-# - Undefined variables
-```
-
-### Configuration validation failures
-**Symptoms**: Test reports invalid configuration files.
-
-**Solution**:
-```bash
-# Check TOML file syntax
-# Ensure section headers use []
-# Ensure no trailing whitespace
-# Verify file references exist
-
-# Run verbose test mode
-./dotfiles.sh test -v
-```
-
-## Profile-Specific Issues
-
-### Base Profile
-
-#### Minimal setup but need more
-**Solution**: Switch to a more complete profile:
-```bash
-./dotfiles.sh install -p desktop
-```
-
-### Arch Linux
-
-#### Desktop files missing
-**Solution**: Use the `desktop` profile (the `arch` category is auto-detected):
-```bash
-./dotfiles.sh install -p desktop
-```
-
-#### Not on Arch but want to test
-**Solution**: Use `-d` (dry-run) to preview what would happen:
-```bash
-./dotfiles.sh install -p base -d
-```
-Note: OS detection overrides will still exclude incompatible tasks on non-Arch systems.
-
-### Desktop Profile
-
-#### Missing OS-specific packages
-**Solution**: Desktop profile includes desktop tools. OS-specific packages (e.g., Arch or Windows) are included automatically based on platform detection:
-```bash
-# On Arch Linux — arch packages are auto-included
-./dotfiles.sh install -p desktop
-```
-
-### Windows
-
-#### Cannot select profile
-**Explanation**: On Windows, platform categories (`windows`) are auto-detected. Use `-p base` or `-p desktop` to control whether desktop tools are included.
-
-## Dry-Run Mode Issues
-
-### Counters show zero
-**Symptoms**: Dry-run summary shows zero operations.
-
-**Possible causes**:
-1. All operations already complete (idempotency working correctly)
-2. Profile doesn't match any configuration sections
-3. All items excluded by profile
-
-**Solution**:
-```bash
-# Run with verbose mode to see skip reasons
-./dotfiles.sh install -d -v
-```
-
-## Verbose Mode Issues
-
-### Too much output
-**Symptoms**: Verbose mode shows overwhelming amount of information.
-
-**Solution**:
-- Redirect to file: `./dotfiles.sh install -v 2>&1 | tee install.log`
-- Use dry-run first to estimate scope: `./dotfiles.sh install -d`
-- Check log file instead: `cat ~/.cache/dotfiles/install.log`
-
-## Docker Issues
-
-### Container won't start
-**Symptoms**: Docker run fails.
-
-**Solution**:
-```bash
-# Pull latest image
-docker pull sneivandt/dotfiles
-
-# Build locally
-docker buildx build -t dotfiles:local .
-
-# Check logs
-docker logs <container-id>
-```
-
-### Container missing files
-**Symptoms**: Expected files not in container.
-
-**Solution**:
-- Check Dockerfile for correct profile
-- Verify sparse checkout in Dockerfile
-- Rebuild image
-
-## Using Diagnostic Logs
-
-The installer writes two log files per run:
-
-- **Main log** (`~/.cache/dotfiles/<command>.log`) — human-readable log with
-  timestamps, always written at full verbose detail regardless of the console
-  verbose flag; buffered task output is replayed per task when that task
-  completes
-- **Diagnostic log** (`~/.cache/dotfiles/<command>.diag.log`) — microsecond-precision chronological log of all events, including parallel execution
-
-Routine successful output does not print log paths; use `dotfiles log` or the
-paths above when you need to inspect a previous run.
-
-### When to use the diagnostic log
-
-The diagnostic log is useful for:
-- **Understanding parallel execution order** — events have true wall-clock timestamps and task context, showing exactly which resources were processed concurrently
-- **Identifying slow operations** — compare elapsed microsecond timestamps to find bottlenecks
-- **Debugging task dependency issues** — task-context lines show when tasks wait, start, and finish
-
-### Reading the diagnostic log
-
-Each line follows the format:
-```
-<seq> +<elapsed_us> <wall_utc> [<context>] [<event>] <message>
-```
-The `event` column uses bracketed snake_case names such as `[debug]` and
-`[task_done]` without width padding after the bracket. Empty messages are
-omitted, and multiline messages are collapsed onto one line so diagnostic logs
-do not contain blank rows.
-
-Examples:
-```bash
-# View the diagnostic log
-cat ~/.cache/dotfiles/install.diag.log
-
-# Find resource operations
-grep 'state=' ~/.cache/dotfiles/install.diag.log
-
-# Trace a specific task's lifecycle
-grep 'Install symlinks' ~/.cache/dotfiles/install.diag.log
-```
-
-## Getting Help
-
-If you're still experiencing issues:
-
-1. **Check the log files**:
-   - Linux: `~/.cache/dotfiles/install.log` and `~/.cache/dotfiles/install.diag.log`
-   - Windows: `%USERPROFILE%\.cache\dotfiles\install.log` and `%USERPROFILE%\.cache\dotfiles\install.diag.log`
-
-2. **Run with verbose mode**:
-   ```bash
-   ./dotfiles.sh install -v
-   ```
-
-3. **Run tests**:
-   ```bash
-   ./dotfiles.sh test -v
-   ```
-
-4. **Check existing issues**:
-   - Visit the GitHub repository
-   - Search for similar issues
-   - Check closed issues for solutions
-
-5. **Open a new issue**:
-   - Describe the problem
-   - Include error messages
-   - Share relevant log excerpts
-   - Specify your OS and profile
-   - Mention steps to reproduce
-
-## See Also
-
-- [Usage Guide](USAGE.md) - Detailed usage instructions
-- [Configuration Reference](CONFIGURATION.md) - Configuration file details
-- [Profile System](PROFILES.md) - Understanding profiles
-- [Testing Documentation](TESTING.md) - Running tests
+This is intentional. Uninstall materializes symlinks and removes hooks and the
+wrapper. It does not remove packages or reverse registry, systemd, shell, WSL,
+editor, APM, or arbitrary script changes. See
+[Uninstall tasks](TASKS.md#uninstall-tasks).

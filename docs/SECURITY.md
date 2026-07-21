@@ -1,160 +1,116 @@
-# Security Policy
+# Security Model
 
-## Supported Versions
+This document describes the repository's security controls and trust
+boundaries. It is not a public vulnerability-disclosure policy.
 
-This dotfiles project is actively maintained. Security updates are applied to the latest version in the `main` branch.
+## Trust boundaries
 
-| Version | Supported          |
-| ------- | ------------------ |
-| main    | :white_check_mark: |
+The CLI can modify user and machine state. Treat these inputs as trusted code or
+trusted configuration:
 
-## Security Considerations
+- the checked-out repository
+- a path supplied through `--overlay`
+- release assets downloaded by a wrapper
+- commands executed by package providers
+- overlay scripts
+- APM packages and local plugins
 
-### Dotfiles and Sensitive Data
+Review changes to these inputs before applying them, particularly when elevation
+may be required.
 
-**Important**: This repository is designed for managing configuration files. Be aware of the following security considerations:
+## Release downloads
 
-1. **Never commit sensitive data**:
-   - API keys, tokens, passwords
-   - SSH private keys
-   - GPG private keys
-   - Application secrets
-   - Personal identification information
+When the platform binary is absent, the wrappers download a published release
+asset and its checksum. They:
 
-2. **Configuration files may contain**:
-   - Usernames (redact if publishing publicly)
-   - File paths revealing system structure
-   - Software versions (potential vulnerability disclosure)
+1. Select the asset for the detected operating system and architecture.
+2. Use HTTPS for GitHub release access.
+3. Download the corresponding SHA-256 checksum.
+4. Verify the binary before executing it.
 
-3. **Safe practices**:
-   - Use environment variables for secrets
-   - Use `.gitignore` to exclude sensitive files
-   - Review commits before pushing
-   - Keep the built-in `hooks/check-sensitive.sh` pre-commit hook installed so staged changes are scanned for leaked credentials
-   - Consider keeping sensitive configs in a private repository
+A checksum proves that the binary matches the published release metadata; it
+does not independently establish who produced that release. Repository and
+GitHub account security remain part of the trust chain.
 
-### Script Execution Risks
+Use wrapper `--build` when you need the binary compiled from the local checkout.
 
-The installation scripts in this repository execute with user privileges and perform system modifications:
+## Elevation
 
-1. **What the scripts do**:
-   - Create symlinks in `$HOME` directory
-   - Install system packages (requires sudo/admin)
-   - Modify registry settings (Windows, requires elevation)
-   - Enable systemd units (Linux)
+Tasks plan elevation before applying operations that require it. The default
+should remain least privilege:
 
-2. **Before running**:
-   - Review `dotfiles.sh` or `dotfiles.ps1` source code
-   - Check `conf/*.toml` files for packages and settings
-   - Use `-d` (dry-run) mode to preview changes:
-     ```bash
-     ./dotfiles.sh install -p desktop -d
-     ```
-   - Run static analysis tests:
-     ```bash
-     ./dotfiles.sh test
-     ```
+- Windows symlinks use Developer Mode where possible.
+- Registry settings are currently user-scoped.
+- systemd configuration uses user units.
+- system-level WSL configuration may require elevation.
+- package managers elevate only for provider actions that need it.
 
-3. **Idempotency**:
-   - Scripts are designed to be safe to re-run
-   - Existing configurations are not backed up (by design)
-   - Commit important files before running
+Do not move broad task execution behind an unconditional administrator or root
+requirement.
 
-### Windows-Specific Considerations
+## Private overlays
 
-Windows scripts require elevation for:
-- Registry modifications (HKCU console settings)
-- Symlink creation (some directories)
+Overlays are explicitly supplied local repositories. They may contain private
+desired state and executable scripts. The public repository:
 
-**Risks**:
-- Elevated scripts can modify system-wide settings
-- Registry changes affect user experience
-- Review `conf/registry.toml` before applying
+- appends supported overlay configuration
+- resolves overlay symlink sources from the overlay root
+- executes only scripts listed in the overlay's `conf\scripts.toml`
+- does not load scripts from its own public `conf\`
 
-### Linux-Specific Considerations
+Review an overlay before using `--overlay`; dry-run reduces mutation risk but
+does not make an untrusted executable safe to inspect or invoke. The engine
+passes `--check` and `--dryrun` to opaque scripts but cannot prevent mutation
+when a script violates that convention.
 
-Linux scripts may use `sudo` for:
-- Installing packages via pacman
+## Secrets
 
-**Risks**:
-- Package installation could introduce vulnerabilities
-- Review `conf/packages.toml` before installing
-- Ensure you trust package repositories
+Do not place credentials, private keys, tokens, connection strings, or
+machine-specific secret values in:
 
-## Security Best Practices for Users
+- `conf\`
+- `symlinks\`
+- test fixtures
+- logs
+- documentation examples
+- GitHub workflow files
 
-### Before Installation
+The pre-commit hook scans staged content using `hooks\sensitive-patterns.ini`.
+This is defense in depth, not a guarantee. Generated command output and overlay
+script output are logged, so scripts must avoid printing sensitive values.
 
-1. **Fork and review**: Fork the repository and review code before running
-2. **Test in a VM**: Test in a virtual machine or container first (the provided Docker image is a convenient option)
-3. **Backup**: Backup existing configuration files
-4. **Dry run**: Always test with `-d` (dry-run) first
+If a secret is committed, revoke or rotate it first; removing it from the latest
+commit is not sufficient.
 
-### After Installation
+## Dependency and CI controls
 
-1. **Audit**: Review created symlinks and installed packages
-2. **Monitor**: Watch for unexpected system behavior
-3. **Update**: Keep the repository updated
-4. **Report**: Report any security issues found
+CI includes:
 
-### For Public Repositories
+- Cargo dependency auditing
+- Cargo policy and license checks
+- formatting and linting
+- Linux and Windows builds/tests
+- wrapper and integration behavior
+- publishing guard checks
 
-If you fork this repository publicly:
+Publishing workflows run only after successful CI from a same-repository push to
+`main`, before jobs receive write permissions or publishing secrets. Release
+assets include checksums consumed by the wrappers.
 
-1. **Remove sensitive data**: Scrub all personal information
-2. **Audit commits**: Review entire git history for leaked secrets
-3. **Use git-filter-repo**: Remove sensitive data from history if needed
-4. **Enable security features**: Enable GitHub security scanning
-5. **Document changes**: Note any security-related modifications
+## Safe contribution practices
 
-## Secure Usage Examples
+- Pin or constrain external actions and tooling according to repository policy.
+- Keep workflow permissions least-privilege.
+- Never echo secrets in shell tracing or diagnostic logs.
+- Preserve dry-run semantics for every mutation.
+- Propagate validation failures instead of falling back to unsafe defaults.
+- Avoid following unvalidated paths outside the expected repository, home, or
+  configuration roots.
+- Review package, APM, and overlay supply-chain changes separately from code
+  correctness.
 
-### Safe Secret Management
+## Reporting a vulnerability
 
-Instead of hardcoding secrets in config files:
-
-```bash
-# Bad - secret in file
-export API_KEY="secret123"
-
-# Good - read from secure location
-export API_KEY="$(cat ~/.secrets/api_key)"
-
-# Better - use system keyring
-export API_KEY="$(secret-tool lookup service myapp key apikey)"
-```
-
-### Safe SSH Config
-
-```
-# Bad - overly permissive
-Host *
-    StrictHostKeyChecking no
-
-# Good - explicit and secure
-Host github.com
-    User git
-    IdentityFile ~/.ssh/id_ed25519
-    StrictHostKeyChecking yes
-```
-
-### Safe Git Config
-
-```ini
-# Don't commit personal email if sharing publicly
-[user]
-    # Use environment variable or global config
-    email = ${GIT_EMAIL}
-```
-
-## Additional Resources
-
-- [OWASP Cheat Sheet Series](https://cheatsheetseries.owasp.org/)
-- [GitHub Security Best Practices](https://docs.github.com/en/code-security)
-- [truffleHog](https://github.com/trufflesecurity/trufflehog) - Find secrets in git history
-
-## See Also
-
-- [Git Hooks](HOOKS.md) - Pre-commit hook for detecting sensitive data
-- [Contributing](CONTRIBUTING.md) - Security considerations for contributors
-- [Usage Guide](USAGE.md) - Dry-run mode for safe testing
+Do not include exploit details or credentials in a public issue. Use the
+repository host's private security-reporting mechanism when enabled, or contact
+the repository owner privately through an established trusted channel.

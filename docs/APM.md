@@ -1,213 +1,120 @@
-# APM Tooling
+# APM and AI Tooling
 
-This repository uses [Microsoft APM](https://github.com/microsoft/apm) to
-install AI-agent skills, prompts, MCP servers, hooks, and user-scope
-instructions. Dotfiles owns the orchestration around APM so each machine
-converges to the same declared AI tooling without advancing dependency versions
-except during `dotfiles update`.
+The repository uses [APM](https://github.com/danielmiessler/apm) to distribute
+shared skills, plugins, instructions, hooks, and MCP configuration across
+supported AI agents. Dotfiles owns the desired state; APM owns package
+resolution and materialization.
 
-## What Lives Where
+## Responsibilities
 
-| Path | Purpose |
-| --- | --- |
-| `symlinks/apm/config/*.yml` | Manifest fragments linked into `~/.apm/config/`. |
-| `symlinks/apm/plugins/dot-*` | Local APM plugins for reusable personal skills and agent workflows. |
-| `conf/symlinks.toml` | Links APM config fragments and local plugins into `~/.apm/`. |
-| `cli/src/domains/ai/apm/` | Rust capability that merges fragments, installs/updates APM deps, chooses targets, and repairs Copilot App workflows. |
-| `cli/src/domains/ai/config/apm.rs` | Config validation for APM fragments, local plugin references, and direct MCP declarations. |
-| `cli/src/app/validation/checks.rs` | `ValidateApmPlugins`, which runs APM's own package dry-run validator. |
+| Layer | Responsibility |
+|---|---|
+| `symlinks\apm\config\*.yml` | Profile-specific APM source fragments |
+| `conf\symlinks.toml` | Selects and links applicable fragments and local plugins |
+| `conf\manifest.toml` | Removes inapplicable platform fragments from sparse checkout |
+| Install APM packages task | Merges fragments and converges installed state |
+| Update APM packages task | Advances eligible pinned versions during `dotfiles update` |
+| APM itself | Resolves packages and distributes their content |
 
-The checked-in `base.yml` fragment declares the local `dot-*` plugins plus
-external dependencies. Platform-specific fragments, such as `arch.yml`, add
-extra dependencies only when that fragment is linked by the selected profile.
-Private overlays can add more fragments under their own `symlinks/apm/config/`
-tree; the merge task treats them the same way.
+Agent directories should generally receive APM-managed content through APM
+rather than ad hoc copies.
 
-## Local Plugins
+## Configuration fragments
 
-Local plugins live under `symlinks/apm/plugins/` and are referenced from
-fragments as `~/.apm/plugins/dot-name`. Keep plugin names short and prefixed
-with `dot-`.
-
-Each plugin uses APM's native layout:
+The source fragments are stored under:
 
 ```text
-symlinks/apm/plugins/dot-agent/
-├── apm.yml
-└── .apm/
-    └── skills/
-        └── status-update/
-            └── SKILL.md
+symlinks\apm\config\
 ```
 
-The plugin manifest should include package metadata and a dependency block so
-`apm pack --dry-run --verbose` can validate it:
+The active profile controls which fragments are present and linked. Main and
+private-overlay fragments are merged into one generated desired state. Keep
+platform-specific package declarations in their matching profile fragment
+instead of placing runtime conditionals in generated output.
 
-```yaml
-name: dot-agent
-version: 1.0.0
-description: Agent interaction workflows and preferences
-license: MIT
-includes: auto
-dependencies:
-  apm: []
-```
-
-Use `.apm/<type>/` for every primitive, even when APM accepts root convention
-directories for some package formats. That layout works consistently for both
-`apm install` and `apm pack`.
-
-## Manifest Fragments
-
-Dotfiles does not hand-author `~/.apm/apm.yml`. Instead, it links one or more
-fragment files into `~/.apm/config/` and generates the final manifest during
-install/update.
-
-Fragments can declare any APM-supported manifest fields, but dependencies are
-the main use:
-
-```yaml
-name: dotfiles
-version: 1.0.0
-dependencies:
-  apm:
-    - ~/.apm/plugins/dot-agent
-    - github/awesome-copilot/skills/agent-supply-chain#main
-  mcp:
-    - name: example-server
-      command: example-mcp
-```
-
-The merge code:
-
-1. Reads every `~/.apm/config/*.yml` and `*.yaml` file in sorted order.
-2. Generates `~/.apm/apm.yml` with stable `name: dotfiles` and
-   `version: 1.0.0`.
-3. Concatenates dependency groups under both `dependencies` and
-   `devDependencies`.
-4. Deduplicates dependencies, using MCP `name` fields when available.
-5. Recursively layers other manifest fields.
-
-The generated manifest starts with a warning header because manual edits are
-overwritten on the next dotfiles run.
-
-## Install and Update Flow
-
-APM work is split between convergence and version advancement.
-
-| Command | Task | What it does |
-| --- | --- | --- |
-| `dotfiles install` | `Install APM packages` | Merges fragments, writes `~/.apm/apm.yml`, runs `apm install -g`, and records a success marker for the merged manifest. |
-| `dotfiles update` | `Install APM packages` | Runs the same convergence step first. |
-| `dotfiles update` | `Update APM packages` | Runs `apm outdated -g`; if dependencies are stale, runs `apm update -g --yes`. |
-| `dotfiles test` | `Validate APM plugins` | Runs `apm pack --dry-run --verbose` for each local `dot-*` plugin when `apm` is installed. |
-
-`install` never advances locked dependency refs. It converges to whatever is
-already pinned in `~/.apm/apm.lock.yaml`, or creates that lockfile on first
-install.
-
-`update` is the only dotfiles command that advances refs. Before contacting APM
-for updates, it checks that the current generated manifest has already installed
-successfully: the lockfile must exist and the dotfiles success marker must match
-the current merged manifest hash. This prevents a failed or partial install from
-moving locked refs forward.
-
-## Target Selection
-
-Dotfiles installs APM packages globally without an explicit selector:
+Local plugin sources live under:
 
 ```text
-apm install -g
+symlinks\apm\plugins\
 ```
 
-This lets APM auto-detect every installed MCP runtime in one pass, including
-Copilot CLI and Codex, so their shared deployment ledger stays converged.
+They are linked as ordinary managed sources, making local plugin development
+available without publishing a package.
 
-When `~/.copilot/data.db` exists, dotfiles separately deploys the experimental
-`copilot-app` workflow target:
+## Install behavior
 
-```text
-apm install -g --target copilot-app
+**Install APM packages** runs in the Provision phase after:
+
+- regular packages
+- AUR packages
+- symlinks
+
+That ordering ensures the APM executable and repository-managed fragments are
+available. The task:
+
+1. Discovers active main and overlay fragments.
+2. Produces the merged manifest in deterministic order.
+3. Computes a fingerprint of the merged desired state.
+4. Runs APM convergence when installed state is stale or missing.
+5. Records the successful fingerprint for update safety.
+
+Re-running `dotfiles install` should not advance pinned dependency versions.
+
+```bash
+dotfiles install --only APM --dry-run --verbose
+dotfiles install --only APM
 ```
 
-That database check avoids materializing Copilot App workflows before the app
-has initialized its local state. When `copilot-app` is active, dotfiles
-idempotently enables APM's `copilot-app` experimental flag before running the
-primary command and follow-up workflow install. During `dotfiles update`, the
-primary command is the unscoped `apm update -g --yes`; the follow-up remains an
-install so updated workflow primitives are redeployed without resolving
-dependencies a second time.
+## Update behavior
 
-## Copilot App Workflow Fixup
+**Update APM packages** is the only static task in the Update phase, so it runs
+with `dotfiles update` but not `dotfiles install`.
 
-APM deploys Copilot App workflows secure-by-default: rows arrive disabled and in
-interactive mode. Dotfiles-managed workflows are intended to run hands-off, so
-after a successful `apm install` or `apm update`, dotfiles re-arms only the
-workflows deployed by the current generated manifest.
+Before advancing versions, it verifies that the installed state corresponds to
+the current merged-manifest fingerprint. If install convergence did not succeed,
+or the desired state changed afterward, update is skipped rather than mutating
+an unrelated or partial lockfile.
 
-The fixup is deliberately scoped:
+```bash
+dotfiles update --only APM
+```
 
-1. Read workflow IDs from `~/.apm/apm.lock.yaml` entries such as
-   `copilot-app-db://workflows/<id>`.
-2. Update only those IDs in `~/.copilot/data.db`.
-3. Set them to `mode = 'autopilot'` and `enabled = 1`.
+## Overlays
 
-Dotfiles never updates every `apm--*` workflow on the machine because unrelated
-APM installs may also use that namespace. If the database is missing, locked, or
-has an unexpected schema, the APM operation still succeeds and dotfiles prints a
-warning with the manual recovery step.
+Private overlays can contribute additional APM fragments and local plugins.
+The merged configuration appends overlay content rather than replacing the main
+repository's declarations. Keep private package locations and agent-specific
+configuration out of the public repository.
 
-## MCP Servers, Hooks, and Instructions
+Validate the combined setup:
 
-Prefer native APM primitives for AI-tooling content:
-
-| Primitive | Where to declare it |
-| --- | --- |
-| MCP server | `dependencies.mcp` in a fragment or plugin manifest. |
-| Agent runtime hook | `.apm/hooks/*.json` inside a local plugin. |
-| Reusable user instruction | `.apm/instructions/*.instructions.md` inside a local plugin. |
-| Triggerable workflow guidance | `.apm/skills/<name>/SKILL.md` inside a local plugin. |
-
-Keep repository-specific instructions in `AGENTS.md`. Use APM instructions for
-reusable user-scope preferences that should follow you across repositories.
-
-For direct MCP declarations, keep self-defined servers direct in the fragment
-unless you intentionally trust transitive MCP with APM's
-`--trust-transitive-mcp`. The config validator checks that direct MCP mappings
-have a non-empty `name` and either `command` or `url`.
+```bash
+dotfiles test --overlay C:\Code\private-dotfiles
+dotfiles install --overlay C:\Code\private-dotfiles --only APM --dry-run
+```
 
 ## Validation
 
-Use these checks when changing APM files:
+`dotfiles test` includes **Validate APM plugins**. When APM is available, the
+check validates active plugin and package references. If APM is not installed,
+the check is reported as unavailable rather than silently treated as executed.
 
-```bash
-# Validate config, symlink sources, scripts, and local APM plugin package shape.
-./dotfiles.sh test
+APM changes should also preserve:
 
-# Preview install convergence without applying changes.
-./dotfiles.sh install -d
+- valid YAML fragments
+- deterministic merged ordering
+- symlink and sparse-manifest alignment
+- local plugin paths that exist in the selected checkout
+- install-before-update fingerprint safety
 
-# Validate one local plugin directly.
-cd symlinks/apm/plugins/dot-agent
-apm pack --dry-run --verbose
-```
+## Adding an APM package
 
-Rust changes under `cli/src/domains/ai/apm/` also need the normal Rust checks:
+1. Choose the narrowest applicable fragment in `symlinks\apm\config\`.
+2. Add a pinned or policy-compliant package declaration.
+3. If the fragment is conditional, confirm its symlink and manifest categories.
+4. Run `dotfiles test`.
+5. Preview with `dotfiles install --only APM --dry-run`.
+6. Run install before using `dotfiles update` to advance versions.
 
-```bash
-cd cli
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings
-cargo test
-```
-
-## Troubleshooting
-
-| Symptom | Likely cause | Fix |
-| --- | --- | --- |
-| `apm not found in PATH` | APM is not installed. | Install with the platform package manager, then rerun dotfiles. |
-| `apm install requires GitHub authentication` | A private or GitHub-hosted dependency needs credentials. | Run `gh auth login` or set `GH_TOKEN` / `GITHUB_TOKEN`. |
-| `dotfiles update` skips APM advancement | The current manifest has not successfully installed yet. | Run `dotfiles install` first and resolve any install errors. |
-| Copilot App workflows are not enabled | The app database was missing, locked, or schema-changed during fixup. | Open/close the Copilot App as suggested by the warning, then rerun `dotfiles install` or enable workflows manually. |
-| `Validate APM plugins` fails | A local plugin manifest or primitive layout is invalid. | Run `apm pack --dry-run --verbose` in the named plugin directory and fix the reported package issue. |
+Do not manually edit generated merged state or lock data when the same change
+can be represented in a source fragment.

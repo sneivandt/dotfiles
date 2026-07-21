@@ -1,754 +1,195 @@
 # Architecture
 
-Technical documentation covering the implementation and design of the dotfiles management system.
+The project separates bootstrap, application orchestration, domain behavior,
+infrastructure adapters, and declarative desired state.
 
-## Overview
+## System view
 
-This dotfiles project is a cross-platform, profile-based configuration management system built around a **Rust core engine** (`cli/`). Thin shell wrappers (`dotfiles.sh` on Linux, `dotfiles.ps1` on Windows) download or build the binary and forward all arguments to it. Configuration lives in declarative TOML files (`conf/`), and the binary handles parsing, profile resolution, platform detection, and task execution.
-
-## Design Principles
-
-### 1. Cross-Platform Compatibility
-
-**Challenge**: Support both Linux (Arch, Debian, etc.) and Windows with a unified configuration approach.
-
-**Solution**:
-- Single Rust binary compiled for both platforms
-- Thin platform-native entry points (`dotfiles.sh`, `dotfiles.ps1`) that download or build the binary
-- Shared configuration format (TOML files in `conf/`)
-- Compile-time platform detection via `cfg!(target_os)` plus runtime checks (e.g. `/etc/arch-release`)
-- Profile system to exclude platform-specific files and configuration
-
-### 2. Idempotency
-
-**Challenge**: Allow the tool to be run multiple times safely.
-
-**Solution**:
-- Every task checks existence/state before acting
-- Operations that are already complete are skipped
-- Skipped operations are logged in verbose mode
-- No side effects on re-runs
-
-### 3. Profile-Based Configuration
-
-**Challenge**: Support multiple environments (headless server, desktop, Windows) from one repository.
-
-**Solution**:
-- Profile definitions in `conf/profiles.toml` map to category exclusions
-- Git sparse checkout excludes files by category
-- TOML table names carry category tags; the binary filters them against the active profile
-- Automatic OS detection provides safety overrides
-
-### 4. Binary Distribution
-
-**Challenge**: End users should not need a Rust toolchain installed.
-
-**Solution**:
-- GitHub Actions builds release binaries whenever a CI run on `main` completes successfully
-- The release workflow (`.github/workflows/release.yml`) publishes Linux (x86_64, aarch64) and Windows binaries with SHA-256 checksums
-- The shell wrappers bootstrap the latest release when the binary is missing; the Rust binary owns the one-hour latest-release cache (`bin/.dotfiles-version-cache`)
-- A `--build` flag builds from source for development
-
-## High-Level Architecture
-
-The crate is organized into four layers with a strict dependency direction:
-`app` may depend on everything; `domains` depend on `engine` and `infra`;
-`engine` depends on `infra`; `infra` depends only on `std` and external
-crates. `engine` and `infra` never import `app` or `domains`.
-The feature-gated `testing` facade is not a production layer; it preserves
-stable integration-test access while forwarding to the new internal modules.
-
-```mermaid
-flowchart TD
-    linux["dotfiles.sh<br/>Linux wrapper"]
-    windows["dotfiles.ps1<br/>Windows wrapper"]
-
-    linux --> cli
-    windows --> cli
-
-    subgraph rust_binary["cli/ Rust binary"]
-        subgraph app_layer["app/ — application layer"]
-            cli["app/cli.rs<br/>clap arguments"]
-            commands["app/commands/<br/>install, update, uninstall, test, version"]
-            appconfig["app/config/<br/>aggregate Config + profiles + ConfigStore"]
-            catalog["app/catalog.rs + app/filter.rs + app/reload.rs<br/>task registry, filtering, cross-domain wiring, reload"]
-            validation["app/validation/<br/>cross-domain validation checks"]
-        end
-        subgraph domains_layer["domains/ — concrete domains"]
-            domains["ai, dotfiles, editors, files, git, overlay,<br/>packages, repository, shell, system<br/>(each colocates config + resources + tasks)"]
-        end
-        subgraph engine_layer["engine/ — generic engine"]
-            engine["context, plan, apply, orchestrate, mode,<br/>operation, parallel, graph, scheduler,<br/>stats, update_signal"]
-            task["engine/task/<br/>Task trait, metadata, macros, executor"]
-            resource["engine/resource/<br/>contract, errors, providers"]
-        end
-        subgraph infra_layer["infra/ — infrastructure mechanisms"]
-            infra["exec, fs, logging, platform,<br/>elevation, cancellation,<br/>config (generic TOML helpers + ConfigHandle&lt;T&gt;)"]
-        end
-    end
-
-    cli --> commands
-    commands --> appconfig
-    commands --> engine
-    commands --> catalog
-    catalog --> domains
-    domains --> engine
-    domains --> infra
-    engine --> resource
-    engine --> task
-    engine --> infra
-    appconfig --> domains
-    appconfig --> infra
-    appconfig --> conf["conf/ TOML files<br/>packages, symlinks, profiles, manifest,<br/>systemd units, registry, chmod, git config, AI tooling/APM"]
+```text
+dotfiles.sh / dotfiles.ps1
+          |
+          v
+      Rust CLI (clap)
+          |
+          v
+ application commands and task catalog
+          |
+          v
+ phase scheduler + dependency graph
+          |
+          +------------------+
+          v                  v
+   resources/providers    operations
+          |                  |
+          +--------+---------+
+                   v
+          platform/executor/filesystem
 ```
 
-## Component Architecture
+## Repository layout
 
-### Shell Wrappers
+| Path | Responsibility |
+|---|---|
+| `dotfiles.sh`, `dotfiles.ps1` | Binary bootstrap/build and argument forwarding |
+| `cli\src\app\` | CLI definitions, command composition, catalog, aggregate config, validation |
+| `cli\src\engine\` | Task scheduling, resource convergence, operations, logging contracts |
+| `cli\src\domains\` | Git, packages, files, system, AI, editor, repository, shell, and overlay behavior |
+| `cli\src\infra\` | Platform detection and concrete system adapters |
+| `conf\` | Declarative desired state |
+| `symlinks\` | Versioned files linked into the user's home directory |
+| `hooks\` | Repository-maintained Git hooks and checks |
+| `.github\workflows\` | CI, release, and container publishing |
 
-#### `dotfiles.sh` (Linux)
+## Wrappers
 
-POSIX shell script that:
-- Checks for a `--build` flag; if set, runs `cargo build --profile dev-opt` in `cli/` and executes the resulting binary
-- Otherwise, bootstraps the latest published binary when `bin/dotfiles` is missing
-- Verifies the downloaded bootstrap binary with the published SHA-256 checksum
-- Exports `DOTFILES_ROOT` and forwards the remaining arguments directly to the binary
+The wrappers are intentionally thin. They:
 
-#### `dotfiles.ps1` (Windows)
+1. Determine the repository root and target binary.
+2. Consume wrapper-only `--build`.
+3. Build from source or download a release asset when needed.
+4. Verify downloaded content.
+5. Export bootstrap context.
+6. Execute the Rust CLI with all remaining arguments unchanged.
 
-PowerShell script with identical logic:
-- `--build` flag builds from source with `cargo build --profile dev-opt`
-- Otherwise bootstraps `dotfiles-windows-x86_64.exe` from GitHub Releases when missing
-- Verifies checksum, promotes any staged self-update before launch, and exports `DOTFILES_ROOT`
-- Forwards all other arguments directly to the binary
+Command semantics must not be added to the wrappers. Keeping one behavioral
+implementation avoids Linux/Windows drift.
 
-### Rust Core (`cli/`)
+## Application layer
 
-The binary is built with `cargo` from `cli/Cargo.toml`. Key dependencies:
+The application layer owns composition:
 
-- **clap** — CLI argument parsing with derive macros
-- **anyhow** — error handling and context propagation
+- `cli.rs` defines public commands and options.
+- `catalog.rs` constructs the static install and uninstall task lists.
+- command modules select/filter tasks and execute them.
+- aggregate configuration loading merges domain-specific configuration.
+- validation modules build the `test` workflow.
 
-#### Entry Point (`main.rs` / `lib.rs`)
+Cross-domain dependencies belong here. A domain task may declare same-domain
+prerequisites, while the catalog decorates it with dependencies on tasks from
+other domains.
 
-`main.rs` delegates to the public `dotfiles_cli::run` entry point in `lib.rs`,
-which forwards to `app::run::run`. That function parses CLI arguments via
-`app::cli::Cli`, creates a `Logger`, sets up cancellation and elevation, and
-dispatches to the matching command handler.
+## Task engine
 
-#### CLI (`app/cli.rs`)
+Every task exposes:
 
-Defines the command structure using clap derive:
+- a human-readable name
+- an execution phase
+- a stable identity
+- dependency identities
+- an applicability guard
+- optional elevation planning
+- execution returning a structured task result
 
-```
-dotfiles [-v] [-p PROFILE] [-d] [--no-parallel] [--root DIR] <COMMAND>
+The scheduler builds a dependency graph and runs ready tasks in parallel. It
+also enforces phase barriers:
 
-Commands:
-  install     Install dotfiles and configure system
-  update      Install and advance pinned dependency versions
-  uninstall   Materialize managed symlinks and remove hooks/wrappers
-  test        Run self-tests and validation
-  version     Print version information
-
-Install/update options:
-  --skip TASK,...   Skip specific tasks
-  --only TASK,...   Run only specific tasks
-```
-
-The wrapper scripts (`dotfiles.sh` / `dotfiles.ps1`) handle only the `--build` flag and then forward all remaining arguments to the binary unchanged. All binary flags — including `-p`, `-d`, `-v`, `--skip`, `--only`, `--root`, and `--no-parallel` — are available when invoking via the wrappers.
-
-#### Commands (`app/commands/`)
-
-- **`runner.rs`** — Composes startup state: profile and overlay resolution, aggregate config loading, execution context, and task filtering/execution
-- **`execution.rs`** — Owns phased application execution policy, including phase barriers, sudo preparation decisions, summaries, and aggregate failures
-- **`reexec.rs`** — Owns self-update and process restart policy
-- **`install.rs`** — Builds the install/update task list and delegates shared startup and execution to `CommandRunner`. Exposes `run_pipeline(RunMode)`, the shared implementation behind both `install` and `update`
-- **`update.rs`** — Delegates to `install::run_pipeline` with `RunMode::Update`, so it runs the same base task graph as `install` and additionally schedules the final Update phase to advance pinned dependency versions (currently the APM dependency refresh)
-- **`uninstall.rs`** — Conservatively removes detachable managed state: symlinks, installed Git hooks, and the wrapper entry point. It intentionally does not remove packages or roll back registry, systemd, shell, editor, AI tooling/APM, WSL, or overlay-script changes
-- **`test.rs`** — Runs configuration validation
-
-#### Config (`app/config/` + `domains/<domain>/config/`)
-
-The aggregate `Config` struct and its `Config::load()` composition live in
-`app/config/`, alongside `profiles.rs`. Each domain owns its own config model
-under `domains/<domain>/config/`; generic TOML parsing helpers live in
-`infra/config/`. Profile selection is split into definition loading,
-environment lookup, Git persistence, interactive prompting, and category
-resolution under `app/config/profiles/`. `Config::load()` reads all TOML files from `conf/`
-and filters sections against the active profile's categories:
-
-| Module | File | Description |
-| --- | --- | --- |
-| `app/config/profiles.rs` | `profiles.toml` | Profile resolution and category computation |
-| `infra/config/toml_loader.rs` | (all) | Generic TOML loader |
-| `domains/packages/config/packages.rs` | `packages.toml` | System packages (pacman, AUR, winget) |
-| `domains/files/config/symlinks.rs` | `symlinks.toml` | Symlink mappings |
-| `domains/system/config/systemd_units.rs` | `systemd-units.toml` | Systemd units (Linux only) |
-| `domains/files/config/chmod.rs` | `chmod.toml` | File permissions |
-| `domains/editors/config/vscode_extensions.rs` | `vscode-extensions.toml` | VS Code extensions |
-| `domains/system/config/registry.rs` | `registry.toml` | Windows registry entries |
-| `domains/git/config/git_config.rs` | `git-config.toml` | Git configuration settings |
-| `domains/ai/config/copilot.rs` | `copilot.toml` | Copilot CLI settings (`~/.copilot/settings.json`) |
-| `domains/repository/config/manifest.rs` | `manifest.toml` | Sparse checkout file mappings |
-| `domains/overlay/resolution.rs` | — | Overlay path resolution and persistence |
-| `domains/overlay/config/scripts.rs` | `scripts.toml` | Custom script entries from overlay repo |
-
-#### Tasks (`engine/task/` + `domains/<domain>/*.rs`)
-
-The generic `Task` trait, task metadata vocabulary, macros, and executor live in
-`engine/task/`; concrete task implementations live under
-`domains/<domain>/` as root-level task entry modules. Each task implements the
-`Task` trait:
-
-```rust
-pub trait Task: Send + Sync + 'static {
-    /// Human-readable task name.
-    fn name(&self) -> &str;
-
-    /// Which scheduler barrier this task belongs to.
-    ///
-    /// Most tasks converge declared state, so Provision is the default.
-    fn phase(&self) -> TaskPhase { TaskPhase::Provision }
-
-    /// Stable identifier for dependency matching.
-    fn task_id(&self) -> TaskId { TaskId::Type(TypeId::of::<Self>()) }
-
-    /// TaskIds of tasks that must complete before this one starts.
-    fn dependencies(&self) -> &[TaskId] { &[] }
-
-    /// Whether this task should run on the current platform/profile.
-    fn should_run(&self, ctx: &Context) -> bool { true }
-
-    /// Execute only when the task has configured work.
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        ctx.log().stage(self.name());
-        self.run(ctx).map(Some)
-    }
-
-    /// Predict whether an applicable task will need elevation.
-    fn needs_elevation(&self, ctx: &Context) -> bool { false }
-
-    /// Execute the task.
-    fn run(&self, ctx: &Context) -> Result<TaskResult>;
-}
+```text
+Bootstrap -> Sync -> Provision -> Validation -> Update
 ```
 
-A shared `Context` struct (defined in `engine/context.rs`) carries only generic
-execution and path state: repository and home paths, optional overlay path,
-platform, executor, logger, cancellation token, and execution flags. It does
-**not** carry the aggregate `Config`: the engine depends on `infra` only and
-must not know about the application configuration type.
+The order of entries in `catalog.rs` is not execution order. Phases and
+dependency edges are authoritative.
 
-Configuration reaches tasks through typed handles instead. The application layer loads the aggregate `Config`, splits it into one `infra::ConfigHandle<T>` per domain slice (`app/config/store.rs`'s `ConfigStore`), and injects each handle into the task that needs it via that task's constructor (for example `InstallSymlinks::new(store.symlinks.clone())`). A `ConfigHandle<T>` is a cheaply-cloneable `Arc<RwLock<Arc<T>>>`; the app-owned `ReloadConfig` task (`app/reload.rs`) re-loads configuration after a pull and swaps every handle in place, so downstream tasks observe the new values without being rebuilt. App-only validation tasks hold a `ConfigHandle<Config>` for the whole aggregate.
+Dynamic overlay tasks use per-instance hashed identities because multiple
+configured scripts share one Rust task type.
 
-Other task-specific dependencies are injected the same way: `UpdateRepository` and `ReloadConfig` share an `UpdateSignal` (`engine/update_signal.rs`) to coordinate config reloading, and hook tasks (`InstallGitHooks`, `UninstallGitHooks`) hold an `Arc<dyn FileSystemOps>` for testable filesystem access.
+## Resources
 
-Cross-domain ordering constraints are **not** declared inside domains (which may name only same-domain tasks). Instead the application catalog (`app/catalog.rs`) wraps a task in `engine::TaskWithExtraDeps` to merge the extra dependency `TaskId`s — for example making `ConfigureSystemd` depend on `InstallSymlinks`, or `GenerateCompletions` depend on `UpdateRepository`. The decorator forwards the inner task's identity and behaviour unchanged, so tasks that depend on the wrapped task by type still resolve.
+A `Resource` models independently convergent desired state:
 
-The `execute()` function owns the canonical applicability path: it checks
-`should_run()` and then calls `run_configured()`. The configured-work hook can
-return `None` for an empty configuration without repeating the eligibility
-check. The executor records `Ok`, `NotApplicable`, `Skipped`, `DryRun`, or
-`Failed` in the logger. Before parallel phase dispatch,
-`run_tasks_to_completion()` calls `requires_elevation()`, which suppresses
-dry-run and inapplicable tasks before consulting `needs_elevation()`, then
-primes sudo only for tasks that predict a privileged mutation.
+1. Discover current intrinsic state.
+2. Compare it with desired state.
+3. Produce a change plan.
+4. Preview or apply that change.
 
-#### Engine (`engine/`)
+Resources are used for packages, symlinks, registry values, permissions, and
+similar state. Providers can batch or cache state discovery, reducing repeated
+system calls.
 
-The execution engine provides the generic resource processing loop, dependency graph, and shared context used by all tasks. Key components:
+Resource processing is dry-run aware and returns explicit outcomes such as
+applied, already correct, skipped, invalid, or unknown. Tasks translate those
+outcomes into user-facing summaries.
 
-- **`context.rs`** — `Context` and `ContextOpts`: generic paths, platform,
-  executor, logger, cancellation, and execution flags threaded through tasks
-- **`plan.rs`** — pure resource plan/diff construction from `ResourceState` + `ProcessOpts`
-- **`apply.rs`** — single-resource plan execution with one shared mutation lifecycle for apply/remove: log/dry-run → mutate → stats
-- **`orchestrate.rs`** — top-level resource orchestration with `process_resources()`, `process_resources_with_provider()`, and `process_resources_remove()`
-- **`mode.rs`** — `ProcessMode` enum (`Strict`, `Lenient`, `InstallMissing`, `FixExisting`) and `ProcessOpts` that control which states are fixable and whether errors bail or warn
-- **`operation.rs`** — checkable, idempotent multi-step operations whose state
-  check produces the immutable plan consumed by preview or apply
-- **`parallel.rs`** — Rayon-based parallel dispatch when `ctx.parallel` is true
-- **`graph.rs`** — phase-local dependency graph resolution, duplicate-ID checks,
-  and one cached dependency-safe order produced by Kahn's algorithm
-- **`scheduler.rs`** — dependency-driven parallel task scheduling using OS threads and `mpsc` channels
-- **`stats.rs`** — `TaskResult` and `TaskStats` types
-- **`task/`** — the generic `Task` trait, task metadata (`TaskPhase`, `TaskId`), task/resource macros, and the `execute()` runner
-- **`resource/`** — the generic `Resource`/`IntrinsicState` contract
-  (`contract.rs`), typed resource errors (`error.rs`), and state providers
-  (`provider.rs`)
-- **`update_signal.rs`** — `UpdateSignal` (backed by an `infra::atomic_flag::AtomicFlag`) signalling between `UpdateRepository` and `ReloadConfig`
+## Operations
 
-The cooperative `CancellationToken` and its backing `AtomicFlag` are generic
-concurrency primitives that live in `infra/` (so `infra::exec` can honour
-cancellation without depending on `engine`); `engine` re-exports
-`CancellationToken` for its consumers.
+An `Operation` models a whole workflow that converges as a unit rather than a
+collection of independent records. It has current-state, preview, and apply
+steps. Configuration reload and convention-based overlay scripts use this model
+because their correctness depends on completing a coherent workflow.
 
-**Two axes: domain and phase.** Task entry files are organized by **domain**
-(what a task is about) directly under `cli/src/domains/<domain>/`, while each
-task uses the default Provision **phase** or overrides `phase()` for another
-scheduler barrier. The axes are orthogonal: a domain folder can hold tasks from
-different phases, and a single domain can span phases. Domains:
+## Configuration flow
 
-- `dotfiles/` — self-update, CLI wrapper install, `PATH` setup
-- `repository/` — git pull and sparse checkout
-- `git/` — git config, git hooks
-- `files/` — symlinks, file permissions
-- `shell/` — login shell, zsh completions
-- `system/` — developer mode, systemd units, registry, wsl.conf
-- `ai/` — AI tooling/APM manifests, shared agent context, and Copilot-specific settings
-- `editors/` — VS Code/editor extensions
-- `packages/` — system and AUR packages
-- `overlay/` — overlay script discovery and execution
-
-Cross-domain validation checks live in `app/validation/` (not a domain).
-
-Every domain is a folder under `domains/`, each colocating config models
-(`config/`), resource implementations (`resources/`), and root-level task entry
-files such as `git/hooks.rs` or `ai/copilot_settings.rs`. `config/` and
-`resources/` are the shared production subdirectory categories; externalized
-domain tests live under `tests/`. Large features use a root entry file plus a
-same-named production support directory, such as `ai/apm.rs` with `ai/apm/`,
-`packages/install.rs` with `packages/install/`, and `repository/update.rs` with
-`repository/update/`. A feature folder is not created only to hold tests. The
-framework itself — the `Task` trait, `TaskPhase`, `TaskId`, and the task/resource
-macros — lives in `engine/task/` (`mod.rs`, `types.rs`, `macros.rs`), while the
-task catalog and the `--skip`/`--only` filter live in `app/catalog.rs` and
-`app/filter.rs`.
-
-Task bodies generally use one of two convergence abstractions:
-
-- **Resources** for concrete desired state items such as symlinks, files,
-  package entries, registry values, editor extensions, Git settings, and systemd
-  units. Resources expose current state and apply/remove one item, and are
-  processed through the engine's resource helpers. The generic `Resource`
-  contracts, state providers, and `ResourceError` taxonomy live under
-  `engine::resource`; concrete implementations live in their owning domains.
-- **Operations** for idempotent workflows with ordered side effects, generated
-  content, external-tool orchestration, or coordination state that does not map
-  cleanly to one resource. `current_state()` returns an `OperationState<Plan>`;
-  when work is needed, the immutable plan is passed directly to `preview()` or
-  `apply()`. `process_operation()` keeps check → dry-run → mutate order
-  centralized and prevents preview/apply from rediscovering state.
-
-The resource and operation engines gate `apply()`/`remove()` behind the dry-run
-check, with regression tests covering sequential and parallel execution.
-Overlay scripts are the explicit exception at the trust boundary: their
-`--check` and `--dryrun` modes execute external code and must honor the
-non-mutation contract themselves.
-
-**Implemented tasks** (inventory only, not execution order). The engine schedules
-by **phase**, completing each phase before the next; within a phase, tasks run as
-soon as dependencies allow, so sibling tasks may complete in any order. Each task
-is annotated with its domain folder:
-
-Pre-scheduler action:
-- `self_update` (dotfiles) — Updates the dotfiles binary from the latest GitHub release. Runs **before** the task graph (directly from `install.rs`) so all subsequent tasks use the latest code. It caches the latest release tag for one hour, but a cached tag newer than the running binary still triggers installation; update-available checks only write the cache after a successful install. If the binary is replaced, the process re-execs itself with a guard variable (`DOTFILES_REEXEC_GUARD`) to prevent an infinite loop.
-
-Bootstrap phase — prepares the tool itself:
-- `developer_mode` (system) — Enable Windows developer mode (required for symlinks)
-- `wrapper` (dotfiles) — Install platform-specific CLI wrapper to `~/.local/bin/` for running dotfiles from anywhere
-- `path` (dotfiles) — Ensure `~/.local/bin` is on the user's `PATH` (`~/.profile` on Unix, registry on Windows)
-
-Sync phase — synchronize the dotfiles repository:
-- `update` (repository) — Update repository (`git pull --ff-only`)
-- `sparse_checkout` (repository) — Configure git sparse checkout
-- `reload_config` (app) — Reload config from disk after `update` pulls new commits, swapping the shared `ConfigStore` handles. Owned by the application layer (`app/reload.rs`) because it re-composes the aggregate `Config` across every domain
-- `hooks` (git) — Install git hooks (copies `hooks/*` into `.git/hooks/`)
-- `completions` (shell) — Generate the zsh completion script into `symlinks/config/zsh/completions/`
-- `overlay_scripts` (overlay) — Discover overlay script definitions and log script count. The overlay *domain* spans two phases: this discovery task runs in the Sync phase, while the generated `OverlayScriptTask`s run in the Provision phase. Both live in `domains/overlay/scripts.rs` because phase is per-task metadata (see `phase()` above), not folder-derived.
-
-Provision phase — converge declared configuration to its target state:
-- `packages` (packages) — Install system packages (pacman or winget)
-- `paru` (packages) — Bootstrap paru AUR helper (Arch Linux only)
-- `aur_packages` (packages) — Install AUR packages via paru (Arch Linux only)
-- `symlinks` (files) — Create symlinks
-- `chmod` (files) — Configure file permissions
-- `git_config` (git) — Configure git settings (Windows: autocrlf, symlinks, credential helper)
-- `shell` (shell) — Configure default shell
-- `systemd` (system) — Enable systemd units
-- `registry` (system) — Apply Windows registry settings
-- `vscode` (editors) — Install VS Code extensions
-- `apm` (ai) — `InstallApmPackages`: converge AI plugin manifests via Microsoft APM (reads `~/.apm/apm.yml` generated by merging every `~/.apm/config/*.yml` fragment; runs unscoped `apm install -g` so APM auto-detects installed runtimes together, then separately deploys `copilot-app` workflows when `~/.copilot/data.db` exists). Convergence only — it never advances locked refs
-- `wsl_conf` (system) — Write `/etc/wsl.conf` with `generateResolvConf = true` (Linux/WSL only, uses sudo)
-
-Update phase — advance pinned/locked dependency versions (the `update` command only; absent from `install`):
-- `apm` (ai) — `UpdateApmPackages`: runs `apm outdated -g` and, when stale, `apm update -g --yes` to advance locked dependency refs. Self-guards on the install success marker so it only advances after a successful convergence
-
-Key dependency edges are `wrapper → path`, `sparse_checkout → update_repository
-→ reload_config`, `update_repository → hooks/completions`, `reload_config →
-overlay_scripts`, `paru → aur_packages`, `symlinks → chmod/systemd/apm`, and
-`packages → shell/apm`. Cross-domain edges (everything except the same-domain
-`wrapper → path`, `paru → aur_packages`, and `sparse_checkout → update_repository`
-edges) are applied by the application catalog via `engine::TaskWithExtraDeps`,
-not declared inside the domains. Other tasks in the same phase are peers and may
-run or finish in any order.
-
-#### Overlay System
-
-An overlay repository provides private configuration extensions that are merged
-with the main dotfiles config.  The overlay path is resolved from (in order):
-`--overlay` CLI flag → `DOTFILES_OVERLAY` env var → `dotfiles.overlay` git
-config.  When an overlay is set:
-
-1. `Config::load()` reads any `conf/*.toml` files from the overlay directory
-   and appends their entries to the main config lists
-2. `scripts.toml` in the overlay defines custom script tasks
-3. Each script entry produces a dynamic `OverlayScriptTask` that appears in
-   the task output like any built-in task
-4. Scripts follow a convention-based interface: no args (apply), `--check`
-   (exit 0 = correct, exit 1 = apply needed), `--dryrun` (preview), and
-   `--remove` (undo)
-
-#### Platform Detection (`infra/platform.rs`)
-
-The `Platform` struct detects the OS at compile time (`cfg!(target_os)`) and checks for Arch Linux at runtime (`/etc/arch-release`).
-
-**Basic Platform Queries:**
-- `is_linux()` — returns true if running on Linux
-- `is_windows()` — returns true if running on Windows
-- `is_arch` — public field, true if running on Arch Linux
-
-**Capability-Based Methods** (more expressive platform checks):
-- `supports_chmod()` — returns true if platform supports POSIX file permissions
-- `supports_systemd()` — returns true if platform uses systemd
-- `has_registry()` — returns true if platform uses Windows Registry
-- `is_arch_linux()` — returns true if running on Arch Linux
-- `uses_pacman()` — returns true if platform uses pacman package manager
-- `supports_aur()` — returns true if platform supports AUR packages
-
-**Display Methods:**
-- `description()` — returns "Arch Linux", "Linux", or "Windows"
-- `to_string()` / `Display` — same as `description()`
-
-**Profile Integration:**
-- `excludes_category(category)` — returns true if the given category is incompatible with this platform
-
-Tasks use these methods in their `should_run()` implementation to determine platform compatibility. For example a config-backed task reads its injected `ConfigHandle` slice rather than an aggregate config on the context:
-
-```rust
-fn should_run(&self, ctx: &Context) -> bool {
-    ctx.platform.supports_systemd() && !self.config.read().is_empty()
-}
+```text
+profile resolution
+      |
+      v
+main TOML load ---- overlay TOML load
+      |                  |
+      +------ append ----+
+              |
+              v
+      aggregate validation
+              |
+              v
+        ConfigStore handles
+              |
+              v
+         catalog tasks
 ```
 
-This is more expressive than `ctx.platform.is_linux()` because it clearly states *why* the platform matters (systemd support) rather than just checking the OS type.
+Each domain owns its parser and typed records. The app-level loader guarantees
+that supported overlay sections are merged consistently. The sparse-checkout
+manifest is the exception: it describes the main repository and is not merged.
 
-#### Logging (`infra/logging/`)
+Shared configuration handles enable mid-run reload. If repository update
+changes tracked files, the reload task replaces values behind those handles;
+Provision-phase tasks then read the new values.
 
-Structured logger that:
-- Prints completion-order status rows for every applicable task in verbose mode,
-  while keeping non-applicable tasks out of console output
-- Keeps task stage markers and diagnostic detail in persistent logs
-- Records task outcomes (Ok, Skipped, DryRun, Failed)
-- Tracks operation counters
-- Prints a summary at the end of execution
+## Platform abstraction
 
-`logging/mod.rs` exposes the facade; the `logging/logger/` submodule owns
-`Logger` plus its progress, notification, and summary implementations.
+Tasks prefer capability methods exposed by context and system adapters rather
+than scattering direct operating-system checks. Platform guards still determine
+applicability, but concrete mutations are delegated to the relevant adapter or
+provider.
 
-A **diagnostic log** is written alongside the main log under the dotfiles cache
-directory (`$XDG_CACHE_HOME/dotfiles/`, or `~/.cache/dotfiles/` when
-`XDG_CACHE_HOME` is unset). Unlike the main log (which replays buffered task
-output per task when each task completes), the diagnostic log captures every
-event immediately with sequence numbers, microsecond-resolution wall-clock
-timestamps, task context, and bracketed event names, providing the true
-chronological view of parallel execution. The message column records logger
-output, task scheduling state, and resource processing details without replay
-buffering.
+This supports:
 
-### Configuration System
+- Linux and Windows implementations behind common contracts
+- test doubles for filesystem and command execution
+- explicit capability failures instead of silent platform assumptions
+- elevation planning before parallel task dispatch
 
-#### TOML File Format
+## Error handling and observability
 
-All configuration files use TOML format. Items are declared as typed arrays under section headers:
+Errors propagate with context; they are not converted into success-shaped
+fallbacks. Non-applicability and optional-tool absence are separate structured
+results.
 
-```toml
-[section-name]
-items = [
-  "entry-one",
-  "entry-two",
-]
+The logger records stages, actions, warnings, summaries, and diagnostic detail.
+`dotfiles log --verbose` prefers the diagnostic log for post-run investigation.
+
+## Extension points
+
+### Add declarative state
+
+For independent config-backed state, the normal vertical slice is:
+
+```text
+typed config -> loader -> validation -> conf file -> resource/provider
+-> task -> catalog registration -> tests
 ```
 
-**Section name conventions**:
-- `profiles.toml`: Profile names: `[base]`, `[desktop]`
-- Other files: Section names use hyphen-separated categories: `[arch-desktop]`
-  - This indicates the section requires ALL listed categories to be active (AND logic)
-  - Example: `[arch-desktop]` is only processed when both `arch` AND `desktop` are not excluded
+### Add a workflow
 
-`registry.toml` uses a different structure — logical section names with a `path` key and a nested `[section.values]` subtable.
+For whole-workflow convergence:
 
-#### Configuration Processing
-
-1. `Config::load()` reads each TOML file from `conf/`
-2. Each config module parses sections and entries
-3. Sections are filtered against the active profile's `active_categories`
-4. Platform-specific configs (e.g. registry on Windows, units on Linux) are loaded conditionally
-
-### Sparse Checkout System
-
-Git's sparse checkout feature controls which files are checked out.
-
-**Implementation flow**:
-1. Resolve profile from `profiles.toml`
-2. Compute excluded categories from profile definition plus platform detection
-3. Load file mappings from `manifest.toml`
-4. Build exclusion patterns
-5. Configure `git sparse-checkout set`
-
-**Pattern logic** (manifest.toml):
-- Uses AND logic for exclusions — consistent with all other config files
-- `[arch-desktop]` means "exclude only if both arch AND desktop are excluded"
-
-### Error Handling
-
-The binary uses `anyhow::Result` throughout. Each config loader and task adds context via `.context()`:
-
-```rust
-packages::load(&conf.join("packages.toml"), active_categories)
-    .context("loading packages.toml")?;
+```text
+operation -> task metadata/dependencies -> command registration -> tests
 ```
 
-Task failures are caught by `engine::execute()` and recorded as
-`TaskStatus::Failed`. Independent tasks can continue, but dependent tasks are
-skipped if a prerequisite failed; all failures are reported in the summary.
+### Add private behavior
 
-## Testing Architecture
+Use overlay configuration. Conventional private scripts become dynamic tasks
+without teaching the public catalog about private repositories.
 
-### Rust Tests
-
-- **Unit tests**: Inline `#[cfg(test)]` modules in source files (e.g. `infra/platform.rs`, `app/cli.rs`, `infra/config/toml_loader.rs`, `domains/dotfiles/*.rs`, `domains/repository/*.rs`, `domains/files/*.rs`)
-- **Integration tests**: Separate test binaries in `cli/tests/` for behavioral
-  CI contracts, configuration drift, domain boundaries, end-to-end apply,
-  command structure, task execution, and configuration validation. See
-  [`TESTING.md`](TESTING.md#2-integration-tests-clitests) for the maintained
-  inventory. They share `IntegrationTestContext` and `TestContextBuilder`
-  helpers from `cli/tests/common/mod.rs`.
-- **Snapshot tests**: Task list snapshots via the `insta` crate (`cli/tests/snapshots/`). Update with `INSTA_UPDATE=unseen cargo test` or `cargo insta review`
-
-Integration tests import the feature-gated `cli/src/testing/mod.rs` facade. Its
-legacy-shaped namespaces (`testing::tasks`, `testing::resources`, and similar)
-are compatibility exports only; production ownership remains in
-`app`, `domains`, `engine`, and `infra`.
-
-The project uses `tempfile` as a dev-dependency for tests that need temporary directories.
-
-### Configuration Validation
-
-`Config::validate()` emits structured diagnostics with a stable rule code,
-severity, source file, item, and human-readable message. Both warning and error
-diagnostics fail the `test` command; severity describes the finding rather than
-changing the command's pass/fail policy.
-
-The `test` command validates:
-- TOML file syntax
-- Section format
-- Profile definitions
-- File references
-
-### CI Pipeline
-
-GitHub Actions CI (`.github/workflows/ci.yml`) runs these gating jobs on pull
-requests:
-
-| Job | What it checks |
-| --- | --- |
-| `rust-fmt` | Rust format check (`cargo fmt --check`) |
-| `lint` | ShellCheck and PSScriptAnalyzer (matrix: ShellCheck, PSScriptAnalyzer) |
-| `validate-config` | Manifest/profile consistency, symlink/chmod references, TOML whitespace, category consistency, empty sections, and fullscreen Waybar rules |
-| `audit` | Cargo security audit (vulnerability scan) |
-| `deny` | Cargo deny: license and advisory policy |
-| `build-linux` | Linux build + Clippy + unit/integration tests |
-| `msrv` | Compatibility check against the minimum supported Rust version (1.91) |
-| `build-windows` | Windows build + Clippy + unit/integration tests |
-| `integration-linux` | Dry-run install and validation per profile on Linux (matrix: base, desktop) |
-| `integration-windows` | Dry-run install and validation per profile on Windows (matrix: base, desktop) |
-| `test-install-uninstall` | Install/uninstall round-trip (Linux) |
-| `test-install-uninstall-windows` | Install/uninstall round-trip (Windows) |
-| `test-applications` | Git, zsh, vim, nvim behavior (matrix) |
-| `test-git-hooks` | Pre-commit sensitive data detection |
-| `test-shell-wrapper-linux` | Linux wrapper script (`dotfiles.sh`) validation |
-| `test-shell-wrapper-windows` | Windows wrapper script (`dotfiles.ps1`) validation |
-
-The separate `coverage` job is informational and does not gate CI success. The
-workflow is authoritative for the current job definitions.
-
-### Release Pipeline
-
-GitHub Actions release (`.github/workflows/release.yml`) triggers automatically when the CI workflow completes successfully on `main`:
-1. Builds Linux (x86_64, aarch64) and Windows (x86_64) release binaries
-2. Generates SHA-256 checksums
-3. Creates a GitHub Release with version tag `v0.1.<run_number>`
-
-## Extension Points
-
-### Adding New Tasks
-
-1. Create a task entry file directly under `cli/src/domains/<domain>/` (for example `ai/copilot_settings.rs`), implementing the `Task` trait. For a large feature, keep the entry point in `<feature>.rs` and supporting implementation in `<feature>/`. Provision is the default phase; override `phase()` only for Bootstrap, Sync, Validation, or Update.
-2. Add the module to that domain's `cli/src/domains/<domain>/mod.rs`
-3. Add the task to `all_install_tasks()` in `cli/src/app/catalog.rs`
-
-### Adding New Configuration Types
-
-1. Create TOML file in `conf/`
-2. Add a config parser under `cli/src/domains/<domain>/config/`
-3. Add the field to the `Config` struct and a single `SectionLoader` call in
-   `Config::load()` (e.g. `sections.collect_filtered(...)`). The same call
-   loads the main config and merges the overlay, so there is no separate
-   overlay-merge step to keep in sync.
-4. Create a Provision-default task entry file under `cli/src/domains/<domain>/` that consumes the config
-5. Document in CONFIGURATION.md
-
-### Adding Overlay Scripts
-
-1. Create a script in the overlay repository's `scripts/` directory
-2. Implement the convention interface: no args (apply), `--check` (exit 0 if correct, exit 1 if apply is needed), `--dryrun` (preview), `--remove` (undo)
-3. Add the entry to `conf/scripts.toml` in the overlay repository
-4. Use `--overlay /path/to/overlay` to activate
-
-### Adding Custom Profiles
-
-1. Define in `conf/profiles.toml`
-2. Add sections to configuration files
-3. Map files in `conf/manifest.toml`
-
-## Performance Considerations
-
-### Parallel Task Execution
-
-Execution is split into five phases: **Bootstrap** (prepare the tool itself),
-**Sync** (synchronise the dotfiles repository), **Provision** (apply declared
-state), **Validation** (run post-convergence checks), then **Update** (advance
-pinned/locked dependency versions — `update` command only).
-`run_tasks_to_completion()` loops over
-`[TaskPhase::Bootstrap, TaskPhase::Sync, TaskPhase::Provision, TaskPhase::Validation, TaskPhase::Update]`,
-completing all tasks in one phase before starting the next (an empty phase,
-such as Update under `install`, is skipped with no header). Within each phase,
-tasks are executed in parallel using a dependency-graph scheduler.
-
-Each task declares its dependencies using the `task_deps!` macro (defined in
-`engine/task/macros.rs`, re-exported from `engine/task/mod.rs`), which implements
-`Task::dependencies()` returning `TaskId`s for prerequisite task structs.
-Before scheduling, `ResolvedTaskGraph::resolve()` maps those IDs to phase-local
-task indices, builds dependency/dependent adjacency lists, rejects duplicate
-IDs, and validates the graph. The scheduler uses `std::thread::scope` to spawn
-one OS thread per task and `mpsc` channels to block each task until its
-dependencies complete.  For each task, a channel is created — dependent tasks
-wait by calling `recv()` on the receiving end, and each dependency sends a
-notification when it finishes.  OS threads are used deliberately — blocking on
-`mpsc::Receiver::recv()` inside a Rayon worker would exhaust Rayon's
-fixed-size thread pool and deadlock when the pool is smaller than the number
-of tasks with unsatisfied dependencies (common on 2-vCPU CI runners).
-
-**How it works:**
-
-- Each task is spawned into an OS thread via `std::thread::scope`
-- Tasks wait for their dependencies by calling `recv()` on an `mpsc::Receiver`,
-  receiving one message per dependency
-- When a task completes, it sends a notification to all tasks that depend on it
-  via their `mpsc::Sender`s
-- Tasks with no dependencies (or whose dependencies were filtered out) start
-  immediately
-- Each task's console output is captured in a per-task `BufferedLog`; when the
-  task completes, the buffer is flushed atomically under a `flush_lock` so
-  output from different tasks never interleaves
-- A dim status line shows which tasks are currently running, updated on every
-  task start and completion
-- Graph validation (including cycle detection via Kahn's algorithm) runs before
-  parallel scheduling; if a cycle is found, the run is aborted with an error
-- Dependencies that reference `TaskId`s not present in the task list (e.g.
-  filtered out by `--skip`/`--only`) are silently ignored
-
-### Parallel Resource Processing
-
-Within each task, resource operations (symlinks, packages, registry entries,
-etc.) are also processed in parallel using Rayon.
-
-- `process_resources()` and `process_resources_with_provider()` in `engine/`
-  dispatch to Rayon when `ctx.parallel` is `true` and there is more than one
-  resource to process
-- Each worker accumulates local `TaskStats`, then the results are reduced
-  without a shared stats lock
-- `TaskStats` is preserved as structured action counts when task results are
-  recorded, allowing final summaries to report task outcomes separately from
-  applied or planned resource actions
-- The `Executor` trait requires `Sync` so resources holding `&dyn Executor` are safe
-  to share across threads
-- The `Logger` uses `Mutex<Vec<TaskEntry>>` internally for thread-safe task recording
-
-**To disable** both task-level and resource-level parallelism (e.g. for
-debugging), pass `--no-parallel` to the wrapper scripts or the binary directly (see
-[Advanced Binary Options](USAGE.md#advanced-binary-options)).
-
-`process_resources_remove()` (used by uninstall tasks) also dispatches to parallel
-processing when `ctx.parallel` is `true` and there is more than one resource,
-matching the behaviour of `process_resources()` and `process_resources_with_provider()`.
-
-### Binary Distribution
-
-- Pre-compiled binaries eliminate the need for a Rust toolchain on end-user machines
-- The Rust binary owns the version cache (`bin/.dotfiles-version-cache`, 1 hour TTL) and self-update checks after bootstrap
-- Offline fallback: if GitHub is unreachable and a local binary exists, it is used as-is
-
-### Compiled Binary
-
-- Release builds use LTO, single codegen unit, and size optimization (`opt-level = "z"`)
-- Binary is stripped in CI for minimal size
-- Startup and execution are significantly faster than interpreted shell scripts
-
-### Sparse Checkout Benefits
-
-- Reduces disk usage (only relevant files checked out)
-- Faster git operations (fewer files to track)
-- Cleaner workspace (no irrelevant files)
-
-## Security Considerations
-
-### Git Hooks
-
-The default pre-commit hook runs sensitive-data and staged code-quality checks:
-
-`check-sensitive.sh` scans staged files for sensitive data:
-- API keys, tokens, passwords
-- Private keys
-- Cloud provider credentials
-- Generic high-entropy secrets
-
-`check-rust.sh` runs Rust and PowerShell checks for staged files:
-- `cargo fmt --check` — format verification
-- `cargo clippy --profile ci -- -D warnings` — lint enforcement (same policy as CI)
-- PSScriptAnalyzer for staged PowerShell files when available
-
-`DOTFILES_HOOKS_FULL=1` additionally enables Windows-target clippy,
-`cargo test --profile ci`, config reference and drift tests, wildcard dependency
-detection, cargo-deny, ShellCheck, and Linux shell wrapper argument-forwarding
-tests. The CI-derived checks are delegated to `check-ci-guards.sh`.
-
-### Binary Verification
-
-- Release binaries include SHA-256 checksums (`checksums.sha256`)
-- Both shell wrappers verify the checksum after download
-
-### Symlink Safety
-
-- No automatic backup of existing files
-- Installing a configured symlink replaces an existing non-symlink target
-- A visible warning is emitted immediately before replacement
-
-### Registry Safety (Windows)
-
-- Only HKCU (user scope) paths are accepted
-- HKLM, HKCR, and other registry hives are rejected
-- Dry-run mode available for preview
-
-### Package Installation
-
-- Uses official package managers (pacman, winget)
-- No automatic execution of arbitrary scripts
-- User reviews `packages.toml` before installation
-
-## See Also
-
-- [Profile System](PROFILES.md) - Profile implementation details
-- [Configuration Reference](CONFIGURATION.md) - Configuration file formats
-- [Contributing Guide](CONTRIBUTING.md) - Development guidelines
-- [Testing Documentation](TESTING.md) - Testing procedures
+See [Contributing](CONTRIBUTING.md) and [Task reference](TASKS.md).

@@ -1,88 +1,90 @@
 # Docker
 
-The Docker image provides an isolated Ubuntu environment with the selected
-dotfiles profile installed for the non-root `sneivandt` user.
+The repository includes a multi-stage Ubuntu 24.04 image that builds the Rust
+CLI and applies the dotfiles configuration to a non-root user during image
+construction.
 
-The [`Dockerfile`](../Dockerfile) is the source of truth for the image contents
-and build process. The [Docker workflow](../.github/workflows/docker.yml) is the
-source of truth for publication.
-
-## Run the published image
-
-```bash
-docker pull sneivandt/dotfiles:latest
-docker run --rm -it sneivandt/dotfiles:latest
-```
-
-The workflow currently publishes only the `latest` tag after a successful CI
-run for a same-repository push to `main`. Versioned image tags are not
-published.
-
-## Build locally
+## Build
 
 BuildKit is required because the Dockerfile uses cache mounts:
 
 ```bash
-docker buildx build --load -t dotfiles:local .
+docker build --build-arg PROFILE=base -t dotfiles:local .
+```
+
+For desktop-category configuration:
+
+```bash
+docker build --build-arg PROFILE=desktop -t dotfiles:desktop .
+```
+
+The `PROFILE` build argument defaults to `base`.
+
+## Image construction
+
+The builder stage:
+
+1. Installs Rust and native build dependencies.
+2. Copies Git metadata.
+3. Exports the committed source with `git archive`.
+4. Sanitizes repository authentication metadata.
+5. Builds and strips the release binary.
+
+The runtime stage:
+
+1. Installs a small Ubuntu command-line environment.
+2. Configures `en_US.UTF-8`.
+3. Creates the non-root `sneivandt` user with Zsh.
+4. Copies source, sanitized Git metadata, and the binary.
+5. Runs `dotfiles install` with the selected profile as that user.
+6. Starts Zsh by default.
+
+The retained `.git` directory allows sparse-checkout and repository-update tasks
+to operate in the image. The origin is reset to the public HTTPS repository and
+credential-bearing Git headers are removed.
+
+## Run
+
+```bash
 docker run --rm -it dotfiles:local
 ```
 
-The default profile is `base`. Select another profile with the `PROFILE` build
-argument; valid profiles are defined in
-[`conf/profiles.toml`](../conf/profiles.toml):
+Inspect the installed CLI:
 
 ```bash
-docker buildx build --load --build-arg PROFILE=desktop -t dotfiles:desktop .
-docker run --rm -it dotfiles:desktop
+docker run --rm dotfiles:local dotfiles --version
 ```
 
-To test a specific application version independently of Git tag discovery,
-pass `DOTFILES_VERSION`:
+## Version metadata
+
+The builder accepts `DOTFILES_VERSION`. When omitted, it derives the version
+from the latest matching `v*` Git tag:
 
 ```bash
-docker buildx build --load --build-arg DOTFILES_VERSION=v0.1.0 -t dotfiles:local .
+docker build \
+  --build-arg DOTFILES_VERSION=v1.2.3 \
+  --build-arg PROFILE=base \
+  -t dotfiles:v1.2.3 .
 ```
 
-## What the image contains
+The checkout must contain the required Git metadata and committed source.
+Uncommitted working-tree changes are not included because the Dockerfile uses
+`git archive HEAD`.
 
-The multi-stage build:
+## CI publishing
 
-1. Archives the checked-out commit into a clean build context and compiles the
-   Rust CLI in an Ubuntu 24.04 builder.
-2. Sanitizes and preserves Git metadata so repository update and
-   sparse-checkout tasks continue to work in the runtime image.
-3. Installs the runtime tools declared in the Dockerfile, creates the
-   non-root `sneivandt` user, and runs `dotfiles install` for the selected
-   profile.
-4. Starts `/usr/bin/zsh`.
+The Docker publishing workflow runs after successful CI for a
+same-repository push to `main`. It checks out the exact successful CI head SHA
+before building and pushing. This keeps the published image tied to the tested
+commit.
 
-Inspect the current [`Dockerfile`](../Dockerfile) rather than copying a
-Dockerfile fragment from this guide.
+## Limitations
 
-## Use a host workspace
-
-Mount a host directory when the container should operate on persistent files:
-
-```bash
-docker run --rm -it -v "$PWD:/workspace" -w /workspace dotfiles:local
-```
-
-The dotfiles checkout inside the image remains at
-`/home/sneivandt/dotfiles`.
-
-## Troubleshooting
-
-If cache mounts are rejected, use `docker buildx build` as shown above or enable
-BuildKit for the Docker daemon.
-
-To inspect a failed install layer:
-
-```bash
-docker buildx build --load --progress=plain -t dotfiles:debug .
-```
-
-To inspect the installed environment without the default shell command:
-
-```bash
-docker run --rm -it --entrypoint /bin/bash dotfiles:local
-```
+- The image is Ubuntu, not Arch; Arch-only package and AUR tasks are not
+  applicable.
+- Host desktop services and Windows registry configuration are not represented.
+- Installation occurs at image build time, so changing profile or configuration
+  requires rebuilding.
+- Private overlays are not copied into the public image.
+- The image is an environment validation and shell image, not a full virtual
+  machine for every supported platform.

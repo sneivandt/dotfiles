@@ -1,149 +1,90 @@
-# Repository Git Hooks
+# Git Hooks
 
-The `hooks/` directory contains git hooks that are automatically installed by the dotfiles installation script.
+The repository installs a pre-commit orchestrator from `hooks\`. It protects the
+checkout from obvious secret exposure and Rust quality regressions before CI.
 
-## Available Hooks
+## Files
 
-### pre-commit - Orchestrator
+| File | Purpose |
+|---|---|
+| `pre-commit` | Entry point installed into the repository's Git hook directory |
+| `check-sensitive.sh` | Scans staged content for configured sensitive patterns |
+| `sensitive-patterns.ini` | Versioned pattern and allow-list configuration |
+| `check-rust.sh` | Runs staged-change-aware Rust formatting and checks |
+| `check-ci-guards.sh` | Verifies CI publishing and gate invariants |
 
-The default hook runs `check-sensitive.sh` and `check-rust.sh`. Set
-`DOTFILES_HOOKS_FULL=1` to also run the CI-derived checks in
-`check-ci-guards.sh` before committing.
+The installed hook resolves the repository root at runtime and invokes the
+source scripts from `hooks\`. This keeps hook logic versioned rather than
+duplicated inside `.git\hooks`.
 
-### check-sensitive.sh - Sensitive Data Scanner
+## Default pre-commit flow
 
-Scans staged changes for sensitive information before allowing commits. Detects:
-
-- **API Keys**: apikey, api_key, secret_key patterns
-- **Passwords**: password, passwd, pwd assignments
-- **Tokens**: OAuth tokens, access tokens, JWT tokens
-- **Private Keys**: PEM-formatted private keys (RSA, DSA, EC, OpenSSH)
-- **AWS Credentials**: AWS access keys and secret keys
-- **GitHub/GitLab Tokens**: Personal access tokens
-- **Database Credentials**: Connection strings with embedded credentials
-- **Cloud Provider Keys**: Google Cloud, Stripe, Slack, Heroku
-- **Personally Identifiable Information**: Email addresses, phone numbers, SSNs, payment-card patterns, and IP addresses
-- **UUIDs/GUIDs**: Standard identifier format that may expose sensitive references
-- **Generic Secrets**: High-entropy strings in secret-related variables
-
-#### Usage
-
-The hook runs automatically on every commit in this repository. If sensitive data is detected:
-
-```
-ERROR: Potential sensitive information detected!
-======================================================
-
-In file: config/example.py
-Pattern matched: (apikey|api_key)[\s]*[=:]
-
-Commit aborted to prevent leaking sensitive data.
-Please review and remove any sensitive information.
-If this is a false positive, use:
-  git commit --no-verify
+```text
+check-sensitive.sh
+        |
+        v
+check-rust.sh
 ```
 
-To bypass the hook (use with caution):
+If either script fails, Git aborts the commit.
+
+The sensitive scan runs first so potential credential exposure is caught before
+more expensive Rust checks.
+
+## Full guard mode
+
+Set `DOTFILES_HOOKS_FULL` to `1`, `true`, or `yes` to add CI guard validation:
+
+```bash
+DOTFILES_HOOKS_FULL=1 git commit
+```
+
+Full mode is useful before changing workflow triggers, publishing guards,
+permissions, the `ci-success` dependency list, or artifact behavior.
+
+## Installation and removal
+
+**Install Git hooks** runs in the Sync phase after repository update so it uses
+current hook sources. **Remove Git hooks** is part of uninstall.
+
+```bash
+dotfiles install --only "Git hooks"
+dotfiles uninstall --dry-run
+```
+
+If `hooks\` is absent, repository validation reports a warning rather than
+treating the whole configuration as invalid.
+
+## Running checks manually
+
+```bash
+sh hooks/check-sensitive.sh
+sh hooks/check-rust.sh
+sh hooks/check-ci-guards.sh
+sh hooks/pre-commit
+```
+
+The scripts are POSIX shell scripts and should remain portable. Do not add
+Bash-only syntax unless the supported interpreter contract changes.
+
+## Bypassing
+
+Git supports a one-time bypass:
+
 ```bash
 git commit --no-verify
 ```
 
-#### Customization
+Use it only when the hook itself is broken and the change is being used to fix
+it. A bypass does not skip CI and should never be used to commit known sensitive
+data.
 
-The detection patterns are defined in [sensitive-patterns.ini](../hooks/sensitive-patterns.ini), organized into sections by pattern type:
-- `api-keys` - Generic API keys and secrets
-- `passwords` - Password patterns
-- `tokens` - Bearer tokens and authorization headers
-- `aws` - AWS credentials
-- `private-keys` - PEM-formatted private keys
-- `github` - GitHub personal access tokens
-- `gitlab` - GitLab personal access tokens
-- `oauth` - OAuth client secrets
-- `database` - Database connection strings with credentials
-- `slack` - Slack tokens
-- `stripe` - Stripe API keys
-- `google` - Google Cloud and Firebase API keys
-- `heroku` - Heroku API keys
-- `pii` - Email addresses, phone numbers, SSNs, payment-card patterns, and IP addresses
-- `uuid` - UUID and GUID identifiers
-- `generic` - High-entropy generic secrets
+## Changing sensitive patterns
 
-The INI file uses a simple, clean format with raw regex patterns under section headers. The file includes comprehensive documentation about:
-- Pattern format (Extended Regular Expressions)
-- How to add new patterns
-- Testing patterns
-- Pattern guidelines to reduce false positives
+Treat `sensitive-patterns.ini` as security-sensitive behavior:
 
-Edit `hooks/sensitive-patterns.ini` to add, modify, or remove detection patterns. The section-based organization makes it easy to understand and manage different types of secrets. Re-run the install command after changing hook files or helper scripts so the updated copies are written into `.git/hooks/`.
-
-### check-rust.sh - Code Quality
-
-Runs the following checks against staged files on every commit:
-
-1. **`cargo fmt --check`** — fails the commit if any `.rs` files are not formatted.
-   Run `cargo fmt --manifest-path cli/Cargo.toml` to fix.
-2. **`cargo clippy --profile ci -- -D warnings`** (host target) — fails the commit if clippy
-   reports any warnings, matching the same lint policy enforced by CI.
-3. **Full mode: `cargo clippy --profile ci --target x86_64-pc-windows-gnu -- -D warnings`** — catches
-   Windows-only `cfg` arms, `winreg` references, and platform-gated import
-   drift before they hit CI. Skipped with a notice when the target is not
-   installed (`rustup target add x86_64-pc-windows-gnu` plus a mingw-w64 gcc).
-4. **Full mode: `cargo test --profile ci`** — catches unit and integration test regressions
-   before the CI build jobs.
-5. **PSScriptAnalyzer** — lints staged `.ps1`/`.psm1` files when `pwsh` and the
-   module are available. Skipped with a notice otherwise.
-
-### check-ci-guards.sh - Targeted CI Guards
-
-Runs targeted checks for staged files that commonly break CI when full hook mode
-is enabled, or when the helper is invoked directly:
-
-1. **Config and symlink changes** — run the shell config validators. Full mode
-   also runs `cargo test --profile ci --test config_drift` when Cargo is installed.
-2. **Cargo dependency policy changes** — reject wildcard dependencies. Full mode
-   also runs `cargo deny check bans licenses sources` when cargo-deny is installed.
-3. **Shell script changes** — run ShellCheck on staged shell files when installed.
-4. **Full mode: `dotfiles.sh` changes** — run the Linux shell wrapper tests, including
-   argument-forwarding coverage.
-
-## File Layout
-
-| File | Installed as git hook | Purpose |
-| --- | --- | --- |
-| `pre-commit` | yes | Sensitive-data and code-quality checks, with optional CI guards |
-| `check-sensitive.sh` | no | Sensitive data scanning |
-| `check-rust.sh` | no | Rust formatting, clippy, tests, and PowerShell linting |
-| `check-ci-guards.sh` | no | Targeted local guards for common CI failure classes |
-| `sensitive-patterns.ini` | no | Regex patterns for sensitive data scanner |
-
-Only files without an extension are installed as git hooks. Helper scripts use
-the `.sh` extension so they live alongside the hook without being linked
-into `.git/hooks/`.
-
-## Installation
-
-Hooks are automatically installed when you run the dotfiles installation:
-
-**Linux:**
-```bash
-./dotfiles.sh install
-```
-
-**Windows:**
-```powershell
-.\dotfiles.ps1 install -p desktop
-```
-
-The binary copies hook files from `hooks/` into `.git/hooks/`. Re-run the install command after modifying hooks to update the installed copies.
-
-## Cross-Platform Compatibility
-
-Hooks are written in POSIX shell (`#!/bin/sh`) and work on:
-- **Linux**: Native shell support
-- **Windows**: Git for Windows includes Git Bash
-
-## See Also
-
-- [Architecture](ARCHITECTURE.md) - Git hooks installation process
-- [Security](SECURITY.md) - Security best practices and sensitive data handling
-- [Contributing](CONTRIBUTING.md) - Guidelines for hook development
+1. Keep broad secret families covered.
+2. Make allow-list entries as narrow as possible.
+3. Test both a known match and an expected non-match.
+4. Avoid including a real credential in a test fixture.
+5. Run the hook integration checks.

@@ -204,7 +204,7 @@ impl Context {
         executor: Arc<dyn Executor>,
         opts: ContextOpts,
     ) -> Result<Self> {
-        let home = if cfg!(target_os = "windows") {
+        let home = if platform.is_windows() {
             std::env::var("USERPROFILE")
                 .or_else(|_| std::env::var("HOME"))
                 .context("neither USERPROFILE nor HOME environment variable is set")?

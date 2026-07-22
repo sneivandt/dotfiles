@@ -146,6 +146,7 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
 mod tests {
     use super::*;
     use crate::test_helpers::empty_config;
+    use std::collections::HashSet;
     use std::path::PathBuf;
 
     fn test_params() -> ConfigStore {
@@ -156,26 +157,71 @@ mod tests {
         ConfigStore::from_config(empty_config(PathBuf::from("/tmp")))
     }
 
-    /// Guard against forgetting to register a new task.
     #[test]
-    fn all_install_tasks_count() {
+    fn all_install_tasks_have_the_expected_membership() {
         let tasks = all_install_tasks(test_params());
+        let actual = tasks
+            .iter()
+            .map(|task| task.task_id())
+            .collect::<HashSet<_>>();
+        let expected = [
+            id::<EnableDeveloperMode>(),
+            id::<MaterializeExcludedSymlinks>(),
+            id::<ConfigureSparseCheckout>(),
+            id::<UpdateRepository>(),
+            id::<ConfigureGit>(),
+            id::<ConfigureCopilot>(),
+            id::<InstallGitHooks>(),
+            id::<GenerateCompletions>(),
+            id::<InstallPackages>(),
+            id::<InstallParu>(),
+            id::<InstallAurPackages>(),
+            id::<InstallSymlinks>(),
+            id::<ApplyFilePermissions>(),
+            id::<ConfigureShell>(),
+            id::<ConfigureSystemd>(),
+            id::<ApplyRegistry>(),
+            id::<InstallVsCodeExtensions>(),
+            id::<InstallApmPackages>(),
+            id::<UpdateApmPackages>(),
+            id::<InstallWslConf>(),
+            id::<ReportOverlayScriptSnapshot>(),
+            id::<InstallWrapper>(),
+            id::<ConfigurePath>(),
+            id::<ReloadConfig>(),
+        ]
+        .into_iter()
+        .collect::<HashSet<_>>();
+
+        assert_eq!(actual, expected, "install task registration changed");
         assert_eq!(
             tasks.len(),
-            24,
-            "expected 24 install tasks — did you add a new task without updating \
-             all_install_tasks()? Update the registration list and this test."
+            actual.len(),
+            "install task registration contains duplicate task IDs"
         );
     }
 
     #[test]
-    fn all_uninstall_tasks_count() {
+    fn all_uninstall_tasks_have_the_expected_membership() {
         let store = test_store();
         let tasks = all_uninstall_tasks(&store);
+        let actual = tasks
+            .iter()
+            .map(|task| task.task_id())
+            .collect::<HashSet<_>>();
+        let expected = [
+            id::<UninstallSymlinks>(),
+            id::<UninstallGitHooks>(),
+            id::<UninstallWrapper>(),
+        ]
+        .into_iter()
+        .collect::<HashSet<_>>();
+
+        assert_eq!(actual, expected, "uninstall task registration changed");
         assert_eq!(
             tasks.len(),
-            3,
-            "expected 3 uninstall tasks — update all_uninstall_tasks() and this test."
+            actual.len(),
+            "uninstall task registration contains duplicate task IDs"
         );
     }
 

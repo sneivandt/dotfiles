@@ -1,4 +1,4 @@
-# CLI Task Reference
+# Task Reference
 
 This reference covers every task currently scheduled by the CLI:
 

@@ -33,7 +33,7 @@ The Rust integration tests under `cli\tests\` cover distinct boundaries:
 | `domain_boundaries` | Architectural dependency boundaries |
 | `e2e_apply` | End-to-end convergence against controlled state |
 | `install_command` | Install selection and command composition |
-| `task_execution` | Scheduler, phases, dependencies, and result behavior |
+| `task_execution` | Scheduler, dependencies, and result behavior |
 | `test_command` | Validation task construction and outcomes |
 | `uninstall_command` | Conservative uninstall composition and behavior |
 

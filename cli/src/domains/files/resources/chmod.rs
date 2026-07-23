@@ -4,7 +4,7 @@ use anyhow::Context as _;
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::domains::files::OctalMode;
+use crate::domains::files::config::chmod::OctalMode;
 #[cfg(unix)]
 use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};

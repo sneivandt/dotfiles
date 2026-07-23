@@ -1,9 +1,7 @@
 //! Task: ensure `~/.local/bin` is on the user's `PATH`.
 
 use crate::domains::dotfiles::resources::path_entry::PathEntryResource;
-use crate::engine::{
-    Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, task_metadata,
-};
+use crate::engine::{Context, ProcessOpts, Task, TaskResult, process_resources, task_metadata};
 
 /// Ensure `~/.local/bin` is on the user's `PATH`.
 #[derive(Debug)]
@@ -12,7 +10,6 @@ pub struct ConfigurePath;
 impl Task for ConfigurePath {
     task_metadata! {
         name: "Configure PATH",
-        phase: TaskPhase::Bootstrap,
         deps: [crate::domains::dotfiles::wrapper::InstallWrapper],
     }
 

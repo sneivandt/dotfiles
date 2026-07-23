@@ -66,7 +66,7 @@ Define:
 
 - stable task identity
 - clear display name
-- phase
+- command membership, including update-only behavior when applicable
 - applicability
 - same-domain dependencies
 - elevation policy
@@ -132,5 +132,5 @@ profile. Recurring integration logic belongs in
 ## Documentation changes
 
 Update the guide closest to the behavior. If a task is added, removed, renamed,
-rephased, or rewired, update [Task reference](TASKS.md). Keep the root README as
-a landing page and place detailed guidance in `docs\`.
+changes command membership, or is rewired, update [Task reference](TASKS.md).
+Keep the root README as a landing page and place detailed guidance in `docs\`.

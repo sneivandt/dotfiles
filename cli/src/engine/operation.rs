@@ -116,6 +116,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::engine::TaskStats;
     use crate::infra::logging::{Output, TaskRecorder, TaskStatus};
     use crate::test_helpers::{empty_config, make_linux_context};
 
@@ -183,7 +184,7 @@ mod tests {
                 "preview should receive checked plan"
             );
             self.preview_calls.fetch_add(1, Ordering::SeqCst);
-            Ok(TaskResult::DryRun)
+            Ok(TaskStats::changed().finish())
         }
 
         fn apply(&self, _ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
@@ -217,7 +218,10 @@ mod tests {
 
         let result = process_operation(&ctx, &operation).unwrap();
 
-        assert!(matches!(result, TaskResult::DryRun));
+        assert!(matches!(
+            result,
+            TaskResult::Batch(stats) if stats.changed == 1
+        ));
         assert_eq!(operation.preview_calls(), 1);
         assert_eq!(operation.apply_calls(), 0);
     }

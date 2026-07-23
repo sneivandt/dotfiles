@@ -30,7 +30,8 @@ impl GitConfigResource {
 
     /// Create a resource backed by one explicit config file.
     #[must_use]
-    pub(crate) const fn with_config_path(
+    #[cfg(any(test, feature = "internal-api"))]
+    pub const fn with_config_path(
         key: String,
         desired_value: String,
         config_path: PathBuf,

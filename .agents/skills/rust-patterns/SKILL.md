@@ -48,12 +48,13 @@ cli/src/
   `Operation` and call `process_operation()` from the task body.
 - Declare dependencies with `task_deps![...]`; register static tasks in
   `cli/src/app/catalog.rs`.
+- Ordering comes only from dependencies; catalog insertion order is arbitrary.
+  Mark a task with `update_only: true` only when it belongs to `dotfiles update`
+  but not `dotfiles install`.
 - Use `should_run()` for platform, tool-availability, and configuration
   eligibility. Implement `needs_elevation()` only when an applicable task's
   current state predicts a privileged mutation, so sudo is primed only when
   needed. Dry-run suppression is handled centrally.
-- Provision is the default task phase; override `phase()` only for another
-  scheduler barrier.
 - Use capability methods such as `supports_systemd()`, `supports_chmod()`,
   `has_registry()`, `supports_aur()`, and `uses_pacman()` before direct OS checks.
 - Route all subprocess calls through `ctx.executor`; do not call process helpers

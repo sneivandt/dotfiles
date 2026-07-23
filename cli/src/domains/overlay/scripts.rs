@@ -1,10 +1,10 @@
 //! Task: load and run custom scripts from the overlay repository.
 //!
 //! [`ReportOverlayScriptSnapshot`] is a lightweight static task that reports
-//! how many script tasks were discovered after configuration synchronization.
+//! how many script tasks were discovered after configuration reload.
 //!
 //! Each individual script gets its own [`OverlayScriptTask`] created
-//! dynamically after the Sync phase (in `install.rs`). These tasks appear in
+//! dynamically after [`crate::app::reload::ReloadConfig`]. These tasks appear in
 //! the output identically to any other task.
 
 use std::path::PathBuf;
@@ -14,7 +14,7 @@ use anyhow::Result;
 use crate::domains::overlay::config::scripts::ScriptEntry;
 use crate::domains::overlay::resources::script::ScriptResource;
 use crate::engine::{
-    Context, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
+    Context, Operation, OperationState, Task, TaskResult, TaskStats, process_operation,
 };
 use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
 use crate::infra::ConfigHandle;
@@ -26,7 +26,7 @@ use crate::infra::ConfigHandle;
 /// Report overlay script definitions discovered after configuration reload.
 ///
 /// The actual execution of each script is handled by individual
-/// [`OverlayScriptTask`] instances injected after the Sync phase.
+/// [`OverlayScriptTask`] instances injected after configuration reload.
 #[derive(Debug)]
 pub struct ReportOverlayScriptSnapshot {
     config: ConfigHandle<Vec<ScriptEntry>>,
@@ -43,10 +43,6 @@ impl ReportOverlayScriptSnapshot {
 impl Task for ReportOverlayScriptSnapshot {
     fn name(&self) -> &'static str {
         "Report overlay scripts"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Sync
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -135,7 +131,7 @@ impl Operation for OverlayScriptOperation {
     fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         let (_change, output) = self.resource(ctx)?.preview_with_output()?;
         emit_script_lines(ctx, &output, true);
-        Ok(TaskResult::DryRun)
+        Ok(TaskStats::changed().finish())
     }
 
     fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
@@ -220,8 +216,8 @@ fn emit_script_lines(ctx: &Context, output: &str, dry_run: bool) {
 
 /// Create [`OverlayScriptTask`] instances for every script in the config.
 ///
-/// Called from `install.rs` after the Sync phase to inject dynamic tasks into
-/// the task list alongside the static ones.
+/// Called from `install.rs` after the configuration-reload boundary to inject
+/// dynamic tasks alongside the remaining static tasks.
 #[must_use]
 pub fn overlay_script_tasks(
     scripts: &[ScriptEntry],

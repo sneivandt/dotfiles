@@ -1,6 +1,5 @@
 //! Declarative validation helpers for configuration items.
 use super::diagnostics::{Diagnostic, Severity};
-use crate::infra::logging::Output;
 
 /// A single check result: `(code, severity, message)`.
 ///
@@ -130,34 +129,6 @@ pub(crate) fn check_error(
     message: impl Into<String>,
 ) -> CheckItem {
     condition.then(|| (code, Severity::Error, message.into()))
-}
-
-/// Display configuration diagnostics using the standard command-line format.
-///
-/// Each line is formatted as:
-/// ```text
-///   [warn] source [item] (code): message
-///   [err]  source [item] (code): message
-/// ```
-pub(crate) fn display_diagnostics(diagnostics: &[Diagnostic], log: &dyn Output) {
-    if diagnostics.is_empty() {
-        return;
-    }
-
-    log.warn(&format!(
-        "found {} configuration diagnostic(s):",
-        diagnostics.len()
-    ));
-    for d in diagnostics {
-        log.warn(&format!(
-            "  [{}] {} [{}] ({}): {}",
-            d.severity.label(),
-            d.source,
-            d.item,
-            d.code,
-            d.message
-        ));
-    }
 }
 
 #[cfg(test)]
@@ -349,24 +320,5 @@ mod tests {
     fn severity_label_returns_ascii_short_codes() {
         assert_eq!(Severity::Warning.label(), "warn");
         assert_eq!(Severity::Error.label(), "err");
-    }
-
-    #[test]
-    fn display_diagnostics_formats_severity_and_code() {
-        use crate::infra::logging::isolated_logger;
-
-        let (logger, _tmp, _guard) = isolated_logger();
-        let diagnostics = vec![
-            Diagnostic::warning("pkg.toml", "git", "package.empty-name", "name is empty"),
-            Diagnostic::error(
-                "sym.toml",
-                ".bashrc",
-                "symlink.parent-in-source",
-                "unsafe path",
-            ),
-        ];
-
-        // verify no panic and both diagnostics are processed
-        display_diagnostics(&diagnostics, &logger);
     }
 }

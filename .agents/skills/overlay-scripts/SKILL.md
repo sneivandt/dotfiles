@@ -58,15 +58,17 @@ components before execution.
 
 - `cli/src/domains/overlay/config/scripts.rs` parses script entries.
 - `cli/src/domains/overlay/resources/script.rs` owns check, preview, apply, and remove behavior.
-- `ReportOverlayScriptSnapshot` reports scripts loaded into config during Sync.
-- `OverlayScriptTask` provides one dynamic Provision task per entry.
+- `ReportOverlayScriptSnapshot` reports scripts loaded into config after reload.
+- `OverlayScriptTask` provides one dynamic task per entry.
 - The command runner reloads the script handle with the rest of configuration,
-  then builds and injects dynamic tasks after Sync so newly pulled definitions
-  run in the same command.
+  then builds and injects dynamic tasks after the `ReloadConfig` dependency
+  closure so newly pulled definitions run in the same command.
 
 Dynamic tasks are not registered as individual static catalog entries. Keep the
-reporting task registered in Sync; dynamic task creation happens at the
-Sync-to-Provision phase boundary.
+reporting task catalog-registered with a dependency on `ReloadConfig`. Dynamic
+task creation happens at that reload discovery boundary. If filtering removes
+the boundary, discover tasks from current configuration before running one
+graph.
 
 All subprocesses go through the executor abstraction. Preserve interpreter
 selection and non-interactive PowerShell behavior when changing command
@@ -77,7 +79,7 @@ construction.
 1. Update the typed config contract.
 2. Preserve path validation and overlay-root containment.
 3. Keep all four script modes wired.
-4. Update dynamic task creation and phase assumptions together.
+4. Update dynamic task creation and reload-boundary assumptions together.
 5. Add focused tests for exit-code mapping, dry-run failures, path rejection,
    and overlay merging.
 

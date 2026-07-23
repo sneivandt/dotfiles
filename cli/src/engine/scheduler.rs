@@ -6,8 +6,6 @@
 use std::sync::{Arc, mpsc};
 
 use super::graph::ResolvedTaskGraph;
-#[cfg(test)]
-use crate::engine::TaskPhase;
 use crate::engine::{self, Context, Task};
 use crate::infra::logging::{self, BufferedLog, DiagEvent, Log, Logger, Output as _, TaskStatus};
 

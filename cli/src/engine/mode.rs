@@ -187,10 +187,10 @@ pub enum ResourceAction {
 /// assert!(opts.mode.fix_incorrect() && !opts.mode.fix_missing() && opts.mode.bail_on_error());
 /// ```
 #[derive(Debug)]
-pub struct ProcessOpts<'a> {
+pub struct ProcessOpts {
     /// Verb for log messages — keep to the canonical set ("install",
     /// "configure", "update", "enable", "link", "unlink", "remove").
-    pub verb: &'a str,
+    pub verb: &'static str,
     /// Processing strategy controlling which states are fixable and error behaviour.
     pub mode: ProcessMode,
     /// Force sequential processing regardless of `ctx.parallel`.
@@ -200,13 +200,13 @@ pub struct ProcessOpts<'a> {
     pub sequential: bool,
 }
 
-impl<'a> ProcessOpts<'a> {
+impl ProcessOpts {
     /// Fix both missing and incorrect resources, bailing on errors.
     ///
     /// This is the strict default — suitable for resources where every
     /// failure must be surfaced (e.g. symlinks, hooks, git config).
     #[must_use]
-    pub const fn strict(verb: &'a str) -> Self {
+    pub const fn strict(verb: &'static str) -> Self {
         Self {
             verb,
             mode: ProcessMode::Strict,
@@ -219,7 +219,7 @@ impl<'a> ProcessOpts<'a> {
     /// Suitable for resources where individual failures should not abort
     /// the batch (e.g. packages, registry entries).
     #[must_use]
-    pub const fn lenient(verb: &'a str) -> Self {
+    pub const fn lenient(verb: &'static str) -> Self {
         Self {
             verb,
             mode: ProcessMode::Lenient,
@@ -232,7 +232,7 @@ impl<'a> ProcessOpts<'a> {
     /// Suitable for resources that should not be overwritten when already
     /// present (e.g. VS Code extensions, systemd units, Copilot plugins).
     #[must_use]
-    pub const fn install_missing(verb: &'a str) -> Self {
+    pub const fn install_missing(verb: &'static str) -> Self {
         Self {
             verb,
             mode: ProcessMode::InstallMissing,
@@ -244,7 +244,7 @@ impl<'a> ProcessOpts<'a> {
     ///
     /// Skip missing resources — only fix existing items that have drifted.
     #[must_use]
-    pub const fn fix_existing(verb: &'a str) -> Self {
+    pub const fn fix_existing(verb: &'static str) -> Self {
         Self {
             verb,
             mode: ProcessMode::FixExisting,

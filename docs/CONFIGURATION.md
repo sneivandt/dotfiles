@@ -263,7 +263,8 @@ uninstall catalog, so `dotfiles uninstall` does not invoke `--remove`.
 Scripts should be idempotent, return nonzero on failure, and avoid emitting
 secrets. Dry-run safety is cooperative: the engine supplies `--dryrun` but
 cannot stop an opaque script from mutating state. Every active entry becomes a
-normal Provision-phase task and can be selected by its name.
+normal dynamic task after the reload discovery boundary and can be selected by
+its name.
 
 ## APM configuration
 

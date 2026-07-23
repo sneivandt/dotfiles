@@ -100,7 +100,10 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
         Box::new(InstallPackages::new(store.packages.clone())),
         Box::new(InstallParu),
         Box::new(InstallAurPackages::new(store.packages.clone())),
-        Box::new(InstallSymlinks::new(store.symlinks.clone())),
+        with_deps(
+            InstallSymlinks::new(store.symlinks.clone()),
+            &[id::<EnableDeveloperMode>()],
+        ),
         Box::new(ApplyFilePermissions::new(store.chmod.clone())),
         with_deps(ConfigureShell, &[id::<InstallPackages>()]),
         with_deps(
@@ -124,7 +127,7 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
                 id::<InstallSymlinks>(),
             ],
         ),
-        Box::new(UpdateApmPackages),
+        with_deps(UpdateApmPackages, &[id::<InstallApmPackages>()]),
         Box::new(InstallWslConf),
         with_deps(
             ReportOverlayScriptSnapshot::new(store.scripts.clone()),

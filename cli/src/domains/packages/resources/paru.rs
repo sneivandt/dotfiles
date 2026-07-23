@@ -4,8 +4,9 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use super::package::{PackageInstallReport, PackageProvider, PackageResource};
+use super::package::{PackageProvider, PackageResource};
 use super::pacman::PacmanProvider;
+use super::report::PackageInstallReport;
 use crate::engine::ResourceChange;
 use crate::infra::exec::Executor;
 

@@ -137,10 +137,10 @@ pub(super) fn parallel_context(
     (ctx, log)
 }
 
-pub(super) fn default_opts() -> ProcessOpts<'static> {
+pub(super) fn default_opts() -> ProcessOpts {
     ProcessOpts::lenient("install")
 }
 
-pub(super) fn bail_opts() -> ProcessOpts<'static> {
+pub(super) fn bail_opts() -> ProcessOpts {
     ProcessOpts::strict("install")
 }

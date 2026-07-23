@@ -20,9 +20,12 @@ use test_api::tasks::files::chmod::ApplyFilePermissions;
 use test_api::tasks::files::symlinks::InstallSymlinks;
 #[cfg(unix)]
 use test_api::tasks::files::symlinks::UninstallSymlinks;
-use test_api::tasks::git::git_config::ConfigureGit;
 use test_api::tasks::git::hooks::{InstallGitHooks, UninstallGitHooks};
 use test_api::tasks::{self, Task, TaskResult};
+use test_api::{
+    engine::{ProcessOpts, process_resources},
+    resources::git_config::GitConfigResource,
+};
 
 const fn batch_changed(result: &TaskResult) -> bool {
     matches!(result, TaskResult::Batch(stats) if stats.changed > 0)
@@ -471,9 +474,20 @@ fn git_config_dry_run_makes_no_changes() {
     let ec = test.make_dry_run_context("base");
     let config_path = ec.ctx.home().join("gitconfig");
     std::fs::write(&config_path, "").unwrap();
-    let result = ConfigureGit::with_config_path(ec.store.git_settings.clone(), config_path.clone())
-        .run(&ec.ctx)
-        .unwrap();
+    let settings = ec.store.git_settings.read();
+    let resources = settings.iter().map(|setting| {
+        GitConfigResource::with_config_path(
+            setting.key.clone(),
+            setting.value.clone(),
+            config_path.clone(),
+        )
+    });
+    let result = process_resources(
+        &ec.ctx,
+        resources,
+        &ProcessOpts::strict("configure").sequential(),
+    )
+    .unwrap();
     assert!(batch_changed(&result));
 
     let config = git2::Config::open(&config_path).unwrap();
@@ -498,9 +512,20 @@ fn git_config_replaces_incorrect_isolated_value() {
     initial_config.set_str("core.autocrlf", "true").unwrap();
     drop(initial_config);
 
-    let result = ConfigureGit::with_config_path(ec.store.git_settings.clone(), config_path.clone())
-        .run(&ec.ctx)
-        .unwrap();
+    let settings = ec.store.git_settings.read();
+    let resources = settings.iter().map(|setting| {
+        GitConfigResource::with_config_path(
+            setting.key.clone(),
+            setting.value.clone(),
+            config_path.clone(),
+        )
+    });
+    let result = process_resources(
+        &ec.ctx,
+        resources,
+        &ProcessOpts::strict("configure").sequential(),
+    )
+    .unwrap();
     assert!(batch_changed(&result));
 
     let actual_config = git2::Config::open(&config_path).unwrap();
@@ -522,9 +547,20 @@ fn git_config_is_idempotent_when_isolated_value_matches() {
     config.set_str("core.autocrlf", "false").unwrap();
     drop(config);
 
-    let result = ConfigureGit::with_config_path(ec.store.git_settings.clone(), config_path)
-        .run(&ec.ctx)
-        .unwrap();
+    let settings = ec.store.git_settings.read();
+    let resources = settings.iter().map(|setting| {
+        GitConfigResource::with_config_path(
+            setting.key.clone(),
+            setting.value.clone(),
+            config_path.clone(),
+        )
+    });
+    let result = process_resources(
+        &ec.ctx,
+        resources,
+        &ProcessOpts::strict("configure").sequential(),
+    )
+    .unwrap();
     assert!(batch_unchanged(&result));
 }
 

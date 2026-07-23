@@ -1,15 +1,14 @@
-//! Phased application task execution policy.
+//! Application task execution policy.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 
-use crate::engine::{Context, Task, TaskPhase};
+use crate::engine::{Context, Task, TaskId};
 use crate::infra::logging::Logger;
 
 use super::error::TaskFailures;
-
-type LateTaskProvider<'a> = Box<dyn FnOnce() -> Vec<Box<dyn Task>> + 'a>;
 
 #[cfg(unix)]
 fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
@@ -49,10 +48,7 @@ const fn prime_sudo(_ctx: &Context, _log: &Arc<Logger>, _task_names: &[&str]) ->
     true
 }
 
-/// Execute the full phased task pipeline.
-///
-/// Phases run strictly in order, each completing before the next begins.
-/// Within a phase, tasks run as soon as their dependencies complete.
+/// Execute a dependency-driven task graph.
 ///
 /// # Errors
 ///
@@ -62,14 +58,17 @@ pub(crate) fn run_tasks_to_completion<'a>(
     ctx: &Context,
     log: &Arc<Logger>,
 ) -> Result<()> {
-    run_tasks_to_completion_inner(tasks, ctx, log, None)
+    let mut tasks = tasks.into_iter().collect::<Vec<_>>();
+    run_task_graph(&mut tasks, ctx, log)?;
+    finish_run(log)
 }
 
-/// Execute the phased task pipeline and inject additional tasks after a phase.
+/// Execute tasks and inject additional tasks after a dependency boundary.
 ///
-/// The provider runs exactly once after `after_phase` completes. Injected tasks
-/// then flow through the normal graph resolution, elevation, and execution path
-/// for their own phases.
+/// When `boundary` is present, its complete dependency closure runs first. The
+/// provider then observes any state refreshed by that closure, and its tasks
+/// join the remaining static tasks in a second dependency graph. If the
+/// boundary was filtered out, the provider runs before the single graph.
 ///
 /// # Errors
 ///
@@ -78,109 +77,116 @@ pub(crate) fn run_tasks_to_completion_with_late_tasks<'a>(
     tasks: impl IntoIterator<Item = &'a dyn Task>,
     ctx: &Context,
     log: &Arc<Logger>,
-    after_phase: TaskPhase,
+    boundary: TaskId,
     provider: impl FnOnce() -> Vec<Box<dyn Task>> + 'a,
 ) -> Result<()> {
-    run_tasks_to_completion_inner(tasks, ctx, log, Some((after_phase, Box::new(provider))))
-}
+    let tasks = tasks.into_iter().collect::<Vec<_>>();
+    let boundary_closure = dependency_closure(&tasks, boundary);
 
-fn run_tasks_to_completion_inner<'a>(
-    tasks: impl IntoIterator<Item = &'a dyn Task>,
-    ctx: &Context,
-    log: &Arc<Logger>,
-    mut late_tasks: Option<(TaskPhase, LateTaskProvider<'a>)>,
-) -> Result<()> {
-    let mut owned_late_tasks: Vec<Box<dyn Task>> = Vec::new();
-    let tasks: Vec<&dyn Task> = tasks.into_iter().collect();
-    let phases = [
-        TaskPhase::Bootstrap,
-        TaskPhase::Sync,
-        TaskPhase::Provision,
-        TaskPhase::Validation,
-        TaskPhase::Update,
-    ];
-
-    for phase in phases {
-        if ctx.is_cancelled() {
-            log.warn("cancelled - stopping before next phase");
-            break;
-        }
-
-        let mut phase_tasks: Vec<&dyn Task> = tasks
+    if boundary_closure.is_empty() {
+        let late_tasks = provider();
+        let mut all_tasks = tasks;
+        all_tasks.extend(late_tasks.iter().map(Box::as_ref));
+        run_task_graph(&mut all_tasks, ctx, log)?;
+    } else {
+        let mut prefix = tasks
             .iter()
             .copied()
-            .chain(owned_late_tasks.iter().map(Box::as_ref))
-            .filter(|task| task.phase() == phase)
-            .collect();
+            .filter(|task| boundary_closure.contains(&task.task_id()))
+            .collect::<Vec<_>>();
+        run_task_graph(&mut prefix, ctx, log)?;
 
-        if !phase_tasks.is_empty() {
-            let sudo_task_names: Vec<&str> =
-                if ctx.parallel() && !ctx.dry_run() && phase_tasks.len() > 1 {
-                    phase_tasks
-                        .iter()
-                        .filter(|task| task.requires_elevation(ctx))
-                        .map(|task| task.name())
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-            let sudo_failed =
-                !sudo_task_names.is_empty() && !prime_sudo(ctx, log, &sudo_task_names);
-
-            if sudo_failed {
-                if ctx.is_cancelled() {
-                    log.warn("cancelled - stopping before next phase");
-                    break;
-                }
-
-                let reason = "sudo credentials unavailable";
-                phase_tasks.retain(|task| {
-                    if task.requires_elevation(ctx) {
-                        let span = tracing::info_span!("task", name = task.name());
-                        let _enter = span.enter();
-                        log.debug(reason);
-                        log.record_task(
-                            task.name(),
-                            crate::infra::logging::TaskStatus::Skipped,
-                            Some(reason),
-                        );
-                        log.emit_task_result_and_redraw(task.name());
-                        false
-                    } else {
-                        true
-                    }
-                });
-            }
-
-            if !phase_tasks.is_empty() {
-                let graph = match crate::engine::graph::ResolvedTaskGraph::resolve(&phase_tasks) {
-                    Ok(graph) => graph,
-                    Err(error) => {
-                        let message = format!("{error} detected in {phase} phase task graph");
-                        log.error(&message);
-                        anyhow::bail!(message);
-                    }
-                };
-
-                if ctx.parallel() {
-                    crate::engine::scheduler::run_tasks_parallel(&phase_tasks, &graph, ctx, log);
-                } else {
-                    crate::engine::scheduler::run_tasks_sequential(&phase_tasks, &graph, ctx, log);
-                }
-            }
-        }
-
-        if late_tasks
-            .as_ref()
-            .is_some_and(|(after_phase, _)| *after_phase == phase)
-            && let Some((_, provider)) = late_tasks.take()
-        {
-            owned_late_tasks = provider();
+        if log.failure_count() == 0 && !ctx.is_cancelled() {
+            let late_tasks = provider();
+            let mut remaining = tasks
+                .iter()
+                .copied()
+                .filter(|task| !boundary_closure.contains(&task.task_id()))
+                .collect::<Vec<_>>();
+            remaining.extend(late_tasks.iter().map(Box::as_ref));
+            run_task_graph(&mut remaining, ctx, log)?;
         }
     }
 
-    log.print_summary();
+    finish_run(log)
+}
 
+fn dependency_closure(tasks: &[&dyn Task], boundary: TaskId) -> HashSet<TaskId> {
+    let by_id = tasks
+        .iter()
+        .map(|task| (task.task_id(), *task))
+        .collect::<std::collections::HashMap<_, _>>();
+    if !by_id.contains_key(&boundary) {
+        return HashSet::new();
+    }
+
+    let mut closure = HashSet::from([boundary]);
+    let mut pending = vec![boundary];
+    while let Some(id) = pending.pop() {
+        if let Some(task) = by_id.get(&id) {
+            for dependency in task.dependencies() {
+                if by_id.contains_key(dependency) && closure.insert(*dependency) {
+                    pending.push(*dependency);
+                }
+            }
+        }
+    }
+    closure
+}
+
+fn run_task_graph(tasks: &mut Vec<&dyn Task>, ctx: &Context, log: &Arc<Logger>) -> Result<()> {
+    if ctx.is_cancelled() || tasks.is_empty() {
+        return Ok(());
+    }
+
+    let sudo_task_names: Vec<&str> = if ctx.parallel() && !ctx.dry_run() && tasks.len() > 1 {
+        tasks
+            .iter()
+            .filter(|task| task.requires_elevation(ctx))
+            .map(|task| task.name())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    if !sudo_task_names.is_empty() && !prime_sudo(ctx, log, &sudo_task_names) {
+        let reason = "sudo credentials unavailable";
+        tasks.retain(|task| {
+            if task.requires_elevation(ctx) {
+                let span = tracing::info_span!("task", name = task.name());
+                let _enter = span.enter();
+                log.debug(reason);
+                log.record_task(
+                    task.name(),
+                    crate::infra::logging::TaskStatus::Skipped,
+                    Some(reason),
+                );
+                log.emit_task_result_and_redraw(task.name());
+                false
+            } else {
+                true
+            }
+        });
+    }
+
+    if tasks.is_empty() {
+        return Ok(());
+    }
+
+    let graph = crate::engine::graph::ResolvedTaskGraph::resolve(tasks).map_err(|error| {
+        let message = format!("{error} detected in task graph");
+        log.error(&message);
+        anyhow!(message)
+    })?;
+    if ctx.parallel() {
+        crate::engine::scheduler::run_tasks_parallel(tasks, &graph, ctx, log);
+    } else {
+        crate::engine::scheduler::run_tasks_sequential(tasks, &graph, ctx, log);
+    }
+    Ok(())
+}
+
+fn finish_run(log: &Arc<Logger>) -> Result<()> {
+    log.print_summary();
     let count = log.failure_count();
     if count > 0 {
         return Err(TaskFailures::new(count).into());

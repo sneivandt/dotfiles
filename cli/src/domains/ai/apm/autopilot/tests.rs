@@ -113,6 +113,15 @@ fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
             assert_eq!(args, ["install", "-g", "--target", "copilot-app"]);
             Ok(ok_result("installed workflows\n"))
         });
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(seq)
+        .returning(|cwd, program, args, _| {
+            assert_eq!(cwd.file_name().and_then(|name| name.to_str()), Some(".apm"));
+            assert_eq!(program, "apm");
+            assert_eq!(args, ["prune"]);
+            Ok(ok_result("pruned\n"))
+        });
 }
 
 #[test]
@@ -391,7 +400,7 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::OkWithMessage(_)),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
         "expected changed result after autopilot fixup, got {result:?}"
     );
 }
@@ -415,7 +424,7 @@ fn run_warns_when_python_missing_for_autopilot_fixup() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::OkWithMessage(_)),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
         "expected changed result when python is missing (non-fatal), got {result:?}"
     );
 }
@@ -444,7 +453,7 @@ fn run_warns_when_workflow_db_is_locked() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::OkWithMessage(_)),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
         "expected changed result despite locked db (non-fatal), got {result:?}"
     );
 }
@@ -476,7 +485,7 @@ fn run_warns_when_workflow_db_schema_drifts() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::OkWithMessage(_)),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
         "expected changed result despite schema drift (non-fatal), got {result:?}"
     );
 }
@@ -505,7 +514,7 @@ fn run_skips_autopilot_fixup_when_lock_lists_no_workflows() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::OkWithMessage(_)),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
         "expected changed result with the fixup skipped, got {result:?}"
     );
 }
@@ -527,15 +536,6 @@ fn update_re_arms_apm_workflows_after_apm_update() {
     expect_apm_available(&mut mock);
     expect_python3(&mut mock, 2, true);
 
-    // apm outdated reports a stale lock, so an update is attempted.
-    mock.expect_run_in_with_env()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |_, program, args, _| {
-            assert_eq!(program, "apm");
-            assert_eq!(args, ["outdated", "-g"]);
-            Ok(ok_result("Outdated dependencies:\n- example/plugin\n"))
-        });
     // Pre-update snapshot: the workflow is not desired yet, so the later diff
     // is a genuine "set 1" change.
     let pre_db = db_str.clone();
@@ -606,17 +606,6 @@ fn update_re_arms_apm_workflows_even_when_apm_update_reports_no_changes() {
     expect_apm_available(&mut mock);
     expect_python3(&mut mock, 2, true);
 
-    // Branch/commit refs report `unknown`, so the up-to-date marker is absent
-    // and an update is attempted.
-    mock.expect_run_in_with_env()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |_, _, args, _| {
-            assert_eq!(args, ["outdated", "-g"]);
-            Ok(ok_result(
-                "[i] Some dependencies could not be checked (branch/commit refs)\n",
-            ))
-        });
     // Pre-update snapshot: the workflow is already desired (steady state).
     let pre_db = db_str.clone();
     mock.expect_run_unchecked_in()

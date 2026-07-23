@@ -145,7 +145,7 @@ mod tests {
     use super::*;
     use std::any::TypeId;
 
-    use crate::engine::{Context, TaskId, TaskPhase, TaskResult};
+    use crate::engine::{Context, TaskId, TaskResult};
 
     use anyhow::Result;
 
@@ -159,9 +159,6 @@ mod tests {
             impl Task for $name {
                 fn name(&self) -> &str {
                     $display
-                }
-                fn phase(&self) -> TaskPhase {
-                    TaskPhase::Provision
                 }
                 fn dependencies(&self) -> &[TaskId] {
                     const DEPS: &[TaskId] = $deps;
@@ -209,9 +206,6 @@ mod tests {
     impl Task for MissingDepTask {
         fn name(&self) -> &'static str {
             "missing-dep"
-        }
-        fn phase(&self) -> TaskPhase {
-            TaskPhase::Provision
         }
         fn dependencies(&self) -> &[TaskId] {
             // Points to a TaskId that won't be present in the task list
@@ -269,9 +263,6 @@ mod tests {
         fn name(&self) -> &'static str {
             "duplicate-a"
         }
-        fn phase(&self) -> TaskPhase {
-            TaskPhase::Provision
-        }
         fn should_run(&self, _ctx: &Context) -> bool {
             true
         }
@@ -284,9 +275,6 @@ mod tests {
     impl Task for DuplicateIdB {
         fn name(&self) -> &'static str {
             "duplicate-b"
-        }
-        fn phase(&self) -> TaskPhase {
-            TaskPhase::Provision
         }
         fn task_id(&self) -> TaskId {
             // Deliberately returns DuplicateIdA's TypeId to simulate a collision.

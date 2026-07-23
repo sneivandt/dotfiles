@@ -12,13 +12,13 @@ pub(crate) use macros::{
     config_resource_task, configured_task_result, process_config_resources,
     process_config_resources_with_provider, resource_task, task_deps, task_metadata,
 };
-pub use types::{TaskId, TaskPhase};
+pub use types::TaskId;
 
 use std::any::TypeId;
 
 use anyhow::Result;
 
-use super::resource::{BorrowedStateProvider, Resource, ResourceState};
+use super::resource::{CachedStateProvider, Resource, ResourceState};
 use super::{Context, ProcessOpts, TaskResult, process_resources_with_provider};
 
 /// Process resources whose current state is derived from a borrowed cache.
@@ -26,7 +26,7 @@ use super::{Context, ProcessOpts, TaskResult, process_resources_with_provider};
 /// # Errors
 ///
 /// Returns an error if provider-backed resource processing fails.
-pub(crate) fn process_resources_with_borrowed_cache<R, Cache, State>(
+pub(crate) fn process_resources_with_cache<R, Cache, State>(
     ctx: &Context,
     resources: impl IntoIterator<Item = R>,
     cache: &Cache,
@@ -38,7 +38,7 @@ where
     Cache: Sync + ?Sized,
     State: for<'a> Fn(&'a R, &Cache) -> Result<ResourceState> + Sync,
 {
-    let provider = BorrowedStateProvider::new(cache, state);
+    let provider = CachedStateProvider::new(cache, state);
     process_resources_with_provider(ctx, resources, &provider, opts)
 }
 
@@ -51,12 +51,9 @@ pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
 
-    /// Execution phase used for scheduler ordering barriers.
-    ///
-    /// Most tasks converge declared state and therefore run in the provision
-    /// phase. Tasks in another barrier override this method.
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
+    /// Whether this task is included only by the `update` command.
+    fn update_only(&self) -> bool {
+        false
     }
 
     /// The unique identifier of this task, used by the scheduler to build the
@@ -154,8 +151,8 @@ impl TaskWithExtraDeps {
     /// Wrap `inner`, merging `extra` dependency ids with the inner task's own.
     #[must_use]
     pub fn new(inner: Box<dyn Task>, extra: &[TaskId]) -> Self {
-        let mut deps: Vec<TaskId> = inner.dependencies().to_vec();
-        for id in extra {
+        let mut deps = Vec::new();
+        for id in inner.dependencies().iter().chain(extra) {
             if !deps.contains(id) {
                 deps.push(*id);
             }
@@ -184,8 +181,8 @@ impl Task for TaskWithExtraDeps {
         self.inner.name()
     }
 
-    fn phase(&self) -> TaskPhase {
-        self.inner.phase()
+    fn update_only(&self) -> bool {
+        self.inner.update_only()
     }
 
     fn task_id(&self) -> TaskId {

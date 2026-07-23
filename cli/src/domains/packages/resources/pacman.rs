@@ -4,21 +4,12 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use super::package::{PackageInstallReport, PackageProvider, PackageResource};
+use super::package::{PackageProvider, PackageResource};
+use super::report::PackageInstallReport;
 use crate::engine::ResourceChange;
 use crate::infra::exec::Executor;
 
-#[derive(Clone, Copy)]
-enum ParseMode {
-    FirstToken,
-}
-
-fn query_names(
-    executor: &dyn Executor,
-    cmd: &str,
-    args: &[&str],
-    mode: ParseMode,
-) -> Result<HashSet<String>> {
+fn query_names(executor: &dyn Executor, cmd: &str, args: &[&str]) -> Result<HashSet<String>> {
     let result = executor.run_unchecked(cmd, args)?;
     if !result.success {
         anyhow::bail!(
@@ -29,12 +20,8 @@ fn query_names(
     }
     let mut set = HashSet::new();
     for line in result.stdout.lines() {
-        match mode {
-            ParseMode::FirstToken => {
-                if let Some(name) = line.split_whitespace().next() {
-                    set.insert(name.to_string());
-                }
-            }
+        if let Some(name) = line.split_whitespace().next() {
+            set.insert(name.to_string());
         }
     }
     Ok(set)
@@ -82,7 +69,7 @@ impl PackageProvider for PacmanProvider {
     }
 
     fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
-        query_names(executor, "pacman", &["-Q"], ParseMode::FirstToken)
+        query_names(executor, "pacman", &["-Q"])
     }
 
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
@@ -140,7 +127,7 @@ mod tests {
             .withf(|program, args| program == "pacman" && args == ["-Q"])
             .returning(|_, _| Ok(ok_result("git 2.51.0\n\nbase-devel 1-2\nvim\n")));
 
-        let names = query_names(&mock, "pacman", &["-Q"], ParseMode::FirstToken).unwrap();
+        let names = query_names(&mock, "pacman", &["-Q"]).unwrap();
 
         assert_eq!(names.len(), 3);
         assert!(names.contains("git"));
@@ -156,7 +143,7 @@ mod tests {
             .once()
             .returning(|_, _| Ok(failed_result("", "database lock held", 42)));
 
-        let err = query_names(&mock, "pacman", &["-Q"], ParseMode::FirstToken).unwrap_err();
+        let err = query_names(&mock, "pacman", &["-Q"]).unwrap_err();
         let message = err.to_string();
 
         assert!(

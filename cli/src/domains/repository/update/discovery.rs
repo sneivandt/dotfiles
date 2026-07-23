@@ -2,7 +2,7 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::engine::{Context, TaskResult};
+use crate::engine::{Context, TaskResult, TaskStats};
 
 use super::models::{
     CheckedRepository, DryRunUpdateStatus, RepositoryReadiness, RepositorySetReadiness,
@@ -106,7 +106,7 @@ pub(super) fn dry_run_repositories(
     }
 
     Ok(if would_update {
-        TaskResult::DryRun
+        TaskStats::changed().finish()
     } else {
         TaskResult::Ok
     })

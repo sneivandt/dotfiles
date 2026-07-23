@@ -3,7 +3,8 @@ use crate::engine::{
     Resource, ResourceChange, ResourceResult, ResourceState, ResourceStateProvider,
 };
 use crate::engine::{
-    TaskResult, process_resources, process_resources_remove, process_resources_with_provider,
+    TaskResult, TaskStats, process_resources, process_resources_remove,
+    process_resources_with_provider,
 };
 use crate::test_helpers::empty_config;
 use std::{
@@ -77,11 +78,13 @@ impl ResourceStateProvider<PrecomputedResource> for CountingStateProvider {
 }
 
 const fn is_success(result: &TaskResult) -> bool {
-    matches!(result, TaskResult::Ok | TaskResult::OkWithMessage(_))
-        || matches!(
-            result,
-            TaskResult::Batch(stats) if stats.failed == 0
-        )
+    matches!(
+        result,
+        TaskResult::Ok | TaskResult::Batch(TaskStats { failed: 0, .. })
+    ) || matches!(
+        result,
+        TaskResult::Batch(stats) if stats.failed == 0
+    )
 }
 
 const fn is_batch_failure(result: &TaskResult) -> bool {
@@ -95,7 +98,7 @@ const fn is_batch_change(result: &TaskResult) -> bool {
 fn process_precomputed_states(
     ctx: &crate::engine::Context,
     resource_states: impl IntoIterator<Item = (MockResource, ResourceState)>,
-    opts: &ProcessOpts<'_>,
+    opts: &ProcessOpts,
 ) -> anyhow::Result<TaskResult> {
     let resources = resource_states
         .into_iter()

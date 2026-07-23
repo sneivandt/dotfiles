@@ -10,7 +10,7 @@
 
 use crate::domains::dotfiles::resources::wrapper::{WrapperResource, WrapperType};
 use crate::engine::{
-    Context, ProcessOpts, Task, TaskPhase, TaskResult, process_resources, process_resources_remove,
+    Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_remove,
     task_metadata,
 };
 
@@ -21,7 +21,6 @@ pub struct InstallWrapper;
 impl Task for InstallWrapper {
     task_metadata! {
         name: "Install wrapper",
-        phase: TaskPhase::Bootstrap,
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {
@@ -44,7 +43,6 @@ pub struct UninstallWrapper;
 impl Task for UninstallWrapper {
     task_metadata! {
         name: "Remove wrapper",
-        phase: TaskPhase::Bootstrap,
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {

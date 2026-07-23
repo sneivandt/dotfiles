@@ -7,7 +7,7 @@
 use crate::engine::{Context, TaskResult};
 use crate::infra::logging::{ActionCounts, DiagEvent, TaskStatus, diag_task_context};
 
-use super::{Task, TaskPhase};
+use super::Task;
 
 pub(super) fn not_applicable_reason<T: Task + ?Sized>(task: &T, ctx: &Context) -> Option<String> {
     if task.should_run(ctx) {
@@ -70,25 +70,12 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
         Ok(Some(result)) => match result {
             TaskResult::Ok => {
                 ctx.log().diag_task(DiagEvent::TaskDone, task.name(), "ok");
-                let status = if task.phase() == TaskPhase::Validation {
-                    TaskStatus::Changed
-                } else {
-                    TaskStatus::Ok
-                };
-                rec(status, None, ActionCounts::default())
+                rec(TaskStatus::Ok, None, ActionCounts::default())
             }
-            TaskResult::OkWithMessage(message) => {
+            TaskResult::CheckPassed => {
                 ctx.log()
-                    .diag_task(DiagEvent::TaskDone, task.name(), &message);
-                ctx.log().info(&message);
-                rec(
-                    TaskStatus::Changed,
-                    Some(&message),
-                    ActionCounts {
-                        applied: 1,
-                        ..ActionCounts::default()
-                    },
-                )
+                    .diag_task(DiagEvent::TaskDone, task.name(), "passed");
+                rec(TaskStatus::Changed, None, ActionCounts::default())
             }
             TaskResult::NotApplicable(reason) => {
                 ctx.log()
@@ -105,18 +92,6 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
                 rec(TaskStatus::Skipped, Some(&reason), ActionCounts::default())
             }
             TaskResult::Failed(reason) => record_failed_outcome(task, ctx, &reason),
-            TaskResult::DryRun => {
-                ctx.log()
-                    .diag_task(DiagEvent::TaskDone, task.name(), "dry-run");
-                rec(
-                    TaskStatus::DryRun,
-                    None,
-                    ActionCounts {
-                        planned: 1,
-                        ..ActionCounts::default()
-                    },
-                )
-            }
             TaskResult::Batch(stats) => record_batch_outcome(task, ctx, &stats),
         },
         Err(e) => {
@@ -174,7 +149,10 @@ fn record_batch_outcome(
     ctx: &Context,
     stats: &crate::engine::TaskStats,
 ) -> TaskStatus {
-    let message = stats.summary(ctx.dry_run());
+    let message = stats
+        .message
+        .clone()
+        .unwrap_or_else(|| stats.summary(ctx.dry_run()));
     let actions = ActionCounts {
         applied: if ctx.dry_run() { 0 } else { stats.changed },
         planned: if ctx.dry_run() { stats.changed } else { 0 },
@@ -214,9 +192,12 @@ fn record_batch_outcome(
     ctx.log().diag_task(event, task.name(), &message);
     if outcome == TaskStatus::Failed {
         ctx.log().warn(&format!("failed: {message}"));
+    } else {
+        ctx.log().info(&message);
     }
-    let recorded_message =
-        matches!(outcome, TaskStatus::Changed | TaskStatus::Failed).then_some(message.as_str());
+    let recorded_message = (stats.message.is_some()
+        || matches!(outcome, TaskStatus::Changed | TaskStatus::Failed))
+    .then_some(message.as_str());
     ctx.log()
         .record_task_with_actions(task.name(), outcome, recorded_message, actions);
     outcome

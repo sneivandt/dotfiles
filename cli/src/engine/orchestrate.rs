@@ -29,7 +29,7 @@ where
         }
         stats.merge(&process_one(ctx, item)?);
     }
-    Ok(stats.finish(ctx))
+    Ok(stats.finish())
 }
 
 fn process_apply_items<T, R>(
@@ -125,7 +125,7 @@ pub fn process_resources<R: IntrinsicState + Send>(
 pub fn process_resources_remove<R: IntrinsicState + Send>(
     ctx: &Context,
     resources: impl IntoIterator<Item = R>,
-    verb: &str,
+    verb: &'static str,
 ) -> Result<TaskResult> {
     let resources: Vec<R> = resources.into_iter().collect();
     let span = tracing::debug_span!("process_resources_remove", verb, count = resources.len());

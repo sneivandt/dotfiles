@@ -3,8 +3,27 @@
 use super::*;
 use std::io::Write;
 
+use crate::infra::config::Diagnostic;
 use crate::infra::exec::{ExecResult, MockExecutor};
 use crate::test_helpers::{empty_config, make_context, make_linux_context};
+
+#[test]
+fn display_diagnostics_formats_severity_and_code() {
+    use crate::infra::logging::isolated_logger;
+
+    let (logger, _tmp, _guard) = isolated_logger();
+    let diagnostics = vec![
+        Diagnostic::warning("pkg.toml", "git", "package.empty-name", "name is empty"),
+        Diagnostic::error(
+            "sym.toml",
+            ".bashrc",
+            "symlink.parent-in-source",
+            "unsafe path",
+        ),
+    ];
+
+    display_diagnostics(&diagnostics, &logger);
+}
 
 #[test]
 fn manifest_sync_errors_when_manifest_file_is_missing() {

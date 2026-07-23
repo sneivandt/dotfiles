@@ -1,9 +1,4 @@
 use crate::engine::{TaskResult, TaskStats};
-use crate::test_helpers::empty_config;
-use std::path::PathBuf;
-
-use super::{dry_run_context, test_context};
-
 // -----------------------------------------------------------------------
 // TaskStats
 // -----------------------------------------------------------------------
@@ -15,6 +10,7 @@ fn stats_summary_changed_only() {
         already_ok: 0,
         skipped: 0,
         failed: 0,
+        ..TaskStats::default()
     };
     assert_eq!(stats.summary(false), "3 changed, 0 already ok");
 }
@@ -26,6 +22,7 @@ fn stats_summary_dry_run() {
         already_ok: 5,
         skipped: 0,
         failed: 0,
+        ..TaskStats::default()
     };
     assert_eq!(stats.summary(true), "2 would change, 5 already ok");
 }
@@ -37,6 +34,7 @@ fn stats_summary_with_skipped() {
         already_ok: 2,
         skipped: 3,
         failed: 0,
+        ..TaskStats::default()
     };
     assert_eq!(stats.summary(false), "1 changed, 2 already ok, 3 skipped");
 }
@@ -48,35 +46,30 @@ fn stats_summary_with_failed() {
         already_ok: 2,
         skipped: 0,
         failed: 3,
+        ..TaskStats::default()
     };
     assert_eq!(stats.summary(false), "1 changed, 2 already ok, 3 failed");
 }
 
 #[test]
 fn stats_finish_returns_batch_when_dry_run_has_no_changes() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = dry_run_context(config);
     let stats = TaskStats::new();
-    let result = stats.finish(&ctx);
+    let result = stats.finish();
     assert!(matches!(result, TaskResult::Batch(batch) if batch.changed == 0));
 }
 
 #[test]
 fn stats_finish_returns_batch_when_dry_run_would_change() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = dry_run_context(config);
     let mut stats = TaskStats::new();
     stats.changed = 1;
-    let result = stats.finish(&ctx);
+    let result = stats.finish();
     assert!(matches!(result, TaskResult::Batch(batch) if batch.changed == 1));
 }
 
 #[test]
 fn stats_finish_returns_empty_batch() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
     let stats = TaskStats::new();
-    let result = stats.finish(&ctx);
+    let result = stats.finish();
     assert!(matches!(
         result,
         TaskResult::Batch(batch)
@@ -86,21 +79,17 @@ fn stats_finish_returns_empty_batch() {
 
 #[test]
 fn stats_finish_returns_changed_batch() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
     let mut stats = TaskStats::new();
     stats.changed = 1;
-    let result = stats.finish(&ctx);
+    let result = stats.finish();
     assert!(matches!(result, TaskResult::Batch(batch) if batch.changed == 1));
 }
 
 #[test]
 fn stats_finish_returns_failed_batch() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
     let mut stats = TaskStats::new();
     stats.failed = 1;
-    let result = stats.finish(&ctx);
+    let result = stats.finish();
     assert!(matches!(result, TaskResult::Batch(batch) if batch.failed == 1));
 }
 
@@ -115,12 +104,14 @@ fn stats_add_assign_accumulates() {
         already_ok: 2,
         skipped: 3,
         failed: 4,
+        ..TaskStats::default()
     };
     let b = TaskStats {
         changed: 10,
         already_ok: 20,
         skipped: 30,
         failed: 40,
+        ..TaskStats::default()
     };
     a += b;
     assert_eq!(a.changed, 11);

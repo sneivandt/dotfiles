@@ -71,7 +71,7 @@ dotfiles install --dry-run --verbose
 ```
 
 `install` is idempotent: each task inspects current state and only applies the
-required change. Independent tasks may run concurrently, but phase barriers and
+required change. Independent ready tasks may run concurrently; explicit
 dependencies preserve ordering.
 
 ### Select tasks
@@ -102,9 +102,9 @@ dotfiles update
 dotfiles update --only APM
 ```
 
-`update` uses the same task graph and selectors as `install`. The difference is
-that it includes the final Update phase, which may advance pinned dependency
-versions. Normal repeatable convergence should use `install`.
+`update` uses the same dependency scheduler and selectors as `install`. The
+difference is that it includes update-only tasks, which may advance pinned
+dependency versions. Normal repeatable convergence should use `install`.
 
 Repository synchronization occurs during both commands when the checkout can be
 updated. If the repository changes, the CLI reloads configuration before

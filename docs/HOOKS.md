@@ -44,8 +44,8 @@ permissions, the `ci-success` dependency list, or artifact behavior.
 
 ## Installation and removal
 
-**Install Git hooks** runs in the Sync phase after repository update so it uses
-current hook sources. **Remove Git hooks** is part of uninstall.
+**Install Git hooks** depends on repository update so it uses current hook
+sources. **Remove Git hooks** is part of uninstall.
 
 ```bash
 dotfiles install --only "Git hooks"

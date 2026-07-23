@@ -16,7 +16,7 @@ pub fn run(
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
-    super::prepare_self_update(global, log)?;
+    super::prepare_self_update(global, &**log)?;
 
     let runner = super::CommandRunner::new(global, log, token)?;
     let tasks = runner.uninstall_tasks();

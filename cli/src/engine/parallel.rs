@@ -28,14 +28,14 @@ pub(super) fn process_apply_parallel<T: Send, R: Resource + Send>(
         },
         move || cancelled.is_cancelled(),
     )?;
-    Ok(stats.finish(ctx))
+    Ok(stats.finish())
 }
 
 /// Remove resources in parallel using Rayon.
 pub(super) fn process_remove_parallel<R: IntrinsicState + Send>(
     ctx: &Context,
     resources: Vec<R>,
-    verb: &str,
+    verb: &'static str,
 ) -> Result<super::stats::TaskResult> {
     let cancelled = ctx.cancellation_token();
     let stats = collect_parallel_stats(
@@ -46,7 +46,7 @@ pub(super) fn process_remove_parallel<R: IntrinsicState + Send>(
         },
         move || cancelled.is_cancelled(),
     )?;
-    Ok(stats.finish(ctx))
+    Ok(stats.finish())
 }
 
 /// Accumulate per-item [`TaskStats`] deltas in parallel using Rayon.

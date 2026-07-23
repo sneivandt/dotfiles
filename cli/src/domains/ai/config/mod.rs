@@ -1,4 +1,3 @@
-//! Configuration models for AI tooling (APM manifests and Copilot settings).
+//! TOML configuration models for AI tooling.
 
-pub(crate) mod apm;
 pub mod copilot;

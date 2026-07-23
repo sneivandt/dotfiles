@@ -581,7 +581,7 @@ mod tests {
 
     /// Regression test: tasks that produce stats output by calling
     /// `ctx.log().info()` inside `run()` — as `process_resources` does via
-    /// `stats.finish(ctx)` — must have their `==>` stage header replayed
+    /// central stats reporting — must have their `==>` stage header replayed
     /// by `flush_and_complete()`.
     ///
     /// Before this was caught, tasks producing `"0 changed, X already ok"`
@@ -592,7 +592,7 @@ mod tests {
         let log = Arc::new(log);
         let buf = BufferedLog::new(Arc::clone(&log));
 
-        // Simulate the order execute() + stats.finish(ctx) produce entries:
+        // Simulate the order execute() and central stats reporting produce entries:
         // execute() calls ctx.log().stage() first, then run() calls ctx.log().info()
         // via stats.finish() before returning Ok.
         buf.stage("install-task");

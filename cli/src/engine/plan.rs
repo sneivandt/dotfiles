@@ -9,7 +9,7 @@ use crate::engine::ResourceState;
 
 /// Planned operation for installing or updating one resource.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ApplyOperation<'a> {
+pub(crate) enum ApplyOperation {
     /// Resource is already in the desired state.
     Noop,
     /// Resource should not be changed.
@@ -22,7 +22,7 @@ pub(crate) enum ApplyOperation<'a> {
     /// Resource should be applied.
     Apply {
         /// Human-facing verb for log and dry-run output.
-        verb: &'a str,
+        verb: &'static str,
         /// Existing value when replacing an incorrect resource.
         current: Option<String>,
         /// Whether apply errors should abort the enclosing task.
@@ -32,18 +32,18 @@ pub(crate) enum ApplyOperation<'a> {
 
 /// Side-effect-free plan for applying one resource.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ApplyChange<'a> {
+pub(crate) struct ApplyChange {
     description: String,
-    operation: ApplyOperation<'a>,
+    operation: ApplyOperation,
 }
 
-impl<'a> ApplyChange<'a> {
+impl ApplyChange {
     /// Build an apply plan from a resource description, current state, and processing options.
     #[must_use]
     pub(crate) fn from_state(
         description: String,
         state: &ResourceState,
-        opts: &ProcessOpts<'a>,
+        opts: &ProcessOpts,
     ) -> Self {
         let operation = match opts.mode.action_for(state) {
             ResourceAction::Noop => ApplyOperation::Noop,
@@ -68,7 +68,7 @@ impl<'a> ApplyChange<'a> {
 
     /// Planned operation.
     #[must_use]
-    pub(crate) const fn operation(&self) -> &ApplyOperation<'a> {
+    pub(crate) const fn operation(&self) -> &ApplyOperation {
         &self.operation
     }
 
@@ -93,7 +93,7 @@ impl<'a> ApplyChange<'a> {
 
 /// Planned operation for removing one resource.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum RemoveOperation<'a> {
+pub(crate) enum RemoveOperation {
     /// Resource is absent, not managed by us, or otherwise does not need removal.
     Noop,
     /// Resource should not be removed.
@@ -104,21 +104,25 @@ pub(crate) enum RemoveOperation<'a> {
     /// Resource should be removed.
     Remove {
         /// Human-facing verb for log and dry-run output.
-        verb: &'a str,
+        verb: &'static str,
     },
 }
 
 /// Side-effect-free plan for removing one resource.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RemoveChange<'a> {
+pub(crate) struct RemoveChange {
     description: String,
-    operation: RemoveOperation<'a>,
+    operation: RemoveOperation,
 }
 
-impl<'a> RemoveChange<'a> {
+impl RemoveChange {
     /// Build a remove plan from a resource description and current state.
     #[must_use]
-    pub(crate) fn from_state(description: String, state: &ResourceState, verb: &'a str) -> Self {
+    pub(crate) fn from_state(
+        description: String,
+        state: &ResourceState,
+        verb: &'static str,
+    ) -> Self {
         let operation = match state {
             ResourceState::Correct => RemoveOperation::Remove { verb },
             ResourceState::Unknown { reason } => RemoveOperation::Skip {
@@ -142,7 +146,7 @@ impl<'a> RemoveChange<'a> {
 
     /// Planned operation.
     #[must_use]
-    pub(crate) const fn operation(&self) -> &RemoveOperation<'a> {
+    pub(crate) const fn operation(&self) -> &RemoveOperation {
         &self.operation
     }
 

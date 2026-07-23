@@ -3,7 +3,7 @@ use crate::domains::editors::resources::vscode_extension::{
     VsCodeExtensionResource, find_code_command, get_installed_extensions,
 };
 use crate::engine::{
-    Context, ProcessOpts, Task, TaskResult, process_resources_with_borrowed_cache,
+    Context, ProcessOpts, Task, TaskResult, process_resources_with_cache, task_metadata,
 };
 use crate::infra::ConfigHandle;
 use anyhow::Result;
@@ -24,8 +24,8 @@ impl InstallVsCodeExtensions {
 }
 
 impl Task for InstallVsCodeExtensions {
-    fn name(&self) -> &'static str {
-        "Install VS Code extensions"
+    task_metadata! {
+        name: "Install VS Code extensions",
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -52,7 +52,7 @@ impl Task for InstallVsCodeExtensions {
         let resources = extensions
             .iter()
             .map(|id| VsCodeExtensionResource::new(id.clone(), cmd.clone(), system.executor_arc()));
-        process_resources_with_borrowed_cache(
+        process_resources_with_cache(
             ctx,
             resources,
             &installed,

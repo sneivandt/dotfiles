@@ -6,7 +6,8 @@
 //! configuration type. During an app-owned reload the store swaps each
 //! reloadable handle in place, and because tasks share those handles the update
 //! is visible without rebuilding static tasks. Dynamic overlay script tasks are
-//! rebuilt after the Sync phase from their freshly swapped handle.
+//! rebuilt after the reload discovery boundary from their freshly swapped
+//! handle.
 
 use crate::app::config::Config;
 use crate::domains::ai::config::copilot::CopilotSetting;
@@ -80,8 +81,8 @@ impl ConfigStore {
     /// Replace reloadable handles from a freshly-loaded [`Config`].
     ///
     /// Each individual handle swap is atomic, but the complete store update is
-    /// not one aggregate transaction. Phase ordering ensures tasks cannot read
-    /// the store while this app-owned reload runs.
+    /// not one aggregate transaction. The command runner completes the reload
+    /// dependency boundary before rebuilding tasks that consume these handles.
     pub fn reload(&self, config: Config) {
         self.packages.swap(config.packages.clone());
         self.symlinks.swap(config.symlinks.clone());

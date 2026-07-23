@@ -2,7 +2,7 @@
 use anyhow::Result;
 
 use crate::engine::{
-    Context, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
+    Context, Operation, OperationState, Task, TaskResult, TaskStats, process_operation,
 };
 
 /// Filename of the generated zsh completion script.
@@ -56,7 +56,7 @@ impl Operation for ZshCompletionOperation<'_> {
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         ctx.log()
             .dry_run(&format!("write {}", plan.destination.display()));
-        Ok(TaskResult::DryRun)
+        Ok(TaskStats::changed().finish())
     }
 
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
@@ -93,10 +93,6 @@ impl GenerateCompletions {
 impl Task for GenerateCompletions {
     fn name(&self) -> &'static str {
         "Install shell completions"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Sync
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -222,13 +218,16 @@ mod tests {
     }
 
     #[test]
-    fn run_dry_run_returns_dry_run_result_without_writing() {
+    fn run_dry_run_returns_planned_change_without_writing() {
         let dir = tempfile::tempdir().unwrap();
         let config = empty_config(dir.path().to_path_buf());
         let ctx = make_linux_context(config).with_dry_run(true);
 
         let result = task().run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::DryRun));
+        assert!(matches!(
+            result,
+            TaskResult::Batch(stats) if stats.changed > 0
+        ));
 
         let dest = dir
             .path()

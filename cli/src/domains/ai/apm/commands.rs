@@ -69,7 +69,7 @@ pub(super) enum ApmCommandResult {
 /// Run an APM install/update command with shared environment, logging, and
 /// failure classification.
 ///
-/// The primary command deliberately omits `--target` so APM 0.25 can
+/// The primary command deliberately omits `--target` so APM can
 /// auto-detect all installed MCP runtimes and reconcile their shared ledger
 /// together. Copilot App workflows require an explicit experimental target,
 /// so they are deployed by a separate install after the primary command.
@@ -201,6 +201,22 @@ pub(super) fn install_task_result(result: ApmCommandResult) -> TaskResult {
         }
         ApmCommandResult::AuthSkipped(reason) => TaskResult::Skipped(reason),
     }
+}
+
+/// Remove user-scope deployments that are no longer owned by the manifest.
+///
+/// `apm prune` has no global flag; running it from `~/.apm` selects the
+/// user-scope manifest and lockfile.
+pub(super) fn prune_user_scope(ctx: &Context) -> Result<()> {
+    let cwd = ctx.system().home().join(".apm");
+    ctx.debug_fmt(|| format!("running `apm prune` in {}", cwd.display()));
+    let result = ctx
+        .system()
+        .executor()
+        .run_in_with_env(&cwd, "apm", &["prune"], APM_NONINTERACTIVE_ENV)
+        .context("pruning unowned user-scope APM deployments")?;
+    report_apm_output(ctx, &result.stdout, &result.stderr);
+    Ok(())
 }
 
 /// Relay raw APM command output to the diagnostic log file and the verbose

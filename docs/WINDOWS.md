@@ -38,7 +38,8 @@ entry point missing.
 
 ## Developer Mode and symlinks
 
-**Enable developer mode** runs in Bootstrap before symlinks are provisioned.
+**Install symlinks** depends on **Enable developer mode**, so the capability is
+enabled before symlinks are provisioned.
 Developer Mode allows normal users to create symbolic links without running the
 entire CLI elevated.
 
@@ -123,9 +124,9 @@ reports the module error.
 
 ## WSL
 
-When the Linux binary runs inside WSL, **Install wsl.conf** can install the
-repository-managed system configuration. This is separate from running the
-Windows executable on the host.
+When the Linux binary runs inside WSL, **Configure WSL** enables systemd and
+disables Windows PATH injection in `/etc/wsl.conf` while preserving unrelated
+settings. This is separate from running the Windows executable on the host.
 
 Because `wsl.conf` is system-level:
 

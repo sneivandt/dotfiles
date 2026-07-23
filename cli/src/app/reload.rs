@@ -11,7 +11,7 @@ use anyhow::{Context as _, Result};
 use crate::app::config::Config;
 use crate::app::config::store::ConfigStore;
 use crate::engine::{
-    Context, Operation, OperationState, Task, TaskPhase, TaskResult, UpdateSignal,
+    Context, Operation, OperationState, Task, TaskResult, TaskStats, UpdateSignal,
     process_operation, task_metadata,
 };
 
@@ -21,7 +21,7 @@ use crate::engine::{
 /// Tasks read configuration through handles owned by the [`ConfigStore`];
 /// swapping the reloadable handles here makes new values visible downstream.
 /// Dynamic overlay script tasks are rebuilt from the refreshed script handle
-/// after the Sync phase completes.
+/// after this task's dependency closure completes.
 #[derive(Debug)]
 pub struct ReloadConfig {
     /// Shared flag set by the repository-update task when new commits were
@@ -90,7 +90,7 @@ impl Operation for ReloadConfigOperation<'_> {
     }
 
     fn preview(&self, _ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
-        Ok(TaskResult::DryRun)
+        Ok(TaskStats::changed().finish())
     }
 
     fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
@@ -101,7 +101,6 @@ impl Operation for ReloadConfigOperation<'_> {
 impl Task for ReloadConfig {
     task_metadata! {
         name: "Reload configuration",
-        phase: TaskPhase::Sync,
         deps: [crate::domains::repository::update::UpdateRepository],
     }
 

@@ -27,7 +27,7 @@ pub(crate) use task_deps;
 /// Implement common [`Task`](crate::engine::Task) metadata methods.
 ///
 /// Use this for hand-written tasks whose body cannot use [`resource_task!`] but
-/// whose name, optional non-default phase, and dependencies are static.
+/// whose name, optional update-only membership, and dependencies are static.
 ///
 /// # Examples
 ///
@@ -40,7 +40,7 @@ pub(crate) use task_deps;
 macro_rules! task_metadata {
     (
         name: $task_name:expr,
-        $(phase: $phase:expr,)?
+        $(update_only: $update_only:expr,)?
         $(deps: [$($dep:ty),+ $(,)?],)?
     ) => {
         fn name(&self) -> &'static str {
@@ -48,8 +48,8 @@ macro_rules! task_metadata {
         }
 
         $(
-            fn phase(&self) -> $crate::engine::TaskPhase {
-                $phase
+            fn update_only(&self) -> bool {
+                $update_only
             }
         )?
 
@@ -91,7 +91,7 @@ where
 {
     let resources: Vec<R> = items.into_iter().map(|item| build(item, ctx)).collect();
     let cache = load(&resources, ctx)?;
-    let provider = crate::engine::PreloadedStateProvider::new(cache, state);
+    let provider = crate::engine::CachedStateProvider::new(&cache, state);
     crate::engine::process_resources_with_provider(ctx, resources, &provider, opts)
 }
 
@@ -104,11 +104,68 @@ pub(crate) fn configured_task_result(
     })
 }
 
+/// Implement the shared task contract for resource-task macros.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __impl_resource_task {
+    (
+        $name:ident {
+            name: $task_name:expr,
+            $(update_only: $update_only:expr,)?
+            $(deps: [$($dep:ty),+ $(,)?],)?
+            $(guard: |$guard_self:ident, $guard_ctx:ident| $guard_expr:expr,)?
+            run: |$run_self:ident, $run_ctx:ident, $emit_stage:ident| $run_expr:expr $(,)?
+        }
+    ) => {
+        impl $crate::engine::Task for $name {
+            fn name(&self) -> &'static str {
+                $task_name
+            }
+
+            $(
+            fn update_only(&self) -> bool {
+                $update_only
+            }
+            )?
+
+            $($crate::engine::task_deps![$($dep),+];)?
+
+            $(
+            fn should_run(&self, ctx: &$crate::engine::Context) -> bool {
+                let $guard_self = self;
+                let $guard_ctx = ctx;
+                $guard_expr
+            }
+            )?
+
+            fn run_configured(
+                &self,
+                ctx: &$crate::engine::Context,
+            ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
+                let $run_self = self;
+                let $run_ctx = ctx;
+                let $emit_stage = true;
+                $run_expr
+            }
+
+            fn run(
+                &self,
+                ctx: &$crate::engine::Context,
+            ) -> ::anyhow::Result<$crate::engine::TaskResult> {
+                let $run_self = self;
+                let $run_ctx = ctx;
+                let $emit_stage = false;
+                Ok($crate::engine::configured_task_result($run_expr?))
+            }
+        }
+    };
+}
+
 /// Define a task that reads config items, builds resources, and processes them.
 ///
 /// Supports the standard intrinsic-state path and a batch path (`cache:` +
 /// `state:`) for resources whose current state comes from one shared query.
-/// Optional `phase`, `deps`, `guard`, and `setup` clauses cover the common task
+/// Optional `update_only`, `deps`, `guard`, and `setup` clauses cover the common task
 /// variations without hand-writing [`Task`](crate::engine::Task) metadata.
 macro_rules! resource_task {
     // -----------------------------------------------------------------
@@ -118,7 +175,7 @@ macro_rules! resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
-            $(phase: $phase:expr,)?
+            $(update_only: $update_only:expr,)?
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
             items: |$items_ctx:ident| $items_expr:expr,
@@ -164,40 +221,13 @@ macro_rules! resource_task {
             }
         }
 
-        impl $crate::engine::Task for $name {
-            fn name(&self) -> &'static str {
-                $task_name
-            }
-
-            $(
-            fn phase(&self) -> $crate::engine::TaskPhase {
-                $phase
-            }
-            )?
-
-            $($crate::engine::task_deps![$($dep),+];)?
-
-            $(
-            fn should_run(&self, ctx: &$crate::engine::Context) -> bool {
-                let $guard_ctx = ctx;
-                $guard_expr
-            }
-            )?
-
-            fn run_configured(
-                &self,
-                ctx: &$crate::engine::Context,
-            ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
-                Self::run_batch(ctx, true)
-            }
-
-            fn run(
-                &self,
-                ctx: &$crate::engine::Context,
-            ) -> ::anyhow::Result<$crate::engine::TaskResult> {
-                Ok($crate::engine::configured_task_result(
-                    Self::run_batch(ctx, false)?,
-                ))
+        $crate::__impl_resource_task! {
+            $name {
+                name: $task_name,
+                $(update_only: $update_only,)?
+                $(deps: [$($dep),+],)?
+                $(guard: |_task, $guard_ctx| $guard_expr,)?
+                run: |_task, run_ctx, emit_stage| Self::run_batch(run_ctx, emit_stage),
             }
         }
     };
@@ -209,7 +239,7 @@ macro_rules! resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
-            $(phase: $phase:expr,)?
+            $(update_only: $update_only:expr,)?
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
             $(setup: |$setup_ctx:ident| $setup_expr:expr,)?
@@ -250,40 +280,13 @@ macro_rules! resource_task {
             }
         }
 
-        impl $crate::engine::Task for $name {
-            fn name(&self) -> &'static str {
-                $task_name
-            }
-
-            $(
-            fn phase(&self) -> $crate::engine::TaskPhase {
-                $phase
-            }
-            )?
-
-            $($crate::engine::task_deps![$($dep),+];)?
-
-            $(
-            fn should_run(&self, ctx: &$crate::engine::Context) -> bool {
-                let $guard_ctx = ctx;
-                $guard_expr
-            }
-            )?
-
-            fn run_configured(
-                &self,
-                ctx: &$crate::engine::Context,
-            ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
-                Self::run_resources(ctx, true)
-            }
-
-            fn run(
-                &self,
-                ctx: &$crate::engine::Context,
-            ) -> ::anyhow::Result<$crate::engine::TaskResult> {
-                Ok($crate::engine::configured_task_result(
-                    Self::run_resources(ctx, false)?,
-                ))
+        $crate::__impl_resource_task! {
+            $name {
+                name: $task_name,
+                $(update_only: $update_only,)?
+                $(deps: [$($dep),+],)?
+                $(guard: |_task, $guard_ctx| $guard_expr,)?
+                run: |_task, run_ctx, emit_stage| Self::run_resources(run_ctx, emit_stage),
             }
         }
     };
@@ -307,7 +310,7 @@ macro_rules! config_resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
-            $(phase: $phase:expr,)?
+            $(update_only: $update_only:expr,)?
             config: $cfg_ty:ty,
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_cfg:ident, $guard_ctx:ident| $guard_expr:expr,)?
@@ -366,38 +369,19 @@ macro_rules! config_resource_task {
             }
         }
 
-        impl $crate::engine::Task for $name {
-            fn name(&self) -> &'static str { $task_name }
-
-            $(
-            fn phase(&self) -> $crate::engine::TaskPhase { $phase }
-            )?
-
-            $($crate::engine::task_deps![$($dep),+];)?
-
-            $(
-            fn should_run(&self, ctx: &$crate::engine::Context) -> bool {
-                let snapshot = self.config.read();
-                let $guard_cfg = &*snapshot;
-                let $guard_ctx = ctx;
-                $guard_expr
-            }
-            )?
-
-            fn run_configured(
-                &self,
-                ctx: &$crate::engine::Context,
-            ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
-                self.run_batch(ctx, true)
-            }
-
-            fn run(
-                &self,
-                ctx: &$crate::engine::Context,
-            ) -> ::anyhow::Result<$crate::engine::TaskResult> {
-                Ok($crate::engine::configured_task_result(
-                    self.run_batch(ctx, false)?,
-                ))
+        $crate::__impl_resource_task! {
+            $name {
+                name: $task_name,
+                $(update_only: $update_only,)?
+                $(deps: [$($dep),+],)?
+                $(
+                guard: |task, $guard_ctx| {
+                    let snapshot = task.config.read();
+                    let $guard_cfg = &*snapshot;
+                    $guard_expr
+                },
+                )?
+                run: |task, run_ctx, emit_stage| task.run_batch(run_ctx, emit_stage),
             }
         }
     };
@@ -409,7 +393,7 @@ macro_rules! config_resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
-            $(phase: $phase:expr,)?
+            $(update_only: $update_only:expr,)?
             config: $cfg_ty:ty,
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_cfg:ident, $guard_ctx:ident| $guard_expr:expr,)?
@@ -463,38 +447,19 @@ macro_rules! config_resource_task {
             }
         }
 
-        impl $crate::engine::Task for $name {
-            fn name(&self) -> &'static str { $task_name }
-
-            $(
-            fn phase(&self) -> $crate::engine::TaskPhase { $phase }
-            )?
-
-            $($crate::engine::task_deps![$($dep),+];)?
-
-            $(
-            fn should_run(&self, ctx: &$crate::engine::Context) -> bool {
-                let snapshot = self.config.read();
-                let $guard_cfg = &*snapshot;
-                let $guard_ctx = ctx;
-                $guard_expr
-            }
-            )?
-
-            fn run_configured(
-                &self,
-                ctx: &$crate::engine::Context,
-            ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
-                self.run_resources(ctx, true)
-            }
-
-            fn run(
-                &self,
-                ctx: &$crate::engine::Context,
-            ) -> ::anyhow::Result<$crate::engine::TaskResult> {
-                Ok($crate::engine::configured_task_result(
-                    self.run_resources(ctx, false)?,
-                ))
+        $crate::__impl_resource_task! {
+            $name {
+                name: $task_name,
+                $(update_only: $update_only,)?
+                $(deps: [$($dep),+],)?
+                $(
+                guard: |task, $guard_ctx| {
+                    let snapshot = task.config.read();
+                    let $guard_cfg = &*snapshot;
+                    $guard_expr
+                },
+                )?
+                run: |task, run_ctx, emit_stage| task.run_resources(run_ctx, emit_stage),
             }
         }
     };

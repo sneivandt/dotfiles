@@ -8,7 +8,7 @@ use crate::app::cli::GlobalOpts;
 use crate::app::config::Config;
 use crate::app::config::profiles;
 use crate::app::config::store::ConfigStore;
-use crate::engine::{Context, Task, TaskPhase};
+use crate::engine::{Context, Task, TaskId};
 use crate::infra::ConfigHandle;
 use crate::infra::logging::{Log, Logger, Output};
 use crate::infra::platform::Platform;
@@ -38,7 +38,7 @@ impl CommandRunner {
         token: &crate::engine::CancellationToken,
     ) -> Result<Self> {
         let platform = Platform::detect();
-        let root = install::resolve_root(global)?;
+        let root = resolve_root(global)?;
         let profile = resolve_profile(global, &root, platform, log)?;
         let overlay = resolve_overlay(global, &root, &**log);
         if log.is_verbose() {
@@ -116,7 +116,7 @@ impl CommandRunner {
         run_tasks_to_completion(tasks, &self.ctx, &self.log)
     }
 
-    /// Execute tasks and inject additional tasks after a phase completes.
+    /// Execute tasks and inject additional tasks after a dependency boundary.
     ///
     /// # Errors
     ///
@@ -124,11 +124,54 @@ impl CommandRunner {
     pub fn run_with_late_tasks<'a>(
         &'a self,
         tasks: impl IntoIterator<Item = &'a dyn Task>,
-        after_phase: TaskPhase,
+        boundary: TaskId,
         provider: impl FnOnce() -> Vec<Box<dyn Task>> + 'a,
     ) -> Result<()> {
-        run_tasks_to_completion_with_late_tasks(tasks, &self.ctx, &self.log, after_phase, provider)
+        run_tasks_to_completion_with_late_tasks(tasks, &self.ctx, &self.log, boundary, provider)
     }
+}
+
+/// Resolve the dotfiles root directory from CLI arguments or auto-detection.
+///
+/// # Errors
+///
+/// Returns an error if the root directory cannot be determined or doesn't exist.
+pub(super) fn resolve_root(global: &GlobalOpts) -> Result<std::path::PathBuf> {
+    let cwd = std::env::current_dir().ok();
+    resolve_root_from_dir(global, cwd.as_deref())
+}
+
+fn resolve_root_from_dir(
+    global: &GlobalOpts,
+    cwd: Option<&std::path::Path>,
+) -> Result<std::path::PathBuf> {
+    if let Some(ref root) = global.root {
+        return crate::infra::fs::canonicalize(root);
+    }
+
+    if let Ok(root) = std::env::var("DOTFILES_ROOT") {
+        return Ok(std::path::PathBuf::from(root));
+    }
+
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(parent) = exe.parent()
+    {
+        let candidates = [parent.join("../../.."), parent.join("..")];
+        for candidate in &candidates {
+            if candidate.join("conf").exists() && candidate.join("symlinks").exists() {
+                return crate::infra::fs::canonicalize(candidate);
+            }
+        }
+    }
+
+    if let Some(cwd) = cwd
+        && cwd.join("conf").exists()
+        && cwd.join("symlinks").exists()
+    {
+        return crate::infra::fs::canonicalize(cwd);
+    }
+
+    anyhow::bail!("cannot determine dotfiles root. Use --root or set DOTFILES_ROOT env var");
 }
 
 fn resolve_profile(
@@ -197,7 +240,56 @@ fn load_config(
     if !warnings.is_empty() && !log.is_verbose() {
         log.separate_from_startup();
     }
-    crate::infra::config::validation::display_diagnostics(&warnings, log);
+    crate::app::validation::display_diagnostics(&warnings, log);
 
     Ok(config)
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "test code uses panicking helpers"
+)]
+mod root_tests {
+    use super::*;
+
+    fn global(root: Option<std::path::PathBuf>) -> GlobalOpts {
+        GlobalOpts {
+            root,
+            profile: None,
+            dry_run: false,
+            overlay: None,
+            parallel: true,
+        }
+    }
+
+    #[test]
+    fn resolve_root_uses_explicit_root() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let result = resolve_root(&global(Some(temp_dir.path().to_path_buf()))).unwrap();
+        assert_eq!(
+            result,
+            crate::infra::fs::canonicalize(temp_dir.path()).unwrap()
+        );
+    }
+
+    #[test]
+    fn resolve_root_canonicalizes_explicit_relative_root() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let result = resolve_root(&global(Some(temp_dir.path().join(".")))).unwrap();
+        assert_eq!(
+            result,
+            crate::infra::fs::canonicalize(temp_dir.path()).unwrap()
+        );
+    }
+
+    #[test]
+    fn resolve_root_errors_when_not_in_repo() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        if std::env::var("DOTFILES_ROOT").is_err() {
+            let error = resolve_root_from_dir(&global(None), Some(temp_dir.path())).unwrap_err();
+            assert!(error.to_string().contains("cannot determine dotfiles root"));
+        }
+    }
 }

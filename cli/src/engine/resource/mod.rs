@@ -8,8 +8,7 @@ mod provider;
 pub use contract::{Resource, ResourceChange, ResourceResult, ResourceState};
 pub use error::ResourceError;
 pub use provider::{
-    BorrowedStateProvider, IntrinsicState, IntrinsicStateProvider, PreloadedStateProvider,
-    ResourceStateProvider,
+    CachedStateProvider, IntrinsicState, IntrinsicStateProvider, ResourceStateProvider,
 };
 
 #[cfg(test)]

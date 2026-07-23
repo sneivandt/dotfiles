@@ -212,8 +212,8 @@ fn install_paru_run_returns_dry_run_when_not_installed_in_dry_run() {
     ctx = ctx.with_dry_run(true);
     let result = InstallParu.run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::DryRun),
-        "expected DryRun when paru missing in dry-run mode, got {result:?}"
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        "expected planned change when paru is missing in dry-run mode, got {result:?}"
     );
 }
 
@@ -254,7 +254,11 @@ fn install_paru_run_returns_changed_result_after_install() {
     let ctx = make_package_context(config, Os::Linux, true, mock);
     let result = InstallParu.run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::OkWithMessage(ref message) if message == "installed paru"),
+        matches!(
+            result,
+            TaskResult::Batch(ref stats)
+                if stats.changed > 0 && stats.message.as_deref() == Some("installed paru")
+        ),
         "expected changed result after paru install, got {result:?}"
     );
 }

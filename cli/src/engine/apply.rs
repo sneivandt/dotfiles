@@ -175,7 +175,7 @@ pub(super) fn remove_single<R: Resource>(
     ctx: &Context,
     resource: &R,
     current: &ResourceState,
-    verb: &str,
+    verb: &'static str,
 ) -> Result<TaskStats> {
     let plan = RemoveChange::from_state(resource.description(), current, verb);
     let mut delta = TaskStats::new();

@@ -2,15 +2,17 @@
 name: engine-orchestration
 description: >
   Task and operation orchestration in the dotfiles engine. Use when changing
-  task dependencies, phases, scheduling, ProcessMode, Operation workflows,
-  parallel execution, or the Rayon-based resource pipeline.
+  task dependencies, command membership, scheduling, dynamic task discovery,
+  ProcessMode, Operation workflows, parallel execution, or the Rayon-based
+  resource pipeline.
 ---
 
 # Engine Orchestration
 
 ## Use this skill when
 
-- changing task phase ordering, dependencies, or scheduler behavior
+- changing task dependencies, command membership, or scheduler behavior
+- changing late task discovery around a dependency boundary
 - deciding between `Task` + resources and `Task` + `Operation`
 - changing resource processing strategy (`process_resources*`, `ProcessMode`)
 
@@ -22,9 +24,12 @@ description: >
 
 ## Decision guide / invariants
 
-- Keep identity, phase, eligibility, elevation prediction, and dependencies in
-  `Task`; keep convergence logic in resources or `Operation`.
-- Phase barrier is strict (`Bootstrap -> Sync -> Provision -> Validation -> Update`).
+- Keep identity, command membership, eligibility, elevation prediction, and
+  dependencies in `Task`; keep convergence logic in resources or `Operation`.
+- Ordering comes only from explicit dependency edges. Catalog order is not
+  scheduling policy.
+- `update_only()` controls whether a task belongs only to `dotfiles update`; it
+  does not create an ordering barrier.
 - Task-level parallelism uses scoped OS threads; resource-level parallelism uses
   Rayon.
 - `ctx.parallel` gates both levels.
@@ -37,15 +42,21 @@ description: >
    duplicate IDs/cycles.
 2. **Scheduler wiring:** keep dependency channels strict; failed dependency
    blocks dependents.
-3. **Task execution path:** route all tasks through `engine::execute()` so
+3. **Command membership:** filter update-only tasks before applying `--only`
+   and `--skip`; filtering must not expand hidden prerequisites.
+4. **Dynamic discovery:** when refreshed configuration can change the task set,
+   run the discovery boundary's dependency closure, rebuild dynamic tasks, then
+   schedule them with remaining static tasks. If the boundary is absent after
+   filtering, discover before running one graph.
+5. **Task execution path:** route all tasks through `engine::execute()` so
    `should_run()` owns execution eligibility. Override `run_configured()` only
    when an otherwise-applicable task can have no configured work; do not repeat
    eligibility checks there.
-4. **Resource flow:** use one of:
+6. **Resource flow:** use one of:
    - `process_resources(...)`
    - `process_resources_with_provider(...)`
    - `process_resources_remove(...)`
-5. **Operation flow:** use `Operation` + `process_operation()` when convergence is
+7. **Operation flow:** use `Operation` + `process_operation()` when convergence is
    workflow-shaped, not item-shaped. State discovery returns
    `OperationState<Plan>`, and the engine passes the same immutable plan to
    preview or apply; do not cache or recompute it inside the operation.
@@ -74,5 +85,8 @@ affected task modules.
 - Mutating in `should_run()`
 - Duplicating resource-processing dry-run logic in task bodies
 - Adding static tasks without catalog registration
+- Relying on catalog order instead of declaring a dependency
+- Using `update_only()` as an ordering mechanism
+- Rebuilding dynamic tasks before refreshed configuration is available
 - Adding conditional symlink behavior without matching manifest coverage
 - Hardcoded OS checks where capability methods exist

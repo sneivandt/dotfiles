@@ -31,6 +31,29 @@ pub(crate) fn warn_unmatched_filters(
     }
 }
 
+/// Return whether a task passes both the inclusion and exclusion filters.
+#[must_use]
+pub(crate) fn task_passes_filters(task_name: &str, only: &[String], skip: &[String]) -> bool {
+    let included = only.is_empty()
+        || only
+            .iter()
+            .any(|filter| task_matches_filter(task_name, filter));
+    let excluded = skip
+        .iter()
+        .any(|filter| task_matches_filter(task_name, filter));
+    included && !excluded
+}
+
+/// Return whether any filter does not match a known task.
+#[must_use]
+pub(crate) fn has_unmatched_filter(tasks: &[&dyn Task], filters: &[String]) -> bool {
+    filters.iter().any(|filter| {
+        !tasks
+            .iter()
+            .any(|task| task_matches_filter(task.name(), filter))
+    })
+}
+
 /// Return whether a task name matches a user-supplied selector.
 #[must_use]
 pub fn task_matches_filter(task_name: &str, filter: &str) -> bool {
@@ -104,5 +127,14 @@ mod tests {
             canonical_task_selector("Reload configuration"),
             "reload-configuration"
         );
+    }
+
+    #[test]
+    fn task_passes_filters_combines_only_and_skip() {
+        let only = vec!["symlinks".to_string()];
+        let skip = vec!["git".to_string()];
+
+        assert!(task_passes_filters("Install symlinks", &only, &skip));
+        assert!(!task_passes_filters("Configure Git", &only, &skip));
     }
 }

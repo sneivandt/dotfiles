@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result};
 
-use crate::domains::ai::config::{apm, copilot};
+use crate::domains::ai::{apm, config::copilot};
 use crate::domains::editors::config::vscode_extensions;
 use crate::domains::files::config::{chmod, symlinks};
 use crate::domains::git::config::git_config;

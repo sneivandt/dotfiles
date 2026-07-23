@@ -15,17 +15,14 @@ on arbitrary substrings.
 
 ## Scheduling model
 
-The engine executes strict phase barriers:
+The engine validates the active tasks as a dependency graph. A task becomes
+ready after all active dependencies complete successfully. Independent ready
+tasks may run in parallel; use `--no-parallel` for deterministic sequential
+output without changing dependency order.
 
-1. **Bootstrap** prepares capabilities and the CLI entry point.
-2. **Sync** reconciles repository-owned inputs and reloads configuration.
-3. **Provision** converges machine state.
-4. **Validation** is available for validation workflows.
-5. **Update** advances pinned dependencies and runs only for `update`.
-
-Independent tasks within a phase may run in parallel. Explicit dependencies
-still apply within a phase. Use `--no-parallel` for deterministic sequential
-output; it does not change phase or dependency order.
+Every ordering requirement is an explicit edge. Catalog insertion order is not
+scheduling policy. Tasks marked `update_only` are excluded from `install` and
+included by `update`; this metadata controls command membership, not ordering.
 
 Built-in mutating tasks are designed to be idempotent and dry-run safe. A task
 may report that it is already correct, skipped, or not applicable rather than
@@ -36,34 +33,34 @@ idempotency and dry-run safety depend on the script honoring its contract.
 
 ### Catalog overview
 
-| # | Task name | Phase | Applies to | Purpose |
+| # | Task name | Depends on | Applies to | Purpose |
 |---:|---|---|---|---|
-| 1 | Enable developer mode | Bootstrap | Windows | Enables Windows Developer Mode so unprivileged symlink creation is available |
-| 2 | Materialize excluded symlinks | Sync | Profile changes | Preserves managed files before sparse checkout removes their sources |
-| 3 | Configure sparse checkout | Sync | Git checkouts | Writes profile-derived sparse-checkout rules |
-| 4 | Update repository | Sync | Updatable Git checkouts | Pulls repository changes and signals configuration reload |
-| 5 | Configure Git | Provision | Configured platforms | Applies declared global Git settings |
-| 6 | Configure Copilot | Provision | When configured | Converges selected keys in Copilot CLI `settings.json` |
-| 7 | Install Git hooks | Sync | Git checkouts with `hooks\` | Installs repository-maintained hooks |
-| 8 | Install shell completions | Sync | Linux | Installs generated Zsh completions for `dotfiles` |
-| 9 | Install packages | Provision | Arch Linux, Windows | Installs non-AUR packages through pacman or winget |
-| 10 | Install paru | Provision | Arch Linux | Bootstraps the `paru` AUR helper when required |
-| 11 | Install AUR packages | Provision | Arch Linux | Installs package entries marked `aur = true` |
-| 12 | Install symlinks | Provision | All platforms | Converges configured home-directory symlinks |
-| 13 | Configure file permissions | Provision | Linux | Applies declared Unix modes to files and trees |
-| 14 | Configure default shell | Provision | Linux | Sets the configured user shell when needed |
-| 15 | Configure systemd units | Provision | Linux with systemd | Enables and starts configured user units |
-| 16 | Configure registry settings | Provision | Windows | Converges declared current-user registry values |
-| 17 | Install VS Code extensions | Provision | When VS Code is available | Installs missing declared extensions |
-| 18 | Install APM packages | Provision | When APM inputs exist | Converges merged APM manifests and installed AI tooling |
-| 19 | Update APM packages | Update | `update` only | Advances eligible pinned APM dependencies |
-| 20 | Install wsl.conf | Provision | WSL | Installs the repository's WSL system configuration |
-| 21 | Report overlay scripts | Sync | Overlay with scripts | Reports scripts discovered after configuration reload |
-| 22 | Install wrapper | Bootstrap | All platforms | Installs the platform wrapper in `~\.local\bin` |
-| 23 | Configure PATH | Bootstrap | All platforms | Ensures `~\.local\bin` is available on user PATH |
-| 24 | Reload configuration | Sync | Repository changed | Reloads main and overlay configuration into shared handles |
+| 1 | Install wrapper | - | All platforms | Installs the platform wrapper in `~\.local\bin` |
+| 2 | Configure PATH | Install wrapper | All platforms | Ensures `~\.local\bin` is available on user PATH |
+| 3 | Enable developer mode | - | Windows | Enables Windows Developer Mode so unprivileged symlink creation is available |
+| 4 | Materialize excluded symlinks | - | Profile changes | Preserves managed files before sparse checkout removes their sources |
+| 5 | Configure sparse checkout | Materialize excluded symlinks | Git checkouts | Writes profile-derived sparse-checkout rules |
+| 6 | Update repository | Configure sparse checkout | Updatable Git checkouts | Pulls repository changes and signals configuration reload |
+| 7 | Reload configuration | Update repository | Repository changed | Reloads main and overlay configuration into shared handles |
+| 8 | Install Git hooks | Update repository | Git checkouts with `hooks\` | Installs repository-maintained hooks |
+| 9 | Install shell completions | Update repository | Linux | Installs generated Zsh completions for `dotfiles` |
+| 10 | Report overlay scripts | Reload configuration | Overlay with scripts | Reports scripts discovered after configuration reload |
+| 11 | Install packages | - | Arch Linux, Windows | Installs non-AUR packages through pacman or winget |
+| 12 | Install paru | Install packages | Arch Linux | Bootstraps the `paru` AUR helper when required |
+| 13 | Install AUR packages | Install paru | Arch Linux | Installs package entries marked `aur = true` |
+| 14 | Install VS Code extensions | Install packages, Install AUR packages | When VS Code is available | Installs missing declared extensions |
+| 15 | Install symlinks | Enable developer mode | All platforms | Converges configured home-directory symlinks |
+| 16 | Configure file permissions | Install symlinks | Linux | Applies declared Unix modes to files and trees |
+| 17 | Configure default shell | Install packages | Linux | Sets the configured user shell when needed |
+| 18 | Configure systemd units | Install packages, Install AUR packages, Install symlinks | Linux with systemd | Enables and starts configured user units |
+| 19 | Configure Git | - | Configured platforms | Applies declared global Git settings |
+| 20 | Configure registry settings | - | Windows | Converges declared current-user registry values |
+| 21 | Configure WSL | - | WSL | Enables systemd and disables Windows PATH injection |
+| 22 | Configure Copilot | - | When configured | Converges selected keys in Copilot CLI `settings.json` |
+| 23 | Install APM packages | Install packages, Install AUR packages, Install symlinks | When APM inputs exist | Converges merged APM manifests and installed AI tooling |
+| 24 | Update APM packages | Install APM packages | `update` only | Advances eligible pinned APM dependencies |
 
-### Bootstrap tasks
+### Host capability and wrapper tasks
 
 #### Enable developer mode
 
@@ -85,7 +82,7 @@ wrapper content but does not create a second behavioral implementation.
 Runs after **Install wrapper** and ensures `~\.local\bin` can be resolved by the
 user. Platform-specific capability methods perform the actual PATH convergence.
 
-### Synchronization tasks
+### Repository and source tasks
 
 #### Materialize excluded symlinks
 
@@ -107,8 +104,8 @@ describes the main repository's tracked `symlinks\` tree.
 
 Runs after sparse checkout and updates the current repository when supported.
 Successful content changes set an update signal consumed by **Reload
-configuration**. Install and update both synchronize the repository; the Update
-phase is about dependency versions, not whether Git is pulled.
+configuration**. Install and update both synchronize the repository; only tasks
+explicitly marked update-only are exclusive to the update command.
 
 #### Install Git hooks
 
@@ -127,17 +124,17 @@ installs it into the managed completion location.
 
 Runs after **Update repository** only when the repository update signal
 indicates that content changed. It reloads configuration and updates shared
-configuration handles in place, so later tasks use refreshed data without
-rebuilding the task graph.
+configuration handles in place. Because overlay configuration changes the task
+set, the command executes this task's dependency closure first, rebuilds
+dynamic tasks, then runs the remaining static and dynamic tasks together.
 
 #### Report overlay scripts
 
 Runs after **Reload configuration** when an overlay was supplied and
 `conf\scripts.toml` produced at least one active script. It only reports the
-discovered count. Actual execution is handled by dynamically injected
-Provision-phase tasks.
+discovered count. Actual execution is handled by dynamically injected tasks.
 
-### Provisioning tasks
+### System convergence tasks
 
 #### Configure Git
 
@@ -215,30 +212,33 @@ AUR, and symlink tasks so the APM executable and inputs are available.
 
 See [APM](APM.md) for manifest ownership and update safeguards.
 
-#### Install wsl.conf
+#### Configure WSL
 
-Runs only inside WSL and installs the repository's `wsl.conf` system
-configuration. Applying the file may require elevation, and some WSL settings
-take effect only after the distribution is restarted.
+Runs only inside WSL and converges the required keys in `/etc/wsl.conf` while
+preserving unrelated sections and settings. Applying the file may require
+elevation, and some WSL settings take effect only after the distribution is
+restarted.
 
-### Update task
+### Update-only task
 
 #### Update APM packages
 
-This is the sole static Update-phase task. It runs only for `dotfiles update`
-and only after APM install state matches the active merged-manifest
-fingerprint. That guard prevents a failed or partially converged install from
-advancing the lockfile. If no outdated dependencies are reported, it skips
-without changing versions.
+This task is marked update-only and depends on **Install APM packages**. It runs
+only for `dotfiles update` and only after APM install state matches the active
+merged-manifest fingerprint. That guard prevents a failed or partially
+converged install from advancing the lockfile. It invokes APM's idempotent
+update directly and compares the lockfile before and after to determine whether
+dependency refs advanced.
 
 ## Dynamic overlay tasks
 
-After the Sync phase completes, the command rereads the active overlay script
-configuration and creates one task per script. Each task:
+After the **Reload configuration** dependency closure completes, the command
+rereads the active overlay script configuration and creates one task per
+script. If that boundary is absent after filtering, tasks are created from
+current configuration before a single graph is run. Each task:
 
 - uses the configured script `name` as its task display name
 - has a deterministic identity based on name and path
-- runs in the Provision phase
 - participates in `--only` and `--skip` filtering
 - uses the script's check mode to determine whether work is required
 - uses its dry-run mode during `--dry-run`
@@ -256,11 +256,11 @@ Scripts are never loaded from the public repository's `conf\` directory. See
 
 Uninstall has a separate, intentionally small catalog.
 
-| Task name | Phase | Purpose |
-|---|---|---|
-| Materialize symlinks | Provision | Replaces every managed home symlink with copied content |
-| Remove Git hooks | Sync | Removes hooks installed from this repository |
-| Remove wrapper | Bootstrap | Removes the installed `~\.local\bin\dotfiles` wrapper |
+| Task name | Purpose |
+|---|---|
+| Materialize symlinks | Replaces every managed home symlink with copied content |
+| Remove Git hooks | Removes hooks installed from this repository |
+| Remove wrapper | Removes the installed `~\.local\bin\dotfiles` wrapper |
 
 **Materialize symlinks** preserves user-visible files; it does not delete them.
 The uninstall command does not attempt to reverse package-manager, systemd,
@@ -268,7 +268,8 @@ registry, shell, WSL, APM, editor, or overlay-script changes.
 
 ## Validation tasks
 
-`dotfiles test` executes these seven tasks in order:
+`dotfiles test` executes these seven validation tasks through the dependency
+scheduler:
 
 | # | Task name | What it checks |
 |---:|---|---|

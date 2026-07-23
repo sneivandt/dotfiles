@@ -83,7 +83,7 @@ struct StateCase {
 
 struct ProcessModeCase {
     name: &'static str,
-    opts: ProcessOpts<'static>,
+    opts: ProcessOpts,
     applies_missing: bool,
     applies_incorrect: bool,
 }

@@ -2,7 +2,7 @@
 
 mod chmod {
     use super::super::chmod::*;
-    use crate::domains::files::OctalMode;
+    use crate::domains::files::config::chmod::OctalMode;
     #[cfg(unix)]
     use crate::engine::ResourceChange;
     use crate::engine::{IntrinsicState, Resource, ResourceState};

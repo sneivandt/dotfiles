@@ -5,15 +5,16 @@
 //! live in the `tasks` module so they follow the same `Task` trait pattern
 //! as all other tasks and are independently testable.
 use anyhow::{Context as _, Result};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::app::config::Config;
-use crate::engine::{Context, Task, TaskPhase, TaskResult, task_metadata};
+use crate::engine::{Context, Task, TaskResult, task_metadata};
 use crate::infra::ConfigHandle;
 
-const SHELLCHECK_SEVERITY_ARG: &str = "--severity=warning";
-const SHELLCHECK_ENABLE_ARG: &str = "--enable=avoid-nullary-conditions";
-const SHELLCHECK_EXCLUDE_CODES: &str = "SC1090,SC1091,SC3043,SC2154";
+use super::discovery::{
+    discover_apm_plugin_dirs, discover_powershell_scripts, discover_shell_scripts,
+};
+use super::linters::{build_psscriptanalyzer_command, build_shellcheck_args, log_exec_output};
 
 /// Fail the test command when config validation emits warnings.
 #[derive(Debug)]
@@ -32,14 +33,13 @@ impl ValidateConfigWarnings {
 impl Task for ValidateConfigWarnings {
     task_metadata! {
         name: "Validate config warnings",
-        phase: TaskPhase::Validation,
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let diagnostics = self.config.read().validate(ctx.platform());
         if diagnostics.is_empty() {
             ctx.log().info("no configuration diagnostics found");
-            return Ok(TaskResult::Ok);
+            return Ok(TaskResult::CheckPassed);
         }
 
         for d in &diagnostics {
@@ -77,7 +77,6 @@ impl ValidateSymlinkSources {
 impl Task for ValidateSymlinkSources {
     task_metadata! {
         name: "Validate symlink sources",
-        phase: TaskPhase::Validation,
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -108,7 +107,7 @@ impl Task for ValidateSymlinkSources {
 
         ctx.log()
             .info(&format!("all {} symlink sources exist", symlinks.len()));
-        Ok(TaskResult::Ok)
+        Ok(TaskResult::CheckPassed)
     }
 }
 
@@ -119,7 +118,6 @@ pub struct ValidateConfigFiles;
 impl Task for ValidateConfigFiles {
     task_metadata! {
         name: "Validate config files",
-        phase: TaskPhase::Validation,
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -158,7 +156,7 @@ impl Task for ValidateConfigFiles {
             "all {} required config files present",
             required.len()
         ));
-        Ok(TaskResult::Ok)
+        Ok(TaskResult::CheckPassed)
     }
 }
 
@@ -175,7 +173,6 @@ pub struct ValidateManifestSync;
 impl Task for ValidateManifestSync {
     task_metadata! {
         name: "Validate manifest sync",
-        phase: TaskPhase::Validation,
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -213,7 +210,7 @@ impl Task for ValidateManifestSync {
         if warnings.is_empty() {
             ctx.log()
                 .info("symlinks.toml and manifest.toml sections are in sync");
-            return Ok(TaskResult::Ok);
+            return Ok(TaskResult::CheckPassed);
         }
 
         for warning in &warnings {
@@ -233,7 +230,6 @@ pub struct ValidateApmPlugins;
 impl Task for ValidateApmPlugins {
     task_metadata! {
         name: "Validate APM plugins",
-        phase: TaskPhase::Validation,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -245,7 +241,7 @@ impl Task for ValidateApmPlugins {
             discover_apm_plugin_dirs(&ctx.root().join("symlinks").join("apm").join("plugins"))?;
         if plugins.is_empty() {
             ctx.log().info("no local APM plugins found");
-            return Ok(TaskResult::Ok);
+            return Ok(TaskResult::CheckPassed);
         }
 
         let mut failures = 0u32;
@@ -273,7 +269,7 @@ impl Task for ValidateApmPlugins {
 
         ctx.log()
             .info(&format!("validated {} local APM plugins", plugins.len()));
-        Ok(TaskResult::Ok)
+        Ok(TaskResult::CheckPassed)
     }
 }
 
@@ -284,7 +280,6 @@ pub struct RunShellcheck;
 impl Task for RunShellcheck {
     task_metadata! {
         name: "Shellcheck",
-        phase: TaskPhase::Validation,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -311,7 +306,7 @@ impl Task for RunShellcheck {
 
         if scripts.is_empty() {
             ctx.log().info("no shell scripts found");
-            return Ok(TaskResult::Ok);
+            return Ok(TaskResult::CheckPassed);
         }
 
         ctx.log()
@@ -323,7 +318,7 @@ impl Task for RunShellcheck {
         let result = ctx.executor().run_unchecked("shellcheck", &arg_refs)?;
         if result.success {
             ctx.log().info("shellcheck passed");
-            Ok(TaskResult::Ok)
+            Ok(TaskResult::CheckPassed)
         } else {
             log_exec_output(ctx.log(), &result);
             anyhow::bail!("shellcheck found issues");
@@ -338,7 +333,6 @@ pub struct RunPSScriptAnalyzer;
 impl Task for RunPSScriptAnalyzer {
     task_metadata! {
         name: "PSScriptAnalyzer",
-        phase: TaskPhase::Validation,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -363,7 +357,7 @@ impl Task for RunPSScriptAnalyzer {
 
         if ps_files.is_empty() {
             ctx.log().info("no PowerShell scripts found");
-            return Ok(TaskResult::Ok);
+            return Ok(TaskResult::CheckPassed);
         }
 
         ctx.log()
@@ -376,205 +370,10 @@ impl Task for RunPSScriptAnalyzer {
             .run_unchecked("pwsh", &["-NoProfile", "-Command", &script])?;
         if result.success {
             ctx.log().info("PSScriptAnalyzer passed");
-            Ok(TaskResult::Ok)
+            Ok(TaskResult::CheckPassed)
         } else {
             log_exec_output(ctx.log(), &result);
             anyhow::bail!("PSScriptAnalyzer found issues");
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Helper functions
-// ---------------------------------------------------------------------------
-
-/// Recursively discover files in a directory tree that match a predicate.
-pub(crate) fn discover_files<F>(dir: &Path, predicate: F, out: &mut Vec<PathBuf>)
-where
-    F: Fn(&Path) -> bool + Copy,
-{
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            discover_files(&path, predicate, out);
-        } else if path.is_file() && predicate(&path) {
-            out.push(path);
-        }
-    }
-}
-
-/// Recursively discover shell scripts in a directory.
-///
-/// A file is considered a shell script if it has a `.sh` extension or its
-/// first line contains a shebang for a known POSIX-compatible interpreter
-/// (see [`SHELL_INTERPRETERS`]).  Files with a `.zsh` extension are always
-/// excluded; zsh shebangs are implicitly excluded because `zsh` is not in
-/// `SHELL_INTERPRETERS` (shellcheck does not support zsh syntax).
-pub(crate) fn discover_shell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
-    discover_files(
-        dir,
-        |path| {
-            if path.extension().is_some_and(|e| e == "zsh") {
-                return false;
-            }
-            path.extension().is_some_and(|e| e == "sh") || is_shell_shebang(path)
-        },
-        out,
-    );
-}
-
-/// Recursively discover `PowerShell` scripts (.ps1, .psm1, .psd1) in a directory.
-pub(crate) fn discover_powershell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
-    discover_files(
-        dir,
-        |path| {
-            path.extension()
-                .is_some_and(|e| e == "ps1" || e == "psm1" || e == "psd1")
-                || is_powershell_shebang(path)
-        },
-        out,
-    );
-}
-
-/// Discover local APM plugin directories.
-pub(crate) fn discover_apm_plugin_dirs(dir: &Path) -> Result<Vec<PathBuf>> {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(err) => {
-            return Err(err)
-                .with_context(|| format!("reading APM plugins directory {}", dir.display()));
-        }
-    };
-
-    let mut plugins = Vec::new();
-    for entry in entries {
-        let entry =
-            entry.with_context(|| format!("reading directory entry in {}", dir.display()))?;
-        let path = entry.path();
-        if path.is_dir() && path.join("apm.yml").is_file() {
-            plugins.push(path);
-        }
-    }
-    plugins.sort();
-    Ok(plugins)
-}
-
-/// Known POSIX-compatible shell interpreter basenames that shellcheck supports.
-const SHELL_INTERPRETERS: &[&[u8]] = &[b"sh", b"bash", b"dash", b"ksh"];
-
-/// Known `PowerShell` interpreter basenames.
-const POWERSHELL_INTERPRETERS: &[&[u8]] = &[b"pwsh", b"powershell"];
-
-/// Check if a file has a POSIX-shell shebang (e.g. `#!/bin/bash`).
-///
-/// Only matches known shell interpreters to avoid false positives from
-/// interpreters that happen to contain "sh" (e.g. `fish`, `csh`).
-fn is_shell_shebang(path: &Path) -> bool {
-    shebang_matches(path, SHELL_INTERPRETERS)
-}
-
-/// Check if a file has a `PowerShell` shebang (e.g. `#!/usr/bin/env pwsh`).
-fn is_powershell_shebang(path: &Path) -> bool {
-    shebang_matches(path, POWERSHELL_INTERPRETERS)
-}
-
-fn shebang_matches(path: &Path, interpreters: &[&[u8]]) -> bool {
-    parse_shebang_interpreter(path).is_some_and(|name| {
-        let trimmed = name.strip_suffix(b".exe").unwrap_or(name.as_slice());
-        interpreters.contains(&trimmed)
-    })
-}
-
-/// Parse shebang line to extract the interpreter name.
-///
-/// Returns the interpreter name from a shebang line, handling:
-/// - Direct paths: `#!/bin/bash` → `bash`
-/// - Non-standard paths: `#!/usr/local/bin/bash` → `bash`
-/// - Env wrappers: `#!/usr/bin/env bash` → `bash`
-/// - Env with flags: `#!/usr/bin/env -S bash` → `bash`
-/// - With arguments: `#!/bin/sh -e` → `sh`
-fn parse_shebang_interpreter(path: &Path) -> Option<Vec<u8>> {
-    let first_line = read_first_line(path);
-    if !first_line.starts_with(b"#!") {
-        return None;
-    }
-    let shebang = first_line.get(2..).unwrap_or(&[]);
-    // Split the shebang line into whitespace-separated tokens.
-    let mut tokens = shebang
-        .split(|&b| b == b' ' || b == b'\t')
-        .filter(|s| !s.is_empty());
-    // The first token is the interpreter path (e.g. `/usr/bin/env` or `/bin/bash`).
-    let prog_path = tokens.next()?;
-    // Extract the basename — the last `/`-separated component.
-    let prog = prog_path
-        .rsplit(|&b| b == b'/')
-        .next()
-        .filter(|s| !s.is_empty())?;
-    let prog = prog.strip_suffix(b".exe").unwrap_or(prog);
-    if prog == b"env" {
-        // With `env`, skip option flags (tokens starting with `-`) and take
-        // the first non-flag argument as the actual interpreter name.
-        tokens.find(|s| !s.starts_with(b"-")).map(<[u8]>::to_vec)
-    } else {
-        Some(prog.to_vec())
-    }
-}
-
-/// Read the first line of a file (up to 256 bytes).
-fn read_first_line(path: &Path) -> Vec<u8> {
-    use std::io::Read;
-
-    let Ok(mut file) = std::fs::File::open(path) else {
-        return Vec::new();
-    };
-    let mut buf = [0u8; 256];
-    let n = file.read(&mut buf).unwrap_or(0);
-    let end = buf
-        .get(..n)
-        .and_then(|slice| slice.iter().position(|&b| b == b'\n'))
-        .unwrap_or(n);
-    buf.get(..end).unwrap_or_default().to_vec()
-}
-
-/// Log command output (stdout and stderr) through the logger.
-fn log_exec_output(log: &dyn crate::infra::logging::Log, result: &crate::infra::exec::ExecResult) {
-    for line in result.stdout.lines().chain(result.stderr.lines()) {
-        log.error(line);
-    }
-}
-
-pub(super) fn build_psscriptanalyzer_command(paths: &[PathBuf]) -> String {
-    let path_literals = paths
-        .iter()
-        .map(|path| powershell_single_quote(&path.to_string_lossy()))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    format!(
-        "$paths = @({path_literals}); \
-         if (!(Get-Module -ListAvailable PSScriptAnalyzer)) \
-         {{ Write-Host 'PSScriptAnalyzer not installed, skipping'; exit 0 }}; \
-         $results = $paths | ForEach-Object \
-         {{ Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error }}; \
-         if ($results.Count -gt 0) {{ $results | Format-Table -AutoSize; exit 1 }} \
-         else {{ exit 0 }}"
-    )
-}
-
-fn powershell_single_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
-}
-
-pub(super) fn build_shellcheck_args(paths: &[PathBuf]) -> Vec<String> {
-    let mut args = vec![
-        SHELLCHECK_SEVERITY_ARG.to_string(),
-        format!("--exclude={SHELLCHECK_EXCLUDE_CODES}"),
-        SHELLCHECK_ENABLE_ARG.to_string(),
-    ];
-    args.extend(paths.iter().map(|path| path.to_string_lossy().into_owned()));
-    args
 }

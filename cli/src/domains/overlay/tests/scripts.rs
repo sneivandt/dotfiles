@@ -247,7 +247,10 @@ fn script_task_run_uses_dry_run_script_when_context_is_dry_run() {
     let ctx = context_with_executor(overlay.path(), mock).with_dry_run(true);
     let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
 
-    assert!(matches!(task.run(&ctx).unwrap(), TaskResult::DryRun));
+    assert!(matches!(
+        task.run(&ctx).unwrap(),
+        TaskResult::Batch(stats) if stats.changed > 0
+    ));
 }
 
 #[test]

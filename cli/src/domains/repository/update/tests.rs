@@ -611,8 +611,8 @@ fn run_dry_run_returns_dry_run_when_behind_upstream() {
 
     let result = task.run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::DryRun),
-        "expected DryRun (behind upstream), got {result:?}"
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        "expected planned update when behind upstream, got {result:?}"
     );
 }
 

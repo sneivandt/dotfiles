@@ -70,29 +70,14 @@ impl<R: IntrinsicState> ResourceStateProvider<R> for IntrinsicStateProvider {
     }
 }
 
-/// State provider backed by an already-loaded cache.
+/// State provider backed by an already-loaded, borrowed cache.
 #[derive(Debug, Clone)]
-pub struct PreloadedStateProvider<Cache, State> {
-    cache: Cache,
-    state: State,
-}
-
-/// State provider backed by a borrowed cache.
-#[derive(Debug, Clone)]
-pub struct BorrowedStateProvider<'cache, Cache: ?Sized, State> {
+pub struct CachedStateProvider<'cache, Cache: ?Sized, State> {
     cache: &'cache Cache,
     state: State,
 }
 
-impl<Cache, State> PreloadedStateProvider<Cache, State> {
-    /// Create a provider from a cache value and state-mapping closure.
-    #[must_use]
-    pub const fn new(cache: Cache, state: State) -> Self {
-        Self { cache, state }
-    }
-}
-
-impl<'cache, Cache: ?Sized, State> BorrowedStateProvider<'cache, Cache, State> {
+impl<'cache, Cache: ?Sized, State> CachedStateProvider<'cache, Cache, State> {
     /// Create a provider from a borrowed cache and state-mapping closure.
     #[must_use]
     pub const fn new(cache: &'cache Cache, state: State) -> Self {
@@ -100,24 +85,7 @@ impl<'cache, Cache: ?Sized, State> BorrowedStateProvider<'cache, Cache, State> {
     }
 }
 
-impl<R, Cache, State> ResourceStateProvider<R> for PreloadedStateProvider<Cache, State>
-where
-    R: Resource,
-    Cache: Sync,
-    State: Fn(&R, &Cache) -> Result<ResourceState> + Sync,
-{
-    type Cache = ();
-
-    fn load(&self, _resources: &[R]) -> Result<Self::Cache> {
-        Ok(())
-    }
-
-    fn current_state(&self, resource: &R, _cache: &Self::Cache) -> Result<ResourceState> {
-        (self.state)(resource, &self.cache)
-    }
-}
-
-impl<R, Cache, State> ResourceStateProvider<R> for BorrowedStateProvider<'_, Cache, State>
+impl<R, Cache, State> ResourceStateProvider<R> for CachedStateProvider<'_, Cache, State>
 where
     R: Resource,
     Cache: Sync + ?Sized,

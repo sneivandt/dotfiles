@@ -7,7 +7,7 @@ use crate::domains::files::resources::symlink::SymlinkResource;
 use crate::domains::files::symlinks::build_resources;
 use crate::domains::repository::config::manifest::Manifest;
 use crate::engine::{
-    Context, IntrinsicState, ResourceState, Task, TaskPhase, TaskResult, process_resources_remove,
+    Context, IntrinsicState, ResourceState, Task, TaskResult, process_resources_remove,
     task_metadata,
 };
 use crate::infra::ConfigHandle;
@@ -64,7 +64,6 @@ impl MaterializeExcludedSymlinks {
 impl Task for MaterializeExcludedSymlinks {
     task_metadata! {
         name: "Materialize excluded symlinks",
-        phase: TaskPhase::Sync,
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {

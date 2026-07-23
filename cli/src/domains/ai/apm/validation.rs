@@ -110,7 +110,46 @@ fn validate_fragment(validator: &mut Validator, root: &Path, fragment: &Path) {
         }
     }
 
+    validate_git_dependency_keys(validator, root, fragment, &value);
     mcp::validate_dependencies(validator, root, fragment, &value);
+}
+
+fn validate_git_dependency_keys(
+    validator: &mut Validator,
+    root: &Path,
+    fragment: &Path,
+    value: &YamlValue,
+) {
+    for section in ["dependencies", "devDependencies"] {
+        let Some(apm_deps) = value
+            .get(section)
+            .and_then(|dependencies| dependencies.get("apm"))
+            .and_then(YamlValue::as_sequence)
+        else {
+            continue;
+        };
+
+        for (index, dependency) in apm_deps.iter().enumerate() {
+            if dependency.get("git").is_none() {
+                continue;
+            }
+            let item = format!("{}:{section}.apm[{index}]", path_item(root, fragment));
+            if dependency.get("version").is_some() {
+                validator.warn(
+                    "apm.git-version",
+                    item.clone(),
+                    "Git dependencies do not support `version`; use `ref` to select a tag, branch, or commit",
+                );
+            }
+            if dependency.get("name").is_some() {
+                validator.warn(
+                    "apm.git-name",
+                    item,
+                    "Git dependencies do not support `name`; use `alias` to set a local dependency name",
+                );
+            }
+        }
+    }
 }
 
 fn path_item(root: &Path, path: &Path) -> String {
@@ -351,5 +390,74 @@ mod tests {
         write_fragment(temp_dir.path(), "dependencies: [");
 
         assert_single_warning_contains(temp_dir.path(), "could not parse");
+    }
+
+    #[test]
+    fn validate_accepts_supported_git_dependency_keys() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_fragment(
+            temp_dir.path(),
+            "dependencies:\n  apm:\n    - git: github.com/example/plugin\n      path: plugins/example\n      ref: v1.2.3\n      alias: example\n      type: git\n      allow_insecure: false\n      skills: [review]\n      targets: [copilot]\n",
+        );
+
+        assert!(validate(temp_dir.path(), None).is_empty());
+    }
+
+    #[test]
+    fn validate_rejects_name_and_version_on_git_dependencies() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_fragment(
+            temp_dir.path(),
+            "dependencies:\n  apm:\n    - git: github.com/example/plugin\n      name: example\n      version: 1.2.3\n",
+        );
+
+        let diagnostics = validate(temp_dir.path(), None);
+        assert_eq!(diagnostics.len(), 2);
+        assert_eq!(diagnostics[0].code, "apm.git-version");
+        assert_eq!(diagnostics[1].code, "apm.git-name");
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.item.contains("dependencies.apm[0]"))
+        );
+    }
+
+    #[test]
+    fn validate_checks_git_keys_in_dev_dependencies() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_fragment(
+            temp_dir.path(),
+            "devDependencies:\n  apm:\n    - git: github.com/example/plugin\n      version: main\n",
+        );
+
+        let diagnostics = validate(temp_dir.path(), None);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "apm.git-version");
+        assert!(diagnostics[0].item.contains("devDependencies.apm[0]"));
+    }
+
+    #[test]
+    fn validate_allows_name_and_version_on_registry_dependencies() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_fragment(
+            temp_dir.path(),
+            "dependencies:\n  apm:\n    - name: example/plugin\n      version: 1.2.3\n",
+        );
+
+        assert!(validate(temp_dir.path(), None).is_empty());
+    }
+
+    #[test]
+    fn validate_checks_git_keys_in_overlay_fragments() {
+        let root = tempfile::tempdir().unwrap();
+        let overlay = tempfile::tempdir().unwrap();
+        write_fragment(
+            overlay.path(),
+            "dependencies:\n  apm:\n    - git: github.com/example/plugin\n      name: example\n",
+        );
+
+        let diagnostics = validate(root.path(), Some(overlay.path()));
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "apm.git-name");
     }
 }

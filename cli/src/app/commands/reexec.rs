@@ -1,13 +1,11 @@
 //! Application self-update re-execution policy.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 
 use crate::app::cli::GlobalOpts;
-use crate::infra::logging::{Logger, Output};
+use crate::infra::logging::Output;
 
-use super::install;
+use super::runner;
 
 /// Environment variable set before re-exec to prevent infinite self-update loops.
 pub(super) const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
@@ -76,12 +74,12 @@ pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
 ///
 /// Returns an error if the repository root cannot be resolved or the pre-update
 /// check fails.
-pub(crate) fn prepare_self_update(global: &GlobalOpts, log: &Arc<Logger>) -> Result<()> {
-    let root = install::resolve_root(global)?;
+pub(crate) fn prepare_self_update(global: &GlobalOpts, log: &dyn Output) -> Result<()> {
+    let root = runner::resolve_root(global)?;
     if std::env::var_os(REEXEC_GUARD_VAR).is_none()
-        && crate::domains::dotfiles::self_update::pre_update(&root, &**log, global.dry_run)?
+        && crate::domains::dotfiles::self_update::pre_update(&root, log, global.dry_run)?
     {
-        re_exec(&root, &**log);
+        re_exec(&root, log);
     }
     Ok(())
 }

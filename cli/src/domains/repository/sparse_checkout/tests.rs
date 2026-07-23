@@ -280,9 +280,9 @@ fn run_reconfigures_when_file_matches_but_config_disabled() {
 }
 
 #[test]
-fn run_returns_dry_run_when_patterns_need_update() {
+fn run_returns_planned_change_when_patterns_need_update() {
     let dir = tempfile::tempdir().unwrap();
-    // No sparse-checkout file → patterns differ → DryRun
+    // No sparse-checkout file means the patterns would change.
 
     let mut config = empty_config(dir.path().to_path_buf());
     config.manifest.excluded_files.push("symlinks".to_string());
@@ -292,8 +292,8 @@ fn run_returns_dry_run_when_patterns_need_update() {
 
     let result = ConfigureSparseCheckout::new(manifest).run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::DryRun),
-        "expected DryRun, got {result:?}"
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        "expected planned change, got {result:?}"
     );
 }
 

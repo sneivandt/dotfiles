@@ -7,7 +7,7 @@ use anyhow::{Context as _, Result};
 
 use super::autopilot::{apply_workflow_autopilot_fixup, snapshot_desired_apm_workflow_ids};
 use super::commands::{
-    ApmCommand, ensure_copilot_app_enabled, install_task_result, run_apm_command,
+    ApmCommand, ensure_copilot_app_enabled, install_task_result, prune_user_scope, run_apm_command,
 };
 use super::fragments::{discover_fragment_files, discover_yaml_files, merge_fragments};
 use super::manifest::{
@@ -16,7 +16,7 @@ use super::manifest::{
 };
 use super::skip_with_warning;
 use super::targets::{ApmTargets, missing_apm_reason};
-use crate::engine::{Context, Task, TaskResult, task_metadata};
+use crate::engine::{Context, Task, TaskResult, TaskStats, task_metadata};
 
 /// Converge AI plugin manifests via Microsoft APM.
 ///
@@ -65,7 +65,7 @@ impl Task for InstallApmPackages {
         let targets = ApmTargets::detect(ctx)?;
 
         if ctx.dry_run() {
-            let would_change = preview_install(
+            preview_install(
                 ctx,
                 targets,
                 state,
@@ -73,11 +73,7 @@ impl Task for InstallApmPackages {
                 &manifest_path,
                 &lock_path,
             );
-            return Ok(if would_change {
-                TaskResult::DryRun
-            } else {
-                TaskResult::Ok
-            });
+            return Ok(TaskStats::changed().finish());
         }
 
         let pre_workflows = targets
@@ -110,15 +106,17 @@ impl Task for InstallApmPackages {
             ));
         }
         write_manifest_marker(&marker_path, &manifest_hash)?;
+        prune_user_scope(ctx)?;
 
         // Convergence is complete.  Advancing locked dependency refs
-        // (`apm outdated` / `apm update`) is a separate concern handled by
-        // the `update`-only task, so this task never moves a locked ref forward.
+        // is a separate concern handled by the `update`-only task, so this task
+        // never moves a locked ref forward.
         if let Some(pre) = pre_workflows {
             apply_workflow_autopilot_fixup(ctx, &pre);
         }
         Ok(if manifest_changed {
-            TaskResult::OkWithMessage(format!("installed {}", describe_dependencies(&merged)))
+            TaskStats::changed_with_message(format!("installed {}", describe_dependencies(&merged)))
+                .finish()
         } else {
             TaskResult::Ok
         })
@@ -132,13 +130,7 @@ fn preview_install(
     fragment_count: usize,
     manifest_path: &Path,
     lock_path: &Path,
-) -> bool {
-    if !state.manifest_changed() {
-        ctx.log()
-            .debug("APM manifest, lockfile, and install marker are already current");
-        return false;
-    }
-
+) {
     if targets.includes_copilot_app() {
         ctx.log()
             .dry_run("run apm experimental enable copilot-app (idempotent) before install");
@@ -174,7 +166,8 @@ fn preview_install(
             "run apm install -g --target copilot-app to sync Copilot App workflows separately",
         );
     }
-    true
+    ctx.log()
+        .dry_run("run apm prune from ~/.apm to remove unowned user-scope deployments");
 }
 
 /// Filesystem-derived signals that decide whether `apm install` must run and

@@ -108,7 +108,7 @@ Remember:
 
 A task can be absent from execution because:
 
-- its phase is excluded (`install` excludes Update)
+- its command membership excludes it (`install` excludes update-only tasks)
 - it is not applicable to the host
 - its configuration list is empty
 - `--only` did not match its display name
@@ -139,9 +139,9 @@ elevated when only a specific capability requires it.
 
 ## A profile switch would remove files
 
-Conditional sources may leave the sparse checkout. The Sync phase first runs
-**Materialize excluded symlinks**, copying linked content into the home target
-before applying exclusions.
+Conditional sources may leave the sparse checkout. **Configure sparse
+checkout** depends on **Materialize excluded symlinks**, which copies linked
+content into the home target before applying exclusions.
 
 Always preview profile transitions:
 
@@ -165,8 +165,9 @@ git branch -vv
 Resolve authentication, upstream, or conflicting local changes without
 discarding user work. `--root` must identify the intended checkout.
 
-If update changes configuration, the CLI reloads it before Provision tasks.
-Verbose logs show whether the reload signal was consumed.
+If update changes configuration, the CLI reloads it at the dynamic-task
+discovery boundary before rebuilding overlay script tasks. Verbose logs show
+whether the reload signal was consumed.
 
 ## Packages do not install
 

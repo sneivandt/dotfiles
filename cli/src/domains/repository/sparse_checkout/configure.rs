@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::domains::repository::config::manifest::Manifest;
 use crate::engine::{
-    Context, Operation, OperationState, Task, TaskPhase, TaskResult, process_operation,
+    Context, Operation, OperationState, Task, TaskResult, TaskStats, process_operation,
     task_metadata,
 };
 use crate::infra::ConfigHandle;
@@ -281,7 +281,6 @@ impl ConfigureSparseCheckout {
 impl Task for ConfigureSparseCheckout {
     task_metadata! {
         name: "Configure sparse checkout",
-        phase: TaskPhase::Sync,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -341,7 +340,7 @@ impl Operation for SparseCheckoutOperation {
         for file in excluded_files {
             ctx.log().dry_run(&format!("  exclude: {file}"));
         }
-        Ok(TaskResult::DryRun)
+        Ok(TaskStats::changed().finish())
     }
 
     fn apply(&self, ctx: &Context, excluded_files: &Self::Plan) -> Result<TaskResult> {

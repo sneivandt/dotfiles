@@ -1,6 +1,6 @@
 # APM and AI Tooling
 
-The repository uses [APM](https://github.com/danielmiessler/apm) to distribute
+The repository uses [APM](https://github.com/microsoft/apm) to distribute
 shared skills, plugins, instructions, hooks, and MCP configuration across
 supported AI agents. Dotfiles owns the desired state; APM owns package
 resolution and materialization.
@@ -43,7 +43,7 @@ available without publishing a package.
 
 ## Install behavior
 
-**Install APM packages** runs in the Provision phase after:
+**Install APM packages** depends on:
 
 - regular packages
 - AUR packages
@@ -55,8 +55,9 @@ available. The task:
 1. Discovers active main and overlay fragments.
 2. Produces the merged manifest in deterministic order.
 3. Computes a fingerprint of the merged desired state.
-4. Runs APM convergence when installed state is stale or missing.
+4. Runs APM's idempotent convergence.
 5. Records the successful fingerprint for update safety.
+6. Prunes user-scope deployments no longer owned by the generated manifest.
 
 Re-running `dotfiles install` should not advance pinned dependency versions.
 
@@ -67,13 +68,18 @@ dotfiles install --only APM
 
 ## Update behavior
 
-**Update APM packages** is the only static task in the Update phase, so it runs
-with `dotfiles update` but not `dotfiles install`.
+**Update APM packages** is marked update-only, so it runs with
+`dotfiles update` but not `dotfiles install`. It depends on
+**Install APM packages**.
 
 Before advancing versions, it verifies that the installed state corresponds to
 the current merged-manifest fingerprint. If install convergence did not succeed,
 or the desired state changed afterward, update is skipped rather than mutating
 an unrelated or partial lockfile.
+
+The task invokes APM's native idempotent update directly. It compares the
+lockfile before and after to report whether refs advanced instead of parsing
+human-readable `apm outdated` output.
 
 ```bash
 dotfiles update --only APM

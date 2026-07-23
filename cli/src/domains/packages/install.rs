@@ -8,7 +8,8 @@ use crate::domains::packages::resources::package::{
 };
 use crate::engine::Resource as _;
 use crate::engine::{
-    Context, Operation, OperationState, Task, TaskResult, process_operation, task_metadata,
+    Context, Operation, OperationState, Task, TaskResult, TaskStats, process_operation,
+    task_metadata,
 };
 use crate::infra::ConfigHandle;
 
@@ -43,37 +44,16 @@ impl Task for InstallPackages {
         name: "Install packages",
     }
 
-    fn should_run(&self, _ctx: &Context) -> bool {
-        self.config.read().iter().any(|p| !p.is_aur)
+    fn should_run(&self, ctx: &Context) -> bool {
+        PackageTaskKind::Native.should_run(ctx, &self.config.read())
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
-        if !ctx.system().platform().uses_pacman() {
-            return false;
-        }
-        predict_sudo(
-            ctx,
-            PackageManager::Pacman,
-            "pacman",
-            &select_packages(&self.config.read(), false),
-        )
+        PackageTaskKind::Native.needs_elevation(ctx, &self.config.read())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let packages = select_packages(&self.config.read(), false);
-        if packages.is_empty() {
-            return Ok(TaskResult::Skipped("no packages to install".to_string()));
-        }
-
-        ctx.log()
-            .debug(&format!("{} non-AUR packages to process", packages.len()));
-
-        let manager = match resolve_native_manager(ctx) {
-            Ok(m) => m,
-            Err(reason) => return Ok(TaskResult::Skipped(reason)),
-        };
-
-        process_operation(ctx, &PackageInstallOperation::new(packages, manager))
+        PackageTaskKind::Native.run(ctx, &self.config.read())
     }
 }
 
@@ -81,6 +61,74 @@ impl Task for InstallPackages {
 #[derive(Debug)]
 pub struct InstallAurPackages {
     config: ConfigHandle<Vec<Package>>,
+}
+
+#[derive(Clone, Copy)]
+enum PackageTaskKind {
+    Native,
+    Aur,
+}
+
+impl PackageTaskKind {
+    const fn is_aur(self) -> bool {
+        matches!(self, Self::Aur)
+    }
+
+    fn select(self, packages: &[Package]) -> Vec<Package> {
+        select_packages(packages, self.is_aur())
+    }
+
+    fn should_run(self, ctx: &Context, packages: &[Package]) -> bool {
+        let platform_is_supported = match self {
+            Self::Native => true,
+            Self::Aur => ctx.system().platform().supports_aur(),
+        };
+        platform_is_supported
+            && packages
+                .iter()
+                .any(|package| package.is_aur == self.is_aur())
+    }
+
+    fn needs_elevation(self, ctx: &Context, packages: &[Package]) -> bool {
+        let platform = ctx.system().platform();
+        let (supported, manager, executable) = match self {
+            Self::Native => (platform.uses_pacman(), PackageManager::Pacman, "pacman"),
+            Self::Aur => (platform.supports_aur(), PackageManager::Paru, "paru"),
+        };
+        supported && predict_sudo(ctx, manager, executable, &self.select(packages))
+    }
+
+    fn run(self, ctx: &Context, packages: &[Package]) -> Result<TaskResult> {
+        let selected = self.select(packages);
+        if selected.is_empty() {
+            let reason = match self {
+                Self::Native => "no packages to install",
+                Self::Aur => "no AUR packages",
+            };
+            return Ok(TaskResult::Skipped(reason.to_string()));
+        }
+
+        let manager = match self {
+            Self::Native => {
+                ctx.debug_fmt(|| format!("{} non-AUR packages to process", selected.len()));
+                match resolve_native_manager(ctx) {
+                    Ok(manager) => manager,
+                    Err(reason) => return Ok(TaskResult::Skipped(reason)),
+                }
+            }
+            Self::Aur => {
+                if !ctx.system().which("paru") {
+                    ctx.log()
+                        .debug("paru not found in PATH, skipping AUR packages");
+                    return Ok(TaskResult::Skipped("paru not installed".to_string()));
+                }
+                ctx.debug_fmt(|| format!("checking {} AUR packages", selected.len()));
+                PackageManager::Paru
+            }
+        };
+
+        process_operation(ctx, &PackageInstallOperation::new(selected, manager))
+    }
 }
 
 impl InstallAurPackages {
@@ -98,40 +146,15 @@ impl Task for InstallAurPackages {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.system().platform().supports_aur() && self.config.read().iter().any(|p| p.is_aur)
+        PackageTaskKind::Aur.should_run(ctx, &self.config.read())
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
-        if !ctx.system().platform().supports_aur() {
-            return false;
-        }
-        predict_sudo(
-            ctx,
-            PackageManager::Paru,
-            "paru",
-            &select_packages(&self.config.read(), true),
-        )
+        PackageTaskKind::Aur.needs_elevation(ctx, &self.config.read())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let packages = select_packages(&self.config.read(), true);
-        if packages.is_empty() {
-            return Ok(TaskResult::Skipped("no AUR packages".to_string()));
-        }
-
-        if !ctx.system().which("paru") {
-            ctx.log()
-                .debug("paru not found in PATH, skipping AUR packages");
-            return Ok(TaskResult::Skipped("paru not installed".to_string()));
-        }
-
-        ctx.log()
-            .debug(&format!("checking {} AUR packages", packages.len()));
-
-        process_operation(
-            ctx,
-            &PackageInstallOperation::new(packages, PackageManager::Paru),
-        )
+        PackageTaskKind::Aur.run(ctx, &self.config.read())
     }
 }
 
@@ -179,7 +202,7 @@ impl Operation for ParuInstallOperation {
 
     fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         ctx.log().dry_run("install paru from AUR (paru-bin)");
-        Ok(TaskResult::DryRun)
+        Ok(TaskStats::changed().finish())
     }
 
     fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
@@ -189,7 +212,7 @@ impl Operation for ParuInstallOperation {
         build_paru(ctx, guard.path())?;
 
         ctx.log().info("paru installed successfully");
-        Ok(TaskResult::OkWithMessage("installed paru".to_string()))
+        Ok(TaskStats::changed_with_message("installed paru").finish())
     }
 }
 
@@ -229,7 +252,7 @@ impl Operation for PackageInstallOperation {
             ctx.log()
                 .dry_run(&format!("install {}", resource.description()));
         }
-        Ok(plan.preview_stats().finish(ctx))
+        Ok(plan.preview_stats().finish())
     }
 
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
@@ -246,7 +269,7 @@ impl Operation for PackageInstallOperation {
                     ctx.log().warn(&reason);
                     let mut stats = plan.base_stats();
                     stats.failed = u32::try_from(plan.missing.len()).unwrap_or(u32::MAX);
-                    return Ok(stats.finish(ctx));
+                    return Ok(stats.finish());
                 }
             };
 
@@ -268,10 +291,10 @@ impl Operation for PackageInstallOperation {
         if report.has_failures() {
             let reason = format!("{} package install(s) failed", report.failures().len());
             ctx.log().warn(&reason);
-            return Ok(stats.finish(ctx));
+            return Ok(stats.finish());
         }
 
-        Ok(stats.finish(ctx))
+        Ok(stats.finish())
     }
 }
 

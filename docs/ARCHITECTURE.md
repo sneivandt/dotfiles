@@ -15,7 +15,7 @@ dotfiles.sh / dotfiles.ps1
  application commands and task catalog
           |
           v
- phase scheduler + dependency graph
+ dependency graph + task executor
           |
           +------------------+
           v                  v
@@ -73,22 +73,21 @@ other domains.
 Every task exposes:
 
 - a human-readable name
-- an execution phase
+- command membership such as update-only behavior
 - a stable identity
 - dependency identities
 - an applicability guard
 - optional elevation planning
 - execution returning a structured task result
 
-The scheduler builds a dependency graph and runs ready tasks in parallel. It
-also enforces phase barriers:
+The scheduler validates a dependency graph and runs ready tasks in parallel.
+Every ordering requirement is an explicit dependency edge; the order of entries
+in `catalog.rs` is not execution order. Failed prerequisites block dependents,
+and duplicate identities or cycles fail before execution.
 
-```text
-Bootstrap -> Sync -> Provision -> Validation -> Update
-```
-
-The order of entries in `catalog.rs` is not execution order. Phases and
-dependency edges are authoritative.
+`Task::update_only()` is command membership metadata, not an ordering class.
+`install` excludes update-only tasks, while `update` includes them in the same
+graph as ordinary install tasks.
 
 Dynamic overlay tasks use per-instance hashed identities because multiple
 configured scripts share one Rust task type.
@@ -141,9 +140,18 @@ Each domain owns its parser and typed records. The app-level loader guarantees
 that supported overlay sections are merged consistently. The sparse-checkout
 manifest is the exception: it describes the main repository and is not merged.
 
-Shared configuration handles enable mid-run reload. If repository update
-changes tracked files, the reload task replaces values behind those handles;
-Provision-phase tasks then read the new values.
+Shared configuration handles enable mid-run reload. Dynamic overlay tasks make
+the active task set configuration-dependent, so `ReloadConfig` is a discovery
+boundary:
+
+1. Run the dependency closure ending at `ReloadConfig`.
+2. Stop if it fails or execution is cancelled.
+3. Rebuild dynamic tasks from the refreshed handles.
+4. Run remaining static and dynamic tasks in one dependency graph.
+
+If the boundary is filtered out, dynamic tasks are built from current
+configuration before one graph is run. This split controls discovery only;
+normal ordering still comes from dependency edges.
 
 ## Platform abstraction
 

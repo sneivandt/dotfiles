@@ -44,7 +44,9 @@ pub mod config {
 }
 
 pub mod engine {
-    pub use crate::engine::{CancellationToken, Context, ContextOpts};
+    pub use crate::engine::{
+        CancellationToken, Context, ContextOpts, ProcessOpts, process_resources,
+    };
 
     pub mod graph {
         pub use crate::engine::graph::GraphError;
@@ -76,8 +78,8 @@ pub mod logging {
 pub mod tasks {
     pub use crate::app::catalog::{all_install_tasks, all_uninstall_tasks};
     pub use crate::engine::{
-        Context, ContextOpts, ProcessMode, ProcessOpts, ResourceAction, Task, TaskId, TaskPhase,
-        TaskResult, TaskStats, execute,
+        Context, ContextOpts, ProcessMode, ProcessOpts, ResourceAction, Task, TaskId, TaskResult,
+        TaskStats, execute,
     };
 
     pub mod filter {
@@ -129,7 +131,11 @@ pub mod resources {
     pub use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
 
     pub mod chmod {
-        pub use crate::domains::files::OctalMode;
+        pub use crate::domains::files::config::chmod::OctalMode;
+    }
+
+    pub mod git_config {
+        pub use crate::domains::git::resources::git_config::GitConfigResource;
     }
 
     pub mod symlink {

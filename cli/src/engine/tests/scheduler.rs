@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::Result;
 
 use super::*;
-use crate::engine::{TaskResult, execute, task_deps};
+use crate::engine::{TaskResult, TaskStats, execute, task_deps};
 use crate::infra::logging::{Output, TaskRecorder};
 use crate::test_helpers::{ContextBuilder, empty_config, make_static_context};
 
@@ -35,10 +35,6 @@ macro_rules! flag_task {
                 $task_name
             }
 
-            fn phase(&self) -> TaskPhase {
-                TaskPhase::Provision
-            }
-
             $(task_deps![$($dep),+];)?
 
             fn run(&self, _ctx: &Context) -> Result<TaskResult> {
@@ -59,10 +55,6 @@ struct PanicTask;
 impl Task for PanicTask {
     fn name(&self) -> &'static str {
         "panic-task"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -87,10 +79,6 @@ impl Task for FailedTask {
         "failed-task"
     }
 
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
     fn run(&self, _ctx: &Context) -> Result<TaskResult> {
         Ok(TaskResult::Failed("simulated failure".to_string()))
     }
@@ -106,10 +94,6 @@ struct SkippedTask;
 impl Task for SkippedTask {
     fn name(&self) -> &'static str {
         "skipped-task"
-    }
-
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
     }
 
     fn run(&self, _ctx: &Context) -> Result<TaskResult> {
@@ -375,15 +359,9 @@ impl Task for SequentialChangedDetailTask {
         "sequential-detail-task"
     }
 
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         ctx.log().info("installed: demo-package");
-        Ok(TaskResult::OkWithMessage(
-            "1 changed, 0 already ok".to_string(),
-        ))
+        Ok(TaskStats::changed_with_message("1 changed, 0 already ok").finish())
     }
 }
 
@@ -583,16 +561,15 @@ fn dependency_not_in_list_is_ignored() {
 // -----------------------------------------------------------------------
 // Stage-header regression tests.
 //
-// Tasks that call `ctx.log().info()` inside `run()` — as `process_resources`
-// does via `stats.finish(ctx)` — must have their `==>` stage header
-// buffered by `execute()` and replayed by `flush_and_complete()`.
+// Tasks whose structured result causes `execute()` to log a summary must have
+// their `==>` stage header replayed by `flush_and_complete()`.
 //
 // These tests simulate exactly what `run_tasks_parallel` does per task
 // thread, but in the test thread so the `isolated_logger()` file subscriber
 // captures the replayed tracing events.
 // -----------------------------------------------------------------------
 
-/// Task that logs a stats summary (like `stats.finish(ctx)`) from inside `run()`.
+/// Task that returns structured stats for central reporting.
 struct StatsTask;
 
 impl Task for StatsTask {
@@ -600,18 +577,16 @@ impl Task for StatsTask {
         "stats-task"
     }
 
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
     fn should_run(&self, _ctx: &Context) -> bool {
         true
     }
 
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        // Simulates `stats.finish(ctx)` called inside process_resources.
-        ctx.log().info("0 changed, 37 already ok");
-        Ok(TaskResult::Ok)
+    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+        Ok(TaskStats {
+            already_ok: 37,
+            ..TaskStats::default()
+        }
+        .finish())
     }
 }
 
@@ -626,23 +601,21 @@ impl Task for NamedStatsTask {
         self.name
     }
 
-    fn phase(&self) -> TaskPhase {
-        TaskPhase::Provision
-    }
-
     fn should_run(&self, _: &Context) -> bool {
         true
     }
 
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        ctx.log()
-            .info(&format!("0 changed, {} already ok", self.count));
-        Ok(TaskResult::Ok)
+    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+        Ok(TaskStats {
+            already_ok: self.count,
+            ..TaskStats::default()
+        }
+        .finish())
     }
 }
 
 /// Regression test: stage header must be present in the log when a task
-/// calls `ctx.log().info()` from within `run()` (the `stats.finish` path).
+/// returns batch statistics for central reporting.
 ///
 /// Before the regression was detected, tasks producing `"0 changed, X
 /// already ok"` output via `process_resources` were missing their `==>`
@@ -771,10 +744,6 @@ fn task_status_not_lost_after_debug_fmt_call() {
     impl Task for DebugFmtTask {
         fn name(&self) -> &'static str {
             "debug-fmt-task"
-        }
-
-        fn phase(&self) -> TaskPhase {
-            TaskPhase::Provision
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {

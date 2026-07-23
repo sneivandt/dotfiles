@@ -1,35 +1,31 @@
 //! Result and statistics types for task execution.
 
-use super::context::Context;
-
 /// Result of a single task execution.
 ///
 /// # Examples
 ///
 /// ```
-/// use dotfiles_cli::testing::tasks::TaskResult;
+/// use dotfiles_cli::testing::tasks::{TaskResult, TaskStats};
 ///
 /// let ok = TaskResult::Ok;
-/// let ok_with_message = TaskResult::OkWithMessage("installed 1 package".into());
+/// let changed = TaskResult::Batch(TaskStats::changed_with_message("installed 1 package"));
 /// let na = TaskResult::NotApplicable("nothing configured".into());
 /// let skipped = TaskResult::Skipped("not on arch".into());
 /// let failed = TaskResult::Failed("git pull failed".into());
-/// let dry = TaskResult::DryRun;
 ///
 /// assert!(matches!(ok, TaskResult::Ok));
-/// assert!(matches!(ok_with_message, TaskResult::OkWithMessage(_)));
+/// assert!(matches!(changed, TaskResult::Batch(_)));
 /// assert!(matches!(na, TaskResult::NotApplicable(_)));
 /// assert!(matches!(skipped, TaskResult::Skipped(_)));
 /// assert!(matches!(failed, TaskResult::Failed(_)));
-/// assert!(matches!(dry, TaskResult::DryRun));
 /// ```
 #[derive(Debug, Clone)]
 #[must_use]
 pub enum TaskResult {
     /// Task completed successfully.
     Ok,
-    /// Task completed successfully with a user-facing detail message.
-    OkWithMessage(String),
+    /// Validation check completed successfully.
+    CheckPassed,
     /// Task is not applicable (e.g., no config matched the active profile).
     NotApplicable(String),
     /// Task was explicitly skipped (e.g., running on a different platform, detached HEAD).
@@ -47,8 +43,6 @@ pub enum TaskResult {
     ///
     /// [`Skipped`]: Self::Skipped
     Failed(String),
-    /// Task ran in dry-run mode.
-    DryRun,
     /// Task processed a batch of actions with structured counters.
     Batch(TaskStats),
 }
@@ -92,6 +86,8 @@ pub struct TaskStats {
     pub skipped: u32,
     /// Number of items that failed without aborting the enclosing task.
     pub failed: u32,
+    /// Optional domain-specific summary for this batch.
+    pub message: Option<String>,
 }
 
 impl TaskStats {
@@ -113,6 +109,26 @@ impl TaskStats {
         Self::default()
     }
 
+    /// Create stats representing one changed item.
+    #[must_use]
+    pub const fn changed() -> Self {
+        Self {
+            changed: 1,
+            already_ok: 0,
+            skipped: 0,
+            failed: 0,
+            message: None,
+        }
+    }
+
+    /// Create stats representing one changed item with a descriptive summary.
+    pub fn changed_with_message(message: impl Into<String>) -> Self {
+        Self {
+            message: Some(message.into()),
+            ..Self::changed()
+        }
+    }
+
     /// Format the summary string (e.g. "3 changed, 10 already ok, 1 skipped").
     ///
     /// # Examples
@@ -125,6 +141,7 @@ impl TaskStats {
     ///     already_ok: 12,
     ///     skipped: 0,
     ///     failed: 0,
+    ///     message: None,
     /// };
     /// assert_eq!(stats.summary(false), "5 changed, 12 already ok");
     /// assert_eq!(stats.summary(true), "5 would change, 12 already ok");
@@ -157,39 +174,8 @@ impl TaskStats {
         self.failed = self.failed.saturating_add(other.failed);
     }
 
-    /// Log the summary without constructing a [`TaskResult`].
-    ///
-    /// Only prints to the console when something actually changed, was
-    /// skipped, or failed non-fatally. Quiet idempotent runs reduce noise on
-    /// no-op invocations.
-    pub fn log_summary(&self, ctx: &Context) {
-        let msg = self.summary(ctx.dry_run());
-        if self.changed > 0 || self.skipped > 0 || self.failed > 0 {
-            ctx.log().info(&msg);
-        } else {
-            ctx.log().debug(&msg);
-        }
-    }
-
-    /// Convert these counters into the appropriate [`TaskResult`] without
-    /// logging.
-    #[cfg(test)]
-    pub fn into_result(self, dry_run: bool) -> TaskResult {
-        let msg = self.summary(dry_run);
-        if self.failed > 0 {
-            TaskResult::Failed(msg)
-        } else if dry_run && self.changed > 0 {
-            TaskResult::DryRun
-        } else if self.changed > 0 {
-            TaskResult::OkWithMessage(msg)
-        } else {
-            TaskResult::Ok
-        }
-    }
-
-    /// Log the summary and return the appropriate [`TaskResult`].
-    pub fn finish(self, ctx: &Context) -> TaskResult {
-        self.log_summary(ctx);
+    /// Return these counters as a structured task result.
+    pub const fn finish(self) -> TaskResult {
         TaskResult::Batch(self)
     }
 }
@@ -255,6 +241,7 @@ mod tests {
             already_ok: 0,
             skipped: 0,
             failed: 0,
+            message: None,
         };
         assert_eq!(stats.summary(false), "5 changed, 0 already ok");
     }
@@ -266,6 +253,7 @@ mod tests {
             already_ok: 10,
             skipped: 0,
             failed: 0,
+            message: None,
         };
         assert_eq!(stats.summary(false), "0 changed, 10 already ok");
     }
@@ -277,6 +265,7 @@ mod tests {
             already_ok: 2,
             skipped: 3,
             failed: 0,
+            message: None,
         };
         assert_eq!(stats.summary(false), "1 changed, 2 already ok, 3 skipped");
     }
@@ -288,6 +277,7 @@ mod tests {
             already_ok: 2,
             skipped: 3,
             failed: 1,
+            message: None,
         };
         assert_eq!(
             stats.summary(true),
@@ -302,43 +292,10 @@ mod tests {
             already_ok: 7,
             skipped: 0,
             failed: 0,
+            message: None,
         };
         let s = stats.summary(false);
         assert!(!s.contains("skipped"), "should not mention skipped: {s}");
-    }
-
-    // -------------------------------------------------------------------
-    // TaskStats::into_result
-    // -------------------------------------------------------------------
-
-    #[test]
-    fn into_result_returns_dry_run_without_context() {
-        let stats = TaskStats {
-            changed: 1,
-            already_ok: 0,
-            skipped: 0,
-            failed: 0,
-        };
-
-        assert!(matches!(stats.into_result(true), TaskResult::DryRun));
-    }
-
-    #[test]
-    fn into_result_preserves_failure_summary() {
-        let stats = TaskStats {
-            changed: 0,
-            already_ok: 2,
-            skipped: 0,
-            failed: 1,
-        };
-
-        assert!(
-            matches!(
-                stats.into_result(false),
-                TaskResult::Failed(message) if message == "0 changed, 2 already ok, 1 failed"
-            ),
-            "failed stats should become a failure with the formatted summary"
-        );
     }
 
     // -------------------------------------------------------------------
@@ -347,97 +304,91 @@ mod tests {
 
     #[test]
     fn finish_returns_batch_when_changes_were_recorded() {
-        let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::test_helpers::make_linux_context(config);
         let stats = TaskStats {
             changed: 1,
             already_ok: 0,
             skipped: 0,
             failed: 0,
+            message: None,
         };
         assert!(matches!(
-            stats.finish(&ctx),
+            stats.finish(),
             TaskResult::Batch(stats) if stats.changed == 1
         ));
     }
 
     #[test]
     fn finish_returns_batch_when_no_changes_were_recorded() {
-        let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::test_helpers::make_linux_context(config);
         let stats = TaskStats {
             changed: 0,
             already_ok: 1,
             skipped: 0,
             failed: 0,
+            message: None,
         };
         assert!(matches!(
-            stats.finish(&ctx),
+            stats.finish(),
             TaskResult::Batch(stats) if stats.already_ok == 1
         ));
     }
 
     #[test]
     fn finish_returns_batch_when_only_resource_skips_were_recorded() {
-        let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::test_helpers::make_linux_context(config);
         let stats = TaskStats {
             changed: 0,
             already_ok: 0,
             skipped: 1,
             failed: 0,
+            message: None,
         };
         assert!(matches!(
-            stats.finish(&ctx),
+            stats.finish(),
             TaskResult::Batch(stats) if stats.skipped == 1
         ));
     }
 
     #[test]
     fn finish_returns_batch_when_dry_run() {
-        let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::test_helpers::make_linux_context(config).with_dry_run(true);
         let stats = TaskStats {
             changed: 1,
             already_ok: 0,
             skipped: 0,
             failed: 0,
+            message: None,
         };
         assert!(matches!(
-            stats.finish(&ctx),
+            stats.finish(),
             TaskResult::Batch(stats) if stats.changed == 1
         ));
     }
 
     #[test]
     fn finish_returns_batch_when_dry_run_has_no_changes() {
-        let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::test_helpers::make_linux_context(config).with_dry_run(true);
         let stats = TaskStats {
             changed: 0,
             already_ok: 1,
             skipped: 0,
             failed: 0,
+            message: None,
         };
         assert!(matches!(
-            stats.finish(&ctx),
+            stats.finish(),
             TaskResult::Batch(stats) if stats.already_ok == 1
         ));
     }
 
     #[test]
     fn finish_returns_batch_when_non_fatal_failures_were_recorded() {
-        let config = crate::test_helpers::empty_config(std::path::PathBuf::from("/dotfiles"));
-        let ctx = crate::test_helpers::make_linux_context(config);
         let stats = TaskStats {
             changed: 0,
             already_ok: 1,
             skipped: 0,
             failed: 1,
+            message: None,
         };
 
         assert!(matches!(
-            stats.finish(&ctx),
+            stats.finish(),
             TaskResult::Batch(stats) if stats.failed == 1
         ));
     }
@@ -453,12 +404,14 @@ mod tests {
             already_ok: 2,
             skipped: 3,
             failed: 4,
+            message: None,
         };
         let b = TaskStats {
             changed: 10,
             already_ok: 20,
             skipped: 30,
             failed: 40,
+            message: None,
         };
         a += b;
         assert_eq!(a.changed, 11);
@@ -474,6 +427,7 @@ mod tests {
             already_ok: 3,
             skipped: 1,
             failed: 2,
+            message: None,
         };
         a += TaskStats::new();
         assert_eq!(a.changed, 5);
@@ -492,20 +446,14 @@ mod tests {
     }
 
     #[test]
-    fn task_result_dry_run_matches() {
-        assert!(matches!(TaskResult::DryRun, TaskResult::DryRun));
-    }
-
-    #[test]
     fn task_result_not_applicable_carries_reason() {
         let r = TaskResult::NotApplicable("no config".into());
         match r {
             TaskResult::NotApplicable(reason) => assert_eq!(reason, "no config"),
             other @ (TaskResult::Ok
-            | TaskResult::OkWithMessage(_)
+            | TaskResult::CheckPassed
             | TaskResult::Skipped(_)
             | TaskResult::Failed(_)
-            | TaskResult::DryRun
             | TaskResult::Batch(_)) => panic!("expected NotApplicable, got {other:?}"),
         }
     }
@@ -516,10 +464,9 @@ mod tests {
         match r {
             TaskResult::Skipped(reason) => assert_eq!(reason, "wrong platform"),
             other @ (TaskResult::Ok
-            | TaskResult::OkWithMessage(_)
+            | TaskResult::CheckPassed
             | TaskResult::NotApplicable(_)
             | TaskResult::Failed(_)
-            | TaskResult::DryRun
             | TaskResult::Batch(_)) => panic!("expected Skipped, got {other:?}"),
         }
     }
@@ -530,10 +477,9 @@ mod tests {
         match r {
             TaskResult::Failed(reason) => assert_eq!(reason, "git pull failed"),
             other @ (TaskResult::Ok
-            | TaskResult::OkWithMessage(_)
+            | TaskResult::CheckPassed
             | TaskResult::NotApplicable(_)
             | TaskResult::Skipped(_)
-            | TaskResult::DryRun
             | TaskResult::Batch(_)) => panic!("expected Failed, got {other:?}"),
         }
     }
